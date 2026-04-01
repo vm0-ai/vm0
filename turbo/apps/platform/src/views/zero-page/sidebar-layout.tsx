@@ -94,6 +94,12 @@ function MobileTopBar() {
               >
                 {breadcrumb.section}
               </Link>
+              {breadcrumb.name && (
+                <>
+                  <span className="text-foreground/30 select-none">/</span>
+                  <span className="truncate">{breadcrumb.name}</span>
+                </>
+              )}
             </div>
           </div>
         </div>

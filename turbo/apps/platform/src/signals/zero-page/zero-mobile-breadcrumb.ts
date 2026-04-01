@@ -5,6 +5,8 @@ import { zeroActiveId$, chatThreadId$ } from "./zero-nav.ts";
 import { agents$ } from "./agents-list.ts";
 import { agentDisplayName$, defaultAgentId$ } from "./zero-agent-name.ts";
 import { zeroChatAgentId$ } from "./zero-active-agent.ts";
+import { allOrgScheduleEntries$ } from "./zero-schedule.ts";
+import { zeroActivityDetail$ } from "../../signals/activity-page/activity-signals.ts";
 
 interface MobileBreadcrumb {
   section: string;
@@ -24,23 +26,102 @@ function getStringParam(params: Params, key: string): string | null {
 
 const CHAT_PATH = "/" as RoutePath;
 
+const SCHEDULE_DETAIL_TITLE_MAX = 30;
+
+function excerptText(text: string, maxLen: number): string {
+  const t = text.trim();
+  if (t.length <= maxLen) {
+    return t;
+  }
+  return `${t.slice(0, maxLen - 1)}\u2026`;
+}
+
+function firstSentenceFromInstruction(text: string): string {
+  const t = text.trim();
+  if (t.length === 0) {
+    return "";
+  }
+  const match = t.match(/^[\s\S]*?(?:[。！？]|[.!?](?:\s|$))/);
+  if (match) {
+    return match[0].trim();
+  }
+  return t.split(/\r?\n/)[0]?.trim() ?? t;
+}
+
+function scheduleEntryLabel(entry: {
+  description: string | null;
+  prompt: string;
+  name: string;
+}): string {
+  const desc = entry.description?.trim();
+  if (desc && desc.length > 0) {
+    return excerptText(desc, SCHEDULE_DETAIL_TITLE_MAX);
+  }
+  const promptTrim = entry.prompt.trim();
+  if (promptTrim.length > 0) {
+    const first = firstSentenceFromInstruction(promptTrim);
+    const label = first.length > 0 ? first : promptTrim;
+    return excerptText(label, SCHEDULE_DETAIL_TITLE_MAX);
+  }
+  if (entry.name.trim().length > 0) {
+    return entry.name.trim();
+  }
+  return "Schedule";
+}
+
 /**
  * Provides breadcrumb data for the MobileTopBar.
  * For chat: resolves the active agent name and avatar.
+ * For schedule/activity detail pages: derives a sub-page name from signals.
  * For other sections: returns a static label so the top bar has context on mobile
  * (page-level breadcrumbs use `hidden md:flex` and are invisible on mobile).
  */
 export const mobileBreadcrumb$ = computed(
   async (get): Promise<MobileBreadcrumb | null> => {
     const activeId = get(zeroActiveId$);
+    const params = get(pathParams$) as Params;
 
-    // Static labels for non-chat sections
+    if (activeId === "schedule") {
+      const scheduleId = getStringParam(params, "scheduleId");
+      if (scheduleId) {
+        const entries = get(allOrgScheduleEntries$);
+        const entry = entries.find((e) => {
+          return e.id === scheduleId;
+        });
+        if (entry) {
+          return {
+            section: "Scheduled",
+            sectionPath: "/schedule" as RoutePath,
+            name: scheduleEntryLabel(entry),
+          };
+        }
+      }
+      return { section: "Scheduled", sectionPath: "/schedule" as RoutePath };
+    }
+
+    if (activeId === "activity") {
+      const runId = getStringParam(params, "runId");
+      if (runId) {
+        const detail = await get(zeroActivityDetail$);
+        if (detail && detail.id === runId) {
+          return {
+            section: "Activity logs",
+            sectionPath: "/activity" as RoutePath,
+            name: detail.displayName ?? undefined,
+          };
+        }
+      }
+      return {
+        section: "Activity logs",
+        sectionPath: "/activity" as RoutePath,
+      };
+    }
+
+    // Static labels for other non-chat sections
     const nonChatSections: Partial<
       Record<string, { label: string; path: RoutePath }>
     > = {
-      schedule: { label: "Scheduled", path: "/schedule" as RoutePath },
       team: { label: "Agents", path: "/team" as RoutePath },
-      activity: { label: "Activity logs", path: "/activity" as RoutePath },
       works: { label: "Works", path: "/works" as RoutePath },
       usage: { label: "Usage", path: "/usage" as RoutePath },
       preferences: { label: "Preferences", path: "/preferences" as RoutePath },
@@ -59,7 +140,6 @@ export const mobileBreadcrumb$ = computed(
       return null;
     }
 
-    const params = get(pathParams$) as Params;
     const displayName = await get(agentDisplayName$);
     const defaultId = await get(defaultAgentId$);
     const chatThreadId = get(chatThreadId$);
