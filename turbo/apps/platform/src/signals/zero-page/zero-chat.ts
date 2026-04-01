@@ -134,8 +134,7 @@ const neverResolve$ = computed((): Promise<never> => {
 function createPlaceholderAssistantMessage(
   userMessageId: string,
 ): AssistantChatMessage {
-  const noopCommand$ = command(() => {});
-  const noopAsyncCommand$ = command(async () => {});
+  const noopAsyncCommand$ = command(async (_store, _signal: AbortSignal) => {});
   return {
     id: placeholderIdFromUser(userMessageId),
     role: "assistant",
@@ -149,11 +148,11 @@ function createPlaceholderAssistantMessage(
       queuePosition$: neverResolve$,
       finished$: neverResolve$,
       thinkingMessage$: computed(() => {
-        return "Thinking..." as const;
+        return "Thinking hard..." as const;
       }),
     },
     summaries$: neverResolve$,
-    beginLoop$: noopCommand$,
+    beginLoop$: noopAsyncCommand$,
   };
 }
 
