@@ -88,34 +88,48 @@ export default function LandingPage() {
 
       <main>
         <section className="relative flex min-h-svh flex-col items-center justify-center overflow-hidden px-5 pt-[var(--total-header-height)] sm:px-6">
-          {/* Paper texture background */}
+          {/* Paper texture background — hidden in dark mode via CSS */}
+          <div className="paper-bg-layer pointer-events-none absolute inset-0 z-0" />
+          {/* Desk surface brush-stroke filter */}
+          <svg className="absolute" width="0" height="0" aria-hidden="true">
+            <filter id="desk-edge" x="-2%" y="-30%" width="104%" height="160%">
+              <feTurbulence
+                type="fractalNoise"
+                baseFrequency="0.02 0.08"
+                numOctaves="3"
+                result="noise"
+                seed="5"
+              />
+              <feDisplacementMap
+                in="SourceGraphic"
+                in2="noise"
+                scale="6"
+                xChannelSelector="R"
+                yChannelSelector="G"
+              />
+            </filter>
+          </svg>
+          {/* Dark mode full-width desk background — extends beige color edge-to-edge */}
+          <div className="landing-desk-bg pointer-events-none absolute inset-x-0 bottom-0 z-[1]" />
+          {/* Desk illustration — constrained to container width to align with nav */}
+          <div className="pointer-events-none absolute inset-0 z-[1] flex justify-center overflow-hidden">
+            <div className="relative w-full max-w-[1200px]">
+              <div
+                className="landing-illustration absolute inset-0 bg-[length:160%_auto] sm:bg-[length:120%_auto] md:bg-[length:120%_auto]"
+                style={{
+                  backgroundImage: "url('/images/landing-bg.png?v=22')",
+                  backgroundPosition: "center bottom",
+                  backgroundRepeat: "no-repeat",
+                }}
+              />
+            </div>
+          </div>
+          {/* Cover strip to hide top pixel artifacts — hidden in dark mode via CSS */}
           <div
-            className="pointer-events-none absolute inset-0 z-0"
+            className="landing-cover-strip pointer-events-none absolute left-0 right-0 z-[2]"
             style={{
-              backgroundImage: "url('/images/paper-bg.png')",
-              backgroundSize: "300px",
-              backgroundPosition: "center",
-              backgroundRepeat: "repeat",
-            }}
-          />
-          {/* Desk illustration */}
-          <div
-            className="pointer-events-none absolute inset-0 z-[1] bg-[length:200%_auto] sm:bg-[length:150%_auto] md:bg-[length:120%_auto]"
-            style={{
-              backgroundImage: "url('/images/landing-bg.png?v=21')",
-              backgroundPosition: "center bottom",
-              backgroundRepeat: "no-repeat",
-            }}
-          />
-          {/* Cover strip to hide top pixel artifacts */}
-          <div
-            className="pointer-events-none absolute left-0 right-0 z-[2]"
-            style={{
-              bottom: "calc(100vw * 1271 / 5120 - 1px)",
+              bottom: "calc(min(100vw, 1200px) * 1271 / 5120 - 1px)",
               height: "20px",
-              backgroundImage: "url('/images/paper-bg.png')",
-              backgroundSize: "300px",
-              backgroundRepeat: "repeat",
             }}
           />
 
@@ -145,22 +159,22 @@ export default function LandingPage() {
               <span className="font-semibold underline decoration-[hsl(var(--primary))] decoration-1 underline-offset-4">
                 web
               </span>
-              , for individuals and team collaboration. Great ideas come from
-              people working together, with each other and with AI.
+              , for individuals and team collaboration. AI handles the managing
+              (the paperwork, the context, the noise). You do the creating.
             </p>
 
-            <div className="flex flex-wrap items-center justify-center gap-y-2 sm:-mt-4 sm:gap-y-2">
+            <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1.5 sm:-mt-4 sm:flex-nowrap sm:gap-x-0 sm:gap-y-2">
               {[
                 "Secure",
                 "Memory",
-                "Activity logs",
-                "Proactive",
+                "Traceable history",
+                "Quietly intelligent",
                 "100+ connectors",
               ].map((item, i) => {
                 return (
                   <div key={item} className="flex items-center">
                     {i > 0 && (
-                      <div className="mx-3 h-3 w-px bg-[hsl(var(--gray-200))] sm:mx-5" />
+                      <div className="mx-5 hidden h-3.5 w-px bg-[hsl(var(--gray-300))] sm:block" />
                     )}
                     <span className="text-xs text-[hsl(var(--muted-foreground))] sm:text-sm">
                       {item}
