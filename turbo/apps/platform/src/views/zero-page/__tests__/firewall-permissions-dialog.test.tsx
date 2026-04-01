@@ -9,8 +9,6 @@ import { setupPage } from "../../../__tests__/page-helper.ts";
 
 const context = testContext();
 
-const ALL_CONNECTOR_TYPES = Object.keys(CONNECTOR_TYPES) as ConnectorType[];
-
 function mockAPIs({
   firewallPolicies = null,
 }: { firewallPolicies?: Record<string, Record<string, string>> | null } = {}) {
@@ -76,7 +74,7 @@ function mockAPIs({
             updatedAt: "2026-01-01T00:00:00Z",
           },
         ],
-        configuredTypes: ALL_CONNECTOR_TYPES,
+        configuredTypes: Object.keys(CONNECTOR_TYPES) as ConnectorType[],
         connectorProvidedSecretNames: [],
       });
     }),
