@@ -1,76 +1,266 @@
 /**
- * Generate Dropbox firewall config.
+ * Generate Dropbox firewall config from the official Stone API spec.
  *
- * Data source: https://www.dropbox.com/developers/reference/auth-types
+ * Data source: https://github.com/dropbox/dropbox-api-spec
  *
- * Dropbox is a cloud file storage platform.
- * Uses Bearer token authentication (OAuth).
- * Two base URLs: api.dropboxapi.com (API) and content.dropboxapi.com (file content).
- * Token format: short-lived access token, prefix "sl." + ~130 alphanumeric chars.
- * Three base URLs: api, content, and notify.
+ * Dropbox defines its API using Stone (a custom IDL). Each route declares
+ * a `scope` attribute that maps directly to Dropbox OAuth scopes
+ * (e.g. "files.content.read", "sharing.write"). Routes also declare a
+ * `host` attribute ("api", "content", or "notify") — defaults to "api".
+ *
+ * All Dropbox API calls use POST. The endpoint path is /2/{namespace}/{route}.
+ *
+ * Routes without a scope (auth/health-check endpoints) are skipped.
+ * Unknown scopeless routes cause a build error.
  */
 
-import { writeOutput } from "./codegen";
+import {
+  fetchSpec,
+  logStats,
+  renderPermissions,
+  sortRules,
+  writeOutput,
+} from "./codegen";
+import type { PermissionGroup } from "./codegen";
 
-const DOCS_URL = "https://www.dropbox.com/developers/reference/auth-types";
-// Format: sl. + ~130 alphanumeric chars
+const SPEC_BASE_URL =
+  "https://api.github.com/repos/dropbox/dropbox-api-spec/contents/";
+
 const PLACEHOLDER_VALUE =
   "sl.CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafe";
 
-function generateTypeScript(): string {
+// ── Stone parsing ────────────────────────────────────────────────────────
+
+interface StoneRoute {
+  namespace: string;
+  name: string;
+  scope: string | null;
+  host: string; // "api", "content", or "notify"
+}
+
+// Routes without scopes that are expected (auth/health-check).
+// Unknown scopeless routes cause a build error.
+const SCOPELESS_ROUTES = new Set([
+  "auth/token/revoke",
+  "auth/token/from_oauth1",
+  "check/app",
+]);
+
+function parseStoneRoutes(content: string): StoneRoute[] {
+  const routes: StoneRoute[] = [];
+  const lines = content.split("\n");
+
+  let namespace = "";
+  let currentRoute = "";
+  let inAttrs = false;
+  let routeScope: string | null = null;
+  let routeHost = "api";
+
+  function flushRoute(): void {
+    if (currentRoute) {
+      routes.push({
+        namespace,
+        name: currentRoute,
+        scope: routeScope,
+        host: routeHost,
+      });
+      currentRoute = "";
+      routeScope = null;
+      routeHost = "api";
+      inAttrs = false;
+    }
+  }
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    const nsMatch = /^namespace\s+(\S+)/.exec(trimmed);
+    if (nsMatch) {
+      namespace = nsMatch[1]!;
+      continue;
+    }
+
+    const routeMatch = /^route\s+(\S+)\s*\(/.exec(trimmed);
+    if (routeMatch) {
+      flushRoute();
+      currentRoute = routeMatch[1]!;
+      continue;
+    }
+
+    if (trimmed === "attrs") {
+      inAttrs = true;
+      continue;
+    }
+
+    if (inAttrs && currentRoute) {
+      const scopeMatch = /^scope\s*=\s*"([^"]+)"/.exec(trimmed);
+      if (scopeMatch) {
+        routeScope = scopeMatch[1]!;
+      }
+      const hostMatch = /^host\s*=\s*"([^"]+)"/.exec(trimmed);
+      if (hostMatch) {
+        routeHost = hostMatch[1]!;
+      }
+    }
+  }
+  flushRoute();
+
+  return routes;
+}
+
+// ── Grouping ─────────────────────────────────────────────────────────────
+
+const HOST_BASE_URLS: Record<string, string> = {
+  api: "https://api.dropboxapi.com",
+  content: "https://content.dropboxapi.com",
+  notify: "https://notify.dropboxapi.com",
+};
+
+interface HostPermissions {
+  permissions: PermissionGroup[];
+}
+
+function buildGroups(routes: StoneRoute[]): Map<string, HostPermissions> {
+  // scope -> host -> rules
+  const groups = new Map<string, Map<string, Set<string>>>();
+  const unknownScopeless: string[] = [];
+
+  for (const route of routes) {
+    const fullName = `${route.namespace}/${route.name}`;
+
+    if (!route.scope) {
+      if (!SCOPELESS_ROUTES.has(fullName)) {
+        unknownScopeless.push(fullName);
+      }
+      continue;
+    }
+
+    const rule = `POST /2/${fullName}`;
+
+    let hostMap = groups.get(route.scope);
+    if (!hostMap) {
+      hostMap = new Map();
+      groups.set(route.scope, hostMap);
+    }
+    let ruleSet = hostMap.get(route.host);
+    if (!ruleSet) {
+      ruleSet = new Set();
+      hostMap.set(route.host, ruleSet);
+    }
+    ruleSet.add(rule);
+  }
+
+  if (unknownScopeless.length > 0) {
+    throw new Error(
+      `Unknown scopeless routes: ${unknownScopeless.join(", ")}\n` +
+        "Add them to SCOPELESS_ROUTES in dropbox.ts to fix this error.",
+    );
+  }
+
+  // Build per-host permission groups
+  const result = new Map<string, HostPermissions>();
+
+  for (const host of Object.keys(HOST_BASE_URLS)) {
+    const permissions: PermissionGroup[] = [];
+
+    for (const [scope, hostMap] of [...groups.entries()].sort(([a], [b]) =>
+      a.localeCompare(b),
+    )) {
+      const ruleSet = hostMap.get(host);
+      if (!ruleSet || ruleSet.size === 0) continue;
+
+      permissions.push({
+        name: scope,
+        rules: sortRules([...ruleSet]),
+      });
+    }
+
+    result.set(host, { permissions });
+  }
+
+  return result;
+}
+
+// ── TypeScript generation ────────────────────────────────────────────────
+
+function generateTypeScript(hostGroups: Map<string, HostPermissions>): string {
   const lines: string[] = [
-    "// Auto-generated from Dropbox API docs.",
-    `// Source: ${DOCS_URL}`,
+    "// Auto-generated from Dropbox's official Stone API spec.",
+    "// Source: https://github.com/dropbox/dropbox-api-spec",
     "// Regenerate: cd turbo && pnpm -F @vm0/firewalls-generator generate:dropbox",
     "//",
     "// DO NOT EDIT THIS FILE MANUALLY.",
     "",
     'import type { FirewallConfig } from "../contracts/firewalls";',
     "",
-    "export const dropboxFirewall: FirewallConfig = {",
+    "export const dropboxFirewall = {",
     '  name: "dropbox",',
     '  description: "Dropbox API",',
     "  placeholders: {",
     `    DROPBOX_TOKEN: "${PLACEHOLDER_VALUE}",`,
     "  },",
     "  apis: [",
-    "    {",
-    '      base: "https://api.dropboxapi.com",',
-    "      auth: {",
-    "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.DROPBOX_TOKEN }}",',
-    "        },",
-    "      },",
-    "      permissions: [],",
-    "    },",
-    "    {",
-    '      base: "https://content.dropboxapi.com",',
-    "      auth: {",
-    "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.DROPBOX_TOKEN }}",',
-    "        },",
-    "      },",
-    "      permissions: [],",
-    "    },",
-    "    {",
-    '      base: "https://notify.dropboxapi.com",',
-    "      auth: {",
-    "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.DROPBOX_TOKEN }}",',
-    "        },",
-    "      },",
-    "      permissions: [],",
-    "    },",
-    "  ],",
-    "};",
-    "",
   ];
+
+  for (const [host, { permissions }] of hostGroups) {
+    const baseUrl = HOST_BASE_URLS[host]!;
+    lines.push("    {");
+    lines.push(`      base: "${baseUrl}",`);
+    lines.push("      auth: {");
+    lines.push("        headers: {");
+    lines.push(
+      '          Authorization: "Bearer ${{ secrets.DROPBOX_TOKEN }}",',
+    );
+    lines.push("        },");
+    lines.push("      },");
+    lines.push("      permissions: [");
+    lines.push(...renderPermissions(permissions));
+    lines.push("      ],");
+    lines.push("    },");
+  }
+
+  lines.push("  ],");
+  lines.push("} as const satisfies FirewallConfig;");
+  lines.push("");
 
   return lines.join("\n");
 }
 
+// ── Main ─────────────────────────────────────────────────────────────────
+
+interface GitHubContent {
+  name: string;
+  download_url: string;
+}
+
 export async function generate(): Promise<void> {
-  console.error("Generating Dropbox firewall config...");
-  const ts = generateTypeScript();
+  console.error("Downloading Dropbox Stone API spec file list…");
+  const listRes = await fetch(SPEC_BASE_URL, {
+    headers: { Accept: "application/vnd.github.v3+json" },
+  });
+  if (!listRes.ok) {
+    throw new Error(`Failed to list spec files: ${listRes.status}`);
+  }
+  const files = (await listRes.json()) as GitHubContent[];
+  const stoneFiles = files.filter((f) => f.name.endsWith(".stone"));
+  console.error(`  Found ${stoneFiles.length} .stone files`);
+
+  const allRoutes: StoneRoute[] = [];
+  for (const file of stoneFiles) {
+    const res = await fetchSpec(file.download_url, file.name);
+    const content = await res.text();
+    allRoutes.push(...parseStoneRoutes(content));
+  }
+  console.error(`  Parsed ${allRoutes.length} routes`);
+
+  const hostGroups = buildGroups(allRoutes);
+  const ts = generateTypeScript(hostGroups);
+
+  // Log stats for the main API host
+  const apiPerms = hostGroups.get("api")?.permissions ?? [];
+  const contentPerms = hostGroups.get("content")?.permissions ?? [];
+  const notifyPerms = hostGroups.get("notify")?.permissions ?? [];
+  const allPerms = [...apiPerms, ...contentPerms, ...notifyPerms];
+  logStats(allPerms);
   writeOutput("dropbox", ts, import.meta.dirname);
 }
