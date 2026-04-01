@@ -337,7 +337,7 @@ export const chatThreads$ = computed(async (get) => {
     return {
       ...t,
       title:
-        t.id === currentThread?.id ? currentThread.title || t.title : t.title,
+        t.id === currentThread?.id ? t.title || currentThread.title : t.title,
     };
   });
 });
