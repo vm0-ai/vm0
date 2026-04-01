@@ -10,6 +10,9 @@ type UserRole = "admin" | "member" | "unknown";
  * so callers can fall back to generic messaging.
  */
 export async function resolveRole(): Promise<UserRole> {
+  // Intentional: doctor commands must work even without API access (no token,
+  // network error, etc.). Catching all errors and falling back to "unknown"
+  // lets callers degrade to generic messaging instead of crashing the CLI.
   try {
     const org = await getZeroOrg();
     if (org.role === "admin" || org.role === "member") {
