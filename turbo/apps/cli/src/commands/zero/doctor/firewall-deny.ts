@@ -7,7 +7,7 @@ import {
 } from "@vm0/core";
 import { withErrorHandler } from "../../../lib/command";
 import { getPlatformOrigin } from "./platform-url";
-import { resolveRole } from "./resolve-role";
+import { resolveAgentRole } from "./resolve-role";
 
 export const firewallDenyCommand = new Command()
   .name("firewall-deny")
@@ -93,9 +93,9 @@ Notes:
           console.log("");
         }
 
-        const role = agentId ? await resolveRole() : "unknown";
+        const role = agentId ? await resolveAgentRole(agentId) : "unknown";
 
-        if (role === "admin") {
+        if (role === "admin" || role === "owner") {
           console.log(
             `You can allow this permission directly: [Manage ${label} firewall](${url})`,
           );

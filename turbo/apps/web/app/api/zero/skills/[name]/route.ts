@@ -35,6 +35,7 @@ import {
 } from "../../../../../src/lib/s3/s3-client";
 import { extractFileFromTar } from "../../../../../src/lib/tar";
 import { env } from "../../../../../src/env";
+import { requireAdminPermission } from "../../../../../src/lib/zero/require-agent-permission";
 import { logger } from "../../../../../src/lib/logger";
 
 const log = logger("api:zero-skills:detail");
@@ -178,7 +179,11 @@ const router = tsr.router(zeroSkillsDetailContract, {
     });
     if (isAuthError(authCtx)) return authCtx;
 
-    const { org } = await resolveOrg(authCtx);
+    const { org, member } = await resolveOrg(authCtx);
+
+    // Only org admins can update custom skills
+    const forbidden = requireAdminPermission(member, "update custom skills");
+    if (forbidden) return forbidden;
 
     // Look up skill
     const [skill] = await globalThis.services.db
@@ -246,7 +251,11 @@ const router = tsr.router(zeroSkillsDetailContract, {
     if (isAuthError(authCtx)) return authCtx;
     const { userId } = authCtx;
 
-    const { org } = await resolveOrg(authCtx);
+    const { org, member } = await resolveOrg(authCtx);
+
+    // Only org admins can delete custom skills
+    const forbidden = requireAdminPermission(member, "delete custom skills");
+    if (forbidden) return forbidden;
 
     // Look up skill
     const [skill] = await globalThis.services.db

@@ -13,6 +13,7 @@ import {
   bindCustomSkillToAgent,
   seedTestCompose,
   getAgentCustomSkills,
+  insertOrgMembersCacheEntry,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -387,6 +388,114 @@ describe("Zero Skills API (org-level)", () => {
       const response = await deleteSkillReq("no-such-skill", testCliToken);
 
       expect(response.status).toBe(404);
+    });
+  });
+
+  describe("admin permission restriction", () => {
+    let memberToken: string;
+
+    beforeEach(async () => {
+      const orgId = `org_mock_${user.userId}`;
+
+      // Ensure the admin user's role is cached so Clerk mock override doesn't matter
+      await insertOrgMembersCacheEntry({
+        orgId,
+        userId: user.userId,
+        role: "admin",
+      });
+
+      // Create a member token directly (avoid setupUser which overrides Clerk mock)
+      const memberUserId = `member-${Date.now()}`;
+      memberToken = await createTestCliToken(memberUserId, undefined, orgId);
+
+      await insertOrgMembersCacheEntry({
+        orgId,
+        userId: memberUserId,
+        role: "member",
+      });
+    });
+
+    it("should return 403 when member creates a skill", async () => {
+      const response = await postSkillReq(
+        { name: "member-skill", files: singleFile("# Content") },
+        memberToken,
+      );
+
+      expect(response.status).toBe(403);
+    });
+
+    it("should return 403 when member updates a skill", async () => {
+      // Create skill as admin
+      await postSkillReq(
+        { name: "admin-skill", files: singleFile("# Original") },
+        testCliToken,
+      );
+
+      // Try to update as member
+      const response = await putSkillReq(
+        "admin-skill",
+        { files: singleFile("# Updated") },
+        memberToken,
+      );
+
+      expect(response.status).toBe(403);
+    });
+
+    it("should return 403 when member deletes a skill", async () => {
+      // Create skill as admin
+      await postSkillReq(
+        { name: "admin-skill", files: singleFile("# Content") },
+        testCliToken,
+      );
+
+      // Try to delete as member
+      const response = await deleteSkillReq("admin-skill", memberToken);
+
+      expect(response.status).toBe(403);
+    });
+
+    it("should allow member to list skills", async () => {
+      // Create skill as admin
+      await postSkillReq(
+        { name: "readable-skill", files: singleFile("# Content") },
+        testCliToken,
+      );
+
+      // Member should be able to list
+      const response = await listSkillsReq(memberToken);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data).toHaveLength(1);
+      expect(data[0].name).toBe("readable-skill");
+    });
+
+    it("should allow member to get a skill", async () => {
+      // Create skill as admin
+      await postSkillReq(
+        { name: "readable-skill", files: singleFile("# Readable") },
+        testCliToken,
+      );
+
+      mockSkillContent("# Readable");
+
+      // Member should be able to read
+      const response = await getSkillReq("readable-skill", memberToken);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.name).toBe("readable-skill");
+    });
+
+    it("should allow admin to create a skill", async () => {
+      const response = await postSkillReq(
+        { name: "admin-created", files: singleFile("# Admin") },
+        testCliToken,
+      );
+
+      expect(response.status).toBe(201);
+      const data = await response.json();
+      expect(data.name).toBe("admin-created");
     });
   });
 });

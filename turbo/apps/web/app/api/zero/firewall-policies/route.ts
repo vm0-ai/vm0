@@ -17,6 +17,7 @@ import {
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import { zeroAgents } from "../../../../src/db/schema/zero-agent";
 import { eq, and } from "drizzle-orm";
+import { requireAgentPermission } from "../../../../src/lib/zero/require-agent-permission";
 import { logger } from "../../../../src/lib/logger";
 
 const log = logger("api:zero:firewall-policies");
@@ -92,17 +93,12 @@ const router = tsr.router(zeroAgentFirewallPoliciesContract, {
       };
     }
 
-    if (existing.owner !== member.userId) {
-      return {
-        status: 403 as const,
-        body: {
-          error: {
-            message: "Only the agent owner can update firewall policies",
-            code: "FORBIDDEN",
-          },
-        },
-      };
-    }
+    const forbidden = requireAgentPermission(
+      existing.owner,
+      member,
+      "update firewall policies",
+    );
+    if (forbidden) return forbidden;
 
     // Update firewall policies
     const now = new Date();

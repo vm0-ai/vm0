@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useGet, useSet, useLastLoadable } from "ccstate-react";
+import { useGet, useSet, useLastLoadable, useLoadable } from "ccstate-react";
 import { Button } from "@vm0/ui";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
@@ -18,6 +18,7 @@ import {
   type FirewallPolicyValue,
 } from "@vm0/core";
 import { user$ } from "../../signals/auth.ts";
+import { isOrgAdmin$ } from "../../signals/org.ts";
 import {
   firewallAllowAgentId$,
   firewallAllowRef$,
@@ -699,6 +700,7 @@ export function FirewallAllowPage() {
 
   const agentLoadable = useLastLoadable(firewallAllowAgent$);
   const userLoadable = useLastLoadable(user$);
+  const adminLoadable = useLoadable(isOrgAdmin$);
 
   if (!agentId || !ref) {
     return (
@@ -755,6 +757,8 @@ export function FirewallAllowPage() {
   const currentUser =
     userLoadable.state === "hasData" ? userLoadable.data : undefined;
   const isOwner = currentUser?.id === agent.ownerId;
+  const isAdmin = adminLoadable.state === "hasData" && adminLoadable.data;
+  const canManageFirewall = isOwner || isAdmin;
   const connectorLabel = CONNECTOR_TYPES[ref]?.label ?? ref;
   const agentDisplayName = agent.displayName ?? agentId;
 
@@ -783,7 +787,7 @@ export function FirewallAllowPage() {
 
       <main className="flex-1 overflow-auto px-6 pb-6">
         {focusedPermission ? (
-          isOwner ? (
+          canManageFirewall ? (
             <AdminFocusedView
               agentId={agentId}
               ref={ref}
@@ -802,7 +806,7 @@ export function FirewallAllowPage() {
               agent={agent}
             />
           )
-        ) : isOwner ? (
+        ) : canManageFirewall ? (
           <AdminListView agentId={agentId} ref={ref} agent={agent} />
         ) : (
           <MemberListView ref={ref} agent={agent} />

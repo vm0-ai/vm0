@@ -1,26 +1,50 @@
 import { getZeroOrg } from "../../../lib/api/domains/zero-orgs";
+import { getZeroAgent } from "../../../lib/api/domains/zero-agents";
+import { decodeZeroTokenPayload } from "../../../lib/api/zero-token";
+import { decodeCliTokenPayload } from "../../../lib/api/cli-token";
+import { getToken } from "../../../lib/api/config";
 
-type UserRole = "admin" | "member" | "unknown";
+type AgentRole = "admin" | "owner" | "member" | "unknown";
 
 /**
- * Best-effort role detection for the current user.
- *
- * Calls the org API to retrieve the caller's role.
- * Returns "unknown" when the API call fails (no auth, network error, etc.)
- * so callers can fall back to generic messaging.
+ * Resolve the current user's userId from the available token.
+ * Tries ZERO_TOKEN (sandbox) first, then CLI token.
  */
-export async function resolveRole(): Promise<UserRole> {
-  // Intentional: doctor commands must work even without API access (no token,
-  // network error, etc.). Catching all errors and falling back to "unknown"
-  // lets callers degrade to generic messaging instead of crashing the CLI.
+async function resolveUserId(): Promise<string | undefined> {
+  const zeroPayload = decodeZeroTokenPayload();
+  if (zeroPayload?.userId) return zeroPayload.userId;
+
+  const token = await getToken();
+  const cliPayload = decodeCliTokenPayload(token);
+  return cliPayload?.userId;
+}
+
+/**
+ * Best-effort role detection that also considers agent ownership.
+ *
+ * Returns "admin" if the user is an org admin (can manage any agent).
+ * Returns "owner" if the user is a non-admin but owns the specified agent.
+ * Returns "member" if the user is a non-admin, non-owner member.
+ * Returns "unknown" on any API failure.
+ */
+export async function resolveAgentRole(agentId: string): Promise<AgentRole> {
   try {
     const org = await getZeroOrg();
-    if (org.role === "admin" || org.role === "member") {
-      return org.role;
+    if (org.role === "admin") return "admin";
+
+    if (org.role === "member") {
+      // Check if the member owns this agent
+      const userId = await resolveUserId();
+      if (userId) {
+        const agent = await getZeroAgent(agentId);
+        if (agent.ownerId === userId) return "owner";
+      }
+      return "member";
     }
+
     return "unknown";
   } catch (error: unknown) {
-    console.debug("resolveRole failed, falling back to unknown:", error);
+    console.debug("resolveAgentRole failed, falling back to unknown:", error);
     return "unknown";
   }
 }

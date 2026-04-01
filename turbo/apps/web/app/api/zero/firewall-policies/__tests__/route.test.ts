@@ -130,7 +130,7 @@ describe("PUT /api/zero/firewall-policies", () => {
     expect(data.firewallPolicies).toStrictEqual(second);
   });
 
-  it("should return 403 for non-owner (even if admin)", async () => {
+  it("should allow org admin to update another user's firewall policies", async () => {
     const created = await (await postAgent({}, testCliToken)).json();
 
     // Create another admin user who is NOT the agent owner
@@ -147,10 +147,39 @@ describe("PUT /api/zero/firewall-policies", () => {
       role: "admin",
     });
 
+    const policies = { github: { "issues:read": "allow" } };
+    const response = await putPolicies(
+      created.agentId,
+      { policies },
+      otherAdminToken,
+    );
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.firewallPolicies).toStrictEqual(policies);
+  });
+
+  it("should return 403 for non-owner member", async () => {
+    const created = await (await postAgent({}, testCliToken)).json();
+
+    // Create another user who is a member (not admin, not owner)
+    const otherMember = await context.setupUser({ prefix: "other-member" });
+    const otherMemberToken = await createTestCliToken(
+      otherMember.userId,
+      undefined,
+      testOrgId,
+    );
+
+    await insertOrgMembersCacheEntry({
+      orgId: testOrgId,
+      userId: otherMember.userId,
+      role: "member",
+    });
+
     const response = await putPolicies(
       created.agentId,
       { policies: { github: { "issues:read": "allow" } } },
-      otherAdminToken,
+      otherMemberToken,
     );
 
     expect(response.status).toBe(403);

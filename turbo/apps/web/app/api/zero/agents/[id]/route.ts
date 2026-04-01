@@ -15,7 +15,7 @@ import { zeroAgents } from "../../../../../src/db/schema/zero-agent";
 import { agentComposes } from "../../../../../src/db/schema/agent-compose";
 import { eq, and } from "drizzle-orm";
 import { buildComposeContent } from "../../../../../src/lib/zero/build-compose-content";
-import { requireAdminForDefaultAgent } from "../../../../../src/lib/zero/require-admin";
+import { requireAgentPermission } from "../../../../../src/lib/zero/require-agent-permission";
 import { deleteComposeById } from "../../../../../src/lib/agent-compose/compose-service";
 import { isConflict } from "../../../../../src/lib/errors";
 import { logger } from "../../../../../src/lib/logger";
@@ -99,6 +99,7 @@ const router = tsr.router(zeroAgentsByIdContract, {
         id: agentComposes.id,
         name: agentComposes.name,
         customSkills: zeroAgents.customSkills,
+        owner: zeroAgents.owner,
       })
       .from(agentComposes)
       .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
@@ -122,13 +123,14 @@ const router = tsr.router(zeroAgentsByIdContract, {
       };
     }
 
-    // Only admins can update the default agent
-    const forbidden = await requireAdminForDefaultAgent(
-      org.orgId,
-      existing.id,
-      member.role,
-      "configuration",
-    );
+    // Only agent owner or org admin can update
+    const forbidden = existing.owner
+      ? requireAgentPermission(
+          existing.owner,
+          member,
+          "update agent configuration",
+        )
+      : null;
     if (forbidden) return forbidden;
 
     // Use provided customSkills if present, otherwise keep existing
@@ -241,12 +243,11 @@ const router = tsr.router(zeroAgentsByIdContract, {
       };
     }
 
-    // Only admins can update the default agent's profile
-    const forbidden = await requireAdminForDefaultAgent(
-      org.orgId,
-      existing.id,
-      member.role,
-      "profile",
+    // Only agent owner or org admin can update profile
+    const forbidden = requireAgentPermission(
+      existing.owner,
+      member,
+      "update agent profile",
     );
     if (forbidden) return forbidden;
 
@@ -303,7 +304,11 @@ const router = tsr.router(zeroAgentsByIdContract, {
 
     // Verify agent exists
     const [agent] = await globalThis.services.db
-      .select({ id: zeroAgents.id, name: zeroAgents.name })
+      .select({
+        id: zeroAgents.id,
+        name: zeroAgents.name,
+        owner: zeroAgents.owner,
+      })
       .from(zeroAgents)
       .where(and(eq(zeroAgents.orgId, org.orgId), eq(zeroAgents.id, params.id)))
       .limit(1);
@@ -320,12 +325,11 @@ const router = tsr.router(zeroAgentsByIdContract, {
       };
     }
 
-    // Only admins can delete the default agent
-    const forbidden = await requireAdminForDefaultAgent(
-      org.orgId,
-      agent.id,
-      member.role,
-      "agent",
+    // Only agent owner or org admin can delete
+    const forbidden = requireAgentPermission(
+      agent.owner,
+      member,
+      "delete agent",
     );
     if (forbidden) return forbidden;
 

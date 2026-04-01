@@ -141,6 +141,104 @@ describe("zero doctor firewall-permissions-change command", () => {
     });
   });
 
+  describe("owner role", () => {
+    it("should output direct enable message for member who is agent owner", async () => {
+      const payload = Buffer.from(
+        JSON.stringify({
+          userId: "owner-user-1",
+          orgId: "org-1",
+          scope: "cli",
+          tokenId: "t1",
+        }),
+      ).toString("base64url");
+      const fakeToken = `vm0_pat_header.${payload}.sig`;
+
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", fakeToken);
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      server.use(
+        http.get("https://app.vm0.ai/api/zero/org", () => {
+          return HttpResponse.json(orgResponse("member"));
+        }),
+        http.get("https://app.vm0.ai/api/zero/agents/:id", () => {
+          return HttpResponse.json({
+            agentId: "agent-abc-123",
+            ownerId: "owner-user-1",
+            description: null,
+            displayName: null,
+            sound: null,
+            avatarUrl: null,
+            firewallPolicies: null,
+            customSkills: [],
+          });
+        }),
+      );
+
+      await firewallPermissionsChangeCommand.parseAsync([
+        "node",
+        "cli",
+        "github",
+        "--permission",
+        "contents:read",
+        "--enable",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain(
+        'You can enable the "contents:read" permission directly',
+      );
+      expect(logCalls).toContain("[Manage GitHub firewall]");
+    });
+
+    it("should output direct disable message for member who is agent owner", async () => {
+      const payload = Buffer.from(
+        JSON.stringify({
+          userId: "owner-user-1",
+          orgId: "org-1",
+          scope: "cli",
+          tokenId: "t1",
+        }),
+      ).toString("base64url");
+      const fakeToken = `vm0_pat_header.${payload}.sig`;
+
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", fakeToken);
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      server.use(
+        http.get("https://app.vm0.ai/api/zero/org", () => {
+          return HttpResponse.json(orgResponse("member"));
+        }),
+        http.get("https://app.vm0.ai/api/zero/agents/:id", () => {
+          return HttpResponse.json({
+            agentId: "agent-abc-123",
+            ownerId: "owner-user-1",
+            description: null,
+            displayName: null,
+            sound: null,
+            avatarUrl: null,
+            firewallPolicies: null,
+            customSkills: [],
+          });
+        }),
+      );
+
+      await firewallPermissionsChangeCommand.parseAsync([
+        "node",
+        "cli",
+        "github",
+        "--permission",
+        "contents:read",
+        "--disable",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain(
+        'You can disable the "contents:read" permission directly',
+      );
+      expect(logCalls).toContain("[Manage GitHub firewall]");
+    });
+  });
+
   describe("unknown role (no ZERO_AGENT_ID)", () => {
     it("should output fallback message when ZERO_AGENT_ID is not set", async () => {
       vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");

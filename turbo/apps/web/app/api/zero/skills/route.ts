@@ -14,6 +14,7 @@ import { zeroSkills } from "../../../../src/db/schema/zero-skill";
 import { eq, and } from "drizzle-orm";
 import { uploadSkillServerSide } from "../../../../src/lib/storage/skill-upload";
 import { SEED_SKILLS } from "../../../../src/lib/zero/seed-skills";
+import { requireAdminPermission } from "../../../../src/lib/zero/require-agent-permission";
 import { logger } from "../../../../src/lib/logger";
 
 const log = logger("api:zero-skills");
@@ -59,7 +60,11 @@ const router = tsr.router(zeroSkillsCollectionContract, {
     if (isAuthError(authCtx)) return authCtx;
     const { userId } = authCtx;
 
-    const { org } = await resolveOrg(authCtx);
+    const { org, member } = await resolveOrg(authCtx);
+
+    // Only org admins can create custom skills
+    const forbidden = requireAdminPermission(member, "create custom skills");
+    if (forbidden) return forbidden;
 
     // Validate name not in seed skills
     const seedSet = new Set<string>(SEED_SKILLS);

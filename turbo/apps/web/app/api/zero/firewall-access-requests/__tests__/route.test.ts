@@ -285,7 +285,7 @@ describe("GET /api/zero/firewall-access-requests", () => {
     expect(data.error.message).toContain("agentId");
   });
 
-  it("non-owners should only see own requests, owner sees all", async () => {
+  it("non-owners should only see own requests, owner and admin see all", async () => {
     const agent = await (await createAgent(testCliToken)).json();
 
     // Owner creates a request
@@ -320,7 +320,7 @@ describe("GET /api/zero/firewall-access-requests", () => {
       memberToken,
     );
 
-    // Non-owner should only see their own request
+    // Non-owner member should only see their own request
     const memberList = await listAccessRequests(agent.agentId, memberToken);
     const memberData = await memberList.json();
     expect(memberData).toHaveLength(1);
@@ -330,6 +330,23 @@ describe("GET /api/zero/firewall-access-requests", () => {
     const ownerList = await listAccessRequests(agent.agentId, testCliToken);
     const ownerData = await ownerList.json();
     expect(ownerData).toHaveLength(2);
+
+    // Org admin (non-owner) should also see all requests
+    const otherAdmin = await context.setupUser({ prefix: "other-admin" });
+    const otherAdminToken = await createTestCliToken(
+      otherAdmin.userId,
+      undefined,
+      testOrgId,
+    );
+    await insertOrgMembersCacheEntry({
+      orgId: testOrgId,
+      userId: otherAdmin.userId,
+      role: "admin",
+    });
+
+    const adminList = await listAccessRequests(agent.agentId, otherAdminToken);
+    const adminData = await adminList.json();
+    expect(adminData).toHaveLength(2);
   });
 
   it("should include requesterName from Clerk user data", async () => {
@@ -462,7 +479,7 @@ describe("PUT /api/zero/firewall-access-requests", () => {
     expect(agentData.firewallPolicies).toBeNull();
   });
 
-  it("should return 403 for non-owner (even if admin)", async () => {
+  it("should allow org admin to resolve another user's agent requests", async () => {
     const agent = await (await createAgent(testCliToken)).json();
 
     const created = await (
@@ -492,6 +509,44 @@ describe("PUT /api/zero/firewall-access-requests", () => {
     const response = await resolveAccessRequest(
       { requestId: created.id, action: "approve" },
       otherAdminToken,
+    );
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.status).toBe("approved");
+    expect(data.resolvedBy).toBe(otherAdmin.userId);
+  });
+
+  it("should return 403 for non-owner member resolving requests", async () => {
+    const agent = await (await createAgent(testCliToken)).json();
+
+    const created = await (
+      await createAccessRequest(
+        {
+          agentId: agent.agentId,
+          firewallRef: "github",
+          permission: "issues:read",
+        },
+        testCliToken,
+      )
+    ).json();
+
+    // Create a non-admin member who is NOT the agent owner
+    const member = await context.setupUser({ prefix: "member" });
+    const memberToken = await createTestCliToken(
+      member.userId,
+      undefined,
+      testOrgId,
+    );
+    await insertOrgMembersCacheEntry({
+      orgId: testOrgId,
+      userId: member.userId,
+      role: "member",
+    });
+
+    const response = await resolveAccessRequest(
+      { requestId: created.id, action: "approve" },
+      memberToken,
     );
 
     expect(response.status).toBe(403);

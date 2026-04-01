@@ -20,6 +20,7 @@ import { zeroAgents } from "../../../../src/db/schema/zero-agent";
 import { firewallAccessRequests } from "../../../../src/db/schema/firewall-access-request";
 import { eq, and } from "drizzle-orm";
 import { clerkClient } from "@clerk/nextjs/server";
+import { requireAgentPermission } from "../../../../src/lib/zero/require-agent-permission";
 import { logger } from "../../../../src/lib/logger";
 
 const log = logger("api:zero:firewall-access-requests");
@@ -191,7 +192,8 @@ const listRouter = tsr.router(firewallAccessRequestsListContract, {
       .where(and(eq(zeroAgents.orgId, org.orgId), eq(zeroAgents.id, agentId)))
       .limit(1);
 
-    const isAgentOwner = agent?.owner === member.userId;
+    const isOwnerOrAdmin =
+      agent?.owner === member.userId || member.role === "admin";
 
     // Build conditions
     const conditions = [
@@ -199,8 +201,8 @@ const listRouter = tsr.router(firewallAccessRequestsListContract, {
       eq(firewallAccessRequests.orgId, org.orgId),
     ];
 
-    // Agent owner sees all requests, others see only own
-    if (!isAgentOwner) {
+    // Agent owner and org admin see all requests, others see only own
+    if (!isOwnerOrAdmin) {
       conditions.push(
         eq(firewallAccessRequests.requesterUserId, member.userId),
       );
@@ -272,19 +274,13 @@ const resolveRouter = tsr.router(firewallAccessRequestsResolveContract, {
 
     const existing = row.request;
 
-    // Only agent owner can resolve requests
-    if (row.agentOwner !== member.userId) {
-      return {
-        status: 403 as const,
-        body: {
-          error: {
-            message:
-              "Only the agent owner can resolve firewall access requests",
-            code: "FORBIDDEN",
-          },
-        },
-      };
-    }
+    // Only agent owner or org admin can resolve requests
+    const forbidden = requireAgentPermission(
+      row.agentOwner,
+      member,
+      "resolve firewall access requests",
+    );
+    if (forbidden) return forbidden;
 
     if (existing.status !== "pending") {
       return {

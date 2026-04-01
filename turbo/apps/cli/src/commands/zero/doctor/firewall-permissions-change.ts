@@ -6,7 +6,7 @@ import {
 } from "@vm0/core";
 import { withErrorHandler } from "../../../lib/command";
 import { getPlatformOrigin } from "./platform-url";
-import { resolveRole } from "./resolve-role";
+import { resolveAgentRole } from "./resolve-role";
 
 function findPermissionInConfig(ref: string, permissionName: string): boolean {
   if (!isFirewallConnectorType(ref)) return false;
@@ -87,9 +87,9 @@ Notes:
           : "/firewall-allow";
         const url = `${platformOrigin}${pagePath}?${urlParams.toString()}`;
 
-        const role = agentId ? await resolveRole() : "unknown";
+        const role = agentId ? await resolveAgentRole(agentId) : "unknown";
 
-        if (role === "admin") {
+        if (role === "admin" || role === "owner") {
           console.log(
             `You can ${action} the "${opts.permission}" permission directly: [Manage ${label} firewall](${url})`,
           );

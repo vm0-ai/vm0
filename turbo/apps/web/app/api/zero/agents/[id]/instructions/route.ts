@@ -34,32 +34,64 @@ import {
 } from "../../../../../../src/lib/s3/s3-client";
 import { extractFileFromTar } from "../../../../../../src/lib/tar";
 import { env } from "../../../../../../src/env";
-import { isDefaultAgentCompose } from "../../../../../../src/lib/zero/resolve-default-agent";
 import { buildComposeContent } from "../../../../../../src/lib/zero/build-compose-content";
+import { requireAgentPermission } from "../../../../../../src/lib/zero/require-agent-permission";
 import { logger } from "../../../../../../src/lib/logger";
 
 const log = logger("api:zero-agents:instructions");
 
-type ForbiddenResponse = {
-  status: 403;
-  body: { error: { message: string; code: string } };
-};
-
-async function requireAdminForDefault(
+async function updateInstructions(
+  compose: { name: string; customSkills: string[] | null },
+  instructionsContent: string,
+  userId: string,
   orgId: string,
-  composeId: string,
-  memberRole: string,
-): Promise<ForbiddenResponse | null> {
-  if (memberRole === "admin") return null;
-  const isDefault = await isDefaultAgentCompose(orgId, composeId);
-  if (!isDefault) return null;
-  return {
-    status: 403 as const,
-    body: {
-      error: {
-        message: "Only org admins can update the default agent's instructions",
-        code: "FORBIDDEN",
+) {
+  const content = buildComposeContent(
+    compose.name,
+    (compose.customSkills ?? []).map((name) => {
+      return { name };
+    }),
+  );
+
+  const result = await serverSideCompose({
+    userId,
+    orgId,
+    content,
+    instructions: instructionsContent,
+  });
+
+  if (!result) {
+    return {
+      status: 422 as const,
+      body: {
+        error: {
+          message:
+            "One or more connectors reference skills that are not cached. Please try again later.",
+          code: "UNPROCESSABLE_ENTITY",
+        },
       },
+    };
+  }
+
+  log.info(`Updated instructions for zero agent: ${result.composeName}`);
+
+  const [agent] = await globalThis.services.db
+    .select()
+    .from(zeroAgents)
+    .where(and(eq(zeroAgents.orgId, orgId), eq(zeroAgents.name, compose.name)))
+    .limit(1);
+
+  return {
+    status: 200 as const,
+    body: {
+      agentId: result.composeId,
+      ownerId: agent?.owner ?? userId,
+      description: agent?.description ?? null,
+      displayName: agent?.displayName ?? null,
+      sound: agent?.sound ?? null,
+      avatarUrl: agent?.avatarUrl ?? null,
+      firewallPolicies: agent?.firewallPolicies ?? null,
+      customSkills: agent?.customSkills ?? [],
     },
   };
 }
@@ -224,6 +256,7 @@ const router = tsr.router(zeroAgentInstructionsContract, {
         name: agentComposes.name,
         content: agentComposeVersions.content,
         customSkills: zeroAgents.customSkills,
+        owner: zeroAgents.owner,
       })
       .from(agentComposes)
       .leftJoin(
@@ -251,67 +284,17 @@ const router = tsr.router(zeroAgentInstructionsContract, {
       };
     }
 
-    // Only admins can update the default agent's instructions
-    const forbidden = await requireAdminForDefault(
-      org.orgId,
-      compose.id,
-      member.role,
-    );
-    if (forbidden) return forbidden;
-
-    // Rebuild compose from scratch so environment templates stay current,
-    // then overlay new instructions.
-    const content = buildComposeContent(
-      compose.name,
-      (compose.customSkills ?? []).map((name) => {
-        return { name };
-      }),
-    );
-
-    const result = await serverSideCompose({
-      userId,
-      orgId: org.orgId,
-      content,
-      instructions: body.content,
-    });
-
-    if (!result) {
-      return {
-        status: 422 as const,
-        body: {
-          error: {
-            message:
-              "One or more connectors reference skills that are not cached. Please try again later.",
-            code: "UNPROCESSABLE_ENTITY",
-          },
-        },
-      };
+    // Only agent owner or org admin can update instructions
+    if (compose.owner) {
+      const forbidden = requireAgentPermission(
+        compose.owner,
+        member,
+        "update agent instructions",
+      );
+      if (forbidden) return forbidden;
     }
 
-    log.info(`Updated instructions for zero agent: ${result.composeName}`);
-
-    // Look up zero_agent metadata
-    const [agent] = await globalThis.services.db
-      .select()
-      .from(zeroAgents)
-      .where(
-        and(eq(zeroAgents.orgId, org.orgId), eq(zeroAgents.name, compose.name)),
-      )
-      .limit(1);
-
-    return {
-      status: 200 as const,
-      body: {
-        agentId: result.composeId,
-        ownerId: agent?.owner ?? userId,
-        description: agent?.description ?? null,
-        displayName: agent?.displayName ?? null,
-        sound: agent?.sound ?? null,
-        avatarUrl: agent?.avatarUrl ?? null,
-        firewallPolicies: agent?.firewallPolicies ?? null,
-        customSkills: agent?.customSkills ?? [],
-      },
-    };
+    return updateInstructions(compose, body.content, userId, org.orgId);
   },
 });
 

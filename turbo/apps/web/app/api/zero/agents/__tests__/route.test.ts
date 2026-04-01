@@ -28,6 +28,7 @@ import {
   insertTestSlackOrgPendingQuestion,
   setDefaultAgentByComposeId,
   clearOrgMembersCacheEntry,
+  insertOrgMembersCacheEntry,
   getTestComposeVersionContent,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { getInstructionsStorageName } from "@vm0/core";
@@ -1038,9 +1039,9 @@ describe("Zero Agents API", () => {
     });
   });
 
-  describe("default agent admin restriction", () => {
-    it("should return 403 when member patches default agent metadata", async () => {
-      // Create agent as admin
+  describe("owner/admin permission restriction", () => {
+    it("should allow owner to patch default agent metadata even as member", async () => {
+      // Create agent as admin — user becomes the owner
       const created = await (
         await postAgent({ displayName: "Default" }, testCliToken)
       ).json();
@@ -1065,17 +1066,18 @@ describe("Zero Agents API", () => {
       await clearOrgMembersCacheEntry(orgId, user.userId);
       const memberToken = await createTestCliToken(user.userId);
 
+      // Owner can update their own agent even without admin role
       const response = await patchAgent(
         created.agentId,
-        { displayName: "Hacked" },
+        { displayName: "Owner Updated" },
         memberToken,
       );
-      expect(response.status).toBe(403);
+      expect(response.status).toBe(200);
       const data = await response.json();
-      expect(data.error.code).toBe("FORBIDDEN");
+      expect(data.displayName).toBe("Owner Updated");
     });
 
-    it("should return 403 when member updates default agent instructions", async () => {
+    it("should allow owner to update default agent instructions even as member", async () => {
       const created = await (
         await postAgent({ displayName: "Default" }, testCliToken)
       ).json();
@@ -1102,12 +1104,10 @@ describe("Zero Agents API", () => {
 
       const response = await putAgentInstructions(
         created.agentId,
-        { content: "# Hacked instructions" },
+        { content: "# Owner updated instructions" },
         memberToken,
       );
-      expect(response.status).toBe(403);
-      const data = await response.json();
-      expect(data.error.code).toBe("FORBIDDEN");
+      expect(response.status).toBe(200);
     });
 
     it("should allow admin to patch default agent metadata", async () => {
@@ -1129,17 +1129,13 @@ describe("Zero Agents API", () => {
       expect(data.displayName).toBe("Updated by Admin");
     });
 
-    it("should allow member to patch non-default agent metadata", async () => {
-      // Create two agents — mark only one as default
-      const defaultAgent = await (
-        await postAgent({ displayName: "Default" }, testCliToken)
-      ).json();
-      const otherAgent = await (
-        await postAgent({ displayName: "Other" }, testCliToken)
+    it("should allow owner to patch own non-default agent as member", async () => {
+      // Create agent — user is the owner
+      const created = await (
+        await postAgent({ displayName: "My Agent" }, testCliToken)
       ).json();
 
       const orgId = `org_mock_${user.userId}`;
-      await setDefaultAgentByComposeId(orgId, defaultAgent.agentId);
 
       // Re-mock as member and clear cached admin role
       mockClerk({
@@ -1158,18 +1154,18 @@ describe("Zero Agents API", () => {
       await clearOrgMembersCacheEntry(orgId, user.userId);
       const memberToken = await createTestCliToken(user.userId);
 
-      // Member can update non-default agent
+      // Owner can update their own agent
       const response = await patchAgent(
-        otherAgent.agentId,
-        { displayName: "Member Updated" },
+        created.agentId,
+        { displayName: "Owner Updated" },
         memberToken,
       );
       expect(response.status).toBe(200);
       const data = await response.json();
-      expect(data.displayName).toBe("Member Updated");
+      expect(data.displayName).toBe("Owner Updated");
     });
 
-    it("should return 403 when member PUT-updates default agent", async () => {
+    it("should allow owner to PUT-update default agent as member", async () => {
       const created = await (
         await postAgent({ displayName: "Default" }, testCliToken)
       ).json();
@@ -1196,15 +1192,15 @@ describe("Zero Agents API", () => {
 
       const response = await putAgent(
         created.agentId,
-        { displayName: "Hacked via PUT" },
+        { displayName: "Owner PUT Update" },
         memberToken,
       );
-      expect(response.status).toBe(403);
+      expect(response.status).toBe(200);
       const data = await response.json();
-      expect(data.error.code).toBe("FORBIDDEN");
+      expect(data.displayName).toBe("Owner PUT Update");
     });
 
-    it("should return 403 when member deletes default agent", async () => {
+    it("should allow owner to delete default agent as member", async () => {
       const created = await (
         await postAgent({ displayName: "Default" }, testCliToken)
       ).json();
@@ -1230,9 +1226,165 @@ describe("Zero Agents API", () => {
       const memberToken = await createTestCliToken(user.userId);
 
       const response = await deleteAgent(created.agentId, memberToken);
+      expect(response.status).toBe(204);
+    });
+
+    it("should return 403 when non-owner member patches agent", async () => {
+      // User A (admin) creates agent
+      const created = await (
+        await postAgent({ displayName: "Owned Agent" }, testCliToken)
+      ).json();
+
+      const orgId = `org_mock_${user.userId}`;
+
+      // Create User B as a non-owner member of the same org
+      const otherUser = await context.setupUser({ prefix: "non-owner" });
+      await insertOrgMembersCacheEntry({
+        orgId,
+        userId: otherUser.userId,
+        cachedAt: new Date(),
+      });
+      mockClerk({ userId: otherUser.userId, orgId, orgRole: "org:member" });
+      const otherToken = await createTestCliToken(
+        otherUser.userId,
+        undefined,
+        orgId,
+      );
+
+      const response = await patchAgent(
+        created.agentId,
+        { displayName: "Hacked" },
+        otherToken,
+      );
       expect(response.status).toBe(403);
       const data = await response.json();
       expect(data.error.code).toBe("FORBIDDEN");
+    });
+
+    it("should return 403 when non-owner member PUT-updates agent", async () => {
+      // User A (admin) creates agent
+      const created = await (
+        await postAgent({ displayName: "Owned Agent" }, testCliToken)
+      ).json();
+
+      const orgId = `org_mock_${user.userId}`;
+
+      // Create User B as a non-owner member of the same org
+      const otherUser = await context.setupUser({ prefix: "non-owner" });
+      await insertOrgMembersCacheEntry({
+        orgId,
+        userId: otherUser.userId,
+        cachedAt: new Date(),
+      });
+      mockClerk({ userId: otherUser.userId, orgId, orgRole: "org:member" });
+      const otherToken = await createTestCliToken(
+        otherUser.userId,
+        undefined,
+        orgId,
+      );
+
+      const response = await putAgent(
+        created.agentId,
+        { displayName: "Hacked via PUT" },
+        otherToken,
+      );
+      expect(response.status).toBe(403);
+      const data = await response.json();
+      expect(data.error.code).toBe("FORBIDDEN");
+    });
+
+    it("should return 403 when non-owner member updates agent instructions", async () => {
+      // User A (admin) creates agent
+      const created = await (
+        await postAgent({ displayName: "Owned Agent" }, testCliToken)
+      ).json();
+
+      const orgId = `org_mock_${user.userId}`;
+
+      // Create User B as a non-owner member of the same org
+      const otherUser = await context.setupUser({ prefix: "non-owner" });
+      await insertOrgMembersCacheEntry({
+        orgId,
+        userId: otherUser.userId,
+        cachedAt: new Date(),
+      });
+      mockClerk({ userId: otherUser.userId, orgId, orgRole: "org:member" });
+      const otherToken = await createTestCliToken(
+        otherUser.userId,
+        undefined,
+        orgId,
+      );
+
+      const response = await putAgentInstructions(
+        created.agentId,
+        { content: "# Hacked instructions" },
+        otherToken,
+      );
+      expect(response.status).toBe(403);
+      const data = await response.json();
+      expect(data.error.code).toBe("FORBIDDEN");
+    });
+
+    it("should return 403 when non-owner member deletes agent", async () => {
+      // User A (admin) creates agent
+      const created = await (
+        await postAgent({ displayName: "Owned Agent" }, testCliToken)
+      ).json();
+
+      const orgId = `org_mock_${user.userId}`;
+
+      // Create User B as a non-owner member of the same org
+      const otherUser = await context.setupUser({ prefix: "non-owner" });
+      await insertOrgMembersCacheEntry({
+        orgId,
+        userId: otherUser.userId,
+        cachedAt: new Date(),
+      });
+      mockClerk({ userId: otherUser.userId, orgId, orgRole: "org:member" });
+      const otherToken = await createTestCliToken(
+        otherUser.userId,
+        undefined,
+        orgId,
+      );
+
+      const response = await deleteAgent(created.agentId, otherToken);
+      expect(response.status).toBe(403);
+      const data = await response.json();
+      expect(data.error.code).toBe("FORBIDDEN");
+    });
+
+    it("should allow admin to update agent owned by another user", async () => {
+      // User A (admin) creates agent
+      const created = await (
+        await postAgent({ displayName: "Admin Owned" }, testCliToken)
+      ).json();
+
+      const orgId = `org_mock_${user.userId}`;
+
+      // Create User B and make them an admin of the same org
+      const adminUser = await context.setupUser({ prefix: "other-admin" });
+      await insertOrgMembersCacheEntry({
+        orgId,
+        userId: adminUser.userId,
+        role: "admin",
+        cachedAt: new Date(),
+      });
+      mockClerk({ userId: adminUser.userId, orgId, orgRole: "org:admin" });
+      const adminToken = await createTestCliToken(
+        adminUser.userId,
+        undefined,
+        orgId,
+      );
+
+      // Admin B can update agent owned by User A
+      const response = await patchAgent(
+        created.agentId,
+        { displayName: "Admin B Updated" },
+        adminToken,
+      );
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.displayName).toBe("Admin B Updated");
     });
   });
 

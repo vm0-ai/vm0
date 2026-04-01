@@ -80,18 +80,3 @@ async function resolveDefaultAgentIdFromEnv(): Promise<string | null> {
 
   return agent.id;
 }
-
-/**
- * Check whether a given compose/agent ID belongs to the org's default agent.
- * Since zero_agents.id = agent_composes.id (unified PK), we can compare directly.
- */
-export async function isDefaultAgentCompose(
-  orgId: string,
-  composeId: string,
-): Promise<boolean> {
-  const defaultAgentId = await resolveDefaultAgentId(orgId);
-  if (!defaultAgentId) return false;
-
-  // With unified IDs, agentId === composeId — no reverse lookup needed
-  return defaultAgentId === composeId;
-}
