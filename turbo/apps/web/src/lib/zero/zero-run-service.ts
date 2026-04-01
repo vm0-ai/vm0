@@ -44,6 +44,9 @@ import { zeroAgents } from "../../db/schema/zero-agent";
 import { zeroRuns } from "../../db/schema/zero-run";
 import { dispatchQueuedZeroRun } from "./zero-queue-service";
 import { userConnectors } from "../../db/schema/user-connector";
+import { logger } from "../logger";
+
+const log = logger("service:zero-run");
 
 /**
  * Parameters accepted by createZeroRun().
@@ -387,7 +390,6 @@ export async function createZeroRun(
         resolveSourceDuration: contextResult.timings.resolveSourceAndOrg,
         resolveSecretsDuration: contextResult.timings.resolveSecrets,
       },
-      queueDispatcher: dispatchQueuedZeroRun,
     });
 
     // 9. Persist zero-layer metadata (triggerSource + schedule + trigger agent + model fields)
@@ -400,9 +402,12 @@ export async function createZeroRun(
       createdAt: record.run.createdAt,
     };
   } catch (error) {
-    await markRunFailed(record.run.id, error, () => {
-      return drainOrgQueue(resolved.orgId, dispatchQueuedZeroRun);
-    });
+    await markRunFailed(record.run.id, error);
+    await drainOrgQueue(resolved.orgId, dispatchQueuedZeroRun).catch(
+      (drainErr) => {
+        log.error("Failed to drain org queue after run failure", { drainErr });
+      },
+    );
     throw error;
   }
 }

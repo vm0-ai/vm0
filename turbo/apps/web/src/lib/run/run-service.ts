@@ -543,16 +543,15 @@ export async function registerCallbacks(
 }
 
 /**
- * Mark a run as failed, dispatch terminal side effects, and attach run
- * metadata to the error for callers.
+ * Mark a run as failed, dispatch terminal side effects (callbacks), and
+ * attach run metadata to the error for callers.
  *
- * @param drain - Optional queue drain function. Injected by callers to release
- *   concurrency slots when a run that occupied one fails during dispatch.
+ * Queue draining is NOT done here — callers are responsible for calling
+ * drainOrgQueue() separately after this function returns.
  */
 export async function markRunFailed(
   runId: string,
   error: unknown,
-  drain?: () => Promise<void>,
 ): Promise<void> {
   const errorMessage = error instanceof Error ? error.message : "Unknown error";
   log.error(`Run ${runId} failed: ${errorMessage}`);
@@ -567,9 +566,9 @@ export async function markRunFailed(
     ["queued", "pending", "running"],
   );
 
-  // Dispatch callbacks (e.g., loop schedule advancement) and drain queue if transition succeeded
+  // Dispatch callbacks (e.g., loop schedule advancement) if transition succeeded
   if (transitioned) {
-    await dispatchTerminalSideEffects(runId, "failed", errorMessage, drain);
+    await dispatchTerminalSideEffects(runId, "failed", errorMessage);
   }
 
   // Attach run metadata so callers can return partial results
@@ -587,7 +586,6 @@ export async function buildAndDispatchRun(opts: {
   // Pre-built execution context (caller resolves all secrets/providers/firewalls)
   context: ExecutionContext;
   timings: DispatchTimings;
-  queueDispatcher?: (runId: string, params: CreateRunParams) => Promise<void>;
 }): Promise<{ status: RunStatus; sandboxId?: string }> {
   const { runId, context, timings } = opts;
 
@@ -666,10 +664,7 @@ export async function buildAndDispatchRun(opts: {
     log.debug(`Run ${runId} dispatched with status: ${result.status}`);
     return result;
   } catch (error) {
-    const dispatcher = opts.queueDispatcher ?? dispatchQueuedRun;
-    await markRunFailed(runId, error, () => {
-      return drainOrgQueue(context.orgId, dispatcher);
-    });
+    await markRunFailed(runId, error);
     throw error;
   }
 }
@@ -1062,8 +1057,9 @@ export async function createRun(
     // Mark run as failed when context building or dispatch fails.
     // buildAndDispatchRun may have already called markRunFailed — the
     // second call is a safe no-op (transitionRunStatus guards on status).
-    await markRunFailed(record.run.id, error, () => {
-      return drainOrgQueue(record.orgId, dispatchQueuedRun);
+    await markRunFailed(record.run.id, error);
+    await drainOrgQueue(record.orgId, dispatchQueuedRun).catch((drainErr) => {
+      log.error("Failed to drain org queue after run failure", { drainErr });
     });
     throw error;
   }
@@ -1158,12 +1154,12 @@ export async function dispatchQueuedRun(
         resolveSourceDuration: contextResult.timings.resolveSourceAndOrg,
         resolveSecretsDuration: contextResult.timings.resolveSecrets,
       },
-      queueDispatcher,
     });
   } catch (error) {
     const dispatcher = queueDispatcher ?? dispatchQueuedRun;
-    await markRunFailed(runId, error, () => {
-      return drainOrgQueue(params.orgId, dispatcher);
+    await markRunFailed(runId, error);
+    await drainOrgQueue(params.orgId, dispatcher).catch((drainErr) => {
+      log.error("Failed to drain org queue after run failure", { drainErr });
     });
     throw error;
   }
