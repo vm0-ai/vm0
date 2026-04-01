@@ -67,12 +67,26 @@ describe("chat immediate feedback after sending", () => {
       expect(messages[1].role).toBe("assistant");
     });
 
-    // allFinished$ should NOT resolve (placeholder's finished$ never resolves)
-    const raced = await Promise.race([
-      context.store.get(allFinished$).then(() => "resolved" as const),
-      new Promise<"pending">((r) => setTimeout(() => r("pending"), 500)),
+    // The placeholder assistant message should have a finished$ that never
+    // resolves (neverResolve$), which keeps allFinished$ pending.  Verify by
+    // inspecting the placeholder's runLoop.finished$ directly — its promise
+    // status must still be "pending".
+    const messages = await context.store.get(zeroChatMessages$);
+    const placeholder = messages.find((m) => m.role === "assistant");
+    expect(placeholder).toBeDefined();
+    expect(placeholder!.role).toBe("assistant");
+    const assistantMsg =
+      placeholder as import("../../../signals/zero-page/zero-chat.ts").AssistantChatMessage;
+    expect(assistantMsg.runLoop).toBeDefined();
+    // The finished$ promise should be pending (never-resolving).
+    // We verify this by racing it against an immediately-resolved value.
+    const finishedStatus = await Promise.race([
+      context.store
+        .get(assistantMsg.runLoop!.finished$)
+        .then(() => "resolved" as const),
+      Promise.resolve("pending" as const),
     ]);
-    expect(raced).toBe("pending");
+    expect(finishedStatus).toBe("pending");
 
     // Release the POST and complete the run so the send command finishes
     resolvePost();

@@ -103,14 +103,24 @@ export const resetLocalMessages$ = command(({ set }) => {
 });
 
 /**
- * Increment a UUID by 1 to produce a deterministic, UUID-shaped derivative.
+ * Derive a deterministic placeholder ID from a user message ID by appending a
+ * fixed suffix.  This avoids BigInt arithmetic and the edge-case overflow that
+ * would occur when all hex digits are `f`.
  */
-function incrementUUID(uuid: string): string {
-  const hex = uuid.replace(/-/g, "");
-  const next = (BigInt("0x" + hex) + 1n).toString(16).padStart(32, "0");
-  return `${next.slice(0, 8)}-${next.slice(8, 12)}-${next.slice(12, 16)}-${next.slice(16, 20)}-${next.slice(20)}`;
+function placeholderIdFromUser(userMessageId: string): string {
+  return `${userMessageId}-placeholder`;
 }
 
+/**
+ * A computed signal whose inner promise never settles.  Used by the placeholder
+ * assistant message so that any subscriber awaiting `result$`, `finished$`,
+ * etc. stays pending until the placeholder is replaced by a real message.
+ *
+ * Because the promise never resolves, await chains on it become unreachable
+ * and will be garbage-collected once all references to the placeholder are
+ * dropped (i.e. when the real assistant message arrives and the derived
+ * `zeroChatMessages$` no longer includes the placeholder).
+ */
 const neverResolve$ = computed(async (): Promise<never> => {
   return new Promise<never>(() => {});
 });
@@ -127,9 +137,10 @@ function createPlaceholderAssistantMessage(
   const noopCommand = command(() => {});
   const noopAsyncCommand = command(async () => {});
   return {
-    id: incrementUUID(userMessageId),
+    id: placeholderIdFromUser(userMessageId),
     role: "assistant",
     result$: neverResolve$,
+    createdAt: new Date().toISOString(),
     runLoop: {
       pagedEventsList$: neverResolve$,
       beginLoop$: noopAsyncCommand,
