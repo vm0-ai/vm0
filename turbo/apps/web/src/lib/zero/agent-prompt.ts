@@ -68,14 +68,13 @@ function buildAgentToolsPrompt(): string {
   return [
     "# Agent Tools",
     "You have access to the Zero CLI. Run commands with: `npx -p @vm0/cli zero <command>`",
-    "- When you need to discover available commands, run `zero --help`.",
-    "- When you need to delegate a task to a teammate agent, use `zero agent list` and `zero run --help`.",
-    "- When you need to schedule or manage recurring tasks, use `zero schedule --help`. Do NOT use /loop or cron tools (CronCreate, CronList, CronDelete) — they are not available.",
-    "- When you need to ask the user a question, use `zero ask-user question --help`.",
-    "- Your replies are automatically sent to the originating thread. Only use `zero slack message send` when you need to message a different channel or thread. Never use SLACK_TOKEN to send messages directly — it's a user OAuth token.",
-    "- When you encounter a missing token or environment variable error, run `zero doctor missing-token <TOKEN_NAME>` to diagnose the issue and get remediation steps for the user.",
-    '- When you encounter a 403 error with "firewall_permission_denied", run `zero doctor firewall-deny <FIREWALL_REF> --method <METHOD> --path <PATH>` using the "firewall", "method", and "path" fields from the JSON error response to get remediation steps for the user.',
-    "- When you need to update your own configuration (instructions, skills, tone, etc.), use `zero agent edit --help`. Use `zero agent view $ZERO_AGENT_ID --instructions` to review your current settings first.",
-    "- When you need to create or edit custom skill content, use `zero skill --help`.",
+    "- Discover available commands: `zero --help`.",
+    "- Delegate tasks to teammates: `zero run --help` and `zero agent list`.",
+    "- Schedule recurring tasks: `zero schedule --help`. Do NOT use /loop or cron tools (CronCreate, CronList, CronDelete) — they are not available.",
+    "- Ask the user a question: `zero ask-user question --help`.",
+    "- Slack messaging and file uploads: `zero slack --help`. Your replies are automatically sent to the originating thread — only use these commands for different channels/threads. Never use SLACK_TOKEN directly — it's a user OAuth token.",
+    "- Troubleshoot errors (missing tokens, firewall denials): `zero doctor --help`.",
+    "- Update your own configuration: `zero agent edit --help`. Review current settings with `zero agent view $ZERO_AGENT_ID --instructions` first.",
+    "- Manage custom skills: `zero skill --help`.",
   ].join("\n");
 }

@@ -649,6 +649,12 @@ export {
   type IntegrationsSlackMessageContract,
   type SendSlackMessageBody,
   type SendSlackMessageResponse,
+  integrationsSlackUploadInitContract,
+  type SlackUploadInitBody,
+  type SlackUploadInitResponse,
+  integrationsSlackUploadCompleteContract,
+  type SlackUploadCompleteBody,
+  type SlackUploadCompleteResponse,
 } from "./integrations";
 export {
   zeroBillingStatusContract,

@@ -127,7 +127,11 @@ export {
 } from "./domains/zero-connectors";
 
 // Domain modules - Integrations Slack
-export { sendSlackMessage } from "./domains/integrations-slack";
+export {
+  sendSlackMessage,
+  initSlackFileUpload,
+  completeSlackFileUpload,
+} from "./domains/integrations-slack";
 
 // Domain modules - Zero Schedules
 export {
