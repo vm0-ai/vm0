@@ -100,8 +100,12 @@ function parseStoneRoutes(content: string): StoneRoute[] {
         routeScope = scopeCapture;
       }
       const hostCapture = /^host\s*=\s*"([^"]+)"/.exec(trimmed)?.[1];
-      if (hostCapture) {
-        routeHost = hostCapture as DropboxHost;
+      if (
+        hostCapture === "api" ||
+        hostCapture === "content" ||
+        hostCapture === "notify"
+      ) {
+        routeHost = hostCapture;
       }
     }
   }
