@@ -35,7 +35,10 @@ import {
   lightboxUrl$ as attachmentLightboxUrl$,
   setLightboxUrl$ as setAttachmentLightboxUrl$,
 } from "../../signals/zero-page/zero-attachment-chips.ts";
-import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
+import {
+  agentDisplayName$,
+  defaultAgentId$,
+} from "../../signals/zero-page/zero-agent-name.ts";
 import { zeroChatAgentId$ } from "../../signals/zero-page/zero-active-agent.ts";
 import {
   pinnedAgentIds$,
@@ -63,6 +66,9 @@ import {
   copiedMessageIdValue$,
   copyMessageContent$,
 } from "../../signals/zero-page/zero-session-chat-ui.ts";
+import { useAgentAvatar } from "./zero-sidebar-shared.tsx";
+import { zeroSubagents$ } from "../../signals/zero-page/zero-agents.ts";
+import { detachedNavigateTo$ } from "../../signals/route.ts";
 function AvatarOrPlaceholder({
   src,
   className,
@@ -79,48 +85,48 @@ function AvatarOrPlaceholder({
 }
 
 // ---------------------------------------------------------------------------
-// ZeroSessionChatPage — real conversation backed by agent runs
+// Shared hook: resolve current chat agent identity
 // ---------------------------------------------------------------------------
 
-interface ZeroChatThreadPageProps {
-  zeroAvatarSrc?: string | null;
-  onNavigateToSchedule?: () => void;
-  avatarAgentId?: string;
-  chatAgentName?: string;
-}
-
-export function ZeroChatThreadPage({
-  zeroAvatarSrc,
-  onNavigateToSchedule,
-  avatarAgentId,
-  chatAgentName,
-}: ZeroChatThreadPageProps) {
-  const defaultDisplayName = useResolved(agentDisplayName$) ?? "Zero";
-  const displayName = chatAgentName ?? defaultDisplayName;
-  const messagesLoadable = useLastLoadable(zeroChatMessages$);
-  const messages =
-    messagesLoadable.state === "hasData" ? messagesLoadable.data : [];
-  const allFinishedLoadable = useLastLoadable(allFinished$);
-  const sending =
-    allFinishedLoadable.state === "hasData" ? !allFinishedLoadable.data : false;
-  const sessionError =
-    messagesLoadable.state === "hasError"
-      ? messagesLoadable.error instanceof Error
-        ? messagesLoadable.error.message
-        : "Failed to load chat"
-      : null;
-  const sessionSwitching = messagesLoadable.state === "loading";
-  const input = useGet(zeroChatInput$);
-  const setInput = useSet(setZeroChatInput$);
-  const clearInput = useSet(clearZeroChatInput$);
-  const send = useSet(sendExistingThreadMessage$);
-  const cancelRun = useSet(cancelActiveRun$);
-  const pageSignal = useGet(pageSignal$);
-
-  // Pin pill
+function useChatAgentIdentity() {
   const chatAgentLoadable = useLastLoadable(zeroChatAgentId$);
   const currentChatAgentId =
     chatAgentLoadable.state === "hasData" ? chatAgentLoadable.data : null;
+  const subagentsLoadable = useLastLoadable(zeroSubagents$);
+  const subagents =
+    subagentsLoadable.state === "hasData" ? subagentsLoadable.data : [];
+  const selectedSubagent = currentChatAgentId
+    ? subagents.find((a) => {
+        return a.id === currentChatAgentId;
+      })
+    : null;
+  const defaultAgentIdLoadable = useLastLoadable(defaultAgentId$);
+  const defaultRawName =
+    defaultAgentIdLoadable.state === "hasData"
+      ? defaultAgentIdLoadable.data
+      : null;
+  const resolvedAgentId = selectedSubagent?.id ?? defaultRawName;
+
+  const defaultDisplayName = useResolved(agentDisplayName$) ?? "Zero";
+  const displayName = selectedSubagent
+    ? (selectedSubagent.displayName ?? selectedSubagent.id)
+    : defaultDisplayName;
+  const avatarSrc = useAgentAvatar(resolvedAgentId ?? "");
+
+  return { currentChatAgentId, resolvedAgentId, displayName, avatarSrc };
+}
+
+// ---------------------------------------------------------------------------
+// Header — reads signals directly
+// ---------------------------------------------------------------------------
+
+function ChatThreadHeader() {
+  const { currentChatAgentId, resolvedAgentId, displayName, avatarSrc } =
+    useChatAgentIdentity();
+  const pageSignal = useGet(pageSignal$);
+  const navigateTo = useSet(detachedNavigateTo$);
+
+  // Pin pill
   const pinnedLoadable = useLastLoadable(pinnedAgentIds$);
   const pinnedIds =
     pinnedLoadable.state === "hasData" ? pinnedLoadable.data : [];
@@ -136,6 +142,126 @@ export function ZeroChatThreadPage({
     }
   };
 
+  return (
+    <header className="hidden sm:flex shrink-0 bg-transparent px-6 py-3 items-center justify-between">
+      <div className="flex items-center gap-3">
+        <div className="relative shrink-0">
+          {resolvedAgentId ? (
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Link
+                    pathname="/team/:agentId"
+                    options={{ pathParams: { agentId: resolvedAgentId } }}
+                    className="h-8 w-8 shrink-0 overflow-hidden rounded-xl transition-colors duration-150 hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    aria-label="View agent profile"
+                  >
+                    <AvatarOrPlaceholder
+                      src={avatarSrc}
+                      className="h-8 w-8 rounded-full object-cover object-top"
+                      placeholderClassName="h-8 w-8 rounded-full bg-muted"
+                    />
+                  </Link>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  <p className="text-xs">View agent profile</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          ) : (
+            <div className="h-8 w-8 shrink-0 overflow-hidden rounded-xl">
+              <AvatarOrPlaceholder
+                src={avatarSrc}
+                className="h-8 w-8 rounded-full object-cover object-top"
+                placeholderClassName="h-8 w-8 rounded-full bg-muted"
+              />
+            </div>
+          )}
+          {showPinPill && (
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={handlePin}
+                    className="absolute -top-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full zero-border bg-background text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground hover:shadow-md cursor-pointer"
+                    aria-label="Pin to sidebar"
+                  >
+                    <IconPin size={10} stroke={2} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  <p className="text-xs">Pin to sidebar</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+        </div>
+        <span className="font-semibold text-foreground">{displayName}</span>
+      </div>
+      <div className="hidden sm:flex items-center gap-0.5">
+        <TooltipProvider delayDuration={200}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Link
+                pathname="/team"
+                className="inline-flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent"
+                aria-label="Sub-agents"
+              >
+                <IconUsers size={18} stroke={1.5} />
+              </Link>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              <p className="text-xs">Agents</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+        <TooltipProvider delayDuration={200}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                onClick={() => {
+                  if (resolvedAgentId) {
+                    navigateTo("/team/:agentId", {
+                      pathParams: { agentId: resolvedAgentId },
+                      searchParams: new URLSearchParams({ tab: "schedule" }),
+                    });
+                  }
+                }}
+                aria-label="Scheduled"
+              >
+                <IconCalendar size={18} stroke={1.5} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              <p className="text-xs">Schedule</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </div>
+    </header>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ZeroSessionChatPage — real conversation backed by agent runs
+// ---------------------------------------------------------------------------
+
+export function ZeroChatThreadPage() {
+  const messagesLoadable = useLastLoadable(zeroChatMessages$);
+  const messages =
+    messagesLoadable.state === "hasData" ? messagesLoadable.data : [];
+  const sessionError =
+    messagesLoadable.state === "hasError"
+      ? messagesLoadable.error instanceof Error
+        ? messagesLoadable.error.message
+        : "Failed to load chat"
+      : null;
+  const messagesLoading = messagesLoadable.state === "loading";
+
   // Auto-scroll when messages change — ref callback runs at commit time
   const scrollAnchorRef = (el: HTMLDivElement | null) => {
     if (el && messages.length > 0) {
@@ -143,107 +269,9 @@ export function ZeroChatThreadPage({
     }
   };
 
-  const handleSend = (text: string, opts?: { modelProvider: string }) => {
-    clearInput();
-    detach(send(text, opts, pageSignal), Reason.DomCallback);
-  };
-
   return (
     <div className="flex flex-1 flex-col min-h-0 bg-transparent">
-      {/* Header */}
-      <header className="hidden sm:flex shrink-0 bg-transparent px-6 py-3 items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="relative shrink-0">
-            {avatarAgentId ? (
-              <TooltipProvider delayDuration={200}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Link
-                      pathname="/team/:agentId"
-                      options={{ pathParams: { agentId: avatarAgentId } }}
-                      className="h-8 w-8 shrink-0 overflow-hidden rounded-xl transition-colors duration-150 hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                      aria-label="View agent profile"
-                    >
-                      <AvatarOrPlaceholder
-                        src={zeroAvatarSrc}
-                        className="h-8 w-8 rounded-full object-cover object-top"
-                        placeholderClassName="h-8 w-8 rounded-full bg-muted"
-                      />
-                    </Link>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">
-                    <p className="text-xs">View agent profile</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            ) : (
-              <div className="h-8 w-8 shrink-0 overflow-hidden rounded-xl">
-                <AvatarOrPlaceholder
-                  src={zeroAvatarSrc}
-                  className="h-8 w-8 rounded-full object-cover object-top"
-                  placeholderClassName="h-8 w-8 rounded-full bg-muted"
-                />
-              </div>
-            )}
-            {showPinPill && (
-              <TooltipProvider delayDuration={200}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      onClick={handlePin}
-                      className="absolute -top-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full zero-border bg-background text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground hover:shadow-md cursor-pointer"
-                      aria-label="Pin to sidebar"
-                    >
-                      <IconPin size={10} stroke={2} />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">
-                    <p className="text-xs">Pin to sidebar</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            )}
-          </div>
-          <span className="font-semibold text-foreground">{displayName}</span>
-        </div>
-        <div className="hidden sm:flex items-center gap-0.5">
-          <TooltipProvider delayDuration={200}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Link
-                  pathname="/team"
-                  className="inline-flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent"
-                  aria-label="Sub-agents"
-                >
-                  <IconUsers size={18} stroke={1.5} />
-                </Link>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                <p className="text-xs">Agents</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-          <TooltipProvider delayDuration={200}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                  onClick={onNavigateToSchedule}
-                  aria-label="Scheduled"
-                >
-                  <IconCalendar size={18} stroke={1.5} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                <p className="text-xs">Schedule</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </div>
-      </header>
+      <ChatThreadHeader />
 
       {/* Scrollable area — messages + sticky composer share the same scroll context */}
       <div className="flex-1 overflow-auto flex flex-col min-h-0">
@@ -257,10 +285,10 @@ export function ZeroChatThreadPage({
                 </div>
               </div>
             )}
-            {!sessionError && messages.length === 0 && sessionSwitching && (
+            {!sessionError && messages.length === 0 && messagesLoading && (
               <ChatSkeleton />
             )}
-            {!sessionError && messages.length === 0 && !sessionSwitching && (
+            {!sessionError && messages.length === 0 && !messagesLoading && (
               <div className="flex-1 flex items-center justify-center py-16">
                 <p className="text-sm text-muted-foreground">
                   Send a message to start the conversation
@@ -268,38 +296,58 @@ export function ZeroChatThreadPage({
               </div>
             )}
             {messages.map((msg) => {
-              return (
-                <ChatMessageRow
-                  key={msg.id}
-                  message={msg}
-                  zeroAvatarSrc={zeroAvatarSrc}
-                />
-              );
+              return <ChatMessageRow key={msg.id} message={msg} />;
             })}
             <div ref={scrollAnchorRef} />
           </div>
         </main>
 
         {/* Composer — sticky inside the scroll container so it aligns with messages */}
-        <footer className="relative sticky bottom-0 z-10 shrink-0 px-4 sm:px-6 pt-3 pb-8 bg-[hsl(var(--background))]">
-          <div className="pointer-events-none absolute inset-x-0 -top-5 h-5 bg-gradient-to-t from-[hsl(var(--background))] to-transparent" />
-          <div className="mx-auto max-w-[900px]">
-            <ZeroChatComposer
-              className="w-full min-w-0"
-              input={input}
-              onInputChange={setInput}
-              onSend={handleSend}
-              sending={sending}
-              onCancel={() => {
-                detach(cancelRun(pageSignal), Reason.DomCallback);
-              }}
-              displayName={displayName}
-              autoFocus={messages.length === 0}
-            />
-          </div>
-        </footer>
+        <ChatThreadComposer hasMessages={messages.length > 0} />
       </div>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Composer wrapper — reads chat signals directly
+// ---------------------------------------------------------------------------
+
+function ChatThreadComposer({ hasMessages }: { hasMessages: boolean }) {
+  const { displayName } = useChatAgentIdentity();
+  const allFinishedLoadable = useLastLoadable(allFinished$);
+  const sending =
+    allFinishedLoadable.state === "hasData" ? !allFinishedLoadable.data : false;
+  const input = useGet(zeroChatInput$);
+  const setInput = useSet(setZeroChatInput$);
+  const clearInput = useSet(clearZeroChatInput$);
+  const send = useSet(sendExistingThreadMessage$);
+  const cancelRun = useSet(cancelActiveRun$);
+  const pageSignal = useGet(pageSignal$);
+
+  const handleSend = (text: string, opts?: { modelProvider: string }) => {
+    clearInput();
+    detach(send(text, opts, pageSignal), Reason.DomCallback);
+  };
+
+  return (
+    <footer className="relative sticky bottom-0 z-10 shrink-0 px-4 sm:px-6 pt-3 pb-8 bg-[hsl(var(--background))]">
+      <div className="pointer-events-none absolute inset-x-0 -top-5 h-5 bg-gradient-to-t from-[hsl(var(--background))] to-transparent" />
+      <div className="mx-auto max-w-[900px]">
+        <ZeroChatComposer
+          className="w-full min-w-0"
+          input={input}
+          onInputChange={setInput}
+          onSend={handleSend}
+          sending={sending}
+          onCancel={() => {
+            detach(cancelRun(pageSignal), Reason.DomCallback);
+          }}
+          displayName={displayName}
+          autoFocus={!hasMessages}
+        />
+      </div>
+    </footer>
   );
 }
 
@@ -343,16 +391,11 @@ function ChatSkeleton() {
 // Chat message components
 // ---------------------------------------------------------------------------
 
-interface ChatMessageRowProps {
-  message: ZeroChatMessage;
-  zeroAvatarSrc: string | null | undefined;
-}
-
-function ChatMessageRow({ message, zeroAvatarSrc }: ChatMessageRowProps) {
+function ChatMessageRow({ message }: { message: ZeroChatMessage }) {
   if (message.role === "user") {
     return <UserMessage message={message} />;
   }
-  return <AssistantMessage message={message} zeroAvatarSrc={zeroAvatarSrc} />;
+  return <AssistantMessage message={message} />;
 }
 
 /**
@@ -666,24 +709,12 @@ function CollapsibleTimeline({
   );
 }
 
-interface AssistantMessageProps {
-  message: AssistantChatMessage;
-  zeroAvatarSrc: string | null | undefined;
-}
-
-function AssistantMessage({ message, zeroAvatarSrc }: AssistantMessageProps) {
+function AssistantMessage({ message }: { message: AssistantChatMessage }) {
   // Delegate to reactive variant when the message carries its own runLoop signals
   if (message.runLoop) {
-    return (
-      <ReactiveAssistantMessage
-        message={message}
-        zeroAvatarSrc={zeroAvatarSrc}
-      />
-    );
+    return <ReactiveAssistantMessage message={message} />;
   }
-  return (
-    <StaticAssistantMessage message={message} zeroAvatarSrc={zeroAvatarSrc} />
-  );
+  return <StaticAssistantMessage message={message} />;
 }
 
 function failedRunErrorMessage(
@@ -705,8 +736,9 @@ function failedRunErrorMessage(
 /** Assistant message with reactive result$/summaries$/detail$ from runLoop. */
 function ReactiveAssistantMessage({
   message,
-  zeroAvatarSrc,
-}: AssistantMessageProps) {
+}: {
+  message: AssistantChatMessage;
+}) {
   const summariesLoadable = useLastLoadable(message.summaries$!);
   const summaries =
     summariesLoadable.state === "hasData" ? summariesLoadable.data : [];
@@ -731,7 +763,6 @@ function ReactiveAssistantMessage({
   return (
     <StaticAssistantMessage
       message={enrichedMessage}
-      zeroAvatarSrc={zeroAvatarSrc}
       renderActivityLine={
         !isTerminal ? <MessageRunActivityLine message={message} /> : undefined
       }
@@ -741,9 +772,12 @@ function ReactiveAssistantMessage({
 
 function StaticAssistantMessage({
   message,
-  zeroAvatarSrc,
   renderActivityLine,
-}: AssistantMessageProps & { renderActivityLine?: React.ReactNode }) {
+}: {
+  message: AssistantChatMessage;
+  renderActivityLine?: React.ReactNode;
+}) {
+  const { avatarSrc } = useChatAgentIdentity();
   const setOrgManageOpen = useSet(setOrgManageDialogOpen$);
   const setTab = useSet(setActiveTab$);
   const pageSignal = useGet(pageSignal$);
@@ -751,7 +785,7 @@ function StaticAssistantMessage({
   const avatar = (
     <div className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 shrink-0 mt-0.5 overflow-hidden rounded-xl">
       <AvatarOrPlaceholder
-        src={zeroAvatarSrc}
+        src={avatarSrc}
         className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 rounded-full object-cover object-top"
         placeholderClassName="h-7 w-7 @[900px]:h-9 @[900px]:w-9 rounded-full bg-muted"
       />
