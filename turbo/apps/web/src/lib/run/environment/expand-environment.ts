@@ -4,7 +4,6 @@ import {
   extractSecretNamesFromApis,
   type ExpandedFirewallConfig,
 } from "@vm0/core";
-import { badRequest } from "../../errors";
 import { logger } from "../../logger";
 import type { AgentComposeYaml } from "../../../types/agent-compose";
 
@@ -18,26 +17,14 @@ interface ExpandedEnvironmentResult {
 }
 
 /**
- * Process secret values: validate and resolve from passed secrets or firewall placeholders.
+ * Process secret values: resolve from passed secrets or firewall placeholders.
  */
 function processSecretValues(
   secretNames: string[],
   passedSecrets: Record<string, string> | undefined,
-  checkEnv: boolean | undefined,
   firewallPlaceholders?: Record<string, string>,
 ): Record<string, string> | undefined {
   if (secretNames.length === 0) return undefined;
-
-  if (checkEnv) {
-    const missingSecrets = secretNames.filter((name) => {
-      return !passedSecrets || !passedSecrets[name];
-    });
-    if (missingSecrets.length > 0) {
-      throw badRequest(
-        `Missing required secrets: ${missingSecrets.join(", ")}. Use '--secrets ${missingSecrets[0]}=<value>' or '--env-file <path>' to provide them.`,
-      );
-    }
-  }
 
   const secrets: Record<string, string> = {};
   for (const name of secretNames) {
@@ -92,7 +79,6 @@ function buildFirewallPlaceholders(
  * @param agentCompose Agent compose configuration
  * @param vars Variables for expansion (from --vars CLI param)
  * @param passedSecrets Secrets for expansion (from --secrets CLI param, already decrypted)
- * @param checkEnv When true, validates that all required secrets/vars are provided
  * @param additionalEnvironment Extra env entries (e.g. model provider) to merge before expansion.
  *   Compose-declared entries take precedence. Secret-derived values should use
  *   $\{{ secrets.X }} templates so firewallPlaceholders logic applies.
@@ -103,7 +89,6 @@ export function expandEnvironmentFromCompose(
   agentCompose: unknown,
   vars: Record<string, string> | undefined,
   passedSecrets: Record<string, string> | undefined,
-  checkEnv?: boolean,
   additionalEnvironment?: Record<string, string>,
   firewalls?: ExpandedFirewallConfig[],
 ): ExpandedEnvironmentResult {
@@ -149,7 +134,6 @@ export function expandEnvironmentFromCompose(
   const secrets = processSecretValues(
     secretNames,
     passedSecrets,
-    checkEnv,
     firewallPlaceholders,
   );
 
@@ -179,23 +163,7 @@ export function expandEnvironmentFromCompose(
   }
 
   // Expand all variables
-  const { result, missingVars } = expandVariables(environment, sources);
-
-  // Check for missing vars (only when checkEnv is enabled)
-  if (checkEnv) {
-    const missingVarNames = missingVars
-      .filter((v) => {
-        return v.source === "vars";
-      })
-      .map((v) => {
-        return v.name;
-      });
-    if (missingVarNames.length > 0) {
-      throw badRequest(
-        `Missing required variables: ${missingVarNames.join(", ")}. Use '--vars ${missingVarNames[0]}=<value>' or '--env-file <path>' to provide them.`,
-      );
-    }
-  }
+  const { result } = expandVariables(environment, sources);
 
   return { environment: result };
 }

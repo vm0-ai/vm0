@@ -65,7 +65,6 @@ describe("expandEnvironmentFromCompose — firewall env vars", () => {
       compose,
       undefined,
       undefined,
-      false,
       undefined,
       [githubService],
     );
@@ -82,12 +81,9 @@ describe("expandEnvironmentFromCompose — firewall env vars", () => {
       GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}",
     });
 
-    const { environment } = expandEnvironmentFromCompose(
-      compose,
-      undefined,
-      { GITHUB_TOKEN: "user-provided" },
-      false,
-    );
+    const { environment } = expandEnvironmentFromCompose(compose, undefined, {
+      GITHUB_TOKEN: "user-provided",
+    });
 
     expect(environment).toBeDefined();
     expect(environment!.GH_TOKEN).toBe("user-provided");
@@ -103,7 +99,6 @@ describe("expandEnvironmentFromCompose — firewall env vars", () => {
       compose,
       undefined,
       undefined,
-      false,
       undefined,
       [githubService, slackService],
     );
@@ -126,7 +121,6 @@ describe("expandEnvironmentFromCompose — firewall env vars", () => {
       compose,
       undefined,
       { GITHUB_TOKEN: "user-provided-token" },
-      false,
       undefined,
       [githubService],
     );
@@ -146,7 +140,6 @@ describe("expandEnvironmentFromCompose — firewall env vars", () => {
       compose,
       undefined,
       undefined,
-      false,
       undefined,
       [airtableService],
     );
@@ -168,7 +161,6 @@ describe("expandEnvironmentFromCompose — additionalEnvironment", () => {
       compose,
       undefined,
       { ANTHROPIC_API_KEY: "sk-xxx" },
-      false,
       { ANTHROPIC_API_KEY: "${{ secrets.ANTHROPIC_API_KEY }}" },
     );
 
@@ -186,7 +178,6 @@ describe("expandEnvironmentFromCompose — additionalEnvironment", () => {
       compose,
       undefined,
       undefined,
-      false,
       { API_KEY: "additional-value" },
     );
 
@@ -203,7 +194,6 @@ describe("expandEnvironmentFromCompose — additionalEnvironment", () => {
       compose,
       undefined,
       { GITHUB_TOKEN: "real-token" },
-      false,
       { GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}" },
       [githubService],
     );
@@ -221,7 +211,6 @@ describe("expandEnvironmentFromCompose — additionalEnvironment", () => {
       undefined,
       undefined,
       { ANTHROPIC_API_KEY: "sk-xxx" },
-      false,
       { ANTHROPIC_API_KEY: "${{ secrets.ANTHROPIC_API_KEY }}" },
     );
 
@@ -233,8 +222,6 @@ describe("expandEnvironmentFromCompose — additionalEnvironment", () => {
     const { environment } = expandEnvironmentFromCompose(
       undefined,
       undefined,
-      undefined,
-      false,
       undefined,
     );
 
@@ -248,7 +235,6 @@ describe("expandEnvironmentFromCompose — additionalEnvironment", () => {
       compose,
       undefined,
       undefined,
-      false,
       {
         OPENAI_BASE_URL: "https://api.moonshot.cn/v1",
         ANTHROPIC_MODEL: "claude-sonnet-4-20250514",

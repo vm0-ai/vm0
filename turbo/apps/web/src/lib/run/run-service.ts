@@ -17,7 +17,6 @@ import {
   isConcurrentRunLimit,
 } from "../errors";
 import { enqueueRun, drainOrgQueue } from "./run-queue-service";
-import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 import { logger } from "../logger";
 import type { Database } from "../../types/global";
 import type { AgentComposeSnapshot } from "../checkpoint/types";
@@ -31,10 +30,8 @@ import type { ExecutionContext, DispatchTimings } from "./types";
 import { buildZeroExecutionContext } from "../zero/build-zero-context";
 import { zeroRuns } from "../../db/schema/zero-run";
 import { recordSandboxOperation } from "../metrics";
-import { extractTemplateVars } from "../config-validator";
 import { canAccessCompose } from "../agent/compose-access";
 
-import { getVariableValues } from "../variable/variable-service";
 import { encryptSecretValue } from "../crypto/secrets-encryption";
 import {
   type OrgTier,
@@ -324,7 +321,6 @@ export interface CreateRunParams {
   agentName?: string;
   modelProvider?: string;
   debugNoMockClaude?: boolean;
-  checkEnv?: boolean;
   // Caller-resolved org context for variable/storage resolution.
   orgId: string;
   // Caller-resolved org tier for concurrency limit derivation.
@@ -375,7 +371,6 @@ interface StartRunParams {
   callbacks?: Array<{ url: string; secret: string; payload: unknown }>;
   modelProvider?: string;
   debugNoMockClaude?: boolean;
-  checkEnv?: boolean;
   firewallPolicies?: FirewallPolicies;
   allowedConnectorTypes?: ConnectorType[];
 }
@@ -479,42 +474,15 @@ export function authorizeCompose(
 }
 
 /**
- * Validate template vars availability and image access for new runs.
+ * Validate image access for new runs.
  *
  * Skipped when resuming from checkpoint or continuing a session.
- * Vars validation only runs when checkEnv is enabled (matching expand-environment.ts behavior).
- *
- * @throws BadRequestError - missing required template variables (only when checkEnv is true)
  */
 export async function validateComposeRequirements(
-  userId: string,
   composeContent: AgentComposeYaml,
-  orgId: string,
-  vars?: Record<string, string>,
-  checkEnv?: boolean,
 ): Promise<void> {
   if (!composeContent?.agents) {
     return;
-  }
-
-  // Only validate vars when checkEnv is enabled (matching expand-environment.ts behavior)
-  if (checkEnv) {
-    const requiredVars = extractTemplateVars(composeContent);
-    if (requiredVars.length > 0) {
-      const [orgVars, userVars] = await Promise.all([
-        getVariableValues(orgId, ORG_SENTINEL_USER_ID),
-        getVariableValues(orgId, userId),
-      ]);
-      const allVars = { ...orgVars, ...userVars, ...vars };
-      const missingVars = requiredVars.filter((varName) => {
-        return allVars[varName] === undefined;
-      });
-      if (missingVars.length > 0) {
-        throw badRequest(
-          `Missing required template variables: ${missingVars.join(", ")}`,
-        );
-      }
-    }
   }
 }
 
@@ -857,7 +825,6 @@ export async function startRun(
     agentName: resolved.agentName,
     modelProvider: params.modelProvider,
     debugNoMockClaude: params.debugNoMockClaude,
-    checkEnv: params.checkEnv,
     firewallPolicies: params.firewallPolicies,
     allowedConnectorTypes: params.allowedConnectorTypes,
     orgId: authOrgId,
@@ -913,13 +880,7 @@ export async function createRunRecord(
 
   // Step 3: Validate template vars and image access (for new runs only)
   if (!params.checkpointId && !params.sessionId) {
-    await validateComposeRequirements(
-      userId,
-      composeContent,
-      params.orgId,
-      params.vars,
-      params.checkEnv,
-    );
+    await validateComposeRequirements(composeContent);
   }
 
   // Step 4: Validate mutual exclusivity
@@ -1096,13 +1057,7 @@ export async function dispatchQueuedRun(
 
   // Validate template vars and image access (for new runs only)
   if (!params.checkpointId && !params.sessionId) {
-    await validateComposeRequirements(
-      userId,
-      composeContent,
-      params.orgId,
-      params.vars,
-      params.checkEnv,
-    );
+    await validateComposeRequirements(composeContent);
   }
 
   const sandboxToken = await generateSandboxToken(params.userId, runId);

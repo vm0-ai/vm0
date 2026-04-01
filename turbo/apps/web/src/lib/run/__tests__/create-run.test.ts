@@ -271,29 +271,6 @@ describe("createRun()", () => {
         ),
       ).rejects.toSatisfy(isBadRequest);
     });
-
-    it("should reject missing required template variables with checkEnv", async () => {
-      // Create a compose with template variables
-      const compose = await createTestCompose(uniqueId("var-agent"), {
-        overrides: {
-          environment: {
-            MY_KEY: "${{ vars.REQUIRED_VAR }}",
-            ANTHROPIC_API_KEY: "test-key",
-          },
-        },
-      });
-
-      // Vars validation only happens when checkEnv is enabled
-      await expect(
-        createRun(
-          baseParams({
-            agentComposeVersionId: compose.versionId,
-            checkEnv: true, // Enable vars validation
-            // No vars provided — should fail
-          }),
-        ),
-      ).rejects.toSatisfy(isBadRequest);
-    });
   });
 
   describe("Callback Registration", () => {

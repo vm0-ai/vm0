@@ -50,9 +50,6 @@ const unifiedRunRequestSchema = z.object({
   // Model provider for automatic secret injection
   modelProvider: z.string().optional(),
 
-  // Environment validation flag - when true, validates secrets/vars before running
-  checkEnv: z.boolean().optional(),
-
   // Required
   prompt: z.string().min(1, "Missing prompt"),
 

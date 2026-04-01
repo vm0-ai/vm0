@@ -66,13 +66,7 @@ export async function dispatchQueuedZeroRun(
 
     // Validate compose requirements for new runs only
     if (!params.checkpointId && !params.sessionId) {
-      await validateComposeRequirements(
-        params.userId,
-        composeContent,
-        params.orgId,
-        params.vars,
-        params.checkEnv,
-      );
+      await validateComposeRequirements(composeContent);
     }
 
     // Generate sandbox token + build zero context

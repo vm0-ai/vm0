@@ -233,7 +233,6 @@ const router = tsr.router(runsMainContract, {
         volumeVersions: body.volumeVersions,
         debugNoMockClaude: body.debugNoMockClaude,
         modelProvider: body.modelProvider,
-        checkEnv: body.checkEnv,
         firewallPolicies: body.firewallPolicies,
         callerOrgId: org.orgId,
       });

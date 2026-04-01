@@ -656,8 +656,6 @@ interface BuildZeroContextParams {
   debugNoMockClaude?: boolean;
   // Model provider for automatic secret injection
   modelProvider?: string;
-  // Environment validation flag - when true, validates secrets/vars before running
-  checkEnv?: boolean;
   // API start time for E2E timing metrics
   apiStartTime?: number;
   // Per-permission firewall policies from zero agent configuration.
@@ -729,7 +727,6 @@ async function resolveSecretsAndEnvironment(
   vars: Record<string, string> | undefined,
   cliSecrets: Record<string, string> | undefined,
   modelProvider: string | undefined,
-  checkEnv: boolean | undefined,
   userId: string,
   allowedConnectorTypes?: ConnectorType[],
 ): Promise<{
@@ -831,7 +828,6 @@ async function resolveSecretsAndEnvironment(
     agentCompose,
     mergedVars,
     secrets,
-    checkEnv,
     modelProviderResult.injectedEnvironment,
     [
       ...(modelProviderFirewall ? [modelProviderFirewall] : []),
@@ -1108,7 +1104,6 @@ export async function buildZeroExecutionContext(
       vars,
       params.secrets,
       params.modelProvider,
-      params.checkEnv,
       params.userId,
       params.allowedConnectorTypes,
     ),
