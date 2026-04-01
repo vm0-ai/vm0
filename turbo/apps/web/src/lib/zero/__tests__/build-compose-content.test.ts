@@ -7,28 +7,10 @@ import {
   getInstructionsFilename,
 } from "@vm0/core";
 
-/** Connector types eligible for compose: GA or feature-flagged with api-token. */
-const eligibleConnectorTypes = Object.entries(CONNECTOR_TYPES)
+/** GA connector types (no feature flag). */
+const gaConnectorTypes = Object.entries(CONNECTOR_TYPES)
   .filter(([, config]) => {
-    return !config.featureFlag || "api-token" in config.authMethods;
-  })
-  .map(([type]) => {
-    return type;
-  });
-
-/** Feature-flagged connectors that have api-token (eligible despite flag). */
-const flaggedWithApiToken = Object.entries(CONNECTOR_TYPES)
-  .filter(([, config]) => {
-    return !!config.featureFlag && "api-token" in config.authMethods;
-  })
-  .map(([type]) => {
-    return type;
-  });
-
-/** Feature-flagged connectors that are OAuth-only (excluded from compose). */
-const flaggedOauthOnly = Object.entries(CONNECTOR_TYPES)
-  .filter(([, config]) => {
-    return !!config.featureFlag && !("api-token" in config.authMethods);
+    return !config.featureFlag;
   })
   .map(([type]) => {
     return type;
@@ -65,47 +47,43 @@ describe("buildComposeContent", () => {
     }
   });
 
-  it("should include eligible connector types as skills", () => {
+  it("should include GA connector types as skills", () => {
     const result = buildComposeContent("agent");
     const agent = (result.agents as Record<string, Record<string, unknown>>)[
       "agent"
     ]!;
     const skills = agent.skills as string[];
 
-    for (const connectorType of eligibleConnectorTypes) {
+    for (const connectorType of gaConnectorTypes) {
       const url = resolveSkillRef(connectorType);
       expect(skills).toContain(url);
     }
   });
 
   it("should include feature-flagged connectors that have api-token", () => {
-    expect(flaggedWithApiToken.length).toBeGreaterThan(0);
-
     const result = buildComposeContent("agent");
     const agent = (result.agents as Record<string, Record<string, unknown>>)[
       "agent"
     ]!;
     const skills = agent.skills as string[];
 
-    for (const connectorType of flaggedWithApiToken) {
-      const url = resolveSkillRef(connectorType);
-      expect(skills).toContain(url);
-    }
+    // mercury: feature-flagged + has api-token → should be included
+    expect(skills).toContain(resolveSkillRef("mercury"));
+    // ahrefs: feature-flagged + has api-token → should be included
+    expect(skills).toContain(resolveSkillRef("ahrefs"));
   });
 
   it("should exclude feature-flagged OAuth-only connectors from skills", () => {
-    expect(flaggedOauthOnly.length).toBeGreaterThan(0);
-
     const result = buildComposeContent("agent");
     const agent = (result.agents as Record<string, Record<string, unknown>>)[
       "agent"
     ]!;
     const skills = agent.skills as string[];
 
-    for (const connectorType of flaggedOauthOnly) {
-      const url = resolveSkillRef(connectorType);
-      expect(skills).not.toContain(url);
-    }
+    // reddit: feature-flagged + OAuth-only → should be excluded
+    expect(skills).not.toContain(resolveSkillRef("reddit"));
+    // canva: feature-flagged + OAuth-only → should be excluded
+    expect(skills).not.toContain(resolveSkillRef("canva"));
   });
 
   it("should not produce duplicate skills", () => {
