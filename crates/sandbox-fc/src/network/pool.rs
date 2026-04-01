@@ -523,11 +523,19 @@ async fn flush_conntrack(peer_ip: &str) {
 fn acquire_pool_lock(locks: &LockPaths) -> Result<(u32, Flock<File>)> {
     for index in 0..MAX_POOLS {
         let path = locks.netns_pool(index);
+        // Open for writing without O_CREAT first, fall back to create.
+        // This avoids EACCES from fs.protected_regular=2 on sticky-bit
+        // directories (/var/lock) when the file is owned by another user.
         let file = File::options()
             .write(true)
-            .create(true)
-            .truncate(false)
             .open(&path)
+            .or_else(|_| {
+                File::options()
+                    .write(true)
+                    .create(true)
+                    .truncate(false)
+                    .open(&path)
+            })
             .map_err(|e| NetworkError::LockOpen(format!("{}: {e}", path.display())))?;
         match Flock::lock(file, FlockArg::LockExclusiveNonblock) {
             Ok(lock) => {
