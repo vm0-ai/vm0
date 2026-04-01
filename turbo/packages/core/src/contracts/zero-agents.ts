@@ -262,12 +262,21 @@ export const skillFileEntrySchema = z.object({
 const SKILL_FILES_MAX_BYTES = 5 * 1024 * 1024;
 
 /**
+ * Maximum number of files in a single skill upload
+ */
+const SKILL_FILES_MAX_COUNT = 500;
+
+/**
  * Skill files request schema (create/update)
  */
 export const zeroAgentSkillFilesRequestSchema = z.object({
   files: z
     .array(skillFileEntrySchema)
     .min(1, "At least one file is required")
+    .max(
+      SKILL_FILES_MAX_COUNT,
+      `Maximum ${SKILL_FILES_MAX_COUNT} files allowed`,
+    )
     .refine(
       (files) => {
         return files.some((f) => {

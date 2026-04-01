@@ -1,6 +1,6 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { mkdtemp } from "node:fs/promises";
 import { eq, and } from "drizzle-orm";
@@ -56,7 +56,10 @@ export async function uploadSkillServerSide(params: {
   try {
     // Write files preserving directory structure
     for (const file of fileEntries) {
-      const filePath = join(tmpDir, file.path);
+      const filePath = resolve(join(tmpDir, file.path));
+      if (!filePath.startsWith(tmpDir)) {
+        throw new Error(`Invalid file path: ${file.path}`);
+      }
       const dir = join(filePath, "..");
       mkdirSync(dir, { recursive: true });
       writeFileSync(filePath, file.content);
