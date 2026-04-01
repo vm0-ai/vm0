@@ -77,6 +77,21 @@ Notes:
           console.log("No named permission was found covering this request.");
         }
 
+        // Slack chat:write: strongly recommend bot-based messaging over user identity
+        if (firewallRef === "slack" && permissions[0] === "chat:write") {
+          console.log("");
+          console.log(
+            "IMPORTANT: Granting chat:write allows sending messages AS THE USER's identity, not as a bot.",
+          );
+          console.log(
+            "Use `zero slack message send -c <channel> -t <text>` to send messages as the bot instead — this is the recommended approach for most use cases.",
+          );
+          console.log(
+            "Only request user approval below if acting as the user is specifically required.",
+          );
+          console.log("");
+        }
+
         console.log(
           `Ask the user to allow it at: [Allow ${label} access](${url})`,
         );

@@ -99,6 +99,74 @@ describe("zero doctor firewall-deny command", () => {
     });
   });
 
+  describe("slack chat:write custom guidance", () => {
+    it("should output bot alternative guidance for slack chat:write", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+
+      await firewallDenyCommand.parseAsync([
+        "node",
+        "cli",
+        "slack",
+        "--method",
+        "POST",
+        "--path",
+        "/chat.postMessage",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain(
+        "Slack firewall blocked POST /chat.postMessage",
+      );
+      expect(logCalls).toContain('covered by the "chat:write"');
+      expect(logCalls).toContain("AS THE USER's identity");
+      expect(logCalls).toContain("zero slack message send");
+      expect(logCalls).toContain("Only request user approval");
+      // Should still show the approval URL
+      expect(logCalls).toContain("[Allow Slack access]");
+    });
+
+    it("should not output bot guidance for non-chat:write slack permissions", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+
+      await firewallDenyCommand.parseAsync([
+        "node",
+        "cli",
+        "slack",
+        "--method",
+        "GET",
+        "--path",
+        "/conversations.list",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Slack firewall blocked");
+      expect(logCalls).not.toContain("AS THE USER's identity");
+      expect(logCalls).not.toContain("zero slack message send");
+    });
+
+    it("should not output bot guidance for non-slack connectors", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+
+      await firewallDenyCommand.parseAsync([
+        "node",
+        "cli",
+        "github",
+        "--method",
+        "GET",
+        "--path",
+        "/repos/owner/repo/pulls",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("GitHub firewall blocked");
+      expect(logCalls).not.toContain("AS THE USER's identity");
+      expect(logCalls).not.toContain("zero slack message send");
+    });
+  });
+
   describe("URL transformation", () => {
     it("should transform www.vm0.ai to app.vm0.ai", async () => {
       vi.stubEnv("VM0_API_URL", "https://www.vm0.ai");
