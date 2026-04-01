@@ -66,11 +66,6 @@ export const zeroAgentSchedules = pgTable(
 
     volumeVersions: jsonb("volume_versions").$type<Record<string, string>>(),
 
-    // Per-schedule notification control (overrides user global preferences)
-    notifyEmail: boolean("notify_email").default(false).notNull(),
-    notifySlack: boolean("notify_slack").default(false).notNull(),
-    notifySlackChannelId: varchar("notify_slack_channel_id", { length: 255 }),
-
     // State
     enabled: boolean("enabled").default(true).notNull(),
     nextRunAt: timestamp("next_run_at"),

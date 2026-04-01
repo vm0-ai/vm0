@@ -2,8 +2,6 @@ import type { ReactElement } from "react";
 import type { EmailTemplate } from "./types";
 import { AgentReplyEmail } from "./templates/agent-reply";
 import { InboundErrorEmail } from "./templates/inbound-error";
-import { ScheduleCompletedEmail } from "./templates/schedule-completed";
-import { ScheduleFailedEmail } from "./templates/schedule-failed";
 import { DataExportReadyEmail } from "./templates/data-export-ready";
 
 /**
@@ -16,10 +14,6 @@ export function resolveTemplate(template: EmailTemplate): ReactElement {
       return AgentReplyEmail(template.props);
     case "inbound-error":
       return InboundErrorEmail(template.props);
-    case "schedule-completed":
-      return ScheduleCompletedEmail(template.props);
-    case "schedule-failed":
-      return ScheduleFailedEmail(template.props);
     case "data-export-ready":
       return DataExportReadyEmail(template.props);
   }

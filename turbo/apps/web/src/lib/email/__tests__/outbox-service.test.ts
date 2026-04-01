@@ -104,10 +104,10 @@ describe("outbox-service", () => {
         toAddresses: "user@example.com",
         subject: "Direct insert",
         template: {
-          template: "schedule-failed",
+          template: "agent-reply",
           props: {
             agentName: "test",
-            errorMessage: "err",
+            output: "test output",
             logsUrl: "https://x.com",
           },
         },

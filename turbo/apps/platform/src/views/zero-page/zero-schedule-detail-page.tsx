@@ -10,10 +10,7 @@ import {
   IconSettings,
   IconTrash,
 } from "@tabler/icons-react";
-import {
-  LoadingSwitch,
-  compactSwitchClassName,
-} from "../components/loading-switch.tsx";
+import { LoadingSwitch } from "../components/loading-switch.tsx";
 import {
   Button,
   Card,
@@ -35,7 +32,6 @@ import {
   TabsList,
   TabsTrigger,
 } from "@vm0/ui";
-import { Switch } from "@vm0/ui/components/ui/switch";
 import { Skeleton } from "@vm0/ui/components/ui/skeleton";
 import { Link } from "../router/link.tsx";
 import { detachedNavigateTo$, pathParams$ } from "../../signals/route.ts";
@@ -52,10 +48,7 @@ import {
   type ZeroScheduleSaveParams,
 } from "../../signals/zero-page/zero-schedule.ts";
 import { slackOrgData$ } from "../../signals/zero-page/zero-slack.ts";
-import {
-  slackChannels$,
-  slackChannelsInitialized$,
-} from "../../signals/zero-page/slack-channels.ts";
+import { slackChannelsInitialized$ } from "../../signals/zero-page/slack-channels.ts";
 import {
   scheduleDetailTab$,
   setScheduleDetailTab$,
@@ -228,98 +221,6 @@ type ScheduleAgentOption = {
   displayName?: string | null;
 };
 
-function ScheduleNotificationSettings({
-  notifyEmail,
-  setNotifyEmail,
-  notifySlack,
-  setNotifySlack,
-  notifySlackChannelId,
-  setNotifySlackChannelId,
-  disabled,
-}: {
-  notifyEmail: boolean;
-  setNotifyEmail: (v: boolean) => void;
-  notifySlack: boolean;
-  setNotifySlack: (v: boolean) => void;
-  notifySlackChannelId: string | null;
-  setNotifySlackChannelId: (v: string | null) => void;
-  disabled: boolean;
-}) {
-  const slackData = useLoadable(slackOrgData$);
-  const slackHasBot =
-    slackData.state === "hasData" && slackData.data?.isConnected === true;
-  const slackChannelsLoadable = useLoadable(slackChannels$);
-  const slackChannelsList =
-    slackChannelsLoadable.state === "hasData" ? slackChannelsLoadable.data : [];
-
-  return (
-    <>
-      <InlineSettingsRow
-        label="Email notifications"
-        description="Notify by email when a run completes."
-        alignControls="center"
-      >
-        <Switch
-          className={compactSwitchClassName}
-          checked={notifyEmail}
-          onCheckedChange={setNotifyEmail}
-          disabled={disabled}
-        />
-      </InlineSettingsRow>
-
-      <InlineSettingsRow
-        label="Slack notifications"
-        description={
-          slackHasBot
-            ? "Send a Slack message when a run completes."
-            : slackData.state === "hasData" && slackData.data?.isInstalled
-              ? "Connect your Slack account in Settings to enable Slack notifications."
-              : "Install Slack in Settings to enable Slack notifications."
-        }
-        alignControls="center"
-      >
-        <Switch
-          className={compactSwitchClassName}
-          checked={notifySlack}
-          onCheckedChange={setNotifySlack}
-          disabled={disabled || !slackHasBot}
-        />
-      </InlineSettingsRow>
-
-      {notifySlack && slackHasBot && (
-        <InlineSettingsRow
-          label="Slack channel"
-          description="Choose where to send run completion notifications. Only channels the app has been invited to will appear."
-        >
-          <div className={SCHEDULE_DETAIL_CONTROL_WIDTH}>
-            <Select
-              value={notifySlackChannelId ?? "__dm__"}
-              onValueChange={(v) => {
-                setNotifySlackChannelId(v === "__dm__" ? null : v);
-              }}
-              disabled={disabled}
-            >
-              <SelectTrigger className="h-9 w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__dm__">Direct message</SelectItem>
-                {slackChannelsList.map((ch) => {
-                  return (
-                    <SelectItem key={ch.id} value={ch.id}>
-                      #{ch.name}
-                    </SelectItem>
-                  );
-                })}
-              </SelectContent>
-            </Select>
-          </div>
-        </InlineSettingsRow>
-      )}
-    </>
-  );
-}
-
 type ScheduleSettingsSnapshot = {
   freq: string;
   date: string;
@@ -329,9 +230,6 @@ type ScheduleSettingsSnapshot = {
   loopMinutes: number;
   agentId: string;
   description: string;
-  notifyEmail: boolean;
-  notifySlack: boolean;
-  notifySlackChannelId: string | null;
   dayOfWeek: string;
   dayOfMonth: string;
 };
@@ -349,9 +247,6 @@ function buildSettingsSnapshot(
     loopMinutes: parsed.loopMinutes,
     agentId: entry.agentId,
     description: entry.description ?? "",
-    notifyEmail: entry.notifyEmail ?? false,
-    notifySlack: entry.notifySlack ?? false,
-    notifySlackChannelId: entry.notifySlackChannelId ?? null,
     dayOfWeek: parsed.dayOfWeek ?? "1",
     dayOfMonth: parsed.dayOfMonth ?? "1",
   };
@@ -369,10 +264,7 @@ function isSettingsChanged(
     a.timezone !== b.timezone ||
     a.loopMinutes !== b.loopMinutes ||
     a.agentId !== b.agentId ||
-    a.description !== b.description ||
-    a.notifyEmail !== b.notifyEmail ||
-    a.notifySlack !== b.notifySlack ||
-    a.notifySlackChannelId !== b.notifySlackChannelId
+    a.description !== b.description
   );
 }
 
@@ -407,11 +299,6 @@ function ScheduleSettingsForm({
   const [agentId, setAgentId] = useState(initial.agentId);
   const [description, setDescription] = useState(initial.description);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [notifyEmail, setNotifyEmail] = useState(initial.notifyEmail);
-  const [notifySlack, setNotifySlack] = useState(initial.notifySlack);
-  const [notifySlackChannelId, setNotifySlackChannelId] = useState(
-    initial.notifySlackChannelId,
-  );
   const [dayOfWeek] = useState(initial.dayOfWeek);
   const [dayOfMonth] = useState(initial.dayOfMonth);
 
@@ -426,9 +313,6 @@ function ScheduleSettingsForm({
     loopMinutes,
     agentId,
     description,
-    notifyEmail,
-    notifySlack,
-    notifySlackChannelId,
     dayOfWeek,
     dayOfMonth,
   };
@@ -443,9 +327,6 @@ function ScheduleSettingsForm({
     setLoopMinutes(savedState.loopMinutes);
     setAgentId(savedState.agentId);
     setDescription(savedState.description);
-    setNotifyEmail(savedState.notifyEmail);
-    setNotifySlack(savedState.notifySlack);
-    setNotifySlackChannelId(savedState.notifySlackChannelId);
   };
 
   const handleSave = async () => {
@@ -463,9 +344,6 @@ function ScheduleSettingsForm({
       intervalSeconds: loopMinutes * 60,
       editName: entry.name,
       agentId,
-      notifyEmail,
-      notifySlack,
-      notifySlackChannelId,
       ...(freq === "every_week" ? { dayOfWeek } : {}),
       ...(freq === "every_month" ? { dayOfMonth } : {}),
     });
@@ -563,16 +441,6 @@ function ScheduleSettingsForm({
               ariaLabel={`${entry.enabled !== false ? "Disable" : "Enable"} this schedule`}
             />
           </InlineSettingsRow>
-
-          <ScheduleNotificationSettings
-            notifyEmail={notifyEmail}
-            setNotifyEmail={setNotifyEmail}
-            notifySlack={notifySlack}
-            setNotifySlack={setNotifySlack}
-            notifySlackChannelId={notifySlackChannelId}
-            setNotifySlackChannelId={setNotifySlackChannelId}
-            disabled={saving}
-          />
         </CardContent>
       </Card>
 
@@ -1145,9 +1013,6 @@ export function ZeroScheduleDetailPage() {
           intervalSeconds: parsed.loopMinutes * 60,
           editName: entry.name,
           agentId: entry.agentId,
-          notifyEmail: entry.notifyEmail,
-          notifySlack: entry.notifySlack,
-          notifySlackChannelId: entry.notifySlackChannelId,
         },
         pageSignal,
       ).finally(() => {

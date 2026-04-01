@@ -47,8 +47,6 @@ function mockSendMode(mode: "enter" | "cmd-enter") {
     http.get("*/api/zero/user-preferences", () => {
       return HttpResponse.json({
         timezone: null,
-        notifyEmail: false,
-        notifySlack: false,
         pinnedAgentIds: [],
         sendMode: mode,
       });

@@ -57,9 +57,6 @@ function scheduleDefaults() {
     artifactName: null,
     artifactVersion: null,
     volumeVersions: null,
-    notifyEmail: false,
-    notifySlack: false,
-    notifySlackChannelId: null,
     retryStartedAt: null,
     consecutiveFailures: 0,
   };
@@ -91,7 +88,6 @@ function createMockSchedules() {
       artifactName: null,
       artifactVersion: null,
       volumeVersions: null,
-      notifySlackChannelId: null,
       retryStartedAt: null,
       consecutiveFailures: 0,
     },
@@ -119,7 +115,6 @@ function createMockSchedules() {
       artifactName: null,
       artifactVersion: null,
       volumeVersions: null,
-      notifySlackChannelId: null,
       retryStartedAt: null,
       consecutiveFailures: 0,
     },
@@ -147,7 +142,6 @@ function createMockSchedules() {
       artifactName: null,
       artifactVersion: null,
       volumeVersions: null,
-      notifySlackChannelId: null,
       retryStartedAt: null,
       consecutiveFailures: 0,
     },
@@ -467,46 +461,6 @@ describe("zero-schedule signals", () => {
       expect(captured.body?.cronExpression).toBe("0 9 15 * *");
     });
 
-    it("should include notification settings in POST body", async () => {
-      const captured: { body: Record<string, unknown> | null } = { body: null };
-
-      server.use(
-        http.post(
-          "http://localhost:3000/api/zero/schedules",
-          async ({ request }) => {
-            captured.body = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json(mockDeployResponse());
-          },
-        ),
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json({ schedules: [] });
-        }),
-      );
-
-      await setup();
-      await context.store.set(
-        saveZeroSchedule$,
-        {
-          prompt: "Notify test",
-          freq: "every_day",
-          date: "2026-03-15",
-          hour: 9,
-          minute: 0,
-          timezone: "UTC",
-          intervalSeconds: 0,
-          notifyEmail: false,
-          notifySlack: true,
-          notifySlackChannelId: "C999",
-        },
-        context.signal,
-      );
-
-      expect(captured.body).not.toBeNull();
-      expect(captured.body?.notifyEmail).toBeFalsy();
-      expect(captured.body?.notifySlack).toBeTruthy();
-      expect(captured.body?.notifySlackChannelId).toBe("C999");
-    });
-
     it("should include description in POST body when provided", async () => {
       const captured: { body: Record<string, unknown> | null } = { body: null };
 
@@ -755,9 +709,6 @@ describe("zero-schedule signals", () => {
                 prompt: "One-time task",
                 description: null,
                 enabled: true,
-                notifyEmail: true,
-                notifySlack: true,
-                notifySlackChannelId: null,
                 nextRunAt: null,
                 lastRunAt: null,
                 createdAt: "2026-03-01T00:00:00Z",
@@ -794,9 +745,6 @@ describe("zero-schedule signals", () => {
                 prompt: "Daily task",
                 description: null,
                 enabled: true,
-                notifyEmail: true,
-                notifySlack: true,
-                notifySlackChannelId: null,
                 nextRunAt: null,
                 lastRunAt: null,
                 createdAt: "2026-03-01T00:00:00Z",
@@ -832,9 +780,6 @@ describe("zero-schedule signals", () => {
                 prompt: "Monthly task",
                 description: null,
                 enabled: true,
-                notifyEmail: true,
-                notifySlack: true,
-                notifySlackChannelId: null,
                 nextRunAt: null,
                 lastRunAt: null,
                 createdAt: "2026-03-01T00:00:00Z",
@@ -870,9 +815,6 @@ describe("zero-schedule signals", () => {
                 prompt: "Weekly task",
                 description: null,
                 enabled: true,
-                notifyEmail: true,
-                notifySlack: true,
-                notifySlackChannelId: null,
                 nextRunAt: null,
                 lastRunAt: null,
                 createdAt: "2026-03-01T00:00:00Z",
@@ -908,9 +850,6 @@ describe("zero-schedule signals", () => {
                 prompt: "Task with description",
                 description: "A detailed description",
                 enabled: true,
-                notifyEmail: true,
-                notifySlack: true,
-                notifySlackChannelId: null,
                 nextRunAt: null,
                 lastRunAt: null,
                 createdAt: "2026-03-01T00:00:00Z",
@@ -926,46 +865,6 @@ describe("zero-schedule signals", () => {
 
       const entries = context.store.get(zeroScheduleEntries$);
       expect(entries[0]?.description).toBe("A detailed description");
-    });
-
-    it("should include notification fields in entries", async () => {
-      server.use(
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json({
-            schedules: [
-              {
-                ...scheduleDefaults(),
-                id: "b0000000-0000-4000-a000-000000000006",
-                agentId: "c0000000-0000-4000-a000-000000000001",
-                name: "notified",
-                triggerType: "cron",
-                cronExpression: "0 9 * * *",
-                atTime: null,
-                intervalSeconds: null,
-                timezone: "UTC",
-                prompt: "Notify test",
-                description: null,
-                enabled: true,
-                notifyEmail: false,
-                notifySlack: true,
-                notifySlackChannelId: "C123",
-                nextRunAt: null,
-                lastRunAt: null,
-                createdAt: "2026-03-01T00:00:00Z",
-                updatedAt: "2026-03-01T00:00:00Z",
-              },
-            ],
-          });
-        }),
-      );
-
-      await setup();
-      await context.store.set(fetchZeroSchedules$, context.signal);
-
-      const entries = context.store.get(zeroScheduleEntries$);
-      expect(entries[0]?.notifyEmail).toBeFalsy();
-      expect(entries[0]?.notifySlack).toBeTruthy();
-      expect(entries[0]?.notifySlackChannelId).toBe("C123");
     });
   });
 

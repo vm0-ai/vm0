@@ -7,8 +7,6 @@ import {
   getTestZeroAgentId,
   createTestOrg,
   createTestSchedule,
-  createTestSlackOrgInstallation,
-  createTestSlackOrgConnection,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -44,15 +42,6 @@ describe("POST /api/zero/schedules - Deploy Schedule", () => {
     testComposeId = composeId;
     await createTestZeroAgent(orgId, agentName, {});
     testZeroAgentId = await getTestZeroAgentId(orgId, agentName);
-
-    // Set up Slack installation + user connection (required for notifySlack: true tests)
-    const { slackWorkspaceId } = await createTestSlackOrgInstallation({
-      orgId,
-    });
-    await createTestSlackOrgConnection({
-      slackWorkspaceId,
-      vm0UserId: user.userId,
-    });
   });
 
   it("should create schedule and return 201", async () => {
@@ -250,31 +239,6 @@ describe("POST /api/zero/schedules - Deploy Schedule", () => {
     expect(data.error.code).toBe("SCHEDULE_PAST");
   });
 
-  it("should create schedule with notification settings", async () => {
-    const response = await POST(
-      createTestRequest(`http://localhost:3000/api/zero/schedules`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          agentId: testZeroAgentId,
-          name: "notify-test",
-          cronExpression: "0 9 * * *",
-          timezone: "UTC",
-          prompt: "With notifications",
-          notifyEmail: false,
-          notifySlack: true,
-          notifySlackChannelId: "C12345",
-        }),
-      }),
-    );
-    const data = await response.json();
-
-    expect(response.status).toBe(201);
-    expect(data.schedule.notifyEmail).toBe(false);
-    expect(data.schedule.notifySlack).toBe(true);
-    expect(data.schedule.notifySlackChannelId).toBe("C12345");
-  });
-
   it("should update schedule trigger type from cron to loop", async () => {
     await createTestSchedule(testComposeId, "type-change", {
       cronExpression: "0 9 * * *",
@@ -301,34 +265,6 @@ describe("POST /api/zero/schedules - Deploy Schedule", () => {
     expect(data.schedule.triggerType).toBe("loop");
     expect(data.schedule.intervalSeconds).toBe(600);
     expect(data.schedule.cronExpression).toBeNull();
-  });
-
-  it("should update notification settings on existing schedule", async () => {
-    await createTestSchedule(testComposeId, "update-notify", {
-      cronExpression: "0 9 * * *",
-      prompt: "Notification update",
-    });
-
-    const response = await POST(
-      createTestRequest(`http://localhost:3000/api/zero/schedules`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          agentId: testZeroAgentId,
-          name: "update-notify",
-          cronExpression: "0 9 * * *",
-          timezone: "UTC",
-          prompt: "Notification update",
-          notifyEmail: false,
-          notifySlack: false,
-        }),
-      }),
-    );
-    const data = await response.json();
-
-    expect(response.status).toBe(200);
-    expect(data.schedule.notifyEmail).toBe(false);
-    expect(data.schedule.notifySlack).toBe(false);
   });
 
   it("should create schedule with non-UTC timezone", async () => {

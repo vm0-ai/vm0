@@ -27,9 +27,6 @@ export async function deployZeroSchedule(body: {
   appendSystemPrompt?: string;
   volumeVersions?: Record<string, string>;
   enabled?: boolean;
-  notifyEmail?: boolean;
-  notifySlack?: boolean;
-  notifySlackChannelId?: string | null;
 }): Promise<DeployScheduleResponse> {
   const config = await getClientConfig();
   const client = initClient(zeroSchedulesMainContract, config);

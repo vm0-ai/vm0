@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useLastResolved, useLoadable } from "ccstate-react";
+import { useLastResolved } from "ccstate-react";
 import { createPortal } from "react-dom";
 import { IconX } from "@tabler/icons-react";
 import {
@@ -11,7 +11,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@vm0/ui";
-import { Switch } from "@vm0/ui/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -24,8 +23,6 @@ import {
   getTodayDateLocal,
   getTimezoneLabel,
 } from "../../signals/zero-page/cron.ts";
-import { slackOrgData$ } from "../../signals/zero-page/zero-slack.ts";
-import { slackChannels$ } from "../../signals/zero-page/slack-channels.ts";
 import { userPreferences$ } from "../../signals/zero-page/settings/user-preferences.ts";
 
 // ---------------------------------------------------------------------------
@@ -111,14 +108,6 @@ export interface ScheduleFormValues {
   loopMinutes: number;
   dayOfWeek: string;
   dayOfMonth: string;
-  notifyEmail: boolean;
-  notifySlack: boolean;
-  notifySlackChannelId: string | null;
-}
-
-interface SlackChannelOption {
-  id: string;
-  name: string;
 }
 
 interface ScheduleFormDialogProps {
@@ -464,89 +453,6 @@ function DayOfWeekPicker({
 }
 
 // ---------------------------------------------------------------------------
-// Notification fields sub-component
-// ---------------------------------------------------------------------------
-
-function ScheduleNotificationFields({
-  notifyEmail,
-  setNotifyEmail,
-  notifySlack,
-  setNotifySlack,
-  slackHasBot,
-  slackIsInstalled,
-  slackChannels,
-  notifySlackChannelId,
-  setNotifySlackChannelId,
-}: {
-  notifyEmail: boolean;
-  setNotifyEmail: (v: boolean) => void;
-  notifySlack: boolean;
-  setNotifySlack: (v: boolean) => void;
-  slackHasBot: boolean;
-  slackIsInstalled: boolean;
-  slackChannels: SlackChannelOption[];
-  notifySlackChannelId: string | null;
-  setNotifySlackChannelId: (v: string | null) => void;
-}) {
-  return (
-    <div className="flex flex-col gap-2">
-      <label className="text-sm font-medium text-foreground">
-        Notifications
-      </label>
-      <div className="flex items-center justify-between">
-        <span className="text-sm text-foreground">Email</span>
-        <Switch checked={notifyEmail} onCheckedChange={setNotifyEmail} />
-      </div>
-      <div className="flex items-center justify-between">
-        <span className="text-sm text-foreground">Slack</span>
-        <Switch
-          checked={notifySlack}
-          onCheckedChange={setNotifySlack}
-          disabled={!slackHasBot}
-        />
-      </div>
-      {!slackHasBot && (
-        <p className="text-xs text-muted-foreground">
-          {slackIsInstalled
-            ? "Connect your Slack account in Settings to enable Slack notifications."
-            : "Install Slack in Settings to enable Slack notifications."}
-        </p>
-      )}
-      {notifySlack && slackHasBot && slackChannels.length > 0 && (
-        <div className="flex flex-col gap-1">
-          <label
-            htmlFor="schedule-dialog-slack-channel"
-            className="text-xs text-muted-foreground"
-          >
-            Channel
-          </label>
-          <Select
-            value={notifySlackChannelId ?? "__dm__"}
-            onValueChange={(v) => {
-              return setNotifySlackChannelId(v === "__dm__" ? null : v);
-            }}
-          >
-            <SelectTrigger id="schedule-dialog-slack-channel" className="h-9">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__dm__">Direct message</SelectItem>
-              {slackChannels.map((ch) => {
-                return (
-                  <SelectItem key={ch.id} value={ch.id}>
-                    #{ch.name}
-                  </SelectItem>
-                );
-              })}
-            </SelectContent>
-          </Select>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -568,9 +474,6 @@ function buildDefaults(
     loopMinutes: 15,
     dayOfWeek: "1",
     dayOfMonth: "1",
-    notifyEmail: false,
-    notifySlack: false,
-    notifySlackChannelId: null,
   };
   return { ...defaults, ...initialValues };
 }
@@ -595,9 +498,6 @@ function checkDirty(
     current.loopMinutes !== init.loopMinutes ||
     current.dayOfWeek !== init.dayOfWeek ||
     current.dayOfMonth !== init.dayOfMonth ||
-    current.notifyEmail !== init.notifyEmail ||
-    current.notifySlack !== init.notifySlack ||
-    current.notifySlackChannelId !== init.notifySlackChannelId ||
     (opts.hasAgents && current.agentId !== init.agentId)
   );
 }
@@ -625,15 +525,6 @@ function ScheduleFormDialogInner({
 }: Omit<ScheduleFormDialogProps, "open"> & {
   preferredTimezone: string | null | undefined;
 }) {
-  const slackData = useLoadable(slackOrgData$);
-  const slackHasBot =
-    slackData.state === "hasData" && slackData.data?.isConnected === true;
-  const slackIsInstalled =
-    slackData.state === "hasData" && slackData.data?.isInstalled === true;
-  const slackChannelsLoadable = useLoadable(slackChannels$);
-  const slackChannels: SlackChannelOption[] =
-    slackChannelsLoadable.state === "hasData" ? slackChannelsLoadable.data : [];
-
   const init = buildDefaults(agents, initialValues, preferredTimezone);
 
   const [prompt, setPrompt] = useState(init.prompt);
@@ -647,11 +538,6 @@ function ScheduleFormDialogInner({
   const [loopMinutes, setLoopMinutes] = useState(init.loopMinutes);
   const [dayOfWeek, setDayOfWeek] = useState(init.dayOfWeek);
   const [dayOfMonth, setDayOfMonth] = useState(init.dayOfMonth);
-  const [notifyEmail, setNotifyEmail] = useState(init.notifyEmail);
-  const [notifySlack, setNotifySlack] = useState(init.notifySlack);
-  const [notifySlackChannelId, setNotifySlackChannelId] = useState(
-    init.notifySlackChannelId,
-  );
   const [showConfirm, setShowConfirm] = useState(false);
 
   const current: ScheduleFormValues = {
@@ -666,9 +552,6 @@ function ScheduleFormDialogInner({
     loopMinutes,
     dayOfWeek,
     dayOfMonth,
-    notifyEmail,
-    notifySlack,
-    notifySlackChannelId,
   };
 
   const isDirty = checkDirty(current, init, mode, {
@@ -811,21 +694,6 @@ function ScheduleFormDialogInner({
             timezone={timezone}
             setTimezone={setTimezone}
           />
-
-          {/* Notifications (edit mode only) */}
-          {mode === "edit" && (
-            <ScheduleNotificationFields
-              notifyEmail={notifyEmail}
-              setNotifyEmail={setNotifyEmail}
-              notifySlack={notifySlack}
-              setNotifySlack={setNotifySlack}
-              slackHasBot={slackHasBot}
-              slackIsInstalled={slackIsInstalled}
-              slackChannels={slackChannels}
-              notifySlackChannelId={notifySlackChannelId}
-              setNotifySlackChannelId={setNotifySlackChannelId}
-            />
-          )}
         </div>
 
         {saveError && <p className="text-sm text-destructive">{saveError}</p>}

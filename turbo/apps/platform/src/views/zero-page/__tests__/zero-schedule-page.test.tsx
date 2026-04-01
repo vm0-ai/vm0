@@ -24,8 +24,6 @@ function createMockSchedules() {
       prompt: "Summarize yesterday's threads",
       description: null,
       enabled: true,
-      notifyEmail: false,
-      notifySlack: false,
       nextRunAt: null,
       lastRunAt: null,
       createdAt: "2026-03-01T00:00:00Z",
@@ -37,7 +35,6 @@ function createMockSchedules() {
       artifactName: null,
       artifactVersion: null,
       volumeVersions: null,
-      notifySlackChannelId: null,
       retryStartedAt: null,
       consecutiveFailures: 0,
     },
@@ -54,8 +51,6 @@ function createMockSchedules() {
       prompt: "Check inbox for urgent items",
       description: null,
       enabled: true,
-      notifyEmail: false,
-      notifySlack: false,
       nextRunAt: null,
       lastRunAt: null,
       createdAt: "2026-03-02T00:00:00Z",
@@ -67,7 +62,6 @@ function createMockSchedules() {
       artifactName: null,
       artifactVersion: null,
       volumeVersions: null,
-      notifySlackChannelId: null,
       retryStartedAt: null,
       consecutiveFailures: 0,
     },
@@ -84,8 +78,6 @@ function createMockSchedules() {
       prompt: "Disabled daily task",
       description: null,
       enabled: false,
-      notifyEmail: false,
-      notifySlack: false,
       nextRunAt: null,
       lastRunAt: null,
       createdAt: "2026-02-28T00:00:00Z",
@@ -97,7 +89,6 @@ function createMockSchedules() {
       artifactName: null,
       artifactVersion: null,
       volumeVersions: null,
-      notifySlackChannelId: null,
       retryStartedAt: null,
       consecutiveFailures: 0,
     },
@@ -156,7 +147,6 @@ describe("zero schedule page - agent labels", () => {
             artifactName: null,
             artifactVersion: null,
             volumeVersions: null,
-            notifySlackChannelId: null,
             retryStartedAt: null,
             consecutiveFailures: 0,
           },
@@ -175,7 +165,6 @@ describe("zero schedule page - agent labels", () => {
             artifactName: null,
             artifactVersion: null,
             volumeVersions: null,
-            notifySlackChannelId: null,
             retryStartedAt: null,
             consecutiveFailures: 0,
           },
@@ -223,7 +212,6 @@ describe("zero schedule page - agent labels", () => {
             artifactName: null,
             artifactVersion: null,
             volumeVersions: null,
-            notifySlackChannelId: null,
             retryStartedAt: null,
             consecutiveFailures: 0,
           },
@@ -242,7 +230,6 @@ describe("zero schedule page - agent labels", () => {
             artifactName: null,
             artifactVersion: null,
             volumeVersions: null,
-            notifySlackChannelId: null,
             retryStartedAt: null,
             consecutiveFailures: 0,
           },
@@ -729,30 +716,6 @@ describe("zero schedule page - schedule dialog fields", () => {
     expect(screen.getByLabelText("Agent")).toBeInTheDocument();
   });
 
-  it("should hide notification toggles in create dialog", async () => {
-    const user = userEvent.setup();
-    mockScheduleAPI();
-    await renderSchedulePage();
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /Add schedule/i }),
-      ).toBeInTheDocument();
-    });
-
-    await user.click(screen.getByRole("button", { name: /Add schedule/i }));
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Add schedule" }),
-      ).toBeInTheDocument();
-    });
-
-    expect(screen.queryByText("Notifications")).not.toBeInTheDocument();
-    expect(screen.queryByText("Email")).not.toBeInTheDocument();
-    expect(screen.queryByText("Slack")).not.toBeInTheDocument();
-  });
-
   it("should disable Create button when prompt is empty", async () => {
     const user = userEvent.setup();
     mockScheduleAPI();
@@ -798,54 +761,6 @@ describe("zero schedule page - schedule dialog fields", () => {
     await user.type(screen.getByLabelText("Prompt"), "Do something");
 
     expect(screen.getByRole("button", { name: "Create" })).toBeEnabled();
-  });
-
-  it("should send default notification values in create request", async () => {
-    const user = userEvent.setup();
-    let capturedBody: Record<string, unknown> | null = null;
-
-    server.use(
-      http.get("*/api/zero/schedules", () => {
-        return HttpResponse.json({ schedules: createMockSchedules() });
-      }),
-      http.post("*/api/zero/schedules", async ({ request }) => {
-        capturedBody = (await request.json()) as Record<string, unknown>;
-        return HttpResponse.json({
-          schedule: { id: "schedule-new" },
-        });
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
-      }),
-    );
-
-    await renderSchedulePage();
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /Add schedule/i }),
-      ).toBeInTheDocument();
-    });
-
-    await user.click(screen.getByRole("button", { name: /Add schedule/i }));
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Add schedule" }),
-      ).toBeInTheDocument();
-    });
-
-    // Fill prompt
-    await user.clear(screen.getByLabelText("Prompt"));
-    await user.type(screen.getByLabelText("Prompt"), "Test with notifications");
-
-    await user.click(screen.getByRole("button", { name: "Create" }));
-
-    await waitFor(() => {
-      expect(capturedBody).toBeTruthy();
-    });
-    expect(capturedBody).toHaveProperty("notifyEmail", false);
-    expect(capturedBody).toHaveProperty("notifySlack", false);
   });
 
   it("should show save error in dialog", async () => {

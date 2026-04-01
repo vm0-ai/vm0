@@ -126,9 +126,6 @@ interface ZeroScheduleEntry {
   prompt: string;
   description: string | null;
   enabled: boolean;
-  notifyEmail: boolean;
-  notifySlack: boolean;
-  notifySlackChannelId: string | null;
   /** Original schedule name for API operations */
   name: string;
   /** IANA timezone stored on the server */
@@ -150,9 +147,6 @@ export const zeroScheduleEntries$ = computed((get) => {
         prompt: s.prompt,
         description: s.description,
         enabled: s.enabled,
-        notifyEmail: s.notifyEmail,
-        notifySlack: s.notifySlack,
-        notifySlackChannelId: s.notifySlackChannelId,
         name: s.name,
         timezone: s.timezone,
         intervalSeconds: s.intervalSeconds,
@@ -214,15 +208,6 @@ function buildScheduleBody(
     prompt: params.prompt.trim(),
     ...(params.description && { description: params.description.trim() }),
     enabled: true,
-    ...(params.notifyEmail !== undefined && {
-      notifyEmail: params.notifyEmail,
-    }),
-    ...(params.notifySlack !== undefined && {
-      notifySlack: params.notifySlack,
-    }),
-    ...(params.notifySlackChannelId !== undefined && {
-      notifySlackChannelId: params.notifySlackChannelId,
-    }),
   };
 
   if (params.freq === "every_n_minutes") {
@@ -278,9 +263,6 @@ export interface ZeroScheduleSaveParams {
   dayOfMonth?: string;
   /** Schedule name when editing an existing schedule */
   editName?: string;
-  notifyEmail?: boolean;
-  notifySlack?: boolean;
-  notifySlackChannelId?: string | null;
 }
 
 export const saveZeroSchedule$ = command(
@@ -392,9 +374,6 @@ export interface OrgScheduleEntry {
   prompt: string;
   description: string | null;
   enabled: boolean;
-  notifyEmail: boolean;
-  notifySlack: boolean;
-  notifySlackChannelId: string | null;
   name: string;
   /** IANA timezone stored on the server */
   timezone: string;
@@ -426,9 +405,6 @@ export const allOrgScheduleEntries$ = computed((get) => {
         prompt: s.prompt,
         description: s.description,
         enabled: s.enabled,
-        notifyEmail: s.notifyEmail,
-        notifySlack: s.notifySlack,
-        notifySlackChannelId: s.notifySlackChannelId,
         name: s.name,
         timezone: s.timezone,
         intervalSeconds: s.intervalSeconds,

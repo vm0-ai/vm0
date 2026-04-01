@@ -135,9 +135,6 @@ interface SetupOptions {
   timezone?: string;
   prompt?: string;
   enable?: boolean;
-  notifyEmail?: boolean;
-  notifySlack?: boolean;
-  notifySlackChannelId?: string;
 }
 
 interface ExistingScheduleDefaults {
@@ -157,9 +154,6 @@ interface ScheduleListItem {
   timezone: string;
   prompt: string;
   enabled?: boolean;
-  notifyEmail?: boolean;
-  notifySlack?: boolean;
-  notifySlackChannelId?: string | null;
 }
 
 function getExistingDefaults(
@@ -375,61 +369,6 @@ async function gatherPromptText(
   );
 }
 
-async function gatherNotificationPreferences(
-  optionNotifyEmail: boolean | undefined,
-  optionNotifySlack: boolean | undefined,
-  optionNotifySlackChannelId: string | undefined,
-  existingSchedule: ScheduleListItem | undefined,
-): Promise<{
-  notifyEmail?: boolean;
-  notifySlack?: boolean;
-  notifySlackChannelId?: string;
-}> {
-  if (optionNotifyEmail !== undefined && optionNotifySlack !== undefined) {
-    return {
-      notifyEmail: optionNotifyEmail,
-      notifySlack: optionNotifySlack,
-      notifySlackChannelId: optionNotifySlackChannelId,
-    };
-  }
-
-  if (!isInteractive()) {
-    return {
-      notifyEmail: optionNotifyEmail,
-      notifySlack: optionNotifySlack,
-      notifySlackChannelId: optionNotifySlackChannelId,
-    };
-  }
-
-  const notifyEmail =
-    optionNotifyEmail ??
-    (await promptConfirm(
-      "Enable email notifications?",
-      existingSchedule?.notifyEmail ?? false,
-    ));
-
-  const notifySlack =
-    optionNotifySlack ??
-    (await promptConfirm(
-      "Enable Slack notifications?",
-      existingSchedule?.notifySlack ?? false,
-    ));
-
-  let notifySlackChannelId = optionNotifySlackChannelId;
-  if (notifySlackChannelId === undefined && notifySlack) {
-    const defaultChannel = existingSchedule?.notifySlackChannelId ?? "";
-    const channelInput = await promptText(
-      "Slack channel ID (leave empty for DM)",
-      defaultChannel,
-    );
-    if (channelInput) {
-      notifySlackChannelId = channelInput;
-    }
-  }
-
-  return { notifyEmail, notifySlack, notifySlackChannelId };
-}
-
 async function gatherInterval(
   optionInterval: string | undefined,
   existingInterval: number | undefined,
@@ -547,9 +486,6 @@ async function buildAndDeploy(params: {
   intervalSeconds: number | undefined;
   timezone: string;
   prompt: string;
-  notifyEmail?: boolean;
-  notifySlack?: boolean;
-  notifySlackChannelId?: string;
 }): Promise<DeployResult> {
   let cronExpression: string | undefined;
   let atTimeISO: string | undefined;
@@ -578,15 +514,6 @@ async function buildAndDeploy(params: {
     intervalSeconds: params.intervalSeconds,
     timezone: params.timezone,
     prompt: params.prompt,
-    ...(params.notifyEmail !== undefined && {
-      notifyEmail: params.notifyEmail,
-    }),
-    ...(params.notifySlack !== undefined && {
-      notifySlack: params.notifySlack,
-    }),
-    ...(params.notifySlackChannelId !== undefined && {
-      notifySlackChannelId: params.notifySlackChannelId,
-    }),
   });
 
   return deployResult;
@@ -705,14 +632,6 @@ export const setupCommand = new Command()
   .option("-z, --timezone <tz>", "IANA timezone")
   .option("-p, --prompt <text>", "Prompt to run")
   .option("-e, --enable", "Enable schedule immediately after creation")
-  .option("--notify-email", "Enable email notifications (default: false)")
-  .option("--no-notify-email", "Disable email notifications")
-  .option("--notify-slack", "Enable Slack notifications (default: false)")
-  .option("--no-notify-slack", "Disable Slack notifications")
-  .option(
-    "--notify-slack-channel-id <channel-id>",
-    "Slack channel ID for notifications (default: DM)",
-  )
   .addHelpText(
     "after",
     `
@@ -727,8 +646,7 @@ Examples:
 Notes:
   - Re-running setup with the same agent updates the existing "default" schedule
   - Use -n to manage multiple named schedules for the same agent
-  - All flags are required in non-interactive mode; interactive mode prompts for missing values
-  - When --notify-slack is enabled, run results are automatically posted to the Slack channel specified by --notify-slack-channel-id (or as a DM if not set). No need to include Slack delivery instructions in your prompt.`,
+  - All flags are required in non-interactive mode; interactive mode prompts for missing values`,
   )
   .action(
     withErrorHandler(async (agentIdentifier: string, options: SetupOptions) => {
@@ -795,16 +713,7 @@ Notes:
         return;
       }
 
-      // 7. Gather notification preferences
-      const { notifyEmail, notifySlack, notifySlackChannelId } =
-        await gatherNotificationPreferences(
-          options.notifyEmail,
-          options.notifySlack,
-          options.notifySlackChannelId,
-          existingSchedule,
-        );
-
-      // 8. Build trigger and deploy
+      // 7. Build trigger and deploy
       const deployResult = await buildAndDeploy({
         scheduleName,
         agentId,
@@ -816,15 +725,12 @@ Notes:
         intervalSeconds,
         timezone,
         prompt: promptText_,
-        notifyEmail,
-        notifySlack,
-        notifySlackChannelId,
       });
 
-      // 9. Display deployment result
+      // 8. Display deployment result
       displayDeployResult(scheduleName, deployResult);
 
-      // 10. Handle schedule enabling
+      // 9. Handle schedule enabling
       const shouldPromptEnable =
         deployResult.created ||
         (existingSchedule !== undefined && !existingSchedule.enabled);

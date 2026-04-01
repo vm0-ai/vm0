@@ -19,26 +19,6 @@ interface InboundErrorTemplate {
   props: { errorMessage: string; unsubscribeUrl?: string };
 }
 
-interface ScheduleCompletedTemplate {
-  template: "schedule-completed";
-  props: {
-    agentName: string;
-    output: string;
-    logsUrl: string;
-    unsubscribeUrl?: string;
-  };
-}
-
-interface ScheduleFailedTemplate {
-  template: "schedule-failed";
-  props: {
-    agentName: string;
-    errorMessage: string;
-    logsUrl: string;
-    unsubscribeUrl?: string;
-  };
-}
-
 interface DataExportReadyTemplate {
   template: "data-export-ready";
   props: {
@@ -52,8 +32,6 @@ interface DataExportReadyTemplate {
 export type EmailTemplate =
   | AgentReplyTemplate
   | InboundErrorTemplate
-  | ScheduleCompletedTemplate
-  | ScheduleFailedTemplate
   | DataExportReadyTemplate;
 
 // ============================================================================

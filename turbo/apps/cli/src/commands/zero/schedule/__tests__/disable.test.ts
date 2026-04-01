@@ -39,8 +39,6 @@ const mockSchedule = {
   secretNames: null,
   volumeVersions: null,
   enabled: false,
-  notifyEmail: true,
-  notifySlack: true,
   nextRunAt: null,
   lastRunAt: null,
   retryStartedAt: null,

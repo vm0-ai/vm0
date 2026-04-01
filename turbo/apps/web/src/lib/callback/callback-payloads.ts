@@ -51,20 +51,6 @@ export interface EmailReplyCallbackPayload {
   replyRecipientCc?: string[];
 }
 
-export interface EmailScheduleCallbackPayload {
-  scheduleId: string;
-  agentId: string;
-  userId: string;
-}
-
-export interface SlackScheduleCallbackPayload {
-  scheduleId: string;
-  agentId: string;
-  userId: string;
-  orgId: string;
-  notifySlackChannelId: string | null;
-}
-
 export interface ScheduleLoopCallbackPayload {
   scheduleId: string;
   intervalSeconds: number;
@@ -91,8 +77,6 @@ export type CallbackPayload =
   | SlackOrgCallbackPayload
   | EmailTriggerCallbackPayload
   | EmailReplyCallbackPayload
-  | EmailScheduleCallbackPayload
-  | SlackScheduleCallbackPayload
   | ScheduleLoopCallbackPayload
   | GitHubIssuesCallbackPayload
   | ChatCallbackPayload;

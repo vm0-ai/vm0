@@ -41,9 +41,6 @@ const mockDeployResponse = {
     secretNames: null,
     volumeVersions: null,
     enabled: false,
-    notifyEmail: true,
-    notifySlack: true,
-    notifySlackChannelId: null,
     nextRunAt: "2026-03-24T09:00:00Z",
     lastRunAt: null,
     retryStartedAt: null,
@@ -205,63 +202,6 @@ describe("zero schedule setup command", () => {
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Schedule");
       expect(logCalls).toContain("created");
-    });
-  });
-
-  describe("notification channel", () => {
-    it("should pass notifySlackChannelId when --notify-slack-channel-id is provided", async () => {
-      let capturedBody: Record<string, unknown> | undefined;
-
-      server.use(
-        http.get("http://localhost:3000/api/agent/composes", ({ request }) => {
-          const url = new URL(request.url);
-          if (url.searchParams.get("name") !== "my-agent") {
-            return HttpResponse.json(
-              { error: { message: "Not found", code: "NOT_FOUND" } },
-              { status: 404 },
-            );
-          }
-          return HttpResponse.json(mockCompose);
-        }),
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json({ schedules: [] });
-        }),
-        http.post(
-          "http://localhost:3000/api/zero/schedules",
-          async ({ request }) => {
-            capturedBody = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json(
-              {
-                ...mockDeployResponse,
-                schedule: {
-                  ...mockDeployResponse.schedule,
-                  notifySlackChannelId: "C12345",
-                },
-              },
-              { status: 201 },
-            );
-          },
-        ),
-      );
-
-      await setupCommand.parseAsync([
-        "node",
-        "cli",
-        "my-agent",
-        "--frequency",
-        "daily",
-        "--time",
-        "09:00",
-        "--timezone",
-        "UTC",
-        "--prompt",
-        "run daily check",
-        "--notify-slack-channel-id",
-        "C12345",
-      ]);
-
-      expect(capturedBody).toBeDefined();
-      expect(capturedBody!.notifySlackChannelId).toBe("C12345");
     });
   });
 

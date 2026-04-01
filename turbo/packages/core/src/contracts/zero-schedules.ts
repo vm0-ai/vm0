@@ -25,9 +25,6 @@ export const scheduleResponseSchema = z.object({
   secretNames: z.array(z.string()).nullable(),
   volumeVersions: z.record(z.string(), z.string()).nullable(),
   enabled: z.boolean(),
-  notifyEmail: z.boolean(),
-  notifySlack: z.boolean(),
-  notifySlackChannelId: z.string().nullable(),
   nextRunAt: z.string().nullable(),
   lastRunAt: z.string().nullable(),
   retryStartedAt: z.string().nullable(),
@@ -61,9 +58,6 @@ const zeroDeployScheduleRequestSchema = z
     volumeVersions: z.record(z.string(), z.string()).optional(),
     agentId: z.string().uuid("Invalid agent ID"),
     enabled: z.boolean().optional(),
-    notifyEmail: z.boolean().optional(),
-    notifySlack: z.boolean().optional(),
-    notifySlackChannelId: z.string().nullable().optional(),
   })
   .refine(
     (data) => {

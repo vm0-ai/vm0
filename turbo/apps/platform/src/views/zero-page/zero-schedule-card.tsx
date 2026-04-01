@@ -227,9 +227,6 @@ interface ZeroScheduleCardProps {
     dayOfWeek?: string;
     dayOfMonth?: string;
     editName?: string;
-    notifyEmail?: boolean;
-    notifySlack?: boolean;
-    notifySlackChannelId?: string | null;
   }) => Promise<void>;
   /** When provided, called to delete a schedule by name. */
   onDelete?: (name: string) => Promise<void>;
@@ -369,9 +366,6 @@ export function ZeroScheduleCard({
             values.freq === "every_week" ? values.dayOfWeek : undefined,
           dayOfMonth:
             values.freq === "every_month" ? values.dayOfMonth : undefined,
-          notifyEmail: values.notifyEmail,
-          notifySlack: values.notifySlack,
-          notifySlackChannelId: values.notifySlackChannelId,
         })
           .then(() => {
             detach(setAddScheduleOpen(false, signal), Reason.DomCallback);
@@ -429,9 +423,6 @@ export function ZeroScheduleCard({
           dayOfMonth:
             values.freq === "every_month" ? values.dayOfMonth : undefined,
           editName: editingEntry?.name,
-          notifyEmail: values.notifyEmail,
-          notifySlack: values.notifySlack,
-          notifySlackChannelId: values.notifySlackChannelId,
         })
           .then(() => {
             detach(setEditingScheduleId(null, signal), Reason.DomCallback);
@@ -580,10 +571,6 @@ export function ZeroScheduleCard({
                     parseScheduleTimeString(editingEntry.time).timezone,
                   loopMinutes: parseScheduleTimeString(editingEntry.time)
                     .loopMinutes,
-                  notifyEmail: editingEntry.notifyEmail ?? false,
-                  notifySlack: editingEntry.notifySlack ?? false,
-                  notifySlackChannelId:
-                    editingEntry.notifySlackChannelId ?? null,
                 }
               : undefined
           }

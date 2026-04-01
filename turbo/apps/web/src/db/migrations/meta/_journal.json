@@ -1527,6 +1527,13 @@
       "when": 1775100000000,
       "tag": "0217_backfill_vm0_model_provider",
       "breakpoints": true
+    },
+    {
+      "idx": 218,
+      "version": "7",
+      "when": 1775030883061,
+      "tag": "0218_drop_schedule_notifications",
+      "breakpoints": true
     }
   ]
 }

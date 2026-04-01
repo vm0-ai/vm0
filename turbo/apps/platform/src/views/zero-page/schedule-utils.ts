@@ -27,11 +27,8 @@ export interface ScheduleEntry {
   /** Schedule name used for API operations (edit/delete). */
   name?: string;
   enabled?: boolean;
-  notifyEmail?: boolean;
-  notifySlack?: boolean;
   /** IANA timezone from the server (not derivable from `time` alone). */
   timezone?: string;
-  notifySlackChannelId?: string | null;
   /** Raw interval in seconds for loop schedules */
   intervalSeconds?: number | null;
 }

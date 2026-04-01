@@ -317,8 +317,6 @@ describe("backfill-clerk-metadata", () => {
               publicUserData: { userId },
               publicMetadata: {
                 timezone: "America/New_York",
-                notify_email: true,
-                notify_slack: false,
                 pinned_agent_ids: ["agent-1", "agent-2"],
                 send_mode: "cmd-enter",
                 onboarding_done: true,
@@ -361,8 +359,6 @@ describe("backfill-clerk-metadata", () => {
               publicUserData: { userId },
               publicMetadata: {
                 timezone: "America/New_York",
-                notify_email: false,
-                notify_slack: true,
               },
             },
           ],

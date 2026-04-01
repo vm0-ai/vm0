@@ -3,8 +3,6 @@ import { Cron } from "croner";
 import { zeroAgentSchedules } from "../../db/schema/zero-agent-schedule";
 import { agentComposes } from "../../db/schema/agent-compose";
 import { zeroAgents } from "../../db/schema/zero-agent";
-import { slackOrgConnections } from "../../db/schema/slack-org-connection";
-import { slackOrgInstallations } from "../../db/schema/slack-org-installation";
 import { agentRuns } from "../../db/schema/agent-run";
 import { zeroRuns } from "../../db/schema/zero-run";
 import { decryptSecretsMap } from "../crypto";
@@ -13,11 +11,7 @@ import { logger } from "../logger";
 import { createZeroRun } from "../zero/zero-run-service";
 import { generateCallbackSecret, getApiUrl } from "../callback";
 import { generateScheduleDescription } from "../ai/lightweight-model";
-import type {
-  EmailScheduleCallbackPayload,
-  SlackScheduleCallbackPayload,
-  ScheduleLoopCallbackPayload,
-} from "../callback/callback-payloads";
+import type { ScheduleLoopCallbackPayload } from "../callback/callback-payloads";
 
 const log = logger("service:schedule");
 
@@ -42,9 +36,6 @@ export interface ScheduleResponse {
   secretNames: string[] | null;
   volumeVersions: Record<string, string> | null;
   enabled: boolean;
-  notifyEmail: boolean;
-  notifySlack: boolean;
-  notifySlackChannelId: string | null;
   nextRunAt: string | null;
   lastRunAt: string | null;
   retryStartedAt: string | null;
@@ -79,9 +70,6 @@ interface DeployScheduleRequest {
   description?: string;
   appendSystemPrompt?: string;
   enabled?: boolean;
-  notifyEmail?: boolean;
-  notifySlack?: boolean;
-  notifySlackChannelId?: string | null;
   // vars and secrets removed - now managed via server-side tables
   volumeVersions?: Record<string, string>;
 }
@@ -148,9 +136,6 @@ function toResponse(
     secretNames,
     volumeVersions: schedule.volumeVersions,
     enabled: schedule.enabled,
-    notifyEmail: schedule.notifyEmail,
-    notifySlack: schedule.notifySlack,
-    notifySlackChannelId: schedule.notifySlackChannelId ?? null,
     nextRunAt: schedule.nextRunAt?.toISOString() ?? null,
     lastRunAt: schedule.lastRunAt?.toISOString() ?? null,
     retryStartedAt: schedule.retryStartedAt?.toISOString() ?? null,
@@ -266,15 +251,6 @@ async function updateExistingSchedule(
       vars: null,
       encryptedSecrets: null,
       volumeVersions: request.volumeVersions ?? null,
-      ...(request.notifyEmail !== undefined && {
-        notifyEmail: request.notifyEmail,
-      }),
-      ...(request.notifySlack !== undefined && {
-        notifySlack: request.notifySlack,
-      }),
-      ...(request.notifySlackChannelId !== undefined && {
-        notifySlackChannelId: request.notifySlackChannelId,
-      }),
       nextRunAt,
       consecutiveFailures: 0,
       updatedAt: new Date(),
@@ -319,9 +295,6 @@ async function insertNewSchedule(
       encryptedSecrets: null,
       volumeVersions: request.volumeVersions ?? null,
       enabled: request.enabled ?? false,
-      notifyEmail: request.notifyEmail ?? false,
-      notifySlack: request.notifySlack ?? false,
-      notifySlackChannelId: request.notifySlackChannelId ?? null,
       nextRunAt,
       consecutiveFailures: 0,
       createdAt: now,
@@ -408,31 +381,6 @@ export async function deploySchedule(
 
   // Reject one-time schedules with past atTime when enabled
   validateAtTimeNotPast(request);
-
-  // Validate Slack connection exists when Slack notifications are requested
-  if (request.notifySlack) {
-    const [slackConnection] = await globalThis.services.db
-      .select({ id: slackOrgConnections.id })
-      .from(slackOrgConnections)
-      .innerJoin(
-        slackOrgInstallations,
-        eq(
-          slackOrgConnections.slackWorkspaceId,
-          slackOrgInstallations.slackWorkspaceId,
-        ),
-      )
-      .where(
-        and(
-          eq(slackOrgConnections.vm0UserId, userId),
-          eq(slackOrgInstallations.orgId, orgId),
-        ),
-      )
-      .limit(1);
-
-    if (!slackConnection) {
-      throw badRequest("Slack notifications require a connected Slack account");
-    }
-  }
 
   // Auto-generate description if not provided (undefined/null means not provided;
   // empty string means the user explicitly cleared it — skip auto-generation)
@@ -888,45 +836,12 @@ export async function executeSchedule(
     throw new Error(`Compose ${compose.name} has no versions`);
   }
 
-  // Build callbacks for run completion notifications
+  // Build callbacks for run completion
   const callbacks: Array<{
     url: string;
     secret: string;
-    payload:
-      | EmailScheduleCallbackPayload
-      | SlackScheduleCallbackPayload
-      | ScheduleLoopCallbackPayload;
+    payload: ScheduleLoopCallbackPayload;
   }> = [];
-
-  // Email schedule notification callback (only if Resend is configured AND schedule opted in)
-  if (globalThis.services.env.RESEND_API_KEY && schedule.notifyEmail) {
-    const emailPayload: EmailScheduleCallbackPayload = {
-      scheduleId: schedule.id,
-      agentId: schedule.agentId,
-      userId: schedule.userId,
-    };
-    callbacks.push({
-      url: `${getApiUrl()}/api/zero/email/callbacks/schedule`,
-      secret: generateCallbackSecret(),
-      payload: emailPayload,
-    });
-  }
-
-  // Slack schedule DM notification callback (only if schedule opted in)
-  if (schedule.notifySlack) {
-    const slackPayload: SlackScheduleCallbackPayload = {
-      scheduleId: schedule.id,
-      agentId: schedule.agentId,
-      userId: schedule.userId,
-      orgId: schedule.orgId,
-      notifySlackChannelId: schedule.notifySlackChannelId,
-    };
-    callbacks.push({
-      url: `${getApiUrl()}/api/internal/callbacks/slack/org/schedule`,
-      secret: generateCallbackSecret(),
-      payload: slackPayload,
-    });
-  }
 
   // Loop schedule advancement callback (triggers next iteration on completion)
   if (schedule.triggerType === "loop") {
