@@ -12,7 +12,7 @@ use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
-/// Default block size: 4KB (matching dm-snapshot chunk size).
+/// Default block size: 4KB (matches typical filesystem block size and kernel page size).
 pub const BLOCK_SIZE: usize = 4096;
 
 /// Default number of connections per NBD device.

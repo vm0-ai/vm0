@@ -498,8 +498,25 @@ async fn gc_nbd_orphans(dry_run: bool) -> RunnerResult<u32> {
                 "[dry-run] would disconnect orphan NBD device /dev/nbd{device_index} (owner PID {pid} dead)"
             );
         } else {
+            // Re-check before disconnect: between the scan and now, the device
+            // could have been freed and re-acquired by another runner. Only
+            // disconnect if the PID is unchanged and still dead.
             let result =
-                tokio::task::spawn_blocking(move || nbd_cow::netlink::disconnect(device_index))
+                tokio::task::spawn_blocking(move || {
+                    match super::nbd::read_nbd_pid(device_index) {
+                        Some(current_pid) if current_pid == pid
+                            && !Path::new(&format!("/proc/{pid}")).exists() =>
+                        {
+                            nbd_cow::netlink::disconnect(device_index)
+                        }
+                        _ => {
+                            tracing::debug!(
+                                "nbd{device_index}: skipping disconnect, device state changed since scan"
+                            );
+                            Ok(())
+                        }
+                    }
+                })
                     .await
                     .map_err(|e| {
                         RunnerError::Internal(format!("nbd disconnect task failed: {e}"))
