@@ -139,11 +139,17 @@ function formatValue(value: unknown): string {
 }
 
 function formatParams(params: Record<string, string> | undefined): string {
-  if (!params) return "—";
+  if (!params) {
+    return "—";
+  }
   const filtered = Object.fromEntries(
-    Object.entries(params).filter(([, v]) => v != null),
+    Object.entries(params).filter(([, v]) => {
+      return v !== null && v !== undefined;
+    }),
   );
-  if (Object.keys(filtered).length === 0) return "—";
+  if (Object.keys(filtered).length === 0) {
+    return "—";
+  }
   return JSON.stringify(filtered);
 }
 
