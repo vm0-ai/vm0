@@ -1,19 +1,19 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { HttpResponse } from "msw";
 import { GET } from "../route";
-import { GET as getConnector } from "../../route";
-import { GET as getSessionStatus } from "../../sessions/[sessionId]/route";
-import { handlers, http } from "../../../../../../../src/__tests__/msw";
-import { server } from "../../../../../../../src/mocks/server";
-import { reloadEnv } from "../../../../../../../src/env";
+import { GET as getConnector } from "../../../../zero/connectors/[type]/route";
+import { GET as getSessionStatus } from "../../../../zero/connectors/[type]/sessions/[sessionId]/route";
+import { handlers, http } from "../../../../../../src/__tests__/msw";
+import { server } from "../../../../../../src/mocks/server";
+import { reloadEnv } from "../../../../../../src/env";
 import {
   createTestRequest,
   createTestConnectorSession,
   findTestConnectorSecret,
   findTestConnectorTokenExpiresAt,
-} from "../../../../../../../src/__tests__/api-test-helpers";
-import { testContext } from "../../../../../../../src/__tests__/test-helpers";
-import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
+} from "../../../../../../src/__tests__/api-test-helpers";
+import { testContext } from "../../../../../../src/__tests__/test-helpers";
+import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 
 const context = testContext();
 
@@ -930,9 +930,7 @@ function createCallbackRequest(options: {
   connectorType?: string;
 }) {
   const type = options.connectorType ?? "github";
-  const url = new URL(
-    `http://localhost:3000/api/zero/connectors/${type}/callback`,
-  );
+  const url = new URL(`http://localhost:3000/api/connectors/${type}/callback`);
 
   if (options.code) url.searchParams.set("code", options.code);
   if (options.state) url.searchParams.set("state", options.state);
@@ -954,7 +952,7 @@ function createCallbackRequest(options: {
   });
 }
 
-describe("GET /api/zero/connectors/:type/callback - OAuth Callback", () => {
+describe("GET /api/connectors/:type/callback - OAuth Callback", () => {
   beforeEach(() => {
     context.setupMocks();
     vi.stubEnv("GH_OAUTH_CLIENT_ID", "test-client-id");
@@ -1012,7 +1010,7 @@ describe("GET /api/zero/connectors/:type/callback - OAuth Callback", () => {
       await context.setupUser();
 
       const request = createTestRequest(
-        "http://localhost:3000/api/zero/connectors/invalid/callback?code=test&state=test",
+        "http://localhost:3000/api/connectors/invalid/callback?code=test&state=test",
         { headers: { Cookie: "connector_oauth_state=test" } },
       );
       const response = await GET(request, {

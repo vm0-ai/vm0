@@ -41,7 +41,7 @@ const router = tsr.router(zeroConnectorSessionsContract, {
       );
     }
 
-    const verificationUrl = `/api/zero/connectors/${params.type}/authorize?session=${session.id}`;
+    const verificationUrl = `/api/connectors/${params.type}/authorize?session=${session.id}`;
 
     return {
       status: 200 as const,
