@@ -275,3 +275,17 @@ export async function setThreadStatus(
     status,
   });
 }
+
+/** Type guard for Slack API platform errors that carry a `data.error` string */
+export function isSlackPlatformError(
+  err: unknown,
+): err is Error & { data: { error: string } } {
+  if (!(err instanceof Error) || !("data" in err)) return false;
+  const { data } = err as { data: unknown };
+  return (
+    typeof data === "object" &&
+    data !== null &&
+    "error" in data &&
+    typeof (data as { error: unknown }).error === "string"
+  );
+}
