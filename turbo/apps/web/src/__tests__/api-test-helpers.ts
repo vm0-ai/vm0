@@ -2329,26 +2329,6 @@ export async function findTestSlackOrgConnections(
 }
 
 /**
- * Find a compose record with its org details.
- *
- * Direct DB read is required because the compose API does not expose
- * org slug in its response — it only returns compose-level fields.
- */
-export async function findTestComposeWithOrg(composeId: string) {
-  const [row] = await globalThis.services.db
-    .select({
-      composeId: agentComposes.id,
-      composeName: agentComposes.name,
-      orgSlug: orgCache.slug,
-    })
-    .from(agentComposes)
-    .innerJoin(orgCache, eq(orgCache.orgId, agentComposes.orgId))
-    .where(eq(agentComposes.id, composeId))
-    .limit(1);
-  return row;
-}
-
-/**
  * Create a runner job queue entry with an associated agent run.
  *
  * @param userId - The user who owns the run

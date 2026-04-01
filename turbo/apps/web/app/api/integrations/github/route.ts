@@ -16,10 +16,6 @@ import {
   agentComposeVersions,
 } from "../../../../src/db/schema/agent-compose";
 import { listSecrets } from "../../../../src/lib/secret/secret-service";
-import {
-  getOrgData,
-  getOrgBySlug,
-} from "../../../../src/lib/org/org-cache-service";
 import { listVariables } from "../../../../src/lib/variable/variable-service";
 import { listConnectors } from "../../../../src/lib/connector/connector-service";
 import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
@@ -95,15 +91,10 @@ export async function GET(request: Request) {
       id: agentComposes.id,
       name: agentComposes.name,
       headVersionId: agentComposes.headVersionId,
-      orgId: agentComposes.orgId,
     })
     .from(agentComposes)
     .where(eq(agentComposes.id, installation.defaultComposeId))
     .limit(1);
-
-  const composeOrgSlug = compose
-    ? (await getOrgData(compose.orgId)).slug
-    : null;
 
   // Extract required secrets/vars from agent compose
   let requiredSecrets: string[] = [];
@@ -171,9 +162,7 @@ export async function GET(request: Request) {
       targetType: installation.targetType,
       isAdmin,
     },
-    agent: compose
-      ? { id: compose.id, name: compose.name, orgSlug: composeOrgSlug }
-      : null,
+    agent: compose ? { id: compose.id, name: compose.name } : null,
     environment: {
       requiredSecrets,
       requiredVars,
@@ -343,37 +332,17 @@ export async function PATCH(request: Request) {
     );
   }
 
-  // Parse org/agentName format (org member agents use "orgSlug/agentName")
-  const slashIndex = body.agentName.indexOf("/");
-  const agentName =
-    slashIndex === -1 ? body.agentName : body.agentName.slice(slashIndex + 1);
-  const orgSlug =
-    slashIndex === -1 ? null : body.agentName.slice(0, slashIndex);
+  // Resolve org from authenticated user's context
+  const { org } = await resolveOrg(authCtx);
 
-  // Resolve target org
-  let targetOrgId: string;
-  if (orgSlug) {
-    const targetOrg = await getOrgBySlug(orgSlug);
-    if (!targetOrg) {
-      return NextResponse.json(
-        { error: { message: "Org not found", code: "BAD_REQUEST" } },
-        { status: 400 },
-      );
-    }
-    targetOrgId = targetOrg.orgId;
-  } else {
-    const { org } = await resolveOrg(authCtx);
-    targetOrgId = org.orgId;
-  }
-
-  // Find agent compose by name in target org
+  // Find agent compose by name in user's org
   const [compose] = await db
     .select({ id: agentComposes.id })
     .from(agentComposes)
     .where(
       and(
-        eq(agentComposes.orgId, targetOrgId),
-        eq(agentComposes.name, agentName),
+        eq(agentComposes.orgId, org.orgId),
+        eq(agentComposes.name, body.agentName),
       ),
     )
     .limit(1);
