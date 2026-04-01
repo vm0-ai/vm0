@@ -182,7 +182,9 @@ function collectDetails(entry: NetworkLogEntry): [string, string][] {
 }
 
 function NetworkLogRowDetail({ entry }: { entry: NetworkLogEntry }) {
-  const details = collectDetails(entry);
+  const details = collectDetails(entry).filter(([, value]) => {
+    return value !== "—";
+  });
 
   if (details.length === 0) {
     return null;
