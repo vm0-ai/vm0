@@ -526,17 +526,21 @@ fn acquire_pool_lock(locks: &LockPaths) -> Result<(u32, Flock<File>)> {
         // Open for writing without O_CREAT first, fall back to create.
         // This avoids EACCES from fs.protected_regular=2 on sticky-bit
         // directories (/var/lock) when the file is owned by another user.
-        let file = File::options()
-            .write(true)
-            .open(&path)
-            .or_else(|_| {
-                File::options()
-                    .write(true)
-                    .create(true)
-                    .truncate(false)
-                    .open(&path)
-            })
-            .map_err(|e| NetworkError::LockOpen(format!("{}: {e}", path.display())))?;
+        let file = match File::options().write(true).open(&path).or_else(|_| {
+            File::options()
+                .write(true)
+                .create(true)
+                .truncate(false)
+                .open(&path)
+        }) {
+            Ok(f) => f,
+            Err(e) => {
+                // Skip indices whose lock file is inaccessible (e.g. owned by
+                // another user under fs.protected_regular=2).
+                warn!(index, %e, "cannot open pool lock, skipping index");
+                continue;
+            }
+        };
         match Flock::lock(file, FlockArg::LockExclusiveNonblock) {
             Ok(lock) => {
                 info!(index, "acquired pool index lock");
