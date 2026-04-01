@@ -15,6 +15,7 @@
  */
 
 import {
+  ALL_METHODS,
   fetchSpec,
   logStats,
   renderPermissions,
@@ -108,7 +109,7 @@ function buildGroups(specs: Array<{ spec: AxiomSpec }>): PermissionGroup[] {
 
     for (const [path, methods] of Object.entries(spec.paths ?? {})) {
       for (const [method, op] of Object.entries(methods)) {
-        if (typeof op !== "object" || op === null) continue;
+        if (!ALL_METHODS.has(method)) continue;
 
         const httpMethod = method.toUpperCase();
         const fullPath = `${versionPrefix}${path}`;
@@ -214,8 +215,13 @@ function generateTypeScript(permissions: PermissionGroup[]): string {
 export async function generate(): Promise<void> {
   const fetched = await Promise.all(
     SPEC_URLS.map(async (url) => {
-      const res = await fetchSpec(url, url.split("/").pop() ?? url);
-      const spec = (await res.json()) as AxiomSpec;
+      const label = url.split("/").pop() ?? url;
+      const res = await fetchSpec(url, label);
+      const json: unknown = await res.json();
+      if (typeof json !== "object" || json === null || !("paths" in json)) {
+        throw new Error(`Invalid OpenAPI spec from ${label}: missing paths`);
+      }
+      const spec = json as AxiomSpec;
       return { spec };
     }),
   );
