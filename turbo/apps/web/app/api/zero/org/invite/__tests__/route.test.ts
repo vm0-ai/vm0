@@ -74,26 +74,6 @@ describe("POST /api/zero/org/invite (invite)", () => {
     ).toHaveBeenCalledWith(expect.objectContaining({ role: "org:admin" }));
   });
 
-  it("should invite a member with admin role", async () => {
-    const userId = uniqueId("inv-role");
-    await setupOrg(userId);
-
-    const response = await POST(
-      createTestRequest(inviteUrl(), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: "admin-invite@example.com",
-          role: "admin",
-        }),
-      }),
-    );
-
-    expect(response.status).toBe(200);
-    const data = await response.json();
-    expect(data.message).toContain("admin-invite@example.com");
-  });
-
   it("should return 403 when caller is not an admin", async () => {
     const userId = uniqueId("inv-403");
     const slug = uniqueId("inv-member");
