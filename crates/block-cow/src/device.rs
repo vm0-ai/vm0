@@ -362,22 +362,15 @@ impl CowDevice {
         // rescan metadata. Retry a few times with a short sleep to let
         // transient openers (udev) release their references.
         self._device_holder = None;
-        let mut remove_ok = false;
         for attempt in 0..3u32 {
             match dmsetup::remove(&cow_name) {
-                Ok(()) => {
-                    remove_ok = true;
-                    break;
-                }
+                Ok(()) => break,
                 Err(e) if attempt < 2 => {
                     std::thread::sleep(std::time::Duration::from_millis(50));
                     trace!(id = self.id, attempt, error = %e, "dmsetup remove busy, retrying");
                 }
                 Err(e) => return Err(e),
             }
-        }
-        if !remove_ok {
-            return Err(BlockCowError::NotActive(self.id.clone()));
         }
 
         // Snapshot is gone — past the point of no return. Mark inactive
