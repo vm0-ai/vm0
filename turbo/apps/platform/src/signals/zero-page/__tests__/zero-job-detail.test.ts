@@ -60,7 +60,6 @@ function scheduleBase() {
   return {
     displayName: null,
     userId: "test-user-123",
-    orgSlug: "test",
     appendSystemPrompt: null,
     vars: null,
     secretNames: null,

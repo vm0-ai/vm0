@@ -8,7 +8,6 @@ import { slackOrgInstallations } from "../../db/schema/slack-org-installation";
 import { agentRuns } from "../../db/schema/agent-run";
 import { zeroRuns } from "../../db/schema/zero-run";
 import { decryptSecretsMap } from "../crypto";
-import { getOrgData, batchGetOrgData } from "../org/org-cache-service";
 import { notFound, badRequest, schedulePast } from "../errors";
 import { logger } from "../logger";
 import { createZeroRun } from "../zero/zero-run-service";
@@ -29,7 +28,6 @@ export interface ScheduleResponse {
   id: string;
   agentId: string;
   displayName: string | null;
-  orgSlug: string;
   userId: string;
   name: string;
   triggerType: "cron" | "once" | "loop";
@@ -119,7 +117,6 @@ function calculateNextRun(
 function toResponse(
   schedule: typeof zeroAgentSchedules.$inferSelect,
   displayName: string | null,
-  orgSlug: string,
 ): ScheduleResponse {
   // Extract secret names from encrypted secrets (values are never returned)
   let secretNames: string[] | null = null;
@@ -137,7 +134,6 @@ function toResponse(
     id: schedule.id,
     agentId: schedule.agentId,
     displayName,
-    orgSlug,
     userId: schedule.userId,
     name: schedule.name,
     triggerType: schedule.triggerType as "cron" | "once" | "loop",
@@ -165,14 +161,6 @@ function toResponse(
 }
 
 /**
- * Load org slug by ID.
- */
-async function getOrgSlug(orgId: string): Promise<string> {
-  const orgData = await getOrgData(orgId);
-  return orgData.slug;
-}
-
-/**
  * Verify the user owns this schedule (by agentId + name + orgId + userId).
  */
 async function verifyScheduleOwnership(
@@ -183,7 +171,6 @@ async function verifyScheduleOwnership(
 ): Promise<{
   schedule: typeof zeroAgentSchedules.$inferSelect;
   displayName: string | null;
-  orgSlug: string;
 }> {
   const [agent] = await globalThis.services.db
     .select({
@@ -198,27 +185,24 @@ async function verifyScheduleOwnership(
 
   if (!agent) throw notFound("Agent not found");
 
-  const [[schedule], orgSlug] = await Promise.all([
-    globalThis.services.db
-      .select()
-      .from(zeroAgentSchedules)
-      .where(
-        and(
-          eq(zeroAgentSchedules.agentId, agentId),
-          eq(zeroAgentSchedules.name, name),
-          eq(zeroAgentSchedules.orgId, orgId),
-          eq(zeroAgentSchedules.userId, userId),
-        ),
-      )
-      .limit(1),
-    getOrgSlug(orgId),
-  ]);
+  const [schedule] = await globalThis.services.db
+    .select()
+    .from(zeroAgentSchedules)
+    .where(
+      and(
+        eq(zeroAgentSchedules.agentId, agentId),
+        eq(zeroAgentSchedules.name, name),
+        eq(zeroAgentSchedules.orgId, orgId),
+        eq(zeroAgentSchedules.userId, userId),
+      ),
+    )
+    .limit(1);
 
   if (!schedule) {
     throw notFound(`Schedule '${name}' not found`);
   }
 
-  return { schedule, displayName: agent.displayName ?? null, orgSlug };
+  return { schedule, displayName: agent.displayName ?? null };
 }
 
 /**
@@ -417,8 +401,6 @@ export async function deploySchedule(
 
   if (!agent) throw notFound("Agent not found");
 
-  const orgSlug = await getOrgSlug(orgId);
-
   // Validate timezone
   if (!isValidTimezone(request.timezone)) {
     throw badRequest(`Invalid timezone: ${request.timezone}`);
@@ -487,7 +469,7 @@ export async function deploySchedule(
     );
     log.debug(`Updated schedule ${request.name} (${existing.id})`);
     return {
-      schedule: toResponse(updated, displayName, orgSlug),
+      schedule: toResponse(updated, displayName),
       created: false,
     };
   }
@@ -502,7 +484,7 @@ export async function deploySchedule(
   );
   log.debug(`Created schedule ${request.name} (${created.id})`);
   return {
-    schedule: toResponse(created, displayName, orgSlug),
+    schedule: toResponse(created, displayName),
     created: true,
   };
 }
@@ -555,16 +537,6 @@ export async function listSchedules(
     }),
   );
 
-  // Load org data in batch (2 DB queries instead of 2N)
-  const uniqueClerkOrgIds = [
-    ...new Set(
-      userSchedules.map((s) => {
-        return s.orgId;
-      }),
-    ),
-  ];
-  const orgDataMap = await batchGetOrgData(uniqueClerkOrgIds);
-
   return userSchedules
     .filter((schedule) => {
       // FK constraints with CASCADE should guarantee these exist.
@@ -573,8 +545,7 @@ export async function listSchedules(
     })
     .map((schedule) => {
       const agent = agentMap.get(schedule.agentId)!;
-      const orgSlug = orgDataMap.get(schedule.orgId)?.slug ?? "";
-      return toResponse(schedule, agent.displayName ?? null, orgSlug);
+      return toResponse(schedule, agent.displayName ?? null);
     });
 }
 
@@ -589,14 +560,14 @@ export async function getScheduleByName(
 ): Promise<ScheduleResponse> {
   log.debug(`Getting schedule ${name} for agent ${agentId}`);
 
-  const { schedule, displayName, orgSlug } = await verifyScheduleOwnership(
+  const { schedule, displayName } = await verifyScheduleOwnership(
     userId,
     orgId,
     agentId,
     name,
   );
 
-  return toResponse(schedule, displayName, orgSlug);
+  return toResponse(schedule, displayName);
 }
 
 /**
@@ -682,7 +653,7 @@ export async function enableSchedule(
 ): Promise<ScheduleResponse> {
   log.debug(`Enabling schedule ${name} for agent ${agentId}`);
 
-  const { schedule, displayName, orgSlug } = await verifyScheduleOwnership(
+  const { schedule, displayName } = await verifyScheduleOwnership(
     userId,
     orgId,
     agentId,
@@ -726,7 +697,7 @@ export async function enableSchedule(
 
   log.debug(`Enabled schedule ${name}`);
 
-  return toResponse(updated, displayName, orgSlug);
+  return toResponse(updated, displayName);
 }
 
 /**
@@ -740,7 +711,7 @@ export async function disableSchedule(
 ): Promise<ScheduleResponse> {
   log.debug(`Disabling schedule ${name} for agent ${agentId}`);
 
-  const { schedule, displayName, orgSlug } = await verifyScheduleOwnership(
+  const { schedule, displayName } = await verifyScheduleOwnership(
     userId,
     orgId,
     agentId,
@@ -763,7 +734,7 @@ export async function disableSchedule(
 
   log.debug(`Disabled schedule ${name}`);
 
-  return toResponse(updated, displayName, orgSlug);
+  return toResponse(updated, displayName);
 }
 
 /**

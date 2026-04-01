@@ -42,9 +42,7 @@ function printRunConfiguration(schedule: ScheduleResponse): void {
     : chalk.yellow("disabled");
   console.log(`${"Status:".padEnd(16)}${statusText}`);
 
-  console.log(
-    `${"Agent:".padEnd(16)}${schedule.agentId} ${chalk.dim(`(${schedule.orgSlug})`)}`,
-  );
+  console.log(`${"Agent:".padEnd(16)}${schedule.agentId}`);
 
   const promptPreview =
     schedule.prompt.length > 60

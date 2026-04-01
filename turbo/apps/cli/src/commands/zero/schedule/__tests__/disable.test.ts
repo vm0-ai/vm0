@@ -25,7 +25,6 @@ const mockCompose = {
 const mockSchedule = {
   id: "sched-001",
   agentId: "compose-uuid-001",
-  orgSlug: "my-org",
   userId: "user-001",
   name: "default",
   triggerType: "cron",

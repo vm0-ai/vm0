@@ -203,7 +203,6 @@ function mockAPIsWithSchedules() {
             id: "f0000002-0000-4000-a000-000000000001",
             agentId: "e0000000-0000-4000-a000-000000000010",
             displayName: null,
-            orgSlug: "test",
             name: "morning-briefing",
             triggerType: "cron",
             cronExpression: "0 9 * * 1-5",

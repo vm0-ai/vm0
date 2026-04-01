@@ -24,7 +24,6 @@ function createMockScheduleWithSlack(overrides?: {
   return {
     id: "e0000000-0000-4000-a000-000000000001",
     agentId: "e0000000-0000-4000-a000-000000000010",
-    orgSlug: "test",
     userId: "test-user-123",
     displayName: null,
     name: "slack-schedule",
