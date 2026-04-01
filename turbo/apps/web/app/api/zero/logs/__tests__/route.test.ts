@@ -307,19 +307,6 @@ describe("GET /api/zero/logs", () => {
       expect(data.data[0].agentId).toBe(nameComposeId);
     });
 
-    it("should include orgSlug in response", async () => {
-      const request = createTestRequest(
-        `http://localhost:3000/api/zero/logs?name=${agentName}`,
-      );
-      const response = await GET(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(200);
-      expect(data.data).toHaveLength(1);
-      expect(data.data[0].orgSlug).toBeDefined();
-      expect(typeof data.data[0].orgSlug).toBe("string");
-    });
-
     it("name param should take precedence over agent param", async () => {
       const request = createTestRequest(
         `http://localhost:3000/api/zero/logs?name=${agentName}&agent=nonexistent`,

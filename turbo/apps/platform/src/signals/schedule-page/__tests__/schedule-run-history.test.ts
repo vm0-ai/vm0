@@ -43,7 +43,6 @@ function logsResponse(
         sessionId: null,
         agentId: "test-agent",
         displayName: "Test Agent",
-        orgSlug: null,
         framework: null,
         status: "completed",
         triggerSource: "schedule",

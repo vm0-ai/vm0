@@ -36,7 +36,6 @@ export interface LogEntry {
   sessionId: string | null;
   agentId: string | null;
   displayName: string | null;
-  orgSlug: string | null;
   framework: string | null;
   triggerSource: TriggerSource | null;
   triggerAgentName: string | null;

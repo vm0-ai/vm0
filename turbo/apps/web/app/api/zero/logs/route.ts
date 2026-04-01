@@ -25,11 +25,9 @@ import { zeroAgents } from "../../../../src/db/schema/zero-agent";
 import { zeroRuns } from "../../../../src/db/schema/zero-run";
 import { alias } from "drizzle-orm/pg-core";
 import { conversations } from "../../../../src/db/schema/conversation";
-import { getOrgData } from "../../../../src/lib/org/org-cache-service";
 import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import { isNotFound, isForbidden } from "../../../../src/lib/errors";
-import { logger } from "../../../../src/lib/logger";
 import {
   eq,
   and,
@@ -41,8 +39,6 @@ import {
   isNotNull,
   type SQL,
 } from "drizzle-orm";
-
-const log = logger("api:zero:logs");
 
 /** Alias for the zero_agents table to resolve the triggering agent's display name. */
 const triggerAgentAlias = alias(zeroAgents, "trigger_agent");
@@ -325,33 +321,6 @@ const router = tsr.router(logsListContract, {
       .orderBy(desc(agentRuns.createdAt), desc(agentRuns.id))
       .limit(limit + 1);
 
-    // Resolve org slugs via org cache (skip orgs that fail lookup)
-    const uniqueOrgIds = [
-      ...new Set(
-        runs
-          .filter((r) => {
-            return r.orgId;
-          })
-          .map((r) => {
-            return r.orgId!;
-          }),
-      ),
-    ];
-    const slugMap = new Map<string, string>();
-    await Promise.all(
-      uniqueOrgIds.map(async (id) => {
-        try {
-          const data = await getOrgData(id);
-          slugMap.set(id, data.slug);
-        } catch (err) {
-          log.warn("failed to resolve org slug for run", {
-            orgId: id,
-            error: err,
-          });
-        }
-      }),
-    );
-
     const [totalCount, filters] = await Promise.all([
       getTotalCount(userId, query, orgId),
       getAvailableFilters(userId, orgId),
@@ -378,7 +347,6 @@ const router = tsr.router(logsListContract, {
             sessionId: run.sessionId ?? null,
             agentId: run.composeId ?? null,
             displayName: run.displayName ?? null,
-            orgSlug: run.orgId ? (slugMap.get(run.orgId) ?? null) : null,
             framework: extractFramework(run.composeContent),
             triggerSource: (run.triggerSource ?? "cli") as TriggerSource,
             triggerAgentName: run.triggerAgentName ?? null,

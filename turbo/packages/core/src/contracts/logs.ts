@@ -60,7 +60,6 @@ const logEntrySchema = z.object({
   sessionId: z.string().nullable(),
   agentId: z.string().nullable(),
   displayName: z.string().nullable(),
-  orgSlug: z.string().nullable(),
   framework: z.string().nullable(),
   triggerSource: triggerSourceSchema.nullable(),
   triggerAgentName: z.string().nullable(),

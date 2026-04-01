@@ -85,7 +85,6 @@ export const appLogsHandlers = [
           sessionId: log.sessionId,
           agentId: log.agentId,
           displayName: null,
-          orgSlug: null,
           framework: log.framework,
           triggerSource: null,
           triggerAgentName: null,
