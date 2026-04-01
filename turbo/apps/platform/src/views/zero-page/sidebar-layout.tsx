@@ -21,9 +21,13 @@ import {
   setActiveTab$,
   setBillingSubPage$,
 } from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
-import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
+import {
+  orgManageDialogOpen$,
+  setOrgManageDialogOpen$,
+} from "../../signals/zero-page/settings/org-manage-dialog.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
+import { OrgManageDialog } from "./components/org-manage/org-manage-dialog.tsx";
 
 function SidebarLayoutSkeleton() {
   const userLoadable = useLoadable(user$);
@@ -123,6 +127,21 @@ function MobileTopBar() {
   );
 }
 
+function OrgManageDialogMount() {
+  const dialogOpen = useGet(orgManageDialogOpen$);
+  const setDialogOpen = useSet(setOrgManageDialogOpen$);
+  const pageSignal = useGet(pageSignal$);
+
+  return (
+    <OrgManageDialog
+      open={dialogOpen}
+      onOpenChange={(open) => {
+        detach(setDialogOpen(open, pageSignal), Reason.DomCallback);
+      }}
+    />
+  );
+}
+
 function SidebarLayoutInner({ children }: { children: ReactNode }) {
   const showAboutPage = useGet(zeroShowAboutPage$);
   const setShowAboutPage = useSet(setZeroShowAboutPage$);
@@ -131,6 +150,7 @@ function SidebarLayoutInner({ children }: { children: ReactNode }) {
 
   return (
     <div className="zero-app flex h-dvh w-full bg-background">
+      <OrgManageDialogMount />
       <SidebarLayoutSkeleton />
       <ZeroSidebar />
       {!sidebarCollapsed && (

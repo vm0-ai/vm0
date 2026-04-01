@@ -18,11 +18,11 @@ export const orgManageDialogOpen$ = computed((get) => {
 
 export const setOrgManageDialogOpen$ = command(
   async ({ set }, open: boolean, signal: AbortSignal) => {
+    set(internalOrgManageDialogOpen$, open);
     if (open) {
       await set(initProfileName$, signal);
       set(reloadBillingStatus$);
     }
-    set(internalOrgManageDialogOpen$, open);
   },
 );
 
