@@ -162,6 +162,7 @@ describe("Zero Agents API", () => {
       expect(response.status).toBe(201);
       const data = await response.json();
       expect(data.agentId).toBeTruthy();
+      expect(data.ownerId).toBe(user.userId);
       expect(data.description).toBeNull();
       expect(data.displayName).toBeNull();
       expect(data.sound).toBeNull();
@@ -270,6 +271,7 @@ describe("Zero Agents API", () => {
       expect(response.status).toBe(200);
       const data = await response.json();
       expect(data.agentId).toBe(created.agentId);
+      expect(data.ownerId).toBe(user.userId);
       expect(data.displayName).toBe("Test Agent");
       expect(data.description).toBe("Test description");
       expect(data.sound).toBe("friendly");
@@ -309,6 +311,7 @@ describe("Zero Agents API", () => {
 
       expect(response.status).toBe(200);
       const data = await response.json();
+      expect(data.ownerId).toBe(user.userId);
       expect(data.displayName).toBe("Updated Name");
       expect(data.description).toBe("Updated description");
       expect(data.sound).toBe("casual");
@@ -687,6 +690,7 @@ describe("Zero Agents API", () => {
       const data = await response.json();
       expect(data).toHaveLength(1);
       expect(data[0].agentId).toBe(created.agentId);
+      expect(data[0].ownerId).toBe(user.userId);
       expect(data[0].displayName).toBe("Listed Agent");
       expect(data[0].description).toBe("desc");
       expect(data[0].sound).toBe("friendly");
@@ -720,6 +724,7 @@ describe("Zero Agents API", () => {
       expect(data.description).toBe("New desc");
       expect(data.sound).toBe("casual");
       expect(data.agentId).toBe(created.agentId);
+      expect(data.ownerId).toBe(user.userId);
     });
 
     it("should preserve other fields on partial update", async () => {

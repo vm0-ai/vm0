@@ -58,6 +58,7 @@ describe("GET /api/zero/team", () => {
     expect(response.status).toBe(200);
     expect(data).toHaveLength(1);
     expect(data[0].id).toBeDefined();
+    expect(data[0].ownerId).toBe(user.userId);
     expect(data[0].updatedAt).toBeDefined();
   });
 

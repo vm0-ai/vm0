@@ -1534,6 +1534,13 @@
       "when": 1775100000001,
       "tag": "0218_drop_schedule_notifications",
       "breakpoints": true
+    },
+    {
+      "idx": 219,
+      "version": "7",
+      "when": 1775200000000,
+      "tag": "0219_add_zero_agents_owner",
+      "breakpoints": true
     }
   ]
 }
