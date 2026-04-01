@@ -65,6 +65,9 @@ pub fn create_socketpair() -> Result<(OwnedFd, OwnedFd)> {
 }
 
 /// Read the kernel's nbds_max parameter to know how many devices are available.
+///
+/// Falls back to 256 when the sysfs parameter is unreadable (module not loaded).
+/// The actual limit is set by ansible (`modprobe nbd nbds_max=4096`).
 fn nbds_max() -> u32 {
     std::fs::read_to_string("/sys/module/nbd/parameters/nbds_max")
         .ok()
@@ -151,6 +154,10 @@ pub fn find_and_connect(client_fds: &[OwnedFd], size: u64, block_size: u64) -> R
 /// On reconnect (same index after a recent disconnect), the kernel may
 /// briefly report the old (zero) capacity before the new config takes
 /// effect. A few milliseconds of polling handles this.
+///
+/// Uses sync `std::fs::read_to_string` for sysfs reads — these are
+/// kernel-memory backed and complete in microseconds, so they do not
+/// meaningfully block the tokio worker thread.
 pub async fn verify_device_size(device_index: u32, expected_size: u64) -> bool {
     let expected_sectors = expected_size / 512;
     let size_path = format!("/sys/block/nbd{device_index}/size");

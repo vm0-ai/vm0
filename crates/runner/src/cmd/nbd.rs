@@ -1,7 +1,9 @@
 //! Shared NBD sysfs helpers used by `gc` and `doctor`.
 
 /// Default upper bound for NBD device indices when `/sys/module/nbd/parameters/nbds_max`
-/// is unreadable (e.g. module not loaded).
+/// is unreadable (e.g. module not loaded). The actual limit is set by ansible
+/// (`modprobe nbd nbds_max=4096`); this fallback only applies when the sysfs
+/// parameter cannot be read, which implies no devices exist anyway.
 const NBD_DEFAULT_MAX: u32 = 256;
 
 /// Read the maximum number of NBD devices from the kernel module parameter.
