@@ -40,6 +40,7 @@ const context = testContext();
 function mockAgentResponse() {
   return {
     agentId: "c0000000-0000-4000-a000-000000000002",
+    ownerId: "test-owner-id",
     description: null,
     displayName: null,
     sound: null,
@@ -832,6 +833,7 @@ describe("zero-job-detail signals", () => {
             capturedBody = (await request.json()) as { content: string };
             return HttpResponse.json({
               agentId: "c0000000-0000-4000-a000-000000000002",
+              ownerId: "test-owner-id",
               description: null,
               displayName: null,
               sound: null,
@@ -876,6 +878,7 @@ describe("zero-job-detail signals", () => {
           () => {
             return HttpResponse.json({
               agentId: "c0000000-0000-4000-a000-000000000002",
+              ownerId: "test-owner-id",
               description: null,
               displayName: null,
               sound: null,
@@ -944,6 +947,7 @@ describe("zero-job-detail signals", () => {
             apiCalled = true;
             return HttpResponse.json({
               agentId: "c0000000-0000-4000-a000-000000000002",
+              ownerId: "test-owner-id",
               description: null,
               displayName: null,
               sound: null,

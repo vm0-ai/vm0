@@ -58,6 +58,7 @@ describe("completeZeroOnboarding$", () => {
           {
             name: "test-agent-uuid",
             agentId: "d0000000-0000-4000-a000-000000000001",
+            ownerId: "test-owner-id",
             description: null,
             displayName: capturedPayload.displayName ?? null,
             sound: capturedPayload.sound ?? null,
@@ -74,6 +75,7 @@ describe("completeZeroOnboarding$", () => {
           return HttpResponse.json({
             name: "test-agent-uuid",
             agentId: "d0000000-0000-4000-a000-000000000001",
+            ownerId: "test-owner-id",
             description: null,
             displayName: null,
             sound: null,
@@ -138,6 +140,7 @@ describe("completeZeroOnboarding$", () => {
           {
             name: "test-agent-uuid",
             agentId: "d0000000-0000-4000-a000-000000000001",
+            ownerId: "test-owner-id",
             description: null,
             displayName: null,
             sound: null,
@@ -153,6 +156,7 @@ describe("completeZeroOnboarding$", () => {
           return HttpResponse.json({
             name: "test-agent-uuid",
             agentId: "d0000000-0000-4000-a000-000000000001",
+            ownerId: "test-owner-id",
             description: null,
             displayName: null,
             sound: null,
@@ -221,6 +225,7 @@ describe("completeZeroOnboarding$", () => {
           {
             name: "test-agent-uuid",
             agentId: "d0000000-0000-4000-a000-000000000001",
+            ownerId: "test-owner-id",
             description: null,
             displayName: null,
             sound: null,
@@ -236,6 +241,7 @@ describe("completeZeroOnboarding$", () => {
           return HttpResponse.json({
             name: "test-agent-uuid",
             agentId: "d0000000-0000-4000-a000-000000000001",
+            ownerId: "test-owner-id",
             description: null,
             displayName: null,
             sound: null,
@@ -291,6 +297,7 @@ describe("completeZeroOnboarding$", () => {
           {
             name: "test-agent-uuid",
             agentId: "d0000000-0000-4000-a000-000000000001",
+            ownerId: "test-owner-id",
             description: null,
             displayName: null,
             sound: null,
@@ -306,6 +313,7 @@ describe("completeZeroOnboarding$", () => {
           return HttpResponse.json({
             name: "test-agent-uuid",
             agentId: "d0000000-0000-4000-a000-000000000001",
+            ownerId: "test-owner-id",
             description: null,
             displayName: null,
             sound: null,
@@ -446,6 +454,7 @@ describe("completeZeroOnboarding$", () => {
           {
             name: "test-agent-uuid",
             agentId: "d0000000-0000-4000-a000-000000000001",
+            ownerId: "test-owner-id",
             description: null,
             displayName: null,
             sound: null,
@@ -461,6 +470,7 @@ describe("completeZeroOnboarding$", () => {
           return HttpResponse.json({
             name: "test-agent-uuid",
             agentId: "d0000000-0000-4000-a000-000000000001",
+            ownerId: "test-owner-id",
             description: null,
             displayName: null,
             sound: null,
@@ -519,6 +529,7 @@ describe("completeZeroOnboarding$ avatar", () => {
           {
             name: "test-agent-uuid",
             agentId: "d0000000-0000-4000-a000-000000000001",
+            ownerId: "test-owner-id",
             description: null,
             displayName: null,
             sound: null,
@@ -534,6 +545,7 @@ describe("completeZeroOnboarding$ avatar", () => {
           return HttpResponse.json({
             name: "test-agent-uuid",
             agentId: "d0000000-0000-4000-a000-000000000001",
+            ownerId: "test-owner-id",
             description: null,
             displayName: null,
             sound: null,
@@ -595,6 +607,7 @@ describe("completeZeroOnboarding$ auto-init model provider", () => {
           {
             name: "test-agent-uuid",
             agentId: "d0000000-0000-4000-a000-000000000001",
+            ownerId: "test-owner-id",
             description: null,
             displayName: null,
             sound: null,
@@ -610,6 +623,7 @@ describe("completeZeroOnboarding$ auto-init model provider", () => {
           return HttpResponse.json({
             name: "test-agent-uuid",
             agentId: "d0000000-0000-4000-a000-000000000001",
+            ownerId: "test-owner-id",
             description: null,
             displayName: null,
             sound: null,
