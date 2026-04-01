@@ -230,12 +230,17 @@ impl NbdCowDevice {
             cow.save_bitmap(&self.bitmap_path())?;
         }
 
-        // Disconnect via netlink (after tasks are done).
-        // Propagate the error so callers can retry (e.g., factory destroy loop).
-        // Mark as disconnected regardless — Drop should not attempt a second
-        // disconnect on a device that may have been recycled by another runner.
-        self.disconnected = true;
-        netlink::disconnect(self.device_index)?;
+        // Disconnect via netlink — attempt exactly once.
+        //
+        // Why no retry: if the kernel processed the disconnect but the netlink
+        // ACK was lost (recv timeout), `self.device_index` may already have been
+        // recycled by another runner. A second disconnect would tear down the
+        // other runner's device. Setting `disconnected = true` first ensures
+        // neither this function (on re-entry) nor Drop attempts a second call.
+        if !self.disconnected {
+            self.disconnected = true;
+            netlink::disconnect(self.device_index)?;
+        }
 
         // Wait for kernel to release the device (poll pid file)
         let pid_path = format!("/sys/block/nbd{}/pid", self.device_index);
