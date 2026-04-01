@@ -51,6 +51,7 @@
     "generate:google-sheets": "tsx src/index.ts google-sheets",
     "generate:granola": "tsx src/index.ts granola",
     "generate:heygen": "tsx src/index.ts heygen",
+    "generate:htmlcsstoimage": "tsx src/index.ts htmlcsstoimage",
     "generate:hubspot": "tsx src/index.ts hubspot",
     "generate:hugging-face": "tsx src/index.ts hugging-face",
     "generate:hume": "tsx src/index.ts hume",

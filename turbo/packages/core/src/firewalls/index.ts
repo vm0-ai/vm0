@@ -72,6 +72,7 @@ import { googleDriveFirewall } from "./google-drive.generated";
 import { googleSheetsFirewall } from "./google-sheets.generated";
 import { granolaFirewall } from "./granola.generated";
 import { heygenFirewall } from "./heygen.generated";
+import { htmlcsstoimageFirewall } from "./htmlcsstoimage.generated";
 import { hubspotFirewall } from "./hubspot.generated";
 import { huggingFaceFirewall } from "./hugging-face.generated";
 import { humeFirewall } from "./hume.generated";
@@ -192,6 +193,7 @@ const CONNECTOR_FIREWALLS = {
   "google-sheets": googleSheetsFirewall,
   granola: granolaFirewall,
   heygen: heygenFirewall,
+  htmlcsstoimage: htmlcsstoimageFirewall,
   hubspot: hubspotFirewall,
   "hugging-face": huggingFaceFirewall,
   hume: humeFirewall,
@@ -346,7 +348,6 @@ export type PermissionNamesOf<T extends FirewallConfig> =
  */
 export type NonFirewallConnectorType =
   // Basic Auth — proxy cannot do base64 encoding at runtime (#7137)
-  | "htmlcsstoimage" // Basic Auth (user_id:api_key)
   | "jira" // Basic Auth (email:api_token)
   // Signature-based auth — requires computing signatures, not simple header injection
   | "cloudinary" // SHA signature in form body + api_key param
