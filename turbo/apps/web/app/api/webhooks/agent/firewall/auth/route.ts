@@ -250,14 +250,14 @@ function resolveTemplates(
             log.warn(`[${runId}] No secret value for "${key}" in template`);
             return "";
           }
-          return secrets[key] ?? "";
+          return secrets[key];
         }
         // namespace === "vars"
         if (!(key in vars)) {
           log.warn(`[${runId}] No var value for "${key}" in template`);
           return "";
         }
-        return vars[key] ?? "";
+        return vars[key];
       },
     );
   }
