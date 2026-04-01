@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.174.1](https://github.com/vm0-ai/vm0/compare/app-v0.174.0...app-v0.174.1) (2026-04-01)
+
+
+### Bug Fixes
+
+* **platform:** preserve chronological order of cancelled chat messages ([#7494](https://github.com/vm0-ai/vm0/issues/7494)) ([1130617](https://github.com/vm0-ai/vm0/commit/11306178ef777823b3ec7c79ed7afa005be616f1))
+* **platform:** show activity line above content during streaming ([#7493](https://github.com/vm0-ai/vm0/issues/7493)) ([5d96943](https://github.com/vm0-ai/vm0/commit/5d9694304819c1e137be42e4d0d7984b584d5f43))
+* use instant scroll behavior for chat auto-scroll ([#7496](https://github.com/vm0-ai/vm0/issues/7496)) ([9c4dedd](https://github.com/vm0-ai/vm0/commit/9c4dedd64462f0b4ee018716749ef7f31c6570cb))
+
+
+### Refactoring
+
+* migrate connector oauth routes to zero namespace ([#7473](https://github.com/vm0-ai/vm0/issues/7473)) ([eae5501](https://github.com/vm0-ai/vm0/commit/eae55012401322f975897a68097cab008a78b650))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.134.0
+
 ## [0.174.0](https://github.com/vm0-ai/vm0/compare/app-v0.173.0...app-v0.174.0) (2026-04-01)
 
 

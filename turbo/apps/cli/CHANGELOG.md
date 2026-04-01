@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.92.0](https://github.com/vm0-ai/vm0/compare/cli-v9.91.1...cli-v9.92.0) (2026-04-01)
+
+
+### Features
+
+* **cli:** handle expired connector reconnect in doctor missing-token ([#7483](https://github.com/vm0-ai/vm0/issues/7483)) ([970e601](https://github.com/vm0-ai/vm0/commit/970e601b1b45d4ccc182ec7f13e61bb7a2139782))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.134.0
+
 ## [9.91.1](https://github.com/vm0-ai/vm0/compare/cli-v9.91.0...cli-v9.91.1) (2026-04-01)
 
 

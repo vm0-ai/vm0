@@ -1,5 +1,23 @@
 # Changelog
 
+## [8.134.0](https://github.com/vm0-ai/vm0/compare/core-v8.133.0...core-v8.134.0) (2026-04-01)
+
+
+### Features
+
+* **firewalls:** add basic auth template support and streak firewall config ([#7480](https://github.com/vm0-ai/vm0/issues/7480)) ([d234372](https://github.com/vm0-ai/vm0/commit/d234372fc4ccd30cb298b0770e4256cd8a0cd989))
+
+
+### Bug Fixes
+
+* **platform:** preserve chronological order of cancelled chat messages ([#7494](https://github.com/vm0-ai/vm0/issues/7494)) ([1130617](https://github.com/vm0-ai/vm0/commit/11306178ef777823b3ec7c79ed7afa005be616f1))
+* **web:** include feature-flagged connectors with api-token in compose ([#7481](https://github.com/vm0-ai/vm0/issues/7481)) ([130b1d3](https://github.com/vm0-ai/vm0/commit/130b1d36b807925c67680f00b9ad02cea39285eb))
+
+
+### Refactoring
+
+* migrate connector oauth routes to zero namespace ([#7473](https://github.com/vm0-ai/vm0/issues/7473)) ([eae5501](https://github.com/vm0-ai/vm0/commit/eae55012401322f975897a68097cab008a78b650))
+
 ## [8.133.0](https://github.com/vm0-ai/vm0/compare/core-v8.132.1...core-v8.133.0) (2026-04-01)
 
 
