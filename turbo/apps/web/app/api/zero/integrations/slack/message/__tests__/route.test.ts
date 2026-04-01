@@ -5,6 +5,7 @@ import {
   createTestRequest,
   createTestCompose,
   createTestRunInDb,
+  createTestZeroAgent,
   createTestSlackOrgInstallation,
   insertOrgMembersCacheEntry,
 } from "../../../../../../../src/__tests__/api-test-helpers";
@@ -175,5 +176,48 @@ describe("POST /api/zero/integrations/slack/message", () => {
     const data = await response.json();
     expect(data.error.code).toBe("SLACK_ERROR");
     expect(data.error.message).toContain("channel_not_found");
+  });
+
+  it("appends 'Sent via' footer when agent is resolvable from run", async () => {
+    const agentName = uniqueId("agent");
+    const { composeId } = await createTestCompose(agentName);
+    await createTestZeroAgent(user.orgId, agentName, {
+      displayName: "My Assistant",
+    });
+    const { runId } = await createTestRunInDb(user.userId, composeId);
+
+    mockClerk({ userId: null });
+    await insertOrgMembersCacheEntry({
+      orgId: user.orgId,
+      userId: user.userId,
+      role: "admin",
+    });
+    const token = await generateZeroToken(user.userId, runId, user.orgId);
+
+    await createTestSlackOrgInstallation({ orgId: user.orgId });
+
+    const request = createTestRequest(URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ channel: "C123456", text: "Hello" }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+
+    const mockClient = vi.mocked(new WebClient(""));
+    const call = vi.mocked(mockClient.chat.postMessage).mock.calls[0]![0] as {
+      blocks: Array<{ type: string; elements?: Array<{ text: string }> }>;
+    };
+
+    // Last two blocks should be divider + context with "Sent via My Assistant"
+    const blocks = call.blocks;
+    expect(blocks[blocks.length - 2]!.type).toBe("divider");
+    const footerCtx = blocks[blocks.length - 1]!;
+    expect(footerCtx.type).toBe("context");
+    expect(footerCtx.elements![0]!.text).toBe("Sent via My Assistant");
   });
 });

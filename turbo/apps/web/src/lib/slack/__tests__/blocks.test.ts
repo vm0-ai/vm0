@@ -7,6 +7,7 @@ import {
   buildHelpMessage,
   buildSuccessMessage,
   buildAgentResponseMessage,
+  buildFooterBlocks,
 } from "../blocks";
 
 describe("buildErrorMessage", () => {
@@ -221,6 +222,18 @@ describe("buildAgentResponseMessage", () => {
     expect(
       (contextBlocks[0] as { elements: { text: string }[] }).elements[0]!.text,
     ).toContain("Audit");
+  });
+});
+
+describe("buildFooterBlocks", () => {
+  it("should create divider + context block with given text", () => {
+    const blocks = buildFooterBlocks("Sent via my-agent");
+    expect(blocks).toHaveLength(2);
+    expect(blocks[0]!.type).toBe("divider");
+    expect(blocks[1]!.type).toBe("context");
+    expect(
+      (blocks[1] as { elements: { text: string }[] }).elements[0]!.text,
+    ).toBe("Sent via my-agent");
   });
 });
 

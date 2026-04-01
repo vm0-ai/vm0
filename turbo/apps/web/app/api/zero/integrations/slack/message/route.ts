@@ -8,14 +8,35 @@ import {
 import { isSandboxAuth } from "../../../../../../src/lib/auth/capability-check";
 import { resolveOrg } from "../../../../../../src/lib/org/resolve-org";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
+import { agentComposeVersions } from "../../../../../../src/db/schema/agent-compose";
+import { zeroAgents } from "../../../../../../src/db/schema/zero-agent";
 import { slackOrgInstallations } from "../../../../../../src/db/schema/slack-org-installation";
 import { decryptSecretValue } from "../../../../../../src/lib/crypto/secrets-encryption";
 import {
   createSlackClient,
   postMessage,
 } from "../../../../../../src/lib/slack/client";
+import { buildFooterBlocks } from "../../../../../../src/lib/slack/blocks";
 import type { Block, KnownBlock } from "@slack/web-api";
 import { eq, and } from "drizzle-orm";
+
+/** Best-effort agent display name resolution from a run ID. */
+async function resolveAgentLabel(runId: string): Promise<string | undefined> {
+  const [row] = await globalThis.services.db
+    .select({
+      displayName: zeroAgents.displayName,
+      name: zeroAgents.name,
+    })
+    .from(agentRuns)
+    .innerJoin(
+      agentComposeVersions,
+      eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
+    )
+    .innerJoin(zeroAgents, eq(agentComposeVersions.composeId, zeroAgents.id))
+    .where(eq(agentRuns.id, runId))
+    .limit(1);
+  return row?.displayName ?? row?.name;
+}
 
 /** Type guard for Slack API platform errors that carry a `data.error` string */
 function isSlackPlatformError(
@@ -94,10 +115,24 @@ const router = tsr.router(integrationsSlackMessageContract, {
     );
     const client = createSlackClient(botToken);
 
+    // Resolve agent name for "Sent via" footer (best-effort)
+    const agentLabel = authCtx.runId
+      ? await resolveAgentLabel(authCtx.runId).catch(() => {
+          return undefined;
+        })
+      : undefined;
+
+    // Append "Sent via <agent>" footer blocks when agent is known
+    let finalBlocks = body.blocks as (Block | KnownBlock)[] | undefined;
+    if (agentLabel) {
+      const footerBlocks = buildFooterBlocks(`Sent via ${agentLabel}`);
+      finalBlocks = [...(finalBlocks ?? []), ...footerBlocks];
+    }
+
     try {
       const result = await postMessage(client, body.channel, body.text ?? "", {
         threadTs: body.threadTs,
-        blocks: body.blocks as (Block | KnownBlock)[],
+        blocks: finalBlocks,
       });
       return {
         status: 200 as const,

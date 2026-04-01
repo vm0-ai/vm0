@@ -433,19 +433,31 @@ export function buildAgentResponseMessage(
   }
 
   if (triggeredBy) {
-    blocks.push({ type: "divider" });
-    blocks.push({
+    blocks.push(...buildFooterBlocks(triggeredBy));
+  }
+
+  return blocks;
+}
+
+/**
+ * Build a divider + context block pair for message footers.
+ *
+ * @param text - The footer text (e.g. "Sent via my-agent")
+ * @returns Divider and context blocks
+ */
+export function buildFooterBlocks(text: string): (Block | KnownBlock)[] {
+  return [
+    { type: "divider" },
+    {
       type: "context",
       elements: [
         {
           type: "mrkdwn",
-          text: triggeredBy,
+          text,
         },
       ],
-    });
-  }
-
-  return blocks;
+    },
+  ];
 }
 
 /**
