@@ -1,10 +1,7 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
-import { throwIfAbort, resetSignal, createDeferredPromise } from "../utils.ts";
-import { logger } from "../log.ts";
+import { resetSignal, createDeferredPromise } from "../utils.ts";
 import { chatThreadId$ } from "./zero-nav.ts";
 import { fetch$ } from "../fetch.ts";
-
-const L = logger("ChatDraft");
 
 // ---------------------------------------------------------------------------
 // Attachment types (moved from zero-chat.ts)

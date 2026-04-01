@@ -1,6 +1,6 @@
 import { command, computed, state, type Computed } from "ccstate";
 import type { AgentEvent, LogStatus } from "./log-types.ts";
-import { resetSignal, throwIfAbort } from "../utils.ts";
+import { resetSignal } from "../utils.ts";
 import { detachedNavigateTo$ } from "../route.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { logger } from "../log.ts";
@@ -795,31 +795,54 @@ function handleSendError(result: {
   throw new Error(message);
 }
 
-export const sendNewThreadMessage$ = command(
+interface PreparedMessage {
+  fullPrompt: string;
+  modelProvider: string | undefined;
+}
+
+const prepareChatMessage$ = command(
   async (
-    { get, set },
-    agentId: string,
+    { set },
     prompt: string,
     options: { modelProvider?: string } | undefined,
     signal: AbortSignal,
-  ) => {
+  ): Promise<PreparedMessage | null> => {
     if (!prompt.trim()) {
-      return;
+      return null;
     }
 
     const { fullPrompt } = await set(prepareUserMessage$, prompt, signal);
     signal.throwIfAborted();
 
-    const modelProvider = resolveModelProvider(options?.modelProvider);
+    return {
+      fullPrompt,
+      modelProvider: resolveModelProvider(options?.modelProvider),
+    };
+  },
+);
+
+const sendChatMessageRequest$ = command(
+  async (
+    { get },
+    agentId: string,
+    prepared: PreparedMessage,
+    threadId: string | null,
+    signal: AbortSignal,
+  ): Promise<{ threadId: string; runId: string }> => {
     const client = get(zeroClient$)(chatMessagesContract);
     const result = await client.send({
       body: {
         agentId,
-        prompt: fullPrompt,
-        ...(modelProvider && { modelProvider }),
+        prompt: prepared.fullPrompt,
+        ...(threadId && { threadId }),
+        ...(prepared.modelProvider && {
+          modelProvider: prepared.modelProvider,
+        }),
+      },
+      fetchOptions: {
+        signal,
       },
     });
-    signal.throwIfAborted();
 
     if (result.status !== 201) {
       if (
@@ -831,9 +854,34 @@ export const sendNewThreadMessage$ = command(
       }
       throw new Error(`Failed to send message (${result.status})`);
     }
-    set(reloadChatThreads$);
 
-    set(navigateToChat$, result.body.threadId);
+    return result.body;
+  },
+);
+
+export const sendNewThreadMessage$ = command(
+  async (
+    { set },
+    agentId: string,
+    prompt: string,
+    options: { modelProvider?: string } | undefined,
+    signal: AbortSignal,
+  ) => {
+    const prepared = await set(prepareChatMessage$, prompt, options, signal);
+    if (!prepared) {
+      return;
+    }
+
+    const { threadId } = await set(
+      sendChatMessageRequest$,
+      agentId,
+      prepared,
+      null,
+      signal,
+    );
+
+    set(reloadChatThreads$);
+    set(navigateToChat$, threadId);
   },
 );
 
@@ -849,37 +897,22 @@ export const sendExistingThreadMessage$ = command(
     signal.throwIfAborted();
     const agentId = thread?.agentId;
 
-    if (!threadId || !agentId || !prompt.trim()) {
+    if (!threadId || !agentId) {
       return;
     }
 
-    const { fullPrompt } = await set(prepareUserMessage$, prompt, signal);
-    signal.throwIfAborted();
-
-    const modelProvider = resolveModelProvider(options?.modelProvider);
-    const client = get(zeroClient$)(chatMessagesContract);
-    const result = await client.send({
-      body: {
-        agentId,
-        prompt: fullPrompt,
-        threadId,
-        ...(modelProvider && { modelProvider }),
-      },
-    });
-    signal.throwIfAborted();
-
-    if (result.status !== 201) {
-      if (
-        result.status === 400 ||
-        result.status === 403 ||
-        result.status === 404
-      ) {
-        handleSendError(result);
-      }
-      throw new Error(`Failed to send message (${result.status})`);
+    const prepared = await set(prepareChatMessage$, prompt, options, signal);
+    if (!prepared) {
+      return;
     }
 
-    const { runId } = result.body;
+    const { runId } = await set(
+      sendChatMessageRequest$,
+      agentId,
+      prepared,
+      threadId,
+      signal,
+    );
 
     set(internalReloadChatThreads$, (n) => {
       return n + 1;
