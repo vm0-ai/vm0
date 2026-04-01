@@ -87,6 +87,8 @@ export function ZeroOrgSwitcher() {
     );
   };
 
+  const isClerkReady = clerk !== null;
+
   return (
     <div ref={orgSwitcherRef}>
       <DropdownMenu>
@@ -163,6 +165,7 @@ export function ZeroOrgSwitcher() {
           <DropdownMenuSeparator />
           <DropdownMenuItem
             onClick={handleCreateOrg}
+            disabled={!isClerkReady}
             className="gap-3 px-3 py-2.5 rounded-lg"
           >
             <IconPlus
