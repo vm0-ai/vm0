@@ -188,23 +188,28 @@ Follow the returned ACTION.
 
 ### On `ACTION: CHECK`
 
-Poll CI status:
+Poll CI status and merge status in parallel:
 
 ```bash
 gh pr checks "$pr_id"
 ```
 
+```bash
+gh pr view "$pr_id" --json mergeable,mergeStateStatus --jq '{mergeable, mergeStateStatus}'
+```
+
 Classify the result:
 
-1. **All checks `pass` or `skipping`** → status is `pass`
-2. **Any check `fail`** → analyze failure type:
+1. **Merge conflict detected** (`mergeable: CONFLICTING` or `mergeStateStatus: DIRTY`) → status is `fail-manual`. This takes priority over CI status — there is no point fixing lint if the branch has conflicts.
+2. **All checks `pass` or `skipping`** → status is `pass`
+3. **Any check `fail`** → analyze failure type:
    - Lint/format failures only → status is `fail-fixable`
    - Type/test failures (with or without lint/format) → status is `fail-manual`
-3. **No failures, some `pending`** → status is `pending`
+4. **No failures, some `pending`** → status is `pending`
 
 **Fail-fast**: If ANY check has `fail` status, classify immediately without waiting for pending checks.
 
-When failures are detected, get failure details:
+When failures are detected (not merge conflicts), get failure details:
 
 ```bash
 # Get the PR branch
@@ -215,6 +220,17 @@ gh run list --branch "$branch" --status failure -L 1
 
 # Get failure logs
 gh run view {run-id} --log-failed
+```
+
+When merge conflicts are detected, include rebase guidance in the manual report:
+
+```
+Merge conflict detected. The branch has conflicts with the base branch.
+Rebase onto main to resolve:
+  git fetch origin main
+  git rebase origin/main
+  # resolve conflicts
+  git push --force-with-lease
 ```
 
 Report to driver:

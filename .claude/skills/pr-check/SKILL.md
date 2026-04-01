@@ -55,13 +55,28 @@ gh pr checks "$pr_id"
 - `pending`: Still running
 - `skipping`: Skipped (acceptable)
 
+### Check Merge Status
+
+```bash
+gh pr view "$pr_id" --json mergeable,mergeStateStatus --jq '{mergeable, mergeStateStatus}'
+```
+
+**Merge Status Values:**
+- `mergeable: MERGEABLE` — No conflicts
+- `mergeable: CONFLICTING` — Merge conflicts exist
+- `mergeable: UNKNOWN` — GitHub is still computing (treat as pending)
+- `mergeStateStatus: DIRTY` — Merge conflicts or other issues
+- `mergeStateStatus: BEHIND` — Branch is behind base branch (may need rebase)
+- `mergeStateStatus: CLEAN` — Ready to merge
+
 ### Classify Results
 
 After polling, classify the overall status:
 
-1. **All checks `pass` or `skipping`** → Report success, go to Step 4
-2. **Any check `fail`** → Proceed to Step 3 (analyze and fix), even if other checks are still `pending`
-3. **No failures but some `pending`** → Report pending status, go to Step 4
+1. **Merge conflict detected** (`mergeable: CONFLICTING` or `mergeStateStatus: DIRTY`) → Report conflict, go to Step 4. This takes priority over CI status.
+2. **All checks `pass` or `skipping`** → Report success, go to Step 4
+3. **Any check `fail`** → Proceed to Step 3 (analyze and fix), even if other checks are still `pending`
+4. **No failures but some `pending`** → Report pending status, go to Step 4
 
 ---
 
@@ -140,11 +155,21 @@ PR Check Result
 
 PR: #<number> - <title>
 Branch: <branch>
-Status: <All Passed / Pending / Auto-Fixed / Manual Fix Required>
+Status: <All Passed / Pending / Auto-Fixed / Manual Fix Required / Merge Conflict>
 
 Checks:
   <check-name>: <status>
   ...
+
+Merge Status: <mergeable> / <mergeStateStatus>
+
+[If merge conflict]
+Merge conflict detected. The branch has conflicts with the base branch.
+Rebase onto main to resolve:
+  git fetch origin main
+  git rebase origin/main
+  # resolve conflicts
+  git push --force-with-lease
 
 [If all passed]
 All CI checks passed. No action needed.
