@@ -23,9 +23,6 @@ const bodySchema = z.object({
 
 const log = logger("webhook:firewall-auth");
 
-/** Matches ${{ secrets.KEY_NAME }} template placeholders in auth header values. */
-const SECRET_TEMPLATE_RE = /\$\{\{\s*secrets\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
-
 /** Matches ${{ secrets.X }} or ${{ vars.X }} template placeholders. */
 const TEMPLATE_RE = /\$\{\{\s*(secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
 
@@ -346,8 +343,8 @@ export async function POST(request: Request) {
   // Collect which secret keys are referenced in auth templates
   const referencedKeys = new Set<string>();
   for (const template of Object.values(authHeaders)) {
-    for (const match of template.matchAll(SECRET_TEMPLATE_RE)) {
-      if (match[1]) referencedKeys.add(match[1]);
+    for (const match of template.matchAll(TEMPLATE_RE)) {
+      if (match[1] === "secrets" && match[2]) referencedKeys.add(match[2]);
     }
   }
 
