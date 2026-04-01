@@ -98,82 +98,103 @@ export const resumeSessionSchema = z.object({
 });
 
 /**
+ * Migrate legacy `experimentalFirewalls` field to `firewalls`.
+ * Allows zero-downtime rollout by accepting both old and new field names.
+ */
+function migrateFirewallsField(val: unknown): unknown {
+  if (val && typeof val === "object" && !Array.isArray(val)) {
+    const obj = val as Record<string, unknown>;
+    if (!("firewalls" in obj) && "experimentalFirewalls" in obj) {
+      const { experimentalFirewalls, ...rest } = obj;
+      return { ...rest, firewalls: experimentalFirewalls };
+    }
+  }
+  return val;
+}
+
+/**
  * Stored execution context (subset stored in database for late routing)
  * Contains prepared context without runtime-generated fields
  * Secrets are encrypted with AES-256-GCM before storage
  */
-export const storedExecutionContextSchema = z.object({
-  workingDir: z.string(),
-  storageManifest: storageManifestSchema.nullable(),
-  environment: z.record(z.string(), z.string()).nullable(),
-  resumeSession: resumeSessionSchema.nullable(),
-  encryptedSecrets: z.string().nullable(), // AES-256-GCM encrypted Record<string, string> (secret name → value)
-  // Maps secret names to OAuth connector types for runtime token refresh (e.g. { "GMAIL_ACCESS_TOKEN": "gmail" })
-  secretConnectorMap: z.record(z.string(), z.string()).nullable().optional(),
-  cliAgentType: z.string(),
-  // Debug flag to force real Claude in mock environments (internal use only)
-  debugNoMockClaude: z.boolean().optional(),
-  // Dispatch timestamp for E2E timing metrics
-  apiStartTime: z.number().optional(),
-  // User's timezone preference (IANA format, e.g., "Asia/Shanghai")
-  userTimezone: z.string().optional(),
-  // Memory storage name (for first-run when manifest.memory is null)
-  memoryName: z.string().optional(),
-  // Firewall for proxy-side token replacement
-  firewalls: firewallsSchema.optional(),
-  // Tools to disable in Claude CLI (passed as --disallowed-tools)
-  disallowedTools: z.array(z.string()).optional(),
-  // Tools to make available in Claude CLI (passed as --tools)
-  tools: z.array(z.string()).optional(),
-  // Settings JSON to pass to Claude CLI (passed as --settings)
-  settings: z.string().optional(),
-  // VM profile for resource allocation (e.g., "vm0/default")
-  experimentalProfile: z.string().optional(),
-});
+export const storedExecutionContextSchema = z.preprocess(
+  migrateFirewallsField,
+  z.object({
+    workingDir: z.string(),
+    storageManifest: storageManifestSchema.nullable(),
+    environment: z.record(z.string(), z.string()).nullable(),
+    resumeSession: resumeSessionSchema.nullable(),
+    encryptedSecrets: z.string().nullable(), // AES-256-GCM encrypted Record<string, string> (secret name → value)
+    // Maps secret names to OAuth connector types for runtime token refresh (e.g. { "GMAIL_ACCESS_TOKEN": "gmail" })
+    secretConnectorMap: z.record(z.string(), z.string()).nullable().optional(),
+    cliAgentType: z.string(),
+    // Debug flag to force real Claude in mock environments (internal use only)
+    debugNoMockClaude: z.boolean().optional(),
+    // Dispatch timestamp for E2E timing metrics
+    apiStartTime: z.number().optional(),
+    // User's timezone preference (IANA format, e.g., "Asia/Shanghai")
+    userTimezone: z.string().optional(),
+    // Memory storage name (for first-run when manifest.memory is null)
+    memoryName: z.string().optional(),
+    // Firewall for proxy-side token replacement
+    firewalls: firewallsSchema.optional(),
+    // Tools to disable in Claude CLI (passed as --disallowed-tools)
+    disallowedTools: z.array(z.string()).optional(),
+    // Tools to make available in Claude CLI (passed as --tools)
+    tools: z.array(z.string()).optional(),
+    // Settings JSON to pass to Claude CLI (passed as --settings)
+    settings: z.string().optional(),
+    // VM profile for resource allocation (e.g., "vm0/default")
+    experimentalProfile: z.string().optional(),
+  }),
+);
 
 /**
  * Execution context returned when claiming a job.
  *
  * Keep in sync with Rust: crates/runner/src/types.rs → ExecutionContext
  */
-export const executionContextSchema = z.object({
-  runId: z.uuid(),
-  prompt: z.string(),
-  appendSystemPrompt: z.string().nullable(),
-  agentComposeVersionId: z.string().nullable(),
-  vars: z.record(z.string(), z.string()).nullable(),
-  checkpointId: z.uuid().nullable(),
-  sandboxToken: z.string(),
-  // New fields for E2B parity:
-  workingDir: z.string(),
-  storageManifest: storageManifestSchema.nullable(),
-  environment: z.record(z.string(), z.string()).nullable(),
-  resumeSession: resumeSessionSchema.nullable(),
-  secretValues: z.array(z.string()).nullable(),
-  // AES-256-GCM encrypted Record<string, string> — passed through to mitm-addon for auth resolution
-  encryptedSecrets: z.string().nullable(),
-  // Maps secret names to OAuth connector types for runtime token refresh
-  secretConnectorMap: z.record(z.string(), z.string()).nullable().optional(),
-  cliAgentType: z.string(),
-  // Debug flag to force real Claude in mock environments (internal use only)
-  debugNoMockClaude: z.boolean().optional(),
-  // Dispatch timestamp for E2E timing metrics
-  apiStartTime: z.number().optional(),
-  // User's timezone preference (IANA format, e.g., "Asia/Shanghai")
-  userTimezone: z.string().optional(),
-  // Memory storage name (for first-run when manifest.memory is null)
-  memoryName: z.string().optional(),
-  // Firewall for proxy-side token replacement
-  firewalls: firewallsSchema.optional(),
-  // Tools to disable in Claude CLI (passed as --disallowed-tools)
-  disallowedTools: z.array(z.string()).optional(),
-  // Tools to make available in Claude CLI (passed as --tools)
-  tools: z.array(z.string()).optional(),
-  // Settings JSON to pass to Claude CLI (passed as --settings)
-  settings: z.string().optional(),
-  // VM profile for resource allocation (e.g., "vm0/default")
-  experimentalProfile: z.string().optional(),
-});
+export const executionContextSchema = z.preprocess(
+  migrateFirewallsField,
+  z.object({
+    runId: z.uuid(),
+    prompt: z.string(),
+    appendSystemPrompt: z.string().nullable(),
+    agentComposeVersionId: z.string().nullable(),
+    vars: z.record(z.string(), z.string()).nullable(),
+    checkpointId: z.uuid().nullable(),
+    sandboxToken: z.string(),
+    // New fields for E2B parity:
+    workingDir: z.string(),
+    storageManifest: storageManifestSchema.nullable(),
+    environment: z.record(z.string(), z.string()).nullable(),
+    resumeSession: resumeSessionSchema.nullable(),
+    secretValues: z.array(z.string()).nullable(),
+    // AES-256-GCM encrypted Record<string, string> — passed through to mitm-addon for auth resolution
+    encryptedSecrets: z.string().nullable(),
+    // Maps secret names to OAuth connector types for runtime token refresh
+    secretConnectorMap: z.record(z.string(), z.string()).nullable().optional(),
+    cliAgentType: z.string(),
+    // Debug flag to force real Claude in mock environments (internal use only)
+    debugNoMockClaude: z.boolean().optional(),
+    // Dispatch timestamp for E2E timing metrics
+    apiStartTime: z.number().optional(),
+    // User's timezone preference (IANA format, e.g., "Asia/Shanghai")
+    userTimezone: z.string().optional(),
+    // Memory storage name (for first-run when manifest.memory is null)
+    memoryName: z.string().optional(),
+    // Firewall for proxy-side token replacement
+    firewalls: firewallsSchema.optional(),
+    // Tools to disable in Claude CLI (passed as --disallowed-tools)
+    disallowedTools: z.array(z.string()).optional(),
+    // Tools to make available in Claude CLI (passed as --tools)
+    tools: z.array(z.string()).optional(),
+    // Settings JSON to pass to Claude CLI (passed as --settings)
+    settings: z.string().optional(),
+    // VM profile for resource allocation (e.g., "vm0/default")
+    experimentalProfile: z.string().optional(),
+  }),
+);
 
 /**
  * Runners job claim contract - POST /api/runners/jobs/:id/claim
