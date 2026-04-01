@@ -61,6 +61,10 @@ impl CowLayer {
         flush_threshold: usize,
     ) -> Result<Self> {
         assert!(block_size > 0, "block_size must be positive");
+        debug_assert!(
+            size.is_multiple_of(block_size as u64),
+            "device size ({size}) must be a multiple of block_size ({block_size})"
+        );
         let base_fd = File::open(base_path)?;
         let num_blocks = (size as usize).div_ceil(block_size);
 
@@ -133,7 +137,7 @@ impl CowLayer {
             } else if self.is_dirty(block_idx) {
                 // Read from COW file
                 if let Some(ref cow_fd) = self.cow_fd {
-                    cow_fd.read_at(dest, current_offset)?;
+                    cow_fd.read_exact_at(dest, current_offset)?;
                 } else {
                     return Err(NbdCowError::Io(std::io::Error::other(
                         "dirty bit set but COW file not open",
@@ -141,7 +145,7 @@ impl CowLayer {
                 }
             } else {
                 // Read from base image
-                self.base_fd.read_at(dest, current_offset)?;
+                self.base_fd.read_exact_at(dest, current_offset)?;
             }
 
             pos += to_read;
@@ -209,7 +213,7 @@ impl CowLayer {
         for (i, entry) in blocks.iter().enumerate() {
             let offset = entry.0 * block_size as u64;
             if let Some(ref cow_fd) = self.cow_fd
-                && let Err(e) = cow_fd.write_at(&entry.1, offset)
+                && let Err(e) = cow_fd.write_all_at(&entry.1, offset)
             {
                 // Restore unwritten blocks back to the buffer
                 for (idx, buf) in blocks.into_iter().skip(i) {
@@ -261,6 +265,11 @@ impl CowLayer {
     }
 
     fn is_dirty(&self, block_idx: u64) -> bool {
+        debug_assert!(
+            (block_idx as usize) < self.dirty.len(),
+            "block_idx {block_idx} out of range (max {})",
+            self.dirty.len()
+        );
         self.dirty
             .get(block_idx as usize)
             .as_deref()
@@ -269,6 +278,11 @@ impl CowLayer {
     }
 
     fn set_dirty(&mut self, block_idx: u64) {
+        debug_assert!(
+            (block_idx as usize) < self.dirty.len(),
+            "block_idx {block_idx} out of range (max {})",
+            self.dirty.len()
+        );
         if let Some(mut bit) = self.dirty.get_mut(block_idx as usize) {
             *bit = true;
         }
@@ -281,7 +295,7 @@ impl CowLayer {
 
         if self.is_dirty(block_idx) {
             if let Some(ref cow_fd) = self.cow_fd {
-                cow_fd.read_at(&mut buf, offset)?;
+                cow_fd.read_exact_at(&mut buf, offset)?;
                 return Ok(buf);
             }
             return Err(NbdCowError::Io(std::io::Error::other(
@@ -289,7 +303,7 @@ impl CowLayer {
             )));
         }
 
-        self.base_fd.read_at(&mut buf, offset)?;
+        self.base_fd.read_exact_at(&mut buf, offset)?;
         Ok(buf)
     }
 
@@ -318,10 +332,15 @@ impl CowLayer {
         for word in raw {
             data.extend_from_slice(&(*word as u64).to_le_bytes());
         }
-        // Write to a temp file then rename for atomicity — if the process
-        // crashes mid-write, the old bitmap (or no bitmap) remains intact.
+        // Write to a temp file, fsync, then rename for crash-safe atomicity.
+        // Without fsync, a power failure after rename could leave a corrupt bitmap
+        // (data still in page cache), which would cause dirty-block information
+        // loss on the next restore.
         let tmp_path = PathBuf::from(format!("{}.tmp", path.display()));
-        if let Err(e) = std::fs::write(&tmp_path, &data) {
+        if let Err(e) = File::create(&tmp_path).and_then(|f| {
+            f.write_all_at(&data, 0)?;
+            f.sync_all()
+        }) {
             let _ = std::fs::remove_file(&tmp_path);
             return Err(e.into());
         }

@@ -268,6 +268,12 @@ impl NbdCowDevice {
 /// Best-effort cleanup on drop: cancel tasks and disconnect the NBD device.
 /// This ensures leaked devices are cleaned up even if `destroy()` is not called
 /// (e.g., test panics).
+///
+/// **Note:** Drop aborts dispatch tasks immediately without waiting for them to
+/// flush buffered writes. Any data in the write buffer that has not been flushed
+/// is silently lost. Always call [`destroy()`](Self::destroy) or
+/// [`destroy_keep_cow()`](Self::destroy_keep_cow) for clean shutdown with data
+/// persistence guarantees.
 impl Drop for NbdCowDevice {
     fn drop(&mut self) {
         self.shutdown.cancel();

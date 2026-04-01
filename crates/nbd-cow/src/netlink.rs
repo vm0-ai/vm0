@@ -32,6 +32,8 @@ const NBD_SOCK_FD: u16 = 1;
 
 // NBD server flags
 const NBD_FLAG_HAS_FLAGS: u64 = 1 << 0;
+const NBD_FLAG_SEND_FLUSH: u64 = 1 << 2;
+const NBD_FLAG_SEND_TRIM: u64 = 1 << 5;
 const NBD_FLAG_CAN_MULTI_CONN: u64 = 1 << 8;
 
 // Netlink constants
@@ -90,7 +92,7 @@ fn device_appears_free(index: u32) -> bool {
             let pid = contents.trim();
             pid == "-1" || pid == "0" || pid.is_empty()
         }
-        Err(_) => true, // Can't read pid file → assume free
+        Err(_) => false, // Can't read pid file → skip (EBUSY fallback will catch free devices)
     }
 }
 
@@ -109,7 +111,8 @@ pub fn find_and_connect(client_fds: &[OwnedFd], size: u64, block_size: u64) -> R
 
     // Build socket attributes once (reused across attempts)
     let sockets_nla = build_sockets_nla(client_fds);
-    let flags = NBD_FLAG_HAS_FLAGS | NBD_FLAG_CAN_MULTI_CONN;
+    let flags =
+        NBD_FLAG_HAS_FLAGS | NBD_FLAG_SEND_FLUSH | NBD_FLAG_SEND_TRIM | NBD_FLAG_CAN_MULTI_CONN;
 
     for i in 0..max {
         if !device_appears_free(i) {
@@ -310,6 +313,7 @@ fn send_genl_msg_raw(
 ) -> Result<()> {
     // nlmsghdr (16) + genlmsghdr (4) + attrs
     let total_len = 16 + 4 + attrs.len();
+    assert!(total_len <= u32::MAX as usize, "netlink message too large");
     let mut msg = vec![0u8; total_len];
 
     // nlmsghdr: length(4) + type(2) + flags(2) + seq(4) + pid(4)
@@ -448,6 +452,7 @@ fn build_nla(nla_type: u16, payload: &[u8]) -> Vec<u8> {
 /// Build a nested netlink attribute.
 fn build_nested_nla(nla_type: u16, payload: &[u8]) -> Vec<u8> {
     let nla_len = 4 + payload.len();
+    assert!(nla_len <= u16::MAX as usize, "nested NLA payload too large");
     let aligned_len = (nla_len + 3) & !3;
     let mut buf = vec![0u8; aligned_len];
     // Set NLA_F_NESTED flag (1 << 15)
