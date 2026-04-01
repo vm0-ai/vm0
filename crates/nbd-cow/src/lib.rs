@@ -230,16 +230,20 @@ impl NbdCowDevice {
             cow.save_bitmap(&self.bitmap_path())?;
         }
 
-        // Disconnect via netlink — attempt exactly once.
-        //
-        // Why no retry: if the kernel processed the disconnect but the netlink
-        // ACK was lost (recv timeout), `self.device_index` may already have been
-        // recycled by another runner. A second disconnect would tear down the
-        // other runner's device. Setting `disconnected = true` first ensures
-        // neither this function (on re-entry) nor Drop attempts a second call.
+        // Disconnect via netlink — attempt exactly once, only if we still own
+        // the device. On shared hosts, another runner may have already
+        // disconnected our device and recycled the index; blindly calling
+        // disconnect(device_index) would tear down the new owner's device.
         if !self.disconnected {
             self.disconnected = true;
-            netlink::disconnect(self.device_index)?;
+            if self.device_owned_by_us() {
+                netlink::disconnect(self.device_index)?;
+            } else {
+                tracing::warn!(
+                    device_index = self.device_index,
+                    "skipping disconnect: device recycled by another process"
+                );
+            }
         }
 
         // Wait for kernel to release the device (poll pid file)
@@ -258,6 +262,22 @@ impl NbdCowDevice {
         }
 
         Ok(())
+    }
+
+    /// Check if we still own the NBD device by comparing the sysfs PID.
+    ///
+    /// The kernel records the connecting process's PID in `/sys/block/nbdN/pid`.
+    /// If another process recycled the device index, the PID will differ and
+    /// we must skip disconnect to avoid tearing down the other process's device.
+    fn device_owned_by_us(&self) -> bool {
+        let pid_path = format!("/sys/block/nbd{}/pid", self.device_index);
+        match std::fs::read_to_string(&pid_path) {
+            Ok(contents) => {
+                let pid: u32 = contents.trim().parse().unwrap_or(0);
+                pid == std::process::id()
+            }
+            Err(_) => false,
+        }
     }
 
     fn bitmap_path(&self) -> PathBuf {
@@ -281,9 +301,11 @@ impl Drop for NbdCowDevice {
         for handle in self.server_handles.drain(..) {
             handle.abort();
         }
-        // Only disconnect if shutdown_inner hasn't already done it,
-        // to avoid disconnecting a device that was recycled by another runner.
+        // Only disconnect if shutdown_inner hasn't already done it AND we
+        // still own the device. Another runner's cleanup may have already
+        // disconnected our index and a third runner may have recycled it.
         if !self.disconnected
+            && self.device_owned_by_us()
             && let Err(e) = netlink::disconnect(self.device_index)
         {
             tracing::warn!(
