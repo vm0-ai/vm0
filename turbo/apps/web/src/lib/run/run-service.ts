@@ -1287,7 +1287,6 @@ export async function dispatchCancelSideEffects(
   result: CancelRunResult,
   queueDispatcher: (
     runId: string,
-    createdAt: Date,
     params: CreateRunParams,
   ) => Promise<void> = dispatchQueuedRun,
 ): Promise<void> {
