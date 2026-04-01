@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.175.0](https://github.com/vm0-ai/vm0/compare/app-v0.174.1...app-v0.175.0) (2026-04-01)
+
+
+### Features
+
+* add collapsible permission groups in firewall dialog ([#7507](https://github.com/vm0-ai/vm0/issues/7507)) ([e3fef9c](https://github.com/vm0-ai/vm0/commit/e3fef9cc4f452fa62a41a8541ed7c5d8ea986386))
+
+
+### Bug Fixes
+
+* **web:** reuse existing empty chat thread instead of creating duplicates ([#7368](https://github.com/vm0-ai/vm0/issues/7368)) ([#7510](https://github.com/vm0-ai/vm0/issues/7510)) ([3bd5b19](https://github.com/vm0-ai/vm0/commit/3bd5b1927b5a6e3c42cd74743562954e872f983f))
+
+
+### Refactoring
+
+* **platform:** onboarding components read signals directly ([#7501](https://github.com/vm0-ai/vm0/issues/7501)) ([c65edb5](https://github.com/vm0-ai/vm0/commit/c65edb50775eccce4ef9db87dae27a0758810af4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.135.0
+
 ## [0.174.1](https://github.com/vm0-ai/vm0/compare/app-v0.174.0...app-v0.174.1) (2026-04-01)
 
 

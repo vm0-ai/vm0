@@ -1,5 +1,29 @@
 # Changelog
 
+## [12.181.0](https://github.com/vm0-ai/vm0/compare/web-v12.180.0...web-v12.181.0) (2026-04-01)
+
+
+### Features
+
+* add backfill migration for vm0 managed model provider ([#7497](https://github.com/vm0-ai/vm0/issues/7497)) ([1e9f3ed](https://github.com/vm0-ai/vm0/commit/1e9f3edaefd8a3350cc0c9dc55c85da77b0ef990))
+
+
+### Bug Fixes
+
+* **web:** treat firewalls without permissions as unrestricted ([#7516](https://github.com/vm0-ai/vm0/issues/7516)) ([c2b9bba](https://github.com/vm0-ai/vm0/commit/c2b9bba2ab376978c47c66ae5a5e2e9c4d8420a2))
+
+
+### Refactoring
+
+* remove queue-dispatcher param from build-and-dispatch pipeline ([#7499](https://github.com/vm0-ai/vm0/issues/7499)) ([2d7d36c](https://github.com/vm0-ai/vm0/commit/2d7d36c482d717bb2f93044799a21e799e34fd91)), closes [#7490](https://github.com/vm0-ai/vm0/issues/7490)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.135.0
+
 ## [12.180.0](https://github.com/vm0-ai/vm0/compare/web-v12.179.0...web-v12.180.0) (2026-04-01)
 
 

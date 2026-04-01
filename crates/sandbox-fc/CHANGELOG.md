@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.20.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.19.0...sandbox-fc-v0.20.0) (2026-04-01)
+
+
+### Features
+
+* **sandbox-fc:** replace dm-snapshot with nbd-cow ([#7406](https://github.com/vm0-ai/vm0/issues/7406)) ([bc60c4b](https://github.com/vm0-ai/vm0/commit/bc60c4b01eaac368f7434d367784855b0b50479b))
+
 ## [0.19.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.18.4...sandbox-fc-v0.19.0) (2026-04-01)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.56.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.55.0...runner-rs-v0.56.0) (2026-04-01)
+
+
+### Features
+
+* **sandbox-fc:** replace dm-snapshot with nbd-cow ([#7406](https://github.com/vm0-ai/vm0/issues/7406)) ([bc60c4b](https://github.com/vm0-ai/vm0/commit/bc60c4b01eaac368f7434d367784855b0b50479b))
+
 ## [0.55.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.54.0...runner-rs-v0.55.0) (2026-04-01)
 
 

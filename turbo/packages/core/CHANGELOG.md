@@ -1,5 +1,13 @@
 # Changelog
 
+## [8.135.0](https://github.com/vm0-ai/vm0/compare/core-v8.134.0...core-v8.135.0) (2026-04-01)
+
+
+### Features
+
+* **firewalls:** add fine-grained youtube firewall permissions ([#7508](https://github.com/vm0-ai/vm0/issues/7508)) ([3020746](https://github.com/vm0-ai/vm0/commit/30207460f2d33dbf8b5c235bf8bfc02962556324))
+* **firewalls:** add jira firewall config with basic auth ([#7514](https://github.com/vm0-ai/vm0/issues/7514)) ([433d55d](https://github.com/vm0-ai/vm0/commit/433d55d44e6b6f9793391eb82b01f2ab6d5c65f7)), closes [#7137](https://github.com/vm0-ai/vm0/issues/7137)
+
 ## [8.134.0](https://github.com/vm0-ai/vm0/compare/core-v8.133.0...core-v8.134.0) (2026-04-01)
 
 
