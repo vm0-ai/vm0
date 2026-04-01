@@ -174,6 +174,7 @@ describe("create teammate dialog - avatar", () => {
           {
             name: "new-agent-uuid",
             agentId: "new-agent-id",
+            ownerId: "test-user-123",
             description: null,
             displayName: capturedPayload.displayName ?? null,
             sound: null,
@@ -188,6 +189,7 @@ describe("create teammate dialog - avatar", () => {
         return HttpResponse.json({
           name: "new-agent-uuid",
           agentId: "new-agent-id",
+          ownerId: "test-user-123",
           description: null,
           displayName: null,
           sound: null,
@@ -231,6 +233,7 @@ describe("create teammate dialog - avatar", () => {
           {
             name: "new-agent-uuid",
             agentId: "new-agent-id",
+            ownerId: "test-user-123",
             description: null,
             displayName: capturedPayload.displayName ?? null,
             sound: null,
@@ -245,6 +248,7 @@ describe("create teammate dialog - avatar", () => {
         return HttpResponse.json({
           name: "new-agent-uuid",
           agentId: "new-agent-id",
+          ownerId: "test-user-123",
           description: null,
           displayName: null,
           sound: null,
@@ -298,6 +302,7 @@ describe("create teammate dialog - avatar", () => {
           {
             name: "new-agent-uuid",
             agentId: "new-agent-id",
+            ownerId: "test-user-123",
             description: null,
             displayName: null,
             sound: null,
@@ -312,6 +317,7 @@ describe("create teammate dialog - avatar", () => {
         return HttpResponse.json({
           name: "new-agent-uuid",
           agentId: "new-agent-id",
+          ownerId: "test-user-123",
           description: null,
           displayName: null,
           sound: null,

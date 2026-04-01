@@ -172,6 +172,7 @@ describe("talk navigation", () => {
           {
             name: "zero",
             agentId: "d0000000-0000-4000-a000-000000000001",
+            ownerId: "test-user-123",
             description: null,
             displayName: null,
             sound: null,
@@ -187,6 +188,7 @@ describe("talk navigation", () => {
         return HttpResponse.json({
           name: "zero",
           agentId: "d0000000-0000-4000-a000-000000000001",
+          ownerId: "test-user-123",
           description: null,
           displayName: null,
           sound: null,
