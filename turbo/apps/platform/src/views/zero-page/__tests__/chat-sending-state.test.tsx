@@ -56,7 +56,7 @@ describe("chat sending state", () => {
 
     await waitFor(() => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();
-      expect(screen.getByLabelText("Send")).toBeDisabled();
+      expect(screen.queryByLabelText("Send")).not.toBeInTheDocument();
     });
 
     ctrl.completeRun("Done");
