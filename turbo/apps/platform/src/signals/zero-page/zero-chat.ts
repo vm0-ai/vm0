@@ -795,18 +795,21 @@ function handleSendError(result: {
   throw new Error(message);
 }
 
-interface PreparedMessage {
-  fullPrompt: string;
-  modelProvider: string | undefined;
+interface ChatMessageArgs {
+  agentId: string;
+  prompt: string;
+  modelProvider?: string;
+  threadId?: string;
 }
 
 const prepareChatMessage$ = command(
   async (
     { set },
+    agentId: string,
     prompt: string,
     options: { modelProvider?: string } | undefined,
     signal: AbortSignal,
-  ): Promise<PreparedMessage | null> => {
+  ): Promise<ChatMessageArgs | null> => {
     if (!prompt.trim()) {
       return null;
     }
@@ -815,7 +818,8 @@ const prepareChatMessage$ = command(
     signal.throwIfAborted();
 
     return {
-      fullPrompt,
+      agentId,
+      prompt: fullPrompt,
       modelProvider: resolveModelProvider(options?.modelProvider),
     };
   },
@@ -824,21 +828,12 @@ const prepareChatMessage$ = command(
 const sendChatMessageRequest$ = command(
   async (
     { get },
-    agentId: string,
-    prepared: PreparedMessage,
-    threadId: string | null,
+    message: ChatMessageArgs,
     signal: AbortSignal,
   ): Promise<{ threadId: string; runId: string }> => {
     const client = get(zeroClient$)(chatMessagesContract);
     const result = await client.send({
-      body: {
-        agentId,
-        prompt: prepared.fullPrompt,
-        ...(threadId && { threadId }),
-        ...(prepared.modelProvider && {
-          modelProvider: prepared.modelProvider,
-        }),
-      },
+      body: message,
       fetchOptions: {
         signal,
       },
@@ -867,18 +862,18 @@ export const sendNewThreadMessage$ = command(
     options: { modelProvider?: string } | undefined,
     signal: AbortSignal,
   ) => {
-    const prepared = await set(prepareChatMessage$, prompt, options, signal);
-    if (!prepared) {
+    const message = await set(
+      prepareChatMessage$,
+      agentId,
+      prompt,
+      options,
+      signal,
+    );
+    if (!message) {
       return;
     }
 
-    const { threadId } = await set(
-      sendChatMessageRequest$,
-      agentId,
-      prepared,
-      null,
-      signal,
-    );
+    const { threadId } = await set(sendChatMessageRequest$, message, signal);
 
     set(reloadChatThreads$);
     set(navigateToChat$, threadId);
@@ -901,16 +896,23 @@ export const sendExistingThreadMessage$ = command(
       return;
     }
 
-    const prepared = await set(prepareChatMessage$, prompt, options, signal);
-    if (!prepared) {
+    const message = await set(
+      prepareChatMessage$,
+      agentId,
+      prompt,
+      options,
+      signal,
+    );
+    if (!message) {
       return;
     }
 
     const { runId } = await set(
       sendChatMessageRequest$,
-      agentId,
-      prepared,
-      threadId,
+      {
+        ...message,
+        threadId,
+      },
       signal,
     );
 
