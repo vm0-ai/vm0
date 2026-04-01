@@ -50,7 +50,6 @@ const router = tsr.router(zeroBillingCheckoutContract, {
 
     const url = await createCheckoutSession(
       org.orgId,
-      org.slug,
       priceId,
       body.successUrl,
       body.cancelUrl,
