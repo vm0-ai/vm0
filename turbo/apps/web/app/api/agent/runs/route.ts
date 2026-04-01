@@ -235,6 +235,7 @@ const router = tsr.router(runsMainContract, {
         modelProvider: body.modelProvider,
         firewallPolicies: body.firewallPolicies,
         callerOrgId: org.orgId,
+        useZeroContext: true,
       });
 
       log.debug(

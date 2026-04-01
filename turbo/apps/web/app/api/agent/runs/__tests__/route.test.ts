@@ -311,16 +311,17 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       mockClerk({ userId: ownerUser.userId });
     });
 
-    it("should succeed org member agent run even without model provider (CLI path)", async () => {
-      // User A (owner) creates an agent in a new org without any model provider
+    it("should succeed org member agent run with model provider", async () => {
+      // User A (owner) creates an agent with a model provider configured
       const ownerUser = user;
+      await createTestOrgModelProvider("anthropic-api-key", "test-api-key");
       const { composeId: sharedComposeId } = await createTestCompose(
-        uniqueId("shared-no-mp"),
-        { noEnvironmentBlock: true },
+        uniqueId("shared-mp"),
+        { skipDefaultApiKey: true },
       );
 
       // Switch to User B (runner) who is an org member
-      const runnerUser = await context.setupUser({ prefix: "runner-no-mp" });
+      const runnerUser = await context.setupUser({ prefix: "runner-mp" });
       await insertOrgMembersCacheEntry({
         orgId: ownerUser.orgId,
         userId: runnerUser.userId,
@@ -330,11 +331,9 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       // Set User B's active org to owner's org (simulates org selection in Clerk)
       mockClerk({ userId: runnerUser.userId, orgId: ownerUser.orgId });
 
-      // CLI path (startRun) does not check model providers — that's a zero-layer concern.
-      // Run succeeds with "pending" status; the sandbox will fail if API key is missing.
       const data = await createTestRun(
         sharedComposeId,
-        "Run without model provider",
+        "Run with model provider",
       );
 
       expect(data.status).toBe("pending");
@@ -631,19 +630,19 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(data.status).toBe("pending");
     });
 
-    it("should succeed when no model provider and no API key in compose (CLI path)", async () => {
+    it("should fail when no model provider and no API key in compose", async () => {
       // Create compose without API key and no environment block
       const { composeId } = await createTestCompose(uniqueId("no-mp"), {
         noEnvironmentBlock: true,
       });
 
-      // CLI path (startRun) does not validate model providers — that's a zero-layer concern.
-      // Run succeeds with "pending" status.
+      // Zero-layer context building validates model providers —
+      // run fails because there's no way to authenticate to the LLM.
       const data = await createTestRun(
         composeId,
         "Test without model provider",
       );
-      expect(data.status).toBe("pending");
+      expect(data.status).toBe("failed");
     });
 
     it("should skip injection when compose has explicit ANTHROPIC_API_KEY", async () => {
@@ -687,14 +686,14 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(data.status).toBe("pending");
     });
 
-    it("should succeed even with invalid model provider (CLI path)", async () => {
+    it("should fail with invalid model provider", async () => {
       // Create compose without API key
       const { composeId } = await createTestCompose(uniqueId("invalid-mp"), {
         skipDefaultApiKey: true,
       });
 
-      // CLI path does not validate model providers — that's a zero-layer concern.
-      // The modelProvider param is passed through but not resolved.
+      // Zero-layer context building validates model providers —
+      // run fails because the specified provider doesn't exist.
       const data = await createTestRun(
         composeId,
         "Test with invalid provider",
@@ -703,7 +702,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
         },
       );
 
-      expect(data.status).toBe("pending");
+      expect(data.status).toBe("failed");
     });
 
     it("should auto-inject model provider when no environment block exists", async () => {

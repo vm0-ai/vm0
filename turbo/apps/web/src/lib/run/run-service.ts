@@ -373,6 +373,14 @@ export interface StartRunParams {
   debugNoMockClaude?: boolean;
   firewallPolicies?: FirewallPolicies;
   allowedConnectorTypes?: ConnectorType[];
+
+  // --- Context builder selection ---
+  // When true, use buildZeroExecutionContext (resolves vars/secrets/connectors/
+  // firewalls/timezone from DB). When false (default), use buildInfraExecutionContext
+  // (pure infra, caller provides all data). CLI routes set this to true because
+  // CLI runs still need server-side resolution of stored variables, connector
+  // secrets, and firewall configs.
+  useZeroContext?: boolean;
 }
 
 export interface CreateRunResult {
@@ -850,29 +858,70 @@ export async function startRun(
       await registerCallbacks(record.run.id, params.callbacks);
     }
 
-    // 7. Build infra execution context (no zero dependency)
-    const { context } = buildInfraExecutionContext({
-      runId: record.run.id,
-      userId: params.userId,
-      orgId: authOrgId,
-      agentComposeVersionId: resolved.agentComposeVersionId,
-      agentCompose: record.composeContent,
-      prompt: params.prompt,
-      sandboxToken,
-      appendSystemPrompt: params.appendSystemPrompt,
-      vars: params.vars,
-      secrets: params.secrets,
-      artifactName: params.artifactName,
-      artifactVersion: params.artifactVersion,
-      memoryName: params.memoryName,
-      volumeVersions: params.volumeVersions,
-      disallowedTools: params.disallowedTools,
-      tools: params.tools,
-      settings: params.settings,
-      agentName: resolved.agentName,
-      debugNoMockClaude: params.debugNoMockClaude,
-      continuedFromSessionId: params.sessionId,
-    });
+    // 7. Build execution context
+    let context: ExecutionContext;
+    let resolveSourceDuration: number | undefined;
+    let resolveSecretsDuration: number | undefined;
+
+    if (params.useZeroContext) {
+      // Zero context: resolves vars, secrets, connectors, firewalls, timezone from DB.
+      // Used by CLI route where server-side resolution is still needed.
+      const zeroResult = await buildZeroExecutionContext({
+        runId: record.run.id,
+        userId: params.userId,
+        orgId: authOrgId,
+        agentComposeVersionId: resolved.agentComposeVersionId,
+        agentCompose: record.composeContent,
+        prompt: params.prompt,
+        sandboxToken,
+        appendSystemPrompt: params.appendSystemPrompt,
+        vars: params.vars,
+        secrets: params.secrets,
+        artifactName: params.artifactName,
+        artifactVersion: params.artifactVersion,
+        memoryName: params.memoryName,
+        volumeVersions: params.volumeVersions,
+        disallowedTools: params.disallowedTools,
+        tools: params.tools,
+        settings: params.settings,
+        agentName: resolved.agentName,
+        debugNoMockClaude: params.debugNoMockClaude,
+        continuedFromSessionId: params.sessionId,
+        checkpointId: params.checkpointId,
+        modelProvider: params.modelProvider,
+        firewallPolicies: params.firewallPolicies,
+        allowedConnectorTypes: params.allowedConnectorTypes,
+      });
+      context = zeroResult.context;
+      resolveSourceDuration = zeroResult.timings.resolveSourceAndOrg;
+      resolveSecretsDuration = zeroResult.timings.resolveSecrets;
+    } else {
+      // Infra context: pure infra, no DB queries for business data.
+      // Caller provides all data upfront.
+      const infraResult = buildInfraExecutionContext({
+        runId: record.run.id,
+        userId: params.userId,
+        orgId: authOrgId,
+        agentComposeVersionId: resolved.agentComposeVersionId,
+        agentCompose: record.composeContent,
+        prompt: params.prompt,
+        sandboxToken,
+        appendSystemPrompt: params.appendSystemPrompt,
+        vars: params.vars,
+        secrets: params.secrets,
+        artifactName: params.artifactName,
+        artifactVersion: params.artifactVersion,
+        memoryName: params.memoryName,
+        volumeVersions: params.volumeVersions,
+        disallowedTools: params.disallowedTools,
+        tools: params.tools,
+        settings: params.settings,
+        agentName: resolved.agentName,
+        debugNoMockClaude: params.debugNoMockClaude,
+        continuedFromSessionId: params.sessionId,
+      });
+      context = infraResult.context;
+    }
 
     // 8. Dispatch
     const result = await buildAndDispatchRun({
@@ -883,6 +932,8 @@ export async function startRun(
         authorize: record.authorizeTime,
         transaction: record.transactionTime,
         token: tokenTime,
+        resolveSourceDuration,
+        resolveSecretsDuration,
       },
     });
 
