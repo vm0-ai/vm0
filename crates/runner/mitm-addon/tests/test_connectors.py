@@ -907,7 +907,7 @@ class TestGetFirewallHeaders:
 
         assert headers["headers"] == mock_headers
         assert headers["cache_hit"] is False
-        mock_fetch.assert_called_once_with(encrypted, auth_templates, "tok-xyz", None)
+        mock_fetch.assert_called_once_with(encrypted, auth_templates, "tok-xyz", None, None)
 
         # Verify the cache was populated
         cache_key = ("run-1", "https://api.github.com")
