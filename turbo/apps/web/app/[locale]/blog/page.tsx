@@ -50,6 +50,7 @@ export async function generateMetadata({
       description: t("description"),
       images: ["/og-image.png"],
       creator: "@vm0_ai",
+      site: "@vm0_ai",
     },
   };
 }

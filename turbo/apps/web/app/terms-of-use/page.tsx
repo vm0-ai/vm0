@@ -1,25 +1,19 @@
-"use client";
+import type { Metadata } from "next";
+import TermsOfUseClient from "./TermsOfUseClient";
 
-import { useEffect } from "react";
+export const metadata: Metadata = {
+  title: "Terms of Use | VM0",
+  description:
+    "VM0 Terms of Use — the rules and conditions governing use of our platform.",
+  alternates: {
+    canonical: "https://vm0.ai/terms-of-use",
+  },
+  robots: {
+    index: true,
+    follow: false,
+  },
+};
 
 export default function TermsOfUsePage() {
-  useEffect(() => {
-    if (document.getElementById("termly-jssdk")) return;
-    const script = document.createElement("script");
-    script.id = "termly-jssdk";
-    script.src = "https://app.termly.io/embed-policy.min.js";
-    document.body.appendChild(script);
-  }, []);
-
-  return (
-    <div
-      className="container"
-      style={{ padding: "40px 20px", minHeight: "600px" }}
-    >
-      <div
-        {...({ name: "termly-embed" } as React.HTMLAttributes<HTMLDivElement>)}
-        data-id="2d4a38d0-0baf-410c-a39d-86976b13052d"
-      />
-    </div>
-  );
+  return <TermsOfUseClient />;
 }

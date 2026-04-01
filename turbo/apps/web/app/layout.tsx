@@ -80,9 +80,7 @@ export const metadata: Metadata = {
     address: false,
     telephone: false,
   },
-  alternates: {
-    canonical: "https://vm0.ai",
-  },
+  alternates: {},
   verification: {
     // Add verification codes when available
     // google: "your-google-verification-code",
@@ -113,6 +111,7 @@ export const metadata: Metadata = {
       "Meet Zero, your AI teammate that works in Slack and on the web. Secure, intelligent, and built for teams.",
     images: ["/og-image.png"],
     creator: "@vm0_ai",
+    site: "@vm0_ai",
   },
   robots: {
     index: true,

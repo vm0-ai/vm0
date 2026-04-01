@@ -1,25 +1,19 @@
-"use client";
+import type { Metadata } from "next";
+import PrivacyPolicyClient from "./PrivacyPolicyClient";
 
-import { useEffect } from "react";
+export const metadata: Metadata = {
+  title: "Privacy Policy | VM0",
+  description:
+    "VM0 Privacy Policy — how we collect, use, and protect your data.",
+  alternates: {
+    canonical: "https://vm0.ai/privacy-policy",
+  },
+  robots: {
+    index: true,
+    follow: false,
+  },
+};
 
 export default function PrivacyPolicyPage() {
-  useEffect(() => {
-    if (document.getElementById("termly-jssdk")) return;
-    const script = document.createElement("script");
-    script.id = "termly-jssdk";
-    script.src = "https://app.termly.io/embed-policy.min.js";
-    document.body.appendChild(script);
-  }, []);
-
-  return (
-    <div
-      className="container"
-      style={{ padding: "40px 20px", minHeight: "600px" }}
-    >
-      <div
-        {...({ name: "termly-embed" } as React.HTMLAttributes<HTMLDivElement>)}
-        data-id="e2483c7f-905a-4618-b026-94f823ff2332"
-      />
-    </div>
-  );
+  return <PrivacyPolicyClient />;
 }
