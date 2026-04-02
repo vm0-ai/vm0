@@ -53,7 +53,6 @@ describe("chat immediate feedback after sending", () => {
     const sendPromise = context.store.set(
       sendExistingThreadMessage$,
       "Hello",
-      undefined,
       context.signal,
     );
 

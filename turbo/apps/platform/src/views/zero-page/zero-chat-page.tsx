@@ -182,17 +182,14 @@ export function ZeroChatPage() {
   const startNewSession = useSet(startNewZeroSession$);
   const resetTalkSendSignal = useSet(resetTalkSendSignal$);
 
-  const handleSendMessage = (
-    message: string,
-    options?: { modelProvider?: string },
-  ) => {
+  const handleSendMessage = (message: string) => {
     if (!resolvedAgentId) {
       return;
     }
     startNewSession();
     const talkSignal = resetTalkSendSignal();
     detach(
-      sendNewThread(resolvedAgentId, message, options, talkSignal),
+      sendNewThread(resolvedAgentId, message, talkSignal),
       Reason.DomCallback,
     );
   };
@@ -242,9 +239,9 @@ export function ZeroChatPage() {
     }
   };
 
-  const handleSend = (text: string, opts?: { modelProvider: string }) => {
+  const handleSend = (text: string) => {
     setInput("");
-    handleSendMessage(text, opts);
+    handleSendMessage(text);
   };
 
   const avatarAgentId = resolvedAgentId ?? undefined;

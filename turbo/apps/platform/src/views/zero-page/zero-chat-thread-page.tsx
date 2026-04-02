@@ -326,9 +326,9 @@ function ChatThreadComposer({ hasMessages }: { hasMessages: boolean }) {
   const cancelRun = useSet(cancelActiveRun$);
   const pageSignal = useGet(pageSignal$);
 
-  const handleSend = (text: string, opts?: { modelProvider: string }) => {
+  const handleSend = (text: string) => {
     clearInput();
-    detach(send(text, opts, pageSignal), Reason.DomCallback);
+    detach(send(text, pageSignal), Reason.DomCallback);
   };
 
   return (

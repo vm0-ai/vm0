@@ -169,7 +169,6 @@ describe("zero-chat signals", () => {
       await context.store.set(
         sendExistingThreadMessage$,
         "Hello",
-        undefined,
         context.signal,
       );
 
@@ -287,7 +286,6 @@ describe("zero-chat signals", () => {
       await context.store.set(
         sendExistingThreadMessage$,
         "Hello dedup",
-        undefined,
         context.signal,
       );
 

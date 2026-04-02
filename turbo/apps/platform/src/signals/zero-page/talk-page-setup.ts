@@ -5,7 +5,6 @@ import { ZeroChatPage } from "../../views/zero-page/zero-chat-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { searchParams$, updateSearchParams$ } from "../route.ts";
-import { syncModelPreference$ } from "./zero-model-preference.ts";
 import { onboardGuard$ } from "./onboard-guard.ts";
 import { loadInitialData$, resolveAgentById$ } from "./zero-page.ts";
 import { currentAgentId$ } from "./agent.ts";
@@ -69,8 +68,6 @@ export const setupTalkPage$ = command(
         })?.displayName ?? "Agent";
     }
     set(updateDocumentTitle$, agentName);
-
-    set(syncModelPreference$);
 
     // Inject ?prompt= into the chat input and clean up the URL
     const params = get(searchParams$);

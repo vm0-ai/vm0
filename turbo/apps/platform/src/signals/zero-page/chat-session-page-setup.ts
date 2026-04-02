@@ -12,7 +12,6 @@ import {
 import { chatThreadId$, setSidebarChatAgent$ } from "./zero-nav.ts";
 import { onboardGuard$ } from "./onboard-guard.ts";
 import { loadInitialData$ } from "./zero-page.ts";
-import { syncModelPreference$ } from "./zero-model-preference.ts";
 import { detach, Reason } from "../utils.ts";
 import { zeroChatAgentId$ } from "./zero-active-agent.ts";
 import { currentDraft$, ensureDraft$ } from "./chat-draft.ts";
@@ -55,8 +54,6 @@ export const setupChatSessionPage$ = command(
       const sessionTitle = session?.title ?? "New chat";
       set(updateDocumentTitle$, sessionTitle);
     }
-
-    set(syncModelPreference$);
 
     // Sync sidebar agent from thread data so it persists on non-chat pages.
     const chatAgentId = await get(zeroChatAgentId$);

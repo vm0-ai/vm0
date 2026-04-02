@@ -22,11 +22,6 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -43,11 +38,9 @@ import {
 } from "../../signals/zero-page/zero-chat.ts";
 import { AttachmentChips } from "./zero-attachment-chips.tsx";
 import { useFileUploadHandlers } from "./use-file-upload-handlers.ts";
-import { useModelSelection } from "./zero-model-preference.ts";
 import { useSendKeyHandler } from "./zero-send-key.ts";
 import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
-import { ProviderIcon } from "./components/settings/provider-icons.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import {
   allConnectorTypes$,
@@ -74,7 +67,7 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 interface ZeroChatComposerProps {
   input: string;
   onInputChange: (value: string) => void;
-  onSend: (message: string, options?: { modelProvider: string }) => void;
+  onSend: (message: string) => void;
   sending?: boolean;
   /** Cancel the active run. When provided, a stop button replaces the send button while sending. */
   onCancel?: () => void;
@@ -87,10 +80,6 @@ interface ZeroChatComposerProps {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function buildModelOpts(model: string): { modelProvider: string } | undefined {
-  return model ? { modelProvider: model } : undefined;
-}
 
 interface ComposerConnectorItem {
   type: string;
@@ -406,10 +395,6 @@ export function ZeroChatComposer({
   const { dragOver, handlePaste, handleDrop, handleDragOver, handleDragLeave } =
     useFileUploadHandlers();
 
-  // Model selection
-  const { modelOptions, selectedModel, setSelectedModel, persistSelection } =
-    useModelSelection();
-
   // Upload signal — uses rootSignal so uploads survive page navigation
   const { signal: rootSignal } = useGet(rootSignal$);
 
@@ -507,8 +492,7 @@ export function ZeroChatComposer({
     if (!trimmed || sending) {
       return;
     }
-    persistSelection();
-    onSend(trimmed, buildModelOpts(selectedModel));
+    onSend(trimmed);
   };
 
   const {
@@ -605,34 +589,6 @@ export function ZeroChatComposer({
                 />
               </div>
               <div className="flex items-center gap-2">
-                <Select value={selectedModel} onValueChange={setSelectedModel}>
-                  <SelectTrigger className="h-9 min-w-[100px] gap-1 rounded-lg border-none bg-transparent text-sm text-foreground shadow-none hover:bg-accent transition-colors [&>svg]:h-5 [&>svg]:w-5 [&>svg]:opacity-80">
-                    <SelectValue placeholder="Model" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {modelOptions.map((opt) => {
-                      return (
-                        <SelectItem
-                          key={opt.value}
-                          value={opt.value}
-                          className="text-sm"
-                        >
-                          <div className="flex items-center gap-2">
-                            <ProviderIcon
-                              type={
-                                opt.value as Parameters<
-                                  typeof ProviderIcon
-                                >[0]["type"]
-                              }
-                              size={16}
-                            />
-                            <span>{opt.label}</span>
-                          </div>
-                        </SelectItem>
-                      );
-                    })}
-                  </SelectContent>
-                </Select>
                 {sending && onCancel ? (
                   <Button
                     size="sm"

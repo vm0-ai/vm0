@@ -878,14 +878,6 @@ const prepareUserMessage$ = command(
   },
 );
 
-function resolveModelProvider(
-  modelProvider: string | undefined,
-): string | undefined {
-  return modelProvider && modelProvider !== "default"
-    ? modelProvider
-    : undefined;
-}
-
 function handleSendError(result: {
   status: number;
   body: { error: { message: string; code?: string } };
@@ -901,7 +893,6 @@ function handleSendError(result: {
 interface ChatMessageArgs {
   agentId: string;
   prompt: string;
-  modelProvider?: string;
   threadId?: string;
 }
 
@@ -910,7 +901,6 @@ const prepareChatMessage$ = command(
     { set },
     agentId: string,
     prompt: string,
-    options: { modelProvider?: string } | undefined,
     signal: AbortSignal,
   ): Promise<ChatMessageArgs | null> => {
     if (!prompt.trim()) {
@@ -923,7 +913,6 @@ const prepareChatMessage$ = command(
     return {
       agentId,
       prompt: fullPrompt,
-      modelProvider: resolveModelProvider(options?.modelProvider),
     };
   },
 );
@@ -958,20 +947,8 @@ const sendChatMessageRequest$ = command(
 );
 
 export const sendNewThreadMessage$ = command(
-  async (
-    { set },
-    agentId: string,
-    prompt: string,
-    options: { modelProvider?: string } | undefined,
-    signal: AbortSignal,
-  ) => {
-    const message = await set(
-      prepareChatMessage$,
-      agentId,
-      prompt,
-      options,
-      signal,
-    );
+  async ({ set }, agentId: string, prompt: string, signal: AbortSignal) => {
+    const message = await set(prepareChatMessage$, agentId, prompt, signal);
     if (!message) {
       return;
     }
@@ -984,12 +961,7 @@ export const sendNewThreadMessage$ = command(
 );
 
 export const sendExistingThreadMessage$ = command(
-  async (
-    { get, set },
-    prompt: string,
-    options: { modelProvider?: string } | undefined,
-    signal: AbortSignal,
-  ) => {
+  async ({ get, set }, prompt: string, signal: AbortSignal) => {
     const threadId = get(chatThreadId$);
     const thread = await get(currentChatThread$);
     signal.throwIfAborted();
@@ -999,13 +971,7 @@ export const sendExistingThreadMessage$ = command(
       return;
     }
 
-    const message = await set(
-      prepareChatMessage$,
-      agentId,
-      prompt,
-      options,
-      signal,
-    );
+    const message = await set(prepareChatMessage$, agentId, prompt, signal);
     if (!message) {
       return;
     }

@@ -98,18 +98,15 @@ interface DraftSignals {
   attachments$: Computed<ZeroChatAttachment[]>;
   uploadAttachment$: Command<Promise<void>, [File, AbortSignal]>;
   removeAttachment$: Command<void, [ZeroChatAttachment]>;
-  selectedModel$: Computed<string>;
-  setSelectedModel$: Command<void, [string]>;
   dragOver$: Computed<boolean>;
   setDragOver$: Command<void, [boolean]>;
-  /** Reset all draft state (input, attachments, model). Called after send. */
+  /** Reset all draft state (input, attachments). Called after send. */
   clear$: Command<void, []>;
 }
 
 function createDraftSignals(): DraftSignals {
   const internalInput$ = state("");
   const internalAttachments$ = state<ZeroChatAttachment[]>([]);
-  const internalSelectedModel$ = state("default");
   const internalDragOver$ = state(false);
 
   const input$ = computed((get) => {
@@ -145,13 +142,6 @@ function createDraftSignals(): DraftSignals {
     },
   );
 
-  const selectedModel$ = computed((get) => {
-    return get(internalSelectedModel$);
-  });
-  const setSelectedModel$ = command(({ set }, value: string) => {
-    set(internalSelectedModel$, value);
-  });
-
   const dragOver$ = computed((get) => {
     return get(internalDragOver$);
   });
@@ -166,7 +156,6 @@ function createDraftSignals(): DraftSignals {
       set(attachment.cancel$);
     }
     set(internalAttachments$, []);
-    set(internalSelectedModel$, "default");
     set(internalDragOver$, false);
   });
 
@@ -176,8 +165,6 @@ function createDraftSignals(): DraftSignals {
     attachments$,
     uploadAttachment$,
     removeAttachment$,
-    selectedModel$,
-    setSelectedModel$,
     dragOver$,
     setDragOver$,
     clear$,
@@ -277,17 +264,5 @@ export const setZeroDragOver$ = command(({ get, set }, value: boolean) => {
   const draft = get(currentDraft$);
   if (draft) {
     set(draft.setDragOver$, value);
-  }
-});
-
-export const draftSelectedModel$ = computed((get) => {
-  const draft = get(currentDraft$);
-  return draft ? get(draft.selectedModel$) : "default";
-});
-
-export const setDraftSelectedModel$ = command(({ get, set }, value: string) => {
-  const draft = get(currentDraft$);
-  if (draft) {
-    set(draft.setSelectedModel$, value);
   }
 });
