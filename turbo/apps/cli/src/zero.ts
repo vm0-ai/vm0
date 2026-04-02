@@ -16,6 +16,7 @@ import { zeroVariableCommand } from "./commands/zero/variable";
 import { zeroWhoamiCommand } from "./commands/zero/whoami";
 import { zeroAskUserCommand } from "./commands/zero/ask-user";
 import { zeroSkillCommand } from "./commands/zero/skill";
+import { zeroLogsCommand } from "./commands/zero/logs";
 import {
   decodeZeroTokenPayload,
   type ZeroTokenPayload,
@@ -32,6 +33,7 @@ const COMMAND_CAPABILITY_MAP: Record<string, string | null> = {
   run: "agent-run:write",
   schedule: "schedule:read",
   doctor: null,
+  logs: "agent-run:read",
   slack: "slack:write",
   whoami: null,
   "ask-user": null,
@@ -48,6 +50,7 @@ const DEFAULT_COMMANDS: Command[] = [
   zeroSecretCommand,
   zeroSlackCommand,
   zeroVariableCommand,
+  zeroLogsCommand,
   zeroWhoamiCommand,
   zeroAskUserCommand,
   zeroSkillCommand,
