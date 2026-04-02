@@ -269,6 +269,7 @@ export const zeroLogsSearchContract = c.router({
     responses: {
       200: logsSearchResponseSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
     },
     summary: "Search agent events across runs (zero proxy)",
   },

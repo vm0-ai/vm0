@@ -10,6 +10,7 @@ import {
   completeTestRun,
   failTestRun,
   createOrphanTestRun,
+  insertOrgMembersCacheEntry,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -17,6 +18,10 @@ import {
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { randomUUID } from "crypto";
+import {
+  generateZeroToken,
+  generateSandboxToken,
+} from "../../../../../../src/lib/auth/sandbox-token";
 
 vi.mock("@e2b/code-interpreter", () => {
   return {
@@ -265,5 +270,57 @@ describe("GET /api/zero/logs/[id]", () => {
     expect(data.prompt).toBe("Orphan run prompt");
     expect(data.agentId).toBeNull();
     expect(data.framework).toBeNull();
+  });
+
+  describe("zero token auth", () => {
+    it("should return 200 for zero token with agent-run:read capability", async () => {
+      const { runId } = await createTestRun(testComposeId, "Test prompt");
+      await completeTestRun(user.userId, runId);
+
+      await insertOrgMembersCacheEntry({
+        orgId: user.orgId,
+        userId: user.userId,
+      });
+      mockClerk({ userId: null });
+      const token = await generateZeroToken(user.userId, "run-1", user.orgId);
+
+      const request = createTestRequest(
+        `http://localhost:3000/api/zero/logs/${runId}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      const response = await GET(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.id).toBe(runId);
+    });
+
+    it("should return 403 for sandbox token without agent-run:read", async () => {
+      const { runId } = await createTestRun(testComposeId, "Test prompt");
+      const token = await generateSandboxToken(user.userId, runId);
+      mockClerk({ userId: null });
+
+      const request = createTestRequest(
+        `http://localhost:3000/api/zero/logs/${runId}`,
+        { headers: { Authorization: `Bearer ${token}` } },
+      );
+      const response = await GET(request);
+
+      expect(response.status).toBe(403);
+      const data = await response.json();
+      expect(data.error.message).toContain("agent-run:read");
+    });
+
+    it("should return 401 when no auth is provided", async () => {
+      const { runId } = await createTestRun(testComposeId, "Test prompt");
+      mockClerk({ userId: null });
+
+      const request = createTestRequest(
+        `http://localhost:3000/api/zero/logs/${runId}`,
+      );
+      const response = await GET(request);
+
+      expect(response.status).toBe(401);
+    });
   });
 });

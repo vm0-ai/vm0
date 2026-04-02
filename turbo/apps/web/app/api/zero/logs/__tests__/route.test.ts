@@ -9,12 +9,17 @@ import {
   createTestZeroAgent,
   createTestRun,
   completeTestRun,
+  insertOrgMembersCacheEntry,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
   type UserContext,
 } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
+import {
+  generateZeroToken,
+  generateSandboxToken,
+} from "../../../../../src/lib/auth/sandbox-token";
 
 const context = testContext();
 
@@ -834,6 +839,53 @@ describe("GET /api/zero/logs", () => {
 
       expect(response.status).toBe(400);
       expect(data.error.code).toBe("BAD_REQUEST");
+    });
+  });
+
+  describe("zero token auth", () => {
+    it("should return 200 for zero token with agent-run:read capability", async () => {
+      await insertOrgMembersCacheEntry({
+        orgId: user.orgId,
+        userId: user.userId,
+      });
+      mockClerk({ userId: null });
+      const token = await generateZeroToken(user.userId, "run-1", user.orgId);
+
+      const request = createTestRequest("http://localhost:3000/api/zero/logs", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const response = await GET(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.data).toEqual([]);
+    });
+
+    it("should return 403 for sandbox token without agent-run:read", async () => {
+      const { composeId } = await createTestCompose(
+        `zero-auth-${randomUUID().slice(0, 8)}`,
+      );
+      const { runId } = await createTestRun(composeId, "test");
+      const token = await generateSandboxToken(user.userId, runId);
+      mockClerk({ userId: null });
+
+      const request = createTestRequest("http://localhost:3000/api/zero/logs", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const response = await GET(request);
+
+      expect(response.status).toBe(403);
+      const data = await response.json();
+      expect(data.error.message).toContain("agent-run:read");
+    });
+
+    it("should return 401 when no auth is provided", async () => {
+      mockClerk({ userId: null });
+
+      const request = createTestRequest("http://localhost:3000/api/zero/logs");
+      const response = await GET(request);
+
+      expect(response.status).toBe(401);
     });
   });
 });
