@@ -12,7 +12,7 @@ import {
   uniqueId,
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
-import { appendChatMessages } from "../../../../../../src/lib/agent-session/agent-session-service";
+import { appendChatMessages } from "../../../../../../src/lib/zero/zero-session-service";
 import {
   addRunToThread,
   updateChatThreadTitle,

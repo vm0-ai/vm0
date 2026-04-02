@@ -10,7 +10,7 @@ import {
   isAuthError,
 } from "../../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
-import { getSessionResponse } from "../../../../../src/lib/agent-session/agent-session-service";
+import { getSessionResponse } from "../../../../../src/lib/zero/zero-session-service";
 import { isNotFound, isForbidden } from "../../../../../src/lib/errors";
 
 const router = tsr.router(zeroSessionsByIdContract, {

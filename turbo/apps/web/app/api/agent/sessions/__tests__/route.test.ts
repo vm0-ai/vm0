@@ -13,7 +13,7 @@ import {
   type UserContext,
 } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
-import { appendChatMessages } from "../../../../../src/lib/agent-session";
+import { appendChatMessages } from "../../../../../src/lib/zero/zero-session-service";
 
 const context = testContext();
 

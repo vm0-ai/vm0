@@ -6,8 +6,6 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../../db/schema/agent-compose";
-import { agentSessions } from "../../db/schema/agent-session";
-import { zeroAgentSessions } from "../../db/schema/zero-agent-session";
 import { conversations } from "../../db/schema/conversation";
 import { storages, storageVersions } from "../../db/schema/storage";
 import {
@@ -15,6 +13,7 @@ import {
   generatePresignedUrl,
   downloadS3Buffer,
 } from "../s3/s3-client";
+import { getAllSessionsWithMessages } from "../zero/zero-session-service";
 import { resolveSessionHistory } from "../session-history/session-history-service";
 import { enqueueEmail } from "../email/outbox-service";
 import {
@@ -130,19 +129,10 @@ async function collectConversations(
   const entries: ZipEntry[] = [];
   let count = 0;
 
-  const sessions = await db
-    .select({
-      id: agentSessions.id,
-      chatMessages: zeroAgentSessions.chatMessages,
-      conversationId: agentSessions.conversationId,
-      agentComposeId: agentSessions.agentComposeId,
-    })
-    .from(agentSessions)
-    .leftJoin(zeroAgentSessions, eq(agentSessions.id, zeroAgentSessions.id))
-    .where(eq(agentSessions.userId, userId));
+  const sessions = await getAllSessionsWithMessages(userId);
 
   for (const session of sessions) {
-    if (session.chatMessages && session.chatMessages.length > 0) {
+    if (session.chatMessages.length > 0) {
       entries.push({
         path: `conversations/${session.id}.json`,
         content: JSON.stringify(session.chatMessages, null, 2),

@@ -7,7 +7,7 @@ import { chatThreads } from "../../../../../src/db/schema/chat-thread";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import { findNewSessionId } from "../../../../../src/lib/session/find-new-session";
 import { queryRunEventsForChat } from "../../../../../src/lib/run/extract-chat-events";
-import { appendChatMessages } from "../../../../../src/lib/agent-session/agent-session-service";
+import { appendChatMessages } from "../../../../../src/lib/zero/zero-session-service";
 import {
   generateChatTitle,
   type TitleContextMessage,

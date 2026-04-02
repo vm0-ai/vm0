@@ -3,7 +3,7 @@ import { sessionsContract } from "@vm0/core";
 import { eq } from "drizzle-orm";
 import { initServices } from "../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
-import { listAgentSessions } from "../../../../src/lib/agent-session";
+import { listSessionsWithMessages } from "../../../../src/lib/zero/zero-session-service";
 import { agentComposes } from "../../../../src/db/schema/agent-compose";
 
 const router = tsr.router(sessionsContract, {
@@ -47,7 +47,10 @@ const router = tsr.router(sessionsContract, {
       };
     }
 
-    const sessions = await listAgentSessions(userId, query.agentComposeId);
+    const sessions = await listSessionsWithMessages(
+      userId,
+      query.agentComposeId,
+    );
 
     return {
       status: 200 as const,
