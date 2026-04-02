@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import type { WebClient } from "@slack/web-api";
+import { HttpResponse } from "msw";
 import {
   buildOrgConnectUrl,
   buildLogsUrl,
@@ -7,6 +8,9 @@ import {
   enrichMessageContent,
   fetchConversationContexts,
 } from "../shared";
+import { testContext } from "../../../../__tests__/test-helpers";
+import { server } from "../../../../mocks/server";
+import { http } from "../../../../__tests__/msw";
 
 describe("buildOrgConnectUrl", () => {
   it("should point to platform slack connect page", () => {
@@ -343,5 +347,68 @@ describe("fetchConversationContexts", () => {
     expect(executionContext).toContain("Msg 1");
     // conversations.history called once (for channel context), not twice
     expect(client.conversations.history).toHaveBeenCalledTimes(1);
+  });
+
+  describe("image upload in channel context prefix", () => {
+    const context = testContext();
+
+    it("should upload images in channel messages to S3 on first thread session", async () => {
+      context.setupMocks();
+
+      const downloadHandler = http.get(
+        "https://files.slack.com/files-pri/T123-F999/download/screenshot.png",
+        () => {
+          return new HttpResponse(Buffer.from("fake-png-data"), {
+            headers: { "content-type": "image/png" },
+          });
+        },
+      );
+      server.use(downloadHandler.handler);
+
+      context.mocks.s3.generatePresignedUrl.mockResolvedValue(
+        "https://mock-presigned-url/screenshot.png",
+      );
+
+      const client = createMockConversationClient({
+        threadMessages: [{ user: "U100", text: "Thread parent", ts: "100.0" }],
+        channelMessages: [
+          {
+            user: "U200",
+            text: "Look at this",
+            ts: "99.0",
+            files: [
+              {
+                id: "F999",
+                name: "screenshot.png",
+                mimetype: "image/png",
+                filetype: "png",
+                url_private_download:
+                  "https://files.slack.com/files-pri/T123-F999/download/screenshot.png",
+              },
+            ],
+          },
+        ],
+      });
+
+      const { executionContext } = await fetchConversationContexts(
+        client,
+        "C-chan",
+        "100.0",
+        "BBOT",
+        "xoxb-token",
+        undefined,
+        undefined,
+        undefined, // first session
+      );
+
+      // S3 upload should have been triggered for the channel message image
+      expect(context.mocks.s3.uploadS3Buffer).toHaveBeenCalled();
+      expect(context.mocks.s3.generatePresignedUrl).toHaveBeenCalled();
+
+      // executionContext should contain the presigned URL, not a raw Slack permalink
+      expect(executionContext).toContain("https://mock-presigned-url");
+      expect(executionContext).not.toContain("permalink_public");
+      expect(executionContext).toContain("# Recent Channel Messages");
+    });
   });
 });
