@@ -560,14 +560,24 @@ jobs:
           echo "--- Test: runtime availability ---"
           for cmd in \
             "node --version" \
+            "npm --version" \
             "python3 --version" \
+            "pip3 --version" \
             "ruby --version" \
+            "bundler --version" \
             "php --version" \
+            "composer --version" \
             "javac -version" \
+            "mvn --version" \
+            "gradle --version" \
             "go version" \
             "rustc --version" \
+            "cargo --version" \
             "gcc --version" \
+            "g++ --version" \
             "clang --version" \
+            "make --version" \
+            "cmake --version" \
             "psql --version" \
             "redis-server --version"; do
             OUTPUT=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" -- $cmd 2>&1) \
