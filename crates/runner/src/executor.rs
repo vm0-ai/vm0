@@ -588,8 +588,14 @@ async fn sync_guest_timezone(sandbox: &dyn Sandbox, context: &ExecutionContext) 
         Some(tz) if !tz.is_empty() => tz,
         _ => return,
     };
-    // Reject path traversal and absolute paths.
-    if tz.contains("..") || tz.starts_with('/') {
+    // Strict validation: timezone names are like "Asia/Shanghai" or "UTC".
+    // Only allow alphanumeric, '/', '_', '-', '+'.  This prevents shell
+    // injection since the value is interpolated into a sudo shell command.
+    if !tz
+        .bytes()
+        .all(|b| b.is_ascii_alphanumeric() || b == b'/' || b == b'_' || b == b'-' || b == b'+')
+    {
+        tracing::warn!(tz = %tz, "rejected invalid timezone name");
         return;
     }
     let cmd = format!(
