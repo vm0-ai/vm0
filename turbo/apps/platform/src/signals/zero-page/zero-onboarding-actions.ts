@@ -6,13 +6,10 @@ import {
   zeroOnboardingStatus$,
   zeroAgentName$,
   zeroWorkspaceName$,
-  zeroSaving$,
   zeroSelectedConnectors$,
-  zeroOnboardingError$,
   setZeroStep$,
   completeZeroOnboarding$,
   completeMemberOnboarding$,
-  clearZeroOnboardingError$,
 } from "./zero-onboarding.ts";
 import { agentDisplayName$ } from "./zero-agent-name.ts";
 import { sendNewThreadMessage$ } from "./zero-chat.ts";
@@ -234,27 +231,8 @@ export const onboardingDisplayName$ = computed(async (get) => {
   return await get(agentDisplayName$);
 });
 
-/**
- * Onboarding saving state — re-exported for convenience so WhereToWorkContent
- * can import from a single file.
- */
-export const onboardingSaving$ = zeroSaving$;
-
-/**
- * Error to display in the "Where to work" step.
- * Only admin sees errors; member path never surfaces them.
- */
-export const onboardingError$ = computed(async (get) => {
-  const isAdmin = await get(zeroNeedsOnboarding$);
-  if (!isAdmin) {
-    return null;
-  }
-  return get(zeroOnboardingError$);
-});
-
 const completeOnboarding$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    set(clearZeroOnboardingError$);
     set(reloadBillingStatus$);
 
     const isAdmin = await get(zeroNeedsOnboarding$);

@@ -5,15 +5,10 @@ import { testContext } from "../../__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import {
   onboardingDisplayName$,
-  onboardingError$,
   onboardingAddToSlack$,
   onboardingContinueWeb$,
 } from "../zero-onboarding-actions.ts";
-import {
-  setZeroAgentName$,
-  zeroOnboardingStep$,
-  zeroSaving$,
-} from "../zero-onboarding.ts";
+import { setZeroAgentName$, zeroOnboardingStep$ } from "../zero-onboarding.ts";
 import { pathname } from "../../../signals/location.ts";
 
 const context = testContext();
@@ -174,20 +169,6 @@ describe("onboardingDisplayName$", () => {
 });
 
 // ---------------------------------------------------------------------------
-// onboardingError$
-// ---------------------------------------------------------------------------
-
-describe("onboardingError$", () => {
-  it("should return null for member even if error exists", async () => {
-    mockMemberOnboarding();
-    await setupPage({ context, path: "/", withoutRender: true });
-
-    const error = await context.store.get(onboardingError$);
-    expect(error).toBeNull();
-  });
-});
-
-// ---------------------------------------------------------------------------
 // onboardingAddToSlack$
 // ---------------------------------------------------------------------------
 
@@ -215,7 +196,6 @@ describe("onboardingAddToSlack$", () => {
     await context.store.set(onboardingAddToSlack$, context.signal);
 
     expect(pathname()).toBe("/works");
-    expect(context.store.get(zeroSaving$)).toBeFalsy();
   });
 
   it("should navigate to /works for member", async () => {
@@ -272,7 +252,6 @@ describe("onboardingContinueWeb$", () => {
     await context.store.set(onboardingContinueWeb$, context.signal);
 
     expect(pathname()).toBe("/chats/thread-1");
-    expect(context.store.get(zeroSaving$)).toBeFalsy();
     // Step is set to "done" by completeOnboarding$
     await expect(context.store.get(zeroOnboardingStep$)).resolves.toBe("done");
   });

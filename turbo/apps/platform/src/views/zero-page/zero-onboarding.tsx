@@ -20,8 +20,6 @@ import {
 } from "../../signals/zero-page/zero-onboarding.ts";
 import {
   onboardingDisplayName$,
-  onboardingSaving$,
-  onboardingError$,
   onboardingAddToSlack$,
   onboardingContinueWeb$,
   onboardingEffectiveStep$,
@@ -55,6 +53,7 @@ import { detach, Reason } from "../../signals/utils.ts";
 import { AccountDropdown } from "./zero-sidebar.tsx";
 import { VM0ClerkProvider } from "../clerk/clerk-provider.tsx";
 import { handleZeroAccountAction$ } from "../../signals/zero-page/zero-nav.ts";
+import { useLoadableSet } from "ccstate-react/experimental";
 
 // ---------------------------------------------------------------------------
 // Progress bar
@@ -326,11 +325,18 @@ function ConnectStepContent() {
 
 function WhereToWorkContent() {
   const name = useLastResolved(onboardingDisplayName$) ?? "Zero";
-  const saving = useGet(onboardingSaving$);
-  const error = useLastResolved(onboardingError$) ?? null;
+
   const addToSlack = useSet(onboardingAddToSlack$);
-  const continueWeb = useSet(onboardingContinueWeb$);
+
   const pageSignal = useGet(pageSignal$);
+  const [continueWebLoadable, continueWeb] = useLoadableSet(
+    onboardingContinueWeb$,
+  );
+  const error =
+    continueWebLoadable.state === "hasError"
+      ? String(continueWebLoadable.error)
+      : null;
+  const saving = continueWebLoadable.state === "loading";
 
   return (
     <>
@@ -342,9 +348,7 @@ function WhereToWorkContent() {
       </p>
       {error && (
         <div className="w-full mb-6 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-          {error === "Build timed out"
-            ? "Setup is taking longer than expected. Please try again."
-            : error}
+          {error}
         </div>
       )}
       <div className="flex flex-col gap-5 w-full">
@@ -640,10 +644,10 @@ function OnboardingPageLayout({ children }: { children: React.ReactNode }) {
   const pageSignal = useGet(pageSignal$);
   const effectiveConnectors =
     useLastResolved(onboardingEffectiveConnectors$) ?? [];
-
   const illustration = getStepIllustration(stepKey);
   const showOrbit = stepKey === "connectors";
   const showChat = stepKey === "workspace";
+  const pageSignal = useGet(pageSignal$);
 
   return (
     <div className="zero-app flex h-dvh bg-muted/30 relative">
