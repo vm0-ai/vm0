@@ -1,5 +1,17 @@
 # Changelog
 
+## [12.186.1](https://github.com/vm0-ai/vm0/compare/web-v12.186.0...web-v12.186.1) (2026-04-02)
+
+
+### Refactoring
+
+* extract zero-agents ops into zero-compose-service ([#7682](https://github.com/vm0-ai/vm0/issues/7682)) ([6e34500](https://github.com/vm0-ai/vm0/commit/6e345001fc18094f95065dae81abce74693bdc8d)), closes [#7678](https://github.com/vm0-ai/vm0/issues/7678)
+
+
+### Performance Improvements
+
+* **web:** defer dispatch pipeline in chat messages route via after() ([#7677](https://github.com/vm0-ai/vm0/issues/7677)) ([de5cbbd](https://github.com/vm0-ai/vm0/commit/de5cbbdd7e3a34985bd394db0c2f4fd7e86ddadf))
+
 ## [12.186.0](https://github.com/vm0-ai/vm0/compare/web-v12.185.0...web-v12.186.0) (2026-04-02)
 
 
