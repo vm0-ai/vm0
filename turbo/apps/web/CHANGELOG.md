@@ -1,5 +1,22 @@
 # Changelog
 
+## [12.188.3](https://github.com/vm0-ai/vm0/compare/web-v12.188.2...web-v12.188.3) (2026-04-02)
+
+
+### Refactoring
+
+* move org to lib/zero/ ([#7759](https://github.com/vm0-ai/vm0/issues/7759)) ([6977ece](https://github.com/vm0-ai/vm0/commit/6977eced816aa453abda1e4d47a4a77bc23fcdec))
+* move org-membership-cache to auth layer ([#7794](https://github.com/vm0-ai/vm0/issues/7794)) ([5537297](https://github.com/vm0-ai/vm0/commit/5537297117a1556ba000256479951151068079cd)), closes [#7790](https://github.com/vm0-ai/vm0/issues/7790)
+* move runner group check from zero/org to infra/run ([#7795](https://github.com/vm0-ai/vm0/issues/7795)) ([be28f1f](https://github.com/vm0-ai/vm0/commit/be28f1fef8a835aac7230d1eed16e202595ed27a)), closes [#7789](https://github.com/vm0-ai/vm0/issues/7789)
+* split org-cache-service into auth and metadata modules ([#7796](https://github.com/vm0-ai/vm0/issues/7796)) ([bfebfb9](https://github.com/vm0-ai/vm0/commit/bfebfb905e648987beeb046d7219fe2b5682ddf5)), closes [#7791](https://github.com/vm0-ai/vm0/issues/7791)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.146.0
+
 ## [12.188.2](https://github.com/vm0-ai/vm0/compare/web-v12.188.1...web-v12.188.2) (2026-04-02)
 
 

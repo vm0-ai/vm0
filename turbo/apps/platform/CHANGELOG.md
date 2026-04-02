@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.181.1](https://github.com/vm0-ai/vm0/compare/app-v0.181.0...app-v0.181.1) (2026-04-02)
+
+
+### Refactoring
+
+* convert job-detail fetch commands to reactive async computed ([#7787](https://github.com/vm0-ai/vm0/issues/7787)) ([f7bded7](https://github.com/vm0-ai/vm0/commit/f7bded72e7682ccbd2f229b4c3084d2505d44448)), closes [#7778](https://github.com/vm0-ai/vm0/issues/7778)
+* replace manual loading booleans with loadable-set pattern in job-detail ([#7798](https://github.com/vm0-ai/vm0/issues/7798)) ([b05ea2a](https://github.com/vm0-ai/vm0/commit/b05ea2a1cac8c7f57de8c57cb5fe9c1648a0690a)), closes [#7779](https://github.com/vm0-ai/vm0/issues/7779)
+* split zero-job-detail.ts into domain modules ([#7783](https://github.com/vm0-ai/vm0/issues/7783)) ([a5fbd9e](https://github.com/vm0-ai/vm0/commit/a5fbd9efc2cb44ef3d2081f50a0755b797d276cb)), closes [#7776](https://github.com/vm0-ai/vm0/issues/7776)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.146.0
+
 ## [0.181.0](https://github.com/vm0-ai/vm0/compare/app-v0.180.1...app-v0.181.0) (2026-04-02)
 
 

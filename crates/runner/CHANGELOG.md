@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.60.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.59.1...runner-rs-v0.60.0) (2026-04-02)
+
+
+### Features
+
+* **runner:** log rootfs logical and disk size after build ([#7784](https://github.com/vm0-ai/vm0/issues/7784)) ([225cca9](https://github.com/vm0-ai/vm0/commit/225cca9aba32163c13e866ca8bc4c77d53b25506))
+* support graphql operation-level firewall rules ([#7719](https://github.com/vm0-ai/vm0/issues/7719)) ([ff23d7f](https://github.com/vm0-ai/vm0/commit/ff23d7f8717ee7fcb39546a1c8e20d8a091f9df4))
+
 ## [0.59.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.59.0...runner-rs-v0.59.1) (2026-04-02)
 
 ## [0.59.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.58.0...runner-rs-v0.59.0) (2026-04-02)

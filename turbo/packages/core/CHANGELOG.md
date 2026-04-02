@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.146.0](https://github.com/vm0-ai/vm0/compare/core-v8.145.0...core-v8.146.0) (2026-04-02)
+
+
+### Features
+
+* support graphql operation-level firewall rules ([#7719](https://github.com/vm0-ai/vm0/issues/7719)) ([ff23d7f](https://github.com/vm0-ai/vm0/commit/ff23d7f8717ee7fcb39546a1c8e20d8a091f9df4))
+
 ## [8.145.0](https://github.com/vm0-ai/vm0/compare/core-v8.144.0...core-v8.145.0) (2026-04-02)
 
 
