@@ -10,7 +10,7 @@ import {
   isAuthError,
 } from "../../../../../src/lib/auth/require-auth";
 import { isSandboxAuth } from "../../../../../src/lib/auth/capability-check";
-import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
+import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
 import {
   getComposeById,
   getComposeOrgId,

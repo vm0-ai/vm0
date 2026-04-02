@@ -2,7 +2,7 @@ import { eq, and } from "drizzle-orm";
 import { variables } from "../../../db/schema/variable";
 import { badRequest, notFound } from "../../errors";
 import { logger } from "../../logger";
-import { ORG_SENTINEL_USER_ID } from "../../org/org-sentinel";
+import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 
 const log = logger("service:variable");
 

@@ -11,7 +11,7 @@ import { initServices } from "../../../../src/lib/init-services";
 import { agentComposes } from "../../../../src/db/schema/agent-compose";
 import { zeroAgents } from "../../../../src/db/schema/zero-agent";
 import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
-import { resolveOrg } from "../../../../src/lib/org/resolve-org";
+import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";
 import { isNotFound, isForbidden } from "../../../../src/lib/errors";
 
 export async function GET() {

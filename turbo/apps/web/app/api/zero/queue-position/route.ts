@@ -8,7 +8,7 @@ import { NextResponse } from "next/server";
 import { eq, and, lte } from "drizzle-orm";
 import { initServices } from "../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
-import { resolveOrgOrNull } from "../../../../src/lib/org/resolve-org";
+import { resolveOrgOrNull } from "../../../../src/lib/zero/org/resolve-org";
 import { agentRunQueue } from "../../../../src/db/schema/agent-run-queue";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
 

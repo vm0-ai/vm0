@@ -50,7 +50,7 @@ import {
   expireCredits,
 } from "../lib/zero/credit/credit-expires-service";
 import { modelProviders } from "../db/schema/model-provider";
-import { ORG_SENTINEL_USER_ID } from "../lib/org/org-sentinel";
+import { ORG_SENTINEL_USER_ID } from "../lib/zero/org/org-sentinel";
 import { orgCache } from "../db/schema/org-cache";
 import { orgMembersCache } from "../db/schema/org-members-cache";
 import { orgMembersMetadata } from "../db/schema/org-members-metadata";
@@ -89,7 +89,7 @@ import {
   disableSchedule,
   getScheduleRecentRuns,
 } from "../lib/zero/schedule";
-import { grantOrgCredits } from "../lib/org/org-service";
+import { grantOrgCredits } from "../lib/zero/org/org-service";
 import { POST as storagePrepareRoute } from "../../app/api/storages/prepare/route";
 import { POST as storageCommitRoute } from "../../app/api/storages/commit/route";
 import { POST as setSecretRoute } from "../../app/api/zero/secrets/route";

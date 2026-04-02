@@ -9,7 +9,7 @@ import { initServices } from "../../../../../src/lib/init-services";
 import { checkpoints } from "../../../../../src/db/schema/checkpoint";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
-import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
+import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
 
 interface AgentComposeSnapshot {
   agentComposeVersionId: string;

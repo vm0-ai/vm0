@@ -5,7 +5,7 @@ import { telegramUserLinks } from "../../../../db/schema/telegram-user-link";
 import { agentComposes } from "../../../../db/schema/agent-compose";
 import { getAppUrl } from "../../../url";
 import { resolveAgentId } from "../../zero-compose-service";
-import { resolveOrgOrNull } from "../../../org/resolve-org";
+import { resolveOrgOrNull } from "../../org/resolve-org";
 import { validateAgentSession } from "../../../infra/run";
 import { ensureStorageExists } from "../../../infra/storage/storage-service";
 import {

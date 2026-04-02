@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
-import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
+import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
 import { orgMembersMetadata } from "../../../../../src/db/schema/org-members-metadata";
 
 /**

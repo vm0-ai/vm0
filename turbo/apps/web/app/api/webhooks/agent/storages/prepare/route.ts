@@ -16,7 +16,7 @@ import {
 } from "../../../../../../src/db/schema/storage";
 import { eq, and } from "drizzle-orm";
 import { getSandboxAuthForRun } from "../../../../../../src/lib/auth/get-sandbox-auth";
-import { getOrgData } from "../../../../../../src/lib/org/org-cache-service";
+import { getOrgData } from "../../../../../../src/lib/zero/org/org-cache-service";
 import {
   generatePresignedPutUrl,
   downloadManifest,

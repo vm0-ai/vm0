@@ -4,7 +4,7 @@ import { secrets } from "../../../db/schema/secret";
 import { encryptSecretValue, decryptSecretValue } from "../../shared/crypto";
 import { badRequest, notFound } from "../../errors";
 import { logger } from "../../logger";
-import { ORG_SENTINEL_USER_ID } from "../../org/org-sentinel";
+import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 
 const log = logger("service:secret");
 

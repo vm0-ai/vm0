@@ -1,9 +1,9 @@
 import { eq } from "drizzle-orm";
 import { clerkClient } from "@clerk/nextjs/server";
-import { orgCache } from "../../db/schema/org-cache";
-import { orgMetadata } from "../../db/schema/org-metadata";
-import { logger } from "../logger";
-import { getStripe } from "../stripe";
+import { orgCache } from "../../../db/schema/org-cache";
+import { orgMetadata } from "../../../db/schema/org-metadata";
+import { logger } from "../../logger";
+import { getStripe } from "../../stripe";
 
 const log = logger("service:org-cache");
 

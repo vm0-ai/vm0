@@ -14,8 +14,8 @@ import { createZeroRun } from "../../zero-run-service";
 import { buildIntegrationContext } from "../../integration-context";
 import { generateCallbackSecret, getApiUrl } from "../../../infra/callback";
 import { getUserIdByEmail } from "../../../auth/get-user-id-by-email";
-import { getOrgBySlug } from "../../../org/org-cache-service";
-import { verifyMembershipCached } from "../../../org/org-membership-cache";
+import { getOrgBySlug } from "../../../zero/org/org-cache-service";
+import { verifyMembershipCached } from "../../../zero/org/org-membership-cache";
 import { logger } from "../../../logger";
 
 const log = logger("email:inbound-trigger");

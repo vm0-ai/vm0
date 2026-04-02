@@ -1,13 +1,13 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { testContext, uniqueId } from "../../../__tests__/test-helpers";
+import { testContext, uniqueId } from "../../../../__tests__/test-helpers";
 import {
   createTestOrg,
   updateOrgTier,
   ensureOrgRow,
-} from "../../../__tests__/api-test-helpers";
-import { mockClerk } from "../../../__tests__/clerk-mock";
+} from "../../../../__tests__/api-test-helpers";
+import { mockClerk } from "../../../../__tests__/clerk-mock";
 import { resolveOrg } from "../resolve-org";
-import type { AuthContext } from "../../auth/get-auth-context";
+import type { AuthContext } from "../../../auth/get-auth-context";
 
 const context = testContext();
 

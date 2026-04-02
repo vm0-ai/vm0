@@ -3,7 +3,7 @@ import { runnerRealtimeTokenContract, createErrorResponse } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getRunnerAuth } from "../../../../../src/lib/auth/runner-auth";
 import { generateRunnerGroupToken } from "../../../../../src/lib/shared/realtime/client";
-import { isOfficialRunnerGroup } from "../../../../../src/lib/org/org-service";
+import { isOfficialRunnerGroup } from "../../../../../src/lib/zero/org/org-service";
 import { logger } from "../../../../../src/lib/logger";
 
 const log = logger("api:runners:realtime:token");

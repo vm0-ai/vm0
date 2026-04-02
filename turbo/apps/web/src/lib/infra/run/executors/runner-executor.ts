@@ -11,7 +11,7 @@ import {
   type RunContextSnapshot,
 } from "../../../shared/axiom/client";
 import { encryptSecretsMap } from "../../../shared/crypto/secrets-encryption";
-import { isOfficialRunnerGroup } from "../../../org/org-service";
+import { isOfficialRunnerGroup } from "../../../zero/org/org-service";
 import { forbidden } from "../../../errors";
 import { publishJobNotification } from "../../../shared/realtime/client";
 import { logger } from "../../../logger";

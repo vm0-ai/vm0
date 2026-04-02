@@ -48,7 +48,7 @@ import {
   decryptSecretsMap,
 } from "../shared/crypto/secrets-encryption";
 import { isConcurrentRunLimit, insufficientCredits } from "../errors";
-import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
+import { ORG_SENTINEL_USER_ID } from "./org/org-sentinel";
 import { logger } from "../logger";
 import type { OrgTier, QueueResponse, TriggerSource } from "@vm0/core";
 

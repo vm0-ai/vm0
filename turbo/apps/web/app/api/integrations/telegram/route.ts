@@ -20,7 +20,7 @@ import { listConnectors } from "../../../../src/lib/zero/connector/connector-ser
 import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
 import { decryptSecretValue } from "../../../../src/lib/shared/crypto/secrets-encryption";
 import { deleteWebhook } from "../../../../src/lib/zero/telegram/client";
-import { resolveOrg } from "../../../../src/lib/org/resolve-org";
+import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";
 import { logger } from "../../../../src/lib/logger";
 import { checkTelegramDomain } from "../../../../src/lib/zero/telegram/check-domain";
 

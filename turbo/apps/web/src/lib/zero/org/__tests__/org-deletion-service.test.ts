@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { testContext, uniqueId } from "../../../__tests__/test-helpers";
+import { testContext, uniqueId } from "../../../../__tests__/test-helpers";
 import {
   createTestCompose,
   createTestRunInDb,
@@ -29,7 +29,7 @@ import {
   insertTestOrgSentinelSecret,
   insertTestOrgSentinelVariable,
   createTestSchedule,
-} from "../../../__tests__/api-test-helpers";
+} from "../../../../__tests__/api-test-helpers";
 import { deleteOrgData } from "../org-deletion-service";
 
 const context = testContext();

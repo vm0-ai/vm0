@@ -7,8 +7,8 @@ import { cliAuthOrgContract } from "@vm0/core";
 import crypto from "crypto";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
-import { getOrgBySlug } from "../../../../../src/lib/org/org-cache-service";
-import { verifyMembershipCached } from "../../../../../src/lib/org/org-membership-cache";
+import { getOrgBySlug } from "../../../../../src/lib/zero/org/org-cache-service";
+import { verifyMembershipCached } from "../../../../../src/lib/zero/org/org-membership-cache";
 import { generateCliToken } from "../../../../../src/lib/auth/sandbox-token";
 import { cliTokens } from "../../../../../src/db/schema/cli-tokens";
 

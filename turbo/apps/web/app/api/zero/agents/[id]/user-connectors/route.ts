@@ -9,7 +9,7 @@ import {
   requireAuth,
   isAuthError,
 } from "../../../../../../src/lib/auth/require-auth";
-import { resolveOrg } from "../../../../../../src/lib/org/resolve-org";
+import { resolveOrg } from "../../../../../../src/lib/zero/org/resolve-org";
 import { zeroAgents } from "../../../../../../src/db/schema/zero-agent";
 import { userConnectors } from "../../../../../../src/db/schema/user-connector";
 import { eq, and } from "drizzle-orm";

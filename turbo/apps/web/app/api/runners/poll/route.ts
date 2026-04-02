@@ -10,7 +10,7 @@ import { runnerJobQueue } from "../../../../src/db/schema/runner-job-queue";
 import { eq, and, isNull, inArray, type SQL } from "drizzle-orm";
 import { getRunnerAuth } from "../../../../src/lib/auth/runner-auth";
 import { logger } from "../../../../src/lib/logger";
-import { isOfficialRunnerGroup } from "../../../../src/lib/org/org-service";
+import { isOfficialRunnerGroup } from "../../../../src/lib/zero/org/org-service";
 
 const log = logger("api:runners:poll");
 

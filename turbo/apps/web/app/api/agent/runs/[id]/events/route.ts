@@ -9,7 +9,7 @@ import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import { agentComposeVersions } from "../../../../../../src/db/schema/agent-compose";
 import { eq, and } from "drizzle-orm";
 import { getAuthContext } from "../../../../../../src/lib/auth/get-auth-context";
-import { resolveOrg } from "../../../../../../src/lib/org/resolve-org";
+import { resolveOrg } from "../../../../../../src/lib/zero/org/resolve-org";
 import {
   queryAxiom,
   getDatasetName,

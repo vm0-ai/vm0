@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { initServices } from "../../../src/lib/init-services";
 import { getAuthContext } from "../../../src/lib/auth/get-auth-context";
-import { resolveOrg } from "../../../src/lib/org/resolve-org";
+import { resolveOrg } from "../../../src/lib/zero/org/resolve-org";
 import { agentRuns } from "../../../src/db/schema/agent-run";
 import { usageDaily } from "../../../src/db/schema/usage-daily";
 import { sql, and, gte, lt, eq, isNotNull } from "drizzle-orm";

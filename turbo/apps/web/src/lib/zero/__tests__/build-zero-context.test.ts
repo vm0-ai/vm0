@@ -16,7 +16,7 @@ import { createZeroRun } from "../zero-run-service";
 import { upsertOrgModelProvider } from "../model-provider/model-provider-service";
 import { upsertSecretByOrg } from "../secret/secret-service";
 import { setVariable } from "../variable/variable-service";
-import { ORG_SENTINEL_USER_ID } from "../../org/org-sentinel";
+import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 import { isNoModelProvider } from "../../errors";
 import { reloadEnv } from "../../../env";
 import type { TriggerSource } from "@vm0/core";

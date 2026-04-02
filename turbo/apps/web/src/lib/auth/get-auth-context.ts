@@ -9,7 +9,7 @@ import {
   verifyZeroToken,
   verifyCliToken,
 } from "./sandbox-token";
-import { verifyMembershipCached } from "../org/org-membership-cache";
+import { verifyMembershipCached } from "../zero/org/org-membership-cache";
 import { logger } from "../logger";
 
 const log = logger("auth:user");

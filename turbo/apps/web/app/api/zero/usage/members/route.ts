@@ -9,7 +9,7 @@ import {
   requireAuth,
   isAuthError,
 } from "../../../../../src/lib/auth/require-auth";
-import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
+import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
 import { getUsageMembers } from "../../../../../src/lib/zero/billing/usage-service";
 
 const router = tsr.router(zeroUsageMembersContract, {

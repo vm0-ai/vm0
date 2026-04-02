@@ -10,7 +10,7 @@ import {
   requireAuth,
   isAuthError,
 } from "../../../../../src/lib/auth/require-auth";
-import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
+import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
 import { downgradeSubscription } from "../../../../../src/lib/zero/billing/billing-service";
 
 const router = tsr.router(zeroBillingDowngradeContract, {

@@ -4,7 +4,7 @@ import {
   requireAuth,
   isAuthError,
 } from "../../../../../../src/lib/auth/require-auth";
-import { resolveOrg } from "../../../../../../src/lib/org/resolve-org";
+import { resolveOrg } from "../../../../../../src/lib/zero/org/resolve-org";
 import { disableSchedule } from "../../../../../../src/lib/zero/schedule";
 import { isNotFound } from "../../../../../../src/lib/errors";
 

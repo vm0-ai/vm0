@@ -9,7 +9,7 @@ import {
   requireAuth,
   isAuthError,
 } from "../../../../../src/lib/auth/require-auth";
-import { getUserAccessibleOrgs } from "../../../../../src/lib/org/org-member-service";
+import { getUserAccessibleOrgs } from "../../../../../src/lib/zero/org/org-member-service";
 
 const router = tsr.router(zeroOrgListContract, {
   list: async ({ headers }) => {

@@ -8,7 +8,7 @@ import { initServices } from "../../../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../../../src/db/schema/agent-run";
 import { eq, and } from "drizzle-orm";
 import { getAuthContext } from "../../../../../../../src/lib/auth/get-auth-context";
-import { resolveOrg } from "../../../../../../../src/lib/org/resolve-org";
+import { resolveOrg } from "../../../../../../../src/lib/zero/org/resolve-org";
 import {
   queryAxiom,
   getDatasetName,

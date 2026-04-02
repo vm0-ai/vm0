@@ -9,7 +9,7 @@ import {
   DEFAULT_TEST_EMAIL,
 } from "../../../../../src/lib/auth/test-user";
 import { orgMembersCache } from "../../../../../src/db/schema/org-members-cache";
-import { getOrgDataOrNull } from "../../../../../src/lib/org/resolve-org";
+import { getOrgDataOrNull } from "../../../../../src/lib/zero/org/resolve-org";
 import { env } from "../../../../../src/env";
 
 const bodySchema = z.object({

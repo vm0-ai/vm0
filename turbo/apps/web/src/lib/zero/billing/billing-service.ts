@@ -3,7 +3,7 @@ import type { OrgTier } from "@vm0/core";
 import { getStripe } from "../../stripe";
 import { env } from "../../../env";
 import { orgMetadata } from "../../../db/schema/org-metadata";
-import { grantOrgCredits } from "../../org/org-service";
+import { grantOrgCredits } from "../org/org-service";
 import { handleAutoRechargeInvoicePaid } from "./auto-recharge-service";
 import { resetMemberCreditFlags } from "../credit/member-credit-cap-service";
 import {

@@ -9,9 +9,9 @@ import {
   requireAuth,
   isAuthError,
 } from "../../../../src/lib/auth/require-auth";
-import { resolveOrg } from "../../../../src/lib/org/resolve-org";
-import { updateOrg } from "../../../../src/lib/org/org-service";
-import { getOrgData } from "../../../../src/lib/org/org-cache-service";
+import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";
+import { updateOrg } from "../../../../src/lib/zero/org/org-service";
+import { getOrgData } from "../../../../src/lib/zero/org/org-cache-service";
 import {
   isBadRequest,
   isForbidden,

@@ -14,7 +14,7 @@ import {
   requireAuth,
   isAuthError,
 } from "../../../../../src/lib/auth/require-auth";
-import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
+import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
 import { serverSideCompose } from "../../../../../src/lib/infra/compose/server-side-compose";
 import { zeroAgents } from "../../../../../src/db/schema/zero-agent";
 import { zeroSkills } from "../../../../../src/db/schema/zero-skill";

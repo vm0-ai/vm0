@@ -1,17 +1,17 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { HttpResponse } from "msw";
-import type { StripeMockFns } from "../../../__tests__/stripe-mock";
-import { testContext, uniqueId } from "../../../__tests__/test-helpers";
-import { http } from "../../../__tests__/msw";
-import { server } from "../../../mocks/server";
-import { reloadEnv } from "../../../env";
+import type { StripeMockFns } from "../../../../__tests__/stripe-mock";
+import { testContext, uniqueId } from "../../../../__tests__/test-helpers";
+import { http } from "../../../../__tests__/msw";
+import { server } from "../../../../mocks/server";
+import { reloadEnv } from "../../../../env";
 import {
   updateOrgStripeSubscription,
   updateAgentComposeOrg,
   createTelegramInstallationForCompose,
   createSlackInstallationForOrg,
   findTestSlackOrgInstallation,
-} from "../../../__tests__/api-test-helpers";
+} from "../../../../__tests__/api-test-helpers";
 import { cleanupOrgExternalServices } from "../org-external-cleanup";
 
 // --- Stripe mock (external dependency — allowed) ---

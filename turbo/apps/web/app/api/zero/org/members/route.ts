@@ -9,13 +9,13 @@ import {
   requireAuth,
   isAuthError,
 } from "../../../../../src/lib/auth/require-auth";
-import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
+import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
 import {
   getOrgMembers,
   updateMemberRole,
   removeMember,
-} from "../../../../../src/lib/org/org-member-service";
-import { getOrgData } from "../../../../../src/lib/org/org-cache-service";
+} from "../../../../../src/lib/zero/org/org-member-service";
+import { getOrgData } from "../../../../../src/lib/zero/org/org-cache-service";
 import {
   isBadRequest,
   isForbidden,

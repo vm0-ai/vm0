@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../../__tests__/test-helpers";
 import {
   insertOrgCacheEntry,
   insertOrgMembersCacheEntry,
   findOrgMembersCacheEntry,
-} from "../../../__tests__/api-test-helpers";
-import { mockClerk } from "../../../__tests__/clerk-mock";
+} from "../../../../__tests__/api-test-helpers";
+import { mockClerk } from "../../../../__tests__/clerk-mock";
 import { verifyMembershipCached } from "../org-membership-cache";
 
 const context = testContext();

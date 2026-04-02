@@ -6,7 +6,7 @@ import {
 import { orgDefaultAgentContract } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
-import { resolveOrg } from "../../../../src/lib/org/resolve-org";
+import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";
 import { zeroAgents } from "../../../../src/db/schema/zero-agent";
 import { orgMetadata as orgTable } from "../../../../src/db/schema/org-metadata";
 import { eq, and } from "drizzle-orm";

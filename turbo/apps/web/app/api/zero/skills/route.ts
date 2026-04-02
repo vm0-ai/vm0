@@ -9,7 +9,7 @@ import {
   requireAuth,
   isAuthError,
 } from "../../../../src/lib/auth/require-auth";
-import { resolveOrg } from "../../../../src/lib/org/resolve-org";
+import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";
 import { zeroSkills } from "../../../../src/db/schema/zero-skill";
 import { eq, and } from "drizzle-orm";
 import { uploadSkillServerSide } from "../../../../src/lib/infra/storage/skill-upload";

@@ -12,11 +12,11 @@ import {
   requireAuth,
   isAuthError,
 } from "../../../../../src/lib/auth/require-auth";
-import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
+import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
 import {
   acceptMembershipRequest,
   rejectMembershipRequest,
-} from "../../../../../src/lib/org/org-member-service";
+} from "../../../../../src/lib/zero/org/org-member-service";
 import { isBadRequest, isForbidden } from "../../../../../src/lib/errors";
 
 const router = tsr.router(zeroOrgMembershipRequestsContract, {

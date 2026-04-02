@@ -21,7 +21,7 @@ import {
 import { eq, and } from "drizzle-orm";
 import { computeComposeVersionId } from "../../../../src/lib/infra/agent-compose/content-hash";
 import { getComposeByName } from "../../../../src/lib/infra/agent-compose/compose-service";
-import { resolveOrg } from "../../../../src/lib/org/resolve-org";
+import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";
 import {
   isNotFound,
   isForbidden,

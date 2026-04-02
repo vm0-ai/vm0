@@ -6,7 +6,7 @@ import { initServices } from "../../../../../src/lib/init-services";
 import { cliTokens } from "../../../../../src/db/schema/cli-tokens";
 import { orgCache } from "../../../../../src/db/schema/org-cache";
 import { orgMembersCache } from "../../../../../src/db/schema/org-members-cache";
-import { getOrgData } from "../../../../../src/lib/org/org-cache-service";
+import { getOrgData } from "../../../../../src/lib/zero/org/org-cache-service";
 import { generateCliToken } from "../../../../../src/lib/auth/sandbox-token";
 import {
   resolveTestUserId,

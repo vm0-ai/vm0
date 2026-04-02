@@ -23,7 +23,7 @@ import {
 } from "../../../../src/lib/auth/require-auth";
 import { logger } from "../../../../src/lib/logger";
 import { isApiError } from "../../../../src/lib/errors";
-import { resolveOrg } from "../../../../src/lib/org/resolve-org";
+import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";
 import { resolveCliRunContext } from "../../../../src/lib/zero/build-zero-context";
 
 const log = logger("api:runs");

@@ -13,7 +13,7 @@ import {
 import { storageVersionLineage } from "../../../../../../src/db/schema/storage-version-lineage";
 import { eq, and } from "drizzle-orm";
 import { getSandboxAuthForRun } from "../../../../../../src/lib/auth/get-sandbox-auth";
-import { getOrgData } from "../../../../../../src/lib/org/org-cache-service";
+import { getOrgData } from "../../../../../../src/lib/zero/org/org-cache-service";
 import {
   s3ObjectExists,
   verifyS3FilesExist,

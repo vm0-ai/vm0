@@ -29,7 +29,7 @@ import {
   buildZeroExecutionContext,
   MODEL_PROVIDER_ENV_VARS,
 } from "./build-zero-context";
-import { getOrgMetadata } from "../org/org-cache-service";
+import { getOrgMetadata } from "./org/org-cache-service";
 import {
   isConcurrentRunLimit,
   insufficientCredits,
@@ -38,7 +38,7 @@ import {
 import { modelProviders } from "../../db/schema/model-provider";
 import { orgMetadata } from "../../db/schema/org-metadata";
 import { orgMembersMetadata } from "../../db/schema/org-members-metadata";
-import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
+import { ORG_SENTINEL_USER_ID } from "./org/org-sentinel";
 import type { AgentComposeYaml } from "../../types/agent-compose";
 import { DISALLOWED_TOOLS, buildAgentPrompt } from "./agent-prompt";
 import type { CallbackPayload } from "../infra/callback/callback-payloads";

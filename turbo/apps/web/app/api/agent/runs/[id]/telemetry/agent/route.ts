@@ -6,7 +6,7 @@ import {
 import { runAgentEventsContract } from "@vm0/core";
 import { initServices } from "../../../../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../../../../src/lib/auth/get-auth-context";
-import { resolveOrg } from "../../../../../../../src/lib/org/resolve-org";
+import { resolveOrg } from "../../../../../../../src/lib/zero/org/resolve-org";
 import { getRunAgentEvents } from "../../../../../../../src/lib/infra/run/run-telemetry-service";
 import { isNotFound } from "../../../../../../../src/lib/errors";
 

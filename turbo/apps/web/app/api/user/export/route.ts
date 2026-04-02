@@ -2,7 +2,7 @@ import { NextResponse, after } from "next/server";
 import { eq, and, gt, inArray, desc } from "drizzle-orm";
 import { initServices } from "../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
-import { resolveOrg } from "../../../../src/lib/org/resolve-org";
+import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";
 import { exportJobs } from "../../../../src/db/schema/export-job";
 import { executeExportJob } from "../../../../src/lib/zero/export/export-service";
 import { generatePresignedUrl } from "../../../../src/lib/infra/s3/s3-client";

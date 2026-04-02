@@ -7,7 +7,7 @@ import {
 import { initServices } from "../../../../../src/lib/init-services";
 import { env } from "../../../../../src/env";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
-import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
+import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
 import { slackOrgInstallations } from "../../../../../src/db/schema/slack-org-installation";
 import { slackOrgConnections } from "../../../../../src/db/schema/slack-org-connection";
 import {
@@ -21,7 +21,7 @@ import {
 import { listSecrets } from "../../../../../src/lib/zero/secret/secret-service";
 import { listVariables } from "../../../../../src/lib/zero/variable/variable-service";
 import { listConnectors } from "../../../../../src/lib/zero/connector/connector-service";
-import { getOrgData } from "../../../../../src/lib/org/org-cache-service";
+import { getOrgData } from "../../../../../src/lib/zero/org/org-cache-service";
 import { createSlackClient } from "../../../../../src/lib/zero/slack";
 import { getApiUrl } from "../../../../../src/lib/infra/callback";
 import { publishAppHome } from "../../../../../src/lib/zero/slack/client";

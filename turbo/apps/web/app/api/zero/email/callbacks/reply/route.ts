@@ -15,7 +15,7 @@ import {
   buildUnsubscribeUrl,
   buildUnsubscribeHeaders,
 } from "../../../../../../src/lib/zero/email/handlers/shared";
-import { getOrgData } from "../../../../../../src/lib/org/org-cache-service";
+import { getOrgData } from "../../../../../../src/lib/zero/org/org-cache-service";
 import type { EmailReplyCallbackPayload } from "../../../../../../src/lib/infra/callback/callback-payloads";
 import { logger } from "../../../../../../src/lib/logger";
 

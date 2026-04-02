@@ -1,16 +1,16 @@
 import { eq } from "drizzle-orm";
 import { connectorTypeSchema } from "@vm0/core";
-import { logger } from "../logger";
-import { getStripe } from "../stripe";
-import { deleteWebhook } from "../zero/telegram/client";
-import { decryptSecretValue } from "../shared/crypto/secrets-encryption";
-import { revokeConnectorToken } from "../zero/connector/connector-service";
-import { cleanupWorkspaceInstallation } from "../zero/slack-org/connect-service";
-import { orgMetadata } from "../../db/schema/org-metadata";
-import { telegramInstallations } from "../../db/schema/telegram-installation";
-import { agentComposes } from "../../db/schema/agent-compose";
-import { connectors } from "../../db/schema/connector";
-import { slackOrgInstallations } from "../../db/schema/slack-org-installation";
+import { logger } from "../../logger";
+import { getStripe } from "../../stripe";
+import { deleteWebhook } from "../telegram/client";
+import { decryptSecretValue } from "../../shared/crypto/secrets-encryption";
+import { revokeConnectorToken } from "../connector/connector-service";
+import { cleanupWorkspaceInstallation } from "../slack-org/connect-service";
+import { orgMetadata } from "../../../db/schema/org-metadata";
+import { telegramInstallations } from "../../../db/schema/telegram-installation";
+import { agentComposes } from "../../../db/schema/agent-compose";
+import { connectors } from "../../../db/schema/connector";
+import { slackOrgInstallations } from "../../../db/schema/slack-org-installation";
 
 const log = logger("service:org-external-cleanup");
 
