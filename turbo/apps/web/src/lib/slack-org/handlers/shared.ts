@@ -276,11 +276,13 @@ export async function fetchConversationContexts(
   const userIds = [...senderIds, ...mentionedIds];
   const userInfoMap = await fetchSlackUserInfoMap(client, userIds);
 
-  // Format channel context prefix (for first thread mention only, text-only)
+  // Format channel context prefix (for first thread mention only, with image upload)
   const channelContextPrefix =
     channelMessages.length > 0
-      ? formatContextForAgent(
+      ? await formatContextForAgentWithImages(
           channelMessages,
+          botToken,
+          imageSessionId,
           botUserId,
           "channel",
           userInfoMap,
