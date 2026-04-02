@@ -1,2 +1,5 @@
 {
+  "enabledPlugins": {
+    "dev-server@team-skills": true
+  }
 }
