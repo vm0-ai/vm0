@@ -13,6 +13,7 @@ import { generate as generateApify } from "./apify";
 import { generate as generateAsana } from "./asana";
 import { generate as generateAtlassian } from "./atlassian";
 import { generate as generateAxiom } from "./axiom";
+import { generate as generateBitrix } from "./bitrix";
 import { generate as generateBraveSearch } from "./brave-search";
 import { generate as generateBrevo } from "./brevo";
 import { generate as generateBrightData } from "./bright-data";
@@ -132,6 +133,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   asana: generateAsana,
   atlassian: generateAtlassian,
   axiom: generateAxiom,
+  bitrix: generateBitrix,
   "brave-search": generateBraveSearch,
   brevo: generateBrevo,
   "bright-data": generateBrightData,

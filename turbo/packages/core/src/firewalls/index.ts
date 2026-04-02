@@ -34,6 +34,7 @@ import { apifyFirewall } from "./apify.generated";
 import { asanaFirewall } from "./asana.generated";
 import { atlassianFirewall } from "./atlassian.generated";
 import { axiomFirewall } from "./axiom.generated";
+import { bitrixFirewall } from "./bitrix.generated";
 import { braveSearchFirewall } from "./brave-search.generated";
 import { brevoFirewall } from "./brevo.generated";
 import { brightDataFirewall } from "./bright-data.generated";
@@ -158,6 +159,7 @@ const CONNECTOR_FIREWALLS = {
   asana: asanaFirewall,
   atlassian: atlassianFirewall,
   axiom: axiomFirewall,
+  bitrix: bitrixFirewall,
   "brave-search": braveSearchFirewall,
   brevo: brevoFirewall,
   "bright-data": brightDataFirewall,
@@ -356,8 +358,6 @@ export type NonFirewallConnectorType =
   // Signature-based auth — requires computing signatures, not simple header injection
   | "cloudinary" // SHA signature in form body + api_key param
   | "minio" // AWS Signature V4
-  // Webhook URL — token embedded in URL, not auth header
-  | "bitrix" // token in URL path (/rest/{user_id}/{token}/)
   // Other
   | "computer" // not an API connector
   | "jam"; // no public REST API
