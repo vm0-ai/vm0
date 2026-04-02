@@ -1,5 +1,19 @@
 # Firecracker VM rootfs image
-# Based on Node.js 24 with Python 3.11+, guest-init, and agent CLIs
+# Based on Ubuntu 24.04 with pre-installed language runtimes and databases
+#
+# Language runtimes:
+# - Node.js 24 (npm, npx)
+# - Python 3.x (pip)
+# - Ruby 3.x (gem, bundler)
+# - PHP 8.x (composer)
+# - Java (OpenJDK + Maven + Gradle)
+# - Go (latest stable)
+# - Rust (stable toolchain + cargo)
+# - C++ (GCC + Clang + CMake)
+#
+# Databases:
+# - PostgreSQL 16
+# - Redis 7.0
 #
 # Included CLIs:
 # - Claude Code CLI (@anthropic-ai/claude-code)
@@ -11,17 +25,19 @@
 # Build: docker build -t vm0-rootfs .
 # Export: See build-rootfs.sh
 
-FROM node:24-bookworm-slim
+FROM ubuntu:24.04
 
 # Avoid interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Install required packages
+# ---------------------------------------------------------------------------
+# System packages
+# ---------------------------------------------------------------------------
 # Core:
-# - python3: Python 3.11+ for agent scripts
+# - python3, python3-pip: Python runtime
 # - procps: Process utilities (pgrep, free) needed by metrics and executor
-# Development tools (matching e2b template):
-# - curl: HTTP client
+# Development tools:
+# - curl, wget: HTTP clients
 # - git: Version control
 # - ripgrep: Fast code search (used by Claude Code)
 # - jq: JSON processing
@@ -30,11 +46,15 @@ ENV DEBIAN_FRONTEND=noninteractive
 # - iproute2: Network utilities (ip command)
 # - ca-certificates: SSL certificates for HTTPS
 # - sudo: For privileged operations
+# - gnupg: Key management for APT repos
+# NSS/Chromium:
+# - libnss3, p11-kit-modules: System CA trust for NSS-based apps
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
     python3-pip \
     procps \
     curl \
+    wget \
     git \
     ripgrep \
     jq \
@@ -42,8 +62,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     iproute2 \
     ca-certificates \
     sudo \
+    gnupg \
     libnss3 \
-    p11-kit-modules
+    p11-kit-modules \
+    && rm -rf /var/lib/apt/lists/*
 
 # Make NSS-based applications (Chromium, Firefox) trust the system CA store.
 # By default NSS uses a built-in trust module (libnssckbi.so) with Mozilla's
@@ -53,9 +75,94 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN find /usr/lib -name libnssckbi.so -exec sh -c \
     'p11=$(find /usr/lib -name p11-kit-trust.so | head -1) && ln -sf "$p11" "$1"' _ {} \;
 
-# Install Claude Code CLI as a standalone Bun-compiled binary.
-# The binary bundles Bun runtime (JSC) + application code into a single executable,
-# eliminating module resolution overhead and reducing CLI cold-start time.
+# ---------------------------------------------------------------------------
+# Node.js 24 (via NodeSource)
+# ---------------------------------------------------------------------------
+RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
+    && apt-get install -y nodejs \
+    && rm -rf /var/lib/apt/lists/*
+
+# ---------------------------------------------------------------------------
+# Ruby 3.x
+# ---------------------------------------------------------------------------
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ruby-full \
+    bundler \
+    && rm -rf /var/lib/apt/lists/*
+
+# ---------------------------------------------------------------------------
+# PHP 8.x + Composer
+# ---------------------------------------------------------------------------
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    php \
+    php-cli \
+    php-common \
+    php-curl \
+    php-mbstring \
+    php-xml \
+    php-zip \
+    unzip \
+    && curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer \
+    && rm -rf /var/lib/apt/lists/*
+
+# ---------------------------------------------------------------------------
+# Java (OpenJDK + Maven + Gradle)
+# ---------------------------------------------------------------------------
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    default-jdk \
+    maven \
+    gradle \
+    && rm -rf /var/lib/apt/lists/*
+
+# ---------------------------------------------------------------------------
+# Go (latest stable via official tarball)
+# ---------------------------------------------------------------------------
+ARG GO_VERSION=1.24.2
+RUN ARCH=$(dpkg --print-architecture) \
+    && curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${ARCH}.tar.gz" -o /tmp/go.tar.gz \
+    && tar -C /usr/local -xzf /tmp/go.tar.gz \
+    && rm /tmp/go.tar.gz \
+    && echo 'export PATH=$PATH:/usr/local/go/bin' > /etc/profile.d/golang.sh
+
+# ---------------------------------------------------------------------------
+# Rust (stable toolchain via rustup, system-wide)
+# ---------------------------------------------------------------------------
+ENV RUSTUP_HOME=/usr/local/rustup
+ENV CARGO_HOME=/usr/local/cargo
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+    | sh -s -- -y --default-toolchain stable --no-modify-path \
+    && chmod -R a+rX /usr/local/rustup /usr/local/cargo \
+    && echo 'export PATH=$PATH:/usr/local/cargo/bin' > /etc/profile.d/rust.sh
+
+# ---------------------------------------------------------------------------
+# C++ (GCC + Clang + CMake)
+# ---------------------------------------------------------------------------
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    g++ \
+    clang \
+    make \
+    cmake \
+    && rm -rf /var/lib/apt/lists/*
+
+# ---------------------------------------------------------------------------
+# PostgreSQL 16
+# ---------------------------------------------------------------------------
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    postgresql-16 \
+    postgresql-contrib \
+    && rm -rf /var/lib/apt/lists/*
+
+# ---------------------------------------------------------------------------
+# Redis 7
+# ---------------------------------------------------------------------------
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    redis-server \
+    && rm -rf /var/lib/apt/lists/*
+
+# ---------------------------------------------------------------------------
+# Claude Code CLI (standalone Bun-compiled binary)
+# ---------------------------------------------------------------------------
 ARG CLAUDE_CODE_VERSION=2.1.90
 RUN ARCH=$(dpkg --print-architecture) \
     && case "$ARCH" in amd64) PLATFORM="linux-x64" ;; arm64) PLATFORM="linux-arm64" ;; *) echo "Unsupported architecture: $ARCH" >&2; exit 1 ;; esac \
@@ -66,31 +173,47 @@ RUN ARCH=$(dpkg --print-architecture) \
     && echo "${CHECKSUM}  /usr/local/bin/claude" | sha256sum -c - \
     && chmod +x /usr/local/bin/claude
 
-# Install GitHub CLI (included in base image)
-# See: turbo/scripts/e2b/vm0-claude-code/template.ts
-# https://github.com/cli/cli/blob/trunk/docs/install_linux.md
+# ---------------------------------------------------------------------------
+# GitHub CLI
+# ---------------------------------------------------------------------------
 RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
     | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
     && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
     | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
     && apt-get update \
-    && apt-get install -y gh
+    && apt-get install -y gh \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install Google Workspace CLI for Google Workspace service access
+# ---------------------------------------------------------------------------
+# Google Workspace CLI
+# ---------------------------------------------------------------------------
 ARG GWS_CLI_VERSION=0.22.5
 RUN npm install -g @googleworkspace/cli@${GWS_CLI_VERSION}
 
-# Install xurl (X/Twitter official CLI) for X API access
+# ---------------------------------------------------------------------------
+# xurl (X/Twitter official CLI)
+# ---------------------------------------------------------------------------
 ARG XURL_VERSION=1.0.3
 RUN npm install -g @xdevplatform/xurl@${XURL_VERSION}
 
+# ---------------------------------------------------------------------------
+# Chromium + agent-browser
+# ---------------------------------------------------------------------------
+# Ubuntu 24.04 defaults to snap-packaged Chromium which doesn't work in Docker.
+# Try chromium-browser first, fall back to chromium package name.
+ARG AGENT_BROWSER_VERSION=0.23.4
+RUN npm install -g agent-browser@${AGENT_BROWSER_VERSION} \
+    && apt-get update \
+    && (apt-get install -y --no-install-recommends chromium-browser \
+        || apt-get install -y --no-install-recommends chromium) \
+    && rm -rf /var/lib/apt/lists/*
+
+# ---------------------------------------------------------------------------
+# User account
+# ---------------------------------------------------------------------------
 # Create 'user' account (UID 1000) matching E2B sandbox default
-# - Home directory at /home/user
-# - Add to sudo group for privileged operations
-# Note: node:24-bookworm-slim has 'node' user at UID 1000, so we delete it first
-RUN userdel -r node 2>/dev/null || true \
-    && useradd -m -u 1000 -s /bin/bash user \
+RUN useradd -m -u 1000 -s /bin/bash user \
     && usermod -aG sudo user \
     && echo 'user ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers \
     && passwd -d user
@@ -100,15 +223,9 @@ RUN userdel -r node 2>/dev/null || true \
 
 ENV LANG=C.UTF-8
 
-# Install Chromium and agent-browser CLI for browser automation.
-# System Chromium is used on all architectures for version consistency.
-# Chromium binaries are loaded on demand, so they don't consume memory unless launched.
-ARG AGENT_BROWSER_VERSION=0.23.4
-RUN npm install -g agent-browser@${AGENT_BROWSER_VERSION} \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends chromium
-
-# Clean up caches to reduce rootfs size.
+# ---------------------------------------------------------------------------
+# Cleanup
+# ---------------------------------------------------------------------------
 # Docker layers don't matter since the image is exported as a flat rootfs.
 RUN rm -rf /var/lib/apt/lists/* /var/cache/apt/* \
     && npm cache clean --force

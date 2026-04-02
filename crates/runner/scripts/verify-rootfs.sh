@@ -121,6 +121,37 @@ else
   errors+=("gh CLI not found at /usr/bin/gh")
 fi
 
+# Check language runtimes
+for bin_check in \
+  "/usr/bin/ruby:ruby" \
+  "/usr/bin/php:php" \
+  "/usr/bin/javac:javac" \
+  "/usr/local/go/bin/go:go" \
+  "/usr/local/cargo/bin/rustc:rustc" \
+  "/usr/bin/gcc:gcc" \
+  "/usr/bin/clang:clang"; do
+  bin_path="${bin_check%%:*}"
+  bin_name="${bin_check#*:}"
+  if [[ -f "${MOUNT_DIR}${bin_path}" ]]; then
+    echo "  ${bin_name}: found"
+  else
+    errors+=("${bin_name} not found at ${bin_path}")
+  fi
+done
+
+# Check databases
+if [[ -f "${MOUNT_DIR}/usr/bin/psql" ]]; then
+  echo "  psql: found"
+else
+  errors+=("psql not found at /usr/bin/psql")
+fi
+
+if [[ -f "${MOUNT_DIR}/usr/bin/redis-server" ]]; then
+  echo "  redis-server: found"
+else
+  errors+=("redis-server not found at /usr/bin/redis-server")
+fi
+
 # Check proxy CA certificate file
 ca_path="${MOUNT_DIR}/${CA_ROOTFS_DEST}"
 if [[ -f "$ca_path" ]]; then
