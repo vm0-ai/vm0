@@ -37,6 +37,14 @@ pub struct ProfileConfig {
     pub snapshot_hash: Option<String>,
     pub vcpu: u32,
     pub memory_mb: u32,
+    /// Disk size in MiB. Defaults to 16384 (16 GiB) for backward compatibility
+    /// with runner.yaml files generated before this field existed.
+    #[serde(default = "default_disk_mb")]
+    pub disk_mb: u32,
+}
+
+fn default_disk_mb() -> u32 {
+    16384
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -127,9 +135,9 @@ async fn validate(config: &RunnerConfig, home: &HomePaths) -> RunnerResult<()> {
                 "invalid profile name: {name} (must be org/name format, lowercase alphanumeric + hyphens)"
             )));
         }
-        if profile.vcpu == 0 || profile.memory_mb == 0 {
+        if profile.vcpu == 0 || profile.memory_mb == 0 || profile.disk_mb == 0 {
             return Err(RunnerError::Config(format!(
-                "profile {name}: vcpu and memory_mb must be non-zero"
+                "profile {name}: vcpu, memory_mb, and disk_mb must be non-zero"
             )));
         }
         // Validate rootfs exists on disk.
@@ -263,7 +271,8 @@ mod tests {
                 rootfs_hash: "abc123".into(),
                 snapshot_hash: Some("def456".into()),
                 vcpu: 2,
-                memory_mb: 2048,
+                memory_mb: 4096,
+                disk_mb: 16384,
             },
         );
         profiles
@@ -292,7 +301,8 @@ profiles:
     rootfs_hash: abc123
     snapshot_hash: def456
     vcpu: 2
-    memory_mb: 2048
+    memory_mb: 4096
+    disk_mb: 16384
 sandbox:
   max_concurrent: 8
   concurrency_factor: 2.0
@@ -347,7 +357,8 @@ profiles:
   vm0/default:
     rootfs_hash: abc
     vcpu: 2
-    memory_mb: 2048
+    memory_mb: 4096
+    disk_mb: 16384
 "#,
             base_dir = dir.path().display(),
             ca_dir = dir.path().display(),
@@ -426,7 +437,8 @@ profiles:
   bad-name:
     rootfs_hash: abc
     vcpu: 2
-    memory_mb: 2048
+    memory_mb: 4096
+    disk_mb: 16384
 "#,
             base_dir = dir.path().display(),
             ca_dir = dir.path().display(),
@@ -467,7 +479,8 @@ profiles:
   vm0/default:
     rootfs_hash: abc
     vcpu: 0
-    memory_mb: 2048
+    memory_mb: 4096
+    disk_mb: 16384
 "#,
             base_dir = dir.path().display(),
             ca_dir = dir.path().display(),
@@ -507,7 +520,8 @@ profiles:
   vm0/default:
     rootfs_hash: abc
     vcpu: 2
-    memory_mb: 2048
+    memory_mb: 4096
+    disk_mb: 16384
 sandbox:
   concurrency_factor: {bad_value}
 "#,
@@ -587,7 +601,8 @@ profiles:
   vm0/default:
     rootfs_hash: abc
     vcpu: 2
-    memory_mb: 2048
+    memory_mb: 4096
+    disk_mb: 16384
 "#;
 
         let config_path = dir.path().join("runner.yaml");

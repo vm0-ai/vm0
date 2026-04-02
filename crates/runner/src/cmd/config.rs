@@ -108,6 +108,7 @@ pub async fn run_config(args: ConfigArgs) -> RunnerResult<()> {
                 snapshot_hash: Some(snapshot_hash.clone()),
                 vcpu: def.vcpu,
                 memory_mb: def.memory_mb,
+                disk_mb: def.disk_mb,
             },
         );
     }

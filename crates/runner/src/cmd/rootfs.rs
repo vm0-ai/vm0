@@ -119,6 +119,7 @@ async fn resolve_guest(
 pub async fn run_rootfs(args: RootfsArgs) -> RunnerResult<String> {
     let def = profile::get(&args.profile)?;
     let dockerfile = def.dockerfile;
+    let disk_mb = def.disk_mb;
     let dry_run = args.dry_run;
 
     // Create temp dir for any bundled guest binaries that need extracting.
@@ -145,9 +146,9 @@ pub async fn run_rootfs(args: RootfsArgs) -> RunnerResult<String> {
         ),
     ];
 
-    // Compute input hash: script + dockerfile + guest binaries.
+    // Compute input hash: script + dockerfile + guest binaries + disk size.
     // The build script content is included so any logic change invalidates cache.
-    let hash = compute_input_hash(dockerfile, &bins).await?;
+    let hash = compute_input_hash(dockerfile, &bins, disk_mb).await?;
     tracing::info!("rootfs input hash: {hash}");
     // Machine-readable output — do not change format without updating consumers
     println!("rootfs_hash={hash}");
@@ -209,6 +210,7 @@ pub async fn run_rootfs(args: RootfsArgs) -> RunnerResult<String> {
     let guest_init_str = guest_init.to_string_lossy();
     let guest_mock_claude_str = guest_mock_claude.to_string_lossy();
     let ca_dir_str = paths.ca_dir().to_string_lossy().to_string();
+    let disk_mb_str = disk_mb.to_string();
 
     let status = tokio::process::Command::new("bash")
         .arg(&script_path)
@@ -221,6 +223,8 @@ pub async fn run_rootfs(args: RootfsArgs) -> RunnerResult<String> {
             &ca_dir_str,
             "--hash",
             &hash,
+            "--disk-mb",
+            &disk_mb_str,
             "--guest-agent",
             &guest_agent_str,
             "--guest-download",
@@ -282,6 +286,7 @@ async fn is_build_complete(rootfs: &RootfsPaths) -> RunnerResult<bool> {
 async fn compute_input_hash(
     dockerfile: &str,
     guest_bins: &[(&Path, &str)],
+    disk_mb: u32,
 ) -> RunnerResult<String> {
     let mut hasher = Sha256::new();
 
@@ -296,6 +301,10 @@ async fn compute_input_hash(
     // Hash Dockerfile content
     hasher.update(b"dockerfile:");
     hasher.update(dockerfile.as_bytes());
+
+    // Hash disk size
+    hasher.update(b"disk_mb:");
+    hasher.update(disk_mb.to_le_bytes());
 
     // Hash guest binaries (already sorted by name via guest_bins())
     for (src, dest) in guest_bins {

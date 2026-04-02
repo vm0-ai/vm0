@@ -10,6 +10,7 @@
 #     --output-dir /path/to/output \
 #     --work-dir /path/to/workdir \
 #     --ca-dir /path/to/ca \
+#     --disk-mb 16384 \
 #     --guest-agent /path/to/guest-agent \
 #     --guest-download /path/to/guest-download \
 #     --guest-init /path/to/guest-init \
@@ -25,6 +26,7 @@ OUTPUT_DIR=""
 WORK_DIR=""
 CA_DIR=""
 INPUT_HASH=""
+DISK_MB=""
 GUEST_AGENT=""
 GUEST_DOWNLOAD=""
 GUEST_INIT=""
@@ -36,6 +38,7 @@ while [[ $# -gt 0 ]]; do
     --work-dir)   WORK_DIR="$2";   shift 2 ;;
     --ca-dir)     CA_DIR="$2";     shift 2 ;;
     --hash)       INPUT_HASH="$2"; shift 2 ;;
+    --disk-mb)    DISK_MB="$2";    shift 2 ;;
     --guest-agent)      GUEST_AGENT="$2";      shift 2 ;;
     --guest-download)   GUEST_DOWNLOAD="$2";   shift 2 ;;
     --guest-init)       GUEST_INIT="$2";       shift 2 ;;
@@ -44,7 +47,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-for var in OUTPUT_DIR WORK_DIR CA_DIR INPUT_HASH GUEST_AGENT GUEST_DOWNLOAD GUEST_INIT GUEST_MOCK_CLAUDE; do
+for var in OUTPUT_DIR WORK_DIR CA_DIR INPUT_HASH DISK_MB GUEST_AGENT GUEST_DOWNLOAD GUEST_INIT GUEST_MOCK_CLAUDE; do
   if [[ -z "${!var}" ]]; then
     echo "error: --$(echo "$var" | tr '_' '-' | tr '[:upper:]' '[:lower:]') is required" >&2
     exit 1
@@ -216,15 +219,18 @@ extract_and_inject() {
 create_ext4() {
   echo "creating ext4 image..."
 
-  # Size the image to content + 2 GiB free space.
+  # Image size from profile disk_mb.
   # With dm-snapshot COW, the guest filesystem is limited to this image
-  # size — there is no separate writable layer.  The old overlayfs approach
-  # had a 2 GiB upper layer for writes; we match that by reserving 2 GiB
-  # of free space inside the rootfs itself.
+  # size — there is no separate writable layer.
   local content_bytes
   content_bytes=$(sudo du -sb "$EXTRACT_DIR" | cut -f1)
-  local free_space=2147483648  # 2 GiB
-  local image_bytes=$(( content_bytes + free_space ))
+  local image_bytes=$(( DISK_MB * 1024 * 1024 ))
+
+  if (( image_bytes < content_bytes )); then
+    local content_mb=$(( content_bytes / 1024 / 1024 ))
+    echo "error: disk_mb (${DISK_MB} MiB) is smaller than rootfs content (${content_mb} MiB)" >&2
+    exit 1
+  fi
 
   # Derive a deterministic UUID from the input hash.  ext4 uses the UUID
   # as the htree seed for directory hashing — a fixed UUID ensures
