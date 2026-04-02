@@ -139,7 +139,7 @@ check_bin "/usr/bin/ruby"                      "ruby"
 check_bin "/usr/bin/php*"                      "php"
 check_bin "/usr/lib/jvm/java-*/bin/javac"      "javac"
 check_bin "/usr/local/go/bin/go"               "go"
-check_bin "/home/user/.cargo/bin/rustc"        "rustc"
+check_bin "/usr/local/cargo/bin/rustc"         "rustc"
 check_bin "/usr/bin/gcc"                       "gcc"
 check_bin "/usr/bin/clang"                     "clang"
 

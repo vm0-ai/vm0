@@ -120,14 +120,14 @@ RUN ARCH=$(dpkg --print-architecture) \
     && echo 'export PATH=$PATH:/usr/local/go/bin' > /etc/profile.d/golang.sh
 
 # ---------------------------------------------------------------------------
-# Rust (stable toolchain via rustup, installed as user)
+# Rust (stable toolchain via rustup)
 # ---------------------------------------------------------------------------
-USER user
+ENV RUSTUP_HOME=/usr/local/rustup
+ENV CARGO_HOME=/usr/local/cargo
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
     | sh -s -- -y --default-toolchain stable --no-modify-path \
-    && echo 'export PATH=$PATH:$HOME/.cargo/bin' > /tmp/rust-profile.sh
-USER root
-RUN mv /tmp/rust-profile.sh /etc/profile.d/rust.sh
+    && printf 'export RUSTUP_HOME=/usr/local/rustup\nexport CARGO_HOME=$HOME/.cargo\nexport PATH=$PATH:/usr/local/cargo/bin:$HOME/.cargo/bin\n' \
+       > /etc/profile.d/rust.sh
 
 # ---------------------------------------------------------------------------
 # C++ (GCC + Clang + CMake)
