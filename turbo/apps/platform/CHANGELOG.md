@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.178.2](https://github.com/vm0-ai/vm0/compare/app-v0.178.1...app-v0.178.2) (2026-04-02)
+
+
+### Bug Fixes
+
+* read correct route param name in schedule detail page ([#7652](https://github.com/vm0-ai/vm0/issues/7652)) ([a036671](https://github.com/vm0-ai/vm0/commit/a0366716b85c0ba2e850a9960a9567e8c3a9c498)), closes [#7646](https://github.com/vm0-ai/vm0/issues/7646)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.141.0
+
 ## [0.178.1](https://github.com/vm0-ai/vm0/compare/app-v0.178.0...app-v0.178.1) (2026-04-02)
 
 

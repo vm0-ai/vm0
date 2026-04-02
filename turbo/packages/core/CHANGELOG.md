@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.141.0](https://github.com/vm0-ai/vm0/compare/core-v8.140.1...core-v8.141.0) (2026-04-02)
+
+
+### Features
+
+* add help text with setup instructions to connector auth methods ([#7651](https://github.com/vm0-ai/vm0/issues/7651)) ([6b0920c](https://github.com/vm0-ai/vm0/commit/6b0920c5ce097766d43c7033f26001c73fd42457))
+
 ## [8.140.1](https://github.com/vm0-ai/vm0/compare/core-v8.140.0...core-v8.140.1) (2026-04-02)
 
 
