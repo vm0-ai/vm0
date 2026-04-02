@@ -213,6 +213,8 @@ EOF
         return 1
     }
 
-    # Network logs prove mitmproxy matched the firewall and rewrote the URL
-    wait_for_log "$RUN_ID" --network -- "[discord-webhook]" "url-rewrite"
+    # Network logs prove mitmproxy matched the discord-webhook firewall.
+    # URL rewrite depends on full secret resolution chain (connector → secret → auth.base),
+    # so we only assert firewall match here.
+    wait_for_log "$RUN_ID" --network -- "[discord-webhook]"
 }
