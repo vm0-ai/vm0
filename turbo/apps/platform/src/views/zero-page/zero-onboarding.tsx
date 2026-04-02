@@ -647,7 +647,6 @@ function OnboardingPageLayout({ children }: { children: React.ReactNode }) {
   const illustration = getStepIllustration(stepKey);
   const showOrbit = stepKey === "connectors";
   const showChat = stepKey === "workspace";
-  const pageSignal = useGet(pageSignal$);
 
   return (
     <div className="zero-app flex h-dvh bg-muted/30 relative">
