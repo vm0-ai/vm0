@@ -1,5 +1,15 @@
 {
+  "extraKnownMarketplaces": {
+    "team-skills": {
+      "source": {
+        "source": "github",
+        "repo": "vm0-ai/team-skills"
+      }
+    }
+  },
   "enabledPlugins": {
-    "dev-server@team-skills": true
+    "dev-server@team-skills": true,
+    "deep-dive@team-skills": true,
+    "github-workflow@team-skills": true
   }
 }
