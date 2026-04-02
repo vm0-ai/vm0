@@ -1,15 +1,15 @@
 import { z } from "zod";
 import { eq, and } from "drizzle-orm";
-import { githubInstallations } from "../../../db/schema/github-installation";
-import { githubUserLinks } from "../../../db/schema/github-user-link";
-import { githubIssueSessions } from "../../../db/schema/github-issue-session";
-import { agentComposes } from "../../../db/schema/agent-compose";
-import { zeroAgents } from "../../../db/schema/zero-agent";
-import { validateAgentSession } from "../../infra/run";
-import { createZeroRun } from "../../zero/zero-run-service";
-import { buildIntegrationContext } from "../../zero/integration-context";
-import { generateCallbackSecret, getApiUrl } from "../../infra/callback";
-import type { GitHubIssuesCallbackPayload } from "../../infra/callback/callback-payloads";
+import { githubInstallations } from "../../../../db/schema/github-installation";
+import { githubUserLinks } from "../../../../db/schema/github-user-link";
+import { githubIssueSessions } from "../../../../db/schema/github-issue-session";
+import { agentComposes } from "../../../../db/schema/agent-compose";
+import { validateAgentSession } from "../../../infra/run";
+import { createZeroRun } from "../../zero-run-service";
+import { buildIntegrationContext } from "../../integration-context";
+import { resolveAgentId } from "../../zero-compose-service";
+import { generateCallbackSecret, getApiUrl } from "../../../infra/callback";
+import type { GitHubIssuesCallbackPayload } from "../../../infra/callback/callback-payloads";
 import { getInstallationAccessToken } from "../github-app";
 import {
   type IssueComment,
@@ -18,8 +18,8 @@ import {
   postIssueCommentBestEffort,
   removeCommentReaction,
 } from "../api";
-import { env } from "../../../env";
-import { logger } from "../../logger";
+import { env } from "../../../../env";
+import { logger } from "../../../logger";
 
 const log = logger("github:issue-event");
 
@@ -444,18 +444,8 @@ async function dispatchAgentRun(params: DispatchParams): Promise<void> {
   }
 
   // 3b. Resolve agentId from compose
-  const [zeroAgent] = await globalThis.services.db
-    .select({ id: zeroAgents.id })
-    .from(zeroAgents)
-    .where(
-      and(
-        eq(zeroAgents.orgId, compose.orgId),
-        eq(zeroAgents.name, compose.name),
-      ),
-    )
-    .limit(1);
-
-  if (!zeroAgent) {
+  const agentId = await resolveAgentId(compose.orgId, compose.name);
+  if (!agentId) {
     throw new Error(
       `Zero agent not found for compose: composeId=${compose.id}`,
     );
@@ -515,7 +505,7 @@ async function dispatchAgentRun(params: DispatchParams): Promise<void> {
       userId: vm0UserId,
       prompt: resolvedPrompt,
       appendSystemPrompt,
-      agentId: zeroAgent.id,
+      agentId,
       sessionId: existingSessionId,
       triggerSource: "github",
       callbacks: [

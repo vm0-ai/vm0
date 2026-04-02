@@ -4,17 +4,17 @@ import { env } from "../../../../src/env";
 import {
   verifyGitHubWebhookSignature,
   getGitHubWebhookHeaders,
-} from "../../../../src/lib/github/verify-webhook";
+} from "../../../../src/lib/zero/github/verify-webhook";
 import {
   handleIssuesEvent,
   handleIssueCommentEvent,
   gitHubIssuesEventSchema,
   gitHubIssueCommentEventSchema,
-} from "../../../../src/lib/github/handlers/issue-event";
+} from "../../../../src/lib/zero/github/handlers/issue-event";
 import {
   handleInstallationCreatedEvent,
   gitHubInstallationEventSchema,
-} from "../../../../src/lib/github/handlers/installation-event";
+} from "../../../../src/lib/zero/github/handlers/installation-event";
 import { logger } from "../../../../src/lib/logger";
 
 const log = logger("webhook:github");

@@ -10,7 +10,7 @@ import { githubInstallations } from "../../../../../src/db/schema/github-install
 import {
   listAppInstallations,
   getInstallationAccessToken,
-} from "../../../../../src/lib/github/github-app";
+} from "../../../../../src/lib/zero/github/github-app";
 import { resolveDefaultAgentComposeId } from "../../../../../src/lib/infra/agent-compose/resolve-default";
 import { linkVm0User } from "../callback/route";
 import { logger } from "../../../../../src/lib/logger";

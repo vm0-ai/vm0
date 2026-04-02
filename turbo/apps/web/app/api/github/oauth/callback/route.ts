@@ -10,7 +10,7 @@ import { connectors } from "../../../../../src/db/schema/connector";
 import {
   getInstallationAccessToken,
   getInstallationInfo,
-} from "../../../../../src/lib/github/github-app";
+} from "../../../../../src/lib/zero/github/github-app";
 import { getAppUrl } from "../../../../../src/lib/url";
 import { resolveDefaultAgentComposeId } from "../../../../../src/lib/infra/agent-compose/resolve-default";
 

@@ -7,11 +7,11 @@ import { githubIssueSessions } from "../../../../../../src/db/schema/github-issu
 import { agentSessions } from "../../../../../../src/db/schema/agent-session";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import { zeroAgents } from "../../../../../../src/db/schema/zero-agent";
-import { getInstallationAccessToken } from "../../../../../../src/lib/github/github-app";
+import { getInstallationAccessToken } from "../../../../../../src/lib/zero/github/github-app";
 import {
   postIssueComment,
   removeCommentReaction,
-} from "../../../../../../src/lib/github/api";
+} from "../../../../../../src/lib/zero/github/api";
 import { extractRunOutput } from "../../../../../../src/lib/infra/run/extract-run-output";
 import { getAppUrl } from "../../../../../../src/lib/url";
 import { env } from "../../../../../../src/env";

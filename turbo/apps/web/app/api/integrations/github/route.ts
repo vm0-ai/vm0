@@ -20,7 +20,7 @@ import { listVariables } from "../../../../src/lib/zero/variable/variable-servic
 import { listConnectors } from "../../../../src/lib/zero/connector/connector-service";
 import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
-import { deleteInstallation } from "../../../../src/lib/github/github-app";
+import { deleteInstallation } from "../../../../src/lib/zero/github/github-app";
 import { logger } from "../../../../src/lib/logger";
 
 const patchGithubBodySchema = z.object({ agentName: z.string().min(1) });
