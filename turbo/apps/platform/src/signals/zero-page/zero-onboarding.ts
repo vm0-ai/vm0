@@ -108,6 +108,16 @@ export const setZeroWorkspaceName$ = command(({ set }, name: string) => {
   set(internalWorkspaceName$, name);
 });
 
+const internalConnectorSearch$ = state("");
+
+export const connectorSearch$ = computed((get) => {
+  return get(internalConnectorSearch$);
+});
+
+export const setConnectorSearch$ = command(({ set }, value: string) => {
+  set(internalConnectorSearch$, value);
+});
+
 export const toggleZeroConnector$ = command(
   ({ set }, connectorValue: string) => {
     set(internalSelectedConnectors$, (prev) => {

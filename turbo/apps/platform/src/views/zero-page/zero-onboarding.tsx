@@ -1,10 +1,10 @@
-import { useState } from "react";
 import {
   useGet,
   useSet,
   useLastLoadable,
   useLastResolved,
 } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import slackIcon from "./components/settings/icons/slack.svg";
 import zeroAvatarImg from "./assets/avatar_0.webp";
 import zeroAnimatedSrc from "./assets/zero-animated.webp";
@@ -17,6 +17,8 @@ import {
   setZeroWorkspaceName$,
   zeroSelectedConnectors$,
   toggleZeroConnector$,
+  connectorSearch$,
+  setConnectorSearch$,
 } from "../../signals/zero-page/zero-onboarding.ts";
 import {
   onboardingDisplayName$,
@@ -133,7 +135,8 @@ function OnboardingConnectorCard({
 function SelectConnectorsContent() {
   const selectedConnectors = useGet(zeroSelectedConnectors$);
   const toggleConnector = useSet(toggleZeroConnector$);
-  const [search, setSearch] = useState("");
+  const search = useGet(connectorSearch$);
+  const setSearch = useSet(setConnectorSearch$);
 
   const connectorEntries = Object.entries(CONNECTOR_TYPES) as [
     ConnectorType,
@@ -325,12 +328,19 @@ function ConnectStepContent() {
 function WhereToWorkContent() {
   const name = useLastResolved(onboardingDisplayName$) ?? "Zero";
 
-  const addToSlack = useSet(onboardingAddToSlack$);
+  const [slackLoadable, addToSlack] = useLoadableSet(onboardingAddToSlack$);
+  const [webLoadable, continueWeb] = useLoadableSet(onboardingContinueWeb$);
 
   const pageSignal = useGet(pageSignal$);
-  const continueWeb = useSet(onboardingContinueWeb$);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+
+  const saving =
+    slackLoadable.state === "loading" || webLoadable.state === "loading";
+  const error =
+    slackLoadable.state === "hasError"
+      ? String(slackLoadable.error)
+      : webLoadable.state === "hasError"
+        ? String(webLoadable.error)
+        : null;
 
   return (
     <>
@@ -349,16 +359,7 @@ function WhereToWorkContent() {
         <button
           type="button"
           onClick={() => {
-            setSaving(true);
-            setError(null);
-            void addToSlack(pageSignal)
-              .then(() => {
-                setSaving(false);
-              })
-              .catch((error: unknown) => {
-                setSaving(false);
-                setError(String(error));
-              });
+            detach(addToSlack(pageSignal), Reason.DomCallback);
           }}
           disabled={saving}
           className="flex items-center gap-4 rounded-xl bg-card px-6 py-6 text-left transition-colors hover:bg-muted/30 disabled:opacity-50 zero-border"
@@ -379,16 +380,7 @@ function WhereToWorkContent() {
         <button
           type="button"
           onClick={() => {
-            setSaving(true);
-            setError(null);
-            void continueWeb(pageSignal)
-              .then(() => {
-                setSaving(false);
-              })
-              .catch((error: unknown) => {
-                setSaving(false);
-                setError(String(error));
-              });
+            detach(continueWeb(pageSignal), Reason.DomCallback);
           }}
           disabled={saving}
           className="flex items-center gap-4 rounded-xl bg-card px-6 py-6 text-left transition-colors hover:bg-muted/30 disabled:opacity-50 zero-border"
