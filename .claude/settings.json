@@ -1,6 +1,5 @@
 {
   "enabledPlugins": {
-    "deep-dive@team-skills": true,
     "sentry@claude-plugins-official": true
   }
 }
