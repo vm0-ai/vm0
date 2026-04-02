@@ -325,6 +325,11 @@ export interface CreateRunParams {
   // Per-permission firewall policies from zero agent configuration.
   firewallPolicies?: FirewallPolicies;
   allowedConnectorTypes?: ConnectorType[];
+  // Pre-loaded compose data. When provided, skips the internal loadCompose() call.
+  preloadedCompose?: {
+    composeContent: AgentComposeYaml;
+    compose: { id: string; userId: string; orgId: string };
+  };
 }
 
 /**
@@ -962,10 +967,9 @@ export async function createRunRecord(
   const { userId, agentComposeVersionId, prompt } = params;
 
   // Steps 1-2: Load compose and authorize
-  const { composeContent, compose } = await loadCompose(
-    agentComposeVersionId,
-    params.composeId,
-  );
+  const { composeContent, compose } =
+    params.preloadedCompose ??
+    (await loadCompose(agentComposeVersionId, params.composeId));
   authorizeCompose(userId, params.orgId, compose);
   const authorizeTime = Date.now();
 

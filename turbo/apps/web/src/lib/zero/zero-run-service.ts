@@ -326,7 +326,7 @@ export async function createZeroRunRecord(
   };
 
   // 3. Pre-flight checks: credits + model provider (before createRunRecord)
-  const { composeContent: preflightCompose } = await loadCompose(
+  const preloadedCompose = await loadCompose(
     resolved.agentComposeVersionId,
     resolved.composeId,
   );
@@ -335,14 +335,14 @@ export async function createZeroRunRecord(
     checkModelProviderConfigured(
       resolved.orgId,
       params.modelProvider,
-      preflightCompose,
+      preloadedCompose.composeContent,
     ),
   ]);
 
   // 4. Create run record (may throw ConcurrentRunLimitError)
   let record;
   try {
-    record = await createRunRecord(runParams);
+    record = await createRunRecord({ ...runParams, preloadedCompose });
   } catch (error) {
     if (isConcurrentRunLimit(error)) {
       // Enqueue without token — dispatchQueuedZeroRun generates a fresh
