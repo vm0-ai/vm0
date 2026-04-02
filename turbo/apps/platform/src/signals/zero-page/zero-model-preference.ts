@@ -2,7 +2,7 @@ import { command } from "ccstate";
 import { currentDraft$ } from "./chat-draft.ts";
 import { currentAgentId$ } from "./agent.ts";
 import {
-  readLocalStorage$,
+  readLocalStorage,
   writeLocalStorage$,
 } from "../external/local-storage.ts";
 
@@ -30,7 +30,7 @@ export const syncModelPreference$ = command(({ get, set }) => {
   const key = modelStorageKey(agentId);
   const draft = get(currentDraft$);
   if (draft) {
-    const stored = set(readLocalStorage$, key);
+    const stored = readLocalStorage(key);
     set(draft.setSelectedModel$, stored ?? "default");
   }
 });

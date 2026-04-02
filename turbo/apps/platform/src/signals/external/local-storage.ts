@@ -18,13 +18,17 @@ export const resetLocalStorageForTest$ = command(({ set, get }) => {
 /**
  * Read a value from localStorage by dynamic key.
  */
-export const readLocalStorage$ = command((_, key: string): string | null => {
+export function readLocalStorage(key: string): string | null {
   return localStorage.getItem(key);
-});
+}
 
 /**
  * Write or remove a value in localStorage by dynamic key.
  * Passing null removes the item.
+ *
+ * Note: This command does NOT trigger reactive updates for signals created via
+ * `localStorageSignals(key).get$`. The two APIs are not interoperable for the
+ * same key — use `localStorageSignals(key).set$` if reactive propagation is needed.
  */
 export const writeLocalStorage$ = command(
   ({ set }, { key, value }: { key: string; value: string | null }) => {

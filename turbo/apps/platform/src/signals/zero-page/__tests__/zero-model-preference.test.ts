@@ -16,7 +16,7 @@ import {
 } from "../zero-model-preference.ts";
 import {
   writeLocalStorage$,
-  readLocalStorage$,
+  readLocalStorage,
 } from "../../external/local-storage.ts";
 
 const context = testContext();
@@ -90,9 +90,7 @@ describe("zero-model-preference signals", () => {
 
     context.store.set(persistModelPreference$);
 
-    expect(
-      context.store.set(readLocalStorage$, "zero.modelProvider.my-agent"),
-    ).toBe("openai");
+    expect(readLocalStorage("zero.modelProvider.my-agent")).toBe("openai");
   });
 
   it("should remove localStorage entry when persisting 'default'", async () => {
@@ -105,9 +103,7 @@ describe("zero-model-preference signals", () => {
 
     context.store.set(persistModelPreference$);
 
-    expect(
-      context.store.set(readLocalStorage$, "zero.modelProvider.my-agent"),
-    ).toBeNull();
+    expect(readLocalStorage("zero.modelProvider.my-agent")).toBeNull();
   });
 
   it("should reset model selection when agent changes via sync", async () => {

@@ -3,6 +3,10 @@ import { localStorageSignals } from "./external/local-storage.ts";
 
 export type ThemePreference = "light" | "dark" | "system";
 
+function isThemePreference(v: string | null): v is ThemePreference {
+  return v === "light" || v === "dark" || v === "system";
+}
+
 const internalPreference$ = state<ThemePreference>("system");
 const internalResolved$ = state<"light" | "dark">("light");
 
@@ -56,8 +60,8 @@ export const setTheme$ = command(({ set }, preference: ThemePreference) => {
  * Initialize theme from localStorage or system preference.
  */
 export const initTheme$ = command(({ get, set }) => {
-  const stored = get(themeStorageGet$) as ThemePreference | null;
-  const preference = stored ?? "system";
+  const rawStored = get(themeStorageGet$);
+  const preference = isThemePreference(rawStored) ? rawStored : "system";
   set(internalPreference$, preference);
   const resolved = resolveTheme(preference);
   set(internalResolved$, resolved);
@@ -67,8 +71,8 @@ export const initTheme$ = command(({ get, set }) => {
   window
     .matchMedia("(prefers-color-scheme: dark)")
     .addEventListener("change", () => {
-      const currentPref = get(themeStorageGet$) as ThemePreference | null;
-      if (!currentPref || currentPref === "system") {
+      const currentPref = get(themeStorageGet$);
+      if (!isThemePreference(currentPref) || currentPref === "system") {
         const newResolved = window.matchMedia("(prefers-color-scheme: dark)")
           .matches
           ? "dark"
