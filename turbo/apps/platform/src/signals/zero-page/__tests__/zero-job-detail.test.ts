@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { http, HttpResponse } from "msw";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import { server } from "../../../mocks/server";
 import { testContext } from "../../__tests__/test-helpers";
 import { setupPage } from "../../../__tests__/page-helper";
@@ -906,6 +907,7 @@ describe("zero-job-detail signals", () => {
 
     it("should build instructions via zero agents api and update state", async () => {
       let capturedBody: { content: string } | null = null;
+      const toastSpy = vi.spyOn(toast, "success");
 
       await setupWithAgent();
 
@@ -948,6 +950,10 @@ describe("zero-job-detail signals", () => {
       // Instructions state should be optimistically updated
       const instructions = context.store.get(zeroJobInstructions$);
       expect(instructions?.content).toBe("Updated instructions");
+
+      // Should show success toast
+      expect(toastSpy).toHaveBeenCalledWith("Instructions saved");
+      toastSpy.mockRestore();
     });
 
     it("should clear building state before detail refetch so editor remounts editable", async () => {
