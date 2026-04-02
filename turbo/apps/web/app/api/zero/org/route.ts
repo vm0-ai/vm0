@@ -21,7 +21,9 @@ const router = tsr.router(zeroOrgContract, {
   get: async ({ headers }) => {
     initServices();
 
-    const authCtx = await requireAuth(headers.authorization);
+    const authCtx = await requireAuth(headers.authorization, {
+      acceptAnySandboxCapability: true,
+    });
     if (isAuthError(authCtx)) return authCtx;
 
     try {

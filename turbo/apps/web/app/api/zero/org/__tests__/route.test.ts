@@ -3,12 +3,14 @@ import { GET, PUT } from "../route";
 import {
   createTestRequest,
   createTestOrg,
+  insertOrgMembersCacheEntry,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
   uniqueId,
 } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
+import { generateZeroToken } from "../../../../../src/lib/auth/sandbox-token";
 
 const context = testContext();
 
@@ -62,6 +64,25 @@ describe("GET /api/zero/org", () => {
       createTestRequest("http://localhost:3000/api/zero/org"),
     );
     expect(response.status).toBe(401);
+  });
+
+  it("should return org info with zero token", async () => {
+    mockClerk({ userId: null });
+    const userId = uniqueId("zorg-zero");
+    const { slug, orgId } = await setupOrg(userId);
+    await insertOrgMembersCacheEntry({ orgId, userId, role: "admin" });
+
+    const token = await generateZeroToken(userId, "run-123", orgId);
+    const response = await GET(
+      createTestRequest(orgUrl(), {
+        headers: { Authorization: `Bearer ${token}` },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.slug).toBe(slug);
+    expect(data.role).toBe("admin");
   });
 });
 
@@ -133,5 +154,25 @@ describe("PUT /api/zero/org", () => {
       }),
     );
     expect(response.status).toBe(404);
+  });
+
+  it("should reject zero token for PUT", async () => {
+    mockClerk({ userId: null });
+    const userId = uniqueId("zorg-put-zero");
+    const { orgId } = await setupOrg(userId);
+    await insertOrgMembersCacheEntry({ orgId, userId, role: "admin" });
+
+    const token = await generateZeroToken(userId, "run-123", orgId);
+    const response = await PUT(
+      createTestRequest(orgUrl(), {
+        method: "PUT",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ name: "Hacked" }),
+      }),
+    );
+    expect(response.status).toBe(403);
   });
 });
