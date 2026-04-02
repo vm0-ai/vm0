@@ -116,7 +116,7 @@ RUN ARCH=$(dpkg --print-architecture) \
     && curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${ARCH}.tar.gz" -o /tmp/go.tar.gz \
     && tar -C /usr/local -xzf /tmp/go.tar.gz \
     && rm /tmp/go.tar.gz \
-    && echo 'export PATH=$PATH:/usr/local/go/bin' > /etc/profile.d/golang.sh
+    && echo 'export PATH=$PATH:/usr/local/go/bin:$HOME/go/bin' > /etc/profile.d/golang.sh
 
 # ---------------------------------------------------------------------------
 # Rust (stable toolchain via rustup)
