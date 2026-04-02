@@ -100,6 +100,7 @@ import { generate as generateSerpapi } from "./serpapi";
 import { generate as generateShortio } from "./shortio";
 import { generate as generateSimilarweb } from "./similarweb";
 import { generate as generateSlack } from "./slack";
+import { generate as generateSlackWebhook } from "./slack-webhook";
 import { generate as generateSpotify } from "./spotify";
 import { generate as generateStrava } from "./strava";
 import { generate as generateStreak } from "./streak";
@@ -218,6 +219,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   shortio: generateShortio,
   similarweb: generateSimilarweb,
   slack: generateSlack,
+  "slack-webhook": generateSlackWebhook,
   spotify: generateSpotify,
   strava: generateStrava,
   streak: generateStreak,

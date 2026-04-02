@@ -126,6 +126,7 @@ import { serpapiFirewall } from "./serpapi.generated";
 import { shortioFirewall } from "./shortio.generated";
 import { similarwebFirewall } from "./similarweb.generated";
 import { slackFirewall } from "./slack.generated";
+import { slackWebhookFirewall } from "./slack-webhook.generated";
 import { spotifyFirewall } from "./spotify.generated";
 import { stravaFirewall } from "./strava.generated";
 import { streakFirewall } from "./streak.generated";
@@ -249,6 +250,7 @@ const CONNECTOR_FIREWALLS = {
   shortio: shortioFirewall,
   similarweb: similarwebFirewall,
   slack: slackFirewall,
+  "slack-webhook": slackWebhookFirewall,
   spotify: spotifyFirewall,
   strava: stravaFirewall,
   streak: streakFirewall,
@@ -356,7 +358,6 @@ export type NonFirewallConnectorType =
   | "minio" // AWS Signature V4
   // Webhook URL — token embedded in URL, not auth header
   | "bitrix" // token in URL path (/rest/{user_id}/{token}/)
-  | "slack-webhook" // SLACK_WEBHOOK_URL
   // Other
   | "computer" // not an API connector
   | "jam"; // no public REST API

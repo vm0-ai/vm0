@@ -105,6 +105,7 @@
     "generate:shortio": "tsx src/index.ts shortio",
     "generate:similarweb": "tsx src/index.ts similarweb",
     "generate:slack": "tsx src/index.ts slack",
+    "generate:slack-webhook": "tsx src/index.ts slack-webhook",
     "generate:spotify": "tsx src/index.ts spotify",
     "generate:strava": "tsx src/index.ts strava",
     "generate:streak": "tsx src/index.ts streak",

@@ -20,13 +20,7 @@ export const discordWebhookFirewall = {
         headers: {},
         base: "${{ secrets.DISCORD_WEBHOOK_URL }}",
       },
-      permissions: [
-        {
-          name: "send-message",
-          description: "Send messages via webhook",
-          rules: ["POST /"],
-        },
-      ],
+      permissions: [],
     },
   ],
 } as const satisfies FirewallConfig;
