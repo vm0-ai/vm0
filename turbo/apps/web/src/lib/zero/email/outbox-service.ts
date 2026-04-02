@@ -1,13 +1,13 @@
 import { eq, and, or, lt, sql } from "drizzle-orm";
-import { emailOutbox } from "../../db/schema/email-outbox";
-import { emailSuppressions } from "../../db/schema/email-suppression";
+import { emailOutbox } from "../../../db/schema/email-outbox";
+import { emailSuppressions } from "../../../db/schema/email-suppression";
 import { resolveTemplate } from "./template-registry";
 import { sendEmailDirect, getMessageId } from "./client";
 import {
   saveEmailThreadSession,
   updateEmailThreadSession,
 } from "./handlers/shared";
-import { logger } from "../logger";
+import { logger } from "../../logger";
 import type { EnqueueEmailOptions, PostSendAction } from "./types";
 
 const log = logger("email:outbox");

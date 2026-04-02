@@ -15,13 +15,13 @@ import {
 } from "../../infra/s3/s3-client";
 import { getAllSessionsWithMessages } from "../zero-session-service";
 import { resolveSessionHistory } from "../../infra/session-history/session-history-service";
-import { enqueueEmail } from "../../email/outbox-service";
+import { enqueueEmail } from "../email/outbox-service";
 import {
   buildFromAddress,
   buildUnsubscribeUrl,
   buildUnsubscribeHeaders,
-} from "../../email/handlers/shared";
-import { isUserUnsubscribed } from "../../email/unsubscribe-service";
+} from "../email/handlers/shared";
+import { isUserUnsubscribed } from "../email/unsubscribe-service";
 import { getCachedUser } from "../../auth/user-cache-service";
 import { env } from "../../../env";
 import { logger } from "../../logger";

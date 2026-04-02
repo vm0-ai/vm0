@@ -1,5 +1,5 @@
 import { Resend } from "resend";
-import { env } from "../../env";
+import { env } from "../../../env";
 import type { SendEmailDirectOptions } from "./types";
 
 let resendInstance: Resend | undefined;

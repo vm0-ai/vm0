@@ -3,7 +3,7 @@ import { initServices } from "../../../../src/lib/init-services";
 import {
   drainBatch,
   cleanupExpiredOutbox,
-} from "../../../../src/lib/email/outbox-service";
+} from "../../../../src/lib/zero/email/outbox-service";
 import { logger } from "../../../../src/lib/logger";
 import { env } from "../../../../src/env";
 

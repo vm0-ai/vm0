@@ -1,5 +1,5 @@
 import { Webhook } from "svix";
-import { env } from "../../env";
+import { env } from "../../../env";
 
 /**
  * Verify a Resend inbound webhook signature using Svix.

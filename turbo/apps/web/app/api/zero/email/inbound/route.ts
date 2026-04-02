@@ -3,16 +3,16 @@ import { initServices } from "../../../../../src/lib/init-services";
 import {
   verifyResendWebhook,
   getSvixHeaders,
-} from "../../../../../src/lib/email/verify";
-import { handleInboundEmailReply } from "../../../../../src/lib/email/handlers/inbound-reply";
-import { handleInboundEmailTrigger } from "../../../../../src/lib/email/handlers/inbound-trigger";
+} from "../../../../../src/lib/zero/email/verify";
+import { handleInboundEmailReply } from "../../../../../src/lib/zero/email/handlers/inbound-reply";
+import { handleInboundEmailTrigger } from "../../../../../src/lib/zero/email/handlers/inbound-trigger";
 import {
   isReplyAddress,
   sendInboundErrorReply,
-} from "../../../../../src/lib/email/handlers/shared";
+} from "../../../../../src/lib/zero/email/handlers/shared";
 import { emailSuppressions } from "../../../../../src/db/schema/email-suppression";
 import { getCachedUserIdByEmail } from "../../../../../src/lib/auth/user-cache-service";
-import { unsubscribeUser } from "../../../../../src/lib/email/unsubscribe-service";
+import { unsubscribeUser } from "../../../../../src/lib/zero/email/unsubscribe-service";
 import { logger } from "../../../../../src/lib/logger";
 
 const log = logger("zero:email:inbound");

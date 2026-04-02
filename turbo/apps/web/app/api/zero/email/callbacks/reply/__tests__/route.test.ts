@@ -18,7 +18,7 @@ import {
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import { computeHmacSignature } from "../../../../../../../src/lib/infra/callback/hmac";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
-import { generateReplyToken } from "../../../../../../../src/lib/email/handlers/shared";
+import { generateReplyToken } from "../../../../../../../src/lib/zero/email/handlers/shared";
 
 const context = testContext();
 const mockResend = vi.mocked(new Resend(""), true);

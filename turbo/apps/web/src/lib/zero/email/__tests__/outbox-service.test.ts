@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { Resend } from "resend";
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../../__tests__/test-helpers";
 import {
   insertTestOutboxItem,
   findTestOutboxItems,
@@ -9,8 +9,8 @@ import {
   createTestAgentSession,
   createTestEmailThreadSession,
   findTestEmailThreadSession,
-} from "../../../__tests__/api-test-helpers";
-import { uniqueId } from "../../../__tests__/test-helpers";
+} from "../../../../__tests__/api-test-helpers";
+import { uniqueId } from "../../../../__tests__/test-helpers";
 import { generateReplyToken } from "../handlers/shared";
 import {
   enqueueEmail,

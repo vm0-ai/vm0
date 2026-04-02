@@ -1,10 +1,10 @@
-import { uploadS3Buffer, generatePresignedUrl } from "../infra/s3/s3-client";
-import { env } from "../../env";
+import { uploadS3Buffer, generatePresignedUrl } from "../../infra/s3/s3-client";
+import { env } from "../../../env";
 import {
   getReceivedEmailAttachments,
   type ReceivedEmailAttachment,
 } from "./client";
-import { logger } from "../logger";
+import { logger } from "../../logger";
 
 const log = logger("email:attachment");
 

@@ -28,7 +28,7 @@ import {
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { randomUUID } from "crypto";
 import { POST as checkpointWebhook } from "../../checkpoints/route";
-import { generateReplyToken } from "../../../../../../src/lib/email/handlers/shared";
+import { generateReplyToken } from "../../../../../../src/lib/zero/email/handlers/shared";
 
 const context = testContext();
 

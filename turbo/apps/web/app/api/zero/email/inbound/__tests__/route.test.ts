@@ -21,7 +21,7 @@ import {
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { server } from "../../../../../../src/mocks/server";
 import { http } from "../../../../../../src/__tests__/msw";
-import { generateReplyToken } from "../../../../../../src/lib/email/handlers/shared";
+import { generateReplyToken } from "../../../../../../src/lib/zero/email/handlers/shared";
 
 const context = testContext();
 const mockResend = vi.mocked(new Resend(""), true);

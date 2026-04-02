@@ -5,14 +5,14 @@ import { verifyCallback } from "../../../../../../src/lib/infra/callback";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import { zeroAgents } from "../../../../../../src/db/schema/zero-agent";
 import { getRunOutputText } from "../../../../../../src/lib/infra/run/extract-run-output";
-import { enqueueEmail } from "../../../../../../src/lib/email/outbox-service";
+import { enqueueEmail } from "../../../../../../src/lib/zero/email/outbox-service";
 import {
   buildReplyToAddress,
   buildFromAddress,
   buildLogsUrl,
   buildUnsubscribeUrl,
   buildUnsubscribeHeaders,
-} from "../../../../../../src/lib/email/handlers/shared";
+} from "../../../../../../src/lib/zero/email/handlers/shared";
 import { env } from "../../../../../../src/env";
 import { getOrgData } from "../../../../../../src/lib/org/org-cache-service";
 import type { EmailTriggerCallbackPayload } from "../../../../../../src/lib/infra/callback/callback-payloads";

@@ -7,14 +7,14 @@ import { zeroAgents } from "../../../../../../src/db/schema/zero-agent";
 import { emailThreadSessions } from "../../../../../../src/db/schema/email-thread-session";
 import { getUserEmail } from "../../../../../../src/lib/auth/get-user-email";
 import { getRunOutputText } from "../../../../../../src/lib/infra/run/extract-run-output";
-import { enqueueEmail } from "../../../../../../src/lib/email/outbox-service";
+import { enqueueEmail } from "../../../../../../src/lib/zero/email/outbox-service";
 import {
   buildReplyToAddress,
   buildFromAddress,
   buildLogsUrl,
   buildUnsubscribeUrl,
   buildUnsubscribeHeaders,
-} from "../../../../../../src/lib/email/handlers/shared";
+} from "../../../../../../src/lib/zero/email/handlers/shared";
 import { getOrgData } from "../../../../../../src/lib/org/org-cache-service";
 import type { EmailReplyCallbackPayload } from "../../../../../../src/lib/infra/callback/callback-payloads";
 import { logger } from "../../../../../../src/lib/logger";

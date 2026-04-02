@@ -39,7 +39,7 @@ import { agentRunCallbacks } from "../db/schema/agent-run-callback";
 import { agentRunQueue } from "../db/schema/agent-run-queue";
 import { zeroAgentSchedules } from "../db/schema/zero-agent-schedule";
 import { emailOutbox } from "../db/schema/email-outbox";
-import type { EmailTemplate, PostSendAction } from "../lib/email/types";
+import type { EmailTemplate, PostSendAction } from "../lib/zero/email/types";
 import { telegramInstallations } from "../db/schema/telegram-installation";
 import { telegramMessages } from "../db/schema/telegram-message";
 import { telegramUserLinks } from "../db/schema/telegram-user-link";

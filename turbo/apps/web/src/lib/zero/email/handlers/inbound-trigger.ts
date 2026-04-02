@@ -10,13 +10,13 @@ import {
   getFromDomain,
   type HandlerResult,
 } from "./shared";
-import { createZeroRun } from "../../zero/zero-run-service";
-import { buildIntegrationContext } from "../../zero/integration-context";
-import { generateCallbackSecret, getApiUrl } from "../../infra/callback";
-import { getUserIdByEmail } from "../../auth/get-user-id-by-email";
-import { getOrgBySlug } from "../../org/org-cache-service";
-import { verifyMembershipCached } from "../../org/org-membership-cache";
-import { logger } from "../../logger";
+import { createZeroRun } from "../../zero-run-service";
+import { buildIntegrationContext } from "../../integration-context";
+import { generateCallbackSecret, getApiUrl } from "../../../infra/callback";
+import { getUserIdByEmail } from "../../../auth/get-user-id-by-email";
+import { getOrgBySlug } from "../../../org/org-cache-service";
+import { verifyMembershipCached } from "../../../org/org-membership-cache";
+import { logger } from "../../../logger";
 
 const log = logger("email:inbound-trigger");
 
