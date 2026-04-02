@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.144.0](https://github.com/vm0-ai/vm0/compare/core-v8.143.0...core-v8.144.0) (2026-04-02)
+
+
+### Features
+
+* **cli:** add --since filter to zero logs list command ([#7710](https://github.com/vm0-ai/vm0/issues/7710)) ([696968e](https://github.com/vm0-ai/vm0/commit/696968e730ccb91cfa2ea3d9d25874c91d35e989)), closes [#7707](https://github.com/vm0-ai/vm0/issues/7707)
+
 ## [8.143.0](https://github.com/vm0-ai/vm0/compare/core-v8.142.0...core-v8.143.0) (2026-04-02)
 
 

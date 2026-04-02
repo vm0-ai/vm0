@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.59.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.58.0...runner-rs-v0.59.0) (2026-04-02)
+
+
+### Features
+
+* **runner:** sync system timezone files in guest before agent start ([#7716](https://github.com/vm0-ai/vm0/issues/7716)) ([64e2484](https://github.com/vm0-ai/vm0/commit/64e2484503a0061955335dbe3a77b4caa3e98638))
+
 ## [0.58.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.57.0...runner-rs-v0.58.0) (2026-04-02)
 
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.180.1](https://github.com/vm0-ai/vm0/compare/app-v0.180.0...app-v0.180.1) (2026-04-02)
+
+
+### Refactoring
+
+* upgrade ccstate to 5.2.3 and use useLoadableSet in onboarding ([#7718](https://github.com/vm0-ai/vm0/issues/7718)) ([0ec928f](https://github.com/vm0-ai/vm0/commit/0ec928f11c40f4f94863ad4d65d56e7506f080c9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.144.0
+
 ## [0.180.0](https://github.com/vm0-ai/vm0/compare/app-v0.179.1...app-v0.180.0) (2026-04-02)
 
 

@@ -1,5 +1,24 @@
 # Changelog
 
+## [9.98.0](https://github.com/vm0-ai/vm0/compare/cli-v9.97.2...cli-v9.98.0) (2026-04-02)
+
+
+### Features
+
+* **cli:** add --since filter to zero logs list command ([#7710](https://github.com/vm0-ai/vm0/issues/7710)) ([696968e](https://github.com/vm0-ai/vm0/commit/696968e730ccb91cfa2ea3d9d25874c91d35e989)), closes [#7707](https://github.com/vm0-ai/vm0/issues/7707)
+
+
+### Bug Fixes
+
+* reject non-uuid run ids in zero logs before api call ([#7713](https://github.com/vm0-ai/vm0/issues/7713)) ([7963457](https://github.com/vm0-ai/vm0/commit/79634573a3a39233e22b19795c10569d9d04cbc8)), closes [#7709](https://github.com/vm0-ai/vm0/issues/7709)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.144.0
+
 ## [9.97.2](https://github.com/vm0-ai/vm0/compare/cli-v9.97.1...cli-v9.97.2) (2026-04-02)
 
 
