@@ -8,9 +8,9 @@ import { createTestCompose } from "../../../../../src/__tests__/api-test-helpers
 import {
   createTelegramInstallation,
   createTelegramPendingLinkInstallation,
-} from "../../../../../src/lib/telegram/__tests__/helpers";
+} from "../../../../../src/lib/zero/telegram/__tests__/helpers";
 import { GET as linkGET } from "../../../../api/integrations/telegram/link/route";
-import { PENDING_TELEGRAM_USER_ID } from "../../../../../src/lib/telegram/handlers/shared";
+import { PENDING_TELEGRAM_USER_ID } from "../../../../../src/lib/zero/telegram/handlers/shared";
 import { server } from "../../../../../src/mocks/server";
 import { http } from "../../../../../src/__tests__/msw";
 import { POST } from "../[installationId]/route";

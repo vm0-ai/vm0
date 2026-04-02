@@ -9,13 +9,13 @@ import { telegramInstallations } from "../../../../../src/db/schema/telegram-ins
 import {
   ensureOrgAndArtifact,
   getWorkspaceAgent,
-} from "../../../../../src/lib/telegram/handlers/shared";
+} from "../../../../../src/lib/zero/telegram/handlers/shared";
 import { decryptSecretValue } from "../../../../../src/lib/shared/crypto/secrets-encryption";
 import {
   createTelegramClient,
   sendMessage,
-} from "../../../../../src/lib/telegram/client";
-import { escapeHtml } from "../../../../../src/lib/telegram/format";
+} from "../../../../../src/lib/zero/telegram/client";
+import { escapeHtml } from "../../../../../src/lib/zero/telegram/format";
 import { logger } from "../../../../../src/lib/logger";
 
 const log = logger("api:telegram:link");
@@ -23,8 +23,8 @@ const log = logger("api:telegram:link");
 import {
   telegramAuthSchema,
   verifyTelegramLogin,
-} from "../../../../../src/lib/telegram/verify-login";
-import { verifyConnectSignature } from "../../../../../src/lib/telegram/connect-token";
+} from "../../../../../src/lib/zero/telegram/verify-login";
+import { verifyConnectSignature } from "../../../../../src/lib/zero/telegram/connect-token";
 
 /**
  * DELETE /api/integrations/telegram/link

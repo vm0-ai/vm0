@@ -1,11 +1,11 @@
-import { isRunDispatchError } from "../../infra/run";
-import { createZeroRun } from "../../zero/zero-run-service";
-import { buildIntegrationContext } from "../../zero/integration-context";
-import { isApiError } from "../../errors";
+import { isRunDispatchError } from "../../../infra/run";
+import { createZeroRun } from "../../zero-run-service";
+import { buildIntegrationContext } from "../../integration-context";
+import { isApiError } from "../../../errors";
 import { RUN_ERROR_GUIDANCE } from "@vm0/core";
-import { logger } from "../../logger";
-import { generateCallbackSecret, getApiUrl } from "../../infra/callback";
-import type { TelegramCallbackPayload } from "../../infra/callback/callback-payloads";
+import { logger } from "../../../logger";
+import { generateCallbackSecret, getApiUrl } from "../../../infra/callback";
+import type { TelegramCallbackPayload } from "../../../infra/callback/callback-payloads";
 
 const log = logger("telegram:run-agent");
 

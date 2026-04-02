@@ -1,5 +1,5 @@
 import { TELEGRAM_OAUTH_BASE_URL } from "./constants";
-import { logger } from "../logger";
+import { logger } from "../../logger";
 
 const log = logger("telegram:check-domain");
 

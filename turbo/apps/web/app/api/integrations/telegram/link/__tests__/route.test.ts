@@ -7,7 +7,7 @@ import {
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { createTestTelegramInstallation } from "../../../../../../src/__tests__/api-test-helpers";
-import { signConnectParams } from "../../../../../../src/lib/telegram/connect-token";
+import { signConnectParams } from "../../../../../../src/lib/zero/telegram/connect-token";
 
 const TEST_BOT_TOKEN = "test-bot-token";
 

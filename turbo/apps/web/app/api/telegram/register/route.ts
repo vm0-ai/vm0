@@ -10,12 +10,12 @@ import {
   getMe,
   setWebhook,
   setMyCommands,
-} from "../../../../src/lib/telegram/client";
+} from "../../../../src/lib/zero/telegram/client";
 import { encryptSecretValue } from "../../../../src/lib/shared/crypto/secrets-encryption";
 import { generateCallbackSecret } from "../../../../src/lib/infra/callback/hmac";
 import { resolveDefaultAgentComposeId } from "../../../../src/lib/infra/agent-compose/resolve-default";
 import { logger } from "../../../../src/lib/logger";
-import { checkTelegramDomain } from "../../../../src/lib/telegram/check-domain";
+import { checkTelegramDomain } from "../../../../src/lib/zero/telegram/check-domain";
 
 const registerBodySchema = z.object({
   botToken: z.string().min(1),

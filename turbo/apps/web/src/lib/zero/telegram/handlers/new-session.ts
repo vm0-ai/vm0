@@ -1,12 +1,12 @@
 import { eq, and } from "drizzle-orm";
-import { telegramInstallations } from "../../../db/schema/telegram-installation";
-import { telegramThreadSessions } from "../../../db/schema/telegram-thread-session";
-import { decryptSecretValue } from "../../shared/crypto/secrets-encryption";
-import { env } from "../../../env";
+import { telegramInstallations } from "../../../../db/schema/telegram-installation";
+import { telegramThreadSessions } from "../../../../db/schema/telegram-thread-session";
+import { decryptSecretValue } from "../../../shared/crypto/secrets-encryption";
+import { env } from "../../../../env";
 import { createTelegramClient, sendMessage } from "../client";
 import { resolveUserLink, getWorkspaceAgent, buildConnectUrl } from "./shared";
 import { escapeHtml } from "../format";
-import { logger } from "../../logger";
+import { logger } from "../../../logger";
 import type { TelegramHandlerUpdate } from "./types";
 
 const log = logger("telegram:new-session");

@@ -2,19 +2,19 @@ import { after } from "next/server";
 import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import { telegramInstallations } from "../../../../../src/db/schema/telegram-installation";
-import { verifyTelegramWebhook } from "../../../../../src/lib/telegram/verify";
-import { handleTelegramMention } from "../../../../../src/lib/telegram/handlers/mention";
-import { handleTelegramDirectMessage } from "../../../../../src/lib/telegram/handlers/direct-message";
-import { handleStartCommand } from "../../../../../src/lib/telegram/handlers/start";
-import { handleNewSessionCommand } from "../../../../../src/lib/telegram/handlers/new-session";
+import { verifyTelegramWebhook } from "../../../../../src/lib/zero/telegram/verify";
+import { handleTelegramMention } from "../../../../../src/lib/zero/telegram/handlers/mention";
+import { handleTelegramDirectMessage } from "../../../../../src/lib/zero/telegram/handlers/direct-message";
+import { handleStartCommand } from "../../../../../src/lib/zero/telegram/handlers/start";
+import { handleNewSessionCommand } from "../../../../../src/lib/zero/telegram/handlers/new-session";
 import {
   handleConnectCommand,
   handleDisconnectCommand,
   handleHelpCommand,
-} from "../../../../../src/lib/telegram/handlers/commands";
-import { storeTelegramMessage } from "../../../../../src/lib/telegram/handlers/shared";
+} from "../../../../../src/lib/zero/telegram/handlers/commands";
+import { storeTelegramMessage } from "../../../../../src/lib/zero/telegram/handlers/shared";
 import { logger } from "../../../../../src/lib/logger";
-import type { TelegramHandlerUpdate } from "../../../../../src/lib/telegram/handlers/types";
+import type { TelegramHandlerUpdate } from "../../../../../src/lib/zero/telegram/handlers/types";
 
 const log = logger("telegram:webhook");
 

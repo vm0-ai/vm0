@@ -1,13 +1,13 @@
 import { eq, and } from "drizzle-orm";
-import { telegramThreadSessions } from "../../../db/schema/telegram-thread-session";
-import { telegramMessages } from "../../../db/schema/telegram-message";
-import { telegramUserLinks } from "../../../db/schema/telegram-user-link";
-import { agentComposes } from "../../../db/schema/agent-compose";
-import { zeroAgents } from "../../../db/schema/zero-agent";
-import { getAppUrl } from "../../url";
-import { resolveOrgOrNull } from "../../org/resolve-org";
-import { validateAgentSession } from "../../infra/run";
-import { ensureStorageExists } from "../../infra/storage/storage-service";
+import { telegramThreadSessions } from "../../../../db/schema/telegram-thread-session";
+import { telegramMessages } from "../../../../db/schema/telegram-message";
+import { telegramUserLinks } from "../../../../db/schema/telegram-user-link";
+import { agentComposes } from "../../../../db/schema/agent-compose";
+import { getAppUrl } from "../../../url";
+import { resolveAgentId } from "../../zero-compose-service";
+import { resolveOrgOrNull } from "../../../org/resolve-org";
+import { validateAgentSession } from "../../../infra/run";
+import { ensureStorageExists } from "../../../infra/storage/storage-service";
 import {
   sendMessage,
   editMessageText,
@@ -21,7 +21,7 @@ import {
   downloadAndUploadTelegramPhoto,
   formatPhotoForContext,
 } from "../images";
-import { logger } from "../../logger";
+import { logger } from "../../../logger";
 import type { TelegramHandlerUpdate } from "./types";
 
 const log = logger("telegram:shared");
@@ -268,23 +268,13 @@ export async function getWorkspaceAgent(
 
   if (!compose) return undefined;
 
-  const [agent] = await db
-    .select({ agentId: zeroAgents.id })
-    .from(zeroAgents)
-    .where(
-      and(
-        eq(zeroAgents.orgId, compose.orgId),
-        eq(zeroAgents.name, compose.name),
-      ),
-    )
-    .limit(1);
-
-  if (!agent) return undefined;
+  const agentId = await resolveAgentId(compose.orgId, compose.name);
+  if (!agentId) return undefined;
 
   return {
     id: compose.id,
     name: compose.name,
-    agentId: agent.agentId,
+    agentId,
   };
 }
 

@@ -1,9 +1,25 @@
-import { eq, desc } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import { agentComposes } from "../../db/schema/agent-compose";
 import { zeroAgents } from "../../db/schema/zero-agent";
 import { notFound } from "../errors";
 import { canAccessCompose } from "../infra/agent/compose-access";
 import type { ComposeListItem } from "@vm0/core";
+
+/**
+ * Resolve zero_agents.id by org + compose name.
+ * Returns null if no matching agent exists.
+ */
+export async function resolveAgentId(
+  orgId: string,
+  composeName: string,
+): Promise<string | null> {
+  const [row] = await globalThis.services.db
+    .select({ id: zeroAgents.id })
+    .from(zeroAgents)
+    .where(and(eq(zeroAgents.orgId, orgId), eq(zeroAgents.name, composeName)))
+    .limit(1);
+  return row?.id ?? null;
+}
 
 /**
  * Update compose metadata (displayName, description, sound).

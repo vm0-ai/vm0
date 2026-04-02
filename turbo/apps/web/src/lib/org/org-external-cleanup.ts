@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { connectorTypeSchema } from "@vm0/core";
 import { logger } from "../logger";
 import { getStripe } from "../stripe";
-import { deleteWebhook } from "../telegram/client";
+import { deleteWebhook } from "../zero/telegram/client";
 import { decryptSecretValue } from "../shared/crypto/secrets-encryption";
 import { revokeConnectorToken } from "../zero/connector/connector-service";
 import { cleanupWorkspaceInstallation } from "../slack-org/connect-service";

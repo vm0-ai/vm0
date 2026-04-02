@@ -19,10 +19,10 @@ import { listVariables } from "../../../../src/lib/zero/variable/variable-servic
 import { listConnectors } from "../../../../src/lib/zero/connector/connector-service";
 import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
 import { decryptSecretValue } from "../../../../src/lib/shared/crypto/secrets-encryption";
-import { deleteWebhook } from "../../../../src/lib/telegram/client";
+import { deleteWebhook } from "../../../../src/lib/zero/telegram/client";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import { logger } from "../../../../src/lib/logger";
-import { checkTelegramDomain } from "../../../../src/lib/telegram/check-domain";
+import { checkTelegramDomain } from "../../../../src/lib/zero/telegram/check-domain";
 
 const patchBodySchema = z.object({
   agentName: z.string().min(1),

@@ -1,8 +1,8 @@
 import { eq } from "drizzle-orm";
-import { telegramInstallations } from "../../../db/schema/telegram-installation";
-import { telegramUserLinks } from "../../../db/schema/telegram-user-link";
-import { decryptSecretValue } from "../../shared/crypto/secrets-encryption";
-import { env } from "../../../env";
+import { telegramInstallations } from "../../../../db/schema/telegram-installation";
+import { telegramUserLinks } from "../../../../db/schema/telegram-user-link";
+import { decryptSecretValue } from "../../../shared/crypto/secrets-encryption";
+import { env } from "../../../../env";
 import { createTelegramClient, sendMessage } from "../client";
 import {
   ensureOrgAndArtifact,
@@ -10,7 +10,7 @@ import {
   buildConnectUrl,
 } from "./shared";
 import { escapeHtml } from "../format";
-import { logger } from "../../logger";
+import { logger } from "../../../logger";
 import type { TelegramHandlerUpdate } from "./types";
 import crypto from "crypto";
 

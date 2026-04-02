@@ -13,18 +13,18 @@ import {
   sendChatAction,
   editMessageText,
   deleteMessage,
-} from "../../../../../src/lib/telegram/client";
+} from "../../../../../src/lib/zero/telegram/client";
 import {
   splitMessage,
   buildTelegramResponse,
   buildTelegramErrorResponse,
-} from "../../../../../src/lib/telegram/format";
+} from "../../../../../src/lib/zero/telegram/format";
 import { extractRunOutput } from "../../../../../src/lib/infra/run/extract-run-output";
 import {
   saveTelegramThreadSession,
   storeTelegramMessage,
   buildLogsUrl,
-} from "../../../../../src/lib/telegram/handlers/shared";
+} from "../../../../../src/lib/zero/telegram/handlers/shared";
 import { env } from "../../../../../src/env";
 import type { TelegramCallbackPayload } from "../../../../../src/lib/infra/callback/callback-payloads";
 import { logger } from "../../../../../src/lib/logger";

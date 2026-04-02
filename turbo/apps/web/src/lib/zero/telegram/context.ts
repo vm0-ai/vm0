@@ -1,11 +1,11 @@
 import { eq, and, desc } from "drizzle-orm";
-import { telegramMessages } from "../../db/schema/telegram-message";
+import { telegramMessages } from "../../../db/schema/telegram-message";
 import {
   downloadAndUploadTelegramPhoto,
   formatPhotoForContext,
 } from "./images";
 import type { TelegramClient } from "./client";
-import { logger } from "../logger";
+import { logger } from "../../logger";
 
 const log = logger("telegram:context");
 

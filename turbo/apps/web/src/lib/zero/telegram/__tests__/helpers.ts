@@ -1,13 +1,13 @@
 import { eq, and } from "drizzle-orm";
-import { initServices } from "../../init-services";
-import { telegramInstallations } from "../../../db/schema/telegram-installation";
-import { telegramUserLinks } from "../../../db/schema/telegram-user-link";
-import { telegramMessages } from "../../../db/schema/telegram-message";
-import { telegramThreadSessions } from "../../../db/schema/telegram-thread-session";
-import { agentComposes } from "../../../db/schema/agent-compose";
-import { encryptSecretValue } from "../../shared/crypto/secrets-encryption";
+import { initServices } from "../../../init-services";
+import { telegramInstallations } from "../../../../db/schema/telegram-installation";
+import { telegramUserLinks } from "../../../../db/schema/telegram-user-link";
+import { telegramMessages } from "../../../../db/schema/telegram-message";
+import { telegramThreadSessions } from "../../../../db/schema/telegram-thread-session";
+import { agentComposes } from "../../../../db/schema/agent-compose";
+import { encryptSecretValue } from "../../../shared/crypto/secrets-encryption";
 import { PENDING_TELEGRAM_USER_ID } from "../handlers/shared";
-import { uniqueId } from "../../../__tests__/test-helpers";
+import { uniqueId } from "../../../../__tests__/test-helpers";
 
 /**
  * Create a telegram installation with all required foreign key dependencies.
