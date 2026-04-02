@@ -1,7 +1,7 @@
 import { eq, and, sql, gte, inArray } from "drizzle-orm";
-import { orgMembersMetadata } from "../../db/schema/org-members-metadata";
-import { creditUsage } from "../../db/schema/credit-usage";
-import { getOrgBillingPeriod } from "../org/org-cache-service";
+import { orgMembersMetadata } from "../../../db/schema/org-members-metadata";
+import { creditUsage } from "../../../db/schema/credit-usage";
+import { getOrgBillingPeriod } from "../../org/org-cache-service";
 
 /**
  * Get a member's credit cap state.

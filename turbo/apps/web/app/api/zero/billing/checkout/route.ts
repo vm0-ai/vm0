@@ -14,7 +14,7 @@ import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
 import {
   createCheckoutSession,
   activePriceId,
-} from "../../../../../src/lib/billing/billing-service";
+} from "../../../../../src/lib/zero/billing/billing-service";
 
 const router = tsr.router(zeroBillingCheckoutContract, {
   create: async ({ body, headers }) => {

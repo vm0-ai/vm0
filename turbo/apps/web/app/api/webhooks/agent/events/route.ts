@@ -15,7 +15,7 @@ import {
   getDatasetName,
   DATASETS,
 } from "../../../../../src/lib/shared/axiom";
-import { upsertCreditUsage } from "../../../../../src/lib/credit/credit-usage-service";
+import { upsertCreditUsage } from "../../../../../src/lib/zero/credit/credit-usage-service";
 const log = logger("webhook:events");
 
 const router = tsr.router(webhookEventsContract, {

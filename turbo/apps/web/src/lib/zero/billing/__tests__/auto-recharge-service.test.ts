@@ -3,14 +3,14 @@ import {
   testContext,
   uniqueId,
   type UserContext,
-} from "../../../__tests__/test-helpers";
+} from "../../../../__tests__/test-helpers";
 import {
   getOrgCredits,
   updateOrgTier,
   updateOrgStripeFields,
   updateOrgAutoRecharge,
   getOrgAutoRechargeFields,
-} from "../../../__tests__/api-test-helpers";
+} from "../../../../__tests__/api-test-helpers";
 
 // Stripe mock — must be defined before importing the service
 const stripeMocks = vi.hoisted(() => {
@@ -47,7 +47,7 @@ vi.mock("stripe", () => {
   };
 });
 
-import { reloadEnv } from "../../../env";
+import { reloadEnv } from "../../../../env";
 import {
   triggerAutoRecharge,
   handleAutoRechargeInvoicePaid,

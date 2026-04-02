@@ -11,7 +11,7 @@ import {
   isAuthError,
 } from "../../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
-import { createBillingPortalSession } from "../../../../../src/lib/billing/billing-service";
+import { createBillingPortalSession } from "../../../../../src/lib/zero/billing/billing-service";
 
 const router = tsr.router(zeroBillingPortalContract, {
   create: async ({ body, headers }) => {

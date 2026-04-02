@@ -9,7 +9,7 @@ import { resolveOrg } from "../../../../../../src/lib/org/resolve-org";
 import {
   getMemberCreditCap,
   setMemberCreditCap,
-} from "../../../../../../src/lib/credit/member-credit-cap-service";
+} from "../../../../../../src/lib/zero/credit/member-credit-cap-service";
 
 const updateBodySchema = z.object({
   userId: z.string().min(1),

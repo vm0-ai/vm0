@@ -48,7 +48,7 @@ import { creditExpiresRecord } from "../db/schema/credit-expires-record";
 import {
   deductFromExpiresRecords,
   expireCredits,
-} from "../lib/credit/credit-expires-service";
+} from "../lib/zero/credit/credit-expires-service";
 import { modelProviders } from "../db/schema/model-provider";
 import { ORG_SENTINEL_USER_ID } from "../lib/org/org-sentinel";
 import { orgCache } from "../db/schema/org-cache";

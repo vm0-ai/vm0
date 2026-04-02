@@ -18,7 +18,7 @@ import {
   dispatchQueuedZeroRun,
   drainOrgQueue,
 } from "../../../../../../src/lib/zero/zero-run-queue-service";
-import { processOrgCredits } from "../../../../../../src/lib/credit/credit-service";
+import { processOrgCredits } from "../../../../../../src/lib/zero/credit/credit-service";
 import { isNotFound, isBadRequest } from "../../../../../../src/lib/errors";
 import { after } from "next/server";
 

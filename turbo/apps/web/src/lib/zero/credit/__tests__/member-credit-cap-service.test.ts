@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { testContext, uniqueId } from "../../../__tests__/test-helpers";
-import { mockClerk } from "../../../__tests__/clerk-mock";
-import type { StripeMockFns } from "../../../__tests__/stripe-mock";
+import { testContext, uniqueId } from "../../../../__tests__/test-helpers";
+import { mockClerk } from "../../../../__tests__/clerk-mock";
+import type { StripeMockFns } from "../../../../__tests__/stripe-mock";
 import {
   createTestOrg,
   insertOrgMembersEntry,
@@ -9,8 +9,8 @@ import {
   insertTestCreditUsage,
   updateOrgStripeFields,
   setOrgCacheBillingPeriod,
-} from "../../../__tests__/api-test-helpers";
-import { reloadEnv } from "../../../env";
+} from "../../../../__tests__/api-test-helpers";
+import { reloadEnv } from "../../../../env";
 import { evaluateMemberCaps } from "../member-credit-cap-service";
 
 // Mock stripe module (external dependency) — required because

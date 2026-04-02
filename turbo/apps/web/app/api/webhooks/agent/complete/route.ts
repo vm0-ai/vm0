@@ -24,7 +24,7 @@ import {
   drainOrgQueue,
   dispatchQueuedZeroRun,
 } from "../../../../../src/lib/zero/zero-run-queue-service";
-import { processOrgCredits } from "../../../../../src/lib/credit/credit-service";
+import { processOrgCredits } from "../../../../../src/lib/zero/credit/credit-service";
 import { after } from "next/server";
 
 const log = logger("webhook:complete");

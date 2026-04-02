@@ -7,7 +7,7 @@ import {
   handleInvoicePaid,
   handleSubscriptionUpdated,
   handleSubscriptionDeleted,
-} from "../../../../src/lib/billing/billing-service";
+} from "../../../../src/lib/zero/billing/billing-service";
 import { logger } from "../../../../src/lib/logger";
 import type Stripe from "stripe";
 

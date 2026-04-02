@@ -16,7 +16,7 @@ import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
 import {
   getAutoRechargeConfig,
   updateAutoRechargeConfig,
-} from "../../../../../src/lib/billing/billing-service";
+} from "../../../../../src/lib/zero/billing/billing-service";
 
 const router = tsr.router(zeroBillingAutoRechargeContract, {
   get: async ({ headers }) => {

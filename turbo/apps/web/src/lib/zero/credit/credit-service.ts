@@ -1,11 +1,11 @@
 import { eq, and, sql } from "drizzle-orm";
-import { creditUsage } from "../../db/schema/credit-usage";
-import { creditPricing } from "../../db/schema/credit-pricing";
-import { deductOrgCredits } from "../org/org-service";
+import { creditUsage } from "../../../db/schema/credit-usage";
+import { creditPricing } from "../../../db/schema/credit-pricing";
+import { deductOrgCredits } from "../../org/org-service";
 import { deductFromExpiresRecords } from "./credit-expires-service";
 import { triggerAutoRecharge } from "../billing/auto-recharge-service";
 import { evaluateMemberCaps } from "./member-credit-cap-service";
-import { logger } from "../logger";
+import { logger } from "../../logger";
 
 const log = logger("service:credit");
 

@@ -10,7 +10,7 @@ import {
   isAuthError,
 } from "../../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
-import { getBillingStatus } from "../../../../../src/lib/billing/billing-service";
+import { getBillingStatus } from "../../../../../src/lib/zero/billing/billing-service";
 
 const router = tsr.router(zeroBillingStatusContract, {
   get: async ({ headers }) => {
