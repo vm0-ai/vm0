@@ -1,4 +1,4 @@
-import { env } from "../../env";
+import { env } from "../../../env";
 
 /**
  * Resolve the default agent compose ID from VM0_DEFAULT_AGENT env var.

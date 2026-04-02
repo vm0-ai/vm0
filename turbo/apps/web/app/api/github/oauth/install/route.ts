@@ -11,7 +11,7 @@ import {
   listAppInstallations,
   getInstallationAccessToken,
 } from "../../../../../src/lib/github/github-app";
-import { resolveDefaultAgentComposeId } from "../../../../../src/lib/agent-compose/resolve-default";
+import { resolveDefaultAgentComposeId } from "../../../../../src/lib/infra/agent-compose/resolve-default";
 import { linkVm0User } from "../callback/route";
 import { logger } from "../../../../../src/lib/logger";
 

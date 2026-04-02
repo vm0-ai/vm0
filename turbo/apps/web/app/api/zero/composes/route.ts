@@ -10,7 +10,7 @@ import {
   isAuthError,
 } from "../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
-import { getComposeByName } from "../../../../src/lib/agent-compose/compose-service";
+import { getComposeByName } from "../../../../src/lib/infra/agent-compose/compose-service";
 import {
   isNotFound,
   isForbidden,

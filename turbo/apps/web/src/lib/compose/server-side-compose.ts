@@ -7,7 +7,7 @@ import {
 } from "@vm0/core";
 import type { AgentComposeYaml } from "../../types/agent-compose";
 import { uploadInstructionsServerSide } from "../infra/storage/instruction-upload";
-import { computeComposeVersionId } from "../agent-compose/content-hash";
+import { computeComposeVersionId } from "../infra/agent-compose/content-hash";
 import {
   agentComposes,
   agentComposeVersions,

@@ -13,7 +13,7 @@ import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
 import {
   getComposeById,
   deleteCompose,
-} from "../../../../../src/lib/agent-compose/compose-service";
+} from "../../../../../src/lib/infra/agent-compose/compose-service";
 import { isNotFound, isConflict } from "../../../../../src/lib/errors";
 
 const router = tsr.router(zeroComposesByIdContract, {

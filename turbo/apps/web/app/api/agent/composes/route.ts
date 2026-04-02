@@ -19,8 +19,8 @@ import {
   isAuthError,
 } from "../../../../src/lib/auth/require-auth";
 import { eq, and } from "drizzle-orm";
-import { computeComposeVersionId } from "../../../../src/lib/agent-compose/content-hash";
-import { getComposeByName } from "../../../../src/lib/agent-compose/compose-service";
+import { computeComposeVersionId } from "../../../../src/lib/infra/agent-compose/content-hash";
+import { getComposeByName } from "../../../../src/lib/infra/agent-compose/compose-service";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import {
   isNotFound,

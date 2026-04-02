@@ -19,7 +19,7 @@ import {
   requireAgentPermission,
   requireAdminPermission,
 } from "../../../../../src/lib/zero/require-agent-permission";
-import { deleteComposeById } from "../../../../../src/lib/agent-compose/compose-service";
+import { deleteComposeById } from "../../../../../src/lib/infra/agent-compose/compose-service";
 import { isConflict } from "../../../../../src/lib/errors";
 import { logger } from "../../../../../src/lib/logger";
 
