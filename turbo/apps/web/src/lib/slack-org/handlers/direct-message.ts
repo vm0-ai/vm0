@@ -185,6 +185,7 @@ export async function handleOrgDirectMessage(
     botUserId,
     channelId: context.channelId,
     channelType: "dm",
+    threadTs,
     callbackContext,
   });
 

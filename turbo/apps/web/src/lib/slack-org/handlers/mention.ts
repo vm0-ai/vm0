@@ -189,6 +189,7 @@ export async function handleOrgMention(
         : context.channelType === "mpim"
           ? "group_dm"
           : "channel",
+    threadTs,
     callbackContext,
   });
 

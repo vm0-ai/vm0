@@ -13,6 +13,7 @@ export function buildIntegrationContext(
     botUserId?: string;
     channelId?: string;
     channelType?: "channel" | "dm" | "group_dm";
+    threadId?: string;
   },
 ): string {
   let context = `# Current Integration\nYou are currently running inside: ${platform}`;
@@ -30,6 +31,9 @@ export function buildIntegrationContext(
           ? "Group direct message"
           : "Channel";
     context += `\nChannel type: ${typeLabel}`;
+  }
+  if (options?.threadId) {
+    context += `\nThread ID: ${options.threadId}`;
   }
   return context;
 }
