@@ -236,18 +236,22 @@ EOF
     # Verify:
     # 1. DISCORD_WEBHOOK_URL is set to the placeholder URL
     # 2. curl to the placeholder URL triggers mitmproxy URL rewrite
-    #    The curl itself may fail (fake token, connection issues), so we
-    #    use || true and verify via network logs instead of HTTP status.
+    # 3. Discord returns 404 (fake webhook ID) proving the request reached Discord
     run $VM0_CLI run "${AGENT_NAME}-webhook" \
         --artifact-name "$ARTIFACT_NAME-webhook" \
-        "echo \"DISCORD_WEBHOOK_URL=\$DISCORD_WEBHOOK_URL\" && curl -s -o /dev/null -w 'API_STATUS=%{http_code}\n' -X POST \"\$DISCORD_WEBHOOK_URL\" -H 'Content-Type: application/json' -d '{\"content\":\"e2e\"}' || true"
+        "echo \"DISCORD_WEBHOOK_URL=\$DISCORD_WEBHOOK_URL\" && curl -s -o /dev/null -w 'API_STATUS=%{http_code}\n' -X POST \"\$DISCORD_WEBHOOK_URL\" -H 'Content-Type: application/json' -d '{\"content\":\"e2e\"}'"
 
     echo "$output"
+    assert_success
+    assert_output --partial "Run completed successfully"
 
     # Placeholder is the firewall-placeholder.vm3.ai URL
     assert_output --partial "DISCORD_WEBHOOK_URL=https://firewall-placeholder.vm3.ai/discord-webhook/hook"
 
-    # Extract run ID (present even if run failed)
+    # Discord returns 404 for the fake webhook — proves URL rewrite reached Discord
+    assert_output --partial "API_STATUS=404"
+
+    # Extract run ID
     RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
     [ -n "$RUN_ID" ] || {
         echo "# Failed to extract Run ID"
