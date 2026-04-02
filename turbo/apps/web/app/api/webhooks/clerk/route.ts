@@ -5,9 +5,9 @@ import { logger } from "../../../../src/lib/logger";
 import { cleanupOrgExternalServices } from "../../../../src/lib/org/org-external-cleanup";
 import { deleteOrgS3Data } from "../../../../src/lib/org/org-s3-cleanup";
 import { deleteOrgData } from "../../../../src/lib/org/org-deletion-service";
-import { cleanupUserExternalServices } from "../../../../src/lib/user/user-external-cleanup";
-import { deleteUserS3Data } from "../../../../src/lib/user/user-s3-cleanup";
-import { deleteUserData } from "../../../../src/lib/user/user-deletion-service";
+import { cleanupUserExternalServices } from "../../../../src/lib/zero/user/user-external-cleanup";
+import { deleteUserS3Data } from "../../../../src/lib/zero/user/user-s3-cleanup";
+import { deleteUserData } from "../../../../src/lib/zero/user/user-deletion-service";
 
 const log = logger("webhook:clerk");
 

@@ -11,9 +11,9 @@ import { reloadEnv } from "../../../../../src/env";
 import * as externalCleanup from "../../../../../src/lib/org/org-external-cleanup";
 import * as s3Cleanup from "../../../../../src/lib/org/org-s3-cleanup";
 import * as dbCleanup from "../../../../../src/lib/org/org-deletion-service";
-import * as userExternalCleanup from "../../../../../src/lib/user/user-external-cleanup";
-import * as userS3Cleanup from "../../../../../src/lib/user/user-s3-cleanup";
-import * as userDbCleanup from "../../../../../src/lib/user/user-deletion-service";
+import * as userExternalCleanup from "../../../../../src/lib/zero/user/user-external-cleanup";
+import * as userS3Cleanup from "../../../../../src/lib/zero/user/user-s3-cleanup";
+import * as userDbCleanup from "../../../../../src/lib/zero/user/user-deletion-service";
 import {
   createTestCompose,
   createTestRunInDb,

@@ -49,7 +49,7 @@ import {
   type ConversationResolution,
 } from "../run/resolvers";
 import { expandEnvironmentFromCompose } from "../run/environment";
-import { getUserPreferences } from "../user/user-preferences-service";
+import { getUserPreferences } from "./user/user-preferences-service";
 import { getSecretValue, getSecretValues } from "../secret/secret-service";
 import { getVariableValues } from "../variable/variable-service";
 import { getOrgDefaultModelProvider } from "../model-provider/model-provider-service";

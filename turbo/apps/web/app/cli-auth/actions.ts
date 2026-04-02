@@ -4,7 +4,7 @@ import { eq, and } from "drizzle-orm";
 import { auth } from "@clerk/nextjs/server";
 import { initServices } from "../../src/lib/init-services";
 import { deviceCodes } from "../../src/db/schema/device-codes";
-import { setTimezoneIfNotSet } from "../../src/lib/user/user-preferences-service";
+import { setTimezoneIfNotSet } from "../../src/lib/zero/user/user-preferences-service";
 
 interface VerifyResult {
   success: boolean;

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { testContext, uniqueId } from "../../../__tests__/test-helpers";
+import { testContext, uniqueId } from "../../../../__tests__/test-helpers";
 import {
   insertTestGitHubUserLink,
   insertTestGitHubInstallation,
@@ -12,7 +12,7 @@ import {
   findTestTelegramUserLinksByVm0UserId,
   findTestSlackOrgConnectionsByVm0UserId,
   findTestSlackOrgPendingQuestionsByConnectionId,
-} from "../../../__tests__/api-test-helpers";
+} from "../../../../__tests__/api-test-helpers";
 import { cleanupUserExternalServices } from "../user-external-cleanup";
 
 const context = testContext();

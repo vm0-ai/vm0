@@ -13,7 +13,7 @@ import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import {
   getUserPreferences,
   updateUserPreferences,
-} from "../../../../src/lib/user/user-preferences-service";
+} from "../../../../src/lib/zero/user/user-preferences-service";
 import { isBadRequest } from "../../../../src/lib/errors";
 
 const router = tsr.router(zeroUserPreferencesContract, {
