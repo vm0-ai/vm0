@@ -463,7 +463,6 @@ fn tool_exists(name: &str) -> bool {
 /// size (stale from a previous bench run that didn't clean up).
 fn cleanup_stale_nbd_devices() {
     let max = nbd_cow::netlink::nbds_max();
-    let my_pid = std::process::id();
     for i in 0..max {
         let size_path = format!("/sys/block/nbd{i}/size");
         let pid_path = format!("/sys/block/nbd{i}/pid");
@@ -479,7 +478,7 @@ fn cleanup_stale_nbd_devices() {
             .ok()
             .and_then(|s| s.trim().parse().ok())
             .unwrap_or(0);
-        if pid == my_pid || !std::path::Path::new(&format!("/proc/{pid}")).exists() {
+        if nbd_cow::is_our_thread(pid) || !std::path::Path::new(&format!("/proc/{pid}")).exists() {
             eprintln!("  Cleaning up stale /dev/nbd{i} (size={size}, pid={pid})...");
             let _ = nbd_cow::netlink::disconnect(i);
             std::thread::sleep(std::time::Duration::from_millis(200));

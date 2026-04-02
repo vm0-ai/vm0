@@ -145,8 +145,10 @@ pub async fn create_snapshot(
     .await;
 
     // Release device index back to pool before cleanup.
-    device_pool.lock().await.release(device_index);
-    device_pool.lock().await.cleanup().await;
+    let mut pool = device_pool.lock().await;
+    pool.release(device_index);
+    pool.cleanup().await;
+    drop(pool);
     if let Err(e) = netns_pool.cleanup().await {
         tracing::warn!(error = %e, "failed to cleanup netns pool");
     }

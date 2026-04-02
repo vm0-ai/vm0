@@ -362,7 +362,7 @@ impl NbdCowDevice {
 /// a TID different from the process TGID returned by `std::process::id()`.
 /// This function handles both cases: TID == TGID (main thread) and
 /// TID != TGID (worker threads).
-fn is_our_thread(tid: u32) -> bool {
+pub fn is_our_thread(tid: u32) -> bool {
     tid == std::process::id() || std::path::Path::new(&format!("/proc/self/task/{tid}")).exists()
 }
 
