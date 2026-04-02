@@ -1,6 +1,7 @@
 import { command } from "ccstate";
 import { createElement } from "react";
-import { ZeroWorksPageWrapper } from "../../views/works-page/zero-works-page-wrapper.tsx";
+import { SidebarLayout } from "../../views/zero-page/sidebar-layout.tsx";
+import { ZeroWorksPage } from "../../views/zero-page/zero-works-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { detach, Reason } from "../utils.ts";
@@ -13,7 +14,10 @@ import {
 } from "../zero-page/zero-slack.ts";
 
 export const setupWorksPage$ = command(async ({ set }, signal: AbortSignal) => {
-  set(updatePage$, createElement(ZeroWorksPageWrapper));
+  set(
+    updatePage$,
+    createElement(SidebarLayout, null, createElement(ZeroWorksPage)),
+  );
   set(updateDocumentTitle$, "Works");
   await Promise.all([
     set(initZeroOnboarding$, signal),

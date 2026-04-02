@@ -1,6 +1,7 @@
 import { command } from "ccstate";
 import { createElement } from "react";
-import { ZeroActivityPageWrapper } from "../../views/activity-page/zero-activity-page-wrapper.tsx";
+import { SidebarLayout } from "../../views/zero-page/sidebar-layout.tsx";
+import { ZeroActivityPage } from "../../views/zero-page/zero-activity-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
@@ -10,7 +11,10 @@ import { initZeroActivity$, refreshZeroActivity$ } from "./activity-signals.ts";
 
 export const setupActivityPage$ = command(
   async ({ set }, signal: AbortSignal) => {
-    set(updatePage$, createElement(ZeroActivityPageWrapper));
+    set(
+      updatePage$,
+      createElement(SidebarLayout, null, createElement(ZeroActivityPage)),
+    );
     set(updateDocumentTitle$, "Activity");
     set(refreshZeroActivity$);
     await Promise.all([

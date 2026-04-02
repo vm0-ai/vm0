@@ -1,6 +1,7 @@
 import { command } from "ccstate";
 import { createElement } from "react";
-import { ZeroPreferencesPageWrapper } from "../../views/preferences-page/zero-preferences-page-wrapper.tsx";
+import { SidebarLayout } from "../../views/zero-page/sidebar-layout.tsx";
+import { ZeroPreferencesPage } from "../../views/zero-page/zero-account-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
@@ -9,7 +10,10 @@ import { reloadChatThreads$ } from "../zero-page/zero-chat.ts";
 
 export const setupPreferencesPage$ = command(
   async ({ set }, signal: AbortSignal) => {
-    set(updatePage$, createElement(ZeroPreferencesPageWrapper));
+    set(
+      updatePage$,
+      createElement(SidebarLayout, null, createElement(ZeroPreferencesPage)),
+    );
     set(updateDocumentTitle$, "Preferences");
     await set(initZeroOnboarding$, signal);
     signal.throwIfAborted();

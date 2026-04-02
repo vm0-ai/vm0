@@ -1,6 +1,7 @@
 import { command } from "ccstate";
 import { createElement } from "react";
-import { FirewallAllowPageWrapper } from "../../views/firewall-allow/firewall-allow-page-wrapper.tsx";
+import { SidebarLayout } from "../../views/zero-page/sidebar-layout.tsx";
+import { FirewallAllowPage } from "../../views/firewall-allow/firewall-allow-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
@@ -9,7 +10,10 @@ import { reloadChatThreads$ } from "../zero-page/zero-chat.ts";
 
 export const setupFirewallAllowPage$ = command(
   async ({ set }, signal: AbortSignal) => {
-    set(updatePage$, createElement(FirewallAllowPageWrapper));
+    set(
+      updatePage$,
+      createElement(SidebarLayout, null, createElement(FirewallAllowPage)),
+    );
     set(updateDocumentTitle$, "Firewall Permissions");
 
     await set(initZeroOnboarding$, signal);

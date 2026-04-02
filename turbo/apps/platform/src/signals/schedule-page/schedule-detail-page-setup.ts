@@ -1,6 +1,7 @@
 import { command } from "ccstate";
 import { createElement } from "react";
-import { ZeroScheduleDetailPageWrapper } from "../../views/schedule-page/zero-schedule-detail-page-wrapper.tsx";
+import { SidebarLayout } from "../../views/zero-page/sidebar-layout.tsx";
+import { ZeroScheduleDetailPage } from "../../views/zero-page/zero-schedule-detail-page.tsx";
 import { updatePage$ } from "../react-router.ts";
 import { pathParams$ } from "../route.ts";
 import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
@@ -16,7 +17,10 @@ import { initScheduleDetailTab$ } from "./schedule-detail-tab.ts";
 
 export const setupScheduleDetailPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    set(updatePage$, createElement(ZeroScheduleDetailPageWrapper));
+    set(
+      updatePage$,
+      createElement(SidebarLayout, null, createElement(ZeroScheduleDetailPage)),
+    );
     set(initScheduleDetailTab$);
 
     // Initialize run history with the current schedule ID from the URL

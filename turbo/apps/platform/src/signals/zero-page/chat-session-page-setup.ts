@@ -1,6 +1,7 @@
 import { command } from "ccstate";
 import { createElement } from "react";
-import { ZeroChatSessionPageWrapper } from "../../views/zero-page/zero-chat-session-page-wrapper.tsx";
+import { SidebarLayout } from "../../views/zero-page/sidebar-layout.tsx";
+import { ZeroChatThreadPage } from "../../views/zero-page/zero-chat-thread-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import {
@@ -18,7 +19,15 @@ import { currentDraft$, ensureDraft$ } from "./chat-draft.ts";
 
 export const setupChatSessionPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    set(updatePage$, createElement(ZeroChatSessionPageWrapper));
+    const threadId = get(chatThreadId$);
+    set(
+      updatePage$,
+      createElement(
+        SidebarLayout,
+        null,
+        threadId ? createElement(ZeroChatThreadPage, { key: threadId }) : null,
+      ),
+    );
     set(updateDocumentTitle$, "Chat");
 
     await set(loadInitialData$, signal);
@@ -31,7 +40,6 @@ export const setupChatSessionPage$ = command(
     set(resetLocalMessages$);
 
     // Ensure a draft exists for this thread
-    const threadId = get(chatThreadId$);
     if (threadId && !get(currentDraft$)) {
       set(ensureDraft$, threadId);
     }

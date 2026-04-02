@@ -1,5 +1,6 @@
 import { command } from "ccstate";
 import { createElement } from "react";
+import { SidebarLayout } from "../../views/zero-page/sidebar-layout.tsx";
 import { ZeroTeamDetailPage } from "../../views/team-page/zero-team-detail-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
@@ -14,7 +15,10 @@ import { setSidebarChatAgent$ } from "../zero-page/zero-nav.ts";
 
 export const setupTeamDetailPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    set(updatePage$, createElement(ZeroTeamDetailPage));
+    set(
+      updatePage$,
+      createElement(SidebarLayout, null, createElement(ZeroTeamDetailPage)),
+    );
 
     const params = get(pathParams$) as { id?: string } | undefined;
     const agentId = params?.id ?? null;

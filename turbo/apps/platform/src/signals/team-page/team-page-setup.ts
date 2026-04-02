@@ -1,6 +1,7 @@
 import { command } from "ccstate";
 import { createElement } from "react";
-import { ZeroTeamPage } from "../../views/team-page/zero-team-page.tsx";
+import { SidebarLayout } from "../../views/zero-page/sidebar-layout.tsx";
+import { ZeroJobsPage } from "../../views/zero-page/zero-jobs-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
@@ -8,7 +9,10 @@ import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
 import { reloadChatThreads$ } from "../zero-page/zero-chat.ts";
 
 export const setupTeamPage$ = command(async ({ set }, signal: AbortSignal) => {
-  set(updatePage$, createElement(ZeroTeamPage));
+  set(
+    updatePage$,
+    createElement(SidebarLayout, null, createElement(ZeroJobsPage)),
+  );
   set(updateDocumentTitle$, "Team");
   await set(initZeroOnboarding$, signal);
   signal.throwIfAborted();
