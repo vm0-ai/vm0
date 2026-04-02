@@ -1,7 +1,7 @@
 import { eq, and } from "drizzle-orm";
 import { type SecretType } from "@vm0/core";
 import { secrets } from "../../db/schema/secret";
-import { encryptSecretValue, decryptSecretValue } from "../crypto";
+import { encryptSecretValue, decryptSecretValue } from "../shared/crypto";
 import { badRequest, notFound } from "../errors";
 import { logger } from "../logger";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";

@@ -11,8 +11,8 @@ import {
   type UserContext,
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
-import * as metricsModule from "../../../../../../src/lib/metrics";
-import * as axiomClient from "../../../../../../src/lib/axiom/client";
+import * as metricsModule from "../../../../../../src/lib/shared/metrics";
+import * as axiomClient from "../../../../../../src/lib/shared/axiom/client";
 import type { MockInstance } from "vitest";
 
 const context = testContext();

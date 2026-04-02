@@ -10,7 +10,7 @@ import {
 import { slackOrgInstallations } from "../../../../../src/db/schema/slack-org-installation";
 import { slackOrgConnections } from "../../../../../src/db/schema/slack-org-connection";
 import { slackOrgPendingQuestions } from "../../../../../src/db/schema/slack-org-pending-question";
-import { decryptSecretValue } from "../../../../../src/lib/crypto/secrets-encryption";
+import { decryptSecretValue } from "../../../../../src/lib/shared/crypto/secrets-encryption";
 import {
   createSlackClient,
   updateMessage,

@@ -1,7 +1,7 @@
 import { eq, and } from "drizzle-orm";
 import { slackOrgInstallations } from "../../../db/schema/slack-org-installation";
 import { slackOrgConnections } from "../../../db/schema/slack-org-connection";
-import { decryptSecretValue } from "../../crypto/secrets-encryption";
+import { decryptSecretValue } from "../../shared/crypto/secrets-encryption";
 import { env } from "../../../env";
 import { getUserEmail } from "../../auth/get-user-email";
 import {

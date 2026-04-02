@@ -1,7 +1,7 @@
 import { eq, and } from "drizzle-orm";
 import { agentRuns } from "../../db/schema/agent-run";
 import { agentComposeVersions } from "../../db/schema/agent-compose";
-import { queryAxiom, getDatasetName, DATASETS } from "../axiom";
+import { queryAxiom, getDatasetName, DATASETS } from "../shared/axiom";
 import { notFound } from "../errors";
 
 interface AxiomAgentEvent {

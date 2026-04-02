@@ -6,13 +6,16 @@ import {
 import { eq } from "drizzle-orm";
 import { agentRuns } from "../../../db/schema/agent-run";
 import { runnerJobQueue } from "../../../db/schema/runner-job-queue";
-import { ingestRunContext, type RunContextSnapshot } from "../../axiom/client";
-import { encryptSecretsMap } from "../../crypto/secrets-encryption";
+import {
+  ingestRunContext,
+  type RunContextSnapshot,
+} from "../../shared/axiom/client";
+import { encryptSecretsMap } from "../../shared/crypto/secrets-encryption";
 import { isOfficialRunnerGroup } from "../../org/org-service";
 import { forbidden } from "../../errors";
-import { publishJobNotification } from "../../realtime/client";
+import { publishJobNotification } from "../../shared/realtime/client";
 import { logger } from "../../logger";
-import { recordSandboxOperation } from "../../metrics";
+import { recordSandboxOperation } from "../../shared/metrics";
 import type { PreparedContext, ExecutorResult } from "./types";
 
 const log = logger("executor:runner");

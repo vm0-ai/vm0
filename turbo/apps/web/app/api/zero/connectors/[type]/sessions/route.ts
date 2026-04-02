@@ -10,7 +10,7 @@ import {
   isAuthError,
 } from "../../../../../../src/lib/auth/require-auth";
 import { connectorSessions } from "../../../../../../src/db/schema/connector-session";
-import { generateCode } from "../../../../../../src/lib/crypto";
+import { generateCode } from "../../../../../../src/lib/shared/crypto";
 
 const router = tsr.router(zeroConnectorSessionsContract, {
   create: async ({ params, headers }) => {

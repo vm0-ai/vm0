@@ -13,7 +13,7 @@ import { agentRunCallbacks } from "../../../../../src/db/schema/agent-run-callba
 import { slackOrgInstallations } from "../../../../../src/db/schema/slack-org-installation";
 import { slackOrgPendingQuestions } from "../../../../../src/db/schema/slack-org-pending-question";
 import { zeroAgents } from "../../../../../src/db/schema/zero-agent";
-import { decryptSecretValue } from "../../../../../src/lib/crypto/secrets-encryption";
+import { decryptSecretValue } from "../../../../../src/lib/shared/crypto/secrets-encryption";
 import {
   createSlackClient,
   postMessage,

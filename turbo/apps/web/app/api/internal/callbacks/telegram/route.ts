@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { eq, and, gte, desc } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import { verifyCallback } from "../../../../../src/lib/callback";
-import { decryptSecretValue } from "../../../../../src/lib/crypto/secrets-encryption";
+import { decryptSecretValue } from "../../../../../src/lib/shared/crypto/secrets-encryption";
 import { telegramInstallations } from "../../../../../src/db/schema/telegram-installation";
 import { agentSessions } from "../../../../../src/db/schema/agent-session";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";

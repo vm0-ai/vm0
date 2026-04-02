@@ -9,7 +9,7 @@ import { eq, and } from "drizzle-orm";
 import type { ComputerConnectorCreateResponse } from "@vm0/core";
 import { connectors } from "../../db/schema/connector";
 import { secrets } from "../../db/schema/secret";
-import { decryptSecretValue } from "../crypto";
+import { decryptSecretValue } from "../shared/crypto";
 import { badRequest, conflict, notFound } from "../errors";
 import { logger } from "../logger";
 import { upsertSecretByOrg } from "../secret/secret-service";

@@ -28,7 +28,7 @@ vi.mock("@axiomhq/logging", () => {
   };
 });
 
-import { reloadEnv } from "../../../env";
+import { reloadEnv } from "../../../../env";
 import { queryAxiom, ingestToAxiom, flushAxiom } from "../client";
 
 beforeEach(() => {

@@ -13,8 +13,8 @@ import {
   ingestToAxiom,
   getDatasetName,
   DATASETS,
-} from "../../../../../src/lib/axiom";
-import { recordSandboxInternalOperation } from "../../../../../src/lib/metrics";
+} from "../../../../../src/lib/shared/axiom";
+import { recordSandboxInternalOperation } from "../../../../../src/lib/shared/metrics";
 
 const log = logger("webhooks:telemetry");
 

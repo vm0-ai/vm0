@@ -10,7 +10,7 @@ import {
 import { refreshOrgAppHome } from "./handlers/app-home";
 
 import { env } from "../../env";
-import { decryptSecretValue } from "../crypto/secrets-encryption";
+import { decryptSecretValue } from "../shared/crypto/secrets-encryption";
 import { createSlackClient, postMessage } from "../slack/client";
 import { buildSuccessMessage, buildWelcomeMessage } from "../slack/blocks";
 import { logger } from "../logger";

@@ -15,9 +15,9 @@ import { eq, and, isNull } from "drizzle-orm";
 import { getRunnerAuth } from "../../../../../../src/lib/auth/runner-auth";
 import { generateSandboxToken } from "../../../../../../src/lib/auth/sandbox-token";
 import { logger } from "../../../../../../src/lib/logger";
-import { decryptSecretsMap } from "../../../../../../src/lib/crypto/secrets-encryption";
+import { decryptSecretsMap } from "../../../../../../src/lib/shared/crypto/secrets-encryption";
 import { isOfficialRunnerGroup } from "../../../../../../src/lib/org/org-service";
-import { recordSandboxOperation } from "../../../../../../src/lib/metrics";
+import { recordSandboxOperation } from "../../../../../../src/lib/shared/metrics";
 
 const log = logger("api:runners:jobs:claim");
 

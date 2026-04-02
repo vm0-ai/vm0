@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { telegramInstallations } from "../../../db/schema/telegram-installation";
 import { telegramUserLinks } from "../../../db/schema/telegram-user-link";
-import { decryptSecretValue } from "../../crypto/secrets-encryption";
+import { decryptSecretValue } from "../../shared/crypto/secrets-encryption";
 import { env } from "../../../env";
 import { createTelegramClient, sendMessage } from "../client";
 import {

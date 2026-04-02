@@ -11,7 +11,7 @@ import {
   testContext,
   type UserContext,
 } from "../../../../../../../src/__tests__/test-helpers";
-import { encryptSecretsMap } from "../../../../../../../src/lib/crypto/secrets-encryption";
+import { encryptSecretsMap } from "../../../../../../../src/lib/shared/crypto/secrets-encryption";
 import { verifySandboxToken } from "../../../../../../../src/lib/auth/sandbox-token";
 
 const context = testContext();

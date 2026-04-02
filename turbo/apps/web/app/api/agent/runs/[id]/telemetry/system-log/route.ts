@@ -13,7 +13,7 @@ import {
   queryAxiom,
   getDatasetName,
   DATASETS,
-} from "../../../../../../../src/lib/axiom";
+} from "../../../../../../../src/lib/shared/axiom";
 interface AxiomSystemLogEvent {
   _time: string;
   runId: string;

@@ -1,5 +1,5 @@
 import "server-only";
-import { env } from "../../env";
+import { env } from "../../../env";
 
 const BASE_URL = "https://openrouter.ai/api/v1/chat/completions";
 const MODEL = "google/gemini-3.1-flash-lite-preview";

@@ -12,7 +12,7 @@ import {
 } from "../../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../../src/__tests__/clerk-mock";
 import { randomUUID } from "crypto";
-import * as metricsModule from "../../../../../../../../src/lib/metrics";
+import * as metricsModule from "../../../../../../../../src/lib/shared/metrics";
 
 const context = testContext();
 

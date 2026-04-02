@@ -8,7 +8,7 @@ import {
 } from "../../../../../src/lib/slack/verify";
 import { slackOrgInstallations } from "../../../../../src/db/schema/slack-org-installation";
 import { slackOrgConnections } from "../../../../../src/db/schema/slack-org-connection";
-import { decryptSecretValue } from "../../../../../src/lib/crypto/secrets-encryption";
+import { decryptSecretValue } from "../../../../../src/lib/shared/crypto/secrets-encryption";
 import { createSlackClient } from "../../../../../src/lib/slack/client";
 import {
   buildHelpMessage,

@@ -5,12 +5,12 @@ import { agentComposes } from "../../db/schema/agent-compose";
 import { zeroAgents } from "../../db/schema/zero-agent";
 import { agentRuns } from "../../db/schema/agent-run";
 import { zeroRuns } from "../../db/schema/zero-run";
-import { decryptSecretsMap } from "../crypto";
+import { decryptSecretsMap } from "../shared/crypto";
 import { notFound, badRequest, schedulePast } from "../errors";
 import { logger } from "../logger";
 import { createZeroRun } from "../zero/zero-run-service";
 import { generateCallbackSecret, getApiUrl } from "../callback";
-import { generateScheduleDescription } from "../ai/lightweight-model";
+import { generateScheduleDescription } from "../shared/ai/lightweight-model";
 import type { ScheduleLoopCallbackPayload } from "../callback/callback-payloads";
 
 const log = logger("service:schedule");

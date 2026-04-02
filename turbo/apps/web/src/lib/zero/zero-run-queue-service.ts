@@ -43,7 +43,7 @@ import { buildInfraExecutionContext } from "../run/context/build-context";
 import {
   encryptSecretsMap,
   decryptSecretsMap,
-} from "../crypto/secrets-encryption";
+} from "../shared/crypto/secrets-encryption";
 import { isConcurrentRunLimit, insufficientCredits } from "../errors";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 import { logger } from "../logger";
