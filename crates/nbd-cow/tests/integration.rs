@@ -652,24 +652,37 @@ async fn drop_without_destroy_disconnects() {
 
     let device_index = device.device_index();
 
-    // Drop without calling destroy — Drop impl should disconnect
+    // Drop without calling destroy — Drop impl should disconnect.
+    // Drop aborts dispatch tasks (which hold server-side socket fds)
+    // and then calls netlink::disconnect synchronously. However, the
+    // aborted tasks' fds are only closed when tokio processes the abort,
+    // and the kernel won't fully release the device until all fds close.
+    // Yield to let the runtime process the aborts before dropping.
     drop(device);
+    tokio::task::yield_now().await;
 
     // Poll sysfs until the kernel marks the device as free.
-    // Drop's disconnect is synchronous but the kernel may take time
-    // to update the sysfs pid file, especially under load.
     let mut freed = false;
-    for _ in 0..20 {
+    for i in 0..50 {
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         if nbd_cow::netlink::device_appears_free(device_index) {
             freed = true;
+            eprintln!(
+                "device nbd{device_index} freed after {:.1}s",
+                (i + 1) as f64 * 0.1
+            );
             break;
         }
     }
-    assert!(
-        freed,
-        "device nbd{device_index} should be free after drop (waited 2s)"
-    );
+    if !freed {
+        // Diagnostic: print what the pid file shows
+        let pid_path = format!("/sys/block/nbd{device_index}/pid");
+        let pid_content =
+            std::fs::read_to_string(&pid_path).unwrap_or_else(|e| format!("err: {e}"));
+        panic!(
+            "device nbd{device_index} should be free after drop (waited 5s), pid file: {pid_content}"
+        );
+    }
 
     pool.lock().await.cleanup().await;
 }
