@@ -1,8 +1,8 @@
 import { gzipSync } from "node:zlib";
 import { resolveVolumes } from "./storage-resolver";
-import { generatePresignedUrl, putS3Object } from "../s3/s3-client";
-import { logger } from "../logger";
-import { badRequest } from "../errors";
+import { generatePresignedUrl, putS3Object } from "../../s3/s3-client";
+import { logger } from "../../logger";
+import { badRequest } from "../../errors";
 import {
   DEFAULT_MEMORY_MOUNT_PATH,
   type AgentVolumeConfig,
@@ -10,9 +10,9 @@ import {
   type ManifestStorage,
   type ManifestArtifact,
 } from "./types";
-import { storages, storageVersions } from "../../db/schema/storage";
+import { storages, storageVersions } from "../../../db/schema/storage";
 import { eq, and, isNull } from "drizzle-orm";
-import { env } from "../../env";
+import { env } from "../../../env";
 import { resolveVersionByPrefix, isResolutionError } from "./version-resolver";
 import { computeContentHashFromHashes } from "./content-hash";
 import { VOLUME_ORG_USER_ID, SYSTEM_ORG_ID } from "@vm0/core";

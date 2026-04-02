@@ -17,7 +17,7 @@ import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import { getOrgData } from "../../../../src/lib/org/org-cache-service";
 import { generatePresignedUrl } from "../../../../src/lib/s3/s3-client";
 import { env } from "../../../../src/env";
-import { resolveVersionByPrefix } from "../../../../src/lib/storage/version-resolver";
+import { resolveVersionByPrefix } from "../../../../src/lib/infra/storage/version-resolver";
 import { logger } from "../../../../src/lib/logger";
 
 const log = logger("api:storages:download");

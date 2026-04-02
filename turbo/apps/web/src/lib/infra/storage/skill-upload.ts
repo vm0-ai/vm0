@@ -6,17 +6,17 @@ import { mkdtemp } from "node:fs/promises";
 import { eq, and } from "drizzle-orm";
 import * as tar from "tar";
 import { getCustomSkillStorageName, VOLUME_ORG_USER_ID } from "@vm0/core";
-import { storages, storageVersions } from "../../db/schema/storage";
+import { storages, storageVersions } from "../../../db/schema/storage";
 import {
   putS3Object,
   listS3Objects,
   deleteS3Objects,
   verifyS3FilesExist,
-} from "../s3/s3-client";
-import type { S3StorageManifest } from "../s3/types";
+} from "../../s3/s3-client";
+import type { S3StorageManifest } from "../../s3/types";
 import { computeContentHashFromHashes, hashFileContent } from "./content-hash";
-import { env } from "../../env";
-import { logger } from "../logger";
+import { env } from "../../../env";
+import { logger } from "../../logger";
 
 const log = logger("storage:skill-upload");
 

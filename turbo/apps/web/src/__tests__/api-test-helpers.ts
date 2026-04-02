@@ -101,7 +101,7 @@ import { connectors } from "../db/schema/connector";
 import { connectorSessions } from "../db/schema/connector-session";
 import { secrets } from "../db/schema/secret";
 import { variables } from "../db/schema/variable";
-import { hashFileContent } from "../lib/storage/content-hash";
+import { hashFileContent } from "../lib/infra/storage/content-hash";
 import {
   encryptSecretValue,
   decryptSecretValue,

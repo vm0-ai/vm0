@@ -28,7 +28,7 @@ import { buildComposeContent } from "../../../../../src/lib/zero/build-compose-c
 import {
   uploadSkillServerSide,
   deleteSkillServerSide,
-} from "../../../../../src/lib/storage/skill-upload";
+} from "../../../../../src/lib/infra/storage/skill-upload";
 import {
   downloadManifest,
   downloadS3Buffer,

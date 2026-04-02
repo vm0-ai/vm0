@@ -5,8 +5,8 @@ import type { PreparedContext } from "../executors/types";
 import {
   prepareStorageManifest,
   ensureStorageExists,
-} from "../../storage/storage-service";
-import type { StorageManifest } from "../../storage/types";
+} from "../../infra/storage/storage-service";
+import type { StorageManifest } from "../../infra/storage/types";
 import { DEFAULT_PROFILE } from "@vm0/core";
 import { badRequest } from "../../errors";
 import { logger } from "../../logger";

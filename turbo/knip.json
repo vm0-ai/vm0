@@ -100,7 +100,7 @@
     "apps/cli/src/lib/utils/paginate.ts",
     "apps/cli/src/commands/cook/cook.ts",
     "apps/web/src/lib/auth/sandbox-token.ts",
-    "apps/web/src/lib/storage/skill-upload.ts",
+    "apps/web/src/lib/infra/storage/skill-upload.ts",
     "scripts/rebuild-snapshots.ts",
     "scripts/rebuild-snapshots-from-db.ts",
     "apps/web/scripts/migrations/001-backfill-clerk-orgs/**",

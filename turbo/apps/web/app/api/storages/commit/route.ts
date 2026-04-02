@@ -19,7 +19,7 @@ import {
   s3ObjectExists,
   verifyS3FilesExist,
 } from "../../../../src/lib/s3/s3-client";
-import { computeContentHashFromHashes } from "../../../../src/lib/storage/content-hash";
+import { computeContentHashFromHashes } from "../../../../src/lib/infra/storage/content-hash";
 import { env } from "../../../../src/env";
 import { logger } from "../../../../src/lib/logger";
 

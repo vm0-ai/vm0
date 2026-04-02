@@ -12,7 +12,7 @@ import {
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import { zeroSkills } from "../../../../src/db/schema/zero-skill";
 import { eq, and } from "drizzle-orm";
-import { uploadSkillServerSide } from "../../../../src/lib/storage/skill-upload";
+import { uploadSkillServerSide } from "../../../../src/lib/infra/storage/skill-upload";
 import { SEED_SKILLS } from "../../../../src/lib/zero/seed-skills";
 import { requireAdminPermission } from "../../../../src/lib/zero/require-agent-permission";
 import { logger } from "../../../../src/lib/logger";
