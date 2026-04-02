@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -22,6 +21,8 @@ import {
   openDowngradeDialog$,
   saveAutoRecharge$,
   autoRechargeConfig$,
+  pendingEnabled$,
+  setPendingEnabled$,
 } from "../../signals/zero-page/billing.ts";
 import {
   selectedPlanTier$,
@@ -136,7 +137,8 @@ export function AutoRechargeSection({
       ? configLoadable.data
       : { enabled: false, threshold: "", amount: "" };
 
-  const [pendingEnabled, setPendingEnabled] = useState<boolean | null>(null);
+  const pendingEnabled = useGet(pendingEnabled$);
+  const setPendingEnabled = useSet(setPendingEnabled$);
 
   if (currentTier === "free") {
     return null;

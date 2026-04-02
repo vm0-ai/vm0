@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { useGet, useSet, useLastResolved } from "ccstate-react";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { IconSearch, IconChartLine, IconUpload } from "@tabler/icons-react";
@@ -24,7 +23,9 @@ import {
 } from "../zero-page/zero-activity-detail-page.tsx";
 import {
   inspectLogData$,
+  inspectStepSearch$,
   loadInspectLogFile$,
+  setInspectStepSearch$,
   type InspectLogData,
 } from "../../signals/activity-page/inspect-log-signals.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
@@ -126,7 +127,8 @@ function StepsTab({
 }: {
   prepared: ReturnType<typeof prepareInspectData>;
 }) {
-  const [stepSearch, setStepSearch] = useState("");
+  const stepSearch = useGet(inspectStepSearch$);
+  const setStepSearch = useSet(setInspectStepSearch$);
   const { events, prompt, appendSystemPrompt } = prepared;
   const showSystemPrompt = appendSystemPrompt.trim().length > 0;
 

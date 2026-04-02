@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import {
   IconSearch,
@@ -12,6 +11,8 @@ import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
   allConnectorTypes$,
   connectConnector$,
+  connectorsSearch$,
+  setConnectorsSearch$,
   selectedConnectorType$,
   setSelectedConnectorType$,
   pollingConnectorType$,
@@ -225,7 +226,8 @@ export function ZeroConnectorsPage() {
   const setScopeReviewType = useSet(setScopeReviewType$);
   const optimisticConnected = useGet(justConnectedTypes$);
 
-  const [search, setSearch] = useState("");
+  const search = useGet(connectorsSearch$);
+  const setSearch = useSet(setConnectorsSearch$);
 
   const allConnectors =
     allTypesLoadable.state === "hasData" ? allTypesLoadable.data : [];

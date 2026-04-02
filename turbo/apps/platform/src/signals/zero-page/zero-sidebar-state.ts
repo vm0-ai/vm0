@@ -45,3 +45,14 @@ export const draftPinnedIds$ = computed((get) => {
 export const setDraftPinnedIds$ = command(({ set }, ids: string[]) => {
   set(internalDraftPinnedIds$, ids);
 });
+
+// ---------------------------------------------------------------------------
+// Chat list dialog search query
+// ---------------------------------------------------------------------------
+const internalChatListQuery$ = state("");
+export const chatListQuery$ = computed((get) => {
+  return get(internalChatListQuery$);
+});
+export const setChatListQuery$ = command(({ set }, query: string) => {
+  set(internalChatListQuery$, query);
+});

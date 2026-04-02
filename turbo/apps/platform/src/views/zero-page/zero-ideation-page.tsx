@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { useGet, useSet } from "ccstate-react";
 import {
   IconArrowUpRight,
@@ -10,12 +9,20 @@ import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { getCategories } from "./zero-ideation-data.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { currentAgentId$ } from "../../signals/zero-page/agent.ts";
+import {
+  ideationActiveTab$,
+  setIdeationActiveTab$,
+  ideationSearchQuery$,
+  setIdeationSearchQuery$,
+} from "../../signals/zero-page/zero-ideation.ts";
 export { getRandomPrompts } from "./zero-ideation-data.ts";
 
 export function ZeroIdeationPage() {
   const categories = getCategories().slice(0, 5);
-  const [activeTab, setActiveTab] = useState("all");
-  const [searchQuery, setSearchQuery] = useState("");
+  const activeTab = useGet(ideationActiveTab$);
+  const setActiveTab = useSet(setIdeationActiveTab$);
+  const searchQuery = useGet(ideationSearchQuery$);
+  const setSearchQuery = useSet(setIdeationSearchQuery$);
   const navigate = useSet(detachedNavigateTo$);
   const agentId = useGet(currentAgentId$);
 

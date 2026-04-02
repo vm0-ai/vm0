@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { useGet, useSet } from "ccstate-react";
 import {
   IconSearch,
@@ -37,7 +36,9 @@ import {
   Button,
 } from "@vm0/ui";
 import {
+  chatListQuery$,
   draftPinnedIds$,
+  setChatListQuery$,
   setDraftPinnedIds$,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
 import { type SubagentInfo, AgentAvatarImg } from "./zero-sidebar-shared.tsx";
@@ -363,7 +364,8 @@ export function ChatListDialog({
   onPinnedIdsChange: (ids: string[]) => void;
   onNewChat?: (agentId: string | null) => void;
 }) {
-  const [query, setQuery] = useState("");
+  const query = useGet(chatListQuery$);
+  const setQuery = useSet(setChatListQuery$);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),

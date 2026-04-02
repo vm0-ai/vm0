@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useGet, useSet } from "ccstate-react";
 import {
   Table,
   TableBody,
@@ -8,6 +8,10 @@ import {
   TableRow,
 } from "@vm0/ui";
 import type { NetworkLogEntry } from "@vm0/core";
+import {
+  networkLogExpandedRows$,
+  toggleNetworkLogRowExpanded$,
+} from "../../../signals/zero-page/network-log-ui.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -297,8 +301,16 @@ function NetworkLogRowDetail({ entry }: { entry: NetworkLogEntry }) {
   );
 }
 
-function NetworkLogRow({ entry }: { entry: NetworkLogEntry }) {
-  const [expanded, setExpanded] = useState(false);
+function NetworkLogRow({
+  entry,
+  rowKey,
+}: {
+  entry: NetworkLogEntry;
+  rowKey: string;
+}) {
+  const expandedRows = useGet(networkLogExpandedRows$);
+  const toggleExpanded = useSet(toggleNetworkLogRowExpanded$);
+  const expanded = expandedRows.has(rowKey);
   const type = entryType(entry);
   const isHttp = type === "HTTP" || type === "DENY";
 
@@ -311,9 +323,7 @@ function NetworkLogRow({ entry }: { entry: NetworkLogEntry }) {
       <TableRow
         className="cursor-pointer hover:bg-muted/50"
         onClick={() => {
-          setExpanded((prev) => {
-            return !prev;
-          });
+          toggleExpanded(rowKey);
         }}
       >
         <TableCell className="font-mono text-xs text-muted-foreground whitespace-nowrap">
@@ -381,7 +391,7 @@ export function NetworkContent({
         <TableBody>
           {networkLogs.map((entry, idx) => {
             const key = `${entry.timestamp}-${entry.type}-${entry.host}-${entry.port}-${entry.url}-${idx}`;
-            return <NetworkLogRow key={key} entry={entry} />;
+            return <NetworkLogRow key={key} rowKey={key} entry={entry} />;
           })}
         </TableBody>
       </Table>

@@ -52,6 +52,7 @@ const billingReload$ = state(0);
 const internalDowngradeDialogOpen$ = state(false);
 const internalDowngradeLoading$ = state(false);
 const internalDowngradeError$ = state<string | null>(null);
+const internalPendingEnabled$ = state<boolean | null>(null);
 
 // ---------------------------------------------------------------------------
 // Selectors
@@ -75,6 +76,13 @@ export const downgradeLoading$ = computed((get) => {
 });
 export const downgradeError$ = computed((get) => {
   return get(internalDowngradeError$);
+});
+export const pendingEnabled$ = computed((get) => {
+  return get(internalPendingEnabled$);
+});
+
+export const setPendingEnabled$ = command(({ set }, value: boolean | null) => {
+  set(internalPendingEnabled$, value);
 });
 
 /**

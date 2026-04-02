@@ -27,3 +27,19 @@ export const loadInspectLogFile$ = command(
     set(internalInspectLogData$, data);
   },
 );
+
+// ---------------------------------------------------------------------------
+// Inspect step search — component-local filter for the inspect detail view
+// ---------------------------------------------------------------------------
+
+const internalInspectStepSearch$ = state("");
+
+/** Current step search filter for the inspect detail view. */
+export const inspectStepSearch$ = computed((get) => {
+  return get(internalInspectStepSearch$);
+});
+
+/** Update the inspect step search filter. */
+export const setInspectStepSearch$ = command(({ set }, value: string) => {
+  set(internalInspectStepSearch$, value);
+});
