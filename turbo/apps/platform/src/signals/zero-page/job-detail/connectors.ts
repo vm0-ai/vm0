@@ -1,13 +1,7 @@
 import { command, computed, state } from "ccstate";
-import { toast } from "@vm0/ui/components/ui/sonner";
 import { zeroUserConnectorsContract } from "@vm0/core";
-import { throwIfAbort } from "../../utils.ts";
-import { logger } from "../../log.ts";
 import { zeroClient$ } from "../../api-client.ts";
 import { zeroJobDetail$ } from "./detail.ts";
-import { setSaving$ } from "./settings.ts";
-
-const L = logger("ZeroJobDetail");
 
 // ---------------------------------------------------------------------------
 // Connectors management — user-level permissions per agent
@@ -99,37 +93,23 @@ export const saveZeroJobConnectors$ = command(
       throw new Error("No agent detail loaded");
     }
 
-    set(setSaving$, true);
-    try {
-      const enabledTypes = get(internalAddedConnectors$) ?? [];
-      const client = get(zeroClient$)(zeroUserConnectorsContract);
-      const result = await client.update({
-        params: { id: detail.agentId },
-        body: { enabledTypes },
-      });
-      signal.throwIfAborted();
+    const enabledTypes = get(internalAddedConnectors$) ?? [];
+    const client = get(zeroClient$)(zeroUserConnectorsContract);
+    const result = await client.update({
+      params: { id: detail.agentId },
+      body: { enabledTypes },
+    });
+    signal.throwIfAborted();
 
-      if (result.status !== 200) {
-        const errorDetail =
-          result.status === 401 ||
-          result.status === 403 ||
-          result.status === 404
-            ? result.body.error.message
-            : `status ${result.status}`;
-        throw new Error(`Save failed: ${errorDetail}`);
-      }
-
-      set(internalAddedConnectors$, null);
-      set(reloadJobConnectors$);
-      toast.success("Connectors saved");
-    } catch (error) {
-      throwIfAbort(error);
-      L.error("Failed to save connectors:", error);
-      toast.error(
-        error instanceof Error ? error.message : "Failed to save connectors",
-      );
-    } finally {
-      set(setSaving$, false);
+    if (result.status !== 200) {
+      const errorDetail =
+        result.status === 401 || result.status === 403 || result.status === 404
+          ? result.body.error.message
+          : `status ${result.status}`;
+      throw new Error(`Save failed: ${errorDetail}`);
     }
+
+    set(internalAddedConnectors$, null);
+    set(reloadJobConnectors$);
   },
 );

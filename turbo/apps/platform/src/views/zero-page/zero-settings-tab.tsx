@@ -31,6 +31,7 @@ import type { Command } from "ccstate";
 import { InlineSettingsRow } from "./components/zero-inline-settings-row.tsx";
 import { ZERO_AVATARS } from "./zero-avatars.ts";
 import { AVATAR_PRESET_PREFIX } from "./avatar-utils.ts";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import {
   settingsAgentName$,
   setSettingsAgentName$,
@@ -56,7 +57,6 @@ interface ZeroSettingsTabProps {
   description: string;
   sound: Tone;
   avatarUrl: string | null;
-  saving: boolean;
   updateSettings$: Command<
     Promise<void>,
     [
@@ -81,7 +81,6 @@ export function ZeroSettingsTab({
   description: initialDescription,
   sound: initialSound,
   avatarUrl: initialAvatarUrl,
-  saving,
   updateSettings$,
   inputId = "zero-agent-name",
   isDefaultAgent = false,
@@ -116,24 +115,32 @@ export function ZeroSettingsTab({
   const [deleteLoadable, deleteAgentFn] = useLoadableSet(deleteAgent$);
   const deleting = deleteLoadable.state === "loading";
 
+  const [settingsLoadable, triggerUpdateSettings] =
+    useLoadableSet(updateSettings$);
+  const saving = settingsLoadable.state === "loading";
+
   const handleResetSettings = () => {
     resetForm();
   };
 
-  const triggerUpdateSettings = useSet(updateSettings$);
   const pageSignal = useGet(pageSignal$);
 
-  const handleSaveSettings = async () => {
-    await triggerUpdateSettings(
-      {
-        displayName: agentName,
-        description: desc,
-        sound: tone,
-        avatarUrl,
-      },
-      pageSignal,
+  const handleSaveSettings = () => {
+    detach(
+      triggerUpdateSettings(
+        {
+          displayName: agentName,
+          description: desc,
+          sound: tone,
+          avatarUrl,
+        },
+        pageSignal,
+      ).then(() => {
+        markSaved();
+        toast.success("Profile saved");
+      }),
+      Reason.DomCallback,
     );
-    markSaved();
   };
 
   const handleDelete = () => {
@@ -424,9 +431,7 @@ export function ZeroSettingsTab({
       {isSettingsDirty && (
         <ZeroUnsavedBar
           onDiscard={handleResetSettings}
-          onSave={() => {
-            return detach(handleSaveSettings(), Reason.DomCallback);
-          }}
+          onSave={handleSaveSettings}
           saving={saving}
         />
       )}

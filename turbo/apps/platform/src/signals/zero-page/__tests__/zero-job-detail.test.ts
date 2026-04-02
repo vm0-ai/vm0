@@ -1,6 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { http, HttpResponse } from "msw";
-import { toast } from "@vm0/ui/components/ui/sonner";
 import { server } from "../../../mocks/server";
 import { testContext } from "../../__tests__/test-helpers";
 import { setupPage } from "../../../__tests__/page-helper";
@@ -17,10 +16,7 @@ import {
   zeroJobInstructionsDirty$,
   discardZeroJobEdit$,
   buildZeroJobInstructions$,
-  zeroJobBuilding$,
-  zeroJobBuildError$,
   zeroJobUpdateSettings$,
-  zeroJobSettingsSaving$,
   zeroJobAddedConnectors$,
   zeroJobConnectorsDirty$,
   addZeroJobConnector$,
@@ -774,7 +770,6 @@ describe("zero-job-detail signals", () => {
 
     it("should build instructions via zero agents api and update state", async () => {
       let capturedBody: { content: string } | null = null;
-      const toastSpy = vi.spyOn(toast, "success");
 
       await setupWithInstructions();
 
@@ -811,64 +806,19 @@ describe("zero-job-detail signals", () => {
       context.store.set(setZeroJobEditedContent$, "Updated instructions");
       await context.store.set(buildZeroJobInstructions$, context.signal);
 
-      // Build should succeed without errors
-      expect(context.store.get(zeroJobBuildError$)).toBeNull();
-
       // Should have sent the edited content via zero agents instructions API
       expect(capturedBody).toBeTruthy();
       expect(capturedBody!.content).toBe("Updated instructions");
 
       // After build, edited content should be cleared
       expect(context.store.get(zeroJobEditedContent$)).toBeNull();
-      expect(context.store.get(zeroJobBuilding$)).toBeFalsy();
-      expect(context.store.get(zeroJobBuildError$)).toBeNull();
 
       // Instructions should be updated after reload
       const instructions = await context.store.get(zeroJobInstructions$);
       expect(instructions?.content).toBe("Updated instructions");
-
-      // Should show success toast
-      expect(toastSpy).toHaveBeenCalledWith("Instructions saved");
-      toastSpy.mockRestore();
     });
 
-    it("should clear building state before reloads so editor remounts editable", async () => {
-      await setupWithInstructions();
-
-      server.use(
-        http.put(
-          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/instructions",
-          () => {
-            return HttpResponse.json({
-              agentId: "c0000000-0000-4000-a000-000000000002",
-              ownerId: "test-owner-id",
-              description: null,
-              displayName: null,
-              sound: null,
-              avatarUrl: null,
-              firewallPolicies: null,
-            });
-          },
-        ),
-        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
-          return HttpResponse.json(mockAgentResponse());
-        }),
-        http.get(
-          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/instructions",
-          () => {
-            return HttpResponse.json(mockInstructions());
-          },
-        ),
-      );
-
-      context.store.set(setZeroJobEditedContent$, "New content");
-      await context.store.set(buildZeroJobInstructions$, context.signal);
-
-      // Building state should be false after build completes
-      expect(context.store.get(zeroJobBuilding$)).toBeFalsy();
-    });
-
-    it("should set build error on api failure", async () => {
+    it("should throw on api failure", async () => {
       await setupWithInstructions();
 
       server.use(
@@ -889,12 +839,9 @@ describe("zero-job-detail signals", () => {
       );
 
       context.store.set(setZeroJobEditedContent$, "Updated instructions");
-      await context.store.set(buildZeroJobInstructions$, context.signal);
-
-      expect(context.store.get(zeroJobBuilding$)).toBeFalsy();
-      expect(context.store.get(zeroJobBuildError$)).toBe(
-        "Failed to build instructions. Please try again.",
-      );
+      await expect(
+        context.store.set(buildZeroJobInstructions$, context.signal),
+      ).rejects.toThrow("Build failed");
 
       // Edited content should NOT be cleared on failure
       expect(context.store.get(zeroJobEditedContent$)).toBe(
@@ -963,12 +910,9 @@ describe("zero-job-detail signals", () => {
           async ({ request }) => {
             capturedBody = (await request.json()) as Record<string, unknown>;
             return HttpResponse.json({
-              agentId: "c0000000-0000-4000-a000-000000000002",
+              ...mockAgentResponse(),
               displayName: "New Name",
-              description: null,
               sound: "friendly",
-              avatarUrl: null,
-              firewallPolicies: null,
             });
           },
         ),
@@ -989,9 +933,6 @@ describe("zero-job-detail signals", () => {
       // Should have sent the update fields directly to the agents PATCH endpoint
       expect(capturedBody["displayName"]).toBe("New Name");
       expect(capturedBody["sound"]).toBe("friendly");
-
-      // Saving state should be reset
-      expect(context.store.get(zeroJobSettingsSaving$)).toBeFalsy();
     });
 
     it("should send empty update via PATCH agents API", async () => {
@@ -1004,14 +945,7 @@ describe("zero-job-detail signals", () => {
           "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002",
           () => {
             patchCalled = true;
-            return HttpResponse.json({
-              agentId: "c0000000-0000-4000-a000-000000000002",
-              displayName: null,
-              description: null,
-              sound: null,
-              avatarUrl: null,
-              firewallPolicies: null,
-            });
+            return HttpResponse.json(mockAgentResponse());
           },
         ),
         http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
@@ -1023,10 +957,9 @@ describe("zero-job-detail signals", () => {
 
       // The PATCH is always sent — idempotency is handled server-side
       expect(patchCalled).toBeTruthy();
-      expect(context.store.get(zeroJobSettingsSaving$)).toBeFalsy();
     });
 
-    it("should show error toast on PATCH failure", async () => {
+    it("should throw on PATCH failure", async () => {
       await setupSettings();
 
       server.use(
@@ -1038,16 +971,15 @@ describe("zero-job-detail signals", () => {
         ),
       );
 
-      // Should not throw — errors are caught and shown via toast
-      await context.store.set(
-        zeroJobUpdateSettings$,
-        {
-          displayName: "New Name",
-        },
-        context.signal,
-      );
-
-      expect(context.store.get(zeroJobSettingsSaving$)).toBeFalsy();
+      await expect(
+        context.store.set(
+          zeroJobUpdateSettings$,
+          {
+            displayName: "New Name",
+          },
+          context.signal,
+        ),
+      ).rejects.toThrow("Save failed");
     });
   });
 
@@ -1170,10 +1102,9 @@ describe("zero-job-detail signals", () => {
       await expect(
         context.store.get(zeroJobConnectorsDirty$),
       ).resolves.toBeFalsy();
-      expect(context.store.get(zeroJobSettingsSaving$)).toBeFalsy();
     });
 
-    it("should show error toast on save failure", async () => {
+    it("should throw on save failure", async () => {
       await setupWithConnectors();
 
       server.use(
@@ -1195,10 +1126,9 @@ describe("zero-job-detail signals", () => {
 
       await context.store.set(addZeroJobConnector$, "gmail", context.signal);
 
-      // Should not throw — errors are caught and shown via toast
-      await context.store.set(saveZeroJobConnectors$, context.signal);
-
-      expect(context.store.get(zeroJobSettingsSaving$)).toBeFalsy();
+      await expect(
+        context.store.set(saveZeroJobConnectors$, context.signal),
+      ).rejects.toThrow("Save failed");
     });
   });
 });

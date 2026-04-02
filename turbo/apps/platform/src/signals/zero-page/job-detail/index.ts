@@ -18,12 +18,10 @@ export {
   zeroJobInstructionsDirty$,
   setZeroJobEditedContent$,
   discardZeroJobEdit$,
-  zeroJobBuilding$,
-  zeroJobBuildError$,
   buildZeroJobInstructions$,
 } from "./instructions.ts";
 
-export { zeroJobSettingsSaving$, zeroJobUpdateSettings$ } from "./settings.ts";
+export { zeroJobUpdateSettings$ } from "./settings.ts";
 
 export {
   zeroJobAddedConnectors$,

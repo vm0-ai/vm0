@@ -5,6 +5,7 @@ import {
   useLastLoadable,
   useLastResolved,
 } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   IconFileText,
@@ -54,10 +55,7 @@ import {
   setZeroJobEditedContent$,
   discardZeroJobEdit$,
   buildZeroJobInstructions$,
-  zeroJobBuilding$,
-  zeroJobBuildError$,
   zeroJobUpdateSettings$,
-  zeroJobSettingsSaving$,
   deleteZeroJobAgent$,
   zeroJobAddedConnectors$,
   addZeroJobConnector$,
@@ -479,11 +477,16 @@ function JobPermissionsTab({
       : removeConnector(type, pageSignal);
     setSavingType(type);
     detach(
-      modify.then(() => {
-        return saveConnectors(pageSignal).finally(() => {
+      modify
+        .then(() => {
+          return saveConnectors(pageSignal);
+        })
+        .then(() => {
+          toast.success("Connectors saved");
+        })
+        .finally(() => {
           setSavingType(null);
-        });
-      }),
+        }),
       Reason.DomCallback,
     );
   };
@@ -695,8 +698,7 @@ function JobInstructionsTab() {
   const instructionsLoadable = useLoadable(zeroJobInstructions$);
   const editedLoadable = useLoadable(zeroJobEditedContent$);
   const dirtyLoadable = useLoadable(zeroJobInstructionsDirty$);
-  const buildingLoadable = useLoadable(zeroJobBuilding$);
-  const buildErrorLoadable = useLoadable(zeroJobBuildError$);
+  const [buildLoadable, build] = useLoadableSet(buildZeroJobInstructions$);
 
   const instructions =
     instructionsLoadable.state === "hasData" ? instructionsLoadable.data : null;
@@ -706,14 +708,12 @@ function JobInstructionsTab() {
     editedLoadable.state === "hasData" ? editedLoadable.data : null;
   const isDirty =
     dirtyLoadable.state === "hasData" && dirtyLoadable.data === true;
-  const isBuilding =
-    buildingLoadable.state === "hasData" && buildingLoadable.data === true;
+  const isBuilding = buildLoadable.state === "loading";
   const buildError =
-    buildErrorLoadable.state === "hasData" ? buildErrorLoadable.data : null;
+    buildLoadable.state === "hasError" ? String(buildLoadable.error) : null;
 
   const setEdited = useSet(setZeroJobEditedContent$);
   const discard = useSet(discardZeroJobEdit$);
-  const build = useSet(buildZeroJobInstructions$);
 
   return (
     <ZeroInstructionsTab
@@ -727,7 +727,12 @@ function JobInstructionsTab() {
       onEdit={setEdited}
       onDiscard={discard}
       onBuild={() => {
-        return detach(build(pageSignal), Reason.DomCallback);
+        detach(
+          build(pageSignal).then(() => {
+            return toast.success("Instructions saved");
+          }),
+          Reason.DomCallback,
+        );
       }}
     />
   );
@@ -753,7 +758,6 @@ export function ZeroJobDetailPage({ agentId }: ZeroJobDetailPageProps) {
   );
   const resolvedSound = resolveSound(sound);
 
-  const saving = useGet(zeroJobSettingsSaving$);
   const deleteAgent = useSet(deleteZeroJobAgent$);
   const nav = useSet(detachedNavigateTo$);
   const pageSignal = useGet(pageSignal$);
@@ -861,7 +865,6 @@ export function ZeroJobDetailPage({ agentId }: ZeroJobDetailPageProps) {
             description={description ?? ""}
             sound={resolvedSound}
             avatarUrl={avatarUrl}
-            saving={saving}
             updateSettings$={zeroJobUpdateSettings$}
             inputId="job-agent-name"
             isDefaultAgent={isDefaultAgent}
