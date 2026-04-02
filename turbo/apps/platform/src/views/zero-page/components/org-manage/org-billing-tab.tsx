@@ -1,4 +1,5 @@
 import { useGet, useSet, useLoadable } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import {
   IconExternalLink,
   IconCrown,
@@ -12,14 +13,11 @@ import {
   reloadBillingStatus$,
   startCheckout$,
   startDowngrade$,
-  billingDialogLoading$,
   apiTierToBillingTier,
   openDowngradeDialog$,
   closeDowngradeDialog$,
   confirmDowngrade$,
   downgradeDialogOpen$,
-  downgradeLoading$,
-  downgradeError$,
   type BillingTier,
 } from "../../../../signals/zero-page/billing.ts";
 import {
@@ -245,8 +243,8 @@ function PricingPage({
   onBack: () => void;
 }) {
   const pageSignal = useGet(pageSignal$);
-  const loading = useGet(billingDialogLoading$);
-  const checkout = useSet(startCheckout$);
+  const [checkoutLoadable, checkout] = useLoadableSet(startCheckout$);
+  const loading = checkoutLoadable.state === "loading";
   const openDowngrade = useSet(openDowngradeDialog$);
 
   const handlePlanAction = (planTier: BillingTier) => {
@@ -315,10 +313,13 @@ function formatTierLabel(tier: BillingTier): string {
 function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
   const pageSignal = useGet(pageSignal$);
   const open = useGet(downgradeDialogOpen$);
-  const loading = useGet(downgradeLoading$);
-  const error = useGet(downgradeError$);
+  const [downgradeLoadable, confirm] = useLoadableSet(confirmDowngrade$);
+  const loading = downgradeLoadable.state === "loading";
+  const error =
+    downgradeLoadable.state === "hasError"
+      ? String(downgradeLoadable.error)
+      : null;
   const close = useSet(closeDowngradeDialog$);
-  const confirm = useSet(confirmDowngrade$);
   const selectedTarget = useGet(selectedTarget$);
   const setSelectedTarget = useSet(setSelectedTarget$);
 
@@ -472,9 +473,9 @@ export function OrgBillingTab() {
   const pageSignal = useGet(pageSignal$);
   const reloadBilling = useSet(reloadBillingStatus$);
   const openDowngrade = useSet(openDowngradeDialog$);
-  const portal = useSet(startDowngrade$);
+  const [portalLoadable, portal] = useLoadableSet(startDowngrade$);
   const statusLoadable = useLoadable(billingStatusAsync$);
-  const loading = useGet(billingDialogLoading$);
+  const loading = portalLoadable.state === "loading";
 
   const status =
     statusLoadable.state === "hasData" ? statusLoadable.data : null;

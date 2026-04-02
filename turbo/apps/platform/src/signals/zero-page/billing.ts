@@ -46,12 +46,8 @@ function getErrorMessage(body: unknown): string | undefined {
 // ---------------------------------------------------------------------------
 
 const internalDialogOpen$ = state(false);
-const internalCheckoutLoading$ = state(false);
-const internalPortalLoading$ = state(false);
 const billingReload$ = state(0);
 const internalDowngradeDialogOpen$ = state(false);
-const internalDowngradeLoading$ = state(false);
-const internalDowngradeError$ = state<string | null>(null);
 const internalPendingEnabled$ = state<boolean | null>(null);
 
 // ---------------------------------------------------------------------------
@@ -61,21 +57,8 @@ const internalPendingEnabled$ = state<boolean | null>(null);
 export const billingDialogOpen$ = computed((get) => {
   return get(internalDialogOpen$);
 });
-export const billingDialogLoading$ = computed((get) => {
-  return (
-    get(internalCheckoutLoading$) ||
-    get(internalPortalLoading$) ||
-    get(internalDowngradeLoading$)
-  );
-});
 export const downgradeDialogOpen$ = computed((get) => {
   return get(internalDowngradeDialogOpen$);
-});
-export const downgradeLoading$ = computed((get) => {
-  return get(internalDowngradeLoading$);
-});
-export const downgradeError$ = computed((get) => {
-  return get(internalDowngradeError$);
 });
 export const pendingEnabled$ = computed((get) => {
   return get(internalPendingEnabled$);
@@ -116,9 +99,7 @@ export const closeBillingDialog$ = command(({ set }) => {
 });
 
 export const startCheckout$ = command(
-  async ({ get, set }, tier: "pro" | "team", _signal: AbortSignal) => {
-    set(internalCheckoutLoading$, true);
-
+  async ({ get }, tier: "pro" | "team", _signal: AbortSignal) => {
     const currentUrl = window.location.href;
     const successUrl = new URL(currentUrl);
     successUrl.searchParams.set("billing", "success");
@@ -140,15 +121,13 @@ export const startCheckout$ = command(
       // Don't reset loading — page is navigating away
     } else {
       log.error("Checkout failed", getErrorMessage(result.body));
-      set(internalCheckoutLoading$, false);
+      throw new Error(getErrorMessage(result.body) ?? "Checkout failed");
     }
   },
 );
 
 export const startDowngrade$ = command(
-  async ({ get, set }, _signal: AbortSignal) => {
-    set(internalPortalLoading$, true);
-
+  async ({ get }, _signal: AbortSignal) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroBillingPortalContract);
     const result = await client.create({
@@ -159,7 +138,7 @@ export const startDowngrade$ = command(
       window.location.href = result.body.url;
     } else {
       log.error("Portal redirect failed", getErrorMessage(result.body));
-      set(internalPortalLoading$, false);
+      throw new Error(getErrorMessage(result.body) ?? "Portal redirect failed");
     }
   },
 );
@@ -169,7 +148,6 @@ export const startDowngrade$ = command(
 // ---------------------------------------------------------------------------
 
 export const openDowngradeDialog$ = command(({ set }) => {
-  set(internalDowngradeError$, null);
   set(internalDowngradeDialogOpen$, true);
 });
 
@@ -179,16 +157,11 @@ export const closeDowngradeDialog$ = command(({ set }) => {
 
 export const confirmDowngrade$ = command(
   async ({ get, set }, targetTier: "free" | "pro", _signal: AbortSignal) => {
-    set(internalDowngradeLoading$, true);
-    set(internalDowngradeError$, null);
-
     const createClient = get(zeroClient$);
     const client = createClient(zeroBillingDowngradeContract);
     const result = await client.create({
       body: { targetTier },
     });
-
-    set(internalDowngradeLoading$, false);
 
     if (result.status === 200) {
       set(internalDowngradeDialogOpen$, false);
@@ -200,7 +173,7 @@ export const confirmDowngrade$ = command(
       const message =
         getErrorMessage(result.body) ?? "Failed to downgrade plan";
       log.error("Downgrade failed", message);
-      set(internalDowngradeError$, message);
+      throw new Error(message);
     }
   },
 );
@@ -234,26 +207,20 @@ export const saveAutoRecharge$ = command(
     config: { enabled: boolean; threshold?: number; amount?: number },
     _signal: AbortSignal,
   ) => {
-    set(internalCheckoutLoading$, true);
-
     const createClient = get(zeroClient$);
     const client = createClient(zeroBillingAutoRechargeContract);
     const result = await client.update({ body: config });
 
-    set(internalCheckoutLoading$, false);
-
     if (result.status !== 200) {
       const message = getErrorMessage(result.body);
       log.error("Auto-recharge save failed", message);
-      return { ok: false, error: message };
+      throw new Error(message ?? "Auto-recharge save failed");
     }
 
     // Reload billing status — autoRechargeConfig$ re-derives automatically
     set(billingReload$, (x) => {
       return x + 1;
     });
-
-    return { ok: true };
   },
 );
 

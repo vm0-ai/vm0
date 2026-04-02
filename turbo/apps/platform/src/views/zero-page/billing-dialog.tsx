@@ -1,4 +1,5 @@
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
@@ -14,7 +15,6 @@ import {
   type BillingTier,
   apiTierToBillingTier,
   billingDialogOpen$,
-  billingDialogLoading$,
   billingStatusAsync$,
   closeBillingDialog$,
   startCheckout$,
@@ -121,7 +121,7 @@ const settingsCardBorder = {
 
 export function AutoRechargeSection({
   currentTier,
-  loading,
+  loading: externalLoading,
   variant = "dialog",
 }: {
   currentTier: BillingTier;
@@ -130,7 +130,8 @@ export function AutoRechargeSection({
   variant?: "dialog" | "settings";
 }) {
   const pageSignal = useGet(pageSignal$);
-  const save = useSet(saveAutoRecharge$);
+  const [autoRechargeLoadable, save] = useLoadableSet(saveAutoRecharge$);
+  const loading = externalLoading || autoRechargeLoadable.state === "loading";
   const configLoadable = useLastLoadable(autoRechargeConfig$);
   const config =
     configLoadable.state === "hasData"
@@ -387,15 +388,16 @@ export function AutoRechargeSection({
 export function BillingDialog() {
   const pageSignal = useGet(pageSignal$);
   const open = useGet(billingDialogOpen$);
-  const loading = useGet(billingDialogLoading$);
   const statusLoadable = useLastLoadable(billingStatusAsync$);
   const status =
     statusLoadable.state === "hasData" ? statusLoadable.data : null;
   const close = useSet(closeBillingDialog$);
-  const checkout = useSet(startCheckout$);
+  const [checkoutLoadable, checkout] = useLoadableSet(startCheckout$);
   const openDowngrade = useSet(openDowngradeDialog$);
   const selectedTier = useGet(selectedPlanTier$);
   const setSelectedTier = useSet(setSelectedPlanTier$);
+
+  const loading = checkoutLoadable.state === "loading";
 
   const currentTier: BillingTier = apiTierToBillingTier(status?.tier);
 
