@@ -14,9 +14,9 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../../../../src/db/schema/agent-compose";
-import { listSecrets } from "../../../../src/lib/secret/secret-service";
-import { listVariables } from "../../../../src/lib/variable/variable-service";
-import { listConnectors } from "../../../../src/lib/connector/connector-service";
+import { listSecrets } from "../../../../src/lib/zero/secret/secret-service";
+import { listVariables } from "../../../../src/lib/zero/variable/variable-service";
+import { listConnectors } from "../../../../src/lib/zero/connector/connector-service";
 import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
 import { decryptSecretValue } from "../../../../src/lib/shared/crypto/secrets-encryption";
 import { deleteWebhook } from "../../../../src/lib/telegram/client";

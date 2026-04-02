@@ -10,7 +10,7 @@ import {
   getChatThread,
   getChatThreadMessages,
   deleteChatThread,
-} from "../../../../../src/lib/chat-thread";
+} from "../../../../../src/lib/zero/chat-thread";
 import { isNotFound } from "../../../../../src/lib/errors";
 
 const router = tsr.router(chatThreadByIdContract, {

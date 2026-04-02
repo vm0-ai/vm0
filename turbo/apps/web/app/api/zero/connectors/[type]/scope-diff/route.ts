@@ -11,7 +11,7 @@ import {
 import { initServices } from "../../../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../../../src/lib/org/resolve-org";
-import { getConnector } from "../../../../../../src/lib/connector/connector-service";
+import { getConnector } from "../../../../../../src/lib/zero/connector/connector-service";
 
 const router = tsr.router(zeroConnectorScopeDiffContract, {
   getScopeDiff: async ({ params, headers }) => {

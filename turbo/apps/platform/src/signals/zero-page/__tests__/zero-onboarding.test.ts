@@ -7,11 +7,7 @@ import {
   completeZeroOnboarding$,
   setZeroAgentName$,
   setZeroWorkspaceName$,
-  setZeroStep$,
   toggleZeroConnector$,
-  zeroOnboardingStep$,
-  zeroOnboardingError$,
-  zeroSaving$,
 } from "../zero-onboarding.ts";
 import { SEED_INSTRUCTIONS } from "../../../data/the-seed.ts";
 
@@ -336,166 +332,6 @@ describe("completeZeroOnboarding$", () => {
     await setupPage({ context, path: "/", withoutRender: true });
 
     await context.store.set(completeZeroOnboarding$, context.signal);
-
-    // Step no longer auto-set to "done"; callers handle dismissal
-    expect(context.store.get(zeroSaving$)).toBeFalsy();
-  });
-
-  it("should set error state and reset saving on build failure", async () => {
-    server.use(
-      http.post("*/api/zero/model-providers", () => {
-        return HttpResponse.json(
-          {
-            provider: {
-              id: "a0000000-0000-4000-a000-000000000099",
-              type: "vm0",
-              framework: "claude-code",
-              secretName: null,
-              authMethod: null,
-              secretNames: null,
-              isDefault: true,
-              selectedModel: null,
-              createdAt: "2026-03-01T00:00:00Z",
-              updatedAt: "2026-03-01T00:00:00Z",
-            },
-            created: true,
-          },
-          { status: 201 },
-        );
-      }),
-      http.post("*/api/zero/agents", () => {
-        return HttpResponse.json(
-          {
-            error: {
-              message: "Build failed: sandbox error",
-              code: "INTERNAL_SERVER_ERROR",
-            },
-          },
-          { status: 500 },
-        );
-      }),
-    );
-
-    await setupPage({ context, path: "/", withoutRender: true });
-
-    // Set step to "4" so we can verify it doesn't change to "done"
-    context.store.set(setZeroStep$, "4");
-
-    // Should NOT throw — error is caught internally
-    await context.store.set(completeZeroOnboarding$, context.signal);
-
-    expect(context.store.get(zeroOnboardingError$)).toBe(
-      "Failed to create agent (500)",
-    );
-    expect(context.store.get(zeroSaving$)).toBeFalsy();
-    await expect(context.store.get(zeroOnboardingStep$)).resolves.toBe("4");
-  });
-
-  it("should clear error state on successful retry", async () => {
-    // First call: fail
-    server.use(
-      http.post("*/api/zero/model-providers", () => {
-        return HttpResponse.json(
-          {
-            provider: {
-              id: "a0000000-0000-4000-a000-000000000099",
-              type: "vm0",
-              framework: "claude-code",
-              secretName: null,
-              authMethod: null,
-              secretNames: null,
-              isDefault: true,
-              selectedModel: null,
-              createdAt: "2026-03-01T00:00:00Z",
-              updatedAt: "2026-03-01T00:00:00Z",
-            },
-            created: true,
-          },
-          { status: 201 },
-        );
-      }),
-      http.post("*/api/zero/agents", () => {
-        return HttpResponse.json(
-          { error: { message: "Build failed", code: "INTERNAL_SERVER_ERROR" } },
-          { status: 500 },
-        );
-      }),
-    );
-
-    await setupPage({ context, path: "/", withoutRender: true });
-    context.store.set(setZeroStep$, "4");
-
-    await context.store.set(completeZeroOnboarding$, context.signal);
-    expect(context.store.get(zeroOnboardingError$)).toBeTruthy();
-
-    // Second call: succeed
-    server.use(
-      http.post("*/api/zero/model-providers", () => {
-        return HttpResponse.json(
-          {
-            provider: {
-              id: "a0000000-0000-4000-a000-000000000099",
-              type: "vm0",
-              framework: "claude-code",
-              secretName: null,
-              authMethod: null,
-              secretNames: null,
-              isDefault: true,
-              selectedModel: null,
-              createdAt: "2026-03-01T00:00:00Z",
-              updatedAt: "2026-03-01T00:00:00Z",
-            },
-            created: true,
-          },
-          { status: 201 },
-        );
-      }),
-      http.post("*/api/zero/agents", () => {
-        return HttpResponse.json(
-          {
-            name: "test-agent-uuid",
-            agentId: "d0000000-0000-4000-a000-000000000001",
-            ownerId: "test-owner-id",
-            description: null,
-            displayName: null,
-            sound: null,
-            avatarUrl: null,
-            firewallPolicies: null,
-          },
-          { status: 201 },
-        );
-      }),
-      http.put(
-        "*/api/zero/agents/d0000000-0000-4000-a000-000000000001/instructions",
-        () => {
-          return HttpResponse.json({
-            name: "test-agent-uuid",
-            agentId: "d0000000-0000-4000-a000-000000000001",
-            ownerId: "test-owner-id",
-            description: null,
-            displayName: null,
-            sound: null,
-            avatarUrl: null,
-            firewallPolicies: null,
-          });
-        },
-      ),
-      http.put("*/api/zero/default-agent", () => {
-        return HttpResponse.json({
-          agentId: "d0000000-0000-4000-a000-000000000001",
-        });
-      }),
-      http.post("*/api/zero/onboarding/complete", () => {
-        return HttpResponse.json({ ok: true });
-      }),
-    );
-
-    await context.store.set(completeZeroOnboarding$, context.signal);
-
-    expect(context.store.get(zeroOnboardingError$)).toBeNull();
-    // Step is no longer auto-set to "done" by completeZeroOnboarding$;
-    // callers handle dismissal separately.
-    await expect(context.store.get(zeroOnboardingStep$)).resolves.toBe("4");
   });
 });
 
@@ -814,26 +650,5 @@ describe("completeZeroOnboarding$ slug update", () => {
     // 2 slug attempts + 1 name-only fallback
     expect(capturedOrgUpdates).toHaveLength(3);
     expect(capturedOrgUpdates[2]).toStrictEqual({ name: "My Workspace" });
-  });
-
-  it("should throw on non-409 error during slug update", async () => {
-    server.use(
-      http.put("*/api/zero/org", () => {
-        return HttpResponse.json(
-          { error: { message: "Forbidden", code: "FORBIDDEN" } },
-          { status: 403 },
-        );
-      }),
-      ...agentCreationHandlers(),
-    );
-
-    await setupPage({ context, path: "/", withoutRender: true });
-    context.store.set(setZeroWorkspaceName$, "My Workspace");
-
-    await context.store.set(completeZeroOnboarding$, context.signal);
-
-    expect(context.store.get(zeroOnboardingError$)).toBe(
-      "Failed to update workspace name: 403",
-    );
   });
 });

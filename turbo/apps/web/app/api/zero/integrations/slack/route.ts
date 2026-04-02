@@ -18,12 +18,12 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../../../../../src/db/schema/agent-compose";
-import { listSecrets } from "../../../../../src/lib/secret/secret-service";
-import { listVariables } from "../../../../../src/lib/variable/variable-service";
-import { listConnectors } from "../../../../../src/lib/connector/connector-service";
+import { listSecrets } from "../../../../../src/lib/zero/secret/secret-service";
+import { listVariables } from "../../../../../src/lib/zero/variable/variable-service";
+import { listConnectors } from "../../../../../src/lib/zero/connector/connector-service";
 import { getOrgData } from "../../../../../src/lib/org/org-cache-service";
 import { createSlackClient } from "../../../../../src/lib/slack";
-import { getApiUrl } from "../../../../../src/lib/callback";
+import { getApiUrl } from "../../../../../src/lib/infra/callback";
 import { publishAppHome } from "../../../../../src/lib/slack/client";
 import { buildAppHomeView } from "../../../../../src/lib/slack/blocks";
 import { decryptSecretValue } from "../../../../../src/lib/shared/crypto/secrets-encryption";

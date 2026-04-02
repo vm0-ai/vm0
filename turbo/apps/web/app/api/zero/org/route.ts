@@ -11,6 +11,7 @@ import {
 } from "../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import { updateOrg } from "../../../../src/lib/org/org-service";
+import { getOrgData } from "../../../../src/lib/org/org-cache-service";
 import {
   isBadRequest,
   isForbidden,
@@ -28,13 +29,14 @@ const router = tsr.router(zeroOrgContract, {
 
     try {
       const { org: resolvedOrg, member } = await resolveOrg(authCtx);
+      const orgData = await getOrgData(resolvedOrg.orgId);
 
       return {
         status: 200 as const,
         body: {
           id: resolvedOrg.orgId,
-          slug: resolvedOrg.slug,
-          name: resolvedOrg.name,
+          slug: orgData.slug,
+          name: orgData.name,
           tier: resolvedOrg.tier,
           role: member.role,
         },

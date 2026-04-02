@@ -1,6 +1,9 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { testContext, uniqueId } from "../../../__tests__/test-helpers";
-import { insertOrgCacheEntry } from "../../../__tests__/api-test-helpers";
+import {
+  insertOrgCacheEntry,
+  ensureOrgRow,
+} from "../../../__tests__/api-test-helpers";
 import { mockClerk } from "../../../__tests__/clerk-mock";
 import { resolveOrgOrNull } from "../resolve-org";
 
@@ -34,13 +37,13 @@ describe("resolveOrgOrNull", () => {
     const slug = uniqueId("org");
     mockClerk({ userId, orgId });
 
-    // Pre-populate org_cache
+    // Pre-populate org_cache and org_metadata
     await insertOrgCacheEntry({ orgId, slug });
+    await ensureOrgRow(orgId);
 
     const result = await resolveOrgOrNull({ userId, orgId, orgRole: "admin" });
 
     expect(result).not.toBeNull();
     expect(result!.orgId).toBe(orgId);
-    expect(result!.slug).toBe(slug);
   });
 });

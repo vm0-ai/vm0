@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.2.3...nbd-cow-v0.3.0) (2026-04-02)
+
+
+### Features
+
+* add device pool for pre-validated nbd device index management ([#7695](https://github.com/vm0-ai/vm0/issues/7695)) ([aae067f](https://github.com/vm0-ai/vm0/commit/aae067febb127343ce4424ae78c3c312057479c9))
+
 ## [0.2.3](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.2.2...nbd-cow-v0.2.3) (2026-04-02)
 
 

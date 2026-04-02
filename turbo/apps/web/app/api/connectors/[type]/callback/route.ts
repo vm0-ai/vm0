@@ -9,14 +9,14 @@ import { env } from "../../../../../src/env";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
-import { upsertOAuthConnector } from "../../../../../src/lib/connector/connector-service";
+import { upsertOAuthConnector } from "../../../../../src/lib/zero/connector/connector-service";
 import { connectorSessions } from "../../../../../src/db/schema/connector-session";
 import { logger } from "../../../../../src/lib/logger";
 import { getOrigin } from "../../../../../src/lib/shared/request/get-origin";
 import {
   PROVIDER_HANDLERS,
   type OAuthTokenResult,
-} from "../../../../../src/lib/connector/provider-registry";
+} from "../../../../../src/lib/zero/connector/provider-registry";
 
 const log = logger("api:connectors:callback");
 

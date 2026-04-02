@@ -2,18 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import type { SummaryEntry } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
-import { verifyCallback } from "../../../../../src/lib/callback";
+import { verifyCallback } from "../../../../../src/lib/infra/callback";
 import { chatThreads } from "../../../../../src/db/schema/chat-thread";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import { findNewSessionId } from "../../../../../src/lib/session/find-new-session";
-import { queryRunEventsForChat } from "../../../../../src/lib/run/extract-chat-events";
+import { queryRunEventsForChat } from "../../../../../src/lib/infra/run/extract-chat-events";
 import { appendChatMessages } from "../../../../../src/lib/zero/zero-session-service";
 import {
   generateChatTitle,
   type TitleContextMessage,
 } from "../../../../../src/lib/shared/ai/lightweight-model";
-import { updateChatThreadTitle } from "../../../../../src/lib/chat-thread";
-import type { ChatCallbackPayload } from "../../../../../src/lib/callback/callback-payloads";
+import { updateChatThreadTitle } from "../../../../../src/lib/zero/chat-thread";
+import type { ChatCallbackPayload } from "../../../../../src/lib/infra/callback/callback-payloads";
 import { logger } from "../../../../../src/lib/logger";
 
 const log = logger("callback:chat");

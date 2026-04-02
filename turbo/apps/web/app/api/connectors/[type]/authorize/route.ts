@@ -8,8 +8,8 @@ import { getOrigin } from "../../../../../src/lib/shared/request/get-origin";
 import {
   type AuthUrlResult,
   PROVIDER_HANDLERS,
-} from "../../../../../src/lib/connector/provider-registry";
-import { deleteConnector } from "../../../../../src/lib/connector/connector-service";
+} from "../../../../../src/lib/zero/connector/provider-registry";
+import { deleteConnector } from "../../../../../src/lib/zero/connector/connector-service";
 import { logger } from "../../../../../src/lib/logger";
 import { and, eq } from "drizzle-orm";
 import { connectors } from "../../../../../src/db/schema/connector";

@@ -12,13 +12,13 @@ import { eq, and } from "drizzle-orm";
 import {
   transitionRunStatus,
   dispatchTerminalSideEffects,
-} from "../../../../../src/lib/run/run-status";
+} from "../../../../../src/lib/infra/run/run-status";
 import { getSandboxAuthForRun } from "../../../../../src/lib/auth/get-sandbox-auth";
 import type {
   ArtifactSnapshot,
   MemorySnapshot,
 } from "../../../../../src/lib/checkpoint";
-import type { RunResult } from "../../../../../src/lib/run/types";
+import type { RunResult } from "../../../../../src/lib/infra/run/types";
 import { logger } from "../../../../../src/lib/logger";
 import {
   drainOrgQueue,

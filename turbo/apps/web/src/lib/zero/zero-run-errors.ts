@@ -1,5 +1,5 @@
 import { isApiError } from "../errors";
-import { isRunDispatchError } from "../run";
+import { isRunDispatchError } from "../infra/run";
 
 /**
  * Translate createZeroRun() errors into API response format.

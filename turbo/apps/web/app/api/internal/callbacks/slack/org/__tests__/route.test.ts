@@ -14,7 +14,7 @@ import {
   seedTestSlackOrgConnection,
   completeTestRun,
 } from "../../../../../../../src/__tests__/api-test-helpers";
-import { computeHmacSignature } from "../../../../../../../src/lib/callback/hmac";
+import { computeHmacSignature } from "../../../../../../../src/lib/infra/callback/hmac";
 import { POST } from "../route";
 
 const context = testContext();
@@ -139,7 +139,7 @@ describe("POST /api/internal/callbacks/slack/org", () => {
 
     // Call verifyCallback directly to see what it returns
     const { verifyCallback } =
-      await import("../../../../../../../src/lib/callback");
+      await import("../../../../../../../src/lib/infra/callback");
     const log = { warn: () => {} };
     const result = await verifyCallback(request, log);
 

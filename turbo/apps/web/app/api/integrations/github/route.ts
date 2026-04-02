@@ -8,16 +8,16 @@ import {
 import { initServices } from "../../../../src/lib/init-services";
 import { env } from "../../../../src/env";
 import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
-import { getApiUrl } from "../../../../src/lib/callback";
+import { getApiUrl } from "../../../../src/lib/infra/callback";
 import { githubInstallations } from "../../../../src/db/schema/github-installation";
 import { githubUserLinks } from "../../../../src/db/schema/github-user-link";
 import {
   agentComposes,
   agentComposeVersions,
 } from "../../../../src/db/schema/agent-compose";
-import { listSecrets } from "../../../../src/lib/secret/secret-service";
-import { listVariables } from "../../../../src/lib/variable/variable-service";
-import { listConnectors } from "../../../../src/lib/connector/connector-service";
+import { listSecrets } from "../../../../src/lib/zero/secret/secret-service";
+import { listVariables } from "../../../../src/lib/zero/variable/variable-service";
+import { listConnectors } from "../../../../src/lib/zero/connector/connector-service";
 import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import { deleteInstallation } from "../../../../src/lib/github/github-app";

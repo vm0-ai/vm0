@@ -1,5 +1,34 @@
 # Changelog
 
+## [12.188.0](https://github.com/vm0-ai/vm0/compare/web-v12.187.0...web-v12.188.0) (2026-04-02)
+
+
+### Features
+
+* **cli:** add --since filter to zero logs list command ([#7710](https://github.com/vm0-ai/vm0/issues/7710)) ([696968e](https://github.com/vm0-ai/vm0/commit/696968e730ccb91cfa2ea3d9d25874c91d35e989)), closes [#7707](https://github.com/vm0-ai/vm0/issues/7707)
+
+
+### Refactoring
+
+* migrate resolve-org from clerk api to db-only org metadata ([#7711](https://github.com/vm0-ai/vm0/issues/7711)) ([b17c7ad](https://github.com/vm0-ai/vm0/commit/b17c7adcab6cafe2e673cd58947278ca82f627cb))
+* move agent-compose to lib/infra/ ([#7755](https://github.com/vm0-ai/vm0/issues/7755)) ([a620c09](https://github.com/vm0-ai/vm0/commit/a620c09e8438ab406a1495cb7a8e8b3cf009e29f)), closes [#7721](https://github.com/vm0-ai/vm0/issues/7721)
+* move billing and credit to lib/zero/ ([#7749](https://github.com/vm0-ai/vm0/issues/7749)) ([378d801](https://github.com/vm0-ai/vm0/commit/378d80136c50fa77af6231308862ffb9d670936a)), closes [#7730](https://github.com/vm0-ai/vm0/issues/7730)
+* move chat-thread to lib/zero/ ([#7748](https://github.com/vm0-ai/vm0/issues/7748)) ([6c31dcb](https://github.com/vm0-ai/vm0/commit/6c31dcb9cb61fb5befc5cf58460b508d25c2c9bb)), closes [#7729](https://github.com/vm0-ai/vm0/issues/7729)
+* move run to lib/infra/ ([#7747](https://github.com/vm0-ai/vm0/issues/7747)) ([df8da3c](https://github.com/vm0-ai/vm0/commit/df8da3c753843614cd96025180f2a9370b914dfd)), closes [#7726](https://github.com/vm0-ai/vm0/issues/7726)
+* move skills to lib/zero/ ([#7750](https://github.com/vm0-ai/vm0/issues/7750)) ([e895d08](https://github.com/vm0-ai/vm0/commit/e895d084d8d3304afec970315662fc6672fd2072)), closes [#7731](https://github.com/vm0-ai/vm0/issues/7731)
+* move small zero modules to lib/zero/ ([#7751](https://github.com/vm0-ai/vm0/issues/7751)) ([c451e93](https://github.com/vm0-ai/vm0/commit/c451e93dfdd1b9b3cb47749a7879feb474c5c35f)), closes [#7728](https://github.com/vm0-ai/vm0/issues/7728)
+* move storage to lib/infra/ ([#7742](https://github.com/vm0-ai/vm0/issues/7742)) ([7fb157d](https://github.com/vm0-ai/vm0/commit/7fb157d0b223532c166ce1eaa62d24b0d60460f4)), closes [#7725](https://github.com/vm0-ai/vm0/issues/7725)
+* move user module to lib/zero/user/ ([#7743](https://github.com/vm0-ai/vm0/issues/7743)) ([3c0c0cf](https://github.com/vm0-ai/vm0/commit/3c0c0cfb2322912c362b8274ee85a812595dce67)), closes [#7732](https://github.com/vm0-ai/vm0/issues/7732)
+* move utility modules to lib/shared/ ([#7745](https://github.com/vm0-ai/vm0/issues/7745)) ([943dfb2](https://github.com/vm0-ai/vm0/commit/943dfb29d61fd35e199b7e2370e7ffc34b157a26)), closes [#7727](https://github.com/vm0-ai/vm0/issues/7727)
+* **web:** remove defensive try-catch block in execute-schedules cron ([#7662](https://github.com/vm0-ai/vm0/issues/7662)) ([464e549](https://github.com/vm0-ai/vm0/commit/464e54964c451b72ae1dde1e3c870ae72f94c112))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.144.0
+
 ## [12.187.0](https://github.com/vm0-ai/vm0/compare/web-v12.186.2...web-v12.187.0) (2026-04-02)
 
 

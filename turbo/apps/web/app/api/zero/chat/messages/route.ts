@@ -22,14 +22,14 @@ import {
   addRunToThread,
   updateChatThreadTitle,
   getChatThreadContext,
-} from "../../../../../src/lib/chat-thread/chat-thread-service";
+} from "../../../../../src/lib/zero/chat-thread/chat-thread-service";
 import { generateChatTitle } from "../../../../../src/lib/shared/ai/lightweight-model";
 import { zeroAgents } from "../../../../../src/db/schema/zero-agent";
 import {
   getApiUrl,
   generateCallbackSecret,
-} from "../../../../../src/lib/callback";
-import type { ChatCallbackPayload } from "../../../../../src/lib/callback/callback-payloads";
+} from "../../../../../src/lib/infra/callback";
+import type { ChatCallbackPayload } from "../../../../../src/lib/infra/callback/callback-payloads";
 import { logger } from "../../../../../src/lib/logger";
 
 const log = logger("zero:chat-messages");

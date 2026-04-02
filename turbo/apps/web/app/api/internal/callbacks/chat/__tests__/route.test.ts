@@ -13,7 +13,7 @@ import {
   getTestZeroAgentId,
   createTestAgentSession,
 } from "../../../../../../src/__tests__/api-test-helpers";
-import { computeHmacSignature } from "../../../../../../src/lib/callback/hmac";
+import { computeHmacSignature } from "../../../../../../src/lib/infra/callback/hmac";
 import { reloadEnv } from "../../../../../../src/env";
 import { getSessionChatMessages } from "../../../../../../src/lib/zero/zero-session-service";
 import { POST as createThreadHandler } from "../../../../zero/chat-threads/route";

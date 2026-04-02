@@ -1,10 +1,10 @@
-import { useState } from "react";
 import {
   useGet,
   useSet,
   useLastLoadable,
   useLastResolved,
 } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import slackIcon from "./components/settings/icons/slack.svg";
 import zeroAvatarImg from "./assets/avatar_0.webp";
 import zeroAnimatedSrc from "./assets/zero-animated.webp";
@@ -17,11 +17,11 @@ import {
   setZeroWorkspaceName$,
   zeroSelectedConnectors$,
   toggleZeroConnector$,
+  connectorSearch$,
+  setConnectorSearch$,
 } from "../../signals/zero-page/zero-onboarding.ts";
 import {
   onboardingDisplayName$,
-  onboardingSaving$,
-  onboardingError$,
   onboardingAddToSlack$,
   onboardingContinueWeb$,
   onboardingEffectiveStep$,
@@ -135,7 +135,8 @@ function OnboardingConnectorCard({
 function SelectConnectorsContent() {
   const selectedConnectors = useGet(zeroSelectedConnectors$);
   const toggleConnector = useSet(toggleZeroConnector$);
-  const [search, setSearch] = useState("");
+  const search = useGet(connectorSearch$);
+  const setSearch = useSet(setConnectorSearch$);
 
   const connectorEntries = Object.entries(CONNECTOR_TYPES) as [
     ConnectorType,
@@ -326,11 +327,20 @@ function ConnectStepContent() {
 
 function WhereToWorkContent() {
   const name = useLastResolved(onboardingDisplayName$) ?? "Zero";
-  const saving = useGet(onboardingSaving$);
-  const error = useLastResolved(onboardingError$) ?? null;
-  const addToSlack = useSet(onboardingAddToSlack$);
-  const continueWeb = useSet(onboardingContinueWeb$);
+
+  const [slackLoadable, addToSlack] = useLoadableSet(onboardingAddToSlack$);
+  const [webLoadable, continueWeb] = useLoadableSet(onboardingContinueWeb$);
+
   const pageSignal = useGet(pageSignal$);
+
+  const saving =
+    slackLoadable.state === "loading" || webLoadable.state === "loading";
+  const error =
+    slackLoadable.state === "hasError"
+      ? String(slackLoadable.error)
+      : webLoadable.state === "hasError"
+        ? String(webLoadable.error)
+        : null;
 
   return (
     <>
@@ -342,9 +352,7 @@ function WhereToWorkContent() {
       </p>
       {error && (
         <div className="w-full mb-6 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-          {error === "Build timed out"
-            ? "Setup is taking longer than expected. Please try again."
-            : error}
+          {error}
         </div>
       )}
       <div className="flex flex-col gap-5 w-full">
@@ -640,7 +648,6 @@ function OnboardingPageLayout({ children }: { children: React.ReactNode }) {
   const pageSignal = useGet(pageSignal$);
   const effectiveConnectors =
     useLastResolved(onboardingEffectiveConnectors$) ?? [];
-
   const illustration = getStepIllustration(stepKey);
   const showOrbit = stepKey === "connectors";
   const showChat = stepKey === "workspace";

@@ -7,7 +7,7 @@ import { logsSearchContract } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
-import { handleSearchLogs } from "../../../../src/lib/run/log-search-service";
+import { handleSearchLogs } from "../../../../src/lib/infra/run/log-search-service";
 
 const router = tsr.router(logsSearchContract, {
   searchLogs: async ({ query, headers }) => {

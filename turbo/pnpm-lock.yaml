@@ -253,11 +253,11 @@ importers:
         specifier: workspace:*
         version: link:../../packages/ui
       ccstate:
-        specifier: ^5.0.0
-        version: 5.0.0
+        specifier: ^5.2.3
+        version: 5.2.3
       ccstate-react:
-        specifier: ^5.0.0
-        version: 5.0.0(@types/react@19.2.14)(react@19.2.4)
+        specifier: ^5.2.3
+        version: 5.2.3(@types/react@19.2.14)(react@19.2.4)
       highlight.js:
         specifier: ^11.11.1
         version: 11.11.1
@@ -5132,8 +5132,8 @@ packages:
   ccount@2.0.1:
     resolution: {integrity: sha512-eyrF0jiFpY+3drT6383f1qhkbGsLSifNAjA61IUjZjmLCWjItY6LB9ft9YhoDgwfmclB2zhu51Lc7+95b8NRAg==}
 
-  ccstate-react@5.0.0:
-    resolution: {integrity: sha512-+3ITd0iJsLUwTI6EhSFayXHAT2D1xnAtZfw2sfgP8+b6xq18r6xPZ1a/wxNY5UKhYrC3YLonCQy5RhnzbJXj5Q==}
+  ccstate-react@5.2.3:
+    resolution: {integrity: sha512-LLRWEumkLfzF83zWUeAwmnSG1rqqEFu4bZpTT/ZlO/I2n0pdi7fZUieGG2h/01KvIR3Q28qcSrOymAoHIPcR8w==}
     peerDependencies:
       '@types/react': '>=17.0.0'
       react: '>=17.0.0'
@@ -5143,8 +5143,8 @@ packages:
       react:
         optional: true
 
-  ccstate@5.0.0:
-    resolution: {integrity: sha512-wtOEJVV5jfREr/LKTPN97DADHPh+ZpJq+0LP19lEmXRFXmQRYiGGP11+ARe02LnFRPzO7WwVXr84qLR2tvZfjg==}
+  ccstate@5.2.3:
+    resolution: {integrity: sha512-9pz57vWo2xkuTBW56Gist7DlB0jFvqx7xhgFepl5ipL2lDAEFrmg0N4wsRqXwTTuR2QMR5RQIMGgHXAE9DFCNg==}
 
   chai@6.2.2:
     resolution: {integrity: sha512-NUPRluOfOiTKBKvWPtSD4PhFvWCqOi0BGStNWs57X9js7XGTprSmFoz5F0tWhR4WPjNeR9jXqdC7/UpSJTnlRg==}
@@ -13892,14 +13892,14 @@ snapshots:
 
   ccount@2.0.1: {}
 
-  ccstate-react@5.0.0(@types/react@19.2.14)(react@19.2.4):
+  ccstate-react@5.2.3(@types/react@19.2.14)(react@19.2.4):
     dependencies:
-      ccstate: 5.0.0
+      ccstate: 5.2.3
     optionalDependencies:
       '@types/react': 19.2.14
       react: 19.2.4
 
-  ccstate@5.0.0: {}
+  ccstate@5.2.3: {}
 
   chai@6.2.2: {}
 

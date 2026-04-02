@@ -3,6 +3,7 @@ import { testContext, uniqueId } from "../../../__tests__/test-helpers";
 import {
   createTestOrg,
   updateOrgTier,
+  ensureOrgRow,
 } from "../../../__tests__/api-test-helpers";
 import { mockClerk } from "../../../__tests__/clerk-mock";
 import { resolveOrg } from "../resolve-org";
@@ -54,22 +55,19 @@ describe("resolveOrg", () => {
 
     // Set up Clerk org BEFORE creating org so POST resolves correct orgId
     mockClerk({ userId, clerkOrgs: testOrgs(slug) });
-    await createTestOrg(slug);
+    const { id: orgId } = await createTestOrg(slug);
 
     // Mock Clerk for membership verification
     mockClerk({
       userId,
-      orgId: `org_mock_${slug}`,
+      orgId,
       clerkOrgs: testOrgs(slug),
     });
 
     // Resolve without slug or explicit orgId — should auto-detect from AuthContext
-    const result = await resolveOrg(
-      authCtx({ userId, orgId: `org_mock_${slug}` }),
-    );
+    const result = await resolveOrg(authCtx({ userId, orgId }));
 
-    expect(result.org.orgId).toBe(`org_mock_${slug}`);
-    expect(result.org.slug).toBe(slug);
+    expect(result.org.orgId).toBe(orgId);
   });
 
   it("explicit orgId parameter takes precedence over session", async () => {
@@ -78,23 +76,23 @@ describe("resolveOrg", () => {
 
     // Set up Clerk org BEFORE creating org
     mockClerk({ userId, clerkOrgs: testOrgs(slug) });
-    await createTestOrg(slug);
+    const { id: orgId } = await createTestOrg(slug);
 
-    // Mock session with a different orgId (should NOT be used)
+    // Mock session with a different orgId (should NOT be used).
+    // Include created org in clerkOrgs so cross-org membership check passes.
     mockClerk({
       userId,
       orgId: "org_session_different",
-      clerkOrgs: testOrgs(slug),
+      clerkOrgs: [{ id: orgId, slug, name: slug }],
     });
 
     // Pass explicit orgId matching the org
     const result = await resolveOrg(
       authCtx({ userId, orgId: "org_session_different" }),
-      `org_mock_${slug}`,
+      orgId,
     );
 
-    expect(result.org.orgId).toBe(`org_mock_${slug}`);
-    expect(result.org.slug).toBe(slug);
+    expect(result.org.orgId).toBe(orgId);
   });
 
   it("throws 400 when no explicit org context available", async () => {
@@ -113,20 +111,20 @@ describe("resolveOrg", () => {
     );
   });
 
-  it("throws when orgId has no matching org (no fallback)", async () => {
+  it("throws when orgId has no matching org", async () => {
     const userId = uniqueId("test-user");
 
-    // Mock session with an orgId that doesn't match any org_cache entry
+    // Mock session with an orgId that doesn't exist in org_metadata
     mockClerk({
       userId,
       orgId: "org_nonexistent_xyz",
       clerkOrgs: [],
     });
 
-    // Resolve without slug — orgId lookup should throw (no Tier 3/4 fallback)
+    // Should throw NotFoundError because org doesn't exist in org_metadata
     await expect(
       resolveOrg(authCtx({ userId, orgId: "org_nonexistent_xyz" })),
-    ).rejects.toThrow();
+    ).rejects.toThrow("not found");
   });
 
   it("resolves correct org when user has multiple orgs", async () => {
@@ -140,27 +138,28 @@ describe("resolveOrg", () => {
       clerkOrgs: testOrgs(slug1, slug2),
     });
 
-    // Create first org (will be the default — earliest createdAt)
-    await createTestOrg(slug1);
+    // Create first org
+    const { id: orgId1 } = await createTestOrg(slug1);
 
-    // Create second org
-    await createTestOrg(slug2);
+    // Create second org manually (createTestOrg reuses the same orgId per userId)
+    const orgId2 = `org_mock_${slug2}`;
+    await ensureOrgRow(orgId2);
 
     // Mock session with orgId matching the SECOND org
     mockClerk({
       userId,
-      orgId: `org_mock_${slug2}`,
-      clerkOrgs: testOrgs(slug1, slug2),
+      orgId: orgId2,
+      clerkOrgs: [
+        { id: orgId1, slug: slug1, name: slug1 },
+        { id: orgId2, slug: slug2, name: slug2 },
+      ],
     });
 
-    // Resolve without slug — should return org2 (from AuthContext orgId), not org1
-    const result = await resolveOrg(
-      authCtx({ userId, orgId: `org_mock_${slug2}` }),
-    );
+    // Resolve without explicit orgId — should return org2 (from AuthContext orgId)
+    const result = await resolveOrg(authCtx({ userId, orgId: orgId2 }));
 
-    expect(result.org.orgId).toBe(`org_mock_${slug2}`);
-    expect(result.org.slug).toBe(slug2);
-    expect(result.org.orgId).not.toBe(`org_mock_${slug1}`);
+    expect(result.org.orgId).toBe(orgId2);
+    expect(result.org.orgId).not.toBe(orgId1);
   });
 
   it("reads tier from org table", async () => {
@@ -193,18 +192,16 @@ describe("resolveOrg", () => {
 
     // Set up Clerk org BEFORE creating org
     mockClerk({ userId, clerkOrgs: testOrgs(slug) });
-    await createTestOrg(slug);
+    const { id: orgId } = await createTestOrg(slug);
 
     // Mock session WITHOUT setting tier in org table (default is "free")
     mockClerk({
       userId,
-      orgId: `org_mock_${slug}`,
+      orgId,
       clerkOrgs: testOrgs(slug),
     });
 
-    const result = await resolveOrg(
-      authCtx({ userId, orgId: `org_mock_${slug}` }),
-    );
+    const result = await resolveOrg(authCtx({ userId, orgId }));
 
     // tier should be DB default ("free")
     expect(result.org.tier).toBe("free");
@@ -236,42 +233,43 @@ describe("resolveOrg", () => {
 
     // Set up Clerk org BEFORE creating org
     mockClerk({ userId, clerkOrgs: testOrgs(slug) });
-    await createTestOrg(slug);
+    const { id: orgId } = await createTestOrg(slug);
 
     mockClerk({
       userId,
-      orgId: `org_mock_${slug}`,
+      orgId,
       clerkOrgs: testOrgs(slug),
     });
 
-    const result = await resolveOrg(
-      authCtx({ userId, orgId: `org_mock_${slug}` }),
-    );
+    const result = await resolveOrg(authCtx({ userId, orgId }));
 
     expect(result.member.role).toBe("admin");
     expect(result.member.userId).toBe(userId);
   });
 
-  it("throws when user is not a member of the org", async () => {
+  it("throws when user is not a member of a cross-org", async () => {
     const userId = uniqueId("test-user");
     const otherUserId = uniqueId("other-user");
     const slug = uniqueId("org");
 
     // Set up Clerk org BEFORE creating org
     mockClerk({ userId, clerkOrgs: testOrgs(slug) });
-    await createTestOrg(slug);
+    const { id: orgId } = await createTestOrg(slug);
 
-    // Mock as different user who is NOT in the org
+    // Mock as different user whose session org differs from the target org.
+    // This forces the cache-backed membership check (not JWT fast path).
     mockClerk({
       userId: otherUserId,
-      orgId: `org_mock_${slug}`,
-      clerkOrgs: [], // No orgs
+      orgId: "org_other_session",
+      clerkOrgs: [],
     });
 
-    // Throws because the other user cannot resolve this org
-    // (either "not found" from org cache miss, or "not a member" from membership check)
+    // Throws because the other user is not a member (cross-org path checks membership)
     await expect(
-      resolveOrg(authCtx({ userId: otherUserId, orgId: `org_mock_${slug}` })),
+      resolveOrg(
+        authCtx({ userId: otherUserId, orgId: "org_other_session" }),
+        orgId,
+      ),
     ).rejects.toThrow();
   });
 
@@ -281,22 +279,22 @@ describe("resolveOrg", () => {
 
     // Set up Clerk org BEFORE creating org
     mockClerk({ userId, clerkOrgs: testOrgs(slug) });
-    await createTestOrg(slug);
+    const { id: orgId } = await createTestOrg(slug);
 
-    // Mock session — orgId is different from the explicit orgId
+    // Mock session — orgId is different from the explicit orgId.
+    // Include created org in clerkOrgs so cross-org membership check passes.
     mockClerk({
       userId,
       orgId: "org_session_different",
-      clerkOrgs: testOrgs(slug),
+      clerkOrgs: [{ id: orgId, slug, name: slug }],
     });
 
     // Pass orgId directly
     const result = await resolveOrg(
       authCtx({ userId, orgId: "org_session_different" }),
-      `org_mock_${slug}`,
+      orgId,
     );
 
-    expect(result.org.orgId).toBe(`org_mock_${slug}`);
-    expect(result.org.slug).toBe(slug);
+    expect(result.org.orgId).toBe(orgId);
   });
 });

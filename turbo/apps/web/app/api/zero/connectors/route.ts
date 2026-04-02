@@ -13,8 +13,8 @@ import {
   isAuthError,
 } from "../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
-import { listConnectors } from "../../../../src/lib/connector/connector-service";
-import { getConfiguredConnectorTypes } from "../../../../src/lib/connector/provider-registry";
+import { listConnectors } from "../../../../src/lib/zero/connector/connector-service";
+import { getConfiguredConnectorTypes } from "../../../../src/lib/zero/connector/provider-registry";
 
 const router = tsr.router(zeroConnectorsMainContract, {
   list: async ({ headers }) => {

@@ -14,7 +14,6 @@ import {
 } from "../../../../src/lib/auth/require-auth";
 import { isSandboxAuth } from "../../../../src/lib/auth/capability-check";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
-import { getOrgData } from "../../../../src/lib/org/org-cache-service";
 import { generatePresignedUrl } from "../../../../src/lib/s3/s3-client";
 import { env } from "../../../../src/env";
 import { resolveVersionByPrefix } from "../../../../src/lib/infra/storage/version-resolver";
@@ -35,7 +34,7 @@ const router = tsr.router(storagesDownloadContract, {
     const { userId } = authCtx;
 
     // Resolve org: sandbox tokens use the run's org; CLI/session use resolveOrg
-    let runtimeOrg: { orgId: string; slug: string };
+    let runtimeOrg: { orgId: string };
     if (isSandboxAuth(authCtx)) {
       const [run] = await globalThis.services.db
         .select({ orgId: agentRuns.orgId })
@@ -52,14 +51,14 @@ const router = tsr.router(storagesDownloadContract, {
           },
         };
       }
-      runtimeOrg = await getOrgData(run.orgId);
+      runtimeOrg = { orgId: run.orgId };
     } else {
       const { org } = await resolveOrg(authCtx);
       runtimeOrg = org;
     }
 
     log.debug(
-      `Getting download URL for "${storageName}" (type: ${storageType})${versionId ? ` version ${versionId}` : ""} for org ${runtimeOrg.slug}`,
+      `Getting download URL for "${storageName}" (type: ${storageType})${versionId ? ` version ${versionId}` : ""} for org ${runtimeOrg.orgId}`,
     );
 
     // Volumes use sentinel userId (org-shared); artifacts/memory use real userId

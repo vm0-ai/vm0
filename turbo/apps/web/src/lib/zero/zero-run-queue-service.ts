@@ -24,7 +24,7 @@ import { orgMetadata } from "../../db/schema/org-metadata";
 import { modelProviders } from "../../db/schema/model-provider";
 import { env } from "../../env";
 import { getCachedUser } from "../auth/user-cache-service";
-import { transitionRunStatus } from "../run/run-status";
+import { transitionRunStatus } from "../infra/run/run-status";
 import {
   PENDING_RUN_TTL_MS,
   getEffectiveConcurrencyLimit,
@@ -35,11 +35,14 @@ import {
   validateComposeRequirements,
   registerCallbacks,
   markRunFailed,
-} from "../run/run-service";
-import type { CreateRunParams, CreateRunResult } from "../run/run-service";
+} from "../infra/run/run-service";
+import type {
+  CreateRunParams,
+  CreateRunResult,
+} from "../infra/run/run-service";
 import { generateZeroToken, generateSandboxToken } from "../auth/sandbox-token";
 import { buildZeroExecutionContext } from "./build-zero-context";
-import { buildInfraExecutionContext } from "../run/context/build-context";
+import { buildInfraExecutionContext } from "../infra/run/context/build-context";
 import {
   encryptSecretsMap,
   decryptSecretsMap,

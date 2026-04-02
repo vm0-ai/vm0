@@ -10,7 +10,7 @@ import {
   isAuthError,
 } from "../../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
-import { deleteVariable } from "../../../../../src/lib/variable/variable-service";
+import { deleteVariable } from "../../../../../src/lib/zero/variable/variable-service";
 import { logger } from "../../../../../src/lib/logger";
 import { isNotFound } from "../../../../../src/lib/errors";
 

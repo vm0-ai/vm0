@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { env } from "../../../../../../src/env";
-import { getApiUrl } from "../../../../../../src/lib/callback";
+import { getApiUrl } from "../../../../../../src/lib/infra/callback";
 import { SLACK_BOT_SCOPES } from "../../../../../../src/lib/slack-org/scopes";
 
 /**

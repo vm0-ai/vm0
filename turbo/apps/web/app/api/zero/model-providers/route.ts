@@ -19,7 +19,7 @@ import {
   upsertOrgModelProvider,
   upsertOrgMultiAuthModelProvider,
   upsertOrgNoSecretModelProvider,
-} from "../../../../src/lib/model-provider/model-provider-service";
+} from "../../../../src/lib/zero/model-provider/model-provider-service";
 import { logger } from "../../../../src/lib/logger";
 import { isBadRequest } from "../../../../src/lib/errors";
 

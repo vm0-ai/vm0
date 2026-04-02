@@ -27,8 +27,10 @@
                 "name": "ccstate"
               },
               {
+                "allowImportNames": ["useLoadableSet"],
+                "allowTypeImports": true,
                 "name": "ccstate-react/experimental",
-                "message": "Importing from \"ccstate-react/experimental\" is not allowed in views/. For shared state, declare state()/computed()/command() in signals/ and consume with useGet()/useSet(). For component-local state, use React useState()."
+                "message": "Only useLoadableSet is allowed from ccstate-react/experimental in views/. For shared state, declare state()/computed()/command() in signals/ and consume with useGet()/useSet()."
               }
             ]
           }

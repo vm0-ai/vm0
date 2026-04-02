@@ -12,7 +12,7 @@ import {
   getInstallationInfo,
 } from "../../../../../src/lib/github/github-app";
 import { getAppUrl } from "../../../../../src/lib/url";
-import { resolveDefaultAgentComposeId } from "../../../../../src/lib/agent-compose/resolve-default";
+import { resolveDefaultAgentComposeId } from "../../../../../src/lib/infra/agent-compose/resolve-default";
 
 /**
  * GitHub App OAuth Callback Endpoint

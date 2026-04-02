@@ -7,13 +7,12 @@ import {
 } from "../../../../../../src/lib/auth/require-auth";
 import { isSandboxAuth } from "../../../../../../src/lib/auth/capability-check";
 import { resolveOrg } from "../../../../../../src/lib/org/resolve-org";
-import { getOrgData } from "../../../../../../src/lib/org/org-cache-service";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import { eq, and } from "drizzle-orm";
 import {
   cancelRun,
   dispatchCancelSideEffects,
-} from "../../../../../../src/lib/run/run-service";
+} from "../../../../../../src/lib/infra/run/run-service";
 import {
   dispatchQueuedZeroRun,
   drainOrgQueue,
@@ -55,7 +54,7 @@ const router = tsr.router(runsCancelContract, {
           },
         };
       }
-      orgId = (await getOrgData(sandboxRun.orgId)).orgId;
+      orgId = sandboxRun.orgId;
     } else {
       const { org } = await resolveOrg(authCtx);
       orgId = org.orgId;

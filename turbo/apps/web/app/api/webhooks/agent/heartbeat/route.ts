@@ -8,7 +8,7 @@ import { initServices } from "../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import { eq, and } from "drizzle-orm";
 import { getSandboxAuthForRun } from "../../../../../src/lib/auth/get-sandbox-auth";
-import { dispatchProgressCallbacks } from "../../../../../src/lib/callback";
+import { dispatchProgressCallbacks } from "../../../../../src/lib/infra/callback";
 import { logger } from "../../../../../src/lib/logger";
 import { after } from "next/server";
 

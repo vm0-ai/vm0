@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../../src/lib/init-services";
-import { verifyCallback } from "../../../../../../src/lib/callback";
+import { verifyCallback } from "../../../../../../src/lib/infra/callback";
 import { zeroAgentSchedules } from "../../../../../../src/db/schema/zero-agent-schedule";
-import type { ScheduleLoopCallbackPayload } from "../../../../../../src/lib/callback/callback-payloads";
+import type { ScheduleLoopCallbackPayload } from "../../../../../../src/lib/infra/callback/callback-payloads";
 import { logger } from "../../../../../../src/lib/logger";
 
 const log = logger("callback:schedule:loop");

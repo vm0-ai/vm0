@@ -29,7 +29,7 @@ import {
   agentComposeVersions,
   agentComposes,
 } from "../../db/schema/agent-compose";
-import { getAgentSessionWithConversation } from "../agent-session";
+import { getAgentSessionWithConversation } from "../infra/agent-session";
 import { checkpoints } from "../../db/schema/checkpoint";
 import { agentRuns } from "../../db/schema/agent-run";
 import { zeroRuns } from "../../db/schema/zero-run";
@@ -40,27 +40,27 @@ import {
   providerIncompatible,
 } from "../errors";
 import { logger } from "../logger";
-import type { ExecutionContext, ResumeSession } from "../run/types";
+import type { ExecutionContext, ResumeSession } from "../infra/run/types";
 import type { ArtifactSnapshot } from "../checkpoint/types";
 import {
   resolveCheckpoint,
   resolveSession,
   resolveDirectConversation,
   type ConversationResolution,
-} from "../run/resolvers";
-import { expandEnvironmentFromCompose } from "../run/environment";
+} from "../infra/run/resolvers";
+import { expandEnvironmentFromCompose } from "../infra/run/environment";
 import { getUserPreferences } from "./user/user-preferences-service";
-import { getSecretValue, getSecretValues } from "../secret/secret-service";
-import { getVariableValues } from "../variable/variable-service";
-import { getOrgDefaultModelProvider } from "../model-provider/model-provider-service";
-import { getVm0ApiKey } from "../vm0-key/vm0-key-service";
+import { getSecretValue, getSecretValues } from "./secret/secret-service";
+import { getVariableValues } from "./variable/variable-service";
+import { getOrgDefaultModelProvider } from "./model-provider/model-provider-service";
+import { getVm0ApiKey } from "./vm0-key/vm0-key-service";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 import { connectors } from "../../db/schema/connector";
-import { PROVIDER_HANDLERS } from "../connector/provider-registry";
+import { PROVIDER_HANDLERS } from "./connector/provider-registry";
 import {
   getApiTokenConnectorTypes,
   refreshConnectorAccessToken,
-} from "../connector/connector-service";
+} from "./connector/connector-service";
 
 const log = logger("zero:build-context");
 

@@ -61,7 +61,7 @@ import { creditUsage } from "../db/schema/credit-usage";
 import { creditPricing } from "../db/schema/credit-pricing";
 import { users } from "../db/schema/user";
 import { and, eq, like, or, sql } from "drizzle-orm";
-import { generateCallbackSecret } from "../lib/callback/hmac";
+import { generateCallbackSecret } from "../lib/infra/callback/hmac";
 import { initServices } from "../lib/init-services";
 import { encryptSecretsMap } from "../lib/shared/crypto/secrets-encryption";
 import {
@@ -119,7 +119,7 @@ import {
 import { conversations } from "../db/schema/conversation";
 import { uniqueId, uniqueNumericId } from "./test-helpers";
 import { vm0ApiKeys } from "../db/schema/vm0-api-key";
-import { getVm0ApiKey } from "../lib/vm0-key/vm0-key-service";
+import { getVm0ApiKey } from "../lib/zero/vm0-key/vm0-key-service";
 
 /**
  * Helper to create a NextRequest for testing.

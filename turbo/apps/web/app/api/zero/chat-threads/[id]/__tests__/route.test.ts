@@ -16,7 +16,7 @@ import { appendChatMessages } from "../../../../../../src/lib/zero/zero-session-
 import {
   addRunToThread,
   updateChatThreadTitle,
-} from "../../../../../../src/lib/chat-thread";
+} from "../../../../../../src/lib/zero/chat-thread";
 
 const context = testContext();
 

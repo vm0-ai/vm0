@@ -15,7 +15,7 @@ import {
   isAuthError,
 } from "../../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
-import { handleSearchLogs } from "../../../../../src/lib/run/log-search-service";
+import { handleSearchLogs } from "../../../../../src/lib/infra/run/log-search-service";
 
 const router = tsr.router(zeroLogsSearchContract, {
   searchLogs: async ({ query, headers }) => {

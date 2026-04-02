@@ -16,7 +16,7 @@ import {
 } from "../../../../src/db/schema/agent-compose";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
 import { and, eq, inArray, desc, gte, lte } from "drizzle-orm";
-import { startRun, type RunDispatchError } from "../../../../src/lib/run";
+import { startRun, type RunDispatchError } from "../../../../src/lib/infra/run";
 import {
   requireAuth,
   isAuthError,

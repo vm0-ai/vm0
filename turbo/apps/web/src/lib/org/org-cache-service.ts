@@ -13,7 +13,7 @@ const CACHE_TTL_MS = 60_000; // 1 minute
 /** Billing period cache TTL — period changes monthly, no need for frequent refresh */
 const BILLING_CACHE_TTL_MS = 300_000; // 5 minutes
 
-interface OrgData {
+export interface OrgData {
   orgId: string;
   slug: string;
   name: string;

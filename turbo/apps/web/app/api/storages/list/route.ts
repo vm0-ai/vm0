@@ -14,7 +14,6 @@ import {
 } from "../../../../src/lib/auth/require-auth";
 import { isSandboxAuth } from "../../../../src/lib/auth/capability-check";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
-import { getOrgData } from "../../../../src/lib/org/org-cache-service";
 import { logger } from "../../../../src/lib/logger";
 
 const log = logger("api:storages:list");
@@ -32,7 +31,7 @@ const router = tsr.router(storagesListContract, {
     const { userId } = authCtx;
 
     // Resolve org: sandbox tokens use the run's org; CLI/session use resolveOrg
-    let runtimeOrg: { orgId: string; slug: string };
+    let runtimeOrg: { orgId: string };
     if (isSandboxAuth(authCtx)) {
       const [run] = await globalThis.services.db
         .select({ orgId: agentRuns.orgId })
@@ -49,7 +48,7 @@ const router = tsr.router(storagesListContract, {
           },
         };
       }
-      runtimeOrg = await getOrgData(run.orgId);
+      runtimeOrg = { orgId: run.orgId };
     } else {
       const { org } = await resolveOrg(authCtx);
       runtimeOrg = org;
@@ -59,7 +58,7 @@ const router = tsr.router(storagesListContract, {
     const storageUserId =
       storageType === "volume" ? VOLUME_ORG_USER_ID : userId;
 
-    log.debug(`Listing ${storageType}s for org ${runtimeOrg.slug}`);
+    log.debug(`Listing ${storageType}s for org ${runtimeOrg.orgId}`);
 
     // Query storages filtered by org, userId, and type
     const results = await globalThis.services.db

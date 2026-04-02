@@ -9,9 +9,9 @@ import { decryptSecretsMap } from "../shared/crypto";
 import { notFound, badRequest, schedulePast } from "../errors";
 import { logger } from "../logger";
 import { createZeroRun } from "../zero/zero-run-service";
-import { generateCallbackSecret, getApiUrl } from "../callback";
+import { generateCallbackSecret, getApiUrl } from "../infra/callback";
 import { generateScheduleDescription } from "../shared/ai/lightweight-model";
-import type { ScheduleLoopCallbackPayload } from "../callback/callback-payloads";
+import type { ScheduleLoopCallbackPayload } from "../infra/callback/callback-payloads";
 
 const log = logger("service:schedule");
 

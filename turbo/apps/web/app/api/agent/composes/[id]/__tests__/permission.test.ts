@@ -3,6 +3,7 @@ import { GET as getCompose } from "../route";
 import {
   createTestRequest,
   createTestCompose,
+  insertOrgCacheEntry,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -77,6 +78,13 @@ describe("Agent Compose Permission Checks", () => {
       // Compose access is scoped to the caller's active org — cross-org access
       // is not allowed even if the user is a member of the compose's org.
       const differentOrgId = "org_different_active";
+
+      // Populate org_cache so resolveOrg recognizes this org
+      await insertOrgCacheEntry({
+        orgId: differentOrgId,
+        slug: "different-org",
+      });
+
       mockClerk({
         userId: "other-user-456",
         orgId: differentOrgId,

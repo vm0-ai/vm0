@@ -13,7 +13,7 @@ import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import {
   listVariables,
   setVariable,
-} from "../../../../src/lib/variable/variable-service";
+} from "../../../../src/lib/zero/variable/variable-service";
 import { logger } from "../../../../src/lib/logger";
 import { isBadRequest } from "../../../../src/lib/errors";
 
