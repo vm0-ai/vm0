@@ -1,5 +1,25 @@
 # Changelog
 
+## [12.183.3](https://github.com/vm0-ai/vm0/compare/web-v12.183.2...web-v12.183.3) (2026-04-02)
+
+
+### Bug Fixes
+
+* clean up stale org slug references in docs and tests ([#7623](https://github.com/vm0-ai/vm0/issues/7623)) ([7c98abb](https://github.com/vm0-ai/vm0/commit/7c98abb680a9da5e83842f85159379005326eb63))
+
+
+### Refactoring
+
+* move org tier resolution and credit processing out of infra layer ([#7610](https://github.com/vm0-ai/vm0/issues/7610)) ([9d5e0d1](https://github.com/vm0-ai/vm0/commit/9d5e0d177e2b111f22ae403fd941071a7ff4cba3))
+* remove org-slug parsing from default agent resolution ([#7596](https://github.com/vm0-ai/vm0/issues/7596)) ([4408295](https://github.com/vm0-ai/vm0/commit/4408295b88dc8d0f5818c2917a47d45679bd4f53)), closes [#7592](https://github.com/vm0-ai/vm0/issues/7592)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.139.0
+
 ## [12.183.2](https://github.com/vm0-ai/vm0/compare/web-v12.183.1...web-v12.183.2) (2026-04-02)
 
 

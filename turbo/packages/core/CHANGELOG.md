@@ -1,5 +1,17 @@
 # Changelog
 
+## [8.139.0](https://github.com/vm0-ai/vm0/compare/core-v8.138.0...core-v8.139.0) (2026-04-02)
+
+
+### Features
+
+* **firewalls:** add fine-grained xero firewall permissions from openapi specs ([#7615](https://github.com/vm0-ai/vm0/issues/7615)) ([e3a4f0e](https://github.com/vm0-ai/vm0/commit/e3a4f0e65f4a5b34093befb7cac05ffd3a57543f))
+
+
+### Bug Fixes
+
+* clean up stale org slug references in docs and tests ([#7623](https://github.com/vm0-ai/vm0/issues/7623)) ([7c98abb](https://github.com/vm0-ai/vm0/commit/7c98abb680a9da5e83842f85159379005326eb63))
+
 ## [8.138.0](https://github.com/vm0-ai/vm0/compare/core-v8.137.0...core-v8.138.0) (2026-04-02)
 
 

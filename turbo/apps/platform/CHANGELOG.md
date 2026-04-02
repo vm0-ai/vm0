@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.177.2](https://github.com/vm0-ai/vm0/compare/app-v0.177.1...app-v0.177.2) (2026-04-02)
+
+
+### Bug Fixes
+
+* prevent schedule list flash when toggling status ([#7579](https://github.com/vm0-ai/vm0/issues/7579)) ([967e59b](https://github.com/vm0-ai/vm0/commit/967e59ba48e63f478b711891cb73663c36fb7cb3))
+
+
+### Refactoring
+
+* unify frontend url routing scheme with plural nouns ([#7601](https://github.com/vm0-ai/vm0/issues/7601)) ([723b49d](https://github.com/vm0-ai/vm0/commit/723b49ddd78a0fe99dd22434e967139de4a0588f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.139.0
+
 ## [0.177.1](https://github.com/vm0-ai/vm0/compare/app-v0.177.0...app-v0.177.1) (2026-04-02)
 
 

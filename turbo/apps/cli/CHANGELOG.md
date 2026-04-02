@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.94.3](https://github.com/vm0-ai/vm0/compare/cli-v9.94.2...cli-v9.94.3) (2026-04-02)
+
+
+### Refactoring
+
+* unify frontend url routing scheme with plural nouns ([#7601](https://github.com/vm0-ai/vm0/issues/7601)) ([723b49d](https://github.com/vm0-ai/vm0/commit/723b49ddd78a0fe99dd22434e967139de4a0588f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.139.0
+
 ## [9.94.2](https://github.com/vm0-ai/vm0/compare/cli-v9.94.1...cli-v9.94.2) (2026-04-02)
 
 
