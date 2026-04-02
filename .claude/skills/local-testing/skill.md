@@ -24,13 +24,13 @@ cd turbo && pnpm vitest run
 
 ```bash
 # 1. Start dev server with tunnel (required for webhooks)
-/dev-start
+/dev-server:start
 
 # 2. Wait for server to be ready, then authenticate CLI
-/dev-auth
+/dev-server:auth
 
 # 3. Deploy runner (needed for vm0 run, takes several minutes)
-/dev-runner
+/dev-server:runner
 
 # 4. Run CLI E2E tests
 VM0_API_URL=http://localhost:3000 USE_MOCK_CLAUDE=true BATS_TEST_TIMEOUT=60 \
@@ -76,7 +76,7 @@ echo "CONCURRENT_RUN_LIMIT_CAP=0" >> turbo/apps/web/.env.local
 ### Using the Skill
 
 ```bash
-/dev-start
+/dev-server:start
 ```
 
 This will:
@@ -93,7 +93,7 @@ cd turbo && pnpm dev
 
 ### Verify Server is Ready
 
-Check for these indicators in the logs (`/dev-logs`):
+Check for these indicators in the logs (`/dev-server:logs`):
 - `[tunnel] Tunnel URL: https://xxx.trycloudflare.com`
 - `Ready in XXXms` for each app
 - No fatal errors
@@ -243,15 +243,15 @@ cd turbo && pnpm vitest run
 **Cause**: Sandbox cannot reach the tunnel URL (webhooks fail)
 
 **Solution**:
-1. Check if tunnel is active: `/dev-logs tunnel`
+1. Check if tunnel is active: `/dev-server:logs tunnel`
 2. Test tunnel connectivity:
    ```bash
    curl -v https://<tunnel-url>/api/webhooks/agent/events
    ```
 3. If SSL errors occur, restart dev server to get a fresh tunnel:
    ```bash
-   /dev-stop
-   /dev-start
+   /dev-server:stop
+   /dev-server:start
    ```
 
 ### Problem: "Concurrent agent run limit" Error
@@ -270,8 +270,8 @@ echo "CONCURRENT_RUN_LIMIT_CAP=0" >> turbo/apps/web/.env.local
 
 **Solution**:
 - Ensure `BATS_TEST_TIMEOUT` is set appropriately (60s for parallel tests)
-- Check server logs for errors: `/dev-logs error`
-- Verify sandbox is starting: `/dev-logs sandbox`
+- Check server logs for errors: `/dev-server:logs error`
+- Verify sandbox is starting: `/dev-server:logs sandbox`
 
 ### Problem: "SECRETS_ENCRYPTION_KEY" Missing or Other Environment Variables Missing
 
@@ -310,7 +310,7 @@ sudo apt-get install -y parallel
 fuser -k 3000/tcp 3001/tcp 3002/tcp 3003/tcp
 
 # Or use dev-stop
-/dev-stop
+/dev-server:stop
 ```
 
 ### Problem: "SyntaxError: Unexpected end of JSON input" During Parallel Tests
@@ -339,18 +339,18 @@ fuser -k 3000/tcp 3001/tcp 3002/tcp 3003/tcp
 
 ```bash
 # Check dev server status
-/dev-logs
+/dev-server:logs
 
 # Filter logs by pattern
-/dev-logs error
-/dev-logs tunnel
-/dev-logs sandbox
+/dev-server:logs error
+/dev-server:logs tunnel
+/dev-server:logs sandbox
 
 # Stop dev server
-/dev-stop
+/dev-server:stop
 
 # Authenticate CLI with local server
-/dev-auth
+/dev-server:auth
 
 # Check CLI auth status
 vm0 auth status
