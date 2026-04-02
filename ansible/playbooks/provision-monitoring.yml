@@ -67,6 +67,9 @@
               "netdev", "os", "pressure", "processes",
               "uname", "vmstat",
             ]
+            disk {
+              device_exclude = `^(nbd|ram|loop|fd|(h|s|v|xv)d[a-z]|nvme\d+n\d+p)\d+$`
+            }
             netdev {
               device_include = "^(en|eth|bond).*"
             }
