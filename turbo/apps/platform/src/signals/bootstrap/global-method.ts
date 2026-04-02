@@ -6,6 +6,9 @@ import {
   featureSwitch$,
   overrideFeatureSwitch$,
 } from "../external/feature-switch";
+import { parseInspectLogCsv } from "../activity-page/inspect-log-parser";
+import { setInspectLogData$ } from "../activity-page/inspect-log-signals";
+import { detachedNavigateTo$ } from "../route";
 
 const L = logger("GlobalMethod");
 
@@ -44,6 +47,36 @@ export const setupGlobalMethod$ = command(
         return result;
       },
       featureSwitches: {},
+      inspectLogs() {
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = ".csv";
+        input.style.display = "none";
+        document.body.appendChild(input);
+
+        input.addEventListener("change", () => {
+          const file = input.files?.[0];
+          input.remove();
+          if (!file) {
+            return;
+          }
+          file
+            .text()
+            .then((text) => {
+              const data = parseInspectLogCsv(text);
+              set(setInspectLogData$, data);
+              set(detachedNavigateTo$, "/activities/inspect");
+            })
+            .catch(() => {});
+        });
+
+        // Clean up if dialog is cancelled
+        input.addEventListener("cancel", () => {
+          input.remove();
+        });
+
+        input.click();
+      },
     };
 
     signal.addEventListener("abort", () => {

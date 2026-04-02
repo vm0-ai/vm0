@@ -34,6 +34,7 @@ import {
   type LogStatus,
   type TriggerSource,
   type AgentEvent,
+  type LogDetail,
 } from "../../signals/zero-page/log-types.ts";
 import { StatusBadge } from "./components/log-views/status-badge.tsx";
 import {
@@ -98,7 +99,7 @@ function RunErrorBanner({ error }: { error: string }) {
  * Returns true if a grouped message should be shown (filters out text-only
  * assistant messages immediately before a result message).
  */
-function isVisibleMessage(
+export function isVisibleMessage(
   message: GroupedMessage,
   nextMessage: GroupedMessage | undefined,
 ): boolean {
@@ -156,12 +157,13 @@ function ActivityNotFound() {
   );
 }
 
-function ActivityHeaderCard({
+export function ActivityHeaderCard({
   displayName,
   status,
   triggerSource,
   triggerAgentName,
   detail,
+  logDetail,
   duration,
   time,
   events,
@@ -181,6 +183,7 @@ function ActivityHeaderCard({
     error?: string | null;
     scheduleId?: string | null;
   };
+  logDetail?: LogDetail;
   duration: string | null | undefined;
   time: string;
   events: AgentEvent[];
@@ -303,25 +306,27 @@ function ActivityHeaderCard({
             <span className="text-muted-foreground shrink-0">Time</span>
             <span className="text-foreground whitespace-nowrap">{time}</span>
           </div>
-          <TooltipProvider delayDuration={200}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 w-7 ml-auto shrink-0 rounded-lg text-muted-foreground hover:text-foreground p-0"
-                  onClick={() => {
-                    return downloadCsv(events, detail.id);
-                  }}
-                >
-                  <IconDownload size={14} stroke={1.5} />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent side="left">
-                <p className="text-xs">Download raw data</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          {logDetail && (
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 ml-auto shrink-0 rounded-lg text-muted-foreground hover:text-foreground p-0"
+                    onClick={() => {
+                      return downloadCsv(events, detail.id, logDetail);
+                    }}
+                  >
+                    <IconDownload size={14} stroke={1.5} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="left">
+                  <p className="text-xs">Download raw data</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
         </div>
       </div>
       {detail.error && status === "failed" && (
@@ -433,6 +438,7 @@ export function ZeroActivityDetailPage() {
             triggerSource={detail.triggerSource ?? null}
             triggerAgentName={detail.triggerAgentName ?? null}
             detail={detail}
+            logDetail={detail}
             duration={duration}
             time={time}
             events={events}
@@ -545,7 +551,7 @@ function ActivitySkeleton() {
   );
 }
 
-function StepsList({
+export function StepsList({
   prompt,
   appendSystemPrompt,
   messages,
@@ -612,7 +618,27 @@ function escapeCsvField(value: string): string {
   return value;
 }
 
-function downloadCsv(events: AgentEvent[], logId: string) {
+function downloadCsv(events: AgentEvent[], logId: string, detail: LogDetail) {
+  const meta = {
+    id: detail.id,
+    displayName: detail.displayName,
+    status: detail.status,
+    triggerSource: detail.triggerSource,
+    triggerAgentName: detail.triggerAgentName,
+    modelProvider: detail.modelProvider,
+    selectedModel: detail.selectedModel,
+    framework: detail.framework,
+    prompt: detail.prompt,
+    appendSystemPrompt: detail.appendSystemPrompt,
+    error: detail.error,
+    createdAt: detail.createdAt,
+    startedAt: detail.startedAt,
+    completedAt: detail.completedAt,
+    agentId: detail.agentId,
+    sessionId: detail.sessionId,
+    scheduleId: detail.scheduleId,
+  };
+  const metaLine = `# __vm0_meta__:${JSON.stringify(meta)}`;
   const header = "sequenceNumber,eventType,eventData,createdAt";
   const rows = events.map((e) => {
     return [
@@ -622,7 +648,7 @@ function downloadCsv(events: AgentEvent[], logId: string) {
       escapeCsvField(e.createdAt),
     ].join(",");
   });
-  const csv = [header, ...rows].join("\n");
+  const csv = [metaLine, header, ...rows].join("\n");
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
