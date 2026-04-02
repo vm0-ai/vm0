@@ -29,7 +29,7 @@ import {
   buildZeroExecutionContext,
   MODEL_PROVIDER_ENV_VARS,
 } from "./build-zero-context";
-import { getOrgMetadata } from "./org/org-cache-service";
+import { getOrgMetadata } from "./org/org-metadata-service";
 import {
   isConcurrentRunLimit,
   insufficientCredits,

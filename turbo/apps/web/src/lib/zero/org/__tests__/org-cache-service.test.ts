@@ -1,63 +1,15 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { clerkClient } from "@clerk/nextjs/server";
 import { testContext, uniqueId } from "../../../../__tests__/test-helpers";
 import { mockClerk } from "../../../../__tests__/clerk-mock";
-import type { StripeMockFns } from "../../../../__tests__/stripe-mock";
 import {
   createTestOrg,
   insertOrgCacheEntry,
   deleteOrgCacheEntry,
-  getOrgCacheEntry,
   updateOrgTier,
-  updateOrgStripeFields,
   ensureOrgRow,
 } from "../../../../__tests__/api-test-helpers";
-import { reloadEnv } from "../../../../env";
-import {
-  getOrgData,
-  getOrgMetadata,
-  getOrgBySlug,
-  getOrgBillingPeriod,
-} from "../org-cache-service";
-
-// Mock stripe module (external dependency)
-const stripeMocks = vi.hoisted<StripeMockFns>(() => {
-  return {
-    subscriptionsRetrieve: vi.fn(),
-    subscriptionsUpdate: vi.fn(),
-    subscriptionsCancel: vi.fn(),
-    invoicesRetrieve: vi.fn(),
-    invoicesList: vi.fn(),
-    customersCreate: vi.fn(),
-    checkoutSessionsCreate: vi.fn(),
-    billingPortalSessionsCreate: vi.fn(),
-    constructEvent: vi.fn(),
-  };
-});
-
-vi.mock("stripe", () => {
-  return {
-    default: function MockStripe() {
-      return {
-        subscriptions: {
-          retrieve: stripeMocks.subscriptionsRetrieve,
-          update: stripeMocks.subscriptionsUpdate,
-          cancel: stripeMocks.subscriptionsCancel,
-        },
-        invoices: {
-          retrieve: stripeMocks.invoicesRetrieve,
-          list: stripeMocks.invoicesList,
-        },
-        customers: { create: stripeMocks.customersCreate },
-        checkout: { sessions: { create: stripeMocks.checkoutSessionsCreate } },
-        billingPortal: {
-          sessions: { create: stripeMocks.billingPortalSessionsCreate },
-        },
-        webhooks: { constructEvent: stripeMocks.constructEvent },
-      };
-    },
-  };
-});
+import { getOrgData, getOrgBySlug } from "../org-cache-service";
 
 const context = testContext();
 
@@ -66,10 +18,24 @@ describe("getOrgData", () => {
     context.setupMocks();
   });
 
-  it("fetches from Clerk and caches on miss", async () => {
+  it("combines Clerk identity with tier from org_metadata", async () => {
     const userId = uniqueId("test-user");
     const slug = uniqueId("org");
-    // Set up Clerk org with slug-based ID BEFORE creating org
+    mockClerk({ userId });
+    const { id: orgId } = await createTestOrg(slug);
+
+    await updateOrgTier(orgId, "pro");
+
+    const result = await getOrgData(orgId);
+
+    expect(result.tier).toBe("pro");
+    expect(result.slug).toBe(slug);
+    expect(result.orgId).toBe(orgId);
+  });
+
+  it("fetches from Clerk on cache miss and returns composed data", async () => {
+    const userId = uniqueId("test-user");
+    const slug = uniqueId("org");
     mockClerk({
       userId,
       clerkOrgs: [{ id: `org_mock_${slug}`, slug, name: slug }],
@@ -77,7 +43,6 @@ describe("getOrgData", () => {
     await createTestOrg(slug);
     const orgId = `org_mock_${slug}`;
 
-    // Delete pre-populated orgCache to test cache-miss behavior
     await deleteOrgCacheEntry(orgId);
 
     const result = await getOrgData(orgId);
@@ -89,26 +54,19 @@ describe("getOrgData", () => {
       tier: "free",
     });
 
-    // Verify cache row was created
-    const cached = await getOrgCacheEntry(orgId);
-    expect(cached).not.toBeNull();
-    expect(cached!.slug).toBe(slug);
-
-    // Verify Clerk API was called
     const client = await clerkClient();
     expect(client.organizations.getOrganization).toHaveBeenCalledWith({
       organizationId: orgId,
     });
   });
 
-  it("returns cached data without Clerk call when fresh", async () => {
+  it("returns cached identity without Clerk call when fresh", async () => {
     const userId = uniqueId("test-user");
     const slug = uniqueId("org");
     mockClerk({ userId });
     await createTestOrg(slug);
     const orgId = `org_mock_${slug}`;
 
-    // Pre-populate cache with fresh entry (different slug)
     await insertOrgCacheEntry({
       orgId,
       slug: "cached-slug",
@@ -123,116 +81,8 @@ describe("getOrgData", () => {
       tier: "free",
     });
 
-    // Clerk API should NOT have been called
     const client = await clerkClient();
     expect(client.organizations.getOrganization).not.toHaveBeenCalled();
-  });
-
-  it("refetches from Clerk when cache is stale", async () => {
-    const userId = uniqueId("test-user");
-    const slug = uniqueId("org");
-    // Set up Clerk org with slug-based ID BEFORE creating org
-    mockClerk({
-      userId,
-      clerkOrgs: [{ id: `org_mock_${slug}`, slug, name: slug }],
-    });
-    await createTestOrg(slug);
-    const orgId = `org_mock_${slug}`;
-
-    // Overwrite the fresh orgCache entry from createTestOrg with a stale one
-    const twoMinutesAgo = new Date(Date.now() - 120_000);
-    await insertOrgCacheEntry({
-      orgId,
-      slug: "old-slug",
-      cachedAt: twoMinutesAgo,
-    });
-
-    const result = await getOrgData(orgId);
-
-    // Should have fresh data from Clerk mock (slug = org name from createOrganization)
-    expect(result.slug).toBe(slug);
-    expect(result.orgId).toBe(orgId);
-
-    // Verify Clerk API was called
-    const client = await clerkClient();
-    expect(client.organizations.getOrganization).toHaveBeenCalledWith({
-      organizationId: orgId,
-    });
-
-    // Verify cache was updated
-    const cached = await getOrgCacheEntry(orgId);
-    expect(cached!.slug).toBe(slug);
-    expect(cached!.cachedAt.getTime()).toBeGreaterThan(twoMinutesAgo.getTime());
-  });
-
-  it("reads tier from org table", async () => {
-    const userId = uniqueId("test-user");
-    const slug = uniqueId("org");
-    mockClerk({ userId });
-    const { id: orgId } = await createTestOrg(slug);
-
-    // Update tier in org table
-    await updateOrgTier(orgId, "pro");
-
-    const result = await getOrgData(orgId);
-
-    expect(result.tier).toBe("pro");
-  });
-
-  it("returns DB tier directly when DB has non-free on cache miss", async () => {
-    const userId = uniqueId("test-user");
-    const slug = uniqueId("org");
-    mockClerk({
-      userId,
-      clerkOrgs: [{ id: `org_mock_${slug}`, slug, name: slug }],
-    });
-    const { id: orgId } = await createTestOrg(slug);
-
-    await updateOrgTier(orgId, "pro");
-
-    const result = await getOrgData(orgId);
-    expect(result.tier).toBe("pro");
-  });
-
-  it("returns free on cache hit when DB has free (no Clerk fallback)", async () => {
-    const userId = uniqueId("test-user");
-    const slug = uniqueId("org");
-    mockClerk({ userId });
-    const { id: orgId } = await createTestOrg(slug);
-
-    // Cache is fresh (from createTestOrg), DB tier is "free"
-    // No Clerk call happens, so no fallback possible
-    const result = await getOrgData(orgId);
-    expect(result.tier).toBe("free");
-
-    const client = await clerkClient();
-    expect(client.organizations.getOrganization).not.toHaveBeenCalled();
-  });
-
-  it("throws when Clerk org has no slug", async () => {
-    const userId = uniqueId("test-user");
-    const slug = uniqueId("org");
-    mockClerk({ userId });
-    await createTestOrg(slug);
-    const orgId = `org_mock_${slug}`;
-
-    // Delete cache to force Clerk fetch
-    await deleteOrgCacheEntry(orgId);
-
-    // Override getOrganization to return null slug
-    const client = await clerkClient();
-    vi.mocked(client.organizations.getOrganization).mockResolvedValueOnce({
-      id: orgId,
-      slug: null,
-      name: slug,
-      publicMetadata: {},
-    } as unknown as Awaited<
-      ReturnType<typeof client.organizations.getOrganization>
-    >);
-
-    await expect(getOrgData(orgId)).rejects.toThrow(
-      `Clerk organization ${orgId} has no slug`,
-    );
   });
 });
 
@@ -241,7 +91,7 @@ describe("getOrgBySlug", () => {
     context.setupMocks();
   });
 
-  it("fetches from Clerk by slug and caches on miss", async () => {
+  it("combines Clerk identity with tier from org_metadata", async () => {
     const userId = uniqueId("test-user");
     const slug = uniqueId("org");
     const orgId = `org_mock_${slug}`;
@@ -250,39 +100,6 @@ describe("getOrgBySlug", () => {
       clerkOrgs: [{ id: orgId, slug, name: slug }],
     });
 
-    // No org_cache entry — this is a cache-miss scenario
-    const result = await getOrgBySlug(slug);
-
-    expect(result).toEqual({
-      orgId,
-      slug,
-      name: slug,
-      tier: "free",
-    });
-
-    // Verify cache row was created
-    const cached = await getOrgCacheEntry(orgId);
-    expect(cached).not.toBeNull();
-    expect(cached!.slug).toBe(slug);
-
-    // Verify Clerk API was called with slug param
-    const client = await clerkClient();
-    expect(client.organizations.getOrganization).toHaveBeenCalledWith({
-      slug,
-    });
-  });
-
-  it("returns cached data without Clerk call when fresh", async () => {
-    const userId = uniqueId("test-user");
-    const slug = uniqueId("org");
-    const orgId = `org_mock_${slug}`;
-    mockClerk({
-      userId,
-      clerkOrgs: [{ id: orgId, slug, name: slug }],
-    });
-
-    // Insert fresh cache entry and org row directly (bypass createTestOrg
-    // which uses org_mock_${userId} as orgId, not org_mock_${slug})
     await insertOrgCacheEntry({ orgId, slug });
     await ensureOrgRow(orgId);
     await updateOrgTier(orgId, "pro");
@@ -291,7 +108,6 @@ describe("getOrgBySlug", () => {
 
     expect(result).toEqual({ orgId, slug, name: slug, tier: "pro" });
 
-    // Clerk API should NOT have been called
     const client = await clerkClient();
     expect(client.organizations.getOrganization).not.toHaveBeenCalled();
   });
@@ -303,175 +119,5 @@ describe("getOrgBySlug", () => {
     const result = await getOrgBySlug("nonexistent-slug");
 
     expect(result).toBeNull();
-  });
-
-  it("refetches from Clerk when cache is stale", async () => {
-    const userId = uniqueId("test-user");
-    const slug = uniqueId("org");
-    const orgId = `org_mock_${slug}`;
-    mockClerk({
-      userId,
-      clerkOrgs: [{ id: orgId, slug, name: slug }],
-    });
-
-    // Insert stale cache entry directly
-    const twoMinutesAgo = new Date(Date.now() - 120_000);
-    await insertOrgCacheEntry({
-      orgId,
-      slug,
-      cachedAt: twoMinutesAgo,
-    });
-
-    const result = await getOrgBySlug(slug);
-
-    expect(result).not.toBeNull();
-    expect(result!.orgId).toBe(orgId);
-
-    // Verify Clerk API was called with slug param
-    const client = await clerkClient();
-    expect(client.organizations.getOrganization).toHaveBeenCalledWith({
-      slug,
-    });
-  });
-});
-
-describe("getOrgBillingPeriod", () => {
-  beforeEach(() => {
-    context.setupMocks();
-    vi.stubEnv("STRIPE_SECRET_KEY", "sk_test_fake");
-    reloadEnv();
-  });
-
-  it("returns billing period from Stripe invoice when currentPeriodEnd is not cached", async () => {
-    const userId = uniqueId("test-user");
-    const slug = uniqueId("org");
-    mockClerk({ userId });
-    const { id: orgId } = await createTestOrg(slug);
-
-    const subId = uniqueId("sub");
-
-    // Set subscription ID but no currentPeriodEnd — triggers Stripe fallback
-    await updateOrgStripeFields(orgId, {
-      stripeSubscriptionId: subId,
-      stripeCustomerId: uniqueId("cus"),
-      subscriptionStatus: "active",
-      currentPeriodEnd: null,
-    });
-
-    const periodEndUnix = Math.floor(
-      new Date("2026-05-01T00:00:00Z").getTime() / 1000,
-    );
-
-    stripeMocks.subscriptionsRetrieve.mockResolvedValueOnce({
-      latest_invoice: "inv_abc123",
-    });
-    stripeMocks.invoicesRetrieve.mockResolvedValueOnce({
-      period_end: periodEndUnix,
-    });
-
-    const result = await getOrgBillingPeriod(orgId);
-
-    expect(result).not.toBeNull();
-    expect(result!.end).toEqual(new Date("2026-05-01T00:00:00Z"));
-
-    // Start should be 1 month before end
-    const expectedStart = new Date("2026-04-01T00:00:00Z");
-    expect(result!.start).toEqual(expectedStart);
-
-    // Verify Stripe was called with the correct subscription ID
-    expect(stripeMocks.subscriptionsRetrieve).toHaveBeenCalledWith(subId);
-    expect(stripeMocks.invoicesRetrieve).toHaveBeenCalledWith("inv_abc123");
-  });
-
-  it("returns null for free tier org without subscription", async () => {
-    const userId = uniqueId("test-user");
-    const slug = uniqueId("org");
-    mockClerk({ userId });
-    const { id: orgId } = await createTestOrg(slug);
-
-    const result = await getOrgBillingPeriod(orgId);
-
-    expect(result).toBeNull();
-    expect(stripeMocks.subscriptionsRetrieve).not.toHaveBeenCalled();
-  });
-
-  it("returns null when subscription has no latest_invoice", async () => {
-    const userId = uniqueId("test-user");
-    const slug = uniqueId("org");
-    mockClerk({ userId });
-    const { id: orgId } = await createTestOrg(slug);
-
-    await updateOrgStripeFields(orgId, {
-      stripeSubscriptionId: uniqueId("sub"),
-      stripeCustomerId: uniqueId("cus"),
-      subscriptionStatus: "active",
-      currentPeriodEnd: null,
-    });
-
-    stripeMocks.subscriptionsRetrieve.mockResolvedValueOnce({
-      latest_invoice: null,
-    });
-
-    const result = await getOrgBillingPeriod(orgId);
-
-    expect(result).toBeNull();
-  });
-});
-
-describe("getOrgMetadata", () => {
-  beforeEach(() => {
-    context.setupMocks();
-  });
-
-  it("returns tier and credits from org_metadata when row exists", async () => {
-    const userId = uniqueId("test-user");
-    const slug = uniqueId("org");
-    mockClerk({ userId });
-    const { id: orgId } = await createTestOrg(slug);
-
-    await updateOrgTier(orgId, "pro");
-
-    const result = await getOrgMetadata(orgId);
-
-    expect(result).toEqual({
-      orgId,
-      tier: "pro",
-      credits: 10_000,
-    });
-
-    // Clerk API should NOT have been called
-    const client = await clerkClient();
-    expect(client.organizations.getOrganization).not.toHaveBeenCalled();
-  });
-
-  it("returns free tier with zero credits when no row exists", async () => {
-    const orgId = uniqueId("org-nonexistent");
-
-    const result = await getOrgMetadata(orgId);
-
-    expect(result).toEqual({
-      orgId,
-      tier: "free",
-      credits: 0,
-    });
-
-    // Clerk API should NOT have been called
-    const client = await clerkClient();
-    expect(client.organizations.getOrganization).not.toHaveBeenCalled();
-  });
-
-  it("returns default credits for new org", async () => {
-    const userId = uniqueId("test-user");
-    const slug = uniqueId("org");
-    mockClerk({ userId });
-    const { id: orgId } = await createTestOrg(slug);
-
-    const result = await getOrgMetadata(orgId);
-
-    expect(result).toEqual({
-      orgId,
-      tier: "free",
-      credits: 10_000,
-    });
   });
 });

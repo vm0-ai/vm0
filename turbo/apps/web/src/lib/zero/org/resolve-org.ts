@@ -6,7 +6,8 @@ import {
   isBadRequest,
   isNotFound,
 } from "../../errors";
-import { getOrgMetadata, getOrgData } from "./org-cache-service";
+import { getOrgData } from "./org-cache-service";
+import { getOrgMetadata } from "./org-metadata-service";
 import { orgMetadata } from "../../../db/schema/org-metadata";
 import { orgCache } from "../../../db/schema/org-cache";
 import { verifyMembershipCached } from "./org-membership-cache";
