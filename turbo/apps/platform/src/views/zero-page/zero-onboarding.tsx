@@ -330,6 +330,7 @@ function WhereToWorkContent() {
   const error = useLastResolved(onboardingError$) ?? null;
   const addToSlack = useSet(onboardingAddToSlack$);
   const continueWeb = useSet(onboardingContinueWeb$);
+  const pageSignal = useGet(pageSignal$);
 
   return (
     <>
@@ -350,10 +351,7 @@ function WhereToWorkContent() {
         <button
           type="button"
           onClick={() => {
-            return detach(
-              addToSlack(new AbortController().signal),
-              Reason.DomCallback,
-            );
+            detach(addToSlack(pageSignal), Reason.DomCallback);
           }}
           disabled={saving}
           className="flex items-center gap-4 rounded-xl bg-card px-6 py-6 text-left transition-colors hover:bg-muted/30 disabled:opacity-50 zero-border"
@@ -374,10 +372,7 @@ function WhereToWorkContent() {
         <button
           type="button"
           onClick={() => {
-            return detach(
-              continueWeb(new AbortController().signal),
-              Reason.DomCallback,
-            );
+            detach(continueWeb(pageSignal), Reason.DomCallback);
           }}
           disabled={saving}
           className="flex items-center gap-4 rounded-xl bg-card px-6 py-6 text-left transition-colors hover:bg-muted/30 disabled:opacity-50 zero-border"
