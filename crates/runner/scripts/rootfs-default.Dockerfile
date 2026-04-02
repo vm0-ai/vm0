@@ -67,7 +67,8 @@ RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
 # ---------------------------------------------------------------------------
 RUN apt-get update && apt-get install -y \
     python3 \
-    python3-pip
+    python3-pip \
+    && rm -f /usr/lib/python*/EXTERNALLY-MANAGED
 
 # ---------------------------------------------------------------------------
 # Ruby 3.x
@@ -116,7 +117,7 @@ ENV CARGO_HOME=/usr/local/cargo
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
     | sh -s -- -y --default-toolchain stable --no-modify-path \
     && chmod -R a+rwX /usr/local/rustup /usr/local/cargo \
-    && echo 'export PATH=$PATH:/usr/local/cargo/bin' > /etc/profile.d/rust.sh
+    && printf 'export RUSTUP_HOME=/usr/local/rustup\nexport CARGO_HOME=/usr/local/cargo\nexport PATH=$PATH:/usr/local/cargo/bin\n' > /etc/profile.d/rust.sh
 
 # ---------------------------------------------------------------------------
 # C++ (GCC + Clang + CMake)
