@@ -12,7 +12,7 @@ import {
   isAuthError,
 } from "../../../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../../../src/lib/org/resolve-org";
-import { updateComposeMetadata } from "../../../../../../src/lib/agent-compose/compose-service";
+import { updateComposeMetadata } from "../../../../../../src/lib/zero/zero-compose-service";
 import { isNotFound } from "../../../../../../src/lib/errors";
 
 const router = tsr.router(composesMetadataContract, {

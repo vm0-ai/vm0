@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { after } from "next/server";
 import {
   createHandler,
   createSafeErrorHandler,
@@ -10,8 +11,10 @@ import {
   requireAuth,
   isAuthError,
 } from "../../../../../src/lib/auth/require-auth";
-import { createZeroRun } from "../../../../../src/lib/zero/zero-run-service";
-import { isRunDispatchError } from "../../../../../src/lib/run";
+import {
+  createZeroRunRecord,
+  dispatchZeroRun,
+} from "../../../../../src/lib/zero/zero-run-service";
 import { isApiError } from "../../../../../src/lib/errors";
 import {
   createChatThread,
@@ -109,8 +112,9 @@ const router = tsr.router(chatMessagesContract, {
           ? body.modelProvider
           : undefined;
 
-      // Create the run
-      const result = await createZeroRun({
+      // Create the run record (pre-flight checks + advisory-locked INSERT).
+      // Does NOT dispatch — tokens, secrets, and runner dispatch are deferred.
+      const result = await createZeroRunRecord({
         userId: authCtx.userId,
         prompt: body.prompt,
         agentId: body.agentId,
@@ -123,6 +127,18 @@ const router = tsr.router(chatMessagesContract, {
       // Associate run to thread
       await addRunToThread(threadId, result.runId, authCtx.userId);
 
+      // Defer the heavy dispatch pipeline (token generation, secret resolution,
+      // OAuth refresh, storage manifest, runner dispatch) to after the response
+      // is flushed. Failures are recorded via markRunFailed() inside dispatchZeroRun().
+      after(() => {
+        return dispatchZeroRun(result).catch((err: unknown) => {
+          log.error("Deferred dispatch failed", {
+            runId: result.runId,
+            err,
+          });
+        });
+      });
+
       return {
         status: 201 as const,
         body: {
@@ -133,18 +149,6 @@ const router = tsr.router(chatMessagesContract, {
         },
       };
     } catch (error) {
-      // Dispatch errors with a runId: return partial result with threadId
-      if (isRunDispatchError(error) && error.runId && threadId) {
-        return {
-          status: 201 as const,
-          body: {
-            runId: error.runId,
-            threadId,
-            status: "failed" as const,
-          },
-        };
-      }
-
       if (isApiError(error)) {
         const status = error.code === "UNAUTHORIZED" ? 404 : error.statusCode;
         const code = error.code === "UNAUTHORIZED" ? "NOT_FOUND" : error.code;

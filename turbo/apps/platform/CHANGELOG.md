@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.179.0](https://github.com/vm0-ai/vm0/compare/app-v0.178.3...app-v0.179.0) (2026-04-02)
+
+
+### Features
+
+* add auth.base url rewriting for webhook-url firewall connectors ([#7618](https://github.com/vm0-ai/vm0/issues/7618)) ([55585ac](https://github.com/vm0-ai/vm0/commit/55585ac37db6938508ca957f83725389157c55da))
+
+
+### Bug Fixes
+
+* do not highlight agents tab on chat routes ([#7669](https://github.com/vm0-ai/vm0/issues/7669)) ([5314708](https://github.com/vm0-ai/vm0/commit/5314708d46b286820a67375e458d2a6fc2e9df68))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.142.0
+
 ## [0.178.3](https://github.com/vm0-ai/vm0/compare/app-v0.178.2...app-v0.178.3) (2026-04-02)
 
 

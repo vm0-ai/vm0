@@ -73,7 +73,7 @@ Examples:
         );
 
         const header = [
-          "RUN ID".padEnd(10),
+          "RUN ID".padEnd(38),
           "AGENT".padEnd(nameCol),
           "STATUS".padEnd(statusCol),
           "CREATED",
@@ -81,10 +81,10 @@ Examples:
         console.log(chalk.dim(header));
 
         for (const entry of result.data) {
-          const shortId = entry.id.slice(0, 8);
+          const runId = entry.id;
           const name = entry.displayName || entry.agentId || "-";
           const row = [
-            shortId.padEnd(10),
+            runId.padEnd(38),
             name.padEnd(nameCol),
             formatStatus(entry.status).padEnd(statusCol),
             formatTime(entry.createdAt),

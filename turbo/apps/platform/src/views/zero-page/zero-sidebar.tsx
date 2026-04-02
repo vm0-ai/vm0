@@ -136,13 +136,7 @@ interface ManageNavItem {
 const MANAGE_NAV = [
   {
     id: "agents",
-    activeKeys: [
-      "agents",
-      "agentDetail",
-      "agentChat",
-      "agentIdeas",
-      "agentPermissions",
-    ],
+    activeKeys: ["agents", "agentDetail", "agentPermissions"],
     pathname: "/agents",
     label: "Agents",
     icon: IconUsers as NavIcon,
@@ -1411,7 +1405,10 @@ export function ZeroSidebar() {
           </div>
         </div>
 
-        <nav className="flex-1 flex flex-col min-h-0 overflow-hidden p-2 pt-1">
+        <nav
+          aria-label="Sidebar"
+          className="flex-1 flex flex-col min-h-0 overflow-hidden p-2 pt-1"
+        >
           {/* Manage section */}
           <div className="shrink-0">
             <div className="flex h-8 items-center pl-2 pr-0">
@@ -1438,6 +1435,7 @@ export function ZeroSidebar() {
                         e.preventDefault();
                         onSelect(id);
                       }}
+                      aria-current={isActive ? "page" : undefined}
                       className={`flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors duration-200 ${
                         isActive
                           ? "bg-gray-200 text-gray-900 font-medium"

@@ -1,5 +1,31 @@
 # Changelog
 
+## [12.186.1](https://github.com/vm0-ai/vm0/compare/web-v12.186.0...web-v12.186.1) (2026-04-02)
+
+
+### Refactoring
+
+* extract zero-agents ops into zero-compose-service ([#7682](https://github.com/vm0-ai/vm0/issues/7682)) ([6e34500](https://github.com/vm0-ai/vm0/commit/6e345001fc18094f95065dae81abce74693bdc8d)), closes [#7678](https://github.com/vm0-ai/vm0/issues/7678)
+
+
+### Performance Improvements
+
+* **web:** defer dispatch pipeline in chat messages route via after() ([#7677](https://github.com/vm0-ai/vm0/issues/7677)) ([de5cbbd](https://github.com/vm0-ai/vm0/commit/de5cbbdd7e3a34985bd394db0c2f4fd7e86ddadf))
+
+## [12.186.0](https://github.com/vm0-ai/vm0/compare/web-v12.185.0...web-v12.186.0) (2026-04-02)
+
+
+### Features
+
+* add auth.base url rewriting for webhook-url firewall connectors ([#7618](https://github.com/vm0-ai/vm0/issues/7618)) ([55585ac](https://github.com/vm0-ai/vm0/commit/55585ac37db6938508ca957f83725389157c55da))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.142.0
+
 ## [12.185.0](https://github.com/vm0-ai/vm0/compare/web-v12.184.2...web-v12.185.0) (2026-04-02)
 
 

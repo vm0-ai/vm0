@@ -1,9 +1,8 @@
-import { eq, and, desc, inArray } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import {
   agentComposes,
   agentComposeVersions,
 } from "../../db/schema/agent-compose";
-import { zeroAgents } from "../../db/schema/zero-agent";
 import { storages } from "../../db/schema/storage";
 import { agentRuns } from "../../db/schema/agent-run";
 import { getInstructionsStorageName } from "@vm0/core";
@@ -11,7 +10,7 @@ import { notFound, conflict } from "../errors";
 import { canAccessCompose } from "../agent/compose-access";
 import { listS3Objects, deleteS3Objects } from "../s3/s3-client";
 import type { AgentComposeYaml } from "../../types/agent-compose";
-import type { ComposeResponse, ComposeListItem } from "@vm0/core";
+import type { ComposeResponse } from "@vm0/core";
 
 /**
  * Get a compose's orgId by compose ID.
@@ -205,99 +204,4 @@ export async function deleteCompose(
   }
 
   await deleteComposeById(composeId, compose.name, compose.orgId);
-}
-
-/**
- * Update compose metadata (displayName, description, sound).
- * Verifies compose exists and caller has access.
- *
- * Throws notFound if compose doesn't exist or caller lacks access.
- */
-export async function updateComposeMetadata(
-  composeId: string,
-  userId: string,
-  orgId: string,
-  body: {
-    displayName?: string | null;
-    description?: string | null;
-    sound?: string | null;
-  },
-): Promise<void> {
-  const db = globalThis.services.db;
-
-  const [compose] = await db
-    .select({
-      id: agentComposes.id,
-      userId: agentComposes.userId,
-      orgId: agentComposes.orgId,
-      name: agentComposes.name,
-    })
-    .from(agentComposes)
-    .where(eq(agentComposes.id, composeId))
-    .limit(1);
-
-  if (!compose || !canAccessCompose(userId, orgId, compose)) {
-    throw notFound("Agent compose not found");
-  }
-
-  await db
-    .insert(zeroAgents)
-    .values({
-      id: compose.id,
-      orgId: compose.orgId,
-      owner: compose.userId,
-      name: compose.name,
-      displayName: body.displayName ?? null,
-      description: body.description ?? null,
-      sound: body.sound ?? null,
-    })
-    .onConflictDoUpdate({
-      target: [zeroAgents.orgId, zeroAgents.name],
-      set: {
-        ...(body.displayName !== undefined && {
-          displayName: body.displayName,
-        }),
-        ...(body.description !== undefined && {
-          description: body.description,
-        }),
-        ...(body.sound !== undefined && { sound: body.sound }),
-        updatedAt: new Date(),
-      },
-    });
-}
-
-/**
- * List all composes for an org with metadata from zero_agents.
- */
-export async function listComposes(
-  orgId: string,
-): Promise<{ composes: ComposeListItem[] }> {
-  const ownComposes = await globalThis.services.db
-    .select({
-      id: agentComposes.id,
-      name: agentComposes.name,
-      headVersionId: agentComposes.headVersionId,
-      updatedAt: agentComposes.updatedAt,
-      displayName: zeroAgents.displayName,
-      description: zeroAgents.description,
-      sound: zeroAgents.sound,
-    })
-    .from(agentComposes)
-    .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
-    .where(eq(agentComposes.orgId, orgId))
-    .orderBy(desc(agentComposes.updatedAt));
-
-  const composes = ownComposes.map((c) => {
-    return {
-      id: c.id,
-      name: c.name,
-      displayName: c.displayName ?? null,
-      description: c.description ?? null,
-      sound: c.sound ?? null,
-      headVersionId: c.headVersionId,
-      updatedAt: c.updatedAt.toISOString(),
-    };
-  });
-
-  return { composes };
 }

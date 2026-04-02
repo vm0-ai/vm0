@@ -1,5 +1,13 @@
 # Changelog
 
+## [8.142.0](https://github.com/vm0-ai/vm0/compare/core-v8.141.0...core-v8.142.0) (2026-04-02)
+
+
+### Features
+
+* add auth.base url rewriting for webhook-url firewall connectors ([#7618](https://github.com/vm0-ai/vm0/issues/7618)) ([55585ac](https://github.com/vm0-ai/vm0/commit/55585ac37db6938508ca957f83725389157c55da))
+* add slack-webhook firewall with auth.base url rewriting ([#7668](https://github.com/vm0-ai/vm0/issues/7668)) ([a7ebc1a](https://github.com/vm0-ai/vm0/commit/a7ebc1a9ecf1f11144b2861a3492df234536f4e3))
+
 ## [8.141.0](https://github.com/vm0-ai/vm0/compare/core-v8.140.1...core-v8.141.0) (2026-04-02)
 
 

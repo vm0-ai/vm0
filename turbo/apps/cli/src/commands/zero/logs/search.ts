@@ -36,9 +36,8 @@ function formatRunHeader(
   agentName: string,
   timestamp: string,
 ): string {
-  const shortId = runId.slice(0, 8);
   const time = new Date(timestamp).toISOString().replace(/\.\d{3}Z$/, "Z");
-  return `── Run ${shortId} (${agentName}, ${time}) ──────────`;
+  return `── Run ${runId} (${agentName}, ${time}) ──────────`;
 }
 
 function parseContextOptions(options: SearchOptions): {

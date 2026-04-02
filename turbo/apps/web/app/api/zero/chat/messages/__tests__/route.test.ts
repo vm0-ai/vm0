@@ -209,6 +209,9 @@ describe("POST /api/zero/chat/messages", () => {
       expect(response.status).toBe(201);
       const data = await response.json();
 
+      // Flush deferred after() callbacks (callback registration is deferred)
+      await context.mocks.flushAfter();
+
       // Verify callback registration using test helper
       const callbacks = await findTestCallbacksByRunId(data.runId);
       expect(callbacks.length).toBeGreaterThan(0);

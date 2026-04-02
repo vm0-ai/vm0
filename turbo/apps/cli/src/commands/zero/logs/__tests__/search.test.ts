@@ -71,7 +71,7 @@ describe("zero logs search command", () => {
     await searchCommand.parseAsync(["node", "cli", "OOM"]);
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(logCalls).toContain("abc12345");
+    expect(logCalls).toContain("abc12345-1234-1234-1234-123456789abc");
     expect(logCalls).toContain("my-agent");
     expect(logCalls).toContain("OOM killed");
   });

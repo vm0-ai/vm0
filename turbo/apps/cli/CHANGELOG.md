@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.97.0](https://github.com/vm0-ai/vm0/compare/cli-v9.96.1...cli-v9.97.0) (2026-04-02)
+
+
+### Features
+
+* add auth.base url rewriting for webhook-url firewall connectors ([#7618](https://github.com/vm0-ai/vm0/issues/7618)) ([55585ac](https://github.com/vm0-ai/vm0/commit/55585ac37db6938508ca957f83725389157c55da))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.142.0
+
 ## [9.96.1](https://github.com/vm0-ai/vm0/compare/cli-v9.96.0...cli-v9.96.1) (2026-04-02)
 
 

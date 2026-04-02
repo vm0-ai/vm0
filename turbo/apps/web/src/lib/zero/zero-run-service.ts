@@ -5,6 +5,7 @@ import {
   type TriggerSource,
   type FirewallPolicies,
   type ConnectorType,
+  type RunStatus,
   connectorTypeSchema,
 } from "@vm0/core";
 import {
@@ -16,6 +17,7 @@ import {
   registerCallbacks,
   type CreateRunResult,
   type CreateRunParams,
+  type CreateRunRecordResult,
 } from "../run";
 import {
   enqueueRun,
@@ -190,19 +192,32 @@ async function checkModelProviderConfigured(
 }
 
 /**
- * Create an agent run with zero-layer defaults.
- *
- * agentId is the composeId (single UUID). Fetches agent metadata from
- * zero_agents, then injects agent identity, memoryName, artifactName,
- * and disallowedTools so that every zero trigger path gets consistent
- * identity, memory persistence, artifact storage, and cron-tool restrictions.
- *
- * Pre-flight checks (credits, model provider) run before createRunRecord()
- * so they apply to both direct and queued paths.
+ * Result of createZeroRunRecord() — contains everything needed by dispatchZeroRun().
+ * When the run is enqueued (concurrency limit), dispatch fields are undefined.
  */
-export async function createZeroRun(
+export interface ZeroRunRecordResult {
+  runId: string;
+  status: RunStatus;
+  createdAt: Date;
+  /** Undefined when run was enqueued (concurrency limit) — dispatch already deferred via queue */
+  record?: CreateRunRecordResult;
+  runParams?: CreateRunParams;
+  orgId?: string;
+  zeroParams?: ZeroRunParams;
+}
+
+/**
+ * Create a zero run record with pre-flight checks but without dispatching.
+ *
+ * Handles agent metadata, compose resolution, org data, pre-flight checks
+ * (credits, model provider), and advisory-locked run record creation.
+ * Does NOT generate tokens, build execution context, or dispatch to runner.
+ *
+ * Use dispatchZeroRun() to complete the dispatch pipeline after this returns.
+ */
+export async function createZeroRunRecord(
   params: ZeroRunParams,
-): Promise<CreateRunResult> {
+): Promise<ZeroRunRecordResult> {
   const db = globalThis.services.db;
 
   // Fetch agent metadata (displayName, description, sound, firewallPolicies, orgId)
@@ -337,14 +352,43 @@ export async function createZeroRun(
       // Persist zero-layer metadata
       await persistZeroRunMetadata(queueResult.runId, params);
 
-      return queueResult;
+      return {
+        runId: queueResult.runId,
+        status: queueResult.status,
+        createdAt: queueResult.createdAt,
+      };
     }
     throw error;
   }
 
-  // Steps 5-8 run after createRunRecord — wrap in try-catch so that
-  // failures (e.g. session framework mismatch, provider resolution) are
-  // recorded against the run and the route handler can return 201 + failed.
+  return {
+    runId: record.run.id,
+    status: "pending",
+    createdAt: record.run.createdAt,
+    record,
+    runParams,
+    orgId: resolved.orgId,
+    zeroParams: params,
+  };
+}
+
+/**
+ * Dispatch a zero run after its record has been created.
+ *
+ * Handles callbacks, token generation, execution context building,
+ * runner dispatch, and zero-layer metadata persistence.
+ * On failure: marks run as failed and drains the org queue.
+ *
+ * Safe to call from after() — errors are handled internally.
+ */
+export async function dispatchZeroRun(
+  result: ZeroRunRecordResult,
+): Promise<{ status: RunStatus; sandboxId?: string } | undefined> {
+  const { record, runParams, orgId, zeroParams } = result;
+
+  // Nothing to dispatch if run was enqueued (concurrency limit)
+  if (!record || !runParams || !orgId || !zeroParams) return undefined;
+
   try {
     // 5. Register callbacks early so they persist even if context building fails
     if (runParams.callbacks && runParams.callbacks.length > 0) {
@@ -353,8 +397,8 @@ export async function createZeroRun(
 
     // 6. Generate ZERO_TOKEN + sandbox token (now we have runId)
     const [zeroToken, sandboxToken] = await Promise.all([
-      generateZeroToken(params.userId, record.run.id, resolved.orgId),
-      generateSandboxToken(params.userId, record.run.id),
+      generateZeroToken(zeroParams.userId, record.run.id, orgId),
+      generateSandboxToken(zeroParams.userId, record.run.id),
     ]);
     const tokenTime = Date.now();
 
@@ -372,7 +416,7 @@ export async function createZeroRun(
     });
 
     // 8. Dispatch with pre-built context (callbacks already registered above)
-    const result = await buildAndDispatchRun({
+    const dispatchResult = await buildAndDispatchRun({
       runId: record.run.id,
       context: contextResult.context,
       timings: {
@@ -386,23 +430,51 @@ export async function createZeroRun(
     });
 
     // 9. Persist zero-layer metadata (triggerSource + schedule + trigger agent + model fields)
-    await persistZeroRunMetadata(record.run.id, params, contextResult);
+    await persistZeroRunMetadata(record.run.id, zeroParams, contextResult);
 
-    return {
-      runId: record.run.id,
-      status: result.status,
-      sandboxId: result.sandboxId,
-      createdAt: record.run.createdAt,
-    };
+    return dispatchResult;
   } catch (error) {
     await markRunFailed(record.run.id, error);
-    await drainOrgQueue(resolved.orgId, dispatchQueuedZeroRun).catch(
-      (drainErr) => {
-        log.error("Failed to drain org queue after run failure", { drainErr });
-      },
-    );
+    await drainOrgQueue(orgId, dispatchQueuedZeroRun).catch((drainErr) => {
+      log.error("Failed to drain org queue after run failure", { drainErr });
+    });
     throw error;
   }
+}
+
+/**
+ * Create an agent run with zero-layer defaults.
+ *
+ * Composition of createZeroRunRecord() + dispatchZeroRun(). Performs the
+ * full synchronous pipeline: pre-flight checks, record creation, token
+ * generation, context building, and runner dispatch.
+ *
+ * All trigger paths except chat messages use this function directly.
+ * The chat messages route uses createZeroRunRecord() + after(dispatchZeroRun)
+ * to defer the dispatch pipeline and return a response faster.
+ */
+export async function createZeroRun(
+  params: ZeroRunParams,
+): Promise<CreateRunResult> {
+  const result = await createZeroRunRecord(params);
+
+  // Enqueued runs (concurrency limit) — no dispatch needed
+  if (!result.record) {
+    return {
+      runId: result.runId,
+      status: result.status,
+      createdAt: result.createdAt,
+    };
+  }
+
+  const dispatchResult = await dispatchZeroRun(result);
+
+  return {
+    runId: result.runId,
+    status: dispatchResult?.status ?? "pending",
+    sandboxId: dispatchResult?.sandboxId,
+    createdAt: result.createdAt,
+  };
 }
 
 /**
