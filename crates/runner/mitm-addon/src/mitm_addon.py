@@ -529,6 +529,33 @@ HOP_BY_HOP = frozenset(
 )
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Disable automatic redirect following to prevent SSRF via open redirects."""
+
+    def redirect_request(
+        self,
+        req: urllib.request.Request,
+        fp: object,
+        code: int,
+        msg: str,
+        headers: object,
+        newurl: str,
+    ) -> None:
+        return None
+
+
+_opener = urllib.request.build_opener(_NoRedirect)
+
+
+def _filter_response_headers(raw: dict[str, str]) -> dict[str, str]:
+    """Strip hop-by-hop headers from an upstream response.
+
+    The response body is fully read (not chunked/compressed from our
+    perspective), so headers like transfer-encoding must not be forwarded.
+    """
+    return {k: v for k, v in raw.items() if k.lower() not in HOP_BY_HOP}
+
+
 def _forward_request_sync(
     url: str,
     method: str,
@@ -540,6 +567,9 @@ def _forward_request_sync(
     Used for auth.base URL rewriting: the addon makes the upstream request
     itself instead of relying on mitmproxy's connection (which would go to
     the placeholder IP in eager mode).
+
+    Security: redirects are disabled (_NoRedirect) to prevent SSRF via open
+    redirects, and only https/http schemes are allowed.
     """
     parsed = urllib.parse.urlparse(url)
     if parsed.scheme not in ("https", "http"):
@@ -550,10 +580,10 @@ def _forward_request_sync(
             continue
         req.add_header(k, v)
     try:
-        resp = urllib.request.urlopen(req, timeout=30)
-        return resp.status, resp.read(), dict(resp.headers)
+        resp = _opener.open(req, timeout=30)
+        return resp.status, resp.read(), _filter_response_headers(dict(resp.headers))
     except urllib.error.HTTPError as e:
-        return e.code, e.read(), dict(e.headers)
+        return e.code, e.read(), _filter_response_headers(dict(e.headers))
 
 
 async def forward_request(
@@ -749,7 +779,7 @@ async def handle_firewall_request(
                 json.dumps(
                     {
                         "error": "url_rewrite_forward_failed",
-                        "message": str(e),
+                        "message": "Failed to forward request to upstream",
                         "firewall": match_info.get("ref", ""),
                     }
                 ).encode(),

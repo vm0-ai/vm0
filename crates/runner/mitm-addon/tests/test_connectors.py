@@ -4,6 +4,8 @@ import json
 import time
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
 import mitm_addon
 from mitm_addon import FirewallAllow, FirewallBlock, match_base_url, match_host, match_path_prefix
 
@@ -1271,6 +1273,47 @@ class TestFetchFirewallHeaders:
         assert result["base"] == "https://discord.com/api/webhooks/123/abc"
         body = json.loads(mock_req_cls.call_args[1]["data"])
         assert body["authBase"] == "${{ secrets.DISCORD_WEBHOOK_URL }}"
+
+
+# =========================================================================
+# _forward_request_sync security
+# =========================================================================
+
+
+class TestForwardRequestSecurity:
+    """Security tests for _forward_request_sync."""
+
+    def test_rejects_file_scheme(self):
+        with pytest.raises(ValueError, match="Unsupported URL scheme"):
+            mitm_addon._forward_request_sync("file:///etc/passwd", "GET", {}, None)
+
+    def test_rejects_ftp_scheme(self):
+        with pytest.raises(ValueError, match="Unsupported URL scheme"):
+            mitm_addon._forward_request_sync("ftp://evil.com/file", "GET", {}, None)
+
+    def test_rejects_empty_scheme(self):
+        with pytest.raises(ValueError, match="Unsupported URL scheme"):
+            mitm_addon._forward_request_sync("//no-scheme.com/path", "GET", {}, None)
+
+    def test_filters_hop_by_hop_from_response(self):
+        filtered = mitm_addon._filter_response_headers(
+            {
+                "Content-Type": "application/json",
+                "Transfer-Encoding": "chunked",
+                "Connection": "keep-alive",
+                "X-Custom": "value",
+            }
+        )
+        assert "Content-Type" in filtered
+        assert "X-Custom" in filtered
+        assert "Transfer-Encoding" not in filtered
+        assert "Connection" not in filtered
+
+    def test_no_redirect_following(self):
+        """_NoRedirect handler returns None to stop redirect chain."""
+        handler = mitm_addon._NoRedirect()
+        result = handler.redirect_request(MagicMock(), None, 302, "Found", {}, "https://evil.com")
+        assert result is None
 
 
 # =========================================================================
