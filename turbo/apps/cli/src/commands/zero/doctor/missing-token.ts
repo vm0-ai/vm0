@@ -66,8 +66,8 @@ Notes:
         enabledTypes !== null && enabledTypes.includes(connectorType);
 
       if (!isConnected) {
-        // Connector not connected at all — direct to connectors page
-        const url = `${platformUrl.origin}/connectors`;
+        // Connector not connected — direct to the directed connect page
+        const url = `${platformUrl.origin}/connectors/${connectorType}/connect`;
         console.log(
           `The ${label} connector is not connected. Ask the user to connect it at: [Connect ${label}](${url})`,
         );

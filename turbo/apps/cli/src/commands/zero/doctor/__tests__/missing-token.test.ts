@@ -99,7 +99,7 @@ describe("zero doctor missing-token command", () => {
       expect(logCalls).toContain("Sandbox env: not present");
       expect(logCalls).toContain("not connected");
       expect(logCalls).toContain(
-        "[Connect GitHub](https://app.vm0.ai/connectors)",
+        "[Connect GitHub](https://app.vm0.ai/connectors/github/connect)",
       );
     });
   });
@@ -249,7 +249,9 @@ describe("zero doctor missing-token command", () => {
       await missingTokenCommand.parseAsync(["node", "cli", "GH_TOKEN"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("https://app.vm0.ai/connectors");
+      expect(logCalls).toContain(
+        "https://app.vm0.ai/connectors/github/connect",
+      );
     });
 
     it("should transform tunnel -www suffix to -app", async () => {
@@ -278,7 +280,7 @@ describe("zero doctor missing-token command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain(
-        "https://tunnel-yuma-vm0-app.vm7.ai/connectors",
+        "https://tunnel-yuma-vm0-app.vm7.ai/connectors/github/connect",
       );
     });
 
@@ -298,7 +300,9 @@ describe("zero doctor missing-token command", () => {
       await missingTokenCommand.parseAsync(["node", "cli", "GH_TOKEN"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("https://app.vm0.ai/connectors");
+      expect(logCalls).toContain(
+        "https://app.vm0.ai/connectors/github/connect",
+      );
     });
 
     it("should use custom VM0_API_URL with app prefix", async () => {
@@ -326,7 +330,9 @@ describe("zero doctor missing-token command", () => {
       await missingTokenCommand.parseAsync(["node", "cli", "GH_TOKEN"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("https://app.custom.example.com/connectors");
+      expect(logCalls).toContain(
+        "https://app.custom.example.com/connectors/github/connect",
+      );
     });
   });
 
@@ -351,7 +357,7 @@ describe("zero doctor missing-token command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("not connected");
-      expect(logCalls).toContain("/connectors");
+      expect(logCalls).toContain("/connectors/github/connect");
     });
   });
 

@@ -16,6 +16,7 @@ export const ROUTES = {
   works: "/works",
   ideas: "/ideas",
   connectors: "/connectors",
+  directedConnect: "/connectors/:type/connect",
   settings: "/settings",
   settingsUsage: "/settings/usage",
   settingsSlack: "/settings/slack",
