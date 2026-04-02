@@ -367,6 +367,7 @@ jobs:
           HOST: ${{ needs.detect.outputs.metal-host }}
           JOB_REF: ${{ needs.detect.outputs.metal-job-ref }}
         run: |
+          set -o pipefail
           REMOTE="${METAL_USER}@${HOST}"
           # shellcheck disable=SC2088
           BIN_DIR="/var/lib/vm0-runner/bin/${JOB_REF}"
