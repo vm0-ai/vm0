@@ -6,10 +6,7 @@ import { initServices } from "../../../../../src/lib/init-services";
 import { cliTokens } from "../../../../../src/db/schema/cli-tokens";
 import { orgCache } from "../../../../../src/db/schema/org-cache";
 import { orgMembersCache } from "../../../../../src/db/schema/org-members-cache";
-import {
-  getOrgBySlug,
-  getOrgData,
-} from "../../../../../src/lib/org/org-cache-service";
+import { getOrgData } from "../../../../../src/lib/org/org-cache-service";
 import { generateCliToken } from "../../../../../src/lib/auth/sandbox-token";
 import {
   resolveTestUserId,
@@ -53,7 +50,7 @@ function isTestTokenAllowed(request: Request): boolean {
  *
  * Throws if the user has no Clerk org with a matching org_cache entry.
  */
-async function ensureTestOrg(userId: string): Promise<{ slug: string }> {
+async function ensureTestOrg(userId: string): Promise<{ orgId: string }> {
   // Query Clerk API directly for user's org memberships
   const client = await clerkClient();
   const memberships = await client.users.getOrganizationMembershipList({
@@ -67,8 +64,8 @@ async function ensureTestOrg(userId: string): Promise<{ slug: string }> {
   // Find first org: check org_cache first, populate from Clerk if missing
   for (const membership of memberships.data) {
     const orgId = membership.organization.id;
-    let [cached] = await globalThis.services.db
-      .select({ slug: orgCache.slug })
+    const [cached] = await globalThis.services.db
+      .select({ orgId: orgCache.orgId })
       .from(orgCache)
       .where(eq(orgCache.orgId, orgId))
       .limit(1);
@@ -79,8 +76,7 @@ async function ensureTestOrg(userId: string): Promise<{ slug: string }> {
       log.info(
         `org ${orgId} not in org_cache, populating from Clerk for user ${userId}`,
       );
-      const orgData = await getOrgData(orgId);
-      cached = { slug: orgData.slug };
+      await getOrgData(orgId);
     }
 
     const role = membership.role === "org:admin" ? "admin" : "member";
@@ -99,7 +95,7 @@ async function ensureTestOrg(userId: string): Promise<{ slug: string }> {
       .update(orgCache)
       .set({ cachedAt: farFuture })
       .where(eq(orgCache.orgId, orgId));
-    return { slug: cached.slug };
+    return { orgId };
   }
 
   throw new Error(`Test user ${userId} has no organization in org_cache`);
@@ -124,17 +120,7 @@ export async function POST(request: Request) {
   const userId = await resolveTestUserId(email);
 
   // Ensure user has an org in org_cache (provisioned by CI)
-  const { slug: orgSlug } = await ensureTestOrg(userId);
-
-  // Resolve orgId from slug (ensureTestOrg creates org_cache entry, so this is a cache hit)
-  const orgData = await getOrgBySlug(orgSlug);
-  if (!orgData) {
-    return NextResponse.json(
-      { error: `Organization not found for slug: ${orgSlug}` },
-      { status: 500 },
-    );
-  }
-  const orgId = orgData.orgId;
+  const { orgId } = await ensureTestOrg(userId);
 
   // Generate CLI JWT with tokenId for revocation tracking
   const tokenId = crypto.randomUUID();
@@ -156,6 +142,5 @@ export async function POST(request: Request) {
     token_type: "Bearer",
     expires_in: 90 * 24 * 60 * 60,
     user_id: userId,
-    org_slug: orgSlug,
   });
 }

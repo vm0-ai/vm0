@@ -1,63 +1,37 @@
 import { command, computed, state } from "ccstate";
-import { pathname$, detachedNavigateTo$, pathParams$ } from "../route.ts";
-import type {
-  ZeroNavId,
-  ZeroAccountAction,
-} from "../../views/zero-page/zero-sidebar.tsx";
+import { detachedNavigateTo$, pathParams$ } from "../route.ts";
+import { ROUTES, type RouteKey } from "../route-paths.ts";
+import { activeRoute$ } from "../active-route.ts";
 
-function isValidTab(tab: string): tab is ZeroNavId {
-  return (
-    tab === "chat" ||
-    tab === "schedule" ||
-    tab === "team" ||
-    tab === "activity" ||
-    tab === "works" ||
-    tab === "usage" ||
-    tab === "preferences" ||
-    tab === "queue" ||
-    tab === "connectors"
-  );
-}
+/** Re-export activeRoute$ for consumers that used to import zeroActiveId$ */
+export { activeRoute$ } from "../active-route.ts";
 
 /**
- * Active zero nav id, derived from the URL path `/:tab`.
- * `/`, `/chat`, `/chat/:chatThreadId`, and `/talk/:agentId`
- * all resolve to "chat".
- * Unknown paths resolve to "not-found".
- */
-export const zeroActiveId$ = computed((get): ZeroNavId => {
-  const path = get(pathname$);
-  const segment = path.split("/")[1] ?? "";
-  if (!segment || segment === "talk") {
-    return "chat";
-  }
-  if (isValidTab(segment)) {
-    return segment;
-  }
-  return "not-found";
-});
-
-/**
- * Chat thread ID extracted from `/chat/:chatThreadId`.
- * Returns null when on `/`, `/chat`, or `/talk/:agentId`.
+ * Chat thread ID extracted from `/chats/:id`.
+ * Returns null when on `/`, or `/agents/:id/chat`.
  */
 export const chatThreadId$ = computed((get): string | null => {
   const params = get(pathParams$);
-  const chatThreadId = params?.chatThreadId;
-  return typeof chatThreadId === "string" ? chatThreadId : null;
+  const id = params?.id;
+  const route = get(activeRoute$);
+  // Only return the id when we're on the chat route
+  if (route !== "chat") {
+    return null;
+  }
+  return typeof id === "string" ? id : null;
 });
 
 /**
- * Navigate to a specific chat session — `/chat/:chatThreadId`.
+ * Navigate to a specific chat session — `/chats/:id`.
  *
  * Always performs a full route navigation so that `loadRoute$` fires and
- * the correct page setup runs (e.g. when navigating from /team).
+ * the correct page setup runs (e.g. when navigating from /agents).
  * `loadInitialData$` guards heavy work behind `initialDataLoaded$`, so
  * re-entry from an already-loaded zero page is cheap.
  */
 export const navigateToChat$ = command(({ set }, chatThreadId: string) => {
-  set(detachedNavigateTo$, "/chat/:chatThreadId", {
-    pathParams: { chatThreadId },
+  set(detachedNavigateTo$, "/chats/:id", {
+    pathParams: { id: chatThreadId },
   });
 });
 
@@ -67,8 +41,8 @@ export const navigateToChat$ = command(({ set }, chatThreadId: string) => {
 
 /**
  * In-memory state tracking which agent the sidebar displays.
- * Written by page setup commands when entering /talk/:agentId or /chat/:chatThreadId.
- * Persists across navigations to non-chat pages (e.g. /activity) so the sidebar
+ * Written by page setup commands when entering /agents/:id/chat or /chats/:id.
+ * Persists across navigations to non-chat pages (e.g. /activities) so the sidebar
  * "remembers" the last visited agent.
  * Null means default agent.
  */
@@ -122,19 +96,53 @@ export const initSidebarCollapsed$ = command(({ set }) => {
 // Shell commands — nav select, account action, send from demo
 // ---------------------------------------------------------------------------
 
+/** Nav item identifiers used by the sidebar. */
+export type SidebarNavId =
+  | "chat"
+  | "agents"
+  | "connectors"
+  | "schedules"
+  | "activities"
+  | "works"
+  | "settings"
+  | "settingsUsage"
+  | "queues";
+
+/** Check if a route key corresponds to the chat section. */
+export function isChatRoute(key: RouteKey | null): boolean {
+  return (
+    key === "home" ||
+    key === "agentChat" ||
+    key === "agentIdeas" ||
+    key === "chat"
+  );
+}
+
 /** Handle nav tab selection: navigate to tab and close about page. */
-export const handleZeroNavSelect$ = command(({ set }, id: ZeroNavId) => {
+export const handleZeroNavSelect$ = command(({ set }, id: SidebarNavId) => {
   if (id === "chat") {
     set(detachedNavigateTo$, "/");
-  } else if (id === "team") {
-    set(detachedNavigateTo$, "/team");
+  } else if (id === "agents") {
+    set(detachedNavigateTo$, ROUTES.agents);
   } else if (id === "connectors") {
-    set(detachedNavigateTo$, "/connectors");
-  } else {
-    set(detachedNavigateTo$, "/:tab", { pathParams: { tab: id } });
+    set(detachedNavigateTo$, ROUTES.connectors);
+  } else if (id === "schedules") {
+    set(detachedNavigateTo$, ROUTES.schedules);
+  } else if (id === "activities") {
+    set(detachedNavigateTo$, ROUTES.activities);
+  } else if (id === "works") {
+    set(detachedNavigateTo$, ROUTES.works);
+  } else if (id === "settings") {
+    set(detachedNavigateTo$, ROUTES.settings);
+  } else if (id === "settingsUsage") {
+    set(detachedNavigateTo$, ROUTES.settingsUsage);
+  } else if (id === "queues") {
+    set(detachedNavigateTo$, ROUTES.queues);
   }
   set(internalShowAboutPage$, false);
 });
+
+export type ZeroAccountAction = "preferences" | "manage" | "signout";
 
 /** Handle account menu action. */
 export const handleZeroAccountAction$ = command(
@@ -143,7 +151,7 @@ export const handleZeroAccountAction$ = command(
       return;
     }
     if (action === "preferences") {
-      set(detachedNavigateTo$, "/:tab", { pathParams: { tab: "preferences" } });
+      set(detachedNavigateTo$, ROUTES.settings);
     }
   },
 );

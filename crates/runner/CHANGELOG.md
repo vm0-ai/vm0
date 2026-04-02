@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.56.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.56.2...runner-rs-v0.56.3) (2026-04-02)
+
+## [0.56.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.56.1...runner-rs-v0.56.2) (2026-04-01)
+
+
+### Bug Fixes
+
+* **nbd-cow:** guard disconnect against device index recycling by other runners ([#7581](https://github.com/vm0-ai/vm0/issues/7581)) ([ed9e572](https://github.com/vm0-ai/vm0/commit/ed9e572a80514236aada53eb68b2e9ad069ec7d2))
+
+## [0.56.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.56.0...runner-rs-v0.56.1) (2026-04-01)
+
+
+### Bug Fixes
+
+* **nbd-cow:** advertise flush/trim flags and harden i/o paths ([#7539](https://github.com/vm0-ai/vm0/issues/7539)) ([6410e3e](https://github.com/vm0-ai/vm0/commit/6410e3ebc7652ba6f2da8edf14928346e70b7fb2))
+
+
+### Refactoring
+
+* rename experimental firewalls to firewalls ([#7553](https://github.com/vm0-ai/vm0/issues/7553)) ([e3c35a9](https://github.com/vm0-ai/vm0/commit/e3c35a95bd0dbfd1d68aef910db6089e38d6a0bb))
+
 ## [0.56.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.55.0...runner-rs-v0.56.0) (2026-04-01)
 
 

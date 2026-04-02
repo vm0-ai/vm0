@@ -52,8 +52,8 @@ async function setupRoutes(pathname: string) {
     initRoutes$,
     [
       { path: "/", setup: noop$ },
-      { path: "/talk/:agentId", setup: noop$ },
-      { path: "/chat/:chatThreadId", setup: noop$ },
+      { path: "/agents/:id/chat", setup: noop$ },
+      { path: "/chats/:id", setup: noop$ },
       { path: "{/*path}", setup: noop$ },
     ],
     context.signal,
@@ -68,9 +68,9 @@ describe("zeroChatAgentId$", () => {
     expect(agentId).toBeNull();
   });
 
-  it("should return agentId from /talk/:agentId (non-default)", async () => {
+  it("should return agentId from /agents/:id/chat (non-default)", async () => {
     mockOnboardingStatus("c0000000-0000-4000-a000-000000000001");
-    await setupRoutes("/talk/sub-agent-id");
+    await setupRoutes("/agents/sub-agent-id/chat");
 
     const agentId = await context.store.get(zeroChatAgentId$);
     expect(agentId).toBe("sub-agent-id");
@@ -78,25 +78,25 @@ describe("zeroChatAgentId$", () => {
 
   it("should return null for /talk/:defaultAgentId (default normalization)", async () => {
     mockOnboardingStatus("c0000000-0000-4000-a000-000000000001");
-    await setupRoutes("/talk/c0000000-0000-4000-a000-000000000001");
+    await setupRoutes("/agents/c0000000-0000-4000-a000-000000000001/chat");
 
     const agentId = await context.store.get(zeroChatAgentId$);
     expect(agentId).toBeNull();
   });
 
-  it("should return thread agentId from /chat/:chatThreadId (non-default)", async () => {
+  it("should return thread agentId from /chats/:id (non-default)", async () => {
     mockOnboardingStatus("c0000000-0000-4000-a000-000000000001");
     mockChatThread("thread-abc", "sub-agent-id");
-    await setupRoutes("/chat/thread-abc");
+    await setupRoutes("/chats/thread-abc");
 
     const agentId = await context.store.get(zeroChatAgentId$);
     expect(agentId).toBe("sub-agent-id");
   });
 
-  it("should return null when /chat/:chatThreadId has default agent", async () => {
+  it("should return null when /chats/:id has default agent", async () => {
     mockOnboardingStatus("c0000000-0000-4000-a000-000000000001");
     mockChatThread("thread-abc", "c0000000-0000-4000-a000-000000000001");
-    await setupRoutes("/chat/thread-abc");
+    await setupRoutes("/chats/thread-abc");
 
     const agentId = await context.store.get(zeroChatAgentId$);
     expect(agentId).toBeNull();

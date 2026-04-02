@@ -14,17 +14,14 @@ import {
   updateOrgTier,
 } from "../../../__tests__/api-test-helpers";
 import { reloadEnv } from "../../../env";
-import {
-  createRun,
-  dispatchQueuedRun,
-  type CreateRunParams,
-} from "../run-service";
+import { startRun, type CreateRunParams } from "../run-service";
 import {
   enqueueRun,
   drainOrgQueue,
   drainStaleQueues,
   cleanupExpiredQueueEntries,
 } from "../run-queue-service";
+import { dispatchQueuedZeroRun } from "../../zero/zero-queue-service";
 
 const context = testContext();
 
@@ -87,29 +84,10 @@ describe("run-queue-service", () => {
     });
   });
 
-  describe("createRun with queue", () => {
-    it("should enqueue second run when concurrency limit hit", async () => {
-      vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
-      reloadEnv();
-
-      // First run succeeds normally
-      const run1 = await createRun(baseParams({ prompt: "Run 1" }));
-      expect(run1.status).toBe("pending");
-
-      // Second run gets queued
-      const run2 = await createRun(baseParams({ prompt: "Run 2" }));
-      expect(run2.status).toBe("queued");
-
-      // Third run also gets queued
-      const run3 = await createRun(baseParams({ prompt: "Run 3" }));
-      expect(run3.status).toBe("queued");
-    });
-  });
-
   describe("drainOrgQueue", () => {
     it("should be a no-op when queue is empty", async () => {
       // Should not throw
-      await drainOrgQueue(user.orgId, dispatchQueuedRun);
+      await drainOrgQueue(user.orgId, dispatchQueuedZeroRun);
     });
 
     it("should dequeue and execute the oldest entry", async () => {
@@ -117,15 +95,20 @@ describe("run-queue-service", () => {
       reloadEnv();
 
       // Create a running run and a queued run
-      await createRun(baseParams({ prompt: "Running" }));
-      const queued = await createRun(baseParams({ prompt: "Queued" }));
+      await startRun({
+        userId: user.userId,
+        agentComposeVersionId: versionId,
+        prompt: "Running",
+        orgTier: "free",
+      });
+      const queued = await enqueueRun(baseParams({ prompt: "Queued" }));
       expect(queued.status).toBe("queued");
 
       // Simulate completion: mark running runs as completed
       await markRunningRunsAsCompleted(user.userId);
 
       // Drain queue by orgId
-      await drainOrgQueue(user.orgId, dispatchQueuedRun);
+      await drainOrgQueue(user.orgId, dispatchQueuedZeroRun);
 
       // Queued run should now be dispatched (pending)
       const run = await findTestRunRecord(queued.runId);
@@ -141,7 +124,12 @@ describe("run-queue-service", () => {
       reloadEnv();
 
       // Alice creates a run → pending
-      await createRun(baseParams({ prompt: "Alice run", orgId: user.orgId }));
+      await startRun({
+        userId: user.userId,
+        agentComposeVersionId: versionId,
+        prompt: "Alice run",
+        orgTier: "free",
+      });
 
       // Bob is a different user in the same org
       const bob = await context.setupUser({ prefix: "test-bob" });
@@ -181,12 +169,17 @@ describe("run-queue-service", () => {
       reloadEnv();
 
       // Create a running run and a queued run
-      await createRun(baseParams({ prompt: "Running" }));
-      const queued = await createRun(baseParams({ prompt: "Queued" }));
+      await startRun({
+        userId: user.userId,
+        agentComposeVersionId: versionId,
+        prompt: "Running",
+        orgTier: "free",
+      });
+      const queued = await enqueueRun(baseParams({ prompt: "Queued" }));
       expect(queued.status).toBe("queued");
 
       // Drain without completing the running run — concurrency limit blocks dequeue
-      await drainOrgQueue(user.orgId, dispatchQueuedRun);
+      await drainOrgQueue(user.orgId, dispatchQueuedZeroRun);
 
       // Queue entry should still exist (nothing was dequeued)
       const queueEntry = await findTestQueueEntry(queued.runId);
@@ -256,7 +249,12 @@ describe("run-queue-service", () => {
       await updateOrgTier(user.orgId, "pro");
 
       // Create 1 running run — fills free limit but not pro limit
-      await createRun(baseParams({ prompt: "Running" }));
+      await startRun({
+        userId: user.userId,
+        agentComposeVersionId: versionId,
+        prompt: "Running",
+        orgTier: "free",
+      });
       const queued = await enqueueRun(baseParams({ prompt: "Queued" }));
 
       // With pro tier (limit=2), drain should succeed despite 1 active run
@@ -340,9 +338,12 @@ describe("run-queue-service", () => {
       reloadEnv();
 
       // user1 creates a run first (before changing Clerk mock)
-      const run1 = await createRun(
-        baseParams({ prompt: "User1 running", orgId: user.orgId }),
-      );
+      const run1 = await startRun({
+        userId: user.userId,
+        agentComposeVersionId: versionId,
+        prompt: "User1 running",
+        orgTier: "free",
+      });
       expect(run1.status).toBe("pending");
 
       // Create second user sharing user1's org
@@ -359,7 +360,7 @@ describe("run-queue-service", () => {
       expect(run2.status).toBe("queued");
 
       // drainStaleQueues should NOT drain user2's queue (org has an active run)
-      await drainStaleQueues(dispatchQueuedRun);
+      await drainStaleQueues(dispatchQueuedZeroRun);
 
       // Queue entry should still exist — org-level concurrency prevented drain
       const queueEntry = await findTestQueueEntry(run2.runId);
@@ -375,9 +376,12 @@ describe("run-queue-service", () => {
       reloadEnv();
 
       // user1 creates a run first (before changing Clerk mock)
-      await createRun(
-        baseParams({ prompt: "User1 running", orgId: user.orgId }),
-      );
+      await startRun({
+        userId: user.userId,
+        agentComposeVersionId: versionId,
+        prompt: "User1 running",
+        orgTier: "free",
+      });
 
       // Create second user sharing user1's org
       const user2 = await context.setupUser({ prefix: "test-user-2" });
@@ -395,7 +399,7 @@ describe("run-queue-service", () => {
       await markRunningRunsAsCompleted(user.userId);
 
       // drainStaleQueues should drain user2's queue
-      const drained = await drainStaleQueues(dispatchQueuedRun);
+      const drained = await drainStaleQueues(dispatchQueuedZeroRun);
       expect(drained).toBeGreaterThanOrEqual(1);
 
       // Queue entry should be consumed

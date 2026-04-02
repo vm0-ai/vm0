@@ -21,7 +21,7 @@ describe("firewall allow page", () => {
   it("shows error when ref query param is missing", async () => {
     await setupPage({
       context,
-      path: `/firewall-allow/${AGENT_ID}`,
+      path: `/agents/${AGENT_ID}/permissions`,
     });
 
     await waitFor(() => {
@@ -34,7 +34,7 @@ describe("firewall allow page", () => {
   it("shows error for unknown firewall ref", async () => {
     await setupPage({
       context,
-      path: `/firewall-allow/${AGENT_ID}?ref=unknown-ref`,
+      path: `/agents/${AGENT_ID}/permissions?ref=unknown-ref`,
     });
 
     await waitFor(() => {
@@ -49,7 +49,7 @@ describe("firewall allow page", () => {
 
     await setupPage({
       context,
-      path: `/firewall-allow/${AGENT_ID}?ref=github&permission=issues:read`,
+      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read`,
     });
 
     await waitFor(() => {
@@ -68,7 +68,7 @@ describe("firewall allow page", () => {
 
     await setupPage({
       context,
-      path: `/firewall-allow/${AGENT_ID}?ref=github`,
+      path: `/agents/${AGENT_ID}/permissions?ref=github`,
     });
 
     await waitFor(() => {
@@ -116,7 +116,7 @@ describe("firewall allow page", () => {
 
     await setupPage({
       context,
-      path: `/firewall-allow/${AGENT_ID}?ref=github&permission=issues:read`,
+      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read`,
     });
 
     await waitFor(() => {
@@ -161,7 +161,7 @@ describe("firewall allow page", () => {
 
     await setupPage({
       context,
-      path: `/firewall-allow/${AGENT_ID}?ref=github`,
+      path: `/agents/${AGENT_ID}/permissions?ref=github`,
     });
 
     await waitFor(() => {
@@ -177,7 +177,7 @@ describe("firewall allow page", () => {
 
     await setupPage({
       context,
-      path: `/firewall-allow/${AGENT_ID}?ref=github&permission=issues:read&method=GET&path=/repos/owner/repo/pulls`,
+      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read&method=GET&path=/repos/owner/repo/pulls`,
     });
 
     await waitFor(() => {
@@ -210,7 +210,7 @@ describe("firewall allow page", () => {
 
     await setupPage({
       context,
-      path: `/firewall-allow/${AGENT_ID}?ref=github&permission=issues:read`,
+      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read`,
     });
 
     await waitFor(() => {
@@ -227,7 +227,7 @@ describe("firewall allow page", () => {
 
     await setupPage({
       context,
-      path: `/firewall-allow/${AGENT_ID}?ref=github&permission=issues:read`,
+      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read`,
     });
 
     await waitFor(() => {

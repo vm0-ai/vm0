@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Image from "next/image";
+import Script from "next/script";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
@@ -68,6 +69,7 @@ export async function generateMetadata({
       description: post.excerpt,
       images: [imageUrl],
       creator: "@vm0_ai",
+      site: "@vm0_ai",
     },
   };
 }
@@ -111,8 +113,40 @@ export default async function BlogPostPage({ params }: PageProps) {
     })
     .slice(0, 3);
 
+  const postUrl = `${getBlogBaseUrl()}/${locale}/blog/posts/${post.slug}`;
+  const imageUrl = post.cover.startsWith("http")
+    ? post.cover
+    : `${getBlogBaseUrl()}${post.cover}`;
+
+  const articleJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "BlogPosting",
+    headline: post.title,
+    description: post.excerpt,
+    url: postUrl,
+    datePublished: post.publishedAt,
+    image: imageUrl,
+    author: {
+      "@type": "Person",
+      name: post.author.name,
+    },
+    publisher: {
+      "@type": "Organization",
+      name: "VM0",
+      logo: {
+        "@type": "ImageObject",
+        url: "https://vm0.ai/assets/vm0-logo.svg",
+      },
+    },
+  };
+
   return (
     <>
+      <Script
+        id="json-ld-article"
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(articleJsonLd) }}
+      />
       <div className="header-container">
         <Navbar />
       </div>

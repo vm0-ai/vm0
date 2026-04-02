@@ -293,10 +293,11 @@ export async function getOrgMembers(
 export async function inviteMember(
   callerUserId: string,
   orgId: string,
-  role: OrgRole,
+  callerRole: OrgRole,
   email: string,
+  inviteRole: OrgRole = "member",
 ) {
-  if (role !== "admin") {
+  if (callerRole !== "admin") {
     throw forbidden("Only admins can invite members");
   }
 
@@ -305,10 +306,10 @@ export async function inviteMember(
     organizationId: orgId,
     emailAddress: email,
     inviterUserId: callerUserId,
-    role: "org:member",
+    role: inviteRole === "admin" ? "org:admin" : "org:member",
   });
 
-  log.debug("Invitation sent", { orgId, email });
+  log.debug("Invitation sent", { orgId, email, inviteRole });
 }
 
 /**

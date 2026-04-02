@@ -5,7 +5,6 @@ import {
   createTestDeviceCode,
   findTestDeviceCode,
   findTestCliToken,
-  insertOrgCacheEntry,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -107,33 +106,18 @@ describe("POST /api/cli/auth/token", () => {
     expect(found).toBeUndefined();
   });
 
-  it("should return org_slug when device code has org context", async () => {
-    // Insert org_cache entry so getOrgBySlug resolves the slug to an orgId
-    await insertOrgCacheEntry({ orgId: "org_my_test", slug: "my-test-org" });
-
+  it("should generate token with org context when device code has orgId", async () => {
     const code = await createTestDeviceCode({
       status: "authenticated",
       userId: user.userId,
-      orgSlug: "my-test-org",
+      orgId: "org_my_test",
     });
 
     const response = await POST(makeTokenRequest(code));
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.org_slug).toBe("my-test-org");
-  });
-
-  it("should not return org_slug when device code has no org context", async () => {
-    const code = await createTestDeviceCode({
-      status: "authenticated",
-      userId: user.userId,
-    });
-
-    const response = await POST(makeTokenRequest(code));
-    const body = await response.json();
-
-    expect(response.status).toBe(200);
+    expect(body.access_token).toMatch(/^vm0_pat_/);
     expect(body).not.toHaveProperty("org_slug");
   });
 

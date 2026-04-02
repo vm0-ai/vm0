@@ -19,7 +19,7 @@ import { logger } from "../../../../src/lib/logger";
 const log = logger("api:zero-skills");
 
 const router = tsr.router(zeroSkillsCollectionContract, {
-  list: async ({ headers }, { request }) => {
+  list: async ({ headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization, {
@@ -27,8 +27,7 @@ const router = tsr.router(zeroSkillsCollectionContract, {
     });
     if (isAuthError(authCtx)) return authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(authCtx, orgSlug);
+    const { org } = await resolveOrg(authCtx);
 
     const rows = await globalThis.services.db
       .select({
@@ -51,7 +50,7 @@ const router = tsr.router(zeroSkillsCollectionContract, {
     };
   },
 
-  create: async ({ body, headers }, { request }) => {
+  create: async ({ body, headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization, {
@@ -60,8 +59,7 @@ const router = tsr.router(zeroSkillsCollectionContract, {
     if (isAuthError(authCtx)) return authCtx;
     const { userId } = authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org } = await resolveOrg(authCtx, orgSlug);
+    const { org } = await resolveOrg(authCtx);
 
     // Validate name not in seed skills
     const seedSet = new Set<string>(SEED_SKILLS);
@@ -107,11 +105,11 @@ const router = tsr.router(zeroSkillsCollectionContract, {
       createdBy: userId,
     });
 
-    // Upload skill content to S3
+    // Upload skill files to S3
     await uploadSkillServerSide({
       orgId: org.orgId,
       skillName: body.name,
-      content: body.content,
+      files: body.files,
     });
 
     log.info(`Created custom skill "${body.name}" in org ${org.orgId}`);

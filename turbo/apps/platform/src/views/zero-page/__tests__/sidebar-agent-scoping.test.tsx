@@ -78,7 +78,7 @@ function mockTwoAgents() {
 describe("sidebar agent scoping (#7239)", () => {
   it("should show Alpha chats on /talk/agent-alpha and Beta chats on /talk/agent-beta", async () => {
     mockTwoAgents();
-    await setupPage({ context, path: "/talk/agent-alpha" });
+    await setupPage({ context, path: "/agents/agent-alpha/chat" });
 
     // Alpha thread should be visible
     await waitFor(() => {
@@ -89,7 +89,12 @@ describe("sidebar agent scoping (#7239)", () => {
     expect(screen.queryByText("Beta thread")).not.toBeInTheDocument();
 
     // Navigate to Beta agent within the same session
-    await context.store.set(navigate$, "/talk/agent-beta", {}, context.signal);
+    await context.store.set(
+      navigate$,
+      "/agents/agent-beta/chat",
+      {},
+      context.signal,
+    );
 
     // Beta thread should now be visible
     await waitFor(() => {
@@ -102,19 +107,29 @@ describe("sidebar agent scoping (#7239)", () => {
 
   it("should switch back to first agent after visiting second agent", async () => {
     mockTwoAgents();
-    await setupPage({ context, path: "/talk/agent-alpha" });
+    await setupPage({ context, path: "/agents/agent-alpha/chat" });
 
     await waitFor(() => {
       expect(screen.getByText("Alpha thread")).toBeInTheDocument();
     });
 
     // Navigate Alpha → Beta → Alpha
-    await context.store.set(navigate$, "/talk/agent-beta", {}, context.signal);
+    await context.store.set(
+      navigate$,
+      "/agents/agent-beta/chat",
+      {},
+      context.signal,
+    );
     await waitFor(() => {
       expect(screen.getByText("Beta thread")).toBeInTheDocument();
     });
 
-    await context.store.set(navigate$, "/talk/agent-alpha", {}, context.signal);
+    await context.store.set(
+      navigate$,
+      "/agents/agent-alpha/chat",
+      {},
+      context.signal,
+    );
 
     await waitFor(() => {
       expect(screen.getByText("Alpha thread")).toBeInTheDocument();
@@ -124,7 +139,7 @@ describe("sidebar agent scoping (#7239)", () => {
 
   it("should retain agent scope when navigating to a non-chat page and back", async () => {
     mockTwoAgents();
-    await setupPage({ context, path: "/talk/agent-beta" });
+    await setupPage({ context, path: "/agents/agent-beta/chat" });
 
     // Verify Beta threads are shown
     await waitFor(() => {
@@ -133,7 +148,7 @@ describe("sidebar agent scoping (#7239)", () => {
     expect(screen.queryByText("Alpha thread")).not.toBeInTheDocument();
 
     // Navigate to a non-chat page (activity logs)
-    await context.store.set(navigate$, "/activity", {}, context.signal);
+    await context.store.set(navigate$, "/activities", {}, context.signal);
 
     // Sidebar should still show Beta chats (persists across non-chat pages)
     await waitFor(() => {
@@ -147,7 +162,7 @@ describe("sidebar agent scoping (#7239)", () => {
     mockTwoAgents();
 
     // Start with Alpha's chat view — sidebar remembers Alpha
-    await setupPage({ context, path: "/talk/agent-alpha" });
+    await setupPage({ context, path: "/agents/agent-alpha/chat" });
     await waitFor(() => {
       expect(screen.getByText("Alpha thread")).toBeInTheDocument();
     });
@@ -155,7 +170,12 @@ describe("sidebar agent scoping (#7239)", () => {
     // Navigate to Beta's profile page (/team/:agentId)
     // Bug: setupTeamDetailPage$ does not call setSidebarChatAgent$,
     // so the sidebar still shows Alpha's chats instead of Beta's.
-    await context.store.set(navigate$, "/team/agent-beta", {}, context.signal);
+    await context.store.set(
+      navigate$,
+      "/agents/agent-beta",
+      {},
+      context.signal,
+    );
 
     // Sidebar should switch to Beta's chats
     await waitFor(() => {

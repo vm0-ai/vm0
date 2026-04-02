@@ -101,7 +101,7 @@ describe("activity navigation", () => {
 
     await setupPage({
       context,
-      path: "/activity",
+      path: "/activities",
     });
 
     // Wait for the list to render with the activity row

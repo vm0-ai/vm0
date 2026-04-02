@@ -1,5 +1,57 @@
 # Changelog
 
+## [12.183.2](https://github.com/vm0-ai/vm0/compare/web-v12.183.1...web-v12.183.2) (2026-04-02)
+
+
+### Refactoring
+
+* decouple infra run path from zero layer ([#7597](https://github.com/vm0-ai/vm0/issues/7597)) ([787738e](https://github.com/vm0-ai/vm0/commit/787738ea295d9ba8256994725afef7d4a0d941e3))
+* delete queued-run infra dispatcher and remove zero imports ([#7607](https://github.com/vm0-ai/vm0/issues/7607)) ([8dcbdce](https://github.com/vm0-ai/vm0/commit/8dcbdce8e3633fae3e5d9d7e07b14edfa363aacd)), closes [#7590](https://github.com/vm0-ai/vm0/issues/7590)
+* remove use-zero-context flag, move cli resolution to route layer ([#7608](https://github.com/vm0-ai/vm0/issues/7608)) ([dfeb41a](https://github.com/vm0-ai/vm0/commit/dfeb41a980d9905070d7fc8da83b17f134f936e8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.138.0
+
+## [12.183.1](https://github.com/vm0-ai/vm0/compare/web-v12.183.0...web-v12.183.1) (2026-04-01)
+
+
+### Refactoring
+
+* move model provider resolution from infra to zero layer ([#7594](https://github.com/vm0-ai/vm0/issues/7594)) ([c0137b8](https://github.com/vm0-ai/vm0/commit/c0137b80238161c7504199aac4e5c400b390175b)), closes [#7591](https://github.com/vm0-ai/vm0/issues/7591)
+* remove redundant ?org= query param from firewall-access-requests and skills routes ([#7587](https://github.com/vm0-ai/vm0/issues/7587)) ([d2a61d2](https://github.com/vm0-ai/vm0/commit/d2a61d220db70779941fede8e1258dbc5e083405)), closes [#7585](https://github.com/vm0-ai/vm0/issues/7585)
+
+## [12.183.0](https://github.com/vm0-ai/vm0/compare/web-v12.182.0...web-v12.183.0) (2026-04-01)
+
+
+### Features
+
+* **org:** add role selection to member invite flow ([#7555](https://github.com/vm0-ai/vm0/issues/7555)) ([891fc35](https://github.com/vm0-ai/vm0/commit/891fc35eaeba4c73c741accc5bc810df46d17962))
+* support full directory upload for custom skills ([#7550](https://github.com/vm0-ai/vm0/issues/7550)) ([044ee9e](https://github.com/vm0-ai/vm0/commit/044ee9e928c9921f7f618d74a20a5453e37e4e3a))
+* **web:** comprehensive seo improvements ([#7536](https://github.com/vm0-ai/vm0/issues/7536)) ([657a25c](https://github.com/vm0-ai/vm0/commit/657a25ce9be6b3c3415def9298d7d80377efb418))
+
+
+### Bug Fixes
+
+* **web:** replace 'join the beta' cta with 'get started' ([#7535](https://github.com/vm0-ai/vm0/issues/7535)) ([7eadd82](https://github.com/vm0-ai/vm0/commit/7eadd822ecbe99e6b6e68c35497975f33770f121))
+
+
+### Refactoring
+
+* remove --model-provider and --check-env from vm0 run commands ([#7543](https://github.com/vm0-ai/vm0/issues/7543)) ([34c7233](https://github.com/vm0-ai/vm0/commit/34c7233e3ce75252f73ac8972b5a1bf130ccab5b))
+* rename experimental firewalls to firewalls ([#7553](https://github.com/vm0-ai/vm0/issues/7553)) ([e3c35a9](https://github.com/vm0-ai/vm0/commit/e3c35a95bd0dbfd1d68aef910db6089e38d6a0bb))
+* replace org_slug with org_id in device codes and auth responses ([#7475](https://github.com/vm0-ai/vm0/issues/7475)) ([#7559](https://github.com/vm0-ai/vm0/issues/7559)) ([03719b9](https://github.com/vm0-ai/vm0/commit/03719b93a72b6c3f71fec18e2bd9e6af6a3068cf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.137.0
+
 ## [12.182.0](https://github.com/vm0-ai/vm0/compare/web-v12.181.0...web-v12.182.0) (2026-04-01)
 
 

@@ -42,7 +42,7 @@ describe("link component new-tab behavior", () => {
       return null;
     });
 
-    await setupPage({ context, path: "/queue" });
+    await setupPage({ context, path: "/queues" });
 
     await waitFor(() => {
       expect(screen.getByText("Link Agent")).toBeInTheDocument();
@@ -56,7 +56,7 @@ describe("link component new-tab behavior", () => {
 
     await waitFor(() => {
       expect(openSpy).toHaveBeenCalledWith(
-        expect.stringContaining("/activity/run_link_1"),
+        expect.stringContaining("/activities/run_link_1"),
         "_blank",
       );
     });

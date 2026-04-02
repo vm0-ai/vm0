@@ -16,6 +16,7 @@
       ],
       "project": ["**/*.{ts,tsx}", "scripts/**/*.ts"],
       "ignoreDependencies": [
+        "@vm0/ui",
         "e2b",
         "import-in-the-middle",
         "require-in-the-middle",

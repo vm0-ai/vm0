@@ -29,7 +29,13 @@ const router = tsr.router(zeroOrgInviteContract, {
 
     try {
       const { org, member } = await resolveOrg(authCtx);
-      await inviteMember(authCtx.userId, org.orgId, member.role, body.email);
+      await inviteMember(
+        authCtx.userId,
+        org.orgId,
+        member.role,
+        body.email,
+        body.role,
+      );
       return {
         status: 200 as const,
         body: { message: `Invitation sent to ${body.email}` },

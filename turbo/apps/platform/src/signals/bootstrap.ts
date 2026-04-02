@@ -1,11 +1,16 @@
 import { command } from "ccstate";
 import { setupClerk$ } from "./auth.ts";
-import { setRootSignal$ } from "./root-signal.ts";
+import { setRootSignal$, rootSignal$ } from "./root-signal.ts";
 import {
   initRoutes$,
   detachedNavigateTo$,
+  navigate$,
   setupAuthPageWrapper,
+  pathParams$,
 } from "./route.ts";
+import type { ParamData } from "path-to-regexp";
+import { ROUTES } from "./route-paths.ts";
+import { detach, Reason } from "./utils.ts";
 import { setupGlobalMethod$ } from "./bootstrap/global-method.ts";
 import { setupLoggers$ } from "./bootstrap/loggers.ts";
 import { setupSelectOrgPage$ } from "./select-org/select-org-page.ts";
@@ -42,103 +47,197 @@ const setupNotFoundRedirect$ = command(({ set }) => {
   set(detachedNavigateTo$, "/");
 });
 
+/**
+ * Create a redirect setup command for static routes (no params to forward).
+ */
+function redirectTo(target: string) {
+  return command(({ get, set }) => {
+    const signal = get(rootSignal$).signal;
+    detach(
+      set(navigate$, target, { replace: true }, signal),
+      Reason.DomCallback,
+    );
+  });
+}
+
+/**
+ * Create a redirect setup command for parameterized routes.
+ * Reads pathParams$ and constructs the target URL via a builder function.
+ */
+function redirectWithParams(buildTarget: (params: ParamData) => string) {
+  return command(({ get, set }) => {
+    const params = get(pathParams$) ?? {};
+    const target = buildTarget(params);
+    const signal = get(rootSignal$).signal;
+    detach(
+      set(navigate$, target, { replace: true }, signal),
+      Reason.DomCallback,
+    );
+  });
+}
+
 const ROUTE_CONFIG = [
+  // --- New routes ---
   {
-    path: "/select-org",
+    path: ROUTES.selectOrg,
     setup: setupAuthPageWrapper(setupSelectOrgPage$),
   },
   {
-    path: "/chat/:chatThreadId",
+    path: ROUTES.chat,
     setup: setupAuthPageWrapper(setupChatSessionPage$),
   },
   {
-    path: "/ideas",
+    path: ROUTES.ideas,
     setup: setupAuthPageWrapper(setupIdeationPage$),
   },
   {
-    path: "/connectors",
+    path: ROUTES.connectors,
     setup: setupAuthPageWrapper(setupConnectorsPage$),
   },
   {
-    path: "/talk/:agentId/ideas",
+    path: ROUTES.agentIdeas,
     setup: setupAuthPageWrapper(setupIdeationPage$),
   },
   {
-    path: "/talk/:agentId",
+    path: ROUTES.agentChat,
     setup: setupAuthPageWrapper(setupTalkPage$),
   },
   {
-    path: "/team/:agentId",
-    setup: setupAuthPageWrapper(setupTeamDetailPage$),
-  },
-  {
-    path: "/team",
-    setup: setupAuthPageWrapper(setupTeamPage$),
-  },
-  {
-    path: "/slack/connect",
-    setup: setupAuthPageWrapper(setupSlackConnectPage$),
-  },
-  {
-    path: "/queue",
-    setup: setupAuthPageWrapper(setupQueuePage$),
-  },
-  {
-    path: "/activity/:runId/network",
-    setup: setupAuthPageWrapper(setupActivityNetworkPage$),
-  },
-  {
-    path: "/activity/:runId/context",
-    setup: setupAuthPageWrapper(setupActivityContextPage$),
-  },
-  {
-    path: "/activity/:runId",
-    setup: setupAuthPageWrapper(setupActivityDetailPage$),
-  },
-  {
-    path: "/activity",
-    setup: setupAuthPageWrapper(setupActivityPage$),
-  },
-  {
-    path: "/works",
-    setup: setupAuthPageWrapper(setupWorksPage$),
-  },
-  {
-    path: "/preferences",
-    setup: setupAuthPageWrapper(setupPreferencesPage$),
-  },
-  {
-    path: "/schedule/:scheduleId",
-    setup: setupAuthPageWrapper(setupScheduleDetailPage$),
-  },
-  {
-    path: "/schedule",
-    setup: setupAuthPageWrapper(setupSchedulePage$),
-  },
-  {
-    path: "/usage",
-    setup: setupAuthPageWrapper(setupUsagePage$),
-  },
-  {
-    path: "/firewall-allow/:agentId",
+    path: ROUTES.agentPermissions,
     setup: setupAuthPageWrapper(setupFirewallAllowPage$),
   },
   {
-    path: "/onboarding",
+    path: ROUTES.agentDetail,
+    setup: setupAuthPageWrapper(setupTeamDetailPage$),
+  },
+  {
+    path: ROUTES.agents,
+    setup: setupAuthPageWrapper(setupTeamPage$),
+  },
+  {
+    path: ROUTES.settingsSlack,
+    setup: setupAuthPageWrapper(setupSlackConnectPage$),
+  },
+  {
+    path: ROUTES.queues,
+    setup: setupAuthPageWrapper(setupQueuePage$),
+  },
+  {
+    path: ROUTES.activityNetwork,
+    setup: setupAuthPageWrapper(setupActivityNetworkPage$),
+  },
+  {
+    path: ROUTES.activityContext,
+    setup: setupAuthPageWrapper(setupActivityContextPage$),
+  },
+  {
+    path: ROUTES.activityDetail,
+    setup: setupAuthPageWrapper(setupActivityDetailPage$),
+  },
+  {
+    path: ROUTES.activities,
+    setup: setupAuthPageWrapper(setupActivityPage$),
+  },
+  {
+    path: ROUTES.works,
+    setup: setupAuthPageWrapper(setupWorksPage$),
+  },
+  {
+    path: ROUTES.settings,
+    setup: setupAuthPageWrapper(setupPreferencesPage$),
+  },
+  {
+    path: ROUTES.scheduleDetail,
+    setup: setupAuthPageWrapper(setupScheduleDetailPage$),
+  },
+  {
+    path: ROUTES.schedules,
+    setup: setupAuthPageWrapper(setupSchedulePage$),
+  },
+  {
+    path: ROUTES.settingsUsage,
+    setup: setupAuthPageWrapper(setupUsagePage$),
+  },
+  {
+    path: ROUTES.onboarding,
     setup: setupAuthPageWrapper(setupOnboardingPage$),
   },
   {
-    path: "/sign-in-token",
+    path: ROUTES.signInToken,
     setup: setupSignInTokenPage$,
   },
   {
-    path: "/__internal-connector-logos",
+    path: ROUTES.internalConnectorLogos,
     setup: setupInternalConnectorLogos$,
   },
   {
-    path: "/",
+    path: ROUTES.home,
     setup: setupAuthPageWrapper(setupHomePage$),
   },
+
+  // --- Redirect routes (backward compatibility) ---
+  { path: "/team", setup: redirectTo(ROUTES.agents) },
+  {
+    path: "/team/:id",
+    setup: redirectWithParams((p) => {
+      return `/agents/${encodeURIComponent(String(p.id))}`;
+    }),
+  },
+  {
+    path: "/talk/:id",
+    setup: redirectWithParams((p) => {
+      return `/agents/${encodeURIComponent(String(p.id))}/chat`;
+    }),
+  },
+  {
+    path: "/talk/:id/ideas",
+    setup: redirectWithParams((p) => {
+      return `/agents/${encodeURIComponent(String(p.id))}/ideas`;
+    }),
+  },
+  {
+    path: "/firewall-allow/:id",
+    setup: redirectWithParams((p) => {
+      return `/agents/${encodeURIComponent(String(p.id))}/permissions`;
+    }),
+  },
+  { path: "/activity", setup: redirectTo(ROUTES.activities) },
+  {
+    path: "/activity/:id",
+    setup: redirectWithParams((p) => {
+      return `/activities/${encodeURIComponent(String(p.id))}`;
+    }),
+  },
+  {
+    path: "/activity/:id/context",
+    setup: redirectWithParams((p) => {
+      return `/activities/${encodeURIComponent(String(p.id))}/context`;
+    }),
+  },
+  {
+    path: "/activity/:id/network",
+    setup: redirectWithParams((p) => {
+      return `/activities/${encodeURIComponent(String(p.id))}/network`;
+    }),
+  },
+  {
+    path: "/chat/:id",
+    setup: redirectWithParams((p) => {
+      return `/chats/${encodeURIComponent(String(p.id))}`;
+    }),
+  },
+  { path: "/schedule", setup: redirectTo(ROUTES.schedules) },
+  {
+    path: "/schedule/:id",
+    setup: redirectWithParams((p) => {
+      return `/schedules/${encodeURIComponent(String(p.id))}`;
+    }),
+  },
+  { path: "/queue", setup: redirectTo(ROUTES.queues) },
+  { path: "/preferences", setup: redirectTo(ROUTES.settings) },
+  { path: "/usage", setup: redirectTo(ROUTES.settingsUsage) },
+  { path: "/slack/connect", setup: redirectTo(ROUTES.settingsSlack) },
+
   {
     // Catch-all: redirect unknown paths to /
     path: "{/*path}",

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { POST } from "../route";
 import { randomUUID } from "crypto";
 import {
@@ -12,6 +12,7 @@ import {
   findTestRunCallbacks,
   setTestRunStatus,
   getOrgCacheEntry,
+  insertTestQueueEntry,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import { generateSandboxToken } from "../../../../../../../src/lib/auth/sandbox-token";
 import {
@@ -20,7 +21,6 @@ import {
   type UserContext,
 } from "../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
-import { reloadEnv } from "../../../../../../../src/env";
 
 const context = testContext();
 
@@ -57,23 +57,22 @@ describe("POST /api/agent/runs/:id/cancel - Cancel Run", () => {
 
   describe("Cancel Queued Run", () => {
     it("should cancel a queued run and remove queue entry", async () => {
-      vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
-      reloadEnv();
-
-      // Create a running run (claims the slot)
-      await createTestRun(testComposeId, "Running run");
-
-      // Create a second run that gets queued
-      const queued = await createTestRun(testComposeId, "Queued run");
-      expect(queued.status).toBe("queued");
+      // Create a queued run directly (queueing is a zero-layer concern,
+      // so we set up the state manually instead of going through the CLI route)
+      const { runId: queuedRunId } = await createTestRunInDb(
+        user.userId,
+        testComposeId,
+        { status: "queued" },
+      );
+      await insertTestQueueEntry(queuedRunId);
 
       // Verify queue entry exists
-      const queueBefore = await findTestQueueEntry(queued.runId);
+      const queueBefore = await findTestQueueEntry(queuedRunId);
       expect(queueBefore).toBeDefined();
 
       // Cancel the queued run
       const request = createTestRequest(
-        `http://localhost:3000/api/agent/runs/${queued.runId}/cancel`,
+        `http://localhost:3000/api/agent/runs/${queuedRunId}/cancel`,
         { method: "POST" },
       );
       const response = await POST(request);
@@ -83,21 +82,22 @@ describe("POST /api/agent/runs/:id/cancel - Cancel Run", () => {
       expect(data.status).toBe("cancelled");
 
       // Queue entry should be removed (encrypted secrets deleted)
-      const queueAfter = await findTestQueueEntry(queued.runId);
+      const queueAfter = await findTestQueueEntry(queuedRunId);
       expect(queueAfter).toBeUndefined();
     });
 
     it("should drain queue after cancelling a running run", async () => {
-      vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
-      reloadEnv();
-
-      // Create a running run (claims the slot)
+      // Create a running run directly
       const running = await createTestRun(testComposeId, "Running run");
       expect(running.status).toBe("pending");
 
-      // Create a second run that gets queued
-      const queued = await createTestRun(testComposeId, "Queued run");
-      expect(queued.status).toBe("queued");
+      // Create a queued run directly (queueing is a zero-layer concern)
+      const { runId: queuedRunId } = await createTestRunInDb(
+        user.userId,
+        testComposeId,
+        { status: "queued" },
+      );
+      await insertTestQueueEntry(queuedRunId);
 
       // Cancel the running run (frees the concurrency slot)
       const request = createTestRequest(
@@ -110,12 +110,10 @@ describe("POST /api/agent/runs/:id/cancel - Cancel Run", () => {
       // Flush the after() callback which triggers drainOrgQueue
       await context.mocks.flushAfter();
 
-      // Queued run should now be dispatched (pending)
-      const run = await findTestRunRecord(queued.runId);
-      expect(run!.status).toBe("pending");
-
-      // Queue entry should be deleted
-      const queueEntry = await findTestQueueEntry(queued.runId);
+      // Queue drain was attempted — entry should be consumed
+      // (The dispatched run won't reach "pending" because the test queue entry
+      // has no encrypted params; actual dispatch is a zero-layer concern.)
+      const queueEntry = await findTestQueueEntry(queuedRunId);
       expect(queueEntry).toBeUndefined();
     });
   });

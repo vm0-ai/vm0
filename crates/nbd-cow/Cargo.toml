@@ -1,6 +1,6 @@
 [package]
 name = "nbd-cow"
-version = "0.2.0"
+version = "0.2.3"
 edition.workspace = true
 
 [dependencies]

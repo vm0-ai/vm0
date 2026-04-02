@@ -22,8 +22,8 @@ export const setupScheduleDetailPage$ = command(
     // Initialize run history with the current schedule ID from the URL
     const params = get(pathParams$);
     const scheduleId =
-      params && typeof params === "object" && "scheduleId" in params
-        ? String(params.scheduleId)
+      params && typeof params === "object" && "id" in params
+        ? String(params.id)
         : null;
     set(setScheduleRunHistoryScheduleId$, scheduleId);
     set(seedScheduleRunCursorHistory$);

@@ -10,7 +10,6 @@ import { initServices } from "../../../../../src/lib/init-services";
 import { deviceCodes } from "../../../../../src/db/schema/device-codes";
 import { cliTokens } from "../../../../../src/db/schema/cli-tokens";
 import { generateCliToken } from "../../../../../src/lib/auth/sandbox-token";
-import { getOrgBySlug } from "../../../../../src/lib/org/org-cache-service";
 
 const router = tsr.router(cliAuthTokenContract, {
   exchange: async ({ body }) => {
@@ -74,22 +73,7 @@ const router = tsr.router(cliAuthTokenContract, {
 
       case "authenticated": {
         const userId = session.userId as string;
-
-        // Resolve orgId from orgSlug (set during device flow approval)
-        let orgId = "";
-        if (session.orgSlug) {
-          const orgData = await getOrgBySlug(session.orgSlug);
-          if (!orgData) {
-            return {
-              status: 500 as const,
-              body: {
-                error: "server_error",
-                error_description: `Organization not found for slug: ${session.orgSlug}`,
-              },
-            };
-          }
-          orgId = orgData.orgId;
-        }
+        const orgId = session.orgId ?? "";
 
         // Generate CLI JWT with tokenId for revocation tracking
         const tokenId = crypto.randomUUID();
@@ -117,7 +101,6 @@ const router = tsr.router(cliAuthTokenContract, {
             access_token: cliToken,
             token_type: "Bearer" as const,
             expires_in: 90 * 24 * 60 * 60, // 90 days in seconds
-            org_slug: session.orgSlug ?? undefined,
           },
         };
       }

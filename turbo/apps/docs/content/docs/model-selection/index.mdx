@@ -82,16 +82,7 @@ zero org model-provider remove anthropic-api-key
 When you run an agent:
 1. If your `vm0.yaml` has explicit auth environment variables, those are used
 2. Otherwise, your default model provider credential is injected automatically
-3. You can override at runtime with: `vm0 run agent "prompt" --model-provider <type>`
 </Callout>
-
-## Runtime Override
-
-Override your default provider for a single run:
-
-```bash
-vm0 run my-agent "build a todo app" --model-provider openrouter-api-key
-```
 
 ## Advanced: Manual Configuration
 

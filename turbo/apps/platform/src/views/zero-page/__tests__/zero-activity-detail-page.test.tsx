@@ -68,12 +68,12 @@ function mockActivityDetailAPI() {
 }
 
 describe("zeroActivityDetailPage", () => {
-  it("should load detail when navigating directly to /activity/:runId", async () => {
+  it("should load detail when navigating directly to /activities/:id", async () => {
     mockActivityDetailAPI();
 
     await setupPage({
       context,
-      path: "/activity/a0000000-0000-4000-a000-000000000001",
+      path: "/activities/a0000000-0000-4000-a000-000000000001",
     });
 
     // The page should show the detail header card (not skeleton)
@@ -92,7 +92,7 @@ describe("zeroActivityDetailPage", () => {
 
     await setupPage({
       context,
-      path: "/activity/a0000000-0000-4000-a000-000000000001",
+      path: "/activities/a0000000-0000-4000-a000-000000000001",
       featureSwitches: { [FeatureSwitchKey.ActivityLogList]: false },
     });
 
@@ -112,7 +112,7 @@ describe("zeroActivityDetailPage", () => {
 
     await setupPage({
       context,
-      path: "/activity/a0000000-0000-4000-a000-000000000001",
+      path: "/activities/a0000000-0000-4000-a000-000000000001",
       featureSwitches: { [FeatureSwitchKey.ActivityLogList]: true },
     });
 
@@ -167,7 +167,7 @@ describe("zeroActivityDetailPage", () => {
 
     await setupPage({
       context,
-      path: "/activity/a0000000-0000-4000-a000-000000000002",
+      path: "/activities/a0000000-0000-4000-a000-000000000002",
     });
 
     await waitFor(() => {
@@ -179,7 +179,7 @@ describe("zeroActivityDetailPage", () => {
     // "Schedule" label should be rendered as a link pointing to the schedule page
     const scheduleLink = screen.getByRole("link", { name: "Schedule" });
     expect(scheduleLink).toBeInTheDocument();
-    expect(scheduleLink.getAttribute("href")).toBe("/schedule/sched-abc-123");
+    expect(scheduleLink.getAttribute("href")).toBe("/schedules/sched-abc-123");
   });
 
   it("should render schedule source as plain text when scheduleId is null", async () => {
@@ -222,7 +222,7 @@ describe("zeroActivityDetailPage", () => {
 
     await setupPage({
       context,
-      path: "/activity/a0000000-0000-4000-a000-000000000003",
+      path: "/activities/a0000000-0000-4000-a000-000000000003",
     });
 
     await waitFor(() => {
@@ -241,7 +241,7 @@ describe("zeroActivityDetailPage", () => {
 
     await setupPage({
       context,
-      path: "/activity/a0000000-0000-4000-a000-000000000001",
+      path: "/activities/a0000000-0000-4000-a000-000000000001",
     });
 
     await waitFor(() => {
@@ -298,7 +298,7 @@ describe("zeroActivityDetailPage", () => {
 
     await setupPage({
       context,
-      path: "/activity/a0000000-0000-4000-a000-000000000004",
+      path: "/activities/a0000000-0000-4000-a000-000000000004",
       featureSwitches: { [FeatureSwitchKey.ShowSystemPrompt]: true },
     });
 
@@ -359,7 +359,7 @@ describe("zeroActivityDetailPage", () => {
 
     await setupPage({
       context,
-      path: "/activity/a0000000-0000-4000-a000-000000000005",
+      path: "/activities/a0000000-0000-4000-a000-000000000005",
       featureSwitches: { [FeatureSwitchKey.ModelDetail]: true },
     });
 
@@ -413,7 +413,7 @@ describe("zeroActivityDetailPage", () => {
 
     await setupPage({
       context,
-      path: "/activity/a0000000-0000-4000-a000-000000000006",
+      path: "/activities/a0000000-0000-4000-a000-000000000006",
       featureSwitches: { [FeatureSwitchKey.ModelDetail]: false },
     });
 
@@ -468,7 +468,7 @@ describe("zeroActivityDetailPage", () => {
 
     await setupPage({
       context,
-      path: "/activity/a0000000-0000-4000-a000-000000000007",
+      path: "/activities/a0000000-0000-4000-a000-000000000007",
       featureSwitches: { [FeatureSwitchKey.ModelDetail]: true },
     });
 

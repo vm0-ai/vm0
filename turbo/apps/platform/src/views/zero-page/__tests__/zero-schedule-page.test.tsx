@@ -107,7 +107,7 @@ function mockScheduleAPI(schedules = createMockSchedules()) {
 }
 
 async function renderSchedulePage() {
-  await setupPage({ context, path: "/schedule" });
+  await setupPage({ context, path: "/schedules" });
 }
 
 /** Open the dropdown menu for a schedule row, then click a menu item. */
@@ -865,7 +865,7 @@ describe("zero schedule page - create dialog timezone default", () => {
       }),
     );
 
-    await setupPage({ context, path: "/schedule" });
+    await setupPage({ context, path: "/schedules" });
 
     // Wait for schedules to render (preferences will have loaded by then)
     await waitFor(() => {
@@ -910,7 +910,7 @@ describe("zero schedule page - create dialog timezone default", () => {
       }),
     );
 
-    await setupPage({ context, path: "/schedule" });
+    await setupPage({ context, path: "/schedules" });
 
     await waitFor(() => {
       expect(

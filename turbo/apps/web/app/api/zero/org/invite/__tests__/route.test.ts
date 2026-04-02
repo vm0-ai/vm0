@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
+import { clerkClient } from "@clerk/nextjs/server";
 import { POST, DELETE } from "../route";
 import {
   createTestRequest,
@@ -29,7 +30,7 @@ describe("POST /api/zero/org/invite (invite)", () => {
     context.setupMocks();
   });
 
-  it("should invite a member for an admin", async () => {
+  it("should invite a member with default role", async () => {
     const userId = uniqueId("inv-ok");
     await setupOrg(userId);
 
@@ -44,6 +45,33 @@ describe("POST /api/zero/org/invite (invite)", () => {
     expect(response.status).toBe(200);
     const data = await response.json();
     expect(data.message).toContain("newuser@example.com");
+
+    const client = await clerkClient();
+    expect(
+      client.organizations.createOrganizationInvitation,
+    ).toHaveBeenCalledWith(expect.objectContaining({ role: "org:member" }));
+  });
+
+  it("should invite a member with admin role", async () => {
+    const userId = uniqueId("inv-admin");
+    await setupOrg(userId);
+
+    const response = await POST(
+      createTestRequest(inviteUrl(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: "admin@example.com", role: "admin" }),
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.message).toContain("admin@example.com");
+
+    const client = await clerkClient();
+    expect(
+      client.organizations.createOrganizationInvitation,
+    ).toHaveBeenCalledWith(expect.objectContaining({ role: "org:admin" }));
   });
 
   it("should return 403 when caller is not an admin", async () => {

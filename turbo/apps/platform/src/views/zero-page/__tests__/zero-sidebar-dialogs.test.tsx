@@ -101,7 +101,7 @@ describe("chatListDialog", () => {
   it("should navigate to chat when clicking a pinned agent", async () => {
     const user = userEvent.setup();
     mockAPIsWithSubagents();
-    await setupPage({ context, path: "/team" });
+    await setupPage({ context, path: "/agents" });
 
     await openChatListDialog(user);
 
@@ -120,14 +120,14 @@ describe("chatListDialog", () => {
 
     // Should navigate to /chat/:threadId
     await waitFor(() => {
-      expect(pathname()).toBe("/chat/new-thread-from-dialog");
+      expect(pathname()).toBe("/chats/new-thread-from-dialog");
     });
   });
 
   it("should navigate to chat when clicking an unpinned agent", async () => {
     const user = userEvent.setup();
     mockAPIsWithSubagents();
-    await setupPage({ context, path: "/team" });
+    await setupPage({ context, path: "/agents" });
 
     await openChatListDialog(user);
 
@@ -139,14 +139,14 @@ describe("chatListDialog", () => {
     await user.click(unpinnedAgentButton);
 
     await waitFor(() => {
-      expect(pathname()).toBe("/chat/new-thread-from-dialog");
+      expect(pathname()).toBe("/chats/new-thread-from-dialog");
     });
   });
 
   it("should render unpinned agent avatars without reduced opacity", async () => {
     const user = userEvent.setup();
     mockAPIsWithSubagents();
-    await setupPage({ context, path: "/team" });
+    await setupPage({ context, path: "/agents" });
 
     await openChatListDialog(user);
 
@@ -164,7 +164,7 @@ describe("chatListDialog", () => {
   it("should navigate to chat when clicking the lead agent", async () => {
     const user = userEvent.setup();
     mockAPIsWithSubagents();
-    await setupPage({ context, path: "/team" });
+    await setupPage({ context, path: "/agents" });
 
     await openChatListDialog(user);
 
@@ -178,7 +178,7 @@ describe("chatListDialog", () => {
     await user.click(leadButton);
 
     await waitFor(() => {
-      expect(pathname()).toBe("/chat/new-thread-from-dialog");
+      expect(pathname()).toBe("/chats/new-thread-from-dialog");
     });
   });
 });

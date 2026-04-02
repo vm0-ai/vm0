@@ -6,7 +6,15 @@ export default function robots(): MetadataRoute.Robots {
       {
         userAgent: "*",
         allow: "/",
-        disallow: ["/api/", "/cli-auth/"],
+        disallow: [
+          "/api/",
+          "/cli-auth/",
+          "/sign-in/",
+          "/sign-up/",
+          "/sign-in-token/",
+          "/export/",
+          "/connector/",
+        ],
       },
     ],
     sitemap: "https://vm0.ai/sitemap.xml",

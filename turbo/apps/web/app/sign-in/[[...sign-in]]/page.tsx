@@ -1,16 +1,10 @@
-"use client";
+import type { Metadata } from "next";
+import SignInClient from "./SignInClient";
 
-import { SignIn } from "@clerk/nextjs";
-import { useTheme } from "../../components/ThemeProvider";
-import { AuthLayout } from "../../components/auth/AuthLayout";
-import { getClerkAppearance } from "../../components/auth/clerk-appearance";
+export const metadata: Metadata = {
+  robots: { index: false, follow: false },
+};
 
 export default function SignInPage() {
-  const { theme } = useTheme();
-
-  return (
-    <AuthLayout>
-      <SignIn appearance={getClerkAppearance(theme)} />
-    </AuthLayout>
-  );
+  return <SignInClient />;
 }

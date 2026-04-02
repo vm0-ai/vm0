@@ -113,12 +113,15 @@ export async function getZeroOrgMembers(): Promise<OrgMembersResponse> {
 /**
  * Invite a member to the org via zero API
  */
-export async function inviteZeroOrgMember(email: string): Promise<void> {
+export async function inviteZeroOrgMember(
+  email: string,
+  role: "member" | "admin" = "member",
+): Promise<void> {
   const config = await getClientConfig();
   const client = initClient(zeroOrgInviteContract, config);
 
   const result = await client.invite({
-    body: { email },
+    body: { email, role },
   });
 
   if (result.status === 200) {
@@ -188,7 +191,7 @@ export async function deleteZeroOrg(slug: string): Promise<void> {
  */
 export async function switchZeroOrg(
   slug: string,
-): Promise<{ access_token: string; org_slug: string }> {
+): Promise<{ access_token: string }> {
   const config = await getUserTokenClientConfig();
   const client = initClient(cliAuthOrgContract, config);
 

@@ -18,8 +18,8 @@ import { pathParams$, searchParams$ } from "../route.ts";
 
 export const firewallAllowAgentId$ = computed((get) => {
   const params = get(pathParams$);
-  const agentId = params?.agentId;
-  return typeof agentId === "string" ? agentId : null;
+  const id = params?.id;
+  return typeof id === "string" ? id : null;
 });
 
 export const firewallAllowRef$ = computed((get) => {

@@ -64,7 +64,7 @@ function mockAPIs() {
 describe("sidebar chat navigation from /team", () => {
   it("should navigate from /team to chat session when clicking sidebar chat link", async () => {
     mockAPIs();
-    await setupPage({ context, path: "/team" });
+    await setupPage({ context, path: "/agents" });
 
     // Verify agents page is rendered
     await waitFor(() => {

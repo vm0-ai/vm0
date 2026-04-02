@@ -104,13 +104,13 @@ function mockAPIsWithSubagents() {
 }
 
 describe("zero sidebar", () => {
-  it("should render clerk org switcher", async () => {
+  it("should render org switcher with current org name", async () => {
     await setupPage({
       context,
       path: "/",
     });
 
-    expect(screen.getByText("OrganizationSwitcher")).toBeInTheDocument();
+    expect(screen.getByText("Default Org")).toBeInTheDocument();
   });
 
   it("should enable dataExport feature switch via localStorage override", async () => {
@@ -235,7 +235,7 @@ describe("zero sidebar", () => {
 
   it("should show sub-agent chats when navigating to /talk/:name", async () => {
     mockAPIsWithSubagents();
-    await setupPage({ context, path: "/talk/sub-agent-id" });
+    await setupPage({ context, path: "/agents/sub-agent-id" });
 
     // Wait for sub-agent chat to render
     await waitFor(() => {

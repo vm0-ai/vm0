@@ -1,6 +1,4 @@
 import { command, computed, state } from "ccstate";
-import { clerk$ } from "../../auth.ts";
-import { detach, onRef, Reason } from "../../utils.ts";
 import { searchParams$, updateSearchParams$ } from "../../route.ts";
 import { reloadBillingStatus$ } from "../billing.ts";
 import { isOrgAdmin$ } from "../../org.ts";
@@ -69,23 +67,3 @@ export const checkSettingsParam$ = command(
     set(updateSearchParams$, next);
   },
 );
-
-const patchClerkOrgProfile$ = command(
-  async ({ get, set }, _el: HTMLElement, signal: AbortSignal) => {
-    const clerk = await get(clerk$);
-    signal.throwIfAborted();
-    if (!clerk?.openOrganizationProfile) {
-      return;
-    }
-
-    const original = clerk.openOrganizationProfile.bind(clerk);
-    clerk.openOrganizationProfile = () => {
-      detach(set(setOrgManageDialogOpen$, true, signal), Reason.DomCallback);
-    };
-    signal.addEventListener("abort", () => {
-      clerk.openOrganizationProfile = original;
-    });
-  },
-);
-
-export const patchRef$ = onRef(patchClerkOrgProfile$);

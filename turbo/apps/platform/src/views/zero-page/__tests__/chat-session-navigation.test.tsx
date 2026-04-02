@@ -45,7 +45,7 @@ describe("chat session page wrapper navigation", () => {
     const user = userEvent.setup();
     mockChatSessionAPIs();
 
-    await setupPage({ context, path: "/chat/session-thread-1" });
+    await setupPage({ context, path: "/chats/session-thread-1" });
 
     // Wait for chat messages to render
     await waitFor(() => {
@@ -58,7 +58,7 @@ describe("chat session page wrapper navigation", () => {
 
     // Verify navigation to /team/c0000000-0000-4000-a000-000000000001 with tab=schedule
     await waitFor(() => {
-      expect(pathname()).toBe("/team/c0000000-0000-4000-a000-000000000001");
+      expect(pathname()).toBe("/agents/c0000000-0000-4000-a000-000000000001");
       expect(search()).toContain("tab=schedule");
     });
   });
@@ -67,7 +67,7 @@ describe("chat session page wrapper navigation", () => {
     const user = userEvent.setup();
     mockChatSessionAPIs();
 
-    await setupPage({ context, path: "/chat/session-thread-1" });
+    await setupPage({ context, path: "/chats/session-thread-1" });
 
     // Wait for chat messages to render
     await waitFor(() => {
@@ -80,7 +80,7 @@ describe("chat session page wrapper navigation", () => {
 
     // Verify navigation to /team/c0000000-0000-4000-a000-000000000001 (no tab param)
     await waitFor(() => {
-      expect(pathname()).toBe("/team/c0000000-0000-4000-a000-000000000001");
+      expect(pathname()).toBe("/agents/c0000000-0000-4000-a000-000000000001");
     });
   });
 });

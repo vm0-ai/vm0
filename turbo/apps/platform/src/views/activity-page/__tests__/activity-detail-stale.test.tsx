@@ -149,7 +149,7 @@ describe("activity detail stale data", () => {
     // Start on the first activity detail page
     await setupPage({
       context,
-      path: "/activity/a0000000-0000-4000-a000-000000000001",
+      path: "/activities/a0000000-0000-4000-a000-000000000001",
       featureSwitches: { [FeatureSwitchKey.ActivityLogList]: true },
     });
 

@@ -1,5 +1,46 @@
 # Changelog
 
+## [0.177.1](https://github.com/vm0-ai/vm0/compare/app-v0.177.0...app-v0.177.1) (2026-04-02)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.138.0
+
+## [0.177.0](https://github.com/vm0-ai/vm0/compare/app-v0.176.0...app-v0.177.0) (2026-04-01)
+
+
+### Features
+
+* **platform:** replace clerk org switcher with zero-native component ([#7561](https://github.com/vm0-ai/vm0/issues/7561)) ([f799b19](https://github.com/vm0-ai/vm0/commit/f799b1973332c14aae140097c2770ab68ea5c7f5))
+
+## [0.176.0](https://github.com/vm0-ai/vm0/compare/app-v0.175.1...app-v0.176.0) (2026-04-01)
+
+
+### Features
+
+* **org:** add role selection to member invite flow ([#7555](https://github.com/vm0-ai/vm0/issues/7555)) ([891fc35](https://github.com/vm0-ai/vm0/commit/891fc35eaeba4c73c741accc5bc810df46d17962))
+* **platform:** add placeholder assistant message for immediate chat feedback ([#7549](https://github.com/vm0-ai/vm0/issues/7549)) ([38f926f](https://github.com/vm0-ai/vm0/commit/38f926f3e12414136655684db2a2dc006eb37ed0))
+
+
+### Bug Fixes
+
+* reset chat thread page on thread switch to show skeleton ([#7571](https://github.com/vm0-ai/vm0/issues/7571)) ([1d8eb6c](https://github.com/vm0-ai/vm0/commit/1d8eb6cd8d10fa13d0c74e30008cbffa2cfdf9dd))
+
+
+### Performance Improvements
+
+* convert zero-page images from png to webp for smaller bundle size ([#7572](https://github.com/vm0-ai/vm0/issues/7572)) ([3e43dd5](https://github.com/vm0-ai/vm0/commit/3e43dd564ccf440f5998f64ca3e0a109cde98037))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.137.0
+
 ## [0.175.1](https://github.com/vm0-ai/vm0/compare/app-v0.175.0...app-v0.175.1) (2026-04-01)
 
 

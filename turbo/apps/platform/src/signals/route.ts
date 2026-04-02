@@ -179,11 +179,12 @@ export const detachedNavigateTo$ = command(
   },
 );
 
-type ExtractParams<T extends string> = T extends `/:${infer Param}`
-  ? Record<Param, string>
-  : T extends `/${string}/:${infer Param}`
-    ? Record<Param, string>
-    : undefined;
+type ExtractParams<T extends string> =
+  T extends `${string}/:${infer Param}/${infer Rest}`
+    ? Record<Param, string> & ExtractParams<`/${Rest}`>
+    : T extends `${string}/:${infer Param}`
+      ? Record<Param, string>
+      : undefined;
 
 export const generateRouterPath = <T extends RoutePath>(
   path: T,

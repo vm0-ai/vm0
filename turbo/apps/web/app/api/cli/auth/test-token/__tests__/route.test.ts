@@ -198,7 +198,7 @@ describe("/api/cli/auth/test-token", () => {
       reloadEnv();
     });
 
-    it("returns token with correct format and org_slug", async () => {
+    it("returns token with correct format", async () => {
       const request = createTestRequest(
         "http://localhost:3000/api/cli/auth/test-token",
         { method: "POST" },
@@ -211,7 +211,7 @@ describe("/api/cli/auth/test-token", () => {
       expect(data.token_type).toBe("Bearer");
       expect(data.expires_in).toBe(90 * 24 * 60 * 60);
       expect(data.user_id).toBe("user_test123");
-      expect(data.org_slug).toBe("test-token-org");
+      expect(data).not.toHaveProperty("org_slug");
     });
 
     it("throws when test user is not found", async () => {
@@ -254,7 +254,7 @@ describe("/api/cli/auth/test-token", () => {
       expect(response.status).toBe(200);
 
       const data = await response.json();
-      expect(data.org_slug).toBe("test-token-org");
+      expect(data.access_token).toMatch(/^vm0_pat_/);
       // Verify getOrganization was called to populate the cache
       expect(mockGetOrganization).toHaveBeenCalledWith({
         organizationId: "org_test_token",

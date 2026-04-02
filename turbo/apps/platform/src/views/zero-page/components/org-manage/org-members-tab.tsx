@@ -25,6 +25,11 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from "@vm0/ui";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import {
@@ -32,6 +37,7 @@ import {
   zeroOrgInviteContract,
   zeroOrgMembershipRequestsContract,
   type OrgRole,
+  orgRoleSchema,
 } from "@vm0/core";
 import {
   orgMembers$,
@@ -121,9 +127,9 @@ export function OrgMembersTab() {
     });
   })();
 
-  const handleInvite = async (email: string) => {
+  const handleInvite = async (email: string, role: OrgRole) => {
     const client = createClient(zeroOrgInviteContract);
-    const result = await client.invite({ body: { email } });
+    const result = await client.invite({ body: { email, role } });
     if (result.status === 200) {
       toast.success(`Invitation sent to ${email}`);
       refreshMembers();
@@ -317,12 +323,13 @@ export function OrgMembersTab() {
 function InviteDialog({
   onInvite,
 }: {
-  onInvite: (email: string) => Promise<void>;
+  onInvite: (email: string, role: OrgRole) => Promise<void>;
 }) {
   const email = useGet(inviteEmail$);
   const setEmail = useSet(setInviteEmail$);
   const [open, setOpen] = useState(false);
   const [sending, setSending] = useState(false);
+  const [role, setRole] = useState<OrgRole>("member");
 
   const trimmed = email.trim();
   const isValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
@@ -333,10 +340,11 @@ function InviteDialog({
   const handleSend = () => {
     setSending(true);
     detach(
-      onInvite(trimmed).then(
+      onInvite(trimmed, role).then(
         () => {
           setOpen(false);
           setEmail("");
+          setRole("member");
           setSending(false);
         },
         (error: unknown) => {
@@ -358,6 +366,9 @@ function InviteDialog({
       onOpenChange={(v) => {
         if (!sending) {
           setOpen(v);
+          if (!v) {
+            setRole("member");
+          }
         }
       }}
     >
@@ -374,25 +385,45 @@ function InviteDialog({
             Send an invitation to join this workspace.
           </DialogDescription>
         </DialogHeader>
-        <div className="flex flex-col gap-1.5">
-          <Input
-            placeholder="email@example.com"
-            type="email"
-            value={email}
-            disabled={sending}
-            onChange={(e) => {
-              setEmail(e.target.value);
-              setTouched(false);
-            }}
-            onBlur={() => {
-              return setTouched(true);
-            }}
-          />
-          {touched && trimmed && !isValid && (
-            <p className="text-[13px] text-destructive">
-              Please enter a valid email address
-            </p>
-          )}
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1.5">
+            <Input
+              placeholder="email@example.com"
+              type="email"
+              value={email}
+              disabled={sending}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                setTouched(false);
+              }}
+              onBlur={() => {
+                return setTouched(true);
+              }}
+            />
+            {touched && trimmed && !isValid && (
+              <p className="text-[13px] text-destructive">
+                Please enter a valid email address
+              </p>
+            )}
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium">Role</label>
+            <Select
+              value={role}
+              onValueChange={(v) => {
+                return setRole(orgRoleSchema.parse(v));
+              }}
+              disabled={sending}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="member">Member</SelectItem>
+                <SelectItem value="admin">Admin</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
         <DialogFooter>
           <Button

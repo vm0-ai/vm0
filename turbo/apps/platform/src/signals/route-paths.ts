@@ -1,0 +1,29 @@
+export const ROUTES = {
+  home: "/",
+  selectOrg: "/select-org",
+  agents: "/agents",
+  agentDetail: "/agents/:id",
+  agentChat: "/agents/:id/chat",
+  agentIdeas: "/agents/:id/ideas",
+  agentPermissions: "/agents/:id/permissions",
+  activities: "/activities",
+  activityDetail: "/activities/:id",
+  activityContext: "/activities/:id/context",
+  activityNetwork: "/activities/:id/network",
+  chat: "/chats/:id",
+  schedules: "/schedules",
+  scheduleDetail: "/schedules/:id",
+  queues: "/queues",
+  works: "/works",
+  ideas: "/ideas",
+  connectors: "/connectors",
+  settings: "/settings",
+  settingsUsage: "/settings/usage",
+  settingsSlack: "/settings/slack",
+  onboarding: "/onboarding",
+  signInToken: "/sign-in-token",
+  internalConnectorLogos: "/__internal-connector-logos",
+} as const;
+
+export type RouteKey = keyof typeof ROUTES;
+export type RoutePath = (typeof ROUTES)[RouteKey] | `/projects/${string}`;

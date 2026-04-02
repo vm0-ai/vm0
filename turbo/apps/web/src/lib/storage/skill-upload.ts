@@ -1,41 +1,218 @@
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { readFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
+import { tmpdir } from "node:os";
+import { mkdtemp } from "node:fs/promises";
 import { eq, and } from "drizzle-orm";
+import * as tar from "tar";
 import { getCustomSkillStorageName, VOLUME_ORG_USER_ID } from "@vm0/core";
 import { storages, storageVersions } from "../../db/schema/storage";
-import { listS3Objects, deleteS3Objects } from "../s3/s3-client";
+import {
+  putS3Object,
+  listS3Objects,
+  deleteS3Objects,
+  verifyS3FilesExist,
+} from "../s3/s3-client";
+import type { S3StorageManifest } from "../s3/types";
+import { computeContentHashFromHashes, hashFileContent } from "./content-hash";
 import { env } from "../../env";
 import { logger } from "../logger";
-import { uploadStorageServerSide } from "./upload-storage";
 
 const log = logger("storage:skill-upload");
 
-const SKILL_FILENAME = "SKILL.md";
-
 /**
- * Upload a custom skill directly to S3 from the server side.
+ * Upload a custom skill with multiple files to S3 from the server side.
  *
- * Bypasses the CLI's prepare -> presigned URL -> commit flow by writing
- * archive.tar.gz and manifest.json directly via putS3Object().
- * Delegates to the shared uploadStorageServerSide for the core upload logic.
+ * Creates a multi-file tar.gz archive from the provided files array,
+ * computes content-addressable version hashes, and uploads to S3
+ * with deduplication support.
  */
 export async function uploadSkillServerSide(params: {
   orgId: string;
   skillName: string;
-  content: string;
+  files: Array<{ path: string; content: string }>;
 }): Promise<{ storageName: string; versionId: string }> {
-  const { orgId, skillName, content } = params;
-
+  const { orgId, skillName, files } = params;
   const storageName = getCustomSkillStorageName(skillName);
 
-  const result = await uploadStorageServerSide({
-    orgId,
-    storageName,
-    filename: SKILL_FILENAME,
-    content,
-    log,
+  // Compute per-file hashes and sizes
+  const fileEntries = files.map((f) => {
+    const buf = Buffer.from(f.content, "utf-8");
+    return {
+      path: f.path,
+      content: buf,
+      hash: hashFileContent(buf),
+      size: buf.length,
+    };
   });
 
-  log.debug(`Uploaded skill ${skillName}: ${result.versionId}`);
-  return result;
+  const totalSize = fileEntries.reduce((sum, f) => {
+    return sum + f.size;
+  }, 0);
+
+  // Create multi-file tar.gz archive via temp directory
+  const tmpDir = await mkdtemp(join(tmpdir(), "vm0-skill-"));
+
+  try {
+    // Write files preserving directory structure
+    for (const file of fileEntries) {
+      const filePath = resolve(join(tmpDir, file.path));
+      if (!filePath.startsWith(tmpDir)) {
+        throw new Error(`Invalid file path: ${file.path}`);
+      }
+      const dir = join(filePath, "..");
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(filePath, file.content);
+    }
+
+    // Create tar.gz
+    const tarPath = join(tmpDir, "__archive.tar.gz");
+    await tar.create(
+      { gzip: true, file: tarPath, cwd: tmpDir },
+      fileEntries.map((f) => {
+        return f.path;
+      }),
+    );
+
+    const archiveBuffer = await readFile(tarPath);
+
+    // Build manifest
+    const fileHashEntries = fileEntries.map((f) => {
+      return {
+        path: f.path,
+        hash: f.hash,
+        size: f.size,
+      };
+    });
+
+    // Upsert storage record
+    const db = globalThis.services.db;
+    const storageType = "volume";
+    const s3Prefix = `${orgId}/${storageType}/${storageName}`;
+
+    const [storage] = await db
+      .insert(storages)
+      .values({
+        userId: VOLUME_ORG_USER_ID,
+        orgId,
+        name: storageName,
+        type: storageType,
+        s3Prefix,
+        size: 0,
+        fileCount: 0,
+      })
+      .onConflictDoUpdate({
+        target: [storages.orgId, storages.userId, storages.name, storages.type],
+        set: { updatedAt: new Date() },
+      })
+      .returning();
+
+    if (!storage) {
+      throw new Error(`Failed to create storage for ${storageName}`);
+    }
+
+    // Compute version ID
+    const versionId = computeContentHashFromHashes(storage.id, fileHashEntries);
+    const s3Key = `${s3Prefix}/${versionId}`;
+    const bucketName = env().R2_USER_STORAGES_BUCKET_NAME;
+
+    // Check for existing version (dedup)
+    const [existingVersion] = await db
+      .select()
+      .from(storageVersions)
+      .where(
+        and(
+          eq(storageVersions.storageId, storage.id),
+          eq(storageVersions.id, versionId),
+        ),
+      )
+      .limit(1);
+
+    if (existingVersion) {
+      const s3Exists = await verifyS3FilesExist(
+        bucketName,
+        existingVersion.s3Key,
+        existingVersion.fileCount,
+      );
+
+      if (s3Exists) {
+        log.debug(`Version ${versionId} already exists, updating HEAD`);
+        if (storage.headVersionId !== versionId) {
+          await db
+            .update(storages)
+            .set({ headVersionId: versionId, updatedAt: new Date() })
+            .where(eq(storages.id, storage.id));
+        }
+        return { storageName, versionId };
+      }
+      log.warn(`Version ${versionId} in DB but S3 files missing, re-uploading`);
+    }
+
+    // Upload to S3
+    const manifestKey = `${s3Key}/manifest.json`;
+    const archiveKey = `${s3Key}/archive.tar.gz`;
+
+    const manifest: S3StorageManifest = {
+      version: versionId,
+      createdAt: new Date().toISOString(),
+      totalSize,
+      fileCount: files.length,
+      files: fileHashEntries,
+    };
+
+    await Promise.all([
+      putS3Object(bucketName, archiveKey, archiveBuffer, "application/gzip"),
+      putS3Object(
+        bucketName,
+        manifestKey,
+        JSON.stringify(manifest),
+        "application/json",
+      ),
+    ]);
+
+    // Create version + update HEAD in transaction
+    await db.transaction(async (tx) => {
+      await tx
+        .insert(storageVersions)
+        .values({
+          id: versionId,
+          storageId: storage.id,
+          s3Key,
+          size: totalSize,
+          fileCount: files.length,
+          message: null,
+          createdBy: "user",
+        })
+        .onConflictDoNothing();
+
+      const [version] = await tx
+        .select({ id: storageVersions.id })
+        .from(storageVersions)
+        .where(eq(storageVersions.id, versionId))
+        .limit(1);
+
+      if (!version) {
+        throw new Error(`Version ${versionId} not found after insert`);
+      }
+
+      await tx
+        .update(storages)
+        .set({
+          headVersionId: versionId,
+          size: totalSize,
+          fileCount: files.length,
+          updatedAt: new Date(),
+        })
+        .where(eq(storages.id, storage.id));
+    });
+
+    log.debug(
+      `Uploaded skill ${skillName}: ${versionId} (${files.length} files)`,
+    );
+    return { storageName, versionId };
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
 }
 
 /**

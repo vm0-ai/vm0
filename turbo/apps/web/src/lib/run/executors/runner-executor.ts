@@ -1,7 +1,7 @@
 import {
   DEFAULT_PROFILE,
   type StoredExecutionContext,
-  type ExperimentalFirewalls,
+  type Firewalls,
 } from "@vm0/core";
 import { eq } from "drizzle-orm";
 import { agentRuns } from "../../../db/schema/agent-run";
@@ -68,7 +68,7 @@ export async function executeRunnerJob(
     encryptedSecrets,
     secretConnectorMap: context.secretConnectorMap,
     cliAgentType: context.cliAgentType,
-    experimentalFirewalls: context.experimentalFirewalls ?? undefined,
+    firewalls: context.firewalls ?? undefined,
     disallowedTools: context.disallowedTools ?? undefined,
     tools: context.tools ?? undefined,
     settings: context.settings ?? undefined,
@@ -142,7 +142,7 @@ function buildRunContextSnapshot(context: PreparedContext): RunContextSnapshot {
   }
 
   // Strip auth headers from firewalls
-  const firewalls = sanitizeFirewalls(context.experimentalFirewalls);
+  const firewalls = sanitizeFirewalls(context.firewalls);
 
   // Extract volume/artifact metadata without presigned URLs
   const manifest = context.storageManifest;
@@ -181,7 +181,7 @@ function buildRunContextSnapshot(context: PreparedContext): RunContextSnapshot {
 }
 
 function sanitizeFirewalls(
-  firewalls: ExperimentalFirewalls | null,
+  firewalls: Firewalls | null,
 ): RunContextSnapshot["firewalls"] {
   if (!firewalls) return [];
   return firewalls.map((fw) => {

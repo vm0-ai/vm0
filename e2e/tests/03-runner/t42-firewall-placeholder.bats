@@ -91,7 +91,7 @@ setup_test_connector() {
 
 @test "firewall: placeholder env vars" {
     # Connectors are set up in setup_file() to avoid parallel write races.
-    # No experimental_firewalls needed — connector auto-add provides firewalls.
+    # No firewalls needed — connector auto-add provides firewalls.
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"
 
@@ -123,9 +123,9 @@ EOF
     assert_output --partial "SLACK_TOKEN=xoxb-100100100100-1001001001001-CoffeeSafeLocalCoffeeSaf"
 }
 
-@test "firewall: connector auto-adds firewall without experimental_firewalls" {
+@test "firewall: connector auto-adds firewall without firewalls" {
     # GitHub connector is set up in setup_file().
-    # Compose does NOT declare experimental_firewalls — the system should
+    # Compose does NOT declare firewalls — the system should
     # auto-add a firewall for the connected GitHub connector with unrestricted access.
     cat > "$TEST_DIR/vm0.yaml" <<EOF
 version: "1.0"

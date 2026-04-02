@@ -162,7 +162,7 @@ describe("zero-chat signals", () => {
       // Set up on an existing thread URL so chatThreadId$ is pre-populated
       await setupPage({
         context,
-        path: "/chat/thread-existing",
+        path: "/chats/thread-existing",
         withoutRender: true,
       });
 
@@ -280,7 +280,7 @@ describe("zero-chat signals", () => {
 
       await setupPage({
         context,
-        path: "/chat/thread-dedup",
+        path: "/chats/thread-dedup",
         withoutRender: true,
       });
 
@@ -353,7 +353,7 @@ describe("zero-chat signals", () => {
       // Route setup calls loadSessionFromSnapshot$ which reads chatSessionSnapshot$
       await setupPage({
         context,
-        path: "/chat/url-thread",
+        path: "/chats/url-thread",
         withoutRender: true,
       });
 
@@ -403,7 +403,7 @@ describe("zero-chat signals", () => {
       // Route setup loads the thread
       await setupPage({
         context,
-        path: "/chat/already-loaded",
+        path: "/chats/already-loaded",
         withoutRender: true,
       });
 

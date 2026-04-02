@@ -119,7 +119,7 @@ describe("queue to activity navigation", () => {
     mockQueueWithActivityLinks();
     mockActivityDetailAPIs("a0000000-0000-4000-a000-000000000001");
 
-    await setupPage({ context, path: "/queue" });
+    await setupPage({ context, path: "/queues" });
 
     // Wait for running task to render
     await waitFor(() => {
@@ -145,7 +145,7 @@ describe("queue to activity navigation", () => {
     mockQueueWithActivityLinks();
     mockActivityDetailAPIs("a0000000-0000-4000-a000-000000000002");
 
-    await setupPage({ context, path: "/queue" });
+    await setupPage({ context, path: "/queues" });
 
     // Wait for queued task to render
     await waitFor(() => {

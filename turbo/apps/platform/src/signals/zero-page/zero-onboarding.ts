@@ -189,17 +189,51 @@ export const completeZeroOnboarding$ = command(
       const selectedConnectors = get(internalSelectedConnectors$);
       const createClient = get(zeroClient$);
 
-      // Update org name if provided
+      // Update org name and slug if provided
       if (workspaceName.trim()) {
+        const name = workspaceName.trim();
+        const baseSlug = name
+          .toLowerCase()
+          .replace(/[^a-z0-9-]/g, "-")
+          .replace(/-+/g, "-")
+          .replace(/^-|-$/g, "")
+          .slice(0, 64);
         const orgClient = createClient(zeroOrgContract);
-        const orgResult = await orgClient.update({
-          body: { name: workspaceName.trim() },
-        });
-        signal.throwIfAborted();
-        if (orgResult.status !== 200) {
-          throw new Error(
-            `Failed to update workspace name: ${orgResult.status}`,
-          );
+
+        // Try slug from name first, fall back to slug+random on conflict
+        const slugCandidates = [
+          baseSlug,
+          `${baseSlug.slice(0, 56)}-${Math.random().toString(36).slice(2, 8)}`,
+        ];
+        let updated = false;
+        for (const slug of slugCandidates) {
+          if (slug.length < 3) {
+            continue;
+          }
+          const orgResult = await orgClient.update({
+            body: { name, slug, force: true },
+          });
+          signal.throwIfAborted();
+          if (orgResult.status === 200) {
+            updated = true;
+            break;
+          }
+          // Only retry on conflict (slug taken); other errors are fatal
+          if (orgResult.status !== 409) {
+            throw new Error(
+              `Failed to update workspace name: ${orgResult.status}`,
+            );
+          }
+        }
+        // If both slug candidates failed, update name only
+        if (!updated) {
+          const orgResult = await orgClient.update({ body: { name } });
+          signal.throwIfAborted();
+          if (orgResult.status !== 200) {
+            throw new Error(
+              `Failed to update workspace name: ${orgResult.status}`,
+            );
+          }
         }
       }
 
@@ -257,6 +291,11 @@ export const completeZeroOnboarding$ = command(
       const clerk = await get(clerk$);
       signal.throwIfAborted();
       await clerk.session?.getToken({ skipCache: true });
+      signal.throwIfAborted();
+
+      // Reload the Clerk organization object so client-side reads
+      // (e.g. org switcher) reflect the updated name immediately.
+      await clerk.organization?.reload();
       signal.throwIfAborted();
 
       // Reload status (caller dismisses via dismissZeroOnboarding$)

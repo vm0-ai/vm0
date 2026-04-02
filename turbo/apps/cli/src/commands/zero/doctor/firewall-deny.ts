@@ -7,6 +7,7 @@ import {
 } from "@vm0/core";
 import { withErrorHandler } from "../../../lib/command";
 import { getPlatformOrigin } from "./platform-url";
+import { resolveRole } from "./resolve-role";
 
 export const firewallDenyCommand = new Command()
   .name("firewall-deny")
@@ -62,9 +63,7 @@ Notes:
           urlParams.set("permission", permissions[0]!);
         }
 
-        const pagePath = agentId
-          ? `/firewall-allow/${agentId}`
-          : "/firewall-allow";
+        const pagePath = agentId ? `/agents/${agentId}/permissions` : "/agents";
         const url = `${platformOrigin}${pagePath}?${urlParams.toString()}`;
 
         console.log(
@@ -92,9 +91,21 @@ Notes:
           console.log("");
         }
 
-        console.log(
-          `Ask the user to allow it at: [Allow ${label} access](${url})`,
-        );
+        const role = agentId ? await resolveRole() : "unknown";
+
+        if (role === "admin") {
+          console.log(
+            `You can allow this permission directly: [Manage ${label} firewall](${url})`,
+          );
+        } else if (role === "member") {
+          console.log(
+            `This change requires admin approval. Request access at: [Request ${label} access](${url})`,
+          );
+        } else {
+          console.log(
+            `Ask the user to allow it at: [Allow ${label} access](${url})`,
+          );
+        }
       },
     ),
   );

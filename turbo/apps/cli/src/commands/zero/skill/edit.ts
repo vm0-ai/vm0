@@ -1,9 +1,8 @@
 import { Command } from "commander";
-import { readFileSync, existsSync } from "node:fs";
-import { join } from "node:path";
 import chalk from "chalk";
 import { updateSkill } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
+import { readSkillDirectory } from "../../../lib/skill-directory";
 
 export const editCommand = new Command()
   .name("edit")
@@ -11,7 +10,7 @@ export const editCommand = new Command()
   .argument("<name>", "Skill name")
   .requiredOption(
     "--dir <path>",
-    "Path to directory containing updated SKILL.md",
+    "Path to directory containing updated skill files",
   )
   .addHelpText(
     "after",
@@ -21,14 +20,11 @@ Examples:
   )
   .action(
     withErrorHandler(async (name: string, options: { dir: string }) => {
-      const skillMdPath = join(options.dir, "SKILL.md");
-      if (!existsSync(skillMdPath)) {
-        throw new Error(`SKILL.md not found in ${options.dir}`);
-      }
+      const files = readSkillDirectory(options.dir);
+      await updateSkill(name, { files });
 
-      const content = readFileSync(skillMdPath, "utf-8");
-      await updateSkill(name, { content });
-
-      console.log(chalk.green(`✓ Skill "${name}" updated`));
+      console.log(
+        chalk.green(`✓ Skill "${name}" updated (${files.length} file(s))`),
+      );
     }),
   );

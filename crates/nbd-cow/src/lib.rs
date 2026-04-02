@@ -21,6 +21,16 @@ pub const NUM_CONNECTIONS: usize = 4;
 /// Default write buffer flush threshold: 4MB.
 pub const DEFAULT_FLUSH_THRESHOLD: usize = 4 * 1024 * 1024;
 
+/// Result of checking NBD device ownership via sysfs PID.
+enum DeviceOwnership {
+    /// We own the device (sysfs PID matches our PID).
+    Ours,
+    /// Another process owns the device (with its PID).
+    Foreign(u32),
+    /// Cannot determine ownership (sysfs read failed).
+    Unknown(std::io::Error),
+}
+
 /// An NBD COW block device backed by a base image and sparse COW file.
 ///
 /// The device appears as `/dev/nbdN` and can be used as a Firecracker rootfs.
@@ -61,13 +71,14 @@ impl NbdCowDevice {
         )?;
         let cow_layer = Arc::new(RwLock::new(cow_layer));
 
-        // Retry loop: on reconnect (same device index after a recent disconnect),
-        // the kernel may still be tearing down the old connection. The netlink
-        // CONNECT succeeds but set_capacity may not take effect (device size = 0).
-        // When detected, disconnect, recreate socketpairs + tasks, and retry.
-        // Fresh sockets and tasks are needed each attempt because the kernel may
-        // have started the NBD protocol on the old sockets; after disconnect the
-        // dispatch tasks exit and drop their server-side fds, making reuse unsafe.
+        // Retry loop: if the kernel is still tearing down a previous connection
+        // on the assigned device, the netlink CONNECT succeeds but set_capacity
+        // may not take effect (device size = 0). When detected, disconnect,
+        // recreate socketpairs + tasks, and retry. The kernel auto-assigns a
+        // (likely different) free device on each attempt.
+        // Fresh sockets and tasks are needed because the kernel may have started
+        // the NBD protocol on the old sockets; after disconnect the dispatch
+        // tasks exit and drop their server-side fds, making reuse unsafe.
         const MAX_CONNECT_RETRIES: u32 = 5;
         let mut last_err_idx: u32 = 0;
 
@@ -230,16 +241,29 @@ impl NbdCowDevice {
             cow.save_bitmap(&self.bitmap_path())?;
         }
 
-        // Disconnect via netlink — attempt exactly once.
-        //
-        // Why no retry: if the kernel processed the disconnect but the netlink
-        // ACK was lost (recv timeout), `self.device_index` may already have been
-        // recycled by another runner. A second disconnect would tear down the
-        // other runner's device. Setting `disconnected = true` first ensures
-        // neither this function (on re-entry) nor Drop attempts a second call.
+        // Disconnect via netlink — attempt exactly once, only if we still own
+        // the device. On shared hosts, another runner may have already
+        // disconnected our device and recycled the index; blindly calling
+        // disconnect(device_index) would tear down the new owner's device.
         if !self.disconnected {
             self.disconnected = true;
-            netlink::disconnect(self.device_index)?;
+            match self.device_ownership() {
+                DeviceOwnership::Ours => netlink::disconnect(self.device_index)?,
+                DeviceOwnership::Foreign(pid) => {
+                    tracing::warn!(
+                        device_index = self.device_index,
+                        foreign_pid = pid,
+                        "skipping disconnect: device recycled by another process"
+                    );
+                }
+                DeviceOwnership::Unknown(err) => {
+                    tracing::warn!(
+                        device_index = self.device_index,
+                        error = %err,
+                        "skipping disconnect: cannot read device pid"
+                    );
+                }
+            }
         }
 
         // Wait for kernel to release the device (poll pid file)
@@ -258,6 +282,26 @@ impl NbdCowDevice {
         }
 
         Ok(())
+    }
+
+    /// Check if we still own the NBD device by comparing the sysfs PID.
+    ///
+    /// The kernel records the connecting process's PID in `/sys/block/nbdN/pid`.
+    /// If another process recycled the device index, the PID will differ and
+    /// we must skip disconnect to avoid tearing down the other process's device.
+    fn device_ownership(&self) -> DeviceOwnership {
+        let pid_path = format!("/sys/block/nbd{}/pid", self.device_index);
+        match std::fs::read_to_string(&pid_path) {
+            Ok(contents) => {
+                let pid: u32 = contents.trim().parse().unwrap_or(0);
+                if pid == std::process::id() {
+                    DeviceOwnership::Ours
+                } else {
+                    DeviceOwnership::Foreign(pid)
+                }
+            }
+            Err(e) => DeviceOwnership::Unknown(e),
+        }
     }
 
     fn bitmap_path(&self) -> PathBuf {
@@ -281,9 +325,11 @@ impl Drop for NbdCowDevice {
         for handle in self.server_handles.drain(..) {
             handle.abort();
         }
-        // Only disconnect if shutdown_inner hasn't already done it,
-        // to avoid disconnecting a device that was recycled by another runner.
+        // Only disconnect if shutdown_inner hasn't already done it AND we
+        // still own the device. Another runner's cleanup may have already
+        // disconnected our index and a third runner may have recycled it.
         if !self.disconnected
+            && matches!(self.device_ownership(), DeviceOwnership::Ours)
             && let Err(e) = netlink::disconnect(self.device_index)
         {
             tracing::warn!(

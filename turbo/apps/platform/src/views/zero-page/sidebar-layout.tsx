@@ -10,8 +10,9 @@ import {
   setZeroShowAboutPage$,
   zeroSidebarCollapsed$,
   setZeroSidebarCollapsed$,
-  zeroActiveId$,
+  isChatRoute,
 } from "../../signals/zero-page/zero-nav.ts";
+import { activeRoute$ } from "../../signals/active-route.ts";
 import { mobileBreadcrumb$ } from "../../signals/zero-page/zero-mobile-breadcrumb.ts";
 import { ZeroAboutPage } from "./zero-about-page.tsx";
 import { AppSkeleton } from "./app-skeleton.tsx";
@@ -63,7 +64,7 @@ function MobileTopBar() {
   const breadcrumb =
     breadcrumbLoadable.state === "hasData" ? breadcrumbLoadable.data : null;
 
-  const activeId = useGet(zeroActiveId$);
+  const activeId = useGet(activeRoute$);
   const isAdminLoadable = useLoadable(isOrgAdmin$);
   const isAdmin = isAdminLoadable.state === "hasData" && isAdminLoadable.data;
   const setTab = useSet(setActiveTab$);
@@ -71,7 +72,7 @@ function MobileTopBar() {
   const openManage = useSet(setOrgManageDialogOpen$);
   const pageSignal = useGet(pageSignal$);
 
-  const showInvite = activeId === "chat" && isAdmin;
+  const showInvite = isChatRoute(activeId) && isAdmin;
 
   return (
     <div className="md:hidden shrink-0 flex items-center h-12 px-3 gap-2 bg-background border-b border-border/50 z-10">

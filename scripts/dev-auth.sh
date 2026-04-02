@@ -33,9 +33,8 @@ if [[ "$HTTP_CODE" != "200" ]]; then
   exit 1
 fi
 
-# Extract token and org_slug from response
+# Extract token from response
 TOKEN=$(echo "$BODY" | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
-ORG_SLUG=$(echo "$BODY" | grep -o '"org_slug":"[^"]*"' | cut -d'"' -f4)
 
 if [[ -z "$TOKEN" ]]; then
   echo "❌ Error: Failed to extract token from response"
@@ -44,31 +43,19 @@ if [[ -z "$TOKEN" ]]; then
 fi
 
 # Create config directory and file
+# Note: activeOrg is derived from the JWT token at runtime, not from config
 CONFIG_DIR="$HOME/.vm0"
 CONFIG_FILE="$CONFIG_DIR/config.json"
 
 mkdir -p "$CONFIG_DIR"
 
-if [[ -n "$ORG_SLUG" ]]; then
-  cat > "$CONFIG_FILE" << EOF
-{
-  "token": "$TOKEN",
-  "apiUrl": "$VM0_API_URL",
-  "activeOrg": "$ORG_SLUG"
-}
-EOF
-else
-  cat > "$CONFIG_FILE" << EOF
+cat > "$CONFIG_FILE" << EOF
 {
   "token": "$TOKEN",
   "apiUrl": "$VM0_API_URL"
 }
 EOF
-fi
 
 echo ""
 echo "✅ Authenticated successfully!"
 echo "Config saved to: $CONFIG_FILE"
-if [[ -n "$ORG_SLUG" ]]; then
-  echo "Active org: $ORG_SLUG"
-fi

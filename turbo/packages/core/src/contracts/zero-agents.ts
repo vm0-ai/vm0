@@ -233,10 +233,78 @@ export const zeroAgentCustomSkillSchema = z.object({
 });
 
 /**
- * Skill content request schema (create/update)
+ * Single file entry in a skill upload
  */
-export const zeroAgentSkillContentRequestSchema = z.object({
+export const skillFileEntrySchema = z.object({
+  path: z
+    .string()
+    .min(1)
+    .max(256)
+    .refine(
+      (p) => {
+        return !p.startsWith("/");
+      },
+      { message: "Path must be relative" },
+    )
+    .refine(
+      (p) => {
+        return !p.includes("..");
+      },
+      {
+        message: "Path must not contain ..",
+      },
+    ),
   content: z.string(),
+});
+
+/**
+ * Total size limit for all skill files combined (5MB)
+ */
+const SKILL_FILES_MAX_BYTES = 5 * 1024 * 1024;
+
+/**
+ * Maximum number of files in a single skill upload
+ */
+const SKILL_FILES_MAX_COUNT = 500;
+
+/**
+ * Skill files request schema (create/update)
+ */
+export const zeroAgentSkillFilesRequestSchema = z.object({
+  files: z
+    .array(skillFileEntrySchema)
+    .min(1, "At least one file is required")
+    .max(
+      SKILL_FILES_MAX_COUNT,
+      `Maximum ${SKILL_FILES_MAX_COUNT} files allowed`,
+    )
+    .refine(
+      (files) => {
+        return files.some((f) => {
+          return f.path === "SKILL.md";
+        });
+      },
+      {
+        message: "SKILL.md is required",
+      },
+    )
+    .refine(
+      (files) => {
+        const total = files.reduce((sum, f) => {
+          return sum + new TextEncoder().encode(f.content).length;
+        }, 0);
+        return total <= SKILL_FILES_MAX_BYTES;
+      },
+      { message: "Total file size must not exceed 5MB" },
+    ),
+});
+
+/**
+ * File metadata in skill response (path + size, no content)
+ */
+export const skillFileMetadataSchema = z.object({
+  path: z.string(),
+  size: z.number(),
 });
 
 /**
@@ -247,6 +315,7 @@ export const zeroAgentSkillContentResponseSchema = z.object({
   displayName: z.string().nullable(),
   description: z.string().nullable(),
   content: z.string().nullable(),
+  files: z.array(skillFileMetadataSchema).nullable(),
 });
 
 /**
@@ -275,7 +344,7 @@ export const zeroSkillsCollectionContract = c.router({
     method: "POST",
     path: "/api/zero/skills",
     headers: authHeadersSchema,
-    body: zeroAgentSkillContentRequestSchema.extend({
+    body: zeroAgentSkillFilesRequestSchema.extend({
       name: zeroAgentCustomSkillNameSchema,
       displayName: z.string().max(256).optional(),
       description: z.string().max(1024).optional(),
@@ -313,7 +382,7 @@ export const zeroSkillsDetailContract = c.router({
     path: "/api/zero/skills/:name",
     headers: authHeadersSchema,
     pathParams: z.object({ name: zeroAgentCustomSkillNameSchema }),
-    body: zeroAgentSkillContentRequestSchema,
+    body: zeroAgentSkillFilesRequestSchema,
     responses: {
       200: zeroAgentSkillContentResponseSchema,
       401: apiErrorSchema,
@@ -473,8 +542,10 @@ export type ZeroAgentInstructionsContract =
 export type ZeroAgentFirewallPoliciesContract =
   typeof zeroAgentFirewallPoliciesContract;
 export type ZeroAgentCustomSkill = z.infer<typeof zeroAgentCustomSkillSchema>;
-export type ZeroAgentSkillContentRequest = z.infer<
-  typeof zeroAgentSkillContentRequestSchema
+export type SkillFileEntry = z.infer<typeof skillFileEntrySchema>;
+export type SkillFileMetadata = z.infer<typeof skillFileMetadataSchema>;
+export type ZeroAgentSkillFilesRequest = z.infer<
+  typeof zeroAgentSkillFilesRequestSchema
 >;
 export type ZeroAgentSkillContentResponse = z.infer<
   typeof zeroAgentSkillContentResponseSchema

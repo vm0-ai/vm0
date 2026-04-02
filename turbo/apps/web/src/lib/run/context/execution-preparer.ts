@@ -234,8 +234,8 @@ function buildPreparedContext(
     // Memory storage name
     memoryName: context.memoryName || null,
 
-    // Experimental firewall for proxy-side token replacement
-    experimentalFirewalls: toNullable(context.experimentalFirewalls),
+    // Firewall for proxy-side token replacement
+    firewalls: toNullable(context.firewalls),
 
     // Disallowed tools
     disallowedTools: toNullable(context.disallowedTools),

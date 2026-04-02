@@ -85,7 +85,7 @@ async function renderTeamPage(
     }),
   );
 
-  await setupPage({ context, path: "/team/zero" });
+  await setupPage({ context, path: "/agents/zero" });
 }
 
 describe("zero authorization tab — toggle rows", () => {
@@ -219,7 +219,7 @@ async function renderTeamPageAsMember(
     }),
   );
 
-  await setupPage({ context, path: "/team/zero" });
+  await setupPage({ context, path: "/agents/zero" });
 }
 
 describe("zero authorization tab — member on default agent", () => {

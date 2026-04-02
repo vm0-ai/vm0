@@ -4,10 +4,15 @@
 //! kernel's NBD generic netlink interface. This is the modern approach (vs ioctl)
 //! and supports multi-connection.
 //!
-//! A `NBD_ATTR_DEAD_CONN_TIMEOUT` of 30 seconds is set on every connect so
-//! I/O on dead devices fails after 30s instead of hanging forever. Note: this
-//! does NOT auto-disconnect the device — explicit `disconnect()` is still
-//! required (handled by `Drop` normally, or by `runner gc` after SIGKILL).
+//! Timeouts set on every connect:
+//! - `NBD_ATTR_TIMEOUT = 30s`: per-request timeout. On expiry the kernel
+//!   retries on another connection (multi-conn). Enables the dead-connection
+//!   auto-disconnect path in the kernel's `nbd_xmit_timeout`.
+//! - `NBD_ATTR_DEAD_CONN_TIMEOUT = 30s`: after all connections are dead for
+//!   this long, the kernel auto-disconnects the device. Combined with the
+//!   per-request timeout, orphaned devices (SIGKILL, no Drop) are reclaimed
+//!   by the kernel within ~60s if there is pending I/O. Idle orphans still
+//!   require `runner gc`.
 
 use std::os::unix::io::{FromRawFd, OwnedFd};
 use std::path::Path;
@@ -24,6 +29,7 @@ const NBD_ATTR_SIZE_BYTES: u16 = 2;
 const NBD_ATTR_BLOCK_SIZE_BYTES: u16 = 3;
 const NBD_ATTR_SERVER_FLAGS: u16 = 5;
 const NBD_ATTR_SOCKETS: u16 = 7;
+const NBD_ATTR_TIMEOUT: u16 = 4;
 const NBD_ATTR_DEAD_CONN_TIMEOUT: u16 = 8;
 
 // NBD socket item attribute types (nested inside NBD_ATTR_SOCKETS)
@@ -45,6 +51,9 @@ const CTRL_ATTR_FAMILY_ID: u16 = 1;
 
 const NLM_F_REQUEST: u16 = 1;
 const NLM_F_ACK: u16 = 4;
+
+/// Timeout (seconds) used for both `NBD_ATTR_TIMEOUT` and `NBD_ATTR_DEAD_CONN_TIMEOUT`.
+const TIMEOUT_SECS: u64 = 30;
 
 const NLMSG_ERROR: u16 = 2;
 
@@ -70,11 +79,22 @@ pub fn create_socketpair() -> Result<(OwnedFd, OwnedFd)> {
 ///
 /// Falls back to 256 when the sysfs parameter is unreadable (module not loaded).
 /// The actual limit is set by ansible (`modprobe nbd nbds_max=4096`).
-fn nbds_max() -> u32 {
+pub fn nbds_max() -> u32 {
     std::fs::read_to_string("/sys/module/nbd/parameters/nbds_max")
         .ok()
         .and_then(|s| s.trim().parse().ok())
         .unwrap_or(256)
+}
+
+/// Generate a random offset in `0..max` for device scanning.
+///
+/// Uses `RandomState` (OS-seeded) to avoid pulling in an external RNG crate.
+fn random_offset(max: u32) -> u32 {
+    if max == 0 {
+        return 0;
+    }
+    use std::hash::{BuildHasher, Hasher, RandomState};
+    (RandomState::new().build_hasher().finish() % max as u64) as u32
 }
 
 /// Check if a device index appears free by inspecting its pid file.
@@ -98,7 +118,10 @@ fn device_appears_free(index: u32) -> bool {
 
 /// Atomically find a free NBD device and connect it.
 ///
-/// Iterates candidate devices, attempts `connect` on each one that appears free.
+/// Starts from a random offset and wraps around, so concurrent runners don't
+/// all compete for the same low-numbered devices. This also avoids reconnecting
+/// to a device that was just disconnected (kernel may still be tearing it down).
+///
 /// If the kernel returns EBUSY (another process grabbed it first), tries the next
 /// device. This eliminates the TOCTOU race between find and connect.
 ///
@@ -114,7 +137,11 @@ pub fn find_and_connect(client_fds: &[OwnedFd], size: u64, block_size: u64) -> R
     let flags =
         NBD_FLAG_HAS_FLAGS | NBD_FLAG_SEND_FLUSH | NBD_FLAG_SEND_TRIM | NBD_FLAG_CAN_MULTI_CONN;
 
-    for i in 0..max {
+    // Random start offset to distribute device usage and avoid retrying
+    // a device that was just disconnected (kernel may still be cleaning up).
+    let start = random_offset(max);
+    for n in 0..max {
+        let i = (start + n) % max;
         if !device_appears_free(i) {
             continue;
         }
@@ -128,12 +155,15 @@ pub fn find_and_connect(client_fds: &[OwnedFd], size: u64, block_size: u64) -> R
             &block_size.to_ne_bytes(),
         ));
         attrs.extend_from_slice(&build_nla(NBD_ATTR_SERVER_FLAGS, &flags.to_ne_bytes()));
-        // Fail I/O after 30s on dead sockets (SIGKILL where Drop can't run).
-        // Does NOT auto-disconnect — `runner gc` handles orphan cleanup.
-        let dead_conn_timeout: u64 = 30;
+        // Per-request timeout: on expiry, kernel retries via another connection.
+        // Also arms the blk-mq timer that drives dead-connection detection.
+        attrs.extend_from_slice(&build_nla(NBD_ATTR_TIMEOUT, &TIMEOUT_SECS.to_ne_bytes()));
+        // Dead-connection timeout: if ALL connections are dead for this long
+        // AND a request times out, the kernel auto-disconnects the device.
+        // Handles orphan cleanup after SIGKILL (where Drop can't run).
         attrs.extend_from_slice(&build_nla(
             NBD_ATTR_DEAD_CONN_TIMEOUT,
-            &dead_conn_timeout.to_ne_bytes(),
+            &TIMEOUT_SECS.to_ne_bytes(),
         ));
         attrs.extend_from_slice(&sockets_nla);
 
@@ -377,33 +407,37 @@ fn recv_nl(sock: &GenlSocket, buf: &mut [u8]) -> Result<usize> {
     }
 }
 
-fn recv_genl_ack(sock: &GenlSocket) -> Result<()> {
-    let mut buf = vec![0u8; 4096];
-    let n = recv_nl(sock, &mut buf)?;
+/// Result of parsing a single netlink message.
+enum NlMsg {
+    /// NLMSG_ERROR with error=0 (ACK).
+    Ack,
+    /// Non-error message (genetlink reply or broadcast).
+    Reply,
+}
 
+/// Parse a single netlink message from the buffer. Returns `NlMsg` on
+/// success, or an error for NLMSG_ERROR with non-zero errno.
+fn parse_nl_msg(buf: &[u8], n: usize) -> Result<NlMsg> {
     if n < 16 {
-        return Err(NbdCowError::Netlink("ack response too short".into()));
+        return Err(NbdCowError::Netlink("message too short".into()));
     }
 
-    let type_bytes: [u8; 2] = buf
-        .get(4..6)
-        .ok_or_else(|| NbdCowError::Netlink("ack too short for msg_type".into()))?
-        .try_into()
-        .map_err(|_| NbdCowError::Netlink("msg_type conversion".into()))?;
-    let msg_type = u16::from_ne_bytes(type_bytes);
-    if msg_type == NLMSG_ERROR {
-        // Error message: nlmsghdr (16) + error code (4 bytes as i32)
-        if n < 20 {
-            return Err(NbdCowError::Netlink("error response too short".into()));
-        }
-        let err_bytes: [u8; 4] = buf
-            .get(16..20)
-            .ok_or_else(|| NbdCowError::Netlink("error response truncated".into()))?
+    let msg_type = u16::from_ne_bytes(
+        buf.get(4..6)
+            .ok_or_else(|| NbdCowError::Netlink("msg_type slice".into()))?
             .try_into()
-            .map_err(|_| NbdCowError::Netlink("error code conversion".into()))?;
-        let error = i32::from_ne_bytes(err_bytes);
+            .map_err(|_| NbdCowError::Netlink("msg_type conversion".into()))?,
+    );
+
+    if msg_type == NLMSG_ERROR {
+        let error = i32::from_ne_bytes(
+            buf.get(16..20)
+                .ok_or_else(|| NbdCowError::Netlink("error response too short".into()))?
+                .try_into()
+                .map_err(|_| NbdCowError::Netlink("error code conversion".into()))?,
+        );
         if error == 0 {
-            return Ok(()); // ACK (error=0 means success)
+            return Ok(NlMsg::Ack);
         }
         let errno = -error;
         return Err(NbdCowError::NetlinkErrno {
@@ -412,8 +446,19 @@ fn recv_genl_ack(sock: &GenlSocket) -> Result<()> {
         });
     }
 
-    tracing::debug!(msg_type, "recv_genl_ack: ignoring non-error message type");
-    Ok(())
+    Ok(NlMsg::Reply)
+}
+
+fn recv_genl_ack(sock: &GenlSocket) -> Result<()> {
+    let mut buf = vec![0u8; 4096];
+    let n = recv_nl(sock, &mut buf)?;
+    match parse_nl_msg(&buf, n)? {
+        NlMsg::Ack => Ok(()),
+        NlMsg::Reply => {
+            // Non-error, non-ACK message — ignore (e.g., unsolicited broadcast).
+            Ok(())
+        }
+    }
 }
 
 /// Build the nested NBD_ATTR_SOCKETS NLA from a list of client fds.
@@ -470,4 +515,23 @@ fn build_nested_nla(nla_type: u16, payload: &[u8]) -> Vec<u8> {
         dest.copy_from_slice(payload);
     }
     buf
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn random_offset_zero_max() {
+        assert_eq!(random_offset(0), 0);
+    }
+
+    #[test]
+    fn random_offset_within_range() {
+        for max in [1, 2, 16, 256, 4096] {
+            for _ in 0..100 {
+                assert!(random_offset(max) < max, "offset >= max for max={max}");
+            }
+        }
+    }
 }

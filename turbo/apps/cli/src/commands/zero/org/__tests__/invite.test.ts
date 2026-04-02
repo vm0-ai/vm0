@@ -19,7 +19,7 @@ describe("zero org invite command", () => {
     vi.stubEnv("VM0_TOKEN", "test-token");
   });
 
-  it("should invite member and show success", async () => {
+  it("should invite member with default role and show success", async () => {
     server.use(
       http.post("http://localhost:3000/api/zero/org/invite", () => {
         return HttpResponse.json({
@@ -37,7 +37,48 @@ describe("zero org invite command", () => {
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
     expect(logCalls).toContain("member@example.com");
-    expect(logCalls).toContain("Invitation sent");
+    expect(logCalls).toContain("as member");
+  });
+
+  it("should invite member with --role admin", async () => {
+    server.use(
+      http.post("http://localhost:3000/api/zero/org/invite", () => {
+        return HttpResponse.json({
+          message: "Invitation sent to admin@example.com",
+        });
+      }),
+    );
+
+    await inviteCommand.parseAsync([
+      "node",
+      "cli",
+      "--email",
+      "admin@example.com",
+      "--role",
+      "admin",
+    ]);
+
+    const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logCalls).toContain("admin@example.com");
+    expect(logCalls).toContain("as admin");
+  });
+
+  it("should reject invalid role value", async () => {
+    await expect(async () => {
+      await inviteCommand.parseAsync([
+        "node",
+        "cli",
+        "--email",
+        "user@example.com",
+        "--role",
+        "superadmin",
+      ]);
+    }).rejects.toThrow("process.exit called");
+
+    expect(mockConsoleError).toHaveBeenCalledWith(
+      expect.stringContaining('Invalid role "superadmin"'),
+    );
+    expect(mockExit).toHaveBeenCalledWith(1);
   });
 
   it("should handle forbidden error (non-admin)", async () => {

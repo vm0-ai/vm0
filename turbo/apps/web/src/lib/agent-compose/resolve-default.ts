@@ -1,58 +1,14 @@
-import { eq, and } from "drizzle-orm";
 import { env } from "../../env";
-import { agentComposes } from "../../db/schema/agent-compose";
-import { getOrgBySlug } from "../org/org-cache-service";
-import { logger } from "../logger";
-
-const log = logger("agent-compose:resolve-default");
 
 /**
  * Resolve the default agent compose ID from VM0_DEFAULT_AGENT env var.
- * Format: "org-slug/agent-name" (e.g. "yuma/deep-dive")
  *
- * Returns the compose ID if found, or null.
+ * The env var should contain a direct agent/compose UUID.
+ * Since zero_agents.id = agentComposes.id (unified PK), the returned
+ * value can be used as both agentId and composeId.
+ *
+ * Returns the compose ID if set, or null.
  */
-export async function resolveDefaultAgentComposeId(): Promise<string | null> {
-  const { VM0_DEFAULT_AGENT } = env();
-  if (!VM0_DEFAULT_AGENT) {
-    log.warn("VM0_DEFAULT_AGENT env var is not set");
-    return null;
-  }
-
-  const [orgSlug, agentName] = VM0_DEFAULT_AGENT.split("/");
-  if (!orgSlug || !agentName) {
-    log.warn("VM0_DEFAULT_AGENT has invalid format, expected 'org/name'", {
-      value: VM0_DEFAULT_AGENT,
-    });
-    return null;
-  }
-
-  const orgData = await getOrgBySlug(orgSlug);
-
-  if (!orgData) {
-    log.warn("Org not found for VM0_DEFAULT_AGENT", { orgSlug });
-    return null;
-  }
-
-  const [compose] = await globalThis.services.db
-    .select({ id: agentComposes.id })
-    .from(agentComposes)
-    .where(
-      and(
-        eq(agentComposes.orgId, orgData.orgId),
-        eq(agentComposes.name, agentName),
-      ),
-    )
-    .limit(1);
-
-  if (!compose) {
-    log.warn("Agent compose not found for VM0_DEFAULT_AGENT", {
-      orgSlug,
-      agentName,
-      orgId: orgData.orgId,
-    });
-    return null;
-  }
-
-  return compose.id;
+export function resolveDefaultAgentComposeId(): string | null {
+  return env().VM0_DEFAULT_AGENT ?? null;
 }

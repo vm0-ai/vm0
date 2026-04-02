@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
@@ -213,6 +213,93 @@ describe("org members - invite dialog loading state", () => {
       expect(
         screen.queryByRole("heading", { name: "Invite member" }),
       ).not.toBeInTheDocument();
+    });
+  });
+});
+
+describe("org members - invite dialog role selector", () => {
+  it("should show role selector defaulting to Member", async () => {
+    const user = userEvent.setup();
+    mockMembersAPI();
+    server.use(
+      http.post("*/api/zero/org/invite", () => {
+        return HttpResponse.json({ message: "ok" }, { status: 200 });
+      }),
+    );
+
+    await renderMembersTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("admin@example.com")).toBeInTheDocument();
+    });
+
+    // Open invite dialog
+    await user.click(screen.getByRole("button", { name: /Add member/i }));
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Invite member" }),
+      ).toBeInTheDocument();
+    });
+
+    // Role label and selector should be present within the dialog
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByText("Role")).toBeInTheDocument();
+    // The select trigger should show the default "Member" value
+    expect(within(dialog).getByRole("combobox")).toHaveTextContent("Member");
+  });
+
+  it("should send invite with selected admin role", async () => {
+    const user = userEvent.setup();
+    let capturedBody: Record<string, unknown> | null = null;
+
+    mockMembersAPI();
+    server.use(
+      http.post("*/api/zero/org/invite", async ({ request }) => {
+        capturedBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ message: "ok" }, { status: 200 });
+      }),
+    );
+
+    await renderMembersTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("admin@example.com")).toBeInTheDocument();
+    });
+
+    // Open invite dialog
+    await user.click(screen.getByRole("button", { name: /Add member/i }));
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Invite member" }),
+      ).toBeInTheDocument();
+    });
+
+    // Fill email
+    const emailInput = screen.getByPlaceholderText("email@example.com");
+    await user.clear(emailInput);
+    await user.type(emailInput, "new-admin@example.com");
+
+    // Change role to Admin
+    await user.click(screen.getByRole("combobox"));
+    await waitFor(() => {
+      expect(screen.getByRole("option", { name: "Admin" })).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole("option", { name: "Admin" }));
+
+    // Submit
+    await user.click(screen.getByRole("button", { name: /Send invitation/i }));
+
+    // Wait for dialog to close (invite succeeded)
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("heading", { name: "Invite member" }),
+      ).not.toBeInTheDocument();
+    });
+
+    // Verify the request body included role: "admin"
+    expect(capturedBody).toMatchObject({
+      email: "new-admin@example.com",
+      role: "admin",
     });
   });
 });

@@ -77,7 +77,7 @@ export default function LandingPage() {
   const { lineIndex, charIndex, done } = useTypewriterLines(lines);
   const { isSignedIn } = useUser();
 
-  const ctaText = isSignedIn ? "Open app" : "Join the beta";
+  const ctaText = isSignedIn ? "Open app" : "Get started";
   const ctaHref = isSignedIn ? getAppUrl() : "/sign-up";
 
   return (
@@ -134,7 +134,10 @@ export default function LandingPage() {
           />
 
           <div className="relative z-10 -mt-[20vh] flex flex-col items-center gap-6 sm:-mt-[18vh] sm:gap-10">
-            <h1 className="drop-shadow-[0_0_40px_rgba(249,249,249,0.8)] text-center text-[28px] font-normal leading-[1.6] tracking-tight sm:text-[48px] md:text-[56px]">
+            <h1
+              className="drop-shadow-[0_0_40px_rgba(249,249,249,0.8)] text-center text-[28px] font-normal leading-[1.6] tracking-tight sm:text-[48px] md:text-[56px]"
+              aria-label="Hey, I'm Zero. Your trustworthy AI teammate."
+            >
               {lines.map((line, i) => {
                 if (i > lineIndex) return null;
                 const text = i < lineIndex ? line : line.slice(0, charIndex);

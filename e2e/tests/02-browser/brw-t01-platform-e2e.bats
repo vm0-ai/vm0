@@ -415,7 +415,7 @@ teardown_file() {
   local final_url
   final_url=$(agent-browser get url 2>/dev/null || true)
   echo "# Final URL: $final_url" >&3
-  [[ "$final_url" =~ /team ]]
+  [[ "$final_url" =~ /agents ]]
   step_screenshot "team-page-final"
 
   echo "# New agent verified on team page!" >&3

@@ -63,7 +63,7 @@ function mockAPIs() {
 describe("team page navigation", () => {
   it("should render team list at /team", async () => {
     mockAPIs();
-    await setupPage({ context, path: "/team" });
+    await setupPage({ context, path: "/agents" });
 
     await waitFor(() => {
       expect(screen.getByText("Research Agent")).toBeInTheDocument();
@@ -72,7 +72,7 @@ describe("team page navigation", () => {
 
   it("should render agent detail at /team/:name", async () => {
     mockAPIs();
-    await setupPage({ context, path: "/team/agent-2" });
+    await setupPage({ context, path: "/agents/agent-2" });
 
     await waitFor(() => {
       expect(
@@ -85,7 +85,7 @@ describe("team page navigation", () => {
     mockAPIs();
 
     // Start on the detail page
-    await setupPage({ context, path: "/team/agent-2" });
+    await setupPage({ context, path: "/agents/agent-2" });
 
     await waitFor(() => {
       expect(
@@ -101,7 +101,7 @@ describe("team page navigation", () => {
         return el.closest("a");
       })
       .find((a) => {
-        return a?.getAttribute("href") === "/team";
+        return a?.getAttribute("href") === "/agents";
       });
     expect(breadcrumbLink).toBeTruthy();
     await act(() => {

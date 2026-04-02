@@ -124,7 +124,7 @@ async fn execute_inner(
         run_id: &run_id_str,
         sandbox_token: &context.sandbox_token,
         network_log_path: &network_log_path,
-        firewalls: context.experimental_firewalls.as_deref(),
+        firewalls: context.firewalls.as_deref(),
         encrypted_secrets: context.encrypted_secrets.as_deref(),
         secret_connector_map: context.secret_connector_map.as_ref(),
         vars: context.vars.as_ref(),
@@ -851,7 +851,7 @@ mod tests {
             api_start_time: None,
             user_timezone: None,
             memory_name: None,
-            experimental_firewalls: None,
+            firewalls: None,
             disallowed_tools: None,
             tools: None,
             settings: None,
@@ -1112,7 +1112,7 @@ mod tests {
     #[test]
     fn build_env_json_firewall_enable_ca_certs() {
         let mut ctx = minimal_context();
-        ctx.experimental_firewalls = Some(vec![Firewall {
+        ctx.firewalls = Some(vec![Firewall {
             name: "gmail".into(),
             ref_key: "gmail".into(),
             apis: vec![FirewallApi {
@@ -1134,7 +1134,7 @@ mod tests {
     #[test]
     fn build_env_json_empty_firewall_still_has_ca_certs() {
         let mut ctx = minimal_context();
-        ctx.experimental_firewalls = Some(vec![]);
+        ctx.firewalls = Some(vec![]);
         let env = build_env_json(&ctx, "http://localhost");
         assert_eq!(env.get("NODE_EXTRA_CA_CERTS").unwrap(), VM_PROXY_CA_PATH);
     }
@@ -1154,7 +1154,7 @@ mod tests {
             "sandboxToken": "tok",
             "workingDir": "/workspace",
             "cliAgentType": "claude-code",
-            "experimentalFirewalls": [{
+            "firewalls": [{
                 "name": "github",
                 "ref": "github",
                 "apis": [{
@@ -1177,7 +1177,7 @@ mod tests {
             }]
         });
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
-        let svcs = ctx.experimental_firewalls.unwrap();
+        let svcs = ctx.firewalls.unwrap();
         assert_eq!(svcs.len(), 1);
         assert_eq!(svcs[0].name, "github");
         assert_eq!(svcs[0].ref_key, "github");
@@ -1200,7 +1200,7 @@ mod tests {
             "cliAgentType": "claude-code"
         });
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
-        assert!(ctx.experimental_firewalls.is_none());
+        assert!(ctx.firewalls.is_none());
     }
 
     #[test]

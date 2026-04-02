@@ -67,7 +67,7 @@ async function resolveUserNames(
 
 // --- POST: Create Request ---
 const createRouter = tsr.router(firewallAccessRequestsCreateContract, {
-  create: async ({ body, headers }, { request }) => {
+  create: async ({ body, headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization, {
@@ -75,8 +75,7 @@ const createRouter = tsr.router(firewallAccessRequestsCreateContract, {
     });
     if (isAuthError(authCtx)) return authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org, member } = await resolveOrg(authCtx, orgSlug);
+    const { org, member } = await resolveOrg(authCtx);
 
     // Validate firewall ref
     if (!isFirewallConnectorType(body.firewallRef)) {
@@ -173,7 +172,7 @@ const createRouter = tsr.router(firewallAccessRequestsCreateContract, {
 
 // --- GET: List Requests ---
 const listRouter = tsr.router(firewallAccessRequestsListContract, {
-  list: async ({ headers, query }, { request }) => {
+  list: async ({ headers, query }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization, {
@@ -181,8 +180,7 @@ const listRouter = tsr.router(firewallAccessRequestsListContract, {
     });
     if (isAuthError(authCtx)) return authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org, member } = await resolveOrg(authCtx, orgSlug);
+    const { org, member } = await resolveOrg(authCtx);
 
     const { agentId, status } = query;
 
@@ -234,7 +232,7 @@ const listRouter = tsr.router(firewallAccessRequestsListContract, {
 
 // --- PUT: Resolve Request ---
 const resolveRouter = tsr.router(firewallAccessRequestsResolveContract, {
-  resolve: async ({ body, headers }, { request }) => {
+  resolve: async ({ body, headers }) => {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization, {
@@ -242,8 +240,7 @@ const resolveRouter = tsr.router(firewallAccessRequestsResolveContract, {
     });
     if (isAuthError(authCtx)) return authCtx;
 
-    const orgSlug = new URL(request.url).searchParams.get("org");
-    const { org, member } = await resolveOrg(authCtx, orgSlug);
+    const { org, member } = await resolveOrg(authCtx);
 
     // Find the request and agent owner in a single query
     const [row] = await globalThis.services.db

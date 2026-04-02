@@ -14,7 +14,7 @@ import {
   areProvidersCompatible,
   getVm0ConcreteProviderType,
   getVm0Vendor,
-  type ExperimentalFirewalls,
+  type Firewalls,
   type ExpandedFirewallConfig,
   type ConnectorType,
   type ModelProviderType,
@@ -23,8 +23,16 @@ import {
   getConnectorFirewall,
   isFirewallConnectorType,
   resolveFirewallBaseUrlVars,
+  getConnectorProvidedSecretNames,
 } from "@vm0/core";
-import { agentComposeVersions } from "../../db/schema/agent-compose";
+import {
+  agentComposeVersions,
+  agentComposes,
+} from "../../db/schema/agent-compose";
+import { getAgentSessionWithConversation } from "../agent-session";
+import { checkpoints } from "../../db/schema/checkpoint";
+import { agentRuns } from "../../db/schema/agent-run";
+import { zeroRuns } from "../../db/schema/zero-run";
 import {
   badRequest,
   notFound,
@@ -587,6 +595,47 @@ async function fetchReferencedSecrets(
 }
 
 /**
+ * Filter dbSecrets to remove env vars that belong to connectors not in allowedConnectorTypes.
+ * Custom user secrets (not owned by any connector) pass through unfiltered.
+ * When allowedConnectorTypes is undefined (e.g. CLI runs), no filtering is applied.
+ */
+function filterDbSecretsByConnectorPermissions(
+  dbSecrets: Record<string, string> | undefined,
+  allApiTokenTypes: ConnectorType[],
+  allowedConnectorTypes: ConnectorType[] | undefined,
+): Record<string, string> | undefined {
+  if (!dbSecrets || !allowedConnectorTypes) {
+    return dbSecrets;
+  }
+
+  // Compute the set of env var names belonging to ALL api-token connectors the user has.
+  const allConnectorEnvVars = getConnectorProvidedSecretNames(allApiTokenTypes);
+  // Compute the set of env var names belonging to ALLOWED connectors only.
+  const allowedApiTokenTypes = allApiTokenTypes.filter((t) => {
+    return allowedConnectorTypes.includes(t);
+  });
+  const allowedEnvVars = getConnectorProvidedSecretNames(allowedApiTokenTypes);
+  // Disallowed = belongs to a connector but not an allowed one.
+  const disallowed = new Set(
+    [...allConnectorEnvVars].filter((name) => {
+      return !allowedEnvVars.has(name);
+    }),
+  );
+
+  if (disallowed.size === 0) {
+    return dbSecrets;
+  }
+
+  const filtered: Record<string, string> = {};
+  for (const [key, value] of Object.entries(dbSecrets)) {
+    if (!disallowed.has(key)) {
+      filtered[key] = value;
+    }
+  }
+  return Object.keys(filtered).length > 0 ? filtered : undefined;
+}
+
+/**
  * Fetch server-stored variables and merge with CLI-provided vars
  * Priority: CLI vars > server-stored vars
  *
@@ -777,19 +826,29 @@ async function resolveSecretsAndEnvironment(
     ...new Set([...oauthResult.connectorTypes, ...rawApiTokenTypes]),
   ];
 
+  // Filter dbSecrets: strip env vars that belong to disallowed connectors.
+  // Without this, api-token connector secrets (e.g. AXIOM_TOKEN) would leak
+  // into the run context even when the agent doesn't have that connector enabled.
+  // Custom user secrets (not owned by any connector) are never filtered.
+  const filteredDbSecrets = filterDbSecretsByConnectorPermissions(
+    dbSecrets,
+    apiTokenTypes,
+    allowedConnectorTypes,
+  );
+
   // Single secrets map with explicit priority (later overrides earlier).
   // Only mapped env vars from connectors are included — raw connector secrets
   // (including refresh tokens) are kept server-side and never sent to the runner.
   const hasSecrets =
     oauthResult.resolvedSecrets ||
     modelProviderResult.secrets ||
-    dbSecrets ||
+    filteredDbSecrets ||
     cliSecrets;
   const secrets: Record<string, string> | undefined = hasSecrets
     ? {
         ...oauthResult.resolvedSecrets, // connector env mappings (e.g. GITHUB_TOKEN)
         ...modelProviderResult.secrets, // model provider
-        ...dbSecrets, // DB user secrets
+        ...filteredDbSecrets, // DB user secrets (connector secrets filtered)
         ...cliSecrets, // highest: CLI --secrets
       }
     : undefined;
@@ -939,11 +998,11 @@ export function filterSecretConnectorMap(
  * Compose content no longer stores firewalls — all firewalls are runtime-injected.
  */
 function mergeFirewalls(
-  modelProviderFirewall: ExperimentalFirewalls[number] | null | undefined,
+  modelProviderFirewall: Firewalls[number] | null | undefined,
   connectorFirewalls: ExpandedFirewallConfig[],
   firewallPolicies?: FirewallPolicies,
   vars?: Record<string, string>,
-): ExperimentalFirewalls | undefined {
+): Firewalls | undefined {
   const autoFirewalls = modelProviderFirewall ? [modelProviderFirewall] : [];
   const policyFirewalls = applyConnectorPolicies(
     connectorFirewalls,
@@ -973,8 +1032,8 @@ export const UNRESTRICTED_PERMISSION = {
 export function applyConnectorPolicies(
   connectorFirewalls: ExpandedFirewallConfig[],
   policies?: FirewallPolicies,
-): ExperimentalFirewalls {
-  const result: ExperimentalFirewalls = [];
+): Firewalls {
+  const result: Firewalls = [];
 
   for (const fw of connectorFirewalls) {
     const refPolicies = policies?.[fw.ref];
@@ -1009,6 +1068,340 @@ export function applyConnectorPolicies(
   }
 
   return result;
+}
+
+/**
+ * Verify the caller's org has access to the session or checkpoint being resumed.
+ * Must run BEFORE full source resolution to prevent leaking cross-org details
+ * (e.g., framework mismatch errors).
+ */
+async function verifyOrgAccessForResume(params: {
+  sessionId?: string;
+  checkpointId?: string;
+  userId: string;
+  orgId: string;
+}): Promise<void> {
+  if (params.sessionId) {
+    const session = await getAgentSessionWithConversation(params.sessionId);
+    if (!session || session.userId !== params.userId) {
+      throw notFound("Resource not found");
+    }
+    const [compose] = await globalThis.services.db
+      .select({ orgId: agentComposes.orgId })
+      .from(agentComposes)
+      .where(eq(agentComposes.id, session.agentComposeId))
+      .limit(1);
+    if (!compose || compose.orgId !== params.orgId) {
+      throw notFound("Resource not found");
+    }
+  } else if (params.checkpointId) {
+    const [cp] = await globalThis.services.db
+      .select({ orgId: agentRuns.orgId })
+      .from(checkpoints)
+      .innerJoin(agentRuns, eq(checkpoints.runId, agentRuns.id))
+      .where(eq(checkpoints.id, params.checkpointId))
+      .limit(1);
+    if (!cp || cp.orgId !== params.orgId) {
+      throw notFound("Resource not found");
+    }
+  }
+}
+
+/**
+ * Resolve agentComposeVersionId from a composeId (head version lookup).
+ * Verifies compose exists and belongs to the caller's org.
+ */
+async function resolveComposeFromId(
+  composeId: string,
+  orgId: string,
+): Promise<string> {
+  const [compose] = await globalThis.services.db
+    .select({
+      headVersionId: agentComposes.headVersionId,
+      orgId: agentComposes.orgId,
+    })
+    .from(agentComposes)
+    .where(eq(agentComposes.id, composeId))
+    .limit(1);
+  if (!compose) {
+    throw notFound("Agent compose not found");
+  }
+  if (compose.orgId !== orgId) {
+    throw notFound("Resource not found");
+  }
+  if (!compose.headVersionId) {
+    throw badRequest("Agent compose has no versions. Run 'vm0 build' first.");
+  }
+  return compose.headVersionId;
+}
+
+/**
+ * Check that the resolved model provider is compatible with the original
+ * provider from the session being continued.
+ */
+function checkProviderCompatibility(
+  originalModelProvider: string | undefined,
+  resolvedModelProvider: ModelProviderType | undefined,
+): void {
+  if (
+    originalModelProvider &&
+    resolvedModelProvider &&
+    originalModelProvider in MODEL_PROVIDER_TYPES
+  ) {
+    const originalType = originalModelProvider as ModelProviderType;
+    const newType = resolvedModelProvider as ModelProviderType;
+    if (!areProvidersCompatible(originalType, newType)) {
+      const originalLabel = MODEL_PROVIDER_TYPES[originalType].label;
+      const newLabel = MODEL_PROVIDER_TYPES[newType].label;
+      throw providerIncompatible(
+        `Cannot continue session: this session was created with ${originalLabel} and cannot be continued with ${newLabel}. ` +
+          `Please start a new session or switch back to a compatible model.`,
+      );
+    }
+  }
+}
+
+/**
+ * Parameters for CLI run context resolution.
+ */
+interface ResolveCliRunContextParams {
+  orgId: string;
+  userId: string;
+  // Compose resolution shortcuts (mutually exclusive)
+  sessionId?: string;
+  checkpointId?: string;
+  conversationId?: string;
+  composeId?: string;
+  agentComposeVersionId?: string;
+  // Pre-loaded compose content — skips DB lookup if provided
+  agentCompose?: unknown;
+  // Caller-provided data
+  vars?: Record<string, string>;
+  secrets?: Record<string, string>;
+  modelProvider?: string;
+  firewallPolicies?: FirewallPolicies;
+  allowedConnectorTypes?: ConnectorType[];
+  // Artifact/memory
+  artifactName?: string;
+  artifactVersion?: string;
+  memoryName?: string;
+  volumeVersions?: Record<string, string>;
+}
+
+/**
+ * Pre-resolved context data for CLI runs.
+ * Returned by resolveCliRunContext() for the CLI route to pass to startRun().
+ */
+interface ResolvedCliContext {
+  // Session/checkpoint resolution
+  agentComposeVersionId?: string;
+  agentCompose?: unknown;
+  artifactName?: string;
+  artifactVersion?: string;
+  memoryName?: string;
+  vars?: Record<string, string>;
+  volumeVersions?: Record<string, string>;
+  resumeSession?: ResumeSession;
+  resumeArtifact?: ArtifactSnapshot;
+
+  // Secrets/environment resolution
+  secrets?: Record<string, string>;
+  environment?: Record<string, string>;
+  secretConnectorMap?: Record<string, string>;
+  firewalls?: Firewalls;
+  userTimezone?: string;
+
+  // Model provider metadata (for zero_runs upsert)
+  resolvedModelProvider?: ModelProviderType;
+  selectedModel?: string;
+
+  // Timings
+  timings: {
+    resolveSource: number;
+    resolveSecrets: number;
+  };
+}
+
+/**
+ * Resolve all zero-layer data for CLI runs.
+ *
+ * This is the CLI counterpart to buildZeroExecutionContext — it performs the
+ * same resolution (vars, secrets, connectors, firewalls, timezone, model
+ * provider) but returns pre-resolved data instead of a built ExecutionContext.
+ * The CLI route calls this before startRun(), which then uses the pure
+ * buildInfraExecutionContext to assemble the context.
+ */
+export async function resolveCliRunContext(
+  params: ResolveCliRunContextParams,
+): Promise<ResolvedCliContext> {
+  log.debug(`Resolving CLI run context for org ${params.orgId}`);
+
+  // Validate mutual exclusivity (same check as resolveStartRunCompose)
+  if (params.checkpointId && params.sessionId) {
+    throw badRequest(
+      "Cannot specify both checkpointId and sessionId. Use one or the other.",
+    );
+  }
+
+  // Org access pre-check: verify the compose belongs to the caller's org
+  // BEFORE full resolution. This prevents leaking session/checkpoint details
+  // (e.g., framework mismatch errors) for cross-org access attempts.
+  await verifyOrgAccessForResume(params);
+
+  // Initialize context variables
+  let agentComposeVersionId: string | undefined = params.agentComposeVersionId;
+  let agentCompose: unknown;
+  let artifactName: string | undefined = params.artifactName;
+  let artifactVersion: string | undefined = params.artifactVersion;
+  let vars: Record<string, string> | undefined = params.vars;
+  let memoryName: string | undefined = params.memoryName;
+  let volumeVersions: Record<string, string> | undefined =
+    params.volumeVersions;
+  let resumeSession: ResumeSession | undefined;
+  let resumeArtifact: ArtifactSnapshot | undefined;
+
+  // Step 1: Resolve source (checkpoint/session/conversation).
+  const resolveStart = Date.now();
+  const resolution = await resolveSource({
+    ...params,
+    // Required fields for resolveSource that don't apply to CLI resolution
+    prompt: "",
+    sandboxToken: "",
+    runId: "",
+  });
+  const resolveEnd = Date.now();
+
+  // Step 2: Apply resolution defaults
+  if (resolution) {
+    const defaults = applyResolutionDefaults(
+      {
+        ...params,
+        prompt: "",
+        sandboxToken: "",
+        runId: "",
+      },
+      resolution,
+    );
+    agentComposeVersionId = defaults.agentComposeVersionId;
+    agentCompose = defaults.agentCompose;
+    artifactName = defaults.artifactName;
+    artifactVersion = defaults.artifactVersion;
+    memoryName = defaults.memoryName;
+    vars = defaults.vars;
+    volumeVersions = defaults.volumeVersions;
+    resumeSession = defaults.resumeSession;
+    resumeArtifact = defaults.resumeArtifact;
+  }
+  // Step 3: New run — resolve compose from composeId or agentComposeVersionId
+  else if (!agentComposeVersionId && params.composeId) {
+    agentComposeVersionId = await resolveComposeFromId(
+      params.composeId,
+      params.orgId,
+    );
+  }
+
+  // Load compose content if we have a version ID
+  if (!agentCompose && agentComposeVersionId) {
+    agentCompose =
+      params.agentCompose ??
+      (await loadAgentComposeForNewRun(agentComposeVersionId));
+  }
+
+  if (!agentCompose) {
+    // No compose available — return only what we can resolve
+    return {
+      vars,
+      timings: {
+        resolveSource: resolveEnd - resolveStart,
+        resolveSecrets: 0,
+      },
+    };
+  }
+
+  // Extract compose structure for secret resolution
+  const compose = agentCompose as {
+    agents?: Record<
+      string,
+      { environment?: Record<string, string>; framework?: string }
+    >;
+  };
+  const firstAgent = compose?.agents
+    ? Object.values(compose.agents)[0]
+    : undefined;
+
+  // Step 4: Resolve secrets, user preferences in parallel.
+  const resolveSecretsStart = Date.now();
+  const [secretsResult, userPrefs, originalModelProvider] = await Promise.all([
+    resolveSecretsAndEnvironment(
+      params.orgId,
+      agentCompose,
+      firstAgent,
+      vars,
+      params.secrets,
+      params.modelProvider,
+      params.userId,
+      params.allowedConnectorTypes,
+    ),
+    getUserPreferences(params.orgId, params.userId),
+    // Fetch previous run's model provider for compatibility check
+    resolution?.previousRunId
+      ? globalThis.services.db
+          .select({ modelProvider: zeroRuns.modelProvider })
+          .from(zeroRuns)
+          .where(eq(zeroRuns.id, resolution.previousRunId))
+          .limit(1)
+          .then(([row]) => {
+            return row?.modelProvider ?? undefined;
+          })
+      : Promise.resolve(undefined),
+  ]);
+  const resolveSecretsEnd = Date.now();
+
+  const {
+    secrets,
+    environment,
+    secretConnectorMap,
+    resolvedModelProvider,
+    modelProviderFirewall,
+    selectedModel,
+    connectorFirewalls,
+    mergedVars,
+  } = secretsResult;
+  const userTimezone = userPrefs?.timezone ?? undefined;
+
+  // Step 5: Provider compatibility check for session continues.
+  checkProviderCompatibility(originalModelProvider, resolvedModelProvider);
+
+  // Build firewall manifest
+  const firewalls = mergeFirewalls(
+    modelProviderFirewall,
+    connectorFirewalls,
+    params.firewallPolicies,
+    mergedVars,
+  );
+
+  return {
+    agentComposeVersionId,
+    agentCompose,
+    artifactName,
+    artifactVersion,
+    memoryName,
+    vars: mergedVars ?? vars,
+    volumeVersions,
+    resumeSession,
+    resumeArtifact,
+    secrets,
+    environment,
+    secretConnectorMap,
+    firewalls,
+    userTimezone,
+    resolvedModelProvider,
+    selectedModel,
+    timings: {
+      resolveSource: resolveEnd - resolveStart,
+      resolveSecrets: resolveSecretsEnd - resolveSecretsStart,
+    },
+  };
 }
 
 /**
@@ -1096,7 +1489,7 @@ export async function buildZeroExecutionContext(
 
   // Step 4: Resolve secrets, user preferences in parallel.
   const resolveSecretsStart = Date.now();
-  const [secretsResult, userPrefs] = await Promise.all([
+  const [secretsResult, userPrefs, originalModelProvider] = await Promise.all([
     resolveSecretsAndEnvironment(
       params.orgId,
       agentCompose,
@@ -1110,6 +1503,17 @@ export async function buildZeroExecutionContext(
     params.userId
       ? getUserPreferences(params.orgId, params.userId)
       : Promise.resolve(null),
+    // Zero-layer concern: fetch previous run's model provider for compatibility check
+    resolution?.previousRunId
+      ? globalThis.services.db
+          .select({ modelProvider: zeroRuns.modelProvider })
+          .from(zeroRuns)
+          .where(eq(zeroRuns.id, resolution.previousRunId))
+          .limit(1)
+          .then(([row]) => {
+            return row?.modelProvider ?? undefined;
+          })
+      : Promise.resolve(undefined),
   ]);
   const resolveSecretsEnd = Date.now();
 
@@ -1129,11 +1533,11 @@ export async function buildZeroExecutionContext(
   // When resuming a session, verify the new provider is compatible with the
   // original provider to avoid mid-conversation base URL mismatches.
   if (
-    resolution?.originalModelProvider &&
+    originalModelProvider &&
     resolvedModelProvider &&
-    resolution.originalModelProvider in MODEL_PROVIDER_TYPES
+    originalModelProvider in MODEL_PROVIDER_TYPES
   ) {
-    const originalType = resolution.originalModelProvider as ModelProviderType;
+    const originalType = originalModelProvider as ModelProviderType;
     const newType = resolvedModelProvider as ModelProviderType;
     if (!areProvidersCompatible(originalType, newType)) {
       const originalLabel = MODEL_PROVIDER_TYPES[originalType].label;
@@ -1145,8 +1549,8 @@ export async function buildZeroExecutionContext(
     }
   }
 
-  // Build experimental firewall manifest (base + auth entries for the runner).
-  const experimentalFirewalls = mergeFirewalls(
+  // Build firewall manifest (base + auth entries for the runner).
+  const firewalls = mergeFirewalls(
     modelProviderFirewall,
     connectorFirewalls,
     params.firewallPolicies,
@@ -1173,7 +1577,7 @@ export async function buildZeroExecutionContext(
       volumeVersions,
       environment,
       userTimezone,
-      experimentalFirewalls,
+      firewalls,
       disallowedTools: params.disallowedTools,
       tools: params.tools,
       settings: params.settings,

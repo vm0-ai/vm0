@@ -1,4 +1,4 @@
-@import "@vm0/ui/styles/globals.css";
+@import "../../../packages/ui/src/styles/globals.css";
 
 :root {
   --announcement-banner-height: 0px;

@@ -83,19 +83,35 @@ function deleteSkillReq(name: string, token: string) {
   );
 }
 
-function mockSkillContent(content: string) {
+function singleFile(content: string) {
+  return [{ path: "SKILL.md", content }];
+}
+
+function mockSkillContent(
+  content: string,
+  extraFiles?: Array<{ path: string; size: number }>,
+) {
   const tarBuffer = createSingleFileTar(
     "SKILL.md",
     Buffer.from(content, "utf-8"),
   );
   const gzipped = gzipSync(tarBuffer);
 
+  const files = [
+    { path: "SKILL.md", hash: "testhash", size: content.length },
+    ...(extraFiles ?? []).map((f) => {
+      return { ...f, hash: "extrahash" };
+    }),
+  ];
+
   context.mocks.s3.downloadManifest.mockResolvedValueOnce({
     version: "test-version",
     createdAt: new Date().toISOString(),
-    totalSize: content.length,
-    fileCount: 1,
-    files: [{ path: "SKILL.md", hash: "testhash", size: content.length }],
+    totalSize: files.reduce((sum, f) => {
+      return sum + f.size;
+    }, 0),
+    fileCount: files.length,
+    files,
   });
   context.mocks.s3.downloadS3Buffer.mockResolvedValueOnce(gzipped);
 }
@@ -111,7 +127,7 @@ describe("Zero Skills API (org-level)", () => {
   describe("POST /api/zero/skills", () => {
     it("should create a skill and return 201", async () => {
       const response = await postSkillReq(
-        { name: "my-skill", content: "# My Skill\nHello" },
+        { name: "my-skill", files: singleFile("# My Skill\nHello") },
         testCliToken,
       );
 
@@ -126,7 +142,7 @@ describe("Zero Skills API (org-level)", () => {
       const response = await postSkillReq(
         {
           name: "my-skill",
-          content: "# Content",
+          files: singleFile("# Content"),
           displayName: "My Skill",
           description: "A useful skill",
         },
@@ -148,7 +164,7 @@ describe("Zero Skills API (org-level)", () => {
       });
 
       await postSkillReq(
-        { name: "unbound-skill", content: "# Content" },
+        { name: "unbound-skill", files: singleFile("# Content") },
         testCliToken,
       );
 
@@ -168,12 +184,12 @@ describe("Zero Skills API (org-level)", () => {
 
     it("should reject duplicate skill name with 409", async () => {
       await postSkillReq(
-        { name: "my-skill", content: "# Content" },
+        { name: "my-skill", files: singleFile("# Content") },
         testCliToken,
       );
 
       const response = await postSkillReq(
-        { name: "my-skill", content: "# Other" },
+        { name: "my-skill", files: singleFile("# Other") },
         testCliToken,
       );
 
@@ -182,7 +198,7 @@ describe("Zero Skills API (org-level)", () => {
 
     it("should reject seed skill name with 409", async () => {
       const response = await postSkillReq(
-        { name: "deep-dive", content: "# Content" },
+        { name: "deep-dive", files: singleFile("# Content") },
         testCliToken,
       );
 
@@ -193,7 +209,7 @@ describe("Zero Skills API (org-level)", () => {
       mockClerk({ userId: null });
 
       const response = await postSkillReq(
-        { name: "my-skill", content: "# Content" },
+        { name: "my-skill", files: singleFile("# Content") },
         "no-token",
       );
 
@@ -214,13 +230,16 @@ describe("Zero Skills API (org-level)", () => {
       await postSkillReq(
         {
           name: "skill-one",
-          content: "# One",
+          files: singleFile("# One"),
           displayName: "Skill One",
           description: "First skill",
         },
         testCliToken,
       );
-      await postSkillReq({ name: "skill-two", content: "# Two" }, testCliToken);
+      await postSkillReq(
+        { name: "skill-two", files: singleFile("# Two") },
+        testCliToken,
+      );
 
       const response = await listSkillsReq(testCliToken);
 
@@ -241,7 +260,7 @@ describe("Zero Skills API (org-level)", () => {
       await postSkillReq(
         {
           name: "my-skill",
-          content: "# My Skill Content",
+          files: singleFile("# My Skill Content"),
           displayName: "My Skill",
         },
         testCliToken,
@@ -256,6 +275,24 @@ describe("Zero Skills API (org-level)", () => {
       expect(data.name).toBe("my-skill");
       expect(data.displayName).toBe("My Skill");
       expect(data.content).toBe("# My Skill Content");
+      expect(data.files).toEqual([{ path: "SKILL.md", size: 18 }]);
+    });
+
+    it("should return file listing for multi-file skill", async () => {
+      await postSkillReq(
+        { name: "multi-skill", files: singleFile("# Multi") },
+        testCliToken,
+      );
+
+      mockSkillContent("# Multi", [{ path: "templates/prompt.md", size: 42 }]);
+
+      const response = await getSkillReq("multi-skill", testCliToken);
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.files).toEqual([
+        { path: "SKILL.md", size: 7 },
+        { path: "templates/prompt.md", size: 42 },
+      ]);
     });
 
     it("should return 404 for non-existent skill", async () => {
@@ -268,13 +305,13 @@ describe("Zero Skills API (org-level)", () => {
   describe("PUT /api/zero/skills/:name", () => {
     it("should update skill content", async () => {
       await postSkillReq(
-        { name: "my-skill", content: "# Original" },
+        { name: "my-skill", files: singleFile("# Original") },
         testCliToken,
       );
 
       const response = await putSkillReq(
         "my-skill",
-        { content: "# Updated Content" },
+        { files: singleFile("# Updated Content") },
         testCliToken,
       );
 
@@ -282,12 +319,13 @@ describe("Zero Skills API (org-level)", () => {
       const data = await response.json();
       expect(data.name).toBe("my-skill");
       expect(data.content).toBe("# Updated Content");
+      expect(data.files).toEqual([{ path: "SKILL.md", size: 17 }]);
     });
 
     it("should return 404 for non-existent skill", async () => {
       const response = await putSkillReq(
         "no-such-skill",
-        { content: "# Content" },
+        { files: singleFile("# Content") },
         testCliToken,
       );
 
@@ -298,7 +336,7 @@ describe("Zero Skills API (org-level)", () => {
   describe("DELETE /api/zero/skills/:name", () => {
     it("should delete skill and return 204", async () => {
       await postSkillReq(
-        { name: "my-skill", content: "# Content" },
+        { name: "my-skill", files: singleFile("# Content") },
         testCliToken,
       );
 
@@ -315,7 +353,7 @@ describe("Zero Skills API (org-level)", () => {
     it("should unbind skill from all agents on delete", async () => {
       // Create skill
       await postSkillReq(
-        { name: "shared-skill", content: "# Shared" },
+        { name: "shared-skill", files: singleFile("# Shared") },
         testCliToken,
       );
 

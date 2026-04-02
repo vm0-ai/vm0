@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
-import { experimentalFirewallsSchema } from "./firewalls";
+import { firewallsSchema } from "./firewalls";
 import { apiErrorSchema } from "./errors";
 
 const c = initContract();
@@ -119,8 +119,8 @@ export const storedExecutionContextSchema = z.object({
   userTimezone: z.string().optional(),
   // Memory storage name (for first-run when manifest.memory is null)
   memoryName: z.string().optional(),
-  // Experimental firewall for proxy-side token replacement
-  experimentalFirewalls: experimentalFirewallsSchema.optional(),
+  // Firewall for proxy-side token replacement
+  firewalls: firewallsSchema.optional(),
   // Tools to disable in Claude CLI (passed as --disallowed-tools)
   disallowedTools: z.array(z.string()).optional(),
   // Tools to make available in Claude CLI (passed as --tools)
@@ -163,8 +163,8 @@ export const executionContextSchema = z.object({
   userTimezone: z.string().optional(),
   // Memory storage name (for first-run when manifest.memory is null)
   memoryName: z.string().optional(),
-  // Experimental firewall for proxy-side token replacement
-  experimentalFirewalls: experimentalFirewallsSchema.optional(),
+  // Firewall for proxy-side token replacement
+  firewalls: firewallsSchema.optional(),
   // Tools to disable in Claude CLI (passed as --disallowed-tools)
   disallowedTools: z.array(z.string()).optional(),
   // Tools to make available in Claude CLI (passed as --tools)

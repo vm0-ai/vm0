@@ -102,6 +102,60 @@ export const resetLocalMessages$ = command(({ set }) => {
   set(internalLocalMessages$, []);
 });
 
+/**
+ * Derive a deterministic placeholder ID from a user message ID by appending a
+ * fixed suffix.  This avoids BigInt arithmetic and the edge-case overflow that
+ * would occur when all hex digits are `f`.
+ */
+function placeholderIdFromUser(userMessageId: string): string {
+  return `${userMessageId}-placeholder`;
+}
+
+/**
+ * A computed signal whose inner promise never settles.  Used by the placeholder
+ * assistant message so that any subscriber awaiting `result$`, `finished$`,
+ * etc. stays pending until the placeholder is replaced by a real message.
+ *
+ * Because the promise never resolves, await chains on it become unreachable
+ * and will be garbage-collected once all references to the placeholder are
+ * dropped (i.e. when the real assistant message arrives and the derived
+ * `zeroChatMessages$` no longer includes the placeholder).
+ */
+const neverResolve$ = computed((): Promise<never> => {
+  return new Promise<never>(() => {});
+});
+
+/**
+ * Create a lightweight placeholder assistant message that is derived (not
+ * stored) inside `zeroChatMessages$`.  All async computed signals never
+ * resolve and all commands are no-ops, so the placeholder is completely
+ * inert — it exists only to give the UI something to render immediately.
+ */
+function createPlaceholderAssistantMessage(
+  userMessageId: string,
+): AssistantChatMessage {
+  const noopAsyncCommand$ = command(async (_store, _signal: AbortSignal) => {});
+  return {
+    id: placeholderIdFromUser(userMessageId),
+    role: "assistant",
+    result$: neverResolve$,
+    createdAt: new Date().toISOString(),
+    runLoop: {
+      pagedEventsList$: neverResolve$,
+      beginLoop$: noopAsyncCommand$,
+      cancel$: noopAsyncCommand$,
+      detail$: neverResolve$,
+      queuePosition$: neverResolve$,
+      finished$: neverResolve$,
+      thinkingMessage$: computed(() => {
+        return "Thinking hard..." as const;
+      }),
+    },
+    summaries$: neverResolve$,
+    beginLoop$: noopAsyncCommand$,
+  };
+}
+
 export const zeroChatMessages$ = computed(async (get) => {
   const snapshot = await get(chatSessionSnapshot$);
   const serverMessages = snapshot?.messages ?? [];
@@ -138,7 +192,18 @@ export const zeroChatMessages$ = computed(async (get) => {
   const filteredLocal = localMessages.filter((_, i) => {
     return !skipIndices.has(i);
   });
-  return [...serverMessages, ...filteredLocal];
+  const merged = [...serverMessages, ...filteredLocal];
+
+  // If the last local message is a user message with no following assistant
+  // message, derive a placeholder assistant message so the UI can show
+  // immediate feedback (avatar, spinner, disabled input) before the server
+  // responds with a runId.
+  const last = filteredLocal[filteredLocal.length - 1];
+  if (last?.role === "user") {
+    merged.push(createPlaceholderAssistantMessage(last.id));
+  }
+
+  return merged;
 });
 
 export const allFinished$ = computed(async (get) => {
@@ -302,7 +367,7 @@ function summarizeEvent(event: AgentEvent, skipText: boolean): string | null {
 /**
  * Signal for talk-page sends that must survive page navigation.
  *
- * The talk page navigates from `/talk/` to `/chat/:chatThreadId` on send,
+ * The talk page navigates from `/agents/:id/chat` to `/chats/:id` on send,
  * which aborts the page-level signal.  This dedicated signal lets the
  * talk page pass a cancellable AbortSignal without coupling to the page
  * lifecycle.  It is reset each time `startNewZeroSession$` fires (which

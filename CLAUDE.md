@@ -221,9 +221,13 @@ If tests timeout, investigate why:
 2. Are there network issues or external service dependencies?
 3. Is the test itself poorly designed and needs optimization?
 
+### CI Failure Rerun Limit
+
+**If a CI job fails 3 times, stop rerunning and investigate your own code.** Assume your changes caused the failure until proven otherwise — do not default to "infrastructure issue". Read the failure logs and search the entire repo (including `e2e/`, `.github/`, shell scripts) for references to anything you changed.
+
 ### CLI E2E Timeout
 
-The `cli-e2e` jobs have a **maximum timeout** (5 minutes for serial/parallel tests, 8 minutes for runner tests). If tests exceed this limit, GitHub Actions will **cancel** the job (not fail). **Cancelled status is NOT acceptable for merge** - treat it as a failure and investigate the cause.
+The `cli-e2e` jobs have a **maximum timeout** (5 minutes for serial, 8 minutes for browser and runner tests). If tests exceed this limit, GitHub Actions will **cancel** the job (not fail). **Cancelled status is NOT acceptable for merge** - treat it as a failure and investigate the cause.
 
 ### Merge Requirements
 

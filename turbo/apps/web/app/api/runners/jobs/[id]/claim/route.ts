@@ -198,7 +198,7 @@ const router = tsr.router(runnersJobClaimContract, {
         secretValues, // Decrypted secret values for log masking
         encryptedSecrets: storedContext.encryptedSecrets, // Encrypted blob for auth resolution
         cliAgentType: storedContext.cliAgentType,
-        experimentalFirewalls: storedContext.experimentalFirewalls,
+        firewalls: storedContext.firewalls,
         disallowedTools: storedContext.disallowedTools,
         tools: storedContext.tools,
         settings: storedContext.settings,

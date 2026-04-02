@@ -84,7 +84,7 @@ describe("activity list refresh on navigation", () => {
     // Navigate to activity page
     await setupPage({
       context,
-      path: "/activity",
+      path: "/activities",
       featureSwitches: { [FeatureSwitchKey.ActivityLogList]: true },
     });
 

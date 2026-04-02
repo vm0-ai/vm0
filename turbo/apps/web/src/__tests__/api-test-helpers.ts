@@ -271,7 +271,7 @@ export async function deleteTestCliToken(token: string): Promise<void> {
 export async function createTestDeviceCode(options?: {
   status?: "pending" | "authenticated" | "expired" | "denied";
   userId?: string;
-  orgSlug?: string;
+  orgId?: string;
   expiresAt?: Date;
 }): Promise<string> {
   const chars = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
@@ -289,7 +289,7 @@ export async function createTestDeviceCode(options?: {
     code,
     status,
     userId: options?.userId ?? null,
-    orgSlug: options?.orgSlug ?? null,
+    orgId: options?.orgId ?? null,
     expiresAt,
   });
 

@@ -54,7 +54,7 @@ function initEnv() {
       SLACK_CLIENT_ID: z.string().min(1).optional(),
       SLACK_CLIENT_SECRET: z.string().min(1).optional(),
       SLACK_SIGNING_SECRET: z.string().min(1).optional(),
-      VM0_DEFAULT_AGENT: z.string().min(1).optional(), // Default agent for new integrations (format: "org/name")
+      VM0_DEFAULT_AGENT: z.string().min(1).optional(), // Default agent compose/agent UUID for new integrations
       // Ahrefs OAuth (for connector)
       AHREFS_OAUTH_CLIENT_ID: z.string().min(1).optional(),
       AHREFS_OAUTH_CLIENT_SECRET: z.string().min(1).optional(),

@@ -36,7 +36,7 @@ describe("userMessage line break rendering", () => {
 
     await setupPage({
       context,
-      path: "/chat/thread-multiline",
+      path: "/chats/thread-multiline",
     });
 
     // Find the <p> element that the Markdown renderer creates for the user
@@ -76,7 +76,7 @@ describe("userMessage line break rendering", () => {
 
     await setupPage({
       context,
-      path: "/chat/thread-singleline",
+      path: "/chats/thread-singleline",
     });
 
     // Single-line messages with no \n should render as-is.
@@ -115,7 +115,7 @@ describe("provider incompatibility error", () => {
       }),
     );
 
-    await setupPage({ context, path: "/chat/thread-provider-error" });
+    await setupPage({ context, path: "/chats/thread-provider-error" });
 
     await waitFor(() => {
       expect(screen.getByText(/different model provider/)).toBeInTheDocument();
@@ -150,7 +150,7 @@ describe("provider incompatibility error", () => {
       }),
     );
 
-    await setupPage({ context, path: "/chat/thread-signature-error" });
+    await setupPage({ context, path: "/chats/thread-signature-error" });
 
     await waitFor(() => {
       expect(screen.getByText(/different model provider/)).toBeInTheDocument();
@@ -179,14 +179,14 @@ describe("agent avatar link", () => {
       }),
     );
 
-    await setupPage({ context, path: "/chat/thread-avatar-test" });
+    await setupPage({ context, path: "/chats/thread-avatar-test" });
 
     const link = await waitFor(() => {
       return screen.getByRole("link", { name: "View agent profile" });
     });
     expect(link).toHaveAttribute(
       "href",
-      "/team/c0000000-0000-4000-a000-000000000001",
+      "/agents/c0000000-0000-4000-a000-000000000001",
     );
   });
 });
@@ -216,7 +216,7 @@ describe("chat message activity line", () => {
       },
     ]);
 
-    await setupPage({ context, path: "/chat/thread-activity-running" });
+    await setupPage({ context, path: "/chats/thread-activity-running" });
 
     // The result content should be rendered
     await waitFor(() => {
@@ -256,7 +256,7 @@ describe("chat message activity line", () => {
       },
     ]);
 
-    await setupPage({ context, path: "/chat/thread-activity-done" });
+    await setupPage({ context, path: "/chats/thread-activity-done" });
 
     // Wait for content to appear
     await waitFor(() => {

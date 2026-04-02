@@ -477,7 +477,7 @@ describe("zero chat page - agent avatar and greeting", () => {
     });
     expect(link).toHaveAttribute(
       "href",
-      "/team/c0000000-0000-4000-a000-000000000001",
+      "/agents/c0000000-0000-4000-a000-000000000001",
     );
   });
 });

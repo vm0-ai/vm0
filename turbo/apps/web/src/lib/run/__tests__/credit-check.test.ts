@@ -13,12 +13,9 @@ import {
   insertTestZeroRun,
 } from "../../../__tests__/api-test-helpers";
 import { reloadEnv } from "../../../env";
-import {
-  createRun,
-  dispatchQueuedRun,
-  type CreateRunParams,
-} from "../run-service";
+import { startRun, type CreateRunParams } from "../run-service";
 import { drainOrgQueue, enqueueRun } from "../run-queue-service";
+import { dispatchQueuedZeroRun } from "../../zero/zero-queue-service";
 
 const context = testContext();
 
@@ -53,7 +50,12 @@ describe("credit check (infra queue path)", () => {
       reloadEnv();
 
       // Create a running run + a queued VM0 run
-      await createRun(baseParams({ prompt: "Running" }));
+      await startRun({
+        userId: user.userId,
+        agentComposeVersionId: versionId,
+        prompt: "Running",
+        orgTier: "free",
+      });
       const queued = await enqueueRun(
         baseParams({ prompt: "Queued VM0", modelProvider: "vm0" }),
       );
@@ -66,7 +68,7 @@ describe("credit check (infra queue path)", () => {
       await markRunningRunsAsCompleted(user.userId);
 
       // Drain queue
-      await drainOrgQueue(user.orgId, dispatchQueuedRun);
+      await drainOrgQueue(user.orgId, dispatchQueuedZeroRun);
 
       // Queued run should be marked as failed
       const run = await findTestRunRecord(queued.runId);
@@ -83,7 +85,12 @@ describe("credit check (infra queue path)", () => {
       reloadEnv();
 
       // Create a running run + a queued non-VM0 run
-      await createRun(baseParams({ prompt: "Running" }));
+      await startRun({
+        userId: user.userId,
+        agentComposeVersionId: versionId,
+        prompt: "Running",
+        orgTier: "free",
+      });
       const queued = await enqueueRun(
         baseParams({ prompt: "Queued Anthropic", modelProvider: "anthropic" }),
       );
@@ -96,7 +103,7 @@ describe("credit check (infra queue path)", () => {
       await markRunningRunsAsCompleted(user.userId);
 
       // Drain queue
-      await drainOrgQueue(user.orgId, dispatchQueuedRun);
+      await drainOrgQueue(user.orgId, dispatchQueuedZeroRun);
 
       // Non-VM0 run should be dequeued normally
       const run = await findTestRunRecord(queued.runId);
@@ -108,7 +115,12 @@ describe("credit check (infra queue path)", () => {
       reloadEnv();
 
       // Create a running run
-      await createRun(baseParams({ prompt: "Running" }));
+      await startRun({
+        userId: user.userId,
+        agentComposeVersionId: versionId,
+        prompt: "Running",
+        orgTier: "free",
+      });
 
       // Enqueue two runs: first VM0, then non-VM0
       const vm0Run = await enqueueRun(
@@ -127,7 +139,7 @@ describe("credit check (infra queue path)", () => {
       await markRunningRunsAsCompleted(user.userId);
 
       // Drain queue
-      await drainOrgQueue(user.orgId, dispatchQueuedRun);
+      await drainOrgQueue(user.orgId, dispatchQueuedZeroRun);
 
       // VM0 run should be failed
       const vm0 = await findTestRunRecord(vm0Run.runId);

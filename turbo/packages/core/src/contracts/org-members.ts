@@ -83,6 +83,7 @@ export type OrgMembersResponse = z.infer<typeof orgMembersResponseSchema>;
  */
 export const inviteOrgMemberRequestSchema = z.object({
   email: z.string().email(),
+  role: orgRoleSchema.optional().default("member"),
 });
 export type InviteOrgMemberRequest = z.infer<
   typeof inviteOrgMemberRequestSchema

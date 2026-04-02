@@ -137,7 +137,7 @@ describe("zero connectors — agent switch", () => {
 
     await setupPage({
       context,
-      path: "/team/agent-a",
+      path: "/agents/agent-a",
       withoutRender: true,
     });
 
@@ -146,7 +146,7 @@ describe("zero connectors — agent switch", () => {
     expect(initialConnectors).toStrictEqual(["github"]);
 
     // Switch to agent B by updating the pathname
-    context.store.set(updateTestPathname$, "/team/agent-b");
+    context.store.set(updateTestPathname$, "/agents/agent-b");
 
     // Agent B's seeded connectors should show
     const agentBConnectors = await context.store.get(zeroAddedConnectors$);

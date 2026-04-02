@@ -1,7 +1,7 @@
 import { useLastResolved } from "ccstate-react";
 import { agents$ } from "../../signals/zero-page/agents-list.ts";
 import { resolveAvatarUrl } from "./avatar-utils.ts";
-import avatar1Img from "./assets/avatar_1.png";
+import avatar1Img from "./assets/avatar_1.webp";
 
 /**
  * Reactive hook that returns the agent avatar from the DB.

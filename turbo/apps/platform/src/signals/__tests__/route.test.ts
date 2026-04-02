@@ -62,10 +62,10 @@ describe("route", () => {
       const pushStateMock = createPushStateMock(signal);
       mockLocation({ pathname: "/", search: "" }, signal);
 
-      store.set(updateTestPathname$, "/team");
+      store.set(updateTestPathname$, "/agents");
 
-      expect(pushStateMock).toHaveBeenCalledWith({}, "", "/team");
-      expect(store.get(pathname$)).toBe("/team");
+      expect(pushStateMock).toHaveBeenCalledWith({}, "", "/agents");
+      expect(store.get(pathname$)).toBe("/agents");
     });
   });
 
