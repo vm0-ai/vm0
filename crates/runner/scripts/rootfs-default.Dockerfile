@@ -110,14 +110,24 @@ RUN ARCH=$(dpkg --print-architecture) \
     && echo 'export PATH=$PATH:/usr/local/go/bin' > /etc/profile.d/golang.sh
 
 # ---------------------------------------------------------------------------
-# Rust (stable toolchain via rustup, system-wide)
+# User account (created early so Rust can be installed as user)
 # ---------------------------------------------------------------------------
-ENV RUSTUP_HOME=/usr/local/rustup
-ENV CARGO_HOME=/usr/local/cargo
+# Ubuntu 24.04 ships with an 'ubuntu' user at UID 1000, so remove it first.
+RUN userdel -r ubuntu 2>/dev/null || true \
+    && useradd -m -u 1000 -s /bin/bash user \
+    && usermod -aG sudo user \
+    && echo 'user ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers \
+    && passwd -d user
+
+# ---------------------------------------------------------------------------
+# Rust (stable toolchain via rustup, installed as user)
+# ---------------------------------------------------------------------------
+USER user
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
     | sh -s -- -y --default-toolchain stable --no-modify-path \
-    && chmod -R a+rwX /usr/local/rustup /usr/local/cargo \
-    && printf 'export RUSTUP_HOME=/usr/local/rustup\nexport CARGO_HOME=/usr/local/cargo\nexport PATH=$PATH:/usr/local/cargo/bin\n' > /etc/profile.d/rust.sh
+    && echo 'export PATH=$PATH:$HOME/.cargo/bin' > /tmp/rust-profile.sh
+USER root
+RUN mv /tmp/rust-profile.sh /etc/profile.d/rust.sh
 
 # ---------------------------------------------------------------------------
 # C++ (GCC + Clang + CMake)
@@ -190,17 +200,6 @@ RUN npm install -g agent-browser@${AGENT_BROWSER_VERSION} \
     && apt-get update \
     && apt-get install -y -t bookworm chromium \
     && rm /etc/apt/sources.list.d/debian-bookworm.list /usr/share/keyrings/debian-bookworm.gpg
-
-# ---------------------------------------------------------------------------
-# User account
-# ---------------------------------------------------------------------------
-# Create 'user' account (UID 1000) matching E2B sandbox default
-# Ubuntu 24.04 ships with an 'ubuntu' user at UID 1000, so remove it first.
-RUN userdel -r ubuntu 2>/dev/null || true \
-    && useradd -m -u 1000 -s /bin/bash user \
-    && usermod -aG sudo user \
-    && echo 'user ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers \
-    && passwd -d user
 
 # NOTE: DNS configuration is handled in build-rootfs.sh after export
 # /etc/resolv.conf is read-only during Docker build
