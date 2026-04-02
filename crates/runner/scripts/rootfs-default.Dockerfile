@@ -49,7 +49,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # - gnupg: Key management for APT repos
 # NSS/Chromium:
 # - libnss3, p11-kit-modules: System CA trust for NSS-based apps
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
     procps \
@@ -83,14 +83,14 @@ RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
 # ---------------------------------------------------------------------------
 # Ruby 3.x
 # ---------------------------------------------------------------------------
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get install -y \
     ruby-full \
     bundler
 
 # ---------------------------------------------------------------------------
 # PHP 8.x + Composer
 # ---------------------------------------------------------------------------
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get install -y \
     php \
     php-cli \
     php-common \
@@ -104,7 +104,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # ---------------------------------------------------------------------------
 # Java (OpenJDK + Maven + Gradle)
 # ---------------------------------------------------------------------------
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get install -y \
     default-jdk \
     maven \
     gradle
@@ -132,7 +132,7 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
 # ---------------------------------------------------------------------------
 # C++ (GCC + Clang + CMake)
 # ---------------------------------------------------------------------------
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
     clang \
@@ -142,14 +142,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # ---------------------------------------------------------------------------
 # PostgreSQL 16
 # ---------------------------------------------------------------------------
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get install -y \
     postgresql-16 \
     postgresql-contrib
 
 # ---------------------------------------------------------------------------
 # Redis 7
 # ---------------------------------------------------------------------------
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get install -y \
     redis-server
 
 # ---------------------------------------------------------------------------
@@ -196,8 +196,8 @@ RUN npm install -g @xdevplatform/xurl@${XURL_VERSION}
 ARG AGENT_BROWSER_VERSION=0.23.4
 RUN npm install -g agent-browser@${AGENT_BROWSER_VERSION} \
     && apt-get update \
-    && (apt-get install -y --no-install-recommends chromium-browser \
-        || apt-get install -y --no-install-recommends chromium)
+    && (apt-get install -y chromium-browser \
+        || apt-get install -y chromium)
 
 # ---------------------------------------------------------------------------
 # User account
