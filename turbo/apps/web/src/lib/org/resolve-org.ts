@@ -1,5 +1,13 @@
-import { forbidden, badRequest, isBadRequest, isNotFound } from "../errors";
+import { eq } from "drizzle-orm";
+import {
+  forbidden,
+  notFound,
+  badRequest,
+  isBadRequest,
+  isNotFound,
+} from "../errors";
 import { getOrgMetadata } from "./org-cache-service";
+import { orgMetadata } from "../../db/schema/org-metadata";
 import { verifyMembershipCached } from "./org-membership-cache";
 import type { AuthContext } from "../auth/get-auth-context";
 
@@ -115,6 +123,17 @@ export async function resolveOrg(
 ): Promise<{ org: ResolvedOrg; member: ResolvedMember }> {
   const effectiveOrgId = orgId ?? authCtx.orgId ?? null;
   if (effectiveOrgId) {
+    // Verify org exists in org_metadata (getOrgMetadata returns defaults for missing rows)
+    const db = globalThis.services.db;
+    const [orgRow] = await db
+      .select({ orgId: orgMetadata.orgId })
+      .from(orgMetadata)
+      .where(eq(orgMetadata.orgId, effectiveOrgId))
+      .limit(1);
+    if (!orgRow) {
+      throw notFound(`Organization ${effectiveOrgId} not found`);
+    }
+
     const orgMeta = await getOrgMetadata(effectiveOrgId);
     const resolved: ResolvedOrg = { orgId: orgMeta.orgId, tier: orgMeta.tier };
     const member = await verifyMembership(resolved, authCtx);
