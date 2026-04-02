@@ -17,6 +17,7 @@ describe("zero CLI program", () => {
       "agent",
       "connector",
       "doctor",
+      "logs",
       "preference",
       "run",
       "schedule",
@@ -39,7 +40,6 @@ describe("zero CLI program", () => {
       "volume",
       "artifact",
       "memory",
-      "logs",
       "cook",
       "init",
       "upgrade",
@@ -50,7 +50,7 @@ describe("zero CLI program", () => {
     }
   });
 
-  it("should have exactly 13 commands", () => {
-    expect(commandNames).toHaveLength(13);
+  it("should have exactly 14 commands", () => {
+    expect(commandNames).toHaveLength(14);
   });
 });
