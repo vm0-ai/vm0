@@ -1,4 +1,10 @@
 {
+  "enabledPlugins": {
+    "dev-server@team-skills": true,
+    "deep-dive@team-skills": true,
+    "github-workflow@team-skills": true,
+    "skill-manager@team-skills": true
+  },
   "extraKnownMarketplaces": {
     "team-skills": {
       "source": {
@@ -6,10 +12,5 @@
         "repo": "vm0-ai/team-skills"
       }
     }
-  },
-  "enabledPlugins": {
-    "dev-server@team-skills": true,
-    "deep-dive@team-skills": true,
-    "github-workflow@team-skills": true
   }
 }
