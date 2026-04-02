@@ -12,7 +12,7 @@ import {
 } from "../../../../src/db/schema/agent-compose";
 import { and, eq, inArray, lt, isNotNull } from "drizzle-orm";
 import { exportJobs } from "../../../../src/db/schema/export-job";
-import { deleteS3Objects } from "../../../../src/lib/s3/s3-client";
+import { deleteS3Objects } from "../../../../src/lib/infra/s3/s3-client";
 import {
   cleanupExpiredQueueEntries,
   drainStaleQueues,

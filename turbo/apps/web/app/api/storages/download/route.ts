@@ -14,7 +14,8 @@ import {
 } from "../../../../src/lib/auth/require-auth";
 import { isSandboxAuth } from "../../../../src/lib/auth/capability-check";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
-import { generatePresignedUrl } from "../../../../src/lib/s3/s3-client";
+import { getOrgData } from "../../../../src/lib/org/org-cache-service";
+import { generatePresignedUrl } from "../../../../src/lib/infra/s3/s3-client";
 import { env } from "../../../../src/env";
 import { resolveVersionByPrefix } from "../../../../src/lib/infra/storage/version-resolver";
 import { logger } from "../../../../src/lib/logger";

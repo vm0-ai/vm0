@@ -5,7 +5,7 @@ import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import { exportJobs } from "../../../../src/db/schema/export-job";
 import { executeExportJob } from "../../../../src/lib/zero/export/export-service";
-import { generatePresignedUrl } from "../../../../src/lib/s3/s3-client";
+import { generatePresignedUrl } from "../../../../src/lib/infra/s3/s3-client";
 import { env } from "../../../../src/env";
 
 // 24 hours in milliseconds

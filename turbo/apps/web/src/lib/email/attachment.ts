@@ -1,4 +1,4 @@
-import { uploadS3Buffer, generatePresignedUrl } from "../s3/s3-client";
+import { uploadS3Buffer, generatePresignedUrl } from "../infra/s3/s3-client";
 import { env } from "../../env";
 import {
   getReceivedEmailAttachments,

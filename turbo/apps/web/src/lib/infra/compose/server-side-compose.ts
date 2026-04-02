@@ -5,15 +5,15 @@ import {
   isSupportedFramework,
   type SupportedFramework,
 } from "@vm0/core";
-import type { AgentComposeYaml } from "../../types/agent-compose";
-import { uploadInstructionsServerSide } from "../infra/storage/instruction-upload";
-import { computeComposeVersionId } from "../infra/agent-compose/content-hash";
+import type { AgentComposeYaml } from "../../../types/agent-compose";
+import { uploadInstructionsServerSide } from "../storage/instruction-upload";
+import { computeComposeVersionId } from "../agent-compose/content-hash";
 import {
   agentComposes,
   agentComposeVersions,
-} from "../../db/schema/agent-compose";
-import { skills } from "../../db/schema/skill";
-import { logger } from "../logger";
+} from "../../../db/schema/agent-compose";
+import { skills } from "../../../db/schema/skill";
+import { logger } from "../../logger";
 
 const log = logger("compose:server-side");
 

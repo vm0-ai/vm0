@@ -5,7 +5,7 @@ import { verifyCallback } from "../../../../../../src/lib/callback";
 import { decryptSecretValue } from "../../../../../../src/lib/shared/crypto/secrets-encryption";
 import { slackOrgInstallations } from "../../../../../../src/db/schema/slack-org-installation";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
-import { findNewSessionId } from "../../../../../../src/lib/session/find-new-session";
+import { findNewSessionId } from "../../../../../../src/lib/infra/session/find-new-session";
 import {
   createSlackClient,
   postMessage,

@@ -22,7 +22,7 @@ import {
   generatePresignedPutUrl,
   downloadManifest,
   verifyS3FilesExist,
-} from "../../../../src/lib/s3/s3-client";
+} from "../../../../src/lib/infra/s3/s3-client";
 import { computeContentHashFromHashes } from "../../../../src/lib/infra/storage/content-hash";
 import { env } from "../../../../src/env";
 import { logger } from "../../../../src/lib/logger";

@@ -25,13 +25,13 @@ import {
   requireAuth,
   isAuthError,
 } from "../../../../../../src/lib/auth/require-auth";
-import { canAccessCompose } from "../../../../../../src/lib/agent/compose-access";
+import { canAccessCompose } from "../../../../../../src/lib/infra/agent/compose-access";
 import { isSandboxAuth } from "../../../../../../src/lib/auth/capability-check";
 import { resolveOrg } from "../../../../../../src/lib/org/resolve-org";
 import {
   downloadManifest,
   downloadS3Buffer,
-} from "../../../../../../src/lib/s3/s3-client";
+} from "../../../../../../src/lib/infra/s3/s3-client";
 import { env } from "../../../../../../src/env";
 import {
   getInstructionsStorageName,

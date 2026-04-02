@@ -7,7 +7,7 @@ import {
   HeadObjectCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
-import { env } from "../../env";
+import { env } from "../../../env";
 import type { S3Object, S3StorageManifest } from "./types";
 import { s3DownloadError, s3UploadError } from "./types";
 

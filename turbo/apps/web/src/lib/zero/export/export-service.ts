@@ -12,9 +12,9 @@ import {
   uploadS3Buffer,
   generatePresignedUrl,
   downloadS3Buffer,
-} from "../../s3/s3-client";
+} from "../../infra/s3/s3-client";
 import { getAllSessionsWithMessages } from "../zero-session-service";
-import { resolveSessionHistory } from "../../session-history/session-history-service";
+import { resolveSessionHistory } from "../../infra/session-history/session-history-service";
 import { enqueueEmail } from "../../email/outbox-service";
 import {
   buildFromAddress,

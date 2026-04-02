@@ -15,7 +15,7 @@ import {
   isAuthError,
 } from "../../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
-import { serverSideCompose } from "../../../../../src/lib/compose/server-side-compose";
+import { serverSideCompose } from "../../../../../src/lib/infra/compose/server-side-compose";
 import { zeroAgents } from "../../../../../src/db/schema/zero-agent";
 import { zeroSkills } from "../../../../../src/db/schema/zero-skill";
 import { agentComposes } from "../../../../../src/db/schema/agent-compose";
@@ -32,7 +32,7 @@ import {
 import {
   downloadManifest,
   downloadS3Buffer,
-} from "../../../../../src/lib/s3/s3-client";
+} from "../../../../../src/lib/infra/s3/s3-client";
 import { extractFileFromTar } from "../../../../../src/lib/tar";
 import { env } from "../../../../../src/env";
 import { requireAdminPermission } from "../../../../../src/lib/zero/require-agent-permission";

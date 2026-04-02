@@ -4,15 +4,15 @@
  */
 
 import { inArray, sql } from "drizzle-orm";
-import { blobs } from "../../db/schema/blob";
+import { blobs } from "../../../db/schema/blob";
 import {
   uploadS3Buffer,
   deleteS3Objects,
   downloadBlob as downloadBlobFromS3,
 } from "../s3/s3-client";
-import { hashFileContent, type FileEntry } from "../infra/storage/content-hash";
-import { env } from "../../env";
-import { logger } from "../logger";
+import { hashFileContent, type FileEntry } from "../storage/content-hash";
+import { env } from "../../../env";
+import { logger } from "../../logger";
 import pLimit from "p-limit";
 
 const log = logger("blob");

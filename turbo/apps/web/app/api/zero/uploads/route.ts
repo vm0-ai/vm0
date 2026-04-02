@@ -4,7 +4,7 @@ import { getUserId } from "../../../../src/lib/auth/get-auth-context";
 import {
   uploadS3Buffer,
   generatePresignedUrl,
-} from "../../../../src/lib/s3/s3-client";
+} from "../../../../src/lib/infra/s3/s3-client";
 import { env } from "../../../../src/env";
 import { logger } from "../../../../src/lib/logger";
 

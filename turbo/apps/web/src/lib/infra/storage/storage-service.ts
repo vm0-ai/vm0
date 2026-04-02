@@ -1,6 +1,6 @@
 import { gzipSync } from "node:zlib";
 import { resolveVolumes } from "./storage-resolver";
-import { generatePresignedUrl, putS3Object } from "../../s3/s3-client";
+import { generatePresignedUrl, putS3Object } from "../s3/s3-client";
 import { logger } from "../../logger";
 import { badRequest } from "../../errors";
 import {

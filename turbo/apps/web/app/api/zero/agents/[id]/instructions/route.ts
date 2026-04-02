@@ -17,7 +17,7 @@ import {
   isAuthError,
 } from "../../../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../../../src/lib/org/resolve-org";
-import { serverSideCompose } from "../../../../../../src/lib/compose/server-side-compose";
+import { serverSideCompose } from "../../../../../../src/lib/infra/compose/server-side-compose";
 import {
   agentComposes,
   agentComposeVersions,
@@ -31,7 +31,7 @@ import { eq, and } from "drizzle-orm";
 import {
   downloadManifest,
   downloadS3Buffer,
-} from "../../../../../../src/lib/s3/s3-client";
+} from "../../../../../../src/lib/infra/s3/s3-client";
 import { extractFileFromTar } from "../../../../../../src/lib/tar";
 import { env } from "../../../../../../src/env";
 import { buildComposeContent } from "../../../../../../src/lib/zero/build-compose-content";

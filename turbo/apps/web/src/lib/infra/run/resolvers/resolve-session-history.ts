@@ -1,4 +1,4 @@
-import { resolveSessionHistory as resolveFromStorage } from "../../../session-history";
+import { resolveSessionHistory as resolveFromStorage } from "../../session-history";
 import { notFound } from "../../../errors";
 
 /**

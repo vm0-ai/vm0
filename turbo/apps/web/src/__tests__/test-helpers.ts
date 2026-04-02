@@ -49,7 +49,7 @@ import { Axiom } from "@axiomhq/js";
 import { mockClerk, clearClerkMock } from "./clerk-mock";
 import { initServices } from "../lib/init-services";
 import { insertOrgCacheEntry, ensureOrgRow } from "./api-test-helpers";
-import * as s3Client from "../lib/s3/s3-client";
+import * as s3Client from "../lib/infra/s3/s3-client";
 import * as axiomClient from "../lib/shared/axiom/client";
 import { agentComposes } from "../db/schema/agent-compose";
 import { connectors } from "../db/schema/connector";

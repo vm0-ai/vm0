@@ -29,7 +29,7 @@ import type { ExecutionContext, DispatchTimings, ResumeSession } from "./types";
 import type { ArtifactSnapshot } from "../../checkpoint/types";
 import { buildInfraExecutionContext } from "./context/build-context";
 import { recordSandboxOperation } from "../../shared/metrics";
-import { canAccessCompose } from "../../agent/compose-access";
+import { canAccessCompose } from "../agent/compose-access";
 
 import { encryptSecretValue } from "../../shared/crypto/secrets-encryption";
 import {

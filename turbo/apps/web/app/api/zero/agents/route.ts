@@ -10,7 +10,7 @@ import {
   isAuthError,
 } from "../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
-import { serverSideCompose } from "../../../../src/lib/compose/server-side-compose";
+import { serverSideCompose } from "../../../../src/lib/infra/compose/server-side-compose";
 import { zeroAgents } from "../../../../src/db/schema/zero-agent";
 import { agentComposes } from "../../../../src/db/schema/agent-compose";
 import { eq, desc } from "drizzle-orm";

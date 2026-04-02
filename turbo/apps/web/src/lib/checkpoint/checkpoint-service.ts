@@ -5,7 +5,7 @@ import { conversations } from "../../db/schema/conversation";
 import { checkpoints } from "../../db/schema/checkpoint";
 import { notFound } from "../errors";
 import { createAgentSession, updateAgentSession } from "../infra/agent-session";
-import { storeSessionHistory } from "../session-history";
+import { storeSessionHistory } from "../infra/session-history";
 import { logger } from "../logger";
 import type {
   CheckpointRequest,

@@ -1,5 +1,5 @@
 import { getFile, buildFileDownloadUrl, type TelegramClient } from "./client";
-import { uploadS3Buffer, generatePresignedUrl } from "../s3/s3-client";
+import { uploadS3Buffer, generatePresignedUrl } from "../infra/s3/s3-client";
 import { env } from "../../env";
 import { logger } from "../logger";
 const log = logger("telegram:images");

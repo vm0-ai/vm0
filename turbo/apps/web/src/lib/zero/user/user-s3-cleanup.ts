@@ -1,7 +1,7 @@
 import { eq, and, isNotNull } from "drizzle-orm";
 import { storages } from "../../../db/schema/storage";
 import { exportJobs } from "../../../db/schema/export-job";
-import { listS3Objects, deleteS3Objects } from "../../s3/s3-client";
+import { listS3Objects, deleteS3Objects } from "../../infra/s3/s3-client";
 import { logger } from "../../logger";
 
 const log = logger("service:user-s3-cleanup");

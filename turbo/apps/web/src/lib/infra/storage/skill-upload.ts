@@ -12,8 +12,8 @@ import {
   listS3Objects,
   deleteS3Objects,
   verifyS3FilesExist,
-} from "../../s3/s3-client";
-import type { S3StorageManifest } from "../../s3/types";
+} from "../s3/s3-client";
+import type { S3StorageManifest } from "../s3/types";
 import { computeContentHashFromHashes, hashFileContent } from "./content-hash";
 import { env } from "../../../env";
 import { logger } from "../../logger";
