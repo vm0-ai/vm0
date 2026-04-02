@@ -5,9 +5,9 @@ import {
 } from "../../db/schema/agent-compose";
 import { agentRuns } from "../../db/schema/agent-run";
 import { and, eq, inArray, gte } from "drizzle-orm";
-import { queryAxiom } from "../axiom";
+import { queryAxiom, getDatasetName, DATASETS } from "../axiom";
 
-export const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
 interface AxiomAgentEvent {
   _time: string;
@@ -22,7 +22,7 @@ function escapeApl(value: string): string {
   return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
-export async function getAgentNames(
+async function getAgentNames(
   runIds: string[],
   userId: string,
   orgId: string,
@@ -59,7 +59,7 @@ export async function getAgentNames(
   return result;
 }
 
-export async function getUserRunIds(
+async function getUserRunIds(
   userId: string,
   orgId: string,
   since: Date,
@@ -100,7 +100,7 @@ export async function getUserRunIds(
   });
 }
 
-export function buildRunIdFilter(runIds: string[]): string {
+function buildRunIdFilter(runIds: string[]): string {
   return runIds.length === 1
     ? `| where runId == "${escapeApl(runIds[0]!)}"`
     : `| where runId in (${runIds
@@ -114,7 +114,7 @@ export function buildRunIdFilter(runIds: string[]): string {
  * Search events using Axiom's search operator which supports maps and arrays.
  * See: https://axiom.co/docs/apl/tabular-operators/search-operator
  */
-export async function searchEventsInAxiom(
+async function searchEventsInAxiom(
   dataset: string,
   sinceISO: string,
   runIdFilter: string,
@@ -134,7 +134,7 @@ ${runIdFilter}
 /**
  * Fetch context events (surrounding events by sequenceNumber) for matched events.
  */
-export async function fetchContextEvents(
+async function fetchContextEvents(
   dataset: string,
   matches: AxiomAgentEvent[],
   before: number,
@@ -161,11 +161,132 @@ export async function fetchContextEvents(
   return contextMap;
 }
 
-export function toRunEvent(event: AxiomAgentEvent): RunEvent {
+function toRunEvent(event: AxiomAgentEvent): RunEvent {
   return {
     sequenceNumber: event.sequenceNumber,
     eventType: event.eventType,
     eventData: event.eventData,
     createdAt: event._time,
   };
+}
+
+/**
+ * Shared search handler logic used by both `/api/logs/search` and `/api/zero/logs/search`.
+ *
+ * Accepts a pre-authenticated userId + orgId and the parsed query parameters,
+ * then performs the full search flow: run-ID resolution, Axiom search,
+ * context fetching, and result assembly.
+ */
+export async function handleSearchLogs(
+  userId: string,
+  orgId: string,
+  query: {
+    keyword: string;
+    agent?: string;
+    runId?: string;
+    since?: number;
+    limit: number;
+    before: number;
+    after: number;
+  },
+): Promise<{
+  results: Array<{
+    runId: string;
+    agentName: string;
+    matchedEvent: RunEvent;
+    contextBefore: RunEvent[];
+    contextAfter: RunEvent[];
+  }>;
+  hasMore: boolean;
+}> {
+  const { keyword, agent, runId, limit, before, after } = query;
+  const since = query.since ?? Date.now() - SEVEN_DAYS_MS;
+  const sinceDate = new Date(since);
+  const sinceISO = sinceDate.toISOString();
+  const dataset = getDatasetName(DATASETS.AGENT_RUN_EVENTS);
+
+  // Determine which run IDs to search (ownership verified via DB).
+  let targetRunIds: string[];
+  if (runId) {
+    const [run] = await globalThis.services.db
+      .select({ id: agentRuns.id })
+      .from(agentRuns)
+      .where(
+        and(
+          eq(agentRuns.id, runId),
+          eq(agentRuns.userId, userId),
+          eq(agentRuns.orgId, orgId),
+        ),
+      )
+      .limit(1);
+
+    if (!run) {
+      return { results: [], hasMore: false };
+    }
+    targetRunIds = [runId];
+  } else {
+    targetRunIds = await getUserRunIds(userId, orgId, sinceDate, agent);
+    if (targetRunIds.length === 0) {
+      return { results: [], hasMore: false };
+    }
+  }
+
+  const runIdFilter = buildRunIdFilter(targetRunIds);
+
+  const matchedEvents = await searchEventsInAxiom(
+    dataset,
+    sinceISO,
+    runIdFilter,
+    keyword,
+    limit,
+  );
+
+  if (matchedEvents.length === 0) {
+    return { results: [], hasMore: false };
+  }
+
+  const hasMore = matchedEvents.length > limit;
+  const matches = hasMore ? matchedEvents.slice(0, limit) : matchedEvents;
+
+  // Fetch context events
+  const contextMap = await fetchContextEvents(dataset, matches, before, after);
+
+  // Assemble results
+  const matchedRunIds = [
+    ...new Set(
+      matches.map((e) => {
+        return e.runId;
+      }),
+    ),
+  ];
+  const agentNames = await getAgentNames(matchedRunIds, userId, orgId);
+
+  const results = matches.map((match) => {
+    const contextBefore: RunEvent[] = [];
+    const contextAfter: RunEvent[] = [];
+
+    for (let i = match.sequenceNumber - before; i < match.sequenceNumber; i++) {
+      const event = contextMap.get(`${match.runId}:${i}`);
+      if (event) contextBefore.push(toRunEvent(event));
+    }
+
+    for (
+      let i = match.sequenceNumber + 1;
+      i <= match.sequenceNumber + after;
+      i++
+    ) {
+      const event = contextMap.get(`${match.runId}:${i}`);
+      if (event) contextAfter.push(toRunEvent(event));
+    }
+
+    return {
+      runId: match.runId,
+      agentName: agentNames.get(match.runId) || "unknown",
+      matchedEvent: toRunEvent(match),
+      contextBefore,
+      contextAfter,
+    };
+  });
+
+  return { results, hasMore };
 }
