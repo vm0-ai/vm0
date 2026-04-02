@@ -1,4 +1,4 @@
-import { type Env } from "../../env";
+import { type Env } from "../../../env";
 
 export interface OAuthTokenResult {
   accessToken: string;

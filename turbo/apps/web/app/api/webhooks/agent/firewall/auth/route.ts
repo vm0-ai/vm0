@@ -12,7 +12,7 @@ import {
   getConnectorExpiry,
   getConnectorAccessToken,
   getConnectorRefreshToken,
-} from "../../../../../../src/lib/connector/connector-service";
+} from "../../../../../../src/lib/zero/connector/connector-service";
 import { basicAuthTemplateRe } from "@vm0/core";
 
 const bodySchema = z.object({

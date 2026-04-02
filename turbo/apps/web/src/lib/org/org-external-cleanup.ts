@@ -4,7 +4,7 @@ import { logger } from "../logger";
 import { getStripe } from "../stripe";
 import { deleteWebhook } from "../telegram/client";
 import { decryptSecretValue } from "../shared/crypto/secrets-encryption";
-import { revokeConnectorToken } from "../connector/connector-service";
+import { revokeConnectorToken } from "../zero/connector/connector-service";
 import { cleanupWorkspaceInstallation } from "../slack-org/connect-service";
 import { orgMetadata } from "../../db/schema/org-metadata";
 import { telegramInstallations } from "../../db/schema/telegram-installation";

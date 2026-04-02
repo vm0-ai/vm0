@@ -13,7 +13,7 @@ import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
 import {
   getConnector,
   deleteConnector,
-} from "../../../../../src/lib/connector/connector-service";
+} from "../../../../../src/lib/zero/connector/connector-service";
 import { isNotFound } from "../../../../../src/lib/errors";
 
 const router = tsr.router(zeroConnectorsByTypeContract, {

@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { HttpResponse } from "msw";
-import { server } from "../../../../mocks/server";
-import { http } from "../../../../__tests__/msw";
-import { testContext } from "../../../../__tests__/test-helpers";
+import { server } from "../../../../../mocks/server";
+import { http } from "../../../../../__tests__/msw";
+import { testContext } from "../../../../../__tests__/test-helpers";
 import {
   buildSlackAuthorizationUrl,
   exchangeSlackCode,

@@ -1,5 +1,5 @@
 import { type ConnectorType, getConnectorDefaultAuthMethod } from "@vm0/core";
-import { type Env } from "../../env";
+import { type Env } from "../../../env";
 import {
   type AuthUrlResult,
   type OAuthTokenResult,

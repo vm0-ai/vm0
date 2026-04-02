@@ -3,7 +3,7 @@ import { z } from "zod";
 import { eq, desc } from "drizzle-orm";
 import { connectorTypeSchema } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
-import { upsertOAuthConnector } from "../../../../../src/lib/connector/connector-service";
+import { upsertOAuthConnector } from "../../../../../src/lib/zero/connector/connector-service";
 import {
   resolveTestUserId,
   DEFAULT_TEST_EMAIL,

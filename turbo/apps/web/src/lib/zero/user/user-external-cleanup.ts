@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { connectorTypeSchema } from "@vm0/core";
 import { logger } from "../../logger";
-import { revokeConnectorToken } from "../../connector/connector-service";
+import { revokeConnectorToken } from "../connector/connector-service";
 import { connectors } from "../../../db/schema/connector";
 import { githubUserLinks } from "../../../db/schema/github-user-link";
 import { telegramUserLinks } from "../../../db/schema/telegram-user-link";

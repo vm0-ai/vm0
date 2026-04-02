@@ -10,7 +10,7 @@ import {
   isAuthError,
 } from "../../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
-import { getConnector } from "../../../../../src/lib/connector/connector-service";
+import { getConnector } from "../../../../../src/lib/zero/connector/connector-service";
 import {
   createComputerConnector,
   deleteComputerConnector,

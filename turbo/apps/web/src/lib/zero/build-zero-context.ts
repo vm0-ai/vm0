@@ -56,11 +56,11 @@ import { getOrgDefaultModelProvider } from "./model-provider/model-provider-serv
 import { getVm0ApiKey } from "./vm0-key/vm0-key-service";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 import { connectors } from "../../db/schema/connector";
-import { PROVIDER_HANDLERS } from "../connector/provider-registry";
+import { PROVIDER_HANDLERS } from "./connector/provider-registry";
 import {
   getApiTokenConnectorTypes,
   refreshConnectorAccessToken,
-} from "../connector/connector-service";
+} from "./connector/connector-service";
 
 const log = logger("zero:build-context");
 
