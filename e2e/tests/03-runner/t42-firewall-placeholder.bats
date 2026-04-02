@@ -23,7 +23,10 @@ setup_file() {
 
     setup_test_connector "github" "$CI_GITHUB_TOKEN"
     setup_test_connector "slack" "xoxb-multi-test-token"
-    setup_test_connector "discord-webhook" "https://discord.com/api/webhooks/1234567890/fake-token-for-e2e"
+
+    # discord-webhook uses api-token auth (not OAuth), so store as user secret
+    # via CLI — same path as the frontend's "Add Connection" dialog.
+    $VM0_CLI secret set DISCORD_WEBHOOK_URL -b "https://discord.com/api/webhooks/1234567890/fake-token-for-e2e"
 }
 
 setup() {
