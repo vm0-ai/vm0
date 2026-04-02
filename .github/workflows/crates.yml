@@ -1048,11 +1048,28 @@ jobs:
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           HOST: ${{ needs.runner-build.outputs.host }}
           JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
+          ANSIBLE_SSH_ARGS: "-o ControlMaster=no -o ControlPersist=no"
         run: |
-          cd ansible
+          echo "=== Test 1: raw SSH ==="
+          timeout 10 ssh "${METAL_USER}@${HOST}" echo "raw SSH OK" 2>&1
+          echo "=== Test 2: SSH with ansible-style args ==="
+          timeout 10 ssh -vvv \
+            -o ControlMaster=no -o ControlPersist=no \
+            -o KbdInteractiveAuthentication=no \
+            -o PreferredAuthentications=gssapi-with-mic,gssapi-keyex,hostbased,publickey \
+            -o PasswordAuthentication=no \
+            -o ConnectTimeout=10 \
+            "${METAL_USER}@${HOST}" echo "ansible-style SSH OK" 2>&1
+          echo "=== Test 3: ansible ping ==="
+          timeout 30 ansible all -i "${HOST}," -m ping -u "${METAL_USER}" -vvvv 2>&1 || echo "ansible ping FAILED"
+          echo "=== Test 4: ansible ping with become ==="
+          timeout 30 ansible all -i "${HOST}," -m ping -u "${METAL_USER}" -b -vvvv 2>&1 || echo "ansible ping+become FAILED"
+          echo "=== Test 5: ansible gather_facts ==="
+          timeout 30 ansible all -i "${HOST}," -m setup -u "${METAL_USER}" -vvvv 2>&1 | tail -5 || echo "ansible gather_facts FAILED"
+          echo "=== Cleanup ==="
           ansible-playbook \
             -i "${HOST}," \
-            playbooks/cleanup-crates-runner.yml \
+            ansible/playbooks/cleanup-crates-runner.yml \
             -e "ansible_user=${METAL_USER}" \
             -e "job_ref=${JOB_REF}" \
-            -v || true
+            -v

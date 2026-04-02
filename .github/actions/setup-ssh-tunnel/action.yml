@@ -44,9 +44,12 @@ runs:
 
         # Store credentials in a restricted file sourced by the proxy script,
         # so they don't appear in SSH config or process listings.
-        printf 'export CF_ACCESS_CLIENT_ID="%s"\nexport CF_ACCESS_CLIENT_SECRET="%s"\n' \
-          "$CF_ACCESS_CLIENT_ID" "$CF_ACCESS_CLIENT_SECRET" \
-          > "$HOME/.ssh/cf-access.env"
+        cat > "$HOME/.ssh/cf-access.env" << ENVEOF
+        export CF_ACCESS_CLIENT_ID="$CF_ACCESS_CLIENT_ID"
+        export CF_ACCESS_CLIENT_SECRET="$CF_ACCESS_CLIENT_SECRET"
+        export CF_ACCESS_CLIENT_ID_PROD="$CF_ACCESS_CLIENT_ID"
+        export CF_ACCESS_CLIENT_SECRET_PROD="$CF_ACCESS_CLIENT_SECRET"
+        ENVEOF
         chmod 600 "$HOME/.ssh/cf-access.env"
 
         # Proxy script that converts host to tunnel hostname.
@@ -68,6 +71,8 @@ runs:
           "  StrictHostKeyChecking no" \
           "  UserKnownHostsFile /dev/null" \
           "  ConnectTimeout 10" \
+          "  ServerAliveInterval 15" \
+          "  ServerAliveCountMax 3" \
           "  IdentityFile $HOME/.ssh/runner.pem" \
           "  ProxyCommand $HOME/.ssh/cf-proxy.sh %h")"
 
