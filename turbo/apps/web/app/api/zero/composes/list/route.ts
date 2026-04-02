@@ -10,7 +10,7 @@ import {
   isAuthError,
 } from "../../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
-import { listComposes } from "../../../../../src/lib/agent-compose/compose-service";
+import { listComposes } from "../../../../../src/lib/zero/zero-compose-service";
 import { isNotFound, isForbidden } from "../../../../../src/lib/errors";
 
 const router = tsr.router(zeroComposesListContract, {
