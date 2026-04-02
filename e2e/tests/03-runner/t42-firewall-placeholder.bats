@@ -102,7 +102,7 @@ set_user_secret() {
 
     # Read auth token from CLI config
     local token
-    token=$(python3 -c "import json; print(json.load(open('$HOME/.vm0/config.json'))['authToken'])" 2>/dev/null)
+    token=$(python3 -c "import json; print(json.load(open('$HOME/.vm0/config.json'))['token'])" 2>/dev/null)
     if [[ -z "$token" ]]; then
         echo "No authToken in ~/.vm0/config.json" >&2
         return 1
