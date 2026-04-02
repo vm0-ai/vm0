@@ -64,8 +64,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     sudo \
     gnupg \
     libnss3 \
-    p11-kit-modules \
-    && rm -rf /var/lib/apt/lists/*
+    p11-kit-modules
 
 # Make NSS-based applications (Chromium, Firefox) trust the system CA store.
 # By default NSS uses a built-in trust module (libnssckbi.so) with Mozilla's
@@ -79,16 +78,14 @@ RUN find /usr/lib -name libnssckbi.so -exec sh -c \
 # Node.js 24 (via NodeSource)
 # ---------------------------------------------------------------------------
 RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
-    && apt-get install -y nodejs \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get install -y nodejs
 
 # ---------------------------------------------------------------------------
 # Ruby 3.x
 # ---------------------------------------------------------------------------
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ruby-full \
-    bundler \
-    && rm -rf /var/lib/apt/lists/*
+    bundler
 
 # ---------------------------------------------------------------------------
 # PHP 8.x + Composer
@@ -102,8 +99,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     php-xml \
     php-zip \
     unzip \
-    && curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer \
-    && rm -rf /var/lib/apt/lists/*
+    && curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
 
 # ---------------------------------------------------------------------------
 # Java (OpenJDK + Maven + Gradle)
@@ -111,8 +107,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN apt-get update && apt-get install -y --no-install-recommends \
     default-jdk \
     maven \
-    gradle \
-    && rm -rf /var/lib/apt/lists/*
+    gradle
 
 # ---------------------------------------------------------------------------
 # Go (latest stable via official tarball)
@@ -142,23 +137,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     g++ \
     clang \
     make \
-    cmake \
-    && rm -rf /var/lib/apt/lists/*
+    cmake
 
 # ---------------------------------------------------------------------------
 # PostgreSQL 16
 # ---------------------------------------------------------------------------
 RUN apt-get update && apt-get install -y --no-install-recommends \
     postgresql-16 \
-    postgresql-contrib \
-    && rm -rf /var/lib/apt/lists/*
+    postgresql-contrib
 
 # ---------------------------------------------------------------------------
 # Redis 7
 # ---------------------------------------------------------------------------
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    redis-server \
-    && rm -rf /var/lib/apt/lists/*
+    redis-server
 
 # ---------------------------------------------------------------------------
 # Claude Code CLI (standalone Bun-compiled binary)
@@ -182,8 +174,7 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
     | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
     && apt-get update \
-    && apt-get install -y gh \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get install -y gh
 
 # ---------------------------------------------------------------------------
 # Google Workspace CLI
@@ -206,8 +197,7 @@ ARG AGENT_BROWSER_VERSION=0.23.4
 RUN npm install -g agent-browser@${AGENT_BROWSER_VERSION} \
     && apt-get update \
     && (apt-get install -y --no-install-recommends chromium-browser \
-        || apt-get install -y --no-install-recommends chromium) \
-    && rm -rf /var/lib/apt/lists/*
+        || apt-get install -y --no-install-recommends chromium)
 
 # ---------------------------------------------------------------------------
 # User account
