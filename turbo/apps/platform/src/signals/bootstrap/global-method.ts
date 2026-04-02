@@ -9,6 +9,7 @@ import {
 import { parseInspectLogCsv } from "../activity-page/inspect-log-parser";
 import { setInspectLogData$ } from "../activity-page/inspect-log-signals";
 import { detachedNavigateTo$ } from "../route";
+import { ROUTES } from "../route-paths";
 
 const L = logger("GlobalMethod");
 
@@ -65,9 +66,11 @@ export const setupGlobalMethod$ = command(
             .then((text) => {
               const data = parseInspectLogCsv(text);
               set(setInspectLogData$, data);
-              set(detachedNavigateTo$, "/activities/inspect");
+              set(detachedNavigateTo$, ROUTES.activityInspect);
             })
-            .catch(() => {});
+            .catch((error: unknown) => {
+              L.error("Failed to parse inspect log CSV", error);
+            });
         });
 
         // Clean up if dialog is cancelled
