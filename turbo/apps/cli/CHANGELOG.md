@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.96.0](https://github.com/vm0-ai/vm0/compare/cli-v9.95.1...cli-v9.96.0) (2026-04-02)
+
+
+### Features
+
+* **cli:** add zero logs commands (list, view, search) ([#7643](https://github.com/vm0-ai/vm0/issues/7643)) ([e6815d0](https://github.com/vm0-ai/vm0/commit/e6815d0fc8ae0fbdd21664f5cde810e125d02163))
+
 ## [9.95.1](https://github.com/vm0-ai/vm0/compare/cli-v9.95.0...cli-v9.95.1) (2026-04-02)
 
 
