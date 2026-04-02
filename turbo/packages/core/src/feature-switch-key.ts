@@ -40,7 +40,6 @@ export enum FeatureSwitchKey {
   ConcurrentAddOn = "concurrentAddOn",
   CreditAddOn = "creditAddOn",
   ModelDetail = "modelDetail",
-  RunContext = "runContext",
-  RunNetwork = "runNetwork",
   ActivityLogList = "activityLogList",
+  ZeroDebug = "zeroDebug",
 }

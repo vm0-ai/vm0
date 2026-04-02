@@ -273,18 +273,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.RunContext]: {
+  [FeatureSwitchKey.ActivityLogList]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
-    enabledUserHashes: STAFF_USER_HASHES,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.RunNetwork]: {
-    maintainer: "liangyou@vm0.ai",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.ActivityLogList]: {
+  [FeatureSwitchKey.ZeroDebug]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,

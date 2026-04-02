@@ -109,7 +109,7 @@ function StorageTable({
 
 export function ContextContent({ context }: { context: RunContextResponse }) {
   return (
-    <div className="mx-auto w-full max-w-[900px] px-4 sm:px-6 pt-4 pb-8 flex flex-col gap-6">
+    <div className="flex flex-col gap-6 pb-8">
       {/* Prompt */}
       <section>
         <SectionHeader title="Prompt" />

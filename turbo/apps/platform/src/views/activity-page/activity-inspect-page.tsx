@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { useGet, useSet } from "ccstate-react";
+import { useGet, useSet, useLastResolved } from "ccstate-react";
 import { IconSearch, IconChartLine, IconUpload } from "@tabler/icons-react";
 import { Button, Input, Tabs, TabsList, TabsTrigger } from "@vm0/ui";
+import { FeatureSwitchKey } from "@vm0/core";
 import type {
   LogStatus,
   TriggerSource,
@@ -25,6 +26,8 @@ import {
   loadInspectLogFile$,
   type InspectLogData,
 } from "../../signals/activity-page/inspect-log-signals.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import { searchParams$, updateSearchParams$ } from "../../signals/route.ts";
 import { ContextContent } from "../zero-page/components/context-content.tsx";
 import { NetworkContent } from "../zero-page/components/network-content.tsx";
 import { Link } from "../router/link.tsx";
@@ -173,7 +176,24 @@ function StepsTab({
 }
 
 function InspectLogContent({ data }: { data: InspectLogData }) {
-  const [activeTab, setActiveTab] = useState<InspectTab>("steps");
+  const features = useLastResolved(featureSwitch$);
+  const showDebugTabs = features?.[FeatureSwitchKey.ZeroDebug] ?? false;
+
+  const params = useGet(searchParams$);
+  const updateParams = useSet(updateSearchParams$);
+  const rawTab = params.get("tab");
+  const activeTab: InspectTab =
+    rawTab === "context" || rawTab === "network" ? rawTab : "steps";
+  const setActiveTab = (tab: InspectTab) => {
+    const next = new URLSearchParams(params);
+    if (tab === "steps") {
+      next.delete("tab");
+    } else {
+      next.set("tab", tab);
+    }
+    void updateParams(next);
+  };
+
   const prepared = prepareInspectData(data);
   const {
     displayName,
@@ -185,9 +205,6 @@ function InspectLogContent({ data }: { data: InspectLogData }) {
     time,
     events,
   } = prepared;
-
-  const hasContext = Boolean(data.context);
-  const hasNetwork = Boolean(data.networkLogs) && data.networkLogs!.length > 0;
 
   return (
     <div className="h-full flex flex-col min-h-0 overflow-hidden">
@@ -206,7 +223,7 @@ function InspectLogContent({ data }: { data: InspectLogData }) {
             showModelDetail={Boolean(detail.selectedModel)}
           />
 
-          {(hasContext || hasNetwork) && (
+          {showDebugTabs && (
             <div className="mt-4">
               <Tabs
                 value={activeTab}
@@ -216,12 +233,8 @@ function InspectLogContent({ data }: { data: InspectLogData }) {
               >
                 <TabsList>
                   <TabsTrigger value="steps">Steps</TabsTrigger>
-                  {hasContext && (
-                    <TabsTrigger value="context">Context</TabsTrigger>
-                  )}
-                  {hasNetwork && (
-                    <TabsTrigger value="network">Network</TabsTrigger>
-                  )}
+                  <TabsTrigger value="context">Context</TabsTrigger>
+                  <TabsTrigger value="network">Network</TabsTrigger>
                 </TabsList>
               </Tabs>
             </div>

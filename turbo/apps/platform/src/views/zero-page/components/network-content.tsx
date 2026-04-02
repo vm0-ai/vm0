@@ -359,7 +359,7 @@ export function NetworkContent({
   hasMore?: boolean;
 }) {
   return (
-    <div className="mx-auto w-full max-w-[1200px] px-4 sm:px-6 pt-4 pb-8">
+    <div className="pb-8">
       {hasMore && (
         <p className="text-xs text-muted-foreground mb-3">
           Showing first {networkLogs.length} entries. Some entries may be

@@ -1,4 +1,3 @@
-import { useState } from "react";
 import {
   useGet,
   useSet,
@@ -30,6 +29,7 @@ import {
 } from "@vm0/core";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { fetchDownloadExtra$ } from "../../signals/activity-page/activity-download.ts";
+import { searchParams$, updateSearchParams$ } from "../../signals/route.ts";
 import { Link } from "../router/link.tsx";
 import {
   TRIGGER_SOURCE_LABELS,
@@ -513,7 +513,20 @@ function ActivityDetailContent({
   eventsData: AgentEvent[];
   features: Record<FeatureSwitchKey, boolean> | undefined;
 }) {
-  const [activeTab, setActiveTab] = useState<ActivityTab>("steps");
+  const params = useGet(searchParams$);
+  const updateParams = useSet(updateSearchParams$);
+  const rawTab = params.get("tab");
+  const activeTab: ActivityTab =
+    rawTab === "context" || rawTab === "network" ? rawTab : "steps";
+  const setActiveTab = (tab: ActivityTab) => {
+    const next = new URLSearchParams(params);
+    if (tab === "steps") {
+      next.delete("tab");
+    } else {
+      next.set("tab", tab);
+    }
+    void updateParams(next);
+  };
   const fetchExtra = useSet(fetchDownloadExtra$);
 
   const events: AgentEvent[] = eventsData;
@@ -527,8 +540,7 @@ function ActivityDetailContent({
   const time = formatLogTime(detail.createdAt);
   const duration = formatDuration(detail.startedAt, detail.completedAt);
 
-  const showContext = features?.[FeatureSwitchKey.RunContext] ?? false;
-  const showNetwork = features?.[FeatureSwitchKey.RunNetwork] ?? false;
+  const showDebugTabs = features?.[FeatureSwitchKey.ZeroDebug] ?? false;
 
   return (
     <div className="h-full flex flex-col min-h-0 overflow-hidden">
@@ -566,7 +578,7 @@ function ActivityDetailContent({
             }}
           />
 
-          {(showContext || showNetwork) && (
+          {showDebugTabs && (
             <div className="mt-4">
               <Tabs
                 value={activeTab}
@@ -576,12 +588,8 @@ function ActivityDetailContent({
               >
                 <TabsList>
                   <TabsTrigger value="steps">Steps</TabsTrigger>
-                  {showContext && (
-                    <TabsTrigger value="context">Context</TabsTrigger>
-                  )}
-                  {showNetwork && (
-                    <TabsTrigger value="network">Network</TabsTrigger>
-                  )}
+                  <TabsTrigger value="context">Context</TabsTrigger>
+                  <TabsTrigger value="network">Network</TabsTrigger>
                 </TabsList>
               </Tabs>
             </div>
