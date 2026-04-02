@@ -3,7 +3,12 @@ import {
   tsr,
   TsRestResponse,
 } from "../../../../src/lib/ts-rest-handler";
-import { runsMainContract, ALL_RUN_STATUSES, type RunStatus } from "@vm0/core";
+import {
+  runsMainContract,
+  ALL_RUN_STATUSES,
+  type RunStatus,
+  orgTierSchema,
+} from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import {
   agentComposes,
@@ -233,6 +238,8 @@ const router = tsr.router(runsMainContract, {
         volumeVersions: body.volumeVersions,
       });
 
+      const orgTier = orgTierSchema.parse(org.tier);
+
       const result = await startRun({
         userId,
         prompt: body.prompt,
@@ -262,6 +269,7 @@ const router = tsr.router(runsMainContract, {
         modelProvider: body.modelProvider,
         firewallPolicies: body.firewallPolicies,
         callerOrgId: org.orgId,
+        orgTier,
         resolveSourceDuration: resolved.timings.resolveSource,
         resolveSecretsDuration: resolved.timings.resolveSecrets,
       });

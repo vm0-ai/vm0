@@ -99,6 +99,7 @@ describe("run-queue-service", () => {
         userId: user.userId,
         agentComposeVersionId: versionId,
         prompt: "Running",
+        orgTier: "free",
       });
       const queued = await enqueueRun(baseParams({ prompt: "Queued" }));
       expect(queued.status).toBe("queued");
@@ -127,6 +128,7 @@ describe("run-queue-service", () => {
         userId: user.userId,
         agentComposeVersionId: versionId,
         prompt: "Alice run",
+        orgTier: "free",
       });
 
       // Bob is a different user in the same org
@@ -171,6 +173,7 @@ describe("run-queue-service", () => {
         userId: user.userId,
         agentComposeVersionId: versionId,
         prompt: "Running",
+        orgTier: "free",
       });
       const queued = await enqueueRun(baseParams({ prompt: "Queued" }));
       expect(queued.status).toBe("queued");
@@ -250,6 +253,7 @@ describe("run-queue-service", () => {
         userId: user.userId,
         agentComposeVersionId: versionId,
         prompt: "Running",
+        orgTier: "free",
       });
       const queued = await enqueueRun(baseParams({ prompt: "Queued" }));
 
@@ -338,6 +342,7 @@ describe("run-queue-service", () => {
         userId: user.userId,
         agentComposeVersionId: versionId,
         prompt: "User1 running",
+        orgTier: "free",
       });
       expect(run1.status).toBe("pending");
 
@@ -375,6 +380,7 @@ describe("run-queue-service", () => {
         userId: user.userId,
         agentComposeVersionId: versionId,
         prompt: "User1 running",
+        orgTier: "free",
       });
 
       // Create second user sharing user1's org

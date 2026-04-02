@@ -54,6 +54,7 @@ describe("credit check (infra queue path)", () => {
         userId: user.userId,
         agentComposeVersionId: versionId,
         prompt: "Running",
+        orgTier: "free",
       });
       const queued = await enqueueRun(
         baseParams({ prompt: "Queued VM0", modelProvider: "vm0" }),
@@ -88,6 +89,7 @@ describe("credit check (infra queue path)", () => {
         userId: user.userId,
         agentComposeVersionId: versionId,
         prompt: "Running",
+        orgTier: "free",
       });
       const queued = await enqueueRun(
         baseParams({ prompt: "Queued Anthropic", modelProvider: "anthropic" }),
@@ -117,6 +119,7 @@ describe("credit check (infra queue path)", () => {
         userId: user.userId,
         agentComposeVersionId: versionId,
         prompt: "Running",
+        orgTier: "free",
       });
 
       // Enqueue two runs: first VM0, then non-VM0

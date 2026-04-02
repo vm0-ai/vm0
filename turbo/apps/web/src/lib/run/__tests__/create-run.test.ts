@@ -51,6 +51,7 @@ describe("startRun()", () => {
       userId: user.userId,
       agentComposeVersionId: versionId,
       prompt: "Hello, world!",
+      orgTier: "free",
       ...overrides,
     };
   }
@@ -160,8 +161,12 @@ describe("startRun()", () => {
     it("should allow 2 concurrent runs for pro tier", async () => {
       await updateOrgTier(user.orgId, "pro");
 
-      const run1 = await startRun(baseParams({ prompt: "Pro run 1" }));
-      const run2 = await startRun(baseParams({ prompt: "Pro run 2" }));
+      const run1 = await startRun(
+        baseParams({ prompt: "Pro run 1", orgTier: "pro" }),
+      );
+      const run2 = await startRun(
+        baseParams({ prompt: "Pro run 2", orgTier: "pro" }),
+      );
 
       expect(run1.status).toBe("pending");
       expect(run2.status).toBe("pending");
@@ -170,11 +175,11 @@ describe("startRun()", () => {
     it("should reject 3rd concurrent run for pro tier", async () => {
       await updateOrgTier(user.orgId, "pro");
 
-      await startRun(baseParams({ prompt: "Pro run 1" }));
-      await startRun(baseParams({ prompt: "Pro run 2" }));
+      await startRun(baseParams({ prompt: "Pro run 1", orgTier: "pro" }));
+      await startRun(baseParams({ prompt: "Pro run 2", orgTier: "pro" }));
 
       await expect(
-        startRun(baseParams({ prompt: "Pro run 3" })),
+        startRun(baseParams({ prompt: "Pro run 3", orgTier: "pro" })),
       ).rejects.toSatisfy(isConcurrentRunLimit);
     });
 
@@ -182,9 +187,15 @@ describe("startRun()", () => {
       await updateOrgTier(user.orgId, "team");
 
       // Create 3 concurrent runs to verify team tier allows more than pro tier (which allows 2)
-      const run1 = await startRun(baseParams({ prompt: "Team run 1" }));
-      const run2 = await startRun(baseParams({ prompt: "Team run 2" }));
-      const run3 = await startRun(baseParams({ prompt: "Team run 3" }));
+      const run1 = await startRun(
+        baseParams({ prompt: "Team run 1", orgTier: "team" }),
+      );
+      const run2 = await startRun(
+        baseParams({ prompt: "Team run 2", orgTier: "team" }),
+      );
+      const run3 = await startRun(
+        baseParams({ prompt: "Team run 3", orgTier: "team" }),
+      );
 
       expect(run1.status).toBe("pending");
       expect(run2.status).toBe("pending");
@@ -241,6 +252,7 @@ describe("startRun()", () => {
         userId: otherUser.userId,
         agentComposeVersionId: otherCompose.versionId,
         prompt: "Org 2 run",
+        orgTier: "free",
       });
       expect(result.status).toBe("pending");
     });
