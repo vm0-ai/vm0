@@ -1,5 +1,5 @@
-import { queryAxiom, type RunContextSnapshot } from "../shared/axiom/client";
-import { getDatasetName, DATASETS } from "../shared/axiom/datasets";
+import { queryAxiom, type RunContextSnapshot } from "../../shared/axiom/client";
+import { getDatasetName, DATASETS } from "../../shared/axiom/datasets";
 
 /**
  * Query a run's execution context snapshot from Axiom.

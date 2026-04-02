@@ -1,4 +1,4 @@
-import { isRunDispatchError } from "../../run";
+import { isRunDispatchError } from "../../infra/run";
 import { createZeroRun } from "../../zero/zero-run-service";
 import { buildIntegrationContext } from "../../zero/integration-context";
 import { isApiError } from "../../errors";

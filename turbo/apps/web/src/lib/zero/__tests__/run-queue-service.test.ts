@@ -14,7 +14,7 @@ import {
   updateOrgTier,
 } from "../../../__tests__/api-test-helpers";
 import { reloadEnv } from "../../../env";
-import { startRun, type CreateRunParams } from "../../run/run-service";
+import { startRun, type CreateRunParams } from "../../infra/run/run-service";
 import {
   enqueueRun,
   drainOrgQueue,

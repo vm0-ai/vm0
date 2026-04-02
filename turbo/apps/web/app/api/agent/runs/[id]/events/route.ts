@@ -19,7 +19,7 @@ import type {
   RunStatus,
   RunResult,
   RunState,
-} from "../../../../../../src/lib/run/types";
+} from "../../../../../../src/lib/infra/run/types";
 import { filterConsecutiveEvents, type AxiomAgentEvent } from "./filter-events";
 
 const router = tsr.router(runEventsContract, {

@@ -12,7 +12,7 @@ import {
   setThreadStatus,
 } from "../../../../../../src/lib/slack/client";
 import { buildAgentResponseMessage } from "../../../../../../src/lib/slack/blocks";
-import { extractAllRunOutputs } from "../../../../../../src/lib/run/extract-run-output";
+import { extractAllRunOutputs } from "../../../../../../src/lib/infra/run/extract-run-output";
 import {
   saveThreadSession,
   buildLogsUrl,
@@ -20,7 +20,7 @@ import {
 import { env } from "../../../../../../src/env";
 import type { SlackOrgCallbackPayload } from "../../../../../../src/lib/callback/callback-payloads";
 import { logger } from "../../../../../../src/lib/logger";
-import type { RunOutput } from "../../../../../../src/lib/run/extract-run-output";
+import type { RunOutput } from "../../../../../../src/lib/infra/run/extract-run-output";
 
 const log = logger("callback:slack-org");
 

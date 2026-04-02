@@ -4,8 +4,8 @@ import {
   extractSecretNamesFromApis,
   type ExpandedFirewallConfig,
 } from "@vm0/core";
-import { logger } from "../../logger";
-import type { AgentComposeYaml } from "../../../types/agent-compose";
+import { logger } from "../../../logger";
+import type { AgentComposeYaml } from "../../../../types/agent-compose";
 
 const log = logger("run:environment");
 

@@ -1,4 +1,4 @@
-import { queryAxiom, getDatasetName, DATASETS } from "../shared/axiom";
+import { queryAxiom, getDatasetName, DATASETS } from "../../shared/axiom";
 
 // ---------------------------------------------------------------------------
 // Types

@@ -19,7 +19,7 @@ import {
   buildTelegramResponse,
   buildTelegramErrorResponse,
 } from "../../../../../src/lib/telegram/format";
-import { extractRunOutput } from "../../../../../src/lib/run/extract-run-output";
+import { extractRunOutput } from "../../../../../src/lib/infra/run/extract-run-output";
 import {
   saveTelegramThreadSession,
   storeTelegramMessage,

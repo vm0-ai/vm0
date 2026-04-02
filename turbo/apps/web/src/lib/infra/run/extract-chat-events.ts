@@ -1,5 +1,5 @@
 import type { SummaryEntry } from "@vm0/core";
-import { queryAxiom, getDatasetName, DATASETS } from "../shared/axiom";
+import { queryAxiom, getDatasetName, DATASETS } from "../../shared/axiom";
 
 interface AxiomEventContent {
   type: string;

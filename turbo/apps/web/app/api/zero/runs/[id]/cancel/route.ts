@@ -13,7 +13,7 @@ import { resolveOrg } from "../../../../../../src/lib/org/resolve-org";
 import {
   cancelRun,
   dispatchCancelSideEffects,
-} from "../../../../../../src/lib/run/run-service";
+} from "../../../../../../src/lib/infra/run/run-service";
 import {
   dispatchQueuedZeroRun,
   drainOrgQueue,

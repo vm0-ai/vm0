@@ -1,17 +1,17 @@
 import { eq, and } from "drizzle-orm";
-import { checkpoints } from "../../../db/schema/checkpoint";
-import { conversations } from "../../../db/schema/conversation";
-import { agentRuns } from "../../../db/schema/agent-run";
-import { agentComposeVersions } from "../../../db/schema/agent-compose";
-import { notFound, unauthorized, badRequest } from "../../errors";
-import { logger } from "../../logger";
+import { checkpoints } from "../../../../db/schema/checkpoint";
+import { conversations } from "../../../../db/schema/conversation";
+import { agentRuns } from "../../../../db/schema/agent-run";
+import { agentComposeVersions } from "../../../../db/schema/agent-compose";
+import { notFound, unauthorized, badRequest } from "../../../errors";
+import { logger } from "../../../logger";
 import type {
   ArtifactSnapshot,
   AgentComposeSnapshot,
   MemorySnapshot,
   VolumeVersionsSnapshot,
-} from "../../checkpoint/types";
-import type { AgentComposeYaml } from "../../../types/agent-compose";
+} from "../../../checkpoint/types";
+import type { AgentComposeYaml } from "../../../../types/agent-compose";
 import type { ConversationResolution } from "./types";
 import { extractWorkingDir } from "../utils";
 import { resolveSessionHistory } from "./resolve-session-history";

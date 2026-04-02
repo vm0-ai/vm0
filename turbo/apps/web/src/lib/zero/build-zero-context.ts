@@ -40,15 +40,15 @@ import {
   providerIncompatible,
 } from "../errors";
 import { logger } from "../logger";
-import type { ExecutionContext, ResumeSession } from "../run/types";
+import type { ExecutionContext, ResumeSession } from "../infra/run/types";
 import type { ArtifactSnapshot } from "../checkpoint/types";
 import {
   resolveCheckpoint,
   resolveSession,
   resolveDirectConversation,
   type ConversationResolution,
-} from "../run/resolvers";
-import { expandEnvironmentFromCompose } from "../run/environment";
+} from "../infra/run/resolvers";
+import { expandEnvironmentFromCompose } from "../infra/run/environment";
 import { getUserPreferences } from "./user/user-preferences-service";
 import { getSecretValue, getSecretValues } from "../secret/secret-service";
 import { getVariableValues } from "../variable/variable-service";

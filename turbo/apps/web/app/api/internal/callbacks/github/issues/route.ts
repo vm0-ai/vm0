@@ -12,7 +12,7 @@ import {
   postIssueComment,
   removeCommentReaction,
 } from "../../../../../../src/lib/github/api";
-import { extractRunOutput } from "../../../../../../src/lib/run/extract-run-output";
+import { extractRunOutput } from "../../../../../../src/lib/infra/run/extract-run-output";
 import { getAppUrl } from "../../../../../../src/lib/url";
 import { env } from "../../../../../../src/env";
 import type { GitHubIssuesCallbackPayload } from "../../../../../../src/lib/callback/callback-payloads";

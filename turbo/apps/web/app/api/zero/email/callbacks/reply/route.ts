@@ -6,7 +6,7 @@ import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import { zeroAgents } from "../../../../../../src/db/schema/zero-agent";
 import { emailThreadSessions } from "../../../../../../src/db/schema/email-thread-session";
 import { getUserEmail } from "../../../../../../src/lib/auth/get-user-email";
-import { getRunOutputText } from "../../../../../../src/lib/run/extract-run-output";
+import { getRunOutputText } from "../../../../../../src/lib/infra/run/extract-run-output";
 import { enqueueEmail } from "../../../../../../src/lib/email/outbox-service";
 import {
   buildReplyToAddress,

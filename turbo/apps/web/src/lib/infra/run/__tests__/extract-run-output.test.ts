@@ -11,7 +11,7 @@ vi.mock("@axiomhq/js", () => {
   };
 });
 
-import { reloadEnv } from "../../../env";
+import { reloadEnv } from "../../../../env";
 import {
   extractRunOutput,
   extractAllRunOutputs,

@@ -20,7 +20,7 @@ import {
 import { reloadEnv } from "../../../env";
 import { createZeroRun } from "../zero-run-service";
 import { isInsufficientCredits } from "../../errors";
-import { startRun, type CreateRunParams } from "../../run/run-service";
+import { startRun, type CreateRunParams } from "../../infra/run/run-service";
 import {
   drainOrgQueue,
   enqueueRun,

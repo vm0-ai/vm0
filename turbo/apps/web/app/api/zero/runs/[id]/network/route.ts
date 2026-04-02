@@ -10,7 +10,7 @@ import {
   isAuthError,
 } from "../../../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../../../src/lib/org/resolve-org";
-import { getRunById } from "../../../../../../src/lib/run/run-service";
+import { getRunById } from "../../../../../../src/lib/infra/run/run-service";
 import {
   queryAxiom,
   getDatasetName,

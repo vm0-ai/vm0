@@ -1,20 +1,20 @@
 import { eq } from "drizzle-orm";
-import type { AgentComposeYaml } from "../../../types/agent-compose";
+import type { AgentComposeYaml } from "../../../../types/agent-compose";
 import type { ExecutionContext } from "../types";
 import type { PreparedContext } from "../executors/types";
 import {
   prepareStorageManifest,
   ensureStorageExists,
-} from "../../infra/storage/storage-service";
-import type { StorageManifest } from "../../infra/storage/types";
+} from "../../../infra/storage/storage-service";
+import type { StorageManifest } from "../../../infra/storage/types";
 import { DEFAULT_PROFILE } from "@vm0/core";
-import { badRequest } from "../../errors";
-import { logger } from "../../logger";
+import { badRequest } from "../../../errors";
+import { logger } from "../../../logger";
 import { extractWorkingDir } from "../utils/extract-working-dir";
 import {
   agentComposes,
   agentComposeVersions,
-} from "../../../db/schema/agent-compose";
+} from "../../../../db/schema/agent-compose";
 import { extractCliAgentType } from "../utils";
 
 const log = logger("context:preparer");

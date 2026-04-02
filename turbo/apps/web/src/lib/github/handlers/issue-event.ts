@@ -5,7 +5,7 @@ import { githubUserLinks } from "../../../db/schema/github-user-link";
 import { githubIssueSessions } from "../../../db/schema/github-issue-session";
 import { agentComposes } from "../../../db/schema/agent-compose";
 import { zeroAgents } from "../../../db/schema/zero-agent";
-import { validateAgentSession } from "../../run";
+import { validateAgentSession } from "../../infra/run";
 import { createZeroRun } from "../../zero/zero-run-service";
 import { buildIntegrationContext } from "../../zero/integration-context";
 import { generateCallbackSecret, getApiUrl } from "../../callback";

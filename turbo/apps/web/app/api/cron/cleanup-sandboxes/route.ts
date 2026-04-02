@@ -5,7 +5,7 @@ import { agentRuns } from "../../../../src/db/schema/agent-run";
 import {
   transitionRunStatus,
   dispatchTerminalSideEffects,
-} from "../../../../src/lib/run/run-status";
+} from "../../../../src/lib/infra/run/run-status";
 import {
   agentComposeVersions,
   agentComposes,

@@ -21,7 +21,7 @@ import {
   resolveUserMentions,
   type SlackFile,
 } from "../../slack/context";
-import { validateAgentSession } from "../../run";
+import { validateAgentSession } from "../../infra/run";
 import { logger } from "../../logger";
 
 /**

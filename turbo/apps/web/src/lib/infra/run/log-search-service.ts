@@ -2,10 +2,10 @@ import type { RunEvent } from "@vm0/core";
 import {
   agentComposes,
   agentComposeVersions,
-} from "../../db/schema/agent-compose";
-import { agentRuns } from "../../db/schema/agent-run";
+} from "../../../db/schema/agent-compose";
+import { agentRuns } from "../../../db/schema/agent-run";
 import { and, eq, inArray, gte } from "drizzle-orm";
-import { queryAxiom, getDatasetName, DATASETS } from "../shared/axiom";
+import { queryAxiom, getDatasetName, DATASETS } from "../../shared/axiom";
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 

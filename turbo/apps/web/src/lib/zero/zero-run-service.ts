@@ -18,7 +18,7 @@ import {
   type CreateRunResult,
   type CreateRunParams,
   type CreateRunRecordResult,
-} from "../run";
+} from "../infra/run";
 import {
   enqueueRun,
   drainOrgQueue,

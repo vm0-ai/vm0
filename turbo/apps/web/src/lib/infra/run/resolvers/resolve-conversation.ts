@@ -1,9 +1,9 @@
 import { eq, and } from "drizzle-orm";
-import { conversations } from "../../../db/schema/conversation";
-import { agentRuns } from "../../../db/schema/agent-run";
-import { agentComposeVersions } from "../../../db/schema/agent-compose";
-import { notFound, unauthorized } from "../../errors";
-import { logger } from "../../logger";
+import { conversations } from "../../../../db/schema/conversation";
+import { agentRuns } from "../../../../db/schema/agent-run";
+import { agentComposeVersions } from "../../../../db/schema/agent-compose";
+import { notFound, unauthorized } from "../../../errors";
+import { logger } from "../../../logger";
 import type { ConversationResolution } from "./types";
 import { extractWorkingDir } from "../utils";
 import { resolveSessionHistory } from "./resolve-session-history";
