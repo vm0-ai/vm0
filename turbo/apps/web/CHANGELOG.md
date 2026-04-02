@@ -1,5 +1,17 @@
 # Changelog
 
+## [12.185.0](https://github.com/vm0-ai/vm0/compare/web-v12.184.2...web-v12.185.0) (2026-04-02)
+
+
+### Features
+
+* enable zero token auth for org endpoint ([#7658](https://github.com/vm0-ai/vm0/issues/7658)) ([d645589](https://github.com/vm0-ai/vm0/commit/d6455890c723be3d3bd652b8c80ea178367b2b6e))
+
+
+### Refactoring
+
+* move run-queue-service into zero layer as zero-run-queue-service ([#7657](https://github.com/vm0-ai/vm0/issues/7657)) ([4899f50](https://github.com/vm0-ai/vm0/commit/4899f507d90831c873ab7e70d978973e2b62607e)), closes [#7654](https://github.com/vm0-ai/vm0/issues/7654)
+
 ## [12.184.2](https://github.com/vm0-ai/vm0/compare/web-v12.184.1...web-v12.184.2) (2026-04-02)
 
 

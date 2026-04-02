@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.178.3](https://github.com/vm0-ai/vm0/compare/app-v0.178.2...app-v0.178.3) (2026-04-02)
+
+
+### Refactoring
+
+* hoist sidebar layout to setup commands for react reconciliation ([#7655](https://github.com/vm0-ai/vm0/issues/7655)) ([0d56707](https://github.com/vm0-ai/vm0/commit/0d567073fe2ea7134cb657088db47c3bb8777155))
+
 ## [0.178.2](https://github.com/vm0-ai/vm0/compare/app-v0.178.1...app-v0.178.2) (2026-04-02)
 
 
