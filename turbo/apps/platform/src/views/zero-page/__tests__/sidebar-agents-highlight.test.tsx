@@ -42,9 +42,8 @@ function mockAgentAPIs() {
  * Find the sidebar "Agents" manage-nav link inside the sidebar <nav>.
  */
 function getAgentsNavLink(): HTMLElement {
-  const nav = screen.getByRole("navigation");
-  const span = within(nav).getByText("Agents");
-  return span.closest("a")!;
+  const nav = screen.getByRole("navigation", { name: "Sidebar" });
+  return within(nav).getByRole("link", { name: "Agents" });
 }
 
 describe("sidebar Agents tab highlight", () => {
@@ -60,7 +59,7 @@ describe("sidebar Agents tab highlight", () => {
     await context.store.set(navigate$, "/agents", {}, context.signal);
 
     await waitFor(() => {
-      expect(getAgentsNavLink().className).toContain("bg-gray-200");
+      expect(getAgentsNavLink()).toHaveAttribute("aria-current", "page");
     });
   });
 
@@ -81,7 +80,28 @@ describe("sidebar Agents tab highlight", () => {
     );
 
     await waitFor(() => {
-      expect(getAgentsNavLink().className).not.toContain("bg-gray-200");
+      expect(getAgentsNavLink()).not.toHaveAttribute("aria-current", "page");
+    });
+  });
+
+  it("should not highlight Agents tab on /agents/:id/ideas", async () => {
+    mockAgentAPIs();
+    await setupPage({ context, path: "/" });
+
+    await waitFor(() => {
+      expect(getAgentsNavLink()).toBeInTheDocument();
+    });
+
+    // Navigate to agent ideas
+    await context.store.set(
+      navigate$,
+      "/agents/agent-abc/ideas",
+      {},
+      context.signal,
+    );
+
+    await waitFor(() => {
+      expect(getAgentsNavLink()).not.toHaveAttribute("aria-current", "page");
     });
   });
 });
