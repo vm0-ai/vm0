@@ -264,9 +264,47 @@ pub async fn run_rootfs(args: RootfsArgs) -> RunnerResult<String> {
         )));
     }
 
-    tracing::info!("[OK] rootfs ready: {}", output_dir.display());
-    tracing::info!("rootfs hash: {hash}");
+    let rootfs_sz = file_sizes(&rootfs_path).await;
+    tracing::info!(
+        rootfs = %rootfs_path.display(),
+        rootfs_logical = %rootfs_sz.0,
+        rootfs_disk = %rootfs_sz.1,
+        "rootfs creation complete"
+    );
     Ok(hash)
+}
+
+/// Return `(logical, disk)` as human-readable strings (e.g. "65.2 MiB").
+///
+/// `logical` is the apparent file size; `disk` is the actual disk usage
+/// (from `st_blocks`), which can be much smaller for sparse files like rootfs.
+async fn file_sizes(path: &std::path::Path) -> (String, String) {
+    use std::os::unix::fs::MetadataExt;
+    match tokio::fs::metadata(path).await {
+        Ok(m) => {
+            const BYTES_PER_BLOCK: u64 = 512;
+            let logical = human_bytes(m.len());
+            let disk = human_bytes(m.blocks() * BYTES_PER_BLOCK);
+            (logical, disk)
+        }
+        Err(_) => ("?".into(), "?".into()),
+    }
+}
+
+fn human_bytes(bytes: u64) -> String {
+    const KIB: f64 = 1024.0;
+    const MIB: f64 = KIB * 1024.0;
+    const GIB: f64 = MIB * 1024.0;
+    let b = bytes as f64;
+    if b >= GIB {
+        format!("{:.1} GiB", b / GIB)
+    } else if b >= MIB {
+        format!("{:.1} MiB", b / MIB)
+    } else if b >= KIB {
+        format!("{:.1} KiB", b / KIB)
+    } else {
+        format!("{bytes} B")
+    }
 }
 
 /// Check whether all expected build outputs exist in the directory.
