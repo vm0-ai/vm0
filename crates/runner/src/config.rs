@@ -37,14 +37,7 @@ pub struct ProfileConfig {
     pub snapshot_hash: Option<String>,
     pub vcpu: u32,
     pub memory_mb: u32,
-    /// Disk size in MiB. Defaults to 16384 (16 GiB) for backward compatibility
-    /// with runner.yaml files generated before this field existed.
-    #[serde(default = "default_disk_mb")]
     pub disk_mb: u32,
-}
-
-fn default_disk_mb() -> u32 {
-    16384
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -481,6 +474,45 @@ profiles:
     vcpu: 0
     memory_mb: 4096
     disk_mb: 16384
+"#,
+            base_dir = dir.path().display(),
+            ca_dir = dir.path().display(),
+            fc = fc.display(),
+            kernel = kernel.display(),
+        );
+
+        let config_path = dir.path().join("runner.yaml");
+        tokio::fs::write(&config_path, &yaml).await.unwrap();
+
+        let err = load_with_home(&config_path, &home).await.unwrap_err();
+        assert!(err.to_string().contains("non-zero"), "got: {err}");
+    }
+
+    #[tokio::test]
+    async fn load_rejects_zero_disk_mb_in_profile() {
+        let dir = tempfile::tempdir().unwrap();
+        let fc = dir.path().join("firecracker");
+        let kernel = dir.path().join("vmlinux");
+        for f in [&fc, &kernel] {
+            tokio::fs::write(f, b"").await.unwrap();
+        }
+        let home = test_home_with_artifacts(dir.path(), &[]).await;
+
+        let yaml = format!(
+            r#"
+name: test
+group: test/group
+base_dir: {base_dir}
+ca_dir: {ca_dir}
+firecracker:
+  binary: {fc}
+  kernel: {kernel}
+profiles:
+  vm0/default:
+    rootfs_hash: abc
+    vcpu: 2
+    memory_mb: 4096
+    disk_mb: 0
 "#,
             base_dir = dir.path().display(),
             ca_dir = dir.path().display(),
