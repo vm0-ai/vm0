@@ -804,8 +804,8 @@ class TestFirewallHeaderCache:
         mock_fetch.assert_not_called()
         assert result["headers"] == {"Authorization": "Bearer cached"}
         assert result["cache_hit"] is True
-        assert result["refreshed_connectors"] == []
-        assert result["refreshed_secrets"] == []
+        assert "refreshed_connectors" not in result
+        assert "refreshed_secrets" not in result
 
     async def test_expired_cache_triggers_fetch(self):
         """Expired cache entry should trigger a new fetch."""
