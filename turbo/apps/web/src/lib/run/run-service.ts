@@ -1145,13 +1145,16 @@ export async function cancelRun(
 }
 
 /**
- * Dispatch post-cancellation side effects (Ably notification, callbacks, queue drain, credits).
+ * Dispatch post-cancellation side effects (Ably notification, callbacks, queue drain).
  * Designed to be called inside `after()` so it runs after the response is sent.
+ *
+ * Returns `true` when the cancelled run was previously active (running/pending),
+ * indicating the caller should also process org credits.
  */
 export async function dispatchCancelSideEffects(
   result: CancelRunResult,
   queueDispatcher: (runId: string, params: CreateRunParams) => Promise<void>,
-): Promise<void> {
+): Promise<boolean> {
   const log = logger("service:run:cancel");
 
   if (result.previousStatus === "running" && result.runnerGroup) {
@@ -1179,4 +1182,6 @@ export async function dispatchCancelSideEffects(
         }
       : undefined,
   );
+
+  return shouldDrain;
 }

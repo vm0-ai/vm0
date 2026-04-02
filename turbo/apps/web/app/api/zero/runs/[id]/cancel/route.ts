@@ -35,11 +35,11 @@ const router = tsr.router(zeroRunsCancelContract, {
       const result = await cancelRun(params.id, userId, org.orgId);
 
       after(async () => {
-        await dispatchCancelSideEffects(result, dispatchQueuedZeroRun);
-        if (
-          result.previousStatus === "running" ||
-          result.previousStatus === "pending"
-        ) {
+        const shouldProcessCredits = await dispatchCancelSideEffects(
+          result,
+          dispatchQueuedZeroRun,
+        );
+        if (shouldProcessCredits) {
           await processOrgCredits(result.orgId);
         }
       });
