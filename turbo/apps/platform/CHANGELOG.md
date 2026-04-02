@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.179.1](https://github.com/vm0-ai/vm0/compare/app-v0.179.0...app-v0.179.1) (2026-04-02)
+
+
+### Refactoring
+
+* remove model provider selector from chat composer ([#7687](https://github.com/vm0-ai/vm0/issues/7687)) ([afc30c3](https://github.com/vm0-ai/vm0/commit/afc30c31f53a7e8b54a25174ba9c006dae950ce8)), closes [#7525](https://github.com/vm0-ai/vm0/issues/7525)
+* simplify zero onboarding with shared completion command ([#7681](https://github.com/vm0-ai/vm0/issues/7681)) ([4b66405](https://github.com/vm0-ai/vm0/commit/4b6640537242d696b3565635028ceac3e6acff27))
+
 ## [0.179.0](https://github.com/vm0-ai/vm0/compare/app-v0.178.3...app-v0.179.0) (2026-04-02)
 
 

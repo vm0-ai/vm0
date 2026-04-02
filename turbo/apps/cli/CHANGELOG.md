@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.97.1](https://github.com/vm0-ai/vm0/compare/cli-v9.97.0...cli-v9.97.1) (2026-04-02)
+
+
+### Bug Fixes
+
+* **cli:** display full run ids in zero logs list and search ([#7683](https://github.com/vm0-ai/vm0/issues/7683)) ([b449380](https://github.com/vm0-ai/vm0/commit/b4493807a78beb1365c7f34e1882a8d135adb0fe)), closes [#7680](https://github.com/vm0-ai/vm0/issues/7680)
+
 ## [9.97.0](https://github.com/vm0-ai/vm0/compare/cli-v9.96.1...cli-v9.97.0) (2026-04-02)
 
 

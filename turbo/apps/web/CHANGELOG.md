@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.186.2](https://github.com/vm0-ai/vm0/compare/web-v12.186.1...web-v12.186.2) (2026-04-02)
+
+
+### Refactoring
+
+* create zero-session-service and extract zero session ops from agent-session-service ([#7684](https://github.com/vm0-ai/vm0/issues/7684)) ([3325a5d](https://github.com/vm0-ai/vm0/commit/3325a5d6dcb9af220bbbe79801b1dc749c0a4ae2)), closes [#7679](https://github.com/vm0-ai/vm0/issues/7679)
+
 ## [12.186.1](https://github.com/vm0-ai/vm0/compare/web-v12.186.0...web-v12.186.1) (2026-04-02)
 
 
