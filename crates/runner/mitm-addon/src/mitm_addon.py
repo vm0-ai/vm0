@@ -676,6 +676,12 @@ async def handle_firewall_request(
             new_url += "?" + "&".join(qs_parts)
 
         flow.request.url = new_url
+        # In transparent mode, update host/port so mitmproxy connects to the
+        # real upstream server instead of the placeholder IP.
+        parsed = urllib.parse.urlparse(new_url)
+        if parsed.hostname:
+            flow.request.host = parsed.hostname
+            flow.request.port = parsed.port or (443 if parsed.scheme == "https" else 80)
         flow.metadata["auth_url_rewrite"] = True
         ctx.log.info(f"[{run_id}] Firewall URL rewrite: {firewall_base} -> [redacted]")
 

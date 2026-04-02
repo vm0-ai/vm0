@@ -1637,7 +1637,7 @@ class TestAuthBaseUrlRewriteEdgeCases:
         return flow, api_entry, vm_info, match_info, token_meta
 
     async def test_sets_auth_url_rewrite_metadata(self):
-        """auth_url_rewrite metadata is set to True when URL is rewritten."""
+        """auth_url_rewrite metadata is set and host/port updated for upstream connection."""
         flow, api_entry, vm_info, match_info, token_meta = self._make_rewrite_inputs()
         with (
             patch.object(mitm_addon, "get_firewall_headers", AsyncMock(return_value=token_meta)),
@@ -1645,6 +1645,9 @@ class TestAuthBaseUrlRewriteEdgeCases:
         ):
             await mitm_addon.handle_firewall_request(flow, api_entry, vm_info, match_info)
         assert flow.metadata["auth_url_rewrite"] is True
+        # Host and port must be updated so mitmproxy connects to the real upstream
+        assert flow.request.host == "discord.com"
+        assert flow.request.port == 443
 
     async def test_no_auth_url_rewrite_metadata_when_no_base(self):
         """auth_url_rewrite metadata is absent when no URL rewrite happens."""
