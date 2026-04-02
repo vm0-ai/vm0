@@ -397,3 +397,50 @@ impl Drop for NbdCowDevice {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Verify is_our_thread correctly identifies the main thread (TID == TGID).
+    #[test]
+    fn is_our_thread_main_thread() {
+        assert!(is_our_thread(std::process::id()));
+    }
+
+    /// Verify is_our_thread identifies a spawned thread's TID as ours.
+    /// This exercises the /proc/self/task/{tid} path used by tokio workers.
+    #[test]
+    fn is_our_thread_worker_thread() {
+        // Use a running thread to ensure /proc/self/task/{tid} exists.
+        let (tx, rx) = std::sync::mpsc::channel();
+        let handle = std::thread::spawn(move || {
+            let tid = unsafe { libc::gettid() } as u32;
+            tx.send(tid).unwrap();
+            // Keep thread alive until main reads the TID and checks it.
+            std::thread::park();
+            tid
+        });
+        let worker_tid = rx.recv().unwrap();
+        assert_ne!(
+            worker_tid,
+            std::process::id(),
+            "worker TID should differ from TGID"
+        );
+        assert!(
+            is_our_thread(worker_tid),
+            "worker thread TID should be recognized as ours"
+        );
+        handle.thread().unpark();
+        handle.join().unwrap();
+    }
+
+    /// Verify is_our_thread rejects a TID that doesn't belong to our process.
+    #[test]
+    fn is_our_thread_foreign_tid() {
+        // PID 1 (init) is never one of our threads.
+        assert!(!is_our_thread(1));
+        // A very large TID that doesn't exist.
+        assert!(!is_our_thread(u32::MAX));
+    }
+}
