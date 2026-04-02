@@ -383,11 +383,11 @@ export async function createZeroRunRecord(
  */
 export async function dispatchZeroRun(
   result: ZeroRunRecordResult,
-): Promise<void> {
+): Promise<{ status: RunStatus; sandboxId?: string } | undefined> {
   const { record, runParams, orgId, zeroParams } = result;
 
   // Nothing to dispatch if run was enqueued (concurrency limit)
-  if (!record || !runParams || !orgId || !zeroParams) return;
+  if (!record || !runParams || !orgId || !zeroParams) return undefined;
 
   try {
     // 5. Register callbacks early so they persist even if context building fails
@@ -416,7 +416,7 @@ export async function dispatchZeroRun(
     });
 
     // 8. Dispatch with pre-built context (callbacks already registered above)
-    await buildAndDispatchRun({
+    const dispatchResult = await buildAndDispatchRun({
       runId: record.run.id,
       context: contextResult.context,
       timings: {
@@ -431,6 +431,8 @@ export async function dispatchZeroRun(
 
     // 9. Persist zero-layer metadata (triggerSource + schedule + trigger agent + model fields)
     await persistZeroRunMetadata(record.run.id, zeroParams, contextResult);
+
+    return dispatchResult;
   } catch (error) {
     await markRunFailed(record.run.id, error);
     await drainOrgQueue(orgId, dispatchQueuedZeroRun).catch((drainErr) => {
@@ -465,11 +467,12 @@ export async function createZeroRun(
     };
   }
 
-  await dispatchZeroRun(result);
+  const dispatchResult = await dispatchZeroRun(result);
 
   return {
     runId: result.runId,
-    status: "pending",
+    status: dispatchResult?.status ?? "pending",
+    sandboxId: dispatchResult?.sandboxId,
     createdAt: result.createdAt,
   };
 }
