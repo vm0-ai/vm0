@@ -655,13 +655,20 @@ async fn drop_without_destroy_disconnects() {
     // Drop without calling destroy — Drop impl should disconnect
     drop(device);
 
-    // Give the kernel a moment to update sysfs
-    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
-
-    // The device should appear free (pid = -1 or missing)
+    // Poll sysfs until the kernel marks the device as free.
+    // Drop's disconnect is synchronous but the kernel may take time
+    // to update the sysfs pid file, especially under load.
+    let mut freed = false;
+    for _ in 0..20 {
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        if nbd_cow::netlink::device_appears_free(device_index) {
+            freed = true;
+            break;
+        }
+    }
     assert!(
-        nbd_cow::netlink::device_appears_free(device_index),
-        "device nbd{device_index} should be free after drop"
+        freed,
+        "device nbd{device_index} should be free after drop (waited 2s)"
     );
 
     pool.lock().await.cleanup().await;
