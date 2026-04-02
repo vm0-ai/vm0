@@ -1,13 +1,13 @@
 import { eq, and, desc } from "drizzle-orm";
-import { chatThreads, chatThreadRuns } from "../../db/schema/chat-thread";
-import { agentRuns } from "../../db/schema/agent-run";
-import { notFound } from "../errors";
+import { chatThreads, chatThreadRuns } from "../../../db/schema/chat-thread";
+import { agentRuns } from "../../../db/schema/agent-run";
+import { notFound } from "../../errors";
 import {
   getChatMessagesForSession,
   type StoredChatMessage,
-} from "../zero/zero-session-service";
+} from "../zero-session-service";
 import type { SummaryEntry } from "@vm0/core";
-import type { TitleContextMessage } from "../shared/ai/lightweight-model";
+import type { TitleContextMessage } from "../../shared/ai/lightweight-model";
 
 /**
  * Create a new chat thread.

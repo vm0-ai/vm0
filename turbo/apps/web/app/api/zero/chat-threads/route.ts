@@ -9,7 +9,7 @@ import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
 import {
   createChatThread,
   listChatThreads,
-} from "../../../../src/lib/chat-thread";
+} from "../../../../src/lib/zero/chat-thread";
 import { agentComposes } from "../../../../src/db/schema/agent-compose";
 import { eq } from "drizzle-orm";
 

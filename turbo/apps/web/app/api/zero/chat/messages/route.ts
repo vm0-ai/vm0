@@ -22,7 +22,7 @@ import {
   addRunToThread,
   updateChatThreadTitle,
   getChatThreadContext,
-} from "../../../../../src/lib/chat-thread/chat-thread-service";
+} from "../../../../../src/lib/zero/chat-thread/chat-thread-service";
 import { generateChatTitle } from "../../../../../src/lib/shared/ai/lightweight-model";
 import { zeroAgents } from "../../../../../src/db/schema/zero-agent";
 import {
