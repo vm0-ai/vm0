@@ -184,10 +184,11 @@ RUN npm install -g @xdevplatform/xurl@${XURL_VERSION}
 # Install the real Chromium deb from Debian Bookworm's repository instead.
 ARG AGENT_BROWSER_VERSION=0.23.4
 RUN npm install -g agent-browser@${AGENT_BROWSER_VERSION} \
-    && echo "deb http://deb.debian.org/debian bookworm main" > /etc/apt/sources.list.d/debian-bookworm.list \
+    && curl -fsSL https://ftp-master.debian.org/keys/archive-key-12.asc | gpg --dearmor -o /usr/share/keyrings/debian-bookworm.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/debian-bookworm.gpg] http://deb.debian.org/debian bookworm main" > /etc/apt/sources.list.d/debian-bookworm.list \
     && apt-get update \
     && apt-get install -y -t bookworm chromium \
-    && rm /etc/apt/sources.list.d/debian-bookworm.list
+    && rm /etc/apt/sources.list.d/debian-bookworm.list /usr/share/keyrings/debian-bookworm.gpg
 
 # ---------------------------------------------------------------------------
 # User account
