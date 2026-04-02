@@ -12,7 +12,7 @@ import {
   uniqueId,
 } from "../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
-import type { RunContextSnapshot } from "../../../../../../../src/lib/axiom/client";
+import type { RunContextSnapshot } from "../../../../../../../src/lib/shared/axiom/client";
 
 const context = testContext();
 

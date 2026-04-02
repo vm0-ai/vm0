@@ -15,7 +15,7 @@ import {
 } from "../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
 import { server } from "../../../../../../../src/mocks/server";
-import { encryptSecretsMap } from "../../../../../../../src/lib/crypto/secrets-encryption";
+import { encryptSecretsMap } from "../../../../../../../src/lib/shared/crypto/secrets-encryption";
 
 const context = testContext();
 

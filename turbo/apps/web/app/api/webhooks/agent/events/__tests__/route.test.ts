@@ -24,7 +24,7 @@ import {
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { randomUUID } from "crypto";
-import * as axiomModule from "../../../../../../src/lib/axiom";
+import * as axiomModule from "../../../../../../src/lib/shared/axiom";
 
 // Only mock external services
 

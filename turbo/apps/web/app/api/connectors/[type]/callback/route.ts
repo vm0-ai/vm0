@@ -12,7 +12,7 @@ import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
 import { upsertOAuthConnector } from "../../../../../src/lib/connector/connector-service";
 import { connectorSessions } from "../../../../../src/db/schema/connector-session";
 import { logger } from "../../../../../src/lib/logger";
-import { getOrigin } from "../../../../../src/lib/request/get-origin";
+import { getOrigin } from "../../../../../src/lib/shared/request/get-origin";
 import {
   PROVIDER_HANDLERS,
   type OAuthTokenResult,

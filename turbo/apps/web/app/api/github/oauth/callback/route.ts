@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { eq, and } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import { env } from "../../../../../src/env";
-import { encryptSecretValue } from "../../../../../src/lib/crypto/secrets-encryption";
+import { encryptSecretValue } from "../../../../../src/lib/shared/crypto/secrets-encryption";
 import { githubInstallations } from "../../../../../src/db/schema/github-installation";
 import { githubUserLinks } from "../../../../../src/db/schema/github-user-link";
 import { connectors } from "../../../../../src/db/schema/connector";

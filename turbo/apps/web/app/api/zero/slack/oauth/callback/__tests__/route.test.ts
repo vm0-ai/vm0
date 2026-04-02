@@ -13,7 +13,7 @@ import {
   uniqueId,
 } from "../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
-import { decryptSecretValue } from "../../../../../../../src/lib/crypto/secrets-encryption";
+import { decryptSecretValue } from "../../../../../../../src/lib/shared/crypto/secrets-encryption";
 import { env } from "../../../../../../../src/env";
 
 const context = testContext();

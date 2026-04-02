@@ -2,7 +2,7 @@ import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import { cliAuthDeviceContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { deviceCodes } from "../../../../../src/db/schema/device-codes";
-import { generateCode } from "../../../../../src/lib/crypto";
+import { generateCode } from "../../../../../src/lib/shared/crypto";
 
 const router = tsr.router(cliAuthDeviceContract, {
   create: async () => {

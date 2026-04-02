@@ -15,7 +15,7 @@ import {
   queryAxiom,
   getDatasetName,
   DATASETS,
-} from "../../../../../../src/lib/axiom";
+} from "../../../../../../src/lib/shared/axiom";
 
 /**
  * Axiom network event (MITM proxy)

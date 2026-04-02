@@ -5,7 +5,7 @@ import { isSandboxAuth } from "../auth/capability-check";
 import { resolveOrg } from "../org/resolve-org";
 import { agentRuns } from "../../db/schema/agent-run";
 import { slackOrgInstallations } from "../../db/schema/slack-org-installation";
-import { decryptSecretValue } from "../crypto/secrets-encryption";
+import { decryptSecretValue } from "../shared/crypto/secrets-encryption";
 import { createSlackClient } from "./client";
 import { eq, and } from "drizzle-orm";
 

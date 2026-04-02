@@ -28,7 +28,7 @@ import { downloadAndExtractSkills, type ExtractedSkill } from "./tarball";
 import {
   computeSystemSkillHash,
   type FileEntryWithHash,
-} from "../storage/content-hash";
+} from "../infra/storage/content-hash";
 import { putS3Object, listS3Objects, deleteS3Objects } from "../s3/s3-client";
 import { skills } from "../../db/schema/skill";
 import { storages, storageVersions } from "../../db/schema/storage";

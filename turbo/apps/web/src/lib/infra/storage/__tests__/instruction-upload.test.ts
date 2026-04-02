@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { gunzipSync } from "node:zlib";
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../../__tests__/test-helpers";
 import { uploadInstructionsServerSide } from "../instruction-upload";
-import { extractFileFromTar } from "../../tar";
+import { extractFileFromTar } from "../../../tar";
 
 vi.hoisted(() => {
   vi.stubEnv("R2_USER_STORAGES_BUCKET_NAME", "test-storages-bucket");

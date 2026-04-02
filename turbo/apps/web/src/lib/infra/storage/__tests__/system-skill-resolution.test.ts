@@ -3,12 +3,12 @@ import { prepareStorageManifest } from "../storage-service";
 import {
   createTestVolume,
   createTestVolumeForOrg,
-} from "../../../__tests__/api-test-helpers";
+} from "../../../../__tests__/api-test-helpers";
 import {
   testContext,
   uniqueId,
   type UserContext,
-} from "../../../__tests__/test-helpers";
+} from "../../../../__tests__/test-helpers";
 import { SYSTEM_ORG_ID } from "@vm0/core";
 import type { AgentVolumeConfig } from "../types";
 

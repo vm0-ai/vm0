@@ -4,7 +4,7 @@ import { z } from "zod";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { verifySandboxToken } from "../../../../../../src/lib/auth/sandbox-token";
 import type { SandboxAuth } from "../../../../../../src/lib/auth/sandbox-token";
-import { decryptSecretsMap } from "../../../../../../src/lib/crypto/secrets-encryption";
+import { decryptSecretsMap } from "../../../../../../src/lib/shared/crypto/secrets-encryption";
 import { logger } from "../../../../../../src/lib/logger";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import {

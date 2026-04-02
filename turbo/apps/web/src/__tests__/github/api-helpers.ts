@@ -10,7 +10,7 @@ import { eq } from "drizzle-orm";
 import { uniqueId } from "../test-helpers";
 import { initServices } from "../../lib/init-services";
 import { env } from "../../env";
-import { encryptSecretValue } from "../../lib/crypto/secrets-encryption";
+import { encryptSecretValue } from "../../lib/shared/crypto/secrets-encryption";
 import { orgCache } from "../../db/schema/org-cache";
 import { orgMetadata } from "../../db/schema/org-metadata";
 import {

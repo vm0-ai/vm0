@@ -12,7 +12,7 @@ import {
 } from "@vm0/core";
 import { modelProviders } from "../../db/schema/model-provider";
 import { secrets } from "../../db/schema/secret";
-import { encryptSecretValue } from "../crypto";
+import { encryptSecretValue } from "../shared/crypto";
 import { badRequest, notFound } from "../errors";
 import { logger } from "../logger";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";

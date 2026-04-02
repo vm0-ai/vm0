@@ -41,6 +41,19 @@ pub struct SubmitArgs {
     timeout: u64,
 }
 
+/// Detect the system timezone from the `TZ` env var or `/etc/timezone`.
+fn detect_system_timezone() -> Option<String> {
+    if let Ok(tz) = std::env::var("TZ")
+        && !tz.is_empty()
+    {
+        return Some(tz);
+    }
+    std::fs::read_to_string("/etc/timezone")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
 /// Try to read a non-empty result file.  Returns `None` if the file does
 /// not exist, is empty, or cannot be read.
 fn try_read_result(result_path: &std::path::Path) -> Option<Vec<u8>> {
@@ -88,7 +101,7 @@ pub async fn run_submit(args: SubmitArgs) -> RunnerResult<ExitCode> {
         cli_agent_type: args.cli_agent_type,
         vars: None,
         environment: None,
-        user_timezone: None,
+        user_timezone: detect_system_timezone(),
         profile: args.profile,
     };
 

@@ -5,7 +5,7 @@ import { telegramUserLinks } from "../../../db/schema/telegram-user-link";
 import { telegramMessages } from "../../../db/schema/telegram-message";
 import { telegramThreadSessions } from "../../../db/schema/telegram-thread-session";
 import { agentComposes } from "../../../db/schema/agent-compose";
-import { encryptSecretValue } from "../../crypto/secrets-encryption";
+import { encryptSecretValue } from "../../shared/crypto/secrets-encryption";
 import { PENDING_TELEGRAM_USER_ID } from "../handlers/shared";
 import { uniqueId } from "../../../__tests__/test-helpers";
 

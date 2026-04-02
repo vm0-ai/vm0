@@ -218,7 +218,10 @@ async fn run_in_sandbox(
         fix_guest_clock(sandbox).await?;
     }
 
-    // 2. Download storages
+    // 2. Set guest timezone from user preference (best-effort, never fails).
+    sync_guest_timezone(sandbox, context).await;
+
+    // 3. Download storages
     if let Some(manifest) = &context.storage_manifest {
         let t = Instant::now();
         let result = download_storages(sandbox, context, manifest, &log_file).await;
@@ -232,7 +235,7 @@ async fn run_in_sandbox(
         result?;
     }
 
-    // 3. Restore session history
+    // 4. Restore session history
     if let Some(session) = &context.resume_session {
         let t = Instant::now();
         let result = restore_session(sandbox, context, session).await;
@@ -246,7 +249,7 @@ async fn run_in_sandbox(
         result?;
     }
 
-    // 4. Build env vars (passed directly via vsock protocol)
+    // 5. Build env vars (passed directly via vsock protocol)
     let env_map = build_env_json(context, &config.api_url);
     let env_pairs: Vec<(String, String)> = env_map.into_iter().collect();
     let env_refs: Vec<(&str, &str)> = env_pairs
@@ -255,7 +258,7 @@ async fn run_in_sandbox(
         .collect();
     info!(run_id = %context.run_id, count = env_refs.len(), "passing env vars via vsock");
 
-    // 5. Spawn agent — stdout streamed to host via vsock, stderr merged into stdout.
+    // 6. Spawn agent — stdout streamed to host via vsock, stderr merged into stdout.
     //    vsock-guest writes stdout to the guest log file (for telemetry) AND streams
     //    chunks to the host where we write them to the host log file in real-time.
     let agent_cmd = format!("{} 2>&1", guest::RUN_AGENT);
@@ -573,6 +576,45 @@ pub(crate) async fn fix_guest_clock(sandbox: &dyn Sandbox) -> RunnerResult<()> {
         })
         .await?;
     Ok(())
+}
+
+/// Set system timezone inside the guest to match the user's preference.
+///
+/// Writes `/etc/timezone` and symlinks `/etc/localtime` so all processes
+/// — not just those inheriting the TZ env var — see the correct timezone.
+/// Skipped when no user timezone is configured (falls back to image default UTC).
+async fn sync_guest_timezone(sandbox: &dyn Sandbox, context: &ExecutionContext) {
+    let tz = match &context.user_timezone {
+        Some(tz) if !tz.is_empty() => tz,
+        _ => return,
+    };
+    // Strict validation: timezone names are like "Asia/Shanghai" or "UTC".
+    // Only allow alphanumeric, '/', '_', '-', '+'.  This prevents shell
+    // injection since the value is interpolated into a sudo shell command.
+    if !tz
+        .bytes()
+        .all(|b| b.is_ascii_alphanumeric() || b == b'/' || b == b'_' || b == b'-' || b == b'+')
+    {
+        tracing::warn!(tz = %tz, "rejected invalid timezone name");
+        return;
+    }
+    let cmd = format!(
+        "test -f /usr/share/zoneinfo/{tz} && \
+         echo '{tz}' > /etc/timezone && \
+         ln -sf /usr/share/zoneinfo/{tz} /etc/localtime"
+    );
+    // Best-effort: don't fail the run if timezone setup fails.
+    if let Err(e) = sandbox
+        .exec(&ExecRequest {
+            cmd: &cmd,
+            timeout: DEFAULT_EXEC_TIMEOUT,
+            env: &[],
+            sudo: true,
+        })
+        .await
+    {
+        tracing::warn!(tz = %tz, error = %e, "failed to set guest timezone");
+    }
 }
 
 /// Download storage volumes into the guest.

@@ -5,7 +5,7 @@ import { initServices } from "../../../../../src/lib/init-services";
 import { env } from "../../../../../src/env";
 import { getApiUrl } from "../../../../../src/lib/callback";
 import { getAppUrl } from "../../../../../src/lib/url";
-import { encryptSecretValue } from "../../../../../src/lib/crypto/secrets-encryption";
+import { encryptSecretValue } from "../../../../../src/lib/shared/crypto/secrets-encryption";
 import { githubInstallations } from "../../../../../src/db/schema/github-installation";
 import {
   listAppInstallations,

@@ -27,8 +27,8 @@
  */
 import "server-only";
 import { Logger as AxiomLogger, AxiomJSTransport } from "@axiomhq/logging";
-import { getDatasetName, DATASETS } from "./axiom/datasets";
-import { getTelemetryInstance } from "./axiom/instances";
+import { getDatasetName, DATASETS } from "./shared/axiom/datasets";
+import { getTelemetryInstance } from "./shared/axiom/instances";
 
 type LogMethod = (...args: unknown[]) => void;
 

@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { agentRunCallbacks } from "../../db/schema/agent-run-callback";
-import { decryptSecretValue } from "../crypto/secrets-encryption";
+import { decryptSecretValue } from "../shared/crypto/secrets-encryption";
 import { env } from "../../env";
 import { verifyCallbackRequest } from "./verify-signature";
 

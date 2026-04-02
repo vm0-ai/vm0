@@ -18,7 +18,7 @@ import {
 } from "../../../__tests__/api-test-helpers";
 import { createZeroRun } from "../zero-run-service";
 import { verifyZeroToken } from "../../auth/sandbox-token";
-import { decryptSecretsMap } from "../../crypto/secrets-encryption";
+import { decryptSecretsMap } from "../../shared/crypto/secrets-encryption";
 import { reloadEnv } from "../../../env";
 import type { TriggerSource } from "@vm0/core";
 

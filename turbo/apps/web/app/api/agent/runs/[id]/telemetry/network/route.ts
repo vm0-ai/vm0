@@ -13,7 +13,7 @@ import {
   queryAxiom,
   getDatasetName,
   DATASETS,
-} from "../../../../../../../src/lib/axiom";
+} from "../../../../../../../src/lib/shared/axiom";
 /**
  * Axiom network event (MITM proxy)
  * [NETWORK_LOG_FIELDS] — keep in sync with all network log schemas

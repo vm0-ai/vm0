@@ -26,7 +26,7 @@ import { createSlackClient } from "../../../../../src/lib/slack";
 import { getApiUrl } from "../../../../../src/lib/callback";
 import { publishAppHome } from "../../../../../src/lib/slack/client";
 import { buildAppHomeView } from "../../../../../src/lib/slack/blocks";
-import { decryptSecretValue } from "../../../../../src/lib/crypto/secrets-encryption";
+import { decryptSecretValue } from "../../../../../src/lib/shared/crypto/secrets-encryption";
 import { refreshOrgAppHome } from "../../../../../src/lib/slack-org/handlers/app-home";
 import { cleanupWorkspaceInstallation } from "../../../../../src/lib/slack-org/connect-service";
 import { hasAllBotScopes } from "../../../../../src/lib/slack-org/scopes";

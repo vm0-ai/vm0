@@ -7,7 +7,7 @@ import { zeroAgents } from "../../../db/schema/zero-agent";
 import { getAppUrl } from "../../url";
 import { resolveOrgOrNull } from "../../org/resolve-org";
 import { validateAgentSession } from "../../run";
-import { ensureStorageExists } from "../../storage/storage-service";
+import { ensureStorageExists } from "../../infra/storage/storage-service";
 import {
   sendMessage,
   editMessageText,

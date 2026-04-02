@@ -14,7 +14,7 @@ import {
   ingestToAxiom,
   getDatasetName,
   DATASETS,
-} from "../../../../../src/lib/axiom";
+} from "../../../../../src/lib/shared/axiom";
 import { upsertCreditUsage } from "../../../../../src/lib/credit/credit-usage-service";
 const log = logger("webhook:events");
 

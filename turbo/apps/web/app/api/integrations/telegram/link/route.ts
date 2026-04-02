@@ -10,7 +10,7 @@ import {
   ensureOrgAndArtifact,
   getWorkspaceAgent,
 } from "../../../../../src/lib/telegram/handlers/shared";
-import { decryptSecretValue } from "../../../../../src/lib/crypto/secrets-encryption";
+import { decryptSecretValue } from "../../../../../src/lib/shared/crypto/secrets-encryption";
 import {
   createTelegramClient,
   sendMessage,

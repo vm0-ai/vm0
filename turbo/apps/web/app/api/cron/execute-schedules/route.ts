@@ -27,29 +27,15 @@ export async function GET(request: Request) {
 
   log.debug("Executing due schedules...");
 
-  try {
-    const result = await executeDueSchedules();
+  const result = await executeDueSchedules();
 
-    log.debug(
-      `Cron completed: ${result.executed} executed, ${result.skipped} skipped`,
-    );
+  log.debug(
+    `Cron completed: ${result.executed} executed, ${result.skipped} skipped`,
+  );
 
-    return NextResponse.json({
-      success: true,
-      executed: result.executed,
-      skipped: result.skipped,
-    });
-  } catch (error) {
-    const errorMessage =
-      error instanceof Error ? error.message : "Unknown error";
-    log.error(`Cron execution failed: ${errorMessage}`);
-
-    return NextResponse.json(
-      {
-        success: false,
-        error: errorMessage,
-      },
-      { status: 500 },
-    );
-  }
+  return NextResponse.json({
+    success: true,
+    executed: result.executed,
+    skipped: result.skipped,
+  });
 }

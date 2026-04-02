@@ -1,4 +1,4 @@
-import { decryptSecretValue } from "../../crypto/secrets-encryption";
+import { decryptSecretValue } from "../../shared/crypto/secrets-encryption";
 import { env } from "../../../env";
 import { createSlackClient, setThreadStatus } from "../../slack/client";
 import {

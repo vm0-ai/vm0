@@ -6,7 +6,7 @@ import { zeroAgents } from "../../../db/schema/zero-agent";
 import { orgMetadata as orgTable } from "../../../db/schema/org-metadata";
 import { getAppUrl } from "../../url";
 import { resolveDefaultAgentComposeId } from "../../agent-compose/resolve-default";
-import { ensureStorageExists } from "../../storage/storage-service";
+import { ensureStorageExists } from "../../infra/storage/storage-service";
 import {
   createSlackClient,
   fetchSlackUserInfoMap,

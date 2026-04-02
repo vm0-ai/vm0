@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { testContext, uniqueId } from "../../../__tests__/test-helpers";
+import { testContext, uniqueId } from "../../../../__tests__/test-helpers";
 import {
   createTestCompose,
   createTestRunInDb,
@@ -35,7 +35,7 @@ import {
   insertTestGithubUserLink,
   insertTestTelegramInstallation,
   insertTestTelegramUserLink,
-} from "../../../__tests__/api-test-helpers";
+} from "../../../../__tests__/api-test-helpers";
 import { deleteUserData } from "../user-deletion-service";
 
 const context = testContext();

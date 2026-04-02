@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { testContext, uniqueId } from "../../../__tests__/test-helpers";
+import { testContext, uniqueId } from "../../../../__tests__/test-helpers";
 import {
   insertTestStorage,
   insertTestExportJob,
-} from "../../../__tests__/api-test-helpers";
+} from "../../../../__tests__/api-test-helpers";
 import { deleteUserS3Data } from "../user-s3-cleanup";
 
 const context = testContext();

@@ -14,7 +14,7 @@ import {
   queryAxiom,
   getDatasetName,
   DATASETS,
-} from "../../../../../../src/lib/axiom";
+} from "../../../../../../src/lib/shared/axiom";
 import type {
   RunStatus,
   RunResult,

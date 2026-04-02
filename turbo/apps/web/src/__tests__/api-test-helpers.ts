@@ -63,7 +63,7 @@ import { users } from "../db/schema/user";
 import { and, eq, like, or, sql } from "drizzle-orm";
 import { generateCallbackSecret } from "../lib/callback/hmac";
 import { initServices } from "../lib/init-services";
-import { encryptSecretsMap } from "../lib/crypto/secrets-encryption";
+import { encryptSecretsMap } from "../lib/shared/crypto/secrets-encryption";
 import {
   VOLUME_ORG_USER_ID,
   SYSTEM_ORG_ID,
@@ -101,11 +101,11 @@ import { connectors } from "../db/schema/connector";
 import { connectorSessions } from "../db/schema/connector-session";
 import { secrets } from "../db/schema/secret";
 import { variables } from "../db/schema/variable";
-import { hashFileContent } from "../lib/storage/content-hash";
+import { hashFileContent } from "../lib/infra/storage/content-hash";
 import {
   encryptSecretValue,
   decryptSecretValue,
-} from "../lib/crypto/secrets-encryption";
+} from "../lib/shared/crypto/secrets-encryption";
 import type { ConnectorType } from "@vm0/core";
 import { agentSessions } from "../db/schema/agent-session";
 import {
