@@ -33,25 +33,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # ---------------------------------------------------------------------------
 # System packages
 # ---------------------------------------------------------------------------
-# Core:
-# - python3, python3-pip: Python runtime
-# - procps: Process utilities (pgrep, free) needed by metrics and executor
-# Development tools:
-# - curl, wget: HTTP clients
-# - git: Version control
-# - ripgrep: Fast code search (used by Claude Code)
-# - jq: JSON processing
-# - file: File type detection
-# System utilities:
-# - iproute2: Network utilities (ip command)
-# - ca-certificates: SSL certificates for HTTPS
-# - sudo: For privileged operations
-# - gnupg: Key management for APT repos
-# NSS/Chromium:
-# - libnss3, p11-kit-modules: System CA trust for NSS-based apps
 RUN apt-get update && apt-get install -y \
-    python3 \
-    python3-pip \
     procps \
     curl \
     wget \
@@ -65,6 +47,13 @@ RUN apt-get update && apt-get install -y \
     gnupg \
     libnss3 \
     p11-kit-modules
+
+# ---------------------------------------------------------------------------
+# Python 3.x
+# ---------------------------------------------------------------------------
+RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-pip
 
 # Make NSS-based applications (Chromium, Firefox) trust the system CA store.
 # By default NSS uses a built-in trust module (libnssckbi.so) with Mozilla's
