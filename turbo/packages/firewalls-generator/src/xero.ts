@@ -41,6 +41,7 @@ const SPEC_FILES = [
   "xero-finance.yaml",
   "xero-identity.yaml",
   "xero-payroll-au.yaml",
+  "xero-payroll-au-v2.yaml",
   "xero-payroll-nz.yaml",
   "xero-payroll-uk.yaml",
   "xero-projects.yaml",
@@ -110,20 +111,22 @@ function buildGroups(specs: ParsedSpec[]): {
           continue;
         }
 
-        // Use the most specific scope (write scopes imply read access,
-        // so we pick the first which is the write scope when both are listed)
-        const scope = scopes[0]!;
-        let baseMap = groups.get(scope);
-        if (!baseMap) {
-          baseMap = new Map();
-          groups.set(scope, baseMap);
+        // Add the rule under every listed scope. Xero lists both write
+        // and read-only scopes for read endpoints (OR semantics), so the
+        // rule must appear in both groups.
+        for (const scope of scopes) {
+          let baseMap = groups.get(scope);
+          if (!baseMap) {
+            baseMap = new Map();
+            groups.set(scope, baseMap);
+          }
+          let ruleSet = baseMap.get(spec.baseUrl);
+          if (!ruleSet) {
+            ruleSet = new Set();
+            baseMap.set(spec.baseUrl, ruleSet);
+          }
+          ruleSet.add(rule);
         }
-        let ruleSet = baseMap.get(spec.baseUrl);
-        if (!ruleSet) {
-          ruleSet = new Set();
-          baseMap.set(spec.baseUrl, ruleSet);
-        }
-        ruleSet.add(rule);
       }
     }
   }
