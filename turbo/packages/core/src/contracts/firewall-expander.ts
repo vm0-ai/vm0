@@ -20,23 +20,50 @@ const VALID_RULE_METHODS = new Set([
   "ANY",
 ]);
 
-export function validateRule(
+const VALID_GRAPHQL_TYPES = new Set(["query", "mutation", "subscription"]);
+
+const GRAPHQL_OP_NAME_RE = /^[a-zA-Z_][a-zA-Z0-9_]*\*?$/;
+
+function validateGraphQLModifiers(
+  modifiers: string[],
   rule: string,
   permName: string,
   serviceName: string,
 ): void {
-  const parts = rule.split(" ", 2);
-  if (parts.length !== 2 || !parts[1]) {
-    throw new Error(
-      `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": must be "METHOD /path"`,
-    );
+  for (const part of modifiers) {
+    if (part.startsWith("type:")) {
+      const val = part.slice(5);
+      if (!VALID_GRAPHQL_TYPES.has(val)) {
+        throw new Error(
+          `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": GraphQL type must be "query", "mutation", or "subscription", got "${val}"`,
+        );
+      }
+    } else if (part.startsWith("operationName:")) {
+      const val = part.slice(14);
+      if (!val) {
+        throw new Error(
+          `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": empty GraphQL operationName`,
+        );
+      }
+      if (val !== "*" && !GRAPHQL_OP_NAME_RE.test(val)) {
+        throw new Error(
+          `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": invalid GraphQL operationName pattern "${val}"`,
+        );
+      }
+    } else {
+      throw new Error(
+        `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": unknown GraphQL modifier "${part}"`,
+      );
+    }
   }
-  const [method, path] = parts as [string, string];
-  if (!VALID_RULE_METHODS.has(method)) {
-    throw new Error(
-      `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": unknown method "${method}" (must be uppercase)`,
-    );
-  }
+}
+
+function validatePathSegments(
+  path: string,
+  rule: string,
+  permName: string,
+  serviceName: string,
+): void {
   if (!path.startsWith("/")) {
     throw new Error(
       `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": path must start with "/"`,
@@ -72,6 +99,44 @@ export function validateRule(
         );
       }
     }
+  }
+}
+
+export function validateRule(
+  rule: string,
+  permName: string,
+  serviceName: string,
+): void {
+  const spaceIdx = rule.indexOf(" ");
+  if (spaceIdx === -1) {
+    throw new Error(
+      `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": must be "METHOD /path"`,
+    );
+  }
+  const method = rule.slice(0, spaceIdx);
+  const rest = rule.slice(spaceIdx + 1);
+  if (!method || !rest) {
+    throw new Error(
+      `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": must be "METHOD /path"`,
+    );
+  }
+  if (!VALID_RULE_METHODS.has(method)) {
+    throw new Error(
+      `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": unknown method "${method}" (must be uppercase)`,
+    );
+  }
+
+  // Check for GraphQL suffix: "POST /graphql GraphQL type:query operationName:foo"
+  const gqlIdx = rest.indexOf(" GraphQL");
+  if (gqlIdx !== -1) {
+    const path = rest.slice(0, gqlIdx);
+    const suffixStr = rest.slice(gqlIdx + 1); // "GraphQL type:query ..."
+    const suffixParts = suffixStr.split(/\s+/);
+    // suffixParts[0] is "GraphQL", rest are modifiers
+    validatePathSegments(path, rule, permName, serviceName);
+    validateGraphQLModifiers(suffixParts.slice(1), rule, permName, serviceName);
+  } else {
+    validatePathSegments(rest, rule, permName, serviceName);
   }
 }
 

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   matchFirewallPath,
   findMatchingPermissions,
+  type GraphQLBody,
 } from "../firewall-rule-matcher";
 import type { FirewallConfig } from "../firewalls";
 
@@ -211,5 +212,156 @@ describe("findMatchingPermissions", () => {
     expect(findMatchingPermissions("GET", "/data", multiApi)).toEqual([
       "shared-perm",
     ]);
+  });
+});
+
+describe("findMatchingPermissions with GraphQL rules", () => {
+  const gqlConfig: FirewallConfig = {
+    name: "linear",
+    apis: [
+      {
+        base: "https://api.linear.app",
+        auth: { headers: {} },
+        permissions: [
+          {
+            name: "read",
+            rules: ["POST /graphql GraphQL type:query"],
+          },
+          {
+            name: "write",
+            rules: ["POST /graphql GraphQL type:mutation"],
+          },
+          {
+            name: "issues-create",
+            rules: [
+              "POST /graphql GraphQL type:mutation operationName:issueCreate",
+            ],
+          },
+          {
+            name: "wildcard",
+            rules: ["POST /graphql GraphQL operationName:issue*"],
+          },
+        ],
+      },
+    ],
+  };
+
+  const queryBody: GraphQLBody = { type: "query", operationName: "GetViewer" };
+  const mutationBody: GraphQLBody = {
+    type: "mutation",
+    operationName: "issueCreate",
+  };
+
+  it("type:query matches query body", () => {
+    expect(
+      findMatchingPermissions("POST", "/graphql", gqlConfig, queryBody),
+    ).toContain("read");
+  });
+
+  it("type:query does not match mutation body", () => {
+    expect(
+      findMatchingPermissions("POST", "/graphql", gqlConfig, mutationBody),
+    ).not.toContain("read");
+  });
+
+  it("type:mutation matches mutation body", () => {
+    expect(
+      findMatchingPermissions("POST", "/graphql", gqlConfig, mutationBody),
+    ).toContain("write");
+  });
+
+  it("type:mutation + operationName matches exact name", () => {
+    expect(
+      findMatchingPermissions("POST", "/graphql", gqlConfig, mutationBody),
+    ).toContain("issues-create");
+  });
+
+  it("operationName wildcard matches prefix", () => {
+    const body: GraphQLBody = {
+      type: "mutation",
+      operationName: "issueUpdate",
+    };
+    expect(
+      findMatchingPermissions("POST", "/graphql", gqlConfig, body),
+    ).toContain("wildcard");
+  });
+
+  it("operationName wildcard does not match different prefix", () => {
+    const body: GraphQLBody = {
+      type: "mutation",
+      operationName: "commentCreate",
+    };
+    const perms = findMatchingPermissions("POST", "/graphql", gqlConfig, body);
+    expect(perms).not.toContain("wildcard");
+    expect(perms).not.toContain("issues-create");
+  });
+
+  it("returns empty when no body provided for graphql rules", () => {
+    expect(findMatchingPermissions("POST", "/graphql", gqlConfig)).toEqual([]);
+  });
+
+  it("returns empty when body has no operationName and rule requires it", () => {
+    const noOpBody: GraphQLBody = { type: "mutation" };
+    const perms = findMatchingPermissions(
+      "POST",
+      "/graphql",
+      gqlConfig,
+      noOpBody,
+    );
+    expect(perms).not.toContain("issues-create");
+    expect(perms).not.toContain("wildcard");
+  });
+
+  it("path must match before body check", () => {
+    expect(
+      findMatchingPermissions("POST", "/v2", gqlConfig, queryBody),
+    ).toEqual([]);
+  });
+
+  it("type:subscription matches subscription body", () => {
+    const subConfig: FirewallConfig = {
+      name: "sub-test",
+      apis: [
+        {
+          base: "https://api.example.com",
+          auth: { headers: {} },
+          permissions: [
+            {
+              name: "subscribe",
+              rules: ["POST /graphql GraphQL type:subscription"],
+            },
+          ],
+        },
+      ],
+    };
+    const subBody: GraphQLBody = {
+      type: "subscription",
+      operationName: "OnUpdate",
+    };
+    expect(
+      findMatchingPermissions("POST", "/graphql", subConfig, subBody),
+    ).toEqual(["subscribe"]);
+  });
+
+  it("non-graphql rules still work when body is provided", () => {
+    const mixedConfig: FirewallConfig = {
+      name: "mixed",
+      apis: [
+        {
+          base: "https://example.com",
+          auth: { headers: {} },
+          permissions: [
+            { name: "rest-perm", rules: ["GET /api/users"] },
+            {
+              name: "gql-perm",
+              rules: ["POST /graphql GraphQL type:query"],
+            },
+          ],
+        },
+      ],
+    };
+    expect(
+      findMatchingPermissions("GET", "/api/users", mixedConfig, queryBody),
+    ).toEqual(["rest-perm"]);
   });
 });

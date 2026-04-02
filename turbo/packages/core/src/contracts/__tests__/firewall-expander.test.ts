@@ -382,6 +382,95 @@ describe("validateRule", () => {
       return validateRule("GET /repos/{*}", "p", "fw");
     }).toThrow("empty parameter name");
   });
+
+  // GraphQL rules
+  it("should accept GraphQL type:query rule", () => {
+    expect(() => {
+      return validateRule("POST /graphql GraphQL type:query", "p", "fw");
+    }).not.toThrow();
+  });
+
+  it("should accept GraphQL type:mutation rule", () => {
+    expect(() => {
+      return validateRule("POST /graphql GraphQL type:mutation", "p", "fw");
+    }).not.toThrow();
+  });
+
+  it("should accept GraphQL type + operationName rule", () => {
+    expect(() => {
+      return validateRule(
+        "POST /graphql GraphQL type:mutation operationName:issueCreate",
+        "p",
+        "fw",
+      );
+    }).not.toThrow();
+  });
+
+  it("should accept GraphQL operationName only rule", () => {
+    expect(() => {
+      return validateRule(
+        "POST /graphql GraphQL operationName:issueCreate",
+        "p",
+        "fw",
+      );
+    }).not.toThrow();
+  });
+
+  it("should accept GraphQL operationName wildcard rule", () => {
+    expect(() => {
+      return validateRule(
+        "POST /graphql GraphQL operationName:issue*",
+        "p",
+        "fw",
+      );
+    }).not.toThrow();
+  });
+
+  it("should accept GraphQL operationName catch-all wildcard", () => {
+    expect(() => {
+      return validateRule("POST /graphql GraphQL operationName:*", "p", "fw");
+    }).not.toThrow();
+  });
+
+  it("should accept GraphQL type:subscription rule", () => {
+    expect(() => {
+      return validateRule("POST /graphql GraphQL type:subscription", "p", "fw");
+    }).not.toThrow();
+  });
+
+  it("should reject invalid GraphQL type", () => {
+    expect(() => {
+      return validateRule("POST /graphql GraphQL type:fragment", "p", "fw");
+    }).toThrow('type must be "query", "mutation", or "subscription"');
+  });
+
+  it("should reject empty GraphQL operationName", () => {
+    expect(() => {
+      return validateRule("POST /graphql GraphQL operationName:", "p", "fw");
+    }).toThrow("empty GraphQL operationName");
+  });
+
+  it("should reject unknown GraphQL modifier", () => {
+    expect(() => {
+      return validateRule("POST /graphql GraphQL foo:bar", "p", "fw");
+    }).toThrow("unknown GraphQL modifier");
+  });
+
+  it("should reject invalid operationName pattern", () => {
+    expect(() => {
+      return validateRule(
+        "POST /graphql GraphQL operationName:issue-create",
+        "p",
+        "fw",
+      );
+    }).toThrow("invalid GraphQL operationName pattern");
+  });
+
+  it("should validate path in GraphQL rule", () => {
+    expect(() => {
+      return validateRule("POST noslash GraphQL type:query", "p", "fw");
+    }).toThrow("path must start with");
+  });
 });
 
 describe("validateBaseUrl", () => {

@@ -1821,3 +1821,369 @@ class TestAuthBaseUrlRewriteEdgeCases:
             await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
         assert flow.request.url == original_url
         assert "auth_url_rewrite" not in flow.metadata
+
+
+# =========================================================================
+# GraphQL operation-level matching
+# =========================================================================
+
+
+def _gql_body(query: str, operation_name: str | None = None) -> bytes:
+    """Build a GraphQL JSON request body."""
+    body: dict = {"query": query}
+    if operation_name is not None:
+        body["operationName"] = operation_name
+    return json.dumps(body).encode()
+
+
+def _gql_firewalls(rules: list[str]) -> list:
+    """Wrap GraphQL permission rules into a firewall entry list."""
+    return _wrap_firewalls(
+        [
+            {
+                "base": "https://api.linear.app",
+                "auth": {"headers": {}},
+                "permissions": [{"name": "test-perm", "rules": rules}],
+            }
+        ]
+    )
+
+
+class TestGraphQLMatching:
+    """Tests for GraphQL operation-level firewall matching."""
+
+    def test_type_query_allows_query(self):
+        body = _gql_body("query { viewer { id } }", "GetViewer")
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL type:query"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallAllow)
+
+    def test_type_query_blocks_mutation(self):
+        body = _gql_body("mutation { issueCreate(input: {}) { id } }", "CreateIssue")
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL type:query"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallBlock)
+
+    def test_type_mutation_allows_mutation(self):
+        body = _gql_body("mutation { issueCreate(input: {}) { id } }", "CreateIssue")
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL type:mutation"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallAllow)
+
+    def test_type_mutation_blocks_query(self):
+        body = _gql_body("query { viewer { id } }", "GetViewer")
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL type:mutation"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallBlock)
+
+    def test_operation_name_exact_match(self):
+        body = _gql_body("mutation { issueCreate(input: {}) { id } }", "issueCreate")
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL type:mutation operationName:issueCreate"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallAllow)
+
+    def test_operation_name_mismatch_blocks(self):
+        body = _gql_body('mutation { issueDelete(id: "1") { id } }', "issueDelete")
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL type:mutation operationName:issueCreate"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallBlock)
+
+    def test_operation_name_wildcard(self):
+        body = _gql_body("mutation { issueUpdate(input: {}) { id } }", "issueUpdate")
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL type:mutation operationName:issue*"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallAllow)
+
+    def test_operation_name_wildcard_no_match(self):
+        body = _gql_body("mutation { commentCreate(input: {}) { id } }", "commentCreate")
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL type:mutation operationName:issue*"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallBlock)
+
+    def test_missing_operation_name_blocks(self):
+        """Fail-closed: rule requires operationName but body has none."""
+        body = _gql_body("mutation { issueCreate(input: {}) { id } }")
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL type:mutation operationName:issueCreate"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallBlock)
+
+    def test_invalid_json_body_blocks(self):
+        """Fail-closed: unparseable body → blocked."""
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL type:query"]),
+            body=b"not json",
+        )
+        assert isinstance(result, FirewallBlock)
+
+    def test_empty_body_blocks(self):
+        """Fail-closed: empty body → blocked."""
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL type:query"]),
+            body=b"",
+        )
+        assert isinstance(result, FirewallBlock)
+
+    def test_none_body_blocks(self):
+        """Fail-closed: None body → blocked."""
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL type:query"]),
+            body=None,
+        )
+        assert isinstance(result, FirewallBlock)
+
+    def test_no_query_field_blocks(self):
+        """Fail-closed: body has no 'query' field → blocked when type: filter used."""
+        body = json.dumps({"operationName": "issueCreate"}).encode()
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL type:mutation"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallBlock)
+
+    def test_rest_rules_unaffected_by_body(self):
+        """Non-GraphQL rules ignore body parameter completely."""
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql"]),
+            body=b"irrelevant",
+        )
+        assert isinstance(result, FirewallAllow)
+
+    def test_path_must_match_before_body_check(self):
+        """GraphQL rule still requires path match before body check."""
+        body = _gql_body("query { viewer { id } }", "GetViewer")
+        result = matching.match_firewall_request(
+            "https://api.linear.app/v2",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL type:query"]),
+            body=body,
+        )
+        # /v2 doesn't match /graphql → base matched but permission didn't → block
+        assert isinstance(result, FirewallBlock)
+
+    def test_bare_query_defaults_to_query_type(self):
+        """Query without explicit 'query' keyword defaults to query type."""
+        body = _gql_body("{ viewer { id } }", "GetViewer")
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL type:query"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallAllow)
+
+    def test_bare_query_not_mutation(self):
+        """Bare query (no keyword) should NOT match mutation type."""
+        body = _gql_body("{ viewer { id } }", "GetViewer")
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL type:mutation"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallBlock)
+
+    def test_only_operation_name_no_type_filter(self):
+        """Rule with only operationName (no type filter) matches any type."""
+        body = _gql_body("mutation { issueCreate(input: {}) { id } }", "issueCreate")
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL operationName:issueCreate"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallAllow)
+
+    def test_multiple_rules_first_match_wins(self):
+        """Multiple GraphQL rules — first match wins."""
+        body = _gql_body("mutation { issueCreate(input: {}) { id } }", "issueCreate")
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _wrap_firewalls(
+                [
+                    {
+                        "base": "https://api.linear.app",
+                        "auth": {"headers": {}},
+                        "permissions": [
+                            {"name": "read", "rules": ["POST /graphql GraphQL type:query"]},
+                            {"name": "write", "rules": ["POST /graphql GraphQL type:mutation"]},
+                        ],
+                    }
+                ]
+            ),
+            body=body,
+        )
+        assert isinstance(result, FirewallAllow)
+        assert result.match_info["permission"] == "write"
+
+    def test_array_body_blocks(self):
+        """Batched operations (JSON array) are not supported — blocked."""
+        body = json.dumps(
+            [
+                {"query": "query { viewer { id } }", "operationName": "GetViewer"},
+            ]
+        ).encode()
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL type:query"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallBlock)
+
+    def test_mutation_without_space_before_brace(self):
+        """'mutation{' (no space) is correctly detected as mutation type."""
+        body = _gql_body("mutation{ issueCreate(input: {}) { id } }", "issueCreate")
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL type:mutation"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallAllow)
+
+    def test_mutation_no_space_not_query(self):
+        """'mutation{' should NOT match type:query."""
+        body = _gql_body("mutation{ issueCreate(input: {}) { id } }", "issueCreate")
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL type:query"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallBlock)
+
+    def test_mutation_with_variables(self):
+        """'mutation($input: IssueInput!)' is correctly detected as mutation."""
+        body = _gql_body(
+            "mutation($input: IssueInput!) { issueCreate(input: $input) { id } }",
+            "issueCreate",
+        )
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL type:mutation"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallAllow)
+
+    def test_query_with_variables_not_mutation(self):
+        """'query($id: ID!)' should NOT match type:mutation."""
+        body = _gql_body("query($id: ID!) { node(id: $id) { id } }", "GetNode")
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL type:mutation"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallBlock)
+
+    def test_operation_name_catch_all_wildcard(self):
+        """operationName:* matches any non-empty operationName."""
+        body = _gql_body("query { viewer { id } }", "AnyName")
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL operationName:*"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallAllow)
+
+    def test_operation_name_catch_all_blocks_missing(self):
+        """operationName:* blocks when operationName is absent."""
+        body = _gql_body("query { viewer { id } }")
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL operationName:*"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallBlock)
+
+    def test_operation_name_null_in_body(self):
+        """operationName is JSON null — should block."""
+        body = json.dumps({"query": "query { viewer { id } }", "operationName": None}).encode()
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL operationName:GetViewer"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallBlock)
+
+    def test_query_field_non_string(self):
+        """query field is a number — should block when type: filter used."""
+        body = json.dumps({"query": 123, "operationName": "GetViewer"}).encode()
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL type:query"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallBlock)
+
+    def test_type_subscription_allows_subscription(self):
+        body = _gql_body("subscription { issueUpdated { id title } }", "OnIssueUpdate")
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL type:subscription"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallAllow)
+
+    def test_type_subscription_blocks_query(self):
+        body = _gql_body("query { viewer { id } }", "GetViewer")
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL type:subscription"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallBlock)

@@ -181,7 +181,9 @@ async def request(flow: http.HTTPFlow) -> None:
     # Match base URL, then check permission rules before injecting auth headers.
     vm_firewalls = vm_info.get("firewalls")
     if vm_firewalls:
-        result = match_firewall_request(original_url, flow.request.method, vm_firewalls)
+        result = match_firewall_request(
+            original_url, flow.request.method, vm_firewalls, body=flow.request.content
+        )
         if isinstance(result, FirewallBlock):
             ctx.log.warn(
                 f"[{run_id}] Firewall {result.ref}: "

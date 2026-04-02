@@ -59,17 +59,93 @@ export function matchFirewallPath(
   return params;
 }
 
+interface GraphQLRule {
+  path: string;
+  typeFilter: string | null;
+  opFilter: string | null;
+}
+
+/**
+ * Parse the path+suffix portion of a rule for an optional GraphQL qualifier.
+ *
+ * Returns null when the `GraphQL` keyword is absent (plain REST rule).
+ */
+function parseGraphQLRule(rest: string): GraphQLRule | null {
+  const gqlIdx = rest.indexOf(" GraphQL");
+  if (gqlIdx === -1) return null;
+
+  const path = gqlIdx > 0 ? rest.slice(0, gqlIdx) : "/";
+  const suffixParts = rest.slice(gqlIdx + 1).split(/\s+/); // ["GraphQL", ...]
+
+  let typeFilter: string | null = null;
+  let opFilter: string | null = null;
+
+  for (let i = 1; i < suffixParts.length; i++) {
+    const part = suffixParts[i]!;
+    if (part.startsWith("type:")) {
+      typeFilter = part.slice(5);
+    } else if (part.startsWith("operationName:")) {
+      opFilter = part.slice(14);
+    }
+  }
+
+  return { path, typeFilter, opFilter };
+}
+
+/**
+ * Parsed GraphQL request body fields used for matching.
+ */
+export interface GraphQLBody {
+  /** The operation type keyword: `"query"` or `"mutation"`. */
+  type: string;
+  /** The named operation, if present. */
+  operationName?: string;
+}
+
+/**
+ * Match a parsed GraphQL body against type and operationName filters.
+ *
+ * Fail-closed: returns false if required fields are missing.
+ */
+function matchGraphQLBody(
+  body: GraphQLBody | undefined,
+  typeFilter: string | null,
+  opFilter: string | null,
+): boolean {
+  if (!body) return false;
+
+  if (typeFilter !== null && body.type !== typeFilter) {
+    return false;
+  }
+
+  if (opFilter !== null) {
+    const opName = body.operationName;
+    if (!opName) return false;
+    if (opFilter.endsWith("*")) {
+      if (!opName.startsWith(opFilter.slice(0, -1))) return false;
+    } else if (opName !== opFilter) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 /**
  * Find all permission names from a firewall config whose rules match
  * the given HTTP method and relative path.
  *
  * Method matching is case-insensitive. The special method `ANY` matches
  * any HTTP method.
+ *
+ * When `graphqlBody` is provided, rules containing the `GraphQL` keyword
+ * will also match against the parsed body's type and operationName.
  */
 export function findMatchingPermissions(
   method: string,
   path: string,
   config: FirewallConfig,
+  graphqlBody?: GraphQLBody,
 ): string[] {
   const upperMethod = method.toUpperCase();
   const matched = new Set<string>();
@@ -82,9 +158,20 @@ export function findMatchingPermissions(
         const spaceIdx = rule.indexOf(" ");
         if (spaceIdx === -1) continue;
         const ruleMethod = rule.slice(0, spaceIdx).toUpperCase();
-        const rulePath = rule.slice(spaceIdx + 1);
+        const rest = rule.slice(spaceIdx + 1);
         if (ruleMethod !== "ANY" && ruleMethod !== upperMethod) continue;
+
+        const gql = parseGraphQLRule(rest);
+        const rulePath = gql ? gql.path : rest;
+
         if (matchFirewallPath(path, rulePath) !== null) {
+          if (
+            gql &&
+            (gql.typeFilter !== null || gql.opFilter !== null) &&
+            !matchGraphQLBody(graphqlBody, gql.typeFilter, gql.opFilter)
+          ) {
+            continue;
+          }
           matched.add(perm.name);
           break;
         }

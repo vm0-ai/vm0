@@ -3,6 +3,7 @@
 Pure functions with no module-level state or I/O.
 """
 
+import json
 from typing import NamedTuple
 
 
@@ -217,8 +218,91 @@ class FirewallBlock(NamedTuple):
     path: str
 
 
+def parse_graphql_rule(rest: str) -> tuple[str, str | None, str | None] | None:
+    """Parse a rule's path+suffix into (path, type_filter, op_filter).
+
+    If the rule contains the ``GraphQL`` keyword, returns the path portion
+    and optional ``type:`` / ``operationName:`` filters.  Returns None when
+    the ``GraphQL`` keyword is absent (plain REST rule).
+    """
+    gql_idx = rest.find(" GraphQL")
+    if gql_idx == -1:
+        return None
+
+    path = rest[:gql_idx] if gql_idx > 0 else "/"
+    suffix_parts = rest[gql_idx + 1 :].split()  # ["GraphQL", "type:query", ...]
+
+    type_filter: str | None = None
+    op_filter: str | None = None
+
+    for part in suffix_parts[1:]:  # skip "GraphQL" itself
+        if part.startswith("type:"):
+            type_filter = part[5:]
+        elif part.startswith("operationName:"):
+            op_filter = part[14:]
+
+    return path, type_filter, op_filter
+
+
+def match_graphql_body(
+    body: bytes | None,
+    type_filter: str | None,
+    op_filter: str | None,
+) -> bool:
+    """Match a GraphQL request body against type and operationName filters.
+
+    Fail-closed: returns False if the body cannot be parsed or required
+    fields are missing.
+    """
+    if not body:
+        return False
+
+    try:
+        data = json.loads(body)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return False
+
+    if not isinstance(data, dict):
+        return False
+
+    # Extract operation type from the query string.
+    # GraphQL allows compact forms like `mutation{`, `query($id: ID!)`,
+    # so we extract only leading alpha characters as the keyword.
+    if type_filter is not None:
+        query_str = data.get("query")
+        if not isinstance(query_str, str):
+            return False
+        stripped = query_str.lstrip()
+        if not stripped:
+            return False
+        # Extract leading alphabetic chars: "mutation(" → "mutation"
+        end = 0
+        while end < len(stripped) and stripped[end].isalpha():
+            end += 1
+        keyword = stripped[:end].lower() if end > 0 else "query"
+        if keyword != type_filter:
+            return False
+
+    # Match operationName
+    if op_filter is not None:
+        op_name = data.get("operationName")
+        if not isinstance(op_name, str) or not op_name:
+            return False
+        if op_filter.endswith("*"):
+            prefix = op_filter[:-1]
+            if not op_name.startswith(prefix):
+                return False
+        elif op_name != op_filter:
+            return False
+
+    return True
+
+
 def match_firewall_request(
-    url: str, method: str, vm_firewalls: list | None
+    url: str,
+    method: str,
+    vm_firewalls: list | None,
+    body: bytes | None = None,
 ) -> FirewallAllow | FirewallBlock | None:
     """Match request against firewall permissions.
 
@@ -274,11 +358,25 @@ def match_firewall_request(
                     parts = rule_str.split(" ", 1)
                     if len(parts) != 2:
                         continue
-                    rule_method, rule_pattern = parts[0].upper(), parts[1]
+                    rule_method = parts[0].upper()
+                    rest = parts[1]
                     if rule_method != "ANY" and rule_method != upper_method:
                         continue
+
+                    # Check for GraphQL suffix
+                    gql = parse_graphql_rule(rest)
+                    if gql is not None:
+                        rule_pattern, type_filter, op_filter = gql
+                    else:
+                        rule_pattern = rest
+                        type_filter, op_filter = None, None
+
                     params = match_path(rel_path, rule_pattern)
                     if params is not None:
+                        # If GraphQL rule, also check body
+                        has_gql_filter = type_filter is not None or op_filter is not None
+                        if has_gql_filter and not match_graphql_body(body, type_filter, op_filter):
+                            continue
                         # Merge base params with rule params
                         all_params = {**base_params, **params}
                         return FirewallAllow(
