@@ -11,6 +11,7 @@ import {
   isProtectedSkipRoute,
   classifyRoute,
 } from "./proxy.layers";
+import { handleCors } from "./proxy.cors";
 
 // ---------------------------------------------------------------------------
 // Clerk-specific route config
@@ -95,6 +96,16 @@ export default async function middleware(
   request: NextRequest,
   event: NextFetchEvent,
 ) {
+  // Handle CORS preflight before Clerk — OPTIONS requests carry no credentials,
+  // and Clerk may add x-middleware-next to the response which prevents Next.js
+  // from returning our 200 directly.
+  if (
+    request.method === "OPTIONS" &&
+    request.nextUrl.pathname.startsWith("/api/")
+  ) {
+    return handleCors(request);
+  }
+
   const authHeader = request.headers.get("authorization");
   const hasSelfSignedToken =
     authHeader?.startsWith("Bearer " + SANDBOX_TOKEN_PREFIX) ||

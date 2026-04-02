@@ -49,27 +49,31 @@ function isOriginAllowed(origin: string | null): boolean {
 
 export function handleCors(request: NextRequest) {
   const origin = request.headers.get("origin");
-  const response = NextResponse.next();
 
   // Only set CORS headers if there's an origin (browser requests)
   if (origin && isOriginAllowed(origin)) {
+    // Handle preflight requests — return a fresh response without
+    // x-middleware-next so Next.js does NOT forward to the route handler.
+    if (request.method === "OPTIONS") {
+      return new NextResponse(null, {
+        status: 200,
+        headers: {
+          "Access-Control-Allow-Origin": origin,
+          "Access-Control-Allow-Credentials": "true",
+          "Access-Control-Allow-Methods":
+            "GET, POST, PUT, DELETE, PATCH, OPTIONS",
+          "Access-Control-Allow-Headers":
+            "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization",
+          "Access-Control-Max-Age": "86400",
+        },
+      });
+    }
+
+    const response = NextResponse.next();
     response.headers.set("Access-Control-Allow-Origin", origin);
     response.headers.set("Access-Control-Allow-Credentials", "true");
-
-    // Handle preflight requests
-    if (request.method === "OPTIONS") {
-      response.headers.set(
-        "Access-Control-Allow-Methods",
-        "GET, POST, PUT, DELETE, PATCH, OPTIONS",
-      );
-      response.headers.set(
-        "Access-Control-Allow-Headers",
-        "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization",
-      );
-      response.headers.set("Access-Control-Max-Age", "86400");
-      return new NextResponse(null, { status: 200, headers: response.headers });
-    }
+    return response;
   }
 
-  return response;
+  return NextResponse.next();
 }
