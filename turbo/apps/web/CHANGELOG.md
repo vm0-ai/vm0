@@ -1,5 +1,20 @@
 # Changelog
 
+## [12.188.2](https://github.com/vm0-ai/vm0/compare/web-v12.188.1...web-v12.188.2) (2026-04-02)
+
+
+### Refactoring
+
+* move email to lib/zero/ ([#7761](https://github.com/vm0-ai/vm0/issues/7761)) ([6de25ec](https://github.com/vm0-ai/vm0/commit/6de25ecd5e74200645187e9f96cd41599b3ef0a5)), closes [#7737](https://github.com/vm0-ai/vm0/issues/7737)
+* move slack and slack-org to lib/zero/ ([#7760](https://github.com/vm0-ai/vm0/issues/7760)) ([8596c28](https://github.com/vm0-ai/vm0/commit/8596c28278f53ad3c424ea5e65cb29051129e776)), closes [#7734](https://github.com/vm0-ai/vm0/issues/7734)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.145.0
+
 ## [12.188.1](https://github.com/vm0-ai/vm0/compare/web-v12.188.0...web-v12.188.1) (2026-04-02)
 
 

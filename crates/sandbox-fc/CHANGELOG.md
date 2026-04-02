@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.1](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.21.0...sandbox-fc-v0.21.1) (2026-04-02)
+
+
+### Bug Fixes
+
+* use is_our_thread in bench cleanup and merge snapshot pool locks ([#7763](https://github.com/vm0-ai/vm0/issues/7763)) ([654d086](https://github.com/vm0-ai/vm0/commit/654d08604135e98a247b056413bf0c7e7d5065e0))
+
 ## [0.21.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.20.3...sandbox-fc-v0.21.0) (2026-04-02)
 
 

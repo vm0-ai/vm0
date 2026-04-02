@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.181.0](https://github.com/vm0-ai/vm0/compare/app-v0.180.1...app-v0.181.0) (2026-04-02)
+
+
+### Features
+
+* add apollo.io api token connector ([#7753](https://github.com/vm0-ai/vm0/issues/7753)) ([16cdf0c](https://github.com/vm0-ai/vm0/commit/16cdf0c8c4500d667ce7ff1ba9b992ddb29b3799))
+
+
+### Bug Fixes
+
+* reset sidebar thread skeleton when switching agents ([#7768](https://github.com/vm0-ai/vm0/issues/7768)) ([8cc0af5](https://github.com/vm0-ai/vm0/commit/8cc0af5cbb9bee8ded3f5ba79076f2b8387fc7bd))
+* restore onboarding slack preview image to original png ([43c993f](https://github.com/vm0-ai/vm0/commit/43c993f256103b729d74091f5e21b58ffc3c09f5))
+* restore onboarding slack preview image to original png ([93b5905](https://github.com/vm0-ai/vm0/commit/93b590516ae39d19aa76e66450900346eb974284))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.145.0
+
 ## [0.180.1](https://github.com/vm0-ai/vm0/compare/app-v0.180.0...app-v0.180.1) (2026-04-02)
 
 

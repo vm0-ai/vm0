@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.145.0](https://github.com/vm0-ai/vm0/compare/core-v8.144.0...core-v8.145.0) (2026-04-02)
+
+
+### Features
+
+* add apollo.io api token connector ([#7753](https://github.com/vm0-ai/vm0/issues/7753)) ([16cdf0c](https://github.com/vm0-ai/vm0/commit/16cdf0c8c4500d667ce7ff1ba9b992ddb29b3799))
+
 ## [8.144.0](https://github.com/vm0-ai/vm0/compare/core-v8.143.0...core-v8.144.0) (2026-04-02)
 
 
