@@ -556,6 +556,26 @@ jobs:
           [ -n "$OUTPUT" ] || fail "prefix match returned empty output"
           echo "PASS: prefix matching"
 
+          # Test 4: verify pre-installed language runtimes and databases
+          echo "--- Test: runtime availability ---"
+          for cmd in \
+            "node --version" \
+            "python3 --version" \
+            "ruby --version" \
+            "php --version" \
+            "javac -version" \
+            "go version" \
+            "rustc --version" \
+            "gcc --version" \
+            "clang --version" \
+            "psql --version" \
+            "redis-server --version"; do
+            OUTPUT=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" -- $cmd 2>&1) \
+              || fail "command failed: $cmd"
+            echo "  $cmd -> $(echo "$OUTPUT" | head -1)"
+          done
+          echo "PASS: runtime availability"
+
           # Stop transient service (kills sandbox, submit terminates naturally)
           sudo "$BIN_DIR/runner" service stop --name "$SVC"
           trap - EXIT
