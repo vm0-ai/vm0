@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.180.0](https://github.com/vm0-ai/vm0/compare/app-v0.179.1...app-v0.180.0) (2026-04-02)
+
+
+### Features
+
+* add csv upload inspect route for activity log viewer ([#7630](https://github.com/vm0-ai/vm0/issues/7630)) ([91659d0](https://github.com/vm0-ai/vm0/commit/91659d077cb2a35b560290c91cc78dbd5872a5ac))
+
+
+### Bug Fixes
+
+* use page signal instead of standalone abort controller in onboarding ([#7692](https://github.com/vm0-ai/vm0/issues/7692)) ([b9b6de9](https://github.com/vm0-ai/vm0/commit/b9b6de9053194f54d7ad8723584ae006e1944138))
+
+
+### Refactoring
+
+* migrate eslint rules to native oxlint config ([#7690](https://github.com/vm0-ai/vm0/issues/7690)) ([aef6426](https://github.com/vm0-ai/vm0/commit/aef6426bd9ace376e22e16fa56843500d643fc86))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.143.0
+
 ## [0.179.1](https://github.com/vm0-ai/vm0/compare/app-v0.179.0...app-v0.179.1) (2026-04-02)
 
 

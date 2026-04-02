@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.58.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.57.0...runner-rs-v0.58.0) (2026-04-02)
+
+
+### Features
+
+* **runner:** increase default vm resources and add configurable disk size ([#7691](https://github.com/vm0-ai/vm0/issues/7691)) ([b928eb1](https://github.com/vm0-ai/vm0/commit/b928eb1a51e7759ba87c52577f323e0004bd4c8f))
+
+
+### Refactoring
+
+* split mitm_addon.py into focused modules with build.rs auto-scan ([#7688](https://github.com/vm0-ai/vm0/issues/7688)) ([aed758d](https://github.com/vm0-ai/vm0/commit/aed758dc817024a874531fbc2d99b2a58ffdded2)), closes [#7671](https://github.com/vm0-ai/vm0/issues/7671)
+
 ## [0.57.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.56.3...runner-rs-v0.57.0) (2026-04-02)
 
 

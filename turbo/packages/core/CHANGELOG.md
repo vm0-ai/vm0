@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.143.0](https://github.com/vm0-ai/vm0/compare/core-v8.142.0...core-v8.143.0) (2026-04-02)
+
+
+### Features
+
+* add csv upload inspect route for activity log viewer ([#7630](https://github.com/vm0-ai/vm0/issues/7630)) ([91659d0](https://github.com/vm0-ai/vm0/commit/91659d077cb2a35b560290c91cc78dbd5872a5ac))
+
 ## [8.142.0](https://github.com/vm0-ai/vm0/compare/core-v8.141.0...core-v8.142.0) (2026-04-02)
 
 

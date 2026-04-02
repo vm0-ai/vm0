@@ -1,5 +1,30 @@
 # Changelog
 
+## [12.187.0](https://github.com/vm0-ai/vm0/compare/web-v12.186.2...web-v12.187.0) (2026-04-02)
+
+
+### Features
+
+* add csv upload inspect route for activity log viewer ([#7630](https://github.com/vm0-ai/vm0/issues/7630)) ([91659d0](https://github.com/vm0-ai/vm0/commit/91659d077cb2a35b560290c91cc78dbd5872a5ac))
+
+
+### Refactoring
+
+* add get-org-metadata and remove clerk api from run creation ([#7703](https://github.com/vm0-ai/vm0/issues/7703)) ([eede35e](https://github.com/vm0-ai/vm0/commit/eede35ef6d31f2acd35d3377a022659c9f33e219)), closes [#7698](https://github.com/vm0-ai/vm0/issues/7698)
+* migrate eslint rules to native oxlint config ([#7690](https://github.com/vm0-ai/vm0/issues/7690)) ([aef6426](https://github.com/vm0-ai/vm0/commit/aef6426bd9ace376e22e16fa56843500d643fc86))
+
+
+### Performance Improvements
+
+* skip redundant db query in zero run creation path ([#7704](https://github.com/vm0-ai/vm0/issues/7704)) ([d322be1](https://github.com/vm0-ai/vm0/commit/d322be11d04090b4b1998119aa9ba7c598c0e362)), closes [#7699](https://github.com/vm0-ai/vm0/issues/7699)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.143.0
+
 ## [12.186.2](https://github.com/vm0-ai/vm0/compare/web-v12.186.1...web-v12.186.2) (2026-04-02)
 
 
