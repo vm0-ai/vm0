@@ -298,7 +298,6 @@ export const completeZeroOnboarding$ = command(
       await clerk.organization?.reload();
       signal.throwIfAborted();
 
-      // Reload status (caller dismisses via dismissZeroOnboarding$)
       set(internalReload$, (x) => {
         return x + 1;
       });
@@ -316,15 +315,6 @@ export const completeZeroOnboarding$ = command(
     }
   },
 );
-
-/**
- * Dismiss the admin onboarding dialog.
- * Separated from completeZeroOnboarding$ so callers can control when the
- * dialog disappears (e.g. after a chat thread is initiated).
- */
-export const dismissZeroOnboarding$ = command(({ set }) => {
-  set(userStep$, "done");
-});
 
 /**
  * Initialize onboarding status by eagerly loading it.

@@ -12,16 +12,14 @@ import {
   setZeroStep$,
   completeZeroOnboarding$,
   completeMemberOnboarding$,
-  dismissZeroOnboarding$,
   clearZeroOnboardingError$,
 } from "./zero-onboarding.ts";
 import { agentDisplayName$ } from "./zero-agent-name.ts";
-import { sendNewThreadMessage$, startNewZeroSession$ } from "./zero-chat.ts";
+import { sendNewThreadMessage$ } from "./zero-chat.ts";
 import { allConnectorTypes$ } from "./settings/connectors.ts";
 import { detachedNavigateTo$ } from "../route.ts";
 import { slackOrgData$ } from "./zero-slack.ts";
 import { reloadBillingStatus$ } from "./billing.ts";
-import { detach, Reason } from "../utils.ts";
 import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
 
 // ---------------------------------------------------------------------------
@@ -254,91 +252,54 @@ export const onboardingError$ = computed(async (get) => {
   return get(zeroOnboardingError$);
 });
 
-// ---------------------------------------------------------------------------
-// Action commands for WhereToWorkContent
-// ---------------------------------------------------------------------------
-
-/**
- * Complete onboarding and navigate to Slack setup.
- * Admin: create agent → reload billing → open Slack install URL → /works
- * Member: mark complete → /works
- */
-export const onboardingAddToSlack$ = command(
+const completeOnboarding$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     set(clearZeroOnboardingError$);
+    set(reloadBillingStatus$);
+
     const isAdmin = await get(zeroNeedsOnboarding$);
     signal.throwIfAborted();
+    return isAdmin
+      ? await set(completeZeroOnboarding$, signal)
+      : await set(completeMemberOnboarding$, signal);
+  },
+);
 
+export const onboardingAddToSlack$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const result = await set(completeOnboarding$, signal);
+    if (!result) {
+      return;
+    }
+
+    const isAdmin = await get(zeroNeedsOnboarding$);
+    signal.throwIfAborted();
     if (isAdmin) {
-      const result = await set(completeZeroOnboarding$, signal);
-      if (!result) {
-        return;
-      }
-      set(reloadBillingStatus$);
-      set(dismissZeroOnboarding$);
-
       const slackData = get(slackOrgData$);
       if (slackData?.isAdmin && slackData.installUrl) {
         const url = new URL(slackData.installUrl, window.location.origin);
         url.searchParams.set("_t", String(Date.now()));
         window.open(url.toString(), "_blank");
       }
-
-      set(detachedNavigateTo$, "/works");
-    } else {
-      await set(completeMemberOnboarding$, signal);
-      set(detachedNavigateTo$, "/works");
     }
+    set(detachedNavigateTo$, "/works");
   },
 );
 
-/**
- * Complete onboarding and start a web chat session.
- * Admin: create agent → reload billing → navigate home → send intro message
- * Member: mark complete → navigate home → send intro message
- */
 export const onboardingContinueWeb$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    set(clearZeroOnboardingError$);
-    const isAdmin = await get(zeroNeedsOnboarding$);
-    signal.throwIfAborted();
+  async ({ set }, signal: AbortSignal) => {
+    const agentId = await set(completeOnboarding$, signal);
 
-    if (isAdmin) {
-      const agentId = await set(completeZeroOnboarding$, signal);
-      if (!agentId) {
-        return;
-      }
-      set(reloadBillingStatus$);
-      set(detachedNavigateTo$, "/");
-      set(startNewZeroSession$);
-      detach(
-        set(
-          sendNewThreadMessage$,
-          agentId,
-          "Who are you and what can you do?",
-          undefined,
-          signal,
-        ),
-        Reason.DomCallback,
-      );
-      set(dismissZeroOnboarding$);
-    } else {
-      const agentId = await set(completeMemberOnboarding$, signal);
-      if (!agentId) {
-        return;
-      }
-      set(detachedNavigateTo$, "/");
-      set(startNewZeroSession$);
-      detach(
-        set(
-          sendNewThreadMessage$,
-          agentId,
-          "Who are you and what can you do?",
-          undefined,
-          signal,
-        ),
-        Reason.DomCallback,
-      );
+    if (!agentId) {
+      return;
     }
+
+    await set(
+      sendNewThreadMessage$,
+      agentId,
+      "Who are you and what can you do?",
+      undefined,
+      signal,
+    );
   },
 );

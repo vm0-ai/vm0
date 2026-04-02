@@ -337,7 +337,7 @@ describe("completeZeroOnboarding$", () => {
 
     await context.store.set(completeZeroOnboarding$, context.signal);
 
-    // Step no longer auto-set to "done"; callers use dismissZeroOnboarding$
+    // Step no longer auto-set to "done"; callers handle dismissal
     expect(context.store.get(zeroSaving$)).toBeFalsy();
   });
 
@@ -494,7 +494,7 @@ describe("completeZeroOnboarding$", () => {
 
     expect(context.store.get(zeroOnboardingError$)).toBeNull();
     // Step is no longer auto-set to "done" by completeZeroOnboarding$;
-    // callers use dismissZeroOnboarding$ to dismiss the dialog.
+    // callers handle dismissal separately.
     await expect(context.store.get(zeroOnboardingStep$)).resolves.toBe("4");
   });
 });

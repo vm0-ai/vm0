@@ -271,9 +271,9 @@ describe("onboardingContinueWeb$", () => {
 
     await context.store.set(onboardingContinueWeb$, context.signal);
 
-    expect(pathname()).toBe("/");
+    expect(pathname()).toBe("/chats/thread-1");
     expect(context.store.get(zeroSaving$)).toBeFalsy();
-    // Step is set to "done" by dismissZeroOnboarding$
+    // Step is set to "done" by completeOnboarding$
     await expect(context.store.get(zeroOnboardingStep$)).resolves.toBe("done");
   });
 
@@ -299,6 +299,6 @@ describe("onboardingContinueWeb$", () => {
 
     await context.store.set(onboardingContinueWeb$, context.signal);
 
-    expect(pathname()).toBe("/");
+    expect(pathname()).toBe("/chats/thread-1");
   });
 });
