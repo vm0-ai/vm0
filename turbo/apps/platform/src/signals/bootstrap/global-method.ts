@@ -6,9 +6,9 @@ import {
   featureSwitch$,
   overrideFeatureSwitch$,
 } from "../external/feature-switch";
-import { parseInspectLogCsv } from "../activity-page/inspect-log-parser";
-import { setInspectLogData$ } from "../activity-page/inspect-log-signals";
+import { loadInspectLogFile$ } from "../activity-page/inspect-log-signals";
 import { detachedNavigateTo$ } from "../route";
+import { pathname } from "../location";
 import { ROUTES } from "../route-paths";
 
 const L = logger("GlobalMethod");
@@ -61,12 +61,11 @@ export const setupGlobalMethod$ = command(
           if (!file) {
             return;
           }
-          file
-            .text()
-            .then((text) => {
-              const data = parseInspectLogCsv(text);
-              set(setInspectLogData$, data);
-              set(detachedNavigateTo$, ROUTES.activityInspect);
+          set(loadInspectLogFile$, file)
+            .then(() => {
+              if (pathname() !== "/activities/inspect") {
+                set(detachedNavigateTo$, ROUTES.activityInspect);
+              }
             })
             .catch((error: unknown) => {
               L.error("Failed to parse inspect log CSV", error);

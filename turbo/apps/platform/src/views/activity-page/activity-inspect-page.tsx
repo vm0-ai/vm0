@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { useGet } from "ccstate-react";
+import { useGet, useSet } from "ccstate-react";
 import { IconSearch, IconChartLine, IconUpload } from "@tabler/icons-react";
-import { Input } from "@vm0/ui";
+import { Button, Input } from "@vm0/ui";
 import type {
   LogStatus,
   TriggerSource,
@@ -22,6 +22,7 @@ import {
 } from "../zero-page/zero-activity-detail-page.tsx";
 import {
   inspectLogData$,
+  loadInspectLogFile$,
   type InspectLogData,
 } from "../../signals/activity-page/inspect-log-signals.ts";
 import { Link } from "../router/link.tsx";
@@ -45,6 +46,8 @@ function InspectBreadcrumb({ title }: { title: string }) {
 }
 
 function InspectEmptyState() {
+  const loadFile = useSet(loadInspectLogFile$);
+
   return (
     <div className="h-full flex flex-col min-h-0">
       <InspectBreadcrumb title="Inspect" />
@@ -52,12 +55,26 @@ function InspectEmptyState() {
         <IconUpload size={48} stroke={1} className="text-muted-foreground/40" />
         <h2 className="text-lg font-semibold text-foreground">No log loaded</h2>
         <p className="text-sm text-muted-foreground text-center max-w-sm">
-          Run{" "}
-          <code className="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">
-            _vm0.inspectLogs()
-          </code>{" "}
-          in the browser console to select a CSV file.
+          Upload an activity log CSV file to inspect it.
         </p>
+        <Button variant="outline" asChild>
+          <label className="cursor-pointer">
+            <IconUpload size={16} stroke={1.5} />
+            Upload CSV
+            <input
+              type="file"
+              accept=".csv"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  void loadFile(file);
+                }
+                e.target.value = "";
+              }}
+            />
+          </label>
+        </Button>
       </div>
     </div>
   );
