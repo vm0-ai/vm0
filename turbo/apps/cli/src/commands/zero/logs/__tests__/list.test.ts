@@ -69,7 +69,7 @@ describe("zero logs list command", () => {
     await listCommand.parseAsync(["node", "cli"]);
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(logCalls).toContain("abc12345");
+    expect(logCalls).toContain("abc12345-1234-1234-1234-123456789abc");
     expect(logCalls).toContain("My Agent");
     expect(logCalls).toContain("completed");
     expect(logCalls).toContain("2026-04-01");
