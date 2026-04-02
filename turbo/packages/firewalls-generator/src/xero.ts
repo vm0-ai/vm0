@@ -232,7 +232,10 @@ export async function generate(): Promise<void> {
       }
 
       const typed = spec as XeroSpec;
-      const baseUrl = typed.servers?.[0]?.url ?? "";
+      const baseUrl = typed.servers?.[0]?.url;
+      if (!baseUrl) {
+        throw new Error(`${file}: missing servers[0].url`);
+      }
       // Normalize trailing slash
       const normalizedBase = baseUrl.replace(/\/$/, "");
 
