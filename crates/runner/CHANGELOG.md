@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.57.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.56.3...runner-rs-v0.57.0) (2026-04-02)
+
+
+### Features
+
+* add auth.base url rewriting for webhook-url firewall connectors ([#7618](https://github.com/vm0-ai/vm0/issues/7618)) ([55585ac](https://github.com/vm0-ai/vm0/commit/55585ac37db6938508ca957f83725389157c55da))
+
 ## [0.56.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.56.2...runner-rs-v0.56.3) (2026-04-02)
 
 ## [0.56.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.56.1...runner-rs-v0.56.2) (2026-04-01)
