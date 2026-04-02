@@ -9,6 +9,7 @@ import { parseTime } from "../../../lib/utils/time-parser";
 import { ClaudeEventParser } from "../../../lib/events/claude-event-parser";
 import { EventRenderer } from "../../../lib/events/event-renderer";
 import { withErrorHandler } from "../../../lib/command";
+import { isUUID } from "../../run/shared";
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -149,6 +150,15 @@ Examples:
   .action(
     withErrorHandler(async (keyword: string, options: SearchOptions) => {
       const { before, after } = parseContextOptions(options);
+
+      if (options.run && !isUUID(options.run)) {
+        console.error(
+          chalk.red(`✗ Invalid run ID "${options.run}" — expected a UUID`),
+        );
+        console.error(chalk.dim("  Run: zero logs list    to find run IDs"));
+        process.exit(1);
+      }
+
       const since = options.since
         ? parseTime(options.since)
         : Date.now() - SEVEN_DAYS_MS;

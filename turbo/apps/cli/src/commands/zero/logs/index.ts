@@ -6,6 +6,7 @@ import { ClaudeEventParser } from "../../../lib/events/claude-event-parser";
 import { EventRenderer } from "../../../lib/events/event-renderer";
 import { paginate } from "../../../lib/utils/paginate";
 import { withErrorHandler } from "../../../lib/command";
+import { isUUID } from "../../run/shared";
 import { listCommand } from "./list";
 import { searchCommand } from "./search";
 
@@ -135,6 +136,14 @@ Examples:
         if (!runId) {
           zeroLogsCommand.help();
           return;
+        }
+
+        if (!isUUID(runId)) {
+          console.error(
+            chalk.red(`✗ Invalid run ID "${runId}" — expected a UUID`),
+          );
+          console.error(chalk.dim("  Run: zero logs list    to find run IDs"));
+          process.exit(1);
         }
 
         const countModes = [

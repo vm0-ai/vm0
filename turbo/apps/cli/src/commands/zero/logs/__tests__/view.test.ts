@@ -161,6 +161,16 @@ describe("zero logs view command", () => {
     expect(errorCalls).toContain("mutually exclusive");
   });
 
+  it("should reject non-UUID run ID", async () => {
+    await expect(
+      zeroLogsCommand.parseAsync(["node", "cli", "6af7eece"]),
+    ).rejects.toThrow("process.exit called");
+
+    const errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("Invalid run ID");
+    expect(errorCalls).toContain("zero logs list");
+  });
+
   it("should handle authentication error", async () => {
     server.use(
       http.get(

@@ -145,11 +145,13 @@ describe("zero logs search command", () => {
       "--agent",
       "zero",
       "--run",
-      "run-123",
+      "abc12345-1234-1234-1234-123456789abc",
     ]);
 
     expect(capturedUrl?.searchParams.get("agent")).toBe("zero");
-    expect(capturedUrl?.searchParams.get("runId")).toBe("run-123");
+    expect(capturedUrl?.searchParams.get("runId")).toBe(
+      "abc12345-1234-1234-1234-123456789abc",
+    );
   });
 
   it("should show hasMore hint when truncated", async () => {
@@ -212,6 +214,16 @@ describe("zero logs search command", () => {
     expect(logCalls).toContain("Connecting to database");
     expect(logCalls).toContain("connection refused");
     expect(logCalls).toContain("Retrying connection");
+  });
+
+  it("should reject non-UUID --run value", async () => {
+    await expect(
+      searchCommand.parseAsync(["node", "cli", "error", "--run", "6af7eece"]),
+    ).rejects.toThrow("process.exit called");
+
+    const errorCalls = mockConsoleError.mock.calls.flat().join("\n");
+    expect(errorCalls).toContain("Invalid run ID");
+    expect(errorCalls).toContain("zero logs list");
   });
 
   it("should handle authentication error", async () => {
