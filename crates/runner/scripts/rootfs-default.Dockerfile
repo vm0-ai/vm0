@@ -57,6 +57,16 @@ RUN find /usr/lib -name libnssckbi.so -exec sh -c \
     'p11=$(find /usr/lib -name p11-kit-trust.so | head -1) && ln -sf "$p11" "$1"' _ {} \;
 
 # ---------------------------------------------------------------------------
+# User account
+# ---------------------------------------------------------------------------
+# Ubuntu 24.04 ships with an 'ubuntu' user at UID 1000, so remove it first.
+RUN userdel -r ubuntu 2>/dev/null || true \
+    && useradd -m -u 1000 -s /bin/bash user \
+    && usermod -aG sudo user \
+    && echo 'user ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers \
+    && passwd -d user
+
+# ---------------------------------------------------------------------------
 # Node.js 24 (via NodeSource)
 # ---------------------------------------------------------------------------
 RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
@@ -108,16 +118,6 @@ RUN ARCH=$(dpkg --print-architecture) \
     && tar -C /usr/local -xzf /tmp/go.tar.gz \
     && rm /tmp/go.tar.gz \
     && echo 'export PATH=$PATH:/usr/local/go/bin' > /etc/profile.d/golang.sh
-
-# ---------------------------------------------------------------------------
-# User account (created early so Rust can be installed as user)
-# ---------------------------------------------------------------------------
-# Ubuntu 24.04 ships with an 'ubuntu' user at UID 1000, so remove it first.
-RUN userdel -r ubuntu 2>/dev/null || true \
-    && useradd -m -u 1000 -s /bin/bash user \
-    && usermod -aG sudo user \
-    && echo 'user ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers \
-    && passwd -d user
 
 # ---------------------------------------------------------------------------
 # Rust (stable toolchain via rustup, installed as user)
