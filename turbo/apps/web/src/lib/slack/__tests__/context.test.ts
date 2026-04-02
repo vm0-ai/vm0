@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { HttpResponse } from "msw";
 import {
-  formatContextForAgent,
   formatContextForAgentWithImages,
   formatCurrentMessageFiles,
   extractMessageContent,
@@ -15,378 +14,6 @@ import { http } from "../../../__tests__/msw";
 // Mock external dependencies required by testContext().setupMocks()
 
 const context = testContext();
-
-describe("Feature: Format Context For Agent", () => {
-  describe("Scenario: Format thread messages into context string", () => {
-    it("should include all messages with structured metadata", () => {
-      const messages = [
-        { user: "U123", text: "Hello, can you help me?", ts: "1234567890.001" },
-        { user: "U456", text: "Sure, what do you need?", ts: "1234567890.002" },
-      ];
-
-      const result = formatContextForAgent(messages);
-
-      expect(result).toContain("# Slack Thread Context");
-      expect(result).toContain("- RELATIVE_INDEX: -2");
-      expect(result).toContain("- SENDER: {id: U123}");
-      expect(result).toContain("Hello, can you help me?");
-      expect(result).toContain("- RELATIVE_INDEX: -1");
-      expect(result).toContain("- SENDER: {id: U456}");
-      expect(result).toContain("Sure, what do you need?");
-    });
-
-    it("should use --- separators between messages", () => {
-      const messages = [
-        { user: "U123", text: "First", ts: "1234567890.001" },
-        { user: "U456", text: "Second", ts: "1234567890.002" },
-      ];
-
-      const result = formatContextForAgent(messages);
-
-      // Each message starts with --- and the output ends with ---
-      expect(result).toMatch(/---\n\n- RELATIVE_INDEX: -2/);
-      expect(result).toMatch(/---\n\n- RELATIVE_INDEX: -1/);
-      expect(result).toMatch(/\n\n---$/);
-    });
-  });
-
-  describe("Scenario: Include bot messages in context", () => {
-    it("should include bot messages with SENDER ID: BOT", () => {
-      const messages = [
-        { user: "U123", text: "Hello", ts: "1234567890.001" },
-        { bot_id: "BBOT123", text: "Bot response", ts: "1234567890.002" },
-        { user: "U456", text: "Thanks", ts: "1234567890.003" },
-      ];
-
-      const result = formatContextForAgent(messages);
-
-      expect(result).toContain("- SENDER: {id: U123}");
-      expect(result).toContain("- SENDER: {id: BOT}");
-      expect(result).toContain("Bot response");
-      expect(result).toContain("- SENDER: {id: U456}");
-    });
-
-    it("should not filter out any messages even when botUserId is provided", () => {
-      const botUserId = "BBOT123";
-      const messages = [
-        { user: "U123", text: "User message 1", ts: "1234567890.001" },
-        { user: "BBOT123", text: "Bot message", ts: "1234567890.002" },
-        { user: "U456", text: "User message 2", ts: "1234567890.003" },
-      ];
-
-      const result = formatContextForAgent(messages, botUserId);
-
-      // All messages should be included
-      expect(result).toContain("User message 1");
-      expect(result).toContain("- SENDER: {id: BBOT123}");
-      expect(result).toContain("Bot message");
-      expect(result).toContain("User message 2");
-    });
-  });
-
-  describe("Scenario: Handle edge cases", () => {
-    it("should return empty string for empty messages array", () => {
-      const result = formatContextForAgent([]);
-
-      expect(result).toBe("");
-    });
-
-    it("should handle messages with missing user or text", () => {
-      const messages = [{ text: "No user" }, { user: "U123" }];
-
-      const result = formatContextForAgent(messages);
-
-      expect(result).toContain("- SENDER: {id: unknown}");
-      expect(result).toContain("No user");
-      expect(result).toContain("- SENDER: {id: U123}");
-    });
-  });
-
-  describe("Scenario: Format channel messages", () => {
-    it("should use channel context header", () => {
-      const messages = [
-        { user: "U123", text: "Recent message", ts: "1234567890.001" },
-      ];
-
-      const result = formatContextForAgent(messages, undefined, "channel");
-
-      expect(result).toContain("# Recent Channel Messages");
-      expect(result).toContain("- SENDER: {id: U123}");
-      expect(result).toContain("Recent message");
-    });
-  });
-
-  describe("Scenario: Include files in context", () => {
-    it("should format message with single image file", () => {
-      const messages = [
-        {
-          user: "U123",
-          text: "Check out this screenshot",
-          ts: "1234567890.001",
-          files: [
-            {
-              name: "screenshot.png",
-              pretty_type: "PNG Image",
-              original_w: "1920",
-              original_h: "1080",
-              permalink_public: "https://files.slack.com/public/screenshot.png",
-            },
-          ],
-        },
-      ];
-
-      const result = formatContextForAgent(messages);
-
-      expect(result).toContain("Check out this screenshot");
-      expect(result).toContain("[file]: screenshot.png (PNG Image)");
-      expect(result).toContain("Dimensions: 1920x1080");
-      expect(result).toContain(
-        "URL: https://files.slack.com/public/screenshot.png",
-      );
-    });
-
-    it("should format message with multiple files", () => {
-      const messages = [
-        {
-          user: "U123",
-          text: "Here are the files",
-          ts: "1234567890.001",
-          files: [
-            {
-              name: "image1.png",
-              pretty_type: "PNG Image",
-              permalink: "https://slack.com/files/image1.png",
-            },
-            {
-              name: "document.pdf",
-              pretty_type: "PDF",
-              permalink: "https://slack.com/files/document.pdf",
-            },
-          ],
-        },
-      ];
-
-      const result = formatContextForAgent(messages);
-
-      expect(result).toContain("[file]: image1.png (PNG Image)");
-      expect(result).toContain("[file]: document.pdf (PDF)");
-    });
-
-    it("should use thumbnail URL when public URL is not available", () => {
-      const messages = [
-        {
-          user: "U123",
-          text: "Private image",
-          ts: "1234567890.001",
-          files: [
-            {
-              name: "private.png",
-              mimetype: "image/png",
-              thumb_480: "https://files.slack.com/thumb_480/private.png",
-            },
-          ],
-        },
-      ];
-
-      const result = formatContextForAgent(messages);
-
-      expect(result).toContain("[file]: private.png (image/png)");
-      expect(result).toContain(
-        "URL: https://files.slack.com/thumb_480/private.png",
-      );
-    });
-
-    it("should handle files without dimensions", () => {
-      const messages = [
-        {
-          user: "U123",
-          text: "A document",
-          ts: "1234567890.001",
-          files: [
-            {
-              name: "report.docx",
-              pretty_type: "Word Document",
-              permalink: "https://slack.com/files/report.docx",
-            },
-          ],
-        },
-      ];
-
-      const result = formatContextForAgent(messages);
-
-      expect(result).toContain("[file]: report.docx (Word Document)");
-      expect(result).not.toContain("Dimensions:");
-    });
-  });
-
-  describe("Scenario: Include attachments with images in context", () => {
-    it("should format attachment with image URL", () => {
-      const messages = [
-        {
-          user: "U123",
-          text: "Check this article",
-          ts: "1234567890.001",
-          attachments: [
-            {
-              title: "Article Preview",
-              image_url: "https://example.com/preview.jpg",
-              image_width: 800,
-              image_height: 600,
-            },
-          ],
-        },
-      ];
-
-      const result = formatContextForAgent(messages);
-
-      expect(result).toContain("Check this article");
-      expect(result).toContain("[image]: Article Preview");
-      expect(result).toContain("Dimensions: 800x600");
-      expect(result).toContain(
-        'View: curl -sS -o /tmp/attachment_image.jpg "https://example.com/preview.jpg"',
-      );
-    });
-
-    it("should use fallback for attachment title", () => {
-      const messages = [
-        {
-          user: "U123",
-          text: "Link",
-          ts: "1234567890.001",
-          attachments: [
-            {
-              fallback: "Preview image",
-              thumb_url: "https://example.com/thumb.jpg",
-            },
-          ],
-        },
-      ];
-
-      const result = formatContextForAgent(messages);
-
-      expect(result).toContain("[image]: Preview image");
-      expect(result).toContain(
-        'View: curl -sS -o /tmp/attachment_image.jpg "https://example.com/thumb.jpg"',
-      );
-    });
-
-    it("should skip attachments without images", () => {
-      const messages = [
-        {
-          user: "U123",
-          text: "Text only attachment",
-          ts: "1234567890.001",
-          attachments: [
-            {
-              title: "No image here",
-              fallback: "Just text",
-            },
-          ],
-        },
-      ];
-
-      const result = formatContextForAgent(messages);
-
-      expect(result).toContain("Text only attachment");
-      expect(result).not.toContain("[image]:");
-    });
-  });
-
-  describe("Scenario: Mixed content in thread", () => {
-    it("should format thread with text, files, and attachments", () => {
-      const messages = [
-        {
-          user: "U123",
-          text: "Here is the error screenshot",
-          ts: "1234567890.001",
-        },
-        {
-          user: "U456",
-          text: "I see the issue",
-          ts: "1234567890.002",
-          files: [
-            {
-              name: "fix.png",
-              pretty_type: "PNG Image",
-              original_w: "640",
-              original_h: "480",
-              permalink_public: "https://files.slack.com/fix.png",
-            },
-          ],
-        },
-        {
-          user: "U123",
-          text: "Related article",
-          ts: "1234567890.003",
-          attachments: [
-            {
-              title: "Bug Report",
-              image_url: "https://example.com/bug.jpg",
-            },
-          ],
-        },
-      ];
-
-      const result = formatContextForAgent(messages);
-
-      expect(result).toContain("- RELATIVE_INDEX: -3");
-      expect(result).toContain("Here is the error screenshot");
-      expect(result).toContain("- RELATIVE_INDEX: -2");
-      expect(result).toContain("I see the issue");
-      expect(result).toContain("[file]: fix.png (PNG Image)");
-      expect(result).toContain("Dimensions: 640x480");
-      expect(result).toContain("- RELATIVE_INDEX: -1");
-      expect(result).toContain("Related article");
-      expect(result).toContain("[image]: Bug Report");
-    });
-  });
-
-  describe("Scenario: Include context preamble with interpretation guidelines", () => {
-    it("should include preamble between header and messages for thread context", () => {
-      const messages = [{ user: "U123", text: "Hello", ts: "1234567890.001" }];
-
-      const result = formatContextForAgent(messages);
-
-      expect(result).toContain("Match the tone of the conversation");
-      expect(result).toContain(
-        "Only provide technical analysis when explicitly asked",
-      );
-      expect(result).toContain(
-        "Keep responses proportional to the message length",
-      );
-    });
-
-    it("should include preamble for channel context", () => {
-      const messages = [{ user: "U123", text: "Hello", ts: "1234567890.001" }];
-
-      const result = formatContextForAgent(messages, undefined, "channel");
-
-      expect(result).toContain("Match the tone of the conversation");
-    });
-
-    it("should not include preamble for empty messages", () => {
-      const result = formatContextForAgent([]);
-
-      expect(result).toBe("");
-    });
-  });
-
-  describe("Scenario: Relative index calculation", () => {
-    it("should calculate relative index from the end of messages", () => {
-      const messages = [
-        { user: "U1", text: "First", ts: "1.0" },
-        { user: "U2", text: "Second", ts: "2.0" },
-        { user: "U3", text: "Third", ts: "3.0" },
-      ];
-
-      const result = formatContextForAgent(messages);
-
-      expect(result).toContain("- RELATIVE_INDEX: -3");
-      expect(result).toContain("- RELATIVE_INDEX: -2");
-      expect(result).toContain("- RELATIVE_INDEX: -1");
-    });
-  });
-});
 
 describe("Feature: Extract Message Content", () => {
   describe("Scenario: Remove bot mention from message", () => {
@@ -1391,70 +1018,6 @@ describe("Feature: Extract Text From Rich Text Blocks", () => {
       );
     });
   });
-
-  describe("Scenario: Integration with formatContextForAgent", () => {
-    it("should prefer blocks content over text fallback", () => {
-      const messages = [
-        {
-          user: "U123",
-          text: "Short fallback",
-          ts: "1234567890.001",
-          blocks: [
-            {
-              type: "rich_text",
-              elements: [
-                {
-                  type: "rich_text_section",
-                  elements: [
-                    {
-                      type: "text",
-                      text: "Full rich text content with all details preserved",
-                    },
-                  ],
-                },
-              ],
-            },
-          ],
-        },
-      ];
-
-      const result = formatContextForAgent(messages);
-
-      expect(result).toContain(
-        "Full rich text content with all details preserved",
-      );
-      expect(result).not.toContain("Short fallback");
-    });
-
-    it("should fall back to text when no rich_text blocks", () => {
-      const messages = [
-        {
-          user: "U123",
-          text: "Plain text message",
-          ts: "1234567890.001",
-          blocks: [{ type: "section" }],
-        },
-      ];
-
-      const result = formatContextForAgent(messages);
-
-      expect(result).toContain("Plain text message");
-    });
-
-    it("should fall back to text when blocks is undefined", () => {
-      const messages = [
-        {
-          user: "U123",
-          text: "Plain text message",
-          ts: "1234567890.001",
-        },
-      ];
-
-      const result = formatContextForAgent(messages);
-
-      expect(result).toContain("Plain text message");
-    });
-  });
 });
 
 describe("Feature: Format Current Message Files", () => {
@@ -1629,7 +1192,11 @@ describe("Feature: Format Current Message Files", () => {
 });
 
 describe("Feature: Resolve User Mentions In Context", () => {
-  it("should resolve user mention to name when user info available", () => {
+  beforeEach(() => {
+    context.setupMocks();
+  });
+
+  it("should resolve user mention to name when user info available", async () => {
     const messages = [
       { user: "U100", text: "Hey <@U200>, can you help?", ts: "1.0" },
     ];
@@ -1638,8 +1205,10 @@ describe("Feature: Resolve User Mentions In Context", () => {
       ["U200", { id: "U200", name: "Bob", email: "bob@example.com" }],
     ]);
 
-    const result = formatContextForAgent(
+    const result = await formatContextForAgentWithImages(
       messages,
+      "xoxb-token",
+      "session-1",
       undefined,
       "thread",
       userInfoMap,
@@ -1649,12 +1218,14 @@ describe("Feature: Resolve User Mentions In Context", () => {
     expect(result).not.toContain("<@U200>");
   });
 
-  it("should keep raw mention when user info not available", () => {
+  it("should keep raw mention when user info not available", async () => {
     const messages = [{ user: "U100", text: "Hey <@U999>", ts: "1.0" }];
     const userInfoMap = new Map([["U100", { id: "U100", name: "Alice" }]]);
 
-    const result = formatContextForAgent(
+    const result = await formatContextForAgentWithImages(
       messages,
+      "xoxb-token",
+      "session-1",
       undefined,
       "thread",
       userInfoMap,
@@ -1663,7 +1234,7 @@ describe("Feature: Resolve User Mentions In Context", () => {
     expect(result).toContain("<@U999>");
   });
 
-  it("should resolve multiple mentions in one message", () => {
+  it("should resolve multiple mentions in one message", async () => {
     const messages = [
       {
         user: "U100",
@@ -1677,8 +1248,10 @@ describe("Feature: Resolve User Mentions In Context", () => {
       ["U300", { id: "U300", name: "Charlie" }],
     ]);
 
-    const result = formatContextForAgent(
+    const result = await formatContextForAgentWithImages(
       messages,
+      "xoxb-token",
+      "session-1",
       undefined,
       "thread",
       userInfoMap,
@@ -1688,7 +1261,7 @@ describe("Feature: Resolve User Mentions In Context", () => {
     expect(result).toContain("@Charlie (U300)");
   });
 
-  it("should resolve mentions from rich_text blocks", () => {
+  it("should resolve mentions from rich_text blocks", async () => {
     const messages = [
       {
         user: "U100",
@@ -1715,8 +1288,10 @@ describe("Feature: Resolve User Mentions In Context", () => {
       ["U200", { id: "U200", name: "Bob" }],
     ]);
 
-    const result = formatContextForAgent(
+    const result = await formatContextForAgentWithImages(
       messages,
+      "xoxb-token",
+      "session-1",
       undefined,
       "thread",
       userInfoMap,

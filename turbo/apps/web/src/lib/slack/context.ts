@@ -357,29 +357,6 @@ async function downloadAndUploadSlackFile(
 }
 
 /**
- * Format file information for context (sync version, metadata only)
- */
-function formatFileInfo(file: SlackFile): string {
-  const parts: string[] = [];
-
-  const name = file.name || file.title || "Untitled";
-  const type = file.pretty_type || file.mimetype || "file";
-  parts.push(`[file]: ${name} (${type})`);
-
-  if (file.original_w && file.original_h) {
-    parts.push(`   Dimensions: ${file.original_w}x${file.original_h}`);
-  }
-
-  const url =
-    file.permalink_public || file.thumb_480 || file.thumb_360 || file.permalink;
-  if (url) {
-    parts.push(`   URL: ${url}`);
-  }
-
-  return parts.join("\n");
-}
-
-/**
  * Format file information for context with file upload to R2
  * Uploads files to R2 and provides presigned URLs for agent access
  */
@@ -532,72 +509,6 @@ const CONTEXT_PREAMBLE = [
   "- Only provide technical analysis when explicitly asked a technical question.",
   "- Keep responses proportional to the message length and complexity.",
 ].join("\n");
-
-/**
- * Format messages into context for agent prompt (sync version, metadata only)
- *
- * @param messages - Array of Slack messages
- * @param botUserId - Bot user ID (kept for API compatibility, no longer used for filtering)
- * @param contextType - Type of context: "thread" or "channel"
- * @param userInfoMap - Pre-resolved map of Slack user ID → user info
- * @returns Formatted context string
- */
-export function formatContextForAgent(
-  messages: SlackMessage[],
-  botUserId?: string,
-  contextType: "thread" | "channel" = "thread",
-  userInfoMap?: Map<string, SlackUserInfo>,
-): string {
-  if (messages.length === 0) {
-    return "";
-  }
-
-  const totalMessages = messages.length;
-
-  // Include all messages (don't filter bot messages)
-  const formattedMessages = messages.map((msg, index) => {
-    const relativeIndex = index - totalMessages;
-
-    const fileParts: string[] = [];
-
-    // Format files (uploaded images, documents, etc.)
-    if (msg.files && msg.files.length > 0) {
-      for (const file of msg.files) {
-        fileParts.push(formatFileInfo(file));
-      }
-    }
-
-    // Format attachments with images (URL unfurls, etc.)
-    if (msg.attachments && msg.attachments.length > 0) {
-      for (const attachment of msg.attachments) {
-        const attachmentInfo = formatAttachmentImage(attachment);
-        if (attachmentInfo) {
-          fileParts.push(attachmentInfo);
-        }
-      }
-    }
-
-    return formatMessageWithMetadata(
-      msg,
-      relativeIndex,
-      fileParts,
-      userInfoMap,
-    );
-  });
-
-  const header =
-    contextType === "thread"
-      ? "# Slack Thread Context"
-      : "# Recent Channel Messages";
-
-  const result = `${header}\n\n${CONTEXT_PREAMBLE}\n\n${formattedMessages.join("\n\n")}\n\n---`;
-  log.debug("Formatted messages for context", {
-    messageCount: formattedMessages.length,
-    contextType,
-    resultLength: result.length,
-  });
-  return result;
-}
 
 /**
  * Format messages into context for agent prompt with file upload

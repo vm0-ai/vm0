@@ -15,7 +15,6 @@ import {
 import {
   fetchThreadContext,
   fetchChannelContext,
-  formatContextForAgent,
   formatContextForAgentWithImages,
   formatCurrentMessageFiles,
   extractMentionedUserIds,
@@ -228,8 +227,7 @@ type SlackClient = ReturnType<typeof createSlackClient>;
 
 /**
  * Fetch conversation context with deduplication support.
- * Returns separate contexts for routing (text-only, full history) and
- * execution (with images, only new messages since lastProcessedMessageTs).
+ * Returns execution context (with images, only new messages since lastProcessedMessageTs).
  *
  * Single Slack API call — messages are fetched once and filtered in-memory.
  */
@@ -242,7 +240,7 @@ export async function fetchConversationContexts(
   lastProcessedMessageTs?: string,
   currentMessageTs?: string,
   existingSessionId?: string,
-): Promise<{ routingContext: string; executionContext: string }> {
+): Promise<{ executionContext: string }> {
   const imageSessionId = `${channelId}-${threadTs ?? "channel"}`;
   const contextType = threadTs ? "thread" : "channel";
 
@@ -289,17 +287,6 @@ export async function fetchConversationContexts(
         )
       : "";
 
-  // Text-only full context for routing (no image uploads needed)
-  const threadRoutingContext = formatContextForAgent(
-    contextMessages,
-    botUserId,
-    contextType,
-    userInfoMap,
-  );
-  const routingContext = channelContextPrefix
-    ? `${channelContextPrefix}\n\n${threadRoutingContext}`
-    : threadRoutingContext;
-
   // Filter to only new messages for execution context
   const executionMessages = lastProcessedMessageTs
     ? contextMessages.filter((m) => {
@@ -323,7 +310,7 @@ export async function fetchConversationContexts(
     ? `${channelContextPrefix}\n\n${threadExecContext}`
     : threadExecContext;
 
-  return { routingContext, executionContext };
+  return { executionContext };
 }
 
 /**

@@ -219,17 +219,16 @@ describe("fetchConversationContexts", () => {
       ],
     });
 
-    const { executionContext, routingContext } =
-      await fetchConversationContexts(
-        client,
-        "C-chan",
-        "100.0", // threadTs
-        "BBOT",
-        "xoxb-token",
-        undefined, // lastProcessedMessageTs
-        "100.1", // currentMessageTs excluded from context
-        undefined, // no existingSessionId → first session
-      );
+    const { executionContext } = await fetchConversationContexts(
+      client,
+      "C-chan",
+      "100.0", // threadTs
+      "BBOT",
+      "xoxb-token",
+      undefined, // lastProcessedMessageTs
+      "100.1", // currentMessageTs excluded from context
+      undefined, // no existingSessionId → first session
+    );
 
     // Should contain both channel and thread sections
     expect(executionContext).toContain("# Recent Channel Messages");
@@ -239,9 +238,6 @@ describe("fetchConversationContexts", () => {
     expect(executionContext).toContain("Thread parent");
     // Current message excluded
     expect(executionContext).not.toContain("Reply");
-
-    expect(routingContext).toContain("# Recent Channel Messages");
-    expect(routingContext).toContain("# Slack Thread Context");
   });
 
   it("should fetch channel messages with latest=threadTs", async () => {

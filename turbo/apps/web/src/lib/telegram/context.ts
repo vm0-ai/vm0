@@ -29,14 +29,14 @@ interface TelegramContextMessage {
 }
 
 /**
- * Fetch recent Telegram messages for a chat and build context strings.
+ * Fetch recent Telegram messages for a chat and build execution context.
  *
  * @param installationId - Telegram installation ID
  * @param chatId - Telegram chat ID
  * @param lastProcessedMessageId - Only include messages after this ID for execution context
  * @param client - Telegram client (needed to download images for execution context)
  * @param currentMessageId - The message being processed; excluded from context to avoid duplication with prompt
- * @returns routingContext (all recent text) and executionContext (only new messages, with images)
+ * @returns executionContext (only new messages, with images)
  */
 export async function fetchTelegramContext(
   installationId: string,
@@ -44,7 +44,7 @@ export async function fetchTelegramContext(
   lastProcessedMessageId?: string,
   client?: TelegramClient,
   currentMessageId?: string,
-): Promise<{ routingContext: string; executionContext: string }> {
+): Promise<{ executionContext: string }> {
   const messages = await globalThis.services.db
     .select({
       fromUsername: telegramMessages.fromUsername,
@@ -75,9 +75,6 @@ export async function fetchTelegramContext(
     count: chronological.length,
   });
 
-  // Routing context: text only, no image downloads
-  const routingContext = formatContextForAgent(chronological);
-
   // For execution context, only include messages after lastProcessedMessageId
   const executionMessages = lastProcessedMessageId
     ? chronological.filter((m) => {
@@ -95,7 +92,7 @@ export async function fetchTelegramContext(
         )
       : "";
 
-  return { routingContext, executionContext };
+  return { executionContext };
 }
 
 /**
@@ -136,39 +133,6 @@ function formatMessageWithMetadata(
   }
 
   return parts.join("\n");
-}
-
-/**
- * Format message array into agent-readable text (text only, no image downloads)
- */
-export function formatContextForAgent(
-  messages: TelegramContextMessage[],
-): string {
-  if (messages.length === 0) {
-    return "";
-  }
-
-  const totalMessages = messages.length;
-
-  const formattedMessages = messages
-    .filter((m) => {
-      return m.text || m.fileId;
-    })
-    .map((msg, index) => {
-      const relativeIndex = index - totalMessages;
-      const imageParts: string[] = [];
-      if (msg.fileId) {
-        imageParts.push("[image]: photo (not downloaded for routing context)");
-      }
-      return formatMessageWithMetadata(msg, relativeIndex, imageParts);
-    });
-
-  const result = `# Telegram Chat Context\n\n${CONTEXT_PREAMBLE}\n\n${formattedMessages.join("\n\n")}\n\n---`;
-  log.debug("Formatted messages for context", {
-    messageCount: formattedMessages.length,
-    resultLength: result.length,
-  });
-  return result;
 }
 
 /**
