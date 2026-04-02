@@ -115,7 +115,7 @@ ENV RUSTUP_HOME=/usr/local/rustup
 ENV CARGO_HOME=/usr/local/cargo
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
     | sh -s -- -y --default-toolchain stable --no-modify-path \
-    && chmod -R a+rX /usr/local/rustup /usr/local/cargo \
+    && chmod -R a+rwX /usr/local/rustup /usr/local/cargo \
     && echo 'export PATH=$PATH:/usr/local/cargo/bin' > /etc/profile.d/rust.sh
 
 # ---------------------------------------------------------------------------
