@@ -259,8 +259,6 @@ pub(crate) async fn spawn_mitmdump(
         .arg(&config.addon_path)
         .arg("--quiet")
         .arg("--set")
-        .arg("connection_strategy=lazy")
-        .arg("--set")
         .arg(format!(
             "ssl_verify_upstream_trusted_ca={}",
             crate::deps::SYSTEM_CA_BUNDLE

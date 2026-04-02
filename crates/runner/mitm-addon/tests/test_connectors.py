@@ -1279,24 +1279,18 @@ class TestFetchFirewallHeaders:
 
 
 class TestAuthBaseUrlRewrite:
-    """Tests for auth.base URL rewriting in handle_firewall_request."""
+    """Tests for auth.base URL rewriting via forward_request in handle_firewall_request."""
 
     def setup_method(self):
         mitm_addon._firewall_header_cache.clear()
         mitm_addon._cache_locks.clear()
 
     async def test_url_rewrite_with_rel_path_root(self):
-        """When rel_path is '/', resolved base URL is used as-is."""
-        flow = _make_http_flow(
-            host="firewall-placeholder.vm3.ai",
-            path="/hook",
-        )
+        """When rel_path is '/', resolved base URL is forwarded as-is."""
+        flow = _make_http_flow(host="firewall-placeholder.vm3.ai", path="/hook")
         api_entry = {
             "base": "https://firewall-placeholder.vm3.ai/discord-webhook/hook",
-            "auth": {
-                "headers": {},
-                "base": "${{ secrets.DISCORD_WEBHOOK_URL }}",
-            },
+            "auth": {"headers": {}, "base": "${{ secrets.DISCORD_WEBHOOK_URL }}"},
         }
         vm_info = {
             "runId": "run-1",
@@ -1320,28 +1314,25 @@ class TestAuthBaseUrlRewrite:
             "refreshed_secrets": [],
             "cache_hit": False,
         }
-
+        mock_forward = AsyncMock(return_value=(200, b'{"ok":true}', {}))
         with (
             patch.object(mitm_addon, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(mitm_addon, "forward_request", mock_forward),
             patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
         ):
             await mitm_addon.handle_firewall_request(flow, api_entry, vm_info, match_info)
-
-        assert flow.request.url == "https://discord.com/api/webhooks/123/abc"
+        assert mock_forward.call_args[0][0] == "https://discord.com/api/webhooks/123/abc"
         assert flow.metadata["firewall_action"] == "ALLOW"
+        assert flow.response.status_code == 200
 
     async def test_url_rewrite_with_remaining_path(self):
-        """When rel_path has content, it's appended to resolved base."""
+        """When rel_path has content, it's appended to resolved base in forwarded URL."""
         flow = _make_http_flow(
-            host="bitrix.internal",
-            path="/rest/0/placeholder/crm.deal.list.json",
+            host="bitrix.internal", path="/rest/0/placeholder/crm.deal.list.json"
         )
         api_entry = {
             "base": "https://bitrix.internal/rest/{uid}/{code}",
-            "auth": {
-                "headers": {},
-                "base": "${{ secrets.BITRIX_WEBHOOK_URL }}",
-            },
+            "auth": {"headers": {}, "base": "${{ secrets.BITRIX_WEBHOOK_URL }}"},
         }
         vm_info = {
             "runId": "run-1",
@@ -1365,34 +1356,28 @@ class TestAuthBaseUrlRewrite:
             "refreshed_secrets": [],
             "cache_hit": False,
         }
-
+        mock_forward = AsyncMock(return_value=(200, b"ok", {}))
         with (
             patch.object(mitm_addon, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(mitm_addon, "forward_request", mock_forward),
             patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
         ):
             await mitm_addon.handle_firewall_request(flow, api_entry, vm_info, match_info)
-
         assert (
-            flow.request.url
+            mock_forward.call_args[0][0]
             == "https://mycompany.bitrix24.com/rest/1/real-token/crm.deal.list.json"
         )
         assert flow.metadata["firewall_action"] == "ALLOW"
 
     async def test_url_rewrite_preserves_query_string(self):
-        """Query string from original request is preserved after URL rewrite."""
-        flow = _make_http_flow(
-            host="firewall-placeholder.vm3.ai",
-            path="/hook",
-        )
+        """Query string from original request is preserved in forwarded URL."""
+        flow = _make_http_flow(host="firewall-placeholder.vm3.ai", path="/hook")
         flow.request.pretty_url = (
             "https://firewall-placeholder.vm3.ai/discord-webhook/hook?wait=true"
         )
         api_entry = {
             "base": "https://firewall-placeholder.vm3.ai/discord-webhook/hook",
-            "auth": {
-                "headers": {},
-                "base": "${{ secrets.DISCORD_WEBHOOK_URL }}",
-            },
+            "auth": {"headers": {}, "base": "${{ secrets.DISCORD_WEBHOOK_URL }}"},
         }
         vm_info = {
             "runId": "run-1",
@@ -1416,20 +1401,19 @@ class TestAuthBaseUrlRewrite:
             "refreshed_secrets": [],
             "cache_hit": False,
         }
-
+        mock_forward = AsyncMock(return_value=(200, b"ok", {}))
         with (
             patch.object(mitm_addon, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(mitm_addon, "forward_request", mock_forward),
             patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
         ):
             await mitm_addon.handle_firewall_request(flow, api_entry, vm_info, match_info)
-
-        assert flow.request.url == "https://discord.com/api/webhooks/123/abc?wait=true"
+        assert mock_forward.call_args[0][0] == "https://discord.com/api/webhooks/123/abc?wait=true"
 
     async def test_url_rewrite_resolved_base_with_trailing_slash(self):
         """Trailing slash on resolved base is stripped before appending rel_path."""
         flow = _make_http_flow(
-            host="firewall-placeholder.vm3.ai",
-            path="/bitrix/rest/0/placeholder/crm.deal.list",
+            host="firewall-placeholder.vm3.ai", path="/bitrix/rest/0/placeholder/crm.deal.list"
         )
         api_entry = {
             "base": "https://firewall-placeholder.vm3.ai/bitrix/rest/{uid}/{code}",
@@ -1451,27 +1435,27 @@ class TestAuthBaseUrlRewrite:
         }
         token_meta = {
             "headers": {},
-            "base": "https://mycompany.bitrix24.com/rest/1/token/",  # trailing slash
+            "base": "https://mycompany.bitrix24.com/rest/1/token/",
             "resolved_secrets": ["BITRIX_WEBHOOK_URL"],
             "refreshed_connectors": [],
             "refreshed_secrets": [],
             "cache_hit": False,
         }
-
+        mock_forward = AsyncMock(return_value=(200, b"ok", {}))
         with (
             patch.object(mitm_addon, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(mitm_addon, "forward_request", mock_forward),
             patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
         ):
             await mitm_addon.handle_firewall_request(flow, api_entry, vm_info, match_info)
-
-        assert flow.request.url == "https://mycompany.bitrix24.com/rest/1/token/crm.deal.list"
+        assert (
+            mock_forward.call_args[0][0]
+            == "https://mycompany.bitrix24.com/rest/1/token/crm.deal.list"
+        )
 
     async def test_url_rewrite_merges_query_strings(self):
         """When resolved base has query string and original request also has one, merge with &."""
-        flow = _make_http_flow(
-            host="firewall-placeholder.vm3.ai",
-            path="/discord-webhook/hook",
-        )
+        flow = _make_http_flow(host="firewall-placeholder.vm3.ai", path="/discord-webhook/hook")
         flow.request.pretty_url = (
             "https://firewall-placeholder.vm3.ai/discord-webhook/hook?wait=true"
         )
@@ -1495,20 +1479,20 @@ class TestAuthBaseUrlRewrite:
         }
         token_meta = {
             "headers": {},
-            "base": "https://example.com/hook?token=abc",  # base has query string
+            "base": "https://example.com/hook?token=abc",
             "resolved_secrets": ["WEBHOOK_URL"],
             "refreshed_connectors": [],
             "refreshed_secrets": [],
             "cache_hit": False,
         }
-
+        mock_forward = AsyncMock(return_value=(200, b"ok", {}))
         with (
             patch.object(mitm_addon, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(mitm_addon, "forward_request", mock_forward),
             patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
         ):
             await mitm_addon.handle_firewall_request(flow, api_entry, vm_info, match_info)
-
-        assert flow.request.url == "https://example.com/hook?token=abc&wait=true"
+        assert mock_forward.call_args[0][0] == "https://example.com/hook?token=abc&wait=true"
 
     async def test_no_url_rewrite_when_auth_base_absent(self):
         """Without auth.base, no URL rewriting happens (existing behavior)."""
@@ -1538,13 +1522,11 @@ class TestAuthBaseUrlRewrite:
             "refreshed_secrets": [],
             "cache_hit": False,
         }
-
         with (
             patch.object(mitm_addon, "get_firewall_headers", AsyncMock(return_value=token_meta)),
             patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
         ):
             await mitm_addon.handle_firewall_request(flow, api_entry, vm_info, match_info)
-
         # URL should not be modified
         assert flow.request.url == original_url
         assert flow.request.headers["Authorization"] == "Bearer real-token"
@@ -1592,8 +1574,68 @@ class TestMatchFirewallRequestRelPath:
         assert result.match_info["rel_path"] == "/crm.deal.list"
 
 
+class TestBuildRewriteUrl:
+    """Unit tests for _build_rewrite_url (pure URL construction)."""
+
+    def test_simple_base_no_rel_path(self):
+        url = mitm_addon._build_rewrite_url(
+            "https://discord.com/api/webhooks/123/abc",
+            {"rel_path": "/"},
+            "https://firewall-placeholder.vm3.ai/discord-webhook/hook",
+        )
+        assert url == "https://discord.com/api/webhooks/123/abc"
+
+    def test_multi_segment_rel_path(self):
+        url = mitm_addon._build_rewrite_url(
+            "https://example.com/base",
+            {"rel_path": "/a/b/c"},
+            "https://firewall-placeholder.vm3.ai/hook",
+        )
+        assert url == "https://example.com/base/a/b/c"
+
+    def test_base_with_query_no_orig_query(self):
+        url = mitm_addon._build_rewrite_url(
+            "https://example.com/hook?token=secret",
+            {"rel_path": "/"},
+            "https://firewall-placeholder.vm3.ai/hook",
+        )
+        assert url == "https://example.com/hook?token=secret"
+
+    def test_empty_orig_query_ignored(self):
+        url = mitm_addon._build_rewrite_url(
+            "https://example.com/hook",
+            {"rel_path": "/"},
+            "https://firewall-placeholder.vm3.ai/hook?",
+        )
+        assert url == "https://example.com/hook"
+
+    def test_rel_path_with_both_queries_merged(self):
+        url = mitm_addon._build_rewrite_url(
+            "https://example.com/hook?token=abc",
+            {"rel_path": "/sub"},
+            "https://firewall-placeholder.vm3.ai/hook/sub?extra=1",
+        )
+        assert url == "https://example.com/hook/sub?token=abc&extra=1"
+
+    def test_trailing_slash_on_base_deduped(self):
+        url = mitm_addon._build_rewrite_url(
+            "https://example.com/hook/",
+            {"rel_path": "/sub"},
+            "https://firewall-placeholder.vm3.ai/hook/sub",
+        )
+        assert url == "https://example.com/hook/sub"
+
+    def test_no_rel_path_key_defaults_to_root(self):
+        url = mitm_addon._build_rewrite_url(
+            "https://example.com/hook",
+            {},
+            "https://firewall-placeholder.vm3.ai/hook",
+        )
+        assert url == "https://example.com/hook"
+
+
 class TestAuthBaseUrlRewriteEdgeCases:
-    """Edge-case tests for auth.base URL rewriting."""
+    """Integration tests for auth.base URL rewriting via forward_request."""
 
     def setup_method(self):
         mitm_addon._firewall_header_cache.clear()
@@ -1636,18 +1678,24 @@ class TestAuthBaseUrlRewriteEdgeCases:
         }
         return flow, api_entry, vm_info, match_info, token_meta
 
-    async def test_sets_auth_url_rewrite_metadata(self):
-        """auth_url_rewrite metadata is set and host/port updated for upstream connection."""
+    async def test_sets_auth_url_rewrite_metadata_and_response(self):
+        """auth_url_rewrite metadata is set and flow.response is populated via forward_request."""
         flow, api_entry, vm_info, match_info, token_meta = self._make_rewrite_inputs()
+        mock_forward = AsyncMock(
+            return_value=(200, b'{"ok":true}', {"Content-Type": "application/json"})
+        )
         with (
             patch.object(mitm_addon, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(mitm_addon, "forward_request", mock_forward),
             patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
         ):
             await mitm_addon.handle_firewall_request(flow, api_entry, vm_info, match_info)
         assert flow.metadata["auth_url_rewrite"] is True
-        # Host and port must be updated so mitmproxy connects to the real upstream
-        assert flow.request.host == "discord.com"
-        assert flow.request.port == 443
+        assert flow.response is not None
+        assert flow.response.status_code == 200
+        # forward_request called with the rewritten URL
+        call_args = mock_forward.call_args
+        assert call_args[0][0] == "https://discord.com/api/webhooks/123/abc"
 
     async def test_no_auth_url_rewrite_metadata_when_no_base(self):
         """auth_url_rewrite metadata is absent when no URL rewrite happens."""
@@ -1680,59 +1728,41 @@ class TestAuthBaseUrlRewriteEdgeCases:
         ):
             await mitm_addon.handle_firewall_request(flow, api_entry, vm_info, match_info)
         assert "auth_url_rewrite" not in flow.metadata
+        # Standard header injection happened
+        assert flow.request.headers["Authorization"] == "Bearer real"
 
-    async def test_url_rewrite_with_multi_segment_rel_path(self):
-        """Multi-segment rel_path is correctly appended."""
+    async def test_forward_request_includes_auth_headers(self):
+        """auth.headers are included in the forwarded request to the real URL."""
         flow, api_entry, vm_info, match_info, token_meta = self._make_rewrite_inputs(
-            resolved_base="https://example.com/base",
-            rel_path="/a/b/c",
+            resolved_base="https://discord.com/api/webhooks/123/abc",
         )
+        token_meta["headers"] = {"X-Custom": "injected-value"}
+        mock_forward = AsyncMock(return_value=(200, b"ok", {}))
         with (
             patch.object(mitm_addon, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(mitm_addon, "forward_request", mock_forward),
             patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
         ):
             await mitm_addon.handle_firewall_request(flow, api_entry, vm_info, match_info)
-        assert flow.request.url == "https://example.com/base/a/b/c"
+        assert flow.metadata["auth_url_rewrite"] is True
+        # Auth headers passed to forward_request (in the headers dict)
+        call_args = mock_forward.call_args
+        req_headers = call_args[0][2]
+        assert req_headers["X-Custom"] == "injected-value"
 
-    async def test_url_rewrite_resolved_base_has_query_no_orig_query(self):
-        """Resolved base with query string, original request without — base query preserved."""
-        flow, api_entry, vm_info, match_info, token_meta = self._make_rewrite_inputs(
-            resolved_base="https://example.com/hook?token=secret",
-        )
+    async def test_forward_failure_returns_502(self):
+        """forward_request exception produces a 502 error response."""
+        flow, api_entry, vm_info, match_info, token_meta = self._make_rewrite_inputs()
+        mock_forward = AsyncMock(side_effect=Exception("connection refused"))
         with (
             patch.object(mitm_addon, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(mitm_addon, "forward_request", mock_forward),
             patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
         ):
             await mitm_addon.handle_firewall_request(flow, api_entry, vm_info, match_info)
-        assert flow.request.url == "https://example.com/hook?token=secret"
-
-    async def test_url_rewrite_empty_query_string_ignored(self):
-        """Original request with trailing '?' (empty qs) does not append '&' or '?'."""
-        flow, api_entry, vm_info, match_info, token_meta = self._make_rewrite_inputs(
-            pretty_url="https://firewall-placeholder.vm3.ai/discord-webhook/hook?",
-            resolved_base="https://example.com/hook",
-        )
-        with (
-            patch.object(mitm_addon, "get_firewall_headers", AsyncMock(return_value=token_meta)),
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
-        ):
-            await mitm_addon.handle_firewall_request(flow, api_entry, vm_info, match_info)
-        # Empty query string after '?' should be ignored
-        assert flow.request.url == "https://example.com/hook"
-
-    async def test_url_rewrite_rel_path_with_query_and_base_query(self):
-        """rel_path + query string from original + query string from base all merge correctly."""
-        flow, api_entry, vm_info, match_info, token_meta = self._make_rewrite_inputs(
-            pretty_url="https://firewall-placeholder.vm3.ai/discord-webhook/hook/sub?extra=1",
-            resolved_base="https://example.com/hook?token=abc",
-            rel_path="/sub",
-        )
-        with (
-            patch.object(mitm_addon, "get_firewall_headers", AsyncMock(return_value=token_meta)),
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
-        ):
-            await mitm_addon.handle_firewall_request(flow, api_entry, vm_info, match_info)
-        assert flow.request.url == "https://example.com/hook/sub?token=abc&extra=1"
+        assert flow.response is not None
+        assert flow.response.status_code == 502
+        assert flow.metadata["auth_url_rewrite"] is True
 
     async def test_no_rewrite_when_resolved_base_empty_string(self):
         """Empty string base from server is treated as absent — no URL rewrite."""
@@ -1746,21 +1776,3 @@ class TestAuthBaseUrlRewriteEdgeCases:
             await mitm_addon.handle_firewall_request(flow, api_entry, vm_info, match_info)
         assert flow.request.url == original_url
         assert "auth_url_rewrite" not in flow.metadata
-
-    async def test_url_rewrite_coexists_with_header_injection(self):
-        """auth.base URL rewrite and auth.headers injection both apply."""
-        flow, api_entry, vm_info, match_info, token_meta = self._make_rewrite_inputs(
-            resolved_base="https://discord.com/api/webhooks/123/abc",
-        )
-        # Server returns both base and headers
-        token_meta["headers"] = {"X-Custom": "injected-value"}
-        with (
-            patch.object(mitm_addon, "get_firewall_headers", AsyncMock(return_value=token_meta)),
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
-        ):
-            await mitm_addon.handle_firewall_request(flow, api_entry, vm_info, match_info)
-        # URL rewritten
-        assert flow.request.url == "https://discord.com/api/webhooks/123/abc"
-        assert flow.metadata["auth_url_rewrite"] is True
-        # Header also injected
-        assert flow.request.headers["X-Custom"] == "injected-value"

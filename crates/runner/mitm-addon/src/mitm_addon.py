@@ -486,6 +486,90 @@ async def fetch_firewall_headers(
     )
 
 
+def _build_rewrite_url(resolved_base: str, match_info: dict, orig_url: str) -> str:
+    """Build the final URL for auth.base URL rewriting.
+
+    Combines the resolved base URL (with credentials in path), the relative
+    path from the firewall match, and query strings from both base and
+    original request.
+    """
+    # Split resolved base into path and query parts
+    base_qs_idx = resolved_base.find("?")
+    if base_qs_idx != -1:
+        base_path = resolved_base[:base_qs_idx]
+        base_qs = resolved_base[base_qs_idx + 1 :]
+    else:
+        base_path = resolved_base
+        base_qs = ""
+
+    # Append rel_path to the path portion (not after query string)
+    rel_path = match_info.get("rel_path", "/")
+    if rel_path != "/":
+        new_url = base_path.rstrip("/") + rel_path
+    else:
+        new_url = base_path
+
+    # Collect query strings: base qs + original request qs
+    qs_parts: list[str] = []
+    if base_qs:
+        qs_parts.append(base_qs)
+    orig_qs_idx = orig_url.find("?")
+    if orig_qs_idx != -1:
+        orig_qs = orig_url[orig_qs_idx + 1 :]
+        if orig_qs:
+            qs_parts.append(orig_qs)
+    if qs_parts:
+        new_url += "?" + "&".join(qs_parts)
+    return new_url
+
+
+HOP_BY_HOP = frozenset(
+    (
+        "connection",
+        "keep-alive",
+        "proxy-connection",
+        "transfer-encoding",
+        "te",
+        "trailer",
+        "upgrade",
+    )
+)
+
+
+def _forward_request_sync(
+    url: str,
+    method: str,
+    headers: dict[str, str],
+    body: bytes | None,
+) -> tuple[int, bytes, dict[str, str]]:
+    """Forward an HTTP request to the real URL and return (status, body, headers).
+
+    Used for auth.base URL rewriting: the addon makes the upstream request
+    itself instead of relying on mitmproxy's connection (which would go to
+    the placeholder IP in eager mode).
+    """
+    req = urllib.request.Request(url, data=body, method=method)
+    for k, v in headers.items():
+        if k.lower() in HOP_BY_HOP or k.lower() == "host":
+            continue
+        req.add_header(k, v)
+    try:
+        resp = urllib.request.urlopen(req, timeout=30)
+        return resp.status, resp.read(), dict(resp.headers)
+    except urllib.error.HTTPError as e:
+        return e.code, e.read(), dict(e.headers)
+
+
+async def forward_request(
+    url: str,
+    method: str,
+    headers: dict[str, str],
+    body: bytes | None,
+) -> tuple[int, bytes, dict[str, str]]:
+    """Async wrapper for _forward_request_sync."""
+    return await asyncio.to_thread(_forward_request_sync, url, method, headers, body)
+
+
 def _build_cache_hit(cached: dict) -> dict | None:
     """Check if a cached entry is still valid and return a cache-hit result."""
     expires_at = cached.get("expiresAt")
@@ -640,50 +724,48 @@ async def handle_firewall_request(
 
     # Inject resolved auth headers into the request
     headers = token_meta["headers"]
-    for header_name, header_value in headers.items():
-        flow.request.headers[header_name] = header_value
 
-    # Rewrite URL if auth.base is present (webhook-url connectors)
+    # URL rewrite path: auth.base is present (webhook-url connectors).
+    # The addon forwards the request itself because mitmproxy's eager
+    # connection already connected to the placeholder IP — we can't redirect
+    # it. Setting flow.response bypasses the upstream connection entirely.
     resolved_base = token_meta.get("base")
     if resolved_base:
-        # Split resolved base into path and query parts
-        base_qs_idx = resolved_base.find("?")
-        if base_qs_idx != -1:
-            base_path = resolved_base[:base_qs_idx]
-            base_qs = resolved_base[base_qs_idx + 1 :]
-        else:
-            base_path = resolved_base
-            base_qs = ""
+        new_url = _build_rewrite_url(resolved_base, match_info, flow.request.pretty_url)
 
-        # Append rel_path to the path portion (not after query string)
-        rel_path = match_info.get("rel_path", "/")
-        if rel_path != "/":
-            new_url = base_path.rstrip("/") + rel_path
-        else:
-            new_url = base_path
+        # Merge original request headers with resolved auth headers
+        req_headers = dict(flow.request.headers)
+        for header_name, header_value in headers.items():
+            req_headers[header_name] = header_value
 
-        # Collect query strings: base qs + original request qs
-        qs_parts: list[str] = []
-        if base_qs:
-            qs_parts.append(base_qs)
-        orig_url = flow.request.pretty_url
-        orig_qs_idx = orig_url.find("?")
-        if orig_qs_idx != -1:
-            orig_qs = orig_url[orig_qs_idx + 1 :]
-            if orig_qs:
-                qs_parts.append(orig_qs)
-        if qs_parts:
-            new_url += "?" + "&".join(qs_parts)
+        try:
+            status, resp_body, resp_headers = await forward_request(
+                new_url,
+                flow.request.method,
+                req_headers,
+                flow.request.content if flow.request.method in ("POST", "PUT", "PATCH") else None,
+            )
+            flow.response = http.Response.make(status, resp_body, resp_headers)
+        except Exception as e:
+            ctx.log.error(f"[{run_id}] URL rewrite forward failed: {e}")
+            flow.response = http.Response.make(
+                502,
+                json.dumps(
+                    {
+                        "error": "url_rewrite_forward_failed",
+                        "message": str(e),
+                        "firewall": match_info.get("ref", ""),
+                    }
+                ).encode(),
+                {"Content-Type": "application/json"},
+            )
 
-        flow.request.url = new_url
-        # In transparent mode, update host/port so mitmproxy connects to the
-        # real upstream server instead of the placeholder IP.
-        parsed = urllib.parse.urlparse(new_url)
-        if parsed.hostname:
-            flow.request.host = parsed.hostname
-            flow.request.port = parsed.port or (443 if parsed.scheme == "https" else 80)
         flow.metadata["auth_url_rewrite"] = True
         ctx.log.info(f"[{run_id}] Firewall URL rewrite: {firewall_base} -> [redacted]")
+    else:
+        # Standard header injection path
+        for header_name, header_value in headers.items():
+            flow.request.headers[header_name] = header_value
 
     flow.metadata["firewall_action"] = "ALLOW"
     flow.metadata["auth_resolved_secrets"] = token_meta.get("resolved_secrets", [])
