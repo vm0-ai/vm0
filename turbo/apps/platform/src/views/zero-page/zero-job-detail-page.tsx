@@ -44,13 +44,8 @@ import { TONE_OPTIONS, type Tone } from "./zero-tone-constants.ts";
 import type { ScheduleEntry } from "./zero-schedule-card.tsx";
 import {
   zeroJobDetail$,
-  zeroJobDetailError$,
   zeroJobInstructions$,
-  zeroJobInstructionsLoading$,
-  zeroJobInstructionsError$,
   zeroJobScheduleEntries$,
-  zeroJobScheduleLoading$,
-  zeroJobScheduleError$,
   saveZeroJobSchedule$,
   deleteZeroJobSchedule$,
   toggleZeroJobScheduleEnabled$,
@@ -65,14 +60,13 @@ import {
   zeroJobSettingsSaving$,
   deleteZeroJobAgent$,
   zeroJobAddedConnectors$,
-  zeroJobConnectorsLoading$,
   addZeroJobConnector$,
   removeZeroJobConnector$,
   saveZeroJobConnectors$,
   zeroJobActiveTab$,
   setZeroJobActiveTab$,
   zeroJobFirewallPolicies$,
-  setZeroJobFirewallPolicies$,
+  reloadJobDetail$,
 } from "../../signals/zero-page/zero-job-detail.ts";
 import type { AgentDetail } from "../../signals/zero-page/agent-types.ts";
 import { runScheduleNow$ } from "../../signals/zero-page/zero-schedule.ts";
@@ -114,6 +108,18 @@ import {
 
 interface ZeroJobDetailPageProps {
   agentId: string;
+}
+
+function loadableErrorMessage(loadable: {
+  state: string;
+  error?: unknown;
+}): string | null {
+  if (loadable.state !== "hasError") {
+    return null;
+  }
+  return loadable.error instanceof Error
+    ? loadable.error.message
+    : "Unknown error";
 }
 
 function Breadcrumb({
@@ -293,6 +299,12 @@ function AgentTabNav({
   );
 }
 
+function resolveSound(sound: string): Tone {
+  return (TONE_OPTIONS as readonly string[]).includes(sound)
+    ? (sound as Tone)
+    : "professional";
+}
+
 function extractAgentFields(
   detail: AgentDetail | null,
   fallbackName: string,
@@ -421,13 +433,15 @@ function JobPermissionsTab({
   displayName: string;
   ownerId: string;
 }) {
-  const addedConnectors = useGet(zeroJobAddedConnectors$);
+  const connectorsLoadable = useLoadable(zeroJobAddedConnectors$);
+  const addedConnectors =
+    connectorsLoadable.state === "hasData" ? connectorsLoadable.data : [];
   const addConnector = useSet(addZeroJobConnector$);
   const removeConnector = useSet(removeZeroJobConnector$);
   const saveConnectors = useSet(saveZeroJobConnectors$);
   const pageSignal = useGet(pageSignal$);
-  const firewallPolicies = useGet(zeroJobFirewallPolicies$);
-  const setFirewallPolicies = useSet(setZeroJobFirewallPolicies$);
+  const firewallPolicies = useLastResolved(zeroJobFirewallPolicies$) ?? null;
+  const reloadDetail = useSet(reloadJobDetail$);
   const saveFirewallPol = useSet(saveFirewallPolicies$);
   const firewallType = useGet(permFirewallType$);
   const setFirewallType = useSet(setPermFirewallType$);
@@ -443,7 +457,7 @@ function JobPermissionsTab({
     userLoadable.state === "hasData" ? userLoadable.data?.id : undefined;
   const isOwner = currentUserId === ownerId;
 
-  const connectorsLoading = useGet(zeroJobConnectorsLoading$);
+  const connectorsLoading = connectorsLoadable.state === "loading";
 
   const allTypesLoadable = useLastLoadable(allConnectorTypes$);
   const allConnectors =
@@ -460,15 +474,15 @@ function JobPermissionsTab({
   const addedSet = new Set(addedConnectors);
 
   const handleToggle = (type: string, checked: boolean) => {
-    if (checked) {
-      addConnector(type);
-    } else {
-      removeConnector(type);
-    }
+    const modify = checked
+      ? addConnector(type, pageSignal)
+      : removeConnector(type, pageSignal);
     setSavingType(type);
     detach(
-      saveConnectors(pageSignal).finally(() => {
-        setSavingType(null);
+      modify.then(() => {
+        return saveConnectors(pageSignal).finally(() => {
+          setSavingType(null);
+        });
       }),
       Reason.DomCallback,
     );
@@ -620,7 +634,7 @@ function JobPermissionsTab({
                   pageSignal,
                 );
                 if (saved !== undefined) {
-                  setFirewallPolicies(saved);
+                  reloadDetail();
                 }
                 toast.success("Permissions updated");
               }}
@@ -636,9 +650,10 @@ function JobPermissionsTab({
 }
 
 function JobScheduleTab({ displayName }: { displayName: string }) {
-  const entries = useGet(zeroJobScheduleEntries$);
-  const loading = useGet(zeroJobScheduleLoading$);
-  const scheduleError = useGet(zeroJobScheduleError$);
+  const scheduleLoadable = useLoadable(zeroJobScheduleEntries$);
+  const entries = useLastResolved(zeroJobScheduleEntries$) ?? [];
+  const loading = scheduleLoadable.state === "loading";
+  const scheduleError = loadableErrorMessage(scheduleLoadable);
   const saveSchedule = useSet(saveZeroJobSchedule$);
   const deleteSchedule = useSet(deleteZeroJobSchedule$);
   const toggleEnabled = useSet(toggleZeroJobScheduleEnabled$);
@@ -678,8 +693,6 @@ function JobScheduleTab({ displayName }: { displayName: string }) {
 function JobInstructionsTab() {
   const pageSignal = useGet(pageSignal$);
   const instructionsLoadable = useLoadable(zeroJobInstructions$);
-  const loadingLoadable = useLoadable(zeroJobInstructionsLoading$);
-  const instructionsErrorLoadable = useLoadable(zeroJobInstructionsError$);
   const editedLoadable = useLoadable(zeroJobEditedContent$);
   const dirtyLoadable = useLoadable(zeroJobInstructionsDirty$);
   const buildingLoadable = useLoadable(zeroJobBuilding$);
@@ -687,12 +700,8 @@ function JobInstructionsTab() {
 
   const instructions =
     instructionsLoadable.state === "hasData" ? instructionsLoadable.data : null;
-  const loading =
-    loadingLoadable.state === "hasData" && loadingLoadable.data === true;
-  const fetchError =
-    instructionsErrorLoadable.state === "hasData"
-      ? instructionsErrorLoadable.data
-      : null;
+  const loading = instructionsLoadable.state === "loading";
+  const fetchError = loadableErrorMessage(instructionsLoadable);
   const edited =
     editedLoadable.state === "hasData" ? editedLoadable.data : null;
   const isDirty =
@@ -729,8 +738,9 @@ function JobInstructionsTab() {
 // ---------------------------------------------------------------------------
 
 export function ZeroJobDetailPage({ agentId }: ZeroJobDetailPageProps) {
-  const detail = useGet(zeroJobDetail$);
-  const error = useGet(zeroJobDetailError$);
+  const detailLoadable = useLoadable(zeroJobDetail$);
+  const detail = useLastResolved(zeroJobDetail$) ?? null;
+  const error = loadableErrorMessage(detailLoadable);
   const agents = useLastResolved(agents$) ?? [];
   const listItem = agents.find((a) => {
     return a.id === agentId;
@@ -741,11 +751,7 @@ export function ZeroJobDetailPage({ agentId }: ZeroJobDetailPageProps) {
     agentId,
     listItem,
   );
-  const resolvedSound: Tone = (TONE_OPTIONS as readonly string[]).includes(
-    sound,
-  )
-    ? (sound as Tone)
-    : "professional";
+  const resolvedSound = resolveSound(sound);
 
   const saving = useGet(zeroJobSettingsSaving$);
   const deleteAgent = useSet(deleteZeroJobAgent$);

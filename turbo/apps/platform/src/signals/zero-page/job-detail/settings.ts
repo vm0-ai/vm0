@@ -4,7 +4,7 @@ import { zeroAgentsByIdContract } from "@vm0/core";
 import { throwIfAbort } from "../../utils.ts";
 import { logger } from "../../log.ts";
 import { zeroClient$ } from "../../api-client.ts";
-import { zeroJobDetail$, fetchZeroJobDetail$ } from "./detail.ts";
+import { zeroJobDetail$, reloadJobDetail$ } from "./detail.ts";
 import { reloadAgents$ } from "../agents-list.ts";
 
 const L = logger("ZeroJobDetail");
@@ -16,11 +16,6 @@ const L = logger("ZeroJobDetail");
 const internalSaving$ = state(false);
 export const zeroJobSettingsSaving$ = computed((get) => {
   return get(internalSaving$);
-});
-
-/** Reset saving state. */
-export const resetSavingState$ = command(({ set }) => {
-  set(internalSaving$, false);
 });
 
 /** Set saving state to true (used by connectors module). */
@@ -37,7 +32,8 @@ interface ZeroJobSettingsUpdate {
 
 export const zeroJobUpdateSettings$ = command(
   async ({ get, set }, update: ZeroJobSettingsUpdate, signal: AbortSignal) => {
-    const detail = get(zeroJobDetail$);
+    const detail = await get(zeroJobDetail$);
+    signal.throwIfAborted();
     if (!detail) {
       throw new Error("No compose detail found");
     }
@@ -60,7 +56,7 @@ export const zeroJobUpdateSettings$ = command(
         throw new Error(`Save failed: ${detail}`);
       }
 
-      await set(fetchZeroJobDetail$, signal);
+      set(reloadJobDetail$);
       set(reloadAgents$);
       toast.success("Profile saved");
     } catch (error) {

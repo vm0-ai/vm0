@@ -11,7 +11,8 @@ import { reloadAgents$ } from "../agents-list.ts";
 
 export const deleteZeroJobAgent$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const detail = get(zeroJobDetail$);
+    const detail = await get(zeroJobDetail$);
+    signal.throwIfAborted();
     if (!detail) {
       throw new Error("No agent detail loaded");
     }

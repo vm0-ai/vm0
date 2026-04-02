@@ -5,8 +5,6 @@ import {
   zeroSchedulesByNameContract,
   zeroSchedulesEnableContract,
 } from "@vm0/core";
-import { throwIfAbort } from "../../utils.ts";
-import { logger } from "../../log.ts";
 import { zeroClient$ } from "../../api-client.ts";
 import { zeroJobDetail$ } from "./detail.ts";
 import {
@@ -18,10 +16,8 @@ import {
 } from "../cron.ts";
 import type { ScheduleEntry } from "../../../views/zero-page/zero-schedule-card.tsx";
 
-const L = logger("ZeroJobDetail");
-
 // ---------------------------------------------------------------------------
-// Agent schedule
+// Agent schedule — reactive async computed
 // ---------------------------------------------------------------------------
 
 interface ScheduleItem {
@@ -110,81 +106,49 @@ function scheduleToTimeString(s: ScheduleItem): string {
 // Schedule state
 // ---------------------------------------------------------------------------
 
-interface ZeroJobScheduleState {
-  schedules: ScheduleItem[];
-  error: string | null;
-}
+const internalScheduleReload$ = state(0);
 
-const scheduleState$ = state<ZeroJobScheduleState>({
-  schedules: [],
-  error: null,
+const reloadJobSchedule$ = command(({ set }) => {
+  set(internalScheduleReload$, (prev) => {
+    return prev + 1;
+  });
 });
 
-const scheduleLoaded$ = state(false);
-
-/** Reset schedule state to initial values. */
-export const resetScheduleState$ = command(({ set }) => {
-  set(scheduleState$, { schedules: [], error: null });
-  set(scheduleLoaded$, false);
+const rawSchedules$ = computed(async (get): Promise<ScheduleItem[]> => {
+  get(internalScheduleReload$);
+  const detail = await get(zeroJobDetail$);
+  if (!detail) {
+    return [];
+  }
+  const client = get(zeroClient$)(zeroSchedulesMainContract);
+  const result = await client.list();
+  if (result.status !== 200) {
+    throw new Error(`Failed to fetch schedules (${result.status})`);
+  }
+  return result.body.schedules.filter((s) => {
+    return s.agentId === detail.agentId;
+  });
 });
 
-export const zeroJobScheduleEntries$ = computed((get) => {
-  const items = get(scheduleState$).schedules;
-  return [...items]
-    .sort((a, b) => {
-      return b.createdAt.localeCompare(a.createdAt);
-    })
-    .map((s): ScheduleEntry => {
-      return {
-        id: s.id,
-        time: scheduleToTimeString(s),
-        prompt: s.prompt,
-        description: s.description,
-        enabled: s.enabled,
-        name: s.name,
-        timezone: s.timezone,
-        intervalSeconds: s.intervalSeconds,
-      };
-    });
-});
-
-export const zeroJobScheduleLoading$ = computed((get) => {
-  return !get(scheduleLoaded$);
-});
-
-export const zeroJobScheduleError$ = computed((get) => {
-  return get(scheduleState$).error;
-});
-
-export const fetchZeroJobSchedule$ = command(
-  async ({ get, set }, _signal: AbortSignal) => {
-    const detail = get(zeroJobDetail$);
-    if (!detail) {
-      return;
-    }
-
-    try {
-      const client = get(zeroClient$)(zeroSchedulesMainContract);
-      const result = await client.list();
-      if (result.status !== 200) {
-        throw new Error(`Failed to fetch schedules (${result.status})`);
-      }
-
-      const agentSchedules = result.body.schedules.filter((s) => {
-        return s.agentId === detail.agentId;
+export const zeroJobScheduleEntries$ = computed(
+  async (get): Promise<ScheduleEntry[]> => {
+    const items = await get(rawSchedules$);
+    return [...items]
+      .sort((a, b) => {
+        return b.createdAt.localeCompare(a.createdAt);
+      })
+      .map((s): ScheduleEntry => {
+        return {
+          id: s.id,
+          time: scheduleToTimeString(s),
+          prompt: s.prompt,
+          description: s.description,
+          enabled: s.enabled,
+          name: s.name,
+          timezone: s.timezone,
+          intervalSeconds: s.intervalSeconds,
+        };
       });
-      set(scheduleState$, { schedules: agentSchedules, error: null });
-      set(scheduleLoaded$, true);
-    } catch (error) {
-      throwIfAbort(error);
-      L.error("Failed to fetch schedules:", error);
-      set(scheduleState$, {
-        schedules: [],
-        error:
-          error instanceof Error ? error.message : "Failed to load schedules",
-      });
-      set(scheduleLoaded$, true);
-    }
   },
 );
 
@@ -212,7 +176,8 @@ export const saveZeroJobSchedule$ = command(
     params: ZeroJobScheduleSaveParams,
     signal: AbortSignal,
   ) => {
-    const detail = get(zeroJobDetail$);
+    const detail = await get(zeroJobDetail$);
+    signal.throwIfAborted();
     if (!detail) {
       throw new Error("No agent detail loaded");
     }
@@ -283,7 +248,7 @@ export const saveZeroJobSchedule$ = command(
     }
 
     toast.success(params.editName ? "Schedule updated" : "Schedule created");
-    await set(fetchZeroJobSchedule$, signal);
+    set(reloadJobSchedule$);
   },
 );
 
@@ -293,7 +258,8 @@ export const toggleZeroJobScheduleEnabled$ = command(
     params: { name: string; enabled: boolean },
     signal: AbortSignal,
   ) => {
-    const detail = get(zeroJobDetail$);
+    const detail = await get(zeroJobDetail$);
+    signal.throwIfAborted();
     if (!detail) {
       throw new Error("No agent detail loaded");
     }
@@ -312,20 +278,14 @@ export const toggleZeroJobScheduleEnabled$ = command(
       throw new Error(message);
     }
 
-    // Optimistic update: patch the local schedule state instead of refetching
-    const current = get(scheduleState$);
-    set(scheduleState$, {
-      ...current,
-      schedules: current.schedules.map((s) => {
-        return s.name === params.name ? { ...s, enabled: params.enabled } : s;
-      }),
-    });
+    set(reloadJobSchedule$);
   },
 );
 
 export const deleteZeroJobSchedule$ = command(
   async ({ get, set }, scheduleName: string, signal: AbortSignal) => {
-    const detail = get(zeroJobDetail$);
+    const detail = await get(zeroJobDetail$);
+    signal.throwIfAborted();
     if (!detail) {
       throw new Error("No agent detail loaded");
     }
@@ -346,6 +306,6 @@ export const deleteZeroJobSchedule$ = command(
     }
 
     toast.success("Schedule deleted");
-    await set(fetchZeroJobSchedule$, signal);
+    set(reloadJobSchedule$);
   },
 );

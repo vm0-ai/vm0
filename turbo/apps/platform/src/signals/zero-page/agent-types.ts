@@ -1,3 +1,5 @@
+import type { FirewallPolicies } from "@vm0/core";
+
 export interface AgentDetail {
   agentId: string;
   ownerId: string;
@@ -5,6 +7,7 @@ export interface AgentDetail {
   displayName: string | null;
   sound: string | null;
   avatarUrl: string | null;
+  firewallPolicies: FirewallPolicies | null;
 }
 
 export interface AgentInstructions {

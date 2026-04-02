@@ -8,7 +8,7 @@ import { pathParams$ } from "../route.ts";
 import { agents$ } from "../zero-page/agents-list.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import { reloadChatThreads$ } from "../zero-page/zero-chat.ts";
-import { fetchZeroJobData$ } from "../zero-page/zero-job-detail.ts";
+import { setActiveAgent$ } from "../zero-page/zero-job-detail.ts";
 import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
 import { initSlackOrg$ } from "../zero-page/zero-slack.ts";
 import { setSidebarChatAgent$ } from "../zero-page/zero-nav.ts";
@@ -26,7 +26,7 @@ export const setupTeamDetailPage$ = command(
     await Promise.all([
       set(initZeroOnboarding$, signal),
       set(initSlackOrg$, signal),
-      agentId ? set(fetchZeroJobData$, agentId, signal) : Promise.resolve(),
+      agentId ? set(setActiveAgent$, agentId) : undefined,
     ]);
     signal.throwIfAborted();
 

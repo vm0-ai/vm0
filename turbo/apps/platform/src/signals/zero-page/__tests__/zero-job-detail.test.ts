@@ -6,14 +6,9 @@ import { testContext } from "../../__tests__/test-helpers";
 import { setupPage } from "../../../__tests__/page-helper";
 import {
   zeroJobDetail$,
-  zeroJobDetailLoading$,
-  zeroJobDetailError$,
   zeroJobInstructions$,
-  zeroJobInstructionsLoading$,
-  zeroJobInstructionsError$,
   zeroJobScheduleEntries$,
-  zeroJobScheduleError$,
-  fetchZeroJobData$,
+  setActiveAgent$,
   saveZeroJobSchedule$,
   deleteZeroJobSchedule$,
   toggleZeroJobScheduleEnabled$,
@@ -27,12 +22,12 @@ import {
   zeroJobUpdateSettings$,
   zeroJobSettingsSaving$,
   zeroJobAddedConnectors$,
-  zeroJobConnectorsLoading$,
   zeroJobConnectorsDirty$,
   addZeroJobConnector$,
   removeZeroJobConnector$,
   saveZeroJobConnectors$,
   discardZeroJobConnectors$,
+  zeroJobFirewallPolicies$,
   type ZeroJobScheduleSaveParams,
 } from "../zero-job-detail";
 
@@ -152,8 +147,37 @@ function mockSchedules() {
   };
 }
 
+function registerStandardHandlers() {
+  server.use(
+    http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
+      return HttpResponse.json(mockAgentResponse());
+    }),
+    http.get(
+      "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/instructions",
+      () => {
+        return HttpResponse.json(mockInstructions());
+      },
+    ),
+    http.get("http://localhost:3000/api/zero/schedules", () => {
+      return HttpResponse.json(mockSchedules());
+    }),
+    http.get(
+      "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/user-connectors",
+      () => {
+        return HttpResponse.json({ enabledTypes: [] });
+      },
+    ),
+  );
+}
+
+async function setupWithAgent() {
+  registerStandardHandlers();
+  await setupPage({ context, path: "/", withoutRender: true });
+  context.store.set(setActiveAgent$, "my-agent");
+}
+
 describe("zero-job-detail signals", () => {
-  describe("fetchZeroJobData$", () => {
+  describe("setActiveAgent$ and reactive data loading", () => {
     it("should fetch detail, instructions, and schedules successfully", async () => {
       const agentResponse = mockAgentResponse();
       server.use(
@@ -172,37 +196,22 @@ describe("zero-job-detail signals", () => {
       );
 
       await setupPage({ context, path: "/", withoutRender: true });
-      await context.store.set(fetchZeroJobData$, "my-agent", context.signal);
+      context.store.set(setActiveAgent$, "my-agent");
 
-      const detail = context.store.get(zeroJobDetail$);
-      const loading = context.store.get(zeroJobDetailLoading$);
-      const error = context.store.get(zeroJobDetailError$);
-
+      const detail = await context.store.get(zeroJobDetail$);
       expect(detail).toStrictEqual(agentResponse);
-      expect(loading).toBeFalsy();
-      expect(error).toBeNull();
 
-      const instructions = context.store.get(zeroJobInstructions$);
-      const instructionsLoading = context.store.get(
-        zeroJobInstructionsLoading$,
-      );
-      const instructionsError = context.store.get(zeroJobInstructionsError$);
-
+      const instructions = await context.store.get(zeroJobInstructions$);
       expect(instructions).toStrictEqual(mockInstructions());
-      expect(instructionsLoading).toBeFalsy();
-      expect(instructionsError).toBeNull();
 
       const entries = await context.store.get(zeroJobScheduleEntries$);
-      const scheduleError = context.store.get(zeroJobScheduleError$);
-
       expect(entries).toHaveLength(1);
       expect(entries[0]!.name).toBe("daily-run");
       expect(entries[0]!.time).toBe("Every day at 9:00 AM");
       expect(entries[0]!.description).toBe("Daily digest summary");
-      expect(scheduleError).toBeNull();
     });
 
-    it("should set error state when detail API fails", async () => {
+    it("should throw when detail API fails", async () => {
       server.use(
         http.get("http://localhost:3000/api/zero/agents/:name", () => {
           return HttpResponse.json(
@@ -213,22 +222,14 @@ describe("zero-job-detail signals", () => {
       );
 
       await setupPage({ context, path: "/", withoutRender: true });
-      await context.store.set(
-        fetchZeroJobData$,
-        "missing-agent",
-        context.signal,
+      context.store.set(setActiveAgent$, "missing-agent");
+
+      await expect(context.store.get(zeroJobDetail$)).rejects.toThrow(
+        "Failed to fetch agent (404)",
       );
-
-      const detail = context.store.get(zeroJobDetail$);
-      const loading = context.store.get(zeroJobDetailLoading$);
-      const error = context.store.get(zeroJobDetailError$);
-
-      expect(detail).toBeNull();
-      expect(loading).toBeFalsy();
-      expect(error).toBe("Failed to fetch agent (404)");
     });
 
-    it("should set instructions error when instructions API fails", async () => {
+    it("should throw when instructions API fails", async () => {
       server.use(
         http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
           return HttpResponse.json(mockAgentResponse());
@@ -253,19 +254,18 @@ describe("zero-job-detail signals", () => {
       );
 
       await setupPage({ context, path: "/", withoutRender: true });
-      await context.store.set(fetchZeroJobData$, "my-agent", context.signal);
+      context.store.set(setActiveAgent$, "my-agent");
 
-      const instructions = context.store.get(zeroJobInstructions$);
-      const instructionsError = context.store.get(zeroJobInstructionsError$);
-
-      expect(instructions).toBeNull();
-      expect(instructionsError).toBe("Failed to fetch instructions (500)");
+      await expect(context.store.get(zeroJobInstructions$)).rejects.toThrow(
+        "Failed to fetch instructions (500)",
+      );
 
       // Detail should still succeed
-      expect(context.store.get(zeroJobDetail$)).not.toBeNull();
+      const detail = await context.store.get(zeroJobDetail$);
+      expect(detail).not.toBeNull();
     });
 
-    it("should set schedule error when schedules API fails", async () => {
+    it("should throw when schedules API fails", async () => {
       server.use(
         http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
           return HttpResponse.json(mockAgentResponse());
@@ -285,17 +285,17 @@ describe("zero-job-detail signals", () => {
       );
 
       await setupPage({ context, path: "/", withoutRender: true });
-      await context.store.set(fetchZeroJobData$, "my-agent", context.signal);
+      context.store.set(setActiveAgent$, "my-agent");
 
-      const entries = await context.store.get(zeroJobScheduleEntries$);
-      const scheduleError = context.store.get(zeroJobScheduleError$);
-
-      expect(entries).toStrictEqual([]);
-      expect(scheduleError).toBe("Failed to fetch schedules (403)");
+      await expect(context.store.get(zeroJobScheduleEntries$)).rejects.toThrow(
+        "Failed to fetch schedules (403)",
+      );
 
       // Detail and instructions should still succeed
-      expect(context.store.get(zeroJobDetail$)).not.toBeNull();
-      expect(context.store.get(zeroJobInstructions$)).not.toBeNull();
+      const detail = await context.store.get(zeroJobDetail$);
+      expect(detail).not.toBeNull();
+      const instructions = await context.store.get(zeroJobInstructions$);
+      expect(instructions).not.toBeNull();
     });
 
     it("should pass agent name directly to API", async () => {
@@ -322,45 +322,55 @@ describe("zero-job-detail signals", () => {
       );
 
       await setupPage({ context, path: "/", withoutRender: true });
-      await context.store.set(
-        fetchZeroJobData$,
-        "my-org/sub-agent",
-        context.signal,
-      );
+      context.store.set(setActiveAgent$, "my-org/sub-agent");
 
-      const detail = context.store.get(zeroJobDetail$);
+      const detail = await context.store.get(zeroJobDetail$);
       expect(detail).not.toBeNull();
       // Verify the agent name was included in the URL (percent-encoded)
       expect(capturedUrl).toContain("my-org");
       expect(capturedUrl).toContain("sub-agent");
     });
-  });
 
-  describe("saveZeroJobSchedule$", () => {
-    async function setupWithAgent() {
+    it("should derive firewall policies from detail", async () => {
+      const policies = { search: { read: "allow" as const } };
       server.use(
         http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
-          return HttpResponse.json(mockAgentResponse());
-        }),
-        http.get(
-          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/instructions",
-          () => {
-            return HttpResponse.json(mockInstructions());
-          },
-        ),
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json({ schedules: [] });
+          return HttpResponse.json({
+            ...mockAgentResponse(),
+            firewallPolicies: policies,
+          });
         }),
       );
 
       await setupPage({ context, path: "/", withoutRender: true });
-      await context.store.set(fetchZeroJobData$, "my-agent", context.signal);
-    }
+      context.store.set(setActiveAgent$, "my-agent");
 
+      const firewall = await context.store.get(zeroJobFirewallPolicies$);
+      expect(firewall).toStrictEqual(policies);
+    });
+
+    it("should reset draft states on agent switch", async () => {
+      await setupWithAgent();
+      await context.store.get(zeroJobDetail$);
+
+      // Make edits
+      context.store.set(setZeroJobEditedContent$, "some edit");
+      expect(context.store.get(zeroJobEditedContent$)).toBe("some edit");
+
+      // Switch agent
+      context.store.set(setActiveAgent$, "my-agent");
+
+      // Edits should be cleared
+      expect(context.store.get(zeroJobEditedContent$)).toBeNull();
+    });
+  });
+
+  describe("saveZeroJobSchedule$", () => {
     it("should save a cron schedule with every_day frequency", async () => {
       let capturedBody: Record<string, unknown> = {};
 
       await setupWithAgent();
+      await context.store.get(zeroJobDetail$);
 
       server.use(
         http.post(
@@ -401,6 +411,7 @@ describe("zero-job-detail signals", () => {
       let capturedBody: Record<string, unknown> = {};
 
       await setupWithAgent();
+      await context.store.get(zeroJobDetail$);
 
       server.use(
         http.post(
@@ -438,6 +449,7 @@ describe("zero-job-detail signals", () => {
       let capturedBody: Record<string, unknown> = {};
 
       await setupWithAgent();
+      await context.store.get(zeroJobDetail$);
 
       server.use(
         http.post(
@@ -471,6 +483,7 @@ describe("zero-job-detail signals", () => {
       let capturedBody: Record<string, unknown> = {};
 
       await setupWithAgent();
+      await context.store.get(zeroJobDetail$);
 
       server.use(
         http.post(
@@ -509,6 +522,7 @@ describe("zero-job-detail signals", () => {
 
     it("should throw for save when API returns error", async () => {
       await setupWithAgent();
+      await context.store.get(zeroJobDetail$);
 
       server.use(
         http.post("http://localhost:3000/api/zero/schedules", () => {
@@ -544,23 +558,8 @@ describe("zero-job-detail signals", () => {
     it("should send DELETE request with correct URL", async () => {
       let capturedUrl = "";
 
-      server.use(
-        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
-          return HttpResponse.json(mockAgentResponse());
-        }),
-        http.get(
-          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/instructions",
-          () => {
-            return HttpResponse.json(mockInstructions());
-          },
-        ),
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json(mockSchedules());
-        }),
-      );
-
-      await setupPage({ context, path: "/", withoutRender: true });
-      await context.store.set(fetchZeroJobData$, "my-agent", context.signal);
+      await setupWithAgent();
+      await context.store.get(zeroJobDetail$);
 
       server.use(
         http.delete(
@@ -591,23 +590,8 @@ describe("zero-job-detail signals", () => {
     });
 
     it("should throw when delete API returns error", async () => {
-      server.use(
-        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
-          return HttpResponse.json(mockAgentResponse());
-        }),
-        http.get(
-          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/instructions",
-          () => {
-            return HttpResponse.json(mockInstructions());
-          },
-        ),
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json(mockSchedules());
-        }),
-      );
-
-      await setupPage({ context, path: "/", withoutRender: true });
-      await context.store.set(fetchZeroJobData$, "my-agent", context.signal);
+      await setupWithAgent();
+      await context.store.get(zeroJobDetail$);
 
       server.use(
         http.delete("http://localhost:3000/api/zero/schedules/:name", () => {
@@ -633,23 +617,8 @@ describe("zero-job-detail signals", () => {
       let capturedUrl = "";
       let capturedBody: Record<string, unknown> | null = null;
 
-      server.use(
-        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
-          return HttpResponse.json(mockAgentResponse());
-        }),
-        http.get(
-          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/instructions",
-          () => {
-            return HttpResponse.json(mockInstructions());
-          },
-        ),
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json(mockSchedules());
-        }),
-      );
-
-      await setupPage({ context, path: "/", withoutRender: true });
-      await context.store.set(fetchZeroJobData$, "my-agent", context.signal);
+      await setupWithAgent();
+      await context.store.get(zeroJobDetail$);
 
       server.use(
         http.post(
@@ -685,23 +654,8 @@ describe("zero-job-detail signals", () => {
     it("should send disable request for a schedule", async () => {
       let capturedUrl = "";
 
-      server.use(
-        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
-          return HttpResponse.json(mockAgentResponse());
-        }),
-        http.get(
-          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/instructions",
-          () => {
-            return HttpResponse.json(mockInstructions());
-          },
-        ),
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json(mockSchedules());
-        }),
-      );
-
-      await setupPage({ context, path: "/", withoutRender: true });
-      await context.store.set(fetchZeroJobData$, "my-agent", context.signal);
+      await setupWithAgent();
+      await context.store.get(zeroJobDetail$);
 
       server.use(
         http.post(
@@ -729,23 +683,8 @@ describe("zero-job-detail signals", () => {
     });
 
     it("should show toast error when toggle API fails", async () => {
-      server.use(
-        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
-          return HttpResponse.json(mockAgentResponse());
-        }),
-        http.get(
-          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/instructions",
-          () => {
-            return HttpResponse.json(mockInstructions());
-          },
-        ),
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json(mockSchedules());
-        }),
-      );
-
-      await setupPage({ context, path: "/", withoutRender: true });
-      await context.store.set(fetchZeroJobData$, "my-agent", context.signal);
+      await setupWithAgent();
+      await context.store.get(zeroJobDetail$);
 
       server.use(
         http.post(
@@ -775,93 +714,10 @@ describe("zero-job-detail signals", () => {
         ),
       ).rejects.toThrow("Failed to enable schedule (500)");
     });
-
-    it("should optimistically update local state without refetching", async () => {
-      let fetchCount = 0;
-
-      server.use(
-        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
-          return HttpResponse.json(mockAgentResponse());
-        }),
-        http.get(
-          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/instructions",
-          () => {
-            return HttpResponse.json(mockInstructions());
-          },
-        ),
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          fetchCount++;
-          return HttpResponse.json(mockSchedules());
-        }),
-      );
-
-      await setupPage({ context, path: "/", withoutRender: true });
-      await context.store.set(fetchZeroJobData$, "my-agent", context.signal);
-
-      const entriesBefore = await context.store.get(zeroJobScheduleEntries$);
-      expect(entriesBefore).toHaveLength(1);
-      expect(entriesBefore[0]!.enabled).toBeTruthy();
-      const fetchCountAfterInit = fetchCount;
-
-      server.use(
-        http.post(
-          "http://localhost:3000/api/zero/schedules/:name/:action",
-          () => {
-            return HttpResponse.json(mockScheduleResponse());
-          },
-        ),
-      );
-
-      await context.store.set(
-        toggleZeroJobScheduleEnabled$,
-        { name: "daily-run", enabled: false },
-        context.signal,
-      );
-
-      const entriesAfter = await context.store.get(zeroJobScheduleEntries$);
-      expect(entriesAfter).toHaveLength(1);
-      expect(entriesAfter[0]!.enabled).toBeFalsy();
-      // No additional schedule list fetch should have happened
-      expect(fetchCount).toBe(fetchCountAfterInit);
-    });
-  });
-
-  describe("fetchZeroJobSchedule$ preserves stale data during refetch", () => {
-    it("should not clear schedule entries before fetching", async () => {
-      server.use(
-        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
-          return HttpResponse.json(mockAgentResponse());
-        }),
-        http.get(
-          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/instructions",
-          () => {
-            return HttpResponse.json(mockInstructions());
-          },
-        ),
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json(mockSchedules());
-        }),
-      );
-
-      await setupPage({ context, path: "/", withoutRender: true });
-      await context.store.set(fetchZeroJobData$, "my-agent", context.signal);
-
-      const entries = await context.store.get(zeroJobScheduleEntries$);
-      expect(entries).toHaveLength(1);
-
-      // Trigger a second fetch — entries should remain visible (not flash to empty)
-      await context.store.set(fetchZeroJobData$, "my-agent", context.signal);
-
-      const entriesAfterRefetch = await context.store.get(
-        zeroJobScheduleEntries$,
-      );
-      expect(entriesAfterRefetch).toHaveLength(1);
-      expect(entriesAfterRefetch[0]!.name).toBe("daily-run");
-    });
   });
 
   describe("instructions editing", () => {
-    async function setupWithAgent() {
+    async function setupWithInstructions() {
       server.use(
         http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
           return HttpResponse.json(mockAgentResponse());
@@ -878,38 +734,49 @@ describe("zero-job-detail signals", () => {
       );
 
       await setupPage({ context, path: "/", withoutRender: true });
-      await context.store.set(fetchZeroJobData$, "my-agent", context.signal);
+      context.store.set(setActiveAgent$, "my-agent");
+      // Wait for data to load
+      await context.store.get(zeroJobDetail$);
+      await context.store.get(zeroJobInstructions$);
     }
 
     it("should track edited content and dirty state", async () => {
-      await setupWithAgent();
+      await setupWithInstructions();
 
       expect(context.store.get(zeroJobEditedContent$)).toBeNull();
-      expect(context.store.get(zeroJobInstructionsDirty$)).toBeFalsy();
+      await expect(
+        context.store.get(zeroJobInstructionsDirty$),
+      ).resolves.toBeFalsy();
 
       context.store.set(setZeroJobEditedContent$, "New instructions");
 
       expect(context.store.get(zeroJobEditedContent$)).toBe("New instructions");
-      expect(context.store.get(zeroJobInstructionsDirty$)).toBeTruthy();
+      await expect(
+        context.store.get(zeroJobInstructionsDirty$),
+      ).resolves.toBeTruthy();
     });
 
     it("should reset edited content on discard", async () => {
-      await setupWithAgent();
+      await setupWithInstructions();
 
       context.store.set(setZeroJobEditedContent$, "New instructions");
-      expect(context.store.get(zeroJobInstructionsDirty$)).toBeTruthy();
+      await expect(
+        context.store.get(zeroJobInstructionsDirty$),
+      ).resolves.toBeTruthy();
 
       context.store.set(discardZeroJobEdit$);
 
       expect(context.store.get(zeroJobEditedContent$)).toBeNull();
-      expect(context.store.get(zeroJobInstructionsDirty$)).toBeFalsy();
+      await expect(
+        context.store.get(zeroJobInstructionsDirty$),
+      ).resolves.toBeFalsy();
     });
 
     it("should build instructions via zero agents api and update state", async () => {
       let capturedBody: { content: string } | null = null;
       const toastSpy = vi.spyOn(toast, "success");
 
-      await setupWithAgent();
+      await setupWithInstructions();
 
       server.use(
         http.put(
@@ -930,6 +797,15 @@ describe("zero-job-detail signals", () => {
         http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
           return HttpResponse.json(mockAgentResponse());
         }),
+        http.get(
+          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/instructions",
+          () => {
+            return HttpResponse.json({
+              content: "Updated instructions",
+              filename: "instructions.md",
+            });
+          },
+        ),
       );
 
       context.store.set(setZeroJobEditedContent$, "Updated instructions");
@@ -947,8 +823,8 @@ describe("zero-job-detail signals", () => {
       expect(context.store.get(zeroJobBuilding$)).toBeFalsy();
       expect(context.store.get(zeroJobBuildError$)).toBeNull();
 
-      // Instructions state should be optimistically updated
-      const instructions = context.store.get(zeroJobInstructions$);
+      // Instructions should be updated after reload
+      const instructions = await context.store.get(zeroJobInstructions$);
       expect(instructions?.content).toBe("Updated instructions");
 
       // Should show success toast
@@ -956,10 +832,8 @@ describe("zero-job-detail signals", () => {
       toastSpy.mockRestore();
     });
 
-    it("should clear building state before detail refetch so editor remounts editable", async () => {
-      let buildingDuringRefetch: boolean | null = null;
-
-      await setupWithAgent();
+    it("should clear building state before reloads so editor remounts editable", async () => {
+      await setupWithInstructions();
 
       server.use(
         http.put(
@@ -977,21 +851,25 @@ describe("zero-job-detail signals", () => {
           },
         ),
         http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
-          // Capture building state during the post-build detail refetch.
-          // This must be false so the editor remounts with editable=true.
-          buildingDuringRefetch = context.store.get(zeroJobBuilding$);
           return HttpResponse.json(mockAgentResponse());
         }),
+        http.get(
+          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/instructions",
+          () => {
+            return HttpResponse.json(mockInstructions());
+          },
+        ),
       );
 
       context.store.set(setZeroJobEditedContent$, "New content");
       await context.store.set(buildZeroJobInstructions$, context.signal);
 
-      expect(buildingDuringRefetch).toBeFalsy();
+      // Building state should be false after build completes
+      expect(context.store.get(zeroJobBuilding$)).toBeFalsy();
     });
 
     it("should set build error on api failure", async () => {
-      await setupWithAgent();
+      await setupWithInstructions();
 
       server.use(
         http.put(
@@ -1027,7 +905,7 @@ describe("zero-job-detail signals", () => {
     it("should not build when no edited content", async () => {
       let apiCalled = false;
 
-      await setupWithAgent();
+      await setupWithInstructions();
 
       server.use(
         http.put(
@@ -1053,7 +931,7 @@ describe("zero-job-detail signals", () => {
   });
 
   describe("zeroJobUpdateSettings$", () => {
-    async function setupWithAgent() {
+    async function setupSettings() {
       server.use(
         http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
           return HttpResponse.json(mockAgentResponse());
@@ -1070,13 +948,14 @@ describe("zero-job-detail signals", () => {
       );
 
       await setupPage({ context, path: "/", withoutRender: true });
-      await context.store.set(fetchZeroJobData$, "my-agent", context.signal);
+      context.store.set(setActiveAgent$, "my-agent");
+      await context.store.get(zeroJobDetail$);
     }
 
     it("should update settings via PATCH agents API and refetch", async () => {
       let capturedBody: Record<string, unknown> = {};
 
-      await setupWithAgent();
+      await setupSettings();
 
       server.use(
         http.patch(
@@ -1118,7 +997,7 @@ describe("zero-job-detail signals", () => {
     it("should send empty update via PATCH agents API", async () => {
       let patchCalled = false;
 
-      await setupWithAgent();
+      await setupSettings();
 
       server.use(
         http.patch(
@@ -1148,7 +1027,7 @@ describe("zero-job-detail signals", () => {
     });
 
     it("should show error toast on PATCH failure", async () => {
-      await setupWithAgent();
+      await setupSettings();
 
       server.use(
         http.patch(
@@ -1173,7 +1052,7 @@ describe("zero-job-detail signals", () => {
   });
 
   describe("connectors management", () => {
-    async function setupWithAgent() {
+    async function setupWithConnectors() {
       server.use(
         http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
           return HttpResponse.json(mockAgentResponse());
@@ -1196,60 +1075,72 @@ describe("zero-job-detail signals", () => {
       );
 
       await setupPage({ context, path: "/", withoutRender: true });
-      await context.store.set(fetchZeroJobData$, "my-agent", context.signal);
+      context.store.set(setActiveAgent$, "my-agent");
+      await context.store.get(zeroJobDetail$);
     }
 
     it("should seed connectors from user-connectors api", async () => {
-      await setupWithAgent();
+      await setupWithConnectors();
 
-      const connectors = context.store.get(zeroJobAddedConnectors$);
+      const connectors = await context.store.get(zeroJobAddedConnectors$);
       expect(connectors).toStrictEqual(["search"]);
-      expect(context.store.get(zeroJobConnectorsDirty$)).toBeFalsy();
-    });
-
-    it("should report loading=false after connectors are fetched", async () => {
-      await setupWithAgent();
-
-      expect(context.store.get(zeroJobConnectorsLoading$)).toBeFalsy();
+      await expect(
+        context.store.get(zeroJobConnectorsDirty$),
+      ).resolves.toBeFalsy();
     });
 
     it("should add and remove connectors with dirty tracking", async () => {
-      await setupWithAgent();
+      await setupWithConnectors();
 
-      context.store.set(addZeroJobConnector$, "gmail");
+      await context.store.set(addZeroJobConnector$, "gmail", context.signal);
 
-      expect(context.store.get(zeroJobAddedConnectors$)).toStrictEqual([
+      await expect(
+        context.store.get(zeroJobAddedConnectors$),
+      ).resolves.toStrictEqual(["search", "gmail"]);
+      await expect(
+        context.store.get(zeroJobConnectorsDirty$),
+      ).resolves.toBeTruthy();
+
+      await context.store.set(
+        removeZeroJobConnector$,
         "search",
-        "gmail",
-      ]);
-      expect(context.store.get(zeroJobConnectorsDirty$)).toBeTruthy();
+        context.signal,
+      );
 
-      context.store.set(removeZeroJobConnector$, "search");
-
-      expect(context.store.get(zeroJobAddedConnectors$)).toStrictEqual([
-        "gmail",
-      ]);
-      expect(context.store.get(zeroJobConnectorsDirty$)).toBeTruthy();
+      await expect(
+        context.store.get(zeroJobAddedConnectors$),
+      ).resolves.toStrictEqual(["gmail"]);
+      await expect(
+        context.store.get(zeroJobConnectorsDirty$),
+      ).resolves.toBeTruthy();
     });
 
     it("should discard connector changes", async () => {
-      await setupWithAgent();
+      await setupWithConnectors();
 
-      context.store.set(addZeroJobConnector$, "gmail");
-      expect(context.store.get(zeroJobConnectorsDirty$)).toBeTruthy();
+      await context.store.set(addZeroJobConnector$, "gmail", context.signal);
+      await expect(
+        context.store.get(zeroJobConnectorsDirty$),
+      ).resolves.toBeTruthy();
 
       context.store.set(discardZeroJobConnectors$);
 
-      expect(context.store.get(zeroJobAddedConnectors$)).toStrictEqual([
-        "search",
-      ]);
-      expect(context.store.get(zeroJobConnectorsDirty$)).toBeFalsy();
+      await expect(
+        context.store.get(zeroJobAddedConnectors$),
+      ).resolves.toStrictEqual(["search"]);
+      await expect(
+        context.store.get(zeroJobConnectorsDirty$),
+      ).resolves.toBeFalsy();
     });
 
     it("should save connectors via user-connectors api", async () => {
       let capturedBody: { enabledTypes: string[] } | null = null;
 
-      await setupWithAgent();
+      await setupWithConnectors();
+
+      // Add "gmail" before registering the PUT handler to avoid the GET
+      // override affecting the seed data used by addZeroJobConnector$
+      await context.store.set(addZeroJobConnector$, "gmail", context.signal);
 
       server.use(
         http.put(
@@ -1261,9 +1152,14 @@ describe("zero-job-detail signals", () => {
             });
           },
         ),
+        http.get(
+          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: ["search", "gmail"] });
+          },
+        ),
       );
 
-      context.store.set(addZeroJobConnector$, "gmail");
       await context.store.set(saveZeroJobConnectors$, context.signal);
 
       // Verify connectors were sent as enabledTypes
@@ -1271,12 +1167,14 @@ describe("zero-job-detail signals", () => {
       expect(capturedBody!.enabledTypes).toStrictEqual(["search", "gmail"]);
 
       // After save, dirty state should be reset
-      expect(context.store.get(zeroJobConnectorsDirty$)).toBeFalsy();
+      await expect(
+        context.store.get(zeroJobConnectorsDirty$),
+      ).resolves.toBeFalsy();
       expect(context.store.get(zeroJobSettingsSaving$)).toBeFalsy();
     });
 
     it("should show error toast on save failure", async () => {
-      await setupWithAgent();
+      await setupWithConnectors();
 
       server.use(
         http.put(
@@ -1295,7 +1193,7 @@ describe("zero-job-detail signals", () => {
         ),
       );
 
-      context.store.set(addZeroJobConnector$, "gmail");
+      await context.store.set(addZeroJobConnector$, "gmail", context.signal);
 
       // Should not throw — errors are caught and shown via toast
       await context.store.set(saveZeroJobConnectors$, context.signal);

@@ -13,83 +13,46 @@ const L = logger("ZeroJobDetail");
 // Connectors management — user-level permissions per agent
 // ---------------------------------------------------------------------------
 
-interface UserConnectorPermissionsState {
-  enabledTypes: string[];
-  loading: boolean;
-  error: string | null;
-}
+const internalConnectorsReload$ = state(0);
 
-const userConnectorPermissionsState$ = state<UserConnectorPermissionsState>({
-  enabledTypes: [],
-  loading: false,
-  error: null,
+const reloadJobConnectors$ = command(({ set }) => {
+  set(internalConnectorsReload$, (prev) => {
+    return prev + 1;
+  });
 });
 
-export const fetchZeroJobUserConnectors$ = command(
-  async ({ get, set }, _signal: AbortSignal) => {
-    const detail = get(zeroJobDetail$);
-    if (!detail?.agentId) {
-      return;
-    }
-
-    set(userConnectorPermissionsState$, {
-      enabledTypes: [],
-      loading: true,
-      error: null,
-    });
-
-    try {
-      const client = get(zeroClient$)(zeroUserConnectorsContract);
-      const result = await client.get({ params: { id: detail.agentId } });
-      if (result.status !== 200) {
-        throw new Error(
-          `Failed to fetch connector permissions (${result.status})`,
-        );
-      }
-      set(userConnectorPermissionsState$, {
-        enabledTypes: result.body.enabledTypes,
-        loading: false,
-        error: null,
-      });
-    } catch (error) {
-      throwIfAbort(error);
-      L.error("Failed to fetch user connector permissions:", error);
-      set(userConnectorPermissionsState$, {
-        enabledTypes: [],
-        loading: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to load connector permissions",
-      });
-    }
-  },
-);
+const seededConnectors$ = computed(async (get): Promise<string[]> => {
+  get(internalConnectorsReload$);
+  const detail = await get(zeroJobDetail$);
+  if (!detail?.agentId) {
+    return [];
+  }
+  const client = get(zeroClient$)(zeroUserConnectorsContract);
+  const result = await client.get({ params: { id: detail.agentId } });
+  if (result.status !== 200) {
+    throw new Error(`Failed to fetch connector permissions (${result.status})`);
+  }
+  return result.body.enabledTypes;
+});
 
 const internalAddedConnectors$ = state<string[] | null>(null);
 
-const seededConnectors$ = computed((get) => {
-  return get(userConnectorPermissionsState$).enabledTypes;
-});
+export const zeroJobAddedConnectors$ = computed(
+  async (get): Promise<string[]> => {
+    const local = get(internalAddedConnectors$);
+    if (local !== null) {
+      return local;
+    }
+    return await get(seededConnectors$);
+  },
+);
 
-export const zeroJobConnectorsLoading$ = computed((get) => {
-  return get(userConnectorPermissionsState$).loading;
-});
-
-export const zeroJobAddedConnectors$ = computed((get) => {
-  const local = get(internalAddedConnectors$);
-  if (local !== null) {
-    return local;
-  }
-  return get(seededConnectors$);
-});
-
-export const zeroJobConnectorsDirty$ = computed((get) => {
+export const zeroJobConnectorsDirty$ = computed(async (get) => {
   const local = get(internalAddedConnectors$);
   if (local === null) {
     return false;
   }
-  const seeded = get(seededConnectors$);
+  const seeded = await get(seededConnectors$);
   if (local.length !== seeded.length) {
     return true;
   }
@@ -100,43 +63,38 @@ export const zeroJobConnectorsDirty$ = computed((get) => {
   });
 });
 
-export const addZeroJobConnector$ = command(({ get, set }, name: string) => {
-  if (get(internalAddedConnectors$) === null) {
-    set(internalAddedConnectors$, get(seededConnectors$));
-  }
-  set(internalAddedConnectors$, (prev) => {
-    return [...(prev ?? []), name];
-  });
-});
-
-export const removeZeroJobConnector$ = command(({ get, set }, name: string) => {
-  if (get(internalAddedConnectors$) === null) {
-    set(internalAddedConnectors$, get(seededConnectors$));
-  }
-  set(internalAddedConnectors$, (prev) => {
-    return (prev ?? []).filter((s) => {
-      return s !== name;
+export const addZeroJobConnector$ = command(
+  async ({ get, set }, name: string, _signal: AbortSignal) => {
+    if (get(internalAddedConnectors$) === null) {
+      set(internalAddedConnectors$, await get(seededConnectors$));
+    }
+    set(internalAddedConnectors$, (prev) => {
+      return [...(prev ?? []), name];
     });
-  });
-});
+  },
+);
+
+export const removeZeroJobConnector$ = command(
+  async ({ get, set }, name: string, _signal: AbortSignal) => {
+    if (get(internalAddedConnectors$) === null) {
+      set(internalAddedConnectors$, await get(seededConnectors$));
+    }
+    set(internalAddedConnectors$, (prev) => {
+      return (prev ?? []).filter((s) => {
+        return s !== name;
+      });
+    });
+  },
+);
 
 export const discardZeroJobConnectors$ = command(({ set }) => {
   set(internalAddedConnectors$, null);
 });
 
-/** Reset connectors state to initial values. */
-export const resetConnectorsState$ = command(({ set }) => {
-  set(internalAddedConnectors$, null);
-  set(userConnectorPermissionsState$, {
-    enabledTypes: [],
-    loading: false,
-    error: null,
-  });
-});
-
 export const saveZeroJobConnectors$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const detail = get(zeroJobDetail$);
+    const detail = await get(zeroJobDetail$);
+    signal.throwIfAborted();
     if (!detail?.agentId) {
       throw new Error("No agent detail loaded");
     }
@@ -162,11 +120,7 @@ export const saveZeroJobConnectors$ = command(
       }
 
       set(internalAddedConnectors$, null);
-      set(userConnectorPermissionsState$, {
-        enabledTypes: result.body.enabledTypes,
-        loading: false,
-        error: null,
-      });
+      set(reloadJobConnectors$);
       toast.success("Connectors saved");
     } catch (error) {
       throwIfAbort(error);
