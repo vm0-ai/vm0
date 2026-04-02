@@ -580,8 +580,12 @@ pub(crate) async fn fix_guest_clock(sandbox: &dyn Sandbox) -> RunnerResult<()> {
 
 /// Set system timezone inside the guest to match the user's preference.
 ///
-/// Writes `/etc/timezone` and symlinks `/etc/localtime` so all processes
-/// — not just those inheriting the TZ env var — see the correct timezone.
+/// Configures timezone at two levels so every process sees the correct time:
+///
+/// - `/etc/timezone` + `/etc/localtime` — filesystem-level (read by libc)
+/// - `TZ` in `/etc/environment` — inherited by all login shells via PAM
+///
+/// The agent process also receives `TZ` via the env vars in step 6.
 /// Skipped when no user timezone is configured (falls back to image default UTC).
 async fn sync_guest_timezone(sandbox: &dyn Sandbox, context: &ExecutionContext) {
     let tz = match &context.user_timezone {
@@ -601,7 +605,9 @@ async fn sync_guest_timezone(sandbox: &dyn Sandbox, context: &ExecutionContext) 
     let cmd = format!(
         "test -f /usr/share/zoneinfo/{tz} && \
          echo '{tz}' > /etc/timezone && \
-         ln -sf /usr/share/zoneinfo/{tz} /etc/localtime"
+         ln -sf /usr/share/zoneinfo/{tz} /etc/localtime && \
+         sed -i '/^TZ=/d' /etc/environment && \
+         echo 'TZ={tz}' >> /etc/environment"
     );
     // Best-effort: don't fail the run if timezone setup fails.
     if let Err(e) = sandbox
