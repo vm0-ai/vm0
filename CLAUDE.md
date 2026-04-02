@@ -10,6 +10,7 @@
 - **Use dev-tunnel for local development** - Run `/dev-tunnel` to start a local server accessible by sandbox webhooks. Without this, webhooks cannot reach your local server.
 - **Run `pnpm db:migrate` to sync database** - After pulling new changes, run this command in the `turbo` directory to apply the latest migrations.
 - **Run `script/sync-env.sh` to sync environment variables** - If missing required environment variables, ask the user to run this script to sync `.env.local`.
+- **Run `scripts/prepare.sh` when local dev or tests fail unexpectedly** - Before debugging test failures, verify your environment is set up correctly. This script checks Node.js, pnpm, PostgreSQL, syncs env files, installs dependencies, runs migrations, and seeds dev data. Many local failures are caused by missing migrations or stale dependencies rather than actual code bugs.
 
 ## Global Services Pattern
 
