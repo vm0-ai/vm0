@@ -53,7 +53,6 @@ import { detach, Reason } from "../../signals/utils.ts";
 import { AccountDropdown } from "./zero-sidebar.tsx";
 import { VM0ClerkProvider } from "../clerk/clerk-provider.tsx";
 import { handleZeroAccountAction$ } from "../../signals/zero-page/zero-nav.ts";
-import { useLoadableSet } from "ccstate-react/experimental";
 
 // ---------------------------------------------------------------------------
 // Progress bar
@@ -329,14 +328,9 @@ function WhereToWorkContent() {
   const addToSlack = useSet(onboardingAddToSlack$);
 
   const pageSignal = useGet(pageSignal$);
-  const [continueWebLoadable, continueWeb] = useLoadableSet(
-    onboardingContinueWeb$,
-  );
-  const error =
-    continueWebLoadable.state === "hasError"
-      ? String(continueWebLoadable.error)
-      : null;
-  const saving = continueWebLoadable.state === "loading";
+  const continueWeb = useSet(onboardingContinueWeb$);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   return (
     <>
@@ -376,7 +370,16 @@ function WhereToWorkContent() {
         <button
           type="button"
           onClick={() => {
-            detach(continueWeb(pageSignal), Reason.DomCallback);
+            setSaving(true);
+            setError(null);
+            void continueWeb(pageSignal)
+              .then(() => {
+                setSaving(false);
+              })
+              .catch((error: unknown) => {
+                setSaving(false);
+                setError(String(error));
+              });
           }}
           disabled={saving}
           className="flex items-center gap-4 rounded-xl bg-card px-6 py-6 text-left transition-colors hover:bg-muted/30 disabled:opacity-50 zero-border"
