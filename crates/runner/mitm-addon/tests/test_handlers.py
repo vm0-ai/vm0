@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+import auth
 import mitm_addon
 
 
@@ -42,8 +43,8 @@ def _reset():
     mitm_addon._request_start_times.clear()
     mitm_addon._registry_cache = {}
     mitm_addon._registry_cache_key = (0, 0)
-    mitm_addon._firewall_header_cache.clear()
-    mitm_addon._cache_locks.clear()
+    auth._firewall_header_cache.clear()
+    auth._cache_locks.clear()
 
 
 class TestRequestHandler:
@@ -424,7 +425,7 @@ class TestResponseHandler:
 
         # Pre-populate firewall header cache keyed by api_id
         cache_key = ("run-conn-1", "run-conn-1:0")
-        mitm_addon._firewall_header_cache[cache_key] = {
+        auth._firewall_header_cache[cache_key] = {
             "headers": {"Authorization": "Bearer old-token"},
         }
 
@@ -432,7 +433,7 @@ class TestResponseHandler:
             mitm_addon.response(flow)
 
         # Cache entry should have been removed
-        assert cache_key not in mitm_addon._firewall_header_cache
+        assert cache_key not in auth._firewall_header_cache
 
     def test_error_status_logs_warning(self, tmp_path):
         """Response with status >= 400 calls ctx.log.warn."""
@@ -760,11 +761,14 @@ class TestFirewallHeaderCache:
                 "expiresAt": time.time() + 3600,
             }
 
-        with patch.object(mitm_addon, "_fetch_firewall_headers_sync", side_effect=counting_fetch):
+        with (
+            patch.object(auth, "get_api_url", return_value="https://test.vm0.ai"),
+            patch.object(auth, "_fetch_firewall_headers_sync", side_effect=counting_fetch),
+        ):
             results = await asyncio.gather(
-                mitm_addon.get_firewall_headers("run-1", "api-1", "enc", {}, "tok"),
-                mitm_addon.get_firewall_headers("run-1", "api-1", "enc", {}, "tok"),
-                mitm_addon.get_firewall_headers("run-1", "api-1", "enc", {}, "tok"),
+                auth.get_firewall_headers("run-1", "api-1", "enc", {}, "tok"),
+                auth.get_firewall_headers("run-1", "api-1", "enc", {}, "tok"),
+                auth.get_firewall_headers("run-1", "api-1", "enc", {}, "tok"),
             )
 
         assert fetch_count == 1
@@ -783,23 +787,26 @@ class TestFirewallHeaderCache:
                 "expiresAt": time.time() + 3600,
             }
 
-        with patch.object(mitm_addon, "_fetch_firewall_headers_sync", side_effect=counting_fetch):
+        with (
+            patch.object(auth, "get_api_url", return_value="https://test.vm0.ai"),
+            patch.object(auth, "_fetch_firewall_headers_sync", side_effect=counting_fetch),
+        ):
             await asyncio.gather(
-                mitm_addon.get_firewall_headers("run-1", "api-1", "enc", {}, "tok"),
-                mitm_addon.get_firewall_headers("run-1", "api-2", "enc", {}, "tok"),
+                auth.get_firewall_headers("run-1", "api-1", "enc", {}, "tok"),
+                auth.get_firewall_headers("run-1", "api-2", "enc", {}, "tok"),
             )
 
         assert fetch_count == 2
 
     async def test_cache_hit_skips_fetch(self):
         """Cached entry should be returned without fetching."""
-        mitm_addon._firewall_header_cache[("run-1", "api-1")] = {
+        auth._firewall_header_cache[("run-1", "api-1")] = {
             "headers": {"Authorization": "Bearer cached"},
             "expiresAt": time.time() + 3600,
         }
 
-        with patch.object(mitm_addon, "_fetch_firewall_headers_sync") as mock_fetch:
-            result = await mitm_addon.get_firewall_headers("run-1", "api-1", "enc", {}, "tok")
+        with patch.object(auth, "_fetch_firewall_headers_sync") as mock_fetch:
+            result = await auth.get_firewall_headers("run-1", "api-1", "enc", {}, "tok")
 
         mock_fetch.assert_not_called()
         assert result["headers"] == {"Authorization": "Bearer cached"}
@@ -809,7 +816,7 @@ class TestFirewallHeaderCache:
 
     async def test_expired_cache_triggers_fetch(self):
         """Expired cache entry should trigger a new fetch."""
-        mitm_addon._firewall_header_cache[("run-1", "api-1")] = {
+        auth._firewall_header_cache[("run-1", "api-1")] = {
             "headers": {"Authorization": "Bearer old"},
             "expiresAt": time.time() - 10,
         }
@@ -820,8 +827,11 @@ class TestFirewallHeaderCache:
                 "expiresAt": time.time() + 3600,
             }
 
-        with patch.object(mitm_addon, "_fetch_firewall_headers_sync", side_effect=fresh_fetch):
-            result = await mitm_addon.get_firewall_headers("run-1", "api-1", "enc", {}, "tok")
+        with (
+            patch.object(auth, "get_api_url", return_value="https://test.vm0.ai"),
+            patch.object(auth, "_fetch_firewall_headers_sync", side_effect=fresh_fetch),
+        ):
+            result = await auth.get_firewall_headers("run-1", "api-1", "enc", {}, "tok")
 
         assert result["headers"] == {"Authorization": "Bearer fresh"}
         assert result["cache_hit"] is False
@@ -832,19 +842,22 @@ class TestFirewallHeaderCache:
         def failing_fetch(*args, **kwargs):
             raise ConnectionError("server unreachable")
 
-        with patch.object(mitm_addon, "_fetch_firewall_headers_sync", side_effect=failing_fetch):
+        with (
+            patch.object(auth, "get_api_url", return_value="https://test.vm0.ai"),
+            patch.object(auth, "_fetch_firewall_headers_sync", side_effect=failing_fetch),
+        ):
             with pytest.raises(ConnectionError):
-                await mitm_addon.get_firewall_headers("run-1", "api-1", "enc", {}, "tok")
+                await auth.get_firewall_headers("run-1", "api-1", "enc", {}, "tok")
 
-        assert ("run-1", "api-1") not in mitm_addon._firewall_header_cache
+        assert ("run-1", "api-1") not in auth._firewall_header_cache
 
     def test_registry_eviction_cleans_locks(self, tmp_path):
         """When a run is evicted from registry, its locks should be cleaned up too."""
-        mitm_addon._firewall_header_cache[("run-old", "api-1")] = {
+        auth._firewall_header_cache[("run-old", "api-1")] = {
             "headers": {},
             "expiresAt": None,
         }
-        mitm_addon._cache_locks[("run-old", "api-1")] = asyncio.Lock()
+        auth._cache_locks[("run-old", "api-1")] = asyncio.Lock()
 
         registry = {"vms": {"10.200.0.1": {"runId": "run-new"}}}
         reg_path = tmp_path / "registry.json"
@@ -857,5 +870,5 @@ class TestFirewallHeaderCache:
             mitm_addon._registry_cache_key = (0, 0)
             mitm_addon.load_registry()
 
-        assert ("run-old", "api-1") not in mitm_addon._firewall_header_cache
-        assert ("run-old", "api-1") not in mitm_addon._cache_locks
+        assert ("run-old", "api-1") not in auth._firewall_header_cache
+        assert ("run-old", "api-1") not in auth._cache_locks

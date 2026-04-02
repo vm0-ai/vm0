@@ -158,7 +158,7 @@ pub async fn run_start(
     let (mut mitm, mitm_crash_rx) = proxy::MitmProxy::new(proxy::ProxyConfig {
         mitmdump_bin: home.mitmdump_bin(deps::MITMPROXY_VERSION),
         ca_dir: runner_config.ca_dir.clone(),
-        addon_path: paths.mitm_addon(),
+        addon_dir: paths.mitm_addon_dir(),
         registry_path: paths.proxy_registry(),
         registry_lock_path: paths.proxy_registry_lock(),
         api_url: Some(server.url.clone()),
@@ -763,7 +763,7 @@ mod tests {
         let (mitm, rx) = proxy::MitmProxy::new(proxy::ProxyConfig {
             mitmdump_bin: PathBuf::from("true"),
             ca_dir: dir.path().to_path_buf(),
-            addon_path: dir.path().join("addon.py"),
+            addon_dir: dir.path().join("addon"),
             registry_path: dir.path().join("registry.json"),
             registry_lock_path: dir.path().join("registry.lock"),
             api_url: None,

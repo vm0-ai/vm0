@@ -2,7 +2,7 @@
 
 from unittest.mock import MagicMock
 
-from mitm_addon import get_original_url
+from url_utils import get_original_url
 
 
 def _make_flow(host, port, path="/", scheme=None):

@@ -38,8 +38,8 @@ impl RunnerPaths {
         self.base_dir.join("status.json")
     }
 
-    pub fn mitm_addon(&self) -> PathBuf {
-        self.base_dir.join("mitm-addon.py")
+    pub fn mitm_addon_dir(&self) -> PathBuf {
+        self.base_dir.join("mitm-addon")
     }
 
     pub fn proxy_registry(&self) -> PathBuf {

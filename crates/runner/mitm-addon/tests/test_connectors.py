@@ -6,8 +6,16 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-import mitm_addon
-from mitm_addon import FirewallAllow, FirewallBlock, match_base_url, match_host, match_path_prefix
+import auth
+import matching
+import url_utils
+from matching import (
+    FirewallAllow,
+    FirewallBlock,
+    match_base_url,
+    match_host,
+    match_path_prefix,
+)
 
 
 def _make_http_flow(client_ip="10.200.0.1", host="api.github.com", port=443, path="/repos"):
@@ -39,75 +47,75 @@ def _wrap_firewalls(apis, name="test", ref="test"):
 
 class TestMatchPath:
     def test_exact_path(self):
-        assert mitm_addon.match_path("/repos", "/repos") == {}
+        assert matching.match_path("/repos", "/repos") == {}
 
     def test_exact_multi_segment(self):
-        assert mitm_addon.match_path("/api/v1/users", "/api/v1/users") == {}
+        assert matching.match_path("/api/v1/users", "/api/v1/users") == {}
 
     def test_single_param(self):
-        result = mitm_addon.match_path("/repos/octocat", "/repos/{owner}")
+        result = matching.match_path("/repos/octocat", "/repos/{owner}")
         assert result == {"owner": "octocat"}
 
     def test_multiple_params(self):
-        result = mitm_addon.match_path("/repos/octocat/hello-world", "/repos/{owner}/{repo}")
+        result = matching.match_path("/repos/octocat/hello-world", "/repos/{owner}/{repo}")
         assert result == {"owner": "octocat", "repo": "hello-world"}
 
     def test_mixed_literal_and_param(self):
-        result = mitm_addon.match_path(
+        result = matching.match_path(
             "/repos/octocat/hello-world/issues", "/repos/{owner}/{repo}/issues"
         )
         assert result == {"owner": "octocat", "repo": "hello-world"}
 
     def test_greedy_param_matches_rest(self):
-        result = mitm_addon.match_path("/repos/octocat/hello-world", "/{path+}")
+        result = matching.match_path("/repos/octocat/hello-world", "/{path+}")
         assert result == {"path": "repos/octocat/hello-world"}
 
     def test_greedy_param_matches_single_segment(self):
-        result = mitm_addon.match_path("/foo", "/{path+}")
+        result = matching.match_path("/foo", "/{path+}")
         assert result == {"path": "foo"}
 
     def test_greedy_param_rejects_empty(self):
-        result = mitm_addon.match_path("/", "/{path+}")
+        result = matching.match_path("/", "/{path+}")
         assert result is None
 
     def test_greedy_after_literal(self):
-        result = mitm_addon.match_path("/api/v1/anything/here", "/api/v1/{rest+}")
+        result = matching.match_path("/api/v1/anything/here", "/api/v1/{rest+}")
         assert result == {"rest": "anything/here"}
 
     def test_star_param_matches_rest(self):
-        result = mitm_addon.match_path("/repos/octocat/hello-world", "/{path*}")
+        result = matching.match_path("/repos/octocat/hello-world", "/{path*}")
         assert result == {"path": "repos/octocat/hello-world"}
 
     def test_star_param_matches_single_segment(self):
-        result = mitm_addon.match_path("/foo", "/{path*}")
+        result = matching.match_path("/foo", "/{path*}")
         assert result == {"path": "foo"}
 
     def test_star_param_matches_empty(self):
-        result = mitm_addon.match_path("/", "/{path*}")
+        result = matching.match_path("/", "/{path*}")
         assert result == {"path": ""}
 
     def test_star_after_literal(self):
-        result = mitm_addon.match_path("/api/v1/anything/here", "/api/v1/{rest*}")
+        result = matching.match_path("/api/v1/anything/here", "/api/v1/{rest*}")
         assert result == {"rest": "anything/here"}
 
     def test_star_after_literal_empty(self):
-        result = mitm_addon.match_path("/api/v1", "/api/v1/{rest*}")
+        result = matching.match_path("/api/v1", "/api/v1/{rest*}")
         assert result == {"rest": ""}
 
     def test_path_too_short(self):
-        assert mitm_addon.match_path("/repos", "/repos/{owner}/{repo}") is None
+        assert matching.match_path("/repos", "/repos/{owner}/{repo}") is None
 
     def test_path_too_long(self):
-        assert mitm_addon.match_path("/repos/owner/repo/extra", "/repos/{owner}/{repo}") is None
+        assert matching.match_path("/repos/owner/repo/extra", "/repos/{owner}/{repo}") is None
 
     def test_literal_mismatch(self):
-        assert mitm_addon.match_path("/users/octocat", "/repos/{owner}") is None
+        assert matching.match_path("/users/octocat", "/repos/{owner}") is None
 
     def test_root_matches_root(self):
-        assert mitm_addon.match_path("/", "/") == {}
+        assert matching.match_path("/", "/") == {}
 
     def test_empty_path_matches_empty_pattern(self):
-        assert mitm_addon.match_path("", "") == {}
+        assert matching.match_path("", "") == {}
 
 
 # =========================================================================
@@ -127,9 +135,7 @@ class TestMatchFirewallRequest:
             name="github",
             ref="github",
         )
-        result = mitm_addon.match_firewall_request(
-            "https://api.github.com/repos", "GET", fw_configs
-        )
+        result = matching.match_firewall_request("https://api.github.com/repos", "GET", fw_configs)
         assert isinstance(result, FirewallBlock)
         assert result.base == "https://api.github.com"
         assert result.ref == "github"
@@ -148,7 +154,7 @@ class TestMatchFirewallRequest:
             name="github",
             ref="github",
         )
-        result = mitm_addon.match_firewall_request(
+        result = matching.match_firewall_request(
             "https://api.github.com/repos/octocat/hello", "GET", fw_configs
         )
         assert isinstance(result, FirewallAllow)
@@ -167,7 +173,7 @@ class TestMatchFirewallRequest:
                 }
             ]
         )
-        result = mitm_addon.match_firewall_request(
+        result = matching.match_firewall_request(
             "https://api.github.com/anything", "DELETE", fw_configs
         )
         assert isinstance(result, FirewallAllow)
@@ -183,9 +189,7 @@ class TestMatchFirewallRequest:
                 }
             ]
         )
-        result = mitm_addon.match_firewall_request(
-            "https://api.github.com/repos", "POST", fw_configs
-        )
+        result = matching.match_firewall_request("https://api.github.com/repos", "POST", fw_configs)
         assert isinstance(result, FirewallAllow)
 
     def test_wrong_method_blocks(self):
@@ -198,7 +202,7 @@ class TestMatchFirewallRequest:
                 }
             ]
         )
-        result = mitm_addon.match_firewall_request(
+        result = matching.match_firewall_request(
             "https://api.github.com/repos/a/b", "POST", fw_configs
         )
         assert isinstance(result, FirewallBlock)
@@ -213,7 +217,7 @@ class TestMatchFirewallRequest:
                 }
             ]
         )
-        result = mitm_addon.match_firewall_request(
+        result = matching.match_firewall_request(
             "https://api.github.com/users/octocat", "GET", fw_configs
         )
         assert isinstance(result, FirewallBlock)
@@ -228,16 +232,14 @@ class TestMatchFirewallRequest:
                 }
             ]
         )
-        result = mitm_addon.match_firewall_request(
-            "https://api.gitlab.com/repos", "GET", fw_configs
-        )
+        result = matching.match_firewall_request("https://api.gitlab.com/repos", "GET", fw_configs)
         assert result is None
 
     def test_no_firewall_returns_none(self):
-        assert mitm_addon.match_firewall_request("https://api.github.com", "GET", None) is None
+        assert matching.match_firewall_request("https://api.github.com", "GET", None) is None
 
     def test_empty_firewall_returns_none(self):
-        assert mitm_addon.match_firewall_request("https://api.github.com", "GET", []) is None
+        assert matching.match_firewall_request("https://api.github.com", "GET", []) is None
 
     def test_exact_base_no_path(self):
         """URL equals base exactly (rest='') → rel_path='/' → matches root rule."""
@@ -250,7 +252,7 @@ class TestMatchFirewallRequest:
                 }
             ]
         )
-        result = mitm_addon.match_firewall_request("https://api.github.com", "GET", fw_configs)
+        result = matching.match_firewall_request("https://api.github.com", "GET", fw_configs)
         assert isinstance(result, FirewallAllow)
         assert result.match_info["permission"] == "root"
 
@@ -265,9 +267,7 @@ class TestMatchFirewallRequest:
                 }
             ]
         )
-        result = mitm_addon.match_firewall_request(
-            "https://api.github.com/repos/", "GET", fw_configs
-        )
+        result = matching.match_firewall_request("https://api.github.com/repos/", "GET", fw_configs)
         assert isinstance(result, FirewallAllow)
 
     def test_trailing_slash_on_base_config(self):
@@ -281,9 +281,7 @@ class TestMatchFirewallRequest:
                 }
             ]
         )
-        result = mitm_addon.match_firewall_request(
-            "https://api.github.com/repos", "GET", fw_configs
-        )
+        result = matching.match_firewall_request("https://api.github.com/repos", "GET", fw_configs)
         assert isinstance(result, FirewallAllow)
 
     def test_port_boundary_rejected(self):
@@ -297,7 +295,7 @@ class TestMatchFirewallRequest:
                 }
             ]
         )
-        result = mitm_addon.match_firewall_request(
+        result = matching.match_firewall_request(
             "https://api.github.com:8443/repos", "GET", fw_configs
         )
         assert result is None
@@ -312,7 +310,7 @@ class TestMatchFirewallRequest:
                 }
             ]
         )
-        result = mitm_addon.match_firewall_request(
+        result = matching.match_firewall_request(
             "https://api.github.com.evil.com/steal", "GET", fw_configs
         )
         assert result is None
@@ -330,7 +328,7 @@ class TestMatchFirewallRequest:
                 }
             ]
         )
-        result = mitm_addon.match_firewall_request(
+        result = matching.match_firewall_request(
             "https://slack.com/api/chat.postMessage", "POST", fw_configs
         )
         assert isinstance(result, FirewallAllow)
@@ -350,14 +348,10 @@ class TestMatchFirewallRequest:
             ]
         )
         # Only "GET /repos" is valid — the rest are skipped
-        result = mitm_addon.match_firewall_request(
-            "https://api.github.com/repos", "GET", fw_configs
-        )
+        result = matching.match_firewall_request("https://api.github.com/repos", "GET", fw_configs)
         assert isinstance(result, FirewallAllow)
         # Non-matching path still blocks (malformed rules don't accidentally allow)
-        result2 = mitm_addon.match_firewall_request(
-            "https://api.github.com/users", "GET", fw_configs
-        )
+        result2 = matching.match_firewall_request("https://api.github.com/users", "GET", fw_configs)
         assert isinstance(result2, FirewallBlock)
 
     def test_path_case_sensitive(self):
@@ -371,7 +365,7 @@ class TestMatchFirewallRequest:
                 }
             ]
         )
-        result = mitm_addon.match_firewall_request(
+        result = matching.match_firewall_request(
             "https://api.github.com/REPOS/octocat", "GET", fw_configs
         )
         assert isinstance(result, FirewallBlock)
@@ -401,11 +395,11 @@ class TestMatchFirewallRequest:
                 ],
             },
         ]
-        gh = mitm_addon.match_firewall_request("https://api.github.com/repos", "GET", fw_configs)
+        gh = matching.match_firewall_request("https://api.github.com/repos", "GET", fw_configs)
         assert isinstance(gh, FirewallAllow)
         assert gh.match_info["name"] == "github"
 
-        sl = mitm_addon.match_firewall_request(
+        sl = matching.match_firewall_request(
             "https://slack.com/api/chat.postMessage", "POST", fw_configs
         )
         assert isinstance(sl, FirewallAllow)
@@ -421,7 +415,7 @@ class TestMatchFirewallRequest:
                 }
             ]
         )
-        result = mitm_addon.match_firewall_request(
+        result = matching.match_firewall_request(
             "https://api.github.com/repos?page=1", "GET", fw_configs
         )
         assert isinstance(result, FirewallAllow)
@@ -436,7 +430,7 @@ class TestMatchFirewallRequest:
                 }
             ]
         )
-        result = mitm_addon.match_firewall_request(
+        result = matching.match_firewall_request(
             "https://api.github.com/repos#section", "GET", fw_configs
         )
         assert isinstance(result, FirewallAllow)
@@ -452,9 +446,7 @@ class TestMatchFirewallRequest:
                 }
             ]
         )
-        result = mitm_addon.match_firewall_request(
-            "https://api.github.com/repos", "GET", fw_configs
-        )
+        result = matching.match_firewall_request("https://api.github.com/repos", "GET", fw_configs)
         assert isinstance(result, FirewallBlock)
 
     def test_different_bases_same_permission_name(self):
@@ -474,7 +466,7 @@ class TestMatchFirewallRequest:
             ]
         )
         # Request to first base
-        result = mitm_addon.match_firewall_request(
+        result = matching.match_firewall_request(
             "https://slack.com/api/conversations.history", "POST", fw_configs
         )
         assert isinstance(result, FirewallAllow)
@@ -482,7 +474,7 @@ class TestMatchFirewallRequest:
         assert result.match_info["permission"] == "full-access"
 
         # Request to second base
-        result = mitm_addon.match_firewall_request(
+        result = matching.match_firewall_request(
             "https://files.slack.com/files-pri/T1/download", "GET", fw_configs
         )
         assert isinstance(result, FirewallAllow)
@@ -505,7 +497,7 @@ class TestMatchFirewallRequest:
                 },
             ]
         )
-        result = mitm_addon.match_firewall_request(
+        result = matching.match_firewall_request(
             "https://slack.com/api/chat.postMessage", "POST", fw_configs
         )
         assert isinstance(result, FirewallAllow)
@@ -525,7 +517,7 @@ class TestMatchFirewallRequest:
             name="zendesk",
             ref="zendesk",
         )
-        result = mitm_addon.match_firewall_request(
+        result = matching.match_firewall_request(
             "https://acme.zendesk.com/api/v2/tickets", "GET", fw_configs
         )
         assert isinstance(result, FirewallAllow)
@@ -546,7 +538,7 @@ class TestMatchFirewallRequest:
             name="zendesk",
             ref="zendesk",
         )
-        result = mitm_addon.match_firewall_request(
+        result = matching.match_firewall_request(
             "https://acme.zendesk.com/api/v2/users", "GET", fw_configs
         )
         assert isinstance(result, FirewallBlock)
@@ -563,9 +555,7 @@ class TestMatchFirewallRequest:
                 }
             ]
         )
-        result = mitm_addon.match_firewall_request(
-            "https://api.github.com/repos", "GET", fw_configs
-        )
+        result = matching.match_firewall_request("https://api.github.com/repos", "GET", fw_configs)
         assert result is None
 
     def test_parameterized_path_allows(self):
@@ -579,7 +569,7 @@ class TestMatchFirewallRequest:
                 }
             ]
         )
-        result = mitm_addon.match_firewall_request(
+        result = matching.match_firewall_request(
             "https://api.example.com/v1/acme/projects/123", "GET", fw_configs
         )
         assert isinstance(result, FirewallAllow)
@@ -596,7 +586,7 @@ class TestMatchFirewallRequest:
                 }
             ]
         )
-        result = mitm_addon.match_firewall_request(
+        result = matching.match_firewall_request(
             "https://us.api.example.com/v1/acme/data", "GET", fw_configs
         )
         assert isinstance(result, FirewallAllow)
@@ -613,9 +603,7 @@ class TestMatchFirewallRequest:
                 }
             ]
         )
-        result = mitm_addon.match_firewall_request(
-            "https://a.b.c.example.com/api", "GET", fw_configs
-        )
+        result = matching.match_firewall_request("https://a.b.c.example.com/api", "GET", fw_configs)
         assert isinstance(result, FirewallAllow)
         assert result.match_info["params"]["sub"] == "a.b.c"
 
@@ -630,7 +618,7 @@ class TestMatchFirewallRequest:
                 }
             ]
         )
-        result = mitm_addon.match_firewall_request("https://example.com/api", "GET", fw_configs)
+        result = matching.match_firewall_request("https://example.com/api", "GET", fw_configs)
         assert isinstance(result, FirewallAllow)
         assert result.match_info["params"]["sub"] == ""
 
@@ -660,11 +648,11 @@ class TestMatchFirewallRequest:
                 ],
             },
         ]
-        gh = mitm_addon.match_firewall_request("https://api.github.com/repos", "GET", fw_configs)
+        gh = matching.match_firewall_request("https://api.github.com/repos", "GET", fw_configs)
         assert isinstance(gh, FirewallAllow)
         assert gh.match_info["name"] == "github"
 
-        zd = mitm_addon.match_firewall_request(
+        zd = matching.match_firewall_request(
             "https://acme.zendesk.com/api/v2/tickets", "GET", fw_configs
         )
         assert isinstance(zd, FirewallAllow)
@@ -682,7 +670,7 @@ class TestMatchFirewallRequest:
                 }
             ]
         )
-        result = mitm_addon.match_firewall_request(
+        result = matching.match_firewall_request(
             "https://acme.zendesk.com/api/v2/tickets?page=2", "GET", fw_configs
         )
         assert isinstance(result, FirewallAllow)
@@ -699,7 +687,7 @@ class TestMatchFirewallRequest:
                 }
             ]
         )
-        result = mitm_addon.match_firewall_request(
+        result = matching.match_firewall_request(
             "https://acme.zendesk.com:8443/api", "GET", fw_configs
         )
         assert result is None
@@ -892,8 +880,8 @@ class TestMatchBaseUrl:
 
 class TestGetFirewallHeaders:
     def setup_method(self):
-        mitm_addon._firewall_header_cache.clear()
-        mitm_addon._cache_locks.clear()
+        auth._firewall_header_cache.clear()
+        auth._cache_locks.clear()
 
     async def test_cache_miss_fetches_and_caches(self):
         mock_headers = {"Authorization": "Bearer fresh-token"}
@@ -902,8 +890,8 @@ class TestGetFirewallHeaders:
         auth_templates = {"Authorization": "Bearer ${{ secrets.TOKEN }}"}
 
         mock_fetch = AsyncMock(return_value=mock_result)
-        with patch.object(mitm_addon, "fetch_firewall_headers", mock_fetch):
-            headers = await mitm_addon.get_firewall_headers(
+        with patch.object(auth, "fetch_firewall_headers", mock_fetch):
+            headers = await auth.get_firewall_headers(
                 "run-1", "https://api.github.com", encrypted, auth_templates, "tok-xyz"
             )
 
@@ -913,19 +901,19 @@ class TestGetFirewallHeaders:
 
         # Verify the cache was populated
         cache_key = ("run-1", "https://api.github.com")
-        assert cache_key in mitm_addon._firewall_header_cache
-        assert mitm_addon._firewall_header_cache[cache_key]["headers"] == mock_headers
+        assert cache_key in auth._firewall_header_cache
+        assert auth._firewall_header_cache[cache_key]["headers"] == mock_headers
 
     async def test_cache_hit_returns_cached(self):
         cache_key = ("run-1", "https://api.github.com")
         cached_headers = {"Authorization": "Bearer cached-token"}
-        mitm_addon._firewall_header_cache[cache_key] = {
+        auth._firewall_header_cache[cache_key] = {
             "headers": cached_headers,
         }
 
         mock_fetch = AsyncMock()
-        with patch.object(mitm_addon, "fetch_firewall_headers", mock_fetch):
-            headers = await mitm_addon.get_firewall_headers(
+        with patch.object(auth, "fetch_firewall_headers", mock_fetch):
+            headers = await auth.get_firewall_headers(
                 "run-1", "https://api.github.com", "iv:tag:data", {}, "tok-xyz"
             )
 
@@ -937,14 +925,14 @@ class TestGetFirewallHeaders:
         """Cached entry with expiresAt in the future should be returned without fetching."""
         cache_key = ("run-1", "api-1")
         cached_headers = {"Authorization": "Bearer valid-token"}
-        mitm_addon._firewall_header_cache[cache_key] = {
+        auth._firewall_header_cache[cache_key] = {
             "headers": cached_headers,
             "expiresAt": time.time() + 3600,  # 1 hour from now
         }
 
         mock_fetch = AsyncMock()
-        with patch.object(mitm_addon, "fetch_firewall_headers", mock_fetch):
-            headers = await mitm_addon.get_firewall_headers(
+        with patch.object(auth, "fetch_firewall_headers", mock_fetch):
+            headers = await auth.get_firewall_headers(
                 "run-1", "api-1", "iv:tag:data", {}, "tok-xyz"
             )
 
@@ -955,7 +943,7 @@ class TestGetFirewallHeaders:
     async def test_cache_evicted_when_ttl_expired(self):
         """Cached entry with expiresAt in the past should trigger a re-fetch."""
         cache_key = ("run-1", "api-1")
-        mitm_addon._firewall_header_cache[cache_key] = {
+        auth._firewall_header_cache[cache_key] = {
             "headers": {"Authorization": "Bearer stale-token"},
             "expiresAt": time.time() - 10,  # expired 10 seconds ago
         }
@@ -964,8 +952,8 @@ class TestGetFirewallHeaders:
         mock_result = {"headers": fresh_headers, "expiresAt": time.time() + 3600}
 
         mock_fetch = AsyncMock(return_value=mock_result)
-        with patch.object(mitm_addon, "fetch_firewall_headers", mock_fetch):
-            headers = await mitm_addon.get_firewall_headers(
+        with patch.object(auth, "fetch_firewall_headers", mock_fetch):
+            headers = await auth.get_firewall_headers(
                 "run-1", "api-1", "iv:tag:data", {}, "tok-xyz"
             )
 
@@ -973,20 +961,20 @@ class TestGetFirewallHeaders:
         assert headers["cache_hit"] is False
         mock_fetch.assert_called_once()
         # Verify cache was updated with new entry
-        assert mitm_addon._firewall_header_cache[cache_key]["headers"] == fresh_headers
+        assert auth._firewall_header_cache[cache_key]["headers"] == fresh_headers
 
     async def test_cache_with_null_expires_at_never_evicts(self):
         """Cached entry with expiresAt=None (non-expiring) should never be evicted by TTL."""
         cache_key = ("run-1", "api-1")
         cached_headers = {"Authorization": "Bearer permanent-token"}
-        mitm_addon._firewall_header_cache[cache_key] = {
+        auth._firewall_header_cache[cache_key] = {
             "headers": cached_headers,
             "expiresAt": None,
         }
 
         mock_fetch = AsyncMock()
-        with patch.object(mitm_addon, "fetch_firewall_headers", mock_fetch):
-            headers = await mitm_addon.get_firewall_headers(
+        with patch.object(auth, "fetch_firewall_headers", mock_fetch):
+            headers = await auth.get_firewall_headers(
                 "run-1", "api-1", "iv:tag:data", {}, "tok-xyz"
             )
 
@@ -997,7 +985,7 @@ class TestGetFirewallHeaders:
     async def test_cache_hit_includes_base_when_present(self):
         """Cached entry with 'base' returns it on cache hit."""
         cache_key = ("run-1", "api-1")
-        mitm_addon._firewall_header_cache[cache_key] = {
+        auth._firewall_header_cache[cache_key] = {
             "headers": {},
             "resolvedSecrets": ["WEBHOOK_URL"],
             "base": "https://discord.com/api/webhooks/123/abc",
@@ -1005,10 +993,8 @@ class TestGetFirewallHeaders:
         }
 
         mock_fetch = AsyncMock()
-        with patch.object(mitm_addon, "fetch_firewall_headers", mock_fetch):
-            result = await mitm_addon.get_firewall_headers(
-                "run-1", "api-1", "iv:tag:data", {}, "tok-xyz"
-            )
+        with patch.object(auth, "fetch_firewall_headers", mock_fetch):
+            result = await auth.get_firewall_headers("run-1", "api-1", "iv:tag:data", {}, "tok-xyz")
 
         assert result["base"] == "https://discord.com/api/webhooks/123/abc"
         assert result["cache_hit"] is True
@@ -1017,17 +1003,15 @@ class TestGetFirewallHeaders:
     async def test_cache_hit_omits_base_when_absent(self):
         """Cached entry without 'base' does not include it in result."""
         cache_key = ("run-1", "api-1")
-        mitm_addon._firewall_header_cache[cache_key] = {
+        auth._firewall_header_cache[cache_key] = {
             "headers": {"Authorization": "Bearer tok"},
             "resolvedSecrets": ["TOKEN"],
             "expiresAt": None,
         }
 
         mock_fetch = AsyncMock()
-        with patch.object(mitm_addon, "fetch_firewall_headers", mock_fetch):
-            result = await mitm_addon.get_firewall_headers(
-                "run-1", "api-1", "iv:tag:data", {}, "tok-xyz"
-            )
+        with patch.object(auth, "fetch_firewall_headers", mock_fetch):
+            result = await auth.get_firewall_headers("run-1", "api-1", "iv:tag:data", {}, "tok-xyz")
 
         assert "base" not in result
         assert result["cache_hit"] is True
@@ -1040,8 +1024,8 @@ class TestGetFirewallHeaders:
 
 class TestHandleFirewallRequest:
     def setup_method(self):
-        mitm_addon._firewall_header_cache.clear()
-        mitm_addon._cache_locks.clear()
+        auth._firewall_header_cache.clear()
+        auth._cache_locks.clear()
 
     async def test_success_injects_headers_and_audit_metadata(self):
         flow = _make_http_flow()
@@ -1072,10 +1056,10 @@ class TestHandleFirewallRequest:
         }
 
         with (
-            patch.object(mitm_addon, "get_firewall_headers", AsyncMock(return_value=token_meta)),
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth.ctx, "log", MagicMock(), create=True),
         ):
-            await mitm_addon.handle_firewall_request(flow, api_entry, vm_info, match_info)
+            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
 
         # Headers injected
         assert flow.request.headers["Authorization"] == "Bearer real-token"
@@ -1112,14 +1096,14 @@ class TestHandleFirewallRequest:
 
         with (
             patch.object(
-                mitm_addon,
+                auth,
                 "get_firewall_headers",
                 AsyncMock(side_effect=Exception("API unreachable")),
             ),
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
-            patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
+            patch.object(auth.ctx, "log", MagicMock(), create=True),
+            patch.object(auth, "get_api_url", return_value="https://api.vm0.ai"),
         ):
-            await mitm_addon.handle_firewall_request(flow, api_entry, vm_info, match_info)
+            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
 
         assert flow.response is not None
         assert flow.response.status_code == 502
@@ -1144,7 +1128,7 @@ class TestHandleFirewallRequest:
 
         with (
             patch.object(
-                mitm_addon,
+                auth,
                 "get_firewall_headers",
                 AsyncMock(
                     return_value={
@@ -1156,9 +1140,9 @@ class TestHandleFirewallRequest:
                     }
                 ),
             ),
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            patch.object(auth.ctx, "log", MagicMock(), create=True),
         ):
-            await mitm_addon.handle_firewall_request(flow, api_entry, vm_info, match_info)
+            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
 
         assert flow.response is None
 
@@ -1169,8 +1153,8 @@ class TestHandleFirewallRequest:
         vm_info = {"runId": "run-1", "sandboxToken": "tok-xyz", "networkLogPath": ""}
         match_info = {"name": "github", "ref": "github"}
 
-        with patch.object(mitm_addon.ctx, "log", MagicMock(), create=True):
-            await mitm_addon.handle_firewall_request(flow, api_entry, vm_info, match_info)
+        with patch.object(auth.ctx, "log", MagicMock(), create=True):
+            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
 
         assert flow.response is not None
         assert flow.response.status_code == 502
@@ -1194,13 +1178,15 @@ class TestFetchFirewallHeaders:
         ).encode()
 
         with (
-            patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
-            patch("mitm_addon.urllib.request.Request") as mock_req_cls,
-            patch("mitm_addon.urllib.request.urlopen", return_value=mock_resp),
-            patch.object(mitm_addon, "VERCEL_BYPASS", ""),
+            patch("auth.urllib.request.Request") as mock_req_cls,
+            patch("auth.urllib.request.urlopen", return_value=mock_resp),
+            patch.object(auth, "VERCEL_BYPASS", ""),
         ):
-            result = mitm_addon._fetch_firewall_headers_sync(
-                "iv:tag:data", {"Authorization": "Bearer ${{ secrets.TOKEN }}"}, "tok-xyz"
+            result = auth._fetch_firewall_headers_sync(
+                "iv:tag:data",
+                {"Authorization": "Bearer ${{ secrets.TOKEN }}"},
+                "tok-xyz",
+                "https://api.vm0.ai",
             )
 
         assert result == {"headers": {"Authorization": "Bearer tok"}}
@@ -1224,12 +1210,11 @@ class TestFetchFirewallHeaders:
         mock_req_instance = MagicMock()
 
         with (
-            patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
-            patch("mitm_addon.urllib.request.Request", return_value=mock_req_instance),
-            patch("mitm_addon.urllib.request.urlopen", return_value=mock_resp),
-            patch.object(mitm_addon, "VERCEL_BYPASS", "secret-bypass-value"),
+            patch("auth.urllib.request.Request", return_value=mock_req_instance),
+            patch("auth.urllib.request.urlopen", return_value=mock_resp),
+            patch.object(auth, "VERCEL_BYPASS", "secret-bypass-value"),
         ):
-            mitm_addon._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz")
+            auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
 
         mock_req_instance.add_header.assert_called_once_with(
             "x-vercel-protection-bypass", "secret-bypass-value"
@@ -1242,12 +1227,11 @@ class TestFetchFirewallHeaders:
         mock_req_instance = MagicMock()
 
         with (
-            patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
-            patch("mitm_addon.urllib.request.Request", return_value=mock_req_instance),
-            patch("mitm_addon.urllib.request.urlopen", return_value=mock_resp),
-            patch.object(mitm_addon, "VERCEL_BYPASS", ""),
+            patch("auth.urllib.request.Request", return_value=mock_req_instance),
+            patch("auth.urllib.request.urlopen", return_value=mock_resp),
+            patch.object(auth, "VERCEL_BYPASS", ""),
         ):
-            mitm_addon._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz")
+            auth._fetch_firewall_headers_sync("iv:tag:data", {}, "tok-xyz", "https://api.vm0.ai")
 
         mock_req_instance.add_header.assert_not_called()
 
@@ -1258,21 +1242,39 @@ class TestFetchFirewallHeaders:
         ).encode()
 
         with (
-            patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
-            patch("mitm_addon.urllib.request.Request") as mock_req_cls,
-            patch("mitm_addon.urllib.request.urlopen", return_value=mock_resp),
-            patch.object(mitm_addon, "VERCEL_BYPASS", ""),
+            patch("auth.urllib.request.Request") as mock_req_cls,
+            patch("auth.urllib.request.urlopen", return_value=mock_resp),
+            patch.object(auth, "VERCEL_BYPASS", ""),
         ):
-            result = mitm_addon._fetch_firewall_headers_sync(
+            result = auth._fetch_firewall_headers_sync(
                 "iv:tag:data",
                 {},
                 "tok-xyz",
+                "https://api.vm0.ai",
                 auth_base="${{ secrets.DISCORD_WEBHOOK_URL }}",
             )
 
         assert result["base"] == "https://discord.com/api/webhooks/123/abc"
         body = json.loads(mock_req_cls.call_args[1]["data"])
         assert body["authBase"] == "${{ secrets.DISCORD_WEBHOOK_URL }}"
+
+    async def test_async_wrapper_passes_api_url_from_ctx(self):
+        """fetch_firewall_headers reads api_url on the event loop and passes it to the sync fn."""
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = json.dumps({"headers": {"Auth": "tok"}}).encode()
+
+        with (
+            patch.object(auth, "get_api_url", return_value="https://ctx-url.vm0.ai"),
+            patch("auth.urllib.request.Request") as mock_req_cls,
+            patch("auth.urllib.request.urlopen", return_value=mock_resp),
+            patch.object(auth, "VERCEL_BYPASS", ""),
+        ):
+            result = await auth.fetch_firewall_headers("enc", {}, "sandbox-tok")
+
+        assert result == {"headers": {"Auth": "tok"}}
+        # Verify the URL was built from the ctx-provided api_url
+        call_args = mock_req_cls.call_args
+        assert call_args[0][0] == "https://ctx-url.vm0.ai/api/webhooks/agent/firewall/auth"
 
 
 # =========================================================================
@@ -1285,18 +1287,18 @@ class TestForwardRequestSecurity:
 
     def test_rejects_file_scheme(self):
         with pytest.raises(ValueError, match="Unsupported URL scheme"):
-            mitm_addon._forward_request_sync("file:///etc/passwd", "GET", {}, None)
+            auth._forward_request_sync("file:///etc/passwd", "GET", {}, None)
 
     def test_rejects_ftp_scheme(self):
         with pytest.raises(ValueError, match="Unsupported URL scheme"):
-            mitm_addon._forward_request_sync("ftp://evil.com/file", "GET", {}, None)
+            auth._forward_request_sync("ftp://evil.com/file", "GET", {}, None)
 
     def test_rejects_empty_scheme(self):
         with pytest.raises(ValueError, match="Unsupported URL scheme"):
-            mitm_addon._forward_request_sync("//no-scheme.com/path", "GET", {}, None)
+            auth._forward_request_sync("//no-scheme.com/path", "GET", {}, None)
 
     def test_filters_hop_by_hop_from_response(self):
-        filtered = mitm_addon._filter_response_headers(
+        filtered = auth._filter_response_headers(
             {
                 "Content-Type": "application/json",
                 "Transfer-Encoding": "chunked",
@@ -1311,7 +1313,7 @@ class TestForwardRequestSecurity:
 
     def test_no_redirect_following(self):
         """_NoRedirect handler returns None to stop redirect chain."""
-        handler = mitm_addon._NoRedirect()
+        handler = auth._NoRedirect()
         result = handler.redirect_request(MagicMock(), None, 302, "Found", {}, "https://evil.com")
         assert result is None
 
@@ -1325,8 +1327,8 @@ class TestAuthBaseUrlRewrite:
     """Tests for auth.base URL rewriting via forward_request in handle_firewall_request."""
 
     def setup_method(self):
-        mitm_addon._firewall_header_cache.clear()
-        mitm_addon._cache_locks.clear()
+        auth._firewall_header_cache.clear()
+        auth._cache_locks.clear()
 
     async def test_url_rewrite_with_rel_path_root(self):
         """When rel_path is '/', resolved base URL is forwarded as-is."""
@@ -1359,11 +1361,11 @@ class TestAuthBaseUrlRewrite:
         }
         mock_forward = AsyncMock(return_value=(200, b'{"ok":true}', {}))
         with (
-            patch.object(mitm_addon, "get_firewall_headers", AsyncMock(return_value=token_meta)),
-            patch.object(mitm_addon, "forward_request", mock_forward),
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth, "forward_request", mock_forward),
+            patch.object(auth.ctx, "log", MagicMock(), create=True),
         ):
-            await mitm_addon.handle_firewall_request(flow, api_entry, vm_info, match_info)
+            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
         assert mock_forward.call_args[0][0] == "https://discord.com/api/webhooks/123/abc"
         assert flow.metadata["firewall_action"] == "ALLOW"
         assert flow.response.status_code == 200
@@ -1401,11 +1403,11 @@ class TestAuthBaseUrlRewrite:
         }
         mock_forward = AsyncMock(return_value=(200, b"ok", {}))
         with (
-            patch.object(mitm_addon, "get_firewall_headers", AsyncMock(return_value=token_meta)),
-            patch.object(mitm_addon, "forward_request", mock_forward),
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth, "forward_request", mock_forward),
+            patch.object(auth.ctx, "log", MagicMock(), create=True),
         ):
-            await mitm_addon.handle_firewall_request(flow, api_entry, vm_info, match_info)
+            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
         assert (
             mock_forward.call_args[0][0]
             == "https://mycompany.bitrix24.com/rest/1/real-token/crm.deal.list.json"
@@ -1446,11 +1448,11 @@ class TestAuthBaseUrlRewrite:
         }
         mock_forward = AsyncMock(return_value=(200, b"ok", {}))
         with (
-            patch.object(mitm_addon, "get_firewall_headers", AsyncMock(return_value=token_meta)),
-            patch.object(mitm_addon, "forward_request", mock_forward),
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth, "forward_request", mock_forward),
+            patch.object(auth.ctx, "log", MagicMock(), create=True),
         ):
-            await mitm_addon.handle_firewall_request(flow, api_entry, vm_info, match_info)
+            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
         assert mock_forward.call_args[0][0] == "https://discord.com/api/webhooks/123/abc?wait=true"
 
     async def test_url_rewrite_resolved_base_with_trailing_slash(self):
@@ -1486,11 +1488,11 @@ class TestAuthBaseUrlRewrite:
         }
         mock_forward = AsyncMock(return_value=(200, b"ok", {}))
         with (
-            patch.object(mitm_addon, "get_firewall_headers", AsyncMock(return_value=token_meta)),
-            patch.object(mitm_addon, "forward_request", mock_forward),
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth, "forward_request", mock_forward),
+            patch.object(auth.ctx, "log", MagicMock(), create=True),
         ):
-            await mitm_addon.handle_firewall_request(flow, api_entry, vm_info, match_info)
+            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
         assert (
             mock_forward.call_args[0][0]
             == "https://mycompany.bitrix24.com/rest/1/token/crm.deal.list"
@@ -1530,11 +1532,11 @@ class TestAuthBaseUrlRewrite:
         }
         mock_forward = AsyncMock(return_value=(200, b"ok", {}))
         with (
-            patch.object(mitm_addon, "get_firewall_headers", AsyncMock(return_value=token_meta)),
-            patch.object(mitm_addon, "forward_request", mock_forward),
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth, "forward_request", mock_forward),
+            patch.object(auth.ctx, "log", MagicMock(), create=True),
         ):
-            await mitm_addon.handle_firewall_request(flow, api_entry, vm_info, match_info)
+            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
         assert mock_forward.call_args[0][0] == "https://example.com/hook?token=abc&wait=true"
 
     async def test_no_url_rewrite_when_auth_base_absent(self):
@@ -1566,10 +1568,10 @@ class TestAuthBaseUrlRewrite:
             "cache_hit": False,
         }
         with (
-            patch.object(mitm_addon, "get_firewall_headers", AsyncMock(return_value=token_meta)),
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth.ctx, "log", MagicMock(), create=True),
         ):
-            await mitm_addon.handle_firewall_request(flow, api_entry, vm_info, match_info)
+            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
         # URL should not be modified
         assert flow.request.url == original_url
         assert flow.request.headers["Authorization"] == "Bearer real-token"
@@ -1590,7 +1592,7 @@ class TestMatchFirewallRequestRelPath:
             name="discord-webhook",
             ref="discord-webhook",
         )
-        result = mitm_addon.match_firewall_request(
+        result = matching.match_firewall_request(
             "https://firewall-placeholder.vm3.ai/discord-webhook/hook", "POST", fw_configs
         )
         assert isinstance(result, FirewallAllow)
@@ -1608,7 +1610,7 @@ class TestMatchFirewallRequestRelPath:
             name="bitrix",
             ref="bitrix",
         )
-        result = mitm_addon.match_firewall_request(
+        result = matching.match_firewall_request(
             "https://firewall-placeholder.vm3.ai/bitrix/rest/0/placeholder/crm.deal.list",
             "GET",
             fw_configs,
@@ -1621,7 +1623,7 @@ class TestBuildRewriteUrl:
     """Unit tests for _build_rewrite_url (pure URL construction)."""
 
     def test_simple_base_no_rel_path(self):
-        url = mitm_addon._build_rewrite_url(
+        url = url_utils.build_rewrite_url(
             "https://discord.com/api/webhooks/123/abc",
             {"rel_path": "/"},
             "https://firewall-placeholder.vm3.ai/discord-webhook/hook",
@@ -1629,7 +1631,7 @@ class TestBuildRewriteUrl:
         assert url == "https://discord.com/api/webhooks/123/abc"
 
     def test_multi_segment_rel_path(self):
-        url = mitm_addon._build_rewrite_url(
+        url = url_utils.build_rewrite_url(
             "https://example.com/base",
             {"rel_path": "/a/b/c"},
             "https://firewall-placeholder.vm3.ai/hook",
@@ -1637,7 +1639,7 @@ class TestBuildRewriteUrl:
         assert url == "https://example.com/base/a/b/c"
 
     def test_base_with_query_no_orig_query(self):
-        url = mitm_addon._build_rewrite_url(
+        url = url_utils.build_rewrite_url(
             "https://example.com/hook?token=secret",
             {"rel_path": "/"},
             "https://firewall-placeholder.vm3.ai/hook",
@@ -1645,7 +1647,7 @@ class TestBuildRewriteUrl:
         assert url == "https://example.com/hook?token=secret"
 
     def test_empty_orig_query_ignored(self):
-        url = mitm_addon._build_rewrite_url(
+        url = url_utils.build_rewrite_url(
             "https://example.com/hook",
             {"rel_path": "/"},
             "https://firewall-placeholder.vm3.ai/hook?",
@@ -1653,7 +1655,7 @@ class TestBuildRewriteUrl:
         assert url == "https://example.com/hook"
 
     def test_rel_path_with_both_queries_merged(self):
-        url = mitm_addon._build_rewrite_url(
+        url = url_utils.build_rewrite_url(
             "https://example.com/hook?token=abc",
             {"rel_path": "/sub"},
             "https://firewall-placeholder.vm3.ai/hook/sub?extra=1",
@@ -1661,7 +1663,7 @@ class TestBuildRewriteUrl:
         assert url == "https://example.com/hook/sub?token=abc&extra=1"
 
     def test_trailing_slash_on_base_deduped(self):
-        url = mitm_addon._build_rewrite_url(
+        url = url_utils.build_rewrite_url(
             "https://example.com/hook/",
             {"rel_path": "/sub"},
             "https://firewall-placeholder.vm3.ai/hook/sub",
@@ -1669,7 +1671,7 @@ class TestBuildRewriteUrl:
         assert url == "https://example.com/hook/sub"
 
     def test_no_rel_path_key_defaults_to_root(self):
-        url = mitm_addon._build_rewrite_url(
+        url = url_utils.build_rewrite_url(
             "https://example.com/hook",
             {},
             "https://firewall-placeholder.vm3.ai/hook",
@@ -1681,8 +1683,8 @@ class TestAuthBaseUrlRewriteEdgeCases:
     """Integration tests for auth.base URL rewriting via forward_request."""
 
     def setup_method(self):
-        mitm_addon._firewall_header_cache.clear()
-        mitm_addon._cache_locks.clear()
+        auth._firewall_header_cache.clear()
+        auth._cache_locks.clear()
 
     def _make_rewrite_inputs(
         self,
@@ -1728,11 +1730,11 @@ class TestAuthBaseUrlRewriteEdgeCases:
             return_value=(200, b'{"ok":true}', {"Content-Type": "application/json"})
         )
         with (
-            patch.object(mitm_addon, "get_firewall_headers", AsyncMock(return_value=token_meta)),
-            patch.object(mitm_addon, "forward_request", mock_forward),
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth, "forward_request", mock_forward),
+            patch.object(auth.ctx, "log", MagicMock(), create=True),
         ):
-            await mitm_addon.handle_firewall_request(flow, api_entry, vm_info, match_info)
+            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
         assert flow.metadata["auth_url_rewrite"] is True
         assert flow.response is not None
         assert flow.response.status_code == 200
@@ -1766,10 +1768,10 @@ class TestAuthBaseUrlRewriteEdgeCases:
             "cache_hit": False,
         }
         with (
-            patch.object(mitm_addon, "get_firewall_headers", AsyncMock(return_value=token_meta)),
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth.ctx, "log", MagicMock(), create=True),
         ):
-            await mitm_addon.handle_firewall_request(flow, api_entry, vm_info, match_info)
+            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
         assert "auth_url_rewrite" not in flow.metadata
         # Standard header injection happened
         assert flow.request.headers["Authorization"] == "Bearer real"
@@ -1782,11 +1784,11 @@ class TestAuthBaseUrlRewriteEdgeCases:
         token_meta["headers"] = {"X-Custom": "injected-value"}
         mock_forward = AsyncMock(return_value=(200, b"ok", {}))
         with (
-            patch.object(mitm_addon, "get_firewall_headers", AsyncMock(return_value=token_meta)),
-            patch.object(mitm_addon, "forward_request", mock_forward),
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth, "forward_request", mock_forward),
+            patch.object(auth.ctx, "log", MagicMock(), create=True),
         ):
-            await mitm_addon.handle_firewall_request(flow, api_entry, vm_info, match_info)
+            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
         assert flow.metadata["auth_url_rewrite"] is True
         # Auth headers passed to forward_request (in the headers dict)
         call_args = mock_forward.call_args
@@ -1798,11 +1800,11 @@ class TestAuthBaseUrlRewriteEdgeCases:
         flow, api_entry, vm_info, match_info, token_meta = self._make_rewrite_inputs()
         mock_forward = AsyncMock(side_effect=Exception("connection refused"))
         with (
-            patch.object(mitm_addon, "get_firewall_headers", AsyncMock(return_value=token_meta)),
-            patch.object(mitm_addon, "forward_request", mock_forward),
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth, "forward_request", mock_forward),
+            patch.object(auth.ctx, "log", MagicMock(), create=True),
         ):
-            await mitm_addon.handle_firewall_request(flow, api_entry, vm_info, match_info)
+            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
         assert flow.response is not None
         assert flow.response.status_code == 502
         assert flow.metadata["auth_url_rewrite"] is True
@@ -1813,9 +1815,9 @@ class TestAuthBaseUrlRewriteEdgeCases:
         token_meta["base"] = ""
         original_url = flow.request.url
         with (
-            patch.object(mitm_addon, "get_firewall_headers", AsyncMock(return_value=token_meta)),
-            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth.ctx, "log", MagicMock(), create=True),
         ):
-            await mitm_addon.handle_firewall_request(flow, api_entry, vm_info, match_info)
+            await auth.handle_firewall_request(flow, api_entry, vm_info, match_info)
         assert flow.request.url == original_url
         assert "auth_url_rewrite" not in flow.metadata
