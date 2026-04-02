@@ -11,6 +11,7 @@ import {
 } from "../../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
 import { deleteOrg } from "../../../../../src/lib/org/org-member-service";
+import { getOrgData } from "../../../../../src/lib/org/org-cache-service";
 import {
   isBadRequest,
   isForbidden,
@@ -26,9 +27,10 @@ const router = tsr.router(zeroOrgDeleteContract, {
 
     try {
       const { org, member } = await resolveOrg(authCtx);
+      const orgData = await getOrgData(org.orgId);
 
       // Verify the slug matches as a safety check
-      if (body.slug !== org.slug) {
+      if (body.slug !== orgData.slug) {
         return createErrorResponse(
           "BAD_REQUEST",
           "Organization name does not match",

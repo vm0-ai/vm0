@@ -41,6 +41,5 @@ describe("resolveOrgOrNull", () => {
 
     expect(result).not.toBeNull();
     expect(result!.orgId).toBe(orgId);
-    expect(result!.slug).toBe(slug);
   });
 });

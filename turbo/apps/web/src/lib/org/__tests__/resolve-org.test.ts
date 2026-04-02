@@ -69,7 +69,6 @@ describe("resolveOrg", () => {
     );
 
     expect(result.org.orgId).toBe(`org_mock_${slug}`);
-    expect(result.org.slug).toBe(slug);
   });
 
   it("explicit orgId parameter takes precedence over session", async () => {
@@ -94,7 +93,6 @@ describe("resolveOrg", () => {
     );
 
     expect(result.org.orgId).toBe(`org_mock_${slug}`);
-    expect(result.org.slug).toBe(slug);
   });
 
   it("throws 400 when no explicit org context available", async () => {
@@ -113,20 +111,24 @@ describe("resolveOrg", () => {
     );
   });
 
-  it("throws when orgId has no matching org (no fallback)", async () => {
+  it("resolves non-existent org with default tier via JWT fast path", async () => {
     const userId = uniqueId("test-user");
 
-    // Mock session with an orgId that doesn't match any org_cache entry
+    // Mock session with an orgId that doesn't exist in org_metadata
     mockClerk({
       userId,
       orgId: "org_nonexistent_xyz",
       clerkOrgs: [],
     });
 
-    // Resolve without slug — orgId lookup should throw (no Tier 3/4 fallback)
-    await expect(
-      resolveOrg(authCtx({ userId, orgId: "org_nonexistent_xyz" })),
-    ).rejects.toThrow();
+    // getOrgMetadata returns defaults for non-existent orgs (tier: "free"),
+    // and JWT fast path trusts authCtx.orgId — no Clerk API call needed
+    const result = await resolveOrg(
+      authCtx({ userId, orgId: "org_nonexistent_xyz" }),
+    );
+
+    expect(result.org.orgId).toBe("org_nonexistent_xyz");
+    expect(result.org.tier).toBe("free");
   });
 
   it("resolves correct org when user has multiple orgs", async () => {
@@ -159,7 +161,6 @@ describe("resolveOrg", () => {
     );
 
     expect(result.org.orgId).toBe(`org_mock_${slug2}`);
-    expect(result.org.slug).toBe(slug2);
     expect(result.org.orgId).not.toBe(`org_mock_${slug1}`);
   });
 
@@ -252,26 +253,29 @@ describe("resolveOrg", () => {
     expect(result.member.userId).toBe(userId);
   });
 
-  it("throws when user is not a member of the org", async () => {
+  it("throws when user is not a member of a cross-org", async () => {
     const userId = uniqueId("test-user");
     const otherUserId = uniqueId("other-user");
     const slug = uniqueId("org");
 
     // Set up Clerk org BEFORE creating org
     mockClerk({ userId, clerkOrgs: testOrgs(slug) });
-    await createTestOrg(slug);
+    const { id: orgId } = await createTestOrg(slug);
 
-    // Mock as different user who is NOT in the org
+    // Mock as different user whose session org differs from the target org.
+    // This forces the cache-backed membership check (not JWT fast path).
     mockClerk({
       userId: otherUserId,
-      orgId: `org_mock_${slug}`,
-      clerkOrgs: [], // No orgs
+      orgId: "org_other_session",
+      clerkOrgs: [],
     });
 
-    // Throws because the other user cannot resolve this org
-    // (either "not found" from org cache miss, or "not a member" from membership check)
+    // Throws because the other user is not a member (cross-org path checks membership)
     await expect(
-      resolveOrg(authCtx({ userId: otherUserId, orgId: `org_mock_${slug}` })),
+      resolveOrg(
+        authCtx({ userId: otherUserId, orgId: "org_other_session" }),
+        orgId,
+      ),
     ).rejects.toThrow();
   });
 
@@ -297,6 +301,5 @@ describe("resolveOrg", () => {
     );
 
     expect(result.org.orgId).toBe(`org_mock_${slug}`);
-    expect(result.org.slug).toBe(slug);
   });
 });

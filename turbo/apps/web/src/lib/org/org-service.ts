@@ -6,9 +6,9 @@ import {
   getOrgBySlug,
   invalidateOrgCache,
 } from "./org-cache-service";
+import type { OrgData } from "./org-cache-service";
 import { badRequest } from "../errors";
 import { logger } from "../logger";
-import type { ResolvedOrg } from "./resolve-org";
 
 const log = logger("service:org");
 
@@ -55,7 +55,7 @@ export async function updateOrg(
   orgId: string,
   userId: string,
   updates: { slug?: string; name?: string; force?: boolean },
-): Promise<ResolvedOrg> {
+): Promise<OrgData> {
   const { slug: newSlug, name: newName, force } = updates;
 
   // Verify membership (requireOrgMember throws 403 if not a member)

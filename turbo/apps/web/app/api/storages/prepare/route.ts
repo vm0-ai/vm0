@@ -18,7 +18,6 @@ import {
 } from "../../../../src/lib/auth/require-auth";
 import { isSandboxAuth } from "../../../../src/lib/auth/capability-check";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
-import { getOrgData } from "../../../../src/lib/org/org-cache-service";
 import {
   generatePresignedPutUrl,
   downloadManifest,
@@ -139,7 +138,7 @@ const router = tsr.router(storagesPrepareContract, {
     );
 
     // Resolve org: sandbox tokens use the run's org; CLI/session use resolveOrg
-    let runtimeOrg: { orgId: string; slug: string };
+    let runtimeOrg: { orgId: string };
     if (isSandboxAuth(authCtx)) {
       // Sandbox: run lookup also verifies ownership (runId + userId from signed JWT)
       const [run] = await globalThis.services.db
@@ -157,7 +156,7 @@ const router = tsr.router(storagesPrepareContract, {
           },
         };
       }
-      runtimeOrg = await getOrgData(run.orgId);
+      runtimeOrg = { orgId: run.orgId };
     } else {
       const { org } = await resolveOrg(authCtx);
       runtimeOrg = org;

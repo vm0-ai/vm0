@@ -1,5 +1,5 @@
 import { forbidden, badRequest, isBadRequest, isNotFound } from "../errors";
-import { getOrgData } from "./org-cache-service";
+import { getOrgMetadata } from "./org-cache-service";
 import { verifyMembershipCached } from "./org-membership-cache";
 import type { AuthContext } from "../auth/get-auth-context";
 
@@ -12,7 +12,7 @@ import type { OrgRole } from "@vm0/core";
  * Covers:
  * - Our own NotFoundError (from errors.ts)
  * - Clerk API 404 responses (ClerkAPIResponseError with status 404)
- * - Missing-slug guard in getOrgData ("has no slug")
+ * - Missing-slug guard ("has no slug")
  */
 function isOrgNotFoundError(error: unknown): boolean {
   if (isNotFound(error)) return true;
@@ -30,7 +30,7 @@ function isOrgNotFoundError(error: unknown): boolean {
 }
 
 /**
- * Wrapper around getOrgData that returns null instead of throwing when the
+ * Wrapper around getOrgMetadata that returns null instead of throwing when the
  * org cannot be resolved.
  *
  * Only swallows not-found errors (our NotFoundError, Clerk API 404,
@@ -38,9 +38,9 @@ function isOrgNotFoundError(error: unknown): boolean {
  */
 export async function getOrgDataOrNull(
   orgId: string,
-): Promise<{ orgId: string; slug: string; tier: string } | null> {
+): Promise<{ orgId: string; tier: string } | null> {
   try {
-    return await getOrgData(orgId);
+    return await getOrgMetadata(orgId);
   } catch (error) {
     if (isOrgNotFoundError(error)) return null;
     throw error;
@@ -48,13 +48,11 @@ export async function getOrgDataOrNull(
 }
 
 /**
- * Lightweight org type based on org_cache data.
- * Replaces the full org_cache.$inferSelect type for the resolution path.
+ * Lightweight org type based on org_metadata data.
+ * Contains only orgId and tier — no Clerk-derived fields (slug, name).
  */
-export interface ResolvedOrg {
+interface ResolvedOrg {
   orgId: string;
-  slug: string;
-  name: string;
   tier: string;
 }
 
@@ -117,9 +115,10 @@ export async function resolveOrg(
 ): Promise<{ org: ResolvedOrg; member: ResolvedMember }> {
   const effectiveOrgId = orgId ?? authCtx.orgId ?? null;
   if (effectiveOrgId) {
-    const orgData = await getOrgData(effectiveOrgId);
-    const member = await verifyMembership(orgData, authCtx);
-    return { org: orgData, member };
+    const orgMeta = await getOrgMetadata(effectiveOrgId);
+    const resolved: ResolvedOrg = { orgId: orgMeta.orgId, tier: orgMeta.tier };
+    const member = await verifyMembership(resolved, authCtx);
+    return { org: resolved, member };
   }
 
   throw badRequest(

@@ -15,6 +15,7 @@ import {
   updateMemberRole,
   removeMember,
 } from "../../../../../src/lib/org/org-member-service";
+import { getOrgData } from "../../../../../src/lib/org/org-cache-service";
 import {
   isBadRequest,
   isForbidden,
@@ -30,7 +31,12 @@ const router = tsr.router(zeroOrgMembersContract, {
 
     try {
       const { org } = await resolveOrg(authCtx);
-      const status = await getOrgMembers(authCtx.userId, org.orgId, org.slug);
+      const orgData = await getOrgData(org.orgId);
+      const status = await getOrgMembers(
+        authCtx.userId,
+        org.orgId,
+        orgData.slug,
+      );
       return { status: 200 as const, body: status };
     } catch (error) {
       if (isBadRequest(error)) {
