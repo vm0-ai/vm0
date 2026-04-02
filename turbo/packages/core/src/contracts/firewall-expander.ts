@@ -30,6 +30,11 @@ function validateGraphQLModifiers(
   permName: string,
   serviceName: string,
 ): void {
+  if (modifiers.length === 0) {
+    throw new Error(
+      `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": GraphQL keyword requires at least one modifier (type: or operationName:)`,
+    );
+  }
   for (const part of modifiers) {
     if (part.startsWith("type:")) {
       const val = part.slice(5);

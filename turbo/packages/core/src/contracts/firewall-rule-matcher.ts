@@ -96,8 +96,8 @@ function parseGraphQLRule(rest: string): GraphQLRule | null {
  * Parsed GraphQL request body fields used for matching.
  */
 export interface GraphQLBody {
-  /** The operation type keyword: `"query"` or `"mutation"`. */
-  type: string;
+  /** The operation type keyword: `"query"`, `"mutation"`, or `"subscription"`. */
+  type: "query" | "mutation" | "subscription";
   /** The named operation, if present. */
   operationName?: string;
 }

@@ -438,6 +438,12 @@ describe("validateRule", () => {
     }).not.toThrow();
   });
 
+  it("should reject bare GraphQL keyword with no modifiers", () => {
+    expect(() => {
+      return validateRule("POST /graphql GraphQL", "p", "fw");
+    }).toThrow("requires at least one modifier");
+  });
+
   it("should reject invalid GraphQL type", () => {
     expect(() => {
       return validateRule("POST /graphql GraphQL type:fragment", "p", "fw");
