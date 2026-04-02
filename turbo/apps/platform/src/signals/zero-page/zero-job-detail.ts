@@ -278,6 +278,7 @@ export const buildZeroJobInstructions$ = command(
 
       set(editedContent$, null);
       await set(fetchZeroJobDetail$, signal);
+      toast.success("Instructions saved");
     } catch (error) {
       throwIfAbort(error);
       set(
