@@ -29,6 +29,7 @@ import {
 } from "@vm0/core";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { fetchDownloadExtra$ } from "../../signals/activity-page/activity-download.ts";
+import { pageSignal$ } from "../../signals/page-signal.ts";
 import { searchParams$, updateSearchParams$ } from "../../signals/route.ts";
 import { Link } from "../router/link.tsx";
 import {
@@ -528,6 +529,7 @@ function ActivityDetailContent({
     void updateParams(next);
   };
   const fetchExtra = useSet(fetchDownloadExtra$);
+  const pageSignal = useGet(pageSignal$);
 
   const events: AgentEvent[] = eventsData;
   const { showModelDetail } = prepareRenderData(
@@ -569,7 +571,7 @@ function ActivityDetailContent({
             events={events}
             showModelDetail={showModelDetail}
             onDownload={() => {
-              void fetchExtra(detail.id).then(
+              void fetchExtra(detail.id, pageSignal).then(
                 (extra) => {
                   downloadJson(events, detail.id, detail, extra);
                 },

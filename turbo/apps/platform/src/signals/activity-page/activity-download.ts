@@ -13,6 +13,7 @@ export const fetchDownloadExtra$ = command(
   async (
     { get },
     runId: string,
+    _signal: AbortSignal,
   ): Promise<{
     context?: unknown;
     networkLogs?: unknown;

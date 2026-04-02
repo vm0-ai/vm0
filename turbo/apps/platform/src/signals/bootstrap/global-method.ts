@@ -61,7 +61,7 @@ export const setupGlobalMethod$ = command(
           if (!file) {
             return;
           }
-          set(loadInspectLogFile$, file)
+          set(loadInspectLogFile$, file, signal)
             .then(() => {
               if (pathname() !== "/activities/inspect") {
                 set(detachedNavigateTo$, ROUTES.activityInspect);

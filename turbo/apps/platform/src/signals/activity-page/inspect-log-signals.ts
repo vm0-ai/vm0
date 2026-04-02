@@ -19,9 +19,11 @@ export const inspectLogData$ = computed((get) => {
   return get(internalInspectLogData$);
 });
 
-export const loadInspectLogFile$ = command(async ({ set }, file: File) => {
-  const text = await file.text();
-  const data = parseInspectLog(text);
-  L.info("Loaded inspect log file", file.name);
-  set(internalInspectLogData$, data);
-});
+export const loadInspectLogFile$ = command(
+  async ({ set }, file: File, _signal: AbortSignal) => {
+    const text = await file.text();
+    const data = parseInspectLog(text);
+    L.info("Loaded inspect log file", file.name);
+    set(internalInspectLogData$, data);
+  },
+);

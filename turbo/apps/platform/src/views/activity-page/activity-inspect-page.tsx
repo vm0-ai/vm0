@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useGet, useSet, useLastResolved } from "ccstate-react";
+import { pageSignal$ } from "../../signals/page-signal.ts";
 import { IconSearch, IconChartLine, IconUpload } from "@tabler/icons-react";
 import { Button, Input, Tabs, TabsList, TabsTrigger } from "@vm0/ui";
 import { FeatureSwitchKey } from "@vm0/core";
@@ -54,6 +55,7 @@ function InspectBreadcrumb({ title }: { title: string }) {
 
 function InspectEmptyState() {
   const loadFile = useSet(loadInspectLogFile$);
+  const pageSignal = useGet(pageSignal$);
 
   return (
     <div className="h-full flex flex-col min-h-0">
@@ -75,7 +77,7 @@ function InspectEmptyState() {
               onChange={(e) => {
                 const file = e.target.files?.[0];
                 if (file) {
-                  void loadFile(file);
+                  loadFile(file, pageSignal).catch(() => {});
                 }
                 e.target.value = "";
               }}
