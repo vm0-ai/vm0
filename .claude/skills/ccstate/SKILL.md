@@ -1039,3 +1039,54 @@ function Child() {
 ### Circular dependency caveat
 
 When extracting handler logic into a new command signal, watch for circular imports. If `moduleA.ts` and `moduleB.ts` already import from each other, adding a command that imports both will create a cycle. In that case, place the command in a separate file (e.g., `moduleA-actions.ts`) that imports from both without being imported by either.
+
+## Resetting `useLastLoadable` on Dependency Change
+
+### Problem
+
+`useLastLoadable` retains the last resolved value in a `useRef`. When an external dependency changes (e.g., switching `agentId`), the underlying signal recomputes and enters a loading state, but `useLastLoadable` keeps showing stale data instead of a loading/skeleton state.
+
+### Solution
+
+Move the `useLastLoadable` call into the child component that renders the loading UI, and use React's `key` prop to force a remount when the dependency changes. The remount resets the internal `useRef` back to `{state: 'loading'}`.
+
+### Pattern
+
+```typescript
+// ❌ Parent owns useLastLoadable — child never resets
+function Parent() {
+  const agentId = useGet(sidebarChatAgentId$);
+  const loadable = useLastLoadable(chatThreads$);
+  const threads = loadable.state === "hasData" ? loadable.data : [];
+  const loading = loadable.state === "loading";
+
+  return <ThreadList threads={threads} loading={loading} />;
+}
+
+// ✅ Child owns useLastLoadable — key forces remount on agentId change
+function Parent() {
+  const agentId = useGet(sidebarChatAgentId$);
+  // If parent still needs resolved data for other logic, use useLastResolved
+  const threads = useLastResolved(chatThreads$) ?? [];
+
+  return <ThreadList key={agentId} />;
+}
+
+function ThreadList() {
+  const loadable = useLastLoadable(chatThreads$);
+  const threads = loadable.state === "hasData" ? loadable.data : [];
+  const loading = loadable.state === "loading";
+
+  if (loading && threads.length === 0) {
+    return <Skeleton />;
+  }
+  return threads.map(t => <ThreadItem key={t.id} thread={t} />);
+}
+```
+
+### Key Points
+
+1. **`key` drives the reset** — when the key value changes, React unmounts and remounts the component, creating a fresh `useRef({state: 'loading'})` inside `useLastLoadable`
+2. **Same key preserves retention** — navigating within the same agent (e.g., clicking a thread) keeps the key stable, so `useLastLoadable` retains data as intended
+3. **Parent can still access data** — use `useLastResolved` in the parent if it needs the resolved value for non-loading-UI logic (e.g., finding a selected item's metadata)
+4. **Aligns with "read signals directly" pattern** — the child owns both the data subscription and its loading state, making it self-contained

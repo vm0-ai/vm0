@@ -610,9 +610,6 @@ function RecentChatSection({
   currentChatAgentId,
   displayName,
   subagents,
-  recentSessions,
-  recentSessionsLoading,
-  recentSessionsError,
   selectedRecentId,
   onRecentSelect,
   onNewChat,
@@ -621,14 +618,23 @@ function RecentChatSection({
   currentChatAgentId: string | null;
   displayName: string;
   subagents: SubagentInfo[];
-  recentSessions: ChatThreadListItem[];
-  recentSessionsLoading: boolean;
-  recentSessionsError: string | null;
   selectedRecentId: string | null;
   onRecentSelect?: (id: string) => void;
   onNewChat?: (agentId: string | null) => void;
   newChatDisabled?: boolean;
 }) {
+  const recentSessionsLoadable = useLastLoadable(chatThreads$);
+  const recentSessions =
+    recentSessionsLoadable.state === "hasData"
+      ? recentSessionsLoadable.data
+      : [];
+  const recentSessionsLoading = recentSessionsLoadable.state === "loading";
+  const recentSessionsError =
+    recentSessionsLoadable.state === "hasError"
+      ? recentSessionsLoadable.error instanceof Error
+        ? recentSessionsLoadable.error.message
+        : "Failed to load chats"
+      : null;
   const searchOpen = useGet(sidebarSearchOpen$);
   const setSearchOpen = useSet(setSidebarSearchOpen$);
   const searchTerm = useGet(sidebarSearchTerm$);
@@ -1181,18 +1187,7 @@ export function ZeroSidebar() {
   };
   const selectedRecentId = useGet(chatThreadId$);
   const onAccountAction = useSet(handleZeroAccountAction$);
-  const recentSessionsLoadable = useLastLoadable(chatThreads$);
-  const recentSessions =
-    recentSessionsLoadable.state === "hasData"
-      ? recentSessionsLoadable.data
-      : [];
-  const recentSessionsLoading = recentSessionsLoadable.state === "loading";
-  const recentSessionsError =
-    recentSessionsLoadable.state === "hasError"
-      ? recentSessionsLoadable.error instanceof Error
-        ? recentSessionsLoadable.error.message
-        : "Failed to load chats"
-      : null;
+  const recentSessions = useLastResolved(chatThreads$) ?? [];
   const createNewChat = useSet(createNewChatThread$);
   const creatingNewSessionLoadable = useLoadable(creatingNewSession$);
   const creatingNewSession = creatingNewSessionLoadable.state === "loading";
@@ -1476,12 +1471,10 @@ export function ZeroSidebar() {
 
             {/* Recent chat sessions */}
             <RecentChatSection
+              key={currentChatAgentId}
               currentChatAgentId={currentChatAgentId}
               displayName={displayName}
               subagents={subagents}
-              recentSessions={recentSessions}
-              recentSessionsLoading={recentSessionsLoading}
-              recentSessionsError={recentSessionsError}
               selectedRecentId={selectedRecentId}
               onRecentSelect={onRecentSelect}
               onNewChat={onNewChat}
