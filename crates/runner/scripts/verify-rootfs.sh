@@ -122,22 +122,26 @@ else
 fi
 
 # Check language runtimes
-for bin_check in \
-  "/usr/bin/ruby:ruby" \
-  "/usr/bin/php:php" \
-  "/usr/bin/javac:javac" \
-  "/usr/local/go/bin/go:go" \
-  "/usr/local/cargo/bin/rustc:rustc" \
-  "/usr/bin/gcc:gcc" \
-  "/usr/bin/clang:clang"; do
-  bin_path="${bin_check%%:*}"
-  bin_name="${bin_check#*:}"
-  if [[ -f "${MOUNT_DIR}${bin_path}" ]]; then
-    echo "  ${bin_name}: found"
+# Some binaries use update-alternatives symlinks or versioned names (e.g.
+# php8.3 instead of php, javac under /usr/lib/jvm/). Use glob patterns
+# and ls to handle both exact paths and wildcards.
+check_bin() {
+  local pattern="$1" name="$2"
+  # shellcheck disable=SC2086
+  if ls ${MOUNT_DIR}${pattern} &>/dev/null; then
+    echo "  ${name}: found"
   else
-    errors+=("${bin_name} not found at ${bin_path}")
+    errors+=("${name} not found (pattern: ${pattern})")
   fi
-done
+}
+
+check_bin "/usr/bin/ruby"                      "ruby"
+check_bin "/usr/bin/php*"                      "php"
+check_bin "/usr/lib/jvm/java-*/bin/javac"      "javac"
+check_bin "/usr/local/go/bin/go"               "go"
+check_bin "/usr/local/cargo/bin/rustc"         "rustc"
+check_bin "/usr/bin/gcc"                       "gcc"
+check_bin "/usr/bin/clang"                     "clang"
 
 # Check databases
 if [[ -f "${MOUNT_DIR}/usr/bin/psql" ]]; then
