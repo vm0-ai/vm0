@@ -38,12 +38,39 @@ describe("zero doctor missing-token command", () => {
 
   beforeEach(() => {
     chalk.level = 0;
+    // Ensure the token is absent by default; individual tests can override.
+    vi.stubEnv("GH_TOKEN", "");
   });
 
   afterEach(() => {
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
+  });
+
+  describe("token present in environment", () => {
+    it("should report token is present and still run connector checks", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      vi.stubEnv("GH_TOKEN", "ghp_test123");
+      server.use(
+        http.get("https://app.vm0.ai/api/zero/connectors/github", () => {
+          return HttpResponse.json(connectedResponse);
+        }),
+        http.get(
+          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: ["github"] });
+          },
+        ),
+      );
+
+      await missingTokenCommand.parseAsync(["node", "cli", "GH_TOKEN"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Sandbox env: present");
+    });
   });
 
   describe("connector not connected", () => {
@@ -69,9 +96,7 @@ describe("zero doctor missing-token command", () => {
       await missingTokenCommand.parseAsync(["node", "cli", "GH_TOKEN"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain(
-        "GH_TOKEN is provided by the GitHub connector",
-      );
+      expect(logCalls).toContain("Sandbox env: not present");
       expect(logCalls).toContain("not connected");
       expect(logCalls).toContain(
         "[Connect GitHub](https://app.vm0.ai/connectors)",
@@ -99,9 +124,7 @@ describe("zero doctor missing-token command", () => {
       await missingTokenCommand.parseAsync(["node", "cli", "GH_TOKEN"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain(
-        "GH_TOKEN is provided by the GitHub connector",
-      );
+      expect(logCalls).toContain("Sandbox env: not present");
       expect(logCalls).toContain("not authorized");
       expect(logCalls).toContain(
         "[Authorize GitHub](https://app.vm0.ai/team/agent-abc-123?tab=authorization)",
@@ -132,9 +155,7 @@ describe("zero doctor missing-token command", () => {
       await missingTokenCommand.parseAsync(["node", "cli", "GH_TOKEN"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain(
-        "GH_TOKEN is provided by the GitHub connector",
-      );
+      expect(logCalls).toContain("Sandbox env: not present");
       expect(logCalls).toContain("expired");
       expect(logCalls).toContain("needs to be reconnected");
       expect(logCalls).toContain(
@@ -198,6 +219,7 @@ describe("zero doctor missing-token command", () => {
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("connected and authorized");
       expect(logCalls).toContain("still missing");
+      expect(logCalls).toContain("Ask VM0 developer to resolve this issue");
       expect(logCalls).toContain(
         "[Check GitHub status](https://app.vm0.ai/connectors)",
       );

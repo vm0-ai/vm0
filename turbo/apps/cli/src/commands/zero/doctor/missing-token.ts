@@ -42,6 +42,12 @@ Notes:
       const platformUrl = toPlatformUrl(apiUrl);
       const agentId = process.env.ZERO_AGENT_ID;
 
+      // Check whether the token actually exists in the sandbox environment.
+      const tokenPresent = Boolean(process.env[tokenName]);
+      console.log(
+        `${tokenName} is provided by the ${label} connector. Sandbox env: ${tokenPresent ? "present" : "not present"}.`,
+      );
+
       // Check whether the user has connected this connector and whether the
       // agent has permission to use it. Run both checks in parallel.
       const [connector, enabledTypes] = await Promise.all([
@@ -58,8 +64,6 @@ Notes:
       const isConnected = connector !== null;
       const hasPermission =
         enabledTypes !== null && enabledTypes.includes(connectorType);
-
-      console.log(`${tokenName} is provided by the ${label} connector.`);
 
       if (!isConnected) {
         // Connector not connected at all — direct to connectors page
@@ -95,7 +99,7 @@ Notes:
         // Both connected and authorized — something else is wrong
         const url = `${platformUrl.origin}/connectors`;
         console.log(
-          `The ${label} connector is connected and authorized, but the token is still missing. Ask the user to check the connector status at: [Check ${label} status](${url})`,
+          `The ${label} connector is connected and authorized, but the token is still missing. Ask VM0 developer to resolve this issue. Connector status: [Check ${label} status](${url})`,
         );
       }
     }),
