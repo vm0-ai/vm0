@@ -331,18 +331,19 @@ impl NbdCowDevice {
 
     /// Check if we still own the NBD device by comparing the sysfs PID.
     ///
-    /// The kernel records the connecting process's PID in `/sys/block/nbdN/pid`.
-    /// If another process recycled the device index, the PID will differ and
-    /// we must skip disconnect to avoid tearing down the other process's device.
+    /// The kernel records the connecting **thread's** TID (via `task_pid_nr`)
+    /// in `/sys/block/nbdN/pid`, not the process TGID. In multi-threaded
+    /// programs (tokio worker threads), TID ≠ TGID. We check ownership by
+    /// verifying the recorded TID belongs to our process via `/proc/self/task/`.
     fn device_ownership(&self) -> DeviceOwnership {
         let pid_path = format!("/sys/block/nbd{}/pid", self.device_index);
         match std::fs::read_to_string(&pid_path) {
             Ok(contents) => {
-                let pid: u32 = contents.trim().parse().unwrap_or(0);
-                if pid == std::process::id() {
+                let tid: u32 = contents.trim().parse().unwrap_or(0);
+                if is_our_thread(tid) {
                     DeviceOwnership::Ours
                 } else {
-                    DeviceOwnership::Foreign(pid)
+                    DeviceOwnership::Foreign(tid)
                 }
             }
             Err(e) => DeviceOwnership::Unknown(e),
@@ -352,6 +353,17 @@ impl NbdCowDevice {
     fn bitmap_path(&self) -> PathBuf {
         cow::bitmap_path_for(&self.cow_file)
     }
+}
+
+/// Check if a TID belongs to our process by probing `/proc/self/task/{tid}`.
+///
+/// The kernel NBD driver records the connecting thread's TID (not TGID) in
+/// sysfs. In a multi-threaded tokio runtime the connecting worker thread has
+/// a TID different from the process TGID returned by `std::process::id()`.
+/// This function handles both cases: TID == TGID (main thread) and
+/// TID != TGID (worker threads).
+fn is_our_thread(tid: u32) -> bool {
+    tid == std::process::id() || std::path::Path::new(&format!("/proc/self/task/{tid}")).exists()
 }
 
 /// Best-effort cleanup on drop: cancel tasks and disconnect the NBD device.
