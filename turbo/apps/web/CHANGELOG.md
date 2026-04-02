@@ -1,5 +1,13 @@
 # Changelog
 
+## [12.188.1](https://github.com/vm0-ai/vm0/compare/web-v12.188.0...web-v12.188.1) (2026-04-02)
+
+
+### Refactoring
+
+* move connector module to lib/zero/connector/ ([#7765](https://github.com/vm0-ai/vm0/issues/7765)) ([f8b1190](https://github.com/vm0-ai/vm0/commit/f8b1190271caabcaa41696081bc5407dd381149a)), closes [#7739](https://github.com/vm0-ai/vm0/issues/7739)
+* move small infra modules to lib/infra/ ([#7720](https://github.com/vm0-ai/vm0/issues/7720)) ([#7746](https://github.com/vm0-ai/vm0/issues/7746)) ([18891c3](https://github.com/vm0-ai/vm0/commit/18891c32d4818ec516112266a965df68cba4c2f9))
+
 ## [12.188.0](https://github.com/vm0-ai/vm0/compare/web-v12.187.0...web-v12.188.0) (2026-04-02)
 
 
