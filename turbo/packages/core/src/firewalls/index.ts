@@ -30,6 +30,7 @@ import { getConnectorEnvironmentMapping } from "../contracts/connectors";
 import { agentmailFirewall } from "./agentmail.generated";
 import { ahrefsFirewall } from "./ahrefs.generated";
 import { airtableFirewall } from "./airtable.generated";
+import { apolloFirewall } from "./apollo.generated";
 import { apifyFirewall } from "./apify.generated";
 import { asanaFirewall } from "./asana.generated";
 import { atlassianFirewall } from "./atlassian.generated";
@@ -155,6 +156,7 @@ const CONNECTOR_FIREWALLS = {
   agentmail: agentmailFirewall,
   ahrefs: ahrefsFirewall,
   airtable: airtableFirewall,
+  apollo: apolloFirewall,
   apify: apifyFirewall,
   asana: asanaFirewall,
   atlassian: atlassianFirewall,

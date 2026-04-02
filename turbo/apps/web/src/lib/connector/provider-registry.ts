@@ -8,6 +8,7 @@ import {
 import { agentmailHandler } from "./providers/agentmail-handler";
 import { ahrefsHandler } from "./providers/ahrefs-handler";
 import { airtableHandler } from "./providers/airtable-handler";
+import { apolloHandler } from "./providers/apollo-handler";
 import { apifyHandler } from "./providers/apify-handler";
 import { axiomHandler } from "./providers/axiom-handler";
 import { asanaHandler } from "./providers/asana-handler";
@@ -141,6 +142,7 @@ export const PROVIDER_HANDLERS: Record<
   agentmail: agentmailHandler,
   ahrefs: ahrefsHandler,
   airtable: airtableHandler,
+  apollo: apolloHandler,
   apify: apifyHandler,
   axiom: axiomHandler,
   asana: asanaHandler,
