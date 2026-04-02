@@ -130,6 +130,7 @@ export const logsListContract = c.router({
   list: {
     method: "GET",
     path: "/api/zero/logs",
+    headers: authHeadersSchema,
     query: listQuerySchema.extend({
       search: z.string().optional(),
       agent: z.string().optional(),

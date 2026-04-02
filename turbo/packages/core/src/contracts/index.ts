@@ -595,6 +595,7 @@ export {
   zeroRunAgentEventsContract,
   zeroRunContextContract,
   zeroRunNetworkLogsContract,
+  zeroLogsSearchContract,
   type ZeroRunsMainContract,
   type ZeroRunsByIdContract,
   type ZeroRunsCancelContract,
@@ -602,6 +603,7 @@ export {
   type ZeroRunAgentEventsContract,
   type ZeroRunContextContract,
   type ZeroRunNetworkLogsContract,
+  type ZeroLogsSearchContract,
   type RunContextResponse,
 } from "./zero-runs";
 export {
