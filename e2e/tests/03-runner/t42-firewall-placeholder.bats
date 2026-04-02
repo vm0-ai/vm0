@@ -25,8 +25,8 @@ setup_file() {
     setup_test_connector "slack" "xoxb-multi-test-token"
 
     # discord-webhook uses api-token auth (not OAuth), so store as user secret
-    # via CLI — same path as the frontend's "Add Connection" dialog.
-    $VM0_CLI secret set DISCORD_WEBHOOK_URL -b "https://discord.com/api/webhooks/1234567890/fake-token-for-e2e"
+    # — same path as the frontend's "Add Connection" dialog.
+    set_user_secret "DISCORD_WEBHOOK_URL" "https://discord.com/api/webhooks/1234567890/fake-token-for-e2e"
 }
 
 setup() {
@@ -88,6 +88,44 @@ setup_test_connector() {
 
     if [[ "$http_code" != "200" ]]; then
         echo "Failed to set up test connector: HTTP $http_code"
+        echo "Response: $body"
+        return 1
+    fi
+}
+
+# Helper to set a user secret via the zero secrets API.
+# Uses the CLI auth token from ~/.vm0/config.json.
+# This mirrors the frontend's api-token connector flow.
+set_user_secret() {
+    local name="$1"
+    local value="$2"
+
+    # Read auth token from CLI config
+    local token
+    token=$(python3 -c "import json; print(json.load(open('$HOME/.vm0/config.json'))['authToken'])" 2>/dev/null)
+    if [[ -z "$token" ]]; then
+        echo "No authToken in ~/.vm0/config.json" >&2
+        return 1
+    fi
+
+    local curl_args=(-s -w "\n%{http_code}" -X POST)
+    curl_args+=(-H "Content-Type: application/json")
+    curl_args+=(-H "Authorization: Bearer $token")
+    if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
+        curl_args+=(-H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET")
+    fi
+    curl_args+=(-d "{\"name\":\"${name}\",\"value\":\"${value}\"}")
+
+    local response
+    response=$(curl "${curl_args[@]}" "${VM0_API_URL}/api/zero/secrets")
+
+    local http_code
+    http_code=$(echo "$response" | tail -n1)
+    local body
+    body=$(echo "$response" | head -n-1)
+
+    if [[ "$http_code" != "200" ]]; then
+        echo "Failed to set user secret ${name}: HTTP $http_code"
         echo "Response: $body"
         return 1
     fi
