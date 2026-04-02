@@ -105,19 +105,6 @@ export async function updateOrg(
 }
 
 /**
- * Check if a runner group belongs to the official vm0 org.
- * Official runner groups (vm0/production, vm0/development) can be used by any user.
- *
- * @param group - Runner group in format "vm0/<name>"
- * @returns true if the group is an official runner group (vm0/*)
- */
-export function isOfficialRunnerGroup(group: string): boolean {
-  const orgSlug = group.split("/")[0];
-  // TODO: Runner group public access for vm0 is hardcoded. This should be configurable.
-  return orgSlug === "vm0";
-}
-
-/**
  * Atomically deduct credits from an org's balance.
  *
  * Uses INSERT ON CONFLICT UPDATE so the row is created with `-amount`

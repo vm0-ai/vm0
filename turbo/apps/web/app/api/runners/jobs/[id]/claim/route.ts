@@ -16,7 +16,7 @@ import { getRunnerAuth } from "../../../../../../src/lib/auth/runner-auth";
 import { generateSandboxToken } from "../../../../../../src/lib/auth/sandbox-token";
 import { logger } from "../../../../../../src/lib/logger";
 import { decryptSecretsMap } from "../../../../../../src/lib/shared/crypto/secrets-encryption";
-import { isOfficialRunnerGroup } from "../../../../../../src/lib/zero/org/org-service";
+import { isOfficialRunnerGroup } from "../../../../../../src/lib/infra/run/runner-group";
 import { recordSandboxOperation } from "../../../../../../src/lib/shared/metrics";
 
 const log = logger("api:runners:jobs:claim");
