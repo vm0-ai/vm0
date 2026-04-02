@@ -91,6 +91,12 @@ describe("getConnectorEnvironmentMapping", () => {
     });
   });
 
+  it("returns correct mapping for apollo connector", () => {
+    expect(getConnectorEnvironmentMapping("apollo")).toEqual({
+      APOLLO_TOKEN: "$secrets.APOLLO_TOKEN",
+    });
+  });
+
   it("returns correct mapping for API-token connector with variables", () => {
     expect(getConnectorEnvironmentMapping("jira")).toEqual({
       JIRA_API_TOKEN: "$secrets.JIRA_API_TOKEN",
