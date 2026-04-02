@@ -8,7 +8,7 @@ import type {
   MarkdownBlock,
   Option,
 } from "@slack/web-api";
-import { getAppUrl } from "../url";
+import { getAppUrl } from "../../url";
 
 /**
  * Build the App Home tab view

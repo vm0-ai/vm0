@@ -17,7 +17,7 @@ import { orgMembersCache } from "../../db/schema/org-members-cache";
 import { orgMembersMetadata } from "../../db/schema/org-members-metadata";
 import { orgCache } from "../../db/schema/org-cache";
 import { orgMetadata } from "../../db/schema/org-metadata";
-import { cleanupWorkspaceInstallation } from "../slack-org/connect-service";
+import { cleanupWorkspaceInstallation } from "../zero/slack-org/connect-service";
 
 const log = logger("service:org-deletion");
 

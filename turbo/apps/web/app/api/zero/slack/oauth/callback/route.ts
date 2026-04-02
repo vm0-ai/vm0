@@ -5,7 +5,7 @@ import { env } from "../../../../../../src/env";
 import {
   exchangeOAuthCode,
   exchangeOAuthCodeForUser,
-} from "../../../../../../src/lib/slack";
+} from "../../../../../../src/lib/zero/slack";
 import { getApiUrl } from "../../../../../../src/lib/infra/callback";
 import { encryptSecretValue } from "../../../../../../src/lib/shared/crypto/secrets-encryption";
 import { slackOrgInstallations } from "../../../../../../src/db/schema/slack-org-installation";
@@ -15,7 +15,7 @@ import {
   adminConnect,
   memberConnect,
   notifyConnectSuccess,
-} from "../../../../../../src/lib/slack-org/connect-service";
+} from "../../../../../../src/lib/zero/slack-org/connect-service";
 import { getAppUrl } from "../../../../../../src/lib/url";
 import { logger } from "../../../../../../src/lib/logger";
 

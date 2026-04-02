@@ -10,13 +10,13 @@ import {
   createSlackClient,
   postMessage,
   setThreadStatus,
-} from "../../../../../../src/lib/slack/client";
-import { buildAgentResponseMessage } from "../../../../../../src/lib/slack/blocks";
+} from "../../../../../../src/lib/zero/slack/client";
+import { buildAgentResponseMessage } from "../../../../../../src/lib/zero/slack/blocks";
 import { extractAllRunOutputs } from "../../../../../../src/lib/infra/run/extract-run-output";
 import {
   saveThreadSession,
   buildLogsUrl,
-} from "../../../../../../src/lib/slack-org/handlers/shared";
+} from "../../../../../../src/lib/zero/slack-org/handlers/shared";
 import { env } from "../../../../../../src/env";
 import type { SlackOrgCallbackPayload } from "../../../../../../src/lib/infra/callback/callback-payloads";
 import { logger } from "../../../../../../src/lib/logger";

@@ -8,9 +8,9 @@ import {
   enrichMessageContent,
   fetchConversationContexts,
 } from "../shared";
-import { testContext } from "../../../../__tests__/test-helpers";
-import { server } from "../../../../mocks/server";
-import { http } from "../../../../__tests__/msw";
+import { testContext } from "../../../../../__tests__/test-helpers";
+import { server } from "../../../../../mocks/server";
+import { http } from "../../../../../__tests__/msw";
 
 describe("buildOrgConnectUrl", () => {
   it("should point to platform slack connect page", () => {

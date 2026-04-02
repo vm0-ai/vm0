@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { env } from "../../../../../../src/env";
 import { getApiUrl } from "../../../../../../src/lib/infra/callback";
-import { SLACK_BOT_SCOPES } from "../../../../../../src/lib/slack-org/scopes";
+import { SLACK_BOT_SCOPES } from "../../../../../../src/lib/zero/slack-org/scopes";
 
 /**
  * Org-aware Slack OAuth Install Endpoint

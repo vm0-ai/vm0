@@ -4,15 +4,15 @@ import { env } from "../../../../../src/env";
 import {
   verifySlackSignature,
   getSlackSignatureHeaders,
-} from "../../../../../src/lib/slack/verify";
-import { handleOrgMention } from "../../../../../src/lib/slack-org/handlers/mention";
-import { handleOrgDirectMessage } from "../../../../../src/lib/slack-org/handlers/direct-message";
+} from "../../../../../src/lib/zero/slack/verify";
+import { handleOrgMention } from "../../../../../src/lib/zero/slack-org/handlers/mention";
+import { handleOrgDirectMessage } from "../../../../../src/lib/zero/slack-org/handlers/direct-message";
 import {
   handleOrgAppHomeOpened,
   handleOrgMessagesTabOpened,
-} from "../../../../../src/lib/slack-org/handlers/app-home";
-import { cleanupWorkspaceInstallation } from "../../../../../src/lib/slack-org/connect-service";
-import type { SlackFile } from "../../../../../src/lib/slack/context";
+} from "../../../../../src/lib/zero/slack-org/handlers/app-home";
+import { cleanupWorkspaceInstallation } from "../../../../../src/lib/zero/slack-org/connect-service";
+import type { SlackFile } from "../../../../../src/lib/zero/slack/context";
 import { logger } from "../../../../../src/lib/logger";
 
 const log = logger("slack-org:events");

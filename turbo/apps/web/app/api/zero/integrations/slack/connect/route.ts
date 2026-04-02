@@ -10,11 +10,11 @@ import {
   adminConnect,
   memberConnect,
   notifyConnectSuccess,
-} from "../../../../../../src/lib/slack-org/connect-service";
+} from "../../../../../../src/lib/zero/slack-org/connect-service";
 import {
   resolveDefaultComposeId,
   getWorkspaceAgent,
-} from "../../../../../../src/lib/slack-org/handlers/shared";
+} from "../../../../../../src/lib/zero/slack-org/handlers/shared";
 import { logger } from "../../../../../../src/lib/logger";
 
 const log = logger("api:zero:slack:connect");

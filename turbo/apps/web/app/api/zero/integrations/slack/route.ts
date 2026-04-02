@@ -13,7 +13,7 @@ import { slackOrgConnections } from "../../../../../src/db/schema/slack-org-conn
 import {
   resolveDefaultComposeId,
   getWorkspaceAgent,
-} from "../../../../../src/lib/slack-org/handlers/shared";
+} from "../../../../../src/lib/zero/slack-org/handlers/shared";
 import {
   agentComposes,
   agentComposeVersions,
@@ -22,14 +22,14 @@ import { listSecrets } from "../../../../../src/lib/zero/secret/secret-service";
 import { listVariables } from "../../../../../src/lib/zero/variable/variable-service";
 import { listConnectors } from "../../../../../src/lib/zero/connector/connector-service";
 import { getOrgData } from "../../../../../src/lib/org/org-cache-service";
-import { createSlackClient } from "../../../../../src/lib/slack";
+import { createSlackClient } from "../../../../../src/lib/zero/slack";
 import { getApiUrl } from "../../../../../src/lib/infra/callback";
-import { publishAppHome } from "../../../../../src/lib/slack/client";
-import { buildAppHomeView } from "../../../../../src/lib/slack/blocks";
+import { publishAppHome } from "../../../../../src/lib/zero/slack/client";
+import { buildAppHomeView } from "../../../../../src/lib/zero/slack/blocks";
 import { decryptSecretValue } from "../../../../../src/lib/shared/crypto/secrets-encryption";
-import { refreshOrgAppHome } from "../../../../../src/lib/slack-org/handlers/app-home";
-import { cleanupWorkspaceInstallation } from "../../../../../src/lib/slack-org/connect-service";
-import { hasAllBotScopes } from "../../../../../src/lib/slack-org/scopes";
+import { refreshOrgAppHome } from "../../../../../src/lib/zero/slack-org/handlers/app-home";
+import { cleanupWorkspaceInstallation } from "../../../../../src/lib/zero/slack-org/connect-service";
+import { hasAllBotScopes } from "../../../../../src/lib/zero/slack-org/scopes";
 import type { AgentComposeYaml } from "../../../../../src/types/agent-compose";
 import { logger } from "../../../../../src/lib/logger";
 

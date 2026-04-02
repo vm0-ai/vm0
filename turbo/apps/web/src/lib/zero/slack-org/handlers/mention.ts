@@ -1,5 +1,5 @@
-import { decryptSecretValue } from "../../shared/crypto/secrets-encryption";
-import { env } from "../../../env";
+import { decryptSecretValue } from "../../../shared/crypto/secrets-encryption";
+import { env } from "../../../../env";
 import { createSlackClient, setThreadStatus } from "../../slack/client";
 import {
   buildAgentResponseMessage,
@@ -7,7 +7,7 @@ import {
 } from "../../slack/blocks";
 import type { SlackFile } from "../../slack/context";
 import { runAgentForSlackOrg } from "./run-agent";
-import type { SlackOrgCallbackPayload } from "../../infra/callback/callback-payloads";
+import type { SlackOrgCallbackPayload } from "../../../infra/callback/callback-payloads";
 import {
   resolveOrgFromWorkspace,
   resolveConnectionFromSlackUser,
@@ -20,8 +20,8 @@ import {
   getWorkspaceAgent,
   resolveSessionCompose,
 } from "./shared";
-import { getAppUrl } from "../../url";
-import { logger } from "../../logger";
+import { getAppUrl } from "../../../url";
+import { logger } from "../../../logger";
 
 const log = logger("slack-org:mention");
 

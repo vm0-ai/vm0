@@ -1,12 +1,12 @@
 import { eq, and } from "drizzle-orm";
-import { slackOrgInstallations } from "../../../db/schema/slack-org-installation";
-import { slackOrgConnections } from "../../../db/schema/slack-org-connection";
-import { slackOrgThreadSessions } from "../../../db/schema/slack-org-thread-session";
-import { zeroAgents } from "../../../db/schema/zero-agent";
-import { orgMetadata as orgTable } from "../../../db/schema/org-metadata";
-import { getAppUrl } from "../../url";
-import { resolveDefaultAgentComposeId } from "../../infra/agent-compose/resolve-default";
-import { ensureStorageExists } from "../../infra/storage/storage-service";
+import { slackOrgInstallations } from "../../../../db/schema/slack-org-installation";
+import { slackOrgConnections } from "../../../../db/schema/slack-org-connection";
+import { slackOrgThreadSessions } from "../../../../db/schema/slack-org-thread-session";
+import { zeroAgents } from "../../../../db/schema/zero-agent";
+import { orgMetadata as orgTable } from "../../../../db/schema/org-metadata";
+import { getAppUrl } from "../../../url";
+import { resolveDefaultAgentComposeId } from "../../../infra/agent-compose/resolve-default";
+import { ensureStorageExists } from "../../../infra/storage/storage-service";
 import {
   createSlackClient,
   fetchSlackUserInfoMap,
@@ -21,8 +21,8 @@ import {
   resolveUserMentions,
   type SlackFile,
 } from "../../slack/context";
-import { validateAgentSession } from "../../infra/run";
-import { logger } from "../../logger";
+import { validateAgentSession } from "../../../infra/run";
+import { logger } from "../../../logger";
 
 /**
  * Resolve installation and org from a Slack workspace ID.

@@ -9,12 +9,12 @@ import { zeroAgentSchedules } from "../../../../../../src/db/schema/zero-agent-s
 import {
   isSlackPlatformError,
   postMessage,
-} from "../../../../../../src/lib/slack/client";
+} from "../../../../../../src/lib/zero/slack/client";
 import {
   resolveSlackClient,
   isSlackClientError,
-} from "../../../../../../src/lib/slack/resolve-slack-client";
-import { buildFooterBlocks } from "../../../../../../src/lib/slack/blocks";
+} from "../../../../../../src/lib/zero/slack/resolve-slack-client";
+import { buildFooterBlocks } from "../../../../../../src/lib/zero/slack/blocks";
 import type { Block, KnownBlock } from "@slack/web-api";
 import { eq } from "drizzle-orm";
 

@@ -1,7 +1,7 @@
 import { eq, and, isNull, inArray } from "drizzle-orm";
-import { slackOrgInstallations } from "../../db/schema/slack-org-installation";
-import { slackOrgConnections } from "../../db/schema/slack-org-connection";
-import { slackOrgPendingQuestions } from "../../db/schema/slack-org-pending-question";
+import { slackOrgInstallations } from "../../../db/schema/slack-org-installation";
+import { slackOrgConnections } from "../../../db/schema/slack-org-connection";
+import { slackOrgPendingQuestions } from "../../../db/schema/slack-org-pending-question";
 import {
   ensureOrgArtifact,
   resolveDefaultComposeId,
@@ -9,11 +9,11 @@ import {
 } from "./handlers/shared";
 import { refreshOrgAppHome } from "./handlers/app-home";
 
-import { env } from "../../env";
-import { decryptSecretValue } from "../shared/crypto/secrets-encryption";
+import { env } from "../../../env";
+import { decryptSecretValue } from "../../shared/crypto/secrets-encryption";
 import { createSlackClient, postMessage } from "../slack/client";
 import { buildSuccessMessage, buildWelcomeMessage } from "../slack/blocks";
-import { logger } from "../logger";
+import { logger } from "../../logger";
 
 const log = logger("slack-org:connect");
 

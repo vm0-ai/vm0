@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { WebClient } from "@slack/web-api";
 import { GET, DELETE } from "../route";
-import { SLACK_BOT_SCOPES } from "../../../../../../src/lib/slack-org/scopes";
+import { SLACK_BOT_SCOPES } from "../../../../../../src/lib/zero/slack-org/scopes";
 import {
   testContext,
   uniqueId,

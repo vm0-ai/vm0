@@ -7,9 +7,9 @@ import {
   extractTextFromBlocks,
   extractMentionedUserIds,
 } from "../context";
-import { testContext } from "../../../__tests__/test-helpers";
-import { server } from "../../../mocks/server";
-import { http } from "../../../__tests__/msw";
+import { testContext } from "../../../../__tests__/test-helpers";
+import { server } from "../../../../mocks/server";
+import { http } from "../../../../__tests__/msw";
 
 // Mock external dependencies required by testContext().setupMocks()
 

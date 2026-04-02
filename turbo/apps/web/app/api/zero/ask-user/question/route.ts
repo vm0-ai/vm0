@@ -17,8 +17,8 @@ import { decryptSecretValue } from "../../../../../src/lib/shared/crypto/secrets
 import {
   createSlackClient,
   postMessage,
-} from "../../../../../src/lib/slack/client";
-import { buildAskUserQuestionBlocks } from "../../../../../src/lib/slack/blocks";
+} from "../../../../../src/lib/zero/slack/client";
+import { buildAskUserQuestionBlocks } from "../../../../../src/lib/zero/slack/blocks";
 import { eq } from "drizzle-orm";
 
 interface SlackOrgPayload {

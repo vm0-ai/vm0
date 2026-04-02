@@ -4,11 +4,11 @@ import {
 } from "../../../../../../../src/lib/ts-rest-handler";
 import { integrationsSlackUploadInitContract } from "@vm0/core";
 import { initServices } from "../../../../../../../src/lib/init-services";
-import { isSlackPlatformError } from "../../../../../../../src/lib/slack/client";
+import { isSlackPlatformError } from "../../../../../../../src/lib/zero/slack/client";
 import {
   resolveSlackClient,
   isSlackClientError,
-} from "../../../../../../../src/lib/slack/resolve-slack-client";
+} from "../../../../../../../src/lib/zero/slack/resolve-slack-client";
 
 const router = tsr.router(integrationsSlackUploadInitContract, {
   init: async ({ body, headers }) => {

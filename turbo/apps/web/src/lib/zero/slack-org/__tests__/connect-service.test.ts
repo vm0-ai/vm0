@@ -3,7 +3,7 @@ import {
   testContext,
   uniqueId,
   type UserContext,
-} from "../../../__tests__/test-helpers";
+} from "../../../../__tests__/test-helpers";
 import {
   createTestSlackOrgInstallation,
   seedTestSlackOrgConnection,
@@ -12,7 +12,7 @@ import {
   countSlackOrgInstallations,
   countSlackOrgConnections,
   countSlackOrgPendingQuestions,
-} from "../../../__tests__/api-test-helpers";
+} from "../../../../__tests__/api-test-helpers";
 import {
   adminConnect,
   memberConnect,

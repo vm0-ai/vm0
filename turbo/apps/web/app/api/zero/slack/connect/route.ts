@@ -8,7 +8,7 @@ import {
   adminConnect,
   memberConnect,
   notifyConnectSuccess,
-} from "../../../../../src/lib/slack-org/connect-service";
+} from "../../../../../src/lib/zero/slack-org/connect-service";
 import { getAppUrl } from "../../../../../src/lib/url";
 import { logger } from "../../../../../src/lib/logger";
 

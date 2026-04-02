@@ -1,7 +1,7 @@
 import type { WebClient } from "@slack/web-api";
-import { logger } from "../logger";
-import { uploadS3Buffer, generatePresignedUrl } from "../infra/s3/s3-client";
-import { env } from "../../env";
+import { logger } from "../../logger";
+import { uploadS3Buffer, generatePresignedUrl } from "../../infra/s3/s3-client";
+import { env } from "../../../env";
 import { type SlackUserInfo, formatSenderBlock } from "./client";
 
 const log = logger("slack:context");

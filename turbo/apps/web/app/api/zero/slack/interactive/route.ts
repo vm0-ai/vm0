@@ -6,7 +6,7 @@ import { env } from "../../../../../src/env";
 import {
   verifySlackSignature,
   getSlackSignatureHeaders,
-} from "../../../../../src/lib/slack/verify";
+} from "../../../../../src/lib/zero/slack/verify";
 import { slackOrgInstallations } from "../../../../../src/db/schema/slack-org-installation";
 import { slackOrgConnections } from "../../../../../src/db/schema/slack-org-connection";
 import { slackOrgPendingQuestions } from "../../../../../src/db/schema/slack-org-pending-question";
@@ -14,14 +14,14 @@ import { decryptSecretValue } from "../../../../../src/lib/shared/crypto/secrets
 import {
   createSlackClient,
   updateMessage,
-} from "../../../../../src/lib/slack/client";
+} from "../../../../../src/lib/zero/slack/client";
 import {
   buildAskUserAnsweredBlocks,
   buildErrorMessage,
-} from "../../../../../src/lib/slack/blocks";
-import type { AskUserQuestion } from "../../../../../src/lib/slack/blocks";
-import { refreshOrgAppHome } from "../../../../../src/lib/slack-org/handlers/app-home";
-import { disconnect } from "../../../../../src/lib/slack-org/connect-service";
+} from "../../../../../src/lib/zero/slack/blocks";
+import type { AskUserQuestion } from "../../../../../src/lib/zero/slack/blocks";
+import { refreshOrgAppHome } from "../../../../../src/lib/zero/slack-org/handlers/app-home";
+import { disconnect } from "../../../../../src/lib/zero/slack-org/connect-service";
 import { logger } from "../../../../../src/lib/logger";
 
 const askUserQuestionSchema = z.array(

@@ -5,24 +5,24 @@ import { env } from "../../../../../src/env";
 import {
   verifySlackSignature,
   getSlackSignatureHeaders,
-} from "../../../../../src/lib/slack/verify";
+} from "../../../../../src/lib/zero/slack/verify";
 import { slackOrgInstallations } from "../../../../../src/db/schema/slack-org-installation";
 import { slackOrgConnections } from "../../../../../src/db/schema/slack-org-connection";
 import { decryptSecretValue } from "../../../../../src/lib/shared/crypto/secrets-encryption";
-import { createSlackClient } from "../../../../../src/lib/slack/client";
+import { createSlackClient } from "../../../../../src/lib/zero/slack/client";
 import {
   buildHelpMessage,
   buildErrorMessage,
   buildSuccessMessage,
   buildLoginMessage,
-} from "../../../../../src/lib/slack/blocks";
-import { disconnect } from "../../../../../src/lib/slack-org/connect-service";
-import { refreshOrgAppHome } from "../../../../../src/lib/slack-org/handlers/app-home";
+} from "../../../../../src/lib/zero/slack/blocks";
+import { disconnect } from "../../../../../src/lib/zero/slack-org/connect-service";
+import { refreshOrgAppHome } from "../../../../../src/lib/zero/slack-org/handlers/app-home";
 import {
   resolveDefaultComposeId,
   buildOrgConnectUrl,
   getWorkspaceAgent,
-} from "../../../../../src/lib/slack-org/handlers/shared";
+} from "../../../../../src/lib/zero/slack-org/handlers/shared";
 import { getAppUrl } from "../../../../../src/lib/url";
 import { logger } from "../../../../../src/lib/logger";
 

@@ -5,7 +5,7 @@ import { env } from "../../../../../src/env";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
 import { slackOrgInstallations } from "../../../../../src/db/schema/slack-org-installation";
-import { createSlackClient } from "../../../../../src/lib/slack";
+import { createSlackClient } from "../../../../../src/lib/zero/slack";
 import { decryptSecretValue } from "../../../../../src/lib/shared/crypto/secrets-encryption";
 
 /**
