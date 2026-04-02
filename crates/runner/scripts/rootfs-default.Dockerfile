@@ -180,13 +180,14 @@ RUN npm install -g @xdevplatform/xurl@${XURL_VERSION}
 # ---------------------------------------------------------------------------
 # Chromium + agent-browser
 # ---------------------------------------------------------------------------
-# Ubuntu 24.04 defaults to snap-packaged Chromium which doesn't work in Docker.
-# Try chromium-browser first, fall back to chromium package name.
+# Ubuntu 24.04's chromium-browser is a snap stub that doesn't work in Docker.
+# Install the real Chromium deb from Debian Bookworm's repository instead.
 ARG AGENT_BROWSER_VERSION=0.23.4
 RUN npm install -g agent-browser@${AGENT_BROWSER_VERSION} \
+    && echo "deb http://deb.debian.org/debian bookworm main" > /etc/apt/sources.list.d/debian-bookworm.list \
     && apt-get update \
-    && (apt-get install -y chromium-browser \
-        || apt-get install -y chromium)
+    && apt-get install -y -t bookworm chromium \
+    && rm /etc/apt/sources.list.d/debian-bookworm.list
 
 # ---------------------------------------------------------------------------
 # User account
