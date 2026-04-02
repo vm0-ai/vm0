@@ -17,7 +17,11 @@ import {
   type CreateRunResult,
   type CreateRunParams,
 } from "../run";
-import { enqueueRun, drainOrgQueue } from "../run/run-queue-service";
+import {
+  enqueueRun,
+  drainOrgQueue,
+  dispatchQueuedZeroRun,
+} from "./zero-run-queue-service";
 import { generateZeroToken, generateSandboxToken } from "../auth/sandbox-token";
 import {
   buildZeroExecutionContext,
@@ -38,7 +42,6 @@ import { DISALLOWED_TOOLS, buildAgentPrompt } from "./agent-prompt";
 import type { CallbackPayload } from "../callback/callback-payloads";
 import { zeroAgents } from "../../db/schema/zero-agent";
 import { zeroRuns } from "../../db/schema/zero-run";
-import { dispatchQueuedZeroRun } from "./zero-queue-service";
 import { userConnectors } from "../../db/schema/user-connector";
 import { logger } from "../logger";
 

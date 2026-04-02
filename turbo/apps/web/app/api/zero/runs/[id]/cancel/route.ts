@@ -14,7 +14,10 @@ import {
   cancelRun,
   dispatchCancelSideEffects,
 } from "../../../../../../src/lib/run/run-service";
-import { dispatchQueuedZeroRun } from "../../../../../../src/lib/zero/zero-queue-service";
+import {
+  dispatchQueuedZeroRun,
+  drainOrgQueue,
+} from "../../../../../../src/lib/zero/zero-run-queue-service";
 import { processOrgCredits } from "../../../../../../src/lib/credit/credit-service";
 import { isNotFound, isBadRequest } from "../../../../../../src/lib/errors";
 import { after } from "next/server";
@@ -37,7 +40,9 @@ const router = tsr.router(zeroRunsCancelContract, {
       after(async () => {
         const shouldProcessCredits = await dispatchCancelSideEffects(
           result,
-          dispatchQueuedZeroRun,
+          (orgId) => {
+            return drainOrgQueue(orgId, dispatchQueuedZeroRun);
+          },
         );
         if (shouldProcessCredits) {
           await processOrgCredits(result.orgId);

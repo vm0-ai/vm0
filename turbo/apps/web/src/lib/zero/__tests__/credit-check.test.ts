@@ -21,8 +21,11 @@ import { reloadEnv } from "../../../env";
 import { createZeroRun } from "../zero-run-service";
 import { isInsufficientCredits } from "../../errors";
 import { startRun, type CreateRunParams } from "../../run/run-service";
-import { drainOrgQueue, enqueueRun } from "../../run/run-queue-service";
-import { dispatchQueuedZeroRun } from "../zero-queue-service";
+import {
+  drainOrgQueue,
+  enqueueRun,
+  dispatchQueuedZeroRun,
+} from "../zero-run-queue-service";
 import type { TriggerSource } from "@vm0/core";
 
 const context = testContext();

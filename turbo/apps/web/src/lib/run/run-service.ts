@@ -15,7 +15,7 @@ import {
   forbidden,
   concurrentRunLimit,
 } from "../errors";
-import { drainOrgQueue } from "./run-queue-service";
+
 import { logger } from "../logger";
 import type { Database } from "../../types/global";
 import type { AgentComposeSnapshot } from "../checkpoint/types";
@@ -1151,7 +1151,7 @@ export async function cancelRun(
  */
 export async function dispatchCancelSideEffects(
   result: CancelRunResult,
-  queueDispatcher: (runId: string, params: CreateRunParams) => Promise<void>,
+  drain: (orgId: string) => Promise<void>,
 ): Promise<boolean> {
   const log = logger("service:run:cancel");
 
@@ -1176,7 +1176,7 @@ export async function dispatchCancelSideEffects(
     "Run cancelled",
     shouldDrain
       ? () => {
-          return drainOrgQueue(result.orgId, queueDispatcher);
+          return drain(result.orgId);
         }
       : undefined,
   );

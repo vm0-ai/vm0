@@ -17,8 +17,8 @@ import {
   cleanupExpiredQueueEntries,
   drainStaleQueues,
   drainOrgQueue,
-} from "../../../../src/lib/run/run-queue-service";
-import { dispatchQueuedZeroRun } from "../../../../src/lib/zero/zero-queue-service";
+  dispatchQueuedZeroRun,
+} from "../../../../src/lib/zero/zero-run-queue-service";
 import { processOrgCredits } from "../../../../src/lib/credit/credit-service";
 import { logger } from "../../../../src/lib/logger";
 import { env } from "../../../../src/env";

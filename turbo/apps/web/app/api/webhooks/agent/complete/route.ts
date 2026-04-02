@@ -20,8 +20,10 @@ import type {
 } from "../../../../../src/lib/checkpoint";
 import type { RunResult } from "../../../../../src/lib/run/types";
 import { logger } from "../../../../../src/lib/logger";
-import { drainOrgQueue } from "../../../../../src/lib/run/run-queue-service";
-import { dispatchQueuedZeroRun } from "../../../../../src/lib/zero/zero-queue-service";
+import {
+  drainOrgQueue,
+  dispatchQueuedZeroRun,
+} from "../../../../../src/lib/zero/zero-run-queue-service";
 import { processOrgCredits } from "../../../../../src/lib/credit/credit-service";
 import { after } from "next/server";
 

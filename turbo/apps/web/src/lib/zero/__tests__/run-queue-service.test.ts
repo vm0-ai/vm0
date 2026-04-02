@@ -14,14 +14,14 @@ import {
   updateOrgTier,
 } from "../../../__tests__/api-test-helpers";
 import { reloadEnv } from "../../../env";
-import { startRun, type CreateRunParams } from "../run-service";
+import { startRun, type CreateRunParams } from "../../run/run-service";
 import {
   enqueueRun,
   drainOrgQueue,
   drainStaleQueues,
   cleanupExpiredQueueEntries,
-} from "../run-queue-service";
-import { dispatchQueuedZeroRun } from "../../zero/zero-queue-service";
+  dispatchQueuedZeroRun,
+} from "../zero-run-queue-service";
 
 const context = testContext();
 

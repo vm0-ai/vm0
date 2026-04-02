@@ -10,7 +10,7 @@ import {
   isAuthError,
 } from "../../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
-import { getRunQueueStatus } from "../../../../../src/lib/zero/zero-queue-service";
+import { getRunQueueStatus } from "../../../../../src/lib/zero/zero-run-queue-service";
 
 const router = tsr.router(zeroRunsQueueContract, {
   getQueue: async ({ headers }) => {

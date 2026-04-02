@@ -17,7 +17,7 @@ import {
   findTestRunRecord,
   findTestQueueEntry,
 } from "../../../../../../src/__tests__/api-test-helpers";
-import { enqueueRun } from "../../../../../../src/lib/run/run-queue-service";
+import { enqueueRun } from "../../../../../../src/lib/zero/zero-run-queue-service";
 import { reloadEnv } from "../../../../../../src/env";
 import { getAgentSessionWithConversation } from "../../../../../../src/lib/agent-session";
 import {
