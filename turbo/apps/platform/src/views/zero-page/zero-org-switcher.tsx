@@ -6,12 +6,21 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from "@vm0/ui";
-import { IconChevronDown, IconSettings, IconPlus } from "@tabler/icons-react";
+import {
+  IconChevronDown,
+  IconSettings,
+  IconPlus,
+  IconMail,
+} from "@tabler/icons-react";
 import { clerk$, watchOrgSwitch$ } from "../../signals/auth.ts";
 import { detach, onRef, Reason } from "../../signals/utils.ts";
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { org$ } from "../../signals/org.ts";
+import {
+  userInvitations$,
+  refreshUserInvitations$,
+} from "../../signals/user-invitations.ts";
 
 const orgSwitcherRef$ = onRef(watchOrgSwitch$);
 
@@ -54,6 +63,8 @@ export function ZeroOrgSwitcher() {
   const pageSignal = useGet(pageSignal$);
   const clerkLoadable = useLoadable(clerk$);
   const orgData = useLastResolved(org$);
+  const pendingInvitations = useLastResolved(userInvitations$);
+  const refreshInvitations = useSet(refreshUserInvitations$);
 
   const clerk = clerkLoadable.state === "hasData" ? clerkLoadable.data : null;
   const memberships = clerk?.user?.organizationMemberships ?? [];
@@ -68,6 +79,24 @@ export function ZeroOrgSwitcher() {
 
   const handleSwitchOrg = (orgId: string) => {
     detach(clerk?.setActive({ organization: orgId }), Reason.DomCallback);
+  };
+
+  const handleAcceptInvitation = (invitation: {
+    accept: () => Promise<unknown>;
+    publicOrganizationData: { id: string };
+  }) => {
+    if (!clerk) {
+      return;
+    }
+    detach(
+      invitation.accept().then(() => {
+        refreshInvitations();
+        return clerk.setActive({
+          organization: invitation.publicOrganizationData.id,
+        });
+      }),
+      Reason.DomCallback,
+    );
   };
 
   const handleManage = () => {
@@ -154,6 +183,43 @@ export function ZeroOrgSwitcher() {
                     />
                     <span className="truncate flex-1">
                       {membership.organization.name}
+                    </span>
+                  </DropdownMenuItem>
+                );
+              })}
+            </>
+          )}
+
+          {/* Pending invitations */}
+          {pendingInvitations && pendingInvitations.length > 0 && (
+            <>
+              <DropdownMenuSeparator />
+              <div className="px-3 py-1.5 text-xs font-medium text-muted-foreground">
+                Pending invitations
+              </div>
+              {pendingInvitations.map((invitation) => {
+                return (
+                  <DropdownMenuItem
+                    key={invitation.id}
+                    onClick={() => {
+                      handleAcceptInvitation(invitation);
+                    }}
+                    className="gap-3 px-3 py-2.5 rounded-lg"
+                  >
+                    <OrgAvatar
+                      name={invitation.publicOrganizationData.name}
+                      imageUrl={
+                        invitation.publicOrganizationData.hasImage
+                          ? invitation.publicOrganizationData.imageUrl
+                          : null
+                      }
+                    />
+                    <span className="truncate flex-1">
+                      {invitation.publicOrganizationData.name}
+                    </span>
+                    <span className="shrink-0 flex items-center gap-1 text-xs font-medium text-primary">
+                      <IconMail size={14} />
+                      Join
                     </span>
                   </DropdownMenuItem>
                 );
