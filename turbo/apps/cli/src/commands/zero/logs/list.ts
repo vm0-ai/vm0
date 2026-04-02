@@ -86,9 +86,7 @@ Examples:
           const row = [
             shortId.padEnd(10),
             name.padEnd(nameCol),
-            formatStatus(entry.status).padEnd(
-              statusCol + (entry.status.length < statusCol ? 0 : 0),
-            ),
+            formatStatus(entry.status).padEnd(statusCol),
             formatTime(entry.createdAt),
           ].join("  ");
           console.log(row);
