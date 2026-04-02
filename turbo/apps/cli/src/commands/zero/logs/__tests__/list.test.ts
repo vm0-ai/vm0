@@ -165,6 +165,27 @@ describe("zero logs list command", () => {
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 
+  it("should pass since filter to API", async () => {
+    let capturedUrl: URL | undefined;
+    server.use(
+      http.get("http://localhost:3000/api/zero/logs", ({ request }) => {
+        capturedUrl = new URL(request.url);
+        return HttpResponse.json({
+          data: [],
+          pagination: { hasMore: false, nextCursor: null, totalPages: 0 },
+          filters: emptyFilters,
+        });
+      }),
+    );
+
+    await listCommand.parseAsync(["node", "cli", "--since", "1h"]);
+
+    expect(capturedUrl?.searchParams.get("since")).toBeDefined();
+    const sinceValue = Number(capturedUrl?.searchParams.get("since"));
+    expect(sinceValue).toBeGreaterThan(Date.now() - 2 * 60 * 60 * 1000);
+    expect(sinceValue).toBeLessThanOrEqual(Date.now());
+  });
+
   it("should fall back to agentId when displayName is null", async () => {
     server.use(
       http.get("http://localhost:3000/api/zero/logs", () => {

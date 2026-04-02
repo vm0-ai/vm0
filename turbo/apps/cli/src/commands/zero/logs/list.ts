@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import { listZeroLogs } from "../../../lib/api";
+import { parseTime } from "../../../lib/utils/time-parser";
 import { withErrorHandler } from "../../../lib/command";
 
 function formatStatus(status: string): string {
@@ -34,6 +35,10 @@ export const listCommand = new Command()
     "--status <status>",
     "Filter by status (queued|pending|running|completed|failed|timeout|cancelled)",
   )
+  .option(
+    "--since <time>",
+    "Filter runs created since (e.g., 5m, 2h, 1d, 2024-01-15T10:30:00Z)",
+  )
   .option("--limit <n>", "Maximum number of results (default: 20)")
   .addHelpText(
     "after",
@@ -41,16 +46,25 @@ export const listCommand = new Command()
 Examples:
   zero logs list
   zero logs list --agent my-agent
-  zero logs list --status completed --limit 10`,
+  zero logs list --status completed --limit 10
+  zero logs list --since 1h
+  zero logs list --since 1d --status completed`,
   )
   .action(
     withErrorHandler(
-      async (options: { agent?: string; status?: string; limit?: string }) => {
+      async (options: {
+        agent?: string;
+        status?: string;
+        since?: string;
+        limit?: string;
+      }) => {
         const limit = options.limit ? parseInt(options.limit, 10) : undefined;
+        const since = options.since ? parseTime(options.since) : undefined;
 
         const result = await listZeroLogs({
           agent: options.agent,
           status: options.status,
+          since,
           limit,
         });
 

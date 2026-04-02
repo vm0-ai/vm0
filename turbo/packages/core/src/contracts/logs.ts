@@ -135,6 +135,7 @@ export const logsListContract = c.router({
       search: z.string().optional(),
       agent: z.string().optional(),
       name: z.string().optional(),
+      since: z.coerce.number().optional(),
 
       status: logStatusSchema.optional(),
       triggerSource: triggerSourceSchema.optional(),

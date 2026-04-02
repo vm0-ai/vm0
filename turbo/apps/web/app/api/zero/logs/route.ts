@@ -36,6 +36,7 @@ import {
   and,
   desc,
   lt,
+  gte,
   or,
   ilike,
   count,
@@ -56,6 +57,7 @@ interface LogsQuery {
   org?: string;
   agent?: string;
   search?: string;
+  since?: number;
   status?: LogStatus;
   triggerSource?: TriggerSource;
   scheduleId?: string;
@@ -112,6 +114,9 @@ async function getTotalCount(
     eq(agentRuns.orgId, orgId),
   ];
   conditions.push(...buildAgentFilterConditions(query));
+  if (query.since) {
+    conditions.push(gte(agentRuns.createdAt, new Date(query.since)));
+  }
   if (query.status) {
     conditions.push(eq(agentRuns.status, query.status));
   }
@@ -271,6 +276,9 @@ const router = tsr.router(logsListContract, {
 
     conditions.push(...buildAgentFilterConditions(query));
 
+    if (query.since) {
+      conditions.push(gte(agentRuns.createdAt, new Date(query.since)));
+    }
     if (query.status) {
       conditions.push(eq(agentRuns.status, query.status));
     }

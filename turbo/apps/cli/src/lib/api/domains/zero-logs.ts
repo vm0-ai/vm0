@@ -11,6 +11,7 @@ import { getClientConfig, handleError } from "../core/client-factory";
 export async function listZeroLogs(options?: {
   agent?: string;
   status?: string;
+  since?: number;
   limit?: number;
   cursor?: string;
 }): Promise<LogsListResponse> {
@@ -20,6 +21,7 @@ export async function listZeroLogs(options?: {
     query: {
       agent: options?.agent,
       status: options?.status as LogStatus | undefined,
+      since: options?.since,
       limit: options?.limit,
       cursor: options?.cursor,
     },
