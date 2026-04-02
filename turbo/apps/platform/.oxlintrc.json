@@ -25,6 +25,10 @@
                 ],
                 "allowTypeImports": true,
                 "name": "ccstate"
+              },
+              {
+                "name": "ccstate-react/experimental",
+                "message": "Importing from \"ccstate-react/experimental\" is not allowed in views/. For shared state, declare state()/computed()/command() in signals/ and consume with useGet()/useSet(). For component-local state, use React useState()."
               }
             ]
           }
