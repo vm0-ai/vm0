@@ -101,6 +101,8 @@ const CONNECTOR_TYPES_DEF = {
       },
       "api-token": {
         label: "API Token",
+        helpText:
+          "1. Log in to [Ahrefs](https://ahrefs.com) as a workspace owner or admin\n2. Go to **Account settings > API keys**\n3. Create a new API key\n4. Copy the API key and use it in the `Authorization: Bearer <YOUR_API_KEY>` header",
         secrets: {
           AHREFS_TOKEN: {
             label: "API Token",
@@ -478,6 +480,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
+        helpText:
+          "1. Log in to [HeyGen](https://app.heygen.com)\n2. Navigate to **Settings > API > API token**\n3. Click to generate your API key\n4. Copy and save the key immediately — you cannot retrieve it after leaving the page, and regenerating a new key will invalidate the previous one",
         secrets: {
           HEYGEN_TOKEN: {
             label: "API Key",
@@ -685,6 +689,8 @@ const CONNECTOR_TYPES_DEF = {
       },
       "api-token": {
         label: "Access Token",
+        helpText:
+          "1. Go to the [Dropbox App Console](https://www.dropbox.com/developers/apps)\n2. Select your app (or create a new one)\n3. Click the button to generate an access token for your own account\n4. Copy the generated OAuth 2 access token",
         secrets: {
           DROPBOX_TOKEN: {
             label: "Access Token",
@@ -750,6 +756,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "Access Token",
+        helpText:
+          "1. Sign up at the [Intercom Developer Hub](https://app.intercom.com/admins/sign_up/developer) on your Intercom workspace\n2. Create a new app in the Developer Hub\n3. Navigate to **Configure > Authentication** within your app in the [Developer Hub](https://app.intercom.io/a/apps/_/developer-hub/app-packages)\n4. Copy your access token",
         secrets: {
           INTERCOM_TOKEN: {
             label: "Access Token",
@@ -770,6 +778,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
+        helpText:
+          "1. Log in to [Instantly](https://app.instantly.ai)\n2. Navigate to **Settings > Integrations** at https://app.instantly.ai/app/settings/integrations\n3. Click the **API Keys** section in the left sidebar\n4. Click the **Create API Key** button\n5. Enter a name for the API key\n6. Select the scopes (permissions) you want the API key to have\n7. Click **Create**\n8. Copy the key and store it in a secure place (it will only be displayed once)",
         secrets: {
           INSTANTLY_API_KEY: {
             label: "API Key",
@@ -791,6 +801,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "Personal Access Token",
+        helpText:
+          '1. Log in to [Jam](https://jam.dev)\n2. Go to **Settings > Integrations > AI Agents**\n3. Scroll down to the **Personal Access Tokens** section\n4. Click **Create token**\n5. Enter a name for the token (e.g., "Cursor" or "Claude Code")\n6. Choose an expiration period (7 days, 30 days, 90 days, or 1 year)\n7. Select at least one scope (`mcp:read` for viewing or `mcp:write` for editing)\n8. Click **Create**\n9. Copy the token immediately (it will not be displayed again)',
         secrets: {
           JAM_TOKEN: {
             label: "Personal Access Token",
@@ -814,6 +826,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Token",
+        helpText:
+          "1. Go to [Atlassian API token management](https://id.atlassian.com/manage-profile/security/api-tokens)\n2. Log in to your Atlassian account\n3. Click **Create API token**\n4. Enter a name that describes what the token is for\n5. Choose an expiration date (between 1 and 365 days)\n6. Click **Create**\n7. Click **Copy to clipboard** and save the token in a secure place (you cannot recover it later)",
         secrets: {
           JIRA_API_TOKEN: {
             label: "API Token",
@@ -869,6 +883,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
+        helpText:
+          "1. Log in to [Kommo](https://www.kommo.com) and create a **private integration**\n2. Go to the **Keys and Scopes** tab in your private integration settings\n3. Click **Generate long-lived token**\n4. Set the token expiration date (from 1 day to 5 years)\n5. Copy and save the token immediately (it will only be displayed once)",
         secrets: {
           KOMMO_API_KEY: {
             label: "API Key",
@@ -940,6 +956,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Token",
+        helpText:
+          "1. Log in to [Make](https://www.make.com)\n2. Click your **avatar** at the bottom-left corner\n3. Select **Profile**, then open the **API** tab\n4. Click **Add token**\n5. Enter a **Label** (custom name to identify the token)\n6. Select the required **Scopes** (permissions)\n7. Click **Save**\n8. Copy the token and store it in a safe place (it will be hidden once you leave the page)",
         secrets: {
           MAKE_TOKEN: {
             label: "API Token",
@@ -1004,6 +1022,8 @@ const CONNECTOR_TYPES_DEF = {
       },
       "api-token": {
         label: "API Token",
+        helpText:
+          "1. Create a [Deel](https://app.deel.com) account and verify your email\n2. Navigate to the **Developer Center**\n3. Select the **API Sandbox** tab (or **Production** for live credentials)\n4. Click **Create Sandbox** and enter a unique email and password\n5. Click **Confirm** to finalize sandbox creation\n6. Locate your **API Key / Access Token** in the Developer Center\n7. Copy and store the token securely",
         secrets: {
           DEEL_TOKEN: {
             label: "API Token",
@@ -1038,6 +1058,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
+        helpText:
+          "1. Go to the [DeepSeek Platform](https://platform.deepseek.com/api_keys)\n2. Sign up for an account or log in\n3. Navigate to the **API Keys** page\n4. Create a new API key and copy it",
         secrets: {
           DEEPSEEK_TOKEN: {
             label: "API Key",
@@ -1059,6 +1081,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Token",
+        helpText:
+          "1. Log in to [ClickUp](https://app.clickup.com)\n2. Click your avatar in the upper-right corner and select **Settings**\n3. In the sidebar, click **Apps** (or visit [app.clickup.com/settings/apps](https://app.clickup.com/settings/apps))\n4. Under the **API Token** section, click **Generate** (or **Regenerate** if you already have one)\n5. Click **Copy** to copy the personal token (tokens start with `pk_` and never expire)",
         secrets: {
           CLICKUP_TOKEN: {
             label: "API Token",
@@ -1137,6 +1161,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
+        helpText:
+          "1. Log in to the [Cronlytic dashboard](https://www.cronlytic.com/dashboard)\n2. Go to the **API Keys** section\n3. Click **Generate New API Key**\n4. Copy your **API Key** and **User ID** (both are required for authentication via `X-API-Key` and `X-User-ID` headers)",
         secrets: {
           CRONLYTIC_API_KEY: {
             label: "API Key",
@@ -1162,6 +1188,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Token",
+        helpText:
+          "1. Log in to your [Customer.io](https://fly.customer.io) account\n2. Go to **Account Settings > [API Credentials](https://fly.customer.io/settings/api_credentials)**\n3. Locate your **Site ID** and **API Key** on the Track API Keys page\n4. Copy both values (they are used together as basic authentication credentials in the format `site_id:api_key`, Base64-encoded)",
         secrets: {
           CUSTOMERIO_APP_TOKEN: {
             label: "App API Key",
@@ -1182,6 +1210,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
+        helpText:
+          "1. Log in to [Dify](https://cloud.dify.ai)\n2. Open your app and navigate to **API Access** in the left sidebar\n3. Click to generate new API credentials\n4. Copy the API key",
         secrets: {
           DIFY_TOKEN: {
             label: "API Key",
@@ -1217,6 +1247,8 @@ const CONNECTOR_TYPES_DEF = {
       },
       "api-token": {
         label: "Personal Access Token",
+        helpText:
+          "1. Log in to [Figma](https://www.figma.com) and open the file browser\n2. Click the account menu in the top-left corner and select **Settings**\n3. Select the **Security** tab\n4. Scroll to the **Personal access tokens** section and click **Generate new token**\n5. Enter a name for the token, assign the desired scopes, and press Return/Enter\n6. Copy the generated token immediately — it will not be shown again",
         secrets: {
           FIGMA_TOKEN: {
             label: "Personal Access Token",
@@ -1296,6 +1328,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
+        helpText:
+          "1. Log in to [MiniMax Platform](https://platform.minimax.io)\n2. Go to **User Center > Basic Information > Interface Key**\n3. Create a new API key\n4. Copy the key",
         secrets: {
           MINIMAX_TOKEN: {
             label: "API Key",
@@ -1317,6 +1351,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Token",
+        helpText:
+          "1. Log in to [Reportei](https://app.reportei.com)\n2. Go to **Company Settings** (Configurações da Empresa)\n3. Navigate to the **API Reportei** section\n4. Click **Generate new token** or copy your existing token",
         secrets: {
           REPORTEI_TOKEN: {
             label: "API Token",
@@ -1338,6 +1374,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
+        helpText:
+          "1. Go to [SerpApi](https://serpapi.com) and sign up for an account (free plan available with 250 searches/month)\n2. Log in and go to your [Dashboard](https://serpapi.com/dashboard)\n3. Your API key is displayed on the dashboard\n4. Copy the API key",
         secrets: {
           SERPAPI_TOKEN: {
             label: "API Key",
@@ -1522,6 +1560,8 @@ const CONNECTOR_TYPES_DEF = {
       },
       "api-token": {
         label: "API Key",
+        helpText:
+          "1. Log in to [Neon Console](https://console.neon.tech)\n2. Navigate to **Account settings > API keys**\n3. Click the button to create a new API key\n4. Copy and store the secret token immediately (it is only displayed once)",
         secrets: {
           NEON_TOKEN: {
             label: "API Key",
@@ -1686,6 +1726,8 @@ const CONNECTOR_TYPES_DEF = {
       },
       "api-token": {
         label: "Personal API Key",
+        helpText:
+          "1. Log in to [PostHog](https://app.posthog.com)\n2. Navigate to **Personal API keys** in your account settings\n3. Click **+ Create a personal API Key**\n4. Enter a descriptive label for the key\n5. Choose the scopes (permissions) required for your use case\n6. Copy the key immediately (it will not be shown again after refreshing the page)",
         secrets: {
           POSTHOG_TOKEN: {
             label: "Personal API Key",
@@ -1987,6 +2029,8 @@ const CONNECTOR_TYPES_DEF = {
       },
       "api-token": {
         label: "Service Role Key",
+        helpText:
+          "1. Log in to the [Supabase Dashboard](https://supabase.com/dashboard)\n2. Open your project's **Connect** dialog, or go to **Project Settings > API Keys**\n3. For legacy keys, copy the `anon` key (for client-side) or `service_role` key (for server-side) from the **Legacy API Keys** tab\n4. For new keys, open the **API Keys** tab, click **Create new API Keys** if needed, and copy the value from the **Publishable key** section",
         secrets: {
           SUPABASE_TOKEN: {
             label: "Service Role Key",
@@ -2063,6 +2107,8 @@ const CONNECTOR_TYPES_DEF = {
       },
       "api-token": {
         label: "Site Token",
+        helpText:
+          "1. Log in to [Webflow](https://webflow.com) (site administrator access required)\n2. In your workspace, find the site and click the gear icon to open **Site Settings**\n3. In the left sidebar, select **Apps & integrations**\n4. Scroll to the bottom of the page to the **API access** section\n5. Click **Generate API token**\n6. Enter a name for your token and choose the required scopes\n7. Click **Generate token**\n8. Copy the generated token and save it in a secure location",
         secrets: {
           WEBFLOW_TOKEN: {
             label: "Site Token",
@@ -2105,6 +2151,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "Permanent Access Token",
+        helpText:
+          "1. Navigate to your [Wrike](https://www.wrike.com) workspace\n2. Click on your **profile icon** in the navigation bar\n3. Select **Apps & Integrations**\n4. Click on **API**\n5. Click **+ App**\n6. Enter a name for your integration\n7. Click **Get Token** at the bottom of the window\n8. Copy and securely store your token — it will not be shown again after closing the page\n9. Click **Save**",
         secrets: {
           WRIKE_TOKEN: {
             label: "Permanent Access Token",
@@ -2313,6 +2361,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
+        helpText:
+          "1. Log in to [OpenAI Platform](https://platform.openai.com)\n2. Navigate to the [API Keys](https://platform.openai.com/api-keys) page in the dashboard\n3. Create a new API key\n4. Copy and store the key in a safe location",
         secrets: {
           OPENAI_TOKEN: {
             label: "API Key",
@@ -2334,6 +2384,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
+        helpText:
+          "1. Log in to the [Similarweb platform](https://pro.similarweb.com/) (admin access required)\n2. From the main menu on the left, select **Settings & Help**, then select **Account**\n3. Under **Data Tools**, select either **REST API** or **Batch API**\n4. Click **Generate a New API Key** on the right\n5. Type the name of the API key, then select whether this is for yourself or another user\n6. Click **Create** — your key will be displayed in the Generated Keys table\n7. In the Generated Keys table, ensure the **Activation** toggle is on for the relevant API key",
         secrets: {
           SIMILARWEB_TOKEN: {
             label: "API Key",
@@ -2355,6 +2407,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
+        helpText:
+          '1. Log in to the [Perplexity Console](https://console.perplexity.ai)\n2. Navigate to the **API Groups** page and create an API group (e.g., "Production" or "Development")\n3. Go to the **API Keys** page\n4. Generate a new API key\n5. Store the key immediately and securely (you will only see the full token value once)',
         secrets: {
           PERPLEXITY_TOKEN: {
             label: "API Key",
@@ -2410,6 +2464,8 @@ const CONNECTOR_TYPES_DEF = {
       },
       "api-token": {
         label: "API Key",
+        helpText:
+          "1. Log in to [Mailchimp](https://mailchimp.com)\n2. Click your **profile icon** and select **Profile**\n3. Click the **Extras** dropdown menu, then choose **API keys**\n4. In the **Your API Keys** section, click **Create A Key**\n5. Enter a descriptive name for the key\n6. Click **Generate Key**\n7. Click **Copy Key to Clipboard** and store it in a secure place (you will not be able to see or copy it again)\n8. Click **Done**",
         secrets: {
           MAILCHIMP_TOKEN: {
             label: "API Key",
@@ -2436,6 +2492,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Access Token",
+        helpText:
+          "1. Log in to [Chatwoot](https://app.chatwoot.com) with an administrator account\n2. Click on your **avatar image** in the bottom left corner of the screen\n3. Select **Profile Settings** from the menu\n4. Scroll to the bottom of the Profile Settings page\n5. Copy the **Personal Access Token** displayed there",
         secrets: {
           CHATWOOT_TOKEN: {
             label: "API Access Token",
@@ -2458,6 +2516,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
+        helpText:
+          "1. Log in to [Resend](https://resend.com)\n2. Navigate to the [API Keys](https://resend.com/api-keys) page\n3. Click **Create API Key**\n4. Enter a name for your key (up to 50 characters)\n5. Select the permission level: **Full access** or **Sending access**\n6. If choosing sending access, select which domain the key can access\n7. Copy the generated API key",
         secrets: {
           RESEND_TOKEN: {
             label: "API Key",
@@ -2479,6 +2539,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "Secret API Key",
+        helpText:
+          "1. Log in to [RevenueCat](https://app.revenuecat.com)\n2. Navigate to the **API keys** section in your project dashboard\n3. Public API keys are automatically created when you add an app to your project\n4. To create a secret API key, click **+ New secret API key** in the API keys section\n5. Copy and store the key securely (never embed secret keys in client-side code)",
         secrets: {
           REVENUECAT_TOKEN: {
             label: "Secret API Key",
@@ -2500,6 +2562,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
+        helpText:
+          "1. Register for an account at [PDF4me](https://portal.pdf4me.com) using email/password or via Google, Microsoft, Apple, or Facebook\n2. Go to the **Billing Info** section and select **Start Free Trial**\n3. After activation, you will be redirected to the **Dashboard**\n4. Find and copy your API Key from the Dashboard",
         secrets: {
           PDF4ME_TOKEN: {
             label: "API Key",
@@ -2544,6 +2608,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "Webhook URL",
+        helpText:
+          "1. Log in to your [Bitrix24](https://www.bitrix24.com) account\n2. Go to **Applications > Developer resources**\n3. Select the **Ready-made scenarios** tab\n4. Choose **Other > Incoming webhook**\n5. Configure the webhook name and set access permissions\n6. Click **Execute** to test the webhook\n7. Copy the generated webhook URL, which contains your secret code in the format `https://<domain>/rest/1/<secret-code>/<method>.json`",
         secrets: {
           BITRIX_WEBHOOK_URL: {
             label: "Webhook URL",
@@ -2588,6 +2654,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
+        helpText:
+          "1. Go to the [Brave Search API dashboard](https://api-dashboard.search.brave.com/register) and sign up for an account\n2. Provide a credit card for identity verification (free plans will not be charged)\n3. After registration, your API key will be available in the dashboard\n4. Copy the API key and use it in the `X-Subscription-Token` request header",
         secrets: {
           BRAVE_API_KEY: {
             label: "API Key",
@@ -2632,6 +2700,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Token",
+        helpText:
+          "1. Sign up for a [Browserbase](https://www.browserbase.com/sign-up) account\n2. Log in and navigate to the **Overview** dashboard\n3. Your **Project ID** and **API key** are displayed on the right side of the Overview page\n4. Copy the API key",
         secrets: {
           BROWSERBASE_TOKEN: {
             label: "API Token",
@@ -2657,6 +2727,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Token",
+        helpText:
+          "1. Sign up or log in at [Browserless](https://browserless.io/account/)\n2. Navigate to the account dashboard\n3. Copy your API token from the dashboard",
         secrets: {
           BROWSERLESS_TOKEN: {
             label: "API Token",
@@ -2677,6 +2749,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Token",
+        helpText:
+          "1. Log in to [Fireflies](https://fireflies.ai)\n2. Navigate to the **Integrations** section\n3. Click on **Fireflies API**\n4. Copy your API key and store it securely",
         secrets: {
           FIREFLIES_TOKEN: {
             label: "API Token",
@@ -2761,6 +2835,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
+        helpText:
+          "1. Log in to [ElevenLabs](https://elevenlabs.io)\n2. Go to [Settings > API Keys](https://elevenlabs.io/app/settings/api-keys)\n3. Click to create a new API key\n4. Copy the key and store it securely",
         secrets: {
           ELEVENLABS_TOKEN: {
             label: "API Key",
@@ -2782,6 +2858,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
+        helpText:
+          "1. Log in to the [Explorium Admin Portal](https://admin.explorium.ai)\n2. Navigate to **Access & Authentication > Getting Your API Key**\n3. Click the **Show Key** button to reveal the masked API key\n4. Click the **Copy Key** button to copy it",
         secrets: {
           EXPLORIUM_TOKEN: {
             label: "API Key",
@@ -2803,6 +2881,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
+        helpText:
+          "1. Log in to [DEV.to](https://dev.to)\n2. Go to **Settings > Extensions** (or visit [dev.to/settings/extensions](https://dev.to/settings/extensions))\n3. Generate a new API key from the settings page\n4. Copy the API key and use it in the `api-key` request header",
         secrets: {
           DEVTO_TOKEN: {
             label: "API Key",
@@ -2824,6 +2904,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
+        helpText:
+          "1. Go to the [fal Dashboard Keys page](https://fal.ai/dashboard/keys)\n2. Click the **Create Key** button\n3. Provide a name for your key and select the appropriate scope (**API** for calling models, or **ADMIN** for full access)\n4. Copy the key immediately — you will not be able to see it again",
         secrets: {
           FAL_TOKEN: {
             label: "API Key",
@@ -2845,6 +2927,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
+        helpText:
+          "1. Open the [Granola](https://granola.ai) desktop app\n2. Go to **Settings > API**\n3. Click the **Create new key** button\n4. Choose a key type (if prompted) and click **Generate API Key**\n5. Copy and save the API key securely",
         secrets: {
           GRANOLA_TOKEN: {
             label: "API Key",
@@ -2866,6 +2950,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Token",
+        helpText:
+          "1. Log in to [Podchaser](https://www.podchaser.com)\n2. Go to [Profile > Settings > API](https://www.podchaser.com/profile/settings/api) to retrieve your **API Key** and **API Secret**\n3. Request an access token by sending a POST request to `https://api.podchaser.com/graphql` using the `requestAccessToken` mutation with `grant_type` set to `CLIENT_CREDENTIALS`, your API Key as `client_id`, and your API Secret as `client_secret`\n4. Store the returned access token (it lasts 1 year)",
         secrets: {
           PODCHASER_TOKEN: {
             label: "API Token",
@@ -2938,6 +3024,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "Access Token",
+        helpText:
+          "1. Log in to [Qiita](https://qiita.com)\n2. Go to **Settings > Applications**\n3. Create a new access token with the desired scopes (e.g., `read_qiita`, `write_qiita`)\n4. Copy the generated token\n5. Use it in API requests with the header `Authorization: Bearer [your_token]`",
         secrets: {
           QIITA_TOKEN: {
             label: "Access Token",
@@ -2959,6 +3047,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "Send Mail Token",
+        helpText:
+          "1. Log in to [ZeptoMail](https://zeptomail.zoho.com)\n2. Select the Mail Agent for which you want to generate the API key\n3. Go to the **SMTP/API** tab\n4. In the **API** section, copy the **Agent alias** (agentkey)\n5. Submit a POST request to `https://api.zeptomail.com/v1.1/agents/{agentkey}/apikeys` with an `Authorization: Zoho-oauthtoken [your-token]` header\n6. The response will contain your send mail token (username and password)",
         secrets: {
           ZEPTOMAIL_TOKEN: {
             label: "Send Mail Token",
@@ -2980,6 +3070,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
+        helpText:
+          "1. Sign up for an account in the [Runway Developer Portal](https://dev.runwayml.com/)\n2. After signing up, create a new organization\n3. Click to the **API Keys** tab\n4. Create a new key, giving it a descriptive name\n5. Copy the key immediately and store it in a safe place — it will only be shown once",
         secrets: {
           RUNWAY_TOKEN: {
             label: "API Key",
@@ -3001,6 +3093,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
+        helpText:
+          "1. Log in to the [Short.io](https://short.io) Dashboard\n2. Navigate to **Integrations and API**\n3. Click on **Create API key**\n4. Leave the **Public key** option disabled to create a private (secret) key\n5. Restrict the scope of the key to a specific team or domain\n6. Click **Create**\n7. Copy the key and store it in a safe place — secret keys cannot be recovered",
         secrets: {
           SHORTIO_TOKEN: {
             label: "API Key",
@@ -3022,6 +3116,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
+        helpText:
+          "1. Install the Streak extension and navigate to [Gmail](https://mail.google.com)\n2. Click on the Streak icon in the right sidebar\n3. Select the **Integrations** button\n4. Under the **Streak API** section, click **Create New Key**\n5. Copy and store the API key securely",
         secrets: {
           STREAK_TOKEN: {
             label: "API Key",
@@ -3043,6 +3139,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
+        helpText:
+          "1. Go to the [Supadata Dashboard](https://dash.supadata.ai)\n2. Sign up for an account (no credit card required)\n3. Your API key will be generated automatically\n4. Use it in API requests with the header `x-api-key: [your_api_key]`",
         secrets: {
           SUPADATA_TOKEN: {
             label: "API Key",
@@ -3064,6 +3162,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
+        helpText:
+          "1. Go to [app.tavily.com](https://app.tavily.com/) and sign up for a free account\n2. After signing in, your API key will be available on the dashboard\n3. Copy the API key (it will start with `tvly-`)",
         secrets: {
           TAVILY_TOKEN: {
             label: "API Key",
@@ -3085,6 +3185,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
+        helpText:
+          "1. Ensure you have a **Business Plan** subscription on [tldv](https://tldv.io)\n2. API and webhook access is only available on the Business Plan\n3. Contact support at **support@tldv.io** to request API access and obtain your credentials",
         secrets: {
           TLDV_TOKEN: {
             label: "API Key",
@@ -3106,6 +3208,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
+        helpText:
+          "1. Log in to your [Twenty](https://twenty.com) workspace\n2. Go to **Settings > APIs & Webhooks**\n3. Click **+ Create key**\n4. Enter a descriptive **Name** and set an **Expiration Date**\n5. Click **Save**\n6. Copy the key immediately — it is only shown once",
         secrets: {
           TWENTY_TOKEN: {
             label: "API Key",
@@ -3171,6 +3275,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Token",
+        helpText:
+          "1. Log in to your [ZapSign](https://app.zapsign.com) account\n2. Go to **Settings**\n3. Navigate to **Integrations**\n4. Select **ZAPSIGN API**\n5. Copy your API token",
         secrets: {
           ZAPSIGN_TOKEN: {
             label: "API Token",
@@ -3230,6 +3336,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
+        helpText:
+          "1. Log in to [HTML/CSS to Image](https://htmlcsstoimage.com/dashboard)\n2. Go to your **Dashboard**\n3. Locate your **User ID** and **API Key** displayed on the dashboard\n4. Copy the **API Key** (used as the password in HTTP Basic authentication)",
         secrets: {
           HCTI_API_KEY: {
             label: "API Key",
@@ -3254,6 +3362,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Token",
+        helpText:
+          "1. Log in to [Imgur](https://imgur.com)\n2. Go to [Register an Application](https://api.imgur.com/oauth2/addclient)\n3. Fill in the application registration form\n4. After registration, you will receive a **Client ID** and **Client Secret**\n5. Copy and save both credentials",
         secrets: {
           IMGUR_CLIENT_ID: {
             label: "Client ID",
@@ -3276,6 +3386,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Token",
+        helpText:
+          "1. Create a Meta app of type **Business** at [Meta for Developers](https://developers.facebook.com/apps)\n2. In your app dashboard, click **Instagram > API setup with Instagram business login** in the left side menu\n3. Click **Generate token** next to the Instagram account you want to access\n4. Log into Instagram when prompted\n5. Copy the access token",
         secrets: {
           INSTAGRAM_TOKEN: {
             label: "Access Token",
@@ -3301,6 +3413,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
+        helpText:
+          "1. Log in to the [Prisma Console](https://console.prisma.io)\n2. Go to your workspace **Settings** page\n3. Select **Service Tokens**\n4. Click **New Service Token**\n5. Copy and save the generated service token securely",
         secrets: {
           PRISMA_POSTGRES_TOKEN: {
             label: "API Key",
@@ -3322,6 +3436,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "Bot Token",
+        helpText:
+          "1. Go to the [Discord Developer Portal](https://discord.com/developers/applications)\n2. Select your application (or create a new one)\n3. Navigate to the **Bot** page in your app's settings\n4. In the **Token** section, click **Reset Token** to generate a new bot token\n5. Copy and securely store the token — you won't be able to view it again unless you regenerate it",
         secrets: {
           DISCORD_BOT_TOKEN: {
             label: "Bot Token",
@@ -3344,6 +3460,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "App Credentials",
+        helpText:
+          "1. Log in to the [Lark Developer Console](https://open.larksuite.com/app/)\n2. Select your app from the list (or create a new one)\n3. Go to the **Credentials & Basic Info** page\n4. Copy your **App ID** and **App Secret**\n5. Use these credentials to call the tenant_access_token API to obtain an access token",
         secrets: {
           LARK_TOKEN: {
             label: "App Secret",
@@ -3370,6 +3488,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
+        helpText:
+          "1. Go to [Mailsac](https://mailsac.com) and sign up for an account\n2. Log in to your Mailsac dashboard\n3. Navigate to [API Keys](https://mailsac.com/api-keys)\n4. Copy your API key from the dashboard",
         secrets: {
           MAILSAC_TOKEN: {
             label: "API Key",
@@ -3393,6 +3513,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "Access Credentials",
+        helpText:
+          "1. Log in to the MinIO Console\n2. Navigate to the **Access Keys** section under Security and Access\n3. Click **Create Access Key**\n4. The system automatically generates an access key and secret key\n5. Optionally override the auto-generated values or toggle **Restrict beyond user policy** to limit permissions\n6. Save the secret key in a secure location (you cannot retrieve or reset it after creation)\n7. Click **Create** to finalize",
         secrets: {
           MINIO_TOKEN: {
             label: "Access Key",
@@ -3425,6 +3547,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
+        helpText:
+          "1. Create an account on [pdforge](https://pdforge.com)\n2. Two API keys are automatically generated when you create your account\n3. Go to the **API Keys** menu in the sidebar to view your keys\n4. Copy your API key and use it in the `Authorization: Bearer pdfnoodle_api_[your_key]` header",
         secrets: {
           PDFORGE_API_KEY: {
             label: "API Key",
@@ -3445,6 +3569,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "Webhook URL",
+        helpText:
+          "1. Open your Discord server and navigate to **Server Settings**\n2. Select the **Integrations** tab\n3. Click the **Create Webhook** button\n4. Configure the webhook name and select the target text channel from the dropdown menu\n5. Click the **Copy Webhook URL** button to copy the webhook URL",
         secrets: {
           DISCORD_WEBHOOK_URL: {
             label: "Webhook URL",
@@ -3516,6 +3642,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "Webhook URL",
+        helpText:
+          "1. Create a [Slack app](https://api.slack.com/apps) (or use an existing one), choosing a workspace to associate it with\n2. From the app settings page, select **Incoming Webhooks**\n3. Toggle **Activate Incoming Webhooks** to on\n4. Click **Add New Webhook to Workspace**\n5. Pick a channel for the app to post to, then click **Authorize**\n6. Copy the webhook URL from the **Webhook URLs for Your Workspace** section (it will look like `https://hooks.slack.com/services/T.../B.../XXXX...`)",
         secrets: {
           SLACK_WEBHOOK_URL: {
             label: "Webhook URL",
@@ -3538,6 +3666,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "Personal Access Token",
+        helpText:
+          "1. Log in to [GitLab](https://gitlab.com)\n2. Click your avatar in the upper-right corner and select **Edit profile**\n3. In the left sidebar, navigate to **Access > Personal access tokens**\n4. From the **Generate token** dropdown, select **Legacy token**\n5. Enter a name in the **Token name** field\n6. Optionally set an expiration date (defaults to 365 days)\n7. Select the required scopes for your token\n8. Click **Generate token**\n9. Copy and save the token — you cannot view it again after leaving the page",
         secrets: {
           GITLAB_TOKEN: {
             label: "Personal Access Token",
@@ -3564,6 +3694,8 @@ const CONNECTOR_TYPES_DEF = {
     authMethods: {
       "api-token": {
         label: "API Key",
+        helpText:
+          "1. Log in to your [Wix](https://www.wix.com) account (account owner or co-owner access required)\n2. Go to the [API Keys Manager](https://manage.wix.com/account/api-keys)\n3. Create a new API key and assign the required permissions\n4. Copy the generated API key and store it securely",
         secrets: {
           WIX_TOKEN: {
             label: "API Key",
