@@ -39,6 +39,7 @@ const CONNECTOR_ICON_COLORFUL = {
   ahrefs: true,
   airtable: true,
   anthropic: true,
+  apollo: true,
   apify: true,
   asana: true,
   azure: true,

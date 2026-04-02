@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const apolloFirewall: FirewallConfig = {
+export const apolloFirewall = {
   name: "apollo",
   description: "Apollo",
   placeholders: {
@@ -23,4 +23,4 @@ export const apolloFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;
