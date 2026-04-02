@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.140.0](https://github.com/vm0-ai/vm0/compare/core-v8.139.0...core-v8.140.0) (2026-04-02)
+
+
+### Features
+
+* **firewalls:** add fine-grained strava firewall permissions ([#7627](https://github.com/vm0-ai/vm0/issues/7627)) ([202d46c](https://github.com/vm0-ai/vm0/commit/202d46c8c4e0c1f39981d24d3ada6d825d4f8b31)), closes [#7568](https://github.com/vm0-ai/vm0/issues/7568)
+
 ## [8.139.0](https://github.com/vm0-ai/vm0/compare/core-v8.138.0...core-v8.139.0) (2026-04-02)
 
 

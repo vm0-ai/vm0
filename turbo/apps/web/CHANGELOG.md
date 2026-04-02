@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.184.0](https://github.com/vm0-ai/vm0/compare/web-v12.183.3...web-v12.184.0) (2026-04-02)
+
+
+### Features
+
+* unify agent permission model with admin-or-owner guard ([#7586](https://github.com/vm0-ai/vm0/issues/7586)) ([e0d6247](https://github.com/vm0-ai/vm0/commit/e0d6247f9d427eacfe616ec2c8e6e2cd33f873e9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.140.0
+
 ## [12.183.3](https://github.com/vm0-ai/vm0/compare/web-v12.183.2...web-v12.183.3) (2026-04-02)
 
 

@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.178.0](https://github.com/vm0-ai/vm0/compare/app-v0.177.2...app-v0.178.0) (2026-04-02)
+
+
+### Features
+
+* add no-direct-local-storage eslint rule ([#7622](https://github.com/vm0-ai/vm0/issues/7622)) ([8efec89](https://github.com/vm0-ai/vm0/commit/8efec891501e7fee11846377229f260adf82b917))
+* unify agent permission model with admin-or-owner guard ([#7586](https://github.com/vm0-ai/vm0/issues/7586)) ([e0d6247](https://github.com/vm0-ai/vm0/commit/e0d6247f9d427eacfe616ec2c8e6e2cd33f873e9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.140.0
+
 ## [0.177.2](https://github.com/vm0-ai/vm0/compare/app-v0.177.1...app-v0.177.2) (2026-04-02)
 
 
