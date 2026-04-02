@@ -5,7 +5,7 @@ import {
   isAuthError,
 } from "../../../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../../../src/lib/org/resolve-org";
-import { disableSchedule } from "../../../../../../src/lib/schedule";
+import { disableSchedule } from "../../../../../../src/lib/zero/schedule";
 import { isNotFound } from "../../../../../../src/lib/errors";
 
 const bodySchema = z.object({

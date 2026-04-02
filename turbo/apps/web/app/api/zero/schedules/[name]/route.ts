@@ -10,7 +10,7 @@ import {
   isAuthError,
 } from "../../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
-import { deleteSchedule } from "../../../../../src/lib/schedule";
+import { deleteSchedule } from "../../../../../src/lib/zero/schedule";
 import { isNotFound } from "../../../../../src/lib/errors";
 
 const router = tsr.router(zeroSchedulesByNameContract, {

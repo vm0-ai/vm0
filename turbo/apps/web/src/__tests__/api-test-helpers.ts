@@ -80,7 +80,7 @@ import { GET as getRunByIdRoute } from "../../app/api/agent/runs/[id]/route";
 import { POST as upsertOrgModelProviderRoute } from "../../app/api/zero/model-providers/route";
 import { POST as checkpointWebhook } from "../../app/api/webhooks/agent/checkpoints/route";
 import { POST as completeWebhook } from "../../app/api/webhooks/agent/complete/route";
-import type { ScheduleResponse } from "../lib/schedule/schedule-service";
+import type { ScheduleResponse } from "../lib/zero/schedule/schedule-service";
 import {
   deploySchedule,
   getScheduleByName,
@@ -88,7 +88,7 @@ import {
   enableSchedule,
   disableSchedule,
   getScheduleRecentRuns,
-} from "../lib/schedule";
+} from "../lib/zero/schedule";
 import { grantOrgCredits } from "../lib/org/org-service";
 import { POST as storagePrepareRoute } from "../../app/api/storages/prepare/route";
 import { POST as storageCommitRoute } from "../../app/api/storages/commit/route";

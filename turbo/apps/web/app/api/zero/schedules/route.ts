@@ -10,7 +10,10 @@ import {
   isAuthError,
 } from "../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
-import { deploySchedule, listSchedules } from "../../../../src/lib/schedule";
+import {
+  deploySchedule,
+  listSchedules,
+} from "../../../../src/lib/zero/schedule";
 import {
   isNotFound,
   isBadRequest,
