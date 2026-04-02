@@ -23,7 +23,7 @@ import { listVariables } from "../../../../../src/lib/zero/variable/variable-ser
 import { listConnectors } from "../../../../../src/lib/connector/connector-service";
 import { getOrgData } from "../../../../../src/lib/org/org-cache-service";
 import { createSlackClient } from "../../../../../src/lib/slack";
-import { getApiUrl } from "../../../../../src/lib/callback";
+import { getApiUrl } from "../../../../../src/lib/infra/callback";
 import { publishAppHome } from "../../../../../src/lib/slack/client";
 import { buildAppHomeView } from "../../../../../src/lib/slack/blocks";
 import { decryptSecretValue } from "../../../../../src/lib/shared/crypto/secrets-encryption";

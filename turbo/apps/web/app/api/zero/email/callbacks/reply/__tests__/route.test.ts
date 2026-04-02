@@ -16,7 +16,7 @@ import {
   findTestEmailThreadSession,
   completeTestRun,
 } from "../../../../../../../src/__tests__/api-test-helpers";
-import { computeHmacSignature } from "../../../../../../../src/lib/callback/hmac";
+import { computeHmacSignature } from "../../../../../../../src/lib/infra/callback/hmac";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
 import { generateReplyToken } from "../../../../../../../src/lib/email/handlers/shared";
 

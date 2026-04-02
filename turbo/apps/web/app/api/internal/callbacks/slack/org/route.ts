@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../../src/lib/init-services";
-import { verifyCallback } from "../../../../../../src/lib/callback";
+import { verifyCallback } from "../../../../../../src/lib/infra/callback";
 import { decryptSecretValue } from "../../../../../../src/lib/shared/crypto/secrets-encryption";
 import { slackOrgInstallations } from "../../../../../../src/db/schema/slack-org-installation";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
@@ -18,7 +18,7 @@ import {
   buildLogsUrl,
 } from "../../../../../../src/lib/slack-org/handlers/shared";
 import { env } from "../../../../../../src/env";
-import type { SlackOrgCallbackPayload } from "../../../../../../src/lib/callback/callback-payloads";
+import type { SlackOrgCallbackPayload } from "../../../../../../src/lib/infra/callback/callback-payloads";
 import { logger } from "../../../../../../src/lib/logger";
 import type { RunOutput } from "../../../../../../src/lib/infra/run/extract-run-output";
 

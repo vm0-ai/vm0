@@ -61,7 +61,7 @@ import { creditUsage } from "../db/schema/credit-usage";
 import { creditPricing } from "../db/schema/credit-pricing";
 import { users } from "../db/schema/user";
 import { and, eq, like, or, sql } from "drizzle-orm";
-import { generateCallbackSecret } from "../lib/callback/hmac";
+import { generateCallbackSecret } from "../lib/infra/callback/hmac";
 import { initServices } from "../lib/init-services";
 import { encryptSecretsMap } from "../lib/shared/crypto/secrets-encryption";
 import {

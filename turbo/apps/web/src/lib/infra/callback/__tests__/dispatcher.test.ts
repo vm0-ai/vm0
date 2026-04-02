@@ -1,16 +1,19 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { http, HttpResponse } from "msw";
-import { server } from "../../../mocks/server";
+import { server } from "../../../../mocks/server";
 import { dispatchProgressCallbacks } from "../dispatcher";
-import { testContext, type UserContext } from "../../../__tests__/test-helpers";
-import { mockClerk } from "../../../__tests__/clerk-mock";
+import {
+  testContext,
+  type UserContext,
+} from "../../../../__tests__/test-helpers";
+import { mockClerk } from "../../../../__tests__/clerk-mock";
 import {
   createTestCompose,
   createTestRun,
   createTestCallback,
   completeTestRun,
   failTestRun,
-} from "../../../__tests__/api-test-helpers";
+} from "../../../../__tests__/api-test-helpers";
 
 const context = testContext();
 

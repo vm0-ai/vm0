@@ -3,9 +3,9 @@ import { createZeroRun } from "../../zero/zero-run-service";
 import { buildIntegrationContext } from "../../zero/integration-context";
 import { isApiError } from "../../errors";
 import { RUN_ERROR_GUIDANCE } from "@vm0/core";
-import { generateCallbackSecret, getApiUrl } from "../../callback";
+import { generateCallbackSecret, getApiUrl } from "../../infra/callback";
 import { logger } from "../../logger";
-import type { SlackOrgCallbackPayload } from "../../callback/callback-payloads";
+import type { SlackOrgCallbackPayload } from "../../infra/callback/callback-payloads";
 
 const log = logger("slack-org:run-agent");
 

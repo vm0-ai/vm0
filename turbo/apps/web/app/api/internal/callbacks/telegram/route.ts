@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { eq, and, gte, desc } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
-import { verifyCallback } from "../../../../../src/lib/callback";
+import { verifyCallback } from "../../../../../src/lib/infra/callback";
 import { decryptSecretValue } from "../../../../../src/lib/shared/crypto/secrets-encryption";
 import { telegramInstallations } from "../../../../../src/db/schema/telegram-installation";
 import { agentSessions } from "../../../../../src/db/schema/agent-session";
@@ -26,7 +26,7 @@ import {
   buildLogsUrl,
 } from "../../../../../src/lib/telegram/handlers/shared";
 import { env } from "../../../../../src/env";
-import type { TelegramCallbackPayload } from "../../../../../src/lib/callback/callback-payloads";
+import type { TelegramCallbackPayload } from "../../../../../src/lib/infra/callback/callback-payloads";
 import { logger } from "../../../../../src/lib/logger";
 
 const log = logger("callback:telegram");

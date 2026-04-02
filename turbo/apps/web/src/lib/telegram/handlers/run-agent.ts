@@ -4,8 +4,8 @@ import { buildIntegrationContext } from "../../zero/integration-context";
 import { isApiError } from "../../errors";
 import { RUN_ERROR_GUIDANCE } from "@vm0/core";
 import { logger } from "../../logger";
-import { generateCallbackSecret, getApiUrl } from "../../callback";
-import type { TelegramCallbackPayload } from "../../callback/callback-payloads";
+import { generateCallbackSecret, getApiUrl } from "../../infra/callback";
+import type { TelegramCallbackPayload } from "../../infra/callback/callback-payloads";
 
 const log = logger("telegram:run-agent");
 

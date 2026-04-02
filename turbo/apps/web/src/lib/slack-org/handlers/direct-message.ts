@@ -11,7 +11,7 @@ import {
 } from "../../slack/blocks";
 import type { SlackFile } from "../../slack/context";
 import { runAgentForSlackOrg } from "./run-agent";
-import type { SlackOrgCallbackPayload } from "../../callback/callback-payloads";
+import type { SlackOrgCallbackPayload } from "../../infra/callback/callback-payloads";
 import {
   resolveOrgFromWorkspace,
   resolveConnectionFromSlackUser,

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { eq, and, gte, desc } from "drizzle-orm";
 import { initServices } from "../../../../../../src/lib/init-services";
-import { verifyCallback } from "../../../../../../src/lib/callback";
+import { verifyCallback } from "../../../../../../src/lib/infra/callback";
 import { githubInstallations } from "../../../../../../src/db/schema/github-installation";
 import { githubIssueSessions } from "../../../../../../src/db/schema/github-issue-session";
 import { agentSessions } from "../../../../../../src/db/schema/agent-session";
@@ -15,7 +15,7 @@ import {
 import { extractRunOutput } from "../../../../../../src/lib/infra/run/extract-run-output";
 import { getAppUrl } from "../../../../../../src/lib/url";
 import { env } from "../../../../../../src/env";
-import type { GitHubIssuesCallbackPayload } from "../../../../../../src/lib/callback/callback-payloads";
+import type { GitHubIssuesCallbackPayload } from "../../../../../../src/lib/infra/callback/callback-payloads";
 import { logger } from "../../../../../../src/lib/logger";
 
 const log = logger("callback:github-issues");

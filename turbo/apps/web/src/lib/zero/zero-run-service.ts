@@ -41,7 +41,7 @@ import { orgMembersMetadata } from "../../db/schema/org-members-metadata";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 import type { AgentComposeYaml } from "../../types/agent-compose";
 import { DISALLOWED_TOOLS, buildAgentPrompt } from "./agent-prompt";
-import type { CallbackPayload } from "../callback/callback-payloads";
+import type { CallbackPayload } from "../infra/callback/callback-payloads";
 import { zeroAgents } from "../../db/schema/zero-agent";
 import { zeroRuns } from "../../db/schema/zero-run";
 import { userConnectors } from "../../db/schema/user-connector";

@@ -8,7 +8,7 @@ import {
 import { initServices } from "../../../../src/lib/init-services";
 import { env } from "../../../../src/env";
 import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
-import { getApiUrl } from "../../../../src/lib/callback";
+import { getApiUrl } from "../../../../src/lib/infra/callback";
 import { githubInstallations } from "../../../../src/db/schema/github-installation";
 import { githubUserLinks } from "../../../../src/db/schema/github-user-link";
 import {

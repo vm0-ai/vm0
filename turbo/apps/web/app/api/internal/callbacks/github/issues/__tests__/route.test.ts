@@ -17,7 +17,7 @@ import {
   insertTestGitHubIssueSession,
   findTestGitHubIssueSession,
 } from "../../../../../../../src/__tests__/api-test-helpers";
-import { computeHmacSignature } from "../../../../../../../src/lib/callback/hmac";
+import { computeHmacSignature } from "../../../../../../../src/lib/infra/callback/hmac";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
 
 const context = testContext();

@@ -28,8 +28,8 @@ import { zeroAgents } from "../../../../../src/db/schema/zero-agent";
 import {
   getApiUrl,
   generateCallbackSecret,
-} from "../../../../../src/lib/callback";
-import type { ChatCallbackPayload } from "../../../../../src/lib/callback/callback-payloads";
+} from "../../../../../src/lib/infra/callback";
+import type { ChatCallbackPayload } from "../../../../../src/lib/infra/callback/callback-payloads";
 import { logger } from "../../../../../src/lib/logger";
 
 const log = logger("zero:chat-messages");

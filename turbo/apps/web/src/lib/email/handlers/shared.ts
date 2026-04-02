@@ -4,7 +4,7 @@ import { emailThreadSessions } from "../../../db/schema/email-thread-session";
 import { resolveDefaultAgentId } from "../../zero/resolve-default-agent";
 import { env } from "../../../env";
 import { getAppUrl } from "../../url";
-import { getApiUrl } from "../../callback/dispatcher";
+import { getApiUrl } from "../../infra/callback/dispatcher";
 import { enqueueEmail } from "../outbox-service";
 
 // ============================================================================

@@ -1,6 +1,6 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { agentRuns } from "../../../db/schema/agent-run";
-import { dispatchCallbacks } from "../../callback";
+import { dispatchCallbacks } from "../callback";
 import { logger } from "../../logger";
 import type { RunResult, RunStatus } from "./types";
 import type { Database } from "../../../types/global";

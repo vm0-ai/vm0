@@ -8,8 +8,8 @@ import { zeroAgents } from "../../../db/schema/zero-agent";
 import { validateAgentSession } from "../../infra/run";
 import { createZeroRun } from "../../zero/zero-run-service";
 import { buildIntegrationContext } from "../../zero/integration-context";
-import { generateCallbackSecret, getApiUrl } from "../../callback";
-import type { GitHubIssuesCallbackPayload } from "../../callback/callback-payloads";
+import { generateCallbackSecret, getApiUrl } from "../../infra/callback";
+import type { GitHubIssuesCallbackPayload } from "../../infra/callback/callback-payloads";
 import { getInstallationAccessToken } from "../github-app";
 import {
   type IssueComment,

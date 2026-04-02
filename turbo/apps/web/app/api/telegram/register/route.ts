@@ -12,7 +12,7 @@ import {
   setMyCommands,
 } from "../../../../src/lib/telegram/client";
 import { encryptSecretValue } from "../../../../src/lib/shared/crypto/secrets-encryption";
-import { generateCallbackSecret } from "../../../../src/lib/callback/hmac";
+import { generateCallbackSecret } from "../../../../src/lib/infra/callback/hmac";
 import { resolveDefaultAgentComposeId } from "../../../../src/lib/infra/agent-compose/resolve-default";
 import { logger } from "../../../../src/lib/logger";
 import { checkTelegramDomain } from "../../../../src/lib/telegram/check-domain";

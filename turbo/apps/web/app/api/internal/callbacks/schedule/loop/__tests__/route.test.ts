@@ -18,7 +18,7 @@ import {
   updateTestScheduleState,
   findTestScheduleById,
 } from "../../../../../../../src/__tests__/api-test-helpers";
-import { computeHmacSignature } from "../../../../../../../src/lib/callback/hmac";
+import { computeHmacSignature } from "../../../../../../../src/lib/infra/callback/hmac";
 
 const context = testContext();
 
