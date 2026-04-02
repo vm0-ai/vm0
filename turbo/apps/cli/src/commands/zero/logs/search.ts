@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import {
-  searchLogs,
+  searchZeroLogs,
   type RunEvent,
   type LogsSearchResponse,
 } from "../../../lib/api";
@@ -155,7 +155,7 @@ Examples:
         : Date.now() - SEVEN_DAYS_MS;
       const limit = parseLimit(options.limit);
 
-      const response = await searchLogs({
+      const response = await searchZeroLogs({
         keyword,
         agent: options.agent,
         runId: options.run,

@@ -151,7 +151,7 @@ export {
 } from "./domains/zero-runs";
 
 // Domain modules - Zero Logs
-export { listZeroLogs } from "./domains/zero-logs";
+export { listZeroLogs, searchZeroLogs } from "./domains/zero-logs";
 
 // Domain modules - Logs
 export {

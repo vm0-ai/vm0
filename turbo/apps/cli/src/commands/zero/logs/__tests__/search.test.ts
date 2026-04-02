@@ -52,7 +52,7 @@ describe("zero logs search command", () => {
 
   it("should render search results grouped by run", async () => {
     server.use(
-      http.get("http://localhost:3000/api/logs/search", () => {
+      http.get("http://localhost:3000/api/zero/logs/search", () => {
         return HttpResponse.json({
           results: [
             {
@@ -78,7 +78,7 @@ describe("zero logs search command", () => {
 
   it("should handle no matches", async () => {
     server.use(
-      http.get("http://localhost:3000/api/logs/search", () => {
+      http.get("http://localhost:3000/api/zero/logs/search", () => {
         return HttpResponse.json({ results: [], hasMore: false });
       }),
     );
@@ -93,7 +93,7 @@ describe("zero logs search command", () => {
   it("should pass context options to API", async () => {
     let capturedUrl: URL | undefined;
     server.use(
-      http.get("http://localhost:3000/api/logs/search", ({ request }) => {
+      http.get("http://localhost:3000/api/zero/logs/search", ({ request }) => {
         capturedUrl = new URL(request.url);
         return HttpResponse.json({ results: [], hasMore: false });
       }),
@@ -109,7 +109,7 @@ describe("zero logs search command", () => {
   it("should pass -A and -B independently", async () => {
     let capturedUrl: URL | undefined;
     server.use(
-      http.get("http://localhost:3000/api/logs/search", ({ request }) => {
+      http.get("http://localhost:3000/api/zero/logs/search", ({ request }) => {
         capturedUrl = new URL(request.url);
         return HttpResponse.json({ results: [], hasMore: false });
       }),
@@ -132,7 +132,7 @@ describe("zero logs search command", () => {
   it("should pass agent and run filters", async () => {
     let capturedUrl: URL | undefined;
     server.use(
-      http.get("http://localhost:3000/api/logs/search", ({ request }) => {
+      http.get("http://localhost:3000/api/zero/logs/search", ({ request }) => {
         capturedUrl = new URL(request.url);
         return HttpResponse.json({ results: [], hasMore: false });
       }),
@@ -154,7 +154,7 @@ describe("zero logs search command", () => {
 
   it("should show hasMore hint when truncated", async () => {
     server.use(
-      http.get("http://localhost:3000/api/logs/search", () => {
+      http.get("http://localhost:3000/api/zero/logs/search", () => {
         return HttpResponse.json({
           results: [
             {
@@ -178,7 +178,7 @@ describe("zero logs search command", () => {
 
   it("should render context events around matched event", async () => {
     server.use(
-      http.get("http://localhost:3000/api/logs/search", () => {
+      http.get("http://localhost:3000/api/zero/logs/search", () => {
         return HttpResponse.json({
           results: [
             {
@@ -216,7 +216,7 @@ describe("zero logs search command", () => {
 
   it("should handle authentication error", async () => {
     server.use(
-      http.get("http://localhost:3000/api/logs/search", () => {
+      http.get("http://localhost:3000/api/zero/logs/search", () => {
         return HttpResponse.json(
           { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
           { status: 401 },
