@@ -637,6 +637,7 @@ function OnboardingPageLayout({ children }: { children: React.ReactNode }) {
   const nextDisabled = useLastResolved(onboardingNextDisabled$) ?? false;
   const stepBack = useSet(onboardingStepBack$);
   const stepNext = useSet(onboardingStepNext$);
+  const pageSignal = useGet(pageSignal$);
   const effectiveConnectors =
     useLastResolved(onboardingEffectiveConnectors$) ?? [];
 
@@ -781,10 +782,7 @@ function OnboardingPageLayout({ children }: { children: React.ReactNode }) {
                   variant="ghost"
                   className="rounded-lg text-muted-foreground"
                   onClick={() => {
-                    detach(
-                      stepBack(new AbortController().signal),
-                      Reason.DomCallback,
-                    );
+                    detach(stepBack(pageSignal), Reason.DomCallback);
                   }}
                 >
                   Back
@@ -795,10 +793,7 @@ function OnboardingPageLayout({ children }: { children: React.ReactNode }) {
               {showNext && (
                 <Button
                   onClick={() => {
-                    detach(
-                      stepNext(new AbortController().signal),
-                      Reason.DomCallback,
-                    );
+                    detach(stepNext(pageSignal), Reason.DomCallback);
                   }}
                   className="rounded-lg min-w-[100px]"
                   disabled={nextDisabled}
@@ -822,6 +817,7 @@ function WorkspaceStepContent() {
   const workspaceName = useGet(zeroWorkspaceName$);
   const setWorkspaceName = useSet(setZeroWorkspaceName$);
   const stepNext = useSet(onboardingStepNext$);
+  const pageSignal = useGet(pageSignal$);
 
   return (
     <>
@@ -848,10 +844,7 @@ function WorkspaceStepContent() {
           }}
           onKeyDown={(e) => {
             if (e.key === "Enter" && workspaceName.trim()) {
-              detach(
-                stepNext(new AbortController().signal),
-                Reason.DomCallback,
-              );
+              detach(stepNext(pageSignal), Reason.DomCallback);
             }
           }}
           className="h-10 rounded-lg"
