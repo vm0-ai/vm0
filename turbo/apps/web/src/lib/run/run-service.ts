@@ -927,7 +927,7 @@ export async function startRun(
  * Result of createRunRecord — contains the run record and all metadata
  * needed by buildAndDispatchRun to complete the dispatch pipeline.
  */
-interface CreateRunRecordResult {
+export interface CreateRunRecordResult {
   run: { id: string; createdAt: Date };
   composeContent: AgentComposeYaml;
   orgId: string;

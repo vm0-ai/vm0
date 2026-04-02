@@ -16,4 +16,5 @@ export {
   type RunDispatchError,
   type CreateRunParams,
   type CreateRunResult,
+  type CreateRunRecordResult,
 } from "./run-service";
