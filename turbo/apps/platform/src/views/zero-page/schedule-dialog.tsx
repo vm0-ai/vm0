@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { useLastResolved } from "ccstate-react";
+import { useGet, useSet, useLastResolved } from "ccstate-react";
 import { createPortal } from "react-dom";
 import { IconX } from "@tabler/icons-react";
 import {
@@ -24,6 +23,13 @@ import {
   getTimezoneLabel,
 } from "../../signals/zero-page/cron.ts";
 import { userPreferences$ } from "../../signals/zero-page/settings/user-preferences.ts";
+import {
+  dialogForm$,
+  updateDialogForm$,
+  showConfirm$,
+  setShowConfirm$,
+  syncDialogOpenState$,
+} from "../../signals/schedule-page/schedule-form.ts";
 
 // ---------------------------------------------------------------------------
 // Constants (moved from zero-schedule-card.tsx)
@@ -527,31 +533,23 @@ function ScheduleFormDialogInner({
 }) {
   const init = buildDefaults(agents, initialValues, preferredTimezone);
 
-  const [prompt, setPrompt] = useState(init.prompt);
-  const [description, setDescription] = useState(init.description);
-  const [agentId, setComposeId] = useState(init.agentId);
-  const [freq, setFreq] = useState(init.freq);
-  const [date, setDate] = useState(init.date);
-  const [hour, setHour] = useState(init.hour);
-  const [minute, setMinute] = useState(init.minute);
-  const [timezone, setTimezone] = useState(init.timezone);
-  const [loopMinutes, setLoopMinutes] = useState(init.loopMinutes);
-  const [dayOfWeek, setDayOfWeek] = useState(init.dayOfWeek);
-  const [dayOfMonth, setDayOfMonth] = useState(init.dayOfMonth);
-  const [showConfirm, setShowConfirm] = useState(false);
+  const updateForm = useSet(updateDialogForm$);
+  const form = useGet(dialogForm$);
+  const showConfirmVal = useGet(showConfirm$);
+  const setShowConfirmVal = useSet(setShowConfirm$);
 
   const current: ScheduleFormValues = {
-    prompt,
-    description,
-    agentId,
-    freq,
-    date,
-    hour,
-    minute,
-    timezone,
-    loopMinutes,
-    dayOfWeek,
-    dayOfMonth,
+    prompt: form.prompt,
+    description: form.description,
+    agentId: form.agentId,
+    freq: form.freq,
+    date: form.date,
+    hour: form.hour,
+    minute: form.minute,
+    timezone: form.timezone,
+    loopMinutes: form.loopMinutes,
+    dayOfWeek: form.dayOfWeek,
+    dayOfMonth: form.dayOfMonth,
   };
 
   const isDirty = checkDirty(current, init, mode, {
@@ -560,17 +558,17 @@ function ScheduleFormDialogInner({
 
   const requestClose = () => {
     if (isDirty) {
-      setShowConfirm(true);
+      setShowConfirmVal(true);
     } else {
       onClose();
     }
   };
 
   const handleSave = () => {
-    if (!prompt.trim()) {
+    if (!form.prompt.trim()) {
       return;
     }
-    if (agents && !agentId) {
+    if (agents && !form.agentId) {
       return;
     }
     onSave(current);
@@ -615,7 +613,12 @@ function ScheduleFormDialogInner({
               >
                 Agent
               </label>
-              <Select value={agentId} onValueChange={setComposeId}>
+              <Select
+                value={form.agentId}
+                onValueChange={(v) => {
+                  return updateForm({ agentId: v });
+                }}
+              >
                 <SelectTrigger id="schedule-dialog-agent" className="h-9">
                   <SelectValue />
                 </SelectTrigger>
@@ -642,9 +645,9 @@ function ScheduleFormDialogInner({
             </label>
             <textarea
               id="schedule-dialog-prompt"
-              value={prompt}
+              value={form.prompt}
               onChange={(e) => {
-                return setPrompt(e.target.value);
+                return updateForm({ prompt: e.target.value });
               }}
               placeholder="Describe your task and instruction"
               rows={5}
@@ -666,9 +669,9 @@ function ScheduleFormDialogInner({
               </label>
               <Input
                 id="schedule-dialog-description"
-                value={description}
+                value={form.description}
                 onChange={(e) => {
-                  return setDescription(e.target.value);
+                  return updateForm({ description: e.target.value });
                 }}
                 placeholder="Leave blank to auto-generate"
                 className="h-9"
@@ -677,22 +680,38 @@ function ScheduleFormDialogInner({
           )}
 
           <ScheduleTimingFields
-            freq={freq}
-            setFreq={setFreq}
-            loopMinutes={loopMinutes}
-            setLoopMinutes={setLoopMinutes}
-            date={date}
-            setDate={setDate}
-            dayOfWeek={dayOfWeek}
-            setDayOfWeek={setDayOfWeek}
-            dayOfMonth={dayOfMonth}
-            setDayOfMonth={setDayOfMonth}
-            hour={hour}
-            setHour={setHour}
-            minute={minute}
-            setMinute={setMinute}
-            timezone={timezone}
-            setTimezone={setTimezone}
+            freq={form.freq}
+            setFreq={(v) => {
+              return updateForm({ freq: v });
+            }}
+            loopMinutes={form.loopMinutes}
+            setLoopMinutes={(v) => {
+              return updateForm({ loopMinutes: v });
+            }}
+            date={form.date}
+            setDate={(v) => {
+              return updateForm({ date: v });
+            }}
+            dayOfWeek={form.dayOfWeek}
+            setDayOfWeek={(v) => {
+              return updateForm({ dayOfWeek: v });
+            }}
+            dayOfMonth={form.dayOfMonth}
+            setDayOfMonth={(v) => {
+              return updateForm({ dayOfMonth: v });
+            }}
+            hour={form.hour}
+            setHour={(v) => {
+              return updateForm({ hour: v });
+            }}
+            minute={form.minute}
+            setMinute={(v) => {
+              return updateForm({ minute: v });
+            }}
+            timezone={form.timezone}
+            setTimezone={(v) => {
+              return updateForm({ timezone: v });
+            }}
           />
         </div>
 
@@ -710,18 +729,20 @@ function ScheduleFormDialogInner({
           <Button
             type="button"
             onClick={handleSave}
-            disabled={!prompt.trim() || (agents ? !agentId : false) || saving}
+            disabled={
+              !form.prompt.trim() || (agents ? !form.agentId : false) || saving
+            }
           >
             {saveLabel}
           </Button>
         </DialogFooter>
       </DialogContent>
 
-      {showConfirm && (
+      {showConfirmVal && (
         <ConfirmCloseOverlay
           onDiscard={onClose}
           onContinue={() => {
-            return setShowConfirm(false);
+            return setShowConfirmVal(false);
           }}
         />
       )}
@@ -735,6 +756,12 @@ function ScheduleFormDialogInner({
 
 export function ScheduleFormDialog({ open, ...rest }: ScheduleFormDialogProps) {
   const preferences = useLastResolved(userPreferences$);
+
+  // Reset form when transitioning from closed to open
+  useSet(syncDialogOpenState$)(
+    open,
+    buildDefaults(rest.agents, rest.initialValues, preferences?.timezone),
+  );
 
   return (
     <Dialog open={open} onOpenChange={() => {}}>

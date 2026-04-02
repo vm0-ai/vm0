@@ -1,7 +1,7 @@
-import { useState } from "react";
 import { useGet, useSet } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
-import { toast } from "@vm0/ui/components/ui/sonner";
+import { fetch$ } from "../../signals/fetch.ts";
 import {
   Button,
   Card,
@@ -25,13 +25,31 @@ import {
   TONE_HINT,
   TONE_SAMPLES,
 } from "./zero-tone-constants.ts";
-import { detach, Reason, throwIfAbort } from "../../signals/utils.ts";
+import { detach, Reason } from "../../signals/utils.ts";
 import { ZeroUnsavedBar } from "./zero-unsaved-bar.tsx";
 import type { Command } from "ccstate";
 import { InlineSettingsRow } from "./components/zero-inline-settings-row.tsx";
 import { ZERO_AVATARS } from "./zero-avatars.ts";
-import { fetch$ } from "../../signals/fetch.ts";
 import { AVATAR_PRESET_PREFIX } from "./avatar-utils.ts";
+import {
+  settingsAgentName$,
+  setSettingsAgentName$,
+  settingsDesc$,
+  setSettingsDesc$,
+  settingsTone$,
+  setSettingsTone$,
+  settingsAvatarUrl$,
+  setSettingsAvatarUrl$,
+  settingsCustomAvatarUrl$,
+  settingsFileInputEl$,
+  setSettingsFileInputEl$,
+  settingsDirty$,
+  initSettingsForm$,
+  resetSettingsForm$,
+  markSettingsSaved$,
+  uploadAvatar$,
+  deleteAgent$,
+} from "../../signals/zero-page/settings/settings-tab.ts";
 
 interface ZeroSettingsTabProps {
   displayName: string;
@@ -69,64 +87,41 @@ export function ZeroSettingsTab({
   isDefaultAgent = false,
   onDelete,
 }: ZeroSettingsTabProps) {
-  const [agentName, setAgentName] = useState(resolvedAgentName);
-  const [desc, setDesc] = useState(initialDescription);
-  const [tone, setTone] = useState<Tone>(initialSound);
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(initialAvatarUrl);
-  const [customAvatarUrl, setCustomAvatarUrl] = useState<string | null>(
-    initialAvatarUrl && !initialAvatarUrl.startsWith(AVATAR_PRESET_PREFIX)
-      ? initialAvatarUrl
-      : null,
-  );
-  const [uploading, setUploading] = useState(false);
-  const [fileInputEl, setFileInputEl] = useState<HTMLInputElement | null>(null);
-  const [savedSettings, setSavedSettings] = useState({
+  useSet(initSettingsForm$)({
     name: resolvedAgentName,
     description: initialDescription,
     tone: initialSound,
     avatarUrl: initialAvatarUrl,
   });
-  const [deleting, setDeleting] = useState(false);
 
-  const isSettingsDirty =
-    agentName !== savedSettings.name ||
-    desc !== savedSettings.description ||
-    tone !== savedSettings.tone ||
-    avatarUrl !== savedSettings.avatarUrl;
+  const agentName = useGet(settingsAgentName$);
+  const setAgentName = useSet(setSettingsAgentName$);
+  const desc = useGet(settingsDesc$);
+  const setDesc = useSet(setSettingsDesc$);
+  const tone = useGet(settingsTone$);
+  const setTone = useSet(setSettingsTone$);
+  const avatarUrl = useGet(settingsAvatarUrl$);
+  const setAvatarUrl = useSet(setSettingsAvatarUrl$);
+  const customAvatarUrl = useGet(settingsCustomAvatarUrl$);
+  const fileInputEl = useGet(settingsFileInputEl$);
+  const setFileInputEl = useSet(setSettingsFileInputEl$);
+  const isSettingsDirty = useGet(settingsDirty$);
+  const resetForm = useSet(resetSettingsForm$);
+  const markSaved = useSet(markSettingsSaved$);
+
+  const fetchFn = useGet(fetch$);
+  const [uploadLoadable, uploadAvatarFn] = useLoadableSet(uploadAvatar$);
+  const uploading = uploadLoadable.state === "loading";
+
+  const [deleteLoadable, deleteAgentFn] = useLoadableSet(deleteAgent$);
+  const deleting = deleteLoadable.state === "loading";
 
   const handleResetSettings = () => {
-    setAgentName(savedSettings.name);
-    setDesc(savedSettings.description);
-    setTone(savedSettings.tone);
-    setAvatarUrl(savedSettings.avatarUrl);
+    resetForm();
   };
 
   const triggerUpdateSettings = useSet(updateSettings$);
   const pageSignal = useGet(pageSignal$);
-  const fetchFn = useGet(fetch$);
-
-  const handleUploadAvatar = async (file: File) => {
-    setUploading(true);
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-      const res = await fetchFn("/api/zero/uploads", {
-        method: "POST",
-        body: formData,
-      });
-      if (!res.ok) {
-        throw new Error(`Upload failed (${res.status})`);
-      }
-      const data: { url: string } = await res.json();
-      setCustomAvatarUrl(data.url);
-      setAvatarUrl(data.url);
-    } catch (error) {
-      throwIfAbort(error);
-      toast.error("Failed to upload avatar");
-    } finally {
-      setUploading(false);
-    }
-  };
 
   const handleSaveSettings = async () => {
     await triggerUpdateSettings(
@@ -138,24 +133,14 @@ export function ZeroSettingsTab({
       },
       pageSignal,
     );
-    setSavedSettings({
-      name: agentName,
-      description: desc,
-      tone,
-      avatarUrl,
-    });
+    markSaved();
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!onDelete) {
       return;
     }
-    setDeleting(true);
-    try {
-      await onDelete();
-    } finally {
-      setDeleting(false);
-    }
+    detach(deleteAgentFn(onDelete, pageSignal), Reason.DomCallback);
   };
 
   return (
@@ -266,7 +251,10 @@ export function ZeroSettingsTab({
                     onChange={(e) => {
                       const file = e.target.files?.[0];
                       if (file) {
-                        detach(handleUploadAvatar(file), Reason.DomCallback);
+                        detach(
+                          uploadAvatarFn(file, fetchFn, pageSignal),
+                          Reason.DomCallback,
+                        );
                       }
                       e.target.value = "";
                     }}
@@ -419,9 +407,7 @@ export function ZeroSettingsTab({
                           variant="destructive"
                           size="sm"
                           disabled={deleting}
-                          onClick={() => {
-                            return detach(handleDelete(), Reason.DomCallback);
-                          }}
+                          onClick={handleDelete}
                         >
                           {deleting ? "Deleting…" : "Delete agent"}
                         </Button>

@@ -1,5 +1,5 @@
-import { useState } from "react";
 import { useGet, useSet, useLastLoadable, useLoadable } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import { Button } from "@vm0/ui";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
@@ -28,9 +28,21 @@ import {
   firewallAllowAgent$,
   firewallAccessRequests$,
   extractPermissions,
-  saveFirewallPolicies$,
-  resolveAccessRequest$,
-  createAccessRequest$,
+  adminFocusedPolicy$,
+  setAdminFocusedPolicy$,
+  adminFocusedSaved$,
+  resolvingId$,
+  saveAdminFocusedPolicy$,
+  resolveAndUpdatePolicy$,
+  showForm$,
+  setShowForm$,
+  reason$,
+  setReason$,
+  submitAccessRequest$,
+  adminListPolicies$,
+  setAdminListPolicy$,
+  setAdminListGroupPolicies$,
+  saveAdminListPolicies$,
 } from "../../signals/firewall-allow/firewall-allow-signals.ts";
 import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -113,54 +125,44 @@ function AdminFocusedView({
     : null;
   const pageSignal = useGet(pageSignal$);
   const requestsLoadable = useLastLoadable(firewallAccessRequests$);
-  const setSavePolicies = useSet(saveFirewallPolicies$);
-  const setResolveRequest = useSet(resolveAccessRequest$);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [resolvingId, setResolvingId] = useState<string | null>(null);
+  const policyOverride = useGet(adminFocusedPolicy$);
+  const setPolicy = useSet(setAdminFocusedPolicy$);
+  const saved = useGet(adminFocusedSaved$);
+  const currentResolvingId = useGet(resolvingId$);
+  const [saveLoadable, savePolicies] = useLoadableSet(saveAdminFocusedPolicy$);
+  const [resolveLoadable, resolveRequest] = useLoadableSet(
+    resolveAndUpdatePolicy$,
+  );
 
   const currentPolicy =
     agent.firewallPolicies?.[ref]?.[permission.name] ??
     defaults?.[permission.name] ??
     "allow";
-  const [policy, setPolicy] = useState<FirewallPolicyValue>(currentPolicy);
+
+  // Use the override if the user has changed the policy, otherwise fall back
+  // to the server-derived current policy.
+  const policy = policyOverride ?? currentPolicy;
+
+  const saving = saveLoadable.state === "loading";
+  const resolving = resolveLoadable.state === "loading";
 
   const handleSave = () => {
-    const fullPolicies: FirewallPolicies = {
-      ...agent.firewallPolicies,
-      [ref]: {
-        ...agent.firewallPolicies?.[ref],
-        [permission.name]: policy,
-      },
-    };
-    setSaving(true);
-    setSaved(false);
     detach(
-      setSavePolicies(agentId, fullPolicies, pageSignal)
-        .then(() => {
-          setSaved(true);
-        })
-        .finally(() => {
-          setSaving(false);
-        }),
+      savePolicies(
+        {
+          agentId,
+          ref,
+          permissionName: permission.name,
+          agentFirewallPolicies: agent.firewallPolicies,
+        },
+        pageSignal,
+      ),
       Reason.DomCallback,
     );
   };
 
   const handleResolve = (requestId: string, action: "approve" | "reject") => {
-    setResolvingId(requestId);
-    detach(
-      setResolveRequest(requestId, action, pageSignal)
-        .then(() => {
-          if (action === "approve") {
-            setPolicy("allow");
-          }
-        })
-        .finally(() => {
-          setResolvingId(null);
-        }),
-      Reason.DomCallback,
-    );
+    detach(resolveRequest(requestId, action, pageSignal), Reason.DomCallback);
   };
 
   const requests =
@@ -238,7 +240,7 @@ function AdminFocusedView({
                       onClick={() => {
                         return handleResolve(req.id, "reject");
                       }}
-                      disabled={resolvingId === req.id}
+                      disabled={resolving && currentResolvingId === req.id}
                     >
                       <IconBan size={12} />
                       Reject
@@ -248,7 +250,7 @@ function AdminFocusedView({
                       onClick={() => {
                         return handleResolve(req.id, "approve");
                       }}
-                      disabled={resolvingId === req.id}
+                      disabled={resolving && currentResolvingId === req.id}
                     >
                       <IconCheck size={12} />
                       Approve
@@ -288,10 +290,11 @@ function MemberFocusedView({
     : null;
   const pageSignal = useGet(pageSignal$);
   const requestsLoadable = useLastLoadable(firewallAccessRequests$);
-  const setCreateRequest = useSet(createAccessRequest$);
-  const [showForm, setShowForm] = useState(false);
-  const [reason, setReason] = useState("");
-  const [submitting, setSubmitting] = useState(false);
+  const showFormValue = useGet(showForm$);
+  const setShowFormValue = useSet(setShowForm$);
+  const reasonValue = useGet(reason$);
+  const setReasonValue = useSet(setReason$);
+  const [submitLoadable, submitRequest] = useLoadableSet(submitAccessRequest$);
 
   const currentPolicy =
     agent.firewallPolicies?.[ref]?.[permission.name] ??
@@ -304,27 +307,21 @@ function MemberFocusedView({
     return r.permission === permission.name;
   });
 
+  const submitting = submitLoadable.state === "loading";
+
   const handleSubmit = () => {
-    setSubmitting(true);
     detach(
-      setCreateRequest(
+      submitRequest(
         {
           agentId,
           firewallRef: ref,
           permission: permission.name,
           method: method ?? undefined,
           path: path ?? undefined,
-          reason: reason || undefined,
+          reason: reasonValue || undefined,
         },
         pageSignal,
-      )
-        .then(() => {
-          setShowForm(false);
-          setReason("");
-        })
-        .finally(() => {
-          setSubmitting(false);
-        }),
+      ),
       Reason.DomCallback,
     );
   };
@@ -370,7 +367,7 @@ function MemberFocusedView({
                   size="sm"
                   variant="outline"
                   onClick={() => {
-                    return setShowForm(true);
+                    return setShowFormValue(true);
                   }}
                 >
                   Request Access
@@ -380,13 +377,13 @@ function MemberFocusedView({
           )}
         </div>
 
-        {showForm && (
+        {showFormValue && (
           <div className="mt-3 flex flex-col gap-2 border-t border-border/40 pt-3">
             <textarea
               placeholder="Reason for access (optional)"
-              value={reason}
+              value={reasonValue}
               onChange={(e) => {
-                return setReason(e.target.value);
+                return setReasonValue(e.target.value);
               }}
               rows={2}
               className="text-sm w-full rounded-md border border-input bg-background px-3 py-2 ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
@@ -396,8 +393,7 @@ function MemberFocusedView({
                 size="sm"
                 variant="outline"
                 onClick={() => {
-                  setShowForm(false);
-                  setReason("");
+                  setShowFormValue(false);
                 }}
               >
                 Cancel
@@ -506,36 +502,17 @@ function AdminListView({
 }) {
   const permissions = extractPermissions(ref);
   const groups = groupPermissionsByCategory(permissions, ref);
-  const defaults = isFirewallConnectorType(ref)
-    ? getDefaultFirewallPolicies(ref)
-    : null;
   const pageSignal = useGet(pageSignal$);
-  const setSavePolicies = useSet(saveFirewallPolicies$);
-  const [saving, setSaving] = useState(false);
+  const policies = useGet(adminListPolicies$);
+  const setPolicy = useSet(setAdminListPolicy$);
+  const setGroupPolicies = useSet(setAdminListGroupPolicies$);
+  const [saveLoadable, savePolicies] = useLoadableSet(saveAdminListPolicies$);
 
-  const [policies, setPolicies] = useState<Record<string, FirewallPolicyValue>>(
-    () => {
-      const result: Record<string, FirewallPolicyValue> = {};
-      for (const p of permissions) {
-        result[p.name] =
-          agent.firewallPolicies?.[ref]?.[p.name] ??
-          defaults?.[p.name] ??
-          "allow";
-      }
-      return result;
-    },
-  );
+  const saving = saveLoadable.state === "loading";
 
   const handleSave = () => {
-    const fullPolicies: FirewallPolicies = {
-      ...agent.firewallPolicies,
-      [ref]: policies,
-    };
-    setSaving(true);
     detach(
-      setSavePolicies(agentId, fullPolicies, pageSignal).finally(() => {
-        setSaving(false);
-      }),
+      savePolicies(agentId, agent.firewallPolicies, ref, pageSignal),
       Reason.DomCallback,
     );
   };
@@ -544,13 +521,12 @@ function AdminListView({
     groupPerms: { name: string }[],
     policy: FirewallPolicyValue,
   ) => {
-    setPolicies((prev) => {
-      const next = { ...prev };
-      for (const p of groupPerms) {
-        next[p.name] = policy;
-      }
-      return next;
-    });
+    setGroupPolicies(
+      groupPerms.map((p) => {
+        return p.name;
+      }),
+      policy,
+    );
   };
 
   return (
@@ -587,9 +563,7 @@ function AdminListView({
                           perm={perm}
                           policy={policies[perm.name] ?? "allow"}
                           onChange={(p) => {
-                            return setPolicies((prev) => {
-                              return { ...prev, [perm.name]: p };
-                            });
+                            return setPolicy(perm.name, p);
                           }}
                           indented
                         />
@@ -607,9 +581,7 @@ function AdminListView({
                     perm={perm}
                     policy={policies[perm.name] ?? "allow"}
                     onChange={(p) => {
-                      return setPolicies((prev) => {
-                        return { ...prev, [perm.name]: p };
-                      });
+                      return setPolicy(perm.name, p);
                     }}
                   />
                 </div>

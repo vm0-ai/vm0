@@ -1,4 +1,3 @@
-import { useState } from "react";
 import {
   useGet,
   useSet,
@@ -87,7 +86,6 @@ import { agents$ } from "../../signals/zero-page/agents-list.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { user$ } from "../../signals/auth.ts";
 import { ZeroNoPermissionIllustration } from "./components/zero-no-permission-illustration.tsx";
-import type { ConnectorType } from "@vm0/core";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { FirewallPermissionsDrawer } from "./components/settings/firewall-permissions-dialog.tsx";
 import {
@@ -99,6 +97,16 @@ import {
   type ConnectorTypeWithStatus,
 } from "../../signals/zero-page/settings/connectors.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
+import {
+  permFirewallType$,
+  setPermFirewallType$,
+  permSearch$,
+  setPermSearch$,
+  permSearchActive$,
+  setPermSearchActive$,
+  permSavingType$,
+  setPermSavingType$,
+} from "../../signals/zero-page/zero-job-detail-page.ts";
 
 // ---------------------------------------------------------------------------
 // Page shell: skeleton, error, header
@@ -421,10 +429,14 @@ function JobPermissionsTab({
   const firewallPolicies = useGet(zeroJobFirewallPolicies$);
   const setFirewallPolicies = useSet(setZeroJobFirewallPolicies$);
   const saveFirewallPol = useSet(saveFirewallPolicies$);
-  const [firewallType, setFirewallType] = useState<ConnectorType | null>(null);
-  const [search, setSearch] = useState("");
-  const [searchActive, setSearchActive] = useState(false);
-  const [savingType, setSavingType] = useState<string | null>(null);
+  const firewallType = useGet(permFirewallType$);
+  const setFirewallType = useSet(setPermFirewallType$);
+  const search = useGet(permSearch$);
+  const setSearch = useSet(setPermSearch$);
+  const searchActive = useGet(permSearchActive$);
+  const setSearchActive = useSet(setPermSearchActive$);
+  const savingType = useGet(permSavingType$);
+  const setSavingType = useSet(setPermSavingType$);
 
   const userLoadable = useLoadable(user$);
   const currentUserId =

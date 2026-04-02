@@ -1,5 +1,41 @@
 import { command, computed, state } from "ccstate";
-import { org$ } from "../../org.ts";
+import {
+  zeroOrgInviteContract,
+  zeroOrgMembersContract,
+  zeroOrgMembershipRequestsContract,
+  zeroOrgDomainsContract,
+  type OrgRole,
+  type OrgEnrollmentMode,
+  type MemberUsage,
+} from "@vm0/core";
+import { toast } from "@vm0/ui/components/ui/sonner";
+import { org$, refreshOrg$ } from "../../org.ts";
+import { zeroClient$ } from "../../api-client.ts";
+import { clerk$ } from "../../auth.ts";
+import { refreshOrgMembers$ } from "../../external/org-members.ts";
+import { refreshOrgDomains$ } from "../../external/org-domains.ts";
+import { setMemberCreditCap$ } from "../member-credit-caps.ts";
+
+function extractApiErrorMessage(
+  result: { status: number; body: unknown },
+  fallback: string,
+): string {
+  if (
+    (result.status === 400 ||
+      result.status === 401 ||
+      result.status === 403 ||
+      result.status === 500) &&
+    typeof result.body === "object" &&
+    result.body !== null &&
+    "error" in result.body
+  ) {
+    const error = (result.body as { error: { message: string } }).error;
+    if (typeof error?.message === "string") {
+      return error.message;
+    }
+  }
+  return `${fallback} (${result.status})`;
+}
 
 // ---------------------------------------------------------------------------
 // org-manage-dialog: active tab
@@ -201,3 +237,441 @@ export const inviteTouched$ = computed((get) => {
 export const setInviteTouched$ = command(({ set }, value: boolean) => {
   set(internalInviteTouched$, value);
 });
+
+// ---------------------------------------------------------------------------
+// org-members-tab: InviteDialog
+// ---------------------------------------------------------------------------
+
+const internalInviteDialogOpen$ = state(false);
+
+export const inviteDialogOpen$ = computed((get) => {
+  return get(internalInviteDialogOpen$);
+});
+
+export const setInviteDialogOpen$ = command(({ set }, open: boolean) => {
+  set(internalInviteDialogOpen$, open);
+});
+
+const internalInviteRole$ = state<OrgRole>("member");
+
+export const inviteRole$ = computed((get) => {
+  return get(internalInviteRole$);
+});
+
+export const setInviteRole$ = command(({ set }, value: OrgRole) => {
+  set(internalInviteRole$, value);
+});
+
+// ---------------------------------------------------------------------------
+// org-members-tab: SelfDemoteAction dialog
+// ---------------------------------------------------------------------------
+
+const internalSelfDemoteDialogOpen$ = state(false);
+
+export const selfDemoteDialogOpen$ = computed((get) => {
+  return get(internalSelfDemoteDialogOpen$);
+});
+
+export const setSelfDemoteDialogOpen$ = command(({ set }, open: boolean) => {
+  set(internalSelfDemoteDialogOpen$, open);
+});
+
+// ---------------------------------------------------------------------------
+// org-members-tab: MemberActions remove dialog (keyed by email)
+// ---------------------------------------------------------------------------
+
+const internalRemoveMemberDialogTarget$ = state<string | null>(null);
+
+export const removeMemberDialogTarget$ = computed((get) => {
+  return get(internalRemoveMemberDialogTarget$);
+});
+
+export const setRemoveMemberDialogTarget$ = command(
+  ({ set }, target: string | null) => {
+    set(internalRemoveMemberDialogTarget$, target);
+  },
+);
+
+// ---------------------------------------------------------------------------
+// org-members-tab: PendingInvitationRow revoke dialog (keyed by id)
+// ---------------------------------------------------------------------------
+
+const internalRevokeInvitationDialogTarget$ = state<string | null>(null);
+
+export const revokeInvitationDialogTarget$ = computed((get) => {
+  return get(internalRevokeInvitationDialogTarget$);
+});
+
+export const setRevokeInvitationDialogTarget$ = command(
+  ({ set }, target: string | null) => {
+    set(internalRevokeInvitationDialogTarget$, target);
+  },
+);
+
+// ---------------------------------------------------------------------------
+// org-domains-tab: AddDomainDialog
+// ---------------------------------------------------------------------------
+
+const internalAddDomainDialogOpen$ = state(false);
+
+export const addDomainDialogOpen$ = computed((get) => {
+  return get(internalAddDomainDialogOpen$);
+});
+
+export const setAddDomainDialogOpen$ = command(({ set }, open: boolean) => {
+  set(internalAddDomainDialogOpen$, open);
+});
+
+const internalAddDomainName$ = state("");
+
+export const addDomainName$ = computed((get) => {
+  return get(internalAddDomainName$);
+});
+
+export const setAddDomainName$ = command(({ set }, value: string) => {
+  set(internalAddDomainName$, value);
+});
+
+const internalAddDomainEnrollmentMode$ =
+  state<OrgEnrollmentMode>("manual_invitation");
+
+export const addDomainEnrollmentMode$ = computed((get) => {
+  return get(internalAddDomainEnrollmentMode$);
+});
+
+export const setAddDomainEnrollmentMode$ = command(
+  ({ set }, value: OrgEnrollmentMode) => {
+    set(internalAddDomainEnrollmentMode$, value);
+  },
+);
+
+// ---------------------------------------------------------------------------
+// org-domains-tab: DomainRow remove dialog (keyed by domain id)
+// ---------------------------------------------------------------------------
+
+const internalRemoveDomainDialogTarget$ = state<string | null>(null);
+
+export const removeDomainDialogTarget$ = computed((get) => {
+  return get(internalRemoveDomainDialogTarget$);
+});
+
+export const setRemoveDomainDialogTarget$ = command(
+  ({ set }, target: string | null) => {
+    set(internalRemoveDomainDialogTarget$, target);
+  },
+);
+
+// ---------------------------------------------------------------------------
+// org-usage-tab: CreditUsageBar popover
+// ---------------------------------------------------------------------------
+
+const internalCreditBarPopoverOpen$ = state(false);
+
+export const creditBarPopoverOpen$ = computed((get) => {
+  return get(internalCreditBarPopoverOpen$);
+});
+
+export const setCreditBarPopoverOpen$ = command(({ set }, open: boolean) => {
+  set(internalCreditBarPopoverOpen$, open);
+});
+
+const internalCreditBarTimerId$ = state<ReturnType<
+  typeof globalThis.setTimeout
+> | null>(null);
+
+export const creditBarTimerId$ = computed((get) => {
+  return get(internalCreditBarTimerId$);
+});
+
+export const setCreditBarTimerId$ = command(
+  ({ set }, id: ReturnType<typeof globalThis.setTimeout> | null) => {
+    set(internalCreditBarTimerId$, id);
+  },
+);
+
+// ---------------------------------------------------------------------------
+// org-usage-tab: InlineCapInput values (keyed by userId)
+// ---------------------------------------------------------------------------
+
+const internalInlineCapValues$ = state(new Map<string, string>());
+
+export const inlineCapValues$ = computed((get) => {
+  return get(internalInlineCapValues$);
+});
+
+export const setInlineCapValue$ = command(
+  ({ get, set }, userId: string, value: string) => {
+    const map = new Map(get(internalInlineCapValues$));
+    map.set(userId, value);
+    set(internalInlineCapValues$, map);
+  },
+);
+
+// ---------------------------------------------------------------------------
+// org-usage-tab: members cache for optimistic cap updates
+// ---------------------------------------------------------------------------
+
+const internalUsageMembers$ = state<MemberUsage[]>([]);
+
+export const usageMembers$ = computed((get) => {
+  return get(internalUsageMembers$);
+});
+
+const internalUsagePrevKey$ = state("");
+
+export const syncUsageMembersFromLoadable$ = command(
+  ({ get, set }, rawMembers: MemberUsage[]) => {
+    const rawKey = rawMembers
+      .map((m) => {
+        return `${m.userId}:${m.creditsCharged}`;
+      })
+      .join(",");
+    if (rawKey !== get(internalUsagePrevKey$)) {
+      set(internalUsagePrevKey$, rawKey);
+      set(
+        internalUsageMembers$,
+        rawMembers.slice().sort((a, b) => {
+          return b.creditsCharged - a.creditsCharged;
+        }),
+      );
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// org-general-tab: ProfileSection saveError
+// ---------------------------------------------------------------------------
+
+const internalSaveError$ = state<string | null>(null);
+
+export const saveError$ = computed((get) => {
+  return get(internalSaveError$);
+});
+
+export const setSaveError$ = command(({ set }, value: string | null) => {
+  set(internalSaveError$, value);
+});
+
+// ---------------------------------------------------------------------------
+// org-billing-tab: DowngradeConfirmDialog selectedTarget
+// ---------------------------------------------------------------------------
+
+const internalSelectedTarget$ = state<"free" | "pro">("free");
+
+export const selectedTarget$ = computed((get) => {
+  return get(internalSelectedTarget$);
+});
+
+export const setSelectedTarget$ = command(({ set }, value: "free" | "pro") => {
+  set(internalSelectedTarget$, value);
+});
+
+// ---------------------------------------------------------------------------
+// org-members-tab: async commands
+// ---------------------------------------------------------------------------
+
+export const inviteMember$ = command(
+  async ({ get, set }, email: string, role: OrgRole, _signal: AbortSignal) => {
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroOrgInviteContract);
+    const result = await client.invite({ body: { email, role } });
+    if (result.status === 200) {
+      toast.success(`Invitation sent to ${email}`);
+      set(refreshOrgMembers$);
+      set(internalInviteDialogOpen$, false);
+      set(internalInviteEmail$, "");
+      set(internalInviteRole$, "member");
+      return;
+    }
+    throw new Error(extractApiErrorMessage(result, "Failed to invite"));
+  },
+);
+
+export const changeRole$ = command(
+  async ({ get, set }, email: string, role: OrgRole, _signal: AbortSignal) => {
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroOrgMembersContract);
+    const result = await client.updateRole({ body: { email, role } });
+    if (result.status === 200) {
+      toast.success(`Updated role for ${email}`);
+      const clerk = await get(clerk$);
+      await clerk.session?.getToken({ skipCache: true });
+      set(refreshOrgMembers$);
+      set(refreshOrg$);
+      return;
+    }
+    throw new Error(extractApiErrorMessage(result, "Failed to update role"));
+  },
+);
+
+export const selfDemote$ = command(
+  async ({ get, set }, email: string, _signal: AbortSignal) => {
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroOrgMembersContract);
+    const result = await client.updateRole({
+      body: { email, role: "member" },
+    });
+    if (result.status === 200) {
+      toast.success(`Updated role for ${email}`);
+      const clerk = await get(clerk$);
+      await clerk.session?.getToken({ skipCache: true });
+      set(refreshOrgMembers$);
+      set(refreshOrg$);
+      set(internalSelfDemoteDialogOpen$, false);
+      return;
+    }
+    throw new Error(extractApiErrorMessage(result, "Failed to change role"));
+  },
+);
+
+export const removeMember$ = command(
+  async ({ get, set }, email: string, _signal: AbortSignal) => {
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroOrgMembersContract);
+    const result = await client.removeMember({ body: { email } });
+    if (result.status === 200) {
+      toast.success(`Removed ${email}`);
+      set(refreshOrgMembers$);
+      set(internalRemoveMemberDialogTarget$, null);
+      return;
+    }
+    throw new Error(extractApiErrorMessage(result, "Failed to remove member"));
+  },
+);
+
+export const revokeInvitation$ = command(
+  async ({ get, set }, invitationId: string, _signal: AbortSignal) => {
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroOrgInviteContract);
+    const result = await client.revoke({ body: { invitationId } });
+    if (result.status === 200) {
+      toast.success("Invitation revoked");
+      set(refreshOrgMembers$);
+      set(internalRevokeInvitationDialogTarget$, null);
+      return;
+    }
+    throw new Error(
+      extractApiErrorMessage(result, "Failed to revoke invitation"),
+    );
+  },
+);
+
+export const acceptRequest$ = command(
+  async ({ get, set }, requestId: string, _signal: AbortSignal) => {
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroOrgMembershipRequestsContract);
+    const result = await client.accept({ body: { requestId } });
+    if (result.status === 200) {
+      toast.success("Membership request accepted");
+      set(refreshOrgMembers$);
+      return;
+    }
+    throw new Error(extractApiErrorMessage(result, "Failed to accept request"));
+  },
+);
+
+export const rejectRequest$ = command(
+  async ({ get, set }, requestId: string, _signal: AbortSignal) => {
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroOrgMembershipRequestsContract);
+    const result = await client.reject({ body: { requestId } });
+    if (result.status === 200) {
+      toast.success("Membership request rejected");
+      set(refreshOrgMembers$);
+      return;
+    }
+    throw new Error(extractApiErrorMessage(result, "Failed to reject request"));
+  },
+);
+
+// ---------------------------------------------------------------------------
+// org-domains-tab: async commands
+// ---------------------------------------------------------------------------
+
+export const addDomain$ = command(
+  async (
+    { get, set },
+    name: string,
+    enrollmentMode: OrgEnrollmentMode,
+    _signal: AbortSignal,
+  ) => {
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroOrgDomainsContract);
+    const result = await client.add({ body: { name, enrollmentMode } });
+    if (result.status === 200) {
+      toast.success(`Domain ${name} added`);
+      set(refreshOrgDomains$);
+      set(internalAddDomainDialogOpen$, false);
+      set(internalAddDomainName$, "");
+      set(internalAddDomainEnrollmentMode$, "manual_invitation");
+      return;
+    }
+    throw new Error(extractApiErrorMessage(result, "Failed to add domain"));
+  },
+);
+
+export const removeDomain$ = command(
+  async ({ get, set }, domainId: string, _signal: AbortSignal) => {
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroOrgDomainsContract);
+    const result = await client.remove({ body: { domainId } });
+    if (result.status === 200) {
+      toast.success("Domain removed");
+      set(refreshOrgDomains$);
+      set(internalRemoveDomainDialogTarget$, null);
+      return;
+    }
+    throw new Error(extractApiErrorMessage(result, "Failed to remove domain"));
+  },
+);
+
+export const setDomainVerified$ = command(
+  async (
+    { get, set },
+    domainId: string,
+    verified: boolean,
+    _signal: AbortSignal,
+  ) => {
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroOrgDomainsContract);
+    const result = await client.setVerified({ body: { domainId, verified } });
+    if (result.status === 200) {
+      toast.success(verified ? "Domain verified" : "Domain unverified");
+      set(refreshOrgDomains$);
+      return;
+    }
+    throw new Error(extractApiErrorMessage(result, "Failed to update domain"));
+  },
+);
+
+// ---------------------------------------------------------------------------
+// org-usage-tab: InlineCapInput async command
+// ---------------------------------------------------------------------------
+
+export const inlineCapCommit$ = command(
+  async (
+    { set },
+    params: {
+      userId: string;
+      creditCap: number | null;
+      memberCreditCap: number | null;
+    },
+    signal: AbortSignal,
+  ) => {
+    if (params.creditCap === params.memberCreditCap) {
+      return;
+    }
+    await set(
+      setMemberCreditCap$,
+      { userId: params.userId, creditCap: params.creditCap },
+      signal,
+    );
+    set(internalUsageMembers$, (prev) => {
+      return prev.map((m) => {
+        return m.userId === params.userId
+          ? { ...m, creditCap: params.creditCap }
+          : m;
+      });
+    });
+  },
+);

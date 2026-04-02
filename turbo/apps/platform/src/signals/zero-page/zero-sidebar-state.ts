@@ -56,3 +56,91 @@ export const chatListQuery$ = computed((get) => {
 export const setChatListQuery$ = command(({ set }, query: string) => {
   set(internalChatListQuery$, query);
 });
+
+// ---------------------------------------------------------------------------
+// Delete confirmation dialog state (ChatThreadItem)
+// ---------------------------------------------------------------------------
+const internalConfirmOpen$ = state(false);
+export const confirmOpen$ = computed((get) => {
+  return get(internalConfirmOpen$);
+});
+export const setConfirmOpen$ = command(({ set }, open: boolean) => {
+  set(internalConfirmOpen$, open);
+});
+
+// ---------------------------------------------------------------------------
+// Session list collapse state (RecentChatSection)
+// ---------------------------------------------------------------------------
+const internalSessionListCollapsed$ = state(false);
+export const sessionListCollapsed$ = computed((get) => {
+  return get(internalSessionListCollapsed$);
+});
+export const setSessionListCollapsed$ = command(
+  ({ set }, collapsed: boolean) => {
+    set(internalSessionListCollapsed$, collapsed);
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Chat list dialog state (TalkToSection)
+// ---------------------------------------------------------------------------
+const internalChatListOpen$ = state(false);
+export const chatListOpen$ = computed((get) => {
+  return get(internalChatListOpen$);
+});
+export const setChatListOpen$ = command(({ set }, open: boolean) => {
+  set(internalChatListOpen$, open);
+});
+
+// ---------------------------------------------------------------------------
+// Agent card / pinned section collapse state (TalkToSection)
+// ---------------------------------------------------------------------------
+const internalAgentCardCollapsed$ = state(false);
+export const agentCardCollapsed$ = computed((get) => {
+  return get(internalAgentCardCollapsed$);
+});
+export const setAgentCardCollapsed$ = command(({ set }, collapsed: boolean) => {
+  set(internalAgentCardCollapsed$, collapsed);
+});
+
+// ---------------------------------------------------------------------------
+// Custom scrollbar thumb style (OverlayScrollArea)
+// ---------------------------------------------------------------------------
+interface ThumbStyle {
+  top: number;
+  height: number;
+  visible: boolean;
+}
+const internalThumbStyle$ = state<ThumbStyle>({
+  top: 0,
+  height: 0,
+  visible: false,
+});
+export const thumbStyle$ = computed((get) => {
+  return get(internalThumbStyle$);
+});
+export const setThumbStyle$ = command(({ set }, style: ThumbStyle) => {
+  set(internalThumbStyle$, style);
+});
+
+// ---------------------------------------------------------------------------
+// Scrollbar hover state (OverlayScrollArea)
+// ---------------------------------------------------------------------------
+const internalHovering$ = state(false);
+export const hovering$ = computed((get) => {
+  return get(internalHovering$);
+});
+export const setHovering$ = command(({ set }, hovering: boolean) => {
+  set(internalHovering$, hovering);
+});
+
+// ---------------------------------------------------------------------------
+// Main sidebar scroll tracking (ZeroSidebar)
+// ---------------------------------------------------------------------------
+const internalIsScrolled$ = state(false);
+export const isScrolled$ = computed((get) => {
+  return get(internalIsScrolled$);
+});
+export const setIsScrolled$ = command(({ set }, scrolled: boolean) => {
+  set(internalIsScrolled$, scrolled);
+});

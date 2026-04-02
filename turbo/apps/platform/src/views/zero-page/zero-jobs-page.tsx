@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
@@ -32,12 +31,24 @@ import { detach, Reason, throwIfAbort } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
 import { useAgentAvatar } from "./zero-sidebar.tsx";
 import { ZERO_AVATARS } from "./zero-avatars.ts";
-import {
-  AVATAR_PRESET_PREFIX,
-  randomPresetAvatar,
-  resolveAvatarUrl,
-} from "./avatar-utils.ts";
+import { AVATAR_PRESET_PREFIX, resolveAvatarUrl } from "./avatar-utils.ts";
 import { fetch$ } from "../../signals/fetch.ts";
+import {
+  jobsDialogOpen$,
+  setJobsDialogOpen$,
+  jobsNewName$,
+  setJobsNewName$,
+  jobsCreating$,
+  setJobsCreating$,
+  jobsAvatarUrl$,
+  setJobsAvatarUrl$,
+  resetJobsAvatarUrl$,
+  jobsUploading$,
+  setJobsUploading$,
+  jobsFileInputEl$,
+  setJobsFileInputEl$,
+  resetJobsDialog$,
+} from "../../signals/zero-page/zero-jobs-page.ts";
 
 export function ZeroJobsPage() {
   const displayNameLoadable = useLoadable(agentDisplayName$);
@@ -56,9 +67,13 @@ export function ZeroJobsPage() {
         : "Unknown error"
       : null;
   const zeroAvatarSrc = useAgentAvatar(rawAgentName ?? "");
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [newName, setNewName] = useState("");
-  const [creating, setCreating] = useState(false);
+  const dialogOpen = useGet(jobsDialogOpen$);
+  const setDialogOpen = useSet(setJobsDialogOpen$);
+  const newName = useGet(jobsNewName$);
+  const setNewName = useSet(setJobsNewName$);
+  const creating = useGet(jobsCreating$);
+  const setCreating = useSet(setJobsCreating$);
+  const resetDialog = useSet(resetJobsDialog$);
   const createSubagent = useSet(createSubagent$);
   const pageSignal = useGet(pageSignal$);
 
@@ -72,7 +87,7 @@ export function ZeroJobsPage() {
       createSubagent(trimmed, avatarUrl, pageSignal).then(
         () => {
           setDialogOpen(false);
-          setNewName("");
+          resetDialog();
           setCreating(false);
           toast.success(`${trimmed} created successfully`);
         },
@@ -338,9 +353,13 @@ function CreateTeammateDialogContent({
   onCancel: () => void;
   creating: boolean;
 }) {
-  const [avatarUrl, setAvatarUrl] = useState(randomPresetAvatar);
-  const [uploading, setUploading] = useState(false);
-  const [fileInputEl, setFileInputEl] = useState<HTMLInputElement | null>(null);
+  const avatarUrl = useGet(jobsAvatarUrl$);
+  const setAvatarUrl = useSet(setJobsAvatarUrl$);
+  const resetAvatarUrl = useSet(resetJobsAvatarUrl$);
+  const uploading = useGet(jobsUploading$);
+  const setUploading = useSet(setJobsUploading$);
+  const fileInputEl = useGet(jobsFileInputEl$);
+  const setFileInputEl = useSet(setJobsFileInputEl$);
   const fetchFn = useGet(fetch$);
 
   const handleUpload = async (file: File) => {
@@ -381,9 +400,7 @@ function CreateTeammateDialogContent({
             <button
               type="button"
               onClick={() => {
-                return isCustom
-                  ? setAvatarUrl(randomPresetAvatar())
-                  : fileInputEl?.click();
+                return isCustom ? resetAvatarUrl() : fileInputEl?.click();
               }}
               disabled={uploading}
               className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"

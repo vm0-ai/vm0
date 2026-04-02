@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import {
   useLoadable,
   useLastLoadable,
@@ -93,6 +93,20 @@ import {
   setSidebarSearchTerm$,
   managePinnedDialogOpen$,
   setManagePinnedDialogOpen$,
+  confirmOpen$,
+  setConfirmOpen$,
+  sessionListCollapsed$,
+  setSessionListCollapsed$,
+  chatListOpen$,
+  setChatListOpen$,
+  agentCardCollapsed$,
+  setAgentCardCollapsed$,
+  thumbStyle$,
+  setThumbStyle$,
+  hovering$,
+  setHovering$,
+  isScrolled$,
+  setIsScrolled$,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
 import { VM0ClerkProvider } from "../clerk/clerk-provider.tsx";
 import { ZeroOrgSwitcher } from "./zero-org-switcher.tsx";
@@ -511,7 +525,8 @@ function ChatThreadItem({
 }) {
   const setDelete = useSet(deleteChatThread$);
   const pageSignal = useGet(pageSignal$);
-  const [confirmOpen, setConfirmOpen] = useState(false);
+  const confirmOpen = useGet(confirmOpen$);
+  const setConfirmOpen = useSet(setConfirmOpen$);
 
   function handleDeleteClick(e: React.MouseEvent) {
     e.preventDefault();
@@ -633,7 +648,8 @@ function RecentChatSection({
   const setSearchOpen = useSet(setSidebarSearchOpen$);
   const searchTerm = useGet(sidebarSearchTerm$);
   const setSearchTerm = useSet(setSidebarSearchTerm$);
-  const [collapsed, setCollapsed] = useState(false);
+  const collapsed = useGet(sessionListCollapsed$);
+  const setCollapsed = useSet(setSessionListCollapsed$);
 
   // Filter sessions by current agent
   const subagentIds = new Set(
@@ -847,8 +863,10 @@ function TalkToSection({
   onPinnedIdsChange: (ids: string[]) => void;
   onNewChat?: (agentId: string | null) => void;
 }) {
-  const [chatListOpen, setChatListOpen] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
+  const chatListOpen = useGet(chatListOpen$);
+  const setChatListOpenFn = useSet(setChatListOpen$);
+  const collapsed = useGet(agentCardCollapsed$);
+  const setCollapsed = useSet(setAgentCardCollapsed$);
   const reloadAgents = useSet(reloadAgents$);
 
   return (
@@ -876,7 +894,7 @@ function TalkToSection({
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  setChatListOpen(true);
+                  setChatListOpenFn(true);
                   reloadAgents();
                 }}
                 className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
@@ -1002,7 +1020,7 @@ function TalkToSection({
 
       <ChatListDialog
         open={chatListOpen}
-        onOpenChange={setChatListOpen}
+        onOpenChange={setChatListOpenFn}
         zeroAvatarSrc={zeroAvatarSrc}
         displayName={displayName}
         subagents={subagents}
@@ -1026,20 +1044,20 @@ function OverlayScrollArea({
   onScroll?: (e: React.UIEvent<HTMLDivElement>) => void;
   style?: React.CSSProperties;
 }) {
-  const [thumbStyle, setThumbStyle] = useState<{
-    top: number;
-    height: number;
-    visible: boolean;
-  }>({ top: 0, height: 0, visible: false });
-  const [hovering, setHovering] = useState(false);
+  const thumbStyleValue = useGet(thumbStyle$);
+  const setThumbStyleFn = useSet(setThumbStyle$);
+  const hovering = useGet(hovering$);
+  const setHoveringFn = useSet(setHovering$);
 
   const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
     onScroll?.(e);
     const el = e.currentTarget;
     const { scrollTop, scrollHeight, clientHeight } = el;
     if (scrollHeight <= clientHeight) {
-      setThumbStyle((prev) => {
-        return { ...prev, visible: false };
+      setThumbStyleFn({
+        top: thumbStyleValue.top,
+        height: thumbStyleValue.height,
+        visible: false,
       });
       return;
     }
@@ -1047,19 +1065,19 @@ function OverlayScrollArea({
     const thumbH = Math.max(ratio * clientHeight, 24);
     const maxTop = clientHeight - thumbH;
     const top = (scrollTop / (scrollHeight - clientHeight)) * maxTop;
-    setThumbStyle({ top, height: thumbH, visible: true });
+    setThumbStyleFn({ top, height: thumbH, visible: true });
   };
 
-  const showThumb = thumbStyle.visible && hovering;
+  const showThumb = thumbStyleValue.visible && hovering;
 
   return (
     <div
       className={`relative ${className ?? ""}`}
       onMouseEnter={() => {
-        return setHovering(true);
+        return setHoveringFn(true);
       }}
       onMouseLeave={() => {
-        return setHovering(false);
+        return setHoveringFn(false);
       }}
     >
       <div
@@ -1076,7 +1094,7 @@ function OverlayScrollArea({
       >
         <div
           className="absolute right-0 w-[5px] rounded-full bg-foreground/15"
-          style={{ top: thumbStyle.top, height: thumbStyle.height }}
+          style={{ top: thumbStyleValue.top, height: thumbStyleValue.height }}
         />
       </div>
     </div>
@@ -1145,7 +1163,8 @@ function SidebarUpgradeCard() {
 }
 
 export function ZeroSidebar() {
-  const [isScrolled, setIsScrolled] = useState(false);
+  const isScrolled = useGet(isScrolled$);
+  const setIsScrolledFn = useSet(setIsScrolled$);
 
   // Read all data from signals directly
   const activeId = useGet(activeRoute$);
@@ -1450,7 +1469,7 @@ export function ZeroSidebar() {
           <OverlayScrollArea
             className="flex-1 min-h-0 -mx-2 px-2 mt-2 pt-2"
             onScroll={(e) => {
-              return setIsScrolled(e.currentTarget.scrollTop > 0);
+              return setIsScrolledFn(e.currentTarget.scrollTop > 0);
             }}
             style={{
               boxShadow: isScrolled

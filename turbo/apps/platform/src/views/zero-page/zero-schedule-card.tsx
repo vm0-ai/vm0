@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { useGet, useSet } from "ccstate-react";
 import {
   scheduleViewMode$,
@@ -15,6 +14,10 @@ import {
   setSaveError$,
   togglingIds$,
   setTogglingIds$,
+  runningIds$,
+  setRunningIds$,
+  pendingDeleteEntry$,
+  setPendingDeleteEntry$,
 } from "../../signals/zero-page/schedule-card.ts";
 import { IconPlus, IconList, IconLayoutGrid } from "@tabler/icons-react";
 import {
@@ -283,9 +286,8 @@ export function ZeroScheduleCard({
     detach(setAddScheduleOpen(true, signal), Reason.DomCallback);
   };
 
-  const [pendingDelete, setPendingDelete] = useState<ScheduleEntry | null>(
-    null,
-  );
+  const pendingDelete = useGet(pendingDeleteEntry$);
+  const setPendingDelete = useSet(setPendingDeleteEntry$);
 
   const openEditSchedule = (entry: ScheduleEntry) => {
     setSaveError(null);
@@ -320,7 +322,8 @@ export function ZeroScheduleCard({
       }
     : undefined;
 
-  const [runningIds, setRunningIds] = useState<Set<string>>(new Set());
+  const runningIds = useGet(runningIds$);
+  const setRunningIds = useSet(setRunningIds$);
 
   const handleRunNow = onRunNow
     ? async (entry: ScheduleEntry) => {

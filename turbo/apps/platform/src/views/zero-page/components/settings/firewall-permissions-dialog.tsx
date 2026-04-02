@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useGet, useSet } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import {
   Sheet,
   SheetContent,
@@ -19,8 +20,20 @@ import {
 } from "@vm0/core";
 import { ConnectorIcon } from "./connector-icons.tsx";
 import type { PermissionPolicy } from "../../../../signals/zero-page/settings/firewalls.ts";
+import {
+  firewallAllPolicies$,
+  initFirewallPolicies$,
+  setFirewallPolicy$,
+  setFirewallAllPolicies$,
+  firewallScrolled$,
+  setFirewallScrolled$,
+  firewallExpandedGroups$,
+  toggleFirewallGroup$,
+  applyFirewallPolicies$,
+} from "../../../../signals/zero-page/settings/firewall-dialog.ts";
 import { IconCheck, IconBan, IconChevronRight } from "@tabler/icons-react";
 import { detach, Reason } from "../../../../signals/utils.ts";
+import { pageSignal$ } from "../../../../signals/page-signal.ts";
 
 interface FirewallPermission {
   name: string;
@@ -164,9 +177,11 @@ export function FirewallPermissionsDrawer({
     ? getConnectorFirewall(ref)
     : null;
 
-  // Build policies state — use stored policies, then per-connector defaults,
-  // then fall back to "allow" for permissions without a default.
-  const [allPolicies, setAllPolicies] = useState(() => {
+  // Initialize policies state (idempotent — only runs on first render)
+  const buildInitialPolicies = (): Record<
+    string,
+    Record<string, PermissionPolicy>
+  > => {
     const result: Record<string, Record<string, PermissionPolicy>> = {};
     if (config) {
       const perms = extractPermissions(config);
@@ -181,11 +196,20 @@ export function FirewallPermissionsDrawer({
       result[ref] = refPolicies;
     }
     return result;
-  });
+  };
+  useSet(initFirewallPolicies$)(buildInitialPolicies());
 
-  const [scrolled, setScrolled] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const allPolicies = useGet(firewallAllPolicies$);
+  const scrolled = useGet(firewallScrolled$);
+  const setScrolled = useSet(setFirewallScrolled$);
+  const expandedGroups = useGet(firewallExpandedGroups$);
+  const toggleGroup = useSet(toggleFirewallGroup$);
+  const setPolicyFn = useSet(setFirewallPolicy$);
+  const setAllPoliciesFn = useSet(setFirewallAllPolicies$);
+  const [applyLoadable, applyFn] = useLoadableSet(applyFirewallPolicies$);
+  const saving = applyLoadable.state === "loading";
+  const pageSignal = useGet(pageSignal$);
+
   const permissions = config ? sortPermissions(extractPermissions(config)) : [];
   const policies = allPolicies[ref] ?? {};
   const groups = config
@@ -199,23 +223,8 @@ export function FirewallPermissionsDrawer({
       ) ?? null)
     : null;
 
-  const toggleGroup = (category: string) => {
-    setExpandedGroups((prev) => {
-      const next = new Set(prev);
-      if (next.has(category)) {
-        next.delete(category);
-      } else {
-        next.add(category);
-      }
-      return next;
-    });
-  };
-
   const handlePolicyChange = (name: string, policy: PermissionPolicy) => {
-    setAllPolicies({
-      ...allPolicies,
-      [ref]: { ...policies, [name]: policy },
-    });
+    setPolicyFn(ref, name, policy);
   };
 
   const handleSetAll = (policy: PermissionPolicy) => {
@@ -223,7 +232,7 @@ export function FirewallPermissionsDrawer({
     for (const p of permissions) {
       next[p.name] = policy;
     }
-    setAllPolicies({ ...allPolicies, [ref]: next });
+    setAllPoliciesFn(ref, next);
   };
 
   const handleSetGroupAll = (
@@ -234,21 +243,11 @@ export function FirewallPermissionsDrawer({
     for (const p of groupPerms) {
       next[p.name] = policy;
     }
-    setAllPolicies({ ...allPolicies, [ref]: next });
+    setAllPoliciesFn(ref, next);
   };
 
   const handleApply = () => {
-    setSaving(true);
-    detach(
-      onApply(allPolicies)
-        .then(() => {
-          onClose();
-        })
-        .finally(() => {
-          setSaving(false);
-        }),
-      Reason.DomCallback,
-    );
+    detach(applyFn(onApply, onClose, pageSignal), Reason.DomCallback);
   };
 
   const connectorLabel = CONNECTOR_TYPES[connectorType]?.label ?? connectorType;

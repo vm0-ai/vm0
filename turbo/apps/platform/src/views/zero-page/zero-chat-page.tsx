@@ -1,4 +1,4 @@
-import { Component, useState } from "react";
+import { Component } from "react";
 import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { user$ } from "../../signals/auth.ts";
@@ -33,8 +33,8 @@ import {
   chatPageInput$,
   setChatPageInput$,
   chatPageTaglineIndex$,
+  suggestedPrompts$,
 } from "../../signals/zero-page/zero-chat-page.ts";
-import { getRandomPrompts } from "./zero-ideation-page.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { Link } from "../router/link.tsx";
@@ -201,9 +201,7 @@ export function ZeroChatPage() {
   const setInput = useSet(setChatPageInput$);
   const taglineIndex = useGet(chatPageTaglineIndex$);
   const tagline = getTagline(displayName, userName, taglineIndex);
-  const [suggestedPrompts] = useState(() => {
-    return getRandomPrompts(2);
-  });
+  const suggestedPrompts = useGet(suggestedPrompts$);
   const navigate = useSet(detachedNavigateTo$);
 
   // Agent ID from URL for ideas navigation

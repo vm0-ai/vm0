@@ -1,5 +1,5 @@
-import { useState } from "react";
 import { useLastResolved, useGet, useSet } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import { Input } from "@vm0/ui/components/ui/input";
 import { Button } from "@vm0/ui/components/ui/button";
 import {
@@ -12,7 +12,7 @@ import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
 import {
   allConnectorTypes$,
   pollingConnectorType$,
-  connectConnector$,
+  connectAndSettle$,
   submitApiToken$,
   tokenFormSubmitting$,
   setTokenFormValue$,
@@ -165,10 +165,10 @@ function ConnectModalContent({
   item: ConnectorTypeWithStatus;
   onSuccess: () => void | Promise<void>;
 }) {
-  const connect = useSet(connectConnector$);
+  const [settleLoadable, connectAndSettle] = useLoadableSet(connectAndSettle$);
   const pageSignal = useGet(pageSignal$);
   const pollingType = useGet(pollingConnectorType$);
-  const [settling, setSettling] = useState(false);
+  const settling = settleLoadable.state === "loading";
   const isPolling = pollingType === item.type;
 
   const config = CONNECTOR_TYPES[item.type];
@@ -193,13 +193,7 @@ function ConnectModalContent({
           variant="outline"
           onClick={() => {
             return detach(
-              (async () => {
-                const connected = await connect(item.type, pageSignal);
-                if (connected) {
-                  setSettling(true);
-                  await onSuccess();
-                }
-              })(),
+              connectAndSettle(item.type, onSuccess, pageSignal),
               Reason.DomCallback,
             );
           }}

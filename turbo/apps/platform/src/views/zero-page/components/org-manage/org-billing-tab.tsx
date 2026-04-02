@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { useGet, useSet, useLoadable } from "ccstate-react";
 import {
   IconExternalLink,
@@ -45,6 +44,8 @@ import { AutoRechargeSection } from "../../billing-dialog.tsx";
 import {
   billingSubPage$,
   setBillingSubPage$,
+  selectedTarget$,
+  setSelectedTarget$,
 } from "../../../../signals/zero-page/settings/org-manage-tabs-state.ts";
 
 const PLANS = [
@@ -318,7 +319,8 @@ function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
   const error = useGet(downgradeError$);
   const close = useSet(closeDowngradeDialog$);
   const confirm = useSet(confirmDowngrade$);
-  const [selectedTarget, setSelectedTarget] = useState<"free" | "pro">("free");
+  const selectedTarget = useGet(selectedTarget$);
+  const setSelectedTarget = useSet(setSelectedTarget$);
 
   const isTeam = currentTier === "team";
 

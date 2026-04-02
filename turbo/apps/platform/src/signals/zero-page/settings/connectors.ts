@@ -123,6 +123,18 @@ const hiddenConnectorTypes$ = computed((get): Set<ConnectorType> => {
 });
 
 // ---------------------------------------------------------------------------
+// Search filter
+// ---------------------------------------------------------------------------
+
+const internalConnectorsSearch$ = state("");
+export const connectorsSearch$ = computed((get) => {
+  return get(internalConnectorsSearch$);
+});
+export const setConnectorsSearch$ = command(({ set }, v: string) => {
+  set(internalConnectorsSearch$, v);
+});
+
+// ---------------------------------------------------------------------------
 // Selected connector for connect modal
 // ---------------------------------------------------------------------------
 
@@ -365,5 +377,23 @@ export const connectConnector$ = command(
       set(internalSelectedConnectorType$, null);
     }
     return isConnected;
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Connect via OAuth, then run onSuccess callback (settling phase)
+// ---------------------------------------------------------------------------
+
+export const connectAndSettle$ = command(
+  async (
+    { set },
+    type: ConnectorType,
+    onSuccess: () => void | Promise<void>,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const connected = await set(connectConnector$, type, signal);
+    if (connected) {
+      await onSuccess();
+    }
   },
 );

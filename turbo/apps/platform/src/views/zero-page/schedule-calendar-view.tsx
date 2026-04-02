@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useGet, useSet } from "ccstate-react";
 import {
   IconChevronLeft,
   IconChevronRight,
@@ -22,6 +22,12 @@ import {
   getEntriesInCell,
   type ScheduleEntry,
 } from "./schedule-utils";
+import {
+  calendarSelectedDay$,
+  setCalendarSelectedDay$,
+  calendarPopoverEntryId$,
+  setCalendarPopoverEntryId$,
+} from "../../signals/schedule-page/schedule-page-ui.ts";
 
 // ---------------------------------------------------------------------------
 // Agent color classes (multi-agent calendar)
@@ -60,7 +66,12 @@ function CalendarEntryPopover<T extends ScheduleEntry>({
   getAgentLabel?: (entry: T) => string;
   onEdit: (entry: T) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const popoverEntryId = useGet(calendarPopoverEntryId$);
+  const setPopoverEntryId = useSet(setCalendarPopoverEntryId$);
+  const open = popoverEntryId === entry.id;
+  const setOpen = (v: boolean) => {
+    setPopoverEntryId(v ? entry.id : null);
+  };
 
   const agentLabel = getAgentLabel?.(entry);
   const cellClass =
@@ -152,9 +163,8 @@ export function ScheduleCalendarView<T extends ScheduleEntry>({
     return e.enabled !== false;
   });
   const calendarSlots = buildCalendarTimeSlots(enabledEntries);
-  const [selectedDay, setSelectedDay] = useState(
-    new Date().getDay() === 0 ? 6 : new Date().getDay() - 1,
-  );
+  const selectedDay = useGet(calendarSelectedDay$);
+  const setSelectedDay = useSet(setCalendarSelectedDay$);
 
   const loopEntries = enabledEntries.filter((e) => {
     return e.time.match(/Every \d+ (minutes?|seconds?)/);

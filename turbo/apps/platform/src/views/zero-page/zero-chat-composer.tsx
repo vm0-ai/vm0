@@ -1,4 +1,4 @@
-import { useState, type ChangeEvent } from "react";
+import type { ChangeEvent } from "react";
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import {
   IconArrowUp,
@@ -59,6 +59,18 @@ import {
   removeZeroConnector$,
 } from "../../signals/zero-page/zero-connectors.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
+import {
+  showAddDialog$,
+  setShowAddDialog$,
+  pendingConnectType$,
+  setPendingConnectType$,
+  composerSavingType$,
+  setComposerSavingType$,
+  addDialogSearch$,
+  setAddDialogSearch$,
+  popoverSearch$,
+  setPopoverSearch$,
+} from "../../signals/zero-page/zero-chat-composer.ts";
 
 // ---------------------------------------------------------------------------
 // Props
@@ -138,7 +150,8 @@ function AddConnectorsDialog({
   onClose: () => void;
   onSelect: (type: string) => void;
 }) {
-  const [search, setSearch] = useState("");
+  const search = useGet(addDialogSearch$);
+  const setSearch = useSet(setAddDialogSearch$);
   const filtered = search.trim()
     ? unconnected.filter((item) => {
         return item.label.toLowerCase().includes(search.toLowerCase());
@@ -246,7 +259,8 @@ function ConnectorsPopoverButton({
   onOpenAddDialog: () => void;
   onToggle: (type: string, checked: boolean) => void;
 }) {
-  const [search, setSearch] = useState("");
+  const search = useGet(popoverSearch$);
+  const setSearch = useSet(setPopoverSearch$);
   const showSearch = agentConnectors.length > 20;
   const sorted = [...agentConnectors].sort((a, b) => {
     return Number(b.added) - Number(a.added);
@@ -380,7 +394,8 @@ export function ZeroChatComposer({
   className,
   autoFocus,
 }: ZeroChatComposerProps) {
-  const [showAddDialog, setShowAddDialog] = useState(false);
+  const showAddDialog = useGet(showAddDialog$);
+  const setShowAddDialog = useSet(setShowAddDialog$);
 
   // Attachments
   const attachments = useGet(zeroChatAttachments$);
@@ -403,16 +418,16 @@ export function ZeroChatComposer({
   const addedConnectorsLoadable = useLastLoadable(zeroAddedConnectors$);
   const pageSignal = useGet(pageSignal$);
   const selectedConnType = useGet(selectedConnectorType$);
-  const [pendingConnectType, setPendingConnectType] = useState<string | null>(
-    null,
-  );
+  const pendingConnectType = useGet(pendingConnectType$);
+  const setPendingConnectType = useSet(setPendingConnectType$);
   const setSelectedConnType = useSet(setSelectedConnectorType$);
   const pollingConnType = useGet(pollingConnectorType$);
   const addConnector = useSet(addZeroConnector$);
   const removeConnector = useSet(removeZeroConnector$);
   const optimisticConnected = useGet(justConnectedTypes$);
 
-  const [savingType, setSavingType] = useState<string | null>(null);
+  const savingType = useGet(composerSavingType$);
+  const setSavingType = useSet(setComposerSavingType$);
 
   const connectorsLoading =
     allTypesLoadable.state !== "hasData" ||

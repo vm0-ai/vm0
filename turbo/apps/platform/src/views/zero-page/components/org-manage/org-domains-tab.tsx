@@ -1,5 +1,5 @@
-import { useState } from "react";
 import { useGet, useLoadable, useSet } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import {
   IconPlus,
   IconTrash,
@@ -31,18 +31,23 @@ import {
   SelectTrigger,
 } from "@vm0/ui";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import {
-  zeroOrgDomainsContract,
-  type OrgDomain,
-  type OrgEnrollmentMode,
-} from "@vm0/core";
-import { zeroClient$ } from "../../../../signals/api-client.ts";
-import {
-  orgDomains$,
-  refreshOrgDomains$,
-} from "../../../../signals/external/org-domains.ts";
+import type { OrgDomain, OrgEnrollmentMode } from "@vm0/core";
+import { orgDomains$ } from "../../../../signals/external/org-domains.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
-import { extractApiErrorMessage } from "./org-api-error.ts";
+import { pageSignal$ } from "../../../../signals/page-signal.ts";
+import {
+  addDomainDialogOpen$,
+  setAddDomainDialogOpen$,
+  addDomainName$,
+  setAddDomainName$,
+  addDomainEnrollmentMode$,
+  setAddDomainEnrollmentMode$,
+  removeDomainDialogTarget$,
+  setRemoveDomainDialogTarget$,
+  addDomain$,
+  removeDomain$,
+  setDomainVerified$,
+} from "../../../../signals/zero-page/settings/org-manage-tabs-state.ts";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -74,50 +79,15 @@ const ROW_GRID =
 
 export function OrgDomainsTab() {
   const domainsLoadable = useLoadable(orgDomains$);
-  const createClient = useGet(zeroClient$);
-  const refresh = useSet(refreshOrgDomains$);
 
   const domains =
     domainsLoadable.state === "hasData" ? domainsLoadable.data : [];
   const isLoading = domainsLoadable.state === "loading";
 
-  const handleAdd = async (name: string, enrollmentMode: OrgEnrollmentMode) => {
-    const client = createClient(zeroOrgDomainsContract);
-    const result = await client.add({ body: { name, enrollmentMode } });
-    if (result.status === 200) {
-      toast.success(`Domain ${name} added`);
-      refresh();
-      return;
-    }
-    throw new Error(extractApiErrorMessage(result, "Failed to add domain"));
-  };
-
-  const handleRemove = async (domainId: string) => {
-    const client = createClient(zeroOrgDomainsContract);
-    const result = await client.remove({ body: { domainId } });
-    if (result.status === 200) {
-      toast.success("Domain removed");
-      refresh();
-      return;
-    }
-    throw new Error(extractApiErrorMessage(result, "Failed to remove domain"));
-  };
-
-  const handleSetVerified = async (domainId: string, verified: boolean) => {
-    const client = createClient(zeroOrgDomainsContract);
-    const result = await client.setVerified({ body: { domainId, verified } });
-    if (result.status === 200) {
-      toast.success(verified ? "Domain verified" : "Domain unverified");
-      refresh();
-      return;
-    }
-    throw new Error(extractApiErrorMessage(result, "Failed to update domain"));
-  };
-
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-end">
-        <AddDomainDialog onAdd={handleAdd} />
+        <AddDomainDialog />
       </div>
 
       <div
@@ -163,11 +133,7 @@ export function OrgDomainsTab() {
             return (
               <div key={domain.id}>
                 {i > 0 && <div className="h-px bg-border/40 mx-5" />}
-                <DomainRow
-                  domain={domain}
-                  onRemove={handleRemove}
-                  onSetVerified={handleSetVerified}
-                />
+                <DomainRow domain={domain} />
               </div>
             );
           })}
@@ -176,16 +142,16 @@ export function OrgDomainsTab() {
   );
 }
 
-function AddDomainDialog({
-  onAdd,
-}: {
-  onAdd: (name: string, enrollmentMode: OrgEnrollmentMode) => Promise<void>;
-}) {
-  const [open, setOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [enrollmentMode, setEnrollmentMode] =
-    useState<OrgEnrollmentMode>("manual_invitation");
-  const [adding, setAdding] = useState(false);
+function AddDomainDialog() {
+  const open = useGet(addDomainDialogOpen$);
+  const setOpen = useSet(setAddDomainDialogOpen$);
+  const name = useGet(addDomainName$);
+  const setName = useSet(setAddDomainName$);
+  const enrollmentMode = useGet(addDomainEnrollmentMode$);
+  const setEnrollmentMode = useSet(setAddDomainEnrollmentMode$);
+  const [loadable, doAdd] = useLoadableSet(addDomain$);
+  const adding = loadable.state === "loading";
+  const pageSignal = useGet(pageSignal$);
 
   const trimmed = name.trim().toLowerCase();
   const isValid =
@@ -194,22 +160,12 @@ function AddDomainDialog({
     );
 
   const handleAdd = () => {
-    setAdding(true);
     detach(
-      onAdd(trimmed, enrollmentMode).then(
-        () => {
-          setOpen(false);
-          setName("");
-          setEnrollmentMode("manual_invitation");
-          setAdding(false);
-        },
-        (error: unknown) => {
-          setAdding(false);
-          const message =
-            error instanceof Error ? error.message : "Failed to add domain";
-          toast.error(message);
-        },
-      ),
+      doAdd(trimmed, enrollmentMode, pageSignal).catch((error: unknown) => {
+        const message =
+          error instanceof Error ? error.message : "Failed to add domain";
+        toast.error(message);
+      }),
       Reason.DomCallback,
     );
   };
@@ -302,53 +258,35 @@ function AddDomainDialog({
   );
 }
 
-function DomainRow({
-  domain,
-  onRemove,
-  onSetVerified,
-}: {
-  domain: OrgDomain;
-  onRemove: (domainId: string) => Promise<void>;
-  onSetVerified: (domainId: string, verified: boolean) => Promise<void>;
-}) {
-  const [removeOpen, setRemoveOpen] = useState(false);
-  const [removing, setRemoving] = useState(false);
-  const [settingVerified, setSettingVerified] = useState(false);
+function DomainRow({ domain }: { domain: OrgDomain }) {
+  const removeTarget = useGet(removeDomainDialogTarget$);
+  const setRemoveTarget = useSet(setRemoveDomainDialogTarget$);
+  const removeOpen = removeTarget === domain.id;
+  const [removeLoadable, doRemove] = useLoadableSet(removeDomain$);
+  const [verifyLoadable, doSetVerified] = useLoadableSet(setDomainVerified$);
+  const removing = removeLoadable.state === "loading";
+  const settingVerified = verifyLoadable.state === "loading";
   const isVerified = domain.verification.status === "verified";
+  const pageSignal = useGet(pageSignal$);
 
   const handleRemove = () => {
-    setRemoving(true);
     detach(
-      onRemove(domain.id).then(
-        () => {
-          setRemoveOpen(false);
-          setRemoving(false);
-        },
-        (error: unknown) => {
-          setRemoving(false);
-          const message =
-            error instanceof Error ? error.message : "Failed to remove domain";
-          toast.error(message);
-        },
-      ),
+      doRemove(domain.id, pageSignal).catch((error: unknown) => {
+        const message =
+          error instanceof Error ? error.message : "Failed to remove domain";
+        toast.error(message);
+      }),
       Reason.DomCallback,
     );
   };
 
   const handleSetVerified = (verified: boolean) => {
-    setSettingVerified(true);
     detach(
-      onSetVerified(domain.id, verified).then(
-        () => {
-          return setSettingVerified(false);
-        },
-        (error: unknown) => {
-          setSettingVerified(false);
-          const message =
-            error instanceof Error ? error.message : "Failed to update domain";
-          toast.error(message);
-        },
-      ),
+      doSetVerified(domain.id, verified, pageSignal).catch((error: unknown) => {
+        const message =
+          error instanceof Error ? error.message : "Failed to update domain";
+        toast.error(message);
+      }),
       Reason.DomCallback,
     );
   };
@@ -394,7 +332,7 @@ function DomainRow({
           open={removeOpen}
           onOpenChange={(v) => {
             if (!removing) {
-              setRemoveOpen(v);
+              setRemoveTarget(v ? domain.id : null);
             }
           }}
         >
@@ -424,7 +362,7 @@ function DomainRow({
               <DropdownMenuItem
                 className="text-destructive focus:text-destructive"
                 onClick={() => {
-                  return setRemoveOpen(true);
+                  return setRemoveTarget(domain.id);
                 }}
               >
                 <IconTrash size={14} stroke={1.5} className="mr-2" />
@@ -445,7 +383,7 @@ function DomainRow({
                 variant="outline"
                 size="sm"
                 onClick={() => {
-                  return setRemoveOpen(false);
+                  return setRemoveTarget(null);
                 }}
                 disabled={removing}
               >

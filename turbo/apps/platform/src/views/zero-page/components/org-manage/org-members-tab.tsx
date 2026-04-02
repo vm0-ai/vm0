@@ -1,5 +1,5 @@
-import { useState } from "react";
 import { useGet, useLoadable, useSet } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import {
   IconSearch,
   IconShieldCheck,
@@ -32,27 +32,19 @@ import {
   SelectValue,
 } from "@vm0/ui";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import {
-  zeroOrgMembersContract,
-  zeroOrgInviteContract,
-  zeroOrgMembershipRequestsContract,
-  type OrgRole,
-  orgRoleSchema,
-} from "@vm0/core";
+import { orgRoleSchema, type OrgRole } from "@vm0/core";
 import {
   orgMembers$,
   orgPendingInvitations$,
   orgMembershipRequests$,
-  refreshOrgMembers$,
   type OrgMember,
   type OrgPendingInvitation,
   type OrgMembershipRequest,
 } from "../../../../signals/external/org-members.ts";
-import { isOrgAdmin$, refreshOrg$ } from "../../../../signals/org.ts";
-import { user$, clerk$ } from "../../../../signals/auth.ts";
-import { zeroClient$ } from "../../../../signals/api-client.ts";
+import { isOrgAdmin$ } from "../../../../signals/org.ts";
+import { user$ } from "../../../../signals/auth.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
-import { extractApiErrorMessage } from "./org-api-error.ts";
+import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import {
   memberSearch$,
   setMemberSearch$,
@@ -60,6 +52,23 @@ import {
   setInviteEmail$,
   inviteTouched$,
   setInviteTouched$,
+  inviteDialogOpen$,
+  setInviteDialogOpen$,
+  inviteRole$,
+  setInviteRole$,
+  selfDemoteDialogOpen$,
+  setSelfDemoteDialogOpen$,
+  removeMemberDialogTarget$,
+  setRemoveMemberDialogTarget$,
+  revokeInvitationDialogTarget$,
+  setRevokeInvitationDialogTarget$,
+  inviteMember$,
+  changeRole$,
+  selfDemote$,
+  removeMember$,
+  revokeInvitation$,
+  acceptRequest$,
+  rejectRequest$,
 } from "../../../../signals/zero-page/settings/org-manage-tabs-state.ts";
 
 const ROW_GRID = "grid grid-cols-[1fr_6rem_5.5rem_2rem] gap-x-4 items-center";
@@ -82,10 +91,6 @@ export function OrgMembersTab() {
   const isAdminLoadable = useLoadable(isOrgAdmin$);
   const isAdmin =
     isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
-  const createClient = useGet(zeroClient$);
-  const clerkLoadable = useLoadable(clerk$);
-  const refreshMembers = useSet(refreshOrgMembers$);
-  const refreshOrg = useSet(refreshOrg$);
 
   const search = useGet(memberSearch$);
   const setSearch = useSet(setMemberSearch$);
@@ -127,79 +132,6 @@ export function OrgMembersTab() {
     });
   })();
 
-  const handleInvite = async (email: string, role: OrgRole) => {
-    const client = createClient(zeroOrgInviteContract);
-    const result = await client.invite({ body: { email, role } });
-    if (result.status === 200) {
-      toast.success(`Invitation sent to ${email}`);
-      refreshMembers();
-      return;
-    }
-    throw new Error(extractApiErrorMessage(result, "Failed to invite"));
-  };
-
-  const handleRoleChange = async (email: string, role: OrgRole) => {
-    const client = createClient(zeroOrgMembersContract);
-    const result = await client.updateRole({ body: { email, role } });
-    if (result.status === 200) {
-      toast.success(`Updated role for ${email}`);
-      // Force JWT refresh so the backend sees the updated role
-      if (clerkLoadable.state === "hasData") {
-        await clerkLoadable.data.session?.getToken({ skipCache: true });
-      }
-      refreshMembers();
-      refreshOrg();
-      return;
-    }
-    throw new Error(extractApiErrorMessage(result, "Failed to update role"));
-  };
-
-  const handleRemove = async (email: string) => {
-    const client = createClient(zeroOrgMembersContract);
-    const result = await client.removeMember({ body: { email } });
-    if (result.status === 200) {
-      toast.success(`Removed ${email}`);
-      refreshMembers();
-      return;
-    }
-    throw new Error(extractApiErrorMessage(result, "Failed to remove member"));
-  };
-
-  const handleRevokeInvitation = async (invitationId: string) => {
-    const client = createClient(zeroOrgInviteContract);
-    const result = await client.revoke({ body: { invitationId } });
-    if (result.status === 200) {
-      toast.success("Invitation revoked");
-      refreshMembers();
-      return;
-    }
-    throw new Error(
-      extractApiErrorMessage(result, "Failed to revoke invitation"),
-    );
-  };
-
-  const handleAcceptRequest = async (requestId: string) => {
-    const client = createClient(zeroOrgMembershipRequestsContract);
-    const result = await client.accept({ body: { requestId } });
-    if (result.status === 200) {
-      toast.success("Membership request accepted");
-      refreshMembers();
-      return;
-    }
-    throw new Error(extractApiErrorMessage(result, "Failed to accept request"));
-  };
-
-  const handleRejectRequest = async (requestId: string) => {
-    const client = createClient(zeroOrgMembershipRequestsContract);
-    const result = await client.reject({ body: { requestId } });
-    if (result.status === 200) {
-      toast.success("Membership request rejected");
-      refreshMembers();
-      return;
-    }
-    throw new Error(extractApiErrorMessage(result, "Failed to reject request"));
-  };
-
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center gap-3">
@@ -219,7 +151,7 @@ export function OrgMembersTab() {
             className="pl-9"
           />
         </div>
-        {isAdmin && <InviteDialog onInvite={handleInvite} />}
+        {isAdmin && <InviteDialog />}
       </div>
 
       <div className="overflow-hidden rounded-xl bg-card zero-border">
@@ -267,11 +199,7 @@ export function OrgMembersTab() {
               return (
                 <div key={req.id}>
                   {i > 0 && <div className="h-0 zero-border-t mx-5" />}
-                  <MembershipRequestRow
-                    request={req}
-                    onAccept={handleAcceptRequest}
-                    onReject={handleRejectRequest}
-                  />
+                  <MembershipRequestRow request={req} />
                 </div>
               );
             })}
@@ -291,8 +219,6 @@ export function OrgMembersTab() {
                   isCurrentUser={m.userId === currentUserId}
                   isAdmin={isAdmin}
                   isOnlyAdmin={adminCount < 2}
-                  onRoleChange={handleRoleChange}
-                  onRemove={handleRemove}
                 />
               </div>
             );
@@ -307,11 +233,7 @@ export function OrgMembersTab() {
                   membershipRequests.length > 0) && (
                   <div className="h-0 zero-border-t mx-5" />
                 )}
-                <PendingInvitationRow
-                  invitation={inv}
-                  isAdmin={isAdmin}
-                  onRevoke={handleRevokeInvitation}
-                />
+                <PendingInvitationRow invitation={inv} isAdmin={isAdmin} />
               </div>
             );
           })}
@@ -320,16 +242,16 @@ export function OrgMembersTab() {
   );
 }
 
-function InviteDialog({
-  onInvite,
-}: {
-  onInvite: (email: string, role: OrgRole) => Promise<void>;
-}) {
+function InviteDialog() {
   const email = useGet(inviteEmail$);
   const setEmail = useSet(setInviteEmail$);
-  const [open, setOpen] = useState(false);
-  const [sending, setSending] = useState(false);
-  const [role, setRole] = useState<OrgRole>("member");
+  const open = useGet(inviteDialogOpen$);
+  const setOpen = useSet(setInviteDialogOpen$);
+  const role = useGet(inviteRole$);
+  const setRole = useSet(setInviteRole$);
+  const [loadable, doInvite] = useLoadableSet(inviteMember$);
+  const sending = loadable.state === "loading";
+  const pageSignal = useGet(pageSignal$);
 
   const trimmed = email.trim();
   const isValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
@@ -338,24 +260,12 @@ function InviteDialog({
   const setTouched = useSet(setInviteTouched$);
 
   const handleSend = () => {
-    setSending(true);
     detach(
-      onInvite(trimmed, role).then(
-        () => {
-          setOpen(false);
-          setEmail("");
-          setRole("member");
-          setSending(false);
-        },
-        (error: unknown) => {
-          setSending(false);
-          const message =
-            error instanceof Error
-              ? error.message
-              : "Failed to send invitation";
-          toast.error(message);
-        },
-      ),
+      doInvite(trimmed, role, pageSignal).catch((error: unknown) => {
+        const message =
+          error instanceof Error ? error.message : "Failed to send invitation";
+        toast.error(message);
+      }),
       Reason.DomCallback,
     );
   };
@@ -367,7 +277,7 @@ function InviteDialog({
         if (!sending) {
           setOpen(v);
           if (!v) {
-            setRole("member");
+            setRole(orgRoleSchema.parse("member"));
           }
         }
       }}
@@ -450,15 +360,11 @@ function MemberRow({
   isCurrentUser,
   isAdmin,
   isOnlyAdmin,
-  onRoleChange,
-  onRemove,
 }: {
   member: OrgMember;
   isCurrentUser: boolean;
   isAdmin: boolean;
   isOnlyAdmin: boolean;
-  onRoleChange: (email: string, role: OrgRole) => Promise<void>;
-  onRemove: (email: string) => Promise<void>;
 }) {
   const name = displayName(member);
   const initial = (name || member.email).charAt(0).toUpperCase();
@@ -508,46 +414,27 @@ function MemberRow({
         </span>
       </div>
       <div className="flex justify-end">
-        {canManage && (
-          <MemberActions
-            member={member}
-            onRoleChange={onRoleChange}
-            onRemove={onRemove}
-          />
-        )}
-        {canSelfDemote && (
-          <SelfDemoteAction email={member.email} onRoleChange={onRoleChange} />
-        )}
+        {canManage && <MemberActions member={member} />}
+        {canSelfDemote && <SelfDemoteAction email={member.email} />}
       </div>
     </div>
   );
 }
 
-function SelfDemoteAction({
-  email,
-  onRoleChange,
-}: {
-  email: string;
-  onRoleChange: (email: string, role: OrgRole) => Promise<void>;
-}) {
-  const [open, setOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
+function SelfDemoteAction({ email }: { email: string }) {
+  const open = useGet(selfDemoteDialogOpen$);
+  const setOpen = useSet(setSelfDemoteDialogOpen$);
+  const [loadable, doSelfDemote] = useLoadableSet(selfDemote$);
+  const loading = loadable.state === "loading";
+  const pageSignal = useGet(pageSignal$);
 
   const handleConfirm = () => {
-    setLoading(true);
     detach(
-      onRoleChange(email, "member").then(
-        () => {
-          setOpen(false);
-          setLoading(false);
-        },
-        (error: unknown) => {
-          setLoading(false);
-          const message =
-            error instanceof Error ? error.message : "Failed to change role";
-          toast.error(message);
-        },
-      ),
+      doSelfDemote(email, pageSignal).catch((error: unknown) => {
+        const message =
+          error instanceof Error ? error.message : "Failed to change role";
+        toast.error(message);
+      }),
       Reason.DomCallback,
     );
   };
@@ -607,34 +494,23 @@ function SelfDemoteAction({
   );
 }
 
-function MemberActions({
-  member,
-  onRoleChange,
-  onRemove,
-}: {
-  member: OrgMember;
-  onRoleChange: (email: string, role: OrgRole) => Promise<void>;
-  onRemove: (email: string) => Promise<void>;
-}) {
+function MemberActions({ member }: { member: OrgMember }) {
   const newRole: OrgRole = member.role === "admin" ? "member" : "admin";
-  const [open, setOpen] = useState(false);
-  const [removing, setRemoving] = useState(false);
+  const removeTarget = useGet(removeMemberDialogTarget$);
+  const setRemoveTarget = useSet(setRemoveMemberDialogTarget$);
+  const open = removeTarget === member.email;
+  const [loadable, doRemove] = useLoadableSet(removeMember$);
+  const [, doChangeRole] = useLoadableSet(changeRole$);
+  const removing = loadable.state === "loading";
+  const pageSignal = useGet(pageSignal$);
 
   const handleRemove = () => {
-    setRemoving(true);
     detach(
-      onRemove(member.email).then(
-        () => {
-          setOpen(false);
-          setRemoving(false);
-        },
-        (error: unknown) => {
-          setRemoving(false);
-          const message =
-            error instanceof Error ? error.message : "Failed to remove member";
-          toast.error(message);
-        },
-      ),
+      doRemove(member.email, pageSignal).catch((error: unknown) => {
+        const message =
+          error instanceof Error ? error.message : "Failed to remove member";
+        toast.error(message);
+      }),
       Reason.DomCallback,
     );
   };
@@ -644,7 +520,7 @@ function MemberActions({
       open={open}
       onOpenChange={(v) => {
         if (!removing) {
-          setOpen(v);
+          setRemoveTarget(v ? member.email : null);
         }
       }}
     >
@@ -658,7 +534,7 @@ function MemberActions({
           <DropdownMenuItem
             onClick={() => {
               return detach(
-                onRoleChange(member.email, newRole),
+                doChangeRole(member.email, newRole, pageSignal),
                 Reason.DomCallback,
               );
             }}
@@ -686,7 +562,7 @@ function MemberActions({
             variant="outline"
             size="sm"
             onClick={() => {
-              return setOpen(false);
+              return setRemoveTarget(null);
             }}
             disabled={removing}
           >
@@ -709,33 +585,27 @@ function MemberActions({
 function PendingInvitationRow({
   invitation,
   isAdmin,
-  onRevoke,
 }: {
   invitation: OrgPendingInvitation;
   isAdmin: boolean;
-  onRevoke: (invitationId: string) => Promise<void>;
 }) {
   const initial = invitation.email.charAt(0).toUpperCase();
-  const [open, setOpen] = useState(false);
-  const [revoking, setRevoking] = useState(false);
+  const revokeTarget = useGet(revokeInvitationDialogTarget$);
+  const setRevokeTarget = useSet(setRevokeInvitationDialogTarget$);
+  const open = revokeTarget === invitation.id;
+  const [loadable, doRevoke] = useLoadableSet(revokeInvitation$);
+  const revoking = loadable.state === "loading";
+  const pageSignal = useGet(pageSignal$);
 
   const handleRevoke = () => {
-    setRevoking(true);
     detach(
-      onRevoke(invitation.id).then(
-        () => {
-          setOpen(false);
-          setRevoking(false);
-        },
-        (error: unknown) => {
-          setRevoking(false);
-          const message =
-            error instanceof Error
-              ? error.message
-              : "Failed to revoke invitation";
-          toast.error(message);
-        },
-      ),
+      doRevoke(invitation.id, pageSignal).catch((error: unknown) => {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Failed to revoke invitation";
+        toast.error(message);
+      }),
       Reason.DomCallback,
     );
   };
@@ -765,7 +635,7 @@ function PendingInvitationRow({
             open={open}
             onOpenChange={(v) => {
               if (!revoking) {
-                setOpen(v);
+                setRevokeTarget(v ? invitation.id : null);
               }
             }}
           >
@@ -797,7 +667,7 @@ function PendingInvitationRow({
                   variant="outline"
                   size="sm"
                   onClick={() => {
-                    return setOpen(false);
+                    return setRevokeTarget(null);
                   }}
                   disabled={revoking}
                 >
@@ -820,51 +690,33 @@ function PendingInvitationRow({
   );
 }
 
-function MembershipRequestRow({
-  request,
-  onAccept,
-  onReject,
-}: {
-  request: OrgMembershipRequest;
-  onAccept: (requestId: string) => Promise<void>;
-  onReject: (requestId: string) => Promise<void>;
-}) {
+function MembershipRequestRow({ request }: { request: OrgMembershipRequest }) {
   const name = [request.firstName, request.lastName].filter(Boolean).join(" ");
   const initial = (name || request.email).charAt(0).toUpperCase();
-  const [loading, setLoading] = useState(false);
+  const [acceptLoadable, doAccept] = useLoadableSet(acceptRequest$);
+  const [rejectLoadable, doReject] = useLoadableSet(rejectRequest$);
+  const loading =
+    acceptLoadable.state === "loading" || rejectLoadable.state === "loading";
+  const pageSignal = useGet(pageSignal$);
 
   const handleAccept = () => {
-    setLoading(true);
     detach(
-      onAccept(request.id).then(
-        () => {
-          return setLoading(false);
-        },
-        (error: unknown) => {
-          setLoading(false);
-          const message =
-            error instanceof Error ? error.message : "Failed to accept request";
-          toast.error(message);
-        },
-      ),
+      doAccept(request.id, pageSignal).catch((error: unknown) => {
+        const message =
+          error instanceof Error ? error.message : "Failed to accept request";
+        toast.error(message);
+      }),
       Reason.DomCallback,
     );
   };
 
   const handleReject = () => {
-    setLoading(true);
     detach(
-      onReject(request.id).then(
-        () => {
-          return setLoading(false);
-        },
-        (error: unknown) => {
-          setLoading(false);
-          const message =
-            error instanceof Error ? error.message : "Failed to reject request";
-          toast.error(message);
-        },
-      ),
+      doReject(request.id, pageSignal).catch((error: unknown) => {
+        const message =
+          error instanceof Error ? error.message : "Failed to reject request";
+        toast.error(message);
+      }),
       Reason.DomCallback,
     );
   };

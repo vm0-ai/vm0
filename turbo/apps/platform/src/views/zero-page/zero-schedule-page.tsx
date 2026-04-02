@@ -1,5 +1,5 @@
-import { useState } from "react";
 import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { IconList, IconLayoutGrid, IconPlus } from "@tabler/icons-react";
 import {
@@ -47,6 +47,18 @@ import {
 } from "../../signals/zero-page/zero-schedule.ts";
 import { zeroOnboardingStatus$ } from "../../signals/zero-page/zero-onboarding.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
+import {
+  schedulePageViewMode$,
+  setSchedulePageViewMode$,
+  createDialogOpen$,
+  setCreateDialogOpen$,
+  pageTogglingIds$,
+  setPageTogglingIds$,
+  pageRunningIds$,
+  setPageRunningIds$,
+  pagePendingDelete$,
+  setPagePendingDelete$,
+} from "../../signals/schedule-page/schedule-page-ui.ts";
 
 export type CombinedEntry = ScheduleEntry & {
   agentLabel: string;
@@ -435,24 +447,27 @@ export function ZeroSchedulePage() {
   const loaded = useGet(allOrgSchedulesLoaded$);
   const isInitialLoading = !loaded;
 
-  const saveSchedule = useSet(saveOrgSchedule$);
   const toggleEnabled = useSet(toggleOrgScheduleEnabled$);
   const deleteSchedule = useSet(deleteOrgSchedule$);
   const runScheduleNow = useSet(runScheduleNow$);
   const pageSignal = useGet(pageSignal$);
   const navigate = useSet(detachedNavigateTo$);
 
-  const [scheduleViewMode, setScheduleViewMode] = useState<"list" | "calendar">(
-    "list",
-  );
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [createOpen, setCreateOpen] = useState(false);
-  const [togglingIds, setTogglingIds] = useState<Set<string>>(new Set());
-  const [runningIds, setRunningIds] = useState<Set<string>>(new Set());
-  const [pendingDelete, setPendingDelete] = useState<CombinedEntry | null>(
-    null,
-  );
+  const scheduleViewMode = useGet(schedulePageViewMode$);
+  const setScheduleViewMode = useSet(setSchedulePageViewMode$);
+  const createOpen = useGet(createDialogOpen$);
+  const setCreateOpen = useSet(setCreateDialogOpen$);
+  const togglingIds = useGet(pageTogglingIds$);
+  const setTogglingIds = useSet(setPageTogglingIds$);
+  const runningIds = useGet(pageRunningIds$);
+  const setRunningIds = useSet(setPageRunningIds$);
+  const pendingDelete = useGet(pagePendingDelete$);
+  const setPendingDelete = useSet(setPagePendingDelete$);
+
+  const [saveLoadable, saveScheduleTracked] = useLoadableSet(saveOrgSchedule$);
+  const saving = saveLoadable.state === "loading";
+  const saveError =
+    saveLoadable.state === "hasError" ? String(saveLoadable.error) : null;
 
   const combinedSchedule = buildCombinedSchedule(entries);
 
@@ -471,10 +486,8 @@ export function ZeroSchedulePage() {
   };
 
   const handleCreateSave = (values: ScheduleFormValues) => {
-    setSaving(true);
-    setSaveError(null);
     detach(
-      saveSchedule(
+      saveScheduleTracked(
         {
           prompt: values.prompt.trim(),
           description: values.description.trim() || undefined,
@@ -493,21 +506,12 @@ export function ZeroSchedulePage() {
             : {}),
         },
         pageSignal,
-      )
-        .then((scheduleId) => {
-          setCreateOpen(false);
-          navigate("/schedules/:id", {
-            pathParams: { id: scheduleId },
-          });
-        })
-        .catch((error: unknown) => {
-          setSaveError(
-            error instanceof Error ? error.message : "Failed to save schedule",
-          );
-        })
-        .finally(() => {
-          setSaving(false);
-        }),
+      ).then((scheduleId) => {
+        setCreateOpen(false);
+        navigate("/schedules/:id", {
+          pathParams: { id: scheduleId },
+        });
+      }),
       Reason.DomCallback,
     );
   };

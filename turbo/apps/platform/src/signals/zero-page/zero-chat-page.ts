@@ -1,5 +1,6 @@
 import { command, computed, state } from "ccstate";
 import { talkDraft$ } from "./chat-draft.ts";
+import { getRandomPrompts } from "../../views/zero-page/zero-ideation-data.ts";
 
 // ---------------------------------------------------------------------------
 // Landing page local UI state for ZeroChatPage
@@ -18,4 +19,13 @@ export const setChatPageInput$ = command(({ get, set }, value: string) => {
 const internalTaglineIndex$ = state(INITIAL_TAGLINE_INDEX);
 export const chatPageTaglineIndex$ = computed((get) => {
   return get(internalTaglineIndex$);
+});
+
+// ---------------------------------------------------------------------------
+// Suggested prompts — initialized once at module load, never modified
+// ---------------------------------------------------------------------------
+
+const internalSuggestedPrompts$ = state(getRandomPrompts(2));
+export const suggestedPrompts$ = computed((get) => {
+  return get(internalSuggestedPrompts$);
 });

@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { useLoadable, useGet, useSet } from "ccstate-react";
 import { IconUpload } from "@tabler/icons-react";
 import {
@@ -48,6 +47,8 @@ import {
   setDeleting$,
   deleteConfirm$,
   setDeleteConfirm$,
+  saveError$,
+  setSaveError$,
 } from "../../../../signals/zero-page/settings/org-manage-tabs-state.ts";
 
 const sectionCardStyle = {
@@ -121,7 +122,8 @@ function ProfileSection({
   const logoLoaded = useGet(logoLoaded$);
   const setLogoLoaded = useSet(setLogoLoaded$);
 
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const saveError = useGet(saveError$);
+  const setSaveError = useSet(setSaveError$);
 
   const createClient = useGet(zeroClient$);
   const hasNameChange = name !== (org.name ?? "");

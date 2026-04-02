@@ -7,14 +7,24 @@ import { updatePage$ } from "../react-router.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
 import { reloadChatThreads$ } from "../zero-page/zero-chat.ts";
+import {
+  resetAdminFocusedState$,
+  resetMemberFocusedState$,
+  firewallAllowAgent$,
+  firewallAllowRef$,
+  extractPermissions,
+  syncAdminListPolicies$,
+} from "./firewall-allow-signals.ts";
 
 export const setupFirewallAllowPage$ = command(
-  async ({ set }, signal: AbortSignal) => {
+  async ({ get, set }, signal: AbortSignal) => {
     set(
       updatePage$,
       createElement(SidebarLayout, null, createElement(FirewallAllowPage)),
     );
     set(updateDocumentTitle$, "Firewall Permissions");
+    set(resetAdminFocusedState$);
+    set(resetMemberFocusedState$);
 
     await set(initZeroOnboarding$, signal);
     signal.throwIfAborted();
@@ -24,5 +34,13 @@ export const setupFirewallAllowPage$ = command(
     }
 
     set(reloadChatThreads$);
+
+    const agent = await get(firewallAllowAgent$);
+    signal.throwIfAborted();
+    const ref = get(firewallAllowRef$);
+    if (agent && ref) {
+      const permissions = extractPermissions(ref);
+      set(syncAdminListPolicies$, permissions, ref, agent.firewallPolicies);
+    }
   },
 );

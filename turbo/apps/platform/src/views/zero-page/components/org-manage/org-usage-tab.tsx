@@ -1,5 +1,5 @@
-import { useState } from "react";
 import { useGet, useLoadable, useSet } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import type { OrgMember, MemberUsage } from "@vm0/core";
 import { IconUsers } from "@tabler/icons-react";
 import { Input, Popover, PopoverAnchor, PopoverContent } from "@vm0/ui";
@@ -13,8 +13,18 @@ import {
   apiTierToBillingTier,
   type BillingTier,
 } from "../../../../signals/zero-page/billing.ts";
-import { setMemberCreditCap$ } from "../../../../signals/zero-page/member-credit-caps.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
+import {
+  creditBarPopoverOpen$,
+  setCreditBarPopoverOpen$,
+  creditBarTimerId$,
+  setCreditBarTimerId$,
+  inlineCapValues$,
+  setInlineCapValue$,
+  usageMembers$,
+  syncUsageMembersFromLoadable$,
+  inlineCapCommit$,
+} from "../../../../signals/zero-page/settings/org-manage-tabs-state.ts";
 
 // ---------------------------------------------------------------------------
 // Credit balance bar (moved from billing tab)
@@ -55,10 +65,10 @@ function CreditUsageBar({
 
   const usedPct = (used / barMax) * 100;
 
-  const [open, setOpen] = useState(false);
-  const [timerId, setTimerId] = useState<ReturnType<
-    typeof globalThis.setTimeout
-  > | null>(null);
+  const open = useGet(creditBarPopoverOpen$);
+  const setOpen = useSet(setCreditBarPopoverOpen$);
+  const timerId = useGet(creditBarTimerId$);
+  const setTimerId = useSet(setCreditBarTimerId$);
 
   const show = () => {
     if (timerId !== null) {
@@ -195,19 +205,17 @@ function MemberAvatar({
   );
 }
 
-function InlineCapInput({
-  member,
-  onSaved,
-}: {
-  member: MemberUsage;
-  onSaved: (cap: number | null) => void;
-}) {
+function InlineCapInput({ member }: { member: MemberUsage }) {
   const pageSignal = useGet(pageSignal$);
-  const updateCap = useSet(setMemberCreditCap$);
-  const [value, setValue] = useState(
-    member.creditCap !== null ? String(member.creditCap) : "",
-  );
-  const [saving, setSaving] = useState(false);
+  const capValues = useGet(inlineCapValues$);
+  const setCapValue = useSet(setInlineCapValue$);
+  const value = capValues.has(member.userId)
+    ? capValues.get(member.userId)!
+    : member.creditCap !== null
+      ? String(member.creditCap)
+      : "";
+  const [loadable, doCommit] = useLoadableSet(inlineCapCommit$);
+  const saving = loadable.state === "loading";
 
   const commit = () => {
     const trimmed = value.trim();
@@ -215,18 +223,16 @@ function InlineCapInput({
     if (cap !== null && (!Number.isInteger(cap) || cap <= 0)) {
       return;
     }
-    if (cap === member.creditCap) {
-      return;
-    }
 
-    setSaving(true);
     detach(
-      (async () => {
-        await updateCap({ userId: member.userId, creditCap: cap }, pageSignal);
-        onSaved(cap);
-        setSaving(false);
-      })().catch(() => {
-        setSaving(false);
+      doCommit(
+        {
+          userId: member.userId,
+          creditCap: cap,
+          memberCreditCap: member.creditCap,
+        },
+        pageSignal,
+      ).catch(() => {
         toast.error("Failed to update credit cap. Please try again.");
       }),
       Reason.DomCallback,
@@ -241,7 +247,7 @@ function InlineCapInput({
       placeholder="No limit"
       value={value}
       onChange={(e) => {
-        return setValue(e.target.value);
+        return setCapValue(member.userId, e.target.value);
       }}
       onBlur={commit}
       onKeyDown={(e) => {
@@ -297,45 +303,24 @@ export function OrgUsageTab() {
   const usageData =
     usageLoadable.state === "hasData" ? usageLoadable.data : null;
 
-  const orgMembers =
+  const orgMembersList =
     membersLoadable.state === "hasData" ? membersLoadable.data : [];
   const memberMap = new Map(
-    orgMembers.map((m) => {
+    orgMembersList.map((m) => {
       return [m.userId, m];
     }),
   );
 
   const period = usageData?.period ?? null;
-  const [members, setMembers] = useState<MemberUsage[]>([]);
+  const members = useGet(usageMembers$);
 
-  // Sync from loadable to local state for optimistic cap updates
+  // Sync from loadable to signal state for optimistic cap updates
   const rawMembers = usageData?.members ?? [];
-  const rawKey = rawMembers
-    .map((m) => {
-      return `${m.userId}:${m.creditsCharged}`;
-    })
-    .join(",");
-  const [prevKey, setPrevKey] = useState("");
-  if (rawKey !== prevKey) {
-    setPrevKey(rawKey);
-    setMembers(
-      rawMembers.slice().sort((a, b) => {
-        return b.creditsCharged - a.creditsCharged;
-      }),
-    );
-  }
+  useSet(syncUsageMembersFromLoadable$)(rawMembers);
 
   const totalUsed = members.reduce((s, m) => {
     return s + m.creditsCharged;
   }, 0);
-
-  const handleCapSaved = (userId: string, cap: number | null) => {
-    setMembers((prev) => {
-      return prev.map((m) => {
-        return m.userId === userId ? { ...m, creditCap: cap } : m;
-      });
-    });
-  };
 
   return (
     <div className="flex flex-col gap-8">
@@ -456,12 +441,7 @@ export function OrgUsageTab() {
                       {remaining !== null ? remaining.toLocaleString() : "–"}
                     </span>
                     {isAdmin ? (
-                      <InlineCapInput
-                        member={member}
-                        onSaved={(cap) => {
-                          return handleCapSaved(member.userId, cap);
-                        }}
-                      />
+                      <InlineCapInput member={member} />
                     ) : (
                       <span className="text-[13px] tabular-nums text-muted-foreground">
                         {member.creditCap !== null

@@ -1,5 +1,5 @@
-import { useState } from "react";
 import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   IconCalendar,
@@ -79,6 +79,21 @@ import {
 import { parseScheduleTimeString } from "./zero-schedule-card.tsx";
 import { TiptapInstructionsEditor } from "./tiptap-instructions-editor.tsx";
 import { ZeroUnsavedBar } from "./zero-unsaved-bar.tsx";
+import {
+  scheduleForm$,
+  updateScheduleForm$,
+  savedSettingsState$,
+  setSavedSettingsState$,
+  showDeleteConfirm$,
+  setShowDeleteConfirm$,
+  instructionDraft$,
+  setInstructionDraft$,
+  discardNonce$,
+  incrementDiscardNonce$,
+  syncSettingsFormEntry$,
+  syncInstructionDraftEntry$,
+  type ScheduleSettingsSnapshot,
+} from "../../signals/schedule-page/schedule-form.ts";
 
 const SCHEDULE_DETAIL_TAB_TRIGGER_CLASS =
   "gap-1.5 text-sm data-[state=active]:bg-background px-3";
@@ -221,18 +236,7 @@ type ScheduleAgentOption = {
   displayName?: string | null;
 };
 
-type ScheduleSettingsSnapshot = {
-  freq: string;
-  date: string;
-  hour: number;
-  minute: number;
-  timezone: string;
-  loopMinutes: number;
-  agentId: string;
-  description: string;
-  dayOfWeek: string;
-  dayOfMonth: string;
-};
+// ScheduleSettingsSnapshot imported from signals/schedule-page/schedule-form.ts
 
 function buildSettingsSnapshot(
   entry: CombinedEntry,
@@ -290,43 +294,44 @@ function ScheduleSettingsForm({
   const parsed = parseScheduleTimeString(entry.time);
   const initial = buildSettingsSnapshot(entry, parsed);
 
-  const [freq, setFreq] = useState(initial.freq);
-  const [date, setDate] = useState(initial.date);
-  const [hour, setHour] = useState(initial.hour);
-  const [minute, setMinute] = useState(initial.minute);
-  const [timezone, setTimezone] = useState(initial.timezone);
-  const [loopMinutes, setLoopMinutes] = useState(initial.loopMinutes);
-  const [agentId, setAgentId] = useState(initial.agentId);
-  const [description, setDescription] = useState(initial.description);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [dayOfWeek] = useState(initial.dayOfWeek);
-  const [dayOfMonth] = useState(initial.dayOfMonth);
+  const form = useGet(scheduleForm$);
+  const updateForm = useSet(updateScheduleForm$);
+  const savedState = useGet(savedSettingsState$);
+  const setSavedState = useSet(setSavedSettingsState$);
+  const showDeleteConfirmVal = useGet(showDeleteConfirm$);
+  const setShowDeleteConfirmVal = useSet(setShowDeleteConfirm$);
 
-  const [savedState, setSavedState] = useState(initial);
+  // Reset form when entry changes (component is keyed by entry.id)
+  useSet(syncSettingsFormEntry$)(entry.id, entry.prompt, initial);
 
   const current: ScheduleSettingsSnapshot = {
-    freq,
-    date,
-    hour,
-    minute,
-    timezone,
-    loopMinutes,
-    agentId,
-    description,
-    dayOfWeek,
-    dayOfMonth,
+    freq: form.freq,
+    date: form.date,
+    hour: form.hour,
+    minute: form.minute,
+    timezone: form.timezone,
+    loopMinutes: form.loopMinutes,
+    agentId: form.agentId,
+    description: form.description,
+    dayOfWeek: form.dayOfWeek,
+    dayOfMonth: form.dayOfMonth,
   };
-  const isDirty = isSettingsChanged(current, savedState);
+  const isDirty = savedState ? isSettingsChanged(current, savedState) : false;
 
   const handleDiscard = () => {
-    setFreq(savedState.freq);
-    setDate(savedState.date);
-    setHour(savedState.hour);
-    setMinute(savedState.minute);
-    setTimezone(savedState.timezone);
-    setLoopMinutes(savedState.loopMinutes);
-    setAgentId(savedState.agentId);
-    setDescription(savedState.description);
+    if (!savedState) {
+      return;
+    }
+    updateForm({
+      freq: savedState.freq,
+      date: savedState.date,
+      hour: savedState.hour,
+      minute: savedState.minute,
+      timezone: savedState.timezone,
+      loopMinutes: savedState.loopMinutes,
+      agentId: savedState.agentId,
+      description: savedState.description,
+    });
   };
 
   const handleSave = async () => {
@@ -335,17 +340,17 @@ function ScheduleSettingsForm({
     }
     await onSave({
       prompt: entry.prompt.trim(),
-      description,
-      freq,
-      date,
-      hour,
-      minute,
-      timezone,
-      intervalSeconds: loopMinutes * 60,
+      description: form.description,
+      freq: form.freq,
+      date: form.date,
+      hour: form.hour,
+      minute: form.minute,
+      timezone: form.timezone,
+      intervalSeconds: form.loopMinutes * 60,
       editName: entry.name,
-      agentId,
-      ...(freq === "every_week" ? { dayOfWeek } : {}),
-      ...(freq === "every_month" ? { dayOfMonth } : {}),
+      agentId: form.agentId,
+      ...(form.freq === "every_week" ? { dayOfWeek: form.dayOfWeek } : {}),
+      ...(form.freq === "every_month" ? { dayOfMonth: form.dayOfMonth } : {}),
     });
     setSavedState(current);
   };
@@ -362,8 +367,10 @@ function ScheduleSettingsForm({
           >
             <div className={SCHEDULE_DETAIL_CONTROL_WIDTH}>
               <Select
-                value={agentId}
-                onValueChange={setAgentId}
+                value={form.agentId}
+                onValueChange={(v) => {
+                  return updateForm({ agentId: v });
+                }}
                 disabled={saving || agents.length === 0}
               >
                 <SelectTrigger className="h-9 w-full">
@@ -388,9 +395,9 @@ function ScheduleSettingsForm({
           >
             <div className={SCHEDULE_DETAIL_CONTROL_WIDTH}>
               <Input
-                value={description}
+                value={form.description}
                 onChange={(e) => {
-                  return setDescription(e.target.value);
+                  return updateForm({ description: e.target.value });
                 }}
                 placeholder="Leave blank to auto-generate"
                 className="h-9"
@@ -411,18 +418,30 @@ function ScheduleSettingsForm({
               )}
             >
               <ScheduleEditFields
-                freq={freq}
-                setFreq={setFreq}
-                loopMinutes={loopMinutes}
-                setLoopMinutes={setLoopMinutes}
-                date={date}
-                setDate={setDate}
-                hour={hour}
-                setHour={setHour}
-                minute={minute}
-                setMinute={setMinute}
-                timezone={timezone}
-                setTimezone={setTimezone}
+                freq={form.freq}
+                setFreq={(v) => {
+                  return updateForm({ freq: v });
+                }}
+                loopMinutes={form.loopMinutes}
+                setLoopMinutes={(v) => {
+                  return updateForm({ loopMinutes: v });
+                }}
+                date={form.date}
+                setDate={(v) => {
+                  return updateForm({ date: v });
+                }}
+                hour={form.hour}
+                setHour={(v) => {
+                  return updateForm({ hour: v });
+                }}
+                minute={form.minute}
+                setMinute={(v) => {
+                  return updateForm({ minute: v });
+                }}
+                timezone={form.timezone}
+                setTimezone={(v) => {
+                  return updateForm({ timezone: v });
+                }}
               />
             </fieldset>
           </InlineSettingsRow>
@@ -463,7 +482,7 @@ function ScheduleSettingsForm({
                   size="sm"
                   className="h-9 gap-2 rounded-lg border-destructive/40 px-4 text-destructive hover:bg-destructive/10 hover:text-destructive"
                   onClick={() => {
-                    return setShowDeleteConfirm(true);
+                    return setShowDeleteConfirmVal(true);
                   }}
                 >
                   <IconTrash size={14} stroke={1.5} />
@@ -486,10 +505,10 @@ function ScheduleSettingsForm({
       )}
 
       <Dialog
-        open={showDeleteConfirm}
+        open={showDeleteConfirmVal}
         onOpenChange={(open) => {
           if (!open) {
-            setShowDeleteConfirm(false);
+            setShowDeleteConfirmVal(false);
           }
         }}
       >
@@ -508,7 +527,7 @@ function ScheduleSettingsForm({
             <Button
               variant="outline"
               onClick={() => {
-                return setShowDeleteConfirm(false);
+                return setShowDeleteConfirmVal(false);
               }}
             >
               Cancel
@@ -516,7 +535,7 @@ function ScheduleSettingsForm({
             <Button
               variant="destructive"
               onClick={() => {
-                setShowDeleteConfirm(false);
+                setShowDeleteConfirmVal(false);
                 onDelete();
               }}
             >
@@ -542,14 +561,20 @@ function ScheduleInstructionEditorBlock({
   saving: boolean;
   onSavePrompt: (prompt: string) => void;
 }) {
-  const [draft, setDraft] = useState<string | null>(null);
-  const [discardNonce, setDiscardNonce] = useState(0);
+  const draft = useGet(instructionDraft$);
+  const setDraft = useSet(setInstructionDraft$);
+  const nonce = useGet(discardNonce$);
+  const incrementNonce = useSet(incrementDiscardNonce$);
+  // Reset draft when entry changes (component is keyed by entry.id + prompt)
+  const initKey = `${entry.id}\u0000${entry.prompt}`;
+  useSet(syncInstructionDraftEntry$)(initKey);
+
   const isDirty = draft !== null && draft.trim() !== entry.prompt.trim();
 
   return (
     <>
       <TiptapInstructionsEditor
-        key={`schedule-instr-${entry.id}-${entry.prompt}-${discardNonce}`}
+        key={`schedule-instr-${entry.id}-${entry.prompt}-${nonce}`}
         initialContent={draft ?? entry.prompt}
         onChange={setDraft}
         disabled={saving}
@@ -559,9 +584,7 @@ function ScheduleInstructionEditorBlock({
         <ZeroUnsavedBar
           onDiscard={() => {
             setDraft(null);
-            setDiscardNonce((n) => {
-              return n + 1;
-            });
+            incrementNonce();
           }}
           onSave={() => {
             onSavePrompt((draft ?? entry.prompt).trim());
@@ -948,16 +971,20 @@ export function ZeroScheduleDetailPage() {
   const loaded = useGet(allOrgSchedulesLoaded$);
   const slackData = useLoadable(slackOrgData$);
   const channelsReady = useGet(slackChannelsInitialized$);
-  const saveSchedule = useSet(saveOrgSchedule$);
-  const toggleEnabled = useSet(toggleOrgScheduleEnabled$);
   const deleteSchedule = useSet(deleteOrgSchedule$);
-  const runScheduleNow = useSet(runScheduleNow$);
   const navigate = useSet(detachedNavigateTo$);
   const pageSignal = useGet(pageSignal$);
 
-  const [saving, setSaving] = useState(false);
-  const [toggling, setToggling] = useState(false);
-  const [running, setRunning] = useState(false);
+  const [savingLoadable, saveScheduleTracked] =
+    useLoadableSet(saveOrgSchedule$);
+  const [togglingLoadable, toggleEnabledTracked] = useLoadableSet(
+    toggleOrgScheduleEnabled$,
+  );
+  const [runningLoadable, runScheduleNowTracked] =
+    useLoadableSet(runScheduleNow$);
+  const saving = savingLoadable.state === "loading";
+  const toggling = togglingLoadable.state === "loading";
+  const running = runningLoadable.state === "loading";
   const combinedSchedule = buildCombinedSchedule(entries);
 
   if (!scheduleId) {
@@ -986,12 +1013,7 @@ export function ZeroScheduleDetailPage() {
   const handleSettingsSave = async (
     params: ZeroScheduleSaveParams & { agentId: string },
   ) => {
-    setSaving(true);
-    try {
-      await saveSchedule(params, pageSignal);
-    } finally {
-      setSaving(false);
-    }
+    await saveScheduleTracked(params, pageSignal);
   };
 
   const handleInstructionSavePrompt = (prompt: string) => {
@@ -999,9 +1021,8 @@ export function ZeroScheduleDetailPage() {
       return;
     }
     const parsed = parseScheduleTimeString(entry.time);
-    setSaving(true);
     detach(
-      saveSchedule(
+      saveScheduleTracked(
         {
           prompt,
           description: entry.description ?? undefined,
@@ -1015,9 +1036,7 @@ export function ZeroScheduleDetailPage() {
           agentId: entry.agentId,
         },
         pageSignal,
-      ).finally(() => {
-        setSaving(false);
-      }),
+      ),
       Reason.DomCallback,
     );
   };
@@ -1026,28 +1045,18 @@ export function ZeroScheduleDetailPage() {
     if (entry.name === undefined) {
       return;
     }
-    setToggling(true);
-    try {
-      await toggleEnabled(
-        {
-          name: entry.name,
-          enabled,
-          agentId: entry.agentId,
-        },
-        pageSignal,
-      );
-    } finally {
-      setToggling(false);
-    }
+    await toggleEnabledTracked(
+      {
+        name: entry.name,
+        enabled,
+        agentId: entry.agentId,
+      },
+      pageSignal,
+    );
   };
 
   const handleRunNow = async () => {
-    setRunning(true);
-    try {
-      await runScheduleNow(entry.id, pageSignal);
-    } finally {
-      setRunning(false);
-    }
+    await runScheduleNowTracked(entry.id, pageSignal);
   };
 
   const handleDelete = () => {

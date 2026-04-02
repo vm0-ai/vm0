@@ -15,8 +15,6 @@ import {
   ideationSearchQuery$,
   setIdeationSearchQuery$,
 } from "../../signals/zero-page/zero-ideation.ts";
-export { getRandomPrompts } from "./zero-ideation-data.ts";
-
 export function ZeroIdeationPage() {
   const categories = getCategories().slice(0, 5);
   const activeTab = useGet(ideationActiveTab$);
