@@ -48,13 +48,6 @@ RUN apt-get update && apt-get install -y \
     libnss3 \
     p11-kit-modules
 
-# ---------------------------------------------------------------------------
-# Python 3.x
-# ---------------------------------------------------------------------------
-RUN apt-get update && apt-get install -y \
-    python3 \
-    python3-pip
-
 # Make NSS-based applications (Chromium, Firefox) trust the system CA store.
 # By default NSS uses a built-in trust module (libnssckbi.so) with Mozilla's
 # root CAs. Replacing it with p11-kit's module makes NSS read from the same
@@ -68,6 +61,13 @@ RUN find /usr/lib -name libnssckbi.so -exec sh -c \
 # ---------------------------------------------------------------------------
 RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
     && apt-get install -y nodejs
+
+# ---------------------------------------------------------------------------
+# Python 3.x
+# ---------------------------------------------------------------------------
+RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-pip
 
 # ---------------------------------------------------------------------------
 # Ruby 3.x
