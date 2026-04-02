@@ -2970,24 +2970,6 @@ export async function deleteOrgCacheEntry(orgId: string): Promise<void> {
 }
 
 /**
- * Set billing period cache on an org_cache row.
- * Allows getOrgBillingPeriod() to return a known period without Stripe.
- */
-export async function setOrgCacheBillingPeriod(
-  orgId: string,
-  period: { start: Date; end: Date },
-): Promise<void> {
-  await globalThis.services.db
-    .update(orgCache)
-    .set({
-      currentPeriodStart: period.start,
-      currentPeriodEnd: period.end,
-      billingCachedAt: new Date(),
-    })
-    .where(eq(orgCache.orgId, orgId));
-}
-
-/**
  * Read an org_cache row by orgId.
  */
 export async function getOrgCacheEntry(orgId: string) {

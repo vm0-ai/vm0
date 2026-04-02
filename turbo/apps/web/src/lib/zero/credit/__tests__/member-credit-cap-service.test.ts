@@ -8,7 +8,6 @@ import {
   getOrgMembersEntry,
   insertTestCreditUsage,
   updateOrgStripeFields,
-  setOrgCacheBillingPeriod,
 } from "../../../../__tests__/api-test-helpers";
 import { reloadEnv } from "../../../../env";
 import { evaluateMemberCaps } from "../member-credit-cap-service";
@@ -100,17 +99,12 @@ describe("evaluateMemberCaps", () => {
     const { id: orgId } = await createTestOrg(slug);
 
     // Set up billing period
-    const periodStart = new Date("2026-03-01T00:00:00Z");
     const periodEnd = new Date("2026-04-01T00:00:00Z");
     await updateOrgStripeFields(orgId, {
       stripeSubscriptionId: uniqueId("sub"),
       stripeCustomerId: uniqueId("cus"),
       subscriptionStatus: "active",
       currentPeriodEnd: periodEnd,
-    });
-    await setOrgCacheBillingPeriod(orgId, {
-      start: periodStart,
-      end: periodEnd,
     });
 
     // Insert member with cap of 50 credits
@@ -142,17 +136,12 @@ describe("evaluateMemberCaps", () => {
     const { id: orgId } = await createTestOrg(slug);
 
     // Set up billing period
-    const periodStart = new Date("2026-03-01T00:00:00Z");
     const periodEnd = new Date("2026-04-01T00:00:00Z");
     await updateOrgStripeFields(orgId, {
       stripeSubscriptionId: uniqueId("sub"),
       stripeCustomerId: uniqueId("cus"),
       subscriptionStatus: "active",
       currentPeriodEnd: periodEnd,
-    });
-    await setOrgCacheBillingPeriod(orgId, {
-      start: periodStart,
-      end: periodEnd,
     });
 
     // Insert member with cap of 100 credits
@@ -185,17 +174,12 @@ describe("evaluateMemberCaps", () => {
     const { id: orgId } = await createTestOrg(slug);
 
     // Set up billing period
-    const periodStart = new Date("2026-03-01T00:00:00Z");
     const periodEnd = new Date("2026-04-01T00:00:00Z");
     await updateOrgStripeFields(orgId, {
       stripeSubscriptionId: uniqueId("sub"),
       stripeCustomerId: uniqueId("cus"),
       subscriptionStatus: "active",
       currentPeriodEnd: periodEnd,
-    });
-    await setOrgCacheBillingPeriod(orgId, {
-      start: periodStart,
-      end: periodEnd,
     });
 
     // User1: cap 50, usage 75 (over cap -> should be disabled)
@@ -242,17 +226,12 @@ describe("evaluateMemberCaps", () => {
     const { id: orgId } = await createTestOrg(slug);
 
     // Set up billing period
-    const periodStart = new Date("2026-03-01T00:00:00Z");
     const periodEnd = new Date("2026-04-01T00:00:00Z");
     await updateOrgStripeFields(orgId, {
       stripeSubscriptionId: uniqueId("sub"),
       stripeCustomerId: uniqueId("cus"),
       subscriptionStatus: "active",
       currentPeriodEnd: periodEnd,
-    });
-    await setOrgCacheBillingPeriod(orgId, {
-      start: periodStart,
-      end: periodEnd,
     });
 
     // Insert member without cap (null)
@@ -284,17 +263,12 @@ describe("evaluateMemberCaps", () => {
     const { id: orgId } = await createTestOrg(slug);
 
     // Set up billing period
-    const periodStart = new Date("2026-03-01T00:00:00Z");
     const periodEnd = new Date("2026-04-01T00:00:00Z");
     await updateOrgStripeFields(orgId, {
       stripeSubscriptionId: uniqueId("sub"),
       stripeCustomerId: uniqueId("cus"),
       subscriptionStatus: "active",
       currentPeriodEnd: periodEnd,
-    });
-    await setOrgCacheBillingPeriod(orgId, {
-      start: periodStart,
-      end: periodEnd,
     });
 
     // Insert member that is already disabled with cap
