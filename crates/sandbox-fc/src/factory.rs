@@ -119,6 +119,8 @@ pub struct FirecrackerFactory {
     factory_paths: FactoryPaths,
     runtime_paths: RuntimePaths,
     netns_pool: Option<std::sync::Arc<tokio::sync::Mutex<NetnsPool>>>,
+    /// Shared NBD device pool for pre-validated device indices.
+    device_pool: std::sync::Arc<tokio::sync::Mutex<nbd_cow::pool::DevicePool>>,
     /// Base image path and size (bytes), populated during startup.
     base_image_path: Option<std::path::PathBuf>,
     base_image_size: u64,
@@ -136,6 +138,7 @@ impl FirecrackerFactory {
     pub async fn new(
         config: FirecrackerConfig,
         netns_pool: Option<std::sync::Arc<tokio::sync::Mutex<NetnsPool>>>,
+        device_pool: std::sync::Arc<tokio::sync::Mutex<nbd_cow::pool::DevicePool>>,
     ) -> Result<Self, SandboxError> {
         let t = std::time::Instant::now();
         prerequisites::check_prerequisites(&prerequisites::PrerequisiteConfig {
@@ -158,6 +161,7 @@ impl FirecrackerFactory {
             factory_paths,
             runtime_paths,
             netns_pool,
+            device_pool,
             base_image_path: None,
             base_image_size: 0,
             cow_pool: None,
@@ -322,22 +326,28 @@ impl SandboxFactory for FirecrackerFactory {
             .base_image_path
             .as_ref()
             .ok_or_else(|| SandboxError::CreationFailed("factory not started".into()))?;
-        let cow_device =
-            match NbdCowDevice::create(base_image, &cow_file, self.base_image_size).await {
-                Ok(d) => d,
-                Err(e) => {
-                    // Roll back: return netns to pool and clean up directories.
-                    let mut netns_pool = self.netns_pool().lock().await;
-                    if let Err(rel_err) = netns_pool.release(network).await {
-                        warn!(error = %rel_err, "failed to release netns during rollback");
-                    }
-                    let _ = tokio::fs::remove_dir_all(sandbox_paths.workspace()).await;
-                    let _ = tokio::fs::remove_dir_all(sock_paths.dir()).await;
-                    return Err(SandboxError::CreationFailed(format!(
-                        "create NBD COW device: {e}"
-                    )));
+        let cow_device = match NbdCowDevice::create(
+            base_image,
+            &cow_file,
+            self.base_image_size,
+            &self.device_pool,
+        )
+        .await
+        {
+            Ok(d) => d,
+            Err(e) => {
+                // Roll back: return netns to pool and clean up directories.
+                let mut netns_pool = self.netns_pool().lock().await;
+                if let Err(rel_err) = netns_pool.release(network).await {
+                    warn!(error = %rel_err, "failed to release netns during rollback");
                 }
-            };
+                let _ = tokio::fs::remove_dir_all(sandbox_paths.workspace()).await;
+                let _ = tokio::fs::remove_dir_all(sock_paths.dir()).await;
+                return Err(SandboxError::CreationFailed(format!(
+                    "create NBD COW device: {e}"
+                )));
+            }
+        };
 
         info!(id = %id, device = %cow_device.device_path().display(), "sandbox created");
 
@@ -383,6 +393,7 @@ impl SandboxFactory for FirecrackerFactory {
         // After kill_process_group + child.wait(), the kernel may still be
         // releasing file descriptors (particularly the NBD device fd).
         // Retry a few times to let it finish.
+        let device_index = sandbox.cow_device.device_index();
         let mut cow_destroyed = false;
         for attempt in 0..DESTROY_RETRIES {
             match sandbox.cow_device.destroy().await {
@@ -403,6 +414,9 @@ impl SandboxFactory for FirecrackerFactory {
             }
         }
         drop(sandbox);
+
+        // Release device index back to pool with cooldown.
+        self.device_pool.lock().await.release(device_index);
 
         // Return the network namespace to the pool.
         let mut netns_pool = self.netns_pool().lock().await;

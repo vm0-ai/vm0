@@ -89,7 +89,7 @@ pub fn nbds_max() -> u32 {
 /// Generate a random offset in `0..max` for device scanning.
 ///
 /// Uses `RandomState` (OS-seeded) to avoid pulling in an external RNG crate.
-fn random_offset(max: u32) -> u32 {
+pub fn random_offset(max: u32) -> u32 {
     if max == 0 {
         return 0;
     }
@@ -98,7 +98,7 @@ fn random_offset(max: u32) -> u32 {
 }
 
 /// Check if a device index appears free by inspecting its pid file.
-fn device_appears_free(index: u32) -> bool {
+pub fn device_appears_free(index: u32) -> bool {
     let pid_path = format!("/sys/block/nbd{index}/pid");
     let path = Path::new(&pid_path);
 
@@ -116,69 +116,44 @@ fn device_appears_free(index: u32) -> bool {
     }
 }
 
-/// Atomically find a free NBD device and connect it.
+/// Connect to a specific NBD device by index.
 ///
-/// Starts from a random offset and wraps around, so concurrent runners don't
-/// all compete for the same low-numbered devices. This also avoids reconnecting
-/// to a device that was just disconnected (kernel may still be tearing it down).
-///
-/// If the kernel returns EBUSY (another process grabbed it first), tries the next
-/// device. This eliminates the TOCTOU race between find and connect.
-///
-/// Returns the device index on success.
-pub fn find_and_connect(client_fds: &[OwnedFd], size: u64, block_size: u64) -> Result<u32> {
-    let max = nbds_max();
-
+/// The caller provides the device index (typically from a `DevicePool`).
+/// Returns `Ok(())` on success, or an error. In
+/// particular, `NbdCowError::NetlinkErrno { errno: EBUSY }` means the device
+/// was grabbed by another process between validation and connect.
+pub fn connect_device(
+    device_index: u32,
+    client_fds: &[OwnedFd],
+    size: u64,
+    block_size: u64,
+) -> Result<()> {
     let sock = open_genl_socket()?;
     let family_id = resolve_nbd_family(&sock)?;
 
-    // Build socket attributes once (reused across attempts)
     let sockets_nla = build_sockets_nla(client_fds);
     let flags =
         NBD_FLAG_HAS_FLAGS | NBD_FLAG_SEND_FLUSH | NBD_FLAG_SEND_TRIM | NBD_FLAG_CAN_MULTI_CONN;
 
-    // Random start offset to distribute device usage and avoid retrying
-    // a device that was just disconnected (kernel may still be cleaning up).
-    let start = random_offset(max);
-    for n in 0..max {
-        let i = (start + n) % max;
-        if !device_appears_free(i) {
-            continue;
-        }
+    let mut attrs = Vec::new();
+    attrs.extend_from_slice(&build_nla(NBD_ATTR_INDEX, &device_index.to_ne_bytes()));
+    attrs.extend_from_slice(&build_nla(NBD_ATTR_SIZE_BYTES, &size.to_ne_bytes()));
+    attrs.extend_from_slice(&build_nla(
+        NBD_ATTR_BLOCK_SIZE_BYTES,
+        &block_size.to_ne_bytes(),
+    ));
+    attrs.extend_from_slice(&build_nla(NBD_ATTR_SERVER_FLAGS, &flags.to_ne_bytes()));
+    attrs.extend_from_slice(&build_nla(NBD_ATTR_TIMEOUT, &TIMEOUT_SECS.to_ne_bytes()));
+    attrs.extend_from_slice(&build_nla(
+        NBD_ATTR_DEAD_CONN_TIMEOUT,
+        &TIMEOUT_SECS.to_ne_bytes(),
+    ));
+    attrs.extend_from_slice(&sockets_nla);
 
-        // Build per-device attributes
-        let mut attrs = Vec::new();
-        attrs.extend_from_slice(&build_nla(NBD_ATTR_INDEX, &i.to_ne_bytes()));
-        attrs.extend_from_slice(&build_nla(NBD_ATTR_SIZE_BYTES, &size.to_ne_bytes()));
-        attrs.extend_from_slice(&build_nla(
-            NBD_ATTR_BLOCK_SIZE_BYTES,
-            &block_size.to_ne_bytes(),
-        ));
-        attrs.extend_from_slice(&build_nla(NBD_ATTR_SERVER_FLAGS, &flags.to_ne_bytes()));
-        // Per-request timeout: on expiry, kernel retries via another connection.
-        // Also arms the blk-mq timer that drives dead-connection detection.
-        attrs.extend_from_slice(&build_nla(NBD_ATTR_TIMEOUT, &TIMEOUT_SECS.to_ne_bytes()));
-        // Dead-connection timeout: if ALL connections are dead for this long
-        // AND a request times out, the kernel auto-disconnects the device.
-        // Handles orphan cleanup after SIGKILL (where Drop can't run).
-        attrs.extend_from_slice(&build_nla(
-            NBD_ATTR_DEAD_CONN_TIMEOUT,
-            &TIMEOUT_SECS.to_ne_bytes(),
-        ));
-        attrs.extend_from_slice(&sockets_nla);
+    send_genl_msg(&sock, family_id, NBD_CMD_CONNECT, &attrs)?;
+    recv_genl_ack(&sock)?;
 
-        send_genl_msg(&sock, family_id, NBD_CMD_CONNECT, &attrs)?;
-        match recv_genl_ack(&sock) {
-            Ok(()) => return Ok(i),
-            Err(NbdCowError::NetlinkErrno { errno, .. }) if errno == libc::EBUSY => {
-                // Device was grabbed by another process — try next
-                continue;
-            }
-            Err(e) => return Err(e),
-        }
-    }
-
-    Err(NbdCowError::NoFreeDevice)
+    Ok(())
 }
 
 /// Check whether the device has the expected size via sysfs.

@@ -214,14 +214,20 @@ async fn run_nbd_cow_bench(
 
     eprintln!("  NBD module loaded, setting up NBD COW device...");
 
+    let device_pool = tokio::sync::Mutex::new(nbd_cow::pool::DevicePool::new(
+        nbd_cow::pool::DevicePoolConfig::default(),
+    ));
+    device_pool.lock().await.warmup().await;
+
     for wl in workloads {
         let cow_path = work_dir.join("nbd-cow.img");
 
-        let mut device = NbdCowDevice::create(base_path, &cow_path, base_size)
+        let mut device = NbdCowDevice::create(base_path, &cow_path, base_size, &device_pool)
             .await
             .map_err(|e| format!("failed to create NBD COW device: {e}"))?;
 
         let dev_path = device.device_path().to_string_lossy().to_string();
+        let device_index = device.device_index();
         eprintln!("  Running fio ({}) on {dev_path}...", wl.name);
 
         let result = run_fio_with_iostat(&dev_path, wl, host_disk)?;
@@ -231,9 +237,11 @@ async fn run_nbd_cow_bench(
             .destroy()
             .await
             .map_err(|e| format!("failed to destroy NBD device: {e}"))?;
+        device_pool.lock().await.release(device_index);
         let _ = std::fs::remove_file(&cow_path);
     }
 
+    device_pool.lock().await.cleanup().await;
     Ok(results)
 }
 

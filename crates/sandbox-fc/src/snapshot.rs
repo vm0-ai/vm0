@@ -117,10 +117,15 @@ pub async fn create_snapshot(
             .map_err(|e| SnapshotError::Setup(format!("set COW file size: {e}")))?;
     }
 
-    let cow_device = NbdCowDevice::create(&config.rootfs_path, &cow_file, base_size)
+    let device_pool = tokio::sync::Mutex::new(nbd_cow::pool::DevicePool::new(
+        nbd_cow::pool::DevicePoolConfig::default(),
+    ));
+    device_pool.lock().await.warmup().await;
+    let cow_device = NbdCowDevice::create(&config.rootfs_path, &cow_file, base_size, &device_pool)
         .await
         .map_err(|e| SnapshotError::Setup(format!("create NBD COW device: {e}")))?;
 
+    let device_index = cow_device.device_index();
     info!(device = %cow_device.device_path().display(), "NBD COW device created");
 
     // 3. Create network namespace (pool of 1, index auto-allocated via flock).
@@ -139,7 +144,9 @@ pub async fn create_snapshot(
     )
     .await;
 
-    // Always cleanup netns.
+    // Release device index back to pool before cleanup.
+    device_pool.lock().await.release(device_index);
+    device_pool.lock().await.cleanup().await;
     if let Err(e) = netns_pool.cleanup().await {
         tracing::warn!(error = %e, "failed to cleanup netns pool");
     }
