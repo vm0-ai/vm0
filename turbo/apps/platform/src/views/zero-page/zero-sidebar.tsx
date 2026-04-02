@@ -136,13 +136,7 @@ interface ManageNavItem {
 const MANAGE_NAV = [
   {
     id: "agents",
-    activeKeys: [
-      "agents",
-      "agentDetail",
-      "agentChat",
-      "agentIdeas",
-      "agentPermissions",
-    ],
+    activeKeys: ["agents", "agentDetail", "agentPermissions"],
     pathname: "/agents",
     label: "Agents",
     icon: IconUsers as NavIcon,
