@@ -40,5 +40,13 @@ ruleTester.run("no-direct-local-storage", rule, {
       code: `const v = localStorage.getItem("key") ?? "default";`,
       errors: [{ messageId: "noDirectLocalStorage" }],
     },
+    {
+      code: `window.localStorage.getItem("theme");`,
+      errors: [{ messageId: "noDirectLocalStorage" }],
+    },
+    {
+      code: `window.localStorage.setItem("theme", "dark");`,
+      errors: [{ messageId: "noDirectLocalStorage" }],
+    },
   ],
 });

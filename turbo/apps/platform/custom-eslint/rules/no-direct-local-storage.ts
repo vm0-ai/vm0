@@ -13,10 +13,29 @@
  *   localStorage.getItem("myKey");
  *   localStorage.setItem("myKey", value);
  *   localStorage.removeItem("myKey");
+ *   window.localStorage.getItem("myKey");
  */
 
-import { AST_NODE_TYPES } from "@typescript-eslint/utils";
+import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 import { createRule } from "../utils.ts";
+
+function isLocalStorage(node: TSESTree.Node): boolean {
+  // bare `localStorage`
+  if (node.type === AST_NODE_TYPES.Identifier && node.name === "localStorage") {
+    return true;
+  }
+  // `window.localStorage`
+  if (
+    node.type === AST_NODE_TYPES.MemberExpression &&
+    node.object.type === AST_NODE_TYPES.Identifier &&
+    node.object.name === "window" &&
+    node.property.type === AST_NODE_TYPES.Identifier &&
+    node.property.name === "localStorage"
+  ) {
+    return true;
+  }
+  return false;
+}
 
 export default createRule({
   name: "no-direct-local-storage",
@@ -35,11 +54,8 @@ export default createRule({
   },
   create(context) {
     return {
-      MemberExpression(node) {
-        if (
-          node.object.type === AST_NODE_TYPES.Identifier &&
-          node.object.name === "localStorage"
-        ) {
+      MemberExpression(node: TSESTree.MemberExpression) {
+        if (isLocalStorage(node.object)) {
           context.report({
             node,
             messageId: "noDirectLocalStorage",

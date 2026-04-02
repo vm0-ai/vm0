@@ -100,15 +100,9 @@ export default [
       ],
     },
   },
-  // Allow direct localStorage in the abstraction layer and existing files
-  // that predate this rule (to be migrated incrementally)
+  // Allow direct localStorage in the abstraction layer only
   {
-    files: [
-      "src/signals/external/local-storage.ts",
-      "src/signals/theme.ts",
-      "src/signals/zero-page/zero-model-preference.ts",
-      "src/signals/zero-page/__tests__/zero-model-preference.test.ts",
-    ],
+    files: ["src/signals/external/local-storage.ts"],
     rules: {
       "ccstate/no-direct-local-storage": "off",
     },

@@ -15,6 +15,35 @@ export const resetLocalStorageForTest$ = command(({ set, get }) => {
   set(registeredLocalStorageKeys$, null);
 });
 
+/**
+ * Read a value from localStorage by dynamic key.
+ */
+export const readLocalStorage$ = command((_, key: string): string | null => {
+  return localStorage.getItem(key);
+});
+
+/**
+ * Write or remove a value in localStorage by dynamic key.
+ * Passing null removes the item.
+ */
+export const writeLocalStorage$ = command(
+  ({ set }, { key, value }: { key: string; value: string | null }) => {
+    if (value === null) {
+      localStorage.removeItem(key);
+    } else {
+      set(registeredLocalStorageKeys$, (x) => {
+        if (x?.has(key)) {
+          return x;
+        }
+        x = new Set(x ?? []);
+        x.add(key);
+        return x;
+      });
+      localStorage.setItem(key, value);
+    }
+  },
+);
+
 export function localStorageSignals(key: string) {
   const reload$ = state(0);
 
