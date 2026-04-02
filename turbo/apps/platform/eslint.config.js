@@ -37,6 +37,7 @@ export default [
       "ccstate/no-use-ccstate-in-views": "error",
       "ccstate/no-non-zero-api": "error",
       "ccstate/no-new-abort-controller": "error",
+      "ccstate/no-direct-local-storage": "error",
     },
   },
   // Type-aware rules (only for TypeScript files)
@@ -97,6 +98,19 @@ export default [
             "Do not set test timeout. The default timeout (5000ms) is sufficient — a single test should complete within 500ms. Polling intervals are reduced to 10ms in tests, so do not rely on extending timeout to fix flaky tests. Find and fix the underlying timing issue instead.",
         },
       ],
+    },
+  },
+  // Allow direct localStorage in the abstraction layer and existing files
+  // that predate this rule (to be migrated incrementally)
+  {
+    files: [
+      "src/signals/external/local-storage.ts",
+      "src/signals/theme.ts",
+      "src/signals/zero-page/zero-model-preference.ts",
+      "src/signals/zero-page/__tests__/zero-model-preference.test.ts",
+    ],
+    rules: {
+      "ccstate/no-direct-local-storage": "off",
     },
   },
   // Allow new AbortController in signal infrastructure, test helpers, and
