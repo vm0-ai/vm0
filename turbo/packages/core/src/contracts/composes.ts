@@ -354,7 +354,7 @@ const composeListItemSchema = z.object({
  */
 export const composesListContract = c.router({
   /**
-   * GET /api/agent/composes/list?org={org}
+   * GET /api/agent/composes/list
    * List all agent composes for an org
    * Uses the authenticated user's active org.
    */

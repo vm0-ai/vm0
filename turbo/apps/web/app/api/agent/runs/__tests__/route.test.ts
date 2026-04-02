@@ -1408,7 +1408,7 @@ describe("GET /api/agent/runs - List Runs", () => {
     expect(prompts).not.toContain("Other org run");
   });
 
-  it("should filter by org when ?org= query param is provided", async () => {
+  it("should filter runs by org context", async () => {
     // Create a compose + run in a different org
     const otherOrg = await context.createAgentCompose(user.userId);
     await createTestRunInDb(user.userId, otherOrg.id, {

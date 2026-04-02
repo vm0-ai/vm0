@@ -17,7 +17,7 @@ const updateBodySchema = z.object({
 });
 
 /**
- * GET /api/zero/org/members/credit-cap?org={slug}&userId={userId}
+ * GET /api/zero/org/members/credit-cap?userId={userId}
  *
  * Get a member's credit cap configuration.
  * Any org member can read.
@@ -53,7 +53,7 @@ export async function GET(request: Request) {
 }
 
 /**
- * PUT /api/zero/org/members/credit-cap?org={slug}
+ * PUT /api/zero/org/members/credit-cap
  *
  * Set or clear a member's credit cap.
  * Only org admins can update.

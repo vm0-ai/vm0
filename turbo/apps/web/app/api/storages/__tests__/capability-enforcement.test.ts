@@ -232,11 +232,9 @@ describe("Storage capability enforcement", () => {
   describe("backward compatibility", () => {
     it("should accept CLI token without capabilities for list", async () => {
       const cliToken = await createTestCliToken(userId);
-      const orgSlug = `org-${userId.slice(-8)}`;
-
       const response = await listRoute(
         createTestRequest(
-          `http://localhost:3000/api/storages/list?type=artifact&org=${orgSlug}`,
+          `http://localhost:3000/api/storages/list?type=artifact`,
           { headers: { authorization: `Bearer ${cliToken}` } },
         ),
       );
