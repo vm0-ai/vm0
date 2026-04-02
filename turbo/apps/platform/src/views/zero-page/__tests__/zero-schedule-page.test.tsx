@@ -9,9 +9,22 @@ import { setupPage } from "../../../__tests__/page-helper.ts";
 
 const context = testContext();
 
+function mockScheduleBase() {
+  return {
+    userId: "test-user-123",
+    appendSystemPrompt: null,
+    vars: null,
+    secretNames: null,
+    volumeVersions: null,
+    retryStartedAt: null,
+    consecutiveFailures: 0,
+  };
+}
+
 function createMockSchedules() {
   return [
     {
+      ...mockScheduleBase(),
       id: "f0000001-0000-4000-a000-000000000001",
       agentId: "c0000000-0000-4000-a000-000000000001",
       displayName: "Zero",
@@ -28,17 +41,9 @@ function createMockSchedules() {
       lastRunAt: null,
       createdAt: "2026-03-01T00:00:00Z",
       updatedAt: "2026-03-01T00:00:00Z",
-      userId: "test-user-123",
-      appendSystemPrompt: null,
-      vars: null,
-      secretNames: null,
-      artifactName: null,
-      artifactVersion: null,
-      volumeVersions: null,
-      retryStartedAt: null,
-      consecutiveFailures: 0,
     },
     {
+      ...mockScheduleBase(),
       id: "f0000001-0000-4000-a000-000000000002",
       agentId: "c0000000-0000-4000-a000-000000000001",
       displayName: "Zero",
@@ -55,17 +60,9 @@ function createMockSchedules() {
       lastRunAt: null,
       createdAt: "2026-03-02T00:00:00Z",
       updatedAt: "2026-03-02T00:00:00Z",
-      userId: "test-user-123",
-      appendSystemPrompt: null,
-      vars: null,
-      secretNames: null,
-      artifactName: null,
-      artifactVersion: null,
-      volumeVersions: null,
-      retryStartedAt: null,
-      consecutiveFailures: 0,
     },
     {
+      ...mockScheduleBase(),
       id: "f0000001-0000-4000-a000-000000000003",
       agentId: "c0000000-0000-4000-a000-000000000001",
       displayName: "Zero",
@@ -82,17 +79,33 @@ function createMockSchedules() {
       lastRunAt: null,
       createdAt: "2026-02-28T00:00:00Z",
       updatedAt: "2026-02-28T00:00:00Z",
-      userId: "test-user-123",
-      appendSystemPrompt: null,
-      vars: null,
-      secretNames: null,
-      artifactName: null,
-      artifactVersion: null,
-      volumeVersions: null,
-      retryStartedAt: null,
-      consecutiveFailures: 0,
     },
   ];
+}
+
+function mockDeployResponse() {
+  return {
+    schedule: {
+      ...mockScheduleBase(),
+      id: "d0000001-0000-4000-a000-000000000001",
+      agentId: "c0000000-0000-4000-a000-000000000001",
+      displayName: "Zero",
+      name: "new-schedule",
+      triggerType: "cron",
+      cronExpression: "0 9 * * *",
+      atTime: null,
+      intervalSeconds: null,
+      timezone: "UTC",
+      prompt: "Daily standup summary",
+      description: null,
+      enabled: true,
+      nextRunAt: null,
+      lastRunAt: null,
+      createdAt: "2026-04-01T00:00:00Z",
+      updatedAt: "2026-04-01T00:00:00Z",
+    },
+    created: true,
+  };
 }
 
 function mockScheduleAPI(schedules = createMockSchedules()) {
@@ -410,9 +423,7 @@ describe("zero schedule page - create dialog", () => {
       }),
       http.post("*/api/zero/schedules", async ({ request }) => {
         capturedBody = (await request.json()) as Record<string, unknown>;
-        return HttpResponse.json({
-          schedule: { id: "schedule-new" },
-        });
+        return HttpResponse.json(mockDeployResponse());
       }),
       http.get("*/api/zero/chat-threads", () => {
         return HttpResponse.json({ threads: [] });
@@ -858,7 +869,7 @@ describe("zero schedule page - create dialog timezone default", () => {
       }),
       http.post("*/api/zero/schedules", async ({ request }) => {
         capturedBody = (await request.json()) as Record<string, unknown>;
-        return HttpResponse.json({ schedule: { id: "schedule-new" } });
+        return HttpResponse.json(mockDeployResponse());
       }),
       http.get("*/api/zero/chat-threads", () => {
         return HttpResponse.json({ threads: [] });
@@ -903,7 +914,7 @@ describe("zero schedule page - create dialog timezone default", () => {
       }),
       http.post("*/api/zero/schedules", async ({ request }) => {
         capturedBody = (await request.json()) as Record<string, unknown>;
-        return HttpResponse.json({ schedule: { id: "schedule-new" } });
+        return HttpResponse.json(mockDeployResponse());
       }),
       http.get("*/api/zero/chat-threads", () => {
         return HttpResponse.json({ threads: [] });

@@ -506,12 +506,14 @@ export function ZeroSchedulePage() {
             : {}),
         },
         pageSignal,
-      ).then((scheduleId) => {
-        setCreateOpen(false);
-        navigate("/schedules/:id", {
-          pathParams: { id: scheduleId },
-        });
-      }),
+      )
+        .then((scheduleId) => {
+          setCreateOpen(false);
+          navigate("/schedules/:id", {
+            pathParams: { id: scheduleId },
+          });
+        })
+        .catch(() => {}),
       Reason.DomCallback,
     );
   };
