@@ -691,38 +691,55 @@ const creatingNewSession = useGet(zeroCreatingNewSession$);
 - Requires `try/finally` discipline — forgetting `finally` leaves the UI stuck
 - The boolean is a shadow of the promise's settlement status — redundant bookkeeping
 
-**Fix: Store the promise in a state, derive loading from async computed**
+**Fix: `useLoadableSet` — view-side only, zero signal changes**
+
+`useLoadableSet` from `ccstate-react/experimental` wraps an existing `command` and exposes its promise lifecycle as a `Loadable` — no new signals, no wrapper commands, no promise-holding state.
 
 ```typescript
-// ✅ Loading state derived from promise settlement via useLoadable
-const internalCreatingPromise$ = state<Promise<void> | undefined>(undefined);
+// signals file — command stays exactly as-is, no wrapper needed
+export const completeOnboarding$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    // ... async work, may throw on error ...
+    return agentId;
+  },
+);
 
-const internalCreateNewChatSession$ = command(async ({ get, set }, agentId: string | null) => {
-  const thread = await createChatThread(client, agentId);
-  set(navigateToChat$, thread.id);
-});
+// view file
+import { useLoadableSet } from "ccstate-react/experimental";
 
-export const createNewChatSession$ = command(({ get, set }, agentId: string | null) => {
-  const promise = set(internalCreateNewChatSession$, agentId);
-  set(internalCreatingPromise$, promise);
-  return promise;
-});
+function WhereToWorkContent() {
+  const [loadable, continueWeb] = useLoadableSet(completeOnboarding$);
 
-export const creatingNewSession$ = computed(async (get) => {
-  await get(internalCreatingPromise$);
-});
+  const saving = loadable.state === "loading";
+  const error = loadable.state === "hasError" ? String(loadable.error) : null;
 
-// View: loading state derived automatically
-const loadable = useLoadable(creatingNewSession$);
-<button disabled={loadable.state === "loading"}>New Chat</button>
+  return (
+    <>
+      {error && <ErrorBanner>{error}</ErrorBanner>}
+      <button
+        disabled={saving}
+        onClick={() => detach(continueWeb(pageSignal), Reason.DomCallback)}
+      >
+        {saving ? "Setting up..." : "Continue"}
+      </button>
+    </>
+  );
+}
 ```
 
-**How it works:**
-1. Command stores its promise into `internalCreatingPromise$`
-2. `creatingNewSession$` (async computed) awaits that promise
-3. `useLoadable` reports `"loading"` while promise is pending, `"hasData"` when resolved, `"hasError"` when rejected
-4. No manual boolean, no `try/finally` — promise settlement is the single source of truth
-5. While `state === "loading"`, the button is disabled, naturally preventing double-clicks
+**How `useLoadableSet` works:**
+1. Returns `[loadable, setter]` — `setter` is the same function as `useSet(command$)`, but its promise is tracked
+2. `loadable.state` is `"loading"` while the promise is pending, `"hasData"` when resolved, `"hasError"` when rejected
+3. Before the first call, `loadable.state` is `"hasData"` with `data === undefined`
+4. Each new call resets the loadable to `"loading"` — naturally prevents double-clicks
+
+**Signal-side cleanup:** After switching to `useLoadableSet`, remove the manual loading/error infrastructure:
+- Delete `internalSaving$` / `internalLoading$` state and its computed export
+- Delete `internalError$` state, its computed export, and `clearError$` command
+- Remove `try/finally` wrapper from the command — let errors propagate naturally
+- Remove error-related tests that tested manual error state management (the view now owns error display)
+
+**Multiple consumers:** If multiple components need the same command's loading state, each component independently uses `useLoadableSet(command$)` — they each get their own loadable tracking the same command. Do NOT use a promise-in-state pattern as a workaround; that is also an anti-pattern (manual promise bookkeeping in the signal layer).
 
 ### Correct Usage of State
 
