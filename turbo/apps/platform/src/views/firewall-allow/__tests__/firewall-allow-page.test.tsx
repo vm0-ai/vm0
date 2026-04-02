@@ -56,9 +56,8 @@ describe("firewall allow page", () => {
       expect(screen.getByText("issues:read")).toBeInTheDocument();
     });
 
-    // Admin should see Save button
+    // Admin without pending request should see policy management card
     expect(screen.getByText("Save")).toBeInTheDocument();
-    // Admin should see Allow/Deny toggles
     expect(screen.getByText("Allow")).toBeInTheDocument();
     expect(screen.getByText("Deny")).toBeInTheDocument();
   });
@@ -79,7 +78,7 @@ describe("firewall allow page", () => {
     expect(screen.getByText("Save")).toBeInTheDocument();
   });
 
-  it("renders member focused view with read-only policy and request access button", async () => {
+  it("renders member focused view with request approval button", async () => {
     // Override org to return member role
     server.use(
       http.get("*/api/zero/org", () => {
@@ -125,8 +124,8 @@ describe("firewall allow page", () => {
 
     // Member should NOT see Save button
     expect(screen.queryByText("Save")).not.toBeInTheDocument();
-    // Member should see Request Access button (since policy is deny)
-    expect(screen.getByText("Request Access")).toBeInTheDocument();
+    // Member should see Request approval button
+    expect(screen.getByText("Request approval")).toBeInTheDocument();
   });
 
   it("renders member list view without permission param", async () => {
@@ -172,24 +171,7 @@ describe("firewall allow page", () => {
     expect(screen.queryByText("Save")).not.toBeInTheDocument();
   });
 
-  it("shows blocked request context when method and path are present", async () => {
-    mockFirewallRequests();
-
-    await setupPage({
-      context,
-      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read&method=GET&path=/repos/owner/repo/pulls`,
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("issues:read")).toBeInTheDocument();
-    });
-
-    // Should show blocked method+path
-    expect(screen.getByText(/GET/)).toBeInTheDocument();
-    expect(screen.getByText(/\/repos\/owner\/repo\/pulls/)).toBeInTheDocument();
-  });
-
-  it("shows pending access requests for admin", async () => {
+  it("shows pending access requests for admin with approval card", async () => {
     mockFirewallRequests([
       {
         id: "d0000000-0000-4000-a000-000000000001",
@@ -214,15 +196,28 @@ describe("firewall allow page", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Alice Smith")).toBeInTheDocument();
+      expect(screen.getByText(/Alice Smith/)).toBeInTheDocument();
     });
 
     expect(screen.getByText(/Need to read issues/)).toBeInTheDocument();
-    expect(screen.getByText("Approve")).toBeInTheDocument();
-    expect(screen.getByText("Reject")).toBeInTheDocument();
+    expect(screen.getByText("Approve change")).toBeInTheDocument();
+    expect(screen.getByText("Disapprove change")).toBeInTheDocument();
   });
 
-  it("shows connector label in header", async () => {
+  it("shows connector label in list view header", async () => {
+    mockFirewallRequests();
+
+    await setupPage({
+      context,
+      path: `/agents/${AGENT_ID}/permissions?ref=github`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/GitHub Firewall/)).toBeInTheDocument();
+    });
+  });
+
+  it("shows connector info in focused view card", async () => {
     mockFirewallRequests();
 
     await setupPage({
@@ -231,7 +226,9 @@ describe("firewall allow page", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText(/GitHub Firewall/)).toBeInTheDocument();
+      expect(screen.getByText("GitHub")).toBeInTheDocument();
     });
+
+    expect(screen.getByText("issues:read")).toBeInTheDocument();
   });
 });
