@@ -20,6 +20,12 @@ interface OrgData {
   tier: string;
 }
 
+interface OrgMetadata {
+  orgId: string;
+  tier: string;
+  credits: number;
+}
+
 /**
  * Read tier from the org table (source of truth).
  * Returns "free" if the org row does not exist.
@@ -35,10 +41,35 @@ async function readTier(orgId: string): Promise<string> {
 }
 
 /**
+ * Read org metadata from the platform-owned org_metadata table.
+ * Returns tier, credits, and other platform fields.
+ *
+ * Unlike getOrgData(), this function NEVER calls the Clerk API —
+ * it only reads from our own database.
+ */
+export async function getOrgMetadata(orgId: string): Promise<OrgMetadata> {
+  const db = globalThis.services.db;
+  const [row] = await db
+    .select({ tier: orgMetadata.tier, credits: orgMetadata.credits })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, orgId))
+    .limit(1);
+  return {
+    orgId,
+    tier: row?.tier ?? "free",
+    credits: row?.credits ?? 0,
+  };
+}
+
+/**
  * Get org data from cache or Clerk API.
  *
- * - slug: cached from Clerk (org_cache, 1-min TTL)
- * - tier: read from org table (owned by platform, always fresh)
+ * **WARNING: This function may call the Clerk API on cache miss (1-min TTL),
+ * adding 500-700ms of latency. Prefer `getOrgMetadata()` unless you need
+ * slug or name from Clerk.**
+ *
+ * - slug, name: cached from Clerk (org_cache, 1-min TTL)
+ * - tier: read from org_metadata table (platform-owned, always fresh)
  */
 export async function getOrgData(orgId: string): Promise<OrgData> {
   const db = globalThis.services.db;

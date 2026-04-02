@@ -29,7 +29,7 @@ import {
   buildZeroExecutionContext,
   MODEL_PROVIDER_ENV_VARS,
 } from "./build-zero-context";
-import { getOrgData } from "../org/org-cache-service";
+import { getOrgMetadata } from "../org/org-cache-service";
 import {
   isConcurrentRunLimit,
   insufficientCredits,
@@ -302,8 +302,8 @@ export async function createZeroRunRecord(
     composeId: params.agentId,
     sessionId: params.sessionId,
   });
-  const orgData = await getOrgData(resolved.orgId);
-  const orgTier = orgTierSchema.parse(orgData.tier);
+  const orgMeta = await getOrgMetadata(resolved.orgId);
+  const orgTier = orgTierSchema.parse(orgMeta.tier);
 
   // 2. Construct CreateRunParams (infra knows nothing about ZERO_TOKEN)
   const runParams: CreateRunParams = {

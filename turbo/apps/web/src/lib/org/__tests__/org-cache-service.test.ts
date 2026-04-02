@@ -15,6 +15,7 @@ import {
 import { reloadEnv } from "../../../env";
 import {
   getOrgData,
+  getOrgMetadata,
   getOrgBySlug,
   getOrgBillingPeriod,
 } from "../org-cache-service";
@@ -414,5 +415,63 @@ describe("getOrgBillingPeriod", () => {
     const result = await getOrgBillingPeriod(orgId);
 
     expect(result).toBeNull();
+  });
+});
+
+describe("getOrgMetadata", () => {
+  beforeEach(() => {
+    context.setupMocks();
+  });
+
+  it("returns tier and credits from org_metadata when row exists", async () => {
+    const userId = uniqueId("test-user");
+    const slug = uniqueId("org");
+    mockClerk({ userId });
+    const { id: orgId } = await createTestOrg(slug);
+
+    await updateOrgTier(orgId, "pro");
+
+    const result = await getOrgMetadata(orgId);
+
+    expect(result).toEqual({
+      orgId,
+      tier: "pro",
+      credits: 10_000,
+    });
+
+    // Clerk API should NOT have been called
+    const client = await clerkClient();
+    expect(client.organizations.getOrganization).not.toHaveBeenCalled();
+  });
+
+  it("returns free tier with zero credits when no row exists", async () => {
+    const orgId = uniqueId("org-nonexistent");
+
+    const result = await getOrgMetadata(orgId);
+
+    expect(result).toEqual({
+      orgId,
+      tier: "free",
+      credits: 0,
+    });
+
+    // Clerk API should NOT have been called
+    const client = await clerkClient();
+    expect(client.organizations.getOrganization).not.toHaveBeenCalled();
+  });
+
+  it("returns default credits for new org", async () => {
+    const userId = uniqueId("test-user");
+    const slug = uniqueId("org");
+    mockClerk({ userId });
+    const { id: orgId } = await createTestOrg(slug);
+
+    const result = await getOrgMetadata(orgId);
+
+    expect(result).toEqual({
+      orgId,
+      tier: "free",
+      credits: 10_000,
+    });
   });
 });
