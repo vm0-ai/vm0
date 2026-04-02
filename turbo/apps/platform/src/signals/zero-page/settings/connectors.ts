@@ -8,14 +8,12 @@ import {
   zeroVariablesContract,
   type ConnectorType,
   type ConnectorResponse,
-  type ScopeDiff,
 } from "@vm0/core";
 import { featureSwitch$ } from "../../external/feature-switch.ts";
 import { connectors$, reloadConnectors$ } from "../../external/connectors.ts";
 import { apiBaseForNavigation$ } from "../../fetch.ts";
 import { zeroClient$ } from "../../api-client.ts";
 import { throwIfAbort } from "../../utils.ts";
-import { logger } from "../../log.ts";
 import { delay } from "signal-timers";
 import { localStorageSignals } from "../../external/local-storage.ts";
 
@@ -152,51 +150,28 @@ export const setSelectedConnectorType$ = command(
 // Scope review modal state
 // ---------------------------------------------------------------------------
 
-const L = logger("ScopeReviewModal");
-
 const internalScopeReviewType$ = state<ConnectorType | null>(null);
 export const scopeReviewType$ = computed((get) => {
   return get(internalScopeReviewType$);
 });
 
-const internalScopeDiff$ = state<ScopeDiff | null>(null);
-export const scopeDiff$ = computed((get) => {
-  return get(internalScopeDiff$);
+export const scopeDiff$ = computed(async (get) => {
+  const type = get(internalScopeReviewType$);
+  if (!type) {
+    return null;
+  }
+  const createClient = get(zeroClient$);
+  const client = createClient(zeroConnectorScopeDiffContract);
+  const result = await client.getScopeDiff({ params: { type } });
+  if (result.status === 200) {
+    return result.body;
+  }
+  throw new Error(`Failed to fetch scope diff: ${result.status}`);
 });
-
-const internalScopeReviewLoading$ = state(false);
-export const scopeReviewLoading$ = computed((get) => {
-  return get(internalScopeReviewLoading$);
-});
-
-const loadScopeDiff$ = command(
-  async ({ get, set }, type: ConnectorType, _signal: AbortSignal) => {
-    const createClient = get(zeroClient$);
-    const client = createClient(zeroConnectorScopeDiffContract);
-    try {
-      const result = await client.getScopeDiff({ params: { type } });
-      if (result.status === 200) {
-        set(internalScopeDiff$, result.body);
-      } else {
-        L.error(`Failed to fetch scope diff: ${result.status}`, result.body);
-      }
-    } catch (error: unknown) {
-      throwIfAbort(error);
-      L.error("Failed to fetch scope diff:", error);
-    } finally {
-      set(internalScopeReviewLoading$, false);
-    }
-  },
-);
 
 export const setScopeReviewType$ = command(
-  async ({ set }, type: ConnectorType | null, signal: AbortSignal) => {
+  ({ set }, type: ConnectorType | null) => {
     set(internalScopeReviewType$, type);
-    if (type) {
-      set(internalScopeDiff$, null);
-      set(internalScopeReviewLoading$, true);
-      await set(loadScopeDiff$, type, signal);
-    }
   },
 );
 

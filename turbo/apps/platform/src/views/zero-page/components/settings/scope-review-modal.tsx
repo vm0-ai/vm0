@@ -1,4 +1,4 @@
-import { useGet } from "ccstate-react";
+import { useLoadable } from "ccstate-react";
 import {
   Dialog,
   DialogContent,
@@ -7,10 +7,7 @@ import {
 } from "@vm0/ui/components/ui/dialog";
 import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
 import { ConnectorIcon } from "./connector-icons.tsx";
-import {
-  scopeDiff$,
-  scopeReviewLoading$,
-} from "../../../../signals/zero-page/settings/connectors.ts";
+import { scopeDiff$ } from "../../../../signals/zero-page/settings/connectors.ts";
 
 interface ScopeReviewModalProps {
   connectorType: ConnectorType | null;
@@ -23,8 +20,10 @@ export function ScopeReviewModal({
   onClose,
   onReconnect,
 }: ScopeReviewModalProps) {
-  const scopeDiff = useGet(scopeDiff$);
-  const loading = useGet(scopeReviewLoading$);
+  const scopeDiffLoadable = useLoadable(scopeDiff$);
+  const loading = scopeDiffLoadable.state === "loading";
+  const scopeDiff =
+    scopeDiffLoadable.state === "hasData" ? scopeDiffLoadable.data : null;
 
   if (!connectorType) {
     return null;

@@ -1,4 +1,5 @@
-import { useGet, useLastResolved, useSet } from "ccstate-react";
+import { useGet, useLastResolved } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import {
   Select,
@@ -15,31 +16,21 @@ import {
   updateUserPreference$,
 } from "../../../../signals/zero-page/settings/user-preferences.ts";
 import {
-  timezoneSaving$,
-  setTimezoneSaving$,
-} from "../../../../signals/zero-page/settings/preferences-page.ts";
-import {
   COMMON_TIMEZONES,
   getTimezoneLabel,
 } from "../../../../signals/zero-page/cron.ts";
 
 export function TimezoneSettings() {
   const preferences = useLastResolved(userPreferences$);
-  const updatePreference = useSet(updateUserPreference$);
+  const [tzLoadable, updatePreference] = useLoadableSet(updateUserPreference$);
   const pageSignal = useGet(pageSignal$);
 
-  const loading = useGet(timezoneSaving$);
-  const setLoading = useSet(setTimezoneSaving$);
+  const loading = tzLoadable.state === "loading";
 
   const handleChange = (value: string) => {
-    setLoading(true);
-    updatePreference({ timezone: value }, pageSignal)
-      .finally(() => {
-        setLoading(false);
-      })
-      .catch(() => {
-        toast.error("Failed to update timezone");
-      });
+    updatePreference({ timezone: value }, pageSignal).catch(() => {
+      toast.error("Failed to update timezone");
+    });
   };
 
   if (!preferences) {

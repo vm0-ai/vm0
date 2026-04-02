@@ -6,6 +6,7 @@ import {
   useGet,
   useSet,
 } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   IconChartBar,
@@ -83,7 +84,6 @@ import {
 } from "../../signals/zero-page/zero-chat.ts";
 import {
   pinnedAgentIds$,
-  savingPinnedAgents$,
   updatePinnedAgentIds$,
 } from "../../signals/zero-page/zero-pinned-agents.ts";
 import {
@@ -1240,8 +1240,8 @@ export function ZeroSidebar() {
   const pinnedIdsLoadable = useLastLoadable(pinnedAgentIds$);
   const pinnedIds: string[] =
     pinnedIdsLoadable.state === "hasData" ? pinnedIdsLoadable.data : [];
-  const savingPinned = useGet(savingPinnedAgents$);
-  const savePinnedIds = useSet(updatePinnedAgentIds$);
+  const [pinLoadable, savePinnedIds] = useLoadableSet(updatePinnedAgentIds$);
+  const savingPinned = pinLoadable.state === "loading";
   const setPinnedIds = (ids: string[]) => {
     detach(savePinnedIds(ids, pageSignal), Reason.DomCallback);
   };

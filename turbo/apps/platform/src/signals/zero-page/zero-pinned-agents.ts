@@ -37,21 +37,12 @@ export const pinnedAgentIds$ = computed((get) => {
 });
 
 /**
- * Whether a pinned agents update is in flight.
- */
-const internalSavingPinned$ = state(false);
-export const savingPinnedAgents$ = computed((get) => {
-  return get(internalSavingPinned$);
-});
-
-/**
  * Update pinned agent IDs on the server with optimistic UI.
  */
 export const updatePinnedAgentIds$ = command(
   async ({ get, set }, ids: string[], _signal: AbortSignal) => {
     // Optimistic update — UI reflects the change immediately
     set(optimisticPinnedIds$, ids);
-    set(internalSavingPinned$, true);
     try {
       const createClient = get(zeroClient$);
       const client = createClient(zeroUserPreferencesContract);
@@ -71,7 +62,6 @@ export const updatePinnedAgentIds$ = command(
       });
     } finally {
       set(optimisticPinnedIds$, null);
-      set(internalSavingPinned$, false);
     }
   },
 );

@@ -310,7 +310,7 @@ export function ZeroConnectorsPage() {
           return disconnectHandler(c.type);
         }}
         onReviewScopes={() => {
-          return detach(setScopeReviewType(c.type, signal), Reason.DomCallback);
+          return setScopeReviewType(c.type);
         }}
       />
     );
@@ -434,10 +434,10 @@ export function ZeroConnectorsPage() {
         <ScopeReviewModal
           connectorType={scopeReviewType}
           onClose={() => {
-            return detach(setScopeReviewType(null, signal), Reason.DomCallback);
+            return setScopeReviewType(null);
           }}
           onReconnect={(type) => {
-            detach(setScopeReviewType(null, signal), Reason.DomCallback);
+            setScopeReviewType(null);
             detach(connect(type, signal), Reason.DomCallback);
           }}
         />

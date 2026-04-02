@@ -53,17 +53,3 @@ export const updateSendMode$ = command(
     }
   },
 );
-
-// ---------------------------------------------------------------------------
-// Timezone saving state
-// ---------------------------------------------------------------------------
-
-const internalTimezoneSaving$ = state(false);
-
-export const timezoneSaving$ = computed((get) => {
-  return get(internalTimezoneSaving$);
-});
-
-export const setTimezoneSaving$ = command(({ set }, value: boolean) => {
-  set(internalTimezoneSaving$, value);
-});
