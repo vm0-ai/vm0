@@ -180,7 +180,7 @@
         "!**/vitest.config.ts",
         "!**/src/test/**"
       ],
-      "outputs": [".next/**", "!.next/cache/**", "dist/**", "src/dist/**"]
+      "outputs": [".next/**", "!.next/cache/**", "dist/**", "src/dist/**", ".source/**"]
     },
     "lint": {
       "dependsOn": ["^lint"]
