@@ -13,7 +13,10 @@ import { secrets } from "../../db/schema/secret";
 import { variables } from "../../db/schema/variable";
 import { notFound, badRequest } from "../errors";
 import { logger } from "../logger";
-import { getSecretValue, upsertSecretByOrg } from "../secret/secret-service";
+import {
+  getSecretValue,
+  upsertSecretByOrg,
+} from "../zero/secret/secret-service";
 import { PROVIDER_HANDLERS } from "./provider-registry";
 
 const log = logger("service:connector");

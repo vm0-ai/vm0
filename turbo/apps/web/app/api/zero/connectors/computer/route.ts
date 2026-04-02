@@ -14,7 +14,7 @@ import { getConnector } from "../../../../../src/lib/connector/connector-service
 import {
   createComputerConnector,
   deleteComputerConnector,
-} from "../../../../../src/lib/computer-connector/computer-connector-service";
+} from "../../../../../src/lib/zero/computer-connector/computer-connector-service";
 import {
   isBadRequest,
   isConflict,

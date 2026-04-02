@@ -50,10 +50,10 @@ import {
 } from "../run/resolvers";
 import { expandEnvironmentFromCompose } from "../run/environment";
 import { getUserPreferences } from "./user/user-preferences-service";
-import { getSecretValue, getSecretValues } from "../secret/secret-service";
-import { getVariableValues } from "../variable/variable-service";
-import { getOrgDefaultModelProvider } from "../model-provider/model-provider-service";
-import { getVm0ApiKey } from "../vm0-key/vm0-key-service";
+import { getSecretValue, getSecretValues } from "./secret/secret-service";
+import { getVariableValues } from "./variable/variable-service";
+import { getOrgDefaultModelProvider } from "./model-provider/model-provider-service";
+import { getVm0ApiKey } from "./vm0-key/vm0-key-service";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 import { connectors } from "../../db/schema/connector";
 import { PROVIDER_HANDLERS } from "../connector/provider-registry";

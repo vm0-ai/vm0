@@ -13,7 +13,7 @@ import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import {
   listSecrets,
   setSecret,
-} from "../../../../src/lib/secret/secret-service";
+} from "../../../../src/lib/zero/secret/secret-service";
 import { logger } from "../../../../src/lib/logger";
 import { isBadRequest } from "../../../../src/lib/errors";
 

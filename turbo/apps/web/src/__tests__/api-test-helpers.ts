@@ -119,7 +119,7 @@ import {
 import { conversations } from "../db/schema/conversation";
 import { uniqueId, uniqueNumericId } from "./test-helpers";
 import { vm0ApiKeys } from "../db/schema/vm0-api-key";
-import { getVm0ApiKey } from "../lib/vm0-key/vm0-key-service";
+import { getVm0ApiKey } from "../lib/zero/vm0-key/vm0-key-service";
 
 /**
  * Helper to create a NextRequest for testing.

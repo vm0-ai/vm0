@@ -13,7 +13,7 @@ import {
   isAuthError,
 } from "../../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
-import { deleteOrgModelProvider } from "../../../../../src/lib/model-provider/model-provider-service";
+import { deleteOrgModelProvider } from "../../../../../src/lib/zero/model-provider/model-provider-service";
 import { logger } from "../../../../../src/lib/logger";
 import { isNotFound } from "../../../../../src/lib/errors";
 

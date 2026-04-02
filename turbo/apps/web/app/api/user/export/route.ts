@@ -4,7 +4,7 @@ import { initServices } from "../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import { exportJobs } from "../../../../src/db/schema/export-job";
-import { executeExportJob } from "../../../../src/lib/export/export-service";
+import { executeExportJob } from "../../../../src/lib/zero/export/export-service";
 import { generatePresignedUrl } from "../../../../src/lib/s3/s3-client";
 import { env } from "../../../../src/env";
 

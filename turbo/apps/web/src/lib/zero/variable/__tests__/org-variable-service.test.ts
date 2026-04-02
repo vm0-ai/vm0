@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../../__tests__/test-helpers";
 import {
   listOrgVariables,
   setOrgVariable,
