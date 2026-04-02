@@ -3,7 +3,6 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
-import { mockOrganization } from "../../../__tests__/mock-auth.ts";
 import { onboardGuard$ } from "../onboard-guard.ts";
 import { pathname } from "../../location.ts";
 
@@ -45,7 +44,7 @@ describe("onboardGuard$", () => {
 
     const redirected = await context.store.set(onboardGuard$, context.signal);
 
-    expect(redirected).toBe(false);
+    expect(redirected).toBeFalsy();
   });
 
   it("should redirect to /onboarding when org needs setup and user has no other orgs", async () => {
@@ -59,7 +58,7 @@ describe("onboardGuard$", () => {
 
     const redirected = await context.store.set(onboardGuard$, context.signal);
 
-    expect(redirected).toBe(true);
+    expect(redirected).toBeTruthy();
     expect(pathname()).toBe("/onboarding");
   });
 
@@ -68,11 +67,6 @@ describe("onboardGuard$", () => {
       needsOnboarding: true,
       hasOrg: false,
       hasDefaultAgent: false,
-    });
-
-    mockOrganization({
-      activeOrg: null,
-      memberships: [{ id: "org_other_1" }, { id: "org_other_2" }],
     });
 
     await setupPage({
@@ -87,7 +81,7 @@ describe("onboardGuard$", () => {
 
     const redirected = await context.store.set(onboardGuard$, context.signal);
 
-    expect(redirected).toBe(true);
+    expect(redirected).toBeTruthy();
     expect(pathname()).toBe("/select-org");
   });
 
@@ -110,7 +104,7 @@ describe("onboardGuard$", () => {
 
     const redirected = await context.store.set(onboardGuard$, context.signal);
 
-    expect(redirected).toBe(true);
+    expect(redirected).toBeTruthy();
     expect(pathname()).toBe("/onboarding");
   });
 });

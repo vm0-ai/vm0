@@ -1,6 +1,6 @@
 import { vi } from "vitest";
 
-interface MockedInvitation {
+export interface MockedInvitation {
   id: string;
   accept?: () => Promise<unknown>;
   publicOrganizationData?: {

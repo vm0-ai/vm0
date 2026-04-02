@@ -3,7 +3,12 @@ import { render } from "@testing-library/react";
 import { command, type Store } from "ccstate";
 import { StoreProvider } from "ccstate-react";
 import type { TestContext } from "../signals/__tests__/test-helpers";
-import { clearMockedAuth, mockOrganization, mockUser } from "./mock-auth";
+import {
+  clearMockedAuth,
+  type MockedInvitation,
+  mockOrganization,
+  mockUser,
+} from "./mock-auth";
 import { bootstrap$ } from "../signals/bootstrap";
 import { setupRouter } from "../views/main";
 import {
@@ -29,7 +34,7 @@ export async function setupPage(options: {
   org?: {
     activeOrg?: { id: string; name: string } | null;
     memberships?: { id: string }[];
-    pendingInvitations?: { id: string }[];
+    pendingInvitations?: MockedInvitation[];
   };
   debugLoggers?: string[];
   featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
