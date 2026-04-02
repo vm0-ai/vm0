@@ -18,7 +18,7 @@ import {
 
 import { logger } from "../../logger";
 import type { Database } from "../../../types/global";
-import type { AgentComposeSnapshot } from "../../checkpoint/types";
+import type { AgentComposeSnapshot } from "../checkpoint/types";
 import type { AgentComposeYaml } from "../../../types/agent-compose";
 import { getAgentSessionWithConversation } from "../agent-session";
 import { prepareForExecution } from "./context/execution-preparer";
@@ -26,7 +26,7 @@ import { executeRunnerJob } from "./executors/runner-executor";
 import type { ExecutorResult, PreparedContext } from "./executors/types";
 import { generateSandboxToken } from "../../auth/sandbox-token";
 import type { ExecutionContext, DispatchTimings, ResumeSession } from "./types";
-import type { ArtifactSnapshot } from "../../checkpoint/types";
+import type { ArtifactSnapshot } from "../checkpoint/types";
 import { buildInfraExecutionContext } from "./context/build-context";
 import { recordSandboxOperation } from "../../shared/metrics";
 import { canAccessCompose } from "../agent/compose-access";

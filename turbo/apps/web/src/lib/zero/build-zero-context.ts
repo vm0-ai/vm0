@@ -41,7 +41,7 @@ import {
 } from "../errors";
 import { logger } from "../logger";
 import type { ExecutionContext, ResumeSession } from "../infra/run/types";
-import type { ArtifactSnapshot } from "../checkpoint/types";
+import type { ArtifactSnapshot } from "../infra/checkpoint/types";
 import {
   resolveCheckpoint,
   resolveSession,

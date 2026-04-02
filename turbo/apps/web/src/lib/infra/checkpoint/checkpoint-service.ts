@@ -1,12 +1,12 @@
 import { eq } from "drizzle-orm";
-import { agentRuns } from "../../db/schema/agent-run";
-import { agentComposeVersions } from "../../db/schema/agent-compose";
-import { conversations } from "../../db/schema/conversation";
-import { checkpoints } from "../../db/schema/checkpoint";
-import { notFound } from "../errors";
-import { createAgentSession, updateAgentSession } from "../infra/agent-session";
-import { storeSessionHistory } from "../infra/session-history";
-import { logger } from "../logger";
+import { agentRuns } from "../../../db/schema/agent-run";
+import { agentComposeVersions } from "../../../db/schema/agent-compose";
+import { conversations } from "../../../db/schema/conversation";
+import { checkpoints } from "../../../db/schema/checkpoint";
+import { notFound } from "../../errors";
+import { createAgentSession, updateAgentSession } from "../agent-session";
+import { storeSessionHistory } from "../session-history";
+import { logger } from "../../logger";
 import type {
   CheckpointRequest,
   CheckpointResponse,

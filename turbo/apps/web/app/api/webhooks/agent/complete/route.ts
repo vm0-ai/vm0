@@ -17,7 +17,7 @@ import { getSandboxAuthForRun } from "../../../../../src/lib/auth/get-sandbox-au
 import type {
   ArtifactSnapshot,
   MemorySnapshot,
-} from "../../../../../src/lib/checkpoint";
+} from "../../../../../src/lib/infra/checkpoint";
 import type { RunResult } from "../../../../../src/lib/infra/run/types";
 import { logger } from "../../../../../src/lib/logger";
 import {

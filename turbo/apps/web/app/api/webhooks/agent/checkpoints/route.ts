@@ -8,7 +8,7 @@ import { initServices } from "../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import { eq, and } from "drizzle-orm";
 import { getSandboxAuthForRun } from "../../../../../src/lib/auth/get-sandbox-auth";
-import { createCheckpoint } from "../../../../../src/lib/checkpoint";
+import { createCheckpoint } from "../../../../../src/lib/infra/checkpoint";
 import { logger } from "../../../../../src/lib/logger";
 
 const log = logger("webhook:checkpoints");

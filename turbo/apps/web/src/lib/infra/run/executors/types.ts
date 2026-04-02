@@ -1,6 +1,6 @@
 import type { StorageManifest } from "../../../infra/storage/types";
 import type { ResumeSession } from "../types";
-import type { ArtifactSnapshot } from "../../../checkpoint/types";
+import type { ArtifactSnapshot } from "../../checkpoint/types";
 import type { Firewalls } from "@vm0/core";
 
 /**
