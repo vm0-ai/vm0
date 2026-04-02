@@ -1,5 +1,15 @@
 import { vi } from "vitest";
 
+interface MockedInvitation {
+  id: string;
+  accept?: () => Promise<unknown>;
+  publicOrganizationData?: {
+    id: string;
+    name: string;
+    imageUrl: string;
+  };
+}
+
 interface MockedUser {
   id: string;
   fullName: string;
@@ -7,7 +17,7 @@ interface MockedUser {
   organizationMemberships: { id: string }[];
   getOrganizationInvitations: (params?: {
     status?: string;
-  }) => Promise<{ data: { id: string }[]; total_count: number }>;
+  }) => Promise<{ data: MockedInvitation[]; total_count: number }>;
 }
 
 let internalMockedUser: MockedUser | null = null;
@@ -17,7 +27,7 @@ let internalMockedOrganization: {
   name: string;
   reload: () => Promise<void>;
 } | null = null;
-let internalMockedInvitations: { id: string }[] = [];
+let internalMockedInvitations: MockedInvitation[] = [];
 let internalMockedMemberships: { id: string }[] = [{ id: "org_default" }];
 
 export function mockUser(
@@ -50,7 +60,7 @@ export function mockUser(
 export function mockOrganization(options: {
   activeOrg?: { id: string; name: string } | null;
   memberships?: { id: string }[];
-  pendingInvitations?: { id: string }[];
+  pendingInvitations?: MockedInvitation[];
 }) {
   internalMockedOrganization = options.activeOrg
     ? {

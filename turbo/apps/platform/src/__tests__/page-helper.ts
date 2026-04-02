@@ -29,6 +29,7 @@ export async function setupPage(options: {
   org?: {
     activeOrg?: { id: string; name: string } | null;
     memberships?: { id: string }[];
+    pendingInvitations?: { id: string }[];
   };
   debugLoggers?: string[];
   featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;

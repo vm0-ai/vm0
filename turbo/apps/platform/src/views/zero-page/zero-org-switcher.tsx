@@ -12,17 +12,16 @@ import {
   IconPlus,
   IconMail,
 } from "@tabler/icons-react";
-import { clerk$, watchOrgSwitch$ } from "../../signals/auth.ts";
-import { detach, onRef, Reason } from "../../signals/utils.ts";
+import { clerk$ } from "../../signals/auth.ts";
+import { detach, Reason } from "../../signals/utils.ts";
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { org$ } from "../../signals/org.ts";
 import {
+  orgSwitcherRef$,
   userInvitations$,
   refreshUserInvitations$,
 } from "../../signals/user-invitations.ts";
-
-const orgSwitcherRef$ = onRef(watchOrgSwitch$);
 
 function OrgAvatar({
   name,
@@ -83,17 +82,10 @@ export function ZeroOrgSwitcher() {
 
   const handleAcceptInvitation = (invitation: {
     accept: () => Promise<unknown>;
-    publicOrganizationData: { id: string };
   }) => {
-    if (!clerk) {
-      return;
-    }
     detach(
       invitation.accept().then(() => {
         refreshInvitations();
-        return clerk.setActive({
-          organization: invitation.publicOrganizationData.id,
-        });
       }),
       Reason.DomCallback,
     );
@@ -117,6 +109,8 @@ export function ZeroOrgSwitcher() {
   };
 
   const isClerkReady = clerk !== null;
+  const hasPendingInvitations =
+    pendingInvitations !== undefined && pendingInvitations.length > 0;
 
   return (
     <div ref={orgSwitcherRef}>
@@ -126,7 +120,12 @@ export function ZeroOrgSwitcher() {
             type="button"
             className="w-full flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-sidebar-accent/50 text-sidebar-foreground transition-colors"
           >
-            <OrgAvatar name={orgName} imageUrl={currentOrg?.imageUrl} />
+            <span className="relative shrink-0">
+              <OrgAvatar name={orgName} imageUrl={currentOrg?.imageUrl} />
+              {hasPendingInvitations && (
+                <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-destructive ring-2 ring-sidebar" />
+              )}
+            </span>
             <span className="min-w-0 flex-1 text-left text-sm font-semibold leading-tight truncate">
               {orgName}
             </span>
@@ -191,37 +190,33 @@ export function ZeroOrgSwitcher() {
           )}
 
           {/* Pending invitations */}
-          {pendingInvitations && pendingInvitations.length > 0 && (
+          {hasPendingInvitations && (
             <>
               <DropdownMenuSeparator />
-              <div className="px-3 py-1.5 text-xs font-medium text-muted-foreground">
-                Pending invitations
-              </div>
               {pendingInvitations.map((invitation) => {
                 return (
-                  <DropdownMenuItem
+                  <div
                     key={invitation.id}
-                    onClick={() => {
-                      handleAcceptInvitation(invitation);
-                    }}
-                    className="gap-3 px-3 py-2.5 rounded-lg"
+                    className="flex items-center gap-3 px-3 py-2.5"
                   >
                     <OrgAvatar
                       name={invitation.publicOrganizationData.name}
-                      imageUrl={
-                        invitation.publicOrganizationData.hasImage
-                          ? invitation.publicOrganizationData.imageUrl
-                          : null
-                      }
+                      imageUrl={invitation.publicOrganizationData.imageUrl}
                     />
-                    <span className="truncate flex-1">
+                    <span className="min-w-0 flex-1 text-sm truncate">
                       {invitation.publicOrganizationData.name}
                     </span>
-                    <span className="shrink-0 flex items-center gap-1 text-xs font-medium text-primary">
-                      <IconMail size={14} />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleAcceptInvitation(invitation);
+                      }}
+                      className="shrink-0 flex items-center gap-1 px-2 h-7 rounded-md text-xs font-medium text-muted-foreground border border-border hover:text-foreground hover:bg-accent transition-colors"
+                    >
+                      <IconMail size={13} />
                       Join
-                    </span>
-                  </DropdownMenuItem>
+                    </button>
+                  </div>
                 );
               })}
             </>
