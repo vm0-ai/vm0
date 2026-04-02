@@ -415,6 +415,7 @@ def match_firewall_request(
                                 "permission": perm_name,
                                 "params": all_params,
                                 "rule": rule_str,
+                                "rel_path": rel_path,
                             },
                         )
 
@@ -431,11 +432,14 @@ def _fetch_firewall_headers_sync(
     sandbox_token: str,
     secret_connector_map: dict | None = None,
     vars_map: dict | None = None,
+    auth_base: str | None = None,
 ) -> dict:
     """Synchronous helper — runs in a thread to avoid blocking the event loop."""
     api_url = get_api_url()
     url = f"{api_url}/api/webhooks/agent/firewall/auth"
     body: dict = {"encryptedSecrets": encrypted_secrets, "authHeaders": auth_headers}
+    if auth_base:
+        body["authBase"] = auth_base
     if secret_connector_map:
         body["secretConnectorMap"] = secret_connector_map
     if vars_map:
@@ -462,6 +466,7 @@ async def fetch_firewall_headers(
     sandbox_token: str,
     secret_connector_map: dict | None = None,
     vars_map: dict | None = None,
+    auth_base: str | None = None,
 ) -> dict:
     """Resolve auth headers via server-side decryption.
 
@@ -477,6 +482,7 @@ async def fetch_firewall_headers(
         sandbox_token,
         secret_connector_map,
         vars_map,
+        auth_base,
     )
 
 
@@ -487,9 +493,8 @@ def _build_cache_hit(cached: dict) -> dict | None:
         return {
             "headers": cached["headers"],
             "resolved_secrets": cached.get("resolvedSecrets", []),
-            "refreshed_connectors": [],
-            "refreshed_secrets": [],
             "cache_hit": True,
+            **({"base": cached["base"]} if "base" in cached else {}),
         }
     return None
 
@@ -502,6 +507,7 @@ async def get_firewall_headers(
     sandbox_token: str,
     secret_connector_map: dict | None = None,
     vars_map: dict | None = None,
+    auth_base: str | None = None,
 ) -> dict:
     """Get firewall auth headers with TTL-based caching.
 
@@ -533,22 +539,33 @@ async def get_firewall_headers(
                 return hit
 
         result = await fetch_firewall_headers(
-            encrypted_secrets, auth_headers, sandbox_token, secret_connector_map, vars_map
+            encrypted_secrets,
+            auth_headers,
+            sandbox_token,
+            secret_connector_map,
+            vars_map,
+            auth_base,
         )
         headers = result["headers"]
         resolved_secrets = result.get("resolvedSecrets", [])
-        _firewall_header_cache[cache_key] = {
+        cache_entry: dict = {
             "headers": headers,
             "expiresAt": result.get("expiresAt"),
             "resolvedSecrets": resolved_secrets,
         }
-        return {
+        if result.get("base"):
+            cache_entry["base"] = result["base"]
+        _firewall_header_cache[cache_key] = cache_entry
+        ret: dict = {
             "headers": headers,
             "resolved_secrets": resolved_secrets,
             "refreshed_connectors": result.get("refreshedConnectors", []),
             "refreshed_secrets": result.get("refreshedSecrets", []),
             "cache_hit": False,
         }
+        if result.get("base"):
+            ret["base"] = result["base"]
+        return ret
 
 
 async def handle_firewall_request(
@@ -561,6 +578,7 @@ async def handle_firewall_request(
     sandbox_token = vm_info.get("sandboxToken", "")
     encrypted_secrets = vm_info.get("encryptedSecrets")
     auth_headers = api_entry.get("auth", {}).get("headers", {})
+    auth_base = api_entry.get("auth", {}).get("base")
     secret_connector_map = vm_info.get("secretConnectorMap")
     vars_map = vm_info.get("vars")
 
@@ -600,6 +618,7 @@ async def handle_firewall_request(
             sandbox_token,
             secret_connector_map,
             vars_map,
+            auth_base,
         )
     except Exception as e:
         ctx.log.error(f"[{run_id}] Firewall header fetch failed: {e}")
@@ -624,11 +643,47 @@ async def handle_firewall_request(
     for header_name, header_value in headers.items():
         flow.request.headers[header_name] = header_value
 
+    # Rewrite URL if auth.base is present (webhook-url connectors)
+    resolved_base = token_meta.get("base")
+    if resolved_base:
+        # Split resolved base into path and query parts
+        base_qs_idx = resolved_base.find("?")
+        if base_qs_idx != -1:
+            base_path = resolved_base[:base_qs_idx]
+            base_qs = resolved_base[base_qs_idx + 1 :]
+        else:
+            base_path = resolved_base
+            base_qs = ""
+
+        # Append rel_path to the path portion (not after query string)
+        rel_path = match_info.get("rel_path", "/")
+        if rel_path != "/":
+            new_url = base_path.rstrip("/") + rel_path
+        else:
+            new_url = base_path
+
+        # Collect query strings: base qs + original request qs
+        qs_parts: list[str] = []
+        if base_qs:
+            qs_parts.append(base_qs)
+        orig_url = flow.request.pretty_url
+        orig_qs_idx = orig_url.find("?")
+        if orig_qs_idx != -1:
+            orig_qs = orig_url[orig_qs_idx + 1 :]
+            if orig_qs:
+                qs_parts.append(orig_qs)
+        if qs_parts:
+            new_url += "?" + "&".join(qs_parts)
+
+        flow.request.url = new_url
+        flow.metadata["auth_url_rewrite"] = True
+        ctx.log.info(f"[{run_id}] Firewall URL rewrite: {firewall_base} -> [redacted]")
+
     flow.metadata["firewall_action"] = "ALLOW"
-    flow.metadata["token_resolved_secrets"] = token_meta.get("resolved_secrets", [])
-    flow.metadata["token_refreshed_connectors"] = token_meta.get("refreshed_connectors", [])
-    flow.metadata["token_refreshed_secrets"] = token_meta.get("refreshed_secrets", [])
-    flow.metadata["token_cache_hit"] = token_meta.get("cache_hit", False)
+    flow.metadata["auth_resolved_secrets"] = token_meta.get("resolved_secrets", [])
+    flow.metadata["auth_refreshed_connectors"] = token_meta.get("refreshed_connectors", [])
+    flow.metadata["auth_refreshed_secrets"] = token_meta.get("refreshed_secrets", [])
+    flow.metadata["auth_cache_hit"] = token_meta.get("cache_hit", False)
 
     ctx.log.info(f"[{run_id}] Firewall {firewall_base}: {flow.request.pretty_host}")
 
@@ -773,7 +828,8 @@ def responseheaders(flow: http.HTTPFlow) -> None:
 
 
 def _add_firewall_metadata(flow: http.HTTPFlow, log_entry: dict) -> None:
-    """Copy firewall and token replacement metadata from flow into a log entry."""
+    """Copy firewall and auth metadata from flow into a log entry."""
+    # [NETWORK_LOG_FIELDS] — keep in sync with all network log schemas
     meta = flow.metadata
     log_entry["firewall_base"] = meta.get("firewall_base", "")
     log_entry["firewall_name"] = meta.get("firewall_name", "")
@@ -784,10 +840,11 @@ def _add_firewall_metadata(flow: http.HTTPFlow, log_entry: dict) -> None:
     for key in (
         "firewall_params",
         "firewall_error",
-        "token_resolved_secrets",
-        "token_refreshed_connectors",
-        "token_refreshed_secrets",
-        "token_cache_hit",
+        "auth_resolved_secrets",
+        "auth_refreshed_connectors",
+        "auth_refreshed_secrets",
+        "auth_cache_hit",
+        "auth_url_rewrite",
     ):
         value = meta.get(key)
         if value is not None:
@@ -959,6 +1016,7 @@ def _log_tcp(flow: tcp.TCPFlow) -> None:
     host = server_addr[0] if server_addr else "unknown"
     port = server_addr[1] if server_addr else 0
 
+    # [NETWORK_LOG_FIELDS] — keep in sync with all network log schemas
     log_entry = {
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()),
         "type": "tcp",

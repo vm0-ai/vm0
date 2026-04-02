@@ -39,10 +39,11 @@ interface AxiomNetworkEvent {
   firewall_rule_match?: string;
   firewall_params?: Record<string, string>;
   firewall_error?: string;
-  token_resolved_secrets?: string[];
-  token_refreshed_connectors?: string[];
-  token_refreshed_secrets?: string[];
-  token_cache_hit?: boolean;
+  auth_resolved_secrets?: string[];
+  auth_refreshed_connectors?: string[];
+  auth_refreshed_secrets?: string[];
+  auth_cache_hit?: boolean;
+  auth_url_rewrite?: boolean;
   error?: string;
 }
 
@@ -127,10 +128,11 @@ ${sinceFilter}
         firewall_rule_match: e.firewall_rule_match,
         firewall_params: e.firewall_params,
         firewall_error: e.firewall_error,
-        token_resolved_secrets: e.token_resolved_secrets,
-        token_refreshed_connectors: e.token_refreshed_connectors,
-        token_refreshed_secrets: e.token_refreshed_secrets,
-        token_cache_hit: e.token_cache_hit,
+        auth_resolved_secrets: e.auth_resolved_secrets,
+        auth_refreshed_connectors: e.auth_refreshed_connectors,
+        auth_refreshed_secrets: e.auth_refreshed_secrets,
+        auth_cache_hit: e.auth_cache_hit,
+        auth_url_rewrite: e.auth_url_rewrite,
         error: e.error,
       };
     });

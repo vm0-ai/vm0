@@ -27,6 +27,7 @@ export const firewallApiSchema = z.object({
   base: z.string(),
   auth: z.object({
     headers: z.record(z.string(), z.string()),
+    base: z.string().optional(),
   }),
   permissions: z.array(firewallPermissionSchema).optional(),
 });
@@ -123,6 +124,13 @@ export function extractSecretNamesFromApis(
       for (const match of value.matchAll(basicAuthTemplateRe())) {
         if (match[1] === "secrets" && match[2]) names.add(match[2]);
         if (match[3] === "secrets" && match[4]) names.add(match[4]);
+      }
+    }
+    // Scan auth.base for secret references (webhook-url connectors).
+    // Only simple ${{ secrets.X }} — basic() makes no sense in a URL template.
+    if (entry.auth.base) {
+      for (const match of entry.auth.base.matchAll(AUTH_SECRET_PATTERN)) {
+        names.add(match[1]!);
       }
     }
   }

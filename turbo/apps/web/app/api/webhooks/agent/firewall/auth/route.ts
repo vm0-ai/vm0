@@ -18,6 +18,7 @@ import { basicAuthTemplateRe } from "@vm0/core";
 const bodySchema = z.object({
   encryptedSecrets: z.string().min(1),
   authHeaders: z.record(z.string(), z.string()),
+  authBase: z.string().optional(),
   secretConnectorMap: z.record(z.string(), z.string()).optional(),
   vars: z.record(z.string(), z.string()).optional(),
 });
@@ -233,6 +234,7 @@ async function refreshExpiredTokens(
 /** Collect all secret keys referenced in auth header templates (simple + basic). */
 function collectReferencedSecrets(
   authHeaders: Record<string, string>,
+  authBase?: string,
 ): Set<string> {
   const keys = new Set<string>();
   for (const template of Object.values(authHeaders)) {
@@ -242,6 +244,11 @@ function collectReferencedSecrets(
     for (const match of template.matchAll(basicAuthTemplateRe())) {
       if (match[1] === "secrets" && match[2]) keys.add(match[2]);
       if (match[3] === "secrets" && match[4]) keys.add(match[4]);
+    }
+  }
+  if (authBase) {
+    for (const match of authBase.matchAll(TEMPLATE_RE)) {
+      if (match[1] === "secrets" && match[2]) keys.add(match[2]);
     }
   }
   return keys;
@@ -280,19 +287,23 @@ function resolveBasicArg(
 
 /**
  * Resolve ${{ secrets.XXX }}, ${{ vars.XXX }}, and ${{ basic(...) }} templates
- * in auth header values.
+ * in auth header values and optional auth base URL.
  */
 function resolveTemplates(
   authHeaders: Record<string, string>,
   secrets: Record<string, string>,
   vars: Record<string, string>,
   runId: string,
-): { headers: Record<string, string>; resolvedSecrets: string[] } {
+  authBase?: string,
+): {
+  headers: Record<string, string>;
+  resolvedSecrets: string[];
+  base?: string;
+} {
   const resolvedKeys = new Set<string>();
-  const headers: Record<string, string> = {};
-  for (const [name, template] of Object.entries(authHeaders)) {
-    // Pass 1: resolve simple ${{ secrets.X }} and ${{ vars.X }} templates
-    let resolved = template.replace(
+
+  const resolveSimple = (template: string): string => {
+    return template.replace(
       TEMPLATE_RE,
       (_match, namespace: string, key: string) => {
         if (namespace === "secrets") {
@@ -311,6 +322,12 @@ function resolveTemplates(
         return vars[key] ?? "";
       },
     );
+  };
+
+  const headers: Record<string, string> = {};
+  for (const [name, template] of Object.entries(authHeaders)) {
+    // Pass 1: resolve simple ${{ secrets.X }} and ${{ vars.X }} templates
+    let resolved = resolveSimple(template);
     // Pass 2: resolve ${{ basic(username, password) }} templates
     resolved = resolved.replace(
       basicAuthTemplateRe(),
@@ -336,7 +353,15 @@ function resolveTemplates(
     );
     headers[name] = resolved;
   }
-  return { headers, resolvedSecrets: [...resolvedKeys].sort() };
+
+  // Resolve auth base URL template
+  const resolvedBase = authBase ? resolveSimple(authBase) : undefined;
+
+  return {
+    headers,
+    resolvedSecrets: [...resolvedKeys].sort(),
+    base: resolvedBase,
+  };
 }
 
 /**
@@ -395,7 +420,7 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
-  const { encryptedSecrets, authHeaders, secretConnectorMap, vars } =
+  const { encryptedSecrets, authHeaders, authBase, secretConnectorMap, vars } =
     parsed.data;
 
   // Decrypt secrets
@@ -416,7 +441,7 @@ export async function POST(request: Request) {
   }
 
   // Collect which secret keys are referenced in auth templates
-  const referencedKeys = collectReferencedSecrets(authHeaders);
+  const referencedKeys = collectReferencedSecrets(authHeaders, authBase);
 
   // Refresh expired OAuth tokens (mutates secrets map with fresh values)
   let expiresAt: number | null = null;
@@ -452,15 +477,17 @@ export async function POST(request: Request) {
   }
 
   // Resolve templates with (possibly refreshed) secret values
-  const { headers, resolvedSecrets } = resolveTemplates(
+  const { headers, resolvedSecrets, base } = resolveTemplates(
     authHeaders,
     secrets,
     vars ?? {},
     auth.runId,
+    authBase,
   );
 
   return NextResponse.json({
     headers,
+    base,
     expiresAt,
     resolvedSecrets,
     refreshedConnectors,

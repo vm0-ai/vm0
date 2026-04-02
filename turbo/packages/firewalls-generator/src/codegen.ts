@@ -8,6 +8,15 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
+// ── Constants ────────────────────────────────────────────────────────────
+
+/**
+ * Placeholder host for webhook-url connectors whose credentials are
+ * embedded in the URL path. DNS resolves to a routable address so the
+ * transparent proxy can intercept and rewrite the URL at runtime.
+ */
+export const FIREWALL_PLACEHOLDER_HOST = "firewall-placeholder.vm3.ai";
+
 // ── Types ────────────────────────────────────────────────────────────────
 
 export interface PermissionGroup {

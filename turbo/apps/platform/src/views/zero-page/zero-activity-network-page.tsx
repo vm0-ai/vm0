@@ -177,6 +177,7 @@ function addField(
   }
 }
 
+// [NETWORK_LOG_FIELDS] — keep in sync with all network log schemas
 function collectDetails(entry: NetworkLogEntry): [string, string][] {
   const out: [string, string][] = [];
   addField(out, "Timestamp", entry.timestamp, entry.timestamp);
@@ -245,26 +246,32 @@ function collectDetails(entry: NetworkLogEntry): [string, string][] {
   addField(
     out,
     "Resolved Secrets",
-    entry.token_resolved_secrets,
-    formatValue(entry.token_resolved_secrets),
+    entry.auth_resolved_secrets,
+    formatValue(entry.auth_resolved_secrets),
   );
   addField(
     out,
     "Refreshed Connectors",
-    entry.token_refreshed_connectors,
-    formatValue(entry.token_refreshed_connectors),
+    entry.auth_refreshed_connectors,
+    formatValue(entry.auth_refreshed_connectors),
   );
   addField(
     out,
     "Refreshed Secrets",
-    entry.token_refreshed_secrets,
-    formatValue(entry.token_refreshed_secrets),
+    entry.auth_refreshed_secrets,
+    formatValue(entry.auth_refreshed_secrets),
   );
   addField(
     out,
     "Cache Hit",
-    entry.token_cache_hit,
-    formatValue(entry.token_cache_hit),
+    entry.auth_cache_hit,
+    formatValue(entry.auth_cache_hit),
+  );
+  addField(
+    out,
+    "URL Rewrite",
+    entry.auth_url_rewrite,
+    formatValue(entry.auth_url_rewrite),
   );
   addField(out, "Error", entry.error, formatValue(entry.error));
   return out;

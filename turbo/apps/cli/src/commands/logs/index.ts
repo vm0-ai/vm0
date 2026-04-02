@@ -78,22 +78,27 @@ function formatNetworkDeny(entry: NetworkLogEntry): string {
 }
 
 /**
- * Format token replacement info (resolved secrets, refresh/cache status)
+ * Format auth resolution info (resolved secrets, refresh/cache status, URL rewrite)
  */
-function formatTokenInfo(entry: NetworkLogEntry): string {
-  if (
-    !entry.token_resolved_secrets ||
-    entry.token_resolved_secrets.length === 0
-  ) {
-    return "";
+function formatAuthInfo(entry: NetworkLogEntry): string {
+  const tags: string[] = [];
+  if (entry.auth_url_rewrite) {
+    tags.push("url-rewrite");
   }
-  const refreshedSet = new Set(entry.token_refreshed_secrets ?? []);
-  const parts = entry.token_resolved_secrets.map((name) => {
-    if (refreshedSet.has(name)) return `${name} (refreshed)`;
-    if (entry.token_cache_hit) return `${name} (cached)`;
-    return name;
-  });
-  return ` ${chalk.yellow(`\u2194 ${parts.join(", ")}`)}`;
+  if (entry.auth_resolved_secrets && entry.auth_resolved_secrets.length > 0) {
+    const refreshedSet = new Set(entry.auth_refreshed_secrets ?? []);
+    for (const name of entry.auth_resolved_secrets) {
+      if (refreshedSet.has(name)) {
+        tags.push(`${name} (refreshed)`);
+      } else if (entry.auth_cache_hit) {
+        tags.push(`${name} (cached)`);
+      } else {
+        tags.push(name);
+      }
+    }
+  }
+  if (tags.length === 0) return "";
+  return ` ${chalk.yellow(`\u2194 ${tags.join(", ")}`)}`;
 }
 
 /**
@@ -133,7 +138,7 @@ function formatNetworkRequest(entry: NetworkLogEntry): string {
     ? ` ${chalk.red(entry.firewall_error)}`
     : "";
 
-  return `[${entry.timestamp}] ${method.padEnd(6)} ${statusColor(status)} ${latencyColor(latencyMs + "ms")} ${formatBytes(requestSize)}/${formatBytes(responseSize)} ${chalk.dim(url)}${firewall}${error}${formatTokenInfo(entry)}`;
+  return `[${entry.timestamp}] ${method.padEnd(6)} ${statusColor(status)} ${latencyColor(latencyMs + "ms")} ${formatBytes(requestSize)}/${formatBytes(responseSize)} ${chalk.dim(url)}${firewall}${error}${formatAuthInfo(entry)}`;
 }
 
 /**

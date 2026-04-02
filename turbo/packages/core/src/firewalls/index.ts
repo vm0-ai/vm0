@@ -53,6 +53,7 @@ import { deelFirewall } from "./deel.generated";
 import { devtoFirewall } from "./devto.generated";
 import { difyFirewall } from "./dify.generated";
 import { discordFirewall } from "./discord.generated";
+import { discordWebhookFirewall } from "./discord-webhook.generated";
 import { docusignFirewall } from "./docusign.generated";
 import { dropboxFirewall } from "./dropbox.generated";
 import { elevenlabsFirewall } from "./elevenlabs.generated";
@@ -175,6 +176,7 @@ const CONNECTOR_FIREWALLS = {
   devto: devtoFirewall,
   dify: difyFirewall,
   discord: discordFirewall,
+  "discord-webhook": discordWebhookFirewall,
   docusign: docusignFirewall,
   dropbox: dropboxFirewall,
   elevenlabs: elevenlabsFirewall,
@@ -354,7 +356,6 @@ export type NonFirewallConnectorType =
   | "minio" // AWS Signature V4
   // Webhook URL — token embedded in URL, not auth header
   | "bitrix" // token in URL path (/rest/{user_id}/{token}/)
-  | "discord-webhook" // DISCORD_WEBHOOK_URL
   | "slack-webhook" // SLACK_WEBHOOK_URL
   // Other
   | "computer" // not an API connector

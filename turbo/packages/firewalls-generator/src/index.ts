@@ -32,6 +32,7 @@ import { generate as generateDeel } from "./deel";
 import { generate as generateDevto } from "./devto";
 import { generate as generateDify } from "./dify";
 import { generate as generateDiscord } from "./discord";
+import { generate as generateDiscordWebhook } from "./discord-webhook";
 import { generate as generateDocusign } from "./docusign";
 import { generate as generateDropbox } from "./dropbox";
 import { generate as generateElevenlabs } from "./elevenlabs";
@@ -149,6 +150,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   devto: generateDevto,
   dify: generateDify,
   discord: generateDiscord,
+  "discord-webhook": generateDiscordWebhook,
   docusign: generateDocusign,
   dropbox: generateDropbox,
   elevenlabs: generateElevenlabs,
