@@ -33,6 +33,7 @@ const zeroRunRequestSchema = unifiedRunRequestSchema
   })
   .extend({
     agentId: z.string().optional(),
+    modelProvider: z.string().optional(),
   });
 
 const c = initContract();
