@@ -349,7 +349,16 @@ function WhereToWorkContent() {
         <button
           type="button"
           onClick={() => {
-            detach(addToSlack(pageSignal), Reason.DomCallback);
+            setSaving(true);
+            setError(null);
+            void addToSlack(pageSignal)
+              .then(() => {
+                setSaving(false);
+              })
+              .catch((error: unknown) => {
+                setSaving(false);
+                setError(String(error));
+              });
           }}
           disabled={saving}
           className="flex items-center gap-4 rounded-xl bg-card px-6 py-6 text-left transition-colors hover:bg-muted/30 disabled:opacity-50 zero-border"
