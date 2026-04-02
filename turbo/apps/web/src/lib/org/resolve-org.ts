@@ -6,7 +6,7 @@ import {
   isBadRequest,
   isNotFound,
 } from "../errors";
-import { getOrgMetadata } from "./org-cache-service";
+import { getOrgMetadata, getOrgData } from "./org-cache-service";
 import { orgMetadata } from "../../db/schema/org-metadata";
 import { orgCache } from "../../db/schema/org-cache";
 import { verifyMembershipCached } from "./org-membership-cache";
@@ -140,7 +140,16 @@ export async function resolveOrg(
         .where(eq(orgCache.orgId, effectiveOrgId))
         .limit(1);
       if (!cacheRow) {
-        throw notFound(`Organization ${effectiveOrgId} not found`);
+        // Cold start: org not in our DB yet (e.g. new signup).
+        // Fall back to Clerk API to validate and populate org_cache.
+        try {
+          await getOrgData(effectiveOrgId);
+        } catch (error) {
+          if (isOrgNotFoundError(error)) {
+            throw notFound(`Organization ${effectiveOrgId} not found`);
+          }
+          throw error;
+        }
       }
     }
 
