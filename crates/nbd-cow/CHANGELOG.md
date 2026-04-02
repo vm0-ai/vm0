@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.3](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.2.2...nbd-cow-v0.2.3) (2026-04-02)
+
+
+### Bug Fixes
+
+* **nbd-cow:** address review findings and randomize device scan ([#7603](https://github.com/vm0-ai/vm0/issues/7603)) ([8475b9e](https://github.com/vm0-ai/vm0/commit/8475b9eb110300393da0dffa482778a9bda5422d))
+
 ## [0.2.2](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.2.1...nbd-cow-v0.2.2) (2026-04-01)
 
 

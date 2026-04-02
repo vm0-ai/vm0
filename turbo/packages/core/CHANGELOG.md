@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.138.0](https://github.com/vm0-ai/vm0/compare/core-v8.137.0...core-v8.138.0) (2026-04-02)
+
+
+### Features
+
+* **firewalls:** add fine-grained hubspot firewall permissions from openapi specs ([#7600](https://github.com/vm0-ai/vm0/issues/7600)) ([d410f8f](https://github.com/vm0-ai/vm0/commit/d410f8f973a49f5c429ab77312fdbbbcfaa888e8))
+
 ## [8.137.0](https://github.com/vm0-ai/vm0/compare/core-v8.136.0...core-v8.137.0) (2026-04-01)
 
 

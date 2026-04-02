@@ -1,5 +1,21 @@
 # Changelog
 
+## [12.183.2](https://github.com/vm0-ai/vm0/compare/web-v12.183.1...web-v12.183.2) (2026-04-02)
+
+
+### Refactoring
+
+* decouple infra run path from zero layer ([#7597](https://github.com/vm0-ai/vm0/issues/7597)) ([787738e](https://github.com/vm0-ai/vm0/commit/787738ea295d9ba8256994725afef7d4a0d941e3))
+* delete queued-run infra dispatcher and remove zero imports ([#7607](https://github.com/vm0-ai/vm0/issues/7607)) ([8dcbdce](https://github.com/vm0-ai/vm0/commit/8dcbdce8e3633fae3e5d9d7e07b14edfa363aacd)), closes [#7590](https://github.com/vm0-ai/vm0/issues/7590)
+* remove use-zero-context flag, move cli resolution to route layer ([#7608](https://github.com/vm0-ai/vm0/issues/7608)) ([dfeb41a](https://github.com/vm0-ai/vm0/commit/dfeb41a980d9905070d7fc8da83b17f134f936e8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.138.0
+
 ## [12.183.1](https://github.com/vm0-ai/vm0/compare/web-v12.183.0...web-v12.183.1) (2026-04-01)
 
 
