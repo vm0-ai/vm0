@@ -6,7 +6,7 @@ import {
 import { agentRuns } from "../../../../db/schema/agent-run";
 import { notFound, unauthorized, badRequest } from "../../../errors";
 import { logger } from "../../../logger";
-import { getAgentSessionWithConversation } from "../../../agent-session";
+import { getAgentSessionWithConversation } from "../../agent-session";
 import type { ConversationResolution } from "./types";
 import { extractWorkingDir, extractCliAgentType } from "../utils";
 import { resolveSessionHistory } from "./resolve-session-history";

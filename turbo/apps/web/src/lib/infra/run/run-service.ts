@@ -20,7 +20,7 @@ import { logger } from "../../logger";
 import type { Database } from "../../../types/global";
 import type { AgentComposeSnapshot } from "../../checkpoint/types";
 import type { AgentComposeYaml } from "../../../types/agent-compose";
-import { getAgentSessionWithConversation } from "../../agent-session";
+import { getAgentSessionWithConversation } from "../agent-session";
 import { prepareForExecution } from "./context/execution-preparer";
 import { executeRunnerJob } from "./executors/runner-executor";
 import type { ExecutorResult, PreparedContext } from "./executors/types";

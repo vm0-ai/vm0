@@ -29,7 +29,7 @@ import {
   agentComposeVersions,
   agentComposes,
 } from "../../db/schema/agent-compose";
-import { getAgentSessionWithConversation } from "../agent-session";
+import { getAgentSessionWithConversation } from "../infra/agent-session";
 import { checkpoints } from "../../db/schema/checkpoint";
 import { agentRuns } from "../../db/schema/agent-run";
 import { zeroRuns } from "../../db/schema/zero-run";
