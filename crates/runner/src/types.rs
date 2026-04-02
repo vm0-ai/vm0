@@ -122,6 +122,10 @@ pub struct FirewallPermission {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct FirewallAuth {
     pub headers: std::collections::HashMap<String, String>,
+    /// Optional base URL template for URL rewriting (e.g. webhook-url connectors).
+    /// When set, the proxy rewrites the request URL instead of injecting headers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

@@ -682,6 +682,7 @@ mod tests {
                         "Authorization".to_string(),
                         "Bearer ${{ secrets.GMAIL_TOKEN }}".to_string(),
                     )]),
+                    base: None,
                 },
                 permissions: Some(vec![FirewallPermission {
                     name: "mail-read".to_string(),
@@ -788,5 +789,58 @@ mod tests {
             value["vms"]["10.200.0.6"]["encryptedSecrets"],
             "iv_b64:tag_b64:data_b64"
         );
+    }
+
+    #[tokio::test]
+    async fn registry_firewall_auth_base_serialized() {
+        let dir = tempfile::tempdir().unwrap();
+        let registry_path = dir.path().join("proxy-registry.json");
+        let lock_path = dir.path().join("proxy-registry.lock");
+        let empty = ProxyRegistry {
+            vms: HashMap::new(),
+            updated_at: 0,
+        };
+        write_registry(&registry_path, &empty).await.unwrap();
+
+        let handle = ProxyRegistryHandle {
+            registry_path: registry_path.clone(),
+            lock_path,
+        };
+
+        let firewall_entries = vec![Firewall {
+            name: "discord-webhook".to_string(),
+            ref_key: "discord-webhook".to_string(),
+            apis: vec![FirewallApi {
+                id: String::new(),
+                base: "https://firewall-placeholder.vm3.ai/discord-webhook/hook".to_string(),
+                auth: FirewallAuth {
+                    headers: std::collections::HashMap::new(),
+                    base: Some("${{ secrets.DISCORD_WEBHOOK_URL }}".to_string()),
+                },
+                permissions: None,
+            }],
+        }];
+
+        let registration = VmRegistration {
+            run_id: "run-webhook",
+            sandbox_token: "tok",
+            network_log_path: std::path::Path::new("/tmp/network-run-webhook.jsonl"),
+            firewalls: Some(&firewall_entries),
+            encrypted_secrets: Some("enc_data"),
+            secret_connector_map: None,
+            vars: None,
+        };
+        handle
+            .register_vm("10.200.0.7", &registration)
+            .await
+            .unwrap();
+
+        // Verify auth.base is preserved in the registry JSON.
+        let raw = tokio::fs::read_to_string(&registry_path).await.unwrap();
+        let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        let api = &value["vms"]["10.200.0.7"]["firewalls"][0]["apis"][0];
+        assert_eq!(api["auth"]["base"], "${{ secrets.DISCORD_WEBHOOK_URL }}");
+        // headers should be empty object
+        assert_eq!(api["auth"]["headers"], serde_json::json!({}));
     }
 }

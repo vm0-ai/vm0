@@ -1123,6 +1123,7 @@ mod tests {
                         "Authorization".into(),
                         "Bearer ${{ secrets.GMAIL_TOKEN }}".into(),
                     )]),
+                    base: None,
                 },
                 permissions: None,
             }],
