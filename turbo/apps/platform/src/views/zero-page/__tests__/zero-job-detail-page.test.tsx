@@ -376,7 +376,7 @@ describe("zero job detail page - schedule tab toggle", () => {
       }),
     );
 
-    await setupPage({ context, path: "/team/my-agent?tab=schedule" });
+    await setupPage({ context, path: "/agents/my-agent?tab=schedule" });
 
     await waitFor(() => {
       expect(
