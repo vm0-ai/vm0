@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
+import { delay } from "signal-timers";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
@@ -85,7 +86,7 @@ describe("recent thread skeleton (#7546)", () => {
     // Use a delayed response instead of never-resolving to avoid afterEach timeout.
     server.use(
       http.get("*/api/zero/chat-threads", async () => {
-        await new Promise((r) => setTimeout(r, 5000));
+        await delay(5000);
         return HttpResponse.json({ threads: [] });
       }),
     );
@@ -97,7 +98,7 @@ describe("recent thread skeleton (#7546)", () => {
     // (retained by useLastLoadable) instead of skeleton placeholders.
     await waitFor(() => {
       const nav = screen.getByRole("navigation");
-      expect(nav.querySelectorAll(".animate-pulse").length).toBe(0);
+      expect(nav.querySelectorAll(".animate-pulse")).toHaveLength(0);
       expect(within(nav).getByText("My test conversation")).toBeInTheDocument();
     });
   });
