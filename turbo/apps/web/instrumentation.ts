@@ -8,7 +8,7 @@ export async function register() {
       initServices();
       const { logger } = await import("./src/lib/logger");
       const log = logger("instrumentation");
-      const { syncSkills } = await import("./src/lib/skills/sync-skills");
+      const { syncSkills } = await import("./src/lib/zero/skills/sync-skills");
       syncSkills().catch((error: unknown) => {
         log.error("Failed to sync skills on startup", {
           error: error instanceof Error ? error.message : String(error),

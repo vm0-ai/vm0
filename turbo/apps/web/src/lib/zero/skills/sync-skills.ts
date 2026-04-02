@@ -28,13 +28,17 @@ import { downloadAndExtractSkills, type ExtractedSkill } from "./tarball";
 import {
   computeSystemSkillHash,
   type FileEntryWithHash,
-} from "../infra/storage/content-hash";
-import { putS3Object, listS3Objects, deleteS3Objects } from "../s3/s3-client";
-import { skills } from "../../db/schema/skill";
-import { storages, storageVersions } from "../../db/schema/storage";
-import { env } from "../../env";
-import { logger } from "../logger";
-import { SEED_SKILLS } from "../zero/seed-skills";
+} from "../../infra/storage/content-hash";
+import {
+  putS3Object,
+  listS3Objects,
+  deleteS3Objects,
+} from "../../s3/s3-client";
+import { skills } from "../../../db/schema/skill";
+import { storages, storageVersions } from "../../../db/schema/storage";
+import { env } from "../../../env";
+import { logger } from "../../logger";
+import { SEED_SKILLS } from "../seed-skills";
 
 const log = logger("skills:sync");
 
