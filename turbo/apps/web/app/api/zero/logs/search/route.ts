@@ -1,27 +1,30 @@
+/**
+ * Zero API - Logs Search Endpoint
+ *
+ * GET /api/zero/logs/search - Search agent events across runs
+ */
 import {
   createHandler,
   tsr,
   TsRestResponse,
-} from "../../../../src/lib/ts-rest-handler";
-import { logsSearchContract } from "@vm0/core";
-import { initServices } from "../../../../src/lib/init-services";
-import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
-import { resolveOrg } from "../../../../src/lib/org/resolve-org";
-import { handleSearchLogs } from "../../../../src/lib/run/log-search-service";
+} from "../../../../../src/lib/ts-rest-handler";
+import { zeroLogsSearchContract } from "@vm0/core";
+import { initServices } from "../../../../../src/lib/init-services";
+import {
+  requireAuth,
+  isAuthError,
+} from "../../../../../src/lib/auth/require-auth";
+import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
+import { handleSearchLogs } from "../../../../../src/lib/run/log-search-service";
 
-const router = tsr.router(logsSearchContract, {
+const router = tsr.router(zeroLogsSearchContract, {
   searchLogs: async ({ query, headers }) => {
     initServices();
 
-    const authCtx = await getAuthContext(headers.authorization);
-    if (!authCtx) {
-      return {
-        status: 401 as const,
-        body: {
-          error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-        },
-      };
-    }
+    const authCtx = await requireAuth(headers.authorization, {
+      requiredCapability: "agent-run:read",
+    });
+    if (isAuthError(authCtx)) return authCtx;
     const { userId } = authCtx;
 
     const { org } = await resolveOrg(authCtx);
@@ -54,7 +57,7 @@ function errorHandler(err: unknown): TsRestResponse | void {
   return undefined;
 }
 
-const handler = createHandler(logsSearchContract, router, {
+const handler = createHandler(zeroLogsSearchContract, router, {
   errorHandler,
 });
 

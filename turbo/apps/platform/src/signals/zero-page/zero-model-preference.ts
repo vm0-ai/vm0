@@ -1,21 +1,10 @@
 import { command } from "ccstate";
 import { currentDraft$ } from "./chat-draft.ts";
 import { currentAgentId$ } from "./agent.ts";
-
-function readModelPreference(key: string): string {
-  if (typeof window === "undefined") {
-    return "default";
-  }
-  return localStorage.getItem(key) ?? "default";
-}
-
-function writeModelPreference(key: string, value: string) {
-  if (value === "default") {
-    localStorage.removeItem(key);
-  } else {
-    localStorage.setItem(key, value);
-  }
-}
+import {
+  readLocalStorage,
+  writeLocalStorage$,
+} from "../external/local-storage.ts";
 
 function modelStorageKey(agentId: string | null): string {
   return `zero.modelProvider.${agentId ?? "default"}`;
@@ -41,7 +30,8 @@ export const syncModelPreference$ = command(({ get, set }) => {
   const key = modelStorageKey(agentId);
   const draft = get(currentDraft$);
   if (draft) {
-    set(draft.setSelectedModel$, readModelPreference(key));
+    const stored = readLocalStorage(key);
+    set(draft.setSelectedModel$, stored ?? "default");
   }
 });
 
@@ -49,12 +39,15 @@ export const syncModelPreference$ = command(({ get, set }) => {
  * Persist the current model selection to localStorage.
  * Called before sending a message.
  */
-export const persistModelPreference$ = command(({ get }) => {
+export const persistModelPreference$ = command(({ get, set }) => {
   const agentId = get(currentAgentId$);
   const key = modelStorageKey(agentId);
   const draft = get(currentDraft$);
   if (draft) {
     const value = get(draft.selectedModel$);
-    writeModelPreference(key, value);
+    set(writeLocalStorage$, {
+      key,
+      value: value === "default" ? null : value,
+    });
   }
 });

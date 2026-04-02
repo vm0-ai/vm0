@@ -25,7 +25,10 @@ import { zeroAgents } from "../../../../src/db/schema/zero-agent";
 import { zeroRuns } from "../../../../src/db/schema/zero-run";
 import { alias } from "drizzle-orm/pg-core";
 import { conversations } from "../../../../src/db/schema/conversation";
-import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
+import {
+  requireAuth,
+  isAuthError,
+} from "../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../src/lib/org/resolve-org";
 import { isNotFound, isForbidden } from "../../../../src/lib/errors";
 import {
@@ -222,18 +225,13 @@ async function getAvailableFilters(
 }
 
 const router = tsr.router(logsListContract, {
-  list: async ({ query }) => {
+  list: async ({ query, headers }) => {
     initServices();
 
-    const authCtx = await getAuthContext();
-    if (!authCtx) {
-      return {
-        status: 401 as const,
-        body: {
-          error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-        },
-      };
-    }
+    const authCtx = await requireAuth(headers.authorization, {
+      requiredCapability: "agent-run:read",
+    });
+    if (isAuthError(authCtx)) return authCtx;
     const { userId } = authCtx;
 
     const limit = query.limit ?? 20;

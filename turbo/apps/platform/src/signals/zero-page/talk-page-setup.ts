@@ -21,13 +21,19 @@ export const setupTalkPage$ = command(
     // Reset the talk draft on entrance
     set(get(talkDraft$).clear$);
 
+    // Read agent ID from URL immediately (synchronous) and update sidebar
+    // highlight early so the UI responds without waiting for async data.
+    const agentId = get(currentAgentId$);
+    if (agentId) {
+      set(setSidebarChatAgent$, agentId);
+    }
+
     await set(loadInitialData$, signal);
 
     if (await set(onboardGuard$, signal)) {
       return;
     }
 
-    const agentId = get(currentAgentId$);
     if (!agentId) {
       throw new Error("Talk page requires an active agent, but none found");
     }
@@ -41,8 +47,11 @@ export const setupTalkPage$ = command(
     const defaultId = await get(defaultAgentId$);
     signal.throwIfAborted();
 
-    // Sync sidebar: remember this agent so sidebar retains it on non-chat pages.
-    set(setSidebarChatAgent$, agentId === defaultId ? null : agentId);
+    // Correct sidebar to null when chatting with the default agent.
+    if (agentId === defaultId) {
+      set(setSidebarChatAgent$, null);
+    }
+
     let agentName: string;
     if (agentId === defaultId) {
       agentName = (await get(agentDisplayName$)) ?? "Agent";

@@ -663,26 +663,6 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(data.status).toBe("pending");
     });
 
-    it("should use specified model provider when passed", async () => {
-      // Create org-level model provider (build-context resolves org-only)
-      await createTestOrgModelProvider("anthropic-api-key", "test-api-key");
-
-      // Create compose without API key
-      const { composeId } = await createTestCompose(uniqueId("mp-select"), {
-        skipDefaultApiKey: true,
-      });
-
-      const data = await createTestRun(
-        composeId,
-        "Test with specified provider",
-        {
-          modelProvider: "anthropic-api-key",
-        },
-      );
-
-      expect(data.status).toBe("pending");
-    });
-
     it("should skip injection when compose has CLAUDE_CODE_USE_FOUNDRY", async () => {
       // Create compose with alternative auth method
       const { composeId } = await createTestCompose(uniqueId("foundry"), {
@@ -695,33 +675,6 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       const data = await createTestRun(composeId, "Test with Foundry auth");
 
       expect(data.status).toBe("pending");
-    });
-
-    it("should fail with invalid model provider", async () => {
-      // Create compose without API key
-      const { composeId } = await createTestCompose(uniqueId("invalid-mp"), {
-        skipDefaultApiKey: true,
-      });
-
-      // Resolution validates model providers before run creation —
-      // error returned because the specified provider doesn't exist.
-      const request = createTestRequest(
-        "http://localhost:3000/api/agent/runs",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            agentComposeId: composeId,
-            prompt: "Test with invalid provider",
-            modelProvider: "non-existent-provider",
-          }),
-        },
-      );
-      const response = await POST(request);
-      const data = await response.json();
-
-      expect(response.status).toBe(400);
-      expect(data.error.code).toBe("BAD_REQUEST");
     });
 
     it("should auto-inject model provider when no environment block exists", async () => {

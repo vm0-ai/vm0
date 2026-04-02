@@ -366,7 +366,6 @@ export interface StartRunParams {
   memoryName?: string;
   volumeVersions?: Record<string, string>;
   callbacks?: Array<{ url: string; secret: string; payload: unknown }>;
-  modelProvider?: string;
   debugNoMockClaude?: boolean;
   firewallPolicies?: FirewallPolicies;
   allowedConnectorTypes?: ConnectorType[];
@@ -847,7 +846,6 @@ export async function startRun(
     callbacks: params.callbacks,
     resumedFromCheckpointId: params.checkpointId,
     agentName: resolved.agentName,
-    modelProvider: params.modelProvider,
     debugNoMockClaude: params.debugNoMockClaude,
     firewallPolicies: params.firewallPolicies,
     allowedConnectorTypes: params.allowedConnectorTypes,

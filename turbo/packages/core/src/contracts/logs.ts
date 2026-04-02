@@ -130,6 +130,7 @@ export const logsListContract = c.router({
   list: {
     method: "GET",
     path: "/api/zero/logs",
+    headers: authHeadersSchema,
     query: listQuerySchema.extend({
       search: z.string().optional(),
       agent: z.string().optional(),
@@ -142,6 +143,7 @@ export const logsListContract = c.router({
     responses: {
       200: logsListResponseSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
     },
     summary: "List agent run logs with pagination",
   },
@@ -162,6 +164,7 @@ export const logsByIdContract = c.router({
     responses: {
       200: logDetailSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
       404: apiErrorSchema,
     },
     summary: "Get agent run log details by ID",

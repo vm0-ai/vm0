@@ -1,9 +1,17 @@
 import { command, computed, state } from "ccstate";
+import { localStorageSignals } from "./external/local-storage.ts";
 
 export type ThemePreference = "light" | "dark" | "system";
 
+function isThemePreference(v: string | null): v is ThemePreference {
+  return v === "light" || v === "dark" || v === "system";
+}
+
 const internalPreference$ = state<ThemePreference>("system");
 const internalResolved$ = state<"light" | "dark">("light");
+
+const { get$: themeStorageGet$, set$: themeStorageSet$ } =
+  localStorageSignals("theme");
 
 /**
  * Current resolved theme value (always "light" or "dark").
@@ -45,15 +53,15 @@ export const setTheme$ = command(({ set }, preference: ThemePreference) => {
   const resolved = resolveTheme(preference);
   set(internalResolved$, resolved);
   applyTheme(resolved);
-  localStorage.setItem("theme", preference);
+  set(themeStorageSet$, preference);
 });
 
 /**
  * Initialize theme from localStorage or system preference.
  */
-export const initTheme$ = command(({ set }) => {
-  const stored = localStorage.getItem("theme") as ThemePreference | null;
-  const preference = stored ?? "system";
+export const initTheme$ = command(({ get, set }) => {
+  const rawStored = get(themeStorageGet$);
+  const preference = isThemePreference(rawStored) ? rawStored : "system";
   set(internalPreference$, preference);
   const resolved = resolveTheme(preference);
   set(internalResolved$, resolved);
@@ -63,10 +71,8 @@ export const initTheme$ = command(({ set }) => {
   window
     .matchMedia("(prefers-color-scheme: dark)")
     .addEventListener("change", () => {
-      const currentPref = localStorage.getItem(
-        "theme",
-      ) as ThemePreference | null;
-      if (!currentPref || currentPref === "system") {
+      const currentPref = get(themeStorageGet$);
+      if (!isThemePreference(currentPref) || currentPref === "system") {
         const newResolved = window.matchMedia("(prefers-color-scheme: dark)")
           .matches
           ? "dark"

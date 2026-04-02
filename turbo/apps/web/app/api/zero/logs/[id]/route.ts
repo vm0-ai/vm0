@@ -18,7 +18,10 @@ import {
 import { zeroAgents } from "../../../../../src/db/schema/zero-agent";
 import { zeroRuns } from "../../../../../src/db/schema/zero-run";
 import { alias } from "drizzle-orm/pg-core";
-import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
+import {
+  requireAuth,
+  isAuthError,
+} from "../../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../../src/lib/org/resolve-org";
 import { isNotFound, isForbidden } from "../../../../../src/lib/errors";
 import { eq, and } from "drizzle-orm";
@@ -84,18 +87,6 @@ function extractArtifact(runResult: RunResult | null): {
   const name = Object.keys(runResult.artifact)[0] ?? null;
   const version = name ? (runResult.artifact[name] ?? null) : null;
   return { name, version };
-}
-
-/**
- * Create unauthorized response
- */
-function unauthorizedResponse() {
-  return {
-    status: 401 as const,
-    body: {
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    },
-  };
 }
 
 /**
@@ -170,10 +161,10 @@ const router = tsr.router(logsByIdContract, {
   getById: async ({ params, headers }) => {
     initServices();
 
-    const authCtx = await getAuthContext(headers.authorization);
-    if (!authCtx) {
-      return unauthorizedResponse();
-    }
+    const authCtx = await requireAuth(headers.authorization, {
+      requiredCapability: "agent-run:read",
+    });
+    if (isAuthError(authCtx)) return authCtx;
     const { userId } = authCtx;
 
     // Resolve active org from JWT / CLI token / default

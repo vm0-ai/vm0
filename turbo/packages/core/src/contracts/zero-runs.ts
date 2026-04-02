@@ -9,6 +9,7 @@ import {
   queueResponseSchema,
   unifiedRunRequestSchema,
   networkLogsResponseSchema,
+  logsSearchResponseSchema,
 } from "./runs";
 
 /**
@@ -33,6 +34,7 @@ const zeroRunRequestSchema = unifiedRunRequestSchema
   })
   .extend({
     agentId: z.string().optional(),
+    modelProvider: z.string().optional(),
   });
 
 const c = initContract();
@@ -246,10 +248,38 @@ export const zeroRunNetworkLogsContract = c.router({
   },
 });
 
+/**
+ * Zero logs search contract (GET /api/zero/logs/search)
+ * Search agent events across runs via zero token auth
+ */
+export const zeroLogsSearchContract = c.router({
+  searchLogs: {
+    method: "GET",
+    path: "/api/zero/logs/search",
+    headers: authHeadersSchema,
+    query: z.object({
+      keyword: z.string().min(1),
+      agent: z.string().optional(),
+      runId: z.string().optional(),
+      since: z.coerce.number().optional(),
+      limit: z.coerce.number().min(1).max(50).default(20),
+      before: z.coerce.number().min(0).max(10).default(0),
+      after: z.coerce.number().min(0).max(10).default(0),
+    }),
+    responses: {
+      200: logsSearchResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+    },
+    summary: "Search agent events across runs (zero proxy)",
+  },
+});
+
 // Inferred types from Zod schemas
 export type RunContextResponse = z.infer<typeof runContextResponseSchema>;
 
 // Type exports
+export type ZeroLogsSearchContract = typeof zeroLogsSearchContract;
 export type ZeroRunsMainContract = typeof zeroRunsMainContract;
 export type ZeroRunsByIdContract = typeof zeroRunsByIdContract;
 export type ZeroRunsCancelContract = typeof zeroRunsCancelContract;

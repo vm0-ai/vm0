@@ -14,6 +14,10 @@ import {
   syncModelPreference$,
   persistModelPreference$,
 } from "../zero-model-preference.ts";
+import {
+  writeLocalStorage$,
+  readLocalStorage,
+} from "../../external/local-storage.ts";
 
 const context = testContext();
 
@@ -48,7 +52,10 @@ describe("zero-model-preference signals", () => {
 
   it("should sync model preference from localStorage for current agent", async () => {
     await setupTalkRoutes("/agents/my-agent/chat");
-    localStorage.setItem("zero.modelProvider.my-agent", "anthropic");
+    context.store.set(writeLocalStorage$, {
+      key: "zero.modelProvider.my-agent",
+      value: "anthropic",
+    });
 
     context.store.set(syncModelPreference$);
 
@@ -67,7 +74,10 @@ describe("zero-model-preference signals", () => {
 
   it("should use 'default' key when zeroTalkAgentId is null", () => {
     mockLocation({ pathname: "/", search: "" }, context.signal);
-    localStorage.setItem("zero.modelProvider.default", "anthropic");
+    context.store.set(writeLocalStorage$, {
+      key: "zero.modelProvider.default",
+      value: "anthropic",
+    });
 
     context.store.set(syncModelPreference$);
 
@@ -80,23 +90,29 @@ describe("zero-model-preference signals", () => {
 
     context.store.set(persistModelPreference$);
 
-    expect(localStorage.getItem("zero.modelProvider.my-agent")).toBe("openai");
+    expect(readLocalStorage("zero.modelProvider.my-agent")).toBe("openai");
   });
 
   it("should remove localStorage entry when persisting 'default'", async () => {
     await setupTalkRoutes("/agents/my-agent/chat");
-    localStorage.setItem("zero.modelProvider.my-agent", "openai");
+    context.store.set(writeLocalStorage$, {
+      key: "zero.modelProvider.my-agent",
+      value: "openai",
+    });
     context.store.set(setSelectedModel$, "default");
 
     context.store.set(persistModelPreference$);
 
-    expect(localStorage.getItem("zero.modelProvider.my-agent")).toBeNull();
+    expect(readLocalStorage("zero.modelProvider.my-agent")).toBeNull();
   });
 
   it("should reset model selection when agent changes via sync", async () => {
     // Agent-a has a saved preference; agent-b does not.
     // Each sync should read localStorage for the current agent.
-    localStorage.setItem("zero.modelProvider.agent-a", "anthropic");
+    context.store.set(writeLocalStorage$, {
+      key: "zero.modelProvider.agent-a",
+      value: "anthropic",
+    });
 
     // Start on agent-a
     await setupTalkRoutes("/agents/agent-a/chat");
