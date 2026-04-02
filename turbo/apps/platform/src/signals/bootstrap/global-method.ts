@@ -51,7 +51,7 @@ export const setupGlobalMethod$ = command(
       inspectLogs() {
         const input = document.createElement("input");
         input.type = "file";
-        input.accept = ".csv";
+        input.accept = ".json";
         input.style.display = "none";
         document.body.appendChild(input);
 
@@ -68,7 +68,7 @@ export const setupGlobalMethod$ = command(
               }
             })
             .catch((error: unknown) => {
-              L.error("Failed to parse inspect log CSV", error);
+              L.error("Failed to parse inspect log", error);
             });
         });
 

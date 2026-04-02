@@ -9,8 +9,6 @@ export const ROUTES = {
   activities: "/activities",
   activityInspect: "/activities/inspect",
   activityDetail: "/activities/:id",
-  activityContext: "/activities/:id/context",
-  activityNetwork: "/activities/:id/network",
   chat: "/chats/:id",
   schedules: "/schedules",
   scheduleDetail: "/schedules/:id",

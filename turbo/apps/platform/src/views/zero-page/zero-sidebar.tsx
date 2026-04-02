@@ -157,12 +157,7 @@ const MANAGE_NAV = [
   },
   {
     id: "activities",
-    activeKeys: [
-      "activities",
-      "activityDetail",
-      "activityContext",
-      "activityNetwork",
-    ],
+    activeKeys: ["activities", "activityDetail"],
     pathname: "/activities",
     label: "Activity logs",
     icon: IconChartLine as NavIcon,

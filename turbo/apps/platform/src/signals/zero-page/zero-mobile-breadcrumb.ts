@@ -187,12 +187,7 @@ export const mobileBreadcrumb$ = computed(
       return await get(teamDetailBreadcrumb$);
     }
 
-    if (
-      route === "activities" ||
-      route === "activityDetail" ||
-      route === "activityContext" ||
-      route === "activityNetwork"
-    ) {
+    if (route === "activities" || route === "activityDetail") {
       return await get(activityDetailBreadcrumb$);
     }
 

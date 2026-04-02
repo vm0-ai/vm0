@@ -1,6 +1,4 @@
 import { useState } from "react";
-import { useLastLoadable, useGet, useLastResolved } from "ccstate-react";
-import { IconWorldWww, IconChartLine } from "@tabler/icons-react";
 import {
   Table,
   TableBody,
@@ -8,13 +6,8 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-  Skeleton,
 } from "@vm0/ui";
-import { FeatureSwitchKey, type NetworkLogEntry } from "@vm0/core";
-import { Link } from "../router/link.tsx";
-import { currentRunId$ } from "../../signals/activity-page/activity-signals.ts";
-import { zeroActivityNetworkLogs$ } from "../../signals/activity-page/activity-network-signals.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import type { NetworkLogEntry } from "@vm0/core";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -355,136 +348,43 @@ function NetworkLogRow({ entry }: { entry: NetworkLogEntry }) {
 }
 
 // ---------------------------------------------------------------------------
-// Main page
+// Exported content component
 // ---------------------------------------------------------------------------
 
-export function ZeroActivityNetworkPage() {
-  const currentRunId = useGet(currentRunId$);
-  const logsLoadable = useLastLoadable(zeroActivityNetworkLogs$);
-
-  if (logsLoadable.state === "loading" || logsLoadable.state === "hasError") {
-    return <NetworkSkeleton runId={currentRunId} />;
-  }
-
-  const data = logsLoadable.data;
-  if (!data || data.networkLogs.length === 0) {
-    return <NetworkEmpty runId={currentRunId} />;
-  }
-
+export function NetworkContent({
+  networkLogs,
+  hasMore,
+}: {
+  networkLogs: NetworkLogEntry[];
+  hasMore?: boolean;
+}) {
   return (
-    <div className="h-full flex flex-col min-h-0 overflow-hidden">
-      <div className="flex-1 flex flex-col min-h-0 overflow-auto">
-        <Breadcrumb runId={currentRunId} />
-        <div className="mx-auto w-full max-w-[1200px] px-4 sm:px-6 pt-4 pb-8">
-          {data.hasMore && (
-            <p className="text-xs text-muted-foreground mb-3">
-              Showing first {data.networkLogs.length} entries. Some entries may
-              be truncated.
-            </p>
-          )}
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[100px]">Time</TableHead>
-                <TableHead className="w-[60px]">Type</TableHead>
-                <TableHead className="w-[60px]">Method</TableHead>
-                <TableHead>URL / Host</TableHead>
-                <TableHead className="w-[60px]">Status</TableHead>
-                <TableHead className="w-[80px]">Latency</TableHead>
-                <TableHead className="w-[100px]">Firewall</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {data.networkLogs.map((entry, idx) => {
-                const key = `${entry.timestamp}-${entry.type}-${entry.host}-${entry.port}-${entry.url}-${idx}`;
-                return <NetworkLogRow key={key} entry={entry} />;
-              })}
-            </TableBody>
-          </Table>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Shared components
-// ---------------------------------------------------------------------------
-
-function Breadcrumb({ runId }: { runId: string | null }) {
-  const features = useLastResolved(featureSwitch$);
-  return (
-    <nav className="shrink-0 flex items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
-      {features?.[FeatureSwitchKey.ActivityLogList] && (
-        <>
-          <Link
-            pathname="/activities"
-            className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors no-underline text-inherit"
-          >
-            <IconChartLine size={14} stroke={1.5} className="shrink-0" />
-            Activity
-          </Link>
-          <span className="text-muted-foreground/40 select-none">/</span>
-        </>
-      )}
-      {runId && (
-        <>
-          <Link
-            pathname="/activities/:id"
-            options={{ pathParams: { id: runId } }}
-            className="rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors no-underline text-inherit"
-          >
-            Run
-          </Link>
-          <span className="text-muted-foreground/40 select-none">/</span>
-        </>
-      )}
-      <span className="rounded-md px-1.5 py-0.5 text-foreground font-medium">
-        Network
-      </span>
-    </nav>
-  );
-}
-
-function NetworkEmpty({ runId }: { runId: string | null }) {
-  return (
-    <div className="h-full flex flex-col min-h-0">
-      <Breadcrumb runId={runId} />
-      <div className="flex-1 flex flex-col items-center justify-center gap-3 pb-20">
-        <IconWorldWww
-          size={32}
-          stroke={1.5}
-          className="text-muted-foreground"
-        />
-        <h2 className="text-lg font-semibold text-foreground">
-          No network logs
-        </h2>
-        <p className="text-sm text-muted-foreground text-center max-w-sm">
-          No network traffic was recorded for this run.
+    <div className="mx-auto w-full max-w-[1200px] px-4 sm:px-6 pt-4 pb-8">
+      {hasMore && (
+        <p className="text-xs text-muted-foreground mb-3">
+          Showing first {networkLogs.length} entries. Some entries may be
+          truncated.
         </p>
-        {runId && (
-          <Link
-            pathname="/activities/:id"
-            options={{ pathParams: { id: runId } }}
-            className="mt-2 inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium no-underline text-inherit hover:bg-accent"
-          >
-            Back to run
-          </Link>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function NetworkSkeleton({ runId }: { runId: string | null }) {
-  return (
-    <div className="h-full flex flex-col min-h-0">
-      <Breadcrumb runId={runId} />
-      <div className="mx-auto w-full max-w-[1200px] px-4 sm:px-6 pt-4 pb-8 flex flex-col gap-2">
-        {Array.from({ length: 8 }, (_, i) => {
-          return <Skeleton key={i} className="h-8 w-full" />;
-        })}
-      </div>
+      )}
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead className="w-[100px]">Time</TableHead>
+            <TableHead className="w-[60px]">Type</TableHead>
+            <TableHead className="w-[60px]">Method</TableHead>
+            <TableHead>URL / Host</TableHead>
+            <TableHead className="w-[60px]">Status</TableHead>
+            <TableHead className="w-[80px]">Latency</TableHead>
+            <TableHead className="w-[100px]">Firewall</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {networkLogs.map((entry, idx) => {
+            const key = `${entry.timestamp}-${entry.type}-${entry.host}-${entry.port}-${entry.url}-${idx}`;
+            return <NetworkLogRow key={key} entry={entry} />;
+          })}
+        </TableBody>
+      </Table>
     </div>
   );
 }

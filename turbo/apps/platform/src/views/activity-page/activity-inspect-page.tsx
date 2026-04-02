@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useGet, useSet } from "ccstate-react";
 import { IconSearch, IconChartLine, IconUpload } from "@tabler/icons-react";
-import { Button, Input } from "@vm0/ui";
+import { Button, Input, Tabs, TabsList, TabsTrigger } from "@vm0/ui";
 import type {
   LogStatus,
   TriggerSource,
@@ -25,7 +25,11 @@ import {
   loadInspectLogFile$,
   type InspectLogData,
 } from "../../signals/activity-page/inspect-log-signals.ts";
+import { ContextContent } from "../zero-page/components/context-content.tsx";
+import { NetworkContent } from "../zero-page/components/network-content.tsx";
 import { Link } from "../router/link.tsx";
+
+type InspectTab = "steps" | "context" | "network";
 
 function InspectBreadcrumb({ title }: { title: string }) {
   return (
@@ -55,15 +59,15 @@ function InspectEmptyState() {
         <IconUpload size={48} stroke={1} className="text-muted-foreground/40" />
         <h2 className="text-lg font-semibold text-foreground">No log loaded</h2>
         <p className="text-sm text-muted-foreground text-center max-w-sm">
-          Upload an activity log CSV file to inspect it.
+          Upload an activity log JSON file to inspect it.
         </p>
         <Button variant="outline" asChild>
           <label className="cursor-pointer">
             <IconUpload size={16} stroke={1.5} />
-            Upload CSV
+            Upload JSON
             <input
               type="file"
-              accept=".csv"
+              accept=".json"
               className="hidden"
               onChange={(e) => {
                 const file = e.target.files?.[0];
@@ -112,21 +116,13 @@ function prepareInspectData(data: InspectLogData) {
   };
 }
 
-function InspectLogContent({ data }: { data: InspectLogData }) {
+function StepsTab({
+  prepared,
+}: {
+  prepared: ReturnType<typeof prepareInspectData>;
+}) {
   const [stepSearch, setStepSearch] = useState("");
-
-  const {
-    events,
-    displayName,
-    status,
-    triggerSource,
-    triggerAgentName,
-    detail,
-    duration,
-    time,
-    prompt,
-    appendSystemPrompt,
-  } = prepareInspectData(data);
+  const { events, prompt, appendSystemPrompt } = prepared;
   const showSystemPrompt = appendSystemPrompt.trim().length > 0;
 
   const allMessages = groupEventsIntoMessages(events);
@@ -136,6 +132,62 @@ function InspectLogContent({ data }: { data: InspectLogData }) {
   const messages = visibleMessages.filter((m) => {
     return groupedMessageMatchesSearch(m, stepSearch.trim());
   });
+
+  return (
+    <div className="flex flex-col gap-4 pb-8 min-w-0">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <span className="text-base font-medium text-foreground whitespace-nowrap">
+            Steps
+          </span>
+          <span className="text-sm text-muted-foreground whitespace-nowrap">
+            {stepSearch.trim()
+              ? `(${messages.length}/${visibleMessages.length} matched)`
+              : `${visibleMessages.length} total`}
+          </span>
+        </div>
+        <div className="flex items-center gap-2 sm:gap-3">
+          <div className="relative flex-1 sm:flex-none sm:w-44">
+            <IconSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search steps"
+              value={stepSearch}
+              onChange={(e) => {
+                return setStepSearch(e.target.value);
+              }}
+              className="pl-9"
+            />
+          </div>
+        </div>
+      </div>
+
+      <StepsList
+        prompt={prompt}
+        appendSystemPrompt={showSystemPrompt ? appendSystemPrompt : ""}
+        messages={messages}
+        stepSearch={stepSearch}
+        isLoading={false}
+      />
+    </div>
+  );
+}
+
+function InspectLogContent({ data }: { data: InspectLogData }) {
+  const [activeTab, setActiveTab] = useState<InspectTab>("steps");
+  const prepared = prepareInspectData(data);
+  const {
+    displayName,
+    status,
+    triggerSource,
+    triggerAgentName,
+    detail,
+    duration,
+    time,
+    events,
+  } = prepared;
+
+  const hasContext = Boolean(data.context);
+  const hasNetwork = Boolean(data.networkLogs) && data.networkLogs!.length > 0;
 
   return (
     <div className="h-full flex flex-col min-h-0 overflow-hidden">
@@ -151,47 +203,38 @@ function InspectLogContent({ data }: { data: InspectLogData }) {
             duration={duration}
             time={time}
             events={events as AgentEvent[]}
-            showContextLink={false}
-            showNetworkLink={false}
             showModelDetail={Boolean(detail.selectedModel)}
           />
 
-          <div className="flex flex-col gap-4 flex-1 min-h-0 min-w-0 mt-6">
-            <div className="flex flex-col gap-4 pb-8 min-w-0">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <span className="text-base font-medium text-foreground whitespace-nowrap">
-                    Steps
-                  </span>
-                  <span className="text-sm text-muted-foreground whitespace-nowrap">
-                    {stepSearch.trim()
-                      ? `(${messages.length}/${visibleMessages.length} matched)`
-                      : `${visibleMessages.length} total`}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2 sm:gap-3">
-                  <div className="relative flex-1 sm:flex-none sm:w-44">
-                    <IconSearch className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                    <Input
-                      placeholder="Search steps"
-                      value={stepSearch}
-                      onChange={(e) => {
-                        return setStepSearch(e.target.value);
-                      }}
-                      className="pl-9"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              <StepsList
-                prompt={prompt}
-                appendSystemPrompt={showSystemPrompt ? appendSystemPrompt : ""}
-                messages={messages}
-                stepSearch={stepSearch}
-                isLoading={false}
-              />
+          {(hasContext || hasNetwork) && (
+            <div className="mt-4">
+              <Tabs
+                value={activeTab}
+                onValueChange={(v) => {
+                  setActiveTab(v as InspectTab);
+                }}
+              >
+                <TabsList>
+                  <TabsTrigger value="steps">Steps</TabsTrigger>
+                  {hasContext && (
+                    <TabsTrigger value="context">Context</TabsTrigger>
+                  )}
+                  {hasNetwork && (
+                    <TabsTrigger value="network">Network</TabsTrigger>
+                  )}
+                </TabsList>
+              </Tabs>
             </div>
+          )}
+
+          <div className="mt-6">
+            {activeTab === "steps" && <StepsTab prepared={prepared} />}
+            {activeTab === "context" && data.context && (
+              <ContextContent context={data.context} />
+            )}
+            {activeTab === "network" && data.networkLogs && (
+              <NetworkContent networkLogs={data.networkLogs} />
+            )}
           </div>
         </div>
       </div>

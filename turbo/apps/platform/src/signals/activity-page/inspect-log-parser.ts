@@ -1,48 +1,27 @@
-import Papa from "papaparse";
+import type { RunContextResponse, NetworkLogEntry } from "@vm0/core";
 import type { AgentEvent, LogDetail } from "../zero-page/log-types.ts";
-
-const META_PREFIX = "# __vm0_meta__:";
 
 export type InspectLogMeta = Partial<LogDetail>;
 
-interface CsvRow {
-  sequenceNumber: string;
-  eventType: string;
-  eventData: string;
-  createdAt: string;
+interface InspectLogJson {
+  meta?: InspectLogMeta;
+  events?: AgentEvent[];
+  context?: RunContextResponse;
+  networkLogs?: NetworkLogEntry[];
 }
 
-export function parseInspectLogCsv(csvText: string): {
+export function parseInspectLog(jsonText: string): {
   meta: InspectLogMeta | null;
   events: AgentEvent[];
+  context: RunContextResponse | null;
+  networkLogs: NetworkLogEntry[] | null;
 } {
-  let meta: InspectLogMeta | null = null;
-  let textToParse = csvText;
+  const raw = JSON.parse(jsonText) as InspectLogJson;
 
-  // Extract metadata comment line if present
-  const firstNewline = csvText.indexOf("\n");
-  const firstLine =
-    firstNewline === -1 ? csvText : csvText.slice(0, firstNewline);
-
-  if (firstLine.startsWith(META_PREFIX)) {
-    const jsonStr = firstLine.slice(META_PREFIX.length);
-    meta = JSON.parse(jsonStr) as InspectLogMeta;
-    textToParse = csvText.slice(firstNewline + 1);
-  }
-
-  const result = Papa.parse<CsvRow>(textToParse, {
-    header: true,
-    skipEmptyLines: true,
-  });
-
-  const events: AgentEvent[] = result.data.map((row) => {
-    return {
-      sequenceNumber: Number(row.sequenceNumber),
-      eventType: row.eventType,
-      eventData: JSON.parse(row.eventData),
-      createdAt: row.createdAt,
-    };
-  });
-
-  return { meta, events };
+  return {
+    meta: raw.meta ?? null,
+    events: raw.events ?? [],
+    context: raw.context ?? null,
+    networkLogs: raw.networkLogs ?? null,
+  };
 }
