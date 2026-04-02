@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.178.1](https://github.com/vm0-ai/vm0/compare/app-v0.178.0...app-v0.178.1) (2026-04-02)
+
+
+### Bug Fixes
+
+* update sidebar highlight early on pinned agent switch ([#7645](https://github.com/vm0-ai/vm0/issues/7645)) ([9e416f7](https://github.com/vm0-ai/vm0/commit/9e416f74d6756a83ddf591860fc1d7e67540fd36))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.140.1
+
 ## [0.178.0](https://github.com/vm0-ai/vm0/compare/app-v0.177.2...app-v0.178.0) (2026-04-02)
 
 

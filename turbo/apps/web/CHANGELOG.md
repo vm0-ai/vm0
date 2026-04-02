@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.184.1](https://github.com/vm0-ai/vm0/compare/web-v12.184.0...web-v12.184.1) (2026-04-02)
+
+
+### Refactoring
+
+* extract log search service and update logs contracts ([#7641](https://github.com/vm0-ai/vm0/issues/7641)) ([c3faede](https://github.com/vm0-ai/vm0/commit/c3faede7963676b32d0f0a28596991e5830352e6)), closes [#7634](https://github.com/vm0-ai/vm0/issues/7634)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.140.1
+
 ## [12.184.0](https://github.com/vm0-ai/vm0/compare/web-v12.183.3...web-v12.184.0) (2026-04-02)
 
 
