@@ -3,6 +3,7 @@ import {
   createTestRequest,
   updateOrgStripeFields,
   insertCreditExpiresRecord,
+  insertOrgCacheEntry,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -203,6 +204,9 @@ describe("GET /api/zero/billing/status", () => {
       orgRole: "org:admin",
       clerkOrgs: [{ id: newOrgId, slug: newSlug, name: "NoRow" }],
     });
+
+    // Populate org_cache so resolveOrg recognizes this org (no org_metadata row)
+    await insertOrgCacheEntry({ orgId: newOrgId, slug: newSlug });
 
     const request = createTestRequest(
       `http://localhost:3000/api/zero/billing/status`,

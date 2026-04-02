@@ -8,6 +8,7 @@ import {
 } from "../errors";
 import { getOrgMetadata } from "./org-cache-service";
 import { orgMetadata } from "../../db/schema/org-metadata";
+import { orgCache } from "../../db/schema/org-cache";
 import { verifyMembershipCached } from "./org-membership-cache";
 import type { AuthContext } from "../auth/get-auth-context";
 
@@ -123,15 +124,24 @@ export async function resolveOrg(
 ): Promise<{ org: ResolvedOrg; member: ResolvedMember }> {
   const effectiveOrgId = orgId ?? authCtx.orgId ?? null;
   if (effectiveOrgId) {
-    // Verify org exists in org_metadata (getOrgMetadata returns defaults for missing rows)
+    // Verify org is known to the system.
+    // Check org_metadata first (platform-owned), then org_cache (Clerk-validated).
+    // getOrgMetadata returns defaults for missing rows, so we need an explicit check.
     const db = globalThis.services.db;
-    const [orgRow] = await db
+    const [metaRow] = await db
       .select({ orgId: orgMetadata.orgId })
       .from(orgMetadata)
       .where(eq(orgMetadata.orgId, effectiveOrgId))
       .limit(1);
-    if (!orgRow) {
-      throw notFound(`Organization ${effectiveOrgId} not found`);
+    if (!metaRow) {
+      const [cacheRow] = await db
+        .select({ orgId: orgCache.orgId })
+        .from(orgCache)
+        .where(eq(orgCache.orgId, effectiveOrgId))
+        .limit(1);
+      if (!cacheRow) {
+        throw notFound(`Organization ${effectiveOrgId} not found`);
+      }
     }
 
     const orgMeta = await getOrgMetadata(effectiveOrgId);
