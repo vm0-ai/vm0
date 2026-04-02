@@ -493,34 +493,27 @@ def _build_rewrite_url(resolved_base: str, match_info: dict, orig_url: str) -> s
     path from the firewall match, and query strings from both base and
     original request.
     """
-    # Split resolved base into path and query parts
-    base_qs_idx = resolved_base.find("?")
-    if base_qs_idx != -1:
-        base_path = resolved_base[:base_qs_idx]
-        base_qs = resolved_base[base_qs_idx + 1 :]
-    else:
-        base_path = resolved_base
-        base_qs = ""
+    base_parsed = urllib.parse.urlparse(resolved_base)
+    orig_parsed = urllib.parse.urlparse(orig_url)
 
-    # Append rel_path to the path portion (not after query string)
+    # Append rel_path to the base path portion
     rel_path = match_info.get("rel_path", "/")
     if rel_path != "/":
-        new_url = base_path.rstrip("/") + rel_path
+        base_path = base_parsed.path.rstrip("/") + rel_path
     else:
-        new_url = base_path
+        base_path = base_parsed.path
 
-    # Collect query strings: base qs + original request qs
+    # Merge query strings: base qs + original request qs
     qs_parts: list[str] = []
-    if base_qs:
-        qs_parts.append(base_qs)
-    orig_qs_idx = orig_url.find("?")
-    if orig_qs_idx != -1:
-        orig_qs = orig_url[orig_qs_idx + 1 :]
-        if orig_qs:
-            qs_parts.append(orig_qs)
-    if qs_parts:
-        new_url += "?" + "&".join(qs_parts)
-    return new_url
+    if base_parsed.query:
+        qs_parts.append(base_parsed.query)
+    if orig_parsed.query:
+        qs_parts.append(orig_parsed.query)
+    merged_qs = "&".join(qs_parts)
+
+    return urllib.parse.urlunparse(
+        (base_parsed.scheme, base_parsed.netloc, base_path, "", merged_qs, "")
+    )
 
 
 HOP_BY_HOP = frozenset(
@@ -548,6 +541,9 @@ def _forward_request_sync(
     itself instead of relying on mitmproxy's connection (which would go to
     the placeholder IP in eager mode).
     """
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in ("https", "http"):
+        raise ValueError(f"Unsupported URL scheme: {parsed.scheme}")
     req = urllib.request.Request(url, data=body, method=method)
     for k, v in headers.items():
         if k.lower() in HOP_BY_HOP or k.lower() == "host":
