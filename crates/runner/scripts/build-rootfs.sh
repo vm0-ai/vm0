@@ -37,7 +37,13 @@ GUEST_DOWNLOAD=""
 GUEST_INIT=""
 GUEST_MOCK_CLAUDE=""
 DNS_NAMESERVER=""
-MIRROR="http://archive.ubuntu.com/ubuntu"
+# Default mirror: archive.ubuntu.com only hosts amd64/i386;
+# arm64 and other ports use ports.ubuntu.com.
+if [[ "$(dpkg --print-architecture 2>/dev/null)" == "arm64" ]]; then
+  MIRROR="http://ports.ubuntu.com/ubuntu-ports"
+else
+  MIRROR="http://archive.ubuntu.com/ubuntu"
+fi
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
