@@ -775,7 +775,9 @@ export const loadSessionFromSnapshot$ = command(
         if (error instanceof Error && error.name === "AbortError") {
           return;
         }
-        throw error;
+        // Log instead of re-throw: this promise is fire-and-forget (void),
+        // so a re-throw would become an unhandled promise rejection.
+        L.error("Session polling loop failed", error);
       });
   },
 );

@@ -1,5 +1,6 @@
 import { computed } from "ccstate";
 import { clerk$ } from "./auth.ts";
+import { logger } from "./log.ts";
 
 function getConfiguredApiUrl(): string {
   const url = import.meta.env.VITE_API_URL as string | undefined;
@@ -8,6 +9,8 @@ function getConfiguredApiUrl(): string {
   }
   return url;
 }
+
+const L = logger("Fetch");
 
 const CONFIGURED_API_URL = getConfiguredApiUrl();
 
@@ -209,7 +212,7 @@ export const fetch$ = computed((get) => {
           if (error instanceof Error && error.name === "AbortError") {
             return;
           }
-          throw error;
+          L.error("Sign-in redirect failed", error);
         });
       }
     }

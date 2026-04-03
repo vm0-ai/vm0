@@ -176,7 +176,7 @@ export const detachedNavigateTo$ = command(
       if (error instanceof Error && error.name === "AbortError") {
         return;
       }
-      throw error;
+      L.error("Navigation failed", error);
     });
   },
 );

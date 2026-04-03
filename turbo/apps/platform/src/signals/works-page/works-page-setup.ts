@@ -4,6 +4,7 @@ import { SidebarLayout } from "../../views/zero-page/sidebar-layout.tsx";
 import { ZeroWorksPage } from "../../views/zero-page/zero-works-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
+import { logger } from "../log.ts";
 
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
@@ -13,6 +14,8 @@ import {
   pollSlackConnection$,
 } from "../zero-page/zero-slack.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
+
+const L = logger("WorksPage");
 
 export const setupWorksPage$ = command(async ({ set }, signal: AbortSignal) => {
   set(
@@ -32,7 +35,7 @@ export const setupWorksPage$ = command(async ({ set }, signal: AbortSignal) => {
     if (error instanceof Error && error.name === "AbortError") {
       return;
     }
-    throw error;
+    L.error("Slack polling failed", error);
   });
 
   if (await set(onboardGuard$, signal)) {
