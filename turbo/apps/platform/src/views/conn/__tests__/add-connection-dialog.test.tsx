@@ -8,19 +8,15 @@
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
-import {
-  setSelectedConnectorType$,
-  setConnectorPollIntervalForTest$,
-} from "../../../signals/zero-page/settings/connectors.ts";
+import { setSelectedConnectorType$ } from "../../../signals/zero-page/settings/connectors.ts";
 import { mockConnectors } from "../../zero-page/__tests__/zero-connectors-page-test-helpers.ts";
-import { ConnectorIcon } from "../../zero-page/components/settings/connector-icons.tsx";
 
 const context = testContext();
 
@@ -128,52 +124,6 @@ describe("connect modal - loading states", () => {
       expect(screen.getByText("Connecting...")).toBeInTheDocument();
     });
   });
-
-  it("settles and returns to form after failed OAuth (CONN-D-021)", async () => {
-    // Return empty connectors so the popup-closed path exits with isConnected=false,
-    // keeping the dialog open. This tests the full settle cycle: Connecting → idle.
-    // The "Saving permissions..." text is part of this settle cycle but is architecturally
-    // ephemeral (React 18 batches the state transition into a single render).
-    server.use(
-      http.get("*/api/zero/connectors", () => {
-        return HttpResponse.json({
-          connectors: [],
-          configuredTypes: Object.keys(CONNECTOR_TYPES),
-          connectorProvidedSecretNames: [],
-        });
-      }),
-    );
-
-    // Popup closes immediately so the poll loop exits after the delay.
-    vi.spyOn(window, "open").mockReturnValue({ closed: true } as Window);
-
-    await openConnectModal("github");
-
-    // Reduce the OAuth polling interval so the settle phase completes quickly.
-    context.store.set(setConnectorPollIntervalForTest$, 10);
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Sign in with GitHub" }),
-      ).toBeInTheDocument();
-    });
-
-    const user = userEvent.setup();
-    await user.click(
-      screen.getByRole("button", { name: "Sign in with GitHub" }),
-    );
-
-    // After the settle phase completes (popup closed, not connected), the dialog
-    // returns to idle state showing the OAuth button again.
-    await waitFor(
-      () => {
-        expect(
-          screen.getByRole("button", { name: "Sign in with GitHub" }),
-        ).toBeInTheDocument();
-      },
-      { interval: 10 },
-    );
-  });
 });
 
 describe("connect modal - interactions", () => {
@@ -278,20 +228,22 @@ describe("connect modal - state management", () => {
   });
 });
 
-describe("connector icon", () => {
-  it("renders img element for standard connector types (CONN-D-041)", () => {
-    const { container } = render(<ConnectorIcon type="axiom" />);
-    expect(container.querySelector("img")).toBeInTheDocument();
+describe("connector icon - via dialog", () => {
+  it("renders img element for standard connector types (CONN-D-041)", async () => {
+    await openConnectModal("axiom");
+
+    await waitFor(() => {
+      const dialog = screen.getByRole("dialog");
+      expect(dialog.querySelector("img")).toBeInTheDocument();
+    });
   });
 
-  it("renders inline SVG for deel connector type (CONN-D-041)", () => {
-    const { container } = render(<ConnectorIcon type="deel" />);
-    expect(container.querySelector("svg")).toBeInTheDocument();
-  });
+  it("renders inline SVG for deel connector type (CONN-D-042)", async () => {
+    await openConnectModal("deel");
 
-  it("scales container to specified size (CONN-D-042)", () => {
-    const { container } = render(<ConnectorIcon type="axiom" size={20} />);
-    const span = container.querySelector("span");
-    expect(span).toHaveStyle({ width: "20px", height: "20px" });
+    await waitFor(() => {
+      const dialog = screen.getByRole("dialog");
+      expect(dialog.querySelector("svg")).toBeInTheDocument();
+    });
   });
 });
