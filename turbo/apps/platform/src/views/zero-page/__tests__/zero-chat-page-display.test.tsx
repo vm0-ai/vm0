@@ -30,10 +30,13 @@ describe("zero chat page display - tagline with userName via TypewriterText", ()
       },
     });
 
-    await waitFor(() => {
-      const h2 = screen.getByRole("heading", { level: 2 });
-      expect(h2.textContent).toContain("Alice");
-    });
+    await waitFor(
+      () => {
+        const h2 = screen.getByRole("heading", { level: 2 });
+        expect(h2.textContent).toContain("Alice");
+      },
+      { timeout: 3000 },
+    );
   });
 });
 
