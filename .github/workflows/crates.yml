@@ -456,11 +456,13 @@ jobs:
             'curl -sf --max-time 10 https://httpbin.org/get'"
 
           echo "=== Running benchmark (browser automation) ==="
+          # Retry once — snapshot restore can trigger transient Chromium
+          # ERR_NETWORK_CHANGED due to stale netlink messages.
           # shellcheck disable=SC2029
           ssh "$REMOTE" "sudo ${BIN_DIR}/runner benchmark \
             --config ${RUNNER_DIR}/runner.yaml \
             --profile vm0/default \
-            'agent-browser open https://github.com/ && agent-browser get title && agent-browser close'"
+            '(agent-browser open https://github.com/ && agent-browser get title && agent-browser close) || (sleep 2 && agent-browser open https://github.com/ && agent-browser get title && agent-browser close)'"
 
   runner-exec:
     runs-on: ubuntu-latest
