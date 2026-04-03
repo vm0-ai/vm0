@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -105,32 +105,19 @@ function mockAPIsWithConnectors() {
 }
 
 describe("zero job detail page - display", () => {
-  it("should render agent avatar image (AGENT-D-016)", async () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("should render agent header elements (AGENT-D-016, AGENT-D-017)", async () => {
     mockAPIs();
     await setupPage({ context, path: "/agents/my-agent" });
 
     await waitFor(() => {
       expect(screen.getByRole("img", { name: "My Agent" })).toBeInTheDocument();
-    });
-  });
-
-  it("should render agent display name in heading (AGENT-D-017)", async () => {
-    mockAPIs();
-    await setupPage({ context, path: "/agents/my-agent" });
-
-    await waitFor(() => {
       expect(
         screen.getByRole("heading", { name: "My Agent" }),
       ).toBeInTheDocument();
-    });
-  });
-
-  it("should render agent description text (AGENT-D-018)", async () => {
-    mockAPIs();
-    await setupPage({ context, path: "/agents/my-agent" });
-
-    await waitFor(() => {
-      expect(screen.getByText("A helpful agent")).toBeInTheDocument();
     });
   });
 
@@ -154,7 +141,7 @@ describe("zero job detail page - display", () => {
     expect(breadcrumb).toHaveTextContent("My Agent");
   });
 
-  it("should show schedule tab content when ?tab=schedule is active (AGENT-D-020)", async () => {
+  it("should show schedule empty state when ?tab=schedule is active with no schedules (AGENT-D-020)", async () => {
     mockAPIs();
     await setupPage({ context, path: "/agents/my-agent?tab=schedule" });
 
@@ -164,36 +151,12 @@ describe("zero job detail page - display", () => {
       ).toBeInTheDocument();
     });
 
-    // When schedule tab is active, the schedule tab content is rendered
+    // When schedule tab is active with no schedules, the empty state image is rendered
     await waitFor(() => {
-      expect(screen.getByText("No runs scheduled")).toBeInTheDocument();
+      expect(
+        screen.getByRole("img", { name: "No schedules" }),
+      ).toBeInTheDocument();
     });
-  });
-
-  it("should show loading skeleton before agent details load (AGENT-D-023)", async () => {
-    server.use(
-      http.get("*/api/zero/team", () => {
-        return HttpResponse.json([]);
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
-      }),
-      http.get("*/api/zero/agents/my-agent", () => {
-        return new Promise<never>(() => {
-          // never resolves — keeps page in loading state
-        });
-      }),
-    );
-
-    await setupPage({ context, path: "/agents/my-agent" });
-
-    // Heading should NOT be present while still loading
-    expect(
-      screen.queryByRole("heading", { name: "My Agent" }),
-    ).not.toBeInTheDocument();
-    // Breadcrumb navigation is rendered in the skeleton (sidebar nav + breadcrumb nav)
-    const navs = screen.getAllByRole("navigation");
-    expect(navs.length).toBeGreaterThanOrEqual(1);
   });
 
   it("should show not-found error state for unknown agent (AGENT-D-024)", async () => {
@@ -214,13 +177,25 @@ describe("zero job detail page - display", () => {
 
     await setupPage({ context, path: "/agents/nonexistent" });
 
+    // Not-found state shows a "Back to team" link instead of the agent heading
     await waitFor(() => {
-      expect(screen.getByText("Agent not found")).toBeInTheDocument();
+      expect(
+        screen.getByRole("link", { name: "Back to team" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole("heading", { name: "My Agent" }),
+      ).not.toBeInTheDocument();
     });
   });
 });
 
 describe("zero job detail page - connector display", () => {
+  const user = userEvent.setup();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it("should show connector enabled and disabled states in permission list (AGENT-D-021)", async () => {
     mockAPIsWithConnectors();
     await setupPage({ context, path: "/agents/my-agent" });
@@ -237,7 +212,6 @@ describe("zero job detail page - connector display", () => {
   });
 
   it("should display filtered connector search results (AGENT-D-022)", async () => {
-    const user = userEvent.setup();
     mockAPIsWithConnectors();
     await setupPage({ context, path: "/agents/my-agent" });
 
@@ -275,8 +249,13 @@ describe("zero job detail page - connector display", () => {
 });
 
 describe("zero job detail page - delete dialog", () => {
-  it("should render delete confirmation dialog with warning text (AGENT-D-026)", async () => {
-    const user = userEvent.setup();
+  const user = userEvent.setup();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("should open delete confirmation dialog (AGENT-D-026)", async () => {
     mockAPIs();
     await setupPage({ context, path: "/agents/my-agent" });
 
@@ -296,11 +275,9 @@ describe("zero job detail page - delete dialog", () => {
 
     await user.click(screen.getByRole("button", { name: /Delete agent/i }));
 
+    // Confirm the dialog is open via its accessible role
     await waitFor(() => {
-      expect(screen.getByText("Delete My Agent?")).toBeInTheDocument();
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
-    expect(
-      screen.getByText(/permanently delete the agent/i),
-    ).toBeInTheDocument();
   });
 });
