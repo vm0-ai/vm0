@@ -74,8 +74,10 @@ function formatConnectorSummary(
   return `${info.type}${idStr} (${info.allowed}/${info.total} allowed)`;
 }
 
-function printAccountLine(connector: ConnectorResponse | undefined): void {
-  if (!connector) return;
+function formatDetailIdentity(
+  connector: ConnectorResponse | undefined,
+): string {
+  if (!connector) return "";
   let identity = "";
   if (connector.externalUsername && connector.externalEmail) {
     identity = `@${connector.externalUsername} (${connector.externalEmail})`;
@@ -84,11 +86,11 @@ function printAccountLine(connector: ConnectorResponse | undefined): void {
   } else if (connector.externalEmail) {
     identity = connector.externalEmail;
   }
-  if (!identity) return;
+  if (!identity) return "";
   if (connector.needsReconnect) {
     identity += ` ${chalk.yellow("(needs reconnect)")}`;
   }
-  console.log(`  Account: ${identity}`);
+  return identity;
 }
 
 export const viewCommand = new Command()
@@ -156,29 +158,19 @@ Examples:
 
         if (options.permissions && connectorInfos.length > 0) {
           console.log();
+          console.log(chalk.bold("Connectors:"));
           for (const info of connectorInfos) {
-            if (!info.hasFirewall) {
-              console.log(chalk.dim(`── ${info.type} ──`));
-              printAccountLine(identityMap.get(info.type));
-              console.log("  No firewall configured.");
-              continue;
-            }
+            const identity = formatDetailIdentity(identityMap.get(info.type));
+            console.log(`  ${info.type.padEnd(14)}${identity}`);
+
+            if (!info.hasFirewall) continue;
 
             if (!info.policies) {
-              console.log(chalk.dim(`── ${info.type} (full access) ──`));
-              printAccountLine(identityMap.get(info.type));
               console.log(
-                "  No permission rules configured — all API calls allowed.",
+                chalk.dim("    full access — no permission rules configured"),
               );
               continue;
             }
-
-            console.log(
-              chalk.dim(
-                `── ${info.type} (${info.allowed}/${info.total} allowed) ──`,
-              ),
-            );
-            printAccountLine(identityMap.get(info.type));
 
             const nameWidth = Math.max(
               ...info.permissions.map((p) => {
@@ -195,7 +187,9 @@ Examples:
                     ? chalk.yellow("?")
                     : chalk.dim("✗");
               const desc = perm.description ?? "";
-              console.log(`  ${icon} ${perm.name.padEnd(nameWidth)}  ${desc}`);
+              console.log(
+                `    ${icon} ${perm.name.padEnd(nameWidth)}  ${desc}`,
+              );
             }
           }
         }

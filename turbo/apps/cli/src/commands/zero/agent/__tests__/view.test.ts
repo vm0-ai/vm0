@@ -253,9 +253,7 @@ describe("zero agent view command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("full access");
-      expect(logCalls).toContain(
-        "No permission rules configured — all API calls allowed.",
-      );
+      expect(logCalls).toContain("no permission rules configured");
     });
 
     it("should handle non-firewall connectors gracefully", async () => {
@@ -283,7 +281,6 @@ describe("zero agent view command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("custom-connector");
-      expect(logCalls).toContain("No firewall configured.");
     });
   });
 
@@ -308,7 +305,7 @@ describe("zero agent view command", () => {
       expect(logCalls).toContain("github @octocat (full access)");
     });
 
-    it("should show Account line with identity in permissions detail", async () => {
+    it("should show full identity in permissions detail", async () => {
       server.use(
         http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
           return HttpResponse.json(mockAgent);
@@ -330,7 +327,7 @@ describe("zero agent view command", () => {
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("Account: @octocat (octocat@github.com)");
+      expect(logCalls).toContain("@octocat (octocat@github.com)");
     });
 
     it("should work without identity when connector API fails", async () => {
@@ -356,10 +353,10 @@ describe("zero agent view command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("github (full access)");
-      expect(logCalls).not.toContain("Account:");
+      expect(logCalls).not.toContain("@octocat");
     });
 
-    it("should skip Account line for connectors without identity", async () => {
+    it("should skip identity for connectors without identity data", async () => {
       server.use(
         http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
           return HttpResponse.json(mockAgent);
@@ -390,10 +387,10 @@ describe("zero agent view command", () => {
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).not.toContain("Account:");
+      expect(logCalls).not.toContain("@");
     });
 
-    it("should show needs reconnect warning in Account line", async () => {
+    it("should show needs reconnect warning in identity line", async () => {
       server.use(
         http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
           return HttpResponse.json(mockAgent);
@@ -418,7 +415,7 @@ describe("zero agent view command", () => {
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("Account: @octocat (octocat@github.com)");
+      expect(logCalls).toContain("@octocat (octocat@github.com)");
       expect(logCalls).toContain("(needs reconnect)");
     });
 
