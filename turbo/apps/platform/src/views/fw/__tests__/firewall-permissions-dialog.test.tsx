@@ -1,0 +1,331 @@
+import { describe, expect, it } from "vitest";
+// eslint-disable-next-line ccstate/prefer-user-event -- fireEvent needed for scroll events; userEvent has no scroll support
+import { screen, waitFor, within, fireEvent } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
+import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
+import { server } from "../../../mocks/server.ts";
+import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { setupPage } from "../../../__tests__/page-helper.ts";
+
+const context = testContext();
+
+function mockAPIs({
+  connectorType = "github" as ConnectorType,
+  ownerId = "test-user-123",
+  firewallPolicies = null as Record<string, Record<string, string>> | null,
+} = {}) {
+  server.use(
+    http.get("*/api/zero/team", () => {
+      return HttpResponse.json([
+        {
+          id: "c0000000-0000-4000-a000-000000000001",
+          name: "zero",
+          displayName: null,
+          description: null,
+          sound: null,
+          avatarUrl: null,
+          headVersionId: "version_1",
+          updatedAt: "2024-01-01T00:00:00Z",
+        },
+        {
+          id: "agent-detail-id",
+          name: "my-agent",
+          displayName: "My Agent",
+          description: "A helpful agent",
+          sound: null,
+          avatarUrl: null,
+          headVersionId: "version_2",
+          updatedAt: "2024-01-02T00:00:00Z",
+        },
+      ]);
+    }),
+    http.get("*/api/zero/chat-threads", () => {
+      return HttpResponse.json({ threads: [] });
+    }),
+    http.get("*/api/zero/agents/my-agent", () => {
+      return HttpResponse.json({
+        name: "my-agent",
+        agentId: "e0000000-0000-4000-a000-000000000010",
+        ownerId,
+        description: "A helpful agent",
+        displayName: "My Agent",
+        sound: null,
+        avatarUrl: null,
+        connectors: [],
+        firewallPolicies,
+      });
+    }),
+    http.get("*/api/zero/agents/:name/instructions", () => {
+      return HttpResponse.json({ content: null, filename: null });
+    }),
+    http.get("*/api/zero/schedules", () => {
+      return HttpResponse.json({ schedules: [] });
+    }),
+    http.get("*/api/zero/connectors", () => {
+      return HttpResponse.json({
+        connectors: [
+          {
+            id: "d0000001-0000-4000-a000-000000000001",
+            type: connectorType,
+            authMethod: "oauth",
+            externalId: null,
+            externalUsername: "testuser",
+            externalEmail: null,
+            oauthScopes: [],
+            needsReconnect: false,
+            createdAt: "2026-01-01T00:00:00Z",
+            updatedAt: "2026-01-01T00:00:00Z",
+          },
+        ],
+        configuredTypes: Object.keys(CONNECTOR_TYPES) as ConnectorType[],
+        connectorProvidedSecretNames: [],
+      });
+    }),
+    http.get("*/api/zero/agents/:id/user-connectors", () => {
+      return HttpResponse.json({ enabledTypes: [connectorType] });
+    }),
+    http.put("*/api/zero/firewall-policies", async ({ request }) => {
+      const body = (await request.json()) as {
+        agentId: string;
+        policies: Record<string, Record<string, string>>;
+      };
+      return HttpResponse.json({
+        agentId: "e0000000-0000-4000-a000-000000000010",
+        ownerId,
+        description: "A helpful agent",
+        displayName: "My Agent",
+        sound: null,
+        avatarUrl: null,
+        firewallPolicies: body.policies,
+        customSkills: [],
+      });
+    }),
+  );
+}
+
+async function openPermissionsDrawer(connectorLabel: string) {
+  const user = userEvent.setup();
+
+  await waitFor(() => {
+    expect(
+      screen.getByRole("heading", { name: "My Agent" }),
+    ).toBeInTheDocument();
+  });
+
+  await waitFor(() => {
+    expect(
+      screen.getByRole("button", {
+        name: `Manage ${connectorLabel} permissions`,
+      }),
+    ).toBeInTheDocument();
+  });
+
+  await user.click(
+    screen.getByRole("button", {
+      name: `Manage ${connectorLabel} permissions`,
+    }),
+  );
+
+  await waitFor(() => {
+    expect(
+      screen.getByRole("heading", {
+        name: new RegExp(`${connectorLabel} permissions`, "i"),
+      }),
+    ).toBeInTheDocument();
+  });
+
+  return user;
+}
+
+describe("firewall permissions dialog - flat list connector (Notion)", () => {
+  it("renders permission names and descriptions in flat list (FW-D-031)", async () => {
+    mockAPIs({ connectorType: "notion" });
+    await setupPage({ context, path: "/agents/my-agent" });
+    await openPermissionsDrawer("Notion");
+
+    await waitFor(() => {
+      expect(screen.getByText("insert_comments")).toBeInTheDocument();
+      expect(screen.getByText("read_content")).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("Create comments")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Read pages, databases, blocks/),
+    ).toBeInTheDocument();
+  });
+
+  it("shows policy status for each permission (FW-D-033)", async () => {
+    mockAPIs({
+      connectorType: "notion",
+      firewallPolicies: { notion: { insert_comments: "deny" } },
+    });
+    await setupPage({ context, path: "/agents/my-agent" });
+    await openPermissionsDrawer("Notion");
+
+    await waitFor(() => {
+      return expect(screen.getByText("insert_comments")).toBeInTheDocument();
+    });
+
+    // insert_comments row should show Deny as active
+    const insertCommentsRow = screen
+      .getByText("insert_comments")
+      .closest(".flex.items-center") as HTMLElement;
+    const denyBtn = within(insertCommentsRow)
+      .getAllByRole("button")
+      .find((b) => {
+        return b.textContent?.includes("Deny") ?? false;
+      });
+    expect(denyBtn!.className).toContain("bg-muted");
+
+    // read_content row should show Allow as active (default)
+    const readContentRow = screen
+      .getByText("read_content")
+      .closest(".flex.items-center") as HTMLElement;
+    const allowBtn = within(readContentRow)
+      .getAllByRole("button")
+      .find((b) => {
+        return b.textContent?.includes("Allow") ?? false;
+      });
+    expect(allowBtn!.className).toContain("bg-muted");
+  });
+
+  it("adds shadow when list is scrolled (FW-D-034)", async () => {
+    mockAPIs({ connectorType: "notion" });
+    await setupPage({ context, path: "/agents/my-agent" });
+    await openPermissionsDrawer("Notion");
+
+    await waitFor(() => {
+      return expect(screen.getByText("insert_comments")).toBeInTheDocument();
+    });
+
+    const headerBar = document.querySelector(
+      ".transition-shadow",
+    ) as HTMLElement;
+    expect(headerBar.className).not.toContain("shadow-[0_4px_8px");
+
+    const scrollableDivs = document.querySelectorAll(".overflow-y-auto");
+    // The firewall content scrollable div is the one inside the drawer
+    const scrollableDiv = Array.from(scrollableDivs).find((el) => {
+      return el.closest("[role='dialog']");
+    }) as HTMLElement;
+    expect(scrollableDiv).not.toBeNull();
+
+    Object.defineProperty(scrollableDiv, "scrollTop", {
+      configurable: true,
+      get() {
+        return 10;
+      },
+    });
+    fireEvent.scroll(scrollableDiv);
+
+    await waitFor(() => {
+      expect(headerBar.className).toContain("shadow-[0_4px_8px");
+    });
+  });
+});
+
+describe("firewall permissions dialog - grouped connector (GitHub)", () => {
+  it("renders group categories with permission counts (FW-D-032)", async () => {
+    mockAPIs({ connectorType: "github" });
+    await setupPage({ context, path: "/agents/my-agent" });
+    await openPermissionsDrawer("GitHub");
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /Read \(\d+\)/i }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /Write \(\d+\)/i }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /Admin \(\d+\)/i }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("toggles group visibility on collapse/expand click (FW-D-035)", async () => {
+    mockAPIs({ connectorType: "github" });
+    await setupPage({ context, path: "/agents/my-agent" });
+    const user = await openPermissionsDrawer("GitHub");
+
+    const readButton = screen.getByRole("button", { name: /Read \(\d+\)/i });
+
+    // Expand
+    await user.click(readButton);
+    await waitFor(() => {
+      return expect(screen.getByText("actions:read")).toBeInTheDocument();
+    });
+
+    // Collapse
+    await user.click(readButton);
+    await waitFor(() => {
+      return expect(screen.queryByText("actions:read")).not.toBeInTheDocument();
+    });
+  });
+
+  it("saves policies and closes drawer when Apply is clicked (FW-D-036)", async () => {
+    let putCalled = false;
+    mockAPIs({ connectorType: "github" });
+    server.use(
+      http.put("*/api/zero/firewall-policies", () => {
+        putCalled = true;
+        return HttpResponse.json({
+          agentId: "e0000000-0000-4000-a000-000000000010",
+          ownerId: "test-user-123",
+          description: "A helpful agent",
+          displayName: "My Agent",
+          sound: null,
+          avatarUrl: null,
+          firewallPolicies: {},
+          customSkills: [],
+        });
+      }),
+    );
+    await setupPage({ context, path: "/agents/my-agent" });
+    const user = await openPermissionsDrawer("GitHub");
+
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+
+    await waitFor(() => {
+      return expect(putCalled).toBeTruthy();
+    });
+    await waitFor(() => {
+      return expect(
+        screen.queryByRole("heading", { name: /GitHub permissions/i }),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("disables all policy pills and shows only Close in read-only mode (FW-V-001)", async () => {
+    mockAPIs({ connectorType: "github", ownerId: "other-user-456" });
+    await setupPage({ context, path: "/agents/my-agent" });
+    await openPermissionsDrawer("GitHub");
+
+    // The footer "Close" button (text content) should be present
+    await waitFor(() => {
+      const closeButtons = screen.getAllByRole("button", { name: "Close" });
+      // At least one of them is the footer close button (not the X icon)
+      const footerClose = closeButtons.find((b) => {
+        return b.textContent?.trim() === "Close";
+      });
+      expect(footerClose).toBeDefined();
+    });
+    expect(
+      screen.queryByRole("button", { name: "Apply" }),
+    ).not.toBeInTheDocument();
+
+    // All policy pill buttons (Allow/Deny) should be disabled
+    const allButtons = screen.getAllByRole("button");
+    const policyButtons = allButtons.filter((b) => {
+      return (
+        (b.textContent?.includes("Allow") ?? false) ||
+        (b.textContent?.includes("Deny") ?? false)
+      );
+    });
+    expect(policyButtons.length).toBeGreaterThan(0);
+    for (const btn of policyButtons) {
+      expect(btn).toBeDisabled();
+    }
+  });
+});
