@@ -194,4 +194,64 @@ describe("sidebar chat delete", () => {
       expect(pathname()).toBe("/chats/thread-2");
     });
   });
+
+  it("should navigate away from the chat page when deleting the only remaining thread", async () => {
+    const user = userEvent.setup();
+
+    let threads = [
+      makeThread("thread-only", "Only chat", "2026-03-10T00:00:00Z"),
+    ];
+
+    server.use(
+      http.get("*/api/zero/team", () => {
+        return HttpResponse.json([
+          {
+            id: AGENT_ID,
+            displayName: null,
+            description: null,
+            sound: null,
+            avatarUrl: null,
+            headVersionId: "version_1",
+            updatedAt: "2024-01-01T00:00:00Z",
+          },
+        ]);
+      }),
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads });
+      }),
+      http.get("*/api/zero/chat-threads/:id", ({ params }) => {
+        const thread = threads.find((t) => {
+          return t.id === params.id;
+        });
+        return HttpResponse.json({
+          id: params.id,
+          title: thread?.title ?? null,
+          agentId: AGENT_ID,
+          chatMessages: [],
+          latestSessionId: null,
+          unsavedRuns: [],
+          createdAt: "2026-03-10T00:00:00Z",
+          updatedAt: "2026-03-10T00:00:00Z",
+        });
+      }),
+      http.delete("*/api/zero/chat-threads/:id", ({ params }) => {
+        threads = threads.filter((t) => {
+          return t.id !== params.id;
+        });
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+
+    await setupPage({ context, path: "/chats/thread-only" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Only chat")).toBeInTheDocument();
+    });
+
+    await deleteThread(user, 1);
+
+    await waitFor(() => {
+      expect(pathname()).not.toBe("/chats/thread-only");
+    });
+  });
 });
