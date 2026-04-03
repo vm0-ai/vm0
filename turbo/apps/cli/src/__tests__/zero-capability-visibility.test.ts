@@ -248,4 +248,29 @@ describe("registerZeroCommands", () => {
     expect(visibleCommandNames(prog)).toEqual(["schedule", "whoami"]);
     expect(hiddenCommandNames(prog)).toContain("agent");
   });
+
+  it("should show connector when connector:read capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["connector:read"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(visibleCommandNames(prog)).toContain("connector");
+    expect(visibleCommandNames(prog)).toContain("whoami");
+  });
+
+  it("should hide connector when connector:read capability is missing", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["agent:read"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(hiddenCommandNames(prog)).toContain("connector");
+  });
 });

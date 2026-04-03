@@ -30,6 +30,7 @@ import {
 const COMMAND_CAPABILITY_MAP: Record<string, string | null> = {
   agent: "agent:read",
   skill: "agent:read",
+  connector: "connector:read",
   run: "agent-run:write",
   schedule: "schedule:read",
   doctor: null,
