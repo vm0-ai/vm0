@@ -106,7 +106,7 @@ describe("ideation page - category tabs", () => {
     const githubTab = screen.getByRole("button", { name: "GitHub" });
 
     // Initially "All" tab should have active styling
-    expect(allTab.className).toContain("bg-muted");
+    expect(allTab.className).toContain("bg-muted text-foreground");
     expect(githubTab.className).not.toContain("bg-muted text-foreground");
 
     // Click GitHub tab
@@ -114,7 +114,7 @@ describe("ideation page - category tabs", () => {
 
     // GitHub tab should now have active styling, All should not
     await waitFor(() => {
-      expect(githubTab.className).toContain("bg-muted");
+      expect(githubTab.className).toContain("bg-muted text-foreground");
     });
     expect(allTab.className).not.toContain("bg-muted text-foreground");
   });
