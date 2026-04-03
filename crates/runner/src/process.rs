@@ -31,11 +31,18 @@ pub struct MitmproxyProcessInfo {
     pub port: u16,
 }
 
+/// Info extracted from a dnsmasq process cmdline.
+pub struct DnsmasqProcessInfo {
+    pub pid: u32,
+    pub port: u16,
+}
+
 /// All discovered process info from a single `/proc` scan.
 pub struct DiscoveredProcesses {
     pub runners: Vec<RunnerProcessInfo>,
     pub firecrackers: Vec<FirecrackerProcessInfo>,
     pub mitmdumps: Vec<MitmproxyProcessInfo>,
+    pub dnsmasqs: Vec<DnsmasqProcessInfo>,
 }
 
 // ---------------------------------------------------------------------------
@@ -86,6 +93,19 @@ fn parse_mitmdump_cmdline(cmdline: &str) -> Option<u16> {
     }
     // Extract --listen-port value
     let pos = tokens.iter().position(|&t| t == "--listen-port")?;
+    tokens.get(pos + 1)?.parse().ok()
+}
+
+/// Parse a dnsmasq cmdline for the listen port.
+///
+/// Identifies dnsmasq by binary name and extracts the `--port` value.
+fn parse_dnsmasq_cmdline(cmdline: &str) -> Option<u16> {
+    let tokens: Vec<&str> = cmdline.split_whitespace().collect();
+    let binary = tokens.first()?;
+    if !binary.ends_with("dnsmasq") {
+        return None;
+    }
+    let pos = tokens.iter().position(|&t| t == "--port")?;
     tokens.get(pos + 1)?.parse().ok()
 }
 
@@ -223,6 +243,7 @@ pub async fn discover_all() -> DiscoveredProcesses {
     let mut runners = Vec::new();
     let mut firecrackers = Vec::new();
     let mut mitmdumps = Vec::new();
+    let mut dnsmasqs = Vec::new();
 
     for (pid, cmdline) in &procs {
         if let Some((config_path, subcommand)) = parse_runner_cmdline(cmdline) {
@@ -237,6 +258,9 @@ pub async fn discover_all() -> DiscoveredProcesses {
         }
         if let Some(port) = parse_mitmdump_cmdline(cmdline) {
             mitmdumps.push((*pid, port));
+        }
+        if let Some(port) = parse_dnsmasq_cmdline(cmdline) {
+            dnsmasqs.push(DnsmasqProcessInfo { pid: *pid, port });
         }
     }
 
@@ -270,6 +294,7 @@ pub async fn discover_all() -> DiscoveredProcesses {
         runners,
         firecrackers: fc_infos,
         mitmdumps: mitm_infos,
+        dnsmasqs,
     }
 }
 
@@ -399,6 +424,24 @@ mod tests {
     fn parse_mitmdump_no_listen_port_returns_none() {
         let cmdline = "mitmdump --set vm0_proxy_registry_path=/data/proxy-registry.json";
         assert!(parse_mitmdump_cmdline(cmdline).is_none());
+    }
+
+    // -- Dnsmasq parser tests --
+
+    #[test]
+    fn parse_dnsmasq_port() {
+        let cmdline = "dnsmasq --no-daemon --no-resolv --port 5353 --server 8.8.8.8";
+        assert_eq!(parse_dnsmasq_cmdline(cmdline), Some(5353));
+    }
+
+    #[test]
+    fn parse_dnsmasq_not_dnsmasq_returns_none() {
+        assert!(parse_dnsmasq_cmdline("mitmdump --port 5353").is_none());
+    }
+
+    #[test]
+    fn parse_dnsmasq_no_port_returns_none() {
+        assert!(parse_dnsmasq_cmdline("dnsmasq --no-daemon").is_none());
     }
 
     // -- CWD workspace parsing --
