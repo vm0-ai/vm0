@@ -7,6 +7,7 @@ export const setupInternalConnectorLogos$ = command(
   async ({ set }, signal: AbortSignal) => {
     const { InternalConnectorLogos } =
       await import("../views/internal-connector-logos.tsx");
+    signal.throwIfAborted();
     set(updatePage$, createElement(InternalConnectorLogos));
     await set(hideAppSkeleton$, signal);
   },
