@@ -13,8 +13,12 @@ import {
   agentComposeVersions,
 } from "../../../../src/db/schema/agent-compose";
 import { zeroAgents } from "../../../../src/db/schema/zero-agent";
-import { eq } from "drizzle-orm";
-import { getSessionChatMessages } from "../../../../src/lib/zero/zero-session-service";
+import { eq, or, sql } from "drizzle-orm";
+import {
+  queryAxiom,
+  getDatasetName,
+  DATASETS,
+} from "../../../../src/lib/shared/axiom";
 import { listConnectors } from "../../../../src/lib/zero/connector/connector-service";
 import {
   uploadS3Buffer,
@@ -204,8 +208,45 @@ const router = tsr.router(zeroDeveloperSupportContract, {
       }
     }
 
-    // Collect session messages
-    const conversation = await getSessionChatMessages(sessionId);
+    // Collect all run IDs in the session
+    // - Continuation runs: continuedFromSessionId = sessionId
+    // - First run: result->>'agentSessionId' = sessionId (created the session)
+    const sessionRuns = await db
+      .select({ id: agentRuns.id })
+      .from(agentRuns)
+      .where(
+        or(
+          eq(agentRuns.continuedFromSessionId, sessionId),
+          sql`${agentRuns.result}->>'agentSessionId' = ${sessionId}`,
+        ),
+      );
+
+    // Query Axiom for agent events from all session runs
+    const agentEvents = await (async () => {
+      if (sessionRuns.length === 0) return [];
+      const runIdList = sessionRuns
+        .map((r) => {
+          return `"${r.id}"`;
+        })
+        .join(", ");
+      const dataset = getDatasetName(DATASETS.AGENT_RUN_EVENTS);
+      const apl = `['${dataset}']
+| where runId in (${runIdList})
+| order by _time asc, sequenceNumber asc
+| limit 2000`;
+      return queryAxiom(apl);
+    })().catch((err) => {
+      log.warn("Failed to collect agent events from Axiom", {
+        error: String(err),
+      });
+      return [];
+    });
+
+    log.info("Collected agent events for diagnostic bundle", {
+      reference,
+      runCount: sessionRuns.length,
+      eventCount: agentEvents.length,
+    });
 
     // Safe connector subset (no tokens)
     const safeConnectors = connectors.map((c) => {
@@ -239,8 +280,12 @@ const router = tsr.router(zeroDeveloperSupportContract, {
         content: `# ${body.title}\n\n${body.description}`,
       },
       {
-        path: "conversation.json",
-        content: JSON.stringify(conversation, null, 2),
+        path: "agent-events.jsonl",
+        content: agentEvents
+          .map((e) => {
+            return JSON.stringify(e);
+          })
+          .join("\n"),
       },
       {
         path: "environment.json",
