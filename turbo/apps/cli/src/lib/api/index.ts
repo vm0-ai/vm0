@@ -168,3 +168,9 @@ export {
 
 // Domain modules - Zero Ask User
 export { postAskUserQuestion, getAskUserAnswer } from "./domains/zero-ask-user";
+
+// Domain modules - Zero Developer Support
+export {
+  requestDeveloperSupportConsent,
+  submitDeveloperSupport,
+} from "./domains/zero-developer-support";
