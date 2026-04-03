@@ -147,6 +147,18 @@ review "authentication changes"     # Review by description
    - Suggest using real filesystem with temp directories
    - Note: One known exception in ip-pool.test.ts (technical debt)
 
+   **Unit Tests for Internal Functions (Bad Smell #18)**
+   - Flag test files that directly import and test internal/private functions
+   - Tests should only exercise public entry points (API routes, CLI commands, exported module interfaces)
+   - Internal logic should be covered indirectly through integration tests
+   - Only integration tests are acceptable — no unit tests for internal functions
+
+   **Test Initialization Flow (Bad Smell #19)**
+   - Flag tests that bypass production initialization flow
+   - Platform tests must use `setupPage()` or equivalent production initialization
+   - Tests should not manually construct internal state that production code initializes differently
+   - Test setup should mirror how the code actually runs in production
+
 6. **Generate Review Files**
 
    Create individual review file for each commit with this structure:
@@ -207,6 +219,8 @@ review "authentication changes"     # Review by description
    - Mock cleanup (Bad Smell #8): [assessment]
    - Direct DB ops (Bad Smell #12): [locations]
    - Filesystem mocking (Bad Smell #17): [locations]
+   - Unit tests for internals (Bad Smell #18): [locations]
+   - Test initialization bypass (Bad Smell #19): [locations]
 
    ## Files Changed
    {list of files}
@@ -250,7 +264,7 @@ review "authentication changes"     # Review by description
    - Defensive programming: {count}
    - Dynamic imports: {count}
    - Type safety issues: {count}
-   - [etc for all 17 categories]
+   - [etc for all 19 categories]
 
    ### Mock Usage Summary
    - Total new mocks: {count}
