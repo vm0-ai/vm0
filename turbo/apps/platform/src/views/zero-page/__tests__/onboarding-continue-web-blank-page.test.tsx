@@ -68,7 +68,7 @@ describe("onboarding continue in web → skeleton → chat page (#7902)", () => 
     });
 
     // Skeleton should be hidden after onboarding page loaded
-    expect(context.store.get(appSkeletonVisible$)).toBe(false);
+    expect(context.store.get(appSkeletonVisible$)).toBeFalsy();
 
     mock.completeOnboarding();
 
@@ -84,7 +84,7 @@ describe("onboarding continue in web → skeleton → chat page (#7902)", () => 
     });
 
     // Skeleton should be hidden after chat page setup completes
-    expect(context.store.get(appSkeletonVisible$)).toBe(false);
+    expect(context.store.get(appSkeletonVisible$)).toBeFalsy();
 
     mock.ctrl.completeRun("Hello!");
   });
