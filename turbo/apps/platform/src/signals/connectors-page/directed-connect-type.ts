@@ -7,5 +7,5 @@ import { pathParams$ } from "../route.ts";
 export const directedConnectType$ = computed((get): string | null => {
   const params = get(pathParams$);
   const type = params?.type;
-  return typeof type === "string" ? type : null;
+  return typeof type === "string" ? type.toLowerCase() : null;
 });
