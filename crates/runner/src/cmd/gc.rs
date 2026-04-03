@@ -4,7 +4,7 @@ use std::time::{Duration, SystemTime};
 
 use clap::Args;
 use nix::fcntl::{Flock, FlockArg};
-use tracing::info;
+use tracing::{info, warn};
 
 use crate::cmd::service;
 use crate::error::{RunnerError, RunnerResult};
@@ -193,9 +193,10 @@ async fn gc_dir(
                 human_bytes(c.size)
             );
         } else {
-            tokio::fs::remove_dir_all(&c.path)
-                .await
-                .map_err(|e| RunnerError::Internal(format!("remove {}: {e}", c.path.display())))?;
+            if let Err(e) = tokio::fs::remove_dir_all(&c.path).await {
+                warn!("failed to remove {label}/{}: {e} (skipping)", c.hash);
+                continue;
+            }
             info!("deleted {label}/{} ({})", c.hash, human_bytes(c.size));
         }
         freed += c.size;
