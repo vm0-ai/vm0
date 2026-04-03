@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -23,6 +24,11 @@ import {
   autoRechargeConfig$,
   pendingEnabled$,
   setPendingEnabled$,
+  formThreshold$,
+  formAmount$,
+  setFormThreshold$,
+  setFormAmount$,
+  syncFormFromConfig$,
 } from "../../signals/zero-page/billing.ts";
 import {
   selectedPlanTier$,
@@ -141,32 +147,38 @@ export function AutoRechargeSection({
   const pendingEnabled = useGet(pendingEnabled$);
   const setPendingEnabled = useSet(setPendingEnabled$);
 
+  const thresholdValue = useGet(formThreshold$);
+  const amountValue = useGet(formAmount$);
+  const setThreshold = useSet(setFormThreshold$);
+  const setAmount = useSet(setFormAmount$);
+  const syncForm = useSet(syncFormFromConfig$);
+
+  // Sync form fields when server config changes (initial load or after save)
+  const { threshold: serverThreshold, amount: serverAmount } = config;
+  useEffect(() => {
+    syncForm({ threshold: serverThreshold, amount: serverAmount });
+  }, [syncForm, serverThreshold, serverAmount]);
+
   if (currentTier === "free") {
     return null;
   }
 
-  const { enabled, threshold, amount } = config;
+  const { enabled } = config;
   const displayEnabled = pendingEnabled !== null ? pendingEnabled : enabled;
-  const amountNum = Number(amount);
+  const amountNum = Number(amountValue);
   const amountParsed = Number.isFinite(amountNum) ? amountNum : 0;
   const dollarAmount =
     amountParsed > 0 ? (amountParsed / CREDITS_PER_DOLLAR).toFixed(2) : "0.00";
 
-  const thresholdId = `org-auto-recharge-threshold-${variant}`;
-  const amountId = `org-auto-recharge-amount-${variant}`;
-
-  const readInputNumbers = () => {
-    const thresholdEl = document.getElementById(thresholdId);
-    const amountEl = document.getElementById(amountId);
-    const tRaw =
-      thresholdEl instanceof HTMLInputElement ? thresholdEl.value : "";
-    const aRaw = amountEl instanceof HTMLInputElement ? amountEl.value : "";
-    const tVal = Number(tRaw);
-    const aVal = Number(aRaw);
+  const parseFormNumbers = () => {
+    const tVal = Number(thresholdValue);
+    const aVal = Number(amountValue);
     return {
       threshold:
-        tRaw !== "" && Number.isFinite(tVal) ? tVal : Number(threshold),
-      amount: aRaw !== "" && Number.isFinite(aVal) ? aVal : amountNum,
+        thresholdValue !== "" && Number.isFinite(tVal)
+          ? tVal
+          : Number(serverThreshold),
+      amount: amountValue !== "" && Number.isFinite(aVal) ? aVal : amountNum,
     };
   };
 
@@ -176,7 +188,7 @@ export function AutoRechargeSection({
     amount?: number;
   }) => {
     const e = overrides?.enabled ?? enabled;
-    const inputs = readInputNumbers();
+    const inputs = parseFormNumbers();
     const t = overrides?.threshold ?? inputs.threshold;
     const a = overrides?.amount ?? inputs.amount;
     detach(
@@ -189,7 +201,7 @@ export function AutoRechargeSection({
   };
 
   const persistIfValid = () => {
-    const { threshold: t, amount: a } = readInputNumbers();
+    const { threshold: t, amount: a } = parseFormNumbers();
     if (!loading && (!displayEnabled || (t > 0 && a >= CREDITS_PER_DOLLAR))) {
       if (displayEnabled) {
         setPendingEnabled(null);
@@ -225,8 +237,8 @@ export function AutoRechargeSection({
                   saveCurrent({ enabled: false });
                   return;
                 }
-                const t = Number(threshold);
-                const a = amountNum;
+                const t = Number(serverThreshold);
+                const a = Number(serverAmount);
                 if (!loading && t > 0 && a >= CREDITS_PER_DOLLAR) {
                   saveCurrent({ enabled: true, threshold: t, amount: a });
                 } else {
@@ -252,11 +264,12 @@ export function AutoRechargeSection({
                   </p>
                 </div>
                 <Input
-                  key={`threshold-${threshold}`}
-                  id={thresholdId}
                   type="number"
                   min={1}
-                  defaultValue={threshold}
+                  value={thresholdValue}
+                  onChange={(e) => {
+                    setThreshold(e.target.value);
+                  }}
                   onBlur={() => {
                     return persistIfValid();
                   }}
@@ -277,12 +290,13 @@ export function AutoRechargeSection({
                 </div>
                 <div className="relative w-[200px] shrink-0">
                   <Input
-                    key={`amount-${amount}`}
-                    id={amountId}
                     type="number"
                     min={CREDITS_PER_DOLLAR}
                     step={CREDITS_PER_DOLLAR}
-                    defaultValue={amount}
+                    value={amountValue}
+                    onChange={(e) => {
+                      setAmount(e.target.value);
+                    }}
                     onBlur={() => {
                       return persistIfValid();
                     }}
@@ -337,11 +351,12 @@ export function AutoRechargeSection({
               When credits drop below
             </span>
             <Input
-              key={`dialog-threshold-${threshold}`}
-              id={thresholdId}
               type="number"
               min={1}
-              defaultValue={threshold}
+              value={thresholdValue}
+              onChange={(e) => {
+                setThreshold(e.target.value);
+              }}
               placeholder="e.g. 1000"
             />
           </label>
@@ -352,12 +367,13 @@ export function AutoRechargeSection({
             </span>
             <div className="flex items-center gap-2">
               <Input
-                key={`dialog-amount-${amount}`}
-                id={amountId}
                 type="number"
                 min={CREDITS_PER_DOLLAR}
                 step={CREDITS_PER_DOLLAR}
-                defaultValue={amount}
+                value={amountValue}
+                onChange={(e) => {
+                  setAmount(e.target.value);
+                }}
                 placeholder="e.g. 10000"
                 className="flex-1"
               />
