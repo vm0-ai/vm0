@@ -10,7 +10,7 @@ import {
   PROVIDER_HANDLERS,
 } from "../../../../../src/lib/zero/connector/provider-registry";
 import { deleteConnector } from "../../../../../src/lib/zero/connector/connector-service";
-import { logger } from "../../../../../src/lib/logger";
+import { logger } from "../../../../../src/lib/shared/logger";
 import { and, eq } from "drizzle-orm";
 import { connectors } from "../../../../../src/db/schema/connector";
 

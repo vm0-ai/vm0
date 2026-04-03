@@ -15,7 +15,7 @@ import { zeroAgents } from "../../../../src/db/schema/zero-agent";
 import { agentComposes } from "../../../../src/db/schema/agent-compose";
 import { eq, desc } from "drizzle-orm";
 import { buildComposeContent } from "../../../../src/lib/zero/build-compose-content";
-import { logger } from "../../../../src/lib/logger";
+import { logger } from "../../../../src/lib/shared/logger";
 
 const log = logger("api:zero-agents");
 

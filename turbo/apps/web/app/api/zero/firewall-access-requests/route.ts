@@ -21,7 +21,7 @@ import { firewallAccessRequests } from "../../../../src/db/schema/firewall-acces
 import { eq, and } from "drizzle-orm";
 import { clerkClient } from "@clerk/nextjs/server";
 import { requireAgentPermission } from "../../../../src/lib/zero/require-agent-permission";
-import { logger } from "../../../../src/lib/logger";
+import { logger } from "../../../../src/lib/shared/logger";
 
 const log = logger("api:zero:firewall-access-requests");
 

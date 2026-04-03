@@ -38,8 +38,8 @@ import {
   notFound,
   noModelProvider,
   providerIncompatible,
-} from "../errors";
-import { logger } from "../logger";
+} from "../shared/errors";
+import { logger } from "../shared/logger";
 import type { ExecutionContext, ResumeSession } from "../infra/run/types";
 import type { ArtifactSnapshot } from "../infra/checkpoint/types";
 import {

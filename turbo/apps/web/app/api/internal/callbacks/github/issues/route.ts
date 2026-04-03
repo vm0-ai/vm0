@@ -13,10 +13,10 @@ import {
   removeCommentReaction,
 } from "../../../../../../src/lib/zero/github/api";
 import { extractRunOutput } from "../../../../../../src/lib/infra/run/extract-run-output";
-import { getAppUrl } from "../../../../../../src/lib/url";
+import { getAppUrl } from "../../../../../../src/lib/zero/url";
 import { env } from "../../../../../../src/env";
 import type { GitHubIssuesCallbackPayload } from "../../../../../../src/lib/infra/callback/callback-payloads";
-import { logger } from "../../../../../../src/lib/logger";
+import { logger } from "../../../../../../src/lib/shared/logger";
 
 const log = logger("callback:github-issues");
 

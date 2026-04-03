@@ -6,7 +6,7 @@ import { env } from "../../../../env";
 import { createTelegramClient, sendMessage } from "../client";
 import { resolveUserLink, getWorkspaceAgent, buildConnectUrl } from "./shared";
 import { escapeHtml } from "../format";
-import { logger } from "../../../logger";
+import { logger } from "../../../shared/logger";
 import type { TelegramHandlerUpdate } from "./types";
 
 const log = logger("telegram:commands");

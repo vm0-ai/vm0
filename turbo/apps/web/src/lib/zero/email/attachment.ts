@@ -4,7 +4,7 @@ import {
   getReceivedEmailAttachments,
   type ReceivedEmailAttachment,
 } from "./client";
-import { logger } from "../../logger";
+import { logger } from "../../shared/logger";
 
 const log = logger("email:attachment");
 

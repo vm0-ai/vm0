@@ -16,7 +16,7 @@ import {
   removeOrgDomain,
   setOrgDomainVerified,
 } from "../../../../../src/lib/zero/org/org-member-service";
-import { isForbidden } from "../../../../../src/lib/errors";
+import { isForbidden } from "../../../../../src/lib/shared/errors";
 
 const router = tsr.router(zeroOrgDomainsContract, {
   list: async ({ headers }) => {

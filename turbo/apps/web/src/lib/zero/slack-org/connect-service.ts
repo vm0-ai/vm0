@@ -13,7 +13,7 @@ import { env } from "../../../env";
 import { decryptSecretValue } from "../../shared/crypto/secrets-encryption";
 import { createSlackClient, postMessage } from "../slack/client";
 import { buildSuccessMessage, buildWelcomeMessage } from "../slack/blocks";
-import { logger } from "../../logger";
+import { logger } from "../../shared/logger";
 
 const log = logger("slack-org:connect");
 

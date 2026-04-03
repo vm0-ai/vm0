@@ -21,8 +21,8 @@ import {
   requireAuth,
   isAuthError,
 } from "../../../../src/lib/auth/require-auth";
-import { logger } from "../../../../src/lib/logger";
-import { isApiError } from "../../../../src/lib/errors";
+import { logger } from "../../../../src/lib/shared/logger";
+import { isApiError } from "../../../../src/lib/shared/errors";
 import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";
 import { resolveCliRunContext } from "../../../../src/lib/zero/build-zero-context";
 

@@ -8,8 +8,8 @@ import {
 } from "../../../infra/storage/storage-service";
 import type { StorageManifest } from "../../../infra/storage/types";
 import { DEFAULT_PROFILE } from "@vm0/core";
-import { badRequest } from "../../../errors";
-import { logger } from "../../../logger";
+import { badRequest } from "../../../shared/errors";
+import { logger } from "../../../shared/logger";
 import { extractWorkingDir } from "../utils/extract-working-dir";
 import {
   agentComposes,

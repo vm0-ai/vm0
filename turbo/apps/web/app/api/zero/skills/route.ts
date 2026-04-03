@@ -15,7 +15,7 @@ import { eq, and } from "drizzle-orm";
 import { uploadSkillServerSide } from "../../../../src/lib/infra/storage/skill-upload";
 import { SEED_SKILLS } from "../../../../src/lib/zero/seed-skills";
 import { requireAdminPermission } from "../../../../src/lib/zero/require-agent-permission";
-import { logger } from "../../../../src/lib/logger";
+import { logger } from "../../../../src/lib/shared/logger";
 
 const log = logger("api:zero-skills");
 

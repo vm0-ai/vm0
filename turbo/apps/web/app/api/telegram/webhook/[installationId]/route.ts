@@ -13,7 +13,7 @@ import {
   handleHelpCommand,
 } from "../../../../../src/lib/zero/telegram/handlers/commands";
 import { storeTelegramMessage } from "../../../../../src/lib/zero/telegram/handlers/shared";
-import { logger } from "../../../../../src/lib/logger";
+import { logger } from "../../../../../src/lib/shared/logger";
 import type { TelegramHandlerUpdate } from "../../../../../src/lib/zero/telegram/handlers/types";
 
 const log = logger("telegram:webhook");

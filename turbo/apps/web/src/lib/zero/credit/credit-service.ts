@@ -5,7 +5,7 @@ import { deductOrgCredits } from "../org/org-service";
 import { deductFromExpiresRecords } from "./credit-expires-service";
 import { triggerAutoRecharge } from "../billing/auto-recharge-service";
 import { evaluateMemberCaps } from "./member-credit-cap-service";
-import { logger } from "../../logger";
+import { logger } from "../../shared/logger";
 
 const log = logger("service:credit");
 

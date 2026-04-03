@@ -24,7 +24,7 @@ import {
 import { isUserUnsubscribed } from "../email/unsubscribe-service";
 import { getCachedUser } from "../../auth/user-cache-service";
 import { env } from "../../../env";
-import { logger } from "../../logger";
+import { logger } from "../../shared/logger";
 
 const log = logger("export");
 

@@ -37,7 +37,7 @@ import {
 import { skills } from "../../../db/schema/skill";
 import { storages, storageVersions } from "../../../db/schema/storage";
 import { env } from "../../../env";
-import { logger } from "../../logger";
+import { logger } from "../../shared/logger";
 import { SEED_SKILLS } from "../seed-skills";
 
 const log = logger("skills:sync");

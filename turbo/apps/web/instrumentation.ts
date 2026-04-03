@@ -6,7 +6,7 @@ export async function register() {
     if (process.env.NODE_ENV === "development") {
       const { initServices } = await import("./src/lib/init-services");
       initServices();
-      const { logger } = await import("./src/lib/logger");
+      const { logger } = await import("./src/lib/shared/logger");
       const log = logger("instrumentation");
       const { syncSkills } = await import("./src/lib/zero/skills/sync-skills");
       syncSkills().catch((error: unknown) => {

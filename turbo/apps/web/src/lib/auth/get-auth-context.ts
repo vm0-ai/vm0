@@ -10,7 +10,7 @@ import {
   verifyCliToken,
 } from "./sandbox-token";
 import { verifyMembershipCached } from "./org-membership-cache";
-import { logger } from "../logger";
+import { logger } from "../shared/logger";
 
 const log = logger("auth:user");
 

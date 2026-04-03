@@ -14,7 +14,7 @@ import {
   getUserPreferences,
   updateUserPreferences,
 } from "../../../../src/lib/zero/user/user-preferences-service";
-import { isBadRequest } from "../../../../src/lib/errors";
+import { isBadRequest } from "../../../../src/lib/shared/errors";
 
 const router = tsr.router(zeroUserPreferencesContract, {
   get: async ({ headers }) => {

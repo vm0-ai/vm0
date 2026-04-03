@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import NextLink from "next/link";
 import { useUser } from "@clerk/nextjs";
-import { getAppUrl } from "../../src/lib/url";
+import { getAppUrl } from "../../src/lib/zero/url";
 import Navbar from "./Navbar";
 import Footer from "./Footer";
 

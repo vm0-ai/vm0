@@ -21,7 +21,7 @@ import { listConnectors } from "../../../../src/lib/zero/connector/connector-ser
 import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
 import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";
 import { deleteInstallation } from "../../../../src/lib/zero/github/github-app";
-import { logger } from "../../../../src/lib/logger";
+import { logger } from "../../../../src/lib/shared/logger";
 
 const patchGithubBodySchema = z.object({ agentName: z.string().min(1) });
 

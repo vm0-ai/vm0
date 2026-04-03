@@ -1,7 +1,7 @@
 import { eq, and, desc } from "drizzle-orm";
 import { agentComposes } from "../../db/schema/agent-compose";
 import { zeroAgents } from "../../db/schema/zero-agent";
-import { notFound } from "../errors";
+import { notFound } from "../shared/errors";
 import { canAccessCompose } from "../infra/agent/compose-access";
 import type { ComposeListItem } from "@vm0/core";
 

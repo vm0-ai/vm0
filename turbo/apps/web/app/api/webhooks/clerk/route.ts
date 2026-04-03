@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse, after } from "next/server";
 import { verifyWebhook } from "@clerk/nextjs/webhooks";
 import { initServices } from "../../../../src/lib/init-services";
-import { logger } from "../../../../src/lib/logger";
+import { logger } from "../../../../src/lib/shared/logger";
 import { cleanupOrgExternalServices } from "../../../../src/lib/zero/org/org-external-cleanup";
 import { deleteOrgS3Data } from "../../../../src/lib/zero/org/org-s3-cleanup";
 import { deleteOrgData } from "../../../../src/lib/zero/org/org-deletion-service";

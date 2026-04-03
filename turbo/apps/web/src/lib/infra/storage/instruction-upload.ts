@@ -1,6 +1,6 @@
 import { getInstructionsFilename, getInstructionsStorageName } from "@vm0/core";
 import { uploadStorageServerSide } from "./upload-storage";
-import { logger } from "../../logger";
+import { logger } from "../../shared/logger";
 
 const log = logger("storage:instruction-upload");
 

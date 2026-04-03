@@ -16,7 +16,7 @@ import { generateCallbackSecret, getApiUrl } from "../../../infra/callback";
 import { getUserIdByEmail } from "../../../auth/get-user-id-by-email";
 import { getOrgBySlug } from "../../../zero/org/org-cache-service";
 import { verifyMembershipCached } from "../../../auth/org-membership-cache";
-import { logger } from "../../../logger";
+import { logger } from "../../../shared/logger";
 
 const log = logger("email:inbound-trigger");
 

@@ -7,7 +7,7 @@ import {
   saveEmailThreadSession,
   updateEmailThreadSession,
 } from "./handlers/shared";
-import { logger } from "../../logger";
+import { logger } from "../../shared/logger";
 import type { EnqueueEmailOptions, PostSendAction } from "./types";
 
 const log = logger("email:outbox");

@@ -2,8 +2,8 @@ import { eq, sql } from "drizzle-orm";
 import type Stripe from "stripe";
 import { orgMetadata } from "../../../db/schema/org-metadata";
 import { grantOrgCredits } from "../org/org-service";
-import { getStripe } from "../../stripe";
-import { logger } from "../../logger";
+import { getStripe } from "../stripe";
+import { logger } from "../../shared/logger";
 
 const log = logger("billing:auto-recharge");
 

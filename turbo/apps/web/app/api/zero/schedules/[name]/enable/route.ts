@@ -6,7 +6,10 @@ import {
 } from "../../../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../../../src/lib/zero/org/resolve-org";
 import { enableSchedule } from "../../../../../../src/lib/zero/schedule";
-import { isNotFound, isSchedulePast } from "../../../../../../src/lib/errors";
+import {
+  isNotFound,
+  isSchedulePast,
+} from "../../../../../../src/lib/shared/errors";
 
 const bodySchema = z.object({
   agentId: z.string(),

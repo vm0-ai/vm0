@@ -11,7 +11,7 @@ import {
   agentComposeVersions,
 } from "../../db/schema/agent-compose";
 import { extractAndGroupVariables, type SummaryEntry } from "@vm0/core";
-import { notFound, forbidden } from "../errors";
+import { notFound, forbidden } from "../shared/errors";
 import type { SessionResponse } from "@vm0/core";
 
 /**

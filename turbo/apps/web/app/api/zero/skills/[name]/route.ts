@@ -33,10 +33,10 @@ import {
   downloadManifest,
   downloadS3Buffer,
 } from "../../../../../src/lib/infra/s3/s3-client";
-import { extractFileFromTar } from "../../../../../src/lib/tar";
+import { extractFileFromTar } from "../../../../../src/lib/infra/tar";
 import { env } from "../../../../../src/env";
 import { requireAdminPermission } from "../../../../../src/lib/zero/require-agent-permission";
-import { logger } from "../../../../../src/lib/logger";
+import { logger } from "../../../../../src/lib/shared/logger";
 
 const log = logger("api:zero-skills:detail");
 

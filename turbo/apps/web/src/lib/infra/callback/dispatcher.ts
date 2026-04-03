@@ -4,7 +4,7 @@ import { agentRuns } from "../../../db/schema/agent-run";
 import { decryptSecretValue } from "../../shared/crypto/secrets-encryption";
 import { env } from "../../../env";
 import { computeHmacSignature } from "./hmac";
-import { logger } from "../../logger";
+import { logger } from "../../shared/logger";
 
 const log = logger("callback:dispatcher");
 

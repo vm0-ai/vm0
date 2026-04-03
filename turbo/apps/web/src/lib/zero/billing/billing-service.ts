@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import type { OrgTier } from "@vm0/core";
-import { getStripe } from "../../stripe";
+import { getStripe } from "../stripe";
 import { env } from "../../../env";
 import { orgMetadata } from "../../../db/schema/org-metadata";
 import { grantOrgCredits } from "../org/org-service";
@@ -11,7 +11,7 @@ import {
   expireCredits,
   getExpiresRecordsSummary,
 } from "../credit/credit-expires-service";
-import { logger } from "../../logger";
+import { logger } from "../../shared/logger";
 
 const log = logger("billing");
 

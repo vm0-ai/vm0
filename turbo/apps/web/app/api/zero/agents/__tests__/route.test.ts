@@ -37,7 +37,7 @@ import {
   type UserContext,
 } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
-import { createSingleFileTar } from "../../../../../src/lib/tar";
+import { createSingleFileTar } from "../../../../../src/lib/infra/tar";
 import { POST as runSchedule } from "../../schedules/run/route";
 
 const context = testContext();

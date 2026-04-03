@@ -1,8 +1,8 @@
 import { eq, and, inArray } from "drizzle-orm";
 import { clerkClient } from "@clerk/nextjs/server";
 import { z } from "zod";
-import { badRequest, forbidden, notFound } from "../../errors";
-import { logger } from "../../logger";
+import { badRequest, forbidden, notFound } from "../../shared/errors";
+import { logger } from "../../shared/logger";
 import type { OrgRole, OrgEnrollmentMode } from "@vm0/core";
 import { slackOrgConnections } from "../../../db/schema/slack-org-connection";
 import { slackOrgInstallations } from "../../../db/schema/slack-org-installation";

@@ -16,7 +16,7 @@ import {
   sendMessage,
 } from "../../../../../src/lib/zero/telegram/client";
 import { escapeHtml } from "../../../../../src/lib/zero/telegram/format";
-import { logger } from "../../../../../src/lib/logger";
+import { logger } from "../../../../../src/lib/shared/logger";
 
 const log = logger("api:telegram:link");
 

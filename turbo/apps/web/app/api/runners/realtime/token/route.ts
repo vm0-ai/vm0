@@ -4,7 +4,7 @@ import { initServices } from "../../../../../src/lib/init-services";
 import { getRunnerAuth } from "../../../../../src/lib/auth/runner-auth";
 import { generateRunnerGroupToken } from "../../../../../src/lib/shared/realtime/client";
 import { isOfficialRunnerGroup } from "../../../../../src/lib/infra/run/runner-group";
-import { logger } from "../../../../../src/lib/logger";
+import { logger } from "../../../../../src/lib/shared/logger";
 
 const log = logger("api:runners:realtime:token");
 

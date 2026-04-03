@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { initServices } from "../../../../src/lib/init-services";
 import { sql } from "drizzle-orm";
-import { logger } from "../../../../src/lib/logger";
+import { logger } from "../../../../src/lib/shared/logger";
 import { env } from "../../../../src/env";
 
 const log = logger("cron:telegram-cleanup");

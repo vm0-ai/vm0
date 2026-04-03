@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { initServices } from "../../../../src/lib/init-services";
 import { verifyUnsubscribeToken } from "../../../../src/lib/zero/email/handlers/shared";
 import { unsubscribeUser } from "../../../../src/lib/zero/email/unsubscribe-service";
-import { getAppUrl } from "../../../../src/lib/url";
+import { getAppUrl } from "../../../../src/lib/zero/url";
 
 /**
  * Email Unsubscribe Endpoint

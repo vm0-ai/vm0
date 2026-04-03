@@ -13,7 +13,7 @@ import {
 import { emailSuppressions } from "../../../../../src/db/schema/email-suppression";
 import { getCachedUserIdByEmail } from "../../../../../src/lib/auth/user-cache-service";
 import { unsubscribeUser } from "../../../../../src/lib/zero/email/unsubscribe-service";
-import { logger } from "../../../../../src/lib/logger";
+import { logger } from "../../../../../src/lib/shared/logger";
 
 const log = logger("zero:email:inbound");
 

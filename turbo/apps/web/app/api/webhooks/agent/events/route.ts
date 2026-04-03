@@ -9,7 +9,7 @@ import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import { zeroRuns } from "../../../../../src/db/schema/zero-run";
 import { eq, and } from "drizzle-orm";
 import { getSandboxAuthForRun } from "../../../../../src/lib/auth/get-sandbox-auth";
-import { logger } from "../../../../../src/lib/logger";
+import { logger } from "../../../../../src/lib/shared/logger";
 import {
   ingestToAxiom,
   getDatasetName,

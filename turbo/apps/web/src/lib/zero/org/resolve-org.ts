@@ -5,7 +5,7 @@ import {
   badRequest,
   isBadRequest,
   isNotFound,
-} from "../../errors";
+} from "../../shared/errors";
 import { getOrgData } from "./org-cache-service";
 import { getOrgMetadata } from "./org-metadata-service";
 import { orgMetadata } from "../../../db/schema/org-metadata";

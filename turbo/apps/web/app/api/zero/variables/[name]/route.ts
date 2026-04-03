@@ -11,8 +11,8 @@ import {
 } from "../../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
 import { deleteVariable } from "../../../../../src/lib/zero/variable/variable-service";
-import { logger } from "../../../../../src/lib/logger";
-import { isNotFound } from "../../../../../src/lib/errors";
+import { logger } from "../../../../../src/lib/shared/logger";
+import { isNotFound } from "../../../../../src/lib/shared/errors";
 
 const log = logger("api:zero-variables");
 

@@ -1,5 +1,5 @@
 import { resolveSessionHistory as resolveFromStorage } from "../../session-history";
-import { notFound } from "../../../errors";
+import { notFound } from "../../../shared/errors";
 
 /**
  * Resolve session history from conversation record

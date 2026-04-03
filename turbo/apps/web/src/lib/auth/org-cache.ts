@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { clerkClient } from "@clerk/nextjs/server";
 import { orgCache } from "../../db/schema/org-cache";
-import { logger } from "../logger";
+import { logger } from "../shared/logger";
 
 const log = logger("service:org-cache");
 

@@ -7,7 +7,7 @@ import {
   isBadRequest,
   isForbidden,
   isNotFound,
-} from "../../../../../src/lib/errors";
+} from "../../../../../src/lib/shared/errors";
 
 const MAX_FILE_SIZE = 2 * 1024 * 1024; // 2 MB
 const ALLOWED_TYPES = new Set([

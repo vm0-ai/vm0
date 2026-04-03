@@ -4,7 +4,7 @@ import { githubInstallations } from "../../../../db/schema/github-installation";
 import { getInstallationAccessToken } from "../github-app";
 import { encryptSecretValue } from "../../../shared/crypto/secrets-encryption";
 import { env } from "../../../../env";
-import { logger } from "../../../logger";
+import { logger } from "../../../shared/logger";
 
 const log = logger("github:installation-event");
 

@@ -17,7 +17,7 @@ import {
 } from "../../../../../../src/lib/zero/email/handlers/shared";
 import { getOrgData } from "../../../../../../src/lib/zero/org/org-cache-service";
 import type { EmailReplyCallbackPayload } from "../../../../../../src/lib/infra/callback/callback-payloads";
-import { logger } from "../../../../../../src/lib/logger";
+import { logger } from "../../../../../../src/lib/shared/logger";
 
 const log = logger("callback:email:reply");
 

@@ -9,7 +9,7 @@ import { agentRuns } from "../../../../src/db/schema/agent-run";
 import { runnerJobQueue } from "../../../../src/db/schema/runner-job-queue";
 import { eq, and, isNull, inArray, type SQL } from "drizzle-orm";
 import { getRunnerAuth } from "../../../../src/lib/auth/runner-auth";
-import { logger } from "../../../../src/lib/logger";
+import { logger } from "../../../../src/lib/shared/logger";
 import { isOfficialRunnerGroup } from "../../../../src/lib/infra/run/runner-group";
 
 const log = logger("api:runners:poll");

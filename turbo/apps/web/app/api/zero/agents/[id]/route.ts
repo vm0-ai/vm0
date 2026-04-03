@@ -20,8 +20,8 @@ import {
   requireAdminPermission,
 } from "../../../../../src/lib/zero/require-agent-permission";
 import { deleteComposeById } from "../../../../../src/lib/infra/agent-compose/compose-service";
-import { isConflict } from "../../../../../src/lib/errors";
-import { logger } from "../../../../../src/lib/logger";
+import { isConflict } from "../../../../../src/lib/shared/errors";
+import { logger } from "../../../../../src/lib/shared/logger";
 
 const log = logger("api:zero-agents:id");
 

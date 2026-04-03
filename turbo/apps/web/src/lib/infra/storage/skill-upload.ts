@@ -16,7 +16,7 @@ import {
 import type { S3StorageManifest } from "../s3/types";
 import { computeContentHashFromHashes, hashFileContent } from "./content-hash";
 import { env } from "../../../env";
-import { logger } from "../../logger";
+import { logger } from "../../shared/logger";
 
 const log = logger("storage:skill-upload");
 

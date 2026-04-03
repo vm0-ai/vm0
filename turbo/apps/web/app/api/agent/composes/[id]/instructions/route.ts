@@ -39,7 +39,7 @@ import {
   stripMetadataFrontmatter,
   agentComposeApiContentSchema,
 } from "@vm0/core";
-import { extractFileFromTar } from "../../../../../../src/lib/tar";
+import { extractFileFromTar } from "../../../../../../src/lib/infra/tar";
 
 const router = tsr.router(composesInstructionsContract, {
   getInstructions: async ({ params, headers }) => {

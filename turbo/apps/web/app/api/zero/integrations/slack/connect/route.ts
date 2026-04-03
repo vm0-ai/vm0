@@ -15,7 +15,7 @@ import {
   resolveDefaultComposeId,
   getWorkspaceAgent,
 } from "../../../../../../src/lib/zero/slack-org/handlers/shared";
-import { logger } from "../../../../../../src/lib/logger";
+import { logger } from "../../../../../../src/lib/shared/logger";
 
 const log = logger("api:zero:slack:connect");
 

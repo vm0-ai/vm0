@@ -1,7 +1,7 @@
 import { createHmac, hkdfSync } from "crypto";
 import { ZERO_CAPABILITIES } from "@vm0/core";
 import { env } from "../../env";
-import { logger } from "../logger";
+import { logger } from "../shared/logger";
 
 type ZeroCapability = (typeof ZERO_CAPABILITIES)[number];
 

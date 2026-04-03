@@ -18,7 +18,7 @@ import { generatePresignedUrl } from "../../../../src/lib/infra/s3/s3-client";
 import { getOrgData } from "../../../../src/lib/zero/org/org-cache-service";
 import { env } from "../../../../src/env";
 import { resolveVersionByPrefix } from "../../../../src/lib/infra/storage/version-resolver";
-import { logger } from "../../../../src/lib/logger";
+import { logger } from "../../../../src/lib/shared/logger";
 
 const log = logger("api:storages:download");
 

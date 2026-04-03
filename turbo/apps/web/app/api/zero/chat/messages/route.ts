@@ -15,7 +15,7 @@ import {
   createZeroRunRecord,
   dispatchZeroRun,
 } from "../../../../../src/lib/zero/zero-run-service";
-import { isApiError } from "../../../../../src/lib/errors";
+import { isApiError } from "../../../../../src/lib/shared/errors";
 import {
   createChatThread,
   getChatThread,
@@ -30,7 +30,7 @@ import {
   generateCallbackSecret,
 } from "../../../../../src/lib/infra/callback";
 import type { ChatCallbackPayload } from "../../../../../src/lib/infra/callback/callback-payloads";
-import { logger } from "../../../../../src/lib/logger";
+import { logger } from "../../../../../src/lib/shared/logger";
 
 const log = logger("zero:chat-messages");
 

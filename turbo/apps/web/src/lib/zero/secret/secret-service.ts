@@ -2,8 +2,8 @@ import { eq, and } from "drizzle-orm";
 import { type SecretType } from "@vm0/core";
 import { secrets } from "../../../db/schema/secret";
 import { encryptSecretValue, decryptSecretValue } from "../../shared/crypto";
-import { badRequest, notFound } from "../../errors";
-import { logger } from "../../logger";
+import { badRequest, notFound } from "../../shared/errors";
+import { logger } from "../../shared/logger";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 
 const log = logger("service:secret");

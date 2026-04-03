@@ -19,7 +19,10 @@ import {
   drainOrgQueue,
 } from "../../../../../../src/lib/zero/zero-run-queue-service";
 import { processOrgCredits } from "../../../../../../src/lib/zero/credit/credit-service";
-import { isNotFound, isBadRequest } from "../../../../../../src/lib/errors";
+import {
+  isNotFound,
+  isBadRequest,
+} from "../../../../../../src/lib/shared/errors";
 import { after } from "next/server";
 
 const router = tsr.router(zeroRunsCancelContract, {

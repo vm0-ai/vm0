@@ -19,7 +19,7 @@ import {
   isBadRequest,
   isConflict,
   isNotFound,
-} from "../../../../../src/lib/errors";
+} from "../../../../../src/lib/shared/errors";
 
 const router = tsr.router(zeroComputerConnectorContract, {
   create: async ({ headers }) => {

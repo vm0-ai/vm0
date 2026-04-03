@@ -17,7 +17,10 @@ import {
   acceptMembershipRequest,
   rejectMembershipRequest,
 } from "../../../../../src/lib/zero/org/org-member-service";
-import { isBadRequest, isForbidden } from "../../../../../src/lib/errors";
+import {
+  isBadRequest,
+  isForbidden,
+} from "../../../../../src/lib/shared/errors";
 
 const router = tsr.router(zeroOrgMembershipRequestsContract, {
   accept: async ({ headers, body }) => {

@@ -24,8 +24,8 @@ import {
   getWorkspaceAgent,
   resolveSessionCompose,
 } from "./shared";
-import { getAppUrl } from "../../../url";
-import { logger } from "../../../logger";
+import { getAppUrl } from "../../url";
+import { logger } from "../../../shared/logger";
 
 const log = logger("slack-org:dm");
 

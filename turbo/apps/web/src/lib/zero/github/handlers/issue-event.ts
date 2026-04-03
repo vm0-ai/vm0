@@ -19,7 +19,7 @@ import {
   removeCommentReaction,
 } from "../api";
 import { env } from "../../../../env";
-import { logger } from "../../../logger";
+import { logger } from "../../../shared/logger";
 
 const log = logger("github:issue-event");
 

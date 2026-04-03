@@ -11,7 +11,7 @@ import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
 import { upsertOAuthConnector } from "../../../../../src/lib/zero/connector/connector-service";
 import { connectorSessions } from "../../../../../src/db/schema/connector-session";
-import { logger } from "../../../../../src/lib/logger";
+import { logger } from "../../../../../src/lib/shared/logger";
 import { getOrigin } from "../../../../../src/lib/shared/request/get-origin";
 import {
   PROVIDER_HANDLERS,

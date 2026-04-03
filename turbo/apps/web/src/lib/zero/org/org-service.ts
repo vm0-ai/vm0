@@ -7,8 +7,8 @@ import {
   invalidateOrgCache,
 } from "./org-cache-service";
 import type { OrgData } from "./org-cache-service";
-import { badRequest } from "../../errors";
-import { logger } from "../../logger";
+import { badRequest } from "../../shared/errors";
+import { logger } from "../../shared/logger";
 import type { ResolvedOrg } from "./resolve-org";
 
 const log = logger("service:org");

@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { emailThreadSessions } from "../../../../db/schema/email-thread-session";
 import { resolveDefaultAgentId } from "../../resolve-default-agent";
 import { env } from "../../../../env";
-import { getAppUrl } from "../../../url";
+import { getAppUrl } from "../../url";
 import { getApiUrl } from "../../../infra/callback/dispatcher";
 import { enqueueEmail } from "../outbox-service";
 

@@ -14,7 +14,7 @@ import { runnerJobQueue } from "../../../../../../src/db/schema/runner-job-queue
 import { eq, and, isNull } from "drizzle-orm";
 import { getRunnerAuth } from "../../../../../../src/lib/auth/runner-auth";
 import { generateSandboxToken } from "../../../../../../src/lib/auth/sandbox-token";
-import { logger } from "../../../../../../src/lib/logger";
+import { logger } from "../../../../../../src/lib/shared/logger";
 import { decryptSecretsMap } from "../../../../../../src/lib/shared/crypto/secrets-encryption";
 import { isOfficialRunnerGroup } from "../../../../../../src/lib/infra/run/runner-group";
 import { recordSandboxOperation } from "../../../../../../src/lib/shared/metrics";

@@ -1,8 +1,8 @@
 import { gzipSync } from "node:zlib";
 import { resolveVolumes } from "./storage-resolver";
 import { generatePresignedUrl, putS3Object } from "../s3/s3-client";
-import { logger } from "../../logger";
-import { badRequest } from "../../errors";
+import { logger } from "../../shared/logger";
+import { badRequest } from "../../shared/errors";
 import {
   DEFAULT_MEMORY_MOUNT_PATH,
   type AgentVolumeConfig,

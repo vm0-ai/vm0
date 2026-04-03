@@ -5,7 +5,7 @@ import { initServices } from "../../../../../../src/lib/init-services";
 import { verifySandboxToken } from "../../../../../../src/lib/auth/sandbox-token";
 import type { SandboxAuth } from "../../../../../../src/lib/auth/sandbox-token";
 import { decryptSecretsMap } from "../../../../../../src/lib/shared/crypto/secrets-encryption";
-import { logger } from "../../../../../../src/lib/logger";
+import { logger } from "../../../../../../src/lib/shared/logger";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import {
   refreshConnectorAccessToken,

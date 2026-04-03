@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
 import { initServices } from "../../../../src/lib/init-services";
 import { env } from "../../../../src/env";
-import { getStripe } from "../../../../src/lib/stripe";
+import { getStripe } from "../../../../src/lib/zero/stripe";
 import {
   handleCheckoutCompleted,
   handleInvoicePaid,
   handleSubscriptionUpdated,
   handleSubscriptionDeleted,
 } from "../../../../src/lib/zero/billing/billing-service";
-import { logger } from "../../../../src/lib/logger";
+import { logger } from "../../../../src/lib/shared/logger";
 import type Stripe from "stripe";
 
 const log = logger("webhook:stripe");

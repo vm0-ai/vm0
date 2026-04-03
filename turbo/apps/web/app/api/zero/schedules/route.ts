@@ -19,7 +19,7 @@ import {
   isBadRequest,
   isForbidden,
   isSchedulePast,
-} from "../../../../src/lib/errors";
+} from "../../../../src/lib/shared/errors";
 
 const router = tsr.router(zeroSchedulesMainContract, {
   deploy: async ({ body, headers }) => {

@@ -12,7 +12,7 @@ import {
 } from "../s3/s3-client";
 import { hashFileContent, type FileEntry } from "../storage/content-hash";
 import { env } from "../../../env";
-import { logger } from "../../logger";
+import { logger } from "../../shared/logger";
 import pLimit from "p-limit";
 
 const log = logger("blob");

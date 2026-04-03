@@ -11,7 +11,7 @@ import {
   getInstallationAccessToken,
   getInstallationInfo,
 } from "../../../../../src/lib/zero/github/github-app";
-import { getAppUrl } from "../../../../../src/lib/url";
+import { getAppUrl } from "../../../../../src/lib/zero/url";
 import { resolveDefaultAgentComposeId } from "../../../../../src/lib/infra/agent-compose/resolve-default";
 
 /**

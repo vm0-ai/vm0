@@ -6,7 +6,7 @@
 
 import { uploadBlobs, downloadBlob } from "../blob/blob-service";
 import { hashFileContent } from "../storage/content-hash";
-import { logger } from "../../logger";
+import { logger } from "../../shared/logger";
 
 const log = logger("session-history");
 

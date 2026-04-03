@@ -31,7 +31,7 @@ import { refreshOrgAppHome } from "../../../../../src/lib/zero/slack-org/handler
 import { cleanupWorkspaceInstallation } from "../../../../../src/lib/zero/slack-org/connect-service";
 import { hasAllBotScopes } from "../../../../../src/lib/zero/slack-org/scopes";
 import type { AgentComposeYaml } from "../../../../../src/types/agent-compose";
-import { logger } from "../../../../../src/lib/logger";
+import { logger } from "../../../../../src/lib/shared/logger";
 
 const log = logger("api:zero:slack");
 

@@ -30,7 +30,7 @@ import {
   isForbidden,
   isBadRequest,
   isConcurrentRunLimit,
-} from "../../../errors";
+} from "../../../shared/errors";
 import { POST as createComposeRoute } from "../../../../../app/api/agent/composes/route";
 import { POST as pollRoute } from "../../../../../app/api/runners/poll/route";
 import { mockClerk } from "../../../../__tests__/clerk-mock";

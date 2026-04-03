@@ -3,7 +3,7 @@ import {
   isSandboxToken,
   type SandboxAuth,
 } from "./sandbox-token";
-import { logger } from "../logger";
+import { logger } from "../shared/logger";
 
 const log = logger("auth:sandbox");
 

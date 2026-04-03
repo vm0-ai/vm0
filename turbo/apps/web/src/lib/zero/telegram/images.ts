@@ -1,7 +1,7 @@
 import { getFile, buildFileDownloadUrl, type TelegramClient } from "./client";
 import { uploadS3Buffer, generatePresignedUrl } from "../../infra/s3/s3-client";
 import { env } from "../../../env";
-import { logger } from "../../logger";
+import { logger } from "../../shared/logger";
 const log = logger("telegram:images");
 
 /** Maximum file size to download (10MB) */

@@ -22,7 +22,7 @@ import {
 import type { AskUserQuestion } from "../../../../../src/lib/zero/slack/blocks";
 import { refreshOrgAppHome } from "../../../../../src/lib/zero/slack-org/handlers/app-home";
 import { disconnect } from "../../../../../src/lib/zero/slack-org/connect-service";
-import { logger } from "../../../../../src/lib/logger";
+import { logger } from "../../../../../src/lib/shared/logger";
 
 const askUserQuestionSchema = z.array(
   z.object({

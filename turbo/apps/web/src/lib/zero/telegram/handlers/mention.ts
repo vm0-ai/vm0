@@ -22,7 +22,7 @@ import {
   buildLogsUrl,
 } from "./shared";
 import { buildTelegramErrorResponse, escapeHtml } from "../format";
-import { logger } from "../../../logger";
+import { logger } from "../../../shared/logger";
 import type { TelegramHandlerUpdate } from "./types";
 
 const log = logger("telegram:mention");

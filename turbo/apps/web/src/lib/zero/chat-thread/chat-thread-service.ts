@@ -1,7 +1,7 @@
 import { eq, and, desc } from "drizzle-orm";
 import { chatThreads, chatThreadRuns } from "../../../db/schema/chat-thread";
 import { agentRuns } from "../../../db/schema/agent-run";
-import { notFound } from "../../errors";
+import { notFound } from "../../shared/errors";
 import {
   getChatMessagesForSession,
   type StoredChatMessage,

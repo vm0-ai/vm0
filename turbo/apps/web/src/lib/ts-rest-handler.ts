@@ -16,7 +16,7 @@ import { createNextHandler, tsr } from "@ts-rest/serverless/next";
 import { TsRestResponse } from "@ts-rest/serverless";
 import type { TsRestRequest } from "@ts-rest/serverless";
 import type { AppRouter } from "@ts-rest/core";
-import { flushLogs, logger } from "./logger";
+import { flushLogs, logger } from "./shared/logger";
 import { ingestRequestLog, flushAxiom } from "./shared/axiom";
 
 // Re-export tsr and TsRestResponse for convenience

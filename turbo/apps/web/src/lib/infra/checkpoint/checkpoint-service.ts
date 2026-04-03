@@ -3,10 +3,10 @@ import { agentRuns } from "../../../db/schema/agent-run";
 import { agentComposeVersions } from "../../../db/schema/agent-compose";
 import { conversations } from "../../../db/schema/conversation";
 import { checkpoints } from "../../../db/schema/checkpoint";
-import { notFound } from "../../errors";
+import { notFound } from "../../shared/errors";
 import { createAgentSession, updateAgentSession } from "../agent-session";
 import { storeSessionHistory } from "../session-history";
-import { logger } from "../../logger";
+import { logger } from "../../shared/logger";
 import type {
   CheckpointRequest,
   CheckpointResponse,

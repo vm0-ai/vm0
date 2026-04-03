@@ -6,7 +6,7 @@ import {
   generatePresignedUrl,
 } from "../../../../src/lib/infra/s3/s3-client";
 import { env } from "../../../../src/env";
-import { logger } from "../../../../src/lib/logger";
+import { logger } from "../../../../src/lib/shared/logger";
 
 const log = logger("api:zero:uploads");
 

@@ -5,7 +5,7 @@ import {
   formatPhotoForContext,
 } from "./images";
 import type { TelegramClient } from "./client";
-import { logger } from "../../logger";
+import { logger } from "../../shared/logger";
 
 const log = logger("telegram:context");
 

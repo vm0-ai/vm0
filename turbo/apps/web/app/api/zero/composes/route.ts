@@ -15,7 +15,7 @@ import {
   isNotFound,
   isForbidden,
   isBadRequest,
-} from "../../../../src/lib/errors";
+} from "../../../../src/lib/shared/errors";
 
 const router = tsr.router(zeroComposesMainContract, {
   getByName: async ({ query, headers }) => {

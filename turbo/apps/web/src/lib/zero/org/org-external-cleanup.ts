@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { connectorTypeSchema } from "@vm0/core";
-import { logger } from "../../logger";
-import { getStripe } from "../../stripe";
+import { logger } from "../../shared/logger";
+import { getStripe } from "../stripe";
 import { deleteWebhook } from "../telegram/client";
 import { decryptSecretValue } from "../../shared/crypto/secrets-encryption";
 import { revokeConnectorToken } from "../connector/connector-service";

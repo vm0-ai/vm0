@@ -27,7 +27,7 @@ import {
 } from "../../../../../src/lib/zero/telegram/handlers/shared";
 import { env } from "../../../../../src/env";
 import type { TelegramCallbackPayload } from "../../../../../src/lib/infra/callback/callback-payloads";
-import { logger } from "../../../../../src/lib/logger";
+import { logger } from "../../../../../src/lib/shared/logger";
 
 const log = logger("callback:telegram");
 

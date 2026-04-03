@@ -21,7 +21,7 @@ import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
 import { decryptSecretValue } from "../../../../src/lib/shared/crypto/secrets-encryption";
 import { deleteWebhook } from "../../../../src/lib/zero/telegram/client";
 import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";
-import { logger } from "../../../../src/lib/logger";
+import { logger } from "../../../../src/lib/shared/logger";
 import { checkTelegramDomain } from "../../../../src/lib/zero/telegram/check-domain";
 
 const patchBodySchema = z.object({

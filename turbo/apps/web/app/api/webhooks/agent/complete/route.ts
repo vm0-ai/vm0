@@ -19,7 +19,7 @@ import type {
   MemorySnapshot,
 } from "../../../../../src/lib/infra/checkpoint";
 import type { RunResult } from "../../../../../src/lib/infra/run/types";
-import { logger } from "../../../../../src/lib/logger";
+import { logger } from "../../../../../src/lib/shared/logger";
 import {
   drainOrgQueue,
   dispatchQueuedZeroRun,

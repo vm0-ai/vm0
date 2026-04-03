@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { insufficientCredits, noModelProvider, isApiError } from "../../errors";
+import {
+  insufficientCredits,
+  noModelProvider,
+  isApiError,
+} from "../../shared/errors";
 
 // NOTE: Model provider pre-run check tests have been moved to
 // zero/__tests__/build-zero-context.test.ts because model provider

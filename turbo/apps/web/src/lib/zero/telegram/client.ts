@@ -1,4 +1,4 @@
-import { logger } from "../../logger";
+import { logger } from "../../shared/logger";
 
 const log = logger("telegram:client");
 

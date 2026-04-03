@@ -9,7 +9,7 @@ import {
 } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { getClerkPublishableKey } from "../src/lib/clerk-config";
-import { getAppUrl } from "../src/lib/url";
+import { getAppUrl } from "../src/lib/zero/url";
 import { ThemeProvider } from "./components/ThemeProvider";
 import { env } from "../src/env";
 import "./globals.css";

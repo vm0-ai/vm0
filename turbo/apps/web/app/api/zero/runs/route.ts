@@ -16,7 +16,7 @@ import { zeroAgents } from "../../../../src/db/schema/zero-agent";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
 import { agentComposeVersions } from "../../../../src/db/schema/agent-compose";
 import { agentSessions } from "../../../../src/db/schema/agent-session";
-import { logger } from "../../../../src/lib/logger";
+import { logger } from "../../../../src/lib/shared/logger";
 
 const log = logger("api:zero-runs:trigger");
 

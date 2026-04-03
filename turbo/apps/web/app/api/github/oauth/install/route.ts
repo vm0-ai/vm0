@@ -4,7 +4,7 @@ import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import { env } from "../../../../../src/env";
 import { getApiUrl } from "../../../../../src/lib/infra/callback";
-import { getAppUrl } from "../../../../../src/lib/url";
+import { getAppUrl } from "../../../../../src/lib/zero/url";
 import { encryptSecretValue } from "../../../../../src/lib/shared/crypto/secrets-encryption";
 import { githubInstallations } from "../../../../../src/db/schema/github-installation";
 import {
@@ -13,7 +13,7 @@ import {
 } from "../../../../../src/lib/zero/github/github-app";
 import { resolveDefaultAgentComposeId } from "../../../../../src/lib/infra/agent-compose/resolve-default";
 import { linkVm0User } from "../callback/route";
-import { logger } from "../../../../../src/lib/logger";
+import { logger } from "../../../../../src/lib/shared/logger";
 
 const log = logger("github:install");
 

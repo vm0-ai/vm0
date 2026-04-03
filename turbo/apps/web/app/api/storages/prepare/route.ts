@@ -26,7 +26,7 @@ import {
 } from "../../../../src/lib/infra/s3/s3-client";
 import { computeContentHashFromHashes } from "../../../../src/lib/infra/storage/content-hash";
 import { env } from "../../../../src/env";
-import { logger } from "../../../../src/lib/logger";
+import { logger } from "../../../../src/lib/shared/logger";
 
 const log = logger("api:storages:prepare");
 

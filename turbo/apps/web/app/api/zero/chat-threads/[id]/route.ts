@@ -11,7 +11,7 @@ import {
   getChatThreadMessages,
   deleteChatThread,
 } from "../../../../../src/lib/zero/chat-thread";
-import { isNotFound } from "../../../../../src/lib/errors";
+import { isNotFound } from "../../../../../src/lib/shared/errors";
 
 const router = tsr.router(chatThreadByIdContract, {
   get: async ({ params, headers }) => {

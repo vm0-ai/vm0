@@ -7,7 +7,7 @@ import {
 } from "../../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
 import { listComposes } from "../../../../../src/lib/zero/zero-compose-service";
-import { isNotFound, isForbidden } from "../../../../../src/lib/errors";
+import { isNotFound, isForbidden } from "../../../../../src/lib/shared/errors";
 
 const router = tsr.router(composesListContract, {
   list: async ({ headers }) => {

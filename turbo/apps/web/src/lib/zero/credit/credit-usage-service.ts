@@ -1,5 +1,5 @@
 import { creditUsage } from "../../../db/schema/credit-usage";
-import { logger } from "../../logger";
+import { logger } from "../../shared/logger";
 
 const log = logger("service:credit-usage");
 

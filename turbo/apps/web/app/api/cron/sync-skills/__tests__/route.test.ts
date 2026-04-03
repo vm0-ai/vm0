@@ -21,7 +21,7 @@ import {
 import { testContext } from "../../../../../src/__tests__/test-helpers";
 import { reloadEnv } from "../../../../../src/env";
 import { server } from "../../../../../src/mocks/server";
-import { logger } from "../../../../../src/lib/logger";
+import { logger } from "../../../../../src/lib/shared/logger";
 
 const context = testContext();
 const cronSecret = "test-cron-secret";

@@ -1,6 +1,6 @@
 import { WebClient } from "@slack/web-api";
 import type { Block, KnownBlock, View } from "@slack/web-api";
-import { logger } from "../../logger";
+import { logger } from "../../shared/logger";
 
 const log = logger("slack:client");
 

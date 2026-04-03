@@ -13,7 +13,7 @@ import {
 } from "../../../../../src/lib/zero/slack-org/handlers/app-home";
 import { cleanupWorkspaceInstallation } from "../../../../../src/lib/zero/slack-org/connect-service";
 import type { SlackFile } from "../../../../../src/lib/zero/slack/context";
-import { logger } from "../../../../../src/lib/logger";
+import { logger } from "../../../../../src/lib/shared/logger";
 
 const log = logger("slack-org:events");
 

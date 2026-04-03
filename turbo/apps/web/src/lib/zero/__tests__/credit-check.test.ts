@@ -19,7 +19,7 @@ import {
 } from "../../../__tests__/api-test-helpers";
 import { reloadEnv } from "../../../env";
 import { createZeroRun } from "../zero-run-service";
-import { isInsufficientCredits } from "../../errors";
+import { isInsufficientCredits } from "../../shared/errors";
 import { startRun, type CreateRunParams } from "../../infra/run/run-service";
 import {
   drainOrgQueue,

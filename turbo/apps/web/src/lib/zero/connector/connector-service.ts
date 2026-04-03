@@ -11,8 +11,8 @@ import {
 import { connectors } from "../../../db/schema/connector";
 import { secrets } from "../../../db/schema/secret";
 import { variables } from "../../../db/schema/variable";
-import { notFound, badRequest } from "../../errors";
-import { logger } from "../../logger";
+import { notFound, badRequest } from "../../shared/errors";
+import { logger } from "../../shared/logger";
 import { getSecretValue, upsertSecretByOrg } from "../secret/secret-service";
 import { PROVIDER_HANDLERS } from "./provider-registry";
 

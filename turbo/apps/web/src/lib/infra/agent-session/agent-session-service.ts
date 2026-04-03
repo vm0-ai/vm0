@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { agentSessions } from "../../../db/schema/agent-session";
 import { conversations } from "../../../db/schema/conversation";
-import { notFound } from "../../errors";
+import { notFound } from "../../shared/errors";
 import type {
   AgentSessionData,
   AgentSessionWithConversation,

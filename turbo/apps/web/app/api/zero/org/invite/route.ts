@@ -18,7 +18,7 @@ import {
   isBadRequest,
   isForbidden,
   isNotFound,
-} from "../../../../../src/lib/errors";
+} from "../../../../../src/lib/shared/errors";
 
 const router = tsr.router(zeroOrgInviteContract, {
   invite: async ({ headers, body }) => {

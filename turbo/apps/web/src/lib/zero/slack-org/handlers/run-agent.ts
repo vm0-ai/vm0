@@ -1,10 +1,10 @@
 import { isRunDispatchError } from "../../../infra/run";
 import { createZeroRun } from "../../zero-run-service";
 import { buildIntegrationContext } from "../../integration-context";
-import { isApiError } from "../../../errors";
+import { isApiError } from "../../../shared/errors";
 import { RUN_ERROR_GUIDANCE } from "@vm0/core";
 import { generateCallbackSecret, getApiUrl } from "../../../infra/callback";
-import { logger } from "../../../logger";
+import { logger } from "../../../shared/logger";
 import type { SlackOrgCallbackPayload } from "../../../infra/callback/callback-payloads";
 
 const log = logger("slack-org:run-agent");

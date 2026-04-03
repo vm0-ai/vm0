@@ -1,5 +1,5 @@
 import { eq, and, inArray } from "drizzle-orm";
-import { logger } from "../../logger";
+import { logger } from "../../shared/logger";
 import { agentRuns } from "../../../db/schema/agent-run";
 import { agentRunQueue } from "../../../db/schema/agent-run-queue";
 import { agentComposes } from "../../../db/schema/agent-compose";

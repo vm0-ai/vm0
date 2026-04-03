@@ -10,7 +10,7 @@ import {
 } from "../../../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../../../src/lib/zero/org/resolve-org";
 import { updateComposeMetadata } from "../../../../../../src/lib/zero/zero-compose-service";
-import { isNotFound } from "../../../../../../src/lib/errors";
+import { isNotFound } from "../../../../../../src/lib/shared/errors";
 
 export async function PATCH(
   request: Request,

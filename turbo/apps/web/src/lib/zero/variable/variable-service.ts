@@ -1,7 +1,7 @@
 import { eq, and } from "drizzle-orm";
 import { variables } from "../../../db/schema/variable";
-import { badRequest, notFound } from "../../errors";
-import { logger } from "../../logger";
+import { badRequest, notFound } from "../../shared/errors";
+import { logger } from "../../shared/logger";
 import { ORG_SENTINEL_USER_ID } from "../org/org-sentinel";
 
 const log = logger("service:variable");

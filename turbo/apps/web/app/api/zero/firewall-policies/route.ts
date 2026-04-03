@@ -18,7 +18,7 @@ import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";
 import { zeroAgents } from "../../../../src/db/schema/zero-agent";
 import { eq, and } from "drizzle-orm";
 import { requireAgentPermission } from "../../../../src/lib/zero/require-agent-permission";
-import { logger } from "../../../../src/lib/logger";
+import { logger } from "../../../../src/lib/shared/logger";
 
 const log = logger("api:zero:firewall-policies");
 

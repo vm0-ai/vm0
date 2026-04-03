@@ -12,9 +12,9 @@ import {
 } from "../../../shared/axiom/client";
 import { encryptSecretsMap } from "../../../shared/crypto/secrets-encryption";
 import { isOfficialRunnerGroup } from "../runner-group";
-import { forbidden } from "../../../errors";
+import { forbidden } from "../../../shared/errors";
 import { publishJobNotification } from "../../../shared/realtime/client";
-import { logger } from "../../../logger";
+import { logger } from "../../../shared/logger";
 import { recordSandboxOperation } from "../../../shared/metrics";
 import type { PreparedContext, ExecutorResult } from "./types";
 

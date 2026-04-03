@@ -10,7 +10,7 @@ import { IconArrowRight } from "@tabler/icons-react";
 import ThemeToggle from "./ThemeToggle";
 import LanguageSwitcher from "./LanguageSwitcher";
 import { useUser, useClerk } from "@clerk/nextjs";
-import { getAppUrl } from "../../src/lib/url";
+import { getAppUrl } from "../../src/lib/zero/url";
 import { isBlogEnabled } from "../../src/env";
 export default function Navbar() {
   const { theme } = useTheme();

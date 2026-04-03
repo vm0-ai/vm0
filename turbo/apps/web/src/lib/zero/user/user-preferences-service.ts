@@ -1,7 +1,7 @@
 import { eq, and } from "drizzle-orm";
 import { orgMembersMetadata } from "../../../db/schema/org-members-metadata";
-import { badRequest } from "../../errors";
-import { logger } from "../../logger";
+import { badRequest } from "../../shared/errors";
+import { logger } from "../../shared/logger";
 
 const log = logger("service:user-preferences");
 

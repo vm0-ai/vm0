@@ -7,7 +7,7 @@ import { sessionsByIdContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { getSessionResponse } from "../../../../../src/lib/zero/zero-session-service";
-import { isNotFound, isForbidden } from "../../../../../src/lib/errors";
+import { isNotFound, isForbidden } from "../../../../../src/lib/shared/errors";
 
 const router = tsr.router(sessionsByIdContract, {
   getById: async ({ params, headers }) => {

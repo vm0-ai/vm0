@@ -11,7 +11,7 @@ import {
 } from "../../../../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../../../../src/lib/zero/org/resolve-org";
 import { getRunAgentEvents } from "../../../../../../../src/lib/infra/run/run-telemetry-service";
-import { isNotFound } from "../../../../../../../src/lib/errors";
+import { isNotFound } from "../../../../../../../src/lib/shared/errors";
 
 const router = tsr.router(zeroRunAgentEventsContract, {
   getAgentEvents: async ({ params, query, headers }) => {

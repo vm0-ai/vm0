@@ -15,7 +15,7 @@ import {
   handleInstallationCreatedEvent,
   gitHubInstallationEventSchema,
 } from "../../../../src/lib/zero/github/handlers/installation-event";
-import { logger } from "../../../../src/lib/logger";
+import { logger } from "../../../../src/lib/shared/logger";
 
 const log = logger("webhook:github");
 

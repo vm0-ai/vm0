@@ -8,7 +8,7 @@
 import { initServices } from "../init-services";
 import { isSandboxToken, isPatToken, verifyCliToken } from "./sandbox-token";
 import { resolveCliTokenFromDb } from "./get-auth-context";
-import { logger } from "../logger";
+import { logger } from "../shared/logger";
 import { timingSafeEqual } from "crypto";
 
 const log = logger("auth:runner");

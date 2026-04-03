@@ -19,7 +19,7 @@ import {
 } from "../../../../../../src/lib/zero/slack-org/handlers/shared";
 import { env } from "../../../../../../src/env";
 import type { SlackOrgCallbackPayload } from "../../../../../../src/lib/infra/callback/callback-payloads";
-import { logger } from "../../../../../../src/lib/logger";
+import { logger } from "../../../../../../src/lib/shared/logger";
 import type { RunOutput } from "../../../../../../src/lib/infra/run/extract-run-output";
 
 const log = logger("callback:slack-org");

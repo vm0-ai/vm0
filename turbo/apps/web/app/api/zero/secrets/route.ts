@@ -14,8 +14,8 @@ import {
   listSecrets,
   setSecret,
 } from "../../../../src/lib/zero/secret/secret-service";
-import { logger } from "../../../../src/lib/logger";
-import { isBadRequest } from "../../../../src/lib/errors";
+import { logger } from "../../../../src/lib/shared/logger";
+import { isBadRequest } from "../../../../src/lib/shared/errors";
 
 const log = logger("api:zero-secrets");
 

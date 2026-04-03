@@ -13,7 +13,7 @@ import {
   agentComposeVersions,
 } from "../../../db/schema/agent-compose";
 import { skills } from "../../../db/schema/skill";
-import { logger } from "../../logger";
+import { logger } from "../../shared/logger";
 
 const log = logger("compose:server-side");
 

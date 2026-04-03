@@ -13,7 +13,7 @@ import {
   DEFAULT_TEST_EMAIL,
 } from "../../../../../src/lib/auth/test-user";
 import { env } from "../../../../../src/env";
-import { logger } from "../../../../../src/lib/logger";
+import { logger } from "../../../../../src/lib/shared/logger";
 
 const log = logger("api:test-token");
 

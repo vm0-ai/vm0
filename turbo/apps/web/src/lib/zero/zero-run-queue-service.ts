@@ -47,9 +47,9 @@ import {
   encryptSecretsMap,
   decryptSecretsMap,
 } from "../shared/crypto/secrets-encryption";
-import { isConcurrentRunLimit, insufficientCredits } from "../errors";
+import { isConcurrentRunLimit, insufficientCredits } from "../shared/errors";
 import { ORG_SENTINEL_USER_ID } from "./org/org-sentinel";
-import { logger } from "../logger";
+import { logger } from "../shared/logger";
 import type { OrgTier, QueueResponse, TriggerSource } from "@vm0/core";
 
 const log = logger("zero:run-queue-service");

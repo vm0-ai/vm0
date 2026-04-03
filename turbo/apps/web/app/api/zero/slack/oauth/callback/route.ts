@@ -16,8 +16,8 @@ import {
   memberConnect,
   notifyConnectSuccess,
 } from "../../../../../../src/lib/zero/slack-org/connect-service";
-import { getAppUrl } from "../../../../../../src/lib/url";
-import { logger } from "../../../../../../src/lib/logger";
+import { getAppUrl } from "../../../../../../src/lib/zero/url";
+import { logger } from "../../../../../../src/lib/shared/logger";
 
 const log = logger("slack-org:oauth-callback");
 

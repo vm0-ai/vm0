@@ -5,7 +5,7 @@ import { storages, storageVersions } from "../../../db/schema/storage";
 import { putS3Object, verifyS3FilesExist } from "../s3/s3-client";
 import type { S3StorageManifest } from "../s3/types";
 import { computeContentHashFromHashes, hashFileContent } from "./content-hash";
-import { createSingleFileTar } from "../../tar";
+import { createSingleFileTar } from "../tar";
 import { env } from "../../../env";
 
 interface LogMethods {

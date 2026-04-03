@@ -10,7 +10,7 @@ import {
   buildConnectUrl,
 } from "./shared";
 import { escapeHtml } from "../format";
-import { logger } from "../../../logger";
+import { logger } from "../../../shared/logger";
 import type { TelegramHandlerUpdate } from "./types";
 import crypto from "crypto";
 

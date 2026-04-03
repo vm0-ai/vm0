@@ -14,7 +14,7 @@ import {
 } from "../../../../../src/lib/shared/ai/lightweight-model";
 import { updateChatThreadTitle } from "../../../../../src/lib/zero/chat-thread";
 import type { ChatCallbackPayload } from "../../../../../src/lib/infra/callback/callback-payloads";
-import { logger } from "../../../../../src/lib/logger";
+import { logger } from "../../../../../src/lib/shared/logger";
 
 const log = logger("callback:chat");
 

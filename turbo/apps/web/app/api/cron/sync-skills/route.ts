@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { initServices } from "../../../../src/lib/init-services";
 import { syncSkills } from "../../../../src/lib/zero/skills/sync-skills";
-import { logger } from "../../../../src/lib/logger";
+import { logger } from "../../../../src/lib/shared/logger";
 import { env } from "../../../../src/env";
 
 const log = logger("cron:sync-skills");

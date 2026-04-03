@@ -4,7 +4,7 @@ import {
   drainBatch,
   cleanupExpiredOutbox,
 } from "../../../../src/lib/zero/email/outbox-service";
-import { logger } from "../../../../src/lib/logger";
+import { logger } from "../../../../src/lib/shared/logger";
 import { env } from "../../../../src/env";
 
 const log = logger("cron:drain-email-outbox");

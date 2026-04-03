@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { orgMetadata } from "../../../db/schema/org-metadata";
-import { logger } from "../../logger";
-import { getStripe } from "../../stripe";
+import { logger } from "../../shared/logger";
+import { getStripe } from "../stripe";
 
 const log = logger("service:org-metadata");
 

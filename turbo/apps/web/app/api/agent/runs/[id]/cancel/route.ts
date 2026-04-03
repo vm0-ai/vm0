@@ -19,8 +19,11 @@ import {
   drainOrgQueue,
 } from "../../../../../../src/lib/zero/zero-run-queue-service";
 import { processOrgCredits } from "../../../../../../src/lib/zero/credit/credit-service";
-import { isNotFound, isBadRequest } from "../../../../../../src/lib/errors";
-import { logger } from "../../../../../../src/lib/logger";
+import {
+  isNotFound,
+  isBadRequest,
+} from "../../../../../../src/lib/shared/errors";
+import { logger } from "../../../../../../src/lib/shared/logger";
 import { after } from "next/server";
 
 const log = logger("api:runs:cancel");

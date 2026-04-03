@@ -4,7 +4,7 @@
  * Handles Bot User and Credential lifecycle for authenticated tunnel access.
  * Uses plain fetch() — no external SDK dependency.
  */
-import { logger } from "../../logger";
+import { logger } from "../../shared/logger";
 
 const log = logger("ngrok-client");
 

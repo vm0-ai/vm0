@@ -34,7 +34,7 @@ import {
   isConcurrentRunLimit,
   insufficientCredits,
   noModelProvider,
-} from "../errors";
+} from "../shared/errors";
 import { modelProviders } from "../../db/schema/model-provider";
 import { orgMetadata } from "../../db/schema/org-metadata";
 import { orgMembersMetadata } from "../../db/schema/org-members-metadata";
@@ -45,7 +45,7 @@ import type { CallbackPayload } from "../infra/callback/callback-payloads";
 import { zeroAgents } from "../../db/schema/zero-agent";
 import { zeroRuns } from "../../db/schema/zero-run";
 import { userConnectors } from "../../db/schema/user-connector";
-import { logger } from "../logger";
+import { logger } from "../shared/logger";
 
 const log = logger("service:zero-run");
 

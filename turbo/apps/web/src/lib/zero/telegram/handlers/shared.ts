@@ -3,7 +3,7 @@ import { telegramThreadSessions } from "../../../../db/schema/telegram-thread-se
 import { telegramMessages } from "../../../../db/schema/telegram-message";
 import { telegramUserLinks } from "../../../../db/schema/telegram-user-link";
 import { agentComposes } from "../../../../db/schema/agent-compose";
-import { getAppUrl } from "../../../url";
+import { getAppUrl } from "../../url";
 import { resolveAgentId } from "../../zero-compose-service";
 import { resolveOrgOrNull } from "../../org/resolve-org";
 import { validateAgentSession } from "../../../infra/run";
@@ -21,7 +21,7 @@ import {
   downloadAndUploadTelegramPhoto,
   formatPhotoForContext,
 } from "../images";
-import { logger } from "../../../logger";
+import { logger } from "../../../shared/logger";
 import type { TelegramHandlerUpdate } from "./types";
 
 const log = logger("telegram:shared");
