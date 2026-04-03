@@ -9,6 +9,7 @@ import { modelProviders } from "../../../db/schema/model-provider";
 import { connectors } from "../../../db/schema/connector";
 import { variables } from "../../../db/schema/variable";
 import { usageDaily } from "../../../db/schema/usage-daily";
+import { creditUsage } from "../../../db/schema/credit-usage";
 import { exportJobs } from "../../../db/schema/export-job";
 import { zeroAgents } from "../../../db/schema/zero-agent";
 import { zeroAgentSchedules } from "../../../db/schema/zero-agent-schedule";
@@ -77,6 +78,8 @@ export async function deleteOrgData(orgId: string): Promise<void> {
     .delete(zeroAgentSchedules)
     .where(eq(zeroAgentSchedules.orgId, orgId));
   // Delete runs (references compose_versions with SET NULL)
+  // creditUsage.runId is SET NULL on run deletion, so delete credit records explicitly
+  await db.delete(creditUsage).where(eq(creditUsage.orgId, orgId));
   await db.delete(agentRuns).where(eq(agentRuns.orgId, orgId));
   // Then composes (cascades: compose_versions, sessions, email_thread_sessions)
   await db.delete(agentComposes).where(eq(agentComposes.orgId, orgId));

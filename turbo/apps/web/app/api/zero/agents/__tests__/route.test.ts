@@ -16,6 +16,11 @@ import {
   createTestSandboxToken,
   createTestVolume,
   findTestStorageByName,
+  findTestRunRecord,
+  findTestCreditUsage,
+  insertTestCreditUsageForRun,
+  insertTestSandboxTelemetry,
+  findTestSandboxTelemetry,
   seedSeedSkills,
   seedSeedSkillStorages,
   clearSkillsData,
@@ -975,6 +980,52 @@ describe("Zero Agents API", () => {
       expect(response.status).toBe(409);
       const data = await response.json();
       expect(data.error.code).toBe("CONFLICT");
+    });
+
+    it("should delete runs and preserve credit_usage on agent deletion", async () => {
+      const created = await (await postAgent({}, testCliToken)).json();
+
+      const { runId } = await createTestRunInDb(user.userId, created.agentId, {
+        status: "completed",
+      });
+
+      const { id: creditId } = await insertTestCreditUsageForRun({
+        runId,
+        orgId: user.orgId,
+        userId: user.userId,
+        status: "processed",
+        creditsCharged: 100,
+      });
+
+      const response = await deleteAgent(created.agentId, testCliToken);
+      expect(response.status).toBe(204);
+
+      const run = await findTestRunRecord(runId);
+      expect(run).toBeUndefined();
+
+      const credit = await findTestCreditUsage(creditId);
+      expect(credit).toBeDefined();
+      expect(credit!.creditsCharged).toBe(100);
+      expect(credit!.status).toBe("processed");
+    });
+
+    it("should cascade-delete run data when agent is deleted", async () => {
+      const created = await (await postAgent({}, testCliToken)).json();
+
+      const { runId } = await createTestRunInDb(user.userId, created.agentId, {
+        status: "completed",
+      });
+
+      await insertTestSandboxTelemetry({ runId });
+
+      const response = await deleteAgent(created.agentId, testCliToken);
+      expect(response.status).toBe(204);
+
+      const run = await findTestRunRecord(runId);
+      expect(run).toBeUndefined();
+
+      const telemetry = await findTestSandboxTelemetry(runId);
+      expect(telemetry).toBeUndefined();
     });
 
     it("should return 401 without auth", async () => {

@@ -142,7 +142,27 @@ export async function deleteComposeById(
     throw conflict("Cannot delete agent: agent is currently running");
   }
 
-  // Delete agent (cascades handle related data)
+  // Delete all runs for this agent's compose versions.
+  // Downstream tables (events, callbacks, telemetry, checkpoints, etc.)
+  // cascade-delete automatically. creditUsage.runId is SET NULL to
+  // preserve billing records.
+  const versionIds = await db
+    .select({ id: agentComposeVersions.id })
+    .from(agentComposeVersions)
+    .where(eq(agentComposeVersions.composeId, composeId));
+
+  if (versionIds.length > 0) {
+    await db.delete(agentRuns).where(
+      inArray(
+        agentRuns.agentComposeVersionId,
+        versionIds.map((v) => {
+          return v.id;
+        }),
+      ),
+    );
+  }
+
+  // Delete agent (cascades handle compose versions, schedules, etc.)
   await db.delete(agentComposes).where(eq(agentComposes.id, composeId));
 
   // Clean up agent-instructions volume (DB + S3)
