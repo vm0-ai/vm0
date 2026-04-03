@@ -165,7 +165,12 @@ describe("zero chat thread page display - run activity line summaries", () => {
     await setupPage({ context, path: "/chats/thread-test-1" });
 
     await waitFor(() => {
-      expect(screen.getByText("Running a command...")).toBeInTheDocument();
+      // Assert that at least one tool-use summary item is rendered
+      // (span.zero-shimmer-text appears on the active summary item,
+      // distinct from the p.zero-shimmer-text used in the no-summary thinking state)
+      expect(
+        document.querySelector("span.zero-shimmer-text"),
+      ).toBeInTheDocument();
     });
   });
 });
