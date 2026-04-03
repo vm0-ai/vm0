@@ -19,12 +19,15 @@ import {
   justConnectedTypes$,
   scopeReviewType$,
   setScopeReviewType$,
+  permissionDialogType$,
+  setPermissionDialogType$,
   type ConnectorTypeWithStatus,
 } from "../../signals/zero-page/settings/connectors.ts";
 import { deleteConnector$ } from "../../signals/external/connectors.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import { ScopeReviewModal } from "./components/settings/scope-review-modal.tsx";
+import { ConnectorPermissionDialog } from "./components/settings/connector-permission-dialog.tsx";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { detach, Reason, throwIfAbort } from "../../signals/utils.ts";
 import {
@@ -224,6 +227,8 @@ export function ZeroConnectorsPage() {
   const setSelected = useSet(setSelectedConnectorType$);
   const scopeReviewType = useGet(scopeReviewType$);
   const setScopeReviewType = useSet(setScopeReviewType$);
+  const permissionDialogType = useGet(permissionDialogType$);
+  const setPermissionDialogType = useSet(setPermissionDialogType$);
   const optimisticConnected = useGet(justConnectedTypes$);
 
   const search = useGet(connectorsSearch$);
@@ -439,6 +444,15 @@ export function ZeroConnectorsPage() {
           onReconnect={(type) => {
             setScopeReviewType(null);
             detach(connect(type, signal), Reason.DomCallback);
+          }}
+        />
+      )}
+
+      {permissionDialogType && (
+        <ConnectorPermissionDialog
+          connectorType={permissionDialogType}
+          onClose={() => {
+            setPermissionDialogType(null);
           }}
         />
       )}
