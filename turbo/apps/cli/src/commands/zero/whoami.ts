@@ -130,7 +130,7 @@ async function showSandboxInfo(): Promise<void> {
     }
 
     console.log();
-    console.log(chalk.bold("Connected Services:"));
+    console.log(chalk.bold("Connectors:"));
     for (const connector of identities) {
       const identity = formatConnectorIdentity(connector);
       console.log(`  ${connector.type.padEnd(14)}${identity}`);

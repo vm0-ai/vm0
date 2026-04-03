@@ -8,6 +8,7 @@ import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
 import { reloadChatThreads$ } from "../zero-page/zero-chat.ts";
 import { initZeroActivity$, refreshZeroActivity$ } from "./activity-signals.ts";
+import { hideAppSkeleton$ } from "../app-skeleton.ts";
 
 export const setupActivityPage$ = command(
   async ({ set }, signal: AbortSignal) => {
@@ -22,6 +23,7 @@ export const setupActivityPage$ = command(
       set(initZeroActivity$, signal),
     ]);
     signal.throwIfAborted();
+    await set(hideAppSkeleton$, signal);
 
     if (await set(onboardGuard$, signal)) {
       return;

@@ -8,6 +8,7 @@ import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
 import { reloadChatThreads$ } from "../zero-page/zero-chat.ts";
 import { setupActivityLogLoop$ } from "./activity-signals.ts";
+import { hideAppSkeleton$ } from "../app-skeleton.ts";
 
 export const setupActivityDetailPage$ = command(
   async ({ set }, signal: AbortSignal) => {
@@ -18,6 +19,7 @@ export const setupActivityDetailPage$ = command(
     set(updateDocumentTitle$, "Activity");
 
     await set(initZeroOnboarding$, signal);
+    await set(hideAppSkeleton$, signal);
     if (await set(onboardGuard$, signal)) {
       return;
     }

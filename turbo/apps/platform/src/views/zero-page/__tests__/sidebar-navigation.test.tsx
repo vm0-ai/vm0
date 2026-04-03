@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse, delay } from "msw";
+import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
+import { createDeferredPromise } from "../../../signals/utils.ts";
 
 const context = testContext();
 
@@ -145,10 +146,11 @@ describe("sidebar new chat navigation", () => {
   it("should disable button during thread creation", async () => {
     const user = userEvent.setup();
     mockSubagentAPIs();
-    // Override POST to add a delay
+    // Override POST with deferred so we can control when the response arrives
+    const createDeferred = createDeferredPromise<void>(context.signal);
     server.use(
       http.post("*/api/zero/chat-threads", async () => {
-        await delay(500);
+        await createDeferred.promise;
         return HttpResponse.json(
           {
             id: "delayed-thread-id",
@@ -172,6 +174,9 @@ describe("sidebar new chat navigation", () => {
     await waitFor(() => {
       expect(newChatButton).toBeDisabled();
     });
+
+    // Release deferred so creation completes
+    createDeferred.resolve();
 
     // After creation completes, button should be re-enabled
     await waitFor(() => {

@@ -12,6 +12,7 @@ import { setActiveAgent$ } from "../zero-page/zero-job-detail.ts";
 import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
 import { initSlackOrg$ } from "../zero-page/zero-slack.ts";
 import { setSidebarChatAgent$ } from "../zero-page/zero-nav.ts";
+import { hideAppSkeleton$ } from "../app-skeleton.ts";
 
 export const setupTeamDetailPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -29,6 +30,7 @@ export const setupTeamDetailPage$ = command(
       agentId ? set(setActiveAgent$, agentId) : undefined,
     ]);
     signal.throwIfAborted();
+    await set(hideAppSkeleton$, signal);
 
     if (await set(onboardGuard$, signal)) {
       return;

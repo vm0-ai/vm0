@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { delay } from "signal-timers";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
+import { createDeferredPromise } from "../../../signals/utils.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 
 const context = testContext();
@@ -83,10 +83,11 @@ describe("recent thread skeleton (#7546)", () => {
 
     // Make chat-threads API hang so the only way the sidebar can show
     // threads is by retaining the previous useLastLoadable data.
-    // Use a delayed response instead of never-resolving to avoid afterEach timeout.
+    // Deferred never resolves; context.signal rejects it on test cleanup.
+    const hangDeferred = createDeferredPromise<void>(context.signal);
     server.use(
       http.get("*/api/zero/chat-threads", async () => {
-        await delay(5000);
+        await hangDeferred.promise.catch(() => {});
         return HttpResponse.json({ threads: [] });
       }),
     );

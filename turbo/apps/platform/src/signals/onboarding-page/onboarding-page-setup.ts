@@ -9,10 +9,12 @@ import {
   zeroNeedsOnboarding$,
   zeroNeedsMemberOnboarding$,
 } from "../zero-page/zero-onboarding.ts";
+import { hideAppSkeleton$ } from "../app-skeleton.ts";
 export const setupOnboardingPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     set(updatePage$, createElement(OnboardingPage));
     set(updateDocumentTitle$, "Onboarding");
+    await set(hideAppSkeleton$, signal);
 
     set(resetOnboardingStep$);
     signal.throwIfAborted();

@@ -6,41 +6,12 @@
  * Linear is a project management tool for software teams.
  */
 
-import {
-  logStats,
-  renderPermissions,
-  writeOutput,
-  type PermissionGroup,
-} from "./codegen";
+import { writeOutput } from "./codegen";
 
 const DOCS_URL =
   "https://developers.linear.app/docs/graphql/working-with-the-graphql-api";
 // Format: lin_api_ + 40 alphanumeric (gitleaks: linear-api-key)
 const PLACEHOLDER_VALUE = "lin_api_CoffeeSafeLocalCoffeeSafeLocalCoffeeSafe";
-
-/**
- * Linear permission groups based on GraphQL operation types.
- *
- * Linear exposes a single POST /graphql endpoint. Permissions are split by
- * operation type (query vs mutation) and by common operation name patterns.
- */
-const PERMISSIONS: PermissionGroup[] = [
-  {
-    name: "read",
-    description: "Read data (all GraphQL queries)",
-    rules: ["POST /graphql GraphQL type:query"],
-  },
-  {
-    name: "write",
-    description: "Modify data (all GraphQL mutations)",
-    rules: ["POST /graphql GraphQL type:mutation"],
-  },
-  {
-    name: "subscribe",
-    description: "Subscribe to real-time events",
-    rules: ["POST /graphql GraphQL type:subscription"],
-  },
-];
 
 function generateTypeScript(): string {
   const lines: string[] = [
@@ -66,16 +37,12 @@ function generateTypeScript(): string {
     '          Authorization: "Bearer ${{ secrets.LINEAR_TOKEN }}",',
     "        },",
     "      },",
-    "      permissions: [",
+    "      permissions: [],",
+    "    },",
+    "  ],",
+    "};",
+    "",
   ];
-
-  lines.push(...renderPermissions(PERMISSIONS));
-
-  lines.push("      ],");
-  lines.push("    },");
-  lines.push("  ],");
-  lines.push("};");
-  lines.push("");
 
   return lines.join("\n");
 }
@@ -83,6 +50,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Linear firewall config...");
   const ts = generateTypeScript();
-  logStats(PERMISSIONS);
   writeOutput("linear", ts, import.meta.dirname);
 }

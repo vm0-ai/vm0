@@ -7,12 +7,14 @@ import {
   resetSlackConnectState$,
   initSlackConnectPage$,
 } from "./slack-connect-signals.ts";
+import { hideAppSkeleton$ } from "../app-skeleton.ts";
 
 export const setupSlackConnectPage$ = command(
   async ({ set }, signal: AbortSignal) => {
     set(resetSlackConnectState$);
     set(updatePage$, createElement(ZeroSlackConnectPage));
     set(updateDocumentTitle$, "Connect Slack");
+    await set(hideAppSkeleton$, signal);
     await set(initSlackConnectPage$, signal);
   },
 );

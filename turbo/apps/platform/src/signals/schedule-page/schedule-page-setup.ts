@@ -9,6 +9,7 @@ import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
 import { reloadChatThreads$ } from "../zero-page/zero-chat.ts";
 import { fetchAllOrgSchedules$ } from "../zero-page/zero-schedule.ts";
 import { Reason, detach } from "../utils.ts";
+import { hideAppSkeleton$ } from "../app-skeleton.ts";
 
 export const setupSchedulePage$ = command(
   async ({ set }, signal: AbortSignal) => {
@@ -21,6 +22,7 @@ export const setupSchedulePage$ = command(
     detach(set(fetchAllOrgSchedules$, signal), Reason.Entrance);
     await set(initZeroOnboarding$, signal);
     signal.throwIfAborted();
+    await set(hideAppSkeleton$, signal);
 
     if (await set(onboardGuard$, signal)) {
       return;

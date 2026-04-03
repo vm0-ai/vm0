@@ -12,6 +12,7 @@ import { talkDraft$ } from "./chat-draft.ts";
 import { defaultAgentId$, agentDisplayName$ } from "./zero-agent-name.ts";
 import { zeroSubagents$ } from "./zero-agents.ts";
 import { setSidebarChatAgent$ } from "./zero-nav.ts";
+import { hideAppSkeleton$ } from "../app-skeleton.ts";
 
 export const setupTalkPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -32,6 +33,7 @@ export const setupTalkPage$ = command(
     }
 
     await set(loadInitialData$, signal);
+    await set(hideAppSkeleton$, signal);
 
     if (await set(onboardGuard$, signal)) {
       return;
