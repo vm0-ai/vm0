@@ -107,6 +107,8 @@ import {
   setHovering$,
   isScrolled$,
   setIsScrolled$,
+  manageSectionCollapsed$,
+  setManageSectionCollapsed$,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
 import { VM0ClerkProvider } from "../clerk/clerk-provider.tsx";
 import { ZeroOrgSwitcher } from "./zero-org-switcher.tsx";
@@ -1205,6 +1207,8 @@ function SidebarUpgradeCard() {
 export function ZeroSidebar() {
   const isScrolled = useGet(isScrolled$);
   const setIsScrolledFn = useSet(setIsScrolled$);
+  const manageCollapsed = useGet(manageSectionCollapsed$);
+  const setManageCollapsed = useSet(setManageSectionCollapsed$);
 
   // Read all data from signals directly
   const activeId = useGet(activeRoute$);
@@ -1454,44 +1458,64 @@ export function ZeroSidebar() {
         >
           {/* Manage section */}
           <div className="shrink-0">
-            <div className="flex h-8 items-center pl-2 pr-0">
-              <span className="text-[13px] leading-4 text-sidebar-foreground/50 font-medium">
+            <div
+              className="group flex h-8 shrink-0 cursor-pointer items-center justify-between rounded-lg pl-2 pr-0 hover:bg-sidebar-accent/50 transition-colors"
+              onClick={() => {
+                return setManageCollapsed(!manageCollapsed);
+              }}
+            >
+              <span className="flex flex-1 items-center gap-1 truncate text-[13px] font-medium leading-4 text-sidebar-foreground/50 group-hover:text-sidebar-foreground transition-colors">
                 Manage
+                <span className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                  <IconChevronRight
+                    size={12}
+                    stroke={2}
+                    className={manageCollapsed ? "" : "rotate-90"}
+                  />
+                </span>
               </span>
             </div>
-            <div className="flex flex-col gap-1">
-              {manageNav.map(
-                ({ id, activeKeys, pathname: navPath, label, icon: Icon }) => {
-                  const isActive =
-                    activeId !== null &&
-                    (activeKeys as readonly RouteKey[]).includes(activeId);
-                  return (
-                    <Link
-                      key={id}
-                      pathname={
-                        navPath as Parameters<typeof Link>[0]["pathname"]
-                      }
-                      onClick={(e) => {
-                        if (e.metaKey || e.ctrlKey || e.shiftKey) {
-                          return;
+            {!manageCollapsed && (
+              <div className="flex flex-col gap-1">
+                {manageNav.map(
+                  ({
+                    id,
+                    activeKeys,
+                    pathname: navPath,
+                    label,
+                    icon: Icon,
+                  }) => {
+                    const isActive =
+                      activeId !== null &&
+                      (activeKeys as readonly RouteKey[]).includes(activeId);
+                    return (
+                      <Link
+                        key={id}
+                        pathname={
+                          navPath as Parameters<typeof Link>[0]["pathname"]
                         }
-                        e.preventDefault();
-                        onSelect(id);
-                      }}
-                      aria-current={isActive ? "page" : undefined}
-                      className={`flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors duration-200 ${
-                        isActive
-                          ? "bg-gray-200 text-gray-900 font-medium"
-                          : "text-sidebar-foreground hover:bg-sidebar-accent"
-                      }`}
-                    >
-                      <Icon size={16} className="shrink-0" />
-                      <span className="truncate">{label}</span>
-                    </Link>
-                  );
-                },
-              )}
-            </div>
+                        onClick={(e) => {
+                          if (e.metaKey || e.ctrlKey || e.shiftKey) {
+                            return;
+                          }
+                          e.preventDefault();
+                          onSelect(id);
+                        }}
+                        aria-current={isActive ? "page" : undefined}
+                        className={`flex w-full h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors duration-200 ${
+                          isActive
+                            ? "bg-gray-200 text-gray-900 font-medium"
+                            : "text-sidebar-foreground hover:bg-sidebar-accent"
+                        }`}
+                      >
+                        <Icon size={16} className="shrink-0" />
+                        <span className="truncate">{label}</span>
+                      </Link>
+                    );
+                  },
+                )}
+              </div>
+            )}
           </div>
 
           {/* Scrollable: Pinned + Recent chats */}

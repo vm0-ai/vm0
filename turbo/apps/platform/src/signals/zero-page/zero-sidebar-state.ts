@@ -84,6 +84,19 @@ export const setSessionListCollapsed$ = command(
 );
 
 // ---------------------------------------------------------------------------
+// Manage section collapse state (ZeroSidebar)
+// ---------------------------------------------------------------------------
+const internalManageSectionCollapsed$ = state(false);
+export const manageSectionCollapsed$ = computed((get) => {
+  return get(internalManageSectionCollapsed$);
+});
+export const setManageSectionCollapsed$ = command(
+  ({ set }, collapsed: boolean) => {
+    set(internalManageSectionCollapsed$, collapsed);
+  },
+);
+
+// ---------------------------------------------------------------------------
 // Chat list dialog state (TalkToSection)
 // ---------------------------------------------------------------------------
 const internalChatListOpen$ = state(false);
