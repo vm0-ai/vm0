@@ -352,11 +352,11 @@ teardown_file() {
   local snap
   snap=$(full_snapshot)
 
-  echo "# Verifying lead agent badge..." >&3
-  contains "$snap" "Lead"
+  echo "# Waiting for lead agent badge..." >&3
+  wait_for_text "Lead" 15
 
-  echo "# Verifying Create teammate button..." >&3
-  contains "$snap" "Create teammate"
+  echo "# Waiting for Create teammate button..." >&3
+  wait_for_text "Create teammate" 10
 
   echo "# Team page verified!" >&3
 }
