@@ -34,6 +34,17 @@ function extractError(
   return { message: `HTTP ${status}`, code: "UNKNOWN" };
 }
 
+/**
+ * Awaits a typed API response and returns it if the status code is in `codes`.
+ * Otherwise shows a toast and throws an `ApiError`.
+ *
+ * Toast behavior:
+ * - Write-path commands (mutations): omit `options` or pass `{}` — the toast
+ *   fires automatically. The thrown `ApiError` is swallowed by `detach()`, so
+ *   there is no double-notification.
+ * - Read-path computed signals: pass `{ toast: false }` — errors surface
+ *   through the signal's error state rather than an ephemeral toast.
+ */
 async function accept<
   T extends { status: number; body: unknown },
   S extends number,

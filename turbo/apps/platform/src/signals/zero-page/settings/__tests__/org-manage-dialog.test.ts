@@ -3,13 +3,16 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../../mocks/server.ts";
 import { mockLocation } from "../../../location.ts";
 import { testContext } from "../../../__tests__/test-helpers.ts";
-import { createPushStateMock } from "../../../../__tests__/page-helper.ts";
+import {
+  createPushStateMock,
+  setupPage,
+} from "../../../../__tests__/page-helper.ts";
 import { mockUser, clearMockedAuth } from "../../../../__tests__/mock-auth.ts";
 import {
   checkSettingsParam$,
   orgManageDialogOpen$,
 } from "../org-manage-dialog.ts";
-import { activeTab$ } from "../org-manage-tabs-state.ts";
+import { activeTab$, inviteMember$ } from "../org-manage-tabs-state.ts";
 import { searchParams$ } from "../../../route.ts";
 
 const context = testContext();
@@ -134,5 +137,34 @@ describe("checkSettingsParam$", () => {
     const params = store.get(searchParams$);
     expect(params.has("settings")).toBeFalsy();
     expect(params.get("other")).toBe("keep");
+  });
+});
+
+describe("inviteMember$", () => {
+  it("should throw ApiError with API message on invite failure", async () => {
+    await setupPage({ context, path: "/", withoutRender: true });
+
+    server.use(
+      http.post("*/api/zero/org/invite", () => {
+        return HttpResponse.json(
+          {
+            error: {
+              message: "Already a member",
+              code: "INTERNAL_SERVER_ERROR",
+            },
+          },
+          { status: 400 },
+        );
+      }),
+    );
+
+    await expect(
+      context.store.set(
+        inviteMember$,
+        "already@example.com",
+        "member",
+        context.signal,
+      ),
+    ).rejects.toThrow("Already a member");
   });
 });
