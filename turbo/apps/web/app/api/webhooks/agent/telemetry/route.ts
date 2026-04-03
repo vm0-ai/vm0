@@ -14,7 +14,7 @@ import {
   getDatasetName,
   DATASETS,
 } from "../../../../../src/lib/shared/axiom";
-import { recordSandboxInternalOperation } from "../../../../../src/lib/shared/metrics";
+import { recordSandboxInternalOperation } from "../../../../../src/lib/infra/metrics";
 
 const log = logger("webhooks:telemetry");
 

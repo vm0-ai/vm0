@@ -1,4 +1,4 @@
-import { ingestSandboxOpLog } from "../axiom";
+import { ingestSandboxOpLog } from "../../shared/axiom";
 
 export function recordSandboxOperation(attrs: {
   sandboxType: "runner" | "docker";
