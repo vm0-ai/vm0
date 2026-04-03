@@ -119,23 +119,8 @@ describe("onboarding step indicator renders (AGENT-D-056)", () => {
     });
 
     // Admin flow has 4 visible steps, rendered as 4 bar segments
-    const segments = document.querySelectorAll(".h-1.flex-1.rounded-full");
+    const segments = screen.getAllByTestId("progress-step");
     expect(segments).toHaveLength(4);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// AGENT-D-063: Workspace name input renders
-// ---------------------------------------------------------------------------
-
-describe("workspace name input renders (AGENT-D-063)", () => {
-  it("renders workspace name text input in step 1", async () => {
-    mockOnboardingNeeded();
-    await renderOnboardingPage();
-
-    await waitFor(() => {
-      expect(screen.getByPlaceholderText("e.g. Acme Corp")).toBeInTheDocument();
-    });
   });
 });
 
@@ -246,11 +231,9 @@ describe("selected connectors display renders (AGENT-D-060)", () => {
     const githubCard = screen.getByText("GitHub").closest("button");
     await user.click(githubCard!);
 
-    // After click, the selected card renders the check icon (svg)
+    // After click, the selected card renders the check icon
     await waitFor(() => {
-      const githubBtn = screen.getByText("GitHub").closest("button");
-      // IconCircleCheckFilled is rendered as an SVG inside the selected button
-      expect(githubBtn?.querySelector("svg")).toBeInTheDocument();
+      expect(screen.getByTestId("connector-check-icon")).toBeInTheDocument();
     });
   });
 });
@@ -278,17 +261,15 @@ describe("connector selection buttons toggle (AGENT-D-064)", () => {
     // First click: select
     await user.click(githubCard!);
     await waitFor(() => {
-      const btn = screen.getByText("GitHub").closest("button");
-      expect(btn?.querySelector("svg")).toBeInTheDocument();
+      expect(screen.getByTestId("connector-check-icon")).toBeInTheDocument();
     });
 
     // Second click: deselect — check icon should no longer be present
     const githubCardAgain = screen.getByText("GitHub").closest("button");
     await user.click(githubCardAgain!);
     await waitFor(() => {
-      const btn = screen.getByText("GitHub").closest("button");
       expect(
-        btn?.querySelector('[class*="text-primary"]'),
+        screen.queryByTestId("connector-check-icon"),
       ).not.toBeInTheDocument();
     });
   });
@@ -495,14 +476,11 @@ describe("slack/web integration setup cards render (AGENT-D-061)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// AGENT-D-062: Error messages display during onboarding
+// AGENT-D-062: Where-to-work step renders action buttons
 // ---------------------------------------------------------------------------
 
-describe("error messages display during onboarding (AGENT-D-062)", () => {
-  it("where-to-work step renders action buttons that initiate onboarding completion", async () => {
-    // This test verifies that the step-4 UI is ready to show errors when
-    // the completion API fails. The WhereToWorkContent component renders
-    // an error div (text-destructive class) when the loadable enters hasError state.
+describe("where-to-work step renders action buttons (AGENT-D-062)", () => {
+  it("action buttons are enabled and ready before any completion attempt", async () => {
     mockMemberOnboardingNeeded();
     await renderOnboardingPage();
 

@@ -73,6 +73,7 @@ function ProgressBar({
         return (
           <div
             key={i}
+            data-testid="progress-step"
             className={`h-1 flex-1 rounded-full transition-colors duration-300 ${
               i <= currentStep ? "bg-foreground" : "bg-muted"
             }`}
@@ -118,7 +119,10 @@ function OnboardingConnectorCard({
         </span>
       </span>
       {isSelected && (
-        <IconCircleCheckFilled className="h-4 w-4 shrink-0 text-primary" />
+        <IconCircleCheckFilled
+          data-testid="connector-check-icon"
+          className="h-4 w-4 shrink-0 text-primary"
+        />
       )}
       {isPolling && (
         <IconLoader className="h-4 w-4 shrink-0 text-yellow-500 animate-spin" />
