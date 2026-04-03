@@ -143,7 +143,16 @@ debootstrap_build() {
   echo "bootstrapping Ubuntu 24.04 rootfs..."
   ROOTFS_DIR="$(mktemp -d)"
 
-  sudo debootstrap noble "$ROOTFS_DIR" "$MIRROR"
+  # Cache the base package tarball so repeated builds (e.g. after changing
+  # a pinned version) skip the ~200 MB download from the Ubuntu mirror.
+  local cache_tar="${OUTPUT_DIR}/../debootstrap-noble-$(dpkg --print-architecture).tar"
+  if [[ -f "$cache_tar" ]]; then
+    echo "using cached debootstrap tarball: $cache_tar"
+    sudo debootstrap --unpack-tarball="$(realpath "$cache_tar")" noble "$ROOTFS_DIR" "$MIRROR"
+  else
+    sudo debootstrap --make-tarball="$cache_tar" noble "$ROOTFS_DIR" "$MIRROR" || true
+    sudo debootstrap --unpack-tarball="$(realpath "$cache_tar")" noble "$ROOTFS_DIR" "$MIRROR"
+  fi
 
   # Mount virtual filesystems for chroot operations
   sudo mount --bind /proc "$ROOTFS_DIR/proc"
