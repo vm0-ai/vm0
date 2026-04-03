@@ -1,0 +1,505 @@
+/**
+ * Views tests for zero-settings-tab.tsx
+ * Tests display rendering and user interactions for the Profile tab of agent detail page.
+ */
+import { describe, expect, it, vi } from "vitest";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
+import { server } from "../../../mocks/server.ts";
+import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { setupPage } from "../../../__tests__/page-helper.ts";
+import { pathname } from "../../../signals/location.ts";
+
+const context = testContext();
+
+function subAgent() {
+  return {
+    id: "agent-detail-id",
+    name: "my-agent",
+    displayName: "My Agent",
+    description: "A helpful agent",
+    sound: "professional",
+    avatarUrl: "preset:0",
+    headVersionId: "version_2",
+    updatedAt: "2024-01-02T00:00:00Z",
+  };
+}
+
+function agentDetail(overrides: Record<string, unknown> = {}) {
+  return {
+    name: "my-agent",
+    agentId: "e0000000-0000-4000-a000-000000000010",
+    ownerId: "test-user-123",
+    description: "A helpful agent",
+    displayName: "My Agent",
+    sound: "professional",
+    avatarUrl: "preset:0",
+    connectors: [],
+    firewallPolicies: null,
+    ...overrides,
+  };
+}
+
+function mockAPIs(detailOverrides: Record<string, unknown> = {}) {
+  server.use(
+    http.get("*/api/zero/team", () => {
+      return HttpResponse.json([
+        {
+          id: "c0000000-0000-4000-a000-000000000001",
+          name: "zero",
+          displayName: null,
+          description: null,
+          sound: null,
+          avatarUrl: null,
+          headVersionId: "version_1",
+          updatedAt: "2024-01-01T00:00:00Z",
+        },
+        subAgent(),
+      ]);
+    }),
+    http.get("*/api/zero/chat-threads", () => {
+      return HttpResponse.json({ threads: [] });
+    }),
+    http.get("*/api/zero/agents/my-agent", () => {
+      return HttpResponse.json(agentDetail(detailOverrides));
+    }),
+    http.get("*/api/zero/agents/:name/instructions", () => {
+      return HttpResponse.json({ content: null, filename: null });
+    }),
+    http.get("*/api/zero/schedules", () => {
+      return HttpResponse.json({ schedules: [] });
+    }),
+  );
+}
+
+async function openProfileTab(user: ReturnType<typeof userEvent.setup>) {
+  await setupPage({ context, path: "/agents/my-agent" });
+  await waitFor(() => {
+    expect(
+      screen.getByRole("heading", { name: "My Agent" }),
+    ).toBeInTheDocument();
+  });
+  await user.click(screen.getByRole("tab", { name: /Profile/i }));
+  await waitFor(() => {
+    expect(screen.getByLabelText(/name/i)).toBeInTheDocument();
+  });
+}
+
+describe("zero settings tab - display", () => {
+  it("shows checkmark on the selected avatar preset (AGENT-D-036)", async () => {
+    const user = userEvent.setup();
+    mockAPIs({ avatarUrl: "preset:0" });
+    await openProfileTab(user);
+
+    await waitFor(() => {
+      expect(screen.getByRole("radio", { name: "Avatar 1" })).toHaveAttribute(
+        "aria-checked",
+        "true",
+      );
+    });
+
+    expect(screen.getByRole("radio", { name: "Avatar 2" })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+  });
+
+  it("shows custom avatar option when avatarUrl is a custom URL (AGENT-D-037)", async () => {
+    const user = userEvent.setup();
+    const customUrl = "https://cdn.example.com/custom-avatar.png";
+    mockAPIs({ avatarUrl: customUrl });
+    await openProfileTab(user);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("radio", { name: "Custom avatar" }),
+      ).toHaveAttribute("aria-checked", "true");
+    });
+  });
+
+  it("shows agent name in the name input (AGENT-D-038)", async () => {
+    const user = userEvent.setup();
+    mockAPIs({ displayName: "My Agent" });
+    await openProfileTab(user);
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue("My Agent")).toBeInTheDocument();
+    });
+  });
+
+  it("shows agent description in the description textarea (AGENT-D-039)", async () => {
+    const user = userEvent.setup();
+    mockAPIs({ description: "A helpful agent" });
+    await openProfileTab(user);
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue("A helpful agent")).toBeInTheDocument();
+    });
+  });
+
+  it("shows hint text for the selected tone (AGENT-D-040)", async () => {
+    const user = userEvent.setup();
+    mockAPIs({ sound: "friendly" });
+    await openProfileTab(user);
+
+    await waitFor(() => {
+      expect(screen.getByText("Warm and approachable")).toBeInTheDocument();
+    });
+  });
+
+  it("shows tone sample preview text for the selected tone (AGENT-D-041)", async () => {
+    const user = userEvent.setup();
+    mockAPIs({ sound: "professional" });
+    await openProfileTab(user);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/I'll have the Q3 report ready by Friday/),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("shows danger zone for non-default agents (AGENT-D-042)", async () => {
+    const user = userEvent.setup();
+    mockAPIs();
+    await openProfileTab(user);
+
+    await waitFor(() => {
+      expect(screen.getByText("Danger zone")).toBeInTheDocument();
+      expect(
+        screen.getByText(/Permanently remove this agent/),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("hides danger zone for the default agent (AGENT-D-043)", async () => {
+    server.use(
+      http.get("*/api/zero/team", () => {
+        return HttpResponse.json([
+          {
+            id: "c0000000-0000-4000-a000-000000000001",
+            name: "zero",
+            displayName: "Zero",
+            description: null,
+            sound: null,
+            avatarUrl: null,
+            headVersionId: "version_1",
+            updatedAt: "2024-01-01T00:00:00Z",
+          },
+        ]);
+      }),
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
+      http.get("*/api/zero/agents/zero", () => {
+        return HttpResponse.json({
+          name: "zero",
+          agentId: "c0000000-0000-4000-a000-000000000001",
+          ownerId: "test-user-123",
+          description: null,
+          displayName: "Zero",
+          sound: null,
+          avatarUrl: null,
+          connectors: [],
+          firewallPolicies: null,
+        });
+      }),
+      http.get("*/api/zero/agents/:name/instructions", () => {
+        return HttpResponse.json({ content: null, filename: null });
+      }),
+      http.get("*/api/zero/schedules", () => {
+        return HttpResponse.json({ schedules: [] });
+      }),
+    );
+
+    const user = userEvent.setup();
+    await setupPage({ context, path: "/agents/zero" });
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Zero" })).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole("tab", { name: /Profile/i }));
+    await waitFor(() => {
+      expect(screen.getByLabelText(/name/i)).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText("Danger zone")).not.toBeInTheDocument();
+  });
+});
+
+describe("zero settings tab - interaction", () => {
+  it("changes selected avatar when clicking a different preset (AGENT-D-044)", async () => {
+    const user = userEvent.setup();
+    mockAPIs({ avatarUrl: "preset:0" });
+    await openProfileTab(user);
+
+    await waitFor(() => {
+      expect(screen.getByRole("radio", { name: "Avatar 1" })).toHaveAttribute(
+        "aria-checked",
+        "true",
+      );
+    });
+
+    await user.click(screen.getByRole("radio", { name: "Avatar 2" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("radio", { name: "Avatar 2" })).toHaveAttribute(
+        "aria-checked",
+        "true",
+      );
+      expect(screen.getByRole("radio", { name: "Avatar 1" })).toHaveAttribute(
+        "aria-checked",
+        "false",
+      );
+    });
+  });
+
+  it("triggers file input click when upload button is clicked (AGENT-D-045)", async () => {
+    const user = userEvent.setup();
+    mockAPIs();
+    await openProfileTab(user);
+
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]');
+    expect(fileInput).toBeTruthy();
+
+    const clickSpy = vi.fn();
+    fileInput!.click = clickSpy;
+
+    await user.click(
+      screen.getByRole("button", { name: "Upload custom avatar" }),
+    );
+
+    expect(clickSpy).toHaveBeenCalledOnce();
+  });
+
+  it("shows uploaded image as custom avatar preview (AGENT-D-046)", async () => {
+    const user = userEvent.setup();
+    const uploadedUrl = "https://cdn.example.com/avatar-new.png";
+    mockAPIs();
+    server.use(
+      http.post("*/api/zero/uploads", () => {
+        return HttpResponse.json({ url: uploadedUrl });
+      }),
+    );
+    await openProfileTab(user);
+
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]');
+    const file = new File(["img"], "avatar.png", { type: "image/png" });
+    await user.upload(fileInput!, file);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("radio", { name: "Custom avatar" }),
+      ).toHaveAttribute("aria-checked", "true");
+    });
+  });
+
+  it("clears custom avatar selection when switching to a preset (AGENT-D-047)", async () => {
+    const user = userEvent.setup();
+    const uploadedUrl = "https://cdn.example.com/avatar-new.png";
+    mockAPIs();
+    server.use(
+      http.post("*/api/zero/uploads", () => {
+        return HttpResponse.json({ url: uploadedUrl });
+      }),
+    );
+    await openProfileTab(user);
+
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]');
+    const file = new File(["img"], "avatar.png", { type: "image/png" });
+    await user.upload(fileInput!, file);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("radio", { name: "Custom avatar" }),
+      ).toHaveAttribute("aria-checked", "true");
+    });
+
+    await user.click(screen.getByRole("radio", { name: "Avatar 1" }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("radio", { name: "Avatar 1" })).toHaveAttribute(
+        "aria-checked",
+        "true",
+      );
+      expect(
+        screen.getByRole("radio", { name: "Custom avatar" }),
+      ).toHaveAttribute("aria-checked", "false");
+    });
+  });
+
+  it("updates name field when typing (AGENT-D-048)", async () => {
+    const user = userEvent.setup();
+    mockAPIs({ displayName: "My Agent" });
+    await openProfileTab(user);
+
+    const nameInput = await screen.findByDisplayValue("My Agent");
+    await user.clear(nameInput);
+    await user.type(nameInput, "Renamed Agent");
+
+    expect(screen.getByDisplayValue("Renamed Agent")).toBeInTheDocument();
+  });
+
+  it("updates description textarea when typing (AGENT-D-049)", async () => {
+    const user = userEvent.setup();
+    mockAPIs({ description: "A helpful agent" });
+    await openProfileTab(user);
+
+    const descTextarea = await screen.findByDisplayValue("A helpful agent");
+    await user.clear(descTextarea);
+    await user.type(descTextarea, "Updated description");
+
+    expect(screen.getByDisplayValue("Updated description")).toBeInTheDocument();
+  });
+
+  it("changes tone selection when clicking a tone button (AGENT-D-050)", async () => {
+    const user = userEvent.setup();
+    mockAPIs({ sound: "professional" });
+    await openProfileTab(user);
+
+    await waitFor(() => {
+      expect(screen.getByText("Clear and polished")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: /Direct/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("To the point")).toBeInTheDocument();
+    });
+  });
+
+  it("saves settings when Save button is clicked and resets dirty state (AGENT-D-051)", async () => {
+    const user = userEvent.setup();
+    let patchCalled = false;
+    mockAPIs({ displayName: "My Agent" });
+    await openProfileTab(user);
+
+    // Set up patch and reload handlers after initial load
+    server.use(
+      http.patch("*/api/zero/agents/:id", () => {
+        patchCalled = true;
+        return HttpResponse.json(agentDetail({ displayName: "Renamed Agent" }));
+      }),
+      http.get("*/api/zero/agents/my-agent", () => {
+        return HttpResponse.json(agentDetail({ displayName: "Renamed Agent" }));
+      }),
+    );
+
+    const nameInput = await screen.findByDisplayValue("My Agent");
+    await user.clear(nameInput);
+    await user.type(nameInput, "Renamed Agent");
+
+    await waitFor(() => {
+      expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: /^Save$/i }));
+
+    await waitFor(() => {
+      expect(patchCalled).toBeTruthy();
+      expect(
+        screen.queryByText("You have unsaved changes"),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("reverts changes when Discard is clicked (AGENT-D-052)", async () => {
+    const user = userEvent.setup();
+    mockAPIs({ displayName: "My Agent" });
+    await openProfileTab(user);
+
+    const nameInput = await screen.findByDisplayValue("My Agent");
+    await user.clear(nameInput);
+    await user.type(nameInput, "Changed Name");
+
+    await waitFor(() => {
+      expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: /Discard/i }));
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue("My Agent")).toBeInTheDocument();
+      expect(
+        screen.queryByText("You have unsaved changes"),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("opens delete confirmation dialog when Delete agent is clicked (AGENT-D-053)", async () => {
+    const user = userEvent.setup();
+    mockAPIs();
+    await openProfileTab(user);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /Delete agent/i }),
+      ).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: /Delete agent/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Delete My Agent?")).toBeInTheDocument();
+    });
+  });
+
+  it("closes delete dialog when Cancel is clicked (AGENT-D-054)", async () => {
+    const user = userEvent.setup();
+    mockAPIs();
+    await openProfileTab(user);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /Delete agent/i }),
+      ).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: /Delete agent/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Delete My Agent?")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: /^Cancel$/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByText("Delete My Agent?")).not.toBeInTheDocument();
+    });
+  });
+
+  it("deletes agent and redirects to /agents after confirmation (AGENT-D-055)", async () => {
+    const user = userEvent.setup();
+    mockAPIs();
+    server.use(
+      http.delete("*/api/zero/agents/:id", () => {
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    await openProfileTab(user);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /Delete agent/i }),
+      ).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: /Delete agent/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Delete My Agent?")).toBeInTheDocument();
+    });
+
+    const deleteButtons = screen.getAllByRole("button", {
+      name: /Delete agent/i,
+    });
+    await user.click(deleteButtons[deleteButtons.length - 1]);
+
+    await waitFor(() => {
+      expect(pathname()).toBe("/agents");
+    });
+  });
+});
