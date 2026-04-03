@@ -1,13 +1,14 @@
-import { useState } from "react";
 import { useGet, useSet, useLastLoadable, useLoadable } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import { Button } from "@vm0/ui";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   IconCheck,
   IconBan,
+  IconLink,
   IconShieldLock,
   IconAlertTriangle,
-  IconClock,
+  IconLoader2,
   IconX,
 } from "@tabler/icons-react";
 import {
@@ -27,11 +28,23 @@ import {
   firewallAllowMethod$,
   firewallAllowPath$,
   firewallAllowAgent$,
-  firewallAccessRequests$,
+  firewallLatestRequest$,
   extractPermissions,
-  saveFirewallPolicies$,
-  resolveAccessRequest$,
-  createAccessRequest$,
+  firewallAllowAction$,
+  saveAdminFocusedPolicy$,
+  resolveAndUpdatePolicy$,
+  resolvedAction$,
+  showForm$,
+  setShowForm$,
+  linkCopied$,
+  copyLink$,
+  reason$,
+  setReason$,
+  submitAccessRequest$,
+  adminListPolicies$,
+  setAdminListPolicy$,
+  setAdminListGroupPolicies$,
+  saveAdminListPolicies$,
 } from "../../signals/firewall-allow/firewall-allow-signals.ts";
 import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
 import { resolveAvatarUrl } from "../zero-page/avatar-utils.ts";
@@ -101,11 +114,11 @@ function AgentPill({
 }) {
   const src = resolveAvatarUrl(avatarUrl) ?? avatar1Img;
   return (
-    <div className="w-full rounded-lg bg-muted/50 px-4 py-3 flex items-center gap-3">
+    <div className="w-full rounded-lg border border-border bg-muted/30 pl-2 pr-8 py-3 flex items-center gap-2">
       <img
         src={src}
         alt=""
-        className="h-8 w-8 shrink-0 rounded-full object-cover object-top"
+        className="h-10 w-10 shrink-0 rounded-full object-cover object-top"
       />
       <span className="text-sm font-medium text-foreground">{displayName}</span>
     </div>
@@ -115,9 +128,11 @@ function AgentPill({
 function ConnectorPermissionCard({
   connectorRef,
   permission,
+  action = "allow",
 }: {
   connectorRef: string;
   permission: { name: string; description?: string };
+  action?: "allow" | "deny";
 }) {
   const connectorConfig =
     CONNECTOR_TYPES[connectorRef as keyof typeof CONNECTOR_TYPES];
@@ -125,28 +140,44 @@ function ConnectorPermissionCard({
   const connectorHelpText = connectorConfig?.helpText ?? "";
 
   return (
-    <div className="w-full rounded-lg border border-border overflow-hidden">
-      <div className="px-4 py-3 flex items-center gap-3">
-        {isFirewallConnectorType(connectorRef) && (
-          <ConnectorIcon type={connectorRef} size={28} />
-        )}
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-foreground">
-            {connectorLabel}
-          </p>
-          <p className="text-xs text-muted-foreground truncate">
-            {connectorHelpText}
-          </p>
+    <div className="w-full rounded-lg border border-border px-4 py-3">
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center gap-2 border-b border-border/70 pb-4 pt-1">
+          {isFirewallConnectorType(connectorRef) && (
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-muted/40">
+              <ConnectorIcon type={connectorRef} size={20} />
+            </span>
+          )}
+          <div className="min-w-0 flex-1 flex flex-col gap-1.5">
+            <p className="text-sm font-medium text-foreground">
+              {connectorLabel}
+            </p>
+            {connectorHelpText && (
+              <p className="text-xs text-muted-foreground line-clamp-1">
+                {connectorHelpText}
+              </p>
+            )}
+          </div>
         </div>
-      </div>
-      <div className="border-t border-border px-4 py-2.5 flex items-center gap-2">
-        <IconCheck size={16} className="text-green-600 shrink-0" />
-        <span className="text-sm text-foreground flex-1">
-          {permission.description ?? permission.name}
-        </span>
-        <code className="text-xs font-medium bg-muted px-2 py-0.5 rounded shrink-0">
-          {permission.name}
-        </code>
+        <div className="flex items-center gap-2 py-2">
+          {action === "allow" ? (
+            <IconCheck
+              size={20}
+              className="shrink-0 text-green-600 opacity-70"
+            />
+          ) : (
+            <IconBan
+              size={20}
+              className="shrink-0 text-destructive opacity-70"
+            />
+          )}
+          <span className="min-w-0 flex-1 text-sm text-foreground truncate">
+            {permission.description ?? permission.name}
+          </span>
+          <code className="shrink-0 rounded border border-border bg-muted/40 px-1.5 py-0.5 font-mono text-xs text-sky-700">
+            {permission.name}
+          </code>
+        </div>
       </div>
     </div>
   );
@@ -215,12 +246,14 @@ function AdminFocusedView({
   agentId,
   ref,
   permission,
+  action,
   agent,
   userName,
 }: {
   agentId: string;
   ref: string;
   permission: { name: string; description?: string };
+  action: "allow" | "deny";
   agent: {
     firewallPolicies: FirewallPolicies | null;
     displayName: string | null;
@@ -228,108 +261,189 @@ function AdminFocusedView({
   };
   userName: string;
 }) {
-  const defaults = isFirewallConnectorType(ref)
-    ? getDefaultFirewallPolicies(ref)
-    : null;
   const pageSignal = useGet(pageSignal$);
-  const requestsLoadable = useLastLoadable(firewallAccessRequests$);
-  const setSavePolicies = useSet(saveFirewallPolicies$);
-  const setResolveRequest = useSet(resolveAccessRequest$);
+  const latestLoadable = useLastLoadable(firewallLatestRequest$);
+  const [saveLoadable, savePolicies] = useLoadableSet(saveAdminFocusedPolicy$);
+  const [resolveLoadable, resolveRequest] = useLoadableSet(
+    resolveAndUpdatePolicy$,
+  );
+  const lastResolvedAction = useGet(resolvedAction$);
 
-  const currentPolicy =
-    agent.firewallPolicies?.[ref]?.[permission.name] ??
-    defaults?.[permission.name] ??
-    "allow";
-
-  const [resolving, setResolving] = useState(false);
-  const [policy, setPolicy] = useState<FirewallPolicyValue>(currentPolicy);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-
-  const requests =
-    requestsLoadable.state === "hasData" ? requestsLoadable.data : [];
-  const pendingRequest = requests.find((r) => {
-    return r.permission === permission.name;
-  });
+  const saving = saveLoadable.state === "loading";
+  const resolving = resolveLoadable.state === "loading";
+  const requestsLoading = latestLoadable.state === "loading";
+  const latestRequest =
+    latestLoadable.state === "hasData" ? latestLoadable.data : null;
   const agentDisplayName = agent.displayName ?? agentId;
-  const isDirty = policy !== currentPolicy;
 
-  const handleApprove = () => {
-    if (!pendingRequest) {
-      return;
-    }
-    setResolving(true);
-    const fullPolicies: FirewallPolicies = {
-      ...agent.firewallPolicies,
-      [ref]: {
-        ...agent.firewallPolicies?.[ref],
-        [permission.name]: "allow",
-      },
-    };
+  const handleApprove = (requestId: string) => {
     detach(
-      Promise.all([
-        setResolveRequest(pendingRequest.id, "approve", pageSignal),
-        setSavePolicies(agentId, fullPolicies, pageSignal),
-      ]).finally(() => {
-        setResolving(false);
-      }),
+      resolveRequest(requestId, "approve", pageSignal),
       Reason.DomCallback,
     );
   };
 
-  const handleReject = () => {
-    if (!pendingRequest) {
-      return;
-    }
-    setResolving(true);
-    detach(
-      setResolveRequest(pendingRequest.id, "reject", pageSignal).finally(() => {
-        setResolving(false);
-      }),
-      Reason.DomCallback,
-    );
+  const handleReject = (requestId: string) => {
+    detach(resolveRequest(requestId, "reject", pageSignal), Reason.DomCallback);
   };
 
   const handleSave = () => {
-    const fullPolicies: FirewallPolicies = {
-      ...agent.firewallPolicies,
-      [ref]: {
-        ...agent.firewallPolicies?.[ref],
-        [permission.name]: policy,
-      },
-    };
-    setSaving(true);
-    setSaved(false);
     detach(
-      setSavePolicies(agentId, fullPolicies, pageSignal)
-        .then(() => {
-          setSaved(true);
-        })
-        .finally(() => {
-          setSaving(false);
-        }),
+      savePolicies(
+        {
+          agentId,
+          ref,
+          permissionName: permission.name,
+          agentFirewallPolicies: agent.firewallPolicies,
+        },
+        pageSignal,
+      ),
       Reason.DomCallback,
     );
   };
 
-  // With pending request — approval card (Figma owner design)
-  if (pendingRequest) {
+  const resolved = resolveLoadable.state === "hasData";
+  const saved = saveLoadable.state === "hasData";
+  const isDenied =
+    (resolved && lastResolvedAction === "reject") ||
+    latestRequest?.status === "rejected";
+  const isApproved =
+    (resolved && lastResolvedAction === "approve") ||
+    saved ||
+    latestRequest?.status === "approved";
+
+  if (requestsLoading) {
+    return (
+      <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
+        <div className="pointer-events-auto flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-10 rounded-[20px] border border-border bg-background px-6 py-12">
+          <VM0Logo />
+          <IconLoader2
+            size={20}
+            className="animate-spin text-muted-foreground"
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (isDenied) {
+    return (
+      <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
+        <div className="pointer-events-auto flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-10 rounded-[20px] border border-border bg-background px-[50px] py-12">
+          <VM0Logo />
+          <div className="flex flex-col items-center gap-4">
+            <IconBan size={40} className="text-destructive opacity-70" />
+            <p className="text-center text-lg font-medium leading-7 text-foreground">
+              Permissions denied
+            </p>
+            <p className="text-center text-sm text-muted-foreground">
+              Agent permissions have been denied
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (isApproved) {
+    return (
+      <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
+        <div className="pointer-events-auto flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-10 rounded-[20px] border border-border bg-background px-[50px] py-12">
+          <VM0Logo />
+          <div className="flex flex-col items-center gap-4">
+            <IconCheck size={40} className="text-green-600 opacity-70" />
+            <p className="text-center text-lg font-medium leading-7 text-foreground">
+              Permissions updated
+            </p>
+            <p className="text-center text-sm text-muted-foreground">
+              Agent permissions have been updated
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // With pending request — approval card
+  if (latestRequest?.status === "pending") {
     const requesterName =
-      pendingRequest.requesterName ?? pendingRequest.requesterUserId;
+      latestRequest.requesterName ?? latestRequest.requesterUserId;
 
     return (
-      <div className="flex flex-1 items-center justify-center p-6">
-        <div className="w-full max-w-[520px] rounded-2xl border border-border bg-background p-8 flex flex-col items-center gap-6">
+      <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
+        <div className="pointer-events-auto flex flex-col items-center gap-10 rounded-[20px] border border-border bg-background px-6 py-12">
           <VM0Logo />
 
-          <p className="text-center text-base font-medium text-foreground">
-            {"Hey "}
-            {userName}
-            {", "}
-            {requesterName}
-            {" is requesting approval to update "}
-            {agentDisplayName}
-            {"'s permissions."}
+          <div className="flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-4 px-[26px]">
+            <p className="text-center text-lg font-medium leading-7 text-foreground">
+              {`Hey ${userName}, ${requesterName} is requesting approval to update ${agentDisplayName}'s permissions.`}
+            </p>
+
+            <AgentPill
+              avatarUrl={agent.avatarUrl}
+              displayName={agentDisplayName}
+            />
+
+            <div className="w-full flex flex-col gap-3">
+              <p className="text-sm font-medium text-foreground">
+                Would like to
+              </p>
+              <ConnectorPermissionCard
+                connectorRef={ref}
+                permission={permission}
+              />
+            </div>
+
+            <div className="w-full flex flex-col gap-3">
+              <p className="text-sm font-medium text-foreground">
+                Reasons for request
+              </p>
+              <textarea
+                readOnly
+                value={latestRequest.reason ?? ""}
+                className="text-sm w-full h-[100px] rounded-lg border border-input bg-muted/30 px-3 py-2 text-foreground resize-y"
+              />
+            </div>
+          </div>
+
+          <div className="flex w-[500px] max-w-[calc(100vw-96px)] gap-3 px-[26px]">
+            <Button
+              variant="outline"
+              className="flex-1 rounded-lg"
+              onClick={() => {
+                return handleReject(latestRequest.id);
+              }}
+              disabled={resolving}
+            >
+              <IconX size={16} />
+              Disapprove change
+            </Button>
+            <Button
+              variant="outline"
+              className="flex-1 rounded-lg"
+              onClick={() => {
+                return handleApprove(latestRequest.id);
+              }}
+              disabled={resolving}
+            >
+              <IconCheck size={16} />
+              Approve change
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // No request — confirm action from URL
+  return (
+    <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
+      <div className="pointer-events-auto flex flex-col items-center gap-10 rounded-[20px] border border-border bg-background px-6 py-12">
+        <VM0Logo />
+
+        <div className="flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-4 px-[26px]">
+          <p className="text-center text-lg font-medium leading-7 text-foreground">
+            {`Hey ${userName}, you are going to change ${agentDisplayName}'s permissions.`}
           </p>
 
           <AgentPill
@@ -342,74 +456,20 @@ function AdminFocusedView({
             <ConnectorPermissionCard
               connectorRef={ref}
               permission={permission}
+              action={action}
             />
           </div>
-
-          <div className="w-full flex flex-col gap-2">
-            <p className="text-sm font-medium text-foreground">
-              Reasons for request
-            </p>
-            <textarea
-              readOnly
-              value={pendingRequest.reason ?? ""}
-              rows={3}
-              className="text-sm w-full rounded-lg border border-input bg-muted/30 px-3 py-2 text-foreground resize-y"
-            />
-          </div>
-
-          <div className="w-full flex gap-3">
-            <Button
-              variant="outline"
-              className="flex-1 rounded-full"
-              onClick={handleReject}
-              disabled={resolving}
-            >
-              <IconX size={16} />
-              Disapprove change
-            </Button>
-            <Button
-              variant="outline"
-              className="flex-1 rounded-full"
-              onClick={handleApprove}
-              disabled={resolving}
-            >
-              <IconCheck size={16} />
-              Approve change
-            </Button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // No pending request — policy management card
-  return (
-    <div className="flex flex-1 items-center justify-center p-6">
-      <div className="w-full max-w-[520px] rounded-2xl border border-border bg-background p-8 flex flex-col items-center gap-6">
-        <VM0Logo />
-
-        <p className="text-center text-base font-medium text-foreground">
-          {"Manage "}
-          {agentDisplayName}
-          {"'s permissions"}
-        </p>
-
-        <AgentPill avatarUrl={agent.avatarUrl} displayName={agentDisplayName} />
-
-        <div className="w-full flex flex-col gap-3">
-          <ConnectorPermissionCard connectorRef={ref} permission={permission} />
         </div>
 
-        <div className="w-full zero-border rounded-lg px-4 py-3 flex items-center gap-3">
-          <PolicyPill policy={policy} onChange={setPolicy} />
-          <div className="flex-1" />
-          <Button
-            size="sm"
+        <div className="w-[500px] max-w-[calc(100vw-96px)] px-[26px]">
+          <button
+            type="button"
             onClick={handleSave}
-            disabled={saving || (!isDirty && !saved)}
+            disabled={saving}
+            className="h-9 w-full rounded-[10px] bg-[#ED4E01] hover:bg-[#d44500] text-white font-medium text-sm transition-colors disabled:opacity-50"
           >
-            {saving ? "Saving..." : saved && !isDirty ? "Saved" : "Save"}
-          </Button>
+            {saving ? "Saving..." : "Confirm"}
+          </button>
         </div>
       </div>
     </div>
@@ -442,22 +502,25 @@ function MemberFocusedView({
   userName: string;
 }) {
   const pageSignal = useGet(pageSignal$);
-  const requestsLoadable = useLastLoadable(firewallAccessRequests$);
-  const setCreateRequest = useSet(createAccessRequest$);
-  const [reason, setReason] = useState("");
-  const [submitting, setSubmitting] = useState(false);
+  const latestLoadable = useLastLoadable(firewallLatestRequest$);
+  const resending = useGet(showForm$);
+  const setResending = useSet(setShowForm$);
+  const copied = useGet(linkCopied$);
+  const [, doCopyLink] = useLoadableSet(copyLink$);
+  const reason = useGet(reason$);
+  const setReasonValue = useSet(setReason$);
+  const [submitLoadable, submitRequest] = useLoadableSet(submitAccessRequest$);
 
-  const requests =
-    requestsLoadable.state === "hasData" ? requestsLoadable.data : [];
-  const isPending = requests.some((r) => {
-    return r.permission === permission.name;
-  });
+  const requestsLoading = latestLoadable.state === "loading";
+  const latestRequest =
+    latestLoadable.state === "hasData" ? latestLoadable.data : null;
   const agentDisplayName = agent.displayName ?? agentId;
+  const submitting = submitLoadable.state === "loading";
+  const justSubmitted = submitLoadable.state === "hasData";
 
   const handleSubmit = () => {
-    setSubmitting(true);
     detach(
-      setCreateRequest(
+      submitRequest(
         {
           agentId,
           firewallRef: ref,
@@ -467,68 +530,165 @@ function MemberFocusedView({
           reason: reason || undefined,
         },
         pageSignal,
-      )
-        .then(() => {
-          setReason("");
-        })
-        .finally(() => {
-          setSubmitting(false);
-        }),
+      ),
       Reason.DomCallback,
     );
   };
 
-  return (
-    <div className="flex flex-1 items-center justify-center p-6">
-      <div className="w-full max-w-[520px] rounded-2xl border border-border bg-background p-8 flex flex-col items-center gap-6">
-        <VM0Logo />
-
-        <p className="text-center text-base font-medium text-foreground">
-          {"Hey "}
-          {userName}
-          {", you're requesting approval to update "}
-          {agentDisplayName}
-          {"'s permissions."}
-        </p>
-
-        <AgentPill avatarUrl={agent.avatarUrl} displayName={agentDisplayName} />
-
-        <div className="w-full flex flex-col gap-3">
-          <p className="text-sm font-medium text-foreground">Would like to</p>
-          <ConnectorPermissionCard connectorRef={ref} permission={permission} />
-        </div>
-
-        <div className="w-full flex flex-col gap-2">
-          <p className="text-sm font-medium text-foreground">
-            Reasons for request
-          </p>
-          <textarea
-            placeholder="I need this permission to run the task with this agent as part of a required compliance project."
-            value={reason}
-            onChange={(e) => {
-              return setReason(e.target.value);
-            }}
-            rows={3}
-            className="text-sm w-full rounded-lg border border-input bg-background px-3 py-2 placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-y"
-            disabled={isPending}
+  if (requestsLoading) {
+    return (
+      <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
+        <div className="pointer-events-auto flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-10 rounded-[20px] border border-border bg-background px-6 py-12">
+          <VM0Logo />
+          <IconLoader2
+            size={20}
+            className="animate-spin text-muted-foreground"
           />
         </div>
+      </div>
+    );
+  }
 
-        {isPending ? (
-          <div className="w-full text-center text-sm text-amber-600 dark:text-amber-400 flex items-center justify-center gap-1.5">
-            <IconClock size={16} />
-            Request pending approval
+  // Rejected — show denied card with resend button (all non-admins can resend)
+  if (latestRequest?.status === "rejected" && !resending && !justSubmitted) {
+    return (
+      <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
+        <div className="pointer-events-auto flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-10 rounded-[20px] border border-border bg-background px-[50px] py-12">
+          <VM0Logo />
+          <div className="flex flex-col items-center gap-4">
+            <IconBan size={40} className="text-destructive opacity-70" />
+            <p className="text-center text-lg font-medium leading-7 text-foreground">
+              Permissions denied
+            </p>
+            <p className="text-center text-sm text-muted-foreground">
+              Agent permissions have been denied
+            </p>
           </div>
-        ) : (
+          <button
+            type="button"
+            onClick={() => {
+              return setResending(true);
+            }}
+            className="h-9 w-full rounded-[10px] bg-[#ED4E01] hover:bg-[#d44500] text-white font-medium text-sm transition-colors disabled:opacity-50"
+          >
+            Resend request
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Approved — success card
+  if (latestRequest?.status === "approved") {
+    return (
+      <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
+        <div className="pointer-events-auto flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-10 rounded-[20px] border border-border bg-background px-[50px] py-12">
+          <VM0Logo />
+          <div className="flex flex-col items-center gap-4">
+            <IconCheck size={40} className="text-green-600 opacity-70" />
+            <p className="text-center text-lg font-medium leading-7 text-foreground">
+              Permissions updated
+            </p>
+            <p className="text-center text-sm text-muted-foreground">
+              Agent permissions have been updated
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Pending or just submitted — copy link card
+  if ((latestRequest?.status === "pending" || justSubmitted) && !resending) {
+    const handleCopyLink = () => {
+      detach(doCopyLink(pageSignal), Reason.DomCallback);
+    };
+
+    return (
+      <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
+        <div className="pointer-events-auto flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-10 rounded-[20px] border border-border bg-background px-[50px] py-12">
+          <VM0Logo />
+          <div className="flex flex-col items-center gap-4">
+            <IconCheck size={40} className="text-green-600 opacity-70" />
+            <p className="text-center text-lg font-medium leading-7 text-foreground">
+              Permission change requested successfully
+            </p>
+            <p className="text-center text-sm text-muted-foreground">
+              The agent owner has been notified. If they don&apos;t receive the
+              notification, copy and share the link below.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleCopyLink}
+            className="inline-flex h-9 w-full items-center justify-center gap-2.5 rounded-[10px] border border-border bg-background text-sm font-medium text-foreground transition-colors hover:bg-muted/50"
+          >
+            {copied ? (
+              <>
+                <IconCheck size={16} />
+                Copied
+              </>
+            ) : (
+              <>
+                <IconLink size={16} />
+                Copy link
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // No request, resending, or just submitted — show request form
+  return (
+    <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
+      <div className="pointer-events-auto flex flex-col items-center gap-10 rounded-[20px] border border-border bg-background px-6 py-12">
+        <VM0Logo />
+
+        <div className="flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-4 px-[26px]">
+          <p className="text-center text-lg font-medium leading-7 text-foreground">
+            {`Hey ${userName}, you're requesting approval to update ${agentDisplayName}'s permissions.`}
+          </p>
+
+          <AgentPill
+            avatarUrl={agent.avatarUrl}
+            displayName={agentDisplayName}
+          />
+
+          <div className="w-full flex flex-col gap-3">
+            <p className="text-sm font-medium text-foreground">Would like to</p>
+            <ConnectorPermissionCard
+              connectorRef={ref}
+              permission={permission}
+            />
+          </div>
+
+          <div className="w-full flex flex-col gap-3">
+            <p className="text-sm font-medium text-foreground">
+              Reasons for request
+            </p>
+            <textarea
+              placeholder="I need this permission to run the task with this agent as part of a required compliance project."
+              value={reason}
+              onChange={(e) => {
+                return setReasonValue(e.target.value);
+              }}
+              className="text-sm w-full h-[100px] rounded-lg border border-input bg-background px-3 py-2 placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-y"
+            />
+          </div>
+        </div>
+
+        <div className="w-[500px] max-w-[calc(100vw-96px)] px-[26px]">
           <button
             type="button"
             onClick={handleSubmit}
             disabled={submitting}
-            className="w-full rounded-full bg-[#ED4E01] hover:bg-[#d44500] text-white font-medium py-2.5 px-4 text-sm transition-colors disabled:opacity-50"
+            className="h-9 w-full rounded-[10px] bg-[#ED4E01] hover:bg-[#d44500] text-white font-medium text-sm transition-colors disabled:opacity-50"
           >
             {submitting ? "Submitting..." : "Request approval"}
           </button>
-        )}
+        </div>
       </div>
     </div>
   );
@@ -627,36 +787,17 @@ function AdminListView({
 }) {
   const permissions = extractPermissions(ref);
   const groups = groupPermissionsByCategory(permissions, ref);
-  const defaults = isFirewallConnectorType(ref)
-    ? getDefaultFirewallPolicies(ref)
-    : null;
   const pageSignal = useGet(pageSignal$);
-  const setSavePolicies = useSet(saveFirewallPolicies$);
-  const [saving, setSaving] = useState(false);
+  const policies = useGet(adminListPolicies$);
+  const setPolicy = useSet(setAdminListPolicy$);
+  const setGroupPolicies = useSet(setAdminListGroupPolicies$);
+  const [saveLoadable, savePolicies] = useLoadableSet(saveAdminListPolicies$);
 
-  const [policies, setPolicies] = useState<Record<string, FirewallPolicyValue>>(
-    () => {
-      const result: Record<string, FirewallPolicyValue> = {};
-      for (const p of permissions) {
-        result[p.name] =
-          agent.firewallPolicies?.[ref]?.[p.name] ??
-          defaults?.[p.name] ??
-          "allow";
-      }
-      return result;
-    },
-  );
+  const saving = saveLoadable.state === "loading";
 
   const handleSave = () => {
-    const fullPolicies: FirewallPolicies = {
-      ...agent.firewallPolicies,
-      [ref]: policies,
-    };
-    setSaving(true);
     detach(
-      setSavePolicies(agentId, fullPolicies, pageSignal).finally(() => {
-        setSaving(false);
-      }),
+      savePolicies(agentId, agent.firewallPolicies, ref, pageSignal),
       Reason.DomCallback,
     );
   };
@@ -665,13 +806,12 @@ function AdminListView({
     groupPerms: { name: string }[],
     policy: FirewallPolicyValue,
   ) => {
-    setPolicies((prev) => {
-      const next = { ...prev };
-      for (const p of groupPerms) {
-        next[p.name] = policy;
-      }
-      return next;
-    });
+    setGroupPolicies(
+      groupPerms.map((p) => {
+        return p.name;
+      }),
+      policy,
+    );
   };
 
   return (
@@ -708,9 +848,7 @@ function AdminListView({
                           perm={perm}
                           policy={policies[perm.name] ?? "allow"}
                           onChange={(p) => {
-                            return setPolicies((prev) => {
-                              return { ...prev, [perm.name]: p };
-                            });
+                            return setPolicy(perm.name, p);
                           }}
                           indented
                         />
@@ -728,9 +866,7 @@ function AdminListView({
                     perm={perm}
                     policy={policies[perm.name] ?? "allow"}
                     onChange={(p) => {
-                      return setPolicies((prev) => {
-                        return { ...prev, [perm.name]: p };
-                      });
+                      return setPolicy(perm.name, p);
                     }}
                   />
                 </div>
@@ -917,6 +1053,7 @@ export function FirewallAllowPage() {
   const highlightPermission = useGet(firewallAllowPermission$);
   const method = useGet(firewallAllowMethod$);
   const path = useGet(firewallAllowPath$);
+  const action = useGet(firewallAllowAction$);
 
   const agentLoadable = useLastLoadable(firewallAllowAgent$);
   const userLoadable = useLastLoadable(user$);
@@ -934,9 +1071,15 @@ export function FirewallAllowPage() {
 
   if (agentLoadable.state === "loading" || userLoadable.state === "loading") {
     return (
-      <StatusMessage>
-        <p className="text-sm">Loading...</p>
-      </StatusMessage>
+      <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
+        <div className="pointer-events-auto flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-10 rounded-[20px] border border-border bg-background px-6 py-12">
+          <VM0Logo />
+          <IconLoader2
+            size={20}
+            className="animate-spin text-muted-foreground"
+          />
+        </div>
+      </div>
     );
   }
 
@@ -968,6 +1111,7 @@ export function FirewallAllowPage() {
         agentId={agentId}
         ref={ref}
         permission={focusedPermission}
+        action={action ?? "allow"}
         agent={agent}
         userName={userName}
       />

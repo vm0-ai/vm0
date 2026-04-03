@@ -1,6 +1,6 @@
 import { command } from "ccstate";
 import { createElement } from "react";
-import { SidebarLayout } from "../../views/zero-page/sidebar-layout.tsx";
+import { MinimalSidebarLayout } from "../../views/zero-page/zero-directed-connect-page.tsx";
 import { FirewallAllowPage } from "../../views/firewall-allow/firewall-allow-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
@@ -21,7 +21,11 @@ export const setupFirewallAllowPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     set(
       updatePage$,
-      createElement(SidebarLayout, null, createElement(FirewallAllowPage)),
+      createElement(
+        MinimalSidebarLayout,
+        null,
+        createElement(FirewallAllowPage),
+      ),
     );
     set(updateDocumentTitle$, "Firewall Permissions");
     set(resetAdminFocusedState$);

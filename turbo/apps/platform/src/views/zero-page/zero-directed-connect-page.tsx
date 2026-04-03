@@ -40,7 +40,7 @@ import { VM0ClerkProvider } from "../clerk/clerk-provider.tsx";
 import { IconCheck, IconLoader2 } from "@tabler/icons-react";
 import { Link } from "../router/link.tsx";
 
-function MinimalSidebarLayout({ children }: { children: ReactNode }) {
+export function MinimalSidebarLayout({ children }: { children: ReactNode }) {
   const onAccountAction = useSet(handleZeroAccountAction$);
   const dialogOpen = useGet(orgManageDialogOpen$);
   const setDialogOpen = useSet(setOrgManageDialogOpen$);

@@ -11,6 +11,7 @@ import {
   type FirewallPolicies,
   type FirewallPolicyValue,
 } from "@vm0/core";
+import { delay } from "signal-timers";
 import { zeroClient$ } from "../api-client.ts";
 import { pathParams$, searchParams$ } from "../route.ts";
 import { accept } from "../../lib/accept.ts";
@@ -39,6 +40,11 @@ export const firewallAllowMethod$ = computed((get) => {
 
 export const firewallAllowPath$ = computed((get) => {
   return get(searchParams$).get("path") ?? null;
+});
+
+export const firewallAllowAction$ = computed((get) => {
+  const action = get(searchParams$).get("action");
+  return action === "allow" || action === "deny" ? action : null;
 });
 
 // ---------------------------------------------------------------------------
@@ -94,25 +100,30 @@ export function extractPermissions(ref: string): FirewallPermission[] {
 
 const internalRequestsReload$ = state(0);
 
-export const firewallAccessRequests$ = computed(async (get) => {
+export const firewallLatestRequest$ = computed(async (get) => {
   get(internalRequestsReload$);
   const agentId = get(firewallAllowAgentId$);
   const ref = get(firewallAllowRef$);
   if (!agentId || !ref) {
-    return [];
+    return null;
   }
 
   const client = get(zeroClient$)(firewallAccessRequestsListContract);
   const result = await accept(
-    client.list({ query: { agentId, status: "pending" } }),
+    client.list({ query: { agentId } }),
     [200],
     { toast: false },
   );
 
-  // Filter to only requests for this firewall ref
-  return result.body.filter((r) => {
-    return r.firewallRef === ref;
-  });
+  // Filter to this firewall ref, return latest by createdAt
+  const filtered = result.body
+    .filter((r) => {
+      return r.firewallRef === ref;
+    })
+    .sort((a, b) => {
+      return b.createdAt.localeCompare(a.createdAt);
+    });
+  return filtered[0] ?? null;
 });
 
 // ---------------------------------------------------------------------------
@@ -192,33 +203,21 @@ const internalAdminFocusedPolicyOverride$ = state<FirewallPolicyValue | null>(
   null,
 );
 
-export const adminFocusedPolicy$ = computed((get) => {
-  return get(internalAdminFocusedPolicyOverride$);
-});
+const internalResolvedAction$ = state<"approve" | "reject" | null>(null);
 
-export const setAdminFocusedPolicy$ = command(
-  ({ set }, value: FirewallPolicyValue) => {
-    set(internalAdminFocusedPolicyOverride$, value);
-    set(internalAdminFocusedSaved$, false);
-  },
-);
+export const resolvedAction$ = computed((get) => {
+  return get(internalResolvedAction$);
+});
 
 export const resetAdminFocusedState$ = command(({ set }) => {
   set(internalAdminFocusedPolicyOverride$, null);
   set(internalAdminFocusedSaved$, false);
+  set(internalResolvedAction$, null);
 });
 
 const internalAdminFocusedSaved$ = state(false);
 
-export const adminFocusedSaved$ = computed((get) => {
-  return get(internalAdminFocusedSaved$);
-});
-
 const internalResolvingId$ = state<string | null>(null);
-
-export const resolvingId$ = computed((get) => {
-  return get(internalResolvingId$);
-});
 
 interface SaveAdminFocusedPolicyParams {
   agentId: string;
@@ -265,6 +264,7 @@ export const resolveAndUpdatePolicy$ = command(
     set(internalResolvingId$, requestId);
     try {
       await set(resolveAccessRequest$, requestId, action, signal);
+      set(internalResolvedAction$, action);
       if (action === "approve") {
         set(internalAdminFocusedPolicyOverride$, "allow");
       }
@@ -280,18 +280,15 @@ export const resolveAndUpdatePolicy$ = command(
 
 const internalShowForm$ = state(false);
 
+const internalReason$ = state("");
+
 export const showForm$ = computed((get) => {
   return get(internalShowForm$);
 });
 
 export const setShowForm$ = command(({ set }, value: boolean) => {
   set(internalShowForm$, value);
-  if (!value) {
-    set(internalReason$, "");
-  }
 });
-
-const internalReason$ = state("");
 
 export const reason$ = computed((get) => {
   return get(internalReason$);
@@ -301,9 +298,25 @@ export const setReason$ = command(({ set }, value: string) => {
   set(internalReason$, value);
 });
 
+const internalLinkCopied$ = state(false);
+
+export const linkCopied$ = computed((get) => {
+  return get(internalLinkCopied$);
+});
+
+export const copyLink$ = command(async ({ set }, signal: AbortSignal) => {
+  const url = globalThis.location.href;
+  await navigator.clipboard.writeText(url);
+  signal.throwIfAborted();
+  set(internalLinkCopied$, true);
+  await delay(2000, { signal });
+  set(internalLinkCopied$, false);
+});
+
 export const resetMemberFocusedState$ = command(({ set }) => {
   set(internalShowForm$, false);
   set(internalReason$, "");
+  set(internalLinkCopied$, false);
 });
 
 export const submitAccessRequest$ = command(

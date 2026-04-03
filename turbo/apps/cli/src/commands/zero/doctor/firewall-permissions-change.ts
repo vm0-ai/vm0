@@ -38,6 +38,7 @@ export async function outputPermissionChangeMessage(
   const urlParams = new URLSearchParams({
     ref: firewallRef,
     permission,
+    action: action === "enable" ? "allow" : "deny",
   });
 
   const pagePath = agentId ? `/agents/${agentId}/permissions` : "/agents";
