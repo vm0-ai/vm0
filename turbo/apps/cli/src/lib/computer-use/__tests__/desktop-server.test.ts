@@ -35,10 +35,17 @@ vi.mock("../cliclick", () => {
   };
 });
 
+vi.mock("../scroll", () => {
+  return {
+    scroll: vi.fn().mockResolvedValue(undefined),
+  };
+});
+
 import type { Server } from "http";
 import { startDesktopServer, getRandomPort } from "../desktop-server";
 import { captureScreenshot, getScreenInfo } from "../screencapture";
 import { leftClickDrag, leftMouseDown, leftMouseUp } from "../cliclick";
+import { scroll } from "../scroll";
 
 const TEST_TOKEN = "test-bridge-token-abc123";
 
@@ -232,6 +239,55 @@ describe("desktop-server", () => {
       expect(leftMouseUp).toHaveBeenCalledWith(500, 600);
     });
 
+    it("should execute scroll on POST /mouse", async () => {
+      const { server, port } = await setup();
+      testServer = server;
+
+      const res = await fetch(`http://127.0.0.1:${port}/mouse`, {
+        method: "POST",
+        headers: {
+          "x-vm0-token": TEST_TOKEN,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "scroll",
+          x: 500,
+          y: 300,
+          direction: "down",
+          amount: 5,
+        }),
+      });
+      expect(res.status).toBe(200);
+
+      const data = await res.json();
+      expect(data).toEqual({ ok: true });
+      expect(scroll).toHaveBeenCalledWith(500, 300, "down", 5);
+    });
+
+    it("should execute scroll with default amount when omitted", async () => {
+      const { server, port } = await setup();
+      testServer = server;
+
+      const res = await fetch(`http://127.0.0.1:${port}/mouse`, {
+        method: "POST",
+        headers: {
+          "x-vm0-token": TEST_TOKEN,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "scroll",
+          x: 200,
+          y: 100,
+          direction: "up",
+        }),
+      });
+      expect(res.status).toBe(200);
+
+      const data = await res.json();
+      expect(data).toEqual({ ok: true });
+      expect(scroll).toHaveBeenCalledWith(200, 100, "up", undefined);
+    });
+
     it("should return 400 for unknown mouse action", async () => {
       const { server, port } = await setup();
       testServer = server;
@@ -274,6 +330,31 @@ describe("desktop-server", () => {
       expect(res.status).toBe(500);
       const text = await res.text();
       expect(text).toBe("cliclick not found");
+    });
+
+    it("should return 500 when scroll fails", async () => {
+      vi.mocked(scroll).mockRejectedValueOnce(new Error("osascript failed"));
+
+      const { server, port } = await setup();
+      testServer = server;
+
+      const res = await fetch(`http://127.0.0.1:${port}/mouse`, {
+        method: "POST",
+        headers: {
+          "x-vm0-token": TEST_TOKEN,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "scroll",
+          x: 0,
+          y: 0,
+          direction: "down",
+          amount: 3,
+        }),
+      });
+      expect(res.status).toBe(500);
+      const text = await res.text();
+      expect(text).toBe("osascript failed");
     });
   });
 });

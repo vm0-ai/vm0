@@ -110,3 +110,28 @@ export const clientLeftMouseUpCommand = new Command()
       process.stdout.write("ok\n");
     }),
   );
+
+export const clientScrollCommand = new Command()
+  .name("scroll")
+  .description("Scroll at the given screen position")
+  .argument("<x>", "X coordinate")
+  .argument("<y>", "Y coordinate")
+  .argument("<direction>", "Scroll direction: up, down, left, right")
+  .argument("[amount]", "Scroll amount in lines (default 3)")
+  .action(
+    withErrorHandler(
+      async (x: string, y: string, direction: string, amount?: string) => {
+        await callHost("/mouse", {
+          method: "POST",
+          body: {
+            action: "scroll",
+            x: Number(x),
+            y: Number(y),
+            direction,
+            ...(amount !== undefined && { amount: Number(amount) }),
+          },
+        });
+        process.stdout.write("ok\n");
+      },
+    ),
+  );

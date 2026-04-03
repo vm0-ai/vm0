@@ -6,6 +6,7 @@ import {
   clientLeftClickDragCommand,
   clientLeftMouseDownCommand,
   clientLeftMouseUpCommand,
+  clientScrollCommand,
 } from "./client";
 
 const hostCommand = new Command()
@@ -20,7 +21,8 @@ const clientCommand = new Command()
   .addCommand(clientInfoCommand)
   .addCommand(clientLeftClickDragCommand)
   .addCommand(clientLeftMouseDownCommand)
-  .addCommand(clientLeftMouseUpCommand);
+  .addCommand(clientLeftMouseUpCommand)
+  .addCommand(clientScrollCommand);
 
 export const zeroComputerUseCommand = new Command()
   .name("computer-use")
@@ -36,5 +38,6 @@ Examples:
   Get screen info (from agent):      zero computer-use client info
   Drag from A to B:                  zero computer-use client left-click-drag 100 100 500 500
   Press mouse button:                zero computer-use client left-mouse-down 200 300
-  Release mouse button:              zero computer-use client left-mouse-up 500 500`,
+  Release mouse button:              zero computer-use client left-mouse-up 500 500
+  Scroll down at position:           zero computer-use client scroll 500 300 down 5`,
   );

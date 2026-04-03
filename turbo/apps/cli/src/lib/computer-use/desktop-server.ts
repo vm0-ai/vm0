@@ -8,6 +8,7 @@ import { createServer as createNetServer } from "net";
 import type { AddressInfo } from "net";
 import { captureScreenshot, getScreenInfo } from "./screencapture";
 import { leftClickDrag, leftMouseDown, leftMouseUp } from "./cliclick";
+import { scroll, type ScrollDirection } from "./scroll";
 
 /**
  * Read the full request body as a string.
@@ -45,7 +46,19 @@ interface MouseUpBody {
   y: number;
 }
 
-type MouseRequestBody = MouseDragBody | MouseDownBody | MouseUpBody;
+interface MouseScrollBody {
+  action: "scroll";
+  x: number;
+  y: number;
+  direction: ScrollDirection;
+  amount?: number;
+}
+
+type MouseRequestBody =
+  | MouseDragBody
+  | MouseDownBody
+  | MouseUpBody
+  | MouseScrollBody;
 
 /**
  * Allocate a random available port on localhost.
@@ -97,10 +110,13 @@ async function handleRequest(
         case "left_mouse_up":
           await leftMouseUp(body.x, body.y);
           break;
+        case "scroll":
+          await scroll(body.x, body.y, body.direction, body.amount);
+          break;
         default:
           res.writeHead(400, { "Content-Type": "text/plain" });
           res.end(
-            `Unknown mouse action: ${(body as Record<string, unknown>).action}`,
+            `Unknown mouse action: ${(body as unknown as Record<string, unknown>).action}`,
           );
           return;
       }
