@@ -151,6 +151,7 @@ debootstrap_build() {
   if [[ -f "$cache_tar" ]]; then
     echo "using cached debootstrap tarball: $cache_tar"
     sudo debootstrap --unpack-tarball="$(realpath "$cache_tar")" noble "$ROOTFS_DIR" "$MIRROR"
+    touch "$cache_tar"
   else
     sudo debootstrap --make-tarball="$cache_tar" noble "$ROOTFS_DIR" "$MIRROR" || true
     sudo debootstrap --unpack-tarball="$(realpath "$cache_tar")" noble "$ROOTFS_DIR" "$MIRROR"
