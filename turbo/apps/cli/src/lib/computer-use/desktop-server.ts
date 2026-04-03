@@ -356,6 +356,16 @@ export async function getRandomPort(): Promise<number> {
   });
 }
 
+async function handleCursorPosition(res: ServerResponse): Promise<void> {
+  const position = await getCursorPosition();
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify(position));
+}
+
+function routeKey(method: string, pathname: string): string {
+  return `${method} ${pathname}`;
+}
+
 async function handleRequest(
   token: string,
   req: IncomingMessage,
@@ -369,33 +379,44 @@ async function handleRequest(
 
   const url = new URL(req.url ?? "/", "http://localhost");
   const { pathname, searchParams } = url;
+  const key = routeKey(req.method ?? "GET", pathname);
 
   try {
-    if (req.method === "GET" && pathname === "/screenshot") {
-      const result = await captureScreenshot();
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(result));
-    } else if (req.method === "GET" && pathname === "/info") {
-      const info = await getScreenInfo();
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(info));
-    } else if (req.method === "GET" && pathname === "/zoom") {
-      await handleZoom(searchParams, res);
-    } else if (req.method === "POST" && pathname === "/mouse") {
-      await handleMouseRequest(req, res);
-    } else if (pathname === "/clipboard") {
-      await handleClipboard(req, res);
-    } else if (req.method === "POST" && pathname === "/keyboard") {
-      await handleKeyboard(req, res);
-    } else if (req.method === "POST" && pathname === "/open-application") {
-      await handleOpenApplication(req, res);
-    } else if (req.method === "GET" && pathname === "/cursor-position") {
-      const position = await getCursorPosition();
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(position));
-    } else {
-      res.writeHead(404, { "Content-Type": "text/plain" });
-      res.end("Not found");
+    switch (key) {
+      case "GET /screenshot": {
+        const result = await captureScreenshot();
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(result));
+        break;
+      }
+      case "GET /info": {
+        const info = await getScreenInfo();
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(info));
+        break;
+      }
+      case "GET /zoom":
+        await handleZoom(searchParams, res);
+        break;
+      case "POST /mouse":
+        await handleMouseRequest(req, res);
+        break;
+      case "GET /clipboard":
+      case "POST /clipboard":
+        await handleClipboard(req, res);
+        break;
+      case "POST /keyboard":
+        await handleKeyboard(req, res);
+        break;
+      case "POST /open-application":
+        await handleOpenApplication(req, res);
+        break;
+      case "GET /cursor-position":
+        await handleCursorPosition(res);
+        break;
+      default:
+        res.writeHead(404, { "Content-Type": "text/plain" });
+        res.end("Not found");
     }
   } catch (error) {
     const message =
