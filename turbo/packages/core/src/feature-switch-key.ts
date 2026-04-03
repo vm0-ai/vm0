@@ -42,4 +42,5 @@ export enum FeatureSwitchKey {
   ModelDetail = "modelDetail",
   ActivityLogList = "activityLogList",
   ZeroDebug = "zeroDebug",
+  ComputerUse = "computerUse",
 }

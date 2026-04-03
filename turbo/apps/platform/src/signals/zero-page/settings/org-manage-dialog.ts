@@ -40,6 +40,7 @@ export const checkSettingsParam$ = command(
       providers: "providers",
       general: "general",
       members: "members",
+      domains: "domains",
       billing: "billing",
       usage: "usage",
       credits: "usage",
@@ -50,6 +51,7 @@ export const checkSettingsParam$ = command(
       "usage",
       "invoices",
       "providers",
+      "domains",
     ]);
     const tab = settingsTabMap[settingsValue];
     if (tab) {

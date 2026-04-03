@@ -292,7 +292,7 @@ function DomainRow({ domain }: { domain: OrgDomain }) {
   };
 
   return (
-    <div className={cn(ROW_GRID, "py-3 px-5")}>
+    <div data-testid="domain-row" className={cn(ROW_GRID, "py-3 px-5")}>
       <div className="flex items-center gap-3 min-w-0">
         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted/50 text-muted-foreground">
           <IconWorldWww size={16} stroke={1.5} />
@@ -407,7 +407,10 @@ function DomainRow({ domain }: { domain: OrgDomain }) {
 
 function DomainRowSkeleton() {
   return (
-    <div className={cn(ROW_GRID, "py-3 px-5 animate-pulse")}>
+    <div
+      data-testid="domain-skeleton"
+      className={cn(ROW_GRID, "py-3 px-5 animate-pulse")}
+    >
       <div className="flex items-center gap-3">
         <div className="h-8 w-8 shrink-0 rounded-lg bg-muted/50" />
         <div className="h-4 w-32 rounded bg-muted/50" />

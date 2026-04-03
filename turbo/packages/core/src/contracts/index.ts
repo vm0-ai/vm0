@@ -743,3 +743,11 @@ export {
   submitResponseSchema,
   type ZeroDeveloperSupportContract,
 } from "./zero-developer-support";
+export {
+  zeroComputerUseRegisterContract,
+  zeroComputerUseUnregisterContract,
+  zeroComputerUseHostContract,
+  type ZeroComputerUseRegisterContract,
+  type ZeroComputerUseUnregisterContract,
+  type ZeroComputerUseHostContract,
+} from "./zero-computer-use";

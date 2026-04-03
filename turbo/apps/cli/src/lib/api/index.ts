@@ -174,3 +174,10 @@ export {
   requestDeveloperSupportConsent,
   submitDeveloperSupport,
 } from "./domains/zero-developer-support";
+
+// Domain modules - Zero Computer Use
+export {
+  registerComputerUseHost,
+  unregisterComputerUseHost,
+  getComputerUseHost,
+} from "./domains/zero-computer-use";
