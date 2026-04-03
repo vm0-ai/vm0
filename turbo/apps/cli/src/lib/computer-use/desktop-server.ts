@@ -64,7 +64,7 @@ export function startDesktopServer(
   token: string,
   port: number,
 ): Promise<Server> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const server = createServer((req, res) => {
       handleRequest(token, req, res).catch(() => {
         if (!res.headersSent) {
@@ -74,6 +74,7 @@ export function startDesktopServer(
       });
     });
 
+    server.on("error", reject);
     server.listen(port, "127.0.0.1", () => {
       resolve(server);
     });

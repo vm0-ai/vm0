@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { Command } from "commander";
+import { Command, Help } from "commander";
 import { registerZeroCommands } from "../../../../zero";
 
 function buildZeroToken(payload: Record<string, unknown>): string {
@@ -17,6 +17,28 @@ function buildZeroToken(payload: Record<string, unknown>): string {
   const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
   const signature = "test-signature";
   return `vm0_sandbox_${header}.${body}.${signature}`;
+}
+
+function visibleCommandNames(prog: Command): string[] {
+  return new Help()
+    .visibleCommands(prog)
+    .map((cmd) => {
+      return cmd.name();
+    })
+    .filter((name) => {
+      return name !== "help";
+    });
+}
+
+function hiddenCommandNames(prog: Command): string[] {
+  const visible = new Set(visibleCommandNames(prog));
+  return prog.commands
+    .map((cmd) => {
+      return cmd.name();
+    })
+    .filter((name) => {
+      return !visible.has(name);
+    });
 }
 
 describe("computer-use command visibility", () => {
@@ -49,16 +71,7 @@ describe("computer-use command visibility", () => {
     const prog = new Command();
     registerZeroCommands(prog);
 
-    const names = prog.commands
-      .filter((c) => {
-        // Commander marks hidden commands but still registers them
-        // Check that it's not hidden by checking the _hidden property
-        return !Object.getOwnPropertyDescriptor(c, "_hidden")?.value;
-      })
-      .map((c) => {
-        return c.name();
-      });
-    expect(names).toContain("computer-use");
+    expect(visibleCommandNames(prog)).toContain("computer-use");
   });
 
   it("should be hidden when ZERO_TOKEN lacks computer-use:write", () => {
@@ -76,11 +89,7 @@ describe("computer-use command visibility", () => {
     const prog = new Command();
     registerZeroCommands(prog);
 
-    // Command is registered but hidden
-    const cmd = prog.commands.find((c) => {
-      return c.name() === "computer-use";
-    });
-    expect(cmd).toBeDefined();
+    expect(hiddenCommandNames(prog)).toContain("computer-use");
   });
 
   it("should have host and client subcommands", () => {
