@@ -176,13 +176,23 @@ debootstrap_build() {
 install_packages() {
   echo "installing packages..."
 
-  # System packages + external repo setup + main package install
-  sudo chroot "$ROOTFS_DIR" bash -c 'export DEBIAN_FRONTEND=noninteractive
+  # Step 1: Enable universe repo (debootstrap only enables main) and install
+  # bootstrap tools needed to add external APT repositories.
+  sudo chroot "$ROOTFS_DIR" bash -c 'set -e
+  export DEBIAN_FRONTEND=noninteractive
+  # debootstrap generates DEB822-format sources with "Components: main".
+  # Add universe for packages like ripgrep.
+  if [[ -f /etc/apt/sources.list.d/ubuntu.sources ]]; then
+    sed -i "s/^Components: main$/Components: main universe/" /etc/apt/sources.list.d/ubuntu.sources
+  else
+    sed -i "s/ main$/ main universe/" /etc/apt/sources.list
+  fi
+  apt-get update
+  apt-get install -y ca-certificates curl gnupg
+  '
 
-  apt-get update && apt-get install -y \
-    procps curl wget git ripgrep jq file iproute2 ca-certificates sudo gnupg \
-    libnss3 p11-kit-modules unzip
-
+  # Step 2: Add external APT repositories (needs curl and gpg from step 1).
+  sudo chroot "$ROOTFS_DIR" bash -c 'set -e
   # NodeSource repository (Node.js 24)
   curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
     | gpg --dearmor -o /usr/share/keyrings/nodesource.gpg
@@ -197,9 +207,15 @@ install_packages() {
   chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
     > /etc/apt/sources.list.d/github-cli.list
+  '
 
-  # All Ubuntu packages in single pass
-  apt-get update && apt-get install -y \
+  # Step 3: Install all Ubuntu packages in single pass.
+  sudo chroot "$ROOTFS_DIR" bash -c 'set -e
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update
+  apt-get install -y \
+    procps wget git ripgrep jq file iproute2 sudo \
+    libnss3 p11-kit-modules unzip \
     nodejs \
     python3 python3-pip \
     ruby-full bundler \
