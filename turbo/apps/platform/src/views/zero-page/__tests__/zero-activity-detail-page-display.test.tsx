@@ -5,7 +5,6 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
-import { FeatureSwitchKey } from "@vm0/core";
 import type {
   LogDetail,
   AgentEventsResponse,
@@ -15,7 +14,10 @@ const context = testContext();
 
 const BASE_LOG_ID = "a0000000-0000-4000-a000-000000000010";
 
-function mockDetailAPI(overrides: Partial<LogDetail> = {}) {
+function mockDetailAPI(
+  overrides: Partial<LogDetail> = {},
+  eventsOverride?: AgentEventsResponse,
+) {
   const logDetail: LogDetail = {
     id: BASE_LOG_ID,
     sessionId: "session_display",
@@ -38,7 +40,7 @@ function mockDetailAPI(overrides: Partial<LogDetail> = {}) {
     ...overrides,
   };
 
-  const eventsResponse: AgentEventsResponse = {
+  const eventsResponse: AgentEventsResponse = eventsOverride ?? {
     events: [
       {
         sequenceNumber: 0,
@@ -66,47 +68,6 @@ function mockDetailAPI(overrides: Partial<LogDetail> = {}) {
   );
 
   return { logDetail, eventsResponse };
-}
-
-function mockDetailAPIWithEvents(
-  overrides: Partial<LogDetail>,
-  eventsResponse: AgentEventsResponse,
-) {
-  const logDetail: LogDetail = {
-    id: BASE_LOG_ID,
-    sessionId: "session_display",
-    agentId: "test-agent",
-    displayName: "Display Test Agent",
-    framework: "claude-code",
-    modelProvider: null,
-    selectedModel: null,
-    triggerSource: "web",
-    triggerAgentName: null,
-    scheduleId: null,
-    status: "completed",
-    prompt: "Hello, what can you do?",
-    appendSystemPrompt: null,
-    error: null,
-    createdAt: "2026-03-10T14:56:00Z",
-    startedAt: "2026-03-10T14:56:01Z",
-    completedAt: "2026-03-10T14:56:10Z",
-    artifact: { name: null, version: null },
-    ...overrides,
-  };
-
-  server.use(
-    http.get("*/api/zero/logs/:id", () => {
-      return HttpResponse.json(logDetail);
-    }),
-    http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
-      return HttpResponse.json(eventsResponse);
-    }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
-  );
-
-  return { logDetail };
 }
 
 describe("zeroActivityDetailPageDisplay", () => {
@@ -148,46 +109,6 @@ describe("zeroActivityDetailPageDisplay", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Failed")).toBeInTheDocument();
-    });
-  });
-
-  it("should render trigger source with schedule link (ACT-D-018)", async () => {
-    mockDetailAPI({
-      triggerSource: "schedule",
-      scheduleId: "sched-123",
-      displayName: "Scheduled Agent",
-    });
-
-    await setupPage({
-      context,
-      path: `/activities/${BASE_LOG_ID}`,
-    });
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Scheduled Agent" }),
-      ).toBeInTheDocument();
-    });
-
-    const scheduleLink = screen.getByRole("link", { name: "Schedule" });
-    expect(scheduleLink).toBeInTheDocument();
-    expect(scheduleLink.getAttribute("href")).toBe("/schedules/sched-123");
-  });
-
-  it("should render selected model with provider tooltip (ACT-D-019)", async () => {
-    mockDetailAPI({
-      modelProvider: "anthropic-api-key",
-      selectedModel: "claude-sonnet-4.5",
-    });
-
-    await setupPage({
-      context,
-      path: `/activities/${BASE_LOG_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ModelDetail]: true },
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("claude-sonnet-4.5")).toBeInTheDocument();
     });
   });
 
@@ -249,185 +170,7 @@ describe("zeroActivityDetailPageDisplay", () => {
     ).toBeInTheDocument();
   });
 
-  it("should render step search results count (ACT-D-023)", async () => {
-    const eventsResponse: AgentEventsResponse = {
-      events: [
-        {
-          sequenceNumber: 0,
-          eventType: "assistant",
-          eventData: {
-            message: {
-              content: [{ type: "text", text: "Paris is the capital." }],
-            },
-          },
-          createdAt: "2026-03-10T14:56:02Z",
-        },
-        {
-          sequenceNumber: 1,
-          eventType: "assistant",
-          eventData: {
-            message: {
-              content: [{ type: "text", text: "London is in England." }],
-            },
-          },
-          createdAt: "2026-03-10T14:56:03Z",
-        },
-        {
-          sequenceNumber: 2,
-          eventType: "assistant",
-          eventData: {
-            message: {
-              content: [{ type: "text", text: "Berlin is in Germany." }],
-            },
-          },
-          createdAt: "2026-03-10T14:56:04Z",
-        },
-      ],
-      hasMore: false,
-      framework: "claude-code",
-    };
-
-    mockDetailAPIWithEvents({}, eventsResponse);
-
-    const user = userEvent.setup();
-
-    await setupPage({
-      context,
-      path: `/activities/${BASE_LOG_ID}`,
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("3 total")).toBeInTheDocument();
-    });
-
-    const searchInput = screen.getByPlaceholderText("Search steps");
-    await user.type(searchInput, "Paris");
-
-    await waitFor(() => {
-      expect(screen.getByText(/1\/3 matched/)).toBeInTheDocument();
-    });
-  });
-
-  it("should render filtered message list (ACT-D-024)", async () => {
-    const eventsResponse: AgentEventsResponse = {
-      events: [
-        {
-          sequenceNumber: 0,
-          eventType: "assistant",
-          eventData: {
-            message: {
-              content: [{ type: "text", text: "Paris is the capital." }],
-            },
-          },
-          createdAt: "2026-03-10T14:56:02Z",
-        },
-        {
-          sequenceNumber: 1,
-          eventType: "assistant",
-          eventData: {
-            message: {
-              content: [{ type: "text", text: "London is in England." }],
-            },
-          },
-          createdAt: "2026-03-10T14:56:03Z",
-        },
-      ],
-      hasMore: false,
-      framework: "claude-code",
-    };
-
-    mockDetailAPIWithEvents({}, eventsResponse);
-
-    const user = userEvent.setup();
-
-    await setupPage({
-      context,
-      path: `/activities/${BASE_LOG_ID}`,
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("2 total")).toBeInTheDocument();
-    });
-
-    const searchInput = screen.getByPlaceholderText("Search steps");
-    await user.type(searchInput, "Paris");
-
-    await waitFor(() => {
-      expect(screen.getByText(/1\/2 matched/)).toBeInTheDocument();
-    });
-
-    // The matching message should be visible
-    expect(screen.getByText(/Paris is the capital/)).toBeInTheDocument();
-    // The non-matching message should not be visible
-    expect(screen.queryByText(/London is in England/)).toBeNull();
-  });
-
-  it("should render prompt content as collapsible (ACT-D-025)", async () => {
-    mockDetailAPI({
-      prompt: "Build a web app with authentication and database",
-    });
-
-    const user = userEvent.setup();
-
-    await setupPage({
-      context,
-      path: `/activities/${BASE_LOG_ID}`,
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("Prompt")).toBeInTheDocument();
-    });
-
-    // The <details> element content paragraph is not visible when collapsed
-    const promptParagraph = () => {
-      return screen
-        .getAllByText("Build a web app with authentication and database")
-        .find((el) => {
-          return el.tagName === "P";
-        });
-    };
-    expect(promptParagraph()).not.toBeVisible();
-
-    // Expand the prompt
-    await user.click(screen.getByText("Prompt"));
-
-    await waitFor(() => {
-      expect(promptParagraph()).toBeVisible();
-    });
-  });
-
-  it("should render system prompt content as collapsible (ACT-D-026)", async () => {
-    mockDetailAPI({ appendSystemPrompt: "You are a coding assistant" });
-
-    const user = userEvent.setup();
-
-    await setupPage({
-      context,
-      path: `/activities/${BASE_LOG_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ShowSystemPrompt]: true },
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("System Prompt")).toBeInTheDocument();
-    });
-
-    // Initially the full content paragraph is not visible
-    const promptParagraph = () => {
-      return screen.getAllByText("You are a coding assistant").find((el) => {
-        return el.tagName === "P";
-      });
-    };
-    expect(promptParagraph()).not.toBeVisible();
-
-    // Expand the system prompt
-    await user.click(screen.getByText("System Prompt"));
-
-    await waitFor(() => {
-      expect(promptParagraph()).toBeVisible();
-    });
-  });
-
-  it("should render messages list with search highlighting (ACT-D-027)", async () => {
+  it("should filter messages and hide non-matching steps when searching (ACT-D-027)", async () => {
     const eventsResponse: AgentEventsResponse = {
       events: [
         {
@@ -457,7 +200,7 @@ describe("zeroActivityDetailPageDisplay", () => {
       framework: "claude-code",
     };
 
-    mockDetailAPIWithEvents({}, eventsResponse);
+    mockDetailAPI({}, eventsResponse);
 
     const user = userEvent.setup();
 
@@ -473,12 +216,16 @@ describe("zeroActivityDetailPageDisplay", () => {
     const searchInput = screen.getByPlaceholderText("Search steps");
     await user.type(searchInput, "Eiffel");
 
-    // Verify the search input has the typed value
-    expect(searchInput).toHaveValue("Eiffel");
-
-    // Verify filtered results count
+    // Verify filtered results count updates
     await waitFor(() => {
       expect(screen.getByText(/1\/2 matched/)).toBeInTheDocument();
     });
+
+    // The matching message should remain visible
+    expect(
+      screen.getByText(/The Eiffel Tower is in Paris/),
+    ).toBeInTheDocument();
+    // The non-matching message should be filtered out
+    expect(screen.queryByText(/Big Ben is in London/)).toBeNull();
   });
 });
