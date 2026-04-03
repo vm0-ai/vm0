@@ -65,7 +65,7 @@ describe("zero chat thread page display - thread header agent avatar and display
       const spans = screen.getAllByText("Assistant");
       expect(spans.length).toBeGreaterThan(0);
       expect(
-        document.querySelector('img[src="https://example.com/avatar.png"]'),
+        screen.getByRole("link", { name: "View agent profile" }),
       ).toBeInTheDocument();
     });
   });
@@ -116,7 +116,7 @@ describe("zero chat thread page display - attachment image preview", () => {
 
     await waitFor(() => {
       expect(
-        document.querySelector('img[alt="photo.png"]'),
+        screen.getByRole("img", { name: "photo.png" }),
       ).toBeInTheDocument();
     });
   });
@@ -140,7 +140,7 @@ describe("zero chat thread page display - attachment file preview", () => {
 
     await waitFor(() => {
       expect(
-        document.querySelector('a[download="document.pdf"]'),
+        screen.getByRole("link", { name: "document.pdf" }),
       ).toBeInTheDocument();
     });
   });
