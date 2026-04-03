@@ -3,26 +3,18 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { delay } from "signal-timers";
 import { zeroIntegrationsSlackContract, type SlackOrgStatus } from "@vm0/core";
 import { zeroClient$ } from "../api-client.ts";
+import { accept } from "../../lib/accept.ts";
+import { throwIfAbort } from "../utils.ts";
 
-interface SlackOrgState {
-  data: SlackOrgStatus | null;
-  loading: boolean;
-  error: string | null;
-}
-
-const slackOrgState$ = state<SlackOrgState>({
-  data: null,
-  loading: false,
-  error: null,
-});
+const slackOrgState$ = state<SlackOrgStatus | null>(null);
 
 export const slackOrgData$ = computed((get) => {
-  return get(slackOrgState$).data;
+  return get(slackOrgState$);
 });
 
 /** True when the org-scoped Slack installation has outdated bot scopes (admin-only). */
 export const slackOrgScopeMismatch$ = computed((get) => {
-  const data = get(slackOrgState$).data;
+  const data = get(slackOrgState$);
   return data?.scopeMismatch === true;
 });
 
@@ -43,47 +35,21 @@ export const setShowUninstallDialog$ = command(({ set }, show: boolean) => {
 });
 
 const fetchSlackOrg$ = command(async ({ get, set }, signal: AbortSignal) => {
-  set(slackOrgState$, (prev) => {
-    return {
-      ...prev,
-      loading: true,
-      error: null,
-    };
-  });
-
   const client = get(zeroClient$)(zeroIntegrationsSlackContract);
-  const result = await client.getStatus();
-  signal.throwIfAborted();
-
-  if (result.status !== 200) {
-    set(slackOrgState$, (prev) => {
-      return {
-        ...prev,
-        loading: false,
-        error: "Failed to fetch Slack status",
-      };
-    });
-    return;
+  try {
+    const result = await accept(client.getStatus(), [200], { toast: false });
+    signal.throwIfAborted();
+    set(slackOrgState$, result.body);
+  } catch (error) {
+    throwIfAbort(error);
   }
-
-  set(slackOrgState$, {
-    data: result.body,
-    loading: false,
-    error: null,
-  });
 });
 
 export const disconnectSlackOrg$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const client = get(zeroClient$)(zeroIntegrationsSlackContract);
-    const result = await client.disconnect();
+    await accept(client.disconnect(), [200]);
     signal.throwIfAborted();
-
-    if (result.status !== 200) {
-      toast.error("Failed to disconnect Slack");
-      return;
-    }
-
     toast.success("Disconnected from Slack");
     await set(fetchSlackOrg$, signal);
   },
@@ -92,16 +58,8 @@ export const disconnectSlackOrg$ = command(
 export const uninstallSlackOrg$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const client = get(zeroClient$)(zeroIntegrationsSlackContract);
-    const result = await client.disconnect({
-      query: { action: "uninstall" },
-    });
+    await accept(client.disconnect({ query: { action: "uninstall" } }), [200]);
     signal.throwIfAborted();
-
-    if (result.status !== 200) {
-      toast.error("Failed to uninstall Slack");
-      return;
-    }
-
     toast.success("Slack workspace uninstalled");
     await set(fetchSlackOrg$, signal);
   },
@@ -117,7 +75,7 @@ const POLL_INTERVAL_MS = 3000;
 export const pollSlackConnection$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     // Already connected — nothing to poll.
-    const current = get(slackOrgState$).data;
+    const current = get(slackOrgState$);
     if (current?.isConnected) {
       return;
     }
@@ -126,17 +84,19 @@ export const pollSlackConnection$ = command(
       await delay(POLL_INTERVAL_MS, { signal });
 
       const client = get(zeroClient$)(zeroIntegrationsSlackContract);
-      const result = await client.getStatus();
-      signal.throwIfAborted();
-      if (result.status !== 200) {
-        continue;
-      }
+      try {
+        const result = await accept(client.getStatus(), [200], {
+          toast: false,
+        });
+        signal.throwIfAborted();
+        set(slackOrgState$, result.body);
 
-      set(slackOrgState$, { data: result.body, loading: false, error: null });
-
-      if (result.body.isConnected) {
-        toast.success("Slack connected successfully");
-        return;
+        if (result.body.isConnected) {
+          toast.success("Slack connected successfully");
+          return;
+        }
+      } catch (error) {
+        throwIfAbort(error);
       }
     }
   },

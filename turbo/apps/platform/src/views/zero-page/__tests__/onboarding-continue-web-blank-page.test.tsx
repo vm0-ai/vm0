@@ -1,0 +1,104 @@
+import { describe, expect, it } from "vitest";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
+import { server } from "../../../mocks/server.ts";
+import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { setupPage } from "../../../__tests__/page-helper.ts";
+import { mockChatLifecycle } from "./chat-test-helpers.ts";
+import { pathname } from "../../../signals/location.ts";
+import { createDeferredPromise } from "../../../signals/utils.ts";
+
+const context = testContext();
+
+const MOCK_AGENT_ID = "d0000000-0000-4000-a000-000000000001";
+const MOCK_THREAD_ID = "thread-blank-test-1";
+
+function mockMemberOnboardingWithChat() {
+  // Deferred that blocks the POST /complete API response until we release it.
+  // This creates a timing window to observe the skeleton while the async
+  // onboarding completion is in-flight.
+  const completeDeferred = createDeferredPromise<void>(context.signal);
+
+  server.use(
+    http.get("*/api/zero/onboarding/status", () => {
+      return HttpResponse.json({
+        needsOnboarding: true,
+        isAdmin: false,
+        hasOrg: true,
+        hasDefaultAgent: true,
+        defaultAgentId: MOCK_AGENT_ID,
+        defaultAgentMetadata: { displayName: "Zero" },
+        defaultAgentSkills: [],
+      });
+    }),
+    http.post("*/api/zero/onboarding/complete", async () => {
+      await completeDeferred.promise;
+      return HttpResponse.json({ ok: true });
+    }),
+  );
+
+  const ctrl = mockChatLifecycle({ threadId: MOCK_THREAD_ID });
+
+  return {
+    ctrl,
+    releaseComplete: () => {
+      completeDeferred.resolve();
+    },
+  };
+}
+
+describe("onboarding continue in web → skeleton → chat page (#7902)", () => {
+  it("should show skeleton immediately on click, then hide after chat page loads", async () => {
+    const user = userEvent.setup();
+    const mock = mockMemberOnboardingWithChat();
+
+    await setupPage({ context, path: "/onboarding" });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Where would you like to work with/),
+      ).toBeInTheDocument();
+    });
+
+    // Skeleton should be hidden after onboarding page loaded
+    expect(screen.getByTestId("app-skeleton")).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
+
+    // Click starts the async onboarding completion; the POST API is deferred
+    // so the command is in-flight while we assert skeleton visibility.
+    await user.click(screen.getByRole("button", { name: /Continue in web/ }));
+
+    // Skeleton must be visible during the transition (the fix for #7902)
+    await waitFor(() => {
+      expect(screen.getByTestId("app-skeleton")).not.toHaveAttribute(
+        "aria-hidden",
+      );
+    });
+
+    // Release the deferred POST response to let onboarding complete and
+    // navigation to the chat page proceed.
+    mock.releaseComplete();
+
+    // Verify navigation happened and chat page renders
+    await waitFor(() => {
+      expect(pathname()).toBe(`/chats/${MOCK_THREAD_ID}`);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("textbox")).toBeInTheDocument();
+    });
+
+    // Skeleton should be hidden after chat page setup completes
+    await waitFor(() => {
+      expect(screen.getByTestId("app-skeleton")).toHaveAttribute(
+        "aria-hidden",
+        "true",
+      );
+    });
+
+    mock.ctrl.completeRun("Hello!");
+  });
+});

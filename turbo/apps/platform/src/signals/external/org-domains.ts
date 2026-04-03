@@ -2,6 +2,8 @@ import { command, computed, state } from "ccstate";
 import { zeroOrgDomainsContract } from "@vm0/core";
 import { org$ } from "../org";
 import { zeroClient$ } from "../api-client";
+import { accept } from "../../lib/accept.ts";
+import { throwIfAbort } from "../utils.ts";
 
 const domainsVersion$ = state(0);
 
@@ -18,12 +20,13 @@ const domainsResponse$ = computed(async (get) => {
 
   const createClient = get(zeroClient$);
   const client = createClient(zeroOrgDomainsContract);
-  const result = await client.list();
-
-  if (result.status === 200) {
+  try {
+    const result = await accept(client.list(), [200], { toast: false });
     return result.body;
+  } catch (error) {
+    throwIfAbort(error);
+    return null;
   }
-  return null;
 });
 
 export const orgDomains$ = computed(async (get) => {

@@ -9,6 +9,7 @@ import { state, computed, command, type Computed, type State } from "ccstate";
 import { logsListContract, type LogsListResponse } from "@vm0/core";
 import { zeroClient$ } from "./api-client.ts";
 import { searchParams$, updateSearchParams$ } from "./route.ts";
+import { accept } from "../lib/accept.ts";
 
 const DEFAULT_LIMIT = 10;
 const VALID_LIMITS = [10, 20, 50, 100] as const;
@@ -138,11 +139,13 @@ function createNavigationCommands(deps: PaginationDeps) {
       }
 
       const client = get(zeroClient$)(logsListContract);
-      const result = await client.list({
-        query: paramsToQuery(intermediateParams),
-      });
+      const result = await accept(
+        client.list({ query: paramsToQuery(intermediateParams) }),
+        [200],
+        { toast: false },
+      );
 
-      if (result.status !== 200 || !result.body.pagination.hasMore) {
+      if (!result.body.pagination.hasMore) {
         set(writeUrlParams$, { cursor: cursor1 });
         return;
       }
@@ -222,10 +225,11 @@ export function createCursorPagination(config: CursorPaginationConfig) {
     }
 
     const client = get(zeroClient$)(logsListContract);
-    const result = await client.list({ query: paramsToQuery(params) });
-    if (result.status !== 200) {
-      throw new Error(`Failed to fetch logs (${result.status})`);
-    }
+    const result = await accept(
+      client.list({ query: paramsToQuery(params) }),
+      [200],
+      { toast: false },
+    );
     return result.body;
   });
 

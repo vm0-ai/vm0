@@ -7,6 +7,8 @@ import {
 } from "@vm0/core";
 import { org$ } from "../org";
 import { zeroClient$ } from "../api-client";
+import { accept } from "../../lib/accept.ts";
+import { throwIfAbort } from "../utils.ts";
 
 export type { OrgMember, OrgPendingInvitation, OrgMembershipRequest };
 
@@ -21,13 +23,13 @@ const orgMembersResponse$ = computed(async (get) => {
 
   const createClient = get(zeroClient$);
   const client = createClient(zeroOrgMembersContract);
-  const result = await client.members();
-
-  if (result.status === 200) {
+  try {
+    const result = await accept(client.members(), [200], { toast: false });
     return result.body;
+  } catch (error) {
+    throwIfAbort(error);
+    return null;
   }
-
-  return null;
 });
 
 export const orgMembers$ = computed(async (get) => {

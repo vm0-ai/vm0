@@ -11,6 +11,7 @@ import { zeroClient$ } from "../api-client.ts";
 import { createOrgModelProvider$ } from "../external/org-model-providers.ts";
 import { createZeroAgent } from "./create-zero-agent.ts";
 import { logger } from "../log.ts";
+import { accept } from "../../lib/accept.ts";
 
 const L = logger("ZeroOnboarding");
 
@@ -26,10 +27,7 @@ export const zeroOnboardingStatus$ = computed(async (get) => {
   get(internalReload$);
 
   const client = get(zeroClient$)(onboardingStatusContract);
-  const result = await client.getStatus();
-  if (result.status !== 200) {
-    throw new Error(`Failed to fetch onboarding status: ${result.status}`);
-  }
+  const result = await accept(client.getStatus(), [200]);
   return result.body;
 });
 
@@ -46,7 +44,7 @@ export const zeroNeedsMemberOnboarding$ = computed(async (get) => {
 export const completeMemberOnboarding$ = command(
   async ({ get, set }, _signal: AbortSignal): Promise<string | undefined> => {
     const client = get(zeroClient$)(onboardingCompleteContract);
-    await client.complete();
+    await accept(client.complete(), [200]);
     set(internalReload$, (x) => {
       return x + 1;
     });
@@ -172,30 +170,21 @@ export const completeZeroOnboarding$ = command(
         if (slug.length < 3) {
           continue;
         }
-        const orgResult = await orgClient.update({
-          body: { name, slug, force: true },
-        });
+        const orgResult = await accept(
+          orgClient.update({ body: { name, slug, force: true } }),
+          [200, 409],
+        );
         signal.throwIfAborted();
         if (orgResult.status === 200) {
           updated = true;
           break;
         }
-        // Only retry on conflict (slug taken); other errors are fatal
-        if (orgResult.status !== 409) {
-          throw new Error(
-            `Failed to update workspace name: ${orgResult.status}`,
-          );
-        }
+        // status === 409, try next slug
       }
       // If both slug candidates failed, update name only
       if (!updated) {
-        const orgResult = await orgClient.update({ body: { name } });
+        await accept(orgClient.update({ body: { name } }), [200]);
         signal.throwIfAborted();
-        if (orgResult.status !== 200) {
-          throw new Error(
-            `Failed to update workspace name: ${orgResult.status}`,
-          );
-        }
       }
     }
 
@@ -220,28 +209,30 @@ export const completeZeroOnboarding$ = command(
     // Set initial connector permissions for the new agent
     if (selectedConnectors.length > 0) {
       const userConnectorsClient = createClient(zeroUserConnectorsContract);
-      await userConnectorsClient.update({
-        params: { id: agent.agentId },
-        body: { enabledTypes: selectedConnectors },
-      });
+      await accept(
+        userConnectorsClient.update({
+          params: { id: agent.agentId },
+          body: { enabledTypes: selectedConnectors },
+        }),
+        [200],
+      );
       signal.throwIfAborted();
     }
 
     // Set as default agent
     const defaultAgentClient = createClient(orgDefaultAgentContract);
-    const result = await defaultAgentClient.setDefaultAgent({
-      query: {},
-      body: { agentId: agent.agentId },
-    });
+    await accept(
+      defaultAgentClient.setDefaultAgent({
+        query: {},
+        body: { agentId: agent.agentId },
+      }),
+      [200],
+    );
     signal.throwIfAborted();
-
-    if (result.status !== 200) {
-      throw new Error(`Failed to set default agent: ${result.status}`);
-    }
 
     // Mark personal onboarding as done so admin doesn't re-enter member flow
     const completeClient = createClient(onboardingCompleteContract);
-    await completeClient.complete();
+    await accept(completeClient.complete(), [200]);
     signal.throwIfAborted();
 
     L.debug("Zero onboarding completed", {

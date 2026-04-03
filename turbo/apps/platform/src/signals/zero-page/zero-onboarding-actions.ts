@@ -17,6 +17,7 @@ import { allConnectorTypes$ } from "./settings/connectors.ts";
 import { detachedNavigateTo$ } from "../route.ts";
 import { slackOrgData$ } from "./zero-slack.ts";
 import { reloadBillingStatus$ } from "./billing.ts";
+import { showAppSkeleton$ } from "../app-skeleton.ts";
 import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
 
 // ---------------------------------------------------------------------------
@@ -245,6 +246,8 @@ const completeOnboarding$ = command(
 
 export const onboardingAddToSlack$ = command(
   async ({ get, set }, signal: AbortSignal) => {
+    set(showAppSkeleton$);
+
     const result = await set(completeOnboarding$, signal);
     if (!result) {
       return;
@@ -266,6 +269,8 @@ export const onboardingAddToSlack$ = command(
 
 export const onboardingContinueWeb$ = command(
   async ({ set }, signal: AbortSignal) => {
+    set(showAppSkeleton$);
+
     const agentId = await set(completeOnboarding$, signal);
 
     if (!agentId) {

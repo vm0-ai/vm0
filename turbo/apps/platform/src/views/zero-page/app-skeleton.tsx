@@ -51,6 +51,8 @@ const skeletonCSS = `
 export function AppSkeleton({ visible = true }: { visible?: boolean }) {
   return (
     <div
+      data-testid="app-skeleton"
+      aria-hidden={visible ? undefined : true}
       className={`fixed inset-0 z-50 flex items-center justify-center bg-background ${
         visible
           ? "opacity-100"

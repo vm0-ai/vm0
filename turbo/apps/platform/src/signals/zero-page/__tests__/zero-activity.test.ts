@@ -157,7 +157,7 @@ describe("zero-activity signals", () => {
       await context.store.set(initZeroActivityAgentName$, context.signal);
 
       await expect(context.store.get(zeroActivityData$)).rejects.toThrow(
-        "Failed to fetch logs",
+        "Internal server error",
       );
     });
 

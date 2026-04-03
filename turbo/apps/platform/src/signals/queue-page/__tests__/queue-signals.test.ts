@@ -78,6 +78,6 @@ describe("cancelQueueRun$", () => {
 
     await expect(
       context.store.set(cancelQueueRun$, "run-1", context.signal),
-    ).rejects.toThrow("Failed to cancel run");
+    ).rejects.toThrow("Forbidden");
   });
 });
