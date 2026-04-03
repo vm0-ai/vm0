@@ -246,6 +246,7 @@ describe("sandbox-token", () => {
         "schedule:write",
         "slack:write",
         "connector:read",
+        "developer-support:write",
       ]);
     });
 
