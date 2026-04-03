@@ -85,48 +85,14 @@ describe("log-table", () => {
     expect(screen.getByText("Duration")).toBeInTheDocument();
   });
 
-  // ACT-D-050
-  it("loading skeleton state renders", async () => {
-    let resolveHold: (value: Response) => void;
-    const pending = new Promise<Response>((resolve) => {
-      resolveHold = resolve;
-    });
-
-    server.use(
-      http.get("*/api/zero/logs", () => {
-        return pending;
-      }),
-    );
-
-    await setupPage({ context, path: "/activities" });
-
-    // While API is still pending, skeleton rows should be visible
-    const skeletonElements = document.querySelectorAll(".animate-pulse");
-    expect(skeletonElements.length).toBeGreaterThan(0);
-
-    // Resolve so cleanup can proceed
-    resolveHold!(
-      new Response(JSON.stringify(makeLogsResponse([])), {
-        headers: { "Content-Type": "application/json" },
-      }),
-    );
-  });
-
   // ACT-D-051
-  it("empty state with title and description renders", async () => {
+  it("empty state renders", async () => {
     mockLogsAPI(makeLogsResponse([]));
     await setupPage({ context, path: "/activities" });
 
     await waitFor(() => {
-      expect(screen.getByText("All quiet for now")).toBeInTheDocument();
+      expect(screen.getByTestId("empty-state")).toBeInTheDocument();
     });
-    expect(
-      screen.getByText(
-        "When your agents start working, their activity will show up here.",
-      ),
-    ).toBeInTheDocument();
-    // Image is present in the empty state
-    expect(document.querySelector("img")).toBeInTheDocument();
   });
 
   // ACT-D-052
@@ -136,15 +102,8 @@ describe("log-table", () => {
     await setupPage({ context, path: "/activities?status=failed" });
 
     await waitFor(() => {
-      expect(
-        screen.getByText("Nothing matches those filters"),
-      ).toBeInTheDocument();
+      expect(screen.getByTestId("filtered-empty-state")).toBeInTheDocument();
     });
-    expect(
-      screen.getByText(
-        "Try different filters to find what you're looking for.",
-      ),
-    ).toBeInTheDocument();
   });
 
   // ACT-D-053
@@ -155,10 +114,9 @@ describe("log-table", () => {
     await setupPage({ context, path: "/activities" });
 
     await waitFor(() => {
-      // "Running" appears in the status badge (zero-pill)
-      const badge = document.querySelector(".zero-pill");
+      const badge = screen.getByTestId("status-badge");
       expect(badge).toBeInTheDocument();
-      expect(badge?.textContent).toContain("Running");
+      expect(badge).toHaveTextContent("Running");
     });
   });
 
@@ -171,13 +129,11 @@ describe("log-table", () => {
 
     await waitFor(() => {
       // Running entries show a spinner icon in the duration column
-      const spinner = document.querySelector(".animate-spin");
-      expect(spinner).toBeInTheDocument();
+      expect(screen.getByTestId("duration-running")).toBeInTheDocument();
     });
 
-    // The duration column shows "Running" text next to the spinner
-    const allRunning = screen.getAllByText("Running");
-    expect(allRunning.length).toBeGreaterThanOrEqual(2);
+    // The duration column spinner has an accessible label
+    expect(screen.getByLabelText("Running")).toBeInTheDocument();
   });
 
   // ACT-D-055

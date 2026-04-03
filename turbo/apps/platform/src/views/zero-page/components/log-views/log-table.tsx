@@ -79,8 +79,16 @@ function LogRow({
         </div>
         <div className="text-left text-sm text-muted-foreground tabular-nums">
           {entry.status === "running" ? (
-            <span className="inline-flex items-center gap-1">
-              <IconLoader2 size={12} stroke={1.5} className="animate-spin" />
+            <span
+              className="inline-flex items-center gap-1"
+              data-testid="duration-running"
+            >
+              <IconLoader2
+                size={12}
+                stroke={1.5}
+                className="animate-spin"
+                aria-label="Running"
+              />
               Running
             </span>
           ) : (
@@ -197,7 +205,12 @@ export function LogTable({
             gridClassName={gridClassName}
           />
         ) : logs.length === 0 ? (
-          <div className="flex flex-col items-center justify-center min-h-[20rem] gap-4">
+          <div
+            data-testid={
+              hasActiveFilter ? "filtered-empty-state" : "empty-state"
+            }
+            className="flex flex-col items-center justify-center min-h-[20rem] gap-4"
+          >
             <img
               src={emptyActivityImg}
               alt=""
