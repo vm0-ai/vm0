@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, assert, describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -139,13 +139,13 @@ describe("zeroActivityDetailPageInteraction", () => {
       }),
     );
 
-    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:test");
+    const createObjectURLSpy = vi
+      .spyOn(URL, "createObjectURL")
+      .mockReturnValue("blob:test");
     vi.spyOn(URL, "revokeObjectURL").mockReturnValue(undefined);
-    const clickSpy = vi
-      .spyOn(HTMLAnchorElement.prototype, "click")
-      .mockImplementation(() => {
-        return undefined;
-      });
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {
+      return undefined;
+    });
 
     const user = userEvent.setup();
 
@@ -166,8 +166,16 @@ describe("zeroActivityDetailPageInteraction", () => {
     await user.click(downloadButton);
 
     await waitFor(() => {
-      expect(clickSpy).toHaveBeenCalledWith();
+      expect(createObjectURLSpy).toHaveBeenCalledOnce();
     });
+    const capturedArg = createObjectURLSpy.mock.calls[0]?.[0];
+    assert(
+      capturedArg instanceof Blob,
+      "createObjectURL should be called with a Blob",
+    );
+    expect(capturedArg.type).toBe("application/json;charset=utf-8;");
+    const blobText = await capturedArg.text();
+    expect(blobText).toContain(BASE_LOG_ID);
   });
 
   it("should switch to context tab when clicked (ACT-D-030)", async () => {
