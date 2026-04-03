@@ -66,10 +66,9 @@ describe("pollSlackConnection$", () => {
 
     await context.store.set(pollSlackConnection$, context.signal);
 
-    // Setup already fetched slack status and marked as connected,
-    // so pollSlackConnection$ sees isConnected and returns without polling.
-    // The counter includes the setup fetch + zero poll fetches.
-    expect(counter.count).toBeGreaterThanOrEqual(1);
+    // Setup fetches slack status once (counter already registered), then
+    // pollSlackConnection$ sees isConnected and returns without polling. Total: 1 fetch.
+    expect(counter.count).toBe(1);
   });
 
   it("should poll until connected and show success toast", async () => {
