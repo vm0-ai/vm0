@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -11,6 +11,10 @@ import type {
 } from "../../../signals/zero-page/log-types.ts";
 
 const context = testContext();
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
 
 function makeLog(overrides: Partial<LogEntry> = {}): LogEntry {
   return {
