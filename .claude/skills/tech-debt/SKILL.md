@@ -188,19 +188,21 @@ grep -rl "eslint-disable ccstate/no-use-ccstate-in-views" turbo/apps/platform/sr
 **24. void Instead of detach() for Floating Promises**
 ```bash
 # Using void to suppress floating promise lint — should use detach() with Reason
-grep -rn 'void set(\|void get(' turbo/apps/platform --include="*.ts" --include="*.tsx" -l
+grep -rEn 'void [a-zA-Z_$][a-zA-Z0-9_$]*\(' turbo/apps/platform --include="*.ts" --include="*.tsx" -l
 ```
 
 **25. Manual Loading Boolean in Signals**
 ```bash
 # Manual loading/saving boolean state — should use useLoadableSet or loadable pattern
-grep -rn 'state(false)' turbo/apps/platform/src/signals --include="*.ts" -l
+# Match signal names following the loading$/saving$/submitting$/creating$/deleting$ convention
+grep -rEn '\b(loading|saving|submitting|creating|deleting)\$\s*=\s*state\(' turbo/apps/platform/src/signals --include="*.ts" -l
 ```
 
 **26. Orphaned resetSignal (No Parent Signal)**
 ```bash
 # resetSignal called without parent signal — causes polling loops that never stop
-grep -rn 'set(reset.*\$)' turbo/apps/platform/src/signals --include="*.ts" | grep -v ','
+# Match set(resetXxx$) calls with no arguments after the signal name (no comma = no parent)
+grep -rEn 'set\(reset[A-Za-z0-9_]*\$\)' turbo/apps/platform/src/signals --include="*.ts"
 ```
 
 #### Phase 2: Detailed Analysis
