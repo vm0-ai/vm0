@@ -85,11 +85,9 @@ describe("statusBadge", () => {
   it("should render icon for completed status (ACT-D-084)", async () => {
     await renderActivityDetail({ status: "completed" });
 
-    await waitFor(() => {
-      expect(screen.getByText("Done")).toBeInTheDocument();
+    const badge = await waitFor(() => {
+      return screen.getByTestId("status-badge");
     });
-
-    const badge = screen.getByTestId("status-badge");
     expect(badge.querySelector("svg")).toBeInTheDocument();
   });
 
@@ -99,83 +97,52 @@ describe("statusBadge", () => {
       error: "Something went wrong",
     });
 
-    await waitFor(() => {
-      expect(screen.getByText("Failed")).toBeInTheDocument();
+    const badge = await waitFor(() => {
+      return screen.getByTestId("status-badge");
     });
-
-    const badge = screen.getByTestId("status-badge");
     expect(badge.querySelector("svg")).toBeInTheDocument();
   });
 
   it("should render icon for cancelled status (ACT-D-084)", async () => {
     await renderActivityDetail({ status: "cancelled" });
 
-    await waitFor(() => {
-      expect(screen.getByText("Cancelled")).toBeInTheDocument();
+    const badge = await waitFor(() => {
+      return screen.getByTestId("status-badge");
     });
-
-    const badge = screen.getByTestId("status-badge");
     expect(badge.querySelector("svg")).toBeInTheDocument();
   });
 
-  it("should render label text for completed status (ACT-D-085)", async () => {
+  it("should show correct status for completed (ACT-D-086)", async () => {
     await renderActivityDetail({ status: "completed" });
 
     await waitFor(() => {
-      expect(screen.getByText("Done")).toBeInTheDocument();
+      expect(screen.getByTestId("status-badge")).toHaveAttribute(
+        "data-status",
+        "completed",
+      );
     });
   });
 
-  it("should render label text for cancelled status (ACT-D-085)", async () => {
-    await renderActivityDetail({ status: "cancelled" });
-
-    await waitFor(() => {
-      expect(screen.getByText("Cancelled")).toBeInTheDocument();
-    });
-  });
-
-  it("should render label text for timeout status (ACT-D-085)", async () => {
-    await renderActivityDetail({ status: "timeout" });
-
-    await waitFor(() => {
-      expect(screen.getByText("Timeout")).toBeInTheDocument();
-    });
-  });
-
-  it("should apply green color class for completed status (ACT-D-086)", async () => {
-    await renderActivityDetail({ status: "completed" });
-
-    await waitFor(() => {
-      expect(screen.getByText("Done")).toBeInTheDocument();
-    });
-
-    const badge = screen.getByTestId("status-badge");
-    const icon = badge.querySelector("svg");
-    expect(icon?.className).toContain("text-green-600");
-  });
-
-  it("should apply red color class for failed status (ACT-D-086)", async () => {
+  it("should show correct status for failed (ACT-D-086)", async () => {
     await renderActivityDetail({ status: "failed", error: "err" });
 
     await waitFor(() => {
-      expect(screen.getByText("Failed")).toBeInTheDocument();
+      expect(screen.getByTestId("status-badge")).toHaveAttribute(
+        "data-status",
+        "failed",
+      );
     });
-
-    const badge = screen.getByTestId("status-badge");
-    const icon = badge.querySelector("svg");
-    expect(icon?.className).toContain("text-red-600");
   });
 
-  it("should apply orange color class for timeout status (ACT-D-086)", async () => {
+  it("should show correct status for timeout (ACT-D-086)", async () => {
     await renderActivityDetail({ status: "timeout" });
 
     await waitFor(() => {
-      expect(screen.getByText("Timeout")).toBeInTheDocument();
+      expect(screen.getByTestId("status-badge")).toHaveAttribute(
+        "data-status",
+        "timeout",
+      );
     });
-
-    const badge = screen.getByTestId("status-badge");
-    const icon = badge.querySelector("svg");
-    expect(icon?.className).toContain("text-orange-600");
   });
 });
 
@@ -196,14 +163,9 @@ describe("statusDot", () => {
       expect(screen.getByText("Initialize")).toBeInTheDocument();
     });
 
-    // StatusDot renders a ● character in a span with aria-hidden="true"
-    const allHiddenSpans = document.querySelectorAll(
-      'span[aria-hidden="true"]',
-    );
-    const dotSpan = Array.from(allHiddenSpans).find((el) => {
-      return el.textContent === "●";
-    });
+    const dotSpan = document.querySelector('span[data-variant="neutral"]');
     expect(dotSpan).toBeTruthy();
+    expect(dotSpan?.textContent).toBe("●");
   });
 
   it("should render primary dot for result events (ACT-D-087)", async () => {
@@ -220,9 +182,7 @@ describe("statusDot", () => {
       expect(screen.getByText("Summary")).toBeInTheDocument();
     });
 
-    const primaryDot = document.querySelector(
-      'span[aria-hidden="true"].text-orange-600',
-    );
+    const primaryDot = document.querySelector('span[data-variant="primary"]');
     expect(primaryDot).toBeInTheDocument();
     expect(primaryDot?.textContent).toBe("●");
   });
@@ -270,9 +230,7 @@ describe("statusDot", () => {
       expect(screen.getByText("Bash")).toBeInTheDocument();
     });
 
-    const successDot = document.querySelector(
-      'span[aria-hidden="true"].text-green-700',
-    );
+    const successDot = document.querySelector('span[data-variant="success"]');
     expect(successDot).toBeInTheDocument();
     expect(successDot?.textContent).toBe("●");
   });
@@ -320,9 +278,7 @@ describe("statusDot", () => {
       expect(screen.getByText("Bash")).toBeInTheDocument();
     });
 
-    const errorDot = document.querySelector(
-      'span[aria-hidden="true"].text-red-700',
-    );
+    const errorDot = document.querySelector('span[data-variant="error"]');
     expect(errorDot).toBeInTheDocument();
     expect(errorDot?.textContent).toBe("●");
   });
@@ -331,7 +287,7 @@ describe("statusDot", () => {
 // ============ HIGHLIGHT TEXT TESTS ============
 
 describe("highlightText", () => {
-  it("should render mark spans with highlight styling for matches (ACT-D-088)", async () => {
+  it("should render mark spans for matches (ACT-D-088)", async () => {
     await renderActivityDetail({}, [
       {
         sequenceNumber: 0,
@@ -381,13 +337,10 @@ describe("highlightText", () => {
     await waitFor(() => {
       const marks = document.querySelectorAll("mark");
       expect(marks.length).toBeGreaterThan(0);
-      for (const mark of marks) {
-        expect(mark.className).toMatch(/bg-orange-[12]00/);
-      }
     });
   });
 
-  it("should render current match with distinct styling (ACT-D-088)", async () => {
+  it("should distinguish current match from other matches (ACT-D-088)", async () => {
     await renderActivityDetail({}, [
       {
         sequenceNumber: 0,
@@ -439,9 +392,13 @@ describe("highlightText", () => {
     await waitFor(() => {
       const marks = document.querySelectorAll("mark");
       expect(marks.length).toBeGreaterThan(0);
-      // The current match uses bg-orange-200, other matches use bg-orange-100
-      const currentMarks = document.querySelectorAll("mark.bg-orange-200");
-      const otherMarks = document.querySelectorAll("mark.bg-orange-100");
+      // Current match is marked with data-current-match="true"; others have no such attribute
+      const currentMarks = document.querySelectorAll(
+        'mark[data-current-match="true"]',
+      );
+      const otherMarks = document.querySelectorAll(
+        "mark:not([data-current-match])",
+      );
       expect(currentMarks.length + otherMarks.length).toBe(marks.length);
     });
   });

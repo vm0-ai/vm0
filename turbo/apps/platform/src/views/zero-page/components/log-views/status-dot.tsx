@@ -44,6 +44,7 @@ export function StatusDot({ variant, className }: StatusDotProps) {
         getVariantStyle(variant),
         className,
       )}
+      data-variant={variant}
       aria-hidden="true"
     >
       ●

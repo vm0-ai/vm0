@@ -68,6 +68,7 @@ export function StatusBadge({ status, zeroStyle }: StatusBadgeProps) {
   return (
     <span
       data-testid="status-badge"
+      data-status={status}
       className={
         zeroStyle
           ? "zero-pill inline-flex items-center gap-1.5 rounded-lg border px-1.5 py-1 text-xs font-medium"
