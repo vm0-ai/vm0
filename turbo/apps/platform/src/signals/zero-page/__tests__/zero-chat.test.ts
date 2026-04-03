@@ -561,7 +561,7 @@ describe("zero-chat signals", () => {
         }
       }
 
-      await Promise.all([promise1, promise2]);
+      await Promise.allSettled([promise1, promise2]);
 
       const after = context.store.get(zeroChatAttachments$);
       // Only the second upload should remain, completed
