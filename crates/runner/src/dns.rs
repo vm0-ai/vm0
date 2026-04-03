@@ -25,14 +25,6 @@ use tracing::{debug, info, warn};
 
 use crate::kmsg_log::IpLogMap;
 
-/// IP address that `firewall-placeholder.vm3.ai` resolves to.
-///
-/// This must be a routable (non-loopback) IP so the VM's TCP connection
-/// leaves the VM via TAP and gets caught by the TCP REDIRECT rule to
-/// mitmproxy. The actual value doesn't matter — any routable IP works.
-/// We use TEST-NET-2 (RFC 5737) to make intent obvious.
-const PLACEHOLDER_IP: &str = "198.51.100.1";
-
 /// Handle to the dnsmasq process and its log monitor.
 pub struct DnsProxy {
     cancel: CancellationToken,
@@ -79,12 +71,9 @@ fn find_available_port() -> std::io::Result<u16> {
 /// Start dnsmasq and spawn a background task to parse its query log.
 ///
 /// dnsmasq listens on a dynamically allocated port and forwards to upstream DNS.
-/// `firewall-placeholder.vm3.ai` is resolved to [`PLACEHOLDER_IP`] so the VM
-/// can connect to it and mitmproxy intercepts via TCP REDIRECT (fixes #7665).
 pub async fn start(ip_log_map: IpLogMap) -> std::io::Result<DnsProxy> {
     let port = find_available_port()?;
     let port_str = port.to_string();
-    let address_arg = format!("/firewall-placeholder.vm3.ai/{PLACEHOLDER_IP}");
 
     let mut child = tokio::process::Command::new("dnsmasq")
         .args([
@@ -98,8 +87,6 @@ pub async fn start(ip_log_map: IpLogMap) -> std::io::Result<DnsProxy> {
             "8.8.4.4",
             "--log-queries",
             "--log-facility=-",
-            "--address",
-            &address_arg,
         ])
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
