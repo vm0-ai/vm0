@@ -151,42 +151,14 @@ export default [
     },
   },
   // Allow pre-accept zeroClient$ calls in existing signal files (migration in progress).
-  // These files were present before the ccstate/require-accept rule was introduced in #7874.
   // Each file should be migrated to use accept() and removed from this list.
-  // Tracking issue: https://github.com/vm0-ai/vm0/issues/7874
+  // Remaining: #7879 (Billing & Usage)
   {
     files: [
-      "src/signals/activity-page/activity-context-signals.ts",
-      "src/signals/activity-page/activity-download.ts",
-      "src/signals/activity-page/activity-network-signals.ts",
-      "src/signals/activity-page/activity-signals.ts",
-      "src/signals/cursor-pagination.ts",
-      "src/signals/external/connectors.ts",
-      "src/signals/external/org-domains.ts",
-      "src/signals/external/org-members.ts",
-      "src/signals/external/org-model-providers.ts",
-      "src/signals/firewall-allow/firewall-allow-signals.ts",
-      "src/signals/org.ts",
-      "src/signals/queue-page/queue-signals.ts",
       "src/signals/usage-page/usage-signals.ts",
-      "src/signals/zero-page/agents-list.ts",
       "src/signals/zero-page/billing.ts",
-      "src/signals/zero-page/job-detail/connectors.ts",
-      "src/signals/zero-page/job-detail/delete.ts",
-      "src/signals/zero-page/job-detail/detail.ts",
-      "src/signals/zero-page/job-detail/instructions.ts",
-      "src/signals/zero-page/job-detail/schedule.ts",
-      "src/signals/zero-page/job-detail/settings.ts",
       "src/signals/zero-page/member-credit-caps.ts",
-      "src/signals/zero-page/settings/connectors.ts",
-      "src/signals/zero-page/settings/firewalls.ts",
-      "src/signals/zero-page/settings/org-manage-tabs-state.ts",
       "src/signals/zero-page/settings/permission-dialog.ts",
-      "src/signals/zero-page/settings/user-preferences.ts",
-      "src/signals/zero-page/zero-agents.ts",
-      "src/signals/zero-page/zero-connectors.ts",
-      "src/signals/zero-page/zero-onboarding.ts",
-      "src/signals/zero-page/zero-schedule.ts",
     ],
     rules: {
       "ccstate/require-accept": "off",

@@ -54,6 +54,7 @@ export function highlightText(
         <mark
           key={`match-${globalIndex}-${i}`}
           data-match-index={globalIndex}
+          data-current-match={isCurrent ? "true" : undefined}
           className={
             isCurrent
               ? "bg-orange-200 text-orange-900 rounded px-0.5"
