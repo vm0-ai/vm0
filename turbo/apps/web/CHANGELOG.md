@@ -1,5 +1,20 @@
 # Changelog
 
+## [12.190.0](https://github.com/vm0-ai/vm0/compare/web-v12.189.2...web-v12.190.0) (2026-04-03)
+
+
+### Features
+
+* **zero:** add `zero whoami` to agent system prompt ([#7891](https://github.com/vm0-ai/vm0/issues/7891)) ([1ba94f5](https://github.com/vm0-ai/vm0/commit/1ba94f5be0614ff63d0e6437ff437982b4562e92)), closes [#7640](https://github.com/vm0-ai/vm0/issues/7640)
+
+
+### Refactoring
+
+* **web:** move ai from shared to zero ([#7898](https://github.com/vm0-ai/vm0/issues/7898)) ([db96e71](https://github.com/vm0-ai/vm0/commit/db96e7174925cebfd0920adfe90fc304e4a4af0b))
+* **web:** move framework config from shared to infra ([#7886](https://github.com/vm0-ai/vm0/issues/7886)) ([3b41039](https://github.com/vm0-ai/vm0/commit/3b41039acd4bd3e2ee8260b359a6df521c673497))
+* **web:** move metrics from shared to infra ([#7888](https://github.com/vm0-ai/vm0/issues/7888)) ([1a3ee3f](https://github.com/vm0-ai/vm0/commit/1a3ee3fdbd4e9e98beed43c980ee0d2483e8526a))
+* **web:** move realtime from shared to infra ([#7889](https://github.com/vm0-ai/vm0/issues/7889)) ([8264e2a](https://github.com/vm0-ai/vm0/commit/8264e2a5e9afcbc15f80e07bf5b4ea4ad9108bca))
+
 ## [12.189.2](https://github.com/vm0-ai/vm0/compare/web-v12.189.1...web-v12.189.2) (2026-04-03)
 
 

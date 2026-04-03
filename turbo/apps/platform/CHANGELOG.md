@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.185.0](https://github.com/vm0-ai/vm0/compare/app-v0.184.0...app-v0.185.0) (2026-04-03)
+
+
+### Features
+
+* add accept function and api error class for unified http error handling ([#7892](https://github.com/vm0-ai/vm0/issues/7892)) ([38c20d8](https://github.com/vm0-ai/vm0/commit/38c20d80b0336088ec8cb4c073b745f041b12511)), closes [#7873](https://github.com/vm0-ai/vm0/issues/7873)
+
+
+### Refactoring
+
+* **platform:** clean up tech debt in tests and lint config ([#7896](https://github.com/vm0-ai/vm0/issues/7896)) ([7558244](https://github.com/vm0-ai/vm0/commit/7558244140b9039cc04160d69cce4edc26b05fb2))
+* **platform:** replace direct dom manipulation with react patterns ([#7901](https://github.com/vm0-ai/vm0/issues/7901)) ([e48041c](https://github.com/vm0-ai/vm0/commit/e48041ccef55a56ad67cfb637068affd83d7e8a0))
+* **test:** remove ineffective vi.mock in zero-chat-page test ([#7887](https://github.com/vm0-ai/vm0/issues/7887)) ([b85523a](https://github.com/vm0-ai/vm0/commit/b85523aa80594987ec921f94a82de52fcd28b37f)), closes [#7831](https://github.com/vm0-ai/vm0/issues/7831)
+
 ## [0.184.0](https://github.com/vm0-ai/vm0/compare/app-v0.183.0...app-v0.184.0) (2026-04-03)
 
 
