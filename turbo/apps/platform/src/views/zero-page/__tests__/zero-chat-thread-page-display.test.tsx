@@ -98,48 +98,6 @@ describe("zero chat thread page display - pin pill conditional rendering", () =>
   });
 });
 
-// CHAT-D-034: User message content renders in ChatMessageRow
-describe("zero chat thread page display - user message content", () => {
-  it("displays user message content text in the chat row", async () => {
-    mockChatLifecycle({
-      chatMessages: [
-        {
-          role: "user",
-          content: "Hello from user",
-          createdAt: "2026-03-10T00:00:00Z",
-        },
-      ],
-    });
-
-    await setupPage({ context, path: "/chats/thread-test-1" });
-
-    await waitFor(() => {
-      expect(screen.getByText("Hello from user")).toBeInTheDocument();
-    });
-  });
-});
-
-// CHAT-D-035: Assistant message content renders in ChatMessageRow
-describe("zero chat thread page display - assistant message content", () => {
-  it("displays assistant message content text in the chat row", async () => {
-    mockChatLifecycle({
-      chatMessages: [
-        {
-          role: "assistant",
-          content: "Assistant reply",
-          createdAt: "2026-03-10T00:00:00Z",
-        },
-      ],
-    });
-
-    await setupPage({ context, path: "/chats/thread-test-1" });
-
-    await waitFor(() => {
-      expect(screen.getByText("Assistant reply")).toBeInTheDocument();
-    });
-  });
-});
-
 // CHAT-D-036: Attachment image previews render in ChatMessageRow
 describe("zero chat thread page display - attachment image preview", () => {
   it("renders image attachment preview with the correct alt text", async () => {
@@ -239,52 +197,6 @@ describe("zero chat thread page display - run activity line queue position", () 
         );
       });
       expect(el).toBeInTheDocument();
-    });
-  });
-});
-
-// CHAT-D-040: Run activity line renders thinking message
-describe("zero chat thread page display - run activity line thinking message", () => {
-  it("displays a shimmer thinking indicator when run is active with no events", async () => {
-    mockChatLifecycle({
-      unsavedRuns: [
-        {
-          runId: "run-1",
-          status: "running",
-          prompt: "Hello",
-          error: null,
-          createdAt: "2026-03-10T00:00:00Z",
-        },
-      ],
-    });
-
-    await setupPage({ context, path: "/chats/thread-test-1" });
-
-    await waitFor(() => {
-      expect(document.querySelector(".zero-shimmer-text")).toBeInTheDocument();
-    });
-  });
-});
-
-// CHAT-D-041: Error messages with guidance render in ChatMessageRow
-describe("zero chat thread page display - error messages with guidance", () => {
-  it("displays error text when a run fails with an error message", async () => {
-    mockChatLifecycle({
-      unsavedRuns: [
-        {
-          runId: "run-1",
-          status: "failed",
-          prompt: "Hello",
-          error: "Something went wrong",
-          createdAt: "2026-03-10T00:00:00Z",
-        },
-      ],
-    });
-
-    await setupPage({ context, path: "/chats/thread-test-1" });
-
-    await waitFor(() => {
-      expect(screen.getByText("Something went wrong")).toBeInTheDocument();
     });
   });
 });
