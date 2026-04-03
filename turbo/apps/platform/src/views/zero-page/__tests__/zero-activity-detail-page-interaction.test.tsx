@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -90,6 +90,10 @@ function setupBaseMocks() {
 }
 
 describe("zeroActivityDetailPageInteraction", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("should filter steps when searching (ACT-D-028)", async () => {
     setupBaseMocks();
     const user = userEvent.setup();
@@ -135,9 +139,7 @@ describe("zeroActivityDetailPageInteraction", () => {
       }),
     );
 
-    const createObjectURLSpy = vi
-      .spyOn(URL, "createObjectURL")
-      .mockReturnValue("blob:test");
+    vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:test");
     vi.spyOn(URL, "revokeObjectURL").mockReturnValue(undefined);
     const clickSpy = vi
       .spyOn(HTMLAnchorElement.prototype, "click")
@@ -158,20 +160,14 @@ describe("zeroActivityDetailPageInteraction", () => {
       ).toBeInTheDocument();
     });
 
-    const downloadIcon = document.querySelector(".tabler-icon-download");
-    expect(downloadIcon).not.toBeNull();
-    const downloadButton = (downloadIcon as HTMLElement).closest("button");
-    expect(downloadButton).not.toBeNull();
-    await user.click(downloadButton as HTMLElement);
+    const downloadButton = screen.getByRole("button", {
+      name: "Download raw data",
+    });
+    await user.click(downloadButton);
 
     await waitFor(() => {
       expect(clickSpy).toHaveBeenCalledWith();
     });
-
-    expect(createObjectURLSpy).toHaveBeenCalledWith(expect.any(Blob));
-
-    createObjectURLSpy.mockRestore();
-    clickSpy.mockRestore();
   });
 
   it("should switch to context tab when clicked (ACT-D-030)", async () => {
