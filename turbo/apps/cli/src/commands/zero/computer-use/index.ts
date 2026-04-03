@@ -15,6 +15,8 @@ import {
   clientScrollCommand,
   clientReadClipboardCommand,
   clientWriteClipboardCommand,
+  clientKeyCommand,
+  clientHoldKeyCommand,
 } from "./client";
 
 const hostCommand = new Command()
@@ -38,7 +40,9 @@ const clientCommand = new Command()
   .addCommand(clientLeftMouseUpCommand)
   .addCommand(clientScrollCommand)
   .addCommand(clientReadClipboardCommand)
-  .addCommand(clientWriteClipboardCommand);
+  .addCommand(clientWriteClipboardCommand)
+  .addCommand(clientKeyCommand)
+  .addCommand(clientHoldKeyCommand);
 
 export const zeroComputerUseCommand = new Command()
   .name("computer-use")
@@ -60,5 +64,7 @@ Examples:
   Release mouse button:              zero computer-use client left-mouse-up 500 500
   Scroll down at position:           zero computer-use client scroll 500 300 down 5
   Read clipboard text:               zero computer-use client read-clipboard
-  Write clipboard text:              zero computer-use client write-clipboard "hello"`,
+  Write clipboard text:              zero computer-use client write-clipboard "hello"
+  Press key combo:                   zero computer-use client key "cmd+c"
+  Hold shift for 2 seconds:          zero computer-use client hold-key "shift" 2000`,
   );

@@ -126,7 +126,7 @@ describe("computer-use command visibility", () => {
     expect(hostSubs).toContain("start");
   });
 
-  it("should have screenshot, info, mouse, scroll, and clipboard commands under client subcommand", () => {
+  it("should have screenshot, info, mouse, scroll, clipboard, and keyboard commands under client subcommand", () => {
     const prog = new Command();
     registerZeroCommands(prog);
 
@@ -150,6 +150,8 @@ describe("computer-use command visibility", () => {
     expect(clientSubs).toContain("scroll");
     expect(clientSubs).toContain("read-clipboard");
     expect(clientSubs).toContain("write-clipboard");
+    expect(clientSubs).toContain("key");
+    expect(clientSubs).toContain("hold-key");
   });
 
   it("should have mouse click commands under client subcommand", () => {

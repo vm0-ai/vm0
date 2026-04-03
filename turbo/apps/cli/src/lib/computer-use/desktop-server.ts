@@ -11,8 +11,15 @@ import {
   captureRegionScreenshot,
   getScreenInfo,
 } from "./screencapture";
-import { leftClickDrag, leftMouseDown, leftMouseUp } from "./cliclick";
-import { executeMouseAction, VALID_ACTIONS } from "./cliclick";
+import {
+  leftClickDrag,
+  leftMouseDown,
+  leftMouseUp,
+  executeMouseAction,
+  VALID_ACTIONS,
+  pressKey,
+  holdKey,
+} from "./cliclick";
 import type { MouseAction } from "./cliclick";
 import { scroll, type ScrollDirection } from "./scroll";
 import { readClipboard, writeClipboard } from "./clipboard";
@@ -228,6 +235,54 @@ async function handleMouseRequest(
   res.end(JSON.stringify({ ok: true }));
 }
 
+interface KeyPressBody {
+  action: "key";
+  keys: string;
+}
+
+interface HoldKeyBody {
+  action: "hold_key";
+  keys: string;
+  durationMs: number;
+}
+
+type KeyboardRequestBody = KeyPressBody | HoldKeyBody;
+
+async function handleKeyboard(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  const raw = await readBody(req);
+  const body = JSON.parse(raw) as KeyboardRequestBody;
+
+  switch (body.action) {
+    case "key":
+      await pressKey(body.keys);
+      break;
+    case "hold_key":
+      if (
+        typeof body.durationMs !== "number" ||
+        !Number.isFinite(body.durationMs) ||
+        body.durationMs <= 0
+      ) {
+        res.writeHead(400, { "Content-Type": "text/plain" });
+        res.end("durationMs must be a positive number");
+        return;
+      }
+      await holdKey(body.keys, body.durationMs);
+      break;
+    default:
+      res.writeHead(400, { "Content-Type": "text/plain" });
+      res.end(
+        `Unknown keyboard action: ${(body as Record<string, unknown>).action}`,
+      );
+      return;
+  }
+
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ ok: true }));
+}
+
 /**
  * Allocate a random available port on localhost.
  */
@@ -281,6 +336,8 @@ async function handleRequest(
       await writeClipboard(body.text);
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ ok: true }));
+    } else if (req.method === "POST" && pathname === "/keyboard") {
+      await handleKeyboard(req, res);
     } else {
       res.writeHead(404, { "Content-Type": "text/plain" });
       res.end("Not found");

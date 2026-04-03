@@ -47,6 +47,8 @@ vi.mock("../cliclick", () => {
       "double_click",
       "triple_click",
     ]),
+    pressKey: vi.fn().mockResolvedValue(undefined),
+    holdKey: vi.fn().mockResolvedValue(undefined),
   };
 });
 
@@ -70,8 +72,14 @@ import {
   captureRegionScreenshot,
   getScreenInfo,
 } from "../screencapture";
-import { leftClickDrag, leftMouseDown, leftMouseUp } from "../cliclick";
-import { executeMouseAction } from "../cliclick";
+import {
+  leftClickDrag,
+  leftMouseDown,
+  leftMouseUp,
+  executeMouseAction,
+  pressKey,
+  holdKey,
+} from "../cliclick";
 import { scroll } from "../scroll";
 import { readClipboard, writeClipboard } from "../clipboard";
 
@@ -90,6 +98,9 @@ async function setup(): Promise<{ server: Server; port: number }> {
       return passthrough();
     }),
     http.all(`http://127.0.0.1:${port}/clipboard`, () => {
+      return passthrough();
+    }),
+    http.all(`http://127.0.0.1:${port}/keyboard`, () => {
       return passthrough();
     }),
     http.all(`http://127.0.0.1:${port}/unknown`, () => {
@@ -640,6 +651,107 @@ describe("desktop-server", () => {
       expect(res.status).toBe(500);
       const text = await res.text();
       expect(text).toBe("pbcopy failed");
+    });
+
+    it("should execute key press on POST /keyboard with action key", async () => {
+      const { server, port } = await setup();
+      testServer = server;
+
+      const res = await fetch(`http://127.0.0.1:${port}/keyboard`, {
+        method: "POST",
+        headers: {
+          "x-vm0-token": TEST_TOKEN,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ action: "key", keys: "cmd+c" }),
+      });
+      expect(res.status).toBe(200);
+
+      const data = await res.json();
+      expect(data).toEqual({ ok: true });
+      expect(pressKey).toHaveBeenCalledWith("cmd+c");
+    });
+
+    it("should execute hold key on POST /keyboard with action hold_key", async () => {
+      const { server, port } = await setup();
+      testServer = server;
+
+      const res = await fetch(`http://127.0.0.1:${port}/keyboard`, {
+        method: "POST",
+        headers: {
+          "x-vm0-token": TEST_TOKEN,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "hold_key",
+          keys: "shift",
+          durationMs: 1000,
+        }),
+      });
+      expect(res.status).toBe(200);
+
+      const data = await res.json();
+      expect(data).toEqual({ ok: true });
+      expect(holdKey).toHaveBeenCalledWith("shift", 1000);
+    });
+
+    it("should return 400 for invalid durationMs on hold_key", async () => {
+      const { server, port } = await setup();
+      testServer = server;
+
+      const res = await fetch(`http://127.0.0.1:${port}/keyboard`, {
+        method: "POST",
+        headers: {
+          "x-vm0-token": TEST_TOKEN,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "hold_key",
+          keys: "shift",
+          durationMs: -100,
+        }),
+      });
+      expect(res.status).toBe(400);
+      const text = await res.text();
+      expect(text).toContain("durationMs must be a positive number");
+    });
+
+    it("should return 400 for unknown keyboard action", async () => {
+      const { server, port } = await setup();
+      testServer = server;
+
+      const res = await fetch(`http://127.0.0.1:${port}/keyboard`, {
+        method: "POST",
+        headers: {
+          "x-vm0-token": TEST_TOKEN,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ action: "unknown_action" }),
+      });
+      expect(res.status).toBe(400);
+      const text = await res.text();
+      expect(text).toContain("Unknown keyboard action");
+    });
+
+    it("should return 500 when pressKey fails", async () => {
+      vi.mocked(pressKey).mockRejectedValueOnce(
+        new Error('Unknown key: "badkey"'),
+      );
+
+      const { server, port } = await setup();
+      testServer = server;
+
+      const res = await fetch(`http://127.0.0.1:${port}/keyboard`, {
+        method: "POST",
+        headers: {
+          "x-vm0-token": TEST_TOKEN,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ action: "key", keys: "badkey" }),
+      });
+      expect(res.status).toBe(500);
+      const text = await res.text();
+      expect(text).toContain("Unknown key");
     });
   });
 });

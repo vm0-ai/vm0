@@ -263,3 +263,36 @@ export const clientWriteClipboardCommand = new Command()
       process.stdout.write("ok\n");
     }),
   );
+
+export const clientKeyCommand = new Command()
+  .name("key")
+  .description("Press a key or key combination (e.g., cmd+c, return)")
+  .argument("<combo>", "Key combo string (e.g., cmd+c, ctrl+shift+s, return)")
+  .action(
+    withErrorHandler(async (combo: string) => {
+      await callHost("/keyboard", {
+        method: "POST",
+        body: { action: "key", keys: combo },
+      });
+      process.stdout.write("ok\n");
+    }),
+  );
+
+export const clientHoldKeyCommand = new Command()
+  .name("hold-key")
+  .description("Hold a key or key combination for a duration")
+  .argument("<combo>", "Key combo string (e.g., shift, cmd+shift)")
+  .argument("<durationMs>", "Duration to hold in milliseconds")
+  .action(
+    withErrorHandler(async (combo: string, durationStr: string) => {
+      const durationMs = parseInt(durationStr, 10);
+      if (Number.isNaN(durationMs) || durationMs <= 0) {
+        throw new Error("durationMs must be a positive integer");
+      }
+      await callHost("/keyboard", {
+        method: "POST",
+        body: { action: "hold_key", keys: combo, durationMs },
+      });
+      process.stdout.write("ok\n");
+    }),
+  );
