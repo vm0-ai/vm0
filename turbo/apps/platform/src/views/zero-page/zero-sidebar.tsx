@@ -93,8 +93,8 @@ import {
   setSidebarSearchTerm$,
   managePinnedDialogOpen$,
   setManagePinnedDialogOpen$,
-  confirmOpen$,
-  setConfirmOpen$,
+  pendingDeleteThreadId$,
+  setPendingDeleteThreadId$,
   sessionListCollapsed$,
   setSessionListCollapsed$,
   chatListOpen$,
@@ -527,101 +527,60 @@ function ChatThreadItem({
   isSelected: boolean;
   onSelect?: (id: string) => void;
 }) {
-  const setDelete = useSet(deleteChatThread$);
-  const pageSignal = useGet(pageSignal$);
-  const confirmOpen = useGet(confirmOpen$);
-  const setConfirmOpen = useSet(setConfirmOpen$);
+  const setPendingDeleteThreadId = useSet(setPendingDeleteThreadId$);
 
   function handleDeleteClick(e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
-    setConfirmOpen(true);
-  }
-
-  function confirmDelete() {
-    setConfirmOpen(false);
-    detach(setDelete(session.id, pageSignal), Reason.DomCallback);
+    setPendingDeleteThreadId(session.id);
   }
 
   return (
-    <>
-      <div className="group relative">
-        <Link
-          pathname="/chats/:id"
-          options={{ pathParams: { id: session.id } }}
-          onClick={(e) => {
-            if (e.metaKey || e.ctrlKey || e.shiftKey) {
-              return;
-            }
-            e.preventDefault();
-            onSelect?.(session.id);
-          }}
-          className={`flex h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors ${
-            isSelected
-              ? "bg-gray-200 text-gray-900 font-medium"
-              : "text-sidebar-foreground hover:bg-sidebar-accent"
-          }`}
-        >
-          <span className="truncate min-w-0 flex-1">
-            {session.title ?? "New chat"}
-          </span>
-        </Link>
-        <div className="absolute right-0 top-0 flex h-8 w-8 items-center justify-center">
-          <TooltipProvider delayDuration={200}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  onClick={handleDeleteClick}
-                  className={`flex h-6 w-6 cursor-pointer items-center justify-center rounded-md invisible group-hover:visible transition-opacity duration-150 ${
-                    isSelected
-                      ? "text-slate-500 hover:text-slate-900 hover:bg-slate-300"
-                      : "text-sidebar-foreground/80 hover:text-foreground hover:bg-sidebar-foreground/10"
-                  }`}
-                  aria-label="Delete chat"
-                >
-                  <IconTrash size={12} stroke={2} />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                <p className="text-xs">Delete chat</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </div>
-      </div>
-      <Dialog
-        open={confirmOpen}
-        onOpenChange={(open) => {
-          if (!open) {
-            setConfirmOpen(false);
+    <div className="group relative">
+      <Link
+        pathname="/chats/:id"
+        options={{ pathParams: { id: session.id } }}
+        onClick={(e) => {
+          if (e.metaKey || e.ctrlKey || e.shiftKey) {
+            return;
           }
+          e.preventDefault();
+          onSelect?.(session.id);
         }}
+        className={`flex h-8 items-center gap-2 rounded-lg p-2 text-left text-sm leading-5 transition-colors ${
+          isSelected
+            ? "bg-gray-200 text-gray-900 font-medium"
+            : "text-sidebar-foreground hover:bg-sidebar-accent"
+        }`}
       >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete chat?</DialogTitle>
-            <DialogDescription>
-              This will permanently delete this chat. This action cannot be
-              undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setConfirmOpen(false);
-              }}
-            >
-              Cancel
-            </Button>
-            <Button variant="destructive" onClick={confirmDelete}>
-              Delete
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </>
+        <span className="truncate min-w-0 flex-1">
+          {session.title ?? "New chat"}
+        </span>
+      </Link>
+      <div className="absolute right-0 top-0 flex h-8 w-8 items-center justify-center">
+        <TooltipProvider delayDuration={200}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={handleDeleteClick}
+                className={`flex h-6 w-6 cursor-pointer items-center justify-center rounded-md invisible group-hover:visible transition-opacity duration-150 ${
+                  isSelected
+                    ? "text-slate-500 hover:text-slate-900 hover:bg-slate-300"
+                    : "text-sidebar-foreground/80 hover:text-foreground hover:bg-sidebar-foreground/10"
+                }`}
+                aria-label="Delete chat"
+              >
+                <IconTrash size={12} stroke={2} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              <p className="text-xs">Delete chat</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </div>
+    </div>
   );
 }
 
@@ -640,6 +599,20 @@ function RecentChatList({
   selectedRecentId: string | null;
   onRecentSelect?: (id: string) => void;
 }) {
+  const pendingDeleteThreadId = useGet(pendingDeleteThreadId$);
+  const setPendingDeleteThreadId = useSet(setPendingDeleteThreadId$);
+  const setDelete = useSet(deleteChatThread$);
+  const pageSignal = useGet(pageSignal$);
+
+  function confirmDelete() {
+    if (!pendingDeleteThreadId) {
+      return;
+    }
+    const threadId = pendingDeleteThreadId;
+    setPendingDeleteThreadId(null);
+    detach(setDelete(threadId, pageSignal), Reason.DomCallback);
+  }
+
   if (loading && sessions.length === 0) {
     return (
       <>
@@ -665,16 +638,51 @@ function RecentChatList({
       </p>
     );
   }
-  return sessions.map((session) => {
-    return (
-      <ChatThreadItem
-        key={session.id}
-        session={session}
-        isSelected={selectedRecentId === session.id}
-        onSelect={onRecentSelect}
-      />
-    );
-  });
+  return (
+    <>
+      {sessions.map((session) => {
+        return (
+          <ChatThreadItem
+            key={session.id}
+            session={session}
+            isSelected={selectedRecentId === session.id}
+            onSelect={onRecentSelect}
+          />
+        );
+      })}
+      <Dialog
+        open={pendingDeleteThreadId !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingDeleteThreadId(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete chat?</DialogTitle>
+            <DialogDescription>
+              This will permanently delete this chat. This action cannot be
+              undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setPendingDeleteThreadId(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={confirmDelete}>
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
 }
 
 function RecentChatSection({

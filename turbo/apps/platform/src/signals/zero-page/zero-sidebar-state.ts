@@ -58,15 +58,17 @@ export const setChatListQuery$ = command(({ set }, query: string) => {
 });
 
 // ---------------------------------------------------------------------------
-// Delete confirmation dialog state (ChatThreadItem)
+// Delete confirmation dialog state (RecentChatList)
 // ---------------------------------------------------------------------------
-const internalConfirmOpen$ = state(false);
-export const confirmOpen$ = computed((get) => {
-  return get(internalConfirmOpen$);
+const internalPendingDeleteThreadId$ = state<string | null>(null);
+export const pendingDeleteThreadId$ = computed((get) => {
+  return get(internalPendingDeleteThreadId$);
 });
-export const setConfirmOpen$ = command(({ set }, open: boolean) => {
-  set(internalConfirmOpen$, open);
-});
+export const setPendingDeleteThreadId$ = command(
+  ({ set }, id: string | null) => {
+    set(internalPendingDeleteThreadId$, id);
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Session list collapse state (RecentChatSection)
