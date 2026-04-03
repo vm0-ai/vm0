@@ -318,7 +318,10 @@ const SKELETON_ROW_KEYS = ["r-0", "r-1", "r-2", "r-3"] as const;
 
 function ScheduleListSkeleton() {
   return (
-    <div className="w-full overflow-x-auto">
+    <div
+      className="w-full overflow-x-auto"
+      data-testid="schedule-list-skeleton"
+    >
       <table className="w-full text-sm border-collapse [&_tr>:first-child]:pl-5 [&_tr>:last-child]:pr-5">
         <thead>
           <tr className="border-b border-border/40 bg-card text-left text-sm text-muted-foreground">

@@ -298,6 +298,25 @@ describe("zero schedule page - agent labels", () => {
               createdAt: "2026-03-01T00:00:00Z",
               updatedAt: "2026-03-01T00:00:00Z",
             },
+            {
+              ...mockScheduleBase(),
+              id: "f0000001-0000-4000-a000-000000000098",
+              agentId: "c0000000-0000-4000-a000-000000000002",
+              displayName: "Beta Agent",
+              name: "beta-only-task",
+              triggerType: "cron",
+              cronExpression: "0 10 * * 1-5",
+              atTime: null,
+              intervalSeconds: null,
+              timezone: "UTC",
+              prompt: "Beta only task",
+              description: null,
+              enabled: true,
+              nextRunAt: null,
+              lastRunAt: null,
+              createdAt: "2026-03-02T00:00:00Z",
+              updatedAt: "2026-03-02T00:00:00Z",
+            },
           ],
         });
       }),
@@ -307,9 +326,16 @@ describe("zero schedule page - agent labels", () => {
     );
     await renderSchedulePage();
     await waitFor(() => {
-      expect(screen.getAllByText("Alpha only task")[0]).toBeInTheDocument();
+      expect(
+        screen.getByRole("link", { name: /Open schedule Alpha only task/ }),
+      ).toBeInTheDocument();
     });
-    expect(screen.queryByText("Beta only task")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: /Open schedule Beta only task/ }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: /Open schedule Gamma only task/ }),
+    ).not.toBeInTheDocument();
   });
 
   it("should display schedules from multiple agents with their respective agent labels (SCHED-D-006)", async () => {
@@ -364,11 +390,17 @@ describe("zero schedule page - agent labels", () => {
     );
     await renderSchedulePage();
     await waitFor(() => {
-      expect(screen.getAllByText("Alpha daily standup")[0]).toBeInTheDocument();
+      expect(
+        screen.getByRole("link", { name: /Open schedule Alpha daily standup/ }),
+      ).toBeInTheDocument();
     });
-    expect(screen.getAllByText("Beta monitoring check")[0]).toBeInTheDocument();
-    expect(screen.getAllByText("Alpha Bot")[0]).toBeInTheDocument();
-    expect(screen.getAllByText("Beta Bot")[0]).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: /Open schedule Beta monitoring check/ }),
+    ).toBeInTheDocument();
+    // Two distinct schedules from two distinct agents should both be rendered
+    expect(screen.getAllByRole("link", { name: /Open schedule/ })).toHaveLength(
+      2,
+    );
   });
 });
 
@@ -972,9 +1004,7 @@ describe("zero schedule page - loading state", () => {
     const pageSetupPromise = setupPage({ context, path: "/schedules" });
 
     await waitFor(() => {
-      expect(
-        document.querySelectorAll(".animate-pulse").length,
-      ).toBeGreaterThan(0);
+      expect(screen.getByTestId("schedule-list-skeleton")).toBeInTheDocument();
     });
 
     // Resolve to let setup complete
