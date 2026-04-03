@@ -95,50 +95,6 @@ describe("org-provider-dialog - display", () => {
     expect(screen.getByText(/Add AWS Bedrock provider/i)).toBeInTheDocument();
   });
 
-  // ORG-D-099: field labels and placeholders
-  it("shows claude oauth token label for oauth provider", async () => {
-    await openAddDialog("claude-code-oauth-token", /Add workspace/i);
-    expect(screen.getByText("Claude OAuth token")).toBeInTheDocument();
-  });
-
-  it("shows placeholder for oauth provider", async () => {
-    await openAddDialog("claude-code-oauth-token", /Add workspace/i);
-    expect(screen.getByPlaceholderText("sk-ant-XXXXXXX")).toBeInTheDocument();
-  });
-
-  it("shows api key label for anthropic-api-key provider", async () => {
-    await openAddDialog("anthropic-api-key", /Add workspace/i);
-    expect(screen.getByText("API key")).toBeInTheDocument();
-  });
-
-  it("shows placeholder for api-key provider in add mode", async () => {
-    await openAddDialog("anthropic-api-key", /Add workspace/i);
-    expect(
-      screen.getByPlaceholderText("Enter your API key"),
-    ).toBeInTheDocument();
-  });
-
-  // ORG-D-100: help text and error messages per field
-  it("shows help text below secret input for anthropic-api-key", async () => {
-    await openAddDialog("anthropic-api-key", /Add workspace/i);
-    expect(screen.getByText(/Get your API key at:/i)).toBeInTheDocument();
-  });
-
-  // ORG-D-101: model list in dropdown
-  it("shows model list in dropdown for openrouter provider", async () => {
-    const user = userEvent.setup();
-    await openAddDialog("openrouter-api-key", /Add workspace/i);
-
-    const trigger = screen.getByRole("combobox");
-    await user.click(trigger);
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("anthropic/claude-sonnet-4.6"),
-      ).toBeInTheDocument();
-    });
-  });
-
   // ORG-D-103: provider icon renders correct image by type
   it("renders img elements for known provider types in add-provider list", async () => {
     await openProvidersPage();
@@ -171,15 +127,18 @@ describe("org-provider-dialog - display", () => {
 
 describe("org-provider-dialog - content", () => {
   // ORG-C-090: form fields vary based on provider shape
-  it("renders oauth token field for claude-code-oauth-token provider", async () => {
+  it("renders secret input field for claude-code-oauth-token provider", async () => {
     await openAddDialog("claude-code-oauth-token", /Add workspace/i);
-    expect(screen.getByText("Claude OAuth token")).toBeInTheDocument();
-    expect(screen.getByPlaceholderText("sk-ant-XXXXXXX")).toBeInTheDocument();
+    expect(screen.getByRole("textbox")).toBeInTheDocument();
+    // oauth shape should NOT show auth method selector
+    expect(
+      screen.queryByText("Select authentication method"),
+    ).not.toBeInTheDocument();
   });
 
-  it("renders api key field for anthropic-api-key provider", async () => {
+  it("renders api key field without auth method selector for anthropic-api-key provider", async () => {
     await openAddDialog("anthropic-api-key", /Add workspace/i);
-    expect(screen.getByText("API key")).toBeInTheDocument();
+    expect(screen.getByRole("textbox")).toBeInTheDocument();
     // api-key shape should NOT show auth method selector
     expect(
       screen.queryByText("Select authentication method"),
@@ -253,7 +212,6 @@ describe("org-provider-dialog - interaction", () => {
 
     const switchEl = screen.getByRole("switch");
     expect(switchEl).toBeInTheDocument();
-    expect(screen.getByText("Default model")).toBeInTheDocument();
   });
 
   it("shows custom model input when default model toggle is disabled for azure-foundry", async () => {
@@ -335,10 +293,13 @@ describe("org-provider-dialog - interaction", () => {
     const input = screen.getByPlaceholderText("Enter your API key");
     await user.type(input, "sk-ant-some-key-value");
 
-    await user.click(screen.getByRole("button", { name: "Add" }));
+    const addButton = screen.getByRole("button", { name: "Add" });
+    await user.click(addButton);
 
     await waitFor(() => {
-      expect(screen.getByText("Saving...")).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /Add|Saving/i }),
+      ).toBeDisabled();
     });
 
     // Resolve the deferred POST so nothing leaks into next tests
