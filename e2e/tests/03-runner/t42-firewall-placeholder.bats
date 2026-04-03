@@ -248,8 +248,9 @@ EOF
     # Placeholder is the firewall-placeholder.vm3.ai URL
     assert_output --partial "DISCORD_WEBHOOK_URL=https://firewall-placeholder.vm3.ai/discord-webhook/hook"
 
-    # Discord returns 404 for the fake webhook — proves URL rewrite reached Discord
-    assert_output --partial "API_STATUS=404"
+    # Discord returns 404 for the fake webhook — proves URL rewrite reached Discord.
+    # May also return 429 (rate limited) which equally proves the request reached Discord.
+    assert_output --regexp "API_STATUS=(404|429)"
 
     # Extract run ID
     RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
