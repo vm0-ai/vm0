@@ -206,7 +206,7 @@ export const fetch$ = computed((get) => {
       const redirectResult = clerk.redirectToSignIn();
       if (redirectResult instanceof Promise) {
         redirectResult.catch((error: unknown) => {
-          if (error instanceof DOMException && error.name === "AbortError") {
+          if (error instanceof Error && error.name === "AbortError") {
             return;
           }
           throw error;

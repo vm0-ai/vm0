@@ -772,7 +772,7 @@ export const loadSessionFromSnapshot$ = command(
         });
       })
       .catch((error: unknown) => {
-        if (error instanceof DOMException && error.name === "AbortError") {
+        if (error instanceof Error && error.name === "AbortError") {
           return;
         }
         throw error;

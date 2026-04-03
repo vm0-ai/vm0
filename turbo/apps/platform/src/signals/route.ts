@@ -173,7 +173,7 @@ export const detachedNavigateTo$ = command(
       options ?? {},
       signal,
     ).catch((error: unknown) => {
-      if (error instanceof DOMException && error.name === "AbortError") {
+      if (error instanceof Error && error.name === "AbortError") {
         return;
       }
       throw error;

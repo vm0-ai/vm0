@@ -29,7 +29,7 @@ export const setupWorksPage$ = command(async ({ set }, signal: AbortSignal) => {
   // pollSlackConnection$ is a long-running daemon loop — fire-and-forget so
   // the setup completes and the page renders.
   set(pollSlackConnection$, signal).catch((error: unknown) => {
-    if (error instanceof DOMException && error.name === "AbortError") {
+    if (error instanceof Error && error.name === "AbortError") {
       return;
     }
     throw error;
