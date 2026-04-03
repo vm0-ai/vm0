@@ -9,6 +9,7 @@ import {
 } from "@vm0/core";
 import { throwIfAbort } from "../utils.ts";
 import { zeroClient$ } from "../api-client.ts";
+import { accept } from "../../lib/accept.ts";
 
 const POLL_INTERVAL = 5000;
 
@@ -23,10 +24,7 @@ export const queueData$ = computed((get) => {
 
 const fetchQueueData$ = command(async ({ get, set }, _signal: AbortSignal) => {
   const client = get(zeroClient$)(zeroRunsQueueContract);
-  const result = await client.getQueue();
-  if (result.status !== 200) {
-    throw new Error(`Failed to fetch queue (${result.status})`);
-  }
+  const result = await accept(client.getQueue(), [200], { toast: false });
   set(internalQueueData$, result.body);
 });
 
@@ -54,13 +52,8 @@ export const startQueuePolling$ = command(
 export const cancelQueueRun$ = command(
   async ({ get, set }, runId: string, signal: AbortSignal) => {
     const client = get(zeroClient$)(zeroRunsCancelContract);
-    const result = await client.cancel({
-      params: { id: runId },
-    });
+    await accept(client.cancel({ params: { id: runId } }), [200]);
     signal.throwIfAborted();
-    if (result.status !== 200) {
-      throw new Error(`Failed to cancel run (${result.status})`);
-    }
     // Refresh queue data after cancel
     await set(fetchQueueData$, signal);
   },

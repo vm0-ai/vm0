@@ -6,6 +6,7 @@ import {
   type ConnectorType,
 } from "@vm0/core";
 import { zeroClient$ } from "../api-client";
+import { accept } from "../../lib/accept.ts";
 
 /**
  * Reload trigger for connector signals.
@@ -20,13 +21,8 @@ export const connectors$ = computed(async (get) => {
   get(internalReloadConnectors$);
   const createClient = get(zeroClient$);
   const client = createClient(zeroConnectorsMainContract);
-  const result = await client.list();
-
-  if (result.status === 200) {
-    return result.body as ConnectorListResponse;
-  }
-
-  throw new Error(`Failed to fetch connectors: ${result.status}`);
+  const result = await accept(client.list(), [200], { toast: false });
+  return result.body as ConnectorListResponse;
 });
 
 /**
@@ -45,11 +41,7 @@ export const deleteConnector$ = command(
   async ({ get, set }, type: ConnectorType, _signal: AbortSignal) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroConnectorsByTypeContract);
-    const result = await client.delete({ params: { type } });
-
-    if (result.status !== 204) {
-      throw new Error(`Failed to delete connector: ${result.status}`);
-    }
+    await accept(client.delete({ params: { type } }), [204]);
 
     set(internalReloadConnectors$, (x) => {
       return x + 1;

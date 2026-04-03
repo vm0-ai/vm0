@@ -2,11 +2,9 @@ import { command, computed, state } from "ccstate";
 import { zeroOrgContract, type OrgResponse } from "@vm0/core";
 import { user$ } from "./auth.ts";
 import { zeroClient$ } from "./api-client.ts";
-import { logger } from "./log.ts";
+import { accept } from "../lib/accept.ts";
 
 const reloadOrg$ = state(0);
-
-const L = logger("Org");
 
 /**
  * Re-export for backward compatibility with mocks and consumers.
@@ -26,19 +24,13 @@ export const org$ = computed(async (get) => {
 
   const createClient = get(zeroClient$);
   const client = createClient(zeroOrgContract);
-  const result = await client.get();
-
-  L.debug(`Fetched /api/zero/org with status ${result.status}`);
+  const result = await accept(client.get(), [200, 404], { toast: false });
 
   if (result.status === 404) {
     return undefined;
   }
 
-  if (result.status === 200) {
-    return result.body;
-  }
-
-  throw new Error(`Failed to fetch org: ${result.status}`);
+  return result.body;
 });
 
 /**
