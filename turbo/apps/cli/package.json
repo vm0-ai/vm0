@@ -18,7 +18,7 @@
   ],
   "scripts": {
     "build": "tsup",
-    "postbuild": "cp package.json dist/ && pnpm json -I -f dist/package.json -e 'this.name=\"@vm0/cli\"; delete this.private; delete this.scripts; delete this.devDependencies; delete this.dependencies[\"@vm0/core\"]; this.bin[\"vm0\"]=\"index.js\"; this.bin[\"zero\"]=\"zero.js\"; this.files=[\"*.js\",\"*.js.map\"]'",
+    "postbuild": "cp package.json dist/ && pnpm json -I -f dist/package.json -e 'this.name=\"@vm0/cli\"; delete this.private; delete this.scripts; delete this.devDependencies; delete this.dependencies[\"@vm0/core\"]; delete this.dependencies[\"commander\"]; delete this.dependencies[\"chalk\"]; delete this.dependencies[\"prompts\"]; delete this.dependencies[\"yaml\"]; delete this.dependencies[\"zod\"]; delete this.dependencies[\"dotenv\"]; delete this.dependencies[\"tar\"]; delete this.dependencies[\"undici\"]; delete this.dependencies[\"@ts-rest/core\"]; this.bin[\"vm0\"]=\"index.js\"; this.bin[\"zero\"]=\"zero.js\"; this.files=[\"*.js\",\"*.js.map\"]'",
     "dev": "tsup --watch",
     "test": "vitest run",
     "test:watch": "vitest",
