@@ -150,7 +150,10 @@ export default [
       "ccstate/no-new-abort-controller": "off",
     },
   },
-  // Allow pre-accept zeroClient$ calls in existing signal files (migration in progress)
+  // Allow pre-accept zeroClient$ calls in existing signal files (migration in progress).
+  // These files were present before the ccstate/require-accept rule was introduced in #7874.
+  // Each file should be migrated to use accept() and removed from this list.
+  // Tracking issue: https://github.com/vm0-ai/vm0/issues/7874
   {
     files: [
       "src/signals/activity-page/activity-context-signals.ts",

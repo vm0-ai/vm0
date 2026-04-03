@@ -85,12 +85,6 @@ export default createRule({
       if (isGetZeroClientCall(call.callee)) {
         return true;
       }
-      if (
-        call.callee.type === AST_NODE_TYPES.CallExpression &&
-        isGetZeroClientCall(call.callee)
-      ) {
-        return true;
-      }
       // factory(contract) where factory is in factoryVars
       return (
         call.callee.type === AST_NODE_TYPES.Identifier &&
