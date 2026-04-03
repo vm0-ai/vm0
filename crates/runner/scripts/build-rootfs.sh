@@ -37,6 +37,7 @@ GUEST_DOWNLOAD=""
 GUEST_INIT=""
 GUEST_MOCK_CLAUDE=""
 DNS_NAMESERVER=""
+MIRROR="http://archive.ubuntu.com/ubuntu"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -49,6 +50,7 @@ while [[ $# -gt 0 ]]; do
     --guest-init)        GUEST_INIT="$2";        shift 2 ;;
     --guest-mock-claude) GUEST_MOCK_CLAUDE="$2"; shift 2 ;;
     --dns-nameserver)    DNS_NAMESERVER="$2";    shift 2 ;;
+    --mirror)            MIRROR="$2";            shift 2 ;;
     *) echo "error: unknown argument: $1" >&2; exit 1 ;;
   esac
 done
@@ -135,7 +137,7 @@ debootstrap_build() {
   echo "bootstrapping Ubuntu 24.04 rootfs..."
   ROOTFS_DIR="$(mktemp -d)"
 
-  sudo debootstrap noble "$ROOTFS_DIR" http://archive.ubuntu.com/ubuntu
+  sudo debootstrap noble "$ROOTFS_DIR" "$MIRROR"
 
   # Mount virtual filesystems for chroot operations
   sudo mount --bind /proc "$ROOTFS_DIR/proc"
@@ -143,7 +145,7 @@ debootstrap_build() {
   sudo mount --bind /dev "$ROOTFS_DIR/dev"
   sudo mount --bind /dev/pts "$ROOTFS_DIR/dev/pts"
 
-  # Set up DNS in chroot (needed for apt-get and curl downloads)
+  # Temporary DNS for build-time package downloads (overwritten by inject_files)
   sudo rm -f "$ROOTFS_DIR/etc/resolv.conf"
   echo "nameserver ${DNS_NAMESERVER}" | sudo tee "$ROOTFS_DIR/etc/resolv.conf" > /dev/null
 
@@ -304,7 +306,7 @@ install_runtimes() {
 inject_files() {
   echo "injecting guest binaries and CA..."
 
-  # Write resolv.conf (single nameserver — UDP 53 redirected to dnsmasq)
+  # Final resolv.conf for the VM (single nameserver — UDP 53 redirected to dnsmasq)
   sudo rm -f "$ROOTFS_DIR/etc/resolv.conf"
   echo "nameserver ${DNS_NAMESERVER}" | sudo tee "$ROOTFS_DIR/etc/resolv.conf" > /dev/null
 
