@@ -1,0 +1,306 @@
+import { describe, expect, it } from "vitest";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
+import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
+import { server } from "../../../mocks/server.ts";
+import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { setupPage } from "../../../__tests__/page-helper.ts";
+
+const context = testContext();
+
+function mockAPIs() {
+  server.use(
+    http.get("*/api/zero/team", () => {
+      return HttpResponse.json([
+        {
+          id: "c0000000-0000-4000-a000-000000000001",
+          name: "zero",
+          displayName: null,
+          description: null,
+          sound: null,
+          avatarUrl: null,
+          headVersionId: "version_1",
+          updatedAt: "2024-01-01T00:00:00Z",
+        },
+        {
+          id: "agent-detail-id",
+          name: "my-agent",
+          displayName: "My Agent",
+          description: "A helpful agent",
+          sound: null,
+          avatarUrl: null,
+          headVersionId: "version_2",
+          updatedAt: "2024-01-02T00:00:00Z",
+        },
+      ]);
+    }),
+    http.get("*/api/zero/chat-threads", () => {
+      return HttpResponse.json({ threads: [] });
+    }),
+    http.get("*/api/zero/agents/my-agent", () => {
+      return HttpResponse.json({
+        name: "my-agent",
+        agentId: "e0000000-0000-4000-a000-000000000010",
+        ownerId: "test-user-123",
+        description: "A helpful agent",
+        displayName: "My Agent",
+        sound: null,
+        avatarUrl: null,
+        connectors: [],
+        firewallPolicies: null,
+      });
+    }),
+    http.get("*/api/zero/agents/:name/instructions", () => {
+      return HttpResponse.json({ content: null, filename: null });
+    }),
+    http.get("*/api/zero/schedules", () => {
+      return HttpResponse.json({ schedules: [] });
+    }),
+  );
+}
+
+function mockAPIsWithConnectors() {
+  mockAPIs();
+  server.use(
+    http.get("*/api/zero/connectors", () => {
+      return HttpResponse.json({
+        connectors: [
+          {
+            id: "d0000001-0000-4000-a000-000000000001",
+            type: "github",
+            authMethod: "oauth",
+            externalId: null,
+            externalUsername: "testuser",
+            externalEmail: null,
+            oauthScopes: ["repo", "project"],
+            needsReconnect: false,
+            createdAt: "2026-01-01T00:00:00Z",
+            updatedAt: "2026-01-01T00:00:00Z",
+          },
+          {
+            id: "d0000002-0000-4000-a000-000000000002",
+            type: "linear",
+            authMethod: "oauth",
+            externalId: null,
+            externalUsername: "linearuser",
+            externalEmail: null,
+            oauthScopes: [],
+            needsReconnect: false,
+            createdAt: "2026-01-02T00:00:00Z",
+            updatedAt: "2026-01-02T00:00:00Z",
+          },
+        ],
+        configuredTypes: Object.keys(CONNECTOR_TYPES) as ConnectorType[],
+        connectorProvidedSecretNames: [],
+      });
+    }),
+    http.get("*/api/zero/agents/:id/user-connectors", () => {
+      return HttpResponse.json({ enabledTypes: ["github"] });
+    }),
+    http.put("*/api/zero/agents/:id/user-connectors", () => {
+      return HttpResponse.json({ enabledTypes: ["github"] });
+    }),
+  );
+}
+
+describe("zero job detail page - display", () => {
+  it("should render agent avatar image (AGENT-D-016)", async () => {
+    mockAPIs();
+    await setupPage({ context, path: "/agents/my-agent" });
+
+    await waitFor(() => {
+      expect(screen.getByRole("img", { name: "My Agent" })).toBeInTheDocument();
+    });
+  });
+
+  it("should render agent display name in heading (AGENT-D-017)", async () => {
+    mockAPIs();
+    await setupPage({ context, path: "/agents/my-agent" });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "My Agent" }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("should render agent description text (AGENT-D-018)", async () => {
+    mockAPIs();
+    await setupPage({ context, path: "/agents/my-agent" });
+
+    await waitFor(() => {
+      expect(screen.getByText("A helpful agent")).toBeInTheDocument();
+    });
+  });
+
+  it("should show current agent name in breadcrumb (AGENT-D-019)", async () => {
+    mockAPIs();
+    await setupPage({ context, path: "/agents/my-agent" });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "My Agent" }),
+      ).toBeInTheDocument();
+    });
+
+    // Find the breadcrumb nav (not the sidebar nav which has aria-label="Sidebar")
+    const navs = screen.getAllByRole("navigation");
+    const breadcrumb = navs.find((nav) => {
+      return nav.getAttribute("aria-label") !== "Sidebar";
+    });
+    expect(breadcrumb).toBeDefined();
+    expect(breadcrumb).toHaveTextContent("Agents");
+    expect(breadcrumb).toHaveTextContent("My Agent");
+  });
+
+  it("should show schedule tab content when ?tab=schedule is active (AGENT-D-020)", async () => {
+    mockAPIs();
+    await setupPage({ context, path: "/agents/my-agent?tab=schedule" });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "My Agent" }),
+      ).toBeInTheDocument();
+    });
+
+    // When schedule tab is active, the schedule tab content is rendered
+    await waitFor(() => {
+      expect(screen.getByText("No runs scheduled")).toBeInTheDocument();
+    });
+  });
+
+  it("should show loading skeleton before agent details load (AGENT-D-023)", async () => {
+    server.use(
+      http.get("*/api/zero/team", () => {
+        return HttpResponse.json([]);
+      }),
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
+      http.get("*/api/zero/agents/my-agent", () => {
+        return new Promise<never>(() => {
+          // never resolves — keeps page in loading state
+        });
+      }),
+    );
+
+    await setupPage({ context, path: "/agents/my-agent" });
+
+    // Heading should NOT be present while still loading
+    expect(
+      screen.queryByRole("heading", { name: "My Agent" }),
+    ).not.toBeInTheDocument();
+    // Breadcrumb navigation is rendered in the skeleton (sidebar nav + breadcrumb nav)
+    const navs = screen.getAllByRole("navigation");
+    expect(navs.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("should show not-found error state for unknown agent (AGENT-D-024)", async () => {
+    server.use(
+      http.get("*/api/zero/team", () => {
+        return HttpResponse.json([]);
+      }),
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
+      http.get("*/api/zero/agents/:name", () => {
+        return HttpResponse.json(
+          { error: { message: "Not found", code: "NOT_FOUND" } },
+          { status: 404 },
+        );
+      }),
+    );
+
+    await setupPage({ context, path: "/agents/nonexistent" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Agent not found")).toBeInTheDocument();
+    });
+  });
+});
+
+describe("zero job detail page - connector display", () => {
+  it("should show connector enabled and disabled states in permission list (AGENT-D-021)", async () => {
+    mockAPIsWithConnectors();
+    await setupPage({ context, path: "/agents/my-agent" });
+
+    // GitHub is enabled (in enabledTypes), Linear is disabled
+    await waitFor(() => {
+      expect(
+        screen.getByRole("switch", { name: /Revoke GitHub access/i }),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.getByRole("switch", { name: /Grant Linear access/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("should display filtered connector search results (AGENT-D-022)", async () => {
+    const user = userEvent.setup();
+    mockAPIsWithConnectors();
+    await setupPage({ context, path: "/agents/my-agent" });
+
+    await waitFor(() => {
+      expect(screen.getByText("GitHub")).toBeInTheDocument();
+      expect(screen.getByText("Linear")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Search connectors" }));
+    await user.type(screen.getByPlaceholderText("Search connectors..."), "git");
+
+    await waitFor(() => {
+      expect(screen.getByText("GitHub")).toBeInTheDocument();
+      expect(screen.queryByText("Linear")).not.toBeInTheDocument();
+    });
+  });
+
+  it("should show connector name, status, and manage button in permission row (AGENT-D-025)", async () => {
+    mockAPIsWithConnectors();
+    await setupPage({ context, path: "/agents/my-agent" });
+
+    await waitFor(() => {
+      expect(screen.getByText("GitHub")).toBeInTheDocument();
+    });
+
+    // Status switch visible
+    expect(
+      screen.getByRole("switch", { name: /GitHub access/i }),
+    ).toBeInTheDocument();
+    // Manage button visible (GitHub has firewall permissions)
+    expect(
+      screen.getByRole("button", { name: /Manage GitHub permissions/i }),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("zero job detail page - delete dialog", () => {
+  it("should render delete confirmation dialog with warning text (AGENT-D-026)", async () => {
+    const user = userEvent.setup();
+    mockAPIs();
+    await setupPage({ context, path: "/agents/my-agent" });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "My Agent" }),
+      ).toBeInTheDocument();
+    });
+
+    // Switch to Profile tab
+    await user.click(screen.getByRole("tab", { name: /Profile/i }));
+
+    // Wait for settings form
+    await waitFor(() => {
+      expect(screen.getByLabelText(/name/i)).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: /Delete agent/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Delete My Agent?")).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText(/permanently delete the agent/i),
+    ).toBeInTheDocument();
+  });
+});
