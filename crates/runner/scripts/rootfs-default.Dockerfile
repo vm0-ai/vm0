@@ -111,7 +111,7 @@ RUN find /usr/lib -name libnssckbi.so -exec sh -c \
 # Ubuntu 24.04 ships with an 'ubuntu' user at UID 1000, so remove it first.
 RUN userdel -r ubuntu 2>/dev/null || true \
     && useradd -m -u 1000 -s /bin/bash user \
-    && usermod -aG sudo user \
+    && usermod -aG sudo,postgres user \
     && echo 'user ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers \
     && passwd -d user
 

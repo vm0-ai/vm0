@@ -96,6 +96,8 @@ pub struct PooledNetns {
 pub struct NetnsPoolConfig {
     /// Proxy port for HTTP/HTTPS redirect (only adds redirect rules when set).
     pub proxy_port: Option<u16>,
+    /// DNS proxy port for DNS query redirect (only adds redirect rules when set).
+    pub dns_port: Option<u16>,
 }
 
 // ---------------------------------------------------------------------------
@@ -440,6 +442,85 @@ async fn add_non_tcp_log_rule(name: &str, peer_ip: &str) -> Result<()> {
     Ok(())
 }
 
+/// Redirect all outbound DNS (UDP 53) to the local dnsmasq port.
+///
+/// VM resolv.conf points to an external nameserver as a dummy target.
+/// This PREROUTING REDIRECT intercepts the packet before FORWARD/MASQUERADE,
+/// preserving the original source IP (peer veth) for per-VM log routing.
+async fn add_dns_redirect_rule(name: &str, peer_ip: &str, dns_port: u16) -> Result<()> {
+    let src = format!("{peer_ip}/30");
+    let port_str = dns_port.to_string();
+    exec_iptables(&[
+        "-t",
+        "nat",
+        "-A",
+        "PREROUTING",
+        "-s",
+        &src,
+        "-p",
+        "udp",
+        "--dport",
+        "53",
+        "-j",
+        "REDIRECT",
+        "--to-port",
+        &port_str,
+        "-m",
+        "comment",
+        "--comment",
+        name,
+    ])
+    .await?;
+    Ok(())
+}
+
+/// Drop external DNS traffic that bypasses the REDIRECT rule.
+///
+/// Blocks UDP 53 and TCP 853 (DNS over TLS) in FORWARD chain.
+/// DNS over HTTPS (TCP 443) is handled by mitmproxy at HTTP level.
+async fn add_dns_drop_rules(name: &str, peer_ip: &str) -> Result<()> {
+    let src = format!("{peer_ip}/30");
+    // Block UDP 53 in FORWARD (catches any traffic not caught by PREROUTING REDIRECT)
+    exec_iptables(&[
+        "-I",
+        "FORWARD",
+        "1",
+        "-s",
+        &src,
+        "-p",
+        "udp",
+        "--dport",
+        "53",
+        "-j",
+        "DROP",
+        "-m",
+        "comment",
+        "--comment",
+        name,
+    ])
+    .await?;
+    // Block DNS over TLS (TCP 853)
+    exec_iptables(&[
+        "-I",
+        "FORWARD",
+        "1",
+        "-s",
+        &src,
+        "-p",
+        "tcp",
+        "--dport",
+        "853",
+        "-j",
+        "DROP",
+        "-m",
+        "comment",
+        "--comment",
+        name,
+    ])
+    .await?;
+    Ok(())
+}
+
 async fn get_default_interface() -> Result<String> {
     let result = exec("ip", &["route", "get", "8.8.8.8"]).await?;
     let iface = result
@@ -579,6 +660,7 @@ pub struct NetnsPool {
     next_ns_index: u32,
     pool_index: u32,
     proxy_port: Option<u16>,
+    dns_port: Option<u16>,
     default_iface: String,
     /// Held for the lifetime of the pool to reserve the pool index.
     _lock: Flock<File>,
@@ -622,6 +704,7 @@ impl NetnsPool {
             next_ns_index: 0,
             pool_index: index,
             proxy_port: config.proxy_port,
+            dns_port: config.dns_port,
             default_iface,
             _lock: lock,
         };
@@ -642,11 +725,13 @@ impl NetnsPool {
                     ns_index,
                     default_iface,
                     None,
+                    None,
                 ));
             }
 
             // Proxy namespaces (connectivity + REDIRECT rules).
             if let Some(proxy_port) = pool.proxy_port {
+                let dns_port = pool.dns_port;
                 for _ in 0..BUFFER_SIZE {
                     let ns_index = pool.next_ns_index;
                     pool.next_ns_index += 1;
@@ -657,6 +742,7 @@ impl NetnsPool {
                         ns_index,
                         default_iface,
                         Some(proxy_port),
+                        dns_port,
                     ));
                 }
             }
@@ -739,7 +825,7 @@ impl NetnsPool {
         }
         // Tier 3: on-demand.
         info!("pool exhausted, creating namespace on-demand");
-        let ns = self.create_on_demand(None).await?;
+        let ns = self.create_on_demand(None, None).await?;
         self.maybe_replenish_plain();
         Ok(ns)
     }
@@ -773,13 +859,19 @@ impl NetnsPool {
         }
         // Tier 3: on-demand.
         info!("proxy pool exhausted, creating namespace on-demand");
-        let ns = self.create_on_demand(self.proxy_port).await?;
+        let ns = self
+            .create_on_demand(self.proxy_port, self.dns_port)
+            .await?;
         self.maybe_replenish_proxy();
         Ok(ns)
     }
 
     /// Create a new namespace on-demand, allocating the next index.
-    async fn create_on_demand(&mut self, proxy_port: Option<u16>) -> Result<PooledNetns> {
+    async fn create_on_demand(
+        &mut self,
+        proxy_port: Option<u16>,
+        dns_port: Option<u16>,
+    ) -> Result<PooledNetns> {
         let ns_index = self.next_ns_index;
         if ns_index >= MAX_NAMESPACES {
             return Err(NetworkError::NamespaceLimitReached {
@@ -792,6 +884,7 @@ impl NetnsPool {
             ns_index,
             self.default_iface.clone(),
             proxy_port,
+            dns_port,
         )
         .await
     }
@@ -837,6 +930,7 @@ impl NetnsPool {
             ns_index,
             default_iface,
             None,
+            None,
         ));
     }
 
@@ -858,11 +952,13 @@ impl NetnsPool {
         self.next_ns_index += 1;
         let pool_index = self.pool_index;
         let default_iface = self.default_iface.clone();
+        let dns_port = self.dns_port;
         self.pending_proxy.spawn(create_single_namespace(
             pool_index,
             ns_index,
             default_iface,
             Some(proxy_port),
+            dns_port,
         ));
     }
 
@@ -982,6 +1078,7 @@ async fn create_single_namespace(
     ns_index: u32,
     default_iface: String,
     proxy_port: Option<u16>,
+    dns_port: Option<u16>,
 ) -> Result<PooledNetns> {
     if ns_index >= MAX_NAMESPACES {
         return Err(NetworkError::NamespaceLimitReached {
@@ -1018,6 +1115,18 @@ async fn create_single_namespace(
                 }
                 if let Err(e) = add_non_tcp_log_rule(&ns_name, &peer_ip).await {
                     error!(name = %ns_name, error = %e, "failed to add non-TCP log rule, cleaning up");
+                    delete_namespace_resources(&ns_name, &host_device).await;
+                    return Err(e);
+                }
+            }
+            if let Some(port) = dns_port {
+                if let Err(e) = add_dns_redirect_rule(&ns_name, &peer_ip, port).await {
+                    error!(name = %ns_name, error = %e, "failed to add DNS redirect rule, cleaning up");
+                    delete_namespace_resources(&ns_name, &host_device).await;
+                    return Err(e);
+                }
+                if let Err(e) = add_dns_drop_rules(&ns_name, &peer_ip).await {
+                    error!(name = %ns_name, error = %e, "failed to add DNS drop rules, cleaning up");
                     delete_namespace_resources(&ns_name, &host_device).await;
                     return Err(e);
                 }

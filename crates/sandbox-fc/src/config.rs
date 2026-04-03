@@ -11,6 +11,8 @@ pub struct FirecrackerConfig {
     pub profile: String,
     /// Port of the HTTP/HTTPS proxy. When set, iptables rules redirect traffic through it.
     pub proxy_port: Option<u16>,
+    /// Port of the DNS proxy. When set, iptables rules redirect DNS queries through it.
+    pub dns_port: Option<u16>,
     /// Snapshot to restore from. When set, VMs boot via snapshot restore instead of fresh boot.
     pub snapshot: Option<SnapshotConfig>,
 }

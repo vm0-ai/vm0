@@ -9,9 +9,7 @@ import {
   type BillingStatusResponse,
 } from "@vm0/core";
 import { zeroClient$ } from "../api-client.ts";
-import { logger } from "../log.ts";
-
-const log = logger("billing");
+import { accept } from "../../lib/accept.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -26,19 +24,6 @@ export function apiTierToBillingTier(tier: string | undefined): BillingTier {
     return tier;
   }
   return "free";
-}
-
-/** Extract error message from a ts-rest error response body. */
-function getErrorMessage(body: unknown): string | undefined {
-  if (typeof body !== "object" || body === null || !("error" in body)) {
-    return undefined;
-  }
-  const { error } = body;
-  if (typeof error !== "object" || error === null || !("message" in error)) {
-    return undefined;
-  }
-  const { message } = error;
-  return typeof message === "string" ? message : undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -99,10 +84,7 @@ export const billingStatusAsync$ = computed(async (get) => {
   get(billingReload$);
   const createClient = get(zeroClient$);
   const client = createClient(zeroBillingStatusContract);
-  const result = await client.get();
-  if (result.status !== 200) {
-    throw new Error(`Failed to fetch billing status: ${result.status}`);
-  }
+  const result = await accept(client.get(), [200]);
   return result.body;
 });
 
@@ -131,21 +113,18 @@ export const startCheckout$ = command(
 
     const createClient = get(zeroClient$);
     const client = createClient(zeroBillingCheckoutContract);
-    const result = await client.create({
-      body: {
-        tier,
-        successUrl: successUrl.toString(),
-        cancelUrl: cancelUrl.toString(),
-      },
-    });
-
-    if (result.status === 200) {
-      window.location.href = result.body.url;
-      // Don't reset loading — page is navigating away
-    } else {
-      log.error("Checkout failed", getErrorMessage(result.body));
-      throw new Error(getErrorMessage(result.body) ?? "Checkout failed");
-    }
+    const result = await accept(
+      client.create({
+        body: {
+          tier,
+          successUrl: successUrl.toString(),
+          cancelUrl: cancelUrl.toString(),
+        },
+      }),
+      [200],
+    );
+    window.location.href = result.body.url;
+    // Don't reset loading — page is navigating away
   },
 );
 
@@ -153,16 +132,11 @@ export const startDowngrade$ = command(
   async ({ get }, _signal: AbortSignal) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroBillingPortalContract);
-    const result = await client.create({
-      body: { returnUrl: window.location.href },
-    });
-
-    if (result.status === 200) {
-      window.location.href = result.body.url;
-    } else {
-      log.error("Portal redirect failed", getErrorMessage(result.body));
-      throw new Error(getErrorMessage(result.body) ?? "Portal redirect failed");
-    }
+    const result = await accept(
+      client.create({ body: { returnUrl: window.location.href } }),
+      [200],
+    );
+    window.location.href = result.body.url;
   },
 );
 
@@ -182,22 +156,12 @@ export const confirmDowngrade$ = command(
   async ({ get, set }, targetTier: "free" | "pro", _signal: AbortSignal) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroBillingDowngradeContract);
-    const result = await client.create({
-      body: { targetTier },
+    await accept(client.create({ body: { targetTier } }), [200]);
+    set(internalDowngradeDialogOpen$, false);
+    // Reload billing status to reflect the change
+    set(billingReload$, (x) => {
+      return x + 1;
     });
-
-    if (result.status === 200) {
-      set(internalDowngradeDialogOpen$, false);
-      // Reload billing status to reflect the change
-      set(billingReload$, (x) => {
-        return x + 1;
-      });
-    } else {
-      const message =
-        getErrorMessage(result.body) ?? "Failed to downgrade plan";
-      log.error("Downgrade failed", message);
-      throw new Error(message);
-    }
   },
 );
 
@@ -232,14 +196,7 @@ export const saveAutoRecharge$ = command(
   ) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroBillingAutoRechargeContract);
-    const result = await client.update({ body: config });
-
-    if (result.status !== 200) {
-      const message = getErrorMessage(result.body);
-      log.error("Auto-recharge save failed", message);
-      throw new Error(message ?? "Auto-recharge save failed");
-    }
-
+    await accept(client.update({ body: config }), [200]);
     // Reload billing status — autoRechargeConfig$ re-derives automatically
     set(billingReload$, (x) => {
       return x + 1;
@@ -254,9 +211,6 @@ export const saveAutoRecharge$ = command(
 export const invoicesAsync$ = computed(async (get) => {
   const createClient = get(zeroClient$);
   const client = createClient(zeroBillingInvoicesContract);
-  const result = await client.get();
-  if (result.status !== 200) {
-    throw new Error(`Failed to fetch invoices: ${result.status}`);
-  }
+  const result = await accept(client.get(), [200]);
   return result.body;
 });

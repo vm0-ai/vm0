@@ -31,6 +31,7 @@ GUEST_AGENT=""
 GUEST_DOWNLOAD=""
 GUEST_INIT=""
 GUEST_MOCK_CLAUDE=""
+DNS_NAMESERVER=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -43,11 +44,12 @@ while [[ $# -gt 0 ]]; do
     --guest-download)   GUEST_DOWNLOAD="$2";   shift 2 ;;
     --guest-init)       GUEST_INIT="$2";       shift 2 ;;
     --guest-mock-claude) GUEST_MOCK_CLAUDE="$2"; shift 2 ;;
+    --dns-nameserver)   DNS_NAMESERVER="$2";   shift 2 ;;
     *) echo "error: unknown argument: $1" >&2; exit 1 ;;
   esac
 done
 
-for var in OUTPUT_DIR WORK_DIR CA_DIR INPUT_HASH DISK_MB GUEST_AGENT GUEST_DOWNLOAD GUEST_INIT GUEST_MOCK_CLAUDE; do
+for var in OUTPUT_DIR WORK_DIR CA_DIR INPUT_HASH DISK_MB GUEST_AGENT GUEST_DOWNLOAD GUEST_INIT GUEST_MOCK_CLAUDE DNS_NAMESERVER; do
   if [[ -z "${!var}" ]]; then
     echo "error: --$(echo "$var" | tr '_' '-' | tr '[:upper:]' '[:lower:]') is required" >&2
     exit 1
@@ -66,9 +68,7 @@ CA_KEY_FILE="mitmproxy-ca-key.pem"
 CA_COMBINED_FILE="mitmproxy-ca.pem"
 CA_ROOTFS_DEST="usr/local/share/ca-certificates/vm0-proxy-ca.crt"
 
-RESOLV_CONF="nameserver 8.8.8.8
-nameserver 8.8.4.4
-nameserver 1.1.1.1
+RESOLV_CONF="nameserver ${DNS_NAMESERVER}
 "
 
 CONTAINER_NAME="vm0-rootfs-tmp-$$"
@@ -176,6 +176,13 @@ extract_and_inject() {
   local resolv_path="${EXTRACT_DIR}/etc/resolv.conf"
   sudo rm -f "$resolv_path"
   echo -n "$RESOLV_CONF" | sudo tee "$resolv_path" > /dev/null
+
+  # Write /etc/hosts — the VM has no mDNS and resolv.conf only lists
+  # external nameservers, so "localhost" would fail to resolve without this.
+  printf '%s\n' \
+    "127.0.0.1 localhost" \
+    "::1 localhost" \
+    | sudo tee "${EXTRACT_DIR}/etc/hosts" > /dev/null
 
   # Install guest binaries
   local -a bins=(

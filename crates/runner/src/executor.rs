@@ -132,7 +132,7 @@ async fn execute_inner(
     if let Err(e) = config.registry.register_vm(&source_ip, &registration).await {
         warn!(run_id = %context.run_id, error = %e, "failed to register VM in proxy");
     }
-    // Register source IP in kmsg log map so non-TCP traffic is logged.
+    // Register source IP in log map so non-TCP and DNS traffic is logged.
     config
         .ip_log_map
         .lock()

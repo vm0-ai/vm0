@@ -72,6 +72,9 @@ function typeColor(type: string): string {
   if (type === "UDP" || type === "ICMP") {
     return "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400";
   }
+  if (type === "DNS") {
+    return "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400";
+  }
   if (type === "DENY") {
     return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400";
   }

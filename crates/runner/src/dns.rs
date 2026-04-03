@@ -1,0 +1,331 @@
+//! DNS proxy for sandbox VMs using dnsmasq.
+//!
+//! Spawns a dnsmasq process that serves as the DNS resolver for all VMs.
+//! DNS queries are intercepted via iptables REDIRECT (PREROUTING chain)
+//! and forwarded to upstream resolvers (8.8.8.8, 8.8.4.4).
+//!
+//! Defense-in-depth:
+//! - Layer 1: iptables REDIRECT → dnsmasq port (working path, preserves source IP)
+//! - Layer 2: iptables DROP external UDP 53 / TCP 853 (bypass prevention)
+//!
+//! VM resolv.conf points to an external nameserver (e.g. 8.8.8.8) as a dummy
+//! target. The REDIRECT rule in PREROUTING intercepts all UDP 53 from the VM
+//! subnet and redirects to dnsmasq before the packet reaches FORWARD/POSTROUTING.
+//!
+//! Log format: dnsmasq `--log-queries` outputs to stderr, parsed by a background
+//! async task that writes per-VM network JSONL entries (same pattern as kmsg_log).
+
+use std::path::Path;
+use std::process::Stdio;
+
+use chrono::Utc;
+use tokio::io::AsyncBufReadExt;
+use tokio_util::sync::CancellationToken;
+use tracing::{debug, info, warn};
+
+use crate::kmsg_log::IpLogMap;
+
+/// Handle to the dnsmasq process and its log monitor.
+pub struct DnsProxy {
+    cancel: CancellationToken,
+    task: tokio::task::JoinHandle<()>,
+    child: tokio::process::Child,
+    port: u16,
+}
+
+impl DnsProxy {
+    /// Stop the DNS proxy and wait for cleanup.
+    pub async fn stop(mut self) {
+        self.cancel.cancel();
+        let _ = self.child.start_kill();
+        let _ = self.child.wait().await;
+        let _ = (&mut self.task).await;
+        info!("dns proxy stopped");
+    }
+
+    /// Return the port dnsmasq is listening on.
+    pub fn port(&self) -> u16 {
+        self.port
+    }
+}
+
+impl Drop for DnsProxy {
+    /// Kill dnsmasq and abort the log task if `stop()` was never called.
+    ///
+    /// Prevents orphaned dnsmasq processes when `run_start()` fails after
+    /// `dns::start()` (e.g., runtime creation error). Harmless if `stop()`
+    /// already ran — `start_kill` on an exited child is a no-op.
+    fn drop(&mut self) {
+        let _ = self.child.start_kill();
+        self.cancel.cancel();
+        self.task.abort();
+    }
+}
+
+/// Find an available UDP port by binding to port 0.
+fn find_available_port() -> std::io::Result<u16> {
+    let socket = std::net::UdpSocket::bind("0.0.0.0:0")?;
+    Ok(socket.local_addr()?.port())
+}
+
+/// Start dnsmasq and spawn a background task to parse its query log.
+///
+/// dnsmasq listens on a dynamically allocated port and forwards to upstream DNS.
+pub async fn start(ip_log_map: IpLogMap) -> std::io::Result<DnsProxy> {
+    let port = find_available_port()?;
+    let port_str = port.to_string();
+
+    let mut child = tokio::process::Command::new("dnsmasq")
+        .args([
+            "--no-daemon",
+            "--no-resolv",
+            "--port",
+            &port_str,
+            "--server",
+            "8.8.8.8",
+            "--server",
+            "8.8.4.4",
+            "--log-queries",
+            "--log-facility=-",
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()?;
+
+    // Give dnsmasq a moment to bind, then verify it's still running.
+    // Catches port-already-in-use, missing binary (spawn itself errors),
+    // and bad config that causes immediate exit.
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    match child.try_wait() {
+        Ok(Some(status)) => {
+            return Err(std::io::Error::other(format!(
+                "dnsmasq exited immediately with {status}"
+            )));
+        }
+        Err(e) => {
+            return Err(std::io::Error::other(format!(
+                "dnsmasq process check failed: {e}"
+            )));
+        }
+        Ok(None) => {} // still running — good
+    }
+
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| std::io::Error::other("failed to capture dnsmasq stderr"))?;
+
+    let cancel = CancellationToken::new();
+    let token = cancel.clone();
+    let task = tokio::spawn(async move {
+        if let Err(e) = tail_stderr(stderr, &ip_log_map, token).await {
+            warn!(error = %e, "dns log monitor exited");
+        }
+    });
+
+    info!(port, "dns proxy started");
+    Ok(DnsProxy {
+        cancel,
+        task,
+        child,
+        port,
+    })
+}
+
+/// Tail dnsmasq stderr and write DNS query entries to per-VM network JSONL.
+///
+/// dnsmasq `--log-queries --log-facility=-` outputs lines like:
+/// ```text
+/// dnsmasq[1234]: query[A] api.github.com from 10.200.0.2
+/// dnsmasq[1234]: forwarded api.github.com to 8.8.8.8
+/// dnsmasq[1234]: reply api.github.com is 140.82.121.4
+/// ```
+///
+/// We only parse `query[...]` lines — they contain the domain and source IP.
+async fn tail_stderr(
+    stderr: tokio::process::ChildStderr,
+    ip_log_map: &IpLogMap,
+    cancel: CancellationToken,
+) -> std::io::Result<()> {
+    let mut lines = tokio::io::BufReader::new(stderr).lines();
+    loop {
+        tokio::select! {
+            _ = cancel.cancelled() => break,
+            result = lines.next_line() => {
+                let line = match result {
+                    Ok(Some(l)) => l,
+                    Ok(None) => {
+                        if !cancel.is_cancelled() {
+                            warn!("dnsmasq exited unexpectedly (stderr EOF)");
+                        }
+                        break;
+                    }
+                    Err(e) => {
+                        warn!(error = %e, "dnsmasq stderr read error");
+                        break;
+                    }
+                };
+
+                if let Some(entry) = parse_query_line(&line) {
+                    let log_path = {
+                        let map = ip_log_map.lock().await;
+                        map.get(&entry.source_ip).cloned()
+                    };
+                    if let Some(path) = log_path {
+                        write_jsonl(&path, &entry);
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Parsed DNS query entry.
+struct DnsQueryEntry {
+    source_ip: String,
+    domain: String,
+}
+
+/// Parse a dnsmasq query log line.
+///
+/// Matches: `dnsmasq[PID]: query[TYPE] DOMAIN from IP`
+fn parse_query_line(line: &str) -> Option<DnsQueryEntry> {
+    // Find "query[" marker
+    let q_start = line.find("query[")?;
+    let q_end = line[q_start..].find(']')? + q_start;
+
+    // Domain is after "] "
+    let after_bracket = line.get(q_end + 2..)?;
+    let domain_end = after_bracket.find(' ')?;
+    let domain = after_bracket[..domain_end].to_string();
+
+    // Source IP is after " from "
+    let from_pos = after_bracket.find(" from ")?;
+    let ip_start = from_pos + 6;
+    let ip_str = after_bracket.get(ip_start..)?;
+    // IP ends at whitespace or end of string
+    let ip_end = ip_str
+        .find(|c: char| !c.is_ascii_digit() && c != '.')
+        .unwrap_or(ip_str.len());
+    let source_ip = ip_str[..ip_end].to_string();
+
+    if source_ip.is_empty() {
+        return None;
+    }
+
+    Some(DnsQueryEntry { source_ip, domain })
+}
+
+/// Append a JSON line to the network log file.
+fn write_jsonl(path: &Path, entry: &DnsQueryEntry) {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+
+    // [NETWORK_LOG_FIELDS] — keep in sync with all network log schemas
+    let json = serde_json::json!({
+        "timestamp": Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+        "type": "dns",
+        "host": entry.domain,
+        "port": 53,
+    });
+
+    let mut line = serde_json::to_string(&json).unwrap_or_default();
+    line.push('\n');
+
+    let result = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .mode(0o644)
+        .open(path)
+        .and_then(|mut f| f.write_all(line.as_bytes()));
+
+    if let Err(e) = result {
+        debug!(path = %path.display(), error = %e, "failed to write dns network log");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_a_query() {
+        let line = "dnsmasq[1234]: query[A] example.com from 10.200.0.2";
+        let entry = parse_query_line(line).unwrap();
+        assert_eq!(entry.source_ip, "10.200.0.2");
+        assert_eq!(entry.domain, "example.com");
+    }
+
+    #[test]
+    fn parse_aaaa_query() {
+        let line = "dnsmasq[5678]: query[AAAA] google.com from 10.200.0.6";
+        let entry = parse_query_line(line).unwrap();
+        assert_eq!(entry.source_ip, "10.200.0.6");
+        assert_eq!(entry.domain, "google.com");
+    }
+
+    #[test]
+    fn parse_mx_query() {
+        let line = "dnsmasq[9999]: query[MX] mail.example.com from 10.200.0.10";
+        let entry = parse_query_line(line).unwrap();
+        assert_eq!(entry.domain, "mail.example.com");
+    }
+
+    #[test]
+    fn parse_txt_query() {
+        let line = "dnsmasq[1111]: query[TXT] _dmarc.example.com from 10.200.0.2";
+        let entry = parse_query_line(line).unwrap();
+        assert_eq!(entry.domain, "_dmarc.example.com");
+    }
+
+    #[test]
+    fn ignore_reply_lines() {
+        let line = "dnsmasq[1234]: reply example.com is 93.184.216.34";
+        assert!(parse_query_line(line).is_none());
+    }
+
+    #[test]
+    fn ignore_forwarded_lines() {
+        let line = "dnsmasq[1234]: forwarded example.com to 8.8.8.8";
+        assert!(parse_query_line(line).is_none());
+    }
+
+    #[test]
+    fn ignore_malformed() {
+        assert!(parse_query_line("").is_none());
+        assert!(parse_query_line("not a dns log").is_none());
+        assert!(parse_query_line("dnsmasq[1]: query[A]").is_none());
+    }
+
+    #[test]
+    fn parse_ip_with_port_suffix() {
+        // Some dnsmasq versions append #port to the source address.
+        let line = "dnsmasq[1234]: query[A] example.com from 10.200.0.2#54321";
+        let entry = parse_query_line(line).unwrap();
+        assert_eq!(entry.source_ip, "10.200.0.2");
+        assert_eq!(entry.domain, "example.com");
+    }
+
+    #[test]
+    fn parse_domain_containing_from() {
+        let line = "dnsmasq[1234]: query[A] from.example.com from 10.200.0.2";
+        let entry = parse_query_line(line).unwrap();
+        assert_eq!(entry.domain, "from.example.com");
+        assert_eq!(entry.source_ip, "10.200.0.2");
+    }
+
+    #[test]
+    fn ignore_ipv6_source() {
+        // VMs use IPv4 only; IPv6 sources should be ignored.
+        let line = "dnsmasq[1234]: query[A] example.com from ::1";
+        assert!(parse_query_line(line).is_none());
+    }
+
+    #[test]
+    fn parse_trailing_carriage_return() {
+        let line = "dnsmasq[1234]: query[A] example.com from 10.200.0.2\r";
+        let entry = parse_query_line(line).unwrap();
+        assert_eq!(entry.source_ip, "10.200.0.2");
+    }
+}
