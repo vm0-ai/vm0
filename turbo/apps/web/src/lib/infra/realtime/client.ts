@@ -1,7 +1,7 @@
 import "server-only";
 import Ably from "ably";
 import { env } from "../../../env";
-import { logger } from "../logger";
+import { logger } from "../../shared/logger";
 
 const log = logger("realtime");
 

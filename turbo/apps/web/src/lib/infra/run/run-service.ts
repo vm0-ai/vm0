@@ -41,7 +41,7 @@ import {
   type ConnectorType,
 } from "@vm0/core";
 import { agentRunQueue } from "../../../db/schema/agent-run-queue";
-import { publishCancelNotification } from "../../shared/realtime/client";
+import { publishCancelNotification } from "../realtime/client";
 
 const log = logger("service:run");
 
