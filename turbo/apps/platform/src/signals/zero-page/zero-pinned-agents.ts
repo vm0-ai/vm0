@@ -1,6 +1,6 @@
 import { command, computed, state } from "ccstate";
-import { toast } from "@vm0/ui/components/ui/sonner";
 import { zeroUserPreferencesContract } from "@vm0/core";
+import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { clerk$ } from "../auth.ts";
 
@@ -18,11 +18,8 @@ const serverPinnedIds$ = computed(async (get) => {
   get(reloadPinned$);
   const createClient = get(zeroClient$);
   const client = createClient(zeroUserPreferencesContract);
-  const result = await client.get();
-  if (result.status === 200) {
-    return result.body.pinnedAgentIds;
-  }
-  throw new Error(`Failed to fetch user preferences: ${result.status}`);
+  const result = await accept(client.get(), [200], { toast: false });
+  return result.body.pinnedAgentIds;
 });
 
 /**
@@ -46,12 +43,7 @@ export const updatePinnedAgentIds$ = command(
     try {
       const createClient = get(zeroClient$);
       const client = createClient(zeroUserPreferencesContract);
-      const result = await client.update({ body: { pinnedAgentIds: ids } });
-
-      if (result.status !== 200) {
-        toast.error("Failed to update pinned agents");
-        return;
-      }
+      await accept(client.update({ body: { pinnedAgentIds: ids } }), [200]);
 
       // Force JWT refresh so updated membership metadata is available immediately
       const clerk = await get(clerk$);

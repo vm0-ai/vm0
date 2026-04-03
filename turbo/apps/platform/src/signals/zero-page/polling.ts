@@ -7,6 +7,8 @@ import {
   zeroQueuePositionContract,
   zeroRunsCancelContract,
 } from "@vm0/core";
+import { accept } from "../../lib/accept.ts";
+import { throwIfAbort } from "../utils.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 
 const AGENT_EVENTS_PAGE_LIMIT = 30;
@@ -48,19 +50,18 @@ async function fetchEvents(
   if (since) {
     query.since = new Date(since).getTime();
   }
-  const result = await client(zeroRunAgentEventsContract).getAgentEvents({
-    params: { id: runId },
-    query,
-    fetchOptions: {
-      signal,
-    },
-  });
-
-  if (result.status !== 200) {
-    throw new Error(`Failed to fetch agent events (${result.status})`);
-  }
-  const data = result.body;
-  return { events: data.events, hasMore: data.hasMore };
+  const result = await accept(
+    client(zeroRunAgentEventsContract).getAgentEvents({
+      params: { id: runId },
+      query,
+      fetchOptions: {
+        signal,
+      },
+    }),
+    [200],
+    { toast: false },
+  );
+  return { events: result.body.events, hasMore: result.body.hasMore };
 }
 
 function createEventPageComputed(
@@ -78,12 +79,13 @@ function createRunDetail(runId: string) {
   const runStatusResp$ = computed(async (get) => {
     get(internalReloadRunStatus$);
     const client = get(zeroClient$)(logsByIdContract);
-    const result = await client.getById({
-      params: { id: runId },
-    });
-    if (result.status !== 200) {
-      throw new Error(`Failed to fetch run status (${result.status})`);
-    }
+    const result = await accept(
+      client.getById({
+        params: { id: runId },
+      }),
+      [200],
+      { toast: false },
+    );
     return result;
   });
 
@@ -113,11 +115,17 @@ function createQueuePosition(runId: string) {
     queuePosition$: computed(async (get) => {
       const createClient = get(zeroClient$);
       const client = createClient(zeroQueuePositionContract);
-      const result = await client.getPosition({ query: { runId } });
-      if (result.status !== 200) {
+      try {
+        const result = await accept(
+          client.getPosition({ query: { runId } }),
+          [200],
+          { toast: false },
+        );
+        return result.body.position;
+      } catch (error) {
+        throwIfAbort(error);
         return 0;
       }
-      return result.body.position;
     }),
     reload$: command(({ set }) => {
       return set(internalReload$, (x) => {
@@ -242,10 +250,14 @@ export function createRunLoop(runId: string) {
 
   const cancel$ = command(async ({ get }, signal: AbortSignal) => {
     const client = get(zeroClient$)(zeroRunsCancelContract);
-    await client.cancel({
-      params: { id: runId },
-      fetchOptions: { signal },
-    });
+    await accept(
+      client.cancel({
+        params: { id: runId },
+        fetchOptions: { signal },
+      }),
+      [200],
+      { toast: false },
+    );
   });
 
   return {

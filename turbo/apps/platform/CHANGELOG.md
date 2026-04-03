@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.186.1](https://github.com/vm0-ai/vm0/compare/app-v0.186.0...app-v0.186.1) (2026-04-03)
+
+
+### Bug Fixes
+
+* **platform:** show skeleton overlay during onboarding-to-chat transition ([#7984](https://github.com/vm0-ai/vm0/issues/7984)) ([8017431](https://github.com/vm0-ai/vm0/commit/801743146e3468a78f87f51f8166be37787b3dda))
+
+
+### Refactoring
+
+* migrate external & infrastructure signals to accept pattern ([#7992](https://github.com/vm0-ai/vm0/issues/7992)) ([6bcd421](https://github.com/vm0-ai/vm0/commit/6bcd4216ee1634ccdce0a760a922e351476d5154)), closes [#7882](https://github.com/vm0-ai/vm0/issues/7882)
+* **platform:** migrate Slack & Integrations signals to accept pattern ([#7990](https://github.com/vm0-ai/vm0/issues/7990)) ([45dd9a2](https://github.com/vm0-ai/vm0/commit/45dd9a2c59795cbd06e72b0991c3a261999a89d9))
+
 ## [0.186.0](https://github.com/vm0-ai/vm0/compare/app-v0.185.0...app-v0.186.0) (2026-04-03)
 
 

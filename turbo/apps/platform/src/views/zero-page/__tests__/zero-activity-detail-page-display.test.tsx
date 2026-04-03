@@ -50,9 +50,13 @@ function makeEventsResponse(events: AgentEvent[] = []): AgentEventsResponse {
 
 function mockDetailAPI(
   overrides: Partial<LogDetail> = {},
-  events: AgentEvent[] = [],
+  eventsOrResponse: AgentEvent[] | AgentEventsResponse = [],
 ) {
   const logDetail = makeBaseLogDetail(overrides);
+  const eventsResponse: AgentEventsResponse = Array.isArray(eventsOrResponse)
+    ? makeEventsResponse(eventsOrResponse)
+    : eventsOrResponse;
+
   server.use(
     http.get("*/api/zero/logs/:id", ({ params }) => {
       if (params["id"] === logDetail.id) {
@@ -64,13 +68,14 @@ function mockDetailAPI(
       );
     }),
     http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
-      return HttpResponse.json(makeEventsResponse(events));
+      return HttpResponse.json(eventsResponse);
     }),
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
     }),
   );
-  return logDetail;
+
+  return { logDetail, eventsResponse };
 }
 
 describe("zeroActivityDetailPageDisplay", () => {
@@ -89,7 +94,7 @@ describe("zeroActivityDetailPageDisplay", () => {
     });
   });
 
-  it("should render Done status badge for completed status (ACT-D-017)", async () => {
+  it("should render completed status badge as Done (ACT-D-017)", async () => {
     mockDetailAPI({ status: "completed" });
 
     await setupPage({
@@ -98,16 +103,12 @@ describe("zeroActivityDetailPageDisplay", () => {
     });
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Display Test Agent" }),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Done")).toBeInTheDocument();
     });
-
-    expect(screen.getByText("Done")).toBeInTheDocument();
   });
 
-  it("should render Failed status badge for failed status (ACT-D-017)", async () => {
-    mockDetailAPI({ status: "failed" });
+  it("should render failed status badge as Failed (ACT-D-017)", async () => {
+    mockDetailAPI({ status: "failed", error: "Something went wrong" });
 
     await setupPage({
       context,
@@ -115,12 +116,8 @@ describe("zeroActivityDetailPageDisplay", () => {
     });
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Display Test Agent" }),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Failed")).toBeInTheDocument();
     });
-
-    expect(screen.getByText("Failed")).toBeInTheDocument();
   });
 
   it("should render trigger source with schedule link (ACT-D-018)", async () => {
@@ -175,12 +172,8 @@ describe("zeroActivityDetailPageDisplay", () => {
     });
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Display Test Agent" }),
-      ).toBeInTheDocument();
+      expect(screen.getByText("9.0s")).toBeInTheDocument();
     });
-
-    expect(screen.getByText("9.0s")).toBeInTheDocument();
   });
 
   it("should render formatted start time (ACT-D-021)", async () => {
@@ -191,18 +184,15 @@ describe("zeroActivityDetailPageDisplay", () => {
       path: `/activities/${BASE_LOG_ID}`,
     });
 
+    // formatLogTime outputs "MM/DD HH:MM AM/PM" format
     await waitFor(() => {
       expect(
-        screen.getByRole("heading", { name: "Display Test Agent" }),
+        screen.getByText(/\d{2}\/\d{2}\s+\d{2}:\d{2}\s+(AM|PM)/),
       ).toBeInTheDocument();
     });
-
-    // The formatted time includes AM or PM depending on timezone
-    const timeEl = screen.getAllByText(/\d+:\d+/);
-    expect(timeEl.length).toBeGreaterThan(0);
   });
 
-  it("should render error message with guidance for no model provider error (ACT-D-022)", async () => {
+  it("should render error message with guidance (ACT-D-022)", async () => {
     mockDetailAPI({
       status: "failed",
       error: "No model provider configured",
@@ -215,16 +205,14 @@ describe("zeroActivityDetailPageDisplay", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("heading", { name: "Display Test Agent" }),
+        screen.getByText("No model provider configured"),
       ).toBeInTheDocument();
     });
 
     expect(
-      screen.getByText("No model provider configured"),
-    ).toBeInTheDocument();
-    expect(
       screen.getByText("Configure a model provider to start running agents."),
     ).toBeInTheDocument();
+
     expect(
       screen.getByText("$ zero org model-provider setup"),
     ).toBeInTheDocument();
@@ -399,30 +387,37 @@ describe("zeroActivityDetailPageDisplay", () => {
     });
   });
 
-  it("should render messages list with search highlighting and matched count (ACT-D-027)", async () => {
-    const events: AgentEvent[] = [
-      {
-        sequenceNumber: 0,
-        eventType: "assistant",
-        eventData: {
-          message: {
-            content: [{ type: "text", text: "The Eiffel Tower is in Paris." }],
+  it("should filter messages and hide non-matching steps when searching (ACT-D-027)", async () => {
+    const eventsResponse: AgentEventsResponse = {
+      events: [
+        {
+          sequenceNumber: 0,
+          eventType: "assistant",
+          eventData: {
+            message: {
+              content: [
+                { type: "text", text: "The Eiffel Tower is in Paris." },
+              ],
+            },
           },
+          createdAt: "2026-03-10T14:56:02Z",
         },
-        createdAt: "2026-03-10T14:56:02Z",
-      },
-      {
-        sequenceNumber: 1,
-        eventType: "assistant",
-        eventData: {
-          message: {
-            content: [{ type: "text", text: "Big Ben is in London." }],
+        {
+          sequenceNumber: 1,
+          eventType: "assistant",
+          eventData: {
+            message: {
+              content: [{ type: "text", text: "Big Ben is in London." }],
+            },
           },
+          createdAt: "2026-03-10T14:56:03Z",
         },
-        createdAt: "2026-03-10T14:56:03Z",
-      },
-    ];
-    mockDetailAPI({ prompt: "" }, events);
+      ],
+      hasMore: false,
+      framework: "claude-code",
+    };
+
+    mockDetailAPI({}, eventsResponse);
 
     const user = userEvent.setup();
 
@@ -432,20 +427,22 @@ describe("zeroActivityDetailPageDisplay", () => {
     });
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Display Test Agent" }),
-      ).toBeInTheDocument();
+      expect(screen.getByText("2 total")).toBeInTheDocument();
     });
 
     const searchInput = screen.getByPlaceholderText("Search steps");
     await user.type(searchInput, "Eiffel");
 
-    // Search input should have the search term
-    expect(searchInput).toHaveValue("Eiffel");
-
-    // Matched count should be displayed
+    // Verify filtered results count updates
     await waitFor(() => {
       expect(screen.getByText(/1\/2 matched/)).toBeInTheDocument();
     });
+
+    // The matching message should remain visible
+    expect(
+      screen.getByText(/The Eiffel Tower is in Paris/),
+    ).toBeInTheDocument();
+    // The non-matching message should be filtered out
+    expect(screen.queryByText(/Big Ben is in London/)).toBeNull();
   });
 });
