@@ -7,6 +7,7 @@
  */
 
 import {
+  logStats,
   renderPermissions,
   writeOutput,
   type PermissionGroup,
@@ -82,5 +83,6 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Linear firewall config...");
   const ts = generateTypeScript();
+  logStats(PERMISSIONS);
   writeOutput("linear", ts, import.meta.dirname);
 }
