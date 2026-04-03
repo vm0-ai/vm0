@@ -144,10 +144,9 @@ describe("zero schedule detail page - instruction editor (SCHED-D-016)", () => {
     await user.click(screen.getByRole("tab", { name: /Instructions/i }));
 
     await waitFor(() => {
+      // Verify the editor is rendered with the actual prompt content
       expect(
-        screen.getByText(
-          "This instruction runs each time this schedule executes.",
-        ),
+        screen.getByText("Summarize yesterday's threads"),
       ).toBeInTheDocument();
     });
   });
@@ -197,8 +196,8 @@ describe("zero schedule detail page - run history table with pagination (SCHED-D
     await user.click(screen.getByRole("tab", { name: /Run History/i }));
 
     await waitFor(() => {
-      // Log table header columns indicate logs are rendering
-      expect(screen.getByText("Agent")).toBeInTheDocument();
+      // Status badge from log data ("completed" renders as "Done") indicates table rows are rendering
+      expect(screen.getByText("Done")).toBeInTheDocument();
       // Pagination shows page count
       expect(screen.getByText(/Page 1 of 2/)).toBeInTheDocument();
     });
