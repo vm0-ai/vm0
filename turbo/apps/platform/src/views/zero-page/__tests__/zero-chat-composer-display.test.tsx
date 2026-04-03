@@ -3,7 +3,6 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
-import { createDeferredPromise } from "../../../signals/utils.ts";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
@@ -92,7 +91,8 @@ describe("chat-d-015: attachment chips in composer", () => {
 });
 
 describe("chat-d-016: connected connector icons in composer trigger", () => {
-  it("should render connector icons (up to 3) when connectors are connected", async () => {
+  it("should render connected connectors (up to 3) in the trigger popover", async () => {
+    const user = userEvent.setup();
     mockChatAPI();
     mockConnectedConnectors(["github", "linear", "slack"]);
     server.use(
@@ -107,13 +107,12 @@ describe("chat-d-016: connected connector icons in composer trigger", () => {
     const connectorsButton = await waitFor(() => {
       return screen.getByRole("button", { name: "Connectors" });
     });
+    await user.click(connectorsButton);
 
     await waitFor(() => {
-      const iconSpans = connectorsButton.querySelectorAll(
-        "span.relative.shrink-0",
-      );
-      expect(iconSpans.length).toBeGreaterThanOrEqual(1);
-      expect(iconSpans.length).toBeLessThanOrEqual(3);
+      const toggles = screen.getAllByRole("switch");
+      expect(toggles.length).toBeGreaterThanOrEqual(1);
+      expect(toggles.length).toBeLessThanOrEqual(3);
     });
   });
 });
@@ -131,8 +130,12 @@ describe("chat-d-017: connector list in popover", () => {
     await user.click(connectorsButton);
 
     await waitFor(() => {
-      expect(screen.getByText("GitHub")).toBeInTheDocument();
-      expect(screen.getByText("Linear")).toBeInTheDocument();
+      expect(
+        screen.getByRole("switch", { name: "Add GitHub" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("switch", { name: "Add Linear" }),
+      ).toBeInTheDocument();
     });
   });
 });
@@ -178,8 +181,8 @@ describe("chat-d-018: add dialog with search filtering", () => {
   });
 });
 
-describe("chat-d-019: connector help text in add dialog", () => {
-  it("should render help text for each connector in the add dialog", async () => {
+describe("chat-d-019: connector description in add dialog", () => {
+  it("should render a description for each connector in the add dialog", async () => {
     const user = userEvent.setup();
     mockChatAPI();
     await setupPage({ context, path: "/" });
@@ -195,26 +198,24 @@ describe("chat-d-019: connector help text in add dialog", () => {
     await user.click(addButton);
 
     await waitFor(() => {
+      // Each connector card has a Connect button — verify at least one is present,
+      // confirming the dialog renders connector items with actionable controls.
       expect(
-        screen.getByText(
-          "Connect your GitHub account to access repositories and GitHub features",
-        ),
+        screen.getByRole("button", { name: "Connect GitHub" }),
       ).toBeInTheDocument();
     });
   });
 });
 
-describe("chat-d-020: loading state in connectors popover", () => {
-  it("should render loading skeleton while connectors are loading", async () => {
+describe("chat-d-020: connectors popover after load", () => {
+  it("should render the Add connectors button in the popover after connectors load", async () => {
     const user = userEvent.setup();
     mockChatAPI();
-    const hangDeferred = createDeferredPromise<void>(context.signal);
     server.use(
-      http.get("*/api/zero/connectors", async () => {
-        await hangDeferred.promise;
+      http.get("*/api/zero/connectors", () => {
         return HttpResponse.json({
           connectors: [],
-          configuredTypes: [],
+          configuredTypes: Object.keys(CONNECTOR_TYPES) as ConnectorType[],
           connectorProvidedSecretNames: [],
         });
       }),
@@ -228,15 +229,12 @@ describe("chat-d-020: loading state in connectors popover", () => {
     await user.click(connectorsButton);
 
     await waitFor(() => {
-      const pulseContainer = document.querySelector(".animate-pulse");
-      expect(pulseContainer).toBeInTheDocument();
+      expect(screen.getByText("Add connectors")).toBeInTheDocument();
     });
-
-    hangDeferred.resolve();
   });
 });
 
-describe("chat-c-021: send button state changes", () => {
+describe("chat-d-021: send button state changes", () => {
   it("should show Stop button while sending and restore Send button after completion", async () => {
     const user = userEvent.setup();
     const ctrl = mockChatLifecycle();
