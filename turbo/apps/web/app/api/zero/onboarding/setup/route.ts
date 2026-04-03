@@ -1,4 +1,3 @@
-import { NextResponse } from "next/server";
 import { and, eq } from "drizzle-orm";
 import { onboardingSetupContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
@@ -142,12 +141,12 @@ const router = tsr.router(onboardingSetupContract, {
 
     if (!composeResult) {
       return {
-        status: 401 as const,
+        status: 422 as const,
         body: {
           error: {
             message:
               "One or more skills are not cached. Please try again later.",
-            code: "UNAUTHORIZED",
+            code: "UNPROCESSABLE_ENTITY",
           },
         },
       };
