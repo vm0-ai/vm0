@@ -143,9 +143,11 @@ describe("zeroActivityDetailPageInteraction", () => {
       .spyOn(URL, "createObjectURL")
       .mockReturnValue("blob:test");
     vi.spyOn(URL, "revokeObjectURL").mockReturnValue(undefined);
-    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {
-      return undefined;
-    });
+    const anchorClickSpy = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => {
+        return undefined;
+      });
 
     const user = userEvent.setup();
 
@@ -176,6 +178,7 @@ describe("zeroActivityDetailPageInteraction", () => {
     expect(capturedArg.type).toBe("application/json;charset=utf-8;");
     const blobText = await capturedArg.text();
     expect(blobText).toContain(BASE_LOG_ID);
+    expect(anchorClickSpy).toHaveBeenCalledOnce();
   });
 
   it("should switch to context tab when clicked (ACT-D-030)", async () => {
