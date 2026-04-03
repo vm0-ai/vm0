@@ -361,7 +361,7 @@ teardown_file() {
 
 @test "create new agent via dialog" {
   echo "# Clicking New agent..." >&3
-  agent-browser find text "New agent" click
+  agent-browser find role button click --name "New agent"
   agent-browser wait 1000
   step_screenshot "create-dialog-opened"
 
@@ -374,15 +374,7 @@ teardown_file() {
   step_screenshot "create-dialog-filled"
 
   echo "# Clicking Create button in dialog..." >&3
-  local snap_i
-  snap_i=$(agent-browser snapshot -i 2>/dev/null || true)
-  local create_ref
-  create_ref=$(echo "$snap_i" | grep -E 'button "Create"' | grep -v 'New agent' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
-  if [[ -n "$create_ref" ]]; then
-    agent-browser click "$create_ref"
-  else
-    agent-browser find text "Create" click
-  fi
+  agent-browser find role button click --name "Create"
 
   echo "# Waiting for agent creation to complete..." >&3
   local create_complete=false
