@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.149.1](https://github.com/vm0-ai/vm0/compare/core-v8.149.0...core-v8.149.1) (2026-04-03)
+
+
+### Refactoring
+
+* remove unused developer-support:write capability ([#8017](https://github.com/vm0-ai/vm0/issues/8017)) ([6ab03d5](https://github.com/vm0-ai/vm0/commit/6ab03d54396902a1c0d7c6612ba45874122c0f78))
+
 ## [8.149.0](https://github.com/vm0-ai/vm0/compare/core-v8.148.0...core-v8.149.0) (2026-04-03)
 
 
