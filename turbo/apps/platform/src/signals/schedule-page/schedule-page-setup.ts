@@ -17,6 +17,7 @@ export const setupSchedulePage$ = command(
       createElement(SidebarLayout, null, createElement(ZeroSchedulePage)),
     );
     set(updateDocumentTitle$, "Schedule");
+    // eslint-disable-next-line ccstate/no-detach-in-signals -- TODO: move to views layer
     detach(set(fetchAllOrgSchedules$, signal), Reason.Entrance);
     await set(initZeroOnboarding$, signal);
     signal.throwIfAborted();

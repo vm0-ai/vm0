@@ -167,6 +167,7 @@ export const detachedNavigateTo$ = command(
   ) => {
     const signal = get(rootSignal$).signal;
 
+    // eslint-disable-next-line ccstate/no-detach-in-signals -- TODO: move to views layer
     detach(
       set(
         navigate$,

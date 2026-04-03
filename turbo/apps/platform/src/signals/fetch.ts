@@ -202,6 +202,7 @@ export const fetch$ = computed((get) => {
     const response = await fetch(finalUrl, finalInit);
 
     if (response.status === 401) {
+      // eslint-disable-next-line ccstate/no-detach-in-signals -- TODO: move to views layer
       detach(clerk.redirectToSignIn(), Reason.DomCallback);
     }
 
