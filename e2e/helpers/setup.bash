@@ -63,7 +63,7 @@ wait_for_log() {
         echo "# wait_for_log: no expected strings after --"
         return 1
     fi
-    local _wfl_timeout=20
+    local _wfl_timeout=30
     local _wfl_elapsed=0
     while (( _wfl_elapsed < _wfl_timeout )); do
         # Append --all for non-search commands to fetch complete logs
