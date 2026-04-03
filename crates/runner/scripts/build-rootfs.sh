@@ -151,9 +151,9 @@ debootstrap_build() {
   sudo mount --bind /dev "$ROOTFS_DIR/dev"
   sudo mount --bind /dev/pts "$ROOTFS_DIR/dev/pts"
 
-  # Temporary DNS for build-time package downloads (overwritten by inject_files)
+  # Copy host DNS for build-time package downloads (overwritten by inject_files)
   sudo rm -f "$ROOTFS_DIR/etc/resolv.conf"
-  echo "nameserver ${DNS_NAMESERVER}" | sudo tee "$ROOTFS_DIR/etc/resolv.conf" > /dev/null
+  sudo cp /etc/resolv.conf "$ROOTFS_DIR/etc/resolv.conf"
 
   echo "[OK] base system bootstrapped"
 }
