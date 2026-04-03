@@ -646,7 +646,7 @@ jobs:
             || fail "HTTPS java"
           echo "  HTTPS java: ok"
 
-          sudo "$BIN_DIR/runner" exec "$RUN_ID" -- "cd /tmp && printf '%s\n' 'package main' 'import (\"net/http\";\"os\")' 'func main(){r,e:=http.Get(os.Args[1]);if e!=nil{panic(e)};r.Body.Close()}' > tls.go && timeout 30 go run tls.go $TLS_URL" \
+          sudo "$BIN_DIR/runner" exec "$RUN_ID" -- "cd /tmp && printf '%s\n' 'package main' 'import (' '\"net/http\"' '\"os\"' ')' 'func main(){r,e:=http.Get(os.Args[1]);if e!=nil{panic(e)};r.Body.Close()}' > tls.go && timeout 30 go run tls.go $TLS_URL" \
             || fail "HTTPS go"
           echo "  HTTPS go: ok"
           echo "PASS: HTTPS through proxy"
