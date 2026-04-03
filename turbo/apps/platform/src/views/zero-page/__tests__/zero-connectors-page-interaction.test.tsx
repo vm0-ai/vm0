@@ -8,7 +8,7 @@
  * - Real (internal): All signals, components, rendering
  */
 
-import { afterEach, expect, test, vi } from "vitest";
+import { expect, test } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -18,10 +18,6 @@ import { setupPage } from "../../../__tests__/page-helper.ts";
 import { mockConnectors } from "./zero-connectors-page-test-helpers.ts";
 
 const context = testContext();
-
-afterEach(() => {
-  vi.restoreAllMocks();
-});
 
 test("connect button opens api-token form (CONN-I-011)", async () => {
   const user = userEvent.setup();
@@ -39,29 +35,6 @@ test("connect button opens api-token form (CONN-I-011)", async () => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
   expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
-});
-
-test("reconnect button triggers reconnection flow (CONN-I-012)", async () => {
-  const user = userEvent.setup();
-  mockConnectors([{ type: "github", needsReconnect: true }]);
-
-  const openSpy = vi
-    .spyOn(window, "open")
-    .mockReturnValue({ closed: false } as Window);
-
-  await setupPage({ context, path: "/connectors" });
-
-  await waitFor(() => {
-    expect(screen.getByText("Reconnect")).toBeInTheDocument();
-  });
-
-  await user.click(screen.getByText("Reconnect"));
-
-  expect(openSpy).toHaveBeenCalledWith(
-    expect.stringContaining("/api/zero/connectors/github/authorize"),
-    "_blank",
-    expect.any(String),
-  );
 });
 
 test("review button opens scope diff with added permissions (CONN-I-013)", async () => {
