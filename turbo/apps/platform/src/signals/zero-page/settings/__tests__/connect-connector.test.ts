@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../mocks/server.ts";
 import { testContext } from "../../../__tests__/test-helpers.ts";
@@ -9,7 +9,18 @@ import {
   pollingConnectorType$,
   submitApiToken$,
 } from "../connectors.ts";
+import { createDeferredPromise } from "../../../utils.ts";
 import type { ConnectorListResponse } from "@vm0/core";
+
+vi.mock("signal-timers", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("signal-timers")>();
+  return {
+    ...mod,
+    delay: () => {
+      return Promise.resolve();
+    },
+  };
+});
 
 const context = testContext();
 
@@ -43,10 +54,6 @@ function makeGithubConnectorResponse(): ConnectorListResponse {
 }
 
 describe("connectConnector$", () => {
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
   it("detects connector via API polling while popup is open", async () => {
     await setupPage({ context, path: "/", withoutRender: true });
 
@@ -54,18 +61,17 @@ describe("connectConnector$", () => {
     vi.spyOn(window, "open").mockReturnValue(mockWindow as unknown as Window);
 
     let pollCount = 0;
+    const secondPollDeferred = createDeferredPromise<void>(context.signal);
     server.use(
       http.get("*/api/zero/connectors", () => {
         pollCount++;
-        // First poll returns empty, second returns connected
         if (pollCount <= 1) {
           return HttpResponse.json(makeEmptyConnectorResponse());
         }
+        secondPollDeferred.resolve();
         return HttpResponse.json(makeGithubConnectorResponse());
       }),
     );
-
-    vi.useFakeTimers();
 
     const connectPromise = context.store.set(
       connectConnector$,
@@ -73,11 +79,7 @@ describe("connectConnector$", () => {
       context.signal,
     );
 
-    // Advance past first polling interval (2s) — connector not yet connected
-    await vi.advanceTimersByTimeAsync(2000);
-    // Advance past second polling interval — connector now connected
-    await vi.advanceTimersByTimeAsync(2000);
-
+    await secondPollDeferred.promise;
     const result = await connectPromise;
 
     expect(result).toBeTruthy();
@@ -93,26 +95,23 @@ describe("connectConnector$", () => {
     const mockWindow = { closed: false, close: vi.fn() };
     vi.spyOn(window, "open").mockReturnValue(mockWindow as unknown as Window);
 
+    let pollCount = 0;
     server.use(
       http.get("*/api/zero/connectors", () => {
+        pollCount++;
+        if (pollCount >= 2) {
+          mockWindow.closed = true;
+        }
         return HttpResponse.json(makeEmptyConnectorResponse());
       }),
     );
 
-    vi.useFakeTimers();
-
-    const connectPromise = context.store.set(
+    const result = await context.store.set(
       connectConnector$,
       "github",
       context.signal,
     );
 
-    // Advance one poll interval, then close popup
-    await vi.advanceTimersByTimeAsync(2000);
-    mockWindow.closed = true;
-    await vi.advanceTimersByTimeAsync(2000);
-
-    const result = await connectPromise;
     expect(result).toBeFalsy();
 
     const polling = context.store.get(pollingConnectorType$);
@@ -131,17 +130,7 @@ describe("connectConnector$", () => {
       }),
     );
 
-    vi.useFakeTimers();
-
-    const connectPromise = context.store.set(
-      connectConnector$,
-      "github",
-      context.signal,
-    );
-
-    await vi.advanceTimersByTimeAsync(2000);
-
-    await connectPromise;
+    await context.store.set(connectConnector$, "github", context.signal);
 
     expect(context.store.get(permissionDialogType$)).toBe("github");
   });
@@ -152,25 +141,18 @@ describe("connectConnector$", () => {
     const mockWindow = { closed: false, close: vi.fn() };
     vi.spyOn(window, "open").mockReturnValue(mockWindow as unknown as Window);
 
+    let pollCount = 0;
     server.use(
       http.get("*/api/zero/connectors", () => {
+        pollCount++;
+        if (pollCount >= 1) {
+          mockWindow.closed = true;
+        }
         return HttpResponse.json(makeEmptyConnectorResponse());
       }),
     );
 
-    vi.useFakeTimers();
-
-    const connectPromise = context.store.set(
-      connectConnector$,
-      "github",
-      context.signal,
-    );
-
-    await vi.advanceTimersByTimeAsync(2000);
-    mockWindow.closed = true;
-    await vi.advanceTimersByTimeAsync(2000);
-
-    await connectPromise;
+    await context.store.set(connectConnector$, "github", context.signal);
 
     expect(context.store.get(permissionDialogType$)).toBeNull();
   });

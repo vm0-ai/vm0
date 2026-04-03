@@ -1,9 +1,20 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import { pollSlackConnection$ } from "../zero-slack.ts";
+import { createDeferredPromise } from "../../utils.ts";
+
+vi.mock("signal-timers", async (importOriginal) => {
+  const mod = await importOriginal<typeof import("signal-timers")>();
+  return {
+    ...mod,
+    delay: () => {
+      return Promise.resolve();
+    },
+  };
+});
 
 const context = testContext();
 
@@ -55,12 +66,7 @@ function mockSlackEndpoint(getIsConnected: (callCount: number) => boolean) {
 }
 
 describe("pollSlackConnection$", () => {
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
   it("should return immediately when already connected", async () => {
-    // Default mock returns isConnected: true
     await setup();
 
     const counter = mockSlackEndpoint(alwaysConnected);
@@ -72,50 +78,58 @@ describe("pollSlackConnection$", () => {
   });
 
   it("should poll until connected and show success toast", async () => {
-    // Return connected on the 3rd call
     const counter = mockSlackEndpoint(connectedOnThirdCall);
 
     await setup();
 
-    vi.useFakeTimers();
-    const pollPromise = context.store.set(pollSlackConnection$, context.signal);
-
-    // Advance through poll intervals until connected
-    for (let i = 0; i < 5; i++) {
-      await vi.advanceTimersByTimeAsync(3000);
-    }
-
-    await pollPromise;
-    vi.useRealTimers();
+    await context.store.set(pollSlackConnection$, context.signal);
 
     // Called at least 3 times: initial check + polls until connected
     expect(counter.count).toBeGreaterThanOrEqual(3);
   });
 
   it("should stop polling when signal is aborted", async () => {
-    // Never return connected
     const counter = mockSlackEndpoint(neverConnected);
 
     await setup();
 
     const abortController = new AbortController();
 
-    vi.useFakeTimers();
+    // Use a deferred to abort after a few polls
+    const abortDeferred = createDeferredPromise<void>(context.signal);
+    let pollsSeen = 0;
+    server.use(
+      http.get("*/api/zero/integrations/slack", () => {
+        pollsSeen++;
+        if (pollsSeen >= 3) {
+          abortDeferred.resolve();
+        }
+        return HttpResponse.json({
+          isConnected: false,
+          isInstalled: true,
+          workspaceName: "Test Workspace",
+          isAdmin: false,
+          defaultAgentId: null,
+          agentOrgSlug: null,
+          environment: {
+            requiredSecrets: [],
+            requiredVars: [],
+            missingSecrets: [],
+            missingVars: [],
+          },
+        });
+      }),
+    );
+
     const pollPromise = context.store.set(
       pollSlackConnection$,
       abortController.signal,
     );
 
-    // Let it poll a few times
-    for (let i = 0; i < 3; i++) {
-      await vi.advanceTimersByTimeAsync(3000);
-    }
-
-    // Abort the signal to stop polling
+    await abortDeferred.promise;
     abortController.abort();
 
     await expect(pollPromise).rejects.toThrow();
-    vi.useRealTimers();
 
     // Should have polled a few times before abort
     expect(counter.count).toBeGreaterThanOrEqual(1);

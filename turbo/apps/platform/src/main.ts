@@ -2,6 +2,7 @@
 import { initSentry, Sentry } from "./lib/sentry.ts";
 import "./polyfill.ts";
 import { createRoot } from "react-dom/client";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import { appStore, AppStoreProvider } from "./signals/app-store.ts";
 import { bootstrap$ } from "./signals/bootstrap.ts";
 import { setLogErrorHandler } from "./signals/log.ts";
@@ -43,14 +44,7 @@ function handleBillingRedirect() {
     window.addEventListener(
       "load",
       () => {
-        void import("@vm0/ui/components/ui/sonner").then(
-          ({ toast }) => {
-            toast.success("Upgraded to Max! Your credits have been added.");
-          },
-          () => {
-            // Toast import failed — silently ignore
-          },
-        );
+        toast.success("Upgraded to Max! Your credits have been added.");
       },
       { once: true },
     );
