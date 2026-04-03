@@ -26,5 +26,12 @@ export const setupQueuePage$ = command(async ({ set }, signal: AbortSignal) => {
   }
 
   set(reloadChatThreads$);
-  await set(startQueuePolling$, signal);
+  // startQueuePolling$ is a long-running daemon loop — fire-and-forget so
+  // the setup completes and the page renders.
+  set(startQueuePolling$, signal).catch((error: unknown) => {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      return;
+    }
+    throw error;
+  });
 });

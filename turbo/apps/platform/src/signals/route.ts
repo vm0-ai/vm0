@@ -5,7 +5,7 @@ import { clerk$, needsOrgSelection$ } from "./auth.ts";
 import { pathname, pushState, replaceState, search } from "./location.ts";
 import { setPageSignal$ } from "./page-signal.ts";
 import { rootSignal$ } from "./root-signal.ts";
-import { onDomEventFn, resetSignal, throwIfAbort } from "./utils.ts";
+import { onDomEventFn, resetSignal } from "./utils.ts";
 import { logger } from "./log.ts";
 
 const L = logger("Route");
@@ -173,7 +173,10 @@ export const detachedNavigateTo$ = command(
       options ?? {},
       signal,
     ).catch((error: unknown) => {
-      throwIfAbort(error);
+      if (error instanceof DOMException && error.name === "AbortError") {
+        return;
+      }
+      throw error;
     });
   },
 );

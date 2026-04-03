@@ -201,7 +201,17 @@ export const fetch$ = computed((get) => {
     const response = await fetch(finalUrl, finalInit);
 
     if (response.status === 401) {
-      await clerk.redirectToSignIn();
+      // Fire-and-forget: the redirect navigates the page away so the promise
+      // may never settle. We must not await — callers need the 401 response.
+      const redirectResult = clerk.redirectToSignIn();
+      if (redirectResult instanceof Promise) {
+        redirectResult.catch((error: unknown) => {
+          if (error instanceof DOMException && error.name === "AbortError") {
+            return;
+          }
+          throw error;
+        });
+      }
     }
 
     return response;
