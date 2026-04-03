@@ -151,4 +151,26 @@ describe("computer-use command visibility", () => {
     expect(clientSubs).toContain("read-clipboard");
     expect(clientSubs).toContain("write-clipboard");
   });
+
+  it("should have mouse click commands under client subcommand", () => {
+    const prog = new Command();
+    registerZeroCommands(prog);
+
+    const computerUse = prog.commands.find((c) => {
+      return c.name() === "computer-use";
+    });
+    const client = computerUse!.commands.find((c) => {
+      return c.name() === "client";
+    });
+    expect(client).toBeDefined();
+
+    const clientSubs = client!.commands.map((c) => {
+      return c.name();
+    });
+    expect(clientSubs).toContain("left-click");
+    expect(clientSubs).toContain("right-click");
+    expect(clientSubs).toContain("middle-click");
+    expect(clientSubs).toContain("double-click");
+    expect(clientSubs).toContain("triple-click");
+  });
 });

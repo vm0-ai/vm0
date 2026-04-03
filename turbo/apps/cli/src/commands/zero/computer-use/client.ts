@@ -4,6 +4,33 @@ import { join } from "path";
 import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { callHost } from "../../../lib/computer-use/client";
 
+function mouseClickCommand(
+  name: string,
+  action: string,
+  description: string,
+): Command {
+  return new Command()
+    .name(name)
+    .description(description)
+    .argument("<x>", "X coordinate (points)")
+    .argument("<y>", "Y coordinate (points)")
+    .action(
+      withErrorHandler(async (xStr: string, yStr: string) => {
+        const x = parseInt(xStr, 10);
+        const y = parseInt(yStr, 10);
+        if (Number.isNaN(x) || Number.isNaN(y)) {
+          throw new Error("Coordinates must be integers");
+        }
+        const response = await callHost("/mouse", {
+          method: "POST",
+          body: { action, x, y },
+        });
+        const data = await response.json();
+        process.stdout.write(JSON.stringify(data) + "\n");
+      }),
+    );
+}
+
 export const clientScreenshotCommand = new Command()
   .name("screenshot")
   .description("Capture a screenshot from the remote host")
@@ -101,6 +128,36 @@ export const clientInfoCommand = new Command()
       process.stdout.write(JSON.stringify(data) + "\n");
     }),
   );
+
+export const clientLeftClickCommand = mouseClickCommand(
+  "left-click",
+  "left_click",
+  "Perform a left click at coordinates",
+);
+
+export const clientRightClickCommand = mouseClickCommand(
+  "right-click",
+  "right_click",
+  "Perform a right click at coordinates",
+);
+
+export const clientMiddleClickCommand = mouseClickCommand(
+  "middle-click",
+  "middle_click",
+  "Perform a middle click at coordinates",
+);
+
+export const clientDoubleClickCommand = mouseClickCommand(
+  "double-click",
+  "double_click",
+  "Perform a double click at coordinates",
+);
+
+export const clientTripleClickCommand = mouseClickCommand(
+  "triple-click",
+  "triple_click",
+  "Perform a triple click at coordinates",
+);
 
 export const clientLeftClickDragCommand = new Command()
   .name("left-click-drag")

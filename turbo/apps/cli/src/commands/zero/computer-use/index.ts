@@ -4,6 +4,11 @@ import {
   clientScreenshotCommand,
   clientZoomCommand,
   clientInfoCommand,
+  clientLeftClickCommand,
+  clientRightClickCommand,
+  clientMiddleClickCommand,
+  clientDoubleClickCommand,
+  clientTripleClickCommand,
   clientLeftClickDragCommand,
   clientLeftMouseDownCommand,
   clientLeftMouseUpCommand,
@@ -23,6 +28,11 @@ const clientCommand = new Command()
   .addCommand(clientScreenshotCommand)
   .addCommand(clientZoomCommand)
   .addCommand(clientInfoCommand)
+  .addCommand(clientLeftClickCommand)
+  .addCommand(clientRightClickCommand)
+  .addCommand(clientMiddleClickCommand)
+  .addCommand(clientDoubleClickCommand)
+  .addCommand(clientTripleClickCommand)
   .addCommand(clientLeftClickDragCommand)
   .addCommand(clientLeftMouseDownCommand)
   .addCommand(clientLeftMouseUpCommand)
@@ -43,6 +53,8 @@ Examples:
   Take a screenshot (from agent):    zero computer-use client screenshot
   Zoom into a region (from agent):   zero computer-use client zoom --x 0 --y 0 --width 500 --height 500
   Get screen info (from agent):      zero computer-use client info
+  Left click at (500, 300):          zero computer-use client left-click 500 300
+  Double click at (100, 200):        zero computer-use client double-click 100 200
   Drag from A to B:                  zero computer-use client left-click-drag 100 100 500 500
   Press mouse button:                zero computer-use client left-mouse-down 200 300
   Release mouse button:              zero computer-use client left-mouse-up 500 500

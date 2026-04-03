@@ -12,6 +12,8 @@ import {
   getScreenInfo,
 } from "./screencapture";
 import { leftClickDrag, leftMouseDown, leftMouseUp } from "./cliclick";
+import { executeMouseAction, VALID_ACTIONS } from "./cliclick";
+import type { MouseAction } from "./cliclick";
 import { scroll, type ScrollDirection } from "./scroll";
 import { readClipboard, writeClipboard } from "./clipboard";
 
@@ -108,25 +110,111 @@ async function handleZoom(
   res.end(JSON.stringify(result));
 }
 
-async function handleMouse(
+function parseJsonBody(req: IncomingMessage): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    let size = 0;
+    req.on("data", (chunk: Buffer) => {
+      size += chunk.length;
+      if (size > 1024) {
+        reject(new Error("Request body too large"));
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on("end", () => {
+      try {
+        resolve(JSON.parse(Buffer.concat(chunks).toString()));
+      } catch {
+        reject(new Error("Invalid JSON body"));
+      }
+    });
+    req.on("error", reject);
+  });
+}
+
+async function handleMouseRequest(
   req: IncomingMessage,
   res: ServerResponse,
 ): Promise<void> {
-  const raw = await readBody(req);
-  const body = JSON.parse(raw) as MouseRequestBody;
+  const body = await parseJsonBody(req);
+  if (typeof body !== "object" || body === null || !("action" in body)) {
+    res.writeHead(400, { "Content-Type": "text/plain" });
+    res.end("Missing required fields: action, x, y");
+    return;
+  }
 
-  switch (body.action) {
+  const { action } = body as { action: unknown };
+
+  if (typeof action !== "string") {
+    res.writeHead(400, { "Content-Type": "text/plain" });
+    res.end("Invalid action");
+    return;
+  }
+
+  // Click actions with validation
+  if (VALID_ACTIONS.has(action)) {
+    if (!("x" in body) || !("y" in body)) {
+      res.writeHead(400, { "Content-Type": "text/plain" });
+      res.end("Missing required fields: action, x, y");
+      return;
+    }
+
+    const { x, y } = body as { x: unknown; y: unknown };
+
+    if (
+      typeof x !== "number" ||
+      typeof y !== "number" ||
+      !Number.isFinite(x) ||
+      !Number.isFinite(y)
+    ) {
+      res.writeHead(400, { "Content-Type": "text/plain" });
+      res.end("Coordinates x and y must be finite numbers");
+      return;
+    }
+
+    const info = await getScreenInfo();
+    const maxX = Math.floor(info.width / info.scaleFactor);
+    const maxY = Math.floor(info.height / info.scaleFactor);
+    if (x < 0 || x >= maxX || y < 0 || y >= maxY) {
+      res.writeHead(400, { "Content-Type": "text/plain" });
+      res.end(
+        `Coordinates out of bounds. Screen size: ${maxX}x${maxY} (points)`,
+      );
+      return;
+    }
+
+    await executeMouseAction(action as MouseAction, x, y);
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ok: true }));
+    return;
+  }
+
+  // Drag, mouse-down, mouse-up, scroll actions
+  const typedBody = body as MouseRequestBody;
+  switch (typedBody.action) {
     case "left_click_drag":
-      await leftClickDrag(body.startX, body.startY, body.endX, body.endY);
+      await leftClickDrag(
+        typedBody.startX,
+        typedBody.startY,
+        typedBody.endX,
+        typedBody.endY,
+      );
       break;
     case "left_mouse_down":
-      await leftMouseDown(body.x, body.y);
+      await leftMouseDown(typedBody.x, typedBody.y);
       break;
     case "left_mouse_up":
-      await leftMouseUp(body.x, body.y);
+      await leftMouseUp(typedBody.x, typedBody.y);
       break;
     case "scroll":
-      await scroll(body.x, body.y, body.direction, body.amount);
+      await scroll(
+        typedBody.x,
+        typedBody.y,
+        typedBody.direction,
+        typedBody.amount,
+      );
       break;
     default:
       res.writeHead(400, { "Content-Type": "text/plain" });
@@ -182,7 +270,7 @@ async function handleRequest(
     } else if (req.method === "GET" && pathname === "/zoom") {
       await handleZoom(searchParams, res);
     } else if (req.method === "POST" && pathname === "/mouse") {
-      await handleMouse(req, res);
+      await handleMouseRequest(req, res);
     } else if (req.method === "GET" && pathname === "/clipboard") {
       const text = await readClipboard();
       res.writeHead(200, { "Content-Type": "application/json" });

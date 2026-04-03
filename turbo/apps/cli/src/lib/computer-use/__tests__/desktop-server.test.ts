@@ -39,6 +39,14 @@ vi.mock("../cliclick", () => {
     leftClickDrag: vi.fn().mockResolvedValue(undefined),
     leftMouseDown: vi.fn().mockResolvedValue(undefined),
     leftMouseUp: vi.fn().mockResolvedValue(undefined),
+    executeMouseAction: vi.fn().mockResolvedValue(undefined),
+    VALID_ACTIONS: new Set([
+      "left_click",
+      "right_click",
+      "middle_click",
+      "double_click",
+      "triple_click",
+    ]),
   };
 });
 
@@ -63,6 +71,7 @@ import {
   getScreenInfo,
 } from "../screencapture";
 import { leftClickDrag, leftMouseDown, leftMouseUp } from "../cliclick";
+import { executeMouseAction } from "../cliclick";
 import { scroll } from "../scroll";
 import { readClipboard, writeClipboard } from "../clipboard";
 
@@ -272,6 +281,125 @@ describe("desktop-server", () => {
       expect(text).toBe("region capture failed");
     });
 
+    it("should execute left_click on POST /mouse with valid body", async () => {
+      const { server, port } = await setup();
+      testServer = server;
+
+      const res = await fetch(`http://127.0.0.1:${port}/mouse`, {
+        method: "POST",
+        headers: {
+          "x-vm0-token": TEST_TOKEN,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ action: "left_click", x: 500, y: 300 }),
+      });
+      expect(res.status).toBe(200);
+
+      const data = await res.json();
+      expect(data).toEqual({ ok: true });
+      expect(executeMouseAction).toHaveBeenCalledWith("left_click", 500, 300);
+    });
+
+    it("should return 400 for invalid action on POST /mouse", async () => {
+      const { server, port } = await setup();
+      testServer = server;
+
+      const res = await fetch(`http://127.0.0.1:${port}/mouse`, {
+        method: "POST",
+        headers: {
+          "x-vm0-token": TEST_TOKEN,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ action: "invalid_action", x: 100, y: 100 }),
+      });
+      expect(res.status).toBe(400);
+      const text = await res.text();
+      expect(text).toContain("Unknown mouse action");
+    });
+
+    it("should return 400 for out-of-bounds coordinates on POST /mouse", async () => {
+      const { server, port } = await setup();
+      testServer = server;
+
+      // Screen is 1920x1080 with scaleFactor 2, so max is 960x540 points
+      const res = await fetch(`http://127.0.0.1:${port}/mouse`, {
+        method: "POST",
+        headers: {
+          "x-vm0-token": TEST_TOKEN,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ action: "left_click", x: 1000, y: 300 }),
+      });
+      expect(res.status).toBe(400);
+      const text = await res.text();
+      expect(text).toContain("out of bounds");
+    });
+
+    it("should return 400 for missing fields on POST /mouse", async () => {
+      const { server, port } = await setup();
+      testServer = server;
+
+      const res = await fetch(`http://127.0.0.1:${port}/mouse`, {
+        method: "POST",
+        headers: {
+          "x-vm0-token": TEST_TOKEN,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ action: "left_click" }),
+      });
+      expect(res.status).toBe(400);
+      const text = await res.text();
+      expect(text).toContain("Missing required fields");
+    });
+
+    it("should return 400 for non-numeric coordinates on POST /mouse", async () => {
+      const { server, port } = await setup();
+      testServer = server;
+
+      const res = await fetch(`http://127.0.0.1:${port}/mouse`, {
+        method: "POST",
+        headers: {
+          "x-vm0-token": TEST_TOKEN,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ action: "left_click", x: "abc", y: 100 }),
+      });
+      expect(res.status).toBe(400);
+      const text = await res.text();
+      expect(text).toContain("finite numbers");
+    });
+
+    it("should return 500 when cliclick fails on POST /mouse", async () => {
+      vi.mocked(executeMouseAction).mockRejectedValueOnce(
+        new Error("cliclick not found. Install with: brew install cliclick"),
+      );
+
+      const { server, port } = await setup();
+      testServer = server;
+
+      const res = await fetch(`http://127.0.0.1:${port}/mouse`, {
+        method: "POST",
+        headers: {
+          "x-vm0-token": TEST_TOKEN,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ action: "left_click", x: 100, y: 100 }),
+      });
+      expect(res.status).toBe(500);
+      const text = await res.text();
+      expect(text).toContain("cliclick not found");
+    });
+
+    it("should return 404 for GET /mouse", async () => {
+      const { server, port } = await setup();
+      testServer = server;
+
+      const res = await fetch(`http://127.0.0.1:${port}/mouse`, {
+        headers: { "x-vm0-token": TEST_TOKEN },
+      });
+      expect(res.status).toBe(404);
+    });
+
     it("should execute left_click_drag on POST /mouse", async () => {
       const { server, port } = await setup();
       testServer = server;
@@ -390,23 +518,6 @@ describe("desktop-server", () => {
       const data = await res.json();
       expect(data).toEqual({ ok: true });
       expect(scroll).toHaveBeenCalledWith(200, 100, "up", undefined);
-    });
-
-    it("should return 400 for unknown mouse action", async () => {
-      const { server, port } = await setup();
-      testServer = server;
-
-      const res = await fetch(`http://127.0.0.1:${port}/mouse`, {
-        method: "POST",
-        headers: {
-          "x-vm0-token": TEST_TOKEN,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({ action: "unknown_action" }),
-      });
-      expect(res.status).toBe(400);
-      const text = await res.text();
-      expect(text).toBe("Unknown mouse action: unknown_action");
     });
 
     it("should return 500 when mouse action fails", async () => {
