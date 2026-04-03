@@ -8,7 +8,7 @@ const reload$ = state(0);
  * Replaces "platform" or "app" with "www" in the hostname so sign-in/sign-out
  * redirects land on the web app where auth pages live.
  */
-function resolveWebOrigin(): string {
+export function resolveWebOrigin(): string {
   const origin = location.origin;
   if (!origin || origin === "null") {
     return "";

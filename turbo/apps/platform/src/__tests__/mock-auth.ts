@@ -86,11 +86,18 @@ export const mockedClerk = {
   },
   get session() {
     return {
+      id: "test-session-id",
       getToken: () => {
         return Promise.resolve(internalMockedSession?.token ?? "");
       },
     };
   },
+  signOut: vi.fn(() => {
+    return Promise.resolve();
+  }),
+  openUserProfile: vi.fn(() => {
+    return Promise.resolve();
+  }),
   load: () => {
     return Promise.resolve();
   },
