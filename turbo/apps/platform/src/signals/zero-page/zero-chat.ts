@@ -1,6 +1,6 @@
 import { command, computed, state, type Computed } from "ccstate";
 import type { AgentEvent, LogStatus } from "./log-types.ts";
-import { resetSignal } from "../utils.ts";
+import { resetSignal, throwIfAbort } from "../utils.ts";
 import { detachedNavigateTo$ } from "../route.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { logger } from "../log.ts";
@@ -24,6 +24,7 @@ import {
   zeroSessionsByIdContract,
   type SummaryEntry,
 } from "@vm0/core";
+import { accept, ApiError } from "../../lib/accept.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 
 export {
@@ -55,12 +56,10 @@ async function createChatThread(
   title?: string,
 ): Promise<{ id: string; title: string | null }> {
   const client = createClient(chatThreadsContract);
-  const result = await client.create({
-    body: { agentId, ...(title ? { title } : {}) },
-  });
-  if (result.status !== 201) {
-    throw new Error("Failed to create chat thread");
-  }
+  const result = await accept(
+    client.create({ body: { agentId, ...(title ? { title } : {}) } }),
+    [201],
+  );
   return { id: result.body.id, title: result.body.title };
 }
 
@@ -393,10 +392,11 @@ export const chatThreads$ = computed(async (get) => {
     return [];
   }
   const client = get(zeroClient$)(chatThreadsContract);
-  const result = await client.list({ query: { agentId: composeId } });
-  if (result.status !== 200) {
-    throw new Error(`Failed to load chats (${result.status})`);
-  }
+  const result = await accept(
+    client.list({ query: { agentId: composeId } }),
+    [200],
+    { toast: false },
+  );
   const threads = result.body.threads;
 
   const currentThread = await get(currentChatThread$);
@@ -415,18 +415,8 @@ export const deleteChatThread$ = command(
     signal.throwIfAborted();
 
     const client = get(zeroClient$)(chatThreadByIdContract);
-    const result = await client.delete({
-      params: { id: threadId },
-    });
+    await accept(client.delete({ params: { id: threadId } }), [204]);
     signal.throwIfAborted();
-
-    if (result.status !== 204) {
-      const msg =
-        result.status === 401 || result.status === 404
-          ? result.body.error.message
-          : `status ${result.status}`;
-      throw new Error(`Delete failed: ${msg}`);
-    }
 
     toast.success("Chat deleted");
 
@@ -616,11 +606,12 @@ export const currentChatThread$ = computed(
     }
 
     const threadClient = get(zeroClient$)(chatThreadByIdContract);
-    const threadResult = await threadClient.get({
-      params: { id: threadId },
-    });
-
-    if (threadResult.status === 200) {
+    try {
+      const threadResult = await accept(
+        threadClient.get({ params: { id: threadId } }),
+        [200],
+        { toast: false },
+      );
       const body = threadResult.body;
       return {
         id: threadId,
@@ -631,26 +622,33 @@ export const currentChatThread$ = computed(
         unsavedRuns: body.unsavedRuns ?? [],
         isLegacySession: false,
       };
+    } catch (error) {
+      throwIfAbort(error);
+      // not a thread; try session lookup below
     }
 
     const sessionClient = get(zeroClient$)(zeroSessionsByIdContract);
-    const sessionResult = await sessionClient.getById({
-      params: { id: threadId },
-    });
-    if (sessionResult.status !== 200) {
+    try {
+      const sessionResult = await accept(
+        sessionClient.getById({ params: { id: threadId } }),
+        [200],
+        { toast: false },
+      );
+      const body = sessionResult.body;
+      return {
+        id: threadId,
+        title: null,
+        agentId: body.agentId,
+        chatMessages: body.chatMessages ?? [],
+        latestSessionId: threadId,
+        unsavedRuns: [],
+        isLegacySession: true,
+      };
+    } catch (error) {
+      throwIfAbort(error);
       L.warn("Failed to load chat");
       return null;
     }
-    const body = sessionResult.body;
-    return {
-      id: threadId,
-      title: null,
-      agentId: body.agentId,
-      chatMessages: body.chatMessages ?? [],
-      latestSessionId: threadId,
-      unsavedRuns: [],
-      isLegacySession: true,
-    };
   },
 );
 
@@ -892,18 +890,6 @@ const prepareUserMessage$ = command(
   },
 );
 
-function handleSendError(result: {
-  status: number;
-  body: { error: { message: string; code?: string } };
-}): never {
-  const code = result.body.error.code;
-  const guidance = code ? RUN_ERROR_GUIDANCE[code] : undefined;
-  const message = guidance
-    ? `${guidance.title}: ${guidance.guidance}`
-    : result.body.error.message;
-  throw new Error(message);
-}
-
 interface ChatMessageArgs {
   agentId: string;
   prompt: string;
@@ -938,25 +924,25 @@ const sendChatMessageRequest$ = command(
     signal: AbortSignal,
   ): Promise<{ threadId: string; runId: string }> => {
     const client = get(zeroClient$)(chatMessagesContract);
-    const result = await client.send({
-      body: message,
-      fetchOptions: {
-        signal,
-      },
-    });
-
-    if (result.status !== 201) {
-      if (
-        result.status === 400 ||
-        result.status === 403 ||
-        result.status === 404
-      ) {
-        handleSendError(result);
+    try {
+      const result = await accept(
+        client.send({ body: message, fetchOptions: { signal } }),
+        [201],
+      );
+      signal.throwIfAborted();
+      return result.body;
+    } catch (error) {
+      throwIfAbort(error);
+      if (error instanceof ApiError) {
+        const guidance = error.code
+          ? RUN_ERROR_GUIDANCE[error.code]
+          : undefined;
+        if (guidance) {
+          throw new Error(`${guidance.title}: ${guidance.guidance}`);
+        }
       }
-      throw new Error(`Failed to send message (${result.status})`);
+      throw error;
     }
-
-    return result.body;
   },
 );
 
