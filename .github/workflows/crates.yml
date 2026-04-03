@@ -598,6 +598,9 @@ jobs:
             [LANG]="C.UTF-8"
             [NPM_CONFIG_UPDATE_NOTIFIER]="false"
             [NODE_EXTRA_CA_CERTS]="/usr/local/share/ca-certificates/vm0-proxy-ca.crt"
+            [SSL_CERT_FILE]="/etc/ssl/certs/ca-certificates.crt"
+            [REQUESTS_CA_BUNDLE]="/etc/ssl/certs/ca-certificates.crt"
+            [CARGO_HTTP_CAINFO]="/etc/ssl/certs/ca-certificates.crt"
           )
           check_env() {
             local label=$1 sudo_flag=$2

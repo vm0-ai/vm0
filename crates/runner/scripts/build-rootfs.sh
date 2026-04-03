@@ -209,16 +209,30 @@ extract_and_inject() {
   # Update system CA bundle
   sudo chroot "$EXTRACT_DIR" update-ca-certificates
 
+  # Import proxy CA into Java's separate trust store (cacerts keystore).
+  # Java does not read the system CA bundle — it has its own PKCS12 keystore.
+  sudo chroot "$EXTRACT_DIR" keytool -importcert -trustcacerts \
+    -keystore /etc/ssl/certs/java/cacerts \
+    -storepass changeit -noprompt \
+    -alias vm0-proxy-ca \
+    -file "/${CA_ROOTFS_DEST}"
+
   # Write /etc/environment (read by PAM for all login sessions).
   # [sync:etc-environment] Keep in sync with: .github/workflows/crates.yml (runner-exec Test 5)
   # - LANG: locale (Docker ENV is lost after export)
   # - NPM_CONFIG_UPDATE_NOTIFIER: suppress npm update nags
   # - NODE_EXTRA_CA_CERTS: Node.js uses its own root CAs, not the system bundle
+  # - SSL_CERT_FILE: Python (certifi/pip/requests), Go, Rust (native-tls)
+  # - REQUESTS_CA_BUNDLE: Python requests library
+  # - CARGO_HTTP_CAINFO: Rust cargo (rustls backend ignores system CAs)
   printf '%s\n' \
     "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
     "LANG=C.UTF-8" \
     "NPM_CONFIG_UPDATE_NOTIFIER=false" \
     "NODE_EXTRA_CA_CERTS=/${CA_ROOTFS_DEST}" \
+    "SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt" \
+    "REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt" \
+    "CARGO_HTTP_CAINFO=/etc/ssl/certs/ca-certificates.crt" \
     | sudo tee "${EXTRACT_DIR}/etc/environment" > /dev/null
 
   echo "[OK] proxy CA installed and system bundle updated"
