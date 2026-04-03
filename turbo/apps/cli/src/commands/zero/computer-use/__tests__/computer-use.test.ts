@@ -153,6 +153,7 @@ describe("computer-use command visibility", () => {
     expect(clientSubs).toContain("key");
     expect(clientSubs).toContain("hold-key");
     expect(clientSubs).toContain("type");
+    expect(clientSubs).toContain("open-app");
   });
 
   it("should have mouse click commands under client subcommand", () => {

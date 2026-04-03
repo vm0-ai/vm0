@@ -310,3 +310,20 @@ export const clientTypeCommand = new Command()
       process.stdout.write("ok\n");
     }),
   );
+
+export const clientOpenAppCommand = new Command()
+  .name("open-app")
+  .description("Open or activate a macOS application by name or bundle ID")
+  .argument(
+    "<nameOrBundleId>",
+    "App name (e.g., Safari) or bundle ID (e.g., com.apple.Safari)",
+  )
+  .action(
+    withErrorHandler(async (nameOrBundleId: string) => {
+      await callHost("/open-application", {
+        method: "POST",
+        body: { nameOrBundleId },
+      });
+      process.stdout.write("ok\n");
+    }),
+  );

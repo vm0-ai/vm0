@@ -66,6 +66,12 @@ vi.mock("../clipboard", () => {
   };
 });
 
+vi.mock("../application", () => {
+  return {
+    openApplication: vi.fn().mockResolvedValue(undefined),
+  };
+});
+
 import type { Server } from "http";
 import { startDesktopServer, getRandomPort } from "../desktop-server";
 import {
@@ -84,6 +90,7 @@ import {
 } from "../cliclick";
 import { scroll } from "../scroll";
 import { readClipboard, writeClipboard } from "../clipboard";
+import { openApplication } from "../application";
 
 const TEST_TOKEN = "test-bridge-token-abc123";
 
@@ -103,6 +110,9 @@ async function setup(): Promise<{ server: Server; port: number }> {
       return passthrough();
     }),
     http.all(`http://127.0.0.1:${port}/keyboard`, () => {
+      return passthrough();
+    }),
+    http.all(`http://127.0.0.1:${port}/open-application`, () => {
       return passthrough();
     }),
     http.all(`http://127.0.0.1:${port}/unknown`, () => {
@@ -811,6 +821,63 @@ describe("desktop-server", () => {
       expect(res.status).toBe(500);
       const text = await res.text();
       expect(text).toBe("cliclick not found");
+    });
+
+    it("should open application on POST /open-application", async () => {
+      const { server, port } = await setup();
+      testServer = server;
+
+      const res = await fetch(`http://127.0.0.1:${port}/open-application`, {
+        method: "POST",
+        headers: {
+          "x-vm0-token": TEST_TOKEN,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ nameOrBundleId: "Safari" }),
+      });
+      expect(res.status).toBe(200);
+
+      const data = await res.json();
+      expect(data).toEqual({ ok: true });
+      expect(openApplication).toHaveBeenCalledWith("Safari");
+    });
+
+    it("should return 400 for empty nameOrBundleId on POST /open-application", async () => {
+      const { server, port } = await setup();
+      testServer = server;
+
+      const res = await fetch(`http://127.0.0.1:${port}/open-application`, {
+        method: "POST",
+        headers: {
+          "x-vm0-token": TEST_TOKEN,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ nameOrBundleId: "" }),
+      });
+      expect(res.status).toBe(400);
+      const text = await res.text();
+      expect(text).toContain("non-empty string");
+    });
+
+    it("should return 500 when openApplication fails", async () => {
+      vi.mocked(openApplication).mockRejectedValueOnce(
+        new Error("The application could not be found"),
+      );
+
+      const { server, port } = await setup();
+      testServer = server;
+
+      const res = await fetch(`http://127.0.0.1:${port}/open-application`, {
+        method: "POST",
+        headers: {
+          "x-vm0-token": TEST_TOKEN,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ nameOrBundleId: "NonExistentApp" }),
+      });
+      expect(res.status).toBe(500);
+      const text = await res.text();
+      expect(text).toBe("The application could not be found");
     });
   });
 });

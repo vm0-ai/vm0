@@ -18,6 +18,7 @@ import {
   clientKeyCommand,
   clientHoldKeyCommand,
   clientTypeCommand,
+  clientOpenAppCommand,
 } from "./client";
 
 const hostCommand = new Command()
@@ -44,7 +45,8 @@ const clientCommand = new Command()
   .addCommand(clientWriteClipboardCommand)
   .addCommand(clientKeyCommand)
   .addCommand(clientHoldKeyCommand)
-  .addCommand(clientTypeCommand);
+  .addCommand(clientTypeCommand)
+  .addCommand(clientOpenAppCommand);
 
 export const zeroComputerUseCommand = new Command()
   .name("computer-use")
@@ -69,5 +71,7 @@ Examples:
   Write clipboard text:              zero computer-use client write-clipboard "hello"
   Press key combo:                   zero computer-use client key "cmd+c"
   Hold shift for 2 seconds:          zero computer-use client hold-key "shift" 2000
-  Type text:                         zero computer-use client type "Hello, world!"`,
+  Type text:                         zero computer-use client type "Hello, world!"
+  Open an application:               zero computer-use client open-app Safari
+  Open by bundle ID:                 zero computer-use client open-app "com.apple.Safari"`,
   );

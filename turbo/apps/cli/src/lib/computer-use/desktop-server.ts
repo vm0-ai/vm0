@@ -24,6 +24,7 @@ import {
 import type { MouseAction } from "./cliclick";
 import { scroll, type ScrollDirection } from "./scroll";
 import { readClipboard, writeClipboard } from "./clipboard";
+import { openApplication } from "./application";
 
 /**
  * Read the full request body as a string.
@@ -297,6 +298,47 @@ async function handleKeyboard(
   res.end(JSON.stringify({ ok: true }));
 }
 
+async function handleClipboard(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  if (req.method === "GET") {
+    const text = await readClipboard();
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ text }));
+  } else if (req.method === "POST") {
+    const raw = await readBody(req);
+    const body = JSON.parse(raw) as { text: string };
+    await writeClipboard(body.text);
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ ok: true }));
+  } else {
+    res.writeHead(404, { "Content-Type": "text/plain" });
+    res.end("Not found");
+  }
+}
+
+async function handleOpenApplication(
+  req: IncomingMessage,
+  res: ServerResponse,
+): Promise<void> {
+  const raw = await readBody(req);
+  const body = JSON.parse(raw) as { nameOrBundleId: unknown };
+
+  if (
+    typeof body.nameOrBundleId !== "string" ||
+    body.nameOrBundleId.length === 0
+  ) {
+    res.writeHead(400, { "Content-Type": "text/plain" });
+    res.end("nameOrBundleId must be a non-empty string");
+    return;
+  }
+
+  await openApplication(body.nameOrBundleId);
+  res.writeHead(200, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ ok: true }));
+}
+
 /**
  * Allocate a random available port on localhost.
  */
@@ -340,18 +382,12 @@ async function handleRequest(
       await handleZoom(searchParams, res);
     } else if (req.method === "POST" && pathname === "/mouse") {
       await handleMouseRequest(req, res);
-    } else if (req.method === "GET" && pathname === "/clipboard") {
-      const text = await readClipboard();
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ text }));
-    } else if (req.method === "POST" && pathname === "/clipboard") {
-      const raw = await readBody(req);
-      const body = JSON.parse(raw) as { text: string };
-      await writeClipboard(body.text);
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ ok: true }));
+    } else if (pathname === "/clipboard") {
+      await handleClipboard(req, res);
     } else if (req.method === "POST" && pathname === "/keyboard") {
       await handleKeyboard(req, res);
+    } else if (req.method === "POST" && pathname === "/open-application") {
+      await handleOpenApplication(req, res);
     } else {
       res.writeHead(404, { "Content-Type": "text/plain" });
       res.end("Not found");
