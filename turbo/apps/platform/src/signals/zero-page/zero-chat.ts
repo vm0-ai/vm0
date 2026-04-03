@@ -745,19 +745,35 @@ export const loadSessionFromSnapshot$ = command(
       },
     );
 
-    await Promise.all(
-      assistantMessages.map(async (message) => {
-        await set(message.beginLoop$!, signal);
-      }),
-    );
-    signal.throwIfAborted();
+    if (assistantMessages.length === 0) {
+      set(internalReloadChatThreads$, (n) => {
+        return n + 1;
+      });
+      set(reloadCurrentThread$, (n) => {
+        return n + 1;
+      });
+      return;
+    }
 
-    set(internalReloadChatThreads$, (n) => {
-      return n + 1;
-    });
-    set(reloadCurrentThread$, (n) => {
-      return n + 1;
-    });
+    // Start daemon polling loops for each running assistant message.
+    // These loops run until the run completes or the signal is aborted.
+    // When all loops finish, trigger a final reload to pick up completed state.
+    Promise.all(
+      assistantMessages.map((message) => {
+        return set(message.beginLoop$!, signal);
+      }),
+    )
+      .then(() => {
+        set(internalReloadChatThreads$, (n) => {
+          return n + 1;
+        });
+        set(reloadCurrentThread$, (n) => {
+          return n + 1;
+        });
+      })
+      .catch(() => {
+        // AbortError is expected when the page signal is aborted; ignore it.
+      });
   },
 );
 
