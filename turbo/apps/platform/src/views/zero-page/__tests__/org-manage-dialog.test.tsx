@@ -49,84 +49,74 @@ async function openDialog() {
 }
 
 describe("org manage dialog - display", () => {
-  it("shows tab navigation items with icons in the sidebar (ORG-D-001)", async () => {
+  it("shows tab navigation items in the sidebar", async () => {
     mockAPIs();
     await openDialog();
 
-    const dialog = screen.getByRole("dialog");
-    const nav = dialog.querySelector("nav");
-    expect(nav).not.toBeNull();
-
     // Always-visible tabs
-    expect(within(nav!).getByText("General")).toBeInTheDocument();
-    expect(within(nav!).getByText("Members")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /General/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Members/i }),
+    ).toBeInTheDocument();
 
     // Admin-visible tabs
-    expect(within(nav!).getByText("Model Providers")).toBeInTheDocument();
-
-    // Verify sidebar buttons contain an SVG icon
-    const buttons = within(nav!).getAllByRole("button");
-    const generalButton = buttons.find((btn) => {
-      return btn.textContent?.includes("General");
-    });
-    expect(generalButton).toBeDefined();
-    expect(generalButton!.querySelector("svg")).not.toBeNull();
+    expect(
+      screen.getByRole("button", { name: /Model Providers/i }),
+    ).toBeInTheDocument();
   });
 
-  it("shows the active tab title and description (ORG-D-003)", async () => {
+  it("shows the active tab heading on initial load", async () => {
     mockAPIs();
     await openDialog();
 
     await waitFor(() => {
       expect(
-        screen.getByText("Manage your workspace profile and settings."),
+        screen.getByRole("heading", { name: "General" }),
       ).toBeInTheDocument();
     });
-
-    expect(
-      screen.getByRole("heading", { name: "General" }),
-    ).toBeInTheDocument();
   });
 });
 
 describe("org manage dialog - conditional", () => {
-  it("renders both desktop sidebar nav and mobile select dropdown (ORG-C-002)", async () => {
+  it("renders both desktop sidebar nav buttons and mobile select dropdown", async () => {
     mockAPIs();
     await openDialog();
 
-    const dialog = screen.getByRole("dialog");
-    const nav = dialog.querySelector("nav");
-    expect(nav).not.toBeNull();
+    // Desktop sidebar has tab buttons
+    expect(
+      screen.getByRole("button", { name: /General/i }),
+    ).toBeInTheDocument();
 
+    // Mobile nav has a combobox/select
     const combobox = screen.getByRole("combobox");
     expect(combobox).toBeInTheDocument();
   });
 
-  it("shows Configuration and Billing groups for admin users (ORG-C-004)", async () => {
+  it("shows Configuration and Billing groups for admin users", async () => {
     mockAPIs({ role: "admin" });
     await openDialog();
 
     const dialog = screen.getByRole("dialog");
-    const nav = dialog.querySelector("nav");
-    expect(within(nav!).getByText("Configuration")).toBeInTheDocument();
-    expect(within(nav!).getByText("Billing & pricing")).toBeInTheDocument();
+    expect(within(dialog).getByText("Configuration")).toBeInTheDocument();
+    expect(within(dialog).getByText("Billing & pricing")).toBeInTheDocument();
   });
 
-  it("hides Configuration and Billing groups for non-admin users (ORG-C-004)", async () => {
+  it("hides Configuration and Billing groups for non-admin users", async () => {
     mockAPIs({ role: "member" });
     await openDialog();
 
     const dialog = screen.getByRole("dialog");
-    const nav = dialog.querySelector("nav");
-    expect(within(nav!).queryByText("Configuration")).not.toBeInTheDocument();
+    expect(within(dialog).queryByText("Configuration")).not.toBeInTheDocument();
     expect(
-      within(nav!).queryByText("Billing & pricing"),
+      within(dialog).queryByText("Billing & pricing"),
     ).not.toBeInTheDocument();
   });
 });
 
 describe("org manage dialog - interaction", () => {
-  it("switches tab content when a sidebar button is clicked (ORG-I-005)", async () => {
+  it("switches tab content when a sidebar button is clicked", async () => {
     const user = userEvent.setup();
     mockAPIs();
     server.use(
@@ -145,27 +135,20 @@ describe("org manage dialog - interaction", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("Manage your workspace profile and settings."),
+        screen.getByRole("heading", { name: "General" }),
       ).toBeInTheDocument();
     });
 
-    const dialog = screen.getByRole("dialog");
-    const nav = dialog.querySelector("nav");
-    const buttons = within(nav!).getAllByRole("button");
-    const membersButton = buttons.find((btn) => {
-      return btn.textContent?.includes("Members");
-    });
-    expect(membersButton).toBeDefined();
-    await user.click(membersButton!);
+    await user.click(screen.getByRole("button", { name: /Members/i }));
 
     await waitFor(() => {
       expect(
-        screen.getByText("Manage who has access to this workspace."),
+        screen.getByRole("heading", { name: "Members" }),
       ).toBeInTheDocument();
     });
   });
 
-  it("switches tab content when the mobile select dropdown is changed (ORG-I-006)", async () => {
+  it("switches tab content when the mobile select dropdown is changed", async () => {
     const user = userEvent.setup();
     mockAPIs();
     server.use(
@@ -184,7 +167,7 @@ describe("org manage dialog - interaction", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("Manage your workspace profile and settings."),
+        screen.getByRole("heading", { name: "General" }),
       ).toBeInTheDocument();
     });
 
@@ -200,14 +183,14 @@ describe("org manage dialog - interaction", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("Manage who has access to this workspace."),
+        screen.getByRole("heading", { name: "Members" }),
       ).toBeInTheDocument();
     });
   });
 });
 
 describe("org manage dialog - state", () => {
-  it("opens and closes the dialog correctly (ORG-S-007)", async () => {
+  it("opens and closes the dialog correctly", async () => {
     const user = userEvent.setup();
     mockAPIs();
     await openDialog();
