@@ -6,6 +6,7 @@ import {
 } from "@vm0/core";
 import { zeroClient$ } from "../../api-client.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
+import { accept } from "../../../lib/accept.ts";
 
 // ---------------------------------------------------------------------------
 // Agent selection
@@ -61,17 +62,22 @@ export const confirmPermissionDialog$ = command(
     await Promise.allSettled(
       [...selected].map(async (agentId) => {
         signal.throwIfAborted();
-        const existing = await client.get({ params: { id: agentId } });
+        const existing = await accept(
+          client.get({ params: { id: agentId } }),
+          [200],
+        );
         signal.throwIfAborted();
-        const current =
-          existing.status === 200 ? existing.body.enabledTypes : [];
+        const current = existing.body.enabledTypes;
         if (current.includes(connectorType)) {
           return;
         }
-        await client.update({
-          params: { id: agentId },
-          body: { enabledTypes: [...current, connectorType] },
-        });
+        await accept(
+          client.update({
+            params: { id: agentId },
+            body: { enabledTypes: [...current, connectorType] },
+          }),
+          [200],
+        );
       }),
     );
     signal.throwIfAborted();

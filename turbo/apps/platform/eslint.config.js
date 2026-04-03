@@ -150,20 +150,6 @@ export default [
       "ccstate/no-new-abort-controller": "off",
     },
   },
-  // Allow pre-accept zeroClient$ calls in existing signal files (migration in progress).
-  // Each file should be migrated to use accept() and removed from this list.
-  // Remaining: #7879 (Billing & Usage)
-  {
-    files: [
-      "src/signals/usage-page/usage-signals.ts",
-      "src/signals/zero-page/billing.ts",
-      "src/signals/zero-page/member-credit-caps.ts",
-      "src/signals/zero-page/settings/permission-dialog.ts",
-    ],
-    rules: {
-      "ccstate/require-accept": "off",
-    },
-  },
   {
     ignores: [
       "dist/**",
