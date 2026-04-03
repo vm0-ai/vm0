@@ -14,6 +14,7 @@ import { pathname } from "../../../signals/location.ts";
 const context = testContext();
 
 const MOCK_AGENT_ID = "d0000000-0000-4000-a000-000000000001";
+const MOCK_MEMBER_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 
 function mockAdminOnboarding() {
   server.use(
@@ -39,7 +40,7 @@ function mockMemberOnboarding() {
         isAdmin: false,
         hasOrg: true,
         hasDefaultAgent: true,
-        defaultAgentId: "c0000000-0000-4000-a000-000000000001",
+        defaultAgentId: MOCK_MEMBER_AGENT_ID,
         defaultAgentMetadata: { displayName: "TeamBot" },
         defaultAgentSkills: [],
       });
@@ -49,72 +50,8 @@ function mockMemberOnboarding() {
 
 function mockAdminCompletionApis() {
   server.use(
-    http.put("*/api/zero/org", () => {
-      return HttpResponse.json({ id: "org_1", slug: "test", name: "Test" });
-    }),
-    http.post("*/api/zero/model-providers", () => {
-      return HttpResponse.json(
-        {
-          provider: {
-            id: "a0000000-0000-4000-a000-000000000099",
-            type: "vm0",
-            framework: "claude-code",
-            secretName: null,
-            authMethod: null,
-            secretNames: null,
-            isDefault: true,
-            selectedModel: null,
-            createdAt: "2026-03-01T00:00:00Z",
-            updatedAt: "2026-03-01T00:00:00Z",
-          },
-          created: true,
-        },
-        { status: 201 },
-      );
-    }),
-    http.post("*/api/zero/agents", () => {
-      return HttpResponse.json(
-        {
-          name: "zero",
-          agentId: MOCK_AGENT_ID,
-          ownerId: "test-user-123",
-          description: null,
-          displayName: null,
-          sound: null,
-          avatarUrl: null,
-          firewallPolicies: null,
-        },
-        { status: 201 },
-      );
-    }),
-    http.put(`*/api/zero/agents/${MOCK_AGENT_ID}/instructions`, () => {
-      return HttpResponse.json({
-        name: "zero",
-        agentId: MOCK_AGENT_ID,
-        ownerId: "test-user-123",
-        description: null,
-        displayName: null,
-        sound: null,
-        avatarUrl: null,
-        firewallPolicies: null,
-      });
-    }),
-    http.put("*/api/zero/default-agent", () => {
+    http.post("*/api/zero/onboarding/setup", () => {
       return HttpResponse.json({ agentId: MOCK_AGENT_ID });
-    }),
-    http.post("*/api/zero/onboarding/complete", () => {
-      return HttpResponse.json({ ok: true });
-    }),
-    http.post("*/api/zero/chat/messages", () => {
-      return HttpResponse.json(
-        {
-          runId: "run-1",
-          threadId: "thread-1",
-          status: "pending",
-          createdAt: "2026-03-10T00:00:00Z",
-        },
-        { status: 201 },
-      );
     }),
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
@@ -126,17 +63,6 @@ function mockMemberCompletionApis() {
   server.use(
     http.post("*/api/zero/onboarding/complete", () => {
       return HttpResponse.json({ ok: true });
-    }),
-    http.post("*/api/zero/chat/messages", () => {
-      return HttpResponse.json(
-        {
-          runId: "run-1",
-          threadId: "thread-1",
-          status: "pending",
-          createdAt: "2026-03-10T00:00:00Z",
-        },
-        { status: 201 },
-      );
     }),
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
@@ -211,7 +137,7 @@ describe("onboardingAddToSlack$", () => {
           isAdmin: false,
           hasOrg: true,
           hasDefaultAgent: true,
-          defaultAgentId: "c0000000-0000-4000-a000-000000000001",
+          defaultAgentId: MOCK_MEMBER_AGENT_ID,
           defaultAgentMetadata: { displayName: "TeamBot" },
           defaultAgentSkills: [],
         });
@@ -229,7 +155,7 @@ describe("onboardingAddToSlack$", () => {
 // ---------------------------------------------------------------------------
 
 describe("onboardingContinueWeb$", () => {
-  it("should navigate to / and reset saving for admin", async () => {
+  it("should navigate to /agents/:id/chat for admin", async () => {
     mockAdminOnboarding();
     mockAdminCompletionApis();
     await setupPage({ context, path: "/onboarding", withoutRender: true });
@@ -251,12 +177,12 @@ describe("onboardingContinueWeb$", () => {
 
     await context.store.set(onboardingContinueWeb$, context.signal);
 
-    expect(pathname()).toBe("/chats/thread-1");
+    expect(pathname()).toBe(`/agents/${MOCK_AGENT_ID}/chat`);
     // Step is set to "done" by completeOnboarding$
     await expect(context.store.get(zeroOnboardingStep$)).resolves.toBe("done");
   });
 
-  it("should navigate to / for member", async () => {
+  it("should navigate to /agents/:id/chat for member", async () => {
     mockMemberOnboarding();
     mockMemberCompletionApis();
     await setupPage({ context, path: "/onboarding", withoutRender: true });
@@ -269,7 +195,7 @@ describe("onboardingContinueWeb$", () => {
           isAdmin: false,
           hasOrg: true,
           hasDefaultAgent: true,
-          defaultAgentId: "c0000000-0000-4000-a000-000000000001",
+          defaultAgentId: MOCK_MEMBER_AGENT_ID,
           defaultAgentMetadata: { displayName: "TeamBot" },
           defaultAgentSkills: [],
         });
@@ -278,6 +204,6 @@ describe("onboardingContinueWeb$", () => {
 
     await context.store.set(onboardingContinueWeb$, context.signal);
 
-    expect(pathname()).toBe("/chats/thread-1");
+    expect(pathname()).toBe(`/agents/${MOCK_MEMBER_AGENT_ID}/chat`);
   });
 });

@@ -57,5 +57,26 @@ export const onboardingCompleteContract = c.router({
   },
 });
 
+export const onboardingSetupContract = c.router({
+  setup: {
+    method: "POST",
+    path: "/api/zero/onboarding/setup",
+    headers: authHeadersSchema,
+    body: z.object({
+      displayName: z.string(),
+      workspaceName: z.string().optional(),
+      sound: z.string().optional(),
+      avatarUrl: z.string().optional(),
+      selectedConnectors: z.array(z.string()).optional(),
+    }),
+    responses: {
+      200: z.object({ agentId: z.string() }),
+      401: apiErrorSchema,
+    },
+    summary: "Complete admin onboarding in a single request",
+  },
+});
+
 export type OnboardingStatusContract = typeof onboardingStatusContract;
 export type OnboardingCompleteContract = typeof onboardingCompleteContract;
+export type OnboardingSetupContract = typeof onboardingSetupContract;

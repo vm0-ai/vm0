@@ -2,14 +2,10 @@ import { command, computed, state } from "ccstate";
 import {
   onboardingStatusContract,
   onboardingCompleteContract,
-  orgDefaultAgentContract,
-  zeroOrgContract,
-  zeroUserConnectorsContract,
+  onboardingSetupContract,
 } from "@vm0/core";
 import { clerk$ } from "../auth.ts";
 import { zeroClient$ } from "../api-client.ts";
-import { createOrgModelProvider$ } from "../external/org-model-providers.ts";
-import { createZeroAgent } from "./create-zero-agent.ts";
 import { logger } from "../log.ts";
 import { accept } from "../../lib/accept.ts";
 
@@ -141,7 +137,8 @@ export const resetOnboardingStep$ = command(({ set }) => {
 });
 
 /**
- * Complete onboarding: create agent via zero agents API and set as default.
+ * Complete onboarding: single server-side API call that creates agent,
+ * sets default, updates org, and marks onboarding done.
  */
 export const completeZeroOnboarding$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -150,94 +147,25 @@ export const completeZeroOnboarding$ = command(
     const selectedConnectors = get(internalSelectedConnectors$);
     const createClient = get(zeroClient$);
 
-    if (workspaceName.trim()) {
-      const name = workspaceName.trim();
-      const baseSlug = name
-        .toLowerCase()
-        .replace(/[^a-z0-9-]/g, "-")
-        .replace(/-+/g, "-")
-        .replace(/^-|-$/g, "")
-        .slice(0, 64);
-      const orgClient = createClient(zeroOrgContract);
-
-      // Try slug from name first, fall back to slug+random on conflict
-      const slugCandidates = [
-        baseSlug,
-        `${baseSlug.slice(0, 56)}-${Math.random().toString(36).slice(2, 8)}`,
-      ];
-      let updated = false;
-      for (const slug of slugCandidates) {
-        if (slug.length < 3) {
-          continue;
-        }
-        const orgResult = await accept(
-          orgClient.update({ body: { name, slug, force: true } }),
-          [200, 409],
-        );
-        signal.throwIfAborted();
-        if (orgResult.status === 200) {
-          updated = true;
-          break;
-        }
-        // status === 409, try next slug
-      }
-      // If both slug candidates failed, update name only
-      if (!updated) {
-        await accept(orgClient.update({ body: { name } }), [200]);
-        signal.throwIfAborted();
-      }
-    }
-
-    await set(
-      createOrgModelProvider$,
-      {
-        type: "vm0",
-        selectedModel: "claude-sonnet-4.6",
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-
-    // Create agent and upload instructions (server injects seed skills)
-    const agent = await createZeroAgent(createClient, {
-      displayName,
-      sound: "professional",
-      avatarUrl: "preset:0",
-    });
-    signal.throwIfAborted();
-
-    // Set initial connector permissions for the new agent
-    if (selectedConnectors.length > 0) {
-      const userConnectorsClient = createClient(zeroUserConnectorsContract);
-      await accept(
-        userConnectorsClient.update({
-          params: { id: agent.agentId },
-          body: { enabledTypes: selectedConnectors },
-        }),
-        [200],
-      );
-      signal.throwIfAborted();
-    }
-
-    // Set as default agent
-    const defaultAgentClient = createClient(orgDefaultAgentContract);
-    await accept(
-      defaultAgentClient.setDefaultAgent({
-        query: {},
-        body: { agentId: agent.agentId },
+    const setupClient = createClient(onboardingSetupContract);
+    const result = await accept(
+      setupClient.setup({
+        body: {
+          displayName,
+          workspaceName: workspaceName.trim() || undefined,
+          sound: "professional",
+          avatarUrl: "preset:0",
+          selectedConnectors:
+            selectedConnectors.length > 0 ? selectedConnectors : undefined,
+        },
       }),
       [200],
     );
     signal.throwIfAborted();
 
-    // Mark personal onboarding as done so admin doesn't re-enter member flow
-    const completeClient = createClient(onboardingCompleteContract);
-    await accept(completeClient.complete(), [200]);
-    signal.throwIfAborted();
+    const { agentId } = result.body;
 
-    L.debug("Zero onboarding completed", {
-      agentId: agent.agentId,
-    });
+    L.debug("Zero onboarding completed", { agentId });
 
     // Force JWT refresh so updated org metadata is available immediately
     const clerk = await get(clerk$);
@@ -254,7 +182,7 @@ export const completeZeroOnboarding$ = command(
       return x + 1;
     });
 
-    return agent.agentId;
+    return agentId;
   },
 );
 

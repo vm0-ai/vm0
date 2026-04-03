@@ -5,16 +5,14 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
-import { mockChatLifecycle } from "./chat-test-helpers.ts";
 import { pathname } from "../../../signals/location.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 
 const context = testContext();
 
 const MOCK_AGENT_ID = "d0000000-0000-4000-a000-000000000001";
-const MOCK_THREAD_ID = "thread-blank-test-1";
 
-function mockMemberOnboardingWithChat() {
+function mockMemberOnboardingDeferred() {
   // Deferred that blocks the POST /complete API response until we release it.
   // This creates a timing window to observe the skeleton while the async
   // onboarding completion is in-flight.
@@ -38,10 +36,7 @@ function mockMemberOnboardingWithChat() {
     }),
   );
 
-  const ctrl = mockChatLifecycle({ threadId: MOCK_THREAD_ID });
-
   return {
-    ctrl,
     releaseComplete: () => {
       completeDeferred.resolve();
     },
@@ -51,7 +46,7 @@ function mockMemberOnboardingWithChat() {
 describe("onboarding continue in web → skeleton → chat page (#7902)", () => {
   it("should show skeleton immediately on click, then hide after chat page loads", async () => {
     const user = userEvent.setup();
-    const mock = mockMemberOnboardingWithChat();
+    const mock = mockMemberOnboardingDeferred();
 
     await setupPage({ context, path: "/onboarding" });
 
@@ -78,13 +73,31 @@ describe("onboarding continue in web → skeleton → chat page (#7902)", () => 
       );
     });
 
+    // Switch status to complete and add chat-threads mock for the landing page
+    server.use(
+      http.get("*/api/zero/onboarding/status", () => {
+        return HttpResponse.json({
+          needsOnboarding: false,
+          isAdmin: false,
+          hasOrg: true,
+          hasDefaultAgent: true,
+          defaultAgentId: MOCK_AGENT_ID,
+          defaultAgentMetadata: { displayName: "Zero" },
+          defaultAgentSkills: [],
+        });
+      }),
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
+    );
+
     // Release the deferred POST response to let onboarding complete and
-    // navigation to the chat page proceed.
+    // navigation to the agent chat page proceed.
     mock.releaseComplete();
 
-    // Verify navigation happened and chat page renders
+    // Verify navigation happened to agent chat page
     await waitFor(() => {
-      expect(pathname()).toBe(`/chats/${MOCK_THREAD_ID}`);
+      expect(pathname()).toBe(`/agents/${MOCK_AGENT_ID}/chat`);
     });
 
     await waitFor(() => {
@@ -98,7 +111,5 @@ describe("onboarding continue in web → skeleton → chat page (#7902)", () => 
         "true",
       );
     });
-
-    mock.ctrl.completeRun("Hello!");
   });
 });

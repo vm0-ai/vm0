@@ -12,7 +12,6 @@ import {
   completeMemberOnboarding$,
 } from "./zero-onboarding.ts";
 import { agentDisplayName$ } from "./zero-agent-name.ts";
-import { sendNewThreadMessage$ } from "./zero-chat.ts";
 import { allConnectorTypes$ } from "./settings/connectors.ts";
 import { detachedNavigateTo$ } from "../route.ts";
 import { slackOrgData$ } from "./zero-slack.ts";
@@ -277,11 +276,8 @@ export const onboardingContinueWeb$ = command(
       return;
     }
 
-    await set(
-      sendNewThreadMessage$,
-      agentId,
-      "Who are you and what can you do?",
-      signal,
-    );
+    set(detachedNavigateTo$, "/agents/:id/chat", {
+      pathParams: { id: agentId },
+    });
   },
 );

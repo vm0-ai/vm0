@@ -9,395 +9,93 @@ import {
   setZeroWorkspaceName$,
   toggleZeroConnector$,
 } from "../zero-onboarding.ts";
-import { SEED_INSTRUCTIONS } from "../../../data/the-seed.ts";
 
 const context = testContext();
 
-interface CreateAgentPayload {
+interface SetupPayload {
   displayName?: string;
+  workspaceName?: string;
   sound?: string;
   avatarUrl?: string;
+  selectedConnectors?: string[];
 }
 
-interface InstructionsPayload {
-  content: string;
+function setupHandler(capturePayload?: (payload: SetupPayload) => void) {
+  return http.post("*/api/zero/onboarding/setup", async ({ request }) => {
+    const body = (await request.json()) as SetupPayload;
+    capturePayload?.(body);
+    return HttpResponse.json({
+      agentId: "d0000000-0000-4000-a000-000000000001",
+    });
+  });
 }
 
 describe("completeZeroOnboarding$", () => {
-  it("should create agent via zero agents api with metadata", async () => {
-    let capturedPayload: CreateAgentPayload | null = null;
-    let capturedInstructions: InstructionsPayload | null = null;
+  it("should call setup API with correct metadata", async () => {
+    let capturedPayload: SetupPayload | null = null;
 
     server.use(
-      http.post("*/api/zero/model-providers", () => {
-        return HttpResponse.json(
-          {
-            provider: {
-              id: "a0000000-0000-4000-a000-000000000099",
-              type: "vm0",
-              framework: "claude-code",
-              secretName: null,
-              authMethod: null,
-              secretNames: null,
-              isDefault: true,
-              selectedModel: null,
-              createdAt: "2026-03-01T00:00:00Z",
-              updatedAt: "2026-03-01T00:00:00Z",
-            },
-            created: true,
-          },
-          { status: 201 },
-        );
-      }),
-      http.post("*/api/zero/agents", async ({ request }) => {
-        capturedPayload = (await request.json()) as CreateAgentPayload;
-        return HttpResponse.json(
-          {
-            name: "test-agent-uuid",
-            agentId: "d0000000-0000-4000-a000-000000000001",
-            ownerId: "test-owner-id",
-            description: null,
-            displayName: capturedPayload.displayName ?? null,
-            sound: capturedPayload.sound ?? null,
-            avatarUrl: null,
-            firewallPolicies: null,
-          },
-          { status: 201 },
-        );
-      }),
-      http.put(
-        "*/api/zero/agents/d0000000-0000-4000-a000-000000000001/instructions",
-        async ({ request }) => {
-          capturedInstructions = (await request.json()) as InstructionsPayload;
-          return HttpResponse.json({
-            name: "test-agent-uuid",
-            agentId: "d0000000-0000-4000-a000-000000000001",
-            ownerId: "test-owner-id",
-            description: null,
-            displayName: null,
-            sound: null,
-            avatarUrl: null,
-            firewallPolicies: null,
-          });
-        },
-      ),
-      http.put("*/api/zero/default-agent", () => {
-        return HttpResponse.json({
-          agentId: "d0000000-0000-4000-a000-000000000001",
-        });
-      }),
-      http.post("*/api/zero/onboarding/complete", () => {
-        return HttpResponse.json({ ok: true });
+      setupHandler((payload) => {
+        capturedPayload = payload;
       }),
     );
 
     await setupPage({ context, path: "/", withoutRender: true });
 
-    // Set agent name to a user-facing display name
     context.store.set(setZeroAgentName$, "My Assistant");
 
     await context.store.set(completeZeroOnboarding$, context.signal);
 
-    // Verify agent was created with metadata (no connectors in create body)
     expect(capturedPayload).toBeTruthy();
     expect(capturedPayload!.displayName).toBe("My Assistant");
     expect(capturedPayload!.sound).toBe("professional");
-
-    // Instructions should be SEED_INSTRUCTIONS
-    expect(capturedInstructions).toBeTruthy();
-    expect(capturedInstructions!.content).toBe(SEED_INSTRUCTIONS);
+    expect(capturedPayload!.avatarUrl).toBe("preset:0");
   });
 
-  it("should set user-connectors after creating agent when connectors are selected", async () => {
-    let capturedUserConnectorsBody: { enabledTypes: string[] } | null = null;
+  it("should send selectedConnectors when user selects connectors", async () => {
+    let capturedPayload: SetupPayload | null = null;
 
     server.use(
-      http.post("*/api/zero/model-providers", () => {
-        return HttpResponse.json(
-          {
-            provider: {
-              id: "a0000000-0000-4000-a000-000000000099",
-              type: "vm0",
-              framework: "claude-code",
-              secretName: null,
-              authMethod: null,
-              secretNames: null,
-              isDefault: true,
-              selectedModel: null,
-              createdAt: "2026-03-01T00:00:00Z",
-              updatedAt: "2026-03-01T00:00:00Z",
-            },
-            created: true,
-          },
-          { status: 201 },
-        );
-      }),
-      http.post("*/api/zero/agents", () => {
-        return HttpResponse.json(
-          {
-            name: "test-agent-uuid",
-            agentId: "d0000000-0000-4000-a000-000000000001",
-            ownerId: "test-owner-id",
-            description: null,
-            displayName: null,
-            sound: null,
-            avatarUrl: null,
-            firewallPolicies: null,
-          },
-          { status: 201 },
-        );
-      }),
-      http.put(
-        "*/api/zero/agents/d0000000-0000-4000-a000-000000000001/instructions",
-        () => {
-          return HttpResponse.json({
-            name: "test-agent-uuid",
-            agentId: "d0000000-0000-4000-a000-000000000001",
-            ownerId: "test-owner-id",
-            description: null,
-            displayName: null,
-            sound: null,
-            avatarUrl: null,
-            firewallPolicies: null,
-          });
-        },
-      ),
-      http.put(
-        "*/api/zero/agents/d0000000-0000-4000-a000-000000000001/user-connectors",
-        async ({ request }) => {
-          capturedUserConnectorsBody = (await request.json()) as {
-            enabledTypes: string[];
-          };
-          return HttpResponse.json({ enabledTypes: ["slack"] });
-        },
-      ),
-      http.put("*/api/zero/default-agent", () => {
-        return HttpResponse.json({
-          agentId: "d0000000-0000-4000-a000-000000000001",
-        });
-      }),
-      http.post("*/api/zero/onboarding/complete", () => {
-        return HttpResponse.json({ ok: true });
+      setupHandler((payload) => {
+        capturedPayload = payload;
       }),
     );
 
     await setupPage({ context, path: "/", withoutRender: true });
 
-    // Select a user connector
     context.store.set(toggleZeroConnector$, "slack");
 
     await context.store.set(completeZeroOnboarding$, context.signal);
 
-    // User-selected connectors sent to user-connectors API (not create body)
-    expect(capturedUserConnectorsBody).toBeTruthy();
-    expect(capturedUserConnectorsBody!.enabledTypes).toStrictEqual(["slack"]);
+    expect(capturedPayload).toBeTruthy();
+    expect(capturedPayload!.selectedConnectors).toStrictEqual(["slack"]);
   });
 
-  it("should set default agent after creating compose", async () => {
-    let defaultAgentBody: Record<string, unknown> | null = null;
+  it("should send workspaceName when user sets workspace name", async () => {
+    let capturedPayload: SetupPayload | null = null;
 
     server.use(
-      http.post("*/api/zero/model-providers", () => {
-        return HttpResponse.json(
-          {
-            provider: {
-              id: "a0000000-0000-4000-a000-000000000099",
-              type: "vm0",
-              framework: "claude-code",
-              secretName: null,
-              authMethod: null,
-              secretNames: null,
-              isDefault: true,
-              selectedModel: null,
-              createdAt: "2026-03-01T00:00:00Z",
-              updatedAt: "2026-03-01T00:00:00Z",
-            },
-            created: true,
-          },
-          { status: 201 },
-        );
-      }),
-      http.post("*/api/zero/agents", () => {
-        return HttpResponse.json(
-          {
-            name: "test-agent-uuid",
-            agentId: "d0000000-0000-4000-a000-000000000001",
-            ownerId: "test-owner-id",
-            description: null,
-            displayName: null,
-            sound: null,
-            avatarUrl: null,
-            firewallPolicies: null,
-          },
-          { status: 201 },
-        );
-      }),
-      http.put(
-        "*/api/zero/agents/d0000000-0000-4000-a000-000000000001/instructions",
-        () => {
-          return HttpResponse.json({
-            name: "test-agent-uuid",
-            agentId: "d0000000-0000-4000-a000-000000000001",
-            ownerId: "test-owner-id",
-            description: null,
-            displayName: null,
-            sound: null,
-            avatarUrl: null,
-            firewallPolicies: null,
-          });
-        },
-      ),
-      http.put("*/api/zero/default-agent", async ({ request }) => {
-        defaultAgentBody = (await request.json()) as Record<string, unknown>;
-        return HttpResponse.json({
-          agentId: "d0000000-0000-4000-a000-000000000001",
-        });
-      }),
-      http.post("*/api/zero/onboarding/complete", () => {
-        return HttpResponse.json({ ok: true });
+      setupHandler((payload) => {
+        capturedPayload = payload;
       }),
     );
 
     await setupPage({ context, path: "/", withoutRender: true });
 
-    await context.store.set(completeZeroOnboarding$, context.signal);
-
-    expect(defaultAgentBody).toStrictEqual({
-      agentId: "d0000000-0000-4000-a000-000000000001",
-    });
-  });
-
-  it("should reset saving to false after completion (step remains unchanged)", async () => {
-    server.use(
-      http.post("*/api/zero/model-providers", () => {
-        return HttpResponse.json(
-          {
-            provider: {
-              id: "a0000000-0000-4000-a000-000000000099",
-              type: "vm0",
-              framework: "claude-code",
-              secretName: null,
-              authMethod: null,
-              secretNames: null,
-              isDefault: true,
-              selectedModel: null,
-              createdAt: "2026-03-01T00:00:00Z",
-              updatedAt: "2026-03-01T00:00:00Z",
-            },
-            created: true,
-          },
-          { status: 201 },
-        );
-      }),
-      http.post("*/api/zero/agents", () => {
-        return HttpResponse.json(
-          {
-            name: "test-agent-uuid",
-            agentId: "d0000000-0000-4000-a000-000000000001",
-            ownerId: "test-owner-id",
-            description: null,
-            displayName: null,
-            sound: null,
-            avatarUrl: null,
-            firewallPolicies: null,
-          },
-          { status: 201 },
-        );
-      }),
-      http.put(
-        "*/api/zero/agents/d0000000-0000-4000-a000-000000000001/instructions",
-        () => {
-          return HttpResponse.json({
-            name: "test-agent-uuid",
-            agentId: "d0000000-0000-4000-a000-000000000001",
-            ownerId: "test-owner-id",
-            description: null,
-            displayName: null,
-            sound: null,
-            avatarUrl: null,
-            firewallPolicies: null,
-          });
-        },
-      ),
-      http.put("*/api/zero/default-agent", () => {
-        return HttpResponse.json({
-          agentId: "d0000000-0000-4000-a000-000000000001",
-        });
-      }),
-      http.post("*/api/zero/onboarding/complete", () => {
-        return HttpResponse.json({ ok: true });
-      }),
-    );
-
-    await setupPage({ context, path: "/", withoutRender: true });
+    context.store.set(setZeroWorkspaceName$, "My Workspace");
 
     await context.store.set(completeZeroOnboarding$, context.signal);
-  });
-});
 
-describe("completeZeroOnboarding$ avatar", () => {
-  it("should send preset:0 as avatarUrl for the lead agent", async () => {
-    let capturedPayload: Record<string, unknown> | null = null;
+    expect(capturedPayload).toBeTruthy();
+    expect(capturedPayload!.workspaceName).toBe("My Workspace");
+  });
+
+  it("should not send workspaceName when empty", async () => {
+    let capturedPayload: SetupPayload | null = null;
 
     server.use(
-      http.post("*/api/zero/model-providers", () => {
-        return HttpResponse.json(
-          {
-            provider: {
-              id: "a0000000-0000-4000-a000-000000000099",
-              type: "vm0",
-              framework: "claude-code",
-              secretName: null,
-              authMethod: null,
-              secretNames: null,
-              isDefault: true,
-              selectedModel: null,
-              createdAt: "2026-03-01T00:00:00Z",
-              updatedAt: "2026-03-01T00:00:00Z",
-            },
-            created: true,
-          },
-          { status: 201 },
-        );
-      }),
-      http.post("*/api/zero/agents", async ({ request }) => {
-        capturedPayload = (await request.json()) as Record<string, unknown>;
-        return HttpResponse.json(
-          {
-            name: "test-agent-uuid",
-            agentId: "d0000000-0000-4000-a000-000000000001",
-            ownerId: "test-owner-id",
-            description: null,
-            displayName: null,
-            sound: null,
-            avatarUrl: capturedPayload.avatarUrl ?? null,
-            firewallPolicies: null,
-          },
-          { status: 201 },
-        );
-      }),
-      http.put(
-        "*/api/zero/agents/d0000000-0000-4000-a000-000000000001/instructions",
-        () => {
-          return HttpResponse.json({
-            name: "test-agent-uuid",
-            agentId: "d0000000-0000-4000-a000-000000000001",
-            ownerId: "test-owner-id",
-            description: null,
-            displayName: null,
-            sound: null,
-            avatarUrl: null,
-            firewallPolicies: null,
-          });
-        },
-      ),
-      http.put("*/api/zero/default-agent", () => {
-        return HttpResponse.json({
-          agentId: "d0000000-0000-4000-a000-000000000001",
-        });
-      }),
-      http.post("*/api/zero/onboarding/complete", () => {
-        return HttpResponse.json({ ok: true });
+      setupHandler((payload) => {
+        capturedPayload = payload;
       }),
     );
 
@@ -406,76 +104,15 @@ describe("completeZeroOnboarding$ avatar", () => {
     await context.store.set(completeZeroOnboarding$, context.signal);
 
     expect(capturedPayload).toBeTruthy();
-    expect(capturedPayload!.avatarUrl).toBe("preset:0");
+    expect(capturedPayload!.workspaceName).toBeUndefined();
   });
-});
 
-describe("completeZeroOnboarding$ auto-init model provider", () => {
-  it("should auto-create vm0 model provider with claude-sonnet-4.6 before creating agent", async () => {
-    let capturedProviderBody: Record<string, unknown> | null = null;
+  it("should not send selectedConnectors when none selected", async () => {
+    let capturedPayload: SetupPayload | null = null;
 
     server.use(
-      http.post("*/api/zero/model-providers", async ({ request }) => {
-        capturedProviderBody = (await request.json()) as Record<
-          string,
-          unknown
-        >;
-        return HttpResponse.json(
-          {
-            provider: {
-              id: "a0000000-0000-4000-a000-000000000099",
-              type: "vm0",
-              framework: "claude-code",
-              secretName: null,
-              authMethod: null,
-              secretNames: null,
-              isDefault: true,
-              selectedModel: null,
-              createdAt: "2026-03-01T00:00:00Z",
-              updatedAt: "2026-03-01T00:00:00Z",
-            },
-            created: true,
-          },
-          { status: 201 },
-        );
-      }),
-      http.post("*/api/zero/agents", () => {
-        return HttpResponse.json(
-          {
-            name: "test-agent-uuid",
-            agentId: "d0000000-0000-4000-a000-000000000001",
-            ownerId: "test-owner-id",
-            description: null,
-            displayName: null,
-            sound: null,
-            avatarUrl: null,
-            firewallPolicies: null,
-          },
-          { status: 201 },
-        );
-      }),
-      http.put(
-        "*/api/zero/agents/d0000000-0000-4000-a000-000000000001/instructions",
-        () => {
-          return HttpResponse.json({
-            name: "test-agent-uuid",
-            agentId: "d0000000-0000-4000-a000-000000000001",
-            ownerId: "test-owner-id",
-            description: null,
-            displayName: null,
-            sound: null,
-            avatarUrl: null,
-            firewallPolicies: null,
-          });
-        },
-      ),
-      http.put("*/api/zero/default-agent", () => {
-        return HttpResponse.json({
-          agentId: "d0000000-0000-4000-a000-000000000001",
-        });
-      }),
-      http.post("*/api/zero/onboarding/complete", () => {
-        return HttpResponse.json({ ok: true });
+      setupHandler((payload) => {
+        capturedPayload = payload;
       }),
     );
 
@@ -483,172 +120,20 @@ describe("completeZeroOnboarding$ auto-init model provider", () => {
 
     await context.store.set(completeZeroOnboarding$, context.signal);
 
-    expect(capturedProviderBody).not.toBeNull();
-    expect(capturedProviderBody!.type).toBe("vm0");
-    expect(capturedProviderBody!.selectedModel).toBe("claude-sonnet-4.6");
+    expect(capturedPayload).toBeTruthy();
+    expect(capturedPayload!.selectedConnectors).toBeUndefined();
   });
-});
 
-/**
- * Shared handlers for agent creation, instructions, default-agent, and
- * onboarding-complete — everything after the org-update step.
- */
-function agentCreationHandlers() {
-  return [
-    http.post("*/api/zero/model-providers", () => {
-      return HttpResponse.json(
-        {
-          provider: {
-            id: "a0000000-0000-4000-a000-000000000099",
-            type: "vm0",
-            framework: "claude-code",
-            secretName: null,
-            authMethod: null,
-            secretNames: null,
-            isDefault: true,
-            selectedModel: null,
-            createdAt: "2026-03-01T00:00:00Z",
-            updatedAt: "2026-03-01T00:00:00Z",
-          },
-          created: true,
-        },
-        { status: 201 },
-      );
-    }),
-    http.post("*/api/zero/agents", () => {
-      return HttpResponse.json(
-        {
-          name: "test-agent-uuid",
-          agentId: "d0000000-0000-4000-a000-000000000001",
-          ownerId: "test-owner-id",
-          description: null,
-          displayName: null,
-          sound: null,
-          avatarUrl: null,
-          firewallPolicies: null,
-        },
-        { status: 201 },
-      );
-    }),
-    http.put(
-      "*/api/zero/agents/d0000000-0000-4000-a000-000000000001/instructions",
-      () => {
-        return HttpResponse.json({
-          name: "test-agent-uuid",
-          agentId: "d0000000-0000-4000-a000-000000000001",
-          ownerId: "test-owner-id",
-          description: null,
-          displayName: null,
-          sound: null,
-          avatarUrl: null,
-          firewallPolicies: null,
-        });
-      },
-    ),
-    http.put("*/api/zero/default-agent", () => {
-      return HttpResponse.json({
-        agentId: "d0000000-0000-4000-a000-000000000001",
-      });
-    }),
-    http.post("*/api/zero/onboarding/complete", () => {
-      return HttpResponse.json({ ok: true });
-    }),
-  ];
-}
-
-function orgUpdateSuccess() {
-  return HttpResponse.json({
-    id: "org_1",
-    slug: "my-workspace",
-    name: "My Workspace",
-    role: "admin",
-  });
-}
-
-describe("completeZeroOnboarding$ slug update", () => {
-  it("should update org name and slug together", async () => {
-    const capturedOrgUpdates: Record<string, unknown>[] = [];
-
-    server.use(
-      http.put("*/api/zero/org", async ({ request }) => {
-        const body = (await request.json()) as Record<string, unknown>;
-        capturedOrgUpdates.push(body);
-        return orgUpdateSuccess();
-      }),
-      ...agentCreationHandlers(),
-    );
+  it("should return agentId from setup response", async () => {
+    server.use(setupHandler());
 
     await setupPage({ context, path: "/", withoutRender: true });
-    context.store.set(setZeroWorkspaceName$, "My Workspace");
 
-    await context.store.set(completeZeroOnboarding$, context.signal);
-
-    expect(capturedOrgUpdates).toHaveLength(1);
-    expect(capturedOrgUpdates[0]).toMatchObject({
-      name: "My Workspace",
-      slug: "my-workspace",
-      force: true,
-    });
-  });
-
-  it("should retry with random suffix on 409 conflict", async () => {
-    const capturedOrgUpdates: Record<string, unknown>[] = [];
-
-    server.use(
-      http.put("*/api/zero/org", async ({ request }) => {
-        const body = (await request.json()) as Record<string, unknown>;
-        capturedOrgUpdates.push(body);
-        // First request with slug → 409 conflict; subsequent requests → 200
-        if (capturedOrgUpdates.length === 1) {
-          return HttpResponse.json(
-            { error: { message: "Conflict", code: "CONFLICT" } },
-            { status: 409 },
-          );
-        }
-        return orgUpdateSuccess();
-      }),
-      ...agentCreationHandlers(),
+    const agentId = await context.store.set(
+      completeZeroOnboarding$,
+      context.signal,
     );
 
-    await setupPage({ context, path: "/", withoutRender: true });
-    context.store.set(setZeroWorkspaceName$, "My Workspace");
-
-    await context.store.set(completeZeroOnboarding$, context.signal);
-
-    expect(capturedOrgUpdates).toHaveLength(2);
-    // First attempt: exact slug
-    expect(capturedOrgUpdates[0]!.slug).toBe("my-workspace");
-    // Second attempt: slug with random suffix
-    expect(capturedOrgUpdates[1]!.slug).toMatch(/^my-workspace-[a-z0-9]+$/);
-    expect(capturedOrgUpdates[1]!.force).toBeTruthy();
-  });
-
-  it("should fall back to name-only update when both slug attempts get 409", async () => {
-    const capturedOrgUpdates: Record<string, unknown>[] = [];
-
-    server.use(
-      http.put("*/api/zero/org", async ({ request }) => {
-        const body = (await request.json()) as Record<string, unknown>;
-        capturedOrgUpdates.push(body);
-        // All slug attempts → 409; name-only → 200
-        if (body.slug) {
-          return HttpResponse.json(
-            { error: { message: "Conflict", code: "CONFLICT" } },
-            { status: 409 },
-          );
-        }
-        return orgUpdateSuccess();
-      }),
-      ...agentCreationHandlers(),
-    );
-
-    await setupPage({ context, path: "/", withoutRender: true });
-    context.store.set(setZeroWorkspaceName$, "My Workspace");
-
-    await context.store.set(completeZeroOnboarding$, context.signal);
-
-    // 2 slug attempts + 1 name-only fallback
-    expect(capturedOrgUpdates).toHaveLength(3);
-    expect(capturedOrgUpdates[2]).toStrictEqual({ name: "My Workspace" });
+    expect(agentId).toBe("d0000000-0000-4000-a000-000000000001");
   });
 });

@@ -108,8 +108,9 @@ describe("talk navigation", () => {
     });
   });
 
-  it("should navigate to /chat/:chatThreadId after completing onboarding and sending auto-intro", async () => {
+  it("should navigate to /agents/:id/chat after completing onboarding", async () => {
     const user = userEvent.setup();
+    const MOCK_AGENT_ID = "d0000000-0000-4000-a000-000000000001";
     // Track onboarding status: starts as needing onboarding, then completes
     let onboardingComplete = false;
 
@@ -121,7 +122,7 @@ describe("talk navigation", () => {
             isAdmin: true,
             hasOrg: true,
             hasDefaultAgent: true,
-            defaultAgentId: "d0000000-0000-4000-a000-000000000001",
+            defaultAgentId: MOCK_AGENT_ID,
             defaultAgentMetadata: null,
             defaultAgentSkills: [],
           });
@@ -136,80 +137,14 @@ describe("talk navigation", () => {
           defaultAgentSkills: [],
         });
       }),
-      // Org name update
-      http.put("*/api/zero/org", () => {
-        return HttpResponse.json({
-          id: "org_1",
-          slug: "test-workspace",
-          name: "Test Workspace",
-        });
-      }),
-      // Model provider creation
-      http.post("*/api/zero/model-providers", () => {
-        return HttpResponse.json(
-          {
-            provider: {
-              id: "a0000000-0000-4000-a000-000000000099",
-              type: "vm0",
-              framework: "claude-code",
-              secretName: null,
-              authMethod: null,
-              secretNames: null,
-              isDefault: true,
-              selectedModel: null,
-              createdAt: "2026-03-01T00:00:00Z",
-              updatedAt: "2026-03-01T00:00:00Z",
-            },
-            created: true,
-          },
-          { status: 201 },
-        );
-      }),
-      // Agent creation
-      http.post("*/api/zero/agents", () => {
+      // Single setup endpoint
+      http.post("*/api/zero/onboarding/setup", () => {
         onboardingComplete = true;
-        return HttpResponse.json(
-          {
-            name: "zero",
-            agentId: "d0000000-0000-4000-a000-000000000001",
-            ownerId: "test-user-123",
-            description: null,
-            displayName: null,
-            sound: null,
-            avatarUrl: null,
-            connectors: [],
-            firewallPolicies: null,
-          },
-          { status: 201 },
-        );
-      }),
-      // Instructions upload
-      http.put("*/api/zero/agents/:name/instructions", () => {
-        return HttpResponse.json({
-          name: "zero",
-          agentId: "d0000000-0000-4000-a000-000000000001",
-          ownerId: "test-user-123",
-          description: null,
-          displayName: null,
-          sound: null,
-          avatarUrl: null,
-          connectors: [],
-          firewallPolicies: null,
-        });
-      }),
-      // Default agent
-      http.put("*/api/zero/default-agent", () => {
-        return HttpResponse.json({
-          agentId: "d0000000-0000-4000-a000-000000000001",
-        });
-      }),
-      // Onboarding completion
-      http.post("*/api/zero/onboarding/complete", () => {
-        return HttpResponse.json({ ok: true });
+        return HttpResponse.json({ agentId: MOCK_AGENT_ID });
       }),
     );
 
-    // Mock chat APIs for the auto-intro message
+    // Mock chat APIs for the agent chat page
     mockChatAPIs();
 
     await setupPage({ context, path: "/" });
@@ -245,19 +180,16 @@ describe("talk navigation", () => {
     });
 
     // Click "Continue in web" which triggers:
-    // 1. completeZeroOnboarding$ (create agent, set default)
-    // 2. navigate("/") → setupChatPage$ redirects to /talk/zero
-    // 3. sendNewThreadMessage$(agentId, "Who are you and what can you do?")
-    //    → POST /api/zero/chat/messages → navigates to /chat/:threadId
+    // 1. completeZeroOnboarding$ (single setup API call)
+    // 2. navigate to /agents/:id/chat
     const continueButton = screen.getByRole("button", {
       name: /Continue in web/,
     });
     await user.click(continueButton);
 
-    // The final URL should be /chat/new-thread-id-123 after the auto-intro
-    // message creates a thread and navigates
+    // The final URL should be /agents/:id/chat (no auto-intro message)
     await waitFor(() => {
-      expect(pathname()).toBe("/chats/new-thread-id-123");
+      expect(pathname()).toBe(`/agents/${MOCK_AGENT_ID}/chat`);
     });
   });
 });

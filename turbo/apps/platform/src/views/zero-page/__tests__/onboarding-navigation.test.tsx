@@ -11,38 +11,6 @@ const context = testContext();
 
 const MOCK_AGENT_ID = "d0000000-0000-4000-a000-000000000001";
 
-function mockModelProviderResponse() {
-  return {
-    provider: {
-      id: "a0000000-0000-4000-a000-000000000099",
-      type: "vm0",
-      framework: "claude-code",
-      secretName: null,
-      authMethod: null,
-      secretNames: null,
-      isDefault: true,
-      selectedModel: null,
-      createdAt: "2026-03-01T00:00:00Z",
-      updatedAt: "2026-03-01T00:00:00Z",
-    },
-    created: true,
-  };
-}
-
-function mockAgentResponse() {
-  return {
-    name: "zero",
-    agentId: MOCK_AGENT_ID,
-    ownerId: "test-user-123",
-    description: null,
-    displayName: null,
-    sound: null,
-    avatarUrl: null,
-    connectors: [],
-    firewallPolicies: null,
-  };
-}
-
 function mockOnboardingNeededAdmin() {
   server.use(
     http.get("*/api/zero/onboarding/status", () => {
@@ -56,49 +24,13 @@ function mockOnboardingNeededAdmin() {
         defaultAgentSkills: [],
       });
     }),
-    // Mock org name update
-    http.put("*/api/zero/org", () => {
-      return HttpResponse.json({
-        id: "org_1",
-        slug: "test-workspace",
-        name: "Test Workspace",
-      });
-    }),
-    // Mock model provider creation
-    http.post("*/api/zero/model-providers", () => {
-      return HttpResponse.json(mockModelProviderResponse(), { status: 201 });
-    }),
-    // Mock the agent creation endpoint
-    http.post("*/api/zero/agents", () => {
-      return HttpResponse.json(mockAgentResponse(), { status: 201 });
-    }),
-    // Mock instructions upload
-    http.put("*/api/zero/agents/:name/instructions", () => {
-      return HttpResponse.json(mockAgentResponse());
-    }),
-    // Mock setting default agent
-    http.put("*/api/zero/default-agent", () => {
+    // Single setup endpoint replaces all individual onboarding API calls
+    http.post("*/api/zero/onboarding/setup", () => {
       return HttpResponse.json({ agentId: MOCK_AGENT_ID });
-    }),
-    // Mock onboarding completion
-    http.post("*/api/zero/onboarding/complete", () => {
-      return HttpResponse.json({ ok: true });
     }),
     // Mock chat threads for the home page
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
-    }),
-    // Mock chat send for the auto-intro message
-    http.post("*/api/zero/chat/messages", () => {
-      return HttpResponse.json(
-        {
-          runId: "run-intro-1",
-          threadId: "new-thread-1",
-          status: "pending",
-          createdAt: "2026-03-10T00:00:00Z",
-        },
-        { status: 201 },
-      );
     }),
   );
 }
@@ -123,18 +55,6 @@ function mockOnboardingNeededMember() {
     // Mock chat threads for the home page
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
-    }),
-    // Mock chat send for the auto-intro message
-    http.post("*/api/zero/chat/messages", () => {
-      return HttpResponse.json(
-        {
-          runId: "run-intro-1",
-          threadId: "new-thread-1",
-          status: "pending",
-          createdAt: "2026-03-10T00:00:00Z",
-        },
-        { status: 201 },
-      );
     }),
   );
 }
