@@ -87,6 +87,9 @@ const router = tsr.router(zeroDeveloperSupportContract, {
   submit: async ({ body, headers }) => {
     initServices();
 
+    // acceptAnySandboxCapability: developer-support can be invoked from any
+    // sandbox capability (cli, web, scheduled, etc.) — there is no dedicated
+    // capability for this endpoint.
     const authCtx = await requireAuth(headers.authorization, {
       acceptAnySandboxCapability: true,
     });
@@ -133,22 +136,13 @@ const router = tsr.router(zeroDeveloperSupportContract, {
     }
 
     const sessionId = run.continuedFromSessionId;
-    if (!sessionId) {
-      return {
-        status: 400 as const,
-        body: {
-          error: {
-            message:
-              "Developer support requires an active session. This command is only available in multi-turn conversations.",
-            code: "SESSION_REQUIRED",
-          },
-        },
-      };
-    }
+    // Use sessionId for consent HMAC when available, fall back to runId for
+    // first-run (no session yet) so developer-support works in single-turn too.
+    const consentSeed = sessionId ?? runId;
 
     // Step 1: Generate consent code if none provided
     if (!body.consentCode) {
-      const consentCode = generateConsentCode(sessionId);
+      const consentCode = generateConsentCode(consentSeed);
       return {
         status: 200 as const,
         body: { consentCode },
@@ -156,7 +150,7 @@ const router = tsr.router(zeroDeveloperSupportContract, {
     }
 
     // Step 2: Validate consent code
-    const expectedCode = generateConsentCode(sessionId);
+    const expectedCode = generateConsentCode(consentSeed);
     if (body.consentCode !== expectedCode) {
       return {
         status: 400 as const,
@@ -208,25 +202,31 @@ const router = tsr.router(zeroDeveloperSupportContract, {
       }
     }
 
-    // Collect all run IDs in the session
-    // - Continuation runs: continuedFromSessionId = sessionId
-    // - First run: result->>'agentSessionId' = sessionId (created the session)
-    const sessionRuns = await db
-      .select({ id: agentRuns.id })
-      .from(agentRuns)
-      .where(
-        or(
-          eq(agentRuns.continuedFromSessionId, sessionId),
-          sql`${agentRuns.result}->>'agentSessionId' = ${sessionId}`,
-        ),
-      );
+    // Collect all run IDs for agent events.
+    // With a session: find continuation runs + first run (via result->>'agentSessionId').
+    // Without a session (first run): fall back to just the current runId.
+    const sessionRunIds: string[] = sessionId
+      ? (
+          await db
+            .select({ id: agentRuns.id })
+            .from(agentRuns)
+            .where(
+              or(
+                eq(agentRuns.continuedFromSessionId, sessionId),
+                sql`${agentRuns.result}->>'agentSessionId' = ${sessionId}`,
+              ),
+            )
+        ).map((r) => {
+          return r.id;
+        })
+      : [runId];
 
     // Query Axiom for agent events from all session runs
     const agentEvents = await (async () => {
-      if (sessionRuns.length === 0) return [];
-      const runIdList = sessionRuns
-        .map((r) => {
-          return `"${r.id}"`;
+      if (sessionRunIds.length === 0) return [];
+      const runIdList = sessionRunIds
+        .map((id) => {
+          return `"${id}"`;
         })
         .join(", ");
       const dataset = getDatasetName(DATASETS.AGENT_RUN_EVENTS);
@@ -244,7 +244,7 @@ const router = tsr.router(zeroDeveloperSupportContract, {
 
     log.info("Collected agent events for diagnostic bundle", {
       reference,
-      runCount: sessionRuns.length,
+      runCount: sessionRunIds.length,
       eventCount: agentEvents.length,
     });
 

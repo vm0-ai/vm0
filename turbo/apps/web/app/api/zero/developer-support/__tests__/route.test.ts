@@ -233,19 +233,33 @@ describe("POST /api/zero/developer-support", () => {
     expect(data.error.code).toBe("INVALID_CONSENT_CODE");
   });
 
-  it("returns 400 when run has no session", async () => {
-    const { token } = await setupRunContext(user, {
+  it("falls back to current runId when run has no session", async () => {
+    const { token, runId } = await setupRunContext(user, {
       continuedFromSessionId: null,
     });
 
-    const response = await postDeveloperSupport(
+    // Step 1: Get consent code (uses runId as HMAC seed)
+    const step1 = await postDeveloperSupport(
       { title: "Bug", description: "Desc" },
       token,
     );
+    expect(step1.status).toBe(200);
+    const { consentCode } = await step1.json();
+    expect(consentCode).toBeDefined();
 
-    expect(response.status).toBe(400);
-    const data = await response.json();
-    expect(data.error.code).toBe("SESSION_REQUIRED");
+    // Step 2: Submit with consent code — should query Axiom with just current runId
+    context.mocks.axiom.queryAxiom.mockResolvedValueOnce([]);
+
+    const step2 = await postDeveloperSupport(
+      { title: "Bug", description: "Desc", consentCode },
+      token,
+    );
+    expect(step2.status).toBe(200);
+    expect((await step2.json()).reference).toBeDefined();
+
+    // Verify Axiom was queried with the current runId only
+    const aplQuery = context.mocks.axiom.queryAxiom.mock.calls[0]![0] as string;
+    expect(aplQuery).toContain(runId);
   });
 
   it("queries Axiom for agent events from session runs", async () => {
