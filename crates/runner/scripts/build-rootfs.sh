@@ -188,6 +188,7 @@ extract_and_inject() {
   # The Dockerfile installs PostgreSQL 16, which creates /var/run/postgresql
   # owned by postgres:postgres (setgid 2775).  The sandbox user (uid 1000)
   # needs write access to start the server with default unix_socket_directories.
+  sudo mkdir -p "${EXTRACT_DIR}/var/run/postgresql"
   sudo chown 1000:1000 "${EXTRACT_DIR}/var/run/postgresql"
 
   # Install guest binaries
