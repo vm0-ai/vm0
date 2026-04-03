@@ -29,7 +29,12 @@ import { setValidateResponseForTest$ } from "../signals/api-client";
 export async function setupPage(options: {
   context: TestContext;
   path: string;
-  user?: { id: string; fullName: string; email?: string } | null;
+  user?: {
+    id: string;
+    fullName: string;
+    email?: string;
+    firstName?: string;
+  } | null;
   session?: { token: string } | null;
   org?: {
     activeOrg?: { id: string; name: string } | null;

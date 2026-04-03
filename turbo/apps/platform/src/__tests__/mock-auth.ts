@@ -13,6 +13,7 @@ export interface MockedInvitation {
 interface MockedUser {
   id: string;
   fullName: string;
+  firstName?: string;
   primaryEmailAddress: { emailAddress: string } | null;
   organizationMemberships: { id: string }[];
   getOrganizationInvitations: (params?: {
@@ -31,7 +32,12 @@ let internalMockedInvitations: MockedInvitation[] = [];
 let internalMockedMemberships: { id: string }[] = [{ id: "org_default" }];
 
 export function mockUser(
-  user: { id: string; fullName: string; email?: string } | null,
+  user: {
+    id: string;
+    fullName: string;
+    email?: string;
+    firstName?: string;
+  } | null,
   session: { token: string } | null,
 ) {
   if (user) {
