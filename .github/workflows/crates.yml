@@ -626,22 +626,29 @@ jobs:
           echo "--- Test: HTTPS through proxy ---"
           TLS_URL="https://www.vm0.ai"
           tls_check() {
-            local label=$1; shift
-            OUTPUT=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" -- "$@" 2>&1) \
+            local label=$1 cmd=$2 t=${3:-15}
+            OUTPUT=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" -- "timeout $t $cmd" 2>&1) \
               || fail "HTTPS $label: $OUTPUT"
             echo "  HTTPS $label: ok"
           }
-          tls_check "curl"      timeout 15 curl -sf --max-time 10 "$TLS_URL"
-          tls_check "wget"      timeout 15 wget -qO /dev/null --timeout=10 "$TLS_URL"
-          tls_check "git"       timeout 15 git ls-remote --exit-code https://github.com/anthropics/anthropic-sdk-python.git HEAD
-          tls_check "python"    timeout 15 bash -c "python3 -c \"import urllib.request; urllib.request.urlopen('$TLS_URL')\""
-          tls_check "node"      timeout 15 bash -c "node -e \"require('https').get('$TLS_URL',r=>{r.resume();r.on('end',()=>process.exit(0))}).on('error',e=>{console.error(e);process.exit(1)})\""
-          tls_check "ruby"      timeout 15 bash -c "ruby -e \"require 'net/http'; Net::HTTP.get(URI('$TLS_URL'))\""
-          tls_check "php"       timeout 15 bash -c "php -r \"file_get_contents('$TLS_URL');\""
-          tls_check "java"      timeout 30 bash -c "echo 'java.net.http.HttpClient.newHttpClient().send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(\"$TLS_URL\")).build(),java.net.http.HttpResponse.BodyHandlers.discarding());' | jshell -"
-          tls_check "go"        timeout 30 bash -c "cd /tmp && echo 'package main; import (\"net/http\";\"os\"); func main(){r,e:=http.Get(os.Args[1]);if e!=nil{panic(e)};r.Body.Close()}' > tls.go && go run tls.go \"$TLS_URL\""
-          tls_check "cargo"     timeout 30 bash -c "CARGO_HOME=/tmp/cargo-test cargo search --limit 1 serde 2>&1 | head -1"
-          tls_check "chromium"  timeout 30 bash -c "chromium --headless --disable-gpu --no-sandbox --dump-dom \"$TLS_URL\" 2>/dev/null | head -1"
+          tls_check "curl"      "curl -sf --max-time 10 $TLS_URL"
+          tls_check "wget"      "wget -qO /dev/null --timeout=10 $TLS_URL"
+          tls_check "git"       "git ls-remote --exit-code https://github.com/anthropics/anthropic-sdk-python.git HEAD"
+          tls_check "python"    "python3 -c \"import urllib.request; urllib.request.urlopen('$TLS_URL')\""
+          tls_check "node"      "node -e \"require('https').get('$TLS_URL',r=>{r.resume();r.on('end',()=>process.exit(0))}).on('error',e=>{console.error(e);process.exit(1)})\""
+          tls_check "ruby"      "ruby -e \"require 'net/http'; Net::HTTP.get(URI('$TLS_URL'))\""
+          tls_check "php"       "php -r \"file_get_contents('$TLS_URL');\""
+          tls_check "cargo"     "env CARGO_HOME=/tmp/cargo-test cargo search --limit 1 serde" 30
+          tls_check "chromium"  "chromium --headless --disable-gpu --no-sandbox --dump-dom $TLS_URL 2>/dev/null | head -1" 30
+
+          # Java and Go need multi-line scripts — write temp files then run
+          sudo "$BIN_DIR/runner" exec "$RUN_ID" -- "printf '%s\n' 'import java.net.*;import java.net.http.*;' 'var c=HttpClient.newHttpClient();' 'var r=HttpRequest.newBuilder(URI.create(\"$TLS_URL\")).build();' 'c.send(r,HttpResponse.BodyHandlers.discarding());' '/exit' | timeout 30 jshell -" \
+            || fail "HTTPS java"
+          echo "  HTTPS java: ok"
+
+          sudo "$BIN_DIR/runner" exec "$RUN_ID" -- "cd /tmp && printf '%s\n' 'package main' 'import (\"net/http\";\"os\")' 'func main(){r,e:=http.Get(os.Args[1]);if e!=nil{panic(e)};r.Body.Close()}' > tls.go && timeout 30 go run tls.go $TLS_URL" \
+            || fail "HTTPS go"
+          echo "  HTTPS go: ok"
           echo "PASS: HTTPS through proxy"
 
           # Stop transient service (kills sandbox, submit terminates naturally)
