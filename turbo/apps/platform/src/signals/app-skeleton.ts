@@ -7,6 +7,10 @@ export const appSkeletonVisible$ = computed((get) => {
   return get(internalVisible$);
 });
 
+export const showAppSkeleton$ = command(({ set }) => {
+  set(internalVisible$, true);
+});
+
 export const hideAppSkeleton$ = command(
   async ({ set }, signal: AbortSignal) => {
     await delay(0, { signal });
