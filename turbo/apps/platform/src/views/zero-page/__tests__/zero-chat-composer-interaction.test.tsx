@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -81,29 +81,37 @@ describe("zero chat composer - textarea interaction", () => {
 
 describe("zero chat composer - file input", () => {
   // CHAT-I-023
-  it("triggers file picker when Attach button is clicked", async () => {
+  it("shows attachment chip after a file is selected via the file input", async () => {
     const user = userEvent.setup();
     mockChatLifecycle();
+    server.use(
+      http.post("*/api/zero/uploads", () => {
+        return HttpResponse.json({
+          id: "upload-1",
+          filename: "test.png",
+          contentType: "image/png",
+          size: 1024,
+          url: "https://example.com/test.png",
+        });
+      }),
+    );
 
     await setupPage({ context, path: CHAT_PATH });
 
-    const attachButton = await waitFor(() => {
-      return screen.getByRole("button", { name: "Attach" });
+    const fileInput = await waitFor(() => {
+      const el = document.querySelector<HTMLInputElement>('input[type="file"]');
+      expect(el).toBeInTheDocument();
+      return el as HTMLInputElement;
     });
 
-    const fileInput =
-      document.querySelector<HTMLInputElement>('input[type="file"]');
-    expect(fileInput).toBeInTheDocument();
-    if (!fileInput) {
-      throw new Error("file input not found");
-    }
+    const file = new File(["content"], "test.png", { type: "image/png" });
+    await user.upload(fileInput, file);
 
-    const clickSpy = vi.fn();
-    fileInput.click = clickSpy;
-
-    await user.click(attachButton);
-
-    expect(clickSpy).toHaveBeenCalledOnce();
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /test\.png/ }),
+      ).toBeInTheDocument();
+    });
   });
 });
 
@@ -129,14 +137,40 @@ describe("zero chat composer - connectors popover", () => {
   });
 
   // CHAT-I-025
-  it("calls PUT user-connectors when a connector switch is toggled", async () => {
+  it("updates connector switch label in UI after toggling a connector", async () => {
     const user = userEvent.setup();
-    let putCalled = false;
     mockChatLifecycle();
-    mockConnectors();
+
+    // Stateful connector: starts with GitHub enabled; after PUT, GET returns empty
+    let githubEnabled = true;
     server.use(
+      http.get("*/api/zero/connectors", () => {
+        return HttpResponse.json({
+          connectors: [
+            {
+              id: "d0000001-0000-4000-a000-000000000001",
+              type: "github",
+              authMethod: "oauth",
+              externalId: null,
+              externalUsername: "testuser",
+              externalEmail: null,
+              oauthScopes: ["repo"],
+              needsReconnect: false,
+              createdAt: "2026-01-01T00:00:00Z",
+              updatedAt: "2026-01-01T00:00:00Z",
+            },
+          ],
+          configuredTypes: Object.keys(CONNECTOR_TYPES) as ConnectorType[],
+          connectorProvidedSecretNames: [],
+        });
+      }),
+      http.get(`*/api/zero/agents/${AGENT_ID}/user-connectors`, () => {
+        return HttpResponse.json({
+          enabledTypes: githubEnabled ? ["github"] : [],
+        });
+      }),
       http.put(`*/api/zero/agents/${AGENT_ID}/user-connectors`, () => {
-        putCalled = true;
+        githubEnabled = false;
         return HttpResponse.json({ enabledTypes: [] });
       }),
     );
@@ -155,8 +189,11 @@ describe("zero chat composer - connectors popover", () => {
 
     await user.click(githubSwitch);
 
+    // After toggling, the UI should reflect that GitHub is now removed
     await waitFor(() => {
-      expect(putCalled).toBeTruthy();
+      expect(
+        screen.getByRole("switch", { name: "Add GitHub" }),
+      ).toBeInTheDocument();
     });
   });
 
