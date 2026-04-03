@@ -622,6 +622,88 @@ describe("zero whoami command", () => {
       ).toBe(false);
     });
 
+    it("should show identity only when one agent API fails", async () => {
+      const token = buildZeroToken({
+        userId: "user-1",
+        runId: "run-abc",
+        orgId: "org-xyz",
+        scope: "zero",
+        capabilities: ["agent:read", "connector:read"],
+        iat: 1000,
+        exp: 2000,
+      });
+      vi.stubEnv("ZERO_AGENT_ID", "agent-123");
+      vi.stubEnv("ZERO_TOKEN", token);
+      vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+
+      server.use(
+        http.get("http://localhost:3000/api/zero/connectors", () => {
+          return HttpResponse.json({
+            connectors: [
+              {
+                id: "1",
+                type: "github",
+                authMethod: "oauth",
+                externalId: "12345",
+                externalUsername: "octocat",
+                externalEmail: "octocat@github.com",
+                oauthScopes: ["repo"],
+                needsReconnect: false,
+                createdAt: "2025-01-01T00:00:00Z",
+                updatedAt: "2025-01-01T00:00:00Z",
+              },
+            ],
+            configuredTypes: ["github"],
+            connectorProvidedSecretNames: [],
+          });
+        }),
+        http.get("http://localhost:3000/api/zero/agents/agent-123", () => {
+          return HttpResponse.json({
+            agentId: "agent-123",
+            ownerId: "owner-1",
+            description: null,
+            displayName: null,
+            sound: null,
+            avatarUrl: null,
+            firewallPolicies: {
+              github: { "actions:read": "allow" },
+            },
+            customSkills: [],
+          });
+        }),
+        // user-connectors API fails
+        http.get(
+          "http://localhost:3000/api/zero/agents/agent-123/user-connectors",
+          () => {
+            return HttpResponse.json(
+              { error: { message: "Forbidden", code: "FORBIDDEN" } },
+              { status: 403 },
+            );
+          },
+        ),
+      );
+
+      await runWhoami();
+
+      const output = getAllOutput();
+      expect(
+        output.some((line) => {
+          return line.includes("@octocat");
+        }),
+      ).toBe(true);
+      // No permission lines when one agent API fails
+      expect(
+        output.some((line) => {
+          return line.includes("✓") || line.includes("✗") || line.includes("?");
+        }),
+      ).toBe(false);
+      expect(
+        output.some((line) => {
+          return line.includes("full access");
+        }),
+      ).toBe(false);
+    });
+
     it("should skip connectors without identity info", async () => {
       const token = buildZeroToken({
         userId: "user-1",
