@@ -9,6 +9,7 @@ import type { AddressInfo } from "net";
 import { captureScreenshot, getScreenInfo } from "./screencapture";
 import { leftClickDrag, leftMouseDown, leftMouseUp } from "./cliclick";
 import { scroll, type ScrollDirection } from "./scroll";
+import { readClipboard, writeClipboard } from "./clipboard";
 
 /**
  * Read the full request body as a string.
@@ -121,6 +122,16 @@ async function handleRequest(
           return;
       }
 
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true }));
+    } else if (req.method === "GET" && req.url === "/clipboard") {
+      const text = await readClipboard();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ text }));
+    } else if (req.method === "POST" && req.url === "/clipboard") {
+      const raw = await readBody(req);
+      const body = JSON.parse(raw) as { text: string };
+      await writeClipboard(body.text);
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ ok: true }));
     } else {

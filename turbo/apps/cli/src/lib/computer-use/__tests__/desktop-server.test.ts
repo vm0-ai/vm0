@@ -41,11 +41,19 @@ vi.mock("../scroll", () => {
   };
 });
 
+vi.mock("../clipboard", () => {
+  return {
+    readClipboard: vi.fn().mockResolvedValue("clipboard content"),
+    writeClipboard: vi.fn().mockResolvedValue(undefined),
+  };
+});
+
 import type { Server } from "http";
 import { startDesktopServer, getRandomPort } from "../desktop-server";
 import { captureScreenshot, getScreenInfo } from "../screencapture";
 import { leftClickDrag, leftMouseDown, leftMouseUp } from "../cliclick";
 import { scroll } from "../scroll";
+import { readClipboard, writeClipboard } from "../clipboard";
 
 const TEST_TOKEN = "test-bridge-token-abc123";
 
@@ -59,6 +67,9 @@ async function setup(): Promise<{ server: Server; port: number }> {
       return passthrough();
     }),
     http.all(`http://127.0.0.1:${port}/mouse`, () => {
+      return passthrough();
+    }),
+    http.all(`http://127.0.0.1:${port}/clipboard`, () => {
       return passthrough();
     }),
     http.all(`http://127.0.0.1:${port}/unknown`, () => {
@@ -355,6 +366,76 @@ describe("desktop-server", () => {
       expect(res.status).toBe(500);
       const text = await res.text();
       expect(text).toBe("osascript failed");
+    });
+
+    it("should return clipboard text on GET /clipboard", async () => {
+      const { server, port } = await setup();
+      testServer = server;
+
+      const res = await fetch(`http://127.0.0.1:${port}/clipboard`, {
+        headers: { "x-vm0-token": TEST_TOKEN },
+      });
+      expect(res.status).toBe(200);
+
+      const data = await res.json();
+      expect(data).toEqual({ text: "clipboard content" });
+      expect(readClipboard).toHaveBeenCalledOnce();
+    });
+
+    it("should write clipboard text on POST /clipboard", async () => {
+      const { server, port } = await setup();
+      testServer = server;
+
+      const res = await fetch(`http://127.0.0.1:${port}/clipboard`, {
+        method: "POST",
+        headers: {
+          "x-vm0-token": TEST_TOKEN,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ text: "hello world" }),
+      });
+      expect(res.status).toBe(200);
+
+      const data = await res.json();
+      expect(data).toEqual({ ok: true });
+      expect(writeClipboard).toHaveBeenCalledWith("hello world");
+    });
+
+    it("should return 500 when clipboard read fails", async () => {
+      vi.mocked(readClipboard).mockRejectedValueOnce(
+        new Error("pbpaste failed"),
+      );
+
+      const { server, port } = await setup();
+      testServer = server;
+
+      const res = await fetch(`http://127.0.0.1:${port}/clipboard`, {
+        headers: { "x-vm0-token": TEST_TOKEN },
+      });
+      expect(res.status).toBe(500);
+      const text = await res.text();
+      expect(text).toBe("pbpaste failed");
+    });
+
+    it("should return 500 when clipboard write fails", async () => {
+      vi.mocked(writeClipboard).mockRejectedValueOnce(
+        new Error("pbcopy failed"),
+      );
+
+      const { server, port } = await setup();
+      testServer = server;
+
+      const res = await fetch(`http://127.0.0.1:${port}/clipboard`, {
+        method: "POST",
+        headers: {
+          "x-vm0-token": TEST_TOKEN,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ text: "fail" }),
+      });
+      expect(res.status).toBe(500);
+      const text = await res.text();
+      expect(text).toBe("pbcopy failed");
     });
   });
 });

@@ -7,6 +7,8 @@ import {
   clientLeftMouseDownCommand,
   clientLeftMouseUpCommand,
   clientScrollCommand,
+  clientReadClipboardCommand,
+  clientWriteClipboardCommand,
 } from "./client";
 
 const hostCommand = new Command()
@@ -22,7 +24,9 @@ const clientCommand = new Command()
   .addCommand(clientLeftClickDragCommand)
   .addCommand(clientLeftMouseDownCommand)
   .addCommand(clientLeftMouseUpCommand)
-  .addCommand(clientScrollCommand);
+  .addCommand(clientScrollCommand)
+  .addCommand(clientReadClipboardCommand)
+  .addCommand(clientWriteClipboardCommand);
 
 export const zeroComputerUseCommand = new Command()
   .name("computer-use")
@@ -39,5 +43,7 @@ Examples:
   Drag from A to B:                  zero computer-use client left-click-drag 100 100 500 500
   Press mouse button:                zero computer-use client left-mouse-down 200 300
   Release mouse button:              zero computer-use client left-mouse-up 500 500
-  Scroll down at position:           zero computer-use client scroll 500 300 down 5`,
+  Scroll down at position:           zero computer-use client scroll 500 300 down 5
+  Read clipboard text:               zero computer-use client read-clipboard
+  Write clipboard text:              zero computer-use client write-clipboard "hello"`,
   );

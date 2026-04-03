@@ -135,3 +135,28 @@ export const clientScrollCommand = new Command()
       },
     ),
   );
+
+export const clientReadClipboardCommand = new Command()
+  .name("read-clipboard")
+  .description("Read text content from the remote clipboard")
+  .action(
+    withErrorHandler(async () => {
+      const response = await callHost("/clipboard");
+      const data = (await response.json()) as { text: string };
+      process.stdout.write(data.text);
+    }),
+  );
+
+export const clientWriteClipboardCommand = new Command()
+  .name("write-clipboard")
+  .description("Write text content to the remote clipboard")
+  .argument("<text>", "Text to write to clipboard")
+  .action(
+    withErrorHandler(async (text: string) => {
+      await callHost("/clipboard", {
+        method: "POST",
+        body: { text },
+      });
+      process.stdout.write("ok\n");
+    }),
+  );
