@@ -353,9 +353,10 @@ function CreateTeammateDialogContent({
   const fileInputEl = useGet(jobsFileInputEl$);
   const setFileInputEl = useSet(setJobsFileInputEl$);
   const fetchFn = useGet(fetch$);
+  const pageSignal = useGet(pageSignal$);
 
   const handleUpload = (file: File) => {
-    detach(uploadAvatarFn(file, fetchFn), Reason.DomCallback);
+    detach(uploadAvatarFn(file, fetchFn, pageSignal), Reason.DomCallback);
   };
 
   const isCustom = !avatarUrl.startsWith(AVATAR_PRESET_PREFIX);
