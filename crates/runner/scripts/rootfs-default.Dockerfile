@@ -111,7 +111,7 @@ RUN apt-get update && apt-get install -y \
 # ---------------------------------------------------------------------------
 # Go (latest stable via official tarball)
 # ---------------------------------------------------------------------------
-ARG GO_VERSION=1.24.2
+ARG GO_VERSION=1.26.1
 RUN ARCH=$(dpkg --print-architecture) \
     && curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${ARCH}.tar.gz" -o /tmp/go.tar.gz \
     && tar -C /usr/local -xzf /tmp/go.tar.gz \
@@ -157,7 +157,7 @@ RUN apt-get update && apt-get install -y \
 # ---------------------------------------------------------------------------
 # Claude Code CLI (standalone Bun-compiled binary)
 # ---------------------------------------------------------------------------
-ARG CLAUDE_CODE_VERSION=2.1.90
+ARG CLAUDE_CODE_VERSION=2.1.91
 RUN ARCH=$(dpkg --print-architecture) \
     && case "$ARCH" in amd64) PLATFORM="linux-x64" ;; arm64) PLATFORM="linux-arm64" ;; *) echo "Unsupported architecture: $ARCH" >&2; exit 1 ;; esac \
     && GCS_BUCKET="https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases" \
@@ -195,7 +195,7 @@ RUN npm install -g @xdevplatform/xurl@${XURL_VERSION}
 # ---------------------------------------------------------------------------
 # Ubuntu 24.04's chromium-browser is a snap stub that doesn't work in Docker.
 # Install the real Chromium deb from Debian Bookworm's repository instead.
-ARG AGENT_BROWSER_VERSION=0.23.4
+ARG AGENT_BROWSER_VERSION=0.24.0
 RUN npm install -g agent-browser@${AGENT_BROWSER_VERSION} \
     && curl -fsSL https://ftp-master.debian.org/keys/archive-key-12.asc | gpg --dearmor -o /usr/share/keyrings/debian-bookworm.gpg \
     && echo "deb [signed-by=/usr/share/keyrings/debian-bookworm.gpg] http://deb.debian.org/debian bookworm main" > /etc/apt/sources.list.d/debian-bookworm.list \
