@@ -1,0 +1,223 @@
+import { describe, expect, it } from "vitest";
+import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
+import { server } from "../../../mocks/server.ts";
+import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { setupPage } from "../../../__tests__/page-helper.ts";
+
+const context = testContext();
+
+function mockAPIs(overrides?: { role?: string }) {
+  server.use(
+    http.get("*/api/zero/org", () => {
+      return HttpResponse.json({
+        id: "org_1",
+        slug: "test-org",
+        name: "Test Org",
+        role: overrides?.role ?? "admin",
+      });
+    }),
+    http.get("*/api/zero/chat-threads", () => {
+      return HttpResponse.json({ threads: [] });
+    }),
+    http.get("*/api/zero/org/logo", () => {
+      return HttpResponse.json({ logoUrl: null });
+    }),
+    http.get("*/api/zero/team", () => {
+      return HttpResponse.json([
+        {
+          id: "c0000000-0000-4000-a000-000000000001",
+          name: "zero",
+          displayName: null,
+          description: null,
+          sound: null,
+          avatarUrl: null,
+          headVersionId: "version_1",
+          updatedAt: "2024-01-01T00:00:00Z",
+        },
+      ]);
+    }),
+  );
+}
+
+async function openDialog() {
+  await setupPage({ context, path: "/?settings=general" });
+  await waitFor(() => {
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+}
+
+describe("org manage dialog - display", () => {
+  it("shows tab navigation items with icons in the sidebar (ORG-D-001)", async () => {
+    mockAPIs();
+    await openDialog();
+
+    const dialog = screen.getByRole("dialog");
+    const nav = dialog.querySelector("nav");
+    expect(nav).not.toBeNull();
+
+    // Always-visible tabs
+    expect(within(nav!).getByText("General")).toBeInTheDocument();
+    expect(within(nav!).getByText("Members")).toBeInTheDocument();
+
+    // Admin-visible tabs
+    expect(within(nav!).getByText("Model Providers")).toBeInTheDocument();
+
+    // Verify sidebar buttons contain an SVG icon
+    const buttons = within(nav!).getAllByRole("button");
+    const generalButton = buttons.find((btn) => {
+      return btn.textContent?.includes("General");
+    });
+    expect(generalButton).toBeDefined();
+    expect(generalButton!.querySelector("svg")).not.toBeNull();
+  });
+
+  it("shows the active tab title and description (ORG-D-003)", async () => {
+    mockAPIs();
+    await openDialog();
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Manage your workspace profile and settings."),
+      ).toBeInTheDocument();
+    });
+
+    expect(
+      screen.getByRole("heading", { name: "General" }),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("org manage dialog - conditional", () => {
+  it("renders both desktop sidebar nav and mobile select dropdown (ORG-C-002)", async () => {
+    mockAPIs();
+    await openDialog();
+
+    const dialog = screen.getByRole("dialog");
+    const nav = dialog.querySelector("nav");
+    expect(nav).not.toBeNull();
+
+    const combobox = screen.getByRole("combobox");
+    expect(combobox).toBeInTheDocument();
+  });
+
+  it("shows Configuration and Billing groups for admin users (ORG-C-004)", async () => {
+    mockAPIs({ role: "admin" });
+    await openDialog();
+
+    const dialog = screen.getByRole("dialog");
+    const nav = dialog.querySelector("nav");
+    expect(within(nav!).getByText("Configuration")).toBeInTheDocument();
+    expect(within(nav!).getByText("Billing & pricing")).toBeInTheDocument();
+  });
+
+  it("hides Configuration and Billing groups for non-admin users (ORG-C-004)", async () => {
+    mockAPIs({ role: "member" });
+    await openDialog();
+
+    const dialog = screen.getByRole("dialog");
+    const nav = dialog.querySelector("nav");
+    expect(within(nav!).queryByText("Configuration")).not.toBeInTheDocument();
+    expect(
+      within(nav!).queryByText("Billing & pricing"),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe("org manage dialog - interaction", () => {
+  it("switches tab content when a sidebar button is clicked (ORG-I-005)", async () => {
+    const user = userEvent.setup();
+    mockAPIs();
+    server.use(
+      http.get("*/api/zero/org/members", () => {
+        return HttpResponse.json({
+          slug: "test-org",
+          role: "admin",
+          members: [],
+          pendingInvitations: [],
+          createdAt: "2026-01-01T00:00:00Z",
+        });
+      }),
+    );
+
+    await openDialog();
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Manage your workspace profile and settings."),
+      ).toBeInTheDocument();
+    });
+
+    const dialog = screen.getByRole("dialog");
+    const nav = dialog.querySelector("nav");
+    const buttons = within(nav!).getAllByRole("button");
+    const membersButton = buttons.find((btn) => {
+      return btn.textContent?.includes("Members");
+    });
+    expect(membersButton).toBeDefined();
+    await user.click(membersButton!);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Manage who has access to this workspace."),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("switches tab content when the mobile select dropdown is changed (ORG-I-006)", async () => {
+    const user = userEvent.setup();
+    mockAPIs();
+    server.use(
+      http.get("*/api/zero/org/members", () => {
+        return HttpResponse.json({
+          slug: "test-org",
+          role: "admin",
+          members: [],
+          pendingInvitations: [],
+          createdAt: "2026-01-01T00:00:00Z",
+        });
+      }),
+    );
+
+    await openDialog();
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Manage your workspace profile and settings."),
+      ).toBeInTheDocument();
+    });
+
+    const combobox = screen.getByRole("combobox");
+    await user.click(combobox);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("option", { name: /Members/i }),
+      ).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole("option", { name: /Members/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Manage who has access to this workspace."),
+      ).toBeInTheDocument();
+    });
+  });
+});
+
+describe("org manage dialog - state", () => {
+  it("opens and closes the dialog correctly (ORG-S-007)", async () => {
+    const user = userEvent.setup();
+    mockAPIs();
+    await openDialog();
+
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /close/i }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+});
