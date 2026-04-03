@@ -473,11 +473,14 @@ describe("zero chat page - invite button", () => {
 
     await renderChatPage();
 
-    const button = await waitFor(() => {
-      return screen.getByRole("button", {
-        name: /invite people/i,
-        hidden: true,
-      });
+    // Wait for the page to fully load before checking the invite button
+    await waitFor(() => {
+      return screen.getByRole("button", { name: /Ideas & use cases/ });
+    });
+
+    const button = screen.getByRole("button", {
+      name: /invite people/i,
+      hidden: true,
     });
     expect(button).toBeInTheDocument();
     expect(button).toHaveAttribute("aria-hidden", "true");
@@ -486,17 +489,19 @@ describe("zero chat page - invite button", () => {
   it("renders invite button as visible and accessible when user is admin", async () => {
     await renderChatPage();
 
+    // Wait for the page to fully load before checking the invite button
+    await waitFor(() => {
+      return screen.getByRole("button", { name: /Ideas & use cases/ });
+    });
+
     // Button is always in DOM; wait for aria-hidden to be removed once admin state resolves
-    const button = await waitFor(() => {
-      return screen.getByRole("button", {
+    await waitFor(() => {
+      const button = screen.getByRole("button", {
         name: /invite people/i,
         hidden: true,
       });
-    });
-    await waitFor(() => {
       expect(button).not.toHaveAttribute("aria-hidden", "true");
     });
-    expect(button).toBeInTheDocument();
   });
 });
 
