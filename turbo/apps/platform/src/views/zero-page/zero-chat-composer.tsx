@@ -196,6 +196,7 @@ function AddConnectorsDialog({
                     return onSelect(item.type);
                   }}
                   disabled={pollingType === item.type}
+                  aria-label={`Connect ${item.label}`}
                   className="rounded-lg bg-card overflow-hidden transition-colors hover:bg-muted/30 cursor-pointer text-left w-full"
                   style={{ border: "0.7px solid hsl(var(--gray-400))" }}
                 >
