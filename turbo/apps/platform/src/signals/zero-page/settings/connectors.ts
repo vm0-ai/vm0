@@ -266,6 +266,18 @@ export const submitApiToken$ = command(
 // Polling state (for connect flow)
 // ---------------------------------------------------------------------------
 
+const internalConnectorPollInterval$ = state(2000);
+
+export const setConnectorPollIntervalForTest$ = command(
+  ({ set }, interval: number) => {
+    set(internalConnectorPollInterval$, interval);
+  },
+);
+
+const connectorPollInterval$ = computed((get) => {
+  return get(internalConnectorPollInterval$);
+});
+
 const internalPollingType$ = state<ConnectorType | null>(null);
 
 export const pollingConnectorType$ = computed((get) => {
@@ -326,7 +338,7 @@ export const connectConnector$ = command(
     // (app.* vs www.*), so BroadcastChannel cannot be used.
     let freshConnectors: ConnectorResponse[] = [];
     while (true) {
-      await delay(2000, { signal });
+      await delay(get(connectorPollInterval$), { signal });
 
       set(reloadConnectors$);
       const { connectors: polled } = await get(connectors$);
