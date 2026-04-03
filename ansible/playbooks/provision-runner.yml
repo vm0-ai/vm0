@@ -27,6 +27,7 @@
           - iptables
           - procps
           - dnsmasq
+          - debootstrap
         state: present
         update_cache: true
       become: true
@@ -38,22 +39,10 @@
         state: stopped
       become: true
 
-    - name: Check if Docker is installed
-      command: docker --version
-      register: docker_check
-      changed_when: false
-      failed_when: false
-
-    - name: Install Docker
-      shell: curl -fsSL https://get.docker.com | sh
-      when: docker_check.rc != 0
-      become: true
-
-    - name: Add user to docker and kvm groups
+    - name: Add user to kvm group
       user:
         name: "{{ ansible_user }}"
         groups:
-          - docker
           - kvm
         append: true
       become: true
