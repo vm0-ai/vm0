@@ -62,7 +62,10 @@ describe("onboarding continue in web → skeleton → chat page (#7902)", () => 
     });
 
     // Skeleton should be hidden after onboarding page loaded
-    expect(screen.getByTestId("app-skeleton")).toHaveClass("opacity-0");
+    expect(screen.getByTestId("app-skeleton")).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
 
     // Click starts the async onboarding completion; the POST API is deferred
     // so the command is in-flight while we assert skeleton visibility.
@@ -70,7 +73,9 @@ describe("onboarding continue in web → skeleton → chat page (#7902)", () => 
 
     // Skeleton must be visible during the transition (the fix for #7902)
     await waitFor(() => {
-      expect(screen.getByTestId("app-skeleton")).toHaveClass("opacity-100");
+      expect(screen.getByTestId("app-skeleton")).not.toHaveAttribute(
+        "aria-hidden",
+      );
     });
 
     // Release the deferred POST response to let onboarding complete and
@@ -88,7 +93,10 @@ describe("onboarding continue in web → skeleton → chat page (#7902)", () => 
 
     // Skeleton should be hidden after chat page setup completes
     await waitFor(() => {
-      expect(screen.getByTestId("app-skeleton")).toHaveClass("opacity-0");
+      expect(screen.getByTestId("app-skeleton")).toHaveAttribute(
+        "aria-hidden",
+        "true",
+      );
     });
 
     mock.ctrl.completeRun("Hello!");
