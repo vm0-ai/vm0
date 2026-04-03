@@ -69,6 +69,16 @@ export const uploadJobsAvatar$ = command(
   },
 );
 
+// -- View mode (grid / list) ------------------------------------------------
+
+const internalViewMode$ = state<"grid" | "list">("grid");
+export const jobsViewMode$ = computed((get) => {
+  return get(internalViewMode$);
+});
+export const setJobsViewMode$ = command(({ set }, mode: "grid" | "list") => {
+  set(internalViewMode$, mode);
+});
+
 // -- Reset dialog state on close --------------------------------------------
 
 export const resetJobsDialog$ = command(({ set }) => {

@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -49,6 +48,8 @@ import {
   jobsFileInputEl$,
   setJobsFileInputEl$,
   resetJobsDialog$,
+  jobsViewMode$,
+  setJobsViewMode$,
 } from "../../signals/zero-page/zero-jobs-page.ts";
 
 export function ZeroJobsPage() {
@@ -75,7 +76,8 @@ export function ZeroJobsPage() {
   const creating = createLoadable.state === "loading";
   const resetDialog = useSet(resetJobsDialog$);
   const pageSignal = useGet(pageSignal$);
-  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const viewMode = useGet(jobsViewMode$);
+  const setViewMode = useSet(setJobsViewMode$);
 
   const handleCreateTeammate = (avatarUrl: string) => {
     const trimmed = newName.trim();
@@ -173,124 +175,19 @@ export function ZeroJobsPage() {
           )}
 
           {viewMode === "grid" ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {rawAgentName ? (
-                <Link
-                  pathname="/agents/:id"
-                  options={{ pathParams: { id: rawAgentName } }}
-                  className="block no-underline text-inherit"
-                >
-                  <AgentCard
-                    agent={{
-                      id: rawAgentName,
-                      displayName: displayName,
-                    }}
-                    lead
-                  />
-                </Link>
-              ) : (
-                <AgentCard
-                  agent={{
-                    id: "",
-                    displayName: displayName,
-                  }}
-                  lead
-                />
-              )}
-
-              {loading &&
-                (!agents || agents.length === 0) &&
-                [1, 2, 3].map((i) => {
-                  return (
-                    <Card key={i} className="zero-card">
-                      <CardContent className="p-4">
-                        <div className="flex items-center gap-3 animate-pulse">
-                          <div className="h-10 w-10 rounded-full bg-muted" />
-                          <div className="min-w-0 flex-1 space-y-2">
-                            <div className="h-4 w-24 rounded bg-muted" />
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-
-              {agents?.map((agent) => {
-                return (
-                  <Link
-                    key={agent.id}
-                    pathname="/agents/:id"
-                    options={{ pathParams: { id: agent.id } }}
-                    className="block no-underline text-inherit"
-                  >
-                    <AgentCard agent={agent} />
-                  </Link>
-                );
-              })}
-            </div>
+            <AgentGridView
+              rawAgentName={rawAgentName}
+              displayName={displayName}
+              loading={loading}
+              agents={agents}
+            />
           ) : (
-            <div className="zero-card overflow-hidden">
-              {rawAgentName ? (
-                <Link
-                  pathname="/agents/:id"
-                  options={{ pathParams: { id: rawAgentName } }}
-                  className="block no-underline text-inherit"
-                >
-                  <AgentListRow
-                    agent={{
-                      id: rawAgentName,
-                      displayName: displayName,
-                    }}
-                    lead
-                    isLast={!agents || agents.length === 0}
-                  />
-                </Link>
-              ) : (
-                <AgentListRow
-                  agent={{
-                    id: "",
-                    displayName: displayName,
-                  }}
-                  lead
-                  isLast={!agents || agents.length === 0}
-                />
-              )}
-
-              {loading &&
-                (!agents || agents.length === 0) &&
-                [1, 2, 3].map((i, _, arr) => {
-                  return (
-                    <div key={i}>
-                      <div className="flex items-center gap-3 px-5 py-4 animate-pulse">
-                        <div className="h-10 w-10 rounded-full bg-muted" />
-                        <div className="min-w-0 flex-1 space-y-2">
-                          <div className="h-4 w-24 rounded bg-muted" />
-                          <div className="h-3 w-40 rounded bg-muted" />
-                        </div>
-                      </div>
-                      {i < arr.length && (
-                        <div className="mx-5 border-b border-border/50" />
-                      )}
-                    </div>
-                  );
-                })}
-
-              {agents?.map((agent, idx) => {
-                return (
-                  <Link
-                    key={agent.id}
-                    pathname="/agents/:id"
-                    options={{ pathParams: { id: agent.id } }}
-                    className="block no-underline text-inherit"
-                  >
-                    <AgentListRow
-                      agent={agent}
-                      isLast={idx === agents.length - 1}
-                    />
-                  </Link>
-                );
-              })}
-            </div>
+            <AgentListView
+              rawAgentName={rawAgentName}
+              displayName={displayName}
+              loading={loading}
+              agents={agents}
+            />
           )}
         </div>
       </main>
@@ -303,6 +200,135 @@ export function ZeroJobsPage() {
         onConfirm={handleCreateTeammate}
         creating={creating}
       />
+    </div>
+  );
+}
+
+type AgentViewProps = {
+  rawAgentName: string | null;
+  displayName: string;
+  loading: boolean;
+  agents:
+    | {
+        id: string;
+        displayName?: string | null;
+        description?: string | null;
+      }[]
+    | undefined;
+};
+
+function AgentGridView({
+  rawAgentName,
+  displayName,
+  loading,
+  agents,
+}: AgentViewProps) {
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      {rawAgentName ? (
+        <Link
+          pathname="/agents/:id"
+          options={{ pathParams: { id: rawAgentName } }}
+          className="block no-underline text-inherit"
+        >
+          <AgentCard agent={{ id: rawAgentName, displayName }} lead />
+        </Link>
+      ) : (
+        <AgentCard agent={{ id: "", displayName }} lead />
+      )}
+
+      {loading &&
+        (!agents || agents.length === 0) &&
+        [1, 2, 3].map((i) => {
+          return (
+            <Card key={i} className="zero-card">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3 animate-pulse">
+                  <div className="h-10 w-10 rounded-full bg-muted" />
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <div className="h-4 w-24 rounded bg-muted" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
+
+      {agents?.map((agent) => {
+        return (
+          <Link
+            key={agent.id}
+            pathname="/agents/:id"
+            options={{ pathParams: { id: agent.id } }}
+            className="block no-underline text-inherit"
+          >
+            <AgentCard agent={agent} />
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
+function AgentListView({
+  rawAgentName,
+  displayName,
+  loading,
+  agents,
+}: AgentViewProps) {
+  return (
+    <div className="zero-card overflow-hidden">
+      {rawAgentName ? (
+        <Link
+          pathname="/agents/:id"
+          options={{ pathParams: { id: rawAgentName } }}
+          className="block no-underline text-inherit"
+        >
+          <AgentListRow
+            agent={{ id: rawAgentName, displayName }}
+            lead
+            isLast={!agents || agents.length === 0}
+          />
+        </Link>
+      ) : (
+        <AgentListRow
+          agent={{ id: "", displayName }}
+          lead
+          isLast={!agents || agents.length === 0}
+        />
+      )}
+
+      {loading &&
+        (!agents || agents.length === 0) &&
+        [1, 2, 3].map((i, _, arr) => {
+          return (
+            <div key={i}>
+              <div className="flex items-center gap-3 px-5 py-4 animate-pulse">
+                <div className="h-10 w-10 rounded-full bg-muted" />
+                <div className="min-w-0 flex-1 space-y-2">
+                  <div className="h-4 w-24 rounded bg-muted" />
+                  <div className="h-3 w-40 rounded bg-muted" />
+                </div>
+              </div>
+              {i < arr.length && (
+                <div className="mx-5 border-b border-border/50" />
+              )}
+            </div>
+          );
+        })}
+
+      {agents?.map((agent, idx) => {
+        return (
+          <Link
+            key={agent.id}
+            pathname="/agents/:id"
+            options={{ pathParams: { id: agent.id } }}
+            className="block no-underline text-inherit"
+          >
+            <AgentListRow agent={agent} isLast={idx === agents.length - 1} />
+          </Link>
+        );
+      })}
     </div>
   );
 }

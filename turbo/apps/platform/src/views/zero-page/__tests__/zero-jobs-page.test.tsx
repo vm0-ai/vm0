@@ -102,7 +102,7 @@ describe("zero jobs page - team list", () => {
     expect(screen.getByText("agent-3")).toBeInTheDocument();
   });
 
-  it("should show create teammate button when no sub-agents exist", async () => {
+  it("should show new agent button when no sub-agents exist", async () => {
     mockTeamAPI([
       {
         id: "c0000000-0000-4000-a000-000000000001",
@@ -117,16 +117,16 @@ describe("zero jobs page - team list", () => {
     await renderTeamPage();
 
     await waitFor(() => {
-      expect(screen.getByText("Create teammate")).toBeInTheDocument();
+      expect(screen.getByText("New agent")).toBeInTheDocument();
     });
   });
 
-  it("should show create teammate button when sub-agents exist", async () => {
+  it("should show new agent button when sub-agents exist", async () => {
     mockTeamAPI();
     await renderTeamPage();
 
     await waitFor(() => {
-      expect(screen.getByText("Create teammate")).toBeInTheDocument();
+      expect(screen.getByText("New agent")).toBeInTheDocument();
     });
   });
 
