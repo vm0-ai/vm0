@@ -31,13 +31,25 @@ async function discoverHost(): Promise<{
 /**
  * Make an HTTP request to the computer-use host.
  */
-export async function callHost(path: string): Promise<Response> {
+export async function callHost(
+  path: string,
+  options?: { method?: string; body?: unknown },
+): Promise<Response> {
   const { domain, token } = await discoverHost();
   const url = `https://desktop.${domain}${path}`;
 
-  const response = await fetch(url, {
-    headers: { "x-vm0-token": token },
-  });
+  const headers: Record<string, string> = { "x-vm0-token": token };
+  const init: RequestInit = { headers };
+
+  if (options?.method) {
+    init.method = options.method;
+  }
+  if (options?.body !== undefined) {
+    headers["content-type"] = "application/json";
+    init.body = JSON.stringify(options.body);
+  }
+
+  const response = await fetch(url, init);
 
   if (!response.ok) {
     const body = await response.text().catch(() => {

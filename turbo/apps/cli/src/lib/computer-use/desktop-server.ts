@@ -7,6 +7,45 @@ import {
 import { createServer as createNetServer } from "net";
 import type { AddressInfo } from "net";
 import { captureScreenshot, getScreenInfo } from "./screencapture";
+import { leftClickDrag, leftMouseDown, leftMouseUp } from "./cliclick";
+
+/**
+ * Read the full request body as a string.
+ */
+function readBody(req: IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    req.on("data", (chunk: Buffer) => {
+      chunks.push(chunk);
+    });
+    req.on("end", () => {
+      resolve(Buffer.concat(chunks).toString());
+    });
+    req.on("error", reject);
+  });
+}
+
+interface MouseDragBody {
+  action: "left_click_drag";
+  startX: number;
+  startY: number;
+  endX: number;
+  endY: number;
+}
+
+interface MouseDownBody {
+  action: "left_mouse_down";
+  x: number;
+  y: number;
+}
+
+interface MouseUpBody {
+  action: "left_mouse_up";
+  x: number;
+  y: number;
+}
+
+type MouseRequestBody = MouseDragBody | MouseDownBody | MouseUpBody;
 
 /**
  * Allocate a random available port on localhost.
@@ -44,6 +83,30 @@ async function handleRequest(
       const info = await getScreenInfo();
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(info));
+    } else if (req.method === "POST" && req.url === "/mouse") {
+      const raw = await readBody(req);
+      const body = JSON.parse(raw) as MouseRequestBody;
+
+      switch (body.action) {
+        case "left_click_drag":
+          await leftClickDrag(body.startX, body.startY, body.endX, body.endY);
+          break;
+        case "left_mouse_down":
+          await leftMouseDown(body.x, body.y);
+          break;
+        case "left_mouse_up":
+          await leftMouseUp(body.x, body.y);
+          break;
+        default:
+          res.writeHead(400, { "Content-Type": "text/plain" });
+          res.end(
+            `Unknown mouse action: ${(body as Record<string, unknown>).action}`,
+          );
+          return;
+      }
+
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true }));
     } else {
       res.writeHead(404, { "Content-Type": "text/plain" });
       res.end("Not found");

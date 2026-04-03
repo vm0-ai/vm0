@@ -1,6 +1,12 @@
 import { Command } from "commander";
 import { hostStartCommand } from "./host";
-import { clientScreenshotCommand, clientInfoCommand } from "./client";
+import {
+  clientScreenshotCommand,
+  clientInfoCommand,
+  clientLeftClickDragCommand,
+  clientLeftMouseDownCommand,
+  clientLeftMouseUpCommand,
+} from "./client";
 
 const hostCommand = new Command()
   .name("host")
@@ -11,7 +17,10 @@ const clientCommand = new Command()
   .name("client")
   .description("Interact with remote computer-use host")
   .addCommand(clientScreenshotCommand)
-  .addCommand(clientInfoCommand);
+  .addCommand(clientInfoCommand)
+  .addCommand(clientLeftClickDragCommand)
+  .addCommand(clientLeftMouseDownCommand)
+  .addCommand(clientLeftMouseUpCommand);
 
 export const zeroComputerUseCommand = new Command()
   .name("computer-use")
@@ -24,5 +33,8 @@ export const zeroComputerUseCommand = new Command()
 Examples:
   Start the host daemon (on macOS):  zero computer-use host start
   Take a screenshot (from agent):    zero computer-use client screenshot
-  Get screen info (from agent):      zero computer-use client info`,
+  Get screen info (from agent):      zero computer-use client info
+  Drag from A to B:                  zero computer-use client left-click-drag 100 100 500 500
+  Press mouse button:                zero computer-use client left-mouse-down 200 300
+  Release mouse button:              zero computer-use client left-mouse-up 500 500`,
   );

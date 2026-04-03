@@ -55,3 +55,58 @@ export const clientInfoCommand = new Command()
       process.stdout.write(JSON.stringify(data) + "\n");
     }),
   );
+
+export const clientLeftClickDragCommand = new Command()
+  .name("left-click-drag")
+  .description("Drag from (startX, startY) to (endX, endY)")
+  .argument("<startX>", "Start X coordinate")
+  .argument("<startY>", "Start Y coordinate")
+  .argument("<endX>", "End X coordinate")
+  .argument("<endY>", "End Y coordinate")
+  .action(
+    withErrorHandler(
+      async (startX: string, startY: string, endX: string, endY: string) => {
+        await callHost("/mouse", {
+          method: "POST",
+          body: {
+            action: "left_click_drag",
+            startX: Number(startX),
+            startY: Number(startY),
+            endX: Number(endX),
+            endY: Number(endY),
+          },
+        });
+        process.stdout.write("ok\n");
+      },
+    ),
+  );
+
+export const clientLeftMouseDownCommand = new Command()
+  .name("left-mouse-down")
+  .description("Press and hold the left mouse button at (x, y)")
+  .argument("<x>", "X coordinate")
+  .argument("<y>", "Y coordinate")
+  .action(
+    withErrorHandler(async (x: string, y: string) => {
+      await callHost("/mouse", {
+        method: "POST",
+        body: { action: "left_mouse_down", x: Number(x), y: Number(y) },
+      });
+      process.stdout.write("ok\n");
+    }),
+  );
+
+export const clientLeftMouseUpCommand = new Command()
+  .name("left-mouse-up")
+  .description("Release the left mouse button at (x, y)")
+  .argument("<x>", "X coordinate")
+  .argument("<y>", "Y coordinate")
+  .action(
+    withErrorHandler(async (x: string, y: string) => {
+      await callHost("/mouse", {
+        method: "POST",
+        body: { action: "left_mouse_up", x: Number(x), y: Number(y) },
+      });
+      process.stdout.write("ok\n");
+    }),
+  );
