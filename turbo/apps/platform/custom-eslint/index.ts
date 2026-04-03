@@ -19,6 +19,7 @@
  * - no-new-abort-controller: Disallow new AbortController() — use signal hierarchy
  * - no-direct-local-storage: Disallow direct localStorage access — use localStorageSignals()
  * - no-detach-in-signals: Disallow detach() in signals/ — use await or signal chain
+ * - no-direct-fetch: Disallow direct fetch$ usage — use zeroClient$ instead
  */
 
 import signalDollarSuffix from "./rules/signal-dollar-suffix.ts";
@@ -40,6 +41,7 @@ import noNewAbortController from "./rules/no-new-abort-controller.ts";
 import preferUserEvent from "./rules/prefer-user-event.ts";
 import noDirectLocalStorage from "./rules/no-direct-local-storage.ts";
 import noDetachInSignals from "./rules/no-detach-in-signals.ts";
+import noDirectFetch from "./rules/no-direct-fetch.ts";
 
 const plugin = {
   meta: {
@@ -66,6 +68,7 @@ const plugin = {
     "prefer-user-event": preferUserEvent,
     "no-direct-local-storage": noDirectLocalStorage,
     "no-detach-in-signals": noDetachInSignals,
+    "no-direct-fetch": noDirectFetch,
   },
 };
 
