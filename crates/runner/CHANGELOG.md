@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.61.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.60.0...runner-rs-v0.61.0) (2026-04-03)
+
+
+### Features
+
+* upgrade sandbox rootfs to ubuntu 24.04 with expanded runtime support ([#7741](https://github.com/vm0-ai/vm0/issues/7741)) ([8f8eba2](https://github.com/vm0-ai/vm0/commit/8f8eba24ef811741525b4040f6955e23d0fa99b3))
+
+
+### Bug Fixes
+
+* **runner:** also write tz to /etc/environment for system-wide inheritance ([#7762](https://github.com/vm0-ai/vm0/issues/7762)) ([70fb861](https://github.com/vm0-ai/vm0/commit/70fb861daef84cd7085ccd7259d3386cf15371b4)), closes [#7744](https://github.com/vm0-ai/vm0/issues/7744)
+
 ## [0.60.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.59.1...runner-rs-v0.60.0) (2026-04-02)
 
 

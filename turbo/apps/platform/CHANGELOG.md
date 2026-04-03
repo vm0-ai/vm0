@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.181.2](https://github.com/vm0-ai/vm0/compare/app-v0.181.1...app-v0.181.2) (2026-04-03)
+
+
+### Refactoring
+
+* replace manual loading booleans with loadable hooks ([#7802](https://github.com/vm0-ai/vm0/issues/7802)) ([3074b16](https://github.com/vm0-ai/vm0/commit/3074b16f296e0de8046af87ef63d2708ab3e2d03)), closes [#7781](https://github.com/vm0-ai/vm0/issues/7781)
+* replace manual loading booleans with loadable set hook in zero-jobs-page ([#7803](https://github.com/vm0-ai/vm0/issues/7803)) ([476b3f9](https://github.com/vm0-ai/vm0/commit/476b3f9ddb75acb2904aa58cee0d0d8ee3846135))
+
 ## [0.181.1](https://github.com/vm0-ai/vm0/compare/app-v0.181.0...app-v0.181.1) (2026-04-02)
 
 
