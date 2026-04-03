@@ -49,6 +49,7 @@ vi.mock("../cliclick", () => {
     ]),
     pressKey: vi.fn().mockResolvedValue(undefined),
     holdKey: vi.fn().mockResolvedValue(undefined),
+    typeText: vi.fn().mockResolvedValue(undefined),
   };
 });
 
@@ -79,6 +80,7 @@ import {
   executeMouseAction,
   pressKey,
   holdKey,
+  typeText,
 } from "../cliclick";
 import { scroll } from "../scroll";
 import { readClipboard, writeClipboard } from "../clipboard";
@@ -716,6 +718,42 @@ describe("desktop-server", () => {
       expect(text).toContain("durationMs must be a positive number");
     });
 
+    it("should type text on POST /keyboard with action type", async () => {
+      const { server, port } = await setup();
+      testServer = server;
+
+      const res = await fetch(`http://127.0.0.1:${port}/keyboard`, {
+        method: "POST",
+        headers: {
+          "x-vm0-token": TEST_TOKEN,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ action: "type", text: "Hello, world!" }),
+      });
+      expect(res.status).toBe(200);
+
+      const data = await res.json();
+      expect(data).toEqual({ ok: true });
+      expect(typeText).toHaveBeenCalledWith("Hello, world!");
+    });
+
+    it("should return 400 for empty text on POST /keyboard type", async () => {
+      const { server, port } = await setup();
+      testServer = server;
+
+      const res = await fetch(`http://127.0.0.1:${port}/keyboard`, {
+        method: "POST",
+        headers: {
+          "x-vm0-token": TEST_TOKEN,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ action: "type", text: "" }),
+      });
+      expect(res.status).toBe(400);
+      const text = await res.text();
+      expect(text).toContain("non-empty string");
+    });
+
     it("should return 400 for unknown keyboard action", async () => {
       const { server, port } = await setup();
       testServer = server;
@@ -752,6 +790,27 @@ describe("desktop-server", () => {
       expect(res.status).toBe(500);
       const text = await res.text();
       expect(text).toContain("Unknown key");
+    });
+
+    it("should return 500 when typeText fails", async () => {
+      vi.mocked(typeText).mockRejectedValueOnce(
+        new Error("cliclick not found"),
+      );
+
+      const { server, port } = await setup();
+      testServer = server;
+
+      const res = await fetch(`http://127.0.0.1:${port}/keyboard`, {
+        method: "POST",
+        headers: {
+          "x-vm0-token": TEST_TOKEN,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ action: "type", text: "test" }),
+      });
+      expect(res.status).toBe(500);
+      const text = await res.text();
+      expect(text).toBe("cliclick not found");
     });
   });
 });

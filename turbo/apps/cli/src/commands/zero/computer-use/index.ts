@@ -17,6 +17,7 @@ import {
   clientWriteClipboardCommand,
   clientKeyCommand,
   clientHoldKeyCommand,
+  clientTypeCommand,
 } from "./client";
 
 const hostCommand = new Command()
@@ -42,7 +43,8 @@ const clientCommand = new Command()
   .addCommand(clientReadClipboardCommand)
   .addCommand(clientWriteClipboardCommand)
   .addCommand(clientKeyCommand)
-  .addCommand(clientHoldKeyCommand);
+  .addCommand(clientHoldKeyCommand)
+  .addCommand(clientTypeCommand);
 
 export const zeroComputerUseCommand = new Command()
   .name("computer-use")
@@ -66,5 +68,6 @@ Examples:
   Read clipboard text:               zero computer-use client read-clipboard
   Write clipboard text:              zero computer-use client write-clipboard "hello"
   Press key combo:                   zero computer-use client key "cmd+c"
-  Hold shift for 2 seconds:          zero computer-use client hold-key "shift" 2000`,
+  Hold shift for 2 seconds:          zero computer-use client hold-key "shift" 2000
+  Type text:                         zero computer-use client type "Hello, world!"`,
   );

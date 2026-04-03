@@ -175,3 +175,10 @@ export async function holdKey(keys: string, durationMs: number): Promise<void> {
   await sleep(durationMs);
   await execFileAsync("cliclick", upArgs);
 }
+
+/**
+ * Type text at the current cursor position using cliclick.
+ */
+export async function typeText(text: string): Promise<void> {
+  await execFileAsync("cliclick", [`t:${text}`]);
+}

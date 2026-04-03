@@ -296,3 +296,17 @@ export const clientHoldKeyCommand = new Command()
       process.stdout.write("ok\n");
     }),
   );
+
+export const clientTypeCommand = new Command()
+  .name("type")
+  .description("Type text at the current cursor position")
+  .argument("<text>", "Text to type")
+  .action(
+    withErrorHandler(async (text: string) => {
+      await callHost("/keyboard", {
+        method: "POST",
+        body: { action: "type", text },
+      });
+      process.stdout.write("ok\n");
+    }),
+  );

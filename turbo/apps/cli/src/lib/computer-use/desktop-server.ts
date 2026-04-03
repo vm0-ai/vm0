@@ -19,6 +19,7 @@ import {
   VALID_ACTIONS,
   pressKey,
   holdKey,
+  typeText,
 } from "./cliclick";
 import type { MouseAction } from "./cliclick";
 import { scroll, type ScrollDirection } from "./scroll";
@@ -246,7 +247,12 @@ interface HoldKeyBody {
   durationMs: number;
 }
 
-type KeyboardRequestBody = KeyPressBody | HoldKeyBody;
+interface TypeTextBody {
+  action: "type";
+  text: string;
+}
+
+type KeyboardRequestBody = KeyPressBody | HoldKeyBody | TypeTextBody;
 
 async function handleKeyboard(
   req: IncomingMessage,
@@ -270,6 +276,14 @@ async function handleKeyboard(
         return;
       }
       await holdKey(body.keys, body.durationMs);
+      break;
+    case "type":
+      if (typeof body.text !== "string" || body.text.length === 0) {
+        res.writeHead(400, { "Content-Type": "text/plain" });
+        res.end("text must be a non-empty string");
+        return;
+      }
+      await typeText(body.text);
       break;
     default:
       res.writeHead(400, { "Content-Type": "text/plain" });
