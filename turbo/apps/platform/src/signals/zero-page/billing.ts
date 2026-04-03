@@ -99,6 +99,11 @@ export const reloadBillingStatus$ = command(({ set }) => {
   });
 });
 
+/**
+ * Opens the billing dialog programmatically.
+ * Used in tests as the entry point for billing dialog integration tests.
+ * In production the dialog is opened via the `onOpenChange` handler in BillingDialog.
+ */
 export const openBillingDialog$ = command(({ set }) => {
   set(internalDialogOpen$, true);
 });

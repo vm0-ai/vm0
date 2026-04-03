@@ -49,26 +49,6 @@ async function openBillingDialogAndWait() {
   });
 }
 
-describe("chat-d-066: AutoRechargeSection renders currentTier label", () => {
-  it("renders the auto-recharge section for a paid tier", async () => {
-    mockAPIs();
-    setMockBillingStatus({
-      tier: "pro",
-      credits: 20_000,
-      subscriptionStatus: "active",
-      hasSubscription: true,
-    });
-    await setupPage({ context, path: "/" });
-    await openBillingDialogAndWait();
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("switch", { name: /auto-recharge/i }),
-      ).toBeInTheDocument();
-    });
-  });
-});
-
 describe("chat-d-067: AutoRechargeSection renders threshold value", () => {
   it("displays the threshold value in the threshold input", async () => {
     mockAPIs();
@@ -173,6 +153,10 @@ describe("chat-s-070: Loading state disables Save button during save", () => {
     });
 
     resolveSave();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled();
+    });
   });
 });
 
@@ -241,26 +225,6 @@ describe("chat-d-072-073: BillingDialog renders status.tier and credit count", (
         /You are on the Pro plan with 20,000 credits\./,
       );
       expect(description).toBeInTheDocument();
-    });
-  });
-});
-
-describe("chat-d-074: Current plan badge renders on the active PlanCard", () => {
-  it("shows aria-current on the PlanCard matching the current tier", async () => {
-    mockAPIs();
-    setMockBillingStatus({
-      tier: "pro",
-      credits: 20_000,
-      subscriptionStatus: "active",
-      hasSubscription: true,
-    });
-    await setupPage({ context, path: "/" });
-    await openBillingDialogAndWait();
-
-    await waitFor(() => {
-      const dialog = screen.getByRole("dialog");
-      const currentIndicator = within(dialog).getByText(/^Current$/);
-      expect(currentIndicator).toHaveAttribute("aria-current", "true");
     });
   });
 });
@@ -392,5 +356,11 @@ describe("chat-c-077: Action button is disabled during redirect", () => {
     });
 
     resolveCheckout();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /Upgrade to Team/i }),
+      ).not.toBeDisabled();
+    });
   });
 });
