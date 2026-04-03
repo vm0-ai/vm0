@@ -10,6 +10,7 @@ export enum Reason {
   Entrance = "entrance",
   Deferred = "deferred",
   Daemon = "daemon",
+  Redirect = "redirect",
 }
 
 class PromiseTracker {

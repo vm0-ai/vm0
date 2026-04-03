@@ -62,6 +62,6 @@ export const setupChatSessionPage$ = command(
 
     // chatSessionSnapshot$ auto-fetches from URL. loadSessionFromSnapshot$
     // awaits it, populates server messages, syncs agent, resumes polling.
-    detach(set(loadSessionFromSnapshot$, signal), Reason.Entrance);
+    detach(set(loadSessionFromSnapshot$, signal), Reason.Daemon);
   },
 );

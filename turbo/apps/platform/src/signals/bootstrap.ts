@@ -53,10 +53,7 @@ const setupNotFoundRedirect$ = command(({ set }) => {
 function redirectTo(target: string) {
   return command(({ get, set }) => {
     const signal = get(rootSignal$).signal;
-    detach(
-      set(navigate$, target, { replace: true }, signal),
-      Reason.DomCallback,
-    );
+    detach(set(navigate$, target, { replace: true }, signal), Reason.Redirect);
   });
 }
 
@@ -69,10 +66,7 @@ function redirectWithParams(buildTarget: (params: ParamData) => string) {
     const params = get(pathParams$) ?? {};
     const target = buildTarget(params);
     const signal = get(rootSignal$).signal;
-    detach(
-      set(navigate$, target, { replace: true }, signal),
-      Reason.DomCallback,
-    );
+    detach(set(navigate$, target, { replace: true }, signal), Reason.Redirect);
   });
 }
 

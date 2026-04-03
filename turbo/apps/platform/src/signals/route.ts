@@ -174,7 +174,7 @@ export const detachedNavigateTo$ = command(
         options ?? {},
         signal,
       ),
-      Reason.DomCallback,
+      Reason.Redirect,
     );
   },
 );

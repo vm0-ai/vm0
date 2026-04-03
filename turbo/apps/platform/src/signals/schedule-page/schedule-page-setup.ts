@@ -8,7 +8,6 @@ import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
 import { reloadChatThreads$ } from "../zero-page/zero-chat.ts";
 import { fetchAllOrgSchedules$ } from "../zero-page/zero-schedule.ts";
-import { Reason, detach } from "../utils.ts";
 
 export const setupSchedulePage$ = command(
   async ({ set }, signal: AbortSignal) => {
@@ -17,8 +16,10 @@ export const setupSchedulePage$ = command(
       createElement(SidebarLayout, null, createElement(ZeroSchedulePage)),
     );
     set(updateDocumentTitle$, "Schedule");
-    detach(set(fetchAllOrgSchedules$, signal), Reason.Entrance);
-    await set(initZeroOnboarding$, signal);
+    await Promise.all([
+      set(fetchAllOrgSchedules$, signal),
+      set(initZeroOnboarding$, signal),
+    ]);
     signal.throwIfAborted();
 
     if (await set(onboardGuard$, signal)) {

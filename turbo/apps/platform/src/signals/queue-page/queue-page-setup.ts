@@ -24,5 +24,5 @@ export const setupQueuePage$ = command(async ({ set }, signal: AbortSignal) => {
   }
 
   set(reloadChatThreads$);
-  detach(set(startQueuePolling$, signal), Reason.Entrance);
+  detach(set(startQueuePolling$, signal), Reason.Daemon);
 });

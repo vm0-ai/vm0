@@ -24,7 +24,7 @@ export const setupWorksPage$ = command(async ({ set }, signal: AbortSignal) => {
     set(initSlackOrg$, signal),
   ]);
   signal.throwIfAborted();
-  detach(set(pollSlackConnection$, signal), Reason.Entrance);
+  detach(set(pollSlackConnection$, signal), Reason.Daemon);
 
   if (await set(onboardGuard$, signal)) {
     return;

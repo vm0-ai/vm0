@@ -8,7 +8,6 @@ import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
 import { reloadChatThreads$ } from "../zero-page/zero-chat.ts";
 import { fetchAllOrgSchedules$ } from "../zero-page/zero-schedule.ts";
 import { fetchSlackChannels$ } from "../zero-page/slack-channels.ts";
-import { Reason, detach } from "../utils.ts";
 import {
   setScheduleRunHistoryScheduleId$,
   seedScheduleRunCursorHistory$,
@@ -32,8 +31,8 @@ export const setupScheduleDetailPage$ = command(
     set(setScheduleRunHistoryScheduleId$, scheduleId);
     set(seedScheduleRunCursorHistory$);
 
-    detach(set(fetchAllOrgSchedules$, signal), Reason.Entrance);
     await Promise.all([
+      set(fetchAllOrgSchedules$, signal),
       set(initZeroOnboarding$, signal),
       set(fetchSlackChannels$, signal),
     ]);

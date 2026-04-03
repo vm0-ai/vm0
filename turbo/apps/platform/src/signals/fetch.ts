@@ -202,7 +202,7 @@ export const fetch$ = computed((get) => {
     const response = await fetch(finalUrl, finalInit);
 
     if (response.status === 401) {
-      detach(clerk.redirectToSignIn(), Reason.DomCallback);
+      detach(clerk.redirectToSignIn(), Reason.Redirect);
     }
 
     return response;
