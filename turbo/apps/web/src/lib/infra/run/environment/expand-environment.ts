@@ -5,7 +5,7 @@ import {
   type ExpandedFirewallConfig,
 } from "@vm0/core";
 import { logger } from "../../../shared/logger";
-import type { AgentComposeYaml } from "../../../../types/agent-compose";
+import type { AgentComposeYaml } from "../../agent-compose/types";
 
 const log = logger("run:environment");
 

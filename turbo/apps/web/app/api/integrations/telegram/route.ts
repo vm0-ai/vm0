@@ -17,7 +17,7 @@ import {
 import { listSecrets } from "../../../../src/lib/zero/secret/secret-service";
 import { listVariables } from "../../../../src/lib/zero/variable/variable-service";
 import { listConnectors } from "../../../../src/lib/zero/connector/connector-service";
-import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
+import type { AgentComposeYaml } from "../../../../src/lib/infra/agent-compose/types";
 import { decryptSecretValue } from "../../../../src/lib/shared/crypto/secrets-encryption";
 import { deleteWebhook } from "../../../../src/lib/zero/telegram/client";
 import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";

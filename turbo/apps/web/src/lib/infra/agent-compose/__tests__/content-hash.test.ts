@@ -9,7 +9,7 @@ import {
   DEFAULT_VERSION_DISPLAY_LENGTH,
   MIN_VERSION_PREFIX_LENGTH,
 } from "../content-hash";
-import type { AgentComposeYaml } from "../../../../types/agent-compose";
+import type { AgentComposeYaml } from "../types";
 
 describe("content-hash", () => {
   describe("computeComposeVersionId", () => {

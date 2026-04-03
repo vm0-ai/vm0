@@ -18,7 +18,7 @@ import {
 import { listSecrets } from "../../../../src/lib/zero/secret/secret-service";
 import { listVariables } from "../../../../src/lib/zero/variable/variable-service";
 import { listConnectors } from "../../../../src/lib/zero/connector/connector-service";
-import type { AgentComposeYaml } from "../../../../src/types/agent-compose";
+import type { AgentComposeYaml } from "../../../../src/lib/infra/agent-compose/types";
 import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";
 import { deleteInstallation } from "../../../../src/lib/zero/github/github-app";
 import { logger } from "../../../../src/lib/shared/logger";

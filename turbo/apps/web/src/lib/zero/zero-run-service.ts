@@ -39,7 +39,7 @@ import { modelProviders } from "../../db/schema/model-provider";
 import { orgMetadata } from "../../db/schema/org-metadata";
 import { orgMembersMetadata } from "../../db/schema/org-members-metadata";
 import { ORG_SENTINEL_USER_ID } from "./org/org-sentinel";
-import type { AgentComposeYaml } from "../../types/agent-compose";
+import type { AgentComposeYaml } from "../infra/agent-compose/types";
 import { DISALLOWED_TOOLS, buildAgentPrompt } from "./agent-prompt";
 import type { CallbackPayload } from "../infra/callback/callback-payloads";
 import { zeroAgents } from "../../db/schema/zero-agent";

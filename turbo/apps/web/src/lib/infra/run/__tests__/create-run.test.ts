@@ -19,7 +19,7 @@ import {
   updateOrgTier,
 } from "../../../../__tests__/api-test-helpers";
 import { POST as checkpointWebhook } from "../../../../../app/api/webhooks/agent/checkpoints/route";
-import type { AgentComposeYaml } from "../../../../types/agent-compose";
+import type { AgentComposeYaml } from "../../agent-compose/types";
 import { reloadEnv } from "../../../../env";
 import {
   startRun,

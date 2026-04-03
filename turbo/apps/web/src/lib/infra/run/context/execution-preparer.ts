@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import type { AgentComposeYaml } from "../../../../types/agent-compose";
+import type { AgentComposeYaml } from "../../agent-compose/types";
 import type { ExecutionContext } from "../types";
 import type { PreparedContext } from "../executors/types";
 import {

@@ -4,7 +4,7 @@
  */
 
 import { createHash } from "crypto";
-import type { AgentComposeYaml } from "../../../types/agent-compose";
+import type { AgentComposeYaml } from "./types";
 
 /**
  * Minimum length for short version ID prefix

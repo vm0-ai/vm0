@@ -9,7 +9,7 @@ import { getInstructionsStorageName } from "@vm0/core";
 import { notFound, conflict } from "../../shared/errors";
 import { canAccessCompose } from "../agent/compose-access";
 import { listS3Objects, deleteS3Objects } from "../s3/s3-client";
-import type { AgentComposeYaml } from "../../../types/agent-compose";
+import type { AgentComposeYaml } from "./types";
 import type { ComposeResponse } from "@vm0/core";
 
 /**

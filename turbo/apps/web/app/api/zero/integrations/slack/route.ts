@@ -30,7 +30,7 @@ import { decryptSecretValue } from "../../../../../src/lib/shared/crypto/secrets
 import { refreshOrgAppHome } from "../../../../../src/lib/zero/slack-org/handlers/app-home";
 import { cleanupWorkspaceInstallation } from "../../../../../src/lib/zero/slack-org/connect-service";
 import { hasAllBotScopes } from "../../../../../src/lib/zero/slack-org/scopes";
-import type { AgentComposeYaml } from "../../../../../src/types/agent-compose";
+import type { AgentComposeYaml } from "../../../../../src/lib/infra/agent-compose/types";
 import { logger } from "../../../../../src/lib/shared/logger";
 
 const log = logger("api:zero:slack");

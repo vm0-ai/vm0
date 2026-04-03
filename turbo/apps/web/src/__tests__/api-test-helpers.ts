@@ -9,7 +9,7 @@ import { randomUUID } from "crypto";
 import { vi } from "vitest";
 import { http as mswHttp, HttpResponse } from "msw";
 import { NextRequest } from "next/server";
-import type { AgentComposeYaml } from "../types/agent-compose";
+import type { AgentComposeYaml } from "../lib/infra/agent-compose/types";
 import {
   generateSandboxToken,
   generateCliToken,

@@ -5,7 +5,7 @@ import {
   isSupportedFramework,
   type SupportedFramework,
 } from "@vm0/core";
-import type { AgentComposeYaml } from "../../../types/agent-compose";
+import type { AgentComposeYaml } from "../agent-compose/types";
 import { uploadInstructionsServerSide } from "../storage/instruction-upload";
 import { computeComposeVersionId } from "../agent-compose/content-hash";
 import {

@@ -11,7 +11,7 @@ import type {
   MemorySnapshot,
   VolumeVersionsSnapshot,
 } from "../../checkpoint/types";
-import type { AgentComposeYaml } from "../../../../types/agent-compose";
+import type { AgentComposeYaml } from "../../agent-compose/types";
 import type { ConversationResolution } from "./types";
 import { extractWorkingDir } from "../utils";
 import { resolveSessionHistory } from "./resolve-session-history";

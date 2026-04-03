@@ -1,4 +1,4 @@
-import type { AgentComposeYaml } from "../../../../types/agent-compose";
+import type { AgentComposeYaml } from "../../agent-compose/types";
 
 /**
  * Extract CLI agent type (framework) from agent compose config
