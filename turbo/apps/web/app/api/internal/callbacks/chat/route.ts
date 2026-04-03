@@ -11,7 +11,7 @@ import { appendChatMessages } from "../../../../../src/lib/zero/zero-session-ser
 import {
   generateChatTitle,
   type TitleContextMessage,
-} from "../../../../../src/lib/shared/ai/lightweight-model";
+} from "../../../../../src/lib/zero/ai/lightweight-model";
 import { updateChatThreadTitle } from "../../../../../src/lib/zero/chat-thread";
 import type { ChatCallbackPayload } from "../../../../../src/lib/infra/callback/callback-payloads";
 import { logger } from "../../../../../src/lib/shared/logger";

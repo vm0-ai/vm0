@@ -7,7 +7,7 @@ import {
   type StoredChatMessage,
 } from "../zero-session-service";
 import type { SummaryEntry } from "@vm0/core";
-import type { TitleContextMessage } from "../../shared/ai/lightweight-model";
+import type { TitleContextMessage } from "../ai/lightweight-model";
 
 /**
  * Create a new chat thread.
