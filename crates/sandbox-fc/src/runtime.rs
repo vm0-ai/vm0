@@ -22,6 +22,7 @@ pub struct FirecrackerRuntime {
     netns_pool: Arc<tokio::sync::Mutex<NetnsPool>>,
     device_pool: Arc<tokio::sync::Mutex<DevicePool>>,
     proxy_port: Option<u16>,
+    dns_port: Option<u16>,
 }
 
 impl FirecrackerRuntime {
@@ -34,6 +35,7 @@ impl FirecrackerRuntime {
         let t = std::time::Instant::now();
         let netns_pool = NetnsPool::create(NetnsPoolConfig {
             proxy_port: config.proxy_port,
+            dns_port: config.dns_port,
         })
         .await
         .map_err(|e| SandboxError::CreationFailed(format!("netns pool: {e}")))?;
@@ -54,6 +56,7 @@ impl FirecrackerRuntime {
             netns_pool: Arc::new(tokio::sync::Mutex::new(netns_pool)),
             device_pool: Arc::new(tokio::sync::Mutex::new(device_pool)),
             proxy_port: config.proxy_port,
+            dns_port: config.dns_port,
         })
     }
 
@@ -66,6 +69,7 @@ impl FirecrackerRuntime {
             base_dir: config.base_dir,
             profile: config.profile,
             proxy_port: self.proxy_port,
+            dns_port: self.dns_port,
             snapshot,
         }
     }

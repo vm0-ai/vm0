@@ -211,6 +211,7 @@ impl SandboxFactory for FirecrackerFactory {
             let t = std::time::Instant::now();
             let netns_pool = NetnsPool::create(NetnsPoolConfig {
                 proxy_port: self.config.proxy_port,
+                dns_port: self.config.dns_port,
             })
             .await
             .map_err(|e| SandboxError::CreationFailed(format!("netns pool: {e}")))?;

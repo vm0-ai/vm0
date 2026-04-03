@@ -39,4 +39,6 @@ pub struct FactoryConfig {
 pub struct RuntimeConfig {
     /// Proxy port for network traffic interception. Shared across all factories.
     pub proxy_port: Option<u16>,
+    /// DNS proxy port for DNS query interception. Shared across all factories.
+    pub dns_port: Option<u16>,
 }

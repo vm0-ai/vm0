@@ -651,6 +651,17 @@ jobs:
           echo "  HTTPS go: ok"
           echo "PASS: HTTPS through proxy"
 
+          # Test 7: verify DNS resolution works inside sandbox
+          # Uses getent (libc-bin, always available) instead of nslookup (requires dnsutils).
+          echo "--- Test: DNS resolution ---"
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" -- getent hosts github.com 2>&1) \
+            || fail "user DNS resolution failed: $OUTPUT"
+          echo "  user: $OUTPUT"
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" --sudo -- getent hosts example.com 2>&1) \
+            || fail "root DNS resolution failed: $OUTPUT"
+          echo "  root: $OUTPUT"
+          echo "PASS: DNS resolution"
+
           # Stop transient service (kills sandbox, submit terminates naturally)
           sudo "$BIN_DIR/runner" service stop --name "$SVC"
           trap - EXIT
