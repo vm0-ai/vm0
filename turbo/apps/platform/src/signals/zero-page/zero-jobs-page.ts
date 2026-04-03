@@ -1,5 +1,7 @@
 import { command, computed, state } from "ccstate";
 import { randomPresetAvatar } from "../../views/zero-page/avatar-utils.ts";
+import { throwIfAbort } from "../utils.ts";
+import { toast } from "@vm0/ui/components/ui/sonner";
 
 // ---------------------------------------------------------------------------
 // Create-teammate dialog state
@@ -27,9 +29,6 @@ const internalAvatarUrl$ = state(randomPresetAvatar());
 export const jobsAvatarUrl$ = computed((get) => {
   return get(internalAvatarUrl$);
 });
-export const setJobsAvatarUrl$ = command(({ set }, url: string) => {
-  set(internalAvatarUrl$, url);
-});
 export const resetJobsAvatarUrl$ = command(({ set }) => {
   set(internalAvatarUrl$, randomPresetAvatar());
 });
@@ -46,25 +45,36 @@ export const setJobsFileInputEl$ = command(
   },
 );
 
-// -- Avatar upload loading --------------------------------------------------
+// -- Upload avatar command --------------------------------------------------
 
-const internalUploading$ = state(false);
-export const jobsUploading$ = computed((get) => {
-  return get(internalUploading$);
-});
-export const setJobsUploading$ = command(({ set }, uploading: boolean) => {
-  set(internalUploading$, uploading);
-});
-
-// -- Create loading ---------------------------------------------------------
-
-const internalCreating$ = state(false);
-export const jobsCreating$ = computed((get) => {
-  return get(internalCreating$);
-});
-export const setJobsCreating$ = command(({ set }, creating: boolean) => {
-  set(internalCreating$, creating);
-});
+export const uploadJobsAvatar$ = command(
+  async (
+    { set },
+    file: File,
+    fetchFn: (
+      url: string | URL | Request,
+      options?: RequestInit,
+    ) => Promise<Response>,
+    _signal: AbortSignal,
+  ): Promise<void> => {
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetchFn("/api/zero/uploads", {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) {
+        throw new Error(`Upload failed (${res.status})`);
+      }
+      const data: { url: string } = await res.json();
+      set(internalAvatarUrl$, data.url);
+    } catch (error) {
+      throwIfAbort(error);
+      toast.error("Failed to upload avatar");
+    }
+  },
+);
 
 // -- Reset dialog state on close --------------------------------------------
 

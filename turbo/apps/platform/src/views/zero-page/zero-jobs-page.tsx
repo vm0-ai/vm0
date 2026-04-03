@@ -1,4 +1,5 @@
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   IconCrown,
@@ -27,7 +28,7 @@ import {
   defaultAgentId$,
 } from "../../signals/zero-page/zero-agent-name.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import { detach, Reason, throwIfAbort } from "../../signals/utils.ts";
+import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
 import { useAgentAvatar } from "./zero-sidebar.tsx";
 import { ZERO_AVATARS } from "./zero-avatars.ts";
@@ -38,13 +39,9 @@ import {
   setJobsDialogOpen$,
   jobsNewName$,
   setJobsNewName$,
-  jobsCreating$,
-  setJobsCreating$,
   jobsAvatarUrl$,
-  setJobsAvatarUrl$,
   resetJobsAvatarUrl$,
-  jobsUploading$,
-  setJobsUploading$,
+  uploadJobsAvatar$,
   jobsFileInputEl$,
   setJobsFileInputEl$,
   resetJobsDialog$,
@@ -71,10 +68,9 @@ export function ZeroJobsPage() {
   const setDialogOpen = useSet(setJobsDialogOpen$);
   const newName = useGet(jobsNewName$);
   const setNewName = useSet(setJobsNewName$);
-  const creating = useGet(jobsCreating$);
-  const setCreating = useSet(setJobsCreating$);
+  const [createLoadable, createSubagentFn] = useLoadableSet(createSubagent$);
+  const creating = createLoadable.state === "loading";
   const resetDialog = useSet(resetJobsDialog$);
-  const createSubagent = useSet(createSubagent$);
   const pageSignal = useGet(pageSignal$);
 
   const handleCreateTeammate = (avatarUrl: string) => {
@@ -82,17 +78,14 @@ export function ZeroJobsPage() {
     if (!trimmed || creating) {
       return;
     }
-    setCreating(true);
     detach(
-      createSubagent(trimmed, avatarUrl, pageSignal).then(
+      createSubagentFn(trimmed, avatarUrl, pageSignal).then(
         () => {
           setDialogOpen(false);
           resetDialog();
-          setCreating(false);
           toast.success(`${trimmed} created successfully`);
         },
         (error: unknown) => {
-          setCreating(false);
           toast.error(
             error instanceof Error
               ? error.message
@@ -354,34 +347,15 @@ function CreateTeammateDialogContent({
   creating: boolean;
 }) {
   const avatarUrl = useGet(jobsAvatarUrl$);
-  const setAvatarUrl = useSet(setJobsAvatarUrl$);
   const resetAvatarUrl = useSet(resetJobsAvatarUrl$);
-  const uploading = useGet(jobsUploading$);
-  const setUploading = useSet(setJobsUploading$);
+  const [uploadLoadable, uploadAvatarFn] = useLoadableSet(uploadJobsAvatar$);
+  const uploading = uploadLoadable.state === "loading";
   const fileInputEl = useGet(jobsFileInputEl$);
   const setFileInputEl = useSet(setJobsFileInputEl$);
   const fetchFn = useGet(fetch$);
 
-  const handleUpload = async (file: File) => {
-    setUploading(true);
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-      const res = await fetchFn("/api/zero/uploads", {
-        method: "POST",
-        body: formData,
-      });
-      if (!res.ok) {
-        throw new Error(`Upload failed (${res.status})`);
-      }
-      const data: { url: string } = await res.json();
-      setAvatarUrl(data.url);
-    } catch (error) {
-      throwIfAbort(error);
-      toast.error("Failed to upload avatar");
-    } finally {
-      setUploading(false);
-    }
+  const handleUpload = (file: File) => {
+    detach(uploadAvatarFn(file, fetchFn), Reason.DomCallback);
   };
 
   const isCustom = !avatarUrl.startsWith(AVATAR_PRESET_PREFIX);
@@ -422,7 +396,7 @@ function CreateTeammateDialogContent({
               onChange={(e) => {
                 const file = e.target.files?.[0];
                 if (file) {
-                  detach(handleUpload(file), Reason.DomCallback);
+                  handleUpload(file);
                 }
                 e.target.value = "";
               }}
