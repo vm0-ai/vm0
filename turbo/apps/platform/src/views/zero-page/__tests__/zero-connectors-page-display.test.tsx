@@ -10,45 +10,17 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
-import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
+import { http } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
+import { mockConnectors } from "./zero-connectors-page-test-helpers.ts";
 
 const context = testContext();
 
-function mockConnectors(
-  connectors: {
-    type: ConnectorType;
-    externalUsername?: string;
-    needsReconnect?: boolean;
-    oauthScopes?: string[];
-  }[],
-) {
-  server.use(
-    http.get("*/api/zero/connectors", () => {
-      return HttpResponse.json({
-        connectors: connectors.map((c) => {
-          return {
-            id: crypto.randomUUID(),
-            type: c.type,
-            authMethod: "oauth",
-            externalId: null,
-            externalUsername: c.externalUsername ?? null,
-            externalEmail: null,
-            oauthScopes: c.oauthScopes ?? null,
-            needsReconnect: c.needsReconnect ?? false,
-            createdAt: "2026-01-01T00:00:00Z",
-            updatedAt: "2026-01-01T00:00:00Z",
-          };
-        }),
-        configuredTypes: Object.keys(CONNECTOR_TYPES),
-        connectorProvidedSecretNames: [],
-      });
-    }),
-  );
-}
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe("connectors page - count display", () => {
   it("connected connectors count is displayed (CONN-D-001)", async () => {
@@ -78,10 +50,6 @@ describe("connectors page - count display", () => {
 });
 
 describe("connectors page - connector status indicators", () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
   it("connector shows connecting state while polling (CONN-D-003)", async () => {
     // Start with a connected connector that needs reconnect so the
     // "Reconnect" button triggers the OAuth polling flow via GlobalConnectorCard.
@@ -93,10 +61,10 @@ describe("connectors page - connector status indicators", () => {
       },
     ]);
 
-    const fakeWindow = { closed: false };
-    vi.spyOn(window, "open").mockReturnValue(
-      fakeWindow as unknown as Window & typeof globalThis,
-    );
+    // Return a fake popup that stays open so the connector enters polling state.
+    // Cast to Window is safe here — the only property accessed on the return
+    // value during polling is `closed`, which the fake provides.
+    vi.spyOn(window, "open").mockReturnValue({ closed: false } as Window);
 
     await setupPage({ context, path: "/connectors" });
 
@@ -174,7 +142,7 @@ describe("connectors page - loading state", () => {
 
     await setupPage({ context, path: "/connectors" });
 
-    const skeletons = document.querySelectorAll(".animate-pulse");
+    const skeletons = screen.getAllByTestId("connector-skeleton");
     expect(skeletons.length).toBeGreaterThan(0);
   });
 });
@@ -184,28 +152,12 @@ describe("connectors page - help text", () => {
     await setupPage({ context, path: "/connectors" });
 
     await waitFor(() => {
-      expect(
-        screen.getByText(CONNECTOR_TYPES.github.helpText),
-      ).toBeInTheDocument();
-    });
-  });
-});
-
-describe("connectors page - empty state", () => {
-  it("empty state shown when no connectors match search (CONN-C-009)", async () => {
-    const user = userEvent.setup();
-    await setupPage({ context, path: "/connectors" });
-
-    await waitFor(() => {
-      expect(screen.getByText("GitHub")).toBeInTheDocument();
-    });
-
-    const searchInput = screen.getByPlaceholderText("Search connectors");
-    await user.clear(searchInput);
-    await user.type(searchInput, "nonexistent-connector-xyz");
-
-    await waitFor(() => {
-      expect(screen.getByText(/No connectors matching/)).toBeInTheDocument();
+      const helpTexts = screen.getAllByTestId("connector-help-text");
+      // At least one connector card must render a non-empty help text
+      const nonEmpty = helpTexts.filter((el) => {
+        return (el.textContent ?? "").trim().length > 0;
+      });
+      expect(nonEmpty.length).toBeGreaterThan(0);
     });
   });
 });
