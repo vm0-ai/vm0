@@ -71,7 +71,9 @@ describe("works page - slack integration status display", () => {
     await renderWorksPage();
 
     await waitFor(() => {
-      expect(screen.getByText("Connected")).toBeInTheDocument();
+      expect(
+        screen.getByTestId("slack-connected-indicator"),
+      ).toBeInTheDocument();
     });
   });
 
@@ -172,8 +174,12 @@ describe("works page - more options dropdown", () => {
     await user.click(screen.getByRole("button", { name: "More options" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Disconnect")).toBeInTheDocument();
-      expect(screen.getByText("Uninstall")).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Disconnect" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Uninstall" }),
+      ).toBeInTheDocument();
     });
   });
 
@@ -191,9 +197,11 @@ describe("works page - more options dropdown", () => {
     await user.click(screen.getByRole("button", { name: "More options" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Uninstall")).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Uninstall" }),
+      ).toBeInTheDocument();
     });
-    await user.click(screen.getByText("Uninstall"));
+    await user.click(screen.getByRole("button", { name: "Uninstall" }));
 
     const dialog = await screen.findByRole("dialog");
     expect(
@@ -230,9 +238,11 @@ describe("works page - more options dropdown", () => {
     await user.click(screen.getByRole("button", { name: "More options" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Disconnect")).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Disconnect" }),
+      ).toBeInTheDocument();
     });
-    await user.click(screen.getByText("Disconnect"));
+    await user.click(screen.getByRole("button", { name: "Disconnect" }));
 
     await waitFor(() => {
       expect(disconnectCalled).toBeTruthy();

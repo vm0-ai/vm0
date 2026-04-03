@@ -58,7 +58,10 @@ function SlackCardActions({
   return (
     <>
       {isConnected ? (
-        <span className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground">
+        <span
+          data-testid="slack-connected-indicator"
+          className="shrink-0 inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground"
+        >
           <IconCircleCheck className="h-3 w-3 text-green-600" />
           Connected
         </span>
@@ -106,6 +109,7 @@ function SlackCardActions({
             {isConnected && (
               <button
                 type="button"
+                aria-label="Disconnect"
                 className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left hover:bg-accent hover:text-accent-foreground transition-colors"
                 onClick={onDisconnect}
               >
@@ -115,6 +119,7 @@ function SlackCardActions({
             {isAdmin && (
               <button
                 type="button"
+                aria-label="Uninstall"
                 className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left text-destructive hover:bg-accent hover:text-accent-foreground transition-colors"
                 onClick={onUninstall}
               >
