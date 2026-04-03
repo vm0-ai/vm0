@@ -15,6 +15,7 @@ import {
   extractPermissions,
   syncAdminListPolicies$,
 } from "./firewall-allow-signals.ts";
+import { hideAppSkeleton$ } from "../app-skeleton.ts";
 
 export const setupFirewallAllowPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -28,6 +29,7 @@ export const setupFirewallAllowPage$ = command(
 
     await set(initZeroOnboarding$, signal);
     signal.throwIfAborted();
+    await set(hideAppSkeleton$, signal);
 
     if (await set(onboardGuard$, signal)) {
       return;

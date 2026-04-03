@@ -12,6 +12,7 @@ import {
   initSlackOrg$,
   pollSlackConnection$,
 } from "../zero-page/zero-slack.ts";
+import { hideAppSkeleton$ } from "../app-skeleton.ts";
 
 export const setupWorksPage$ = command(async ({ set }, signal: AbortSignal) => {
   set(
@@ -24,6 +25,7 @@ export const setupWorksPage$ = command(async ({ set }, signal: AbortSignal) => {
     set(initSlackOrg$, signal),
   ]);
   signal.throwIfAborted();
+  await set(hideAppSkeleton$, signal);
   await set(pollSlackConnection$, signal);
 
   if (await set(onboardGuard$, signal)) {

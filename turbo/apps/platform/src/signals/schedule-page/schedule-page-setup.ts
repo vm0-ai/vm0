@@ -8,6 +8,7 @@ import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
 import { reloadChatThreads$ } from "../zero-page/zero-chat.ts";
 import { fetchAllOrgSchedules$ } from "../zero-page/zero-schedule.ts";
+import { hideAppSkeleton$ } from "../app-skeleton.ts";
 
 export const setupSchedulePage$ = command(
   async ({ set }, signal: AbortSignal) => {
@@ -21,6 +22,7 @@ export const setupSchedulePage$ = command(
       set(initZeroOnboarding$, signal),
     ]);
     signal.throwIfAborted();
+    await set(hideAppSkeleton$, signal);
 
     if (await set(onboardGuard$, signal)) {
       return;

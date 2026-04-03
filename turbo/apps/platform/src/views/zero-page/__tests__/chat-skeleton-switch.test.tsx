@@ -1,21 +1,23 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import { http, HttpResponse, delay } from "msw";
+import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import { detachedNavigateTo$ } from "../../../signals/route.ts";
+import { createDeferredPromise } from "../../../signals/utils.ts";
 
 const context = testContext();
 
 describe("chat skeleton on switch", () => {
   it("should show skeleton when switching between chats", async () => {
+    const threadBDeferred = createDeferredPromise<void>(context.signal);
+
     server.use(
       http.get("*/api/zero/chat-threads/:id", async ({ params }) => {
         const id = params.id as string;
         if (id === "thread-b") {
-          // Delay thread-B so loading state is observable
-          await delay(200);
+          await threadBDeferred.promise;
         }
         return HttpResponse.json({
           id,
@@ -61,6 +63,9 @@ describe("chat skeleton on switch", () => {
       const skeletons = document.querySelectorAll(".animate-pulse");
       expect(skeletons.length).toBeGreaterThan(0);
     });
+
+    // Release deferred so thread-B content loads
+    threadBDeferred.resolve();
 
     // Eventually thread-B content should load
     await waitFor(() => {

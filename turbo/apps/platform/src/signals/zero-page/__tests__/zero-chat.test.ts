@@ -1,9 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
-import { delay } from "signal-timers";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
+import { createDeferredPromise } from "../../utils.ts";
 import {
   zeroChatMessages$,
   allFinished$,
@@ -417,15 +417,16 @@ describe("zero-chat signals", () => {
   });
 
   describe("attachment upload and cancel", () => {
-    function useUploadHandler(options?: { delayMs?: number }) {
-      const delayMs = options?.delayMs ?? 0;
+    function useUploadHandler(options?: {
+      deferred?: ReturnType<typeof createDeferredPromise<void>>;
+    }) {
       server.use(
         http.get("*/api/zero/chat-threads", () => {
           return HttpResponse.json({ threads: [] });
         }),
         http.post("*/api/zero/uploads", async () => {
-          if (delayMs > 0) {
-            await delay(delayMs);
+          if (options?.deferred) {
+            await options.deferred.promise;
           }
           return HttpResponse.json({
             id: "upload-1",
@@ -461,7 +462,8 @@ describe("zero-chat signals", () => {
     });
 
     it("should cancel an in-flight upload and remove the attachment", async () => {
-      useUploadHandler({ delayMs: 500 });
+      const uploadDeferred = createDeferredPromise<void>(context.signal);
+      useUploadHandler({ deferred: uploadDeferred });
       await setup();
 
       const uploadPromise = context.store
@@ -469,9 +471,11 @@ describe("zero-chat signals", () => {
         .catch(() => {});
 
       // Wait for the placeholder to appear
-      await delay(10);
+      await vi.waitFor(() => {
+        expect(context.store.get(zeroChatAttachments$)).toHaveLength(1);
+      });
+
       const before = context.store.get(zeroChatAttachments$);
-      expect(before).toHaveLength(1);
 
       // Cancel via removeZeroAttachment$ (which internally calls cancel$)
       context.store.set(removeZeroAttachment$, before[0]!);
@@ -502,6 +506,8 @@ describe("zero-chat signals", () => {
 
     it("should cancel one upload without affecting others", async () => {
       let requestCount = 0;
+      const uploadDeferreds: ReturnType<typeof createDeferredPromise<void>>[] =
+        [];
       server.use(
         http.get("*/api/zero/chat-threads", () => {
           return HttpResponse.json({ threads: [] });
@@ -509,7 +515,9 @@ describe("zero-chat signals", () => {
         http.post("*/api/zero/uploads", async () => {
           requestCount++;
           const currentCount = requestCount;
-          await delay(300);
+          const deferred = createDeferredPromise<void>(context.signal);
+          uploadDeferreds.push(deferred);
+          await deferred.promise;
           return HttpResponse.json({
             id: `upload-${currentCount}`,
             filename: `file-${currentCount}.png`,
@@ -536,13 +544,24 @@ describe("zero-chat signals", () => {
         )
         .catch(() => {});
 
+      // Wait for both requests to reach the MSW handler
       await vi.waitFor(() => {
-        const before = context.store.get(zeroChatAttachments$);
-        expect(before).toHaveLength(2);
+        expect(uploadDeferreds).toHaveLength(2);
+      });
+
+      await vi.waitFor(() => {
+        expect(context.store.get(zeroChatAttachments$)).toHaveLength(2);
       });
 
       const before = context.store.get(zeroChatAttachments$);
       context.store.set(removeZeroAttachment$, before[0]!);
+
+      // Release both upload deferreds so the surviving upload can complete
+      for (const d of uploadDeferreds) {
+        if (!d.settled()) {
+          d.resolve();
+        }
+      }
 
       await Promise.all([promise1, promise2]);
 

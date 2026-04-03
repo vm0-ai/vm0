@@ -1,0 +1,249 @@
+/**
+ * Tests for the ConnectorPermissionDialog shown after connecting a connector.
+ *
+ * Tests page-level behavior via setupPage following platform testing principles:
+ * - Entry point: setupPage({ path: "/connectors" })
+ * - Mock (external): Web API via MSW
+ * - Real (internal): All signals, components, rendering
+ */
+
+import { describe, expect, it } from "vitest";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
+import { server } from "../../../mocks/server.ts";
+import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { setupPage } from "../../../__tests__/page-helper.ts";
+import { setPermissionDialogType$ } from "../../../signals/zero-page/settings/connectors.ts";
+import type { ConnectorType } from "@vm0/core";
+
+const context = testContext();
+
+function mockAgents(
+  agents: { id: string; displayName: string; avatarUrl?: string }[],
+) {
+  server.use(
+    http.get("*/api/zero/team", () => {
+      return HttpResponse.json(
+        agents.map((a) => {
+          return {
+            id: a.id,
+            displayName: a.displayName,
+            description: null,
+            sound: null,
+            avatarUrl: a.avatarUrl ?? null,
+            headVersionId: "version_1",
+            updatedAt: "2024-01-01T00:00:00Z",
+          };
+        }),
+      );
+    }),
+  );
+}
+
+async function openPermissionDialog(connectorType: ConnectorType = "github") {
+  await setupPage({ context, path: "/connectors" });
+
+  // Wait for page to render
+  await waitFor(() => {
+    expect(
+      screen.getByRole("heading", { name: "Connectors" }),
+    ).toBeInTheDocument();
+  });
+
+  // Trigger the permission dialog via signal
+  context.store.set(setPermissionDialogType$, connectorType);
+}
+
+describe("connector permission dialog", () => {
+  it("renders the dialog with connector label and agent list", async () => {
+    mockAgents([
+      { id: "agent-1", displayName: "Agent Alpha" },
+      { id: "agent-2", displayName: "Agent Beta" },
+    ]);
+
+    await openPermissionDialog("github");
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/successfully connected with GitHub/),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByText("Agent Alpha")).toBeInTheDocument();
+    expect(screen.getByText("Agent Beta")).toBeInTheDocument();
+    expect(
+      screen.getByPlaceholderText("Search your agents"),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Later" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Confirm" })).toBeInTheDocument();
+  });
+
+  it("filters agents by search term", async () => {
+    const user = userEvent.setup();
+    mockAgents([
+      { id: "agent-1", displayName: "Agent Alpha" },
+      { id: "agent-2", displayName: "Agent Beta" },
+      { id: "agent-3", displayName: "Helper Bot" },
+    ]);
+
+    await openPermissionDialog("github");
+
+    await waitFor(() => {
+      expect(screen.getByText("Agent Alpha")).toBeInTheDocument();
+    });
+
+    const searchInput = screen.getByPlaceholderText("Search your agents");
+    await user.type(searchInput, "alpha");
+
+    await waitFor(() => {
+      expect(screen.getByText("Agent Alpha")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Agent Beta")).not.toBeInTheDocument();
+    expect(screen.queryByText("Helper Bot")).not.toBeInTheDocument();
+  });
+
+  it("toggles agent selection on click", async () => {
+    const user = userEvent.setup();
+    mockAgents([{ id: "agent-1", displayName: "Agent Alpha" }]);
+
+    await openPermissionDialog("github");
+
+    await waitFor(() => {
+      expect(screen.getByText("Agent Alpha")).toBeInTheDocument();
+    });
+
+    // Click to select — the avatar should be replaced by a check icon
+    const agentButton = screen.getByRole("button", { name: /Agent Alpha/ });
+    await user.click(agentButton);
+
+    // The check icon (svg) should now be rendered instead of the avatar img
+    expect(agentButton.querySelector("svg")).toBeInTheDocument();
+
+    // Click again to deselect — the avatar img should return
+    await user.click(agentButton);
+    expect(agentButton.querySelector("img")).toBeInTheDocument();
+  });
+
+  it("closes dialog without saving when clicking Later", async () => {
+    const user = userEvent.setup();
+    mockAgents([{ id: "agent-1", displayName: "Agent Alpha" }]);
+
+    let putCalled = false;
+    server.use(
+      http.put("*/api/zero/agents/:id/user-connectors", () => {
+        putCalled = true;
+        return HttpResponse.json({ enabledTypes: ["github"] });
+      }),
+    );
+
+    await openPermissionDialog("github");
+
+    await waitFor(() => {
+      expect(screen.getByText("Agent Alpha")).toBeInTheDocument();
+    });
+
+    // Select an agent
+    await user.click(screen.getByRole("button", { name: /Agent Alpha/ }));
+
+    // Click Later
+    await user.click(screen.getByRole("button", { name: "Later" }));
+
+    // Dialog should close
+    await waitFor(() => {
+      expect(
+        screen.queryByText(/successfully connected with GitHub/),
+      ).not.toBeInTheDocument();
+    });
+
+    // No API call should have been made
+    expect(putCalled).toBeFalsy();
+  });
+
+  it("closes dialog without API calls when confirming with no selection", async () => {
+    const user = userEvent.setup();
+    mockAgents([{ id: "agent-1", displayName: "Agent Alpha" }]);
+
+    let putCalled = false;
+    server.use(
+      http.put("*/api/zero/agents/:id/user-connectors", () => {
+        putCalled = true;
+        return HttpResponse.json({ enabledTypes: ["github"] });
+      }),
+    );
+
+    await openPermissionDialog("github");
+
+    await waitFor(() => {
+      expect(screen.getByText("Agent Alpha")).toBeInTheDocument();
+    });
+
+    // Confirm without selecting any agent
+    await user.click(screen.getByRole("button", { name: "Confirm" }));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByText(/successfully connected with GitHub/),
+      ).not.toBeInTheDocument();
+    });
+
+    expect(putCalled).toBeFalsy();
+  });
+
+  it("persists permissions via API when confirming with selected agents", async () => {
+    const user = userEvent.setup();
+    mockAgents([{ id: "agent-1", displayName: "Agent Alpha" }]);
+
+    let updatedAgentId: string | undefined;
+    server.use(
+      http.put(
+        "*/api/zero/agents/:id/user-connectors",
+        async ({ params, request }) => {
+          updatedAgentId = params.id as string;
+          const body = (await request.json()) as { enabledTypes: string[] };
+          return HttpResponse.json({ enabledTypes: body.enabledTypes });
+        },
+      ),
+    );
+
+    await openPermissionDialog("github");
+
+    await waitFor(() => {
+      expect(screen.getByText("Agent Alpha")).toBeInTheDocument();
+    });
+
+    // Select the agent
+    await user.click(screen.getByRole("button", { name: /Agent Alpha/ }));
+
+    // Confirm
+    await user.click(screen.getByRole("button", { name: "Confirm" }));
+
+    // Success toast and dialog close
+    await waitFor(() => {
+      expect(
+        screen.getByText("GitHub enabled for 1 agent"),
+      ).toBeInTheDocument();
+    });
+
+    expect(updatedAgentId).toBe("agent-1");
+  });
+
+  it("shows N+ more chip when agent count exceeds visible limit", async () => {
+    // Create 18 agents (visible limit is 16)
+    const agents = Array.from({ length: 18 }, (_, i) => {
+      return {
+        id: `agent-${i}`,
+        displayName: `Agent ${String(i).padStart(2, "0")}`,
+      };
+    });
+    mockAgents(agents);
+
+    await openPermissionDialog("github");
+
+    await waitFor(() => {
+      expect(screen.getByText("Agent 00")).toBeInTheDocument();
+    });
+
+    // Should show the "N+ more" chip
+    expect(screen.getByText("2+ more")).toBeInTheDocument();
+  });
+});

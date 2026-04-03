@@ -3,8 +3,12 @@ import { createElement } from "react";
 import { ActivityInspectPageWrapper } from "../../views/activity-page/activity-inspect-page-wrapper.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
+import { hideAppSkeleton$ } from "../app-skeleton.ts";
 
-export const setupActivityInspectPage$ = command(({ set }) => {
-  set(updatePage$, createElement(ActivityInspectPageWrapper));
-  set(updateDocumentTitle$, "Inspect Log");
-});
+export const setupActivityInspectPage$ = command(
+  async ({ set }, signal: AbortSignal) => {
+    set(updatePage$, createElement(ActivityInspectPageWrapper));
+    set(updateDocumentTitle$, "Inspect Log");
+    await set(hideAppSkeleton$, signal);
+  },
+);

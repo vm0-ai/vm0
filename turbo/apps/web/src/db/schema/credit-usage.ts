@@ -21,14 +21,12 @@ export const creditUsage = pgTable(
   "credit_usage",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    runId: uuid("run_id")
-      .references(
-        () => {
-          return agentRuns.id;
-        },
-        { onDelete: "cascade" },
-      )
-      .notNull(),
+    runId: uuid("run_id").references(
+      () => {
+        return agentRuns.id;
+      },
+      { onDelete: "set null" },
+    ),
     resultUuid: uuid("result_uuid"),
     orgId: text("org_id").notNull(),
     userId: text("user_id").notNull(),

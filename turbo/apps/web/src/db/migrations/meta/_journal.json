@@ -1555,6 +1555,13 @@
       "when": 1775200000002,
       "tag": "0221_fine_silver_samurai",
       "breakpoints": true
+    },
+    {
+      "idx": 222,
+      "version": "7",
+      "when": 1775200000003,
+      "tag": "0222_flashy_wonder_man",
+      "breakpoints": true
     }
   ]
 }

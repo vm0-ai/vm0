@@ -31,22 +31,71 @@ FROM ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive
 
 # ---------------------------------------------------------------------------
-# System packages
+# Bootstrap: minimal tools needed to add external APT repositories
 # ---------------------------------------------------------------------------
 RUN apt-get update && apt-get install -y \
-    procps \
-    curl \
-    wget \
-    git \
-    ripgrep \
-    jq \
-    file \
-    iproute2 \
     ca-certificates \
-    sudo \
-    gnupg \
-    libnss3 \
-    p11-kit-modules
+    curl \
+    gnupg
+
+# ---------------------------------------------------------------------------
+# Add external APT repositories (Node.js, GitHub CLI)
+# ---------------------------------------------------------------------------
+# Add third-party repos first, then do a single apt-get update+install.
+# This avoids running apt-get update once per repo (~10x → 3x).
+# NOTE: Debian bookworm (for Chromium) is added AFTER installing Ubuntu
+# packages to avoid cross-distro dependency conflicts (e.g. libruby).
+RUN curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+    | gpg --dearmor -o /usr/share/keyrings/nodesource.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/nodesource.gpg] https://deb.nodesource.com/node_24.x nodistro main" \
+    > /etc/apt/sources.list.d/nodesource.list \
+    && printf 'Package: nodejs\nPin: origin deb.nodesource.com\nPin-Priority: 600\n' \
+    > /etc/apt/preferences.d/nodesource \
+    && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+    | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+    > /etc/apt/sources.list.d/github-cli.list
+
+# ---------------------------------------------------------------------------
+# Install all Ubuntu/NodeSource/GitHub CLI packages in a single pass
+# ---------------------------------------------------------------------------
+# Single apt-get update + install instead of ~10 separate ones.
+# Each apt-get update downloads the full package index (~30 MB), so
+# consolidating saves several minutes of network I/O per build.
+# Docker layers don't matter — the image is exported as a flat rootfs.
+RUN apt-get update && apt-get install -y \
+    procps curl wget git ripgrep jq file iproute2 sudo \
+    libnss3 p11-kit-modules unzip \
+    nodejs \
+    python3 python3-pip \
+    ruby-full bundler \
+    php php-cli php-common php-curl php-mbstring php-xml php-zip \
+    default-jdk maven gradle \
+    gcc g++ clang make cmake \
+    postgresql-16 postgresql-contrib \
+    redis-server \
+    gh \
+    && rm -f /etc/apt/sources.list.d/nodesource.list \
+       /etc/apt/preferences.d/nodesource \
+       /usr/share/keyrings/nodesource.gpg \
+       /etc/apt/sources.list.d/github-cli.list \
+       /usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && rm -rf /var/lib/apt/lists/* /var/cache/apt/*
+
+# ---------------------------------------------------------------------------
+# Chromium (from Debian Bookworm — Ubuntu 24.04's is a snap stub)
+# ---------------------------------------------------------------------------
+# Installed separately to avoid cross-distro dependency conflicts.
+RUN curl -fsSL https://ftp-master.debian.org/keys/archive-key-12.asc \
+    | gpg --dearmor -o /usr/share/keyrings/debian-bookworm.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/debian-bookworm.gpg] http://deb.debian.org/debian bookworm main" \
+    > /etc/apt/sources.list.d/debian-bookworm.list \
+    && apt-get update \
+    && apt-get install -y -t bookworm chromium \
+    && rm -f /etc/apt/sources.list.d/debian-bookworm.list \
+       /usr/share/keyrings/debian-bookworm.gpg \
+    && rm -rf /var/lib/apt/lists/* /var/cache/apt/*
 
 # Make NSS-based applications (Chromium, Firefox) trust the system CA store.
 # By default NSS uses a built-in trust module (libnssckbi.so) with Mozilla's
@@ -65,48 +114,6 @@ RUN userdel -r ubuntu 2>/dev/null || true \
     && usermod -aG sudo user \
     && echo 'user ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers \
     && passwd -d user
-
-# ---------------------------------------------------------------------------
-# Node.js 24 (via NodeSource)
-# ---------------------------------------------------------------------------
-RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
-    && apt-get install -y nodejs
-
-# ---------------------------------------------------------------------------
-# Python 3.x
-# ---------------------------------------------------------------------------
-RUN apt-get update && apt-get install -y \
-    python3 \
-    python3-pip
-
-# ---------------------------------------------------------------------------
-# Ruby 3.x
-# ---------------------------------------------------------------------------
-RUN apt-get update && apt-get install -y \
-    ruby-full \
-    bundler
-
-# ---------------------------------------------------------------------------
-# PHP 8.x + Composer
-# ---------------------------------------------------------------------------
-RUN apt-get update && apt-get install -y \
-    php \
-    php-cli \
-    php-common \
-    php-curl \
-    php-mbstring \
-    php-xml \
-    php-zip \
-    unzip \
-    && curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
-
-# ---------------------------------------------------------------------------
-# Java (OpenJDK + Maven + Gradle)
-# ---------------------------------------------------------------------------
-RUN apt-get update && apt-get install -y \
-    default-jdk \
-    maven \
-    gradle
 
 # ---------------------------------------------------------------------------
 # Go (latest stable via official tarball)
@@ -132,27 +139,9 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
        > /etc/profile.d/rust.sh
 
 # ---------------------------------------------------------------------------
-# C++ (GCC + Clang + CMake)
+# PHP Composer (installed separately — not available as an APT package)
 # ---------------------------------------------------------------------------
-RUN apt-get update && apt-get install -y \
-    gcc \
-    g++ \
-    clang \
-    make \
-    cmake
-
-# ---------------------------------------------------------------------------
-# PostgreSQL 16
-# ---------------------------------------------------------------------------
-RUN apt-get update && apt-get install -y \
-    postgresql-16 \
-    postgresql-contrib
-
-# ---------------------------------------------------------------------------
-# Redis 7
-# ---------------------------------------------------------------------------
-RUN apt-get update && apt-get install -y \
-    redis-server
+RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
 
 # ---------------------------------------------------------------------------
 # Claude Code CLI (standalone Bun-compiled binary)
@@ -168,49 +157,15 @@ RUN ARCH=$(dpkg --print-architecture) \
     && chmod +x /usr/local/bin/claude
 
 # ---------------------------------------------------------------------------
-# GitHub CLI
+# npm global packages (Google Workspace CLI, xurl, agent-browser)
 # ---------------------------------------------------------------------------
-RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
-    | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
-    && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
-    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
-    | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
-    && apt-get update \
-    && apt-get install -y gh
-
-# ---------------------------------------------------------------------------
-# Google Workspace CLI
-# ---------------------------------------------------------------------------
+# Combined into one npm install to share dependency resolution and download.
 ARG GWS_CLI_VERSION=0.22.5
-RUN npm install -g @googleworkspace/cli@${GWS_CLI_VERSION}
-
-# ---------------------------------------------------------------------------
-# xurl (X/Twitter official CLI)
-# ---------------------------------------------------------------------------
 ARG XURL_VERSION=1.0.3
-RUN npm install -g @xdevplatform/xurl@${XURL_VERSION}
-
-# ---------------------------------------------------------------------------
-# Chromium + agent-browser
-# ---------------------------------------------------------------------------
-# Ubuntu 24.04's chromium-browser is a snap stub that doesn't work in Docker.
-# Install the real Chromium deb from Debian Bookworm's repository instead.
 ARG AGENT_BROWSER_VERSION=0.24.0
-RUN npm install -g agent-browser@${AGENT_BROWSER_VERSION} \
-    && curl -fsSL https://ftp-master.debian.org/keys/archive-key-12.asc | gpg --dearmor -o /usr/share/keyrings/debian-bookworm.gpg \
-    && echo "deb [signed-by=/usr/share/keyrings/debian-bookworm.gpg] http://deb.debian.org/debian bookworm main" > /etc/apt/sources.list.d/debian-bookworm.list \
-    && apt-get update \
-    && apt-get install -y -t bookworm chromium \
-    && rm /etc/apt/sources.list.d/debian-bookworm.list /usr/share/keyrings/debian-bookworm.gpg
-
-# NOTE: DNS configuration is handled in build-rootfs.sh after export
-# /etc/resolv.conf is read-only during Docker build
-
-ENV LANG=C.UTF-8
-
-# ---------------------------------------------------------------------------
-# Cleanup
-# ---------------------------------------------------------------------------
-# Docker layers don't matter since the image is exported as a flat rootfs.
-RUN rm -rf /var/lib/apt/lists/* /var/cache/apt/* \
+RUN npm install -g \
+    @googleworkspace/cli@${GWS_CLI_VERSION} \
+    @xdevplatform/xurl@${XURL_VERSION} \
+    agent-browser@${AGENT_BROWSER_VERSION} \
     && npm cache clean --force
+

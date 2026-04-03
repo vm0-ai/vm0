@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.183.0](https://github.com/vm0-ai/vm0/compare/app-v0.182.0...app-v0.183.0) (2026-04-03)
+
+
+### Features
+
+* add connector permission dialog after successful connection ([#7813](https://github.com/vm0-ai/vm0/issues/7813)) ([73d5713](https://github.com/vm0-ai/vm0/commit/73d57137b7e315a7e644d6980110d77888bcd6a0))
+* add no-detach-in-signals eslint rule ([#7844](https://github.com/vm0-ai/vm0/issues/7844)) ([af92242](https://github.com/vm0-ai/vm0/commit/af9224200b188ffe49c39b9f99e82919b157222f))
+
+
+### Bug Fixes
+
+* prevent schedule instructions panel from prompting save without changes ([#7837](https://github.com/vm0-ai/vm0/issues/7837)) ([ccca3a8](https://github.com/vm0-ai/vm0/commit/ccca3a8dcccef23e76e627f8db1d5c9e15c5f9c5))
+* remove stale no-invalid-fetch-options allow rule from platform oxlint config ([#7845](https://github.com/vm0-ai/vm0/issues/7845)) ([c956d83](https://github.com/vm0-ai/vm0/commit/c956d8333dddb523a602517ba8934f8eca2664ea)), closes [#7841](https://github.com/vm0-ai/vm0/issues/7841)
+
+
+### Refactoring
+
+* replace dynamic import with static import in connector logos setup ([#7855](https://github.com/vm0-ai/vm0/issues/7855)) ([253d726](https://github.com/vm0-ai/vm0/commit/253d726386919048e89464ba193438cf63b4ceab))
+
 ## [0.182.0](https://github.com/vm0-ai/vm0/compare/app-v0.181.2...app-v0.182.0) (2026-04-03)
 
 
