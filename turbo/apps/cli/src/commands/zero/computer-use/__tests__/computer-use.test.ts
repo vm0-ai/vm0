@@ -142,6 +142,7 @@ describe("computer-use command visibility", () => {
       return c.name();
     });
     expect(clientSubs).toContain("screenshot");
+    expect(clientSubs).toContain("zoom");
     expect(clientSubs).toContain("info");
     expect(clientSubs).toContain("left-click-drag");
     expect(clientSubs).toContain("left-mouse-down");

@@ -19,6 +19,13 @@ vi.mock("../screencapture", () => {
       scaleFactor: 2,
       format: "jpg",
     }),
+    captureRegionScreenshot: vi.fn().mockResolvedValue({
+      image: "em9vbS1pbWFnZQ==",
+      width: 400,
+      height: 300,
+      scaleFactor: 1,
+      format: "jpg",
+    }),
     getScreenInfo: vi.fn().mockResolvedValue({
       width: 1920,
       height: 1080,
@@ -50,7 +57,11 @@ vi.mock("../clipboard", () => {
 
 import type { Server } from "http";
 import { startDesktopServer, getRandomPort } from "../desktop-server";
-import { captureScreenshot, getScreenInfo } from "../screencapture";
+import {
+  captureScreenshot,
+  captureRegionScreenshot,
+  getScreenInfo,
+} from "../screencapture";
 import { leftClickDrag, leftMouseDown, leftMouseUp } from "../cliclick";
 import { scroll } from "../scroll";
 import { readClipboard, writeClipboard } from "../clipboard";
@@ -73,6 +84,9 @@ async function setup(): Promise<{ server: Server; port: number }> {
       return passthrough();
     }),
     http.all(`http://127.0.0.1:${port}/unknown`, () => {
+      return passthrough();
+    }),
+    http.all(new RegExp(`http://127\\.0\\.0\\.1:${port}/zoom`), () => {
       return passthrough();
     }),
   );
@@ -177,6 +191,85 @@ describe("desktop-server", () => {
       expect(res.status).toBe(500);
       const text = await res.text();
       expect(text).toBe("screencapture failed");
+    });
+
+    it("should return zoom data on GET /zoom with valid params", async () => {
+      const { server, port } = await setup();
+      testServer = server;
+
+      const res = await fetch(
+        `http://127.0.0.1:${port}/zoom?x=100&y=200&width=400&height=300`,
+        { headers: { "x-vm0-token": TEST_TOKEN } },
+      );
+      expect(res.status).toBe(200);
+
+      const data = await res.json();
+      expect(data).toEqual({
+        image: "em9vbS1pbWFnZQ==",
+        width: 400,
+        height: 300,
+        scaleFactor: 1,
+        format: "jpg",
+      });
+      expect(captureRegionScreenshot).toHaveBeenCalledWith({
+        x: 100,
+        y: 200,
+        width: 400,
+        height: 300,
+      });
+    });
+
+    it("should return 400 when zoom params are missing", async () => {
+      const { server, port } = await setup();
+      testServer = server;
+
+      const res = await fetch(`http://127.0.0.1:${port}/zoom`, {
+        headers: { "x-vm0-token": TEST_TOKEN },
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it("should return 400 when zoom width is negative", async () => {
+      const { server, port } = await setup();
+      testServer = server;
+
+      const res = await fetch(
+        `http://127.0.0.1:${port}/zoom?x=0&y=0&width=-10&height=100`,
+        { headers: { "x-vm0-token": TEST_TOKEN } },
+      );
+      expect(res.status).toBe(400);
+      const text = await res.text();
+      expect(text).toContain("must be positive");
+    });
+
+    it("should return 400 when zoom region exceeds screen bounds", async () => {
+      const { server, port } = await setup();
+      testServer = server;
+
+      const res = await fetch(
+        `http://127.0.0.1:${port}/zoom?x=1800&y=0&width=200&height=100`,
+        { headers: { "x-vm0-token": TEST_TOKEN } },
+      );
+      expect(res.status).toBe(400);
+      const text = await res.text();
+      expect(text).toContain("exceeds screen bounds");
+    });
+
+    it("should return 500 when zoom capture fails", async () => {
+      vi.mocked(captureRegionScreenshot).mockRejectedValueOnce(
+        new Error("region capture failed"),
+      );
+
+      const { server, port } = await setup();
+      testServer = server;
+
+      const res = await fetch(
+        `http://127.0.0.1:${port}/zoom?x=0&y=0&width=100&height=100`,
+        { headers: { "x-vm0-token": TEST_TOKEN } },
+      );
+      expect(res.status).toBe(500);
+      const text = await res.text();
+      expect(text).toBe("region capture failed");
     });
 
     it("should execute left_click_drag on POST /mouse", async () => {

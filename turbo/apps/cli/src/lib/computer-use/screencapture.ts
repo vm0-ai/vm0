@@ -18,6 +18,13 @@ interface ScreenshotResult extends ScreenInfo {
   format: string;
 }
 
+interface RegionParams {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 /**
  * Capture a screenshot on macOS using the screencapture command.
  * Returns the image as a base64 string along with screen metadata.
@@ -35,6 +42,39 @@ export async function captureScreenshot(): Promise<ScreenshotResult> {
       width: info.width,
       height: info.height,
       scaleFactor: info.scaleFactor,
+      format: "jpg",
+    };
+  } finally {
+    await unlink(tmpPath).catch(() => {});
+  }
+}
+
+/**
+ * Capture a screenshot of a specific screen region on macOS.
+ * Uses screencapture -R x,y,w,h to crop to the given rectangle.
+ */
+export async function captureRegionScreenshot(
+  region: RegionParams,
+): Promise<ScreenshotResult> {
+  const tmpPath = join(tmpdir(), `vm0-zoom-${randomUUID()}.jpg`);
+
+  try {
+    const regionArg = `${region.x},${region.y},${region.width},${region.height}`;
+    await execFileAsync("screencapture", [
+      "-x",
+      "-t",
+      "jpg",
+      "-R",
+      regionArg,
+      tmpPath,
+    ]);
+    const buffer = await readFile(tmpPath);
+
+    return {
+      image: buffer.toString("base64"),
+      width: region.width,
+      height: region.height,
+      scaleFactor: 1,
       format: "jpg",
     };
   } finally {

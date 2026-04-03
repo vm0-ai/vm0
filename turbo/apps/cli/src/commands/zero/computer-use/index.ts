@@ -2,6 +2,7 @@ import { Command } from "commander";
 import { hostStartCommand } from "./host";
 import {
   clientScreenshotCommand,
+  clientZoomCommand,
   clientInfoCommand,
   clientLeftClickDragCommand,
   clientLeftMouseDownCommand,
@@ -20,6 +21,7 @@ const clientCommand = new Command()
   .name("client")
   .description("Interact with remote computer-use host")
   .addCommand(clientScreenshotCommand)
+  .addCommand(clientZoomCommand)
   .addCommand(clientInfoCommand)
   .addCommand(clientLeftClickDragCommand)
   .addCommand(clientLeftMouseDownCommand)
@@ -39,6 +41,7 @@ export const zeroComputerUseCommand = new Command()
 Examples:
   Start the host daemon (on macOS):  zero computer-use host start
   Take a screenshot (from agent):    zero computer-use client screenshot
+  Zoom into a region (from agent):   zero computer-use client zoom --x 0 --y 0 --width 500 --height 500
   Get screen info (from agent):      zero computer-use client info
   Drag from A to B:                  zero computer-use client left-click-drag 100 100 500 500
   Press mouse button:                zero computer-use client left-mouse-down 200 300

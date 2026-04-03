@@ -40,6 +40,52 @@ export const clientScreenshotCommand = new Command()
     }),
   );
 
+export const clientZoomCommand = new Command()
+  .name("zoom")
+  .description("Capture a region screenshot from the remote host")
+  .requiredOption("--x <number>", "X coordinate of the region")
+  .requiredOption("--y <number>", "Y coordinate of the region")
+  .requiredOption("--width <number>", "Width of the region")
+  .requiredOption("--height <number>", "Height of the region")
+  .action(
+    withErrorHandler(
+      async (opts: { x: string; y: string; width: string; height: string }) => {
+        const params = new URLSearchParams({
+          x: opts.x,
+          y: opts.y,
+          width: opts.width,
+          height: opts.height,
+        });
+        const response = await callHost(`/zoom?${params.toString()}`);
+        const data = (await response.json()) as {
+          width: number;
+          height: number;
+          scaleFactor: number;
+          format: string;
+          image: string;
+        };
+
+        const dir = "/tmp/computer-use";
+        await mkdir(dir, { recursive: true });
+
+        const timestamp = Date.now();
+        const filePath = join(dir, `zoom-${timestamp}.${data.format}`);
+        const buffer = Buffer.from(data.image, "base64");
+        await writeFile(filePath, buffer);
+
+        process.stdout.write(`${filePath}\n`);
+
+        process.stderr.write(
+          JSON.stringify({
+            width: data.width,
+            height: data.height,
+            scaleFactor: data.scaleFactor,
+          }) + "\n",
+        );
+      },
+    ),
+  );
+
 export const clientInfoCommand = new Command()
   .name("info")
   .description("Get screen info from the remote host")
