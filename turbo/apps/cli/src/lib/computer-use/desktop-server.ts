@@ -16,6 +16,7 @@ import {
   leftMouseDown,
   leftMouseUp,
   executeMouseAction,
+  getCursorPosition,
   VALID_ACTIONS,
   pressKey,
   holdKey,
@@ -388,6 +389,10 @@ async function handleRequest(
       await handleKeyboard(req, res);
     } else if (req.method === "POST" && pathname === "/open-application") {
       await handleOpenApplication(req, res);
+    } else if (req.method === "GET" && pathname === "/cursor-position") {
+      const position = await getCursorPosition();
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(position));
     } else {
       res.writeHead(404, { "Content-Type": "text/plain" });
       res.end("Not found");

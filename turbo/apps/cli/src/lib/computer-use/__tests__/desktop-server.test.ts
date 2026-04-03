@@ -40,12 +40,14 @@ vi.mock("../cliclick", () => {
     leftMouseDown: vi.fn().mockResolvedValue(undefined),
     leftMouseUp: vi.fn().mockResolvedValue(undefined),
     executeMouseAction: vi.fn().mockResolvedValue(undefined),
+    getCursorPosition: vi.fn().mockResolvedValue({ x: 250, y: 150 }),
     VALID_ACTIONS: new Set([
       "left_click",
       "right_click",
       "middle_click",
       "double_click",
       "triple_click",
+      "move",
     ]),
     pressKey: vi.fn().mockResolvedValue(undefined),
     holdKey: vi.fn().mockResolvedValue(undefined),
@@ -84,6 +86,7 @@ import {
   leftMouseDown,
   leftMouseUp,
   executeMouseAction,
+  getCursorPosition,
   pressKey,
   holdKey,
   typeText,
@@ -107,6 +110,9 @@ async function setup(): Promise<{ server: Server; port: number }> {
       return passthrough();
     }),
     http.all(`http://127.0.0.1:${port}/clipboard`, () => {
+      return passthrough();
+    }),
+    http.all(`http://127.0.0.1:${port}/cursor-position`, () => {
       return passthrough();
     }),
     http.all(`http://127.0.0.1:${port}/keyboard`, () => {
@@ -663,6 +669,55 @@ describe("desktop-server", () => {
       expect(res.status).toBe(500);
       const text = await res.text();
       expect(text).toBe("pbcopy failed");
+    });
+
+    it("should execute move on POST /mouse with action move", async () => {
+      const { server, port } = await setup();
+      testServer = server;
+
+      const res = await fetch(`http://127.0.0.1:${port}/mouse`, {
+        method: "POST",
+        headers: {
+          "x-vm0-token": TEST_TOKEN,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ action: "move", x: 100, y: 200 }),
+      });
+      expect(res.status).toBe(200);
+
+      const data = await res.json();
+      expect(data).toEqual({ ok: true });
+      expect(executeMouseAction).toHaveBeenCalledWith("move", 100, 200);
+    });
+
+    it("should return cursor position on GET /cursor-position", async () => {
+      const { server, port } = await setup();
+      testServer = server;
+
+      const res = await fetch(`http://127.0.0.1:${port}/cursor-position`, {
+        headers: { "x-vm0-token": TEST_TOKEN },
+      });
+      expect(res.status).toBe(200);
+
+      const data = await res.json();
+      expect(data).toEqual({ x: 250, y: 150 });
+      expect(getCursorPosition).toHaveBeenCalledOnce();
+    });
+
+    it("should return 500 when getCursorPosition fails", async () => {
+      vi.mocked(getCursorPosition).mockRejectedValueOnce(
+        new Error("cliclick not found. Install with: brew install cliclick"),
+      );
+
+      const { server, port } = await setup();
+      testServer = server;
+
+      const res = await fetch(`http://127.0.0.1:${port}/cursor-position`, {
+        headers: { "x-vm0-token": TEST_TOKEN },
+      });
+      expect(res.status).toBe(500);
+      const text = await res.text();
+      expect(text).toContain("cliclick not found");
     });
 
     it("should execute key press on POST /keyboard with action key", async () => {

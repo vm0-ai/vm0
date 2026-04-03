@@ -177,4 +177,23 @@ describe("computer-use command visibility", () => {
     expect(clientSubs).toContain("double-click");
     expect(clientSubs).toContain("triple-click");
   });
+
+  it("should have mouse-move and cursor-position under client subcommand", () => {
+    const prog = new Command();
+    registerZeroCommands(prog);
+
+    const computerUse = prog.commands.find((c) => {
+      return c.name() === "computer-use";
+    });
+    const client = computerUse!.commands.find((c) => {
+      return c.name() === "client";
+    });
+    expect(client).toBeDefined();
+
+    const clientSubs = client!.commands.map((c) => {
+      return c.name();
+    });
+    expect(clientSubs).toContain("mouse-move");
+    expect(clientSubs).toContain("cursor-position");
+  });
 });

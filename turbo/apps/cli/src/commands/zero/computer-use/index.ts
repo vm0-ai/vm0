@@ -19,6 +19,8 @@ import {
   clientHoldKeyCommand,
   clientTypeCommand,
   clientOpenAppCommand,
+  clientMouseMoveCommand,
+  clientCursorPositionCommand,
 } from "./client";
 
 const hostCommand = new Command()
@@ -46,7 +48,9 @@ const clientCommand = new Command()
   .addCommand(clientKeyCommand)
   .addCommand(clientHoldKeyCommand)
   .addCommand(clientTypeCommand)
-  .addCommand(clientOpenAppCommand);
+  .addCommand(clientOpenAppCommand)
+  .addCommand(clientMouseMoveCommand)
+  .addCommand(clientCursorPositionCommand);
 
 export const zeroComputerUseCommand = new Command()
   .name("computer-use")
@@ -73,5 +77,7 @@ Examples:
   Hold shift for 2 seconds:          zero computer-use client hold-key "shift" 2000
   Type text:                         zero computer-use client type "Hello, world!"
   Open an application:               zero computer-use client open-app Safari
-  Open by bundle ID:                 zero computer-use client open-app "com.apple.Safari"`,
+  Open by bundle ID:                 zero computer-use client open-app "com.apple.Safari"
+  Move mouse to (100, 200):          zero computer-use client mouse-move 100 200
+  Get cursor position:               zero computer-use client cursor-position`,
   );

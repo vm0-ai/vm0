@@ -327,3 +327,20 @@ export const clientOpenAppCommand = new Command()
       process.stdout.write("ok\n");
     }),
   );
+
+export const clientMouseMoveCommand = mouseClickCommand(
+  "mouse-move",
+  "move",
+  "Move mouse pointer to coordinates",
+);
+
+export const clientCursorPositionCommand = new Command()
+  .name("cursor-position")
+  .description("Get current cursor position from the remote host")
+  .action(
+    withErrorHandler(async () => {
+      const response = await callHost("/cursor-position");
+      const data = (await response.json()) as { x: number; y: number };
+      process.stdout.write(JSON.stringify(data) + "\n");
+    }),
+  );

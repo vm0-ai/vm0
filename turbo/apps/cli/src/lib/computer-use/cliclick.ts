@@ -39,7 +39,8 @@ export type MouseAction =
   | "right_click"
   | "middle_click"
   | "double_click"
-  | "triple_click";
+  | "triple_click"
+  | "move";
 
 const ACTION_COMMANDS: Record<MouseAction, string> = {
   left_click: "c",
@@ -47,6 +48,7 @@ const ACTION_COMMANDS: Record<MouseAction, string> = {
   middle_click: "mc",
   double_click: "dc",
   triple_click: "tc",
+  move: "m",
 };
 
 export const VALID_ACTIONS = new Set<string>(Object.keys(ACTION_COMMANDS));
@@ -64,7 +66,7 @@ async function checkCliclickInstalled(): Promise<void> {
 }
 
 /**
- * Execute a mouse click action at the given coordinates using cliclick.
+ * Execute a mouse action at the given coordinates using cliclick.
  */
 export async function executeMouseAction(
   action: MouseAction,
@@ -74,6 +76,30 @@ export async function executeMouseAction(
   await checkCliclickInstalled();
   const prefix = ACTION_COMMANDS[action];
   await execFileAsync("cliclick", [`${prefix}:${x},${y}`]);
+}
+
+/**
+ * Get the current cursor position using cliclick.
+ * Returns coordinates in points.
+ */
+export async function getCursorPosition(): Promise<{
+  x: number;
+  y: number;
+}> {
+  await checkCliclickInstalled();
+  const { stdout } = await execFileAsync("cliclick", ["p"]);
+  const parts = stdout.trim().split(",");
+  const xStr = parts[0];
+  const yStr = parts[1];
+  if (parts.length !== 2 || xStr === undefined || yStr === undefined) {
+    throw new Error(`Unexpected cliclick output: ${stdout.trim()}`);
+  }
+  const x = parseInt(xStr, 10);
+  const y = parseInt(yStr, 10);
+  if (Number.isNaN(x) || Number.isNaN(y)) {
+    throw new Error(`Failed to parse cursor position: ${stdout.trim()}`);
+  }
+  return { x, y };
 }
 
 const VALID_SPECIAL_KEYS = new Set([
