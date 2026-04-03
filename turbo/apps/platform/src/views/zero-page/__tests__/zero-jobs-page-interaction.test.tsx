@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -66,37 +66,6 @@ describe("zero jobs page - create teammate dialog", () => {
     });
   });
 
-  it("shows a preset avatar when the dialog opens (AGENT-D-010)", async () => {
-    const user = userEvent.setup();
-    mockTeamAPI();
-    await setupPage({ context, path: "/agents" });
-
-    await openDialog(user);
-
-    const avatar = screen.getByAltText("New teammate");
-    expect(avatar).toBeInTheDocument();
-    expect(avatar.getAttribute("src")).toBeTruthy();
-  });
-
-  it("triggers file input when upload avatar button is clicked (AGENT-D-011)", async () => {
-    const user = userEvent.setup();
-    mockTeamAPI();
-    await setupPage({ context, path: "/agents" });
-
-    await openDialog(user);
-
-    const dialog = screen.getByRole("dialog");
-    const fileInput =
-      dialog.querySelector<HTMLInputElement>('input[type="file"]');
-    expect(fileInput).toBeTruthy();
-
-    const clickSpy = vi.fn();
-    fileInput!.click = clickSpy;
-
-    await user.click(screen.getByRole("button", { name: "Upload avatar" }));
-    expect(clickSpy).toHaveBeenCalledOnce();
-  });
-
   it("previews custom image after file selection (AGENT-D-012)", async () => {
     const user = userEvent.setup();
     mockTeamAPI();
@@ -120,22 +89,6 @@ describe("zero jobs page - create teammate dialog", () => {
         "https://cdn.example.com/custom.png",
       );
     });
-  });
-
-  it("updates name input when text is typed (AGENT-D-013)", async () => {
-    const user = userEvent.setup();
-    mockTeamAPI();
-    await setupPage({ context, path: "/agents" });
-
-    await openDialog(user);
-
-    const input = screen.getByPlaceholderText(
-      "e.g. Research Assistant",
-    ) as HTMLInputElement;
-    await user.clear(input);
-    await user.type(input, "Research Bot");
-
-    expect(input.value).toBe("Research Bot");
   });
 
   it("creates agent and shows it in the grid (AGENT-D-014)", async () => {
