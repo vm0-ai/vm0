@@ -36,9 +36,13 @@ export const setShowUninstallDialog$ = command(({ set }, show: boolean) => {
 
 const fetchSlackOrg$ = command(async ({ get, set }, signal: AbortSignal) => {
   const client = get(zeroClient$)(zeroIntegrationsSlackContract);
-  const result = await accept(client.getStatus(), [200]);
-  signal.throwIfAborted();
-  set(slackOrgState$, result.body);
+  try {
+    const result = await accept(client.getStatus(), [200], { toast: false });
+    signal.throwIfAborted();
+    set(slackOrgState$, result.body);
+  } catch (error) {
+    throwIfAbort(error);
+  }
 });
 
 export const disconnectSlackOrg$ = command(
