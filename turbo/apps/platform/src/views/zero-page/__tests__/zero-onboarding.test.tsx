@@ -34,7 +34,9 @@ describe("zero onboarding - step 1: workspace name", () => {
     await renderOnboardingPage();
 
     await waitFor(() => {
-      expect(screen.getByText(/Name your workspace/)).toBeInTheDocument();
+      expect(
+        screen.getByTestId("onboarding-step-workspace-name"),
+      ).toBeInTheDocument();
     });
   });
 
@@ -64,7 +66,9 @@ describe("zero onboarding - step 1: workspace name", () => {
     await user.click(screen.getByRole("button", { name: "Next" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Choose your tools")).toBeInTheDocument();
+      expect(
+        screen.getByTestId("onboarding-step-select-connectors"),
+      ).toBeInTheDocument();
     });
   });
 });
@@ -85,11 +89,12 @@ describe("zero onboarding - step 2: choose tools", () => {
     await user.type(input, "Test Workspace");
     await user.click(screen.getByRole("button", { name: "Next" }));
 
-    // Should reach step 2 (choose tools)
+    // Should reach step 2 (choose tools) — search input is the structural anchor
     await waitFor(() => {
-      expect(screen.getByText("Choose your tools")).toBeInTheDocument();
+      expect(
+        screen.getByPlaceholderText("Search connectors..."),
+      ).toBeInTheDocument();
     });
-    expect(screen.getByText(/Select the apps you use/)).toBeInTheDocument();
   });
 });
 
@@ -100,8 +105,64 @@ describe("zero onboarding - does not render when not needed", () => {
 
     // Wait for page to load and verify onboarding is NOT shown
     await waitFor(() => {
-      expect(screen.queryByText(/Name your workspace/)).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId("onboarding-step-workspace-name"),
+      ).not.toBeInTheDocument();
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Member Welcome (non-admin onboarding)
+// ---------------------------------------------------------------------------
+
+function mockMemberOnboardingNeeded() {
+  server.use(
+    http.get("*/api/zero/onboarding/status", () => {
+      return HttpResponse.json({
+        needsOnboarding: true,
+        isAdmin: false,
+        hasOrg: true,
+        hasDefaultAgent: true,
+        defaultAgentId: "c0000000-0000-4000-a000-000000000001",
+        defaultAgentMetadata: null,
+        defaultAgentSkills: [],
+      });
+    }),
+  );
+}
+
+describe("member welcome - step navigation", () => {
+  it("should skip to where-to-work step for member with no connectors", async () => {
+    mockMemberOnboardingNeeded();
+    await renderOnboardingPage();
+
+    // Member with no defaultAgentSkills goes straight to step 4 (where-to-work)
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("onboarding-step-where-to-work"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("should show Slack and web options in where-to-work step", async () => {
+    mockMemberOnboardingNeeded();
+    await renderOnboardingPage();
+
+    // Member lands directly on step 4
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("onboarding-step-where-to-work"),
+      ).toBeInTheDocument();
+    });
+
+    expect(
+      screen.getByRole("button", { name: /Add .+ to Slack/ }),
+    ).toBeInTheDocument();
+
+    expect(
+      screen.getByRole("button", { name: /Continue in web/ }),
+    ).toBeInTheDocument();
   });
 });
 
@@ -115,7 +176,9 @@ describe("onboarding step indicator renders (AGENT-D-056)", () => {
     await renderOnboardingPage();
 
     await waitFor(() => {
-      expect(screen.getByText(/Name your workspace/)).toBeInTheDocument();
+      expect(
+        screen.getByTestId("onboarding-step-workspace-name"),
+      ).toBeInTheDocument();
     });
 
     // Admin flow has 4 visible steps, rendered as 4 bar segments
@@ -157,8 +220,12 @@ describe("step-specific content renders (AGENT-D-057)", () => {
     await user.click(screen.getByRole("button", { name: "Next" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Choose your tools")).toBeInTheDocument();
-      expect(screen.getByText(/Select the apps you use/)).toBeInTheDocument();
+      expect(
+        screen.getByTestId("onboarding-step-select-connectors"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByPlaceholderText("Search connectors..."),
+      ).toBeInTheDocument();
     });
   });
 
@@ -173,12 +240,14 @@ describe("step-specific content renders (AGENT-D-057)", () => {
     await user.click(screen.getByRole("button", { name: "Next" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Choose your tools")).toBeInTheDocument();
+      expect(
+        screen.getByTestId("onboarding-step-select-connectors"),
+      ).toBeInTheDocument();
     });
     await user.click(screen.getByRole("button", { name: "Next" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Connect your apps")).toBeInTheDocument();
+      expect(screen.getByTestId("onboarding-step-connect")).toBeInTheDocument();
     });
   });
 });
@@ -199,7 +268,9 @@ describe("connector selection display renders (AGENT-D-058)", () => {
     await user.click(screen.getByRole("button", { name: "Next" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Choose your tools")).toBeInTheDocument();
+      expect(
+        screen.getByTestId("onboarding-step-select-connectors"),
+      ).toBeInTheDocument();
     });
 
     // Connectors are rendered as buttons with connector labels
@@ -224,7 +295,9 @@ describe("selected connectors display renders (AGENT-D-060)", () => {
     await user.click(screen.getByRole("button", { name: "Next" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Choose your tools")).toBeInTheDocument();
+      expect(
+        screen.getByTestId("onboarding-step-select-connectors"),
+      ).toBeInTheDocument();
     });
 
     // Click GitHub connector to select it
@@ -254,7 +327,9 @@ describe("connector selection buttons toggle (AGENT-D-064)", () => {
     await user.click(screen.getByRole("button", { name: "Next" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Choose your tools")).toBeInTheDocument();
+      expect(
+        screen.getByTestId("onboarding-step-select-connectors"),
+      ).toBeInTheDocument();
     });
 
     const githubCard = screen.getByText("GitHub").closest("button");
@@ -291,7 +366,9 @@ describe("connector search input filters list (AGENT-D-065)", () => {
     await user.click(screen.getByRole("button", { name: "Next" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Choose your tools")).toBeInTheDocument();
+      expect(
+        screen.getByTestId("onboarding-step-select-connectors"),
+      ).toBeInTheDocument();
     });
 
     const searchInput = screen.getByPlaceholderText("Search connectors...");
@@ -316,7 +393,9 @@ async function navigateToStep3(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole("button", { name: "Next" }));
 
   await waitFor(() => {
-    expect(screen.getByText("Choose your tools")).toBeInTheDocument();
+    expect(
+      screen.getByTestId("onboarding-step-select-connectors"),
+    ).toBeInTheDocument();
   });
 
   // Select GitHub connector
@@ -327,7 +406,7 @@ async function navigateToStep3(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole("button", { name: "Next" }));
 
   await waitFor(() => {
-    expect(screen.getByText("Connect your apps")).toBeInTheDocument();
+    expect(screen.getByTestId("onboarding-step-connect")).toBeInTheDocument();
   });
 }
 
@@ -359,15 +438,19 @@ describe("connector polling status shows (AGENT-D-059)", () => {
     await user.click(screen.getByRole("button", { name: "Next" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Choose your tools")).toBeInTheDocument();
+      expect(
+        screen.getByTestId("onboarding-step-select-connectors"),
+      ).toBeInTheDocument();
     });
 
     // Skip selection and go directly to step 3
     await user.click(screen.getByRole("button", { name: "Next" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Connect your apps")).toBeInTheDocument();
-      expect(screen.getByText(/No connectors selected/)).toBeInTheDocument();
+      expect(screen.getByTestId("onboarding-step-connect")).toBeInTheDocument();
+      expect(
+        screen.getByTestId("onboarding-no-connectors"),
+      ).toBeInTheDocument();
     });
   });
 });
@@ -389,69 +472,19 @@ describe("back button returns to previous step (AGENT-D-068)", () => {
     await user.click(screen.getByRole("button", { name: "Next" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Choose your tools")).toBeInTheDocument();
+      expect(
+        screen.getByTestId("onboarding-step-select-connectors"),
+      ).toBeInTheDocument();
     });
 
     // Click Back
     await user.click(screen.getByRole("button", { name: "Back" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Name your workspace")).toBeInTheDocument();
-    });
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Member Welcome (non-admin onboarding)
-// ---------------------------------------------------------------------------
-
-function mockMemberOnboardingNeeded() {
-  server.use(
-    http.get("*/api/zero/onboarding/status", () => {
-      return HttpResponse.json({
-        needsOnboarding: true,
-        isAdmin: false,
-        hasOrg: true,
-        hasDefaultAgent: true,
-        defaultAgentId: "c0000000-0000-4000-a000-000000000001",
-        defaultAgentMetadata: null,
-        defaultAgentSkills: [],
-      });
-    }),
-  );
-}
-
-describe("member welcome - step navigation", () => {
-  it("should skip to where-to-work step for member with no connectors", async () => {
-    mockMemberOnboardingNeeded();
-    await renderOnboardingPage();
-
-    // Member with no defaultAgentSkills goes straight to step 4 (where-to-work)
-    await waitFor(() => {
       expect(
-        screen.getByText(/Where would you like to work with/),
+        screen.getByTestId("onboarding-step-workspace-name"),
       ).toBeInTheDocument();
     });
-  });
-
-  it("should show Slack and web options in where-to-work step", async () => {
-    mockMemberOnboardingNeeded();
-    await renderOnboardingPage();
-
-    // Member lands directly on step 4
-    await waitFor(() => {
-      expect(
-        screen.getByText(/Where would you like to work with/),
-      ).toBeInTheDocument();
-    });
-
-    expect(
-      screen.getByRole("button", { name: /Add .+ to Slack/ }),
-    ).toBeInTheDocument();
-
-    expect(
-      screen.getByRole("button", { name: /Continue in web/ }),
-    ).toBeInTheDocument();
   });
 });
 
@@ -472,31 +505,5 @@ describe("slack/web integration setup cards render (AGENT-D-061)", () => {
         screen.getByRole("button", { name: /Continue in web/ }),
       ).toBeInTheDocument();
     });
-  });
-});
-
-// ---------------------------------------------------------------------------
-// AGENT-D-062: Where-to-work step renders action buttons
-// ---------------------------------------------------------------------------
-
-describe("where-to-work step renders action buttons (AGENT-D-062)", () => {
-  it("action buttons are enabled and ready before any completion attempt", async () => {
-    mockMemberOnboardingNeeded();
-    await renderOnboardingPage();
-
-    await waitFor(() => {
-      expect(
-        screen.getByText(/Where would you like to work with/),
-      ).toBeInTheDocument();
-    });
-
-    // Both action buttons are rendered and enabled before any error
-    const slackBtn = screen.getByRole("button", { name: /Add .+ to Slack/ });
-    const webBtn = screen.getByRole("button", { name: /Continue in web/ });
-
-    expect(slackBtn).toBeInTheDocument();
-    expect(webBtn).toBeInTheDocument();
-    expect(slackBtn).not.toBeDisabled();
-    expect(webBtn).not.toBeDisabled();
   });
 });

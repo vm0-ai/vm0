@@ -158,7 +158,10 @@ function SelectConnectorsContent() {
 
   return (
     <>
-      <h2 className="text-2xl font-semibold tracking-tight">
+      <h2
+        data-testid="onboarding-step-select-connectors"
+        className="text-2xl font-semibold tracking-tight"
+      >
         Choose your tools
       </h2>
       <p className="text-sm text-muted-foreground leading-relaxed mt-2 mb-6">
@@ -257,7 +260,10 @@ function ConnectStepContent() {
 
   return (
     <>
-      <h2 className="text-2xl font-semibold tracking-tight">
+      <h2
+        data-testid="onboarding-step-connect"
+        className="text-2xl font-semibold tracking-tight"
+      >
         Connect your apps
       </h2>
       <p className="text-sm text-muted-foreground leading-relaxed mt-2 mb-6">
@@ -265,7 +271,10 @@ function ConnectStepContent() {
         later.
       </p>
       {selectedEntries.length === 0 ? (
-        <p className="text-sm text-muted-foreground py-8">
+        <p
+          data-testid="onboarding-no-connectors"
+          className="text-sm text-muted-foreground py-8"
+        >
           No connectors selected. You can go back to add some, or skip this
           step.
         </p>
@@ -348,7 +357,10 @@ function WhereToWorkContent() {
 
   return (
     <>
-      <h2 className="text-2xl font-semibold tracking-tight">
+      <h2
+        data-testid="onboarding-step-where-to-work"
+        className="text-2xl font-semibold tracking-tight"
+      >
         Where would you like to work with {name || "Zero"}?
       </h2>
       <p className="text-sm text-muted-foreground leading-relaxed max-w-[420px] mt-2 mb-8">
@@ -835,7 +847,10 @@ function WorkspaceStepContent() {
 
   return (
     <>
-      <h2 className="text-2xl font-semibold tracking-tight">
+      <h2
+        data-testid="onboarding-step-workspace-name"
+        className="text-2xl font-semibold tracking-tight"
+      >
         Name your workspace
       </h2>
       <p className="text-sm text-muted-foreground leading-relaxed mt-2 mb-8">
