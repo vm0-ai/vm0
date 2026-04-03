@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
 import { Input } from "@vm0/ui/components/ui/input";
@@ -22,7 +22,11 @@ import {
   setTokenFormSubmitting$,
 } from "../../signals/zero-page/settings/connectors.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import { directedConnectType$ } from "../../signals/connectors-page/directed-connect-type.ts";
+import {
+  directedConnectType$,
+  tokenDialogOpen$,
+  setTokenDialogOpen$,
+} from "../../signals/connectors-page/directed-connect-type.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { handleZeroAccountAction$ } from "../../signals/zero-page/zero-nav.ts";
 import {
@@ -244,7 +248,8 @@ function DirectedConnectCard() {
   const signal = useGet(pageSignal$);
   const justConnected = useGet(justConnectedTypes$);
   const allLoadable = useLastLoadable(allConnectorTypes$);
-  const [tokenDialogOpen, setTokenDialogOpen] = useState(false);
+  const tokenDialogOpen = useGet(tokenDialogOpen$);
+  const setTokenDialogOpen = useSet(setTokenDialogOpen$);
 
   if (!type || !(type in CONNECTOR_TYPES)) {
     return null;
