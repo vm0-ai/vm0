@@ -121,8 +121,9 @@ check_dependencies() {
 
 cleanup_chroot() {
   if [[ -n "$ROOTFS_DIR" ]]; then
-    sudo umount "$ROOTFS_DIR/dev/pts" 2>/dev/null || true
-    sudo umount "$ROOTFS_DIR/dev" 2>/dev/null || true
+    # -R unmounts recursively — bind-mounting /dev brings in sub-mounts
+    # like /dev/shm, /dev/mqueue, /dev/hugepages that must be removed first.
+    sudo umount -R "$ROOTFS_DIR/dev" 2>/dev/null || true
     sudo umount "$ROOTFS_DIR/sys" 2>/dev/null || true
     sudo umount "$ROOTFS_DIR/proc" 2>/dev/null || true
   fi
@@ -166,11 +167,12 @@ debootstrap_build() {
     sudo debootstrap --unpack-tarball="$(realpath "$cache_tar")" noble "$ROOTFS_DIR" "$MIRROR"
   fi
 
-  # Mount virtual filesystems for chroot operations
+  # Mount virtual filesystems for chroot operations.
+  # --bind /dev recursively brings in sub-mounts (pts, shm, etc.);
+  # cleanup_chroot uses umount -R to tear them all down.
   sudo mount --bind /proc "$ROOTFS_DIR/proc"
   sudo mount --bind /sys "$ROOTFS_DIR/sys"
   sudo mount --bind /dev "$ROOTFS_DIR/dev"
-  sudo mount --bind /dev/pts "$ROOTFS_DIR/dev/pts"
 
   # Copy host DNS for build-time package downloads (overwritten by inject_files)
   sudo rm -f "$ROOTFS_DIR/etc/resolv.conf"
