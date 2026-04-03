@@ -31,7 +31,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@vm0/ui";
-import { toast } from "@vm0/ui/components/ui/sonner";
 import { orgRoleSchema, type OrgRole } from "@vm0/core";
 import {
   orgMembers$,
@@ -260,14 +259,7 @@ function InviteDialog() {
   const setTouched = useSet(setInviteTouched$);
 
   const handleSend = () => {
-    detach(
-      doInvite(trimmed, role, pageSignal).catch((error: unknown) => {
-        const message =
-          error instanceof Error ? error.message : "Failed to send invitation";
-        toast.error(message);
-      }),
-      Reason.DomCallback,
-    );
+    detach(doInvite(trimmed, role, pageSignal), Reason.DomCallback);
   };
 
   return (
@@ -429,14 +421,7 @@ function SelfDemoteAction({ email }: { email: string }) {
   const pageSignal = useGet(pageSignal$);
 
   const handleConfirm = () => {
-    detach(
-      doSelfDemote(email, pageSignal).catch((error: unknown) => {
-        const message =
-          error instanceof Error ? error.message : "Failed to change role";
-        toast.error(message);
-      }),
-      Reason.DomCallback,
-    );
+    detach(doSelfDemote(email, pageSignal), Reason.DomCallback);
   };
 
   return (
@@ -505,14 +490,7 @@ function MemberActions({ member }: { member: OrgMember }) {
   const pageSignal = useGet(pageSignal$);
 
   const handleRemove = () => {
-    detach(
-      doRemove(member.email, pageSignal).catch((error: unknown) => {
-        const message =
-          error instanceof Error ? error.message : "Failed to remove member";
-        toast.error(message);
-      }),
-      Reason.DomCallback,
-    );
+    detach(doRemove(member.email, pageSignal), Reason.DomCallback);
   };
 
   return (
@@ -598,16 +576,7 @@ function PendingInvitationRow({
   const pageSignal = useGet(pageSignal$);
 
   const handleRevoke = () => {
-    detach(
-      doRevoke(invitation.id, pageSignal).catch((error: unknown) => {
-        const message =
-          error instanceof Error
-            ? error.message
-            : "Failed to revoke invitation";
-        toast.error(message);
-      }),
-      Reason.DomCallback,
-    );
+    detach(doRevoke(invitation.id, pageSignal), Reason.DomCallback);
   };
 
   return (
@@ -700,25 +669,11 @@ function MembershipRequestRow({ request }: { request: OrgMembershipRequest }) {
   const pageSignal = useGet(pageSignal$);
 
   const handleAccept = () => {
-    detach(
-      doAccept(request.id, pageSignal).catch((error: unknown) => {
-        const message =
-          error instanceof Error ? error.message : "Failed to accept request";
-        toast.error(message);
-      }),
-      Reason.DomCallback,
-    );
+    detach(doAccept(request.id, pageSignal), Reason.DomCallback);
   };
 
   const handleReject = () => {
-    detach(
-      doReject(request.id, pageSignal).catch((error: unknown) => {
-        const message =
-          error instanceof Error ? error.message : "Failed to reject request";
-        toast.error(message);
-      }),
-      Reason.DomCallback,
-    );
+    detach(doReject(request.id, pageSignal), Reason.DomCallback);
   };
 
   return (

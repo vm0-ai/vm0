@@ -1,11 +1,11 @@
 import { command, computed, state } from "ccstate";
-import { toast } from "@vm0/ui/components/ui/sonner";
 import {
   zeroUserPreferencesContract,
   type UpdateUserPreferencesRequest,
 } from "@vm0/core";
 import { zeroClient$ } from "../../api-client.ts";
 import { clerk$ } from "../../auth.ts";
+import { accept } from "../../../lib/accept.ts";
 
 // ---------------------------------------------------------------------------
 // Reload trigger
@@ -21,11 +21,8 @@ export const userPreferences$ = computed(async (get) => {
   get(internalReloadPreferences$);
   const createClient = get(zeroClient$);
   const client = createClient(zeroUserPreferencesContract);
-  const result = await client.get();
-  if (result.status === 200) {
-    return result.body;
-  }
-  throw new Error(`Failed to fetch user preferences: ${result.status}`);
+  const result = await accept(client.get(), [200], { toast: false });
+  return result.body;
 });
 
 // ---------------------------------------------------------------------------
@@ -40,12 +37,7 @@ export const updateUserPreference$ = command(
   ) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroUserPreferencesContract);
-    const result = await client.update({ body: update });
-
-    if (result.status !== 200) {
-      toast.error("Failed to update preference");
-      return;
-    }
+    await accept(client.update({ body: update }), [200]);
 
     // Force JWT refresh so updated membership metadata is available immediately
     const clerk = await get(clerk$);

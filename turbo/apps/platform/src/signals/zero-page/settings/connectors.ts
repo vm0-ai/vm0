@@ -1,5 +1,6 @@
 import { command, computed, state } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
+import { accept } from "../../../lib/accept.ts";
 import {
   CONNECTOR_TYPES,
   hasRequiredScopes,
@@ -162,11 +163,12 @@ export const scopeDiff$ = computed(async (get) => {
   }
   const createClient = get(zeroClient$);
   const client = createClient(zeroConnectorScopeDiffContract);
-  const result = await client.getScopeDiff({ params: { type } });
-  if (result.status === 200) {
-    return result.body;
-  }
-  throw new Error(`Failed to fetch scope diff: ${result.status}`);
+  const result = await accept(
+    client.getScopeDiff({ params: { type } }),
+    [200],
+    { toast: false },
+  );
+  return result.body;
 });
 
 export const setScopeReviewType$ = command(
@@ -234,20 +236,15 @@ export const submitApiToken$ = command(
         continue;
       }
       const isVariable = apiTokenConfig?.secrets[name]?.type === "variable";
-      const result = isVariable
-        ? await variablesClient.set({ body: { name, value } })
-        : await secretsClient.set({ body: { name, value } });
-      signal.throwIfAborted();
-      if (
-        result.status === 400 ||
-        result.status === 401 ||
-        result.status === 500
-      ) {
-        throw new Error(
-          result.body.error.message ??
-            `Failed to save ${name} (${result.status})`,
+      if (isVariable) {
+        await accept(
+          variablesClient.set({ body: { name, value } }),
+          [200, 201],
         );
+      } else {
+        await accept(secretsClient.set({ body: { name, value } }), [200, 201]);
       }
+      signal.throwIfAborted();
     }
     signal.throwIfAborted();
     set(internalJustConnectedTypes$, (prev) => {

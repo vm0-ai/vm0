@@ -7,6 +7,7 @@ import {
   type ModelProviderType,
 } from "@vm0/core";
 import { zeroClient$ } from "../api-client.ts";
+import { accept } from "../../lib/accept.ts";
 
 /**
  * Reload trigger for org model provider signals.
@@ -21,11 +22,8 @@ export const orgModelProviders$ = computed(async (get) => {
   get(internalReloadOrgModelProviders$);
   const createClient = get(zeroClient$);
   const client = createClient(zeroModelProvidersMainContract);
-  const result = await client.list();
-  if (result.status === 200) {
-    return result.body;
-  }
-  throw new Error(`Failed to list org model providers: ${result.status}`);
+  const result = await accept(client.list(), [200], { toast: false });
+  return result.body;
 });
 
 /**
@@ -39,11 +37,7 @@ export const createOrgModelProvider$ = command(
   ) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroModelProvidersMainContract);
-    const result = await client.upsert({ body: request });
-
-    if (result.status !== 200 && result.status !== 201) {
-      throw new Error(`Failed to create org model provider: ${result.status}`);
-    }
+    const result = await accept(client.upsert({ body: request }), [200, 201]);
 
     set(internalReloadOrgModelProviders$, (x) => {
       return x + 1;
@@ -60,15 +54,7 @@ export const setDefaultOrgModelProvider$ = command(
   async ({ get, set }, type: ModelProviderType, _signal: AbortSignal) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroModelProvidersDefaultContract);
-    const result = await client.setDefault({
-      params: { type },
-    });
-
-    if (result.status !== 200) {
-      throw new Error(
-        `Failed to set default org model provider: ${result.status}`,
-      );
-    }
+    await accept(client.setDefault({ params: { type } }), [200]);
 
     set(internalReloadOrgModelProviders$, (x) => {
       return x + 1;
@@ -83,11 +69,7 @@ export const deleteOrgModelProvider$ = command(
   async ({ get, set }, type: ModelProviderType, _signal: AbortSignal) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroModelProvidersByTypeContract);
-    const result = await client.delete({ params: { type } });
-
-    if (result.status !== 204) {
-      throw new Error(`Failed to delete org model provider: ${result.status}`);
-    }
+    await accept(client.delete({ params: { type } }), [204]);
 
     set(internalReloadOrgModelProviders$, (x) => {
       return x + 1;

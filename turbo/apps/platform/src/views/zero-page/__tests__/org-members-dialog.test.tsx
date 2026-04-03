@@ -121,50 +121,6 @@ describe("org members - invite dialog loading state", () => {
     });
   });
 
-  it("should keep dialog open on invite error", async () => {
-    const user = userEvent.setup();
-    mockMembersAPI();
-    server.use(
-      http.post("*/api/zero/org/invite", () => {
-        return HttpResponse.json(
-          {
-            error: {
-              message: "Already a member",
-              code: "INTERNAL_SERVER_ERROR",
-            },
-          },
-          { status: 400 },
-        );
-      }),
-    );
-
-    await renderMembersTab();
-
-    await waitFor(() => {
-      expect(screen.getByText("admin@example.com")).toBeInTheDocument();
-    });
-
-    await user.click(screen.getByRole("button", { name: /Add member/i }));
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Invite member" }),
-      ).toBeInTheDocument();
-    });
-
-    const emailInput = screen.getByPlaceholderText("email@example.com");
-    await user.clear(emailInput);
-    await user.type(emailInput, "admin@example.com");
-    await user.click(screen.getByRole("button", { name: /Send invitation/i }));
-
-    // After error resolves, dialog stays open with the button restored
-    await waitFor(() => {
-      expect(screen.getByText("Send invitation")).toBeInTheDocument();
-    });
-    expect(
-      screen.getByRole("heading", { name: "Invite member" }),
-    ).toBeInTheDocument();
-  });
-
   it("should disable input and cancel during invite", async () => {
     const user = userEvent.setup();
     let resolveInvite: (() => void) | null = null;

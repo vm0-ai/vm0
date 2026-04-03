@@ -15,27 +15,7 @@ import { clerk$ } from "../../auth.ts";
 import { refreshOrgMembers$ } from "../../external/org-members.ts";
 import { refreshOrgDomains$ } from "../../external/org-domains.ts";
 import { setMemberCreditCap$ } from "../member-credit-caps.ts";
-
-function extractApiErrorMessage(
-  result: { status: number; body: unknown },
-  fallback: string,
-): string {
-  if (
-    (result.status === 400 ||
-      result.status === 401 ||
-      result.status === 403 ||
-      result.status === 500) &&
-    typeof result.body === "object" &&
-    result.body !== null &&
-    "error" in result.body
-  ) {
-    const error = (result.body as { error: { message: string } }).error;
-    if (typeof error?.message === "string") {
-      return error.message;
-    }
-  }
-  return `${fallback} (${result.status})`;
-}
+import { accept } from "../../../lib/accept.ts";
 
 // ---------------------------------------------------------------------------
 // org-manage-dialog: active tab
@@ -474,16 +454,12 @@ export const inviteMember$ = command(
   async ({ get, set }, email: string, role: OrgRole, _signal: AbortSignal) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroOrgInviteContract);
-    const result = await client.invite({ body: { email, role } });
-    if (result.status === 200) {
-      toast.success(`Invitation sent to ${email}`);
-      set(refreshOrgMembers$);
-      set(internalInviteDialogOpen$, false);
-      set(internalInviteEmail$, "");
-      set(internalInviteRole$, "member");
-      return;
-    }
-    throw new Error(extractApiErrorMessage(result, "Failed to invite"));
+    await accept(client.invite({ body: { email, role } }), [200]);
+    toast.success(`Invitation sent to ${email}`);
+    set(refreshOrgMembers$);
+    set(internalInviteDialogOpen$, false);
+    set(internalInviteEmail$, "");
+    set(internalInviteRole$, "member");
   },
 );
 
@@ -491,16 +467,12 @@ export const changeRole$ = command(
   async ({ get, set }, email: string, role: OrgRole, _signal: AbortSignal) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroOrgMembersContract);
-    const result = await client.updateRole({ body: { email, role } });
-    if (result.status === 200) {
-      toast.success(`Updated role for ${email}`);
-      const clerk = await get(clerk$);
-      await clerk.session?.getToken({ skipCache: true });
-      set(refreshOrgMembers$);
-      set(refreshOrg$);
-      return;
-    }
-    throw new Error(extractApiErrorMessage(result, "Failed to update role"));
+    await accept(client.updateRole({ body: { email, role } }), [200]);
+    toast.success(`Updated role for ${email}`);
+    const clerk = await get(clerk$);
+    await clerk.session?.getToken({ skipCache: true });
+    set(refreshOrgMembers$);
+    set(refreshOrg$);
   },
 );
 
@@ -508,19 +480,13 @@ export const selfDemote$ = command(
   async ({ get, set }, email: string, _signal: AbortSignal) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroOrgMembersContract);
-    const result = await client.updateRole({
-      body: { email, role: "member" },
-    });
-    if (result.status === 200) {
-      toast.success(`Updated role for ${email}`);
-      const clerk = await get(clerk$);
-      await clerk.session?.getToken({ skipCache: true });
-      set(refreshOrgMembers$);
-      set(refreshOrg$);
-      set(internalSelfDemoteDialogOpen$, false);
-      return;
-    }
-    throw new Error(extractApiErrorMessage(result, "Failed to change role"));
+    await accept(client.updateRole({ body: { email, role: "member" } }), [200]);
+    toast.success(`Updated role for ${email}`);
+    const clerk = await get(clerk$);
+    await clerk.session?.getToken({ skipCache: true });
+    set(refreshOrgMembers$);
+    set(refreshOrg$);
+    set(internalSelfDemoteDialogOpen$, false);
   },
 );
 
@@ -528,14 +494,10 @@ export const removeMember$ = command(
   async ({ get, set }, email: string, _signal: AbortSignal) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroOrgMembersContract);
-    const result = await client.removeMember({ body: { email } });
-    if (result.status === 200) {
-      toast.success(`Removed ${email}`);
-      set(refreshOrgMembers$);
-      set(internalRemoveMemberDialogTarget$, null);
-      return;
-    }
-    throw new Error(extractApiErrorMessage(result, "Failed to remove member"));
+    await accept(client.removeMember({ body: { email } }), [200]);
+    toast.success(`Removed ${email}`);
+    set(refreshOrgMembers$);
+    set(internalRemoveMemberDialogTarget$, null);
   },
 );
 
@@ -543,16 +505,10 @@ export const revokeInvitation$ = command(
   async ({ get, set }, invitationId: string, _signal: AbortSignal) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroOrgInviteContract);
-    const result = await client.revoke({ body: { invitationId } });
-    if (result.status === 200) {
-      toast.success("Invitation revoked");
-      set(refreshOrgMembers$);
-      set(internalRevokeInvitationDialogTarget$, null);
-      return;
-    }
-    throw new Error(
-      extractApiErrorMessage(result, "Failed to revoke invitation"),
-    );
+    await accept(client.revoke({ body: { invitationId } }), [200]);
+    toast.success("Invitation revoked");
+    set(refreshOrgMembers$);
+    set(internalRevokeInvitationDialogTarget$, null);
   },
 );
 
@@ -560,13 +516,9 @@ export const acceptRequest$ = command(
   async ({ get, set }, requestId: string, _signal: AbortSignal) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroOrgMembershipRequestsContract);
-    const result = await client.accept({ body: { requestId } });
-    if (result.status === 200) {
-      toast.success("Membership request accepted");
-      set(refreshOrgMembers$);
-      return;
-    }
-    throw new Error(extractApiErrorMessage(result, "Failed to accept request"));
+    await accept(client.accept({ body: { requestId } }), [200]);
+    toast.success("Membership request accepted");
+    set(refreshOrgMembers$);
   },
 );
 
@@ -574,13 +526,9 @@ export const rejectRequest$ = command(
   async ({ get, set }, requestId: string, _signal: AbortSignal) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroOrgMembershipRequestsContract);
-    const result = await client.reject({ body: { requestId } });
-    if (result.status === 200) {
-      toast.success("Membership request rejected");
-      set(refreshOrgMembers$);
-      return;
-    }
-    throw new Error(extractApiErrorMessage(result, "Failed to reject request"));
+    await accept(client.reject({ body: { requestId } }), [200]);
+    toast.success("Membership request rejected");
+    set(refreshOrgMembers$);
   },
 );
 
@@ -597,16 +545,12 @@ export const addDomain$ = command(
   ) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroOrgDomainsContract);
-    const result = await client.add({ body: { name, enrollmentMode } });
-    if (result.status === 200) {
-      toast.success(`Domain ${name} added`);
-      set(refreshOrgDomains$);
-      set(internalAddDomainDialogOpen$, false);
-      set(internalAddDomainName$, "");
-      set(internalAddDomainEnrollmentMode$, "manual_invitation");
-      return;
-    }
-    throw new Error(extractApiErrorMessage(result, "Failed to add domain"));
+    await accept(client.add({ body: { name, enrollmentMode } }), [200]);
+    toast.success(`Domain ${name} added`);
+    set(refreshOrgDomains$);
+    set(internalAddDomainDialogOpen$, false);
+    set(internalAddDomainName$, "");
+    set(internalAddDomainEnrollmentMode$, "manual_invitation");
   },
 );
 
@@ -614,14 +558,10 @@ export const removeDomain$ = command(
   async ({ get, set }, domainId: string, _signal: AbortSignal) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroOrgDomainsContract);
-    const result = await client.remove({ body: { domainId } });
-    if (result.status === 200) {
-      toast.success("Domain removed");
-      set(refreshOrgDomains$);
-      set(internalRemoveDomainDialogTarget$, null);
-      return;
-    }
-    throw new Error(extractApiErrorMessage(result, "Failed to remove domain"));
+    await accept(client.remove({ body: { domainId } }), [200]);
+    toast.success("Domain removed");
+    set(refreshOrgDomains$);
+    set(internalRemoveDomainDialogTarget$, null);
   },
 );
 
@@ -634,13 +574,9 @@ export const setDomainVerified$ = command(
   ) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroOrgDomainsContract);
-    const result = await client.setVerified({ body: { domainId, verified } });
-    if (result.status === 200) {
-      toast.success(verified ? "Domain verified" : "Domain unverified");
-      set(refreshOrgDomains$);
-      return;
-    }
-    throw new Error(extractApiErrorMessage(result, "Failed to update domain"));
+    await accept(client.setVerified({ body: { domainId, verified } }), [200]);
+    toast.success(verified ? "Domain verified" : "Domain unverified");
+    set(refreshOrgDomains$);
   },
 );
 
