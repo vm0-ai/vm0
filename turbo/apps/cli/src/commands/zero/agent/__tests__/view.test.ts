@@ -18,6 +18,7 @@ const mockAgent = {
   displayName: "My Agent",
   description: "A test agent",
   sound: "professional",
+  firewallPolicies: null,
 };
 
 describe("zero agent view command", () => {
@@ -61,7 +62,36 @@ describe("zero agent view command", () => {
       expect(logCalls).toContain("comp_abc123");
       expect(logCalls).toContain("A test agent");
       expect(logCalls).toContain("professional");
-      expect(logCalls).toContain("Connectors:   github");
+      expect(logCalls).toContain("github (full access)");
+    });
+
+    it("should show permission summary with firewall policies", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
+          return HttpResponse.json({
+            ...mockAgent,
+            firewallPolicies: {
+              github: {
+                "actions:read": "allow",
+                "actions:write": "deny",
+                "contents:read": "allow",
+                "contents:write": "deny",
+              },
+            },
+          });
+        }),
+        http.get(
+          "http://localhost:3000/api/zero/agents/my-agent/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: ["github"] });
+          },
+        ),
+      );
+
+      await viewCommand.parseAsync(["node", "cli", "my-agent"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toMatch(/github \(\d+\/\d+ allowed\)/);
     });
 
     it("should show instructions content with --instructions flag", async () => {
@@ -125,6 +155,99 @@ describe("zero agent view command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("No instructions set");
+    });
+  });
+
+  describe("--permissions flag", () => {
+    it("should show detailed permissions with allow/deny icons", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
+          return HttpResponse.json({
+            ...mockAgent,
+            firewallPolicies: {
+              github: {
+                "actions:read": "allow",
+                "actions:write": "deny",
+                "contents:read": "allow",
+                "contents:write": "ask",
+              },
+            },
+          });
+        }),
+        http.get(
+          "http://localhost:3000/api/zero/agents/my-agent/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: ["github"] });
+          },
+        ),
+      );
+
+      await viewCommand.parseAsync([
+        "node",
+        "cli",
+        "my-agent",
+        "--permissions",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toMatch(/github \(\d+\/\d+ allowed\)/);
+      expect(logCalls).toContain("✓");
+      expect(logCalls).toContain("✗");
+      expect(logCalls).toContain("?");
+    });
+
+    it("should show full access for connectors without policies", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
+          return HttpResponse.json(mockAgent);
+        }),
+        http.get(
+          "http://localhost:3000/api/zero/agents/my-agent/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: ["github"] });
+          },
+        ),
+      );
+
+      await viewCommand.parseAsync([
+        "node",
+        "cli",
+        "my-agent",
+        "--permissions",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("full access");
+      expect(logCalls).toContain(
+        "No permission rules configured — all API calls allowed.",
+      );
+    });
+
+    it("should handle non-firewall connectors gracefully", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
+          return HttpResponse.json(mockAgent);
+        }),
+        http.get(
+          "http://localhost:3000/api/zero/agents/my-agent/user-connectors",
+          () => {
+            return HttpResponse.json({
+              enabledTypes: ["custom-connector"],
+            });
+          },
+        ),
+      );
+
+      await viewCommand.parseAsync([
+        "node",
+        "cli",
+        "my-agent",
+        "--permissions",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("custom-connector");
+      expect(logCalls).toContain("No firewall configured.");
     });
   });
 
