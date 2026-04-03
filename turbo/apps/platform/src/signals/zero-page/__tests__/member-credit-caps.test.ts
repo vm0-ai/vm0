@@ -121,7 +121,7 @@ describe("creditsMemberList$", () => {
     expect(members[1].creditCap).toBeNull();
   });
 
-  it("should default creditCap to null when API returns non-OK", async () => {
+  it("should throw when API returns non-OK for credit cap fetch", async () => {
     mockUsageMembers([memberA()]);
     server.use(
       http.get("*/api/zero/org/members/credit-cap", () => {
@@ -139,9 +139,9 @@ describe("creditsMemberList$", () => {
 
     await setup();
 
-    const members = await context.store.get(creditsMemberList$);
-    expect(members).toHaveLength(1);
-    expect(members[0].creditCap).toBeNull();
+    await expect(context.store.get(creditsMemberList$)).rejects.toThrow(
+      "Internal server error",
+    );
   });
 });
 
