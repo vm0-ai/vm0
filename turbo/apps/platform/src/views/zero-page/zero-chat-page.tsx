@@ -166,6 +166,7 @@ function InviteButton({ pageSignal }: { pageSignal: AbortSignal }) {
       className={`zero-btn-morandi gap-1.5${isAdmin ? "" : " invisible"}`}
       aria-hidden={isAdmin ? undefined : "true"}
       tabIndex={isAdmin ? undefined : -1}
+      data-testid="invite-button"
     >
       <IconUserPlus size={14} stroke={1.5} />
       Invite people
