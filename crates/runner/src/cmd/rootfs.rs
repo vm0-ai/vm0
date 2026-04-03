@@ -205,6 +205,11 @@ pub async fn run_rootfs(args: RootfsArgs) -> RunnerResult<String> {
     let guest_init_str = guest_init.to_string_lossy();
     let guest_mock_claude_str = guest_mock_claude.to_string_lossy();
     let ca_dir_str = paths.ca_dir().to_string_lossy().to_string();
+    let debootstrap_dir = paths.debootstrap_dir();
+    tokio::fs::create_dir_all(&debootstrap_dir)
+        .await
+        .map_err(|e| RunnerError::Internal(format!("create {}: {e}", debootstrap_dir.display())))?;
+    let debootstrap_dir_str = debootstrap_dir.to_string_lossy().to_string();
     let disk_mb_str = disk_mb.to_string();
 
     let status = tokio::process::Command::new("bash")
@@ -214,6 +219,8 @@ pub async fn run_rootfs(args: RootfsArgs) -> RunnerResult<String> {
             &output_dir_str,
             "--ca-dir",
             &ca_dir_str,
+            "--debootstrap-dir",
+            &debootstrap_dir_str,
             "--hash",
             &hash,
             "--disk-mb",

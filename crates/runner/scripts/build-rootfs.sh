@@ -30,6 +30,7 @@ set -euo pipefail
 
 OUTPUT_DIR=""
 CA_DIR=""
+DEBOOTSTRAP_DIR=""
 INPUT_HASH=""
 DISK_MB=""
 GUEST_AGENT=""
@@ -49,6 +50,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --output-dir)        OUTPUT_DIR="$2";        shift 2 ;;
     --ca-dir)            CA_DIR="$2";            shift 2 ;;
+    --debootstrap-dir)   DEBOOTSTRAP_DIR="$2";   shift 2 ;;
     --hash)              INPUT_HASH="$2";        shift 2 ;;
     --disk-mb)           DISK_MB="$2";           shift 2 ;;
     --guest-agent)       GUEST_AGENT="$2";       shift 2 ;;
@@ -61,7 +63,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-for var in OUTPUT_DIR CA_DIR INPUT_HASH DISK_MB GUEST_AGENT GUEST_DOWNLOAD GUEST_INIT GUEST_MOCK_CLAUDE DNS_NAMESERVER; do
+for var in OUTPUT_DIR CA_DIR DEBOOTSTRAP_DIR INPUT_HASH DISK_MB GUEST_AGENT GUEST_DOWNLOAD GUEST_INIT GUEST_MOCK_CLAUDE DNS_NAMESERVER; do
   if [[ -z "${!var}" ]]; then
     echo "error: --$(echo "$var" | tr '_' '-' | tr '[:upper:]' '[:lower:]') is required" >&2
     exit 1
@@ -145,7 +147,7 @@ debootstrap_build() {
 
   # Cache the base package tarball so repeated builds (e.g. after changing
   # a pinned version) skip the ~200 MB download from the Ubuntu mirror.
-  local cache_tar="${OUTPUT_DIR}/../debootstrap-noble-$(dpkg --print-architecture).tar"
+  local cache_tar="${DEBOOTSTRAP_DIR}/noble-$(dpkg --print-architecture).tar"
   if [[ -f "$cache_tar" ]]; then
     echo "using cached debootstrap tarball: $cache_tar"
     sudo debootstrap --unpack-tarball="$(realpath "$cache_tar")" noble "$ROOTFS_DIR" "$MIRROR"
