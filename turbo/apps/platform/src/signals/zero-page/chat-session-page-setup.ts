@@ -12,7 +12,7 @@ import {
 import { chatThreadId$, setSidebarChatAgent$ } from "./zero-nav.ts";
 import { onboardGuard$ } from "./onboard-guard.ts";
 import { loadInitialData$ } from "./zero-page.ts";
-import { detach, Reason } from "../utils.ts";
+
 import { zeroChatAgentId$ } from "./zero-active-agent.ts";
 import { currentDraft$, ensureDraft$ } from "./chat-draft.ts";
 
@@ -62,6 +62,6 @@ export const setupChatSessionPage$ = command(
 
     // chatSessionSnapshot$ auto-fetches from URL. loadSessionFromSnapshot$
     // awaits it, populates server messages, syncs agent, resumes polling.
-    detach(set(loadSessionFromSnapshot$, signal), Reason.Daemon);
+    await set(loadSessionFromSnapshot$, signal);
   },
 );

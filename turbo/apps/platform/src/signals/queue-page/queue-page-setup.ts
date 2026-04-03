@@ -4,7 +4,7 @@ import { SidebarLayout } from "../../views/zero-page/sidebar-layout.tsx";
 import { QueuePage } from "../../views/queue-page/queue-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
-import { detach, Reason } from "../utils.ts";
+
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
 import { reloadChatThreads$ } from "../zero-page/zero-chat.ts";
@@ -24,5 +24,5 @@ export const setupQueuePage$ = command(async ({ set }, signal: AbortSignal) => {
   }
 
   set(reloadChatThreads$);
-  detach(set(startQueuePolling$, signal), Reason.Daemon);
+  await set(startQueuePolling$, signal);
 });

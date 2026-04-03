@@ -1,16 +1,14 @@
 import { command } from "ccstate";
 import { setupClerk$ } from "./auth.ts";
-import { setRootSignal$, rootSignal$ } from "./root-signal.ts";
+import { setRootSignal$ } from "./root-signal.ts";
 import {
   initRoutes$,
   detachedNavigateTo$,
-  navigate$,
   setupAuthPageWrapper,
   pathParams$,
 } from "./route.ts";
-import type { ParamData } from "path-to-regexp";
-import { ROUTES } from "./route-paths.ts";
-import { detach, Reason } from "./utils.ts";
+import { ROUTES, type RoutePath } from "./route-paths.ts";
+
 import { setupGlobalMethod$ } from "./bootstrap/global-method.ts";
 import { setupLoggers$ } from "./bootstrap/loggers.ts";
 import { setupSelectOrgPage$ } from "./select-org/select-org-page.ts";
@@ -50,23 +48,23 @@ const setupNotFoundRedirect$ = command(({ set }) => {
 /**
  * Create a redirect setup command for static routes (no params to forward).
  */
-function redirectTo(target: string) {
-  return command(({ get, set }) => {
-    const signal = get(rootSignal$).signal;
-    detach(set(navigate$, target, { replace: true }, signal), Reason.Redirect);
+function redirectTo(target: RoutePath) {
+  return command(({ set }) => {
+    set(detachedNavigateTo$, target, { replace: true });
   });
 }
 
 /**
  * Create a redirect setup command for parameterized routes.
- * Reads pathParams$ and constructs the target URL via a builder function.
+ * Reads pathParams$ and forwards the id param to the target route.
  */
-function redirectWithParams(buildTarget: (params: ParamData) => string) {
+function redirectWithId(target: RoutePath) {
   return command(({ get, set }) => {
     const params = get(pathParams$) ?? {};
-    const target = buildTarget(params);
-    const signal = get(rootSignal$).signal;
-    detach(set(navigate$, target, { replace: true }, signal), Reason.Redirect);
+    set(detachedNavigateTo$, target, {
+      pathParams: { id: String(params.id) },
+      replace: true,
+    });
   });
 }
 
@@ -171,62 +169,26 @@ const ROUTE_CONFIG = [
 
   // --- Redirect routes (backward compatibility) ---
   { path: "/team", setup: redirectTo(ROUTES.agents) },
-  {
-    path: "/team/:id",
-    setup: redirectWithParams((p) => {
-      return `/agents/${encodeURIComponent(String(p.id))}`;
-    }),
-  },
-  {
-    path: "/talk/:id",
-    setup: redirectWithParams((p) => {
-      return `/agents/${encodeURIComponent(String(p.id))}/chat`;
-    }),
-  },
-  {
-    path: "/talk/:id/ideas",
-    setup: redirectWithParams((p) => {
-      return `/agents/${encodeURIComponent(String(p.id))}/ideas`;
-    }),
-  },
+  { path: "/team/:id", setup: redirectWithId(ROUTES.agentDetail) },
+  { path: "/talk/:id", setup: redirectWithId(ROUTES.agentChat) },
+  { path: "/talk/:id/ideas", setup: redirectWithId(ROUTES.agentIdeas) },
   {
     path: "/firewall-allow/:id",
-    setup: redirectWithParams((p) => {
-      return `/agents/${encodeURIComponent(String(p.id))}/permissions`;
-    }),
+    setup: redirectWithId(ROUTES.agentPermissions),
   },
   { path: "/activity", setup: redirectTo(ROUTES.activities) },
-  {
-    path: "/activity/:id",
-    setup: redirectWithParams((p) => {
-      return `/activities/${encodeURIComponent(String(p.id))}`;
-    }),
-  },
+  { path: "/activity/:id", setup: redirectWithId(ROUTES.activityDetail) },
   {
     path: "/activity/:id/context",
-    setup: redirectWithParams((p) => {
-      return `/activities/${encodeURIComponent(String(p.id))}`;
-    }),
+    setup: redirectWithId(ROUTES.activityDetail),
   },
   {
     path: "/activity/:id/network",
-    setup: redirectWithParams((p) => {
-      return `/activities/${encodeURIComponent(String(p.id))}`;
-    }),
+    setup: redirectWithId(ROUTES.activityDetail),
   },
-  {
-    path: "/chat/:id",
-    setup: redirectWithParams((p) => {
-      return `/chats/${encodeURIComponent(String(p.id))}`;
-    }),
-  },
+  { path: "/chat/:id", setup: redirectWithId(ROUTES.chat) },
   { path: "/schedule", setup: redirectTo(ROUTES.schedules) },
-  {
-    path: "/schedule/:id",
-    setup: redirectWithParams((p) => {
-      return `/schedules/${encodeURIComponent(String(p.id))}`;
-    }),
-  },
+  { path: "/schedule/:id", setup: redirectWithId(ROUTES.scheduleDetail) },
   { path: "/queue", setup: redirectTo(ROUTES.queues) },
   { path: "/preferences", setup: redirectTo(ROUTES.settings) },
   { path: "/usage", setup: redirectTo(ROUTES.settingsUsage) },

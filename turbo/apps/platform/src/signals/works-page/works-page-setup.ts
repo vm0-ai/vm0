@@ -4,7 +4,7 @@ import { SidebarLayout } from "../../views/zero-page/sidebar-layout.tsx";
 import { ZeroWorksPage } from "../../views/zero-page/zero-works-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
-import { detach, Reason } from "../utils.ts";
+
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
 import { reloadChatThreads$ } from "../zero-page/zero-chat.ts";
@@ -24,7 +24,7 @@ export const setupWorksPage$ = command(async ({ set }, signal: AbortSignal) => {
     set(initSlackOrg$, signal),
   ]);
   signal.throwIfAborted();
-  detach(set(pollSlackConnection$, signal), Reason.Daemon);
+  await set(pollSlackConnection$, signal);
 
   if (await set(onboardGuard$, signal)) {
     return;
