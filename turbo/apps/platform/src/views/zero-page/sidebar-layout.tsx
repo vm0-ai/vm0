@@ -3,8 +3,6 @@ import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
 import { IconMenu2, IconUserPlus } from "@tabler/icons-react";
 import { ZeroSidebar } from "./zero-sidebar.tsx";
 import { useAgentAvatar } from "./zero-sidebar-shared.tsx";
-import { user$ } from "../../signals/auth.ts";
-import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
 import {
   zeroShowAboutPage$,
   setZeroShowAboutPage$,
@@ -15,7 +13,6 @@ import {
 import { activeRoute$ } from "../../signals/active-route.ts";
 import { mobileBreadcrumb$ } from "../../signals/zero-page/zero-mobile-breadcrumb.ts";
 import { ZeroAboutPage } from "./zero-about-page.tsx";
-import { AppSkeleton } from "./app-skeleton.tsx";
 import { Link } from "../router/link.tsx";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import {
@@ -29,17 +26,6 @@ import {
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { OrgManageDialog } from "./components/org-manage/org-manage-dialog.tsx";
-
-function SidebarLayoutSkeleton() {
-  const userLoadable = useLoadable(user$);
-  const isLoggedIn =
-    userLoadable.state === "hasData" && userLoadable.data !== undefined;
-  const agentNameLoadable = useLastLoadable(agentDisplayName$);
-  const agentNameReady = agentNameLoadable.state === "hasData";
-  const visible = isLoggedIn && !agentNameReady;
-
-  return <AppSkeleton visible={visible} />;
-}
 
 function AgentAvatarInTopBar({ agentId }: { agentId: string }) {
   const src = useAgentAvatar(agentId);
@@ -152,7 +138,6 @@ function SidebarLayoutInner({ children }: { children: ReactNode }) {
   return (
     <div className="zero-app flex h-dvh w-full bg-background">
       <OrgManageDialogMount />
-      <SidebarLayoutSkeleton />
       <ZeroSidebar />
       {!sidebarCollapsed && (
         <div

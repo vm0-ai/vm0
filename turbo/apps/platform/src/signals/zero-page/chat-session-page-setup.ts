@@ -15,6 +15,7 @@ import { loadInitialData$ } from "./zero-page.ts";
 import { detach, Reason } from "../utils.ts";
 import { zeroChatAgentId$ } from "./zero-active-agent.ts";
 import { currentDraft$, ensureDraft$ } from "./chat-draft.ts";
+import { hideAppSkeleton$ } from "../app-skeleton.ts";
 
 export const setupChatSessionPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -31,6 +32,7 @@ export const setupChatSessionPage$ = command(
 
     await set(loadInitialData$, signal);
     signal.throwIfAborted();
+    await set(hideAppSkeleton$, signal);
 
     if (await set(onboardGuard$, signal)) {
       return;

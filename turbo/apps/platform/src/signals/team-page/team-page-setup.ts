@@ -7,6 +7,7 @@ import { updatePage$ } from "../react-router.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
 import { reloadChatThreads$ } from "../zero-page/zero-chat.ts";
+import { hideAppSkeleton$ } from "../app-skeleton.ts";
 
 export const setupTeamPage$ = command(async ({ set }, signal: AbortSignal) => {
   set(
@@ -16,6 +17,7 @@ export const setupTeamPage$ = command(async ({ set }, signal: AbortSignal) => {
   set(updateDocumentTitle$, "Team");
   await set(initZeroOnboarding$, signal);
   signal.throwIfAborted();
+  await set(hideAppSkeleton$, signal);
 
   if (await set(onboardGuard$, signal)) {
     return;

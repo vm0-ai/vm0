@@ -1,6 +1,7 @@
 import { command, state, computed } from "ccstate";
 import { createElement } from "react";
 import { updatePage$ } from "./react-router.ts";
+import { hideAppSkeleton$ } from "./app-skeleton.ts";
 
 const ICON_SIZES = [16, 32, 48, 96, 128, 256] as const;
 export type IconSize = (typeof ICON_SIZES)[number];
@@ -20,9 +21,10 @@ export const setIconSize$ = command(({ set }, size: IconSize) => {
 });
 
 export const setupInternalConnectorLogos$ = command(
-  async ({ set }, _signal: AbortSignal) => {
+  async ({ set }, signal: AbortSignal) => {
     const { InternalConnectorLogos } =
       await import("../views/internal-connector-logos.tsx");
     set(updatePage$, createElement(InternalConnectorLogos));
+    await set(hideAppSkeleton$, signal);
   },
 );

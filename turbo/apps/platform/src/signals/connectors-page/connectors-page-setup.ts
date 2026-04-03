@@ -6,6 +6,7 @@ import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
+import { hideAppSkeleton$ } from "../app-skeleton.ts";
 export const setupConnectorsPage$ = command(
   async ({ set }, signal: AbortSignal) => {
     set(
@@ -15,6 +16,7 @@ export const setupConnectorsPage$ = command(
     set(updateDocumentTitle$, "Connectors");
     await set(initZeroOnboarding$, signal);
     signal.throwIfAborted();
+    await set(hideAppSkeleton$, signal);
 
     await set(onboardGuard$, signal);
   },

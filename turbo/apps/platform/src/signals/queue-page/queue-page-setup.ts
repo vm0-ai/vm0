@@ -9,6 +9,7 @@ import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
 import { reloadChatThreads$ } from "../zero-page/zero-chat.ts";
 import { startQueuePolling$ } from "./queue-signals.ts";
+import { hideAppSkeleton$ } from "../app-skeleton.ts";
 
 export const setupQueuePage$ = command(async ({ set }, signal: AbortSignal) => {
   set(
@@ -18,6 +19,7 @@ export const setupQueuePage$ = command(async ({ set }, signal: AbortSignal) => {
   set(updateDocumentTitle$, "Queue");
   await set(initZeroOnboarding$, signal);
   signal.throwIfAborted();
+  await set(hideAppSkeleton$, signal);
 
   if (await set(onboardGuard$, signal)) {
     return;
