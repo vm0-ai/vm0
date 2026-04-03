@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.187.0](https://github.com/vm0-ai/vm0/compare/app-v0.186.3...app-v0.187.0) (2026-04-03)
+
+
+### Features
+
+* add dns proxy for sandbox vms using dnsmasq ([#8020](https://github.com/vm0-ai/vm0/issues/8020)) ([5699f8d](https://github.com/vm0-ai/vm0/commit/5699f8dbb9008422dfe1753a2b127a6f9c100f59))
+* **onboarding:** hide preferences in account menu during onboarding ([#7701](https://github.com/vm0-ai/vm0/issues/7701)) ([03d75ff](https://github.com/vm0-ai/vm0/commit/03d75ff9756f49cccaa22afdc9601b68ba4aef58))
+* **platform:** add collapsible manage section in sidebar ([#8028](https://github.com/vm0-ai/vm0/issues/8028)) ([66a9271](https://github.com/vm0-ai/vm0/commit/66a92715329a1e399a136ffd998fc2e06f85a347))
+
+
+### Bug Fixes
+
+* **platform:** remove test-only data-tagline attribute from production html ([c82f045](https://github.com/vm0-ai/vm0/commit/c82f045fb8937fc2e6b5e73a9062aaba80e40b4f))
+
+
+### Refactoring
+
+* **platform:** migrate billing & usage signals to accept pattern ([#8018](https://github.com/vm0-ai/vm0/issues/8018)) ([532e42d](https://github.com/vm0-ai/vm0/commit/532e42d34c252890db49cfa5519d242e364038a6))
+* **platform:** redesign agents page layout with grid/list view toggle ([#8025](https://github.com/vm0-ai/vm0/issues/8025)) ([689c9dd](https://github.com/vm0-ai/vm0/commit/689c9dd67936a1828c695f24bd1a64cd9fb908b6))
+
+
+### Performance Improvements
+
+* **onboarding:** consolidate into single server api call ([#8041](https://github.com/vm0-ai/vm0/issues/8041)) ([6bf4e9d](https://github.com/vm0-ai/vm0/commit/6bf4e9dc17d20fcb2d7947e6a636e2bb15f35929))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.150.0
+
 ## [0.186.3](https://github.com/vm0-ai/vm0/compare/app-v0.186.2...app-v0.186.3) (2026-04-03)
 
 

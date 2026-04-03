@@ -1,6 +1,6 @@
 {
   "name": "@vm0/core",
-  "version": "8.149.1",
+  "version": "8.150.0",
   "private": true,
   "type": "module",
   "exports": {

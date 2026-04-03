@@ -1,5 +1,29 @@
 # Changelog
 
+## [12.192.0](https://github.com/vm0-ai/vm0/compare/web-v12.191.1...web-v12.192.0) (2026-04-03)
+
+
+### Features
+
+* **platform:** add computer-use server api, contracts, and access control ([#8069](https://github.com/vm0-ai/vm0/issues/8069)) ([042127e](https://github.com/vm0-ai/vm0/commit/042127ec5539871d0b1fd7a206dab8ed12dd007f))
+
+
+### Bug Fixes
+
+* **developer-support:** collect agent events from axiom instead of empty chat messages ([#8035](https://github.com/vm0-ai/vm0/issues/8035)) ([0546641](https://github.com/vm0-ai/vm0/commit/054664136476184e3bdd2c3d0083a00260b93579))
+
+
+### Performance Improvements
+
+* **onboarding:** consolidate into single server api call ([#8041](https://github.com/vm0-ai/vm0/issues/8041)) ([6bf4e9d](https://github.com/vm0-ai/vm0/commit/6bf4e9dc17d20fcb2d7947e6a636e2bb15f35929))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.150.0
+
 ## [12.191.1](https://github.com/vm0-ai/vm0/compare/web-v12.191.0...web-v12.191.1) (2026-04-03)
 
 

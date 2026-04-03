@@ -1,5 +1,29 @@
 # Changelog
 
+## [9.101.0](https://github.com/vm0-ai/vm0/compare/cli-v9.100.3...cli-v9.101.0) (2026-04-03)
+
+
+### Features
+
+* add dns proxy for sandbox vms using dnsmasq ([#8020](https://github.com/vm0-ai/vm0/issues/8020)) ([5699f8d](https://github.com/vm0-ai/vm0/commit/5699f8dbb9008422dfe1753a2b127a6f9c100f59))
+* **cli:** add computer-use host/client framework with screenshot and info operations ([#8074](https://github.com/vm0-ai/vm0/issues/8074)) ([e285ac9](https://github.com/vm0-ai/vm0/commit/e285ac92f4785b69371b48db16fd7b306989391a))
+* **cli:** add computer-use zoom for regional screenshot capture ([#8079](https://github.com/vm0-ai/vm0/issues/8079)) ([e72c82d](https://github.com/vm0-ai/vm0/commit/e72c82d7fd40dc7f522a9eefddd203bc929c1b37))
+* **cli:** add key combos and hold-key for computer-use ([#8084](https://github.com/vm0-ai/vm0/issues/8084)) ([bb64803](https://github.com/vm0-ai/vm0/commit/bb64803ef258520bef11a16c1e6c4ddf4872de91)), closes [#8061](https://github.com/vm0-ai/vm0/issues/8061)
+* **cli:** add mouse click operations for computer-use ([#8082](https://github.com/vm0-ai/vm0/issues/8082)) ([ad2b157](https://github.com/vm0-ai/vm0/commit/ad2b15710c57743b9ca22f7b4a76ce8683b30f75)), closes [#8056](https://github.com/vm0-ai/vm0/issues/8056)
+* **cli:** add open application command for computer-use ([#8086](https://github.com/vm0-ai/vm0/issues/8086)) ([358a661](https://github.com/vm0-ai/vm0/commit/358a6612c1af3b1009248418a1316b0f9eb9b255)), closes [#8063](https://github.com/vm0-ai/vm0/issues/8063)
+* **cli:** add text input command for computer-use ([#8085](https://github.com/vm0-ai/vm0/issues/8085)) ([cf78c07](https://github.com/vm0-ai/vm0/commit/cf78c07ba587e03d6cc11899cd8eacb33d033abd)), closes [#8060](https://github.com/vm0-ai/vm0/issues/8060)
+* **computer-use:** add clipboard read and write ([#8081](https://github.com/vm0-ai/vm0/issues/8081)) ([08c9ecf](https://github.com/vm0-ai/vm0/commit/08c9ecfe804c8a8762b132307377c14dc7cea0a0)), closes [#8062](https://github.com/vm0-ai/vm0/issues/8062)
+* **computer-use:** add mouse drag and button control ([#8077](https://github.com/vm0-ai/vm0/issues/8077)) ([e3b9c05](https://github.com/vm0-ai/vm0/commit/e3b9c05d3c0bb051bcd1aff357cc003c61a24b93)), closes [#8058](https://github.com/vm0-ai/vm0/issues/8058)
+* **computer-use:** add mouse movement and cursor position ([#8083](https://github.com/vm0-ai/vm0/issues/8083)) ([45cda90](https://github.com/vm0-ai/vm0/commit/45cda9057aaadceb1f030ea5f58415f00733b253))
+* **computer-use:** add scroll operation ([#8078](https://github.com/vm0-ai/vm0/issues/8078)) ([cd3df2a](https://github.com/vm0-ai/vm0/commit/cd3df2a5f3474f6373ba728578f5a577ee963d7f)), closes [#8059](https://github.com/vm0-ai/vm0/issues/8059)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.150.0
+
 ## [9.100.3](https://github.com/vm0-ai/vm0/compare/cli-v9.100.2...cli-v9.100.3) (2026-04-03)
 
 

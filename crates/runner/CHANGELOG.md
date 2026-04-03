@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.62.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.61.4...runner-rs-v0.62.0) (2026-04-03)
+
+
+### Features
+
+* add dns proxy for sandbox vms using dnsmasq ([#8020](https://github.com/vm0-ai/vm0/issues/8020)) ([5699f8d](https://github.com/vm0-ai/vm0/commit/5699f8dbb9008422dfe1753a2b127a6f9c100f59))
+
+
+### Bug Fixes
+
+* inject /etc/hosts and fix postgresql socket dir in sandbox rootfs ([#8012](https://github.com/vm0-ai/vm0/issues/8012)) ([6ba0f2f](https://github.com/vm0-ai/vm0/commit/6ba0f2fff333c57c85c90d1a7dad57dcc65f338b))
+
 ## [0.61.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.61.3...runner-rs-v0.61.4) (2026-04-03)
 
 

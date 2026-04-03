@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.21.2...sandbox-fc-v0.22.0) (2026-04-03)
+
+
+### Features
+
+* add dns proxy for sandbox vms using dnsmasq ([#8020](https://github.com/vm0-ai/vm0/issues/8020)) ([5699f8d](https://github.com/vm0-ai/vm0/commit/5699f8dbb9008422dfe1753a2b127a6f9c100f59))
+
 ## [0.21.2](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.21.1...sandbox-fc-v0.21.2) (2026-04-03)
 
 ## [0.21.1](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.21.0...sandbox-fc-v0.21.1) (2026-04-02)

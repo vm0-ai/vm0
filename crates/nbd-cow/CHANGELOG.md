@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.3](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.3.2...nbd-cow-v0.3.3) (2026-04-03)
+
+
+### Bug Fixes
+
+* **nbd-cow:** fix device leak when connecting worker thread exits ([#8064](https://github.com/vm0-ai/vm0/issues/8064)) ([25ed885](https://github.com/vm0-ai/vm0/commit/25ed885f1e646b6c1742e6b8d00cf0ca8a4ccf03))
+
 ## [0.3.2](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.3.1...nbd-cow-v0.3.2) (2026-04-03)
 
 
