@@ -72,13 +72,9 @@ describe("groupedMessageCard", () => {
     });
 
     // formatEventTime("2026-03-10T14:56:02Z") → "Mar 10, HH:MM:SS" (past date)
-    const timestampElements = document.querySelectorAll(
-      ".text-xs.text-muted-foreground",
-    );
-    const hasTimestamp = Array.from(timestampElements).some((el) => {
-      return el.textContent?.match(/Mar 10/);
+    await waitFor(() => {
+      expect(screen.getAllByText(/Mar 10/).length).toBeGreaterThan(0);
     });
-    expect(hasTimestamp).toBeTruthy();
   });
 
   // ACT-D-066
@@ -117,6 +113,7 @@ describe("groupedMessageCard", () => {
 
   // ACT-D-067
   it("renders todo items with their completion status icons", async () => {
+    const user = userEvent.setup();
     await renderInspectPage();
     await loadInspectData(
       makeInspectData([
@@ -150,10 +147,12 @@ describe("groupedMessageCard", () => {
       expect(screen.getByText("Todo")).toBeInTheDocument();
     });
 
-    // Open the details to see all items
-    const details = document.querySelector("details") as HTMLDetailsElement;
+    // Open the details by clicking the summary to see all items
+    const todoHeading = screen.getByText("Todo");
+    const details = todoHeading.closest("details") as HTMLDetailsElement;
     expect(details).not.toBeNull();
-    details.open = true;
+    const summary = details.querySelector("summary")!;
+    await user.click(summary);
 
     await waitFor(() => {
       expect(screen.getByText("Completed task")).toBeInTheDocument();
@@ -242,6 +241,7 @@ describe("groupedMessageCard", () => {
 
   // ACT-D-070
   it("renders tool operations and their results", async () => {
+    const user = userEvent.setup();
     await renderInspectPage();
     await loadInspectData(
       makeInspectData([
@@ -287,11 +287,12 @@ describe("groupedMessageCard", () => {
       expect(screen.getByText("Bash")).toBeInTheDocument();
     });
 
-    // Open the tool summary details to see result
+    // Open the tool summary details by clicking the summary to see result
     const toolSummary = screen.getByTestId(
       "tool-summary",
     ) as HTMLDetailsElement;
-    toolSummary.open = true;
+    const toolSummarySummary = toolSummary.querySelector("summary")!;
+    await user.click(toolSummarySummary);
 
     await waitFor(() => {
       expect(screen.getByText("hello-070")).toBeInTheDocument();
