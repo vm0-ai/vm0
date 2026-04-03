@@ -116,7 +116,9 @@ RUN ARCH=$(dpkg --print-architecture) \
     && curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${ARCH}.tar.gz" -o /tmp/go.tar.gz \
     && tar -C /usr/local -xzf /tmp/go.tar.gz \
     && rm /tmp/go.tar.gz \
-    && echo 'export PATH=$PATH:/usr/local/go/bin:$HOME/go/bin' > /etc/profile.d/golang.sh
+    && ln -s /usr/local/go/bin/go /usr/local/bin/go \
+    && ln -s /usr/local/go/bin/gofmt /usr/local/bin/gofmt \
+    && echo 'export PATH=$PATH:$HOME/go/bin' > /etc/profile.d/golang.sh
 
 # ---------------------------------------------------------------------------
 # Rust (stable toolchain via rustup)
@@ -125,7 +127,8 @@ ENV RUSTUP_HOME=/usr/local/rustup
 ENV CARGO_HOME=/usr/local/cargo
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
     | sh -s -- -y --default-toolchain stable --no-modify-path \
-    && printf 'export RUSTUP_HOME=/usr/local/rustup\nexport CARGO_HOME=$HOME/.cargo\nexport PATH=$PATH:/usr/local/cargo/bin:$HOME/.cargo/bin\n' \
+    && for bin in /usr/local/cargo/bin/*; do ln -s "$bin" /usr/local/bin/; done \
+    && printf 'export RUSTUP_HOME=/usr/local/rustup\nexport CARGO_HOME=$HOME/.cargo\nexport PATH=$PATH:$HOME/.cargo/bin\n' \
        > /etc/profile.d/rust.sh
 
 # ---------------------------------------------------------------------------
