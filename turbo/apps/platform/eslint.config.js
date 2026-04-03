@@ -77,6 +77,7 @@ export default [
     files: ["**/__tests__/**/*.{ts,tsx}"],
     rules: {
       "ccstate/prefer-user-event": "error",
+      "ccstate/no-test-delay": "error",
       "no-restricted-syntax": [
         "error",
         {
