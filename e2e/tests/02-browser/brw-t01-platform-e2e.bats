@@ -349,11 +349,9 @@ teardown_file() {
   wait_for_text "Agents" 20
   step_screenshot "team-page-loaded"
 
-  local snap
-  snap=$(full_snapshot)
-
-  echo "# Waiting for lead agent badge..." >&3
-  wait_for_text "Lead" 15
+  echo "# Waiting for lead agent badge (async load)..." >&3
+  wait_for_text "Lead" 20
+  step_screenshot "team-page-lead-loaded"
 
   echo "# Waiting for Create teammate button..." >&3
   wait_for_text "Create teammate" 10
