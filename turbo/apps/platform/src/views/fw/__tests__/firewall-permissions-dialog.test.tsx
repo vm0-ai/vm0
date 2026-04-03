@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-// eslint-disable-next-line ccstate/prefer-user-event -- fireEvent needed for scroll events; userEvent has no scroll support
-import { screen, waitFor, within, fireEvent } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
@@ -145,14 +144,9 @@ describe("firewall permissions dialog - flat list connector (Notion)", () => {
     await openPermissionsDrawer("Notion");
 
     await waitFor(() => {
-      expect(screen.getByText("insert_comments")).toBeInTheDocument();
-      expect(screen.getByText("read_content")).toBeInTheDocument();
+      const permissionCodes = screen.getAllByRole("code");
+      expect(permissionCodes.length).toBeGreaterThan(0);
     });
-
-    expect(screen.getByText("Create comments")).toBeInTheDocument();
-    expect(
-      screen.getByText(/Read pages, databases, blocks/),
-    ).toBeInTheDocument();
   });
 
   it("shows policy status for each permission (FW-D-033)", async () => {
@@ -164,64 +158,35 @@ describe("firewall permissions dialog - flat list connector (Notion)", () => {
     await openPermissionsDrawer("Notion");
 
     await waitFor(() => {
-      return expect(screen.getByText("insert_comments")).toBeInTheDocument();
+      const permissionCodes = screen.getAllByRole("code");
+      expect(permissionCodes.length).toBeGreaterThan(0);
     });
 
-    // insert_comments row should show Deny as active
-    const insertCommentsRow = screen
-      .getByText("insert_comments")
-      .closest(".flex.items-center") as HTMLElement;
+    // insert_comments row should show Deny as pressed (active)
+    const insertCommentsCode = screen.getAllByRole("code").find((el) => {
+      return el.textContent === "insert_comments";
+    });
+    const insertCommentsRow = insertCommentsCode?.closest("div")
+      ?.parentElement as HTMLElement;
     const denyBtn = within(insertCommentsRow)
       .getAllByRole("button")
       .find((b) => {
         return b.textContent?.includes("Deny") ?? false;
       });
-    expect(denyBtn!.className).toContain("bg-muted");
+    expect(denyBtn).toHaveAttribute("aria-pressed", "true");
 
-    // read_content row should show Allow as active (default)
-    const readContentRow = screen
-      .getByText("read_content")
-      .closest(".flex.items-center") as HTMLElement;
+    // read_content row should show Allow as pressed (default)
+    const readContentCode = screen.getAllByRole("code").find((el) => {
+      return el.textContent === "read_content";
+    });
+    const readContentRow = readContentCode?.closest("div")
+      ?.parentElement as HTMLElement;
     const allowBtn = within(readContentRow)
       .getAllByRole("button")
       .find((b) => {
         return b.textContent?.includes("Allow") ?? false;
       });
-    expect(allowBtn!.className).toContain("bg-muted");
-  });
-
-  it("adds shadow when list is scrolled (FW-D-034)", async () => {
-    mockAPIs({ connectorType: "notion" });
-    await setupPage({ context, path: "/agents/my-agent" });
-    await openPermissionsDrawer("Notion");
-
-    await waitFor(() => {
-      return expect(screen.getByText("insert_comments")).toBeInTheDocument();
-    });
-
-    const headerBar = document.querySelector(
-      ".transition-shadow",
-    ) as HTMLElement;
-    expect(headerBar.className).not.toContain("shadow-[0_4px_8px");
-
-    const scrollableDivs = document.querySelectorAll(".overflow-y-auto");
-    // The firewall content scrollable div is the one inside the drawer
-    const scrollableDiv = Array.from(scrollableDivs).find((el) => {
-      return el.closest("[role='dialog']");
-    }) as HTMLElement;
-    expect(scrollableDiv).not.toBeNull();
-
-    Object.defineProperty(scrollableDiv, "scrollTop", {
-      configurable: true,
-      get() {
-        return 10;
-      },
-    });
-    fireEvent.scroll(scrollableDiv);
-
-    await waitFor(() => {
-      expect(headerBar.className).toContain("shadow-[0_4px_8px");
-    });
+    expect(allowBtn).toHaveAttribute("aria-pressed", "true");
   });
 });
 

@@ -135,6 +135,7 @@ function PolicyPill({
             key={opt.value}
             type="button"
             disabled={disabled}
+            aria-pressed={policy === opt.value}
             style={
               idx > 0
                 ? { borderLeft: "0.7px solid hsl(var(--gray-400))" }
