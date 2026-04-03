@@ -1,6 +1,7 @@
 import { defineConfig } from "tsup";
 import { readFileSync } from "fs";
 import { execSync } from "child_process";
+import { resolve } from "path";
 
 const pkg = JSON.parse(readFileSync("./package.json", "utf-8")) as {
   version: string;
@@ -42,6 +43,13 @@ export default defineConfig({
     "undici",
     "@ts-rest/core",
   ],
+  esbuildOptions(options) {
+    // Add CLI's node_modules as a fallback resolution path so esbuild can
+    // find bundled deps (zod, yaml, @ts-rest/core) when they're imported
+    // from @vm0/core source files during bundling. In CI's filtered pnpm
+    // install, these deps may not be symlinked into core's node_modules.
+    options.nodePaths = [resolve("node_modules")];
+  },
   // Inject version and default Sentry DSN from package.json/env at build time
   define: {
     __CLI_VERSION__: JSON.stringify(pkg.version),
