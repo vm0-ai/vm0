@@ -231,7 +231,8 @@ export const saveZeroJobSchedule$ = command(
     }
 
     const client = get(zeroClient$)(zeroSchedulesMainContract);
-    await accept(client.deploy({ body }), [200, 201]);
+    // toast: false — error is captured by useLoadableSet in the consuming view and displayed in the dialog
+    await accept(client.deploy({ body }), [200, 201], { toast: false });
     signal.throwIfAborted();
 
     toast.success(params.editName ? "Schedule updated" : "Schedule created");

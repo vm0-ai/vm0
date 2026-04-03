@@ -369,7 +369,7 @@ export function ZeroScheduleCard({
           () => {
             detach(setAddScheduleOpen(false, signal), Reason.DomCallback);
           },
-          (_error: unknown) => {
+          () => {
             // error is captured by useLoadableSet in the consuming view and passed as saveError prop
           },
         ),
@@ -421,7 +421,7 @@ export function ZeroScheduleCard({
           () => {
             detach(setEditingScheduleId(null, signal), Reason.DomCallback);
           },
-          (_error: unknown) => {
+          () => {
             // error is captured by useLoadableSet in the consuming view and passed as saveError prop
           },
         ),

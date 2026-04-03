@@ -415,7 +415,10 @@ export const saveOrgSchedule$ = command(
     const body = buildScheduleBody(params.agentId, params);
 
     const client = get(zeroClient$)(zeroSchedulesMainContract);
-    const result = await accept(client.deploy({ body }), [200, 201]);
+    // toast: false — error is captured by useLoadableSet in the consuming view and displayed in the dialog
+    const result = await accept(client.deploy({ body }), [200, 201], {
+      toast: false,
+    });
     signal.throwIfAborted();
 
     const scheduleId = result.body.schedule.id;
