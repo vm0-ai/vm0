@@ -104,6 +104,7 @@ function OnboardingConnectorCard({
   return (
     <button
       type="button"
+      data-testid={`connector-card-${type}`}
       onClick={onClick}
       disabled={isPolling}
       className={`flex items-center gap-3 rounded-xl px-4 py-3.5 transition-colors focus:outline-none zero-border ${

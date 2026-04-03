@@ -273,9 +273,9 @@ describe("connector selection display renders (AGENT-D-058)", () => {
       ).toBeInTheDocument();
     });
 
-    // Connectors are rendered as buttons with connector labels
-    expect(screen.getByText("GitHub")).toBeInTheDocument();
-    expect(screen.getByText("Slack")).toBeInTheDocument();
+    // Connectors are rendered as selectable cards
+    expect(screen.getByTestId("connector-card-github")).toBeInTheDocument();
+    expect(screen.getByTestId("connector-card-slack")).toBeInTheDocument();
   });
 });
 
@@ -301,8 +301,7 @@ describe("selected connectors display renders (AGENT-D-060)", () => {
     });
 
     // Click GitHub connector to select it
-    const githubCard = screen.getByText("GitHub").closest("button");
-    await user.click(githubCard!);
+    await user.click(screen.getByTestId("connector-card-github"));
 
     // After click, the selected card renders the check icon
     await waitFor(() => {
@@ -332,16 +331,14 @@ describe("connector selection buttons toggle (AGENT-D-064)", () => {
       ).toBeInTheDocument();
     });
 
-    const githubCard = screen.getByText("GitHub").closest("button");
     // First click: select
-    await user.click(githubCard!);
+    await user.click(screen.getByTestId("connector-card-github"));
     await waitFor(() => {
       expect(screen.getByTestId("connector-check-icon")).toBeInTheDocument();
     });
 
     // Second click: deselect — check icon should no longer be present
-    const githubCardAgain = screen.getByText("GitHub").closest("button");
-    await user.click(githubCardAgain!);
+    await user.click(screen.getByTestId("connector-card-github"));
     await waitFor(() => {
       expect(
         screen.queryByTestId("connector-check-icon"),
@@ -375,9 +372,11 @@ describe("connector search input filters list (AGENT-D-065)", () => {
     await user.type(searchInput, "GitHub");
 
     await waitFor(() => {
-      expect(screen.getByText("GitHub")).toBeInTheDocument();
+      expect(screen.getByTestId("connector-card-github")).toBeInTheDocument();
       // Slack should no longer be visible after filtering for GitHub
-      expect(screen.queryByText("Slack")).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId("connector-card-slack"),
+      ).not.toBeInTheDocument();
     });
   });
 });
@@ -399,8 +398,7 @@ async function navigateToStep3(user: ReturnType<typeof userEvent.setup>) {
   });
 
   // Select GitHub connector
-  const githubCard = screen.getByText("GitHub").closest("button");
-  await user.click(githubCard!);
+  await user.click(screen.getByTestId("connector-card-github"));
 
   // Advance to step 3
   await user.click(screen.getByRole("button", { name: "Next" }));
