@@ -243,8 +243,7 @@ describe("activityInspectPage", () => {
       await loadInspectData(makeInspectData());
 
       await waitFor(() => {
-        const stepsTab = screen.getByRole("tab", { name: "Steps" });
-        expect(stepsTab).toHaveAttribute("aria-selected", "true");
+        expect(screen.getByPlaceholderText("Search steps")).toBeInTheDocument();
       });
     });
 
