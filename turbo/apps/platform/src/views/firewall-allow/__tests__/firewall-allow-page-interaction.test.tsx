@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
@@ -378,6 +378,7 @@ describe("firewall allow page - AdminFocusedView", () => {
   });
 });
 
+// fw-d-023 is intentionally skipped — reserved for future MemberListView display tests
 describe("firewall allow page - MemberFocusedView request form", () => {
   it("fw-d-024: Request Access button shows form", async () => {
     setupMemberContext();
@@ -398,9 +399,7 @@ describe("firewall allow page - MemberFocusedView request form", () => {
     await user.click(screen.getByRole("button", { name: "Request Access" }));
 
     await waitFor(() => {
-      expect(
-        screen.getByPlaceholderText("Reason for access (optional)"),
-      ).toBeInTheDocument();
+      expect(screen.getByRole("textbox")).toBeInTheDocument();
     });
     expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
     expect(
@@ -427,19 +426,13 @@ describe("firewall allow page - MemberFocusedView request form", () => {
     await user.click(screen.getByRole("button", { name: "Request Access" }));
 
     await waitFor(() => {
-      expect(
-        screen.getByPlaceholderText("Reason for access (optional)"),
-      ).toBeInTheDocument();
+      expect(screen.getByRole("textbox")).toBeInTheDocument();
     });
 
-    const textarea = screen.getByPlaceholderText(
-      "Reason for access (optional)",
-    );
+    const textarea = screen.getByRole("textbox");
     await user.type(textarea, "I need to read issues");
 
-    expect((textarea as HTMLTextAreaElement).value).toBe(
-      "I need to read issues",
-    );
+    expect(textarea).toHaveValue("I need to read issues");
   });
 
   it("fw-d-026: Cancel button hides request form", async () => {
@@ -461,17 +454,13 @@ describe("firewall allow page - MemberFocusedView request form", () => {
     await user.click(screen.getByRole("button", { name: "Request Access" }));
 
     await waitFor(() => {
-      expect(
-        screen.getByPlaceholderText("Reason for access (optional)"),
-      ).toBeInTheDocument();
+      expect(screen.getByRole("textbox")).toBeInTheDocument();
     });
 
     await user.click(screen.getByRole("button", { name: "Cancel" }));
 
     await waitFor(() => {
-      expect(
-        screen.queryByPlaceholderText("Reason for access (optional)"),
-      ).not.toBeInTheDocument();
+      expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
     });
     expect(
       screen.getByRole("button", { name: "Request Access" }),
@@ -540,12 +529,15 @@ describe("firewall allow page - MemberFocusedView request form", () => {
     unblock();
 
     await waitFor(() => {
-      expect(
-        screen.queryByPlaceholderText("Reason for access (optional)"),
-      ).not.toBeInTheDocument();
+      expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
     });
   });
 });
+
+interface SaveFirewallPoliciesRequest {
+  agentId: string;
+  policies: { gmail: Record<string, string> };
+}
 
 describe("firewall allow page - AdminListView", () => {
   // Use gmail (26 permissions) instead of github (129 permissions) to keep tests fast
@@ -570,11 +562,16 @@ describe("firewall allow page - AdminListView", () => {
 
     const user = userEvent.setup();
 
-    // Category headers have Allow/Deny buttons for "set all" in that category
-    // Get all Deny buttons; the first ones belong to category headers (rendered before rows)
-    const denyButtons = screen.getAllByRole("button", { name: /Deny/ });
-    // Click the first category header Deny button (sets all permissions in that group to deny)
-    await user.click(denyButtons[0]);
+    // Scope to the "Read" category header to click its Deny button without relying on DOM order
+    const categoryLabel = screen.getByText(/^Read \(\d+\)$/);
+    // The category header is the parent element that contains both the label and the policy buttons
+    const categoryHeader = categoryLabel.parentElement;
+    if (!categoryHeader) {
+      throw new Error("Category header not found");
+    }
+    await user.click(
+      within(categoryHeader).getByRole("button", { name: /Deny/ }),
+    );
 
     // Click Save to persist all policies
     await user.click(screen.getByRole("button", { name: "Save" }));
@@ -584,12 +581,7 @@ describe("firewall allow page - AdminListView", () => {
     });
 
     // At least one permission in the category should now be "deny"
-    const policies = (
-      savedBody as {
-        agentId: string;
-        policies: { gmail: Record<string, string> };
-      }
-    ).policies.gmail;
+    const policies = (savedBody as SaveFirewallPoliciesRequest).policies.gmail;
     expect(Object.values(policies)).toContain("deny");
   });
 
@@ -614,9 +606,15 @@ describe("firewall allow page - AdminListView", () => {
 
     const user = userEvent.setup();
 
-    // The last Deny button in the list is a permission row (not a category header)
-    const denyButtons = screen.getAllByRole("button", { name: /Deny/ });
-    await user.click(denyButtons[denyButtons.length - 1]);
+    // Scope to a specific permission row by its permission name to click its Deny button
+    // gmail.labels is the last permission in the Admin category
+    const permLabel = screen.getByText("gmail.labels");
+    // <code> → <div class="min-w-0 flex-1"> → <div class="flex items-center ..."> (the row)
+    const permRow = permLabel.parentElement?.parentElement;
+    if (!permRow) {
+      throw new Error("Permission row not found");
+    }
+    await user.click(within(permRow).getByRole("button", { name: /Deny/ }));
 
     await user.click(screen.getByRole("button", { name: "Save" }));
 
@@ -625,16 +623,13 @@ describe("firewall allow page - AdminListView", () => {
     });
 
     // The saved policies should include at least one "deny" permission
-    const policies = (
-      savedBody as {
-        agentId: string;
-        policies: { gmail: Record<string, string> };
-      }
-    ).policies.gmail;
+    const policies = (savedBody as SaveFirewallPoliciesRequest).policies.gmail;
     expect(Object.values(policies)).toContain("deny");
   });
 
   it("fw-d-030: Save button saves all policies", async () => {
+    // Note: AdminListView Save is always enabled (not dirty-gated), unlike AdminFocusedView.
+    // This allows admins to explicitly re-persist all policies without needing to change them first.
     let unblock!: () => void;
     server.use(
       http.put("*/api/zero/firewall-policies", async () => {
