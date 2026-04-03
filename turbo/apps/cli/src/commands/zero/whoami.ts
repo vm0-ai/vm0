@@ -49,8 +49,8 @@ async function showSandboxInfo(): Promise<void> {
           identity = `@${connector.externalUsername} (${connector.externalEmail})`;
         } else if (connector.externalUsername) {
           identity = `@${connector.externalUsername}`;
-        } else {
-          identity = connector.externalEmail!;
+        } else if (connector.externalEmail) {
+          identity = connector.externalEmail;
         }
         if (connector.needsReconnect) {
           identity += ` ${chalk.yellow("(needs reconnect)")}`;
