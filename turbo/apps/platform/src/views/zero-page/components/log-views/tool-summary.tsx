@@ -131,7 +131,7 @@ export function ToolSummary({
   const errorMessage = isError && result?.content ? result.content : undefined;
 
   return (
-    <details className="group" open={hasSearchMatch}>
+    <details className="group" data-testid="tool-summary" open={hasSearchMatch}>
       <ToolSummaryHeader
         toolName={toolName}
         keyParamElement={keyParamElement}
@@ -378,7 +378,10 @@ function ToolResultDetails({
         <pre className="text-xs text-foreground whitespace-pre-wrap break-all">
           {previewText}
         </pre>
-        <details className="[&[open]>summary]:hidden">
+        <details
+          className="[&[open]>summary]:hidden"
+          data-testid="tool-result-expand"
+        >
           <summary className="list-none cursor-pointer text-xs text-muted-foreground hover:text-foreground">
             +{remainingLines} lines
             {bytes ? ` (${(bytes / 1024).toFixed(1)} KB)` : ""}
