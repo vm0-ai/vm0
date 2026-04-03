@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.61.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.61.2...runner-rs-v0.61.3) (2026-04-03)
+
+
+### Performance Improvements
+
+* **runner:** consolidate dockerfile apt-get update calls ([#7858](https://github.com/vm0-ai/vm0/issues/7858)) ([ab41e8e](https://github.com/vm0-ai/vm0/commit/ab41e8ecf8c21b45f701ffbe8260ec6fcf2af5cc))
+
 ## [0.61.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.61.1...runner-rs-v0.61.2) (2026-04-03)
 
 

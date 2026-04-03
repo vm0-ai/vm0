@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.184.0](https://github.com/vm0-ai/vm0/compare/app-v0.183.0...app-v0.184.0) (2026-04-03)
+
+
+### Features
+
+* **platform:** add no-direct-fetch eslint rule ([#7868](https://github.com/vm0-ai/vm0/issues/7868)) ([4290783](https://github.com/vm0-ai/vm0/commit/42907830a3d4dfa02ffce1918686ba86fc64539a))
+
+
+### Bug Fixes
+
+* eliminate blank flash between skeleton and content on initial load ([#7864](https://github.com/vm0-ai/vm0/issues/7864)) ([80cefea](https://github.com/vm0-ai/vm0/commit/80cefea2e405a949f702d01dd637cf770b2ed9ba))
+
+
+### Refactoring
+
+* replace manual delays in tests with deferred promises ([#7866](https://github.com/vm0-ai/vm0/issues/7866)) ([b6afd2a](https://github.com/vm0-ai/vm0/commit/b6afd2a2f985bf6052b22f2a721ab17157435a55))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.148.0
+
 ## [0.183.0](https://github.com/vm0-ai/vm0/compare/app-v0.182.0...app-v0.183.0) (2026-04-03)
 
 

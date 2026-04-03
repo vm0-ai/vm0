@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.2](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.3.1...nbd-cow-v0.3.2) (2026-04-03)
+
+
+### Bug Fixes
+
+* **nbd:** set disconnected flag only after successful disconnect ([#7870](https://github.com/vm0-ai/vm0/issues/7870)) ([6ffe3d4](https://github.com/vm0-ai/vm0/commit/6ffe3d483f1bdd70327b2e1303c541d600d127fe))
+
 ## [0.3.1](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.3.0...nbd-cow-v0.3.1) (2026-04-02)
 
 
