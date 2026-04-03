@@ -588,7 +588,14 @@ function RunActivityLineView({
     );
   }
 
-  const items = deduplicateSummaries(rawSummaries);
+  const rawItems = deduplicateSummaries(rawSummaries);
+  const items = rawItems.map((summary, position) => {
+    return {
+      key: `${position}-${summary}`,
+      summary,
+      isLast: position === rawItems.length - 1,
+    };
+  });
 
   return (
     <div className="relative flex flex-col gap-3">
@@ -600,11 +607,10 @@ function RunActivityLineView({
           <div className="w-px h-full bg-border/60 zero-dashed-line" />
         </div>
       )}
-      {items.map((summary, idx) => {
-        const isLast = idx === items.length - 1;
+      {items.map(({ key, summary, isLast }) => {
         return (
           <p
-            key={idx}
+            key={key}
             className={`flex items-center gap-2.5 min-w-0 text-xs truncate animate-in fade-in slide-in-from-bottom-1 duration-300 ${
               isLast ? "" : "text-muted-foreground"
             }`}
@@ -656,7 +662,13 @@ function CollapsibleTimeline({
     return null;
   }
 
-  const items = deduplicateSummaries(summaries);
+  const rawItems = deduplicateSummaries(summaries);
+  const items = rawItems.map((summary, position) => {
+    return {
+      key: `${position}-${summary}`,
+      summary,
+    };
+  });
 
   return (
     <div className="mb-6">
@@ -686,10 +698,10 @@ function CollapsibleTimeline({
               <div className="w-px h-full zero-dashed-line" />
             </div>
           )}
-          {items.map((summary, idx) => {
+          {items.map(({ key, summary }) => {
             return (
               <p
-                key={idx}
+                key={key}
                 className="flex items-center gap-2 min-w-0 text-xs text-muted-foreground truncate"
               >
                 <span className="h-3 w-3 shrink-0 flex items-center justify-center relative z-[1] rounded-full bg-card">
