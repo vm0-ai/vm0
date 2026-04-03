@@ -52,6 +52,11 @@ pub struct NbdCowDevice {
     shutdown: CancellationToken,
     /// Set to true after shutdown_inner completes, so Drop doesn't double-disconnect.
     disconnected: bool,
+    /// TID of the thread that called netlink::connect_device(). The kernel
+    /// records this in `/sys/block/nbdN/pid`. We save it so we can still
+    /// identify the device as ours even after the connecting tokio worker
+    /// thread has exited (at which point `/proc/self/task/{tid}` disappears).
+    connect_tid: u32,
 }
 
 impl NbdCowDevice {
@@ -95,7 +100,7 @@ impl NbdCowDevice {
             // Inner loop: acquire from pool and try to connect.
             // EBUSY retries get a fresh device without consuming the outer budget.
             let mut ebusy_count: u32 = 0;
-            let (device_index, shutdown, server_handles) = loop {
+            let (device_index, shutdown, server_handles, connect_tid) = loop {
                 let device_index = device_pool.lock().await.acquire().await?;
 
                 // Fresh shutdown token and socketpairs for each attempt
@@ -132,7 +137,12 @@ impl NbdCowDevice {
                 }
 
                 match netlink::connect_device(device_index, &client_fds, size, BLOCK_SIZE as u64) {
-                    Ok(()) => break (device_index, shutdown, server_handles),
+                    Ok(()) => {
+                        // Record the TID of the thread that connected — the kernel
+                        // stores this in /sys/block/nbdN/pid via task_pid_nr().
+                        let tid = unsafe { libc::gettid() } as u32;
+                        break (device_index, shutdown, server_handles, tid);
+                    }
                     Err(error::NbdCowError::NetlinkErrno { errno, .. }) if errno == libc::EBUSY => {
                         ebusy_count += 1;
                         tracing::debug!(
@@ -176,6 +186,7 @@ impl NbdCowDevice {
                     server_handles,
                     shutdown,
                     disconnected: false,
+                    connect_tid,
                 });
             }
 
@@ -333,18 +344,21 @@ impl NbdCowDevice {
         Ok(())
     }
 
-    /// Check if we still own the NBD device by comparing the sysfs PID.
+    /// Check if we still own the NBD device by comparing the sysfs PID
+    /// against the TID we recorded at connect time.
     ///
-    /// The kernel records the connecting **thread's** TID (via `task_pid_nr`)
-    /// in `/sys/block/nbdN/pid`, not the process TGID. In multi-threaded
-    /// programs (tokio worker threads), TID ≠ TGID. We check ownership by
-    /// verifying the recorded TID belongs to our process via `/proc/self/task/`.
+    /// The kernel records the connecting thread's TID (via `task_pid_nr`) in
+    /// `/sys/block/nbdN/pid`. We compare it to `self.connect_tid` rather than
+    /// probing `/proc/self/task/` because the connecting tokio worker thread
+    /// may have exited by the time we clean up, which would make the old
+    /// `is_our_thread()` check return false and skip disconnect — leaking the
+    /// device.
     fn device_ownership(&self) -> DeviceOwnership {
         let pid_path = format!("/sys/block/nbd{}/pid", self.device_index);
         match std::fs::read_to_string(&pid_path) {
             Ok(contents) => {
                 let tid: u32 = contents.trim().parse().unwrap_or(0);
-                if is_our_thread(tid) {
+                if tid == self.connect_tid {
                     DeviceOwnership::Ours
                 } else {
                     DeviceOwnership::Foreign(tid)
