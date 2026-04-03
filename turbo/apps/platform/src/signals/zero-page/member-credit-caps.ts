@@ -9,7 +9,7 @@ import {
 import { zeroMemberCreditCapContract } from "@vm0/core";
 import { zeroClient$ } from "../api-client.ts";
 import { usageMembersAsync$ } from "../usage-page/usage-signals.ts";
-import { toast } from "@vm0/ui/components/ui/sonner";
+import { accept } from "../../lib/accept.ts";
 import { throwIfAbort } from "../utils.ts";
 
 interface MemberCreditCap {
@@ -31,7 +31,7 @@ const memberCreditCaps$ = computed(async (get) => {
 
   const caps = new Map<string, MemberCreditCap>();
 
-  // Fetch caps for all members in parallel
+  // Fetch caps for all members in parallel; silent fallback on error
   const results = await Promise.all(
     usage.members.map(async (member) => {
       const result = await client.get({
@@ -71,7 +71,7 @@ export const setMemberCreditCap$ = command(
   ) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroMemberCreditCapContract);
-    await client.set({ body: params });
+    await accept(client.set({ body: params }), [200]);
     set(memberCreditCapsReload$, (x) => {
       return x + 1;
     });
@@ -130,7 +130,6 @@ function createMemberCapSetting(
     } catch (error) {
       throwIfAbort(error);
       set(internalSavingPromise$, null);
-      toast.error("Failed to update credit cap. Please try again.");
     }
   });
 
@@ -149,7 +148,6 @@ function createMemberCapSetting(
     } catch (error) {
       throwIfAbort(error);
       set(internalSavingPromise$, null);
-      toast.error("Failed to clear credit cap. Please try again.");
     }
   });
 
