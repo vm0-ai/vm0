@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   logger,
   Level,
@@ -7,8 +7,18 @@ import {
 } from "../log.ts";
 
 describe("setLogErrorHandler", () => {
+  let errorSpy: ReturnType<typeof vi.spyOn>;
+
   beforeEach(() => {
     resetLoggerForTest();
+    // The global setup overrides console.error to throw on unexpected calls.
+    // This test suite intentionally triggers console.error via the log module,
+    // so we suppress it here.
+    errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    errorSpy.mockRestore();
   });
 
   it("should invoke handler on error()", () => {

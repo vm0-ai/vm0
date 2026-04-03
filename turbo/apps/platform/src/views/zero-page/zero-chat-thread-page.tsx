@@ -604,7 +604,7 @@ function RunActivityLineView({
         const isLast = idx === items.length - 1;
         return (
           <p
-            key={summary}
+            key={idx}
             className={`flex items-center gap-2.5 min-w-0 text-xs truncate animate-in fade-in slide-in-from-bottom-1 duration-300 ${
               isLast ? "" : "text-muted-foreground"
             }`}
@@ -686,10 +686,10 @@ function CollapsibleTimeline({
               <div className="w-px h-full zero-dashed-line" />
             </div>
           )}
-          {items.map((summary) => {
+          {items.map((summary, idx) => {
             return (
               <p
-                key={summary}
+                key={idx}
                 className="flex items-center gap-2 min-w-0 text-xs text-muted-foreground truncate"
               >
                 <span className="h-3 w-3 shrink-0 flex items-center justify-center relative z-[1] rounded-full bg-card">

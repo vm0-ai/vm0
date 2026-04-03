@@ -19,6 +19,23 @@ vi.hoisted(() => {
 
 beforeAll(() => {
   server.listen({ onUnhandledRequest: "error" });
+
+  // Override console.error to throw on unexpected errors.
+  // - NotSupportedError / AbortError: expected happy-dom noise, silently ignored.
+  // - "not wrapped in act(...)": unavoidable with our async bootstrap pattern
+  //   (render() runs inside act, then route setup updates page$ outside act).
+  //   Silently ignored.
+  // - Everything else: thrown so real problems surface early.
+  console.error = (...message: unknown[]) => {
+    const str = message.map(String).join(" ");
+    if (str.includes("NotSupportedError") || str.includes("AbortError")) {
+      return;
+    }
+    if (str.includes("not wrapped in act(")) {
+      return;
+    }
+    throw message[0] as Error;
+  };
 });
 
 // Reset handlers after each test
