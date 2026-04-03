@@ -8,7 +8,7 @@ import {
   JetBrains_Mono,
 } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
-import { getClerkPublishableKey } from "../src/lib/clerk-config";
+import { getClerkPublishableKey } from "../src/lib/shared/clerk-config";
 import { getAppUrl } from "../src/lib/zero/url";
 import { ThemeProvider } from "./components/ThemeProvider";
 import { env } from "../src/env";

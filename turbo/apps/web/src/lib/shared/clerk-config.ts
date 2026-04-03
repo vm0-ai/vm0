@@ -1,4 +1,4 @@
-import { env } from "../env";
+import { env } from "../../env";
 
 /**
  * Get Clerk publishable key from validated environment variables
