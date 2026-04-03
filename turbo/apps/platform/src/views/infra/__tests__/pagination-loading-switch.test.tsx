@@ -102,17 +102,6 @@ function createMockSchedule(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function mockScheduleAPIs(schedule = createMockSchedule()) {
-  server.use(
-    http.get("*/api/zero/schedules", () => {
-      return HttpResponse.json({ schedules: [schedule] });
-    }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
-  );
-}
-
 // ---- Pagination tests ----
 
 describe("pagination component", () => {
