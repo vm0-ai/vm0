@@ -2,6 +2,7 @@ mod ca;
 mod cmd;
 mod config;
 mod deps;
+mod dns;
 mod error;
 mod executor;
 mod host;

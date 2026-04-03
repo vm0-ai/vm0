@@ -26,8 +26,16 @@
           - iproute2
           - iptables
           - procps
+          - dnsmasq
         state: present
         update_cache: true
+      become: true
+
+    - name: Disable system dnsmasq (runner manages its own instance)
+      systemd:
+        name: dnsmasq
+        enabled: false
+        state: stopped
       become: true
 
     - name: Check if Docker is installed

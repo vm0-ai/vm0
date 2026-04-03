@@ -12,6 +12,7 @@ use uuid::Uuid;
 
 use crate::config::{self, ProfileConfig};
 use crate::deps;
+use crate::dns;
 use crate::error::{RunnerError, RunnerResult};
 use crate::executor::{self, ExecutorConfig};
 use crate::host;
@@ -173,6 +174,12 @@ pub async fn run_start(
     let ip_log_map = kmsg_log::new_ip_log_map();
     let kmsg_handle = kmsg_log::spawn(ip_log_map.clone());
 
+    // Start DNS proxy (dnsmasq) for domain-level DNS interception and logging.
+    // Shares ip_log_map with kmsg — both use source IP (peer veth) as key.
+    let dns_handle = dns::start(ip_log_map.clone())
+        .await
+        .map_err(|e| RunnerError::Internal(format!("dns proxy: {e}")))?;
+
     // Resource budget from host resources + config.
     let config::SandboxConfig {
         max_concurrent,
@@ -216,6 +223,7 @@ pub async fn run_start(
     let runtime = runtime_provider
         .create_runtime(sandbox::RuntimeConfig {
             proxy_port: Some(mitm.port()),
+            dns_port: Some(dns_handle.port()),
         })
         .await
         .map_err(|e| RunnerError::Internal(format!("sandbox runtime: {e}")))?;
@@ -281,6 +289,7 @@ pub async fn run_start(
         min_vcpu,
         min_memory_mb,
         kmsg_handle,
+        dns_handle,
     };
 
     run(config).await
@@ -307,6 +316,7 @@ struct RunConfig {
     min_vcpu: u32,
     min_memory_mb: u32,
     kmsg_handle: kmsg_log::KmsgHandle,
+    dns_handle: dns::DnsProxy,
 }
 
 type MitmRestartHandle = tokio::task::JoinHandle<RunnerResult<tokio::process::Child>>;
@@ -331,6 +341,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         min_vcpu,
         min_memory_mb,
         kmsg_handle,
+        dns_handle,
     } = config;
 
     // Build per-profile factories via the sandbox runtime.
@@ -556,6 +567,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // Stop the kmsg monitor and wait for the `dmesg -w` child process
     // to be killed and reaped.
     kmsg_handle.stop().await;
+    dns_handle.stop().await;
 
     status.set_mode(RunnerMode::Stopped).await;
     info!("runner stopped");

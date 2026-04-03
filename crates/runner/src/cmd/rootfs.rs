@@ -233,6 +233,10 @@ pub async fn run_rootfs(args: RootfsArgs) -> RunnerResult<String> {
             &guest_init_str,
             "--guest-mock-claude",
             &guest_mock_claude_str,
+            // Dummy nameserver — all UDP 53 is iptables-REDIRECT'd to dnsmasq.
+            // Must be routable (not loopback/gateway) so packets leave the VM.
+            "--dns-nameserver",
+            "8.8.8.8",
         ])
         .stdin(std::process::Stdio::null())
         .status()

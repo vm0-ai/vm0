@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.186.3](https://github.com/vm0-ai/vm0/compare/app-v0.186.2...app-v0.186.3) (2026-04-03)
+
+
+### Refactoring
+
+* clean up detach reason usage in signals layer ([#7838](https://github.com/vm0-ai/vm0/issues/7838)) ([e61a5de](https://github.com/vm0-ai/vm0/commit/e61a5de987a835cf811717dc3d648d6d9681e8e5))
+* migrate activity & firewall signals to accept pattern ([#8004](https://github.com/vm0-ai/vm0/issues/8004)) ([88870f7](https://github.com/vm0-ai/vm0/commit/88870f7a3957bfc5b8eecc835a66c38c56be0b79)), closes [#7881](https://github.com/vm0-ai/vm0/issues/7881)
+* **platform:** migrate settings & org management signals to accept pattern ([#8000](https://github.com/vm0-ai/vm0/issues/8000)) ([8bda1ae](https://github.com/vm0-ai/vm0/commit/8bda1aea196857afa38a651573b0da7e75c90ab0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.149.1
+
 ## [0.186.2](https://github.com/vm0-ai/vm0/compare/app-v0.186.1...app-v0.186.2) (2026-04-03)
 
 

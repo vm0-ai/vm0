@@ -1,5 +1,24 @@
 # Changelog
 
+## [12.191.1](https://github.com/vm0-ai/vm0/compare/web-v12.191.0...web-v12.191.1) (2026-04-03)
+
+
+### Bug Fixes
+
+* use session id instead of run id for developer-support consent code ([#8016](https://github.com/vm0-ai/vm0/issues/8016)) ([de33b0d](https://github.com/vm0-ai/vm0/commit/de33b0de0ee780188d80984801f4ec50ed9e7df3)), closes [#8013](https://github.com/vm0-ai/vm0/issues/8013)
+
+
+### Refactoring
+
+* remove unused developer-support:write capability ([#8017](https://github.com/vm0-ai/vm0/issues/8017)) ([6ab03d5](https://github.com/vm0-ai/vm0/commit/6ab03d54396902a1c0d7c6612ba45874122c0f78))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.149.1
+
 ## [12.191.0](https://github.com/vm0-ai/vm0/compare/web-v12.190.0...web-v12.191.0) (2026-04-03)
 
 

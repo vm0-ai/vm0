@@ -760,7 +760,10 @@ function OnboardingPageLayout({ children }: { children: React.ReactNode }) {
         {/* Account dropdown — bottom-left of left panel */}
         <div className="absolute bottom-6 left-4 z-20">
           <VM0ClerkProvider>
-            <AccountDropdown onAccountAction={onAccountAction} />
+            <AccountDropdown
+              onAccountAction={onAccountAction}
+              hidePreferences
+            />
           </VM0ClerkProvider>
         </div>
       </div>

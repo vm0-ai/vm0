@@ -209,7 +209,10 @@ function AvailableConnectorCard({
         )}
       </div>
       <div className="px-5 pb-4 pt-1">
-        <div className="text-xs text-muted-foreground line-clamp-2">
+        <div
+          data-testid="connector-help-text"
+          className="text-xs text-muted-foreground line-clamp-2"
+        >
           {connector.helpText ?? ""}
         </div>
       </div>
@@ -395,6 +398,7 @@ export function ZeroConnectorsPage() {
                 return (
                   <div
                     key={i}
+                    data-testid="connector-skeleton"
                     className="flex flex-col rounded-[var(--zero-card-radius)] border border-border/50 bg-card animate-pulse"
                   >
                     <div className="flex h-14 items-center gap-2.5 px-5">

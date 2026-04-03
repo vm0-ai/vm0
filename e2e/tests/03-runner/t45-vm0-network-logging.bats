@@ -4,8 +4,9 @@
 #
 # TCP: All outbound TCP is redirected through mitmproxy (transparent mode).
 #      Non-HTTP TCP (e.g. SSH) passes through as raw TCP.
+# DNS: Queries intercepted via iptables REDIRECT to dnsmasq, logged as type "dns".
 # Non-TCP: Logged via iptables LOG + /dev/kmsg (UDP, ICMP, etc).
-# Both types are written to the same per-run network JSONL file.
+# All types are written to the same per-run network JSONL file.
 
 load '../../helpers/setup'
 
@@ -66,19 +67,15 @@ EOF
     wait_for_log "$RUN_ID" --network -- "TCP" ":22" ":443"
 }
 
-@test "t45-1: udp dns queries appear in network logs" {
+@test "t45-1: dns queries logged via dnsmasq" {
     create_agent
 
-    # Run a command that triggers both UDP and HTTP (TCP) traffic.
-    # python3 sends a raw UDP DNS query to 8.8.8.8:53; curl makes an HTTP request.
-    # Both should appear in the same network log file.
-    # Note: dig/nslookup are not available in the sandbox image.
+    # DNS queries are intercepted by iptables REDIRECT to dnsmasq and logged
+    # as type "dns". getent triggers a standard libc DNS lookup.
     run $VM0_CLI run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
-        "python3 -c \"import socket; s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM); s.sendto(b'\\x00\\x01\\x01\\x00\\x00\\x01\\x00\\x00\\x00\\x00\\x00\\x00\\x07example\\x03com\\x00\\x00\\x01\\x00\\x01',('8.8.8.8',53)); s.recv(512); s.close(); print('UDP_OK=true')\" && curl -s -o /dev/null -w 'HTTP=%{http_code}' https://example.com"
+        "getent hosts example.com"
     assert_success
-    assert_output --partial "UDP_OK=true"
-    assert_output --partial "HTTP=200"
 
     RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
     [ -n "$RUN_ID" ] || {
@@ -86,8 +83,29 @@ EOF
         return 1
     }
 
-    # Verify network logs contain HTTP and UDP entries.
-    # formatNetworkOther renders: [timestamp] UDP   <size> <host>:<port>
-    # DNS uses port 53, so match both the protocol and port.
-    wait_for_log "$RUN_ID" --network -- "example.com" "UDP" ":53"
+    # Verify network logs contain DNS entries.
+    # DNS entries render as: [timestamp] DNS   example.com:53
+    wait_for_log "$RUN_ID" --network -- "example.com" "DNS" ":53"
+}
+
+@test "t45-2: non-dns udp appears in network logs" {
+    create_agent
+
+    # Send a UDP packet to a non-DNS port (port 9999) to verify that
+    # non-DNS UDP traffic is still logged via iptables LOG + /dev/kmsg.
+    # DNS (UDP 53) is redirected to dnsmasq, but other UDP goes through FORWARD.
+    run $VM0_CLI run "$AGENT_NAME" \
+        --artifact-name "$ARTIFACT_NAME" \
+        "python3 -c \"import socket; s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM); s.sendto(b'hello',('8.8.8.8',9999)); s.close(); print('UDP_SENT=true')\""
+    assert_success
+    assert_output --partial "UDP_SENT=true"
+
+    RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
+    [ -n "$RUN_ID" ] || {
+        echo "# Failed to extract Run ID"
+        return 1
+    }
+
+    # UDP entries render as: [timestamp] UDP   <size> 8.8.8.8:9999
+    wait_for_log "$RUN_ID" --network -- "UDP" ":9999"
 }

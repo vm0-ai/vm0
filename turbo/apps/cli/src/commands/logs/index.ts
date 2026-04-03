@@ -156,16 +156,16 @@ function formatNetworkTcp(entry: NetworkLogEntry): string {
 }
 
 /**
- * Format a non-TCP/non-HTTP log entry (UDP, ICMP, etc).
- * These come from iptables LOG via /dev/kmsg, not mitmproxy.
+ * Format a non-TCP/non-HTTP log entry (UDP, ICMP, DNS, etc).
+ * These come from iptables LOG via /dev/kmsg or dnsmasq query log.
  */
 function formatNetworkOther(entry: NetworkLogEntry): string {
   const proto = (entry.type || "???").toUpperCase();
   const host = entry.host || "unknown";
   const port = entry.port || 0;
-  const size = entry.request_size || 0;
+  const size = entry.request_size ? ` ${formatBytes(entry.request_size)}` : "";
 
-  return `[${entry.timestamp}] ${chalk.magenta(proto.padEnd(5))} ${formatBytes(size)} ${chalk.dim(`${host}:${port}`)}`;
+  return `[${entry.timestamp}] ${chalk.magenta(proto.padEnd(5))}${size} ${chalk.dim(`${host}:${port}`)}`;
 }
 
 /**

@@ -216,6 +216,7 @@ fn write_jsonl(path: &Path, entry: &LogEntry) {
     use std::io::Write;
     use std::os::unix::fs::OpenOptionsExt;
 
+    // [NETWORK_LOG_FIELDS] — keep in sync with all network log schemas
     let json = serde_json::json!({
         "timestamp": Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
         "type": entry.protocol,

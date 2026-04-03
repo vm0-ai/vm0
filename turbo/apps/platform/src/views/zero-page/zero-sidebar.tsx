@@ -277,9 +277,11 @@ function useAccountSessions() {
 export function AccountDropdown({
   onAccountAction,
   collapsed = false,
+  hidePreferences = false,
 }: {
   onAccountAction?: (action: ZeroAccountAction) => void;
   collapsed?: boolean;
+  hidePreferences?: boolean;
 }) {
   const { user, clerk, accounts } = useAccountSessions();
   const features = useLastResolved(featureSwitch$);
@@ -391,20 +393,24 @@ export function AccountDropdown({
         )}
 
         {/* Preferences (standalone) */}
-        <DropdownMenuItem
-          onClick={() => {
-            return handleAccountAction("preferences");
-          }}
-          className="gap-3 px-3 py-2.5 rounded-lg"
-        >
-          <IconAdjustmentsHorizontal
-            size={18}
-            stroke={1.5}
-            className="text-muted-foreground"
-          />
-          <span>Preferences</span>
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
+        {!hidePreferences && (
+          <>
+            <DropdownMenuItem
+              onClick={() => {
+                return handleAccountAction("preferences");
+              }}
+              className="gap-3 px-3 py-2.5 rounded-lg"
+            >
+              <IconAdjustmentsHorizontal
+                size={18}
+                stroke={1.5}
+                className="text-muted-foreground"
+              />
+              <span>Preferences</span>
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
+        )}
 
         {/* Account management group */}
         {hasOthers ? (

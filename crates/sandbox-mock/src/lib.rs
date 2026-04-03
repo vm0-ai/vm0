@@ -367,7 +367,10 @@ mod tests {
     async fn runtime_provider_creates_runtime() {
         let provider = MockRuntimeProvider;
         let mut runtime = provider
-            .create_runtime(RuntimeConfig { proxy_port: None })
+            .create_runtime(RuntimeConfig {
+                proxy_port: None,
+                dns_port: None,
+            })
             .await
             .unwrap();
         runtime.shutdown().await;
