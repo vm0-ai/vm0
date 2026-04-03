@@ -1,4 +1,5 @@
 import { useLastResolved, useSet } from "ccstate-react";
+import { IconPlus } from "@tabler/icons-react";
 import {
   Dialog,
   DialogContent,
@@ -31,29 +32,28 @@ function ProviderCardInDialog({
     <button
       type="button"
       onClick={onAdd}
-      className="flex flex-col gap-3 rounded-xl zero-border bg-card p-4 text-left transition-colors hover:bg-muted/50"
+      className="rounded-lg bg-card overflow-hidden transition-colors hover:bg-muted/30 cursor-pointer text-left w-full"
+      style={{ border: "0.7px solid hsl(var(--gray-400))" }}
       data-testid={`org-provider-card-${type}`}
     >
-      <div className="flex items-center gap-3">
-        <div className="shrink-0">
-          <ProviderIcon type={type} size={28} />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="text-sm font-medium text-foreground truncate">
-            {label}
-          </div>
-        </div>
-      </div>
-      {description && (
-        <div className="text-xs text-muted-foreground line-clamp-2">
-          {description}
-        </div>
-      )}
-      <div className="mt-auto">
-        <span className="w-full h-8 rounded-lg zero-chip px-3 text-sm font-medium text-foreground transition-colors text-center flex items-center justify-center">
-          Add
+      <div className="flex items-center gap-2.5 px-4 pt-4 pb-1">
+        <span className="flex h-5 w-5 shrink-0 items-center justify-center">
+          <ProviderIcon type={type} size={20} />
+        </span>
+        <span className="min-w-0 flex-1 text-sm font-medium text-foreground truncate">
+          {label}
+        </span>
+        <span className="shrink-0 flex h-7 w-7 items-center justify-center rounded-md border border-border/60 text-muted-foreground">
+          <IconPlus size={14} stroke={1.5} />
         </span>
       </div>
+      {description && (
+        <div className="px-4 pb-4 pt-1">
+          <div className="text-xs text-muted-foreground line-clamp-2">
+            {description}
+          </div>
+        </div>
+      )}
     </button>
   );
 }
