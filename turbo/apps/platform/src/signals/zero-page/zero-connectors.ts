@@ -5,6 +5,7 @@ import { zeroClient$ } from "../api-client.ts";
 import { currentAgentId$ } from "./agent.ts";
 import { defaultAgentId$ } from "./zero-agent-name.ts";
 import { currentChatThread$ } from "./zero-chat.ts";
+import { accept } from "../../lib/accept.ts";
 
 // ---------------------------------------------------------------------------
 // Agent name resolution
@@ -32,10 +33,9 @@ const zeroAgent$ = computed(async (get) => {
   }
 
   const client = get(zeroClient$)(zeroAgentsByIdContract);
-  const result = await client.get({ params: { id: agentId } });
-  if (result.status !== 200) {
-    throw new Error(`Failed to fetch agent: ${result.status}`);
-  }
+  const result = await accept(client.get({ params: { id: agentId } }), [200], {
+    toast: false,
+  });
   return result.body;
 });
 
@@ -50,10 +50,11 @@ const seededConnectors$ = computed(async (get) => {
     return [];
   }
   const client = get(zeroClient$)(zeroUserConnectorsContract);
-  const result = await client.get({ params: { id: agent.agentId } });
-  if (result.status !== 200) {
-    return [];
-  }
+  const result = await accept(
+    client.get({ params: { id: agent.agentId } }),
+    [200],
+    { toast: false },
+  );
   return result.body.enabledTypes;
 });
 
@@ -96,19 +97,14 @@ const syncConnectorsToCompose$ = command(
     }
 
     const client = get(zeroClient$)(zeroUserConnectorsContract);
-    const result = await client.update({
-      params: { id: agent.agentId },
-      body: { enabledTypes: connectorValues },
-    });
+    await accept(
+      client.update({
+        params: { id: agent.agentId },
+        body: { enabledTypes: connectorValues },
+      }),
+      [200],
+    );
     signal.throwIfAborted();
-
-    if (result.status !== 200) {
-      const detail =
-        result.status === 401 || result.status === 403 || result.status === 404
-          ? result.body.error.message
-          : `status ${result.status}`;
-      throw new Error(`Save failed: ${detail}`);
-    }
 
     await set(reloadOnboardingStatus$);
     signal.throwIfAborted();

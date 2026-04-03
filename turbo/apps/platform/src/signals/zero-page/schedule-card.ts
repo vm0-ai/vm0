@@ -58,10 +58,6 @@ export const setEditingScheduleId$ = command(
   },
 );
 
-export const { get$: saveError$, set$: setSaveError$ } = cell<string | null>(
-  null,
-);
-
 export const { get$: togglingIds$, set$: setTogglingIds$ } = cell<Set<string>>(
   new Set(),
 );

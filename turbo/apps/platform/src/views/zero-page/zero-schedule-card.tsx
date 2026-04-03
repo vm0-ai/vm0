@@ -10,8 +10,6 @@ import {
   setAddScheduleOpen$,
   editingScheduleId$,
   setEditingScheduleId$,
-  saveError$,
-  setSaveError$,
   togglingIds$,
   setTogglingIds$,
   runningIds$,
@@ -28,7 +26,7 @@ import {
   TabsList,
   TabsTrigger,
 } from "@vm0/ui";
-import { throwIfAbort, detach, Reason } from "../../signals/utils.ts";
+import { detach, Reason } from "../../signals/utils.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   ScheduleFormDialog,
@@ -246,6 +244,8 @@ interface ZeroScheduleCardProps {
   saving?: boolean;
   /** Default timezone for new schedules. Falls back to browser timezone. */
   defaultTimezone?: string;
+  /** Error message to display in the save dialog. Provided by consuming view via useLoadableSet. */
+  saveError?: string | null;
 }
 
 export function ZeroScheduleCard({
@@ -258,6 +258,7 @@ export function ZeroScheduleCard({
   onRunNow,
   onOpenDetails,
   saving,
+  saveError,
 }: ZeroScheduleCardProps) {
   const signal = useGet(pageSignal$);
   const scheduleViewMode = useGet(scheduleViewMode$);
@@ -270,8 +271,6 @@ export function ZeroScheduleCard({
   const setAddScheduleOpen = useSet(setAddScheduleOpen$);
   const editingScheduleId = useGet(editingScheduleId$);
   const setEditingScheduleId = useSet(setEditingScheduleId$);
-  const saveError = useGet(saveError$);
-  const setSaveError = useSet(setSaveError$);
   const togglingIds = useGet(togglingIds$);
   const setTogglingIds = useSet(setTogglingIds$);
 
@@ -282,7 +281,6 @@ export function ZeroScheduleCard({
     : null;
 
   const openAddSchedule = () => {
-    setSaveError(null);
     detach(setAddScheduleOpen(true, signal), Reason.DomCallback);
   };
 
@@ -290,7 +288,6 @@ export function ZeroScheduleCard({
   const setPendingDelete = useSet(setPendingDeleteEntry$);
 
   const openEditSchedule = (entry: ScheduleEntry) => {
-    setSaveError(null);
     detach(setEditingScheduleId(entry.id, signal), Reason.DomCallback);
   };
 
@@ -354,7 +351,6 @@ export function ZeroScheduleCard({
 
   const handleCreateSave = (values: ScheduleFormValues) => {
     if (onSave) {
-      setSaveError(null);
       detach(
         onSave({
           prompt: values.prompt.trim(),
@@ -369,18 +365,14 @@ export function ZeroScheduleCard({
             values.freq === "every_week" ? values.dayOfWeek : undefined,
           dayOfMonth:
             values.freq === "every_month" ? values.dayOfMonth : undefined,
-        })
-          .then(() => {
+        }).then(
+          () => {
             detach(setAddScheduleOpen(false, signal), Reason.DomCallback);
-          })
-          .catch((error: unknown) => {
-            throwIfAbort(error);
-            setSaveError(
-              error instanceof Error
-                ? error.message
-                : "Failed to save schedule",
-            );
-          }),
+          },
+          (_error: unknown) => {
+            // error is captured by useLoadableSet in the consuming view and passed as saveError prop
+          },
+        ),
         Reason.DomCallback,
       );
       return;
@@ -410,7 +402,6 @@ export function ZeroScheduleCard({
 
   const handleEditSave = (values: ScheduleFormValues) => {
     if (onSave) {
-      setSaveError(null);
       detach(
         onSave({
           prompt: values.prompt.trim(),
@@ -426,18 +417,14 @@ export function ZeroScheduleCard({
           dayOfMonth:
             values.freq === "every_month" ? values.dayOfMonth : undefined,
           editName: editingEntry?.name,
-        })
-          .then(() => {
+        }).then(
+          () => {
             detach(setEditingScheduleId(null, signal), Reason.DomCallback);
-          })
-          .catch((error: unknown) => {
-            throwIfAbort(error);
-            setSaveError(
-              error instanceof Error
-                ? error.message
-                : "Failed to save schedule",
-            );
-          }),
+          },
+          (_error: unknown) => {
+            // error is captured by useLoadableSet in the consuming view and passed as saveError prop
+          },
+        ),
         Reason.DomCallback,
       );
       return;

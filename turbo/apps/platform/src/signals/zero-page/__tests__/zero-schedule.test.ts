@@ -615,7 +615,7 @@ describe("zero-schedule signals", () => {
           },
           context.signal,
         ),
-      ).rejects.toThrow("Failed to enable schedule (404)");
+      ).rejects.toThrow("Schedule not found");
     });
 
     it("should optimistically update local state without refetching", async () => {

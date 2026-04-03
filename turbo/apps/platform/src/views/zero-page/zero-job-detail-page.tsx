@@ -657,7 +657,10 @@ function JobScheduleTab({ displayName }: { displayName: string }) {
   const entries = useLastResolved(zeroJobScheduleEntries$) ?? [];
   const loading = scheduleLoadable.state === "loading";
   const scheduleError = loadableErrorMessage(scheduleLoadable);
-  const saveSchedule = useSet(saveZeroJobSchedule$);
+  const [saveLoadable, saveScheduleTracked] =
+    useLoadableSet(saveZeroJobSchedule$);
+  const saveError =
+    saveLoadable.state === "hasError" ? String(saveLoadable.error) : null;
   const deleteSchedule = useSet(deleteZeroJobSchedule$);
   const toggleEnabled = useSet(toggleZeroJobScheduleEnabled$);
   const runScheduleNow = useSet(runScheduleNow$);
@@ -678,8 +681,9 @@ function JobScheduleTab({ displayName }: { displayName: string }) {
       entries={entries}
       loading={loading}
       scheduleError={scheduleError}
+      saveError={saveError}
       onSave={(params) => {
-        return saveSchedule(params, pageSignal);
+        return saveScheduleTracked(params, pageSignal);
       }}
       onDelete={(name) => {
         return deleteSchedule(name, pageSignal);

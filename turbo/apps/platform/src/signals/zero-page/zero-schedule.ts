@@ -10,7 +10,6 @@ import {
   type ScheduleResponse,
 } from "@vm0/core";
 import { throwIfAbort } from "../utils.ts";
-import { logger } from "../log.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { zeroOnboardingStatus$ } from "./zero-onboarding.ts";
 import {
@@ -20,13 +19,7 @@ import {
   type ScheduleBody,
   type CronTimeOption,
 } from "./cron.ts";
-
-const L = logger("ZeroSchedule");
-
-function scheduleSaveFailure(message: string): never {
-  toast.error(message);
-  throw new Error(message);
-}
+import { accept } from "../../lib/accept.ts";
 
 // ---------------------------------------------------------------------------
 // State
@@ -170,13 +163,8 @@ export const fetchZeroSchedules$ = command(
 
     try {
       const client = get(zeroClient$)(zeroSchedulesMainContract);
-      const result = await client.list();
+      const result = await accept(client.list(), [200], { toast: false });
       signal.throwIfAborted();
-
-      if (result.status !== 200) {
-        set(internalSchedules$, []);
-        return;
-      }
 
       // Filter schedules for this agent's composeId
       const agentSchedules = result.body.schedules.filter((s) => {
@@ -185,7 +173,6 @@ export const fetchZeroSchedules$ = command(
       set(internalSchedules$, agentSchedules);
     } catch (error) {
       throwIfAbort(error);
-      L.error("Failed to fetch zero schedules:", error);
       set(internalSchedules$, []);
     }
   },
@@ -271,25 +258,14 @@ export const saveZeroSchedule$ = command(
     signal.throwIfAborted();
     const composeId = status.defaultAgentId;
     if (!composeId) {
-      scheduleSaveFailure("No default agent configured");
+      throw new Error("No default agent configured");
     }
 
     const body = buildScheduleBody(composeId, params);
 
     const client = get(zeroClient$)(zeroSchedulesMainContract);
-    const result = await client.deploy({ body });
+    await accept(client.deploy({ body }), [200, 201]);
     signal.throwIfAborted();
-
-    if (result.status !== 200 && result.status !== 201) {
-      const message =
-        result.status === 400 ||
-        result.status === 401 ||
-        result.status === 403 ||
-        result.status === 404
-          ? result.body.error.message
-          : `Save failed (${result.status})`;
-      throw new Error(message);
-    }
 
     toast.success(params.editName ? "Schedule updated" : "Schedule created");
     await set(fetchZeroSchedules$, signal);
@@ -310,22 +286,19 @@ export const toggleZeroScheduleEnabled$ = command(
     signal.throwIfAborted();
     const composeId = status.defaultAgentId;
     if (!composeId) {
-      scheduleSaveFailure("No default agent configured");
+      throw new Error("No default agent configured");
     }
 
     const client = get(zeroClient$)(zeroSchedulesEnableContract);
     const action = params.enabled ? "enable" : "disable";
-    const result = await client[action]({
-      params: { name: params.name },
-      body: { agentId: composeId },
-    });
+    await accept(
+      client[action]({
+        params: { name: params.name },
+        body: { agentId: composeId },
+      }),
+      [200],
+    );
     signal.throwIfAborted();
-
-    if (result.status !== 200) {
-      const message = `Failed to ${action} schedule (${result.status})`;
-      toast.error(message);
-      throw new Error(message);
-    }
 
     // Optimistic update: patch the local schedule state instead of refetching
     const current = get(internalSchedules$);
@@ -352,19 +325,14 @@ export const deleteZeroSchedule$ = command(
     }
 
     const client = get(zeroClient$)(zeroSchedulesByNameContract);
-    const result = await client.delete({
-      params: { name: scheduleName },
-      query: { agentId: composeId },
-    });
+    await accept(
+      client.delete({
+        params: { name: scheduleName },
+        query: { agentId: composeId },
+      }),
+      [204],
+    );
     signal.throwIfAborted();
-
-    if (result.status !== 204) {
-      const msg =
-        result.status === 401 || result.status === 403 || result.status === 404
-          ? result.body.error.message
-          : `status ${result.status}`;
-      throw new Error(`Delete failed: ${msg}`);
-    }
 
     toast.success("Schedule deleted");
     await set(fetchZeroSchedules$, signal);
@@ -427,15 +395,10 @@ export const fetchAllOrgSchedules$ = command(
   async ({ get, set }, _signal: AbortSignal) => {
     try {
       const client = get(zeroClient$)(zeroSchedulesMainContract);
-      const result = await client.list();
-      if (result.status !== 200) {
-        set(internalAllSchedules$, []);
-        return;
-      }
+      const result = await accept(client.list(), [200], { toast: false });
       set(internalAllSchedules$, result.body.schedules);
     } catch (error) {
       throwIfAbort(error);
-      L.error("Failed to fetch all org schedules:", error);
       set(internalAllSchedules$, []);
     } finally {
       set(internalAllSchedulesLoaded$, true);
@@ -452,19 +415,8 @@ export const saveOrgSchedule$ = command(
     const body = buildScheduleBody(params.agentId, params);
 
     const client = get(zeroClient$)(zeroSchedulesMainContract);
-    const result = await client.deploy({ body });
+    const result = await accept(client.deploy({ body }), [200, 201]);
     signal.throwIfAborted();
-
-    if (result.status !== 200 && result.status !== 201) {
-      const message =
-        result.status === 400 ||
-        result.status === 401 ||
-        result.status === 403 ||
-        result.status === 404
-          ? result.body.error.message
-          : `Save failed (${result.status})`;
-      throw new Error(message);
-    }
 
     const scheduleId = result.body.schedule.id;
 
@@ -483,17 +435,14 @@ export const toggleOrgScheduleEnabled$ = command(
   ) => {
     const client = get(zeroClient$)(zeroSchedulesEnableContract);
     const action = params.enabled ? "enable" : "disable";
-    const result = await client[action]({
-      params: { name: params.name },
-      body: { agentId: params.agentId },
-    });
+    await accept(
+      client[action]({
+        params: { name: params.name },
+        body: { agentId: params.agentId },
+      }),
+      [200],
+    );
     signal.throwIfAborted();
-
-    if (result.status !== 200) {
-      const message = `Failed to ${action} schedule (${result.status})`;
-      toast.error(message);
-      throw new Error(message);
-    }
 
     await set(fetchAllOrgSchedules$, signal);
   },
@@ -506,19 +455,14 @@ export const deleteOrgSchedule$ = command(
     signal: AbortSignal,
   ) => {
     const client = get(zeroClient$)(zeroSchedulesByNameContract);
-    const result = await client.delete({
-      params: { name: params.name },
-      query: { agentId: params.agentId },
-    });
+    await accept(
+      client.delete({
+        params: { name: params.name },
+        query: { agentId: params.agentId },
+      }),
+      [204],
+    );
     signal.throwIfAborted();
-
-    if (result.status !== 204) {
-      const msg =
-        result.status === 401 || result.status === 403 || result.status === 404
-          ? result.body.error.message
-          : `status ${result.status}`;
-      throw new Error(`Delete failed: ${msg}`);
-    }
 
     toast.success("Schedule deleted");
     await set(fetchAllOrgSchedules$, signal);
@@ -536,20 +480,18 @@ export const runScheduleNow$ = command(
       return toast.dismiss(toastId);
     });
     const client = get(zeroClient$)(zeroScheduleRunContract);
-    const result = await client.run({ body: { scheduleId } });
-    signal.throwIfAborted();
-
-    if (result.status !== 201) {
-      const message =
-        result.status === 400 ||
-        result.status === 401 ||
-        result.status === 404 ||
-        result.status === 409
-          ? result.body.error.message
-          : `Run failed (${result.status})`;
+    let result;
+    try {
+      result = await accept(client.run({ body: { scheduleId } }), [201], {
+        toast: false,
+      });
+    } catch (error) {
+      throwIfAbort(error);
+      const message = error instanceof Error ? error.message : "Run failed";
       toast.error(message, { id: toastId });
-      throw new Error(message);
+      throw error;
     }
+    signal.throwIfAborted();
 
     const data = result.body;
 
