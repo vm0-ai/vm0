@@ -594,9 +594,8 @@ jobs:
           echo "  localhost resolves: ok"
 
           # Verify PostgreSQL can actually start (not just psql --version).
-          # Disable TCP (listen_addresses='') and use a custom socket directory
-          # until we understand what prevents TCP startup inside the VM.
-          sudo "$BIN_DIR/runner" exec "$RUN_ID" -- "mkdir -p /tmp/pgdata /tmp/pgsock && /usr/lib/postgresql/16/bin/initdb -D /tmp/pgdata -A trust && /usr/lib/postgresql/16/bin/pg_ctl -D /tmp/pgdata -l /tmp/pgdata/log -o \"-c listen_addresses='' -c unix_socket_directories='/tmp/pgsock'\" start && pg_isready -h /tmp/pgsock && /usr/lib/postgresql/16/bin/pg_ctl -D /tmp/pgdata stop" \
+          # Test with TCP on localhost — users will connect via localhost:5432.
+          sudo "$BIN_DIR/runner" exec "$RUN_ID" -- "mkdir -p /tmp/pgdata && /usr/lib/postgresql/16/bin/initdb -D /tmp/pgdata -A trust && /usr/lib/postgresql/16/bin/pg_ctl -D /tmp/pgdata -l /tmp/pgdata/log -o \"-c listen_addresses='localhost'\" start && pg_isready -h localhost && /usr/lib/postgresql/16/bin/pg_ctl -D /tmp/pgdata stop" \
             || { sudo "$BIN_DIR/runner" exec "$RUN_ID" -- "cat /tmp/pgdata/log" 2>&1 || true; fail "PostgreSQL start"; }
           echo "  PostgreSQL start/stop: ok"
           echo "PASS: runtime availability"
