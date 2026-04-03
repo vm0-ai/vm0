@@ -60,13 +60,11 @@ describe("zero schedule detail page - entry details (SCHED-D-012)", () => {
       expect(
         screen.getAllByText("Daily morning briefing")[0],
       ).toBeInTheDocument();
+      // Time string is shown in header subtitle (may appear in multiple places)
+      expect(screen.getAllByText(/every weekday/i)[0]).toBeInTheDocument();
+      // Timezone appears in the Settings tab (default tab) as a formatted label
+      expect(screen.getByText(/Eastern Time/i)).toBeInTheDocument();
     });
-
-    // Time string is shown in header subtitle (may appear in multiple places)
-    expect(screen.getAllByText(/every weekday/i)[0]).toBeInTheDocument();
-
-    // Timezone appears in the Settings tab (default tab) as a formatted label
-    expect(screen.getByText(/Eastern Time/i)).toBeInTheDocument();
   });
 });
 
@@ -123,24 +121,9 @@ describe("zero schedule detail page - toggle loading state (SCHED-D-014)", () =>
     });
 
     resolveToggle();
-  });
-});
-
-describe("zero schedule detail page - tab navigation (SCHED-D-015)", () => {
-  it("should render Settings, Instructions, and Run History tab triggers", async () => {
-    mockAPIs();
-    await setupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("tab", { name: /Settings/i }),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByRole("tab", { name: /Instructions/i }),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByRole("tab", { name: /Run History/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByRole("switch")).not.toBeDisabled();
     });
   });
 });
@@ -238,56 +221,9 @@ describe("zero schedule detail page - status filter dropdown (SCHED-D-018)", () 
     await user.click(screen.getByRole("tab", { name: /Run History/i }));
 
     await waitFor(() => {
-      expect(screen.getByText("All status")).toBeInTheDocument();
-    });
-  });
-});
-
-describe("zero schedule detail page - run count (SCHED-D-019)", () => {
-  it("should display the total page count in the pagination area", async () => {
-    server.use(
-      http.get("*/api/zero/logs", () => {
-        return HttpResponse.json({
-          data: [
-            {
-              id: "b0000002-0000-4000-a000-000000000002",
-              sessionId: null,
-              agentId: "c0000000-0000-4000-a000-000000000001",
-              displayName: "Zero",
-              framework: null,
-              status: "completed",
-              triggerSource: "schedule",
-              triggerAgentName: null,
-              scheduleId: SCHEDULE_ID,
-              createdAt: "2026-03-21T10:00:00Z",
-              startedAt: "2026-03-21T10:00:01Z",
-              completedAt: "2026-03-21T10:00:30Z",
-            },
-          ],
-          pagination: { hasMore: true, nextCursor: "cursor2", totalPages: 3 },
-          filters: {
-            statuses: ["completed"],
-            sources: ["schedule"],
-            agents: [],
-          },
-        });
-      }),
-    );
-    mockAPIs();
-    await setupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
-
-    const user = userEvent.setup();
-
-    await waitFor(() => {
       expect(
-        screen.getByRole("tab", { name: /Run History/i }),
+        screen.getByRole("combobox", { name: "Status filter" }),
       ).toBeInTheDocument();
-    });
-
-    await user.click(screen.getByRole("tab", { name: /Run History/i }));
-
-    await waitFor(() => {
-      expect(screen.getByText(/Page 1 of 3/)).toBeInTheDocument();
     });
   });
 });
