@@ -136,8 +136,8 @@ export default function RootLayout({
       publishableKey={getClerkPublishableKey()}
       signInUrl="/sign-in"
       signUpUrl="/sign-up"
-      signInForceRedirectUrl={getAppUrl()}
-      signUpForceRedirectUrl={getAppUrl()}
+      signInFallbackRedirectUrl={getAppUrl()}
+      signUpFallbackRedirectUrl={getAppUrl()}
       allowedRedirectOrigins={[getAppUrl()]}
     >
       <html lang="en" data-theme="dark" suppressHydrationWarning>
