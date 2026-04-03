@@ -1,5 +1,17 @@
 # Changelog
 
+## [12.189.1](https://github.com/vm0-ai/vm0/compare/web-v12.189.0...web-v12.189.1) (2026-04-03)
+
+
+### Bug Fixes
+
+* clean up runs on agent deletion, preserve billing records ([#7846](https://github.com/vm0-ai/vm0/issues/7846)) ([0d676a7](https://github.com/vm0-ai/vm0/commit/0d676a7d5b20573c7ef45b3f6681f5065fdaa0f7))
+
+
+### Refactoring
+
+* decompose build-zero-context.ts into focused modules under zero/context/ ([#7856](https://github.com/vm0-ai/vm0/issues/7856)) ([c1e8b0f](https://github.com/vm0-ai/vm0/commit/c1e8b0ff49a4b27091ef40772478c8a2595971ff)), closes [#7848](https://github.com/vm0-ai/vm0/issues/7848)
+
 ## [12.189.0](https://github.com/vm0-ai/vm0/compare/web-v12.188.4...web-v12.189.0) (2026-04-03)
 
 

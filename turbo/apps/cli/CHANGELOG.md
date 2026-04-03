@@ -1,5 +1,13 @@
 # Changelog
 
+## [9.100.0](https://github.com/vm0-ai/vm0/compare/cli-v9.99.0...cli-v9.100.0) (2026-04-03)
+
+
+### Features
+
+* **cli:** add connector identity to agent view --permissions ([#7863](https://github.com/vm0-ai/vm0/issues/7863)) ([7417e59](https://github.com/vm0-ai/vm0/commit/7417e59e8d785b8540c8f6a3e729ca8b27d61847)), closes [#7859](https://github.com/vm0-ai/vm0/issues/7859)
+* **cli:** show connector permissions in zero whoami sandbox output ([#7860](https://github.com/vm0-ai/vm0/issues/7860)) ([1a80f2c](https://github.com/vm0-ai/vm0/commit/1a80f2c77b4185662a0e34a05aa84967b8ed7e58))
+
 ## [9.99.0](https://github.com/vm0-ai/vm0/compare/cli-v9.98.2...cli-v9.99.0) (2026-04-03)
 
 
