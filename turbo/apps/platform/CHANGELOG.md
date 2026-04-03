@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.186.2](https://github.com/vm0-ai/vm0/compare/app-v0.186.1...app-v0.186.2) (2026-04-03)
+
+
+### Refactoring
+
+* **platform:** migrate schedules & agents signals to accept pattern ([#7996](https://github.com/vm0-ai/vm0/issues/7996)) ([26e44c1](https://github.com/vm0-ai/vm0/commit/26e44c1603585edd070fb59b16704f12079c5182))
+* **signals:** migrate chat & polling signals to accept pattern ([#7994](https://github.com/vm0-ai/vm0/issues/7994)) ([90633d2](https://github.com/vm0-ai/vm0/commit/90633d2f5054049a3c889c1294da750dfee3053c))
+
 ## [0.186.1](https://github.com/vm0-ai/vm0/compare/app-v0.186.0...app-v0.186.1) (2026-04-03)
 
 
