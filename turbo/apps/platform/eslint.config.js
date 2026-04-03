@@ -186,7 +186,6 @@ export default [
       "src/signals/zero-page/zero-agents.ts",
       "src/signals/zero-page/zero-connectors.ts",
       "src/signals/zero-page/zero-onboarding.ts",
-      "src/signals/zero-page/zero-pinned-agents.ts",
       "src/signals/zero-page/zero-schedule.ts",
     ],
     rules: {
