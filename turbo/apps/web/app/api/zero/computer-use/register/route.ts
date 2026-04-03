@@ -16,7 +16,7 @@ import {
 } from "../../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
 import { registerHost } from "../../../../../src/lib/zero/computer-use/computer-use-service";
-import { isBadRequest, isConflict } from "../../../../../src/lib/shared/errors";
+import { isConflict } from "../../../../../src/lib/shared/errors";
 
 const router = tsr.router(zeroComputerUseRegisterContract, {
   register: async ({ headers }) => {
@@ -40,9 +40,6 @@ const router = tsr.router(zeroComputerUseRegisterContract, {
       const result = await registerHost(org.orgId, userId);
       return { status: 200 as const, body: result };
     } catch (error) {
-      if (isBadRequest(error)) {
-        return createErrorResponse("BAD_REQUEST", "Invalid request");
-      }
       if (isConflict(error)) {
         return createErrorResponse(
           "CONFLICT",

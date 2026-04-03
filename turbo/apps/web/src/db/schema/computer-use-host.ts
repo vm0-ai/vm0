@@ -27,9 +27,6 @@ export const computerUseHosts = pgTable(
     ngrokEndpointId: text("ngrok_endpoint_id"),
     ngrokDomainId: text("ngrok_domain_id"),
 
-    // Capabilities granted to this host session
-    capabilities: text("capabilities").array(),
-
     expiresAt: timestamp("expires_at").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),

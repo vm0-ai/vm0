@@ -1,5 +1,5 @@
 {
-  "id": "86967359-03a4-45c6-a4bf-ac0abe33dce3",
+  "id": "86d7b53d-30db-40fd-bc15-6c5199945f3b",
   "prevId": "45114c0f-0dc3-4996-a8b5-acd1d5e531fe",
   "version": "7",
   "dialect": "postgresql",
@@ -1462,12 +1462,6 @@
         "ngrok_domain_id": {
           "name": "ngrok_domain_id",
           "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "capabilities": {
-          "name": "capabilities",
-          "type": "text[]",
           "primaryKey": false,
           "notNull": false
         },

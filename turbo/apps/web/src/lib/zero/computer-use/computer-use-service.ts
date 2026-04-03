@@ -7,7 +7,7 @@
 import { randomUUID } from "crypto";
 import { eq, and, gt } from "drizzle-orm";
 import { computerUseHosts } from "../../../db/schema/computer-use-host";
-import { badRequest, conflict, notFound } from "../../shared/errors";
+import { conflict, notFound } from "../../shared/errors";
 import { logger } from "../../shared/logger";
 import {
   findOrCreateBotUser,
@@ -63,7 +63,7 @@ export async function registerHost(
   const env = globalThis.services.env;
   const apiKey = env.NGROK_API_KEY;
   if (!apiKey) {
-    throw badRequest("NGROK_API_KEY is not configured");
+    throw new Error("NGROK_API_KEY is not configured");
   }
 
   // Generate names for ngrok resources

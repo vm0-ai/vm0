@@ -8,7 +8,6 @@ CREATE TABLE "computer_use_hosts" (
 	"ngrok_credential_id" text,
 	"ngrok_endpoint_id" text,
 	"ngrok_domain_id" text,
-	"capabilities" text[],
 	"expires_at" timestamp NOT NULL,
 	"created_at" timestamp DEFAULT now() NOT NULL,
 	"updated_at" timestamp DEFAULT now() NOT NULL
