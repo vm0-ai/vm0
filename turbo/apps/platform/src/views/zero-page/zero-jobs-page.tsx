@@ -1,13 +1,14 @@
+import { useState } from "react";
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
-  IconCrown,
+  IconLayoutGrid,
+  IconList,
   IconLoader2,
   IconPlus,
   IconTrash,
   IconUpload,
-  IconUsers,
 } from "@tabler/icons-react";
 import {
   Card,
@@ -18,6 +19,9 @@ import {
   DialogTitle,
   Button,
   Input,
+  Tabs,
+  TabsList,
+  TabsTrigger,
 } from "@vm0/ui";
 import {
   zeroSubagents$,
@@ -63,7 +67,6 @@ export function ZeroJobsPage() {
         ? agentsLoadable.error.message
         : "Unknown error"
       : null;
-  const zeroAvatarSrc = useAgentAvatar(rawAgentName ?? "");
   const dialogOpen = useGet(jobsDialogOpen$);
   const setDialogOpen = useSet(setJobsDialogOpen$);
   const newName = useGet(jobsNewName$);
@@ -72,6 +75,7 @@ export function ZeroJobsPage() {
   const creating = createLoadable.state === "loading";
   const resetDialog = useSet(resetJobsDialog$);
   const pageSignal = useGet(pageSignal$);
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
 
   const handleCreateTeammate = (avatarUrl: string) => {
     const trimmed = newName.trim();
@@ -99,122 +103,61 @@ export function ZeroJobsPage() {
 
   return (
     <div className="flex flex-1 flex-col min-h-0">
-      <header className="hidden md:block shrink-0 bg-transparent px-4 sm:px-6 pt-10 pb-3">
-        <div className="mx-auto max-w-[900px]">
-          <h1 className="hidden md:block text-lg font-semibold tracking-tight text-foreground">
-            Agents
-          </h1>
-          <p className="hidden md:block mt-0.5 text-sm text-muted-foreground">
-            {displayName} and sub-agents working together to run tailored
-            workflows for you and your team.
-          </p>
+      <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-3 md:pt-10 pb-0 md:pb-3">
+        <div className="mx-auto max-w-[900px] flex flex-wrap items-end justify-between gap-4">
+          <div className="min-w-0 hidden md:block">
+            <h1 className="text-lg font-semibold tracking-tight text-foreground">
+              Agents
+            </h1>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              {displayName} and sub-agents working together to run tailored
+              workflows for you and your team.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {!loading && !error && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="zero-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
+                onClick={() => {
+                  return setDialogOpen(true);
+                }}
+              >
+                <IconPlus size={14} stroke={2} />
+                New agent
+              </Button>
+            )}
+            <Tabs
+              value={viewMode}
+              onValueChange={(v) => {
+                return setViewMode(v as "grid" | "list");
+              }}
+              className="shrink-0"
+            >
+              <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
+                <TabsTrigger
+                  value="grid"
+                  className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
+                >
+                  <IconLayoutGrid size={14} stroke={1.5} />
+                  Grid
+                </TabsTrigger>
+                <TabsTrigger
+                  value="list"
+                  className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
+                >
+                  <IconList size={14} stroke={1.5} />
+                  List
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
         </div>
       </header>
 
       <main className="flex-1 overflow-auto px-4 sm:px-6 pt-3 pb-8">
         <div className="mx-auto max-w-[900px] flex flex-col gap-4">
-          {/* Zero — full width */}
-          {rawAgentName ? (
-            <Link
-              pathname="/agents/:id"
-              options={{ pathParams: { id: rawAgentName } }}
-              className="block no-underline text-inherit"
-            >
-              <Card className="zero-card cursor-pointer hover:bg-muted/30 transition-colors">
-                <CardContent className="p-5 flex items-center gap-4">
-                  {zeroAvatarSrc ? (
-                    <img
-                      src={zeroAvatarSrc}
-                      alt={displayName}
-                      className="h-12 w-12 shrink-0 rounded-full object-cover object-top"
-                    />
-                  ) : (
-                    <div
-                      className="h-12 w-12 shrink-0 rounded-full bg-muted"
-                      aria-hidden
-                    />
-                  )}
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <h2 className="text-base font-semibold tracking-tight text-foreground truncate">
-                        {displayName}
-                      </h2>
-                      <span className="zero-pill inline-flex items-center gap-1.5 rounded-lg border px-1.5 py-1 text-xs font-medium">
-                        <IconCrown
-                          size={12}
-                          stroke={1.8}
-                          className="shrink-0 text-amber-500 dark:text-amber-400"
-                        />
-                        Lead
-                      </span>
-                    </div>
-                    <p className="text-sm text-muted-foreground mt-0.5">
-                      Your primary AI assistant that manages your team and
-                      orchestrates workflows.
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            </Link>
-          ) : (
-            <Card className="zero-card">
-              <CardContent className="p-5 flex items-center gap-4">
-                {zeroAvatarSrc ? (
-                  <img
-                    src={zeroAvatarSrc}
-                    alt={displayName}
-                    className="h-12 w-12 shrink-0 rounded-full object-cover object-top"
-                  />
-                ) : (
-                  <div
-                    className="h-12 w-12 shrink-0 rounded-full bg-muted"
-                    aria-hidden
-                  />
-                )}
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-base font-semibold tracking-tight text-foreground truncate">
-                      {displayName}
-                    </h2>
-                    <span className="zero-pill inline-flex items-center gap-1.5 rounded-lg border px-1.5 py-1 text-xs font-medium">
-                      <IconCrown
-                        size={12}
-                        stroke={1.8}
-                        className="shrink-0 text-amber-500 dark:text-amber-400"
-                      />
-                      Lead
-                    </span>
-                  </div>
-                  <p className="text-sm text-muted-foreground mt-0.5">
-                    Your primary AI assistant that manages your team and
-                    orchestrates workflows.
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Sub-agents grid */}
-          {loading && (!agents || agents.length === 0) && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {[1, 2, 3].map((i) => {
-                return (
-                  <Card key={i} className="zero-card">
-                    <CardContent className="p-5">
-                      <div className="flex items-center gap-3 animate-pulse">
-                        <div className="h-10 w-10 rounded-full bg-muted" />
-                        <div className="min-w-0 flex-1 space-y-2">
-                          <div className="h-4 w-24 rounded bg-muted" />
-                          <div className="h-3 w-16 rounded bg-muted" />
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-          )}
-
           {error && (
             <Card className="zero-card">
               <CardContent className="px-6 py-6 text-center space-y-3">
@@ -229,23 +172,50 @@ export function ZeroJobsPage() {
             </Card>
           )}
 
-          {!loading && !error && agents && agents.length === 0 && (
-            <CreateTeammateButton
-              onClick={() => {
-                return setDialogOpen(true);
-              }}
-            />
-          )}
+          {viewMode === "grid" ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {rawAgentName ? (
+                <Link
+                  pathname="/agents/:id"
+                  options={{ pathParams: { id: rawAgentName } }}
+                  className="block no-underline text-inherit"
+                >
+                  <AgentCard
+                    agent={{
+                      id: rawAgentName,
+                      displayName: displayName,
+                    }}
+                    lead
+                  />
+                </Link>
+              ) : (
+                <AgentCard
+                  agent={{
+                    id: "",
+                    displayName: displayName,
+                  }}
+                  lead
+                />
+              )}
 
-          {agents && agents.length > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              <CreateTeammateButton
-                onClick={() => {
-                  return setDialogOpen(true);
-                }}
-              />
+              {loading &&
+                (!agents || agents.length === 0) &&
+                [1, 2, 3].map((i) => {
+                  return (
+                    <Card key={i} className="zero-card">
+                      <CardContent className="p-4">
+                        <div className="flex items-center gap-3 animate-pulse">
+                          <div className="h-10 w-10 rounded-full bg-muted" />
+                          <div className="min-w-0 flex-1 space-y-2">
+                            <div className="h-4 w-24 rounded bg-muted" />
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
 
-              {agents.map((agent) => {
+              {agents?.map((agent) => {
                 return (
                   <Link
                     key={agent.id}
@@ -254,6 +224,69 @@ export function ZeroJobsPage() {
                     className="block no-underline text-inherit"
                   >
                     <AgentCard agent={agent} />
+                  </Link>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="zero-card overflow-hidden">
+              {rawAgentName ? (
+                <Link
+                  pathname="/agents/:id"
+                  options={{ pathParams: { id: rawAgentName } }}
+                  className="block no-underline text-inherit"
+                >
+                  <AgentListRow
+                    agent={{
+                      id: rawAgentName,
+                      displayName: displayName,
+                    }}
+                    lead
+                    isLast={!agents || agents.length === 0}
+                  />
+                </Link>
+              ) : (
+                <AgentListRow
+                  agent={{
+                    id: "",
+                    displayName: displayName,
+                  }}
+                  lead
+                  isLast={!agents || agents.length === 0}
+                />
+              )}
+
+              {loading &&
+                (!agents || agents.length === 0) &&
+                [1, 2, 3].map((i, _, arr) => {
+                  return (
+                    <div key={i}>
+                      <div className="flex items-center gap-3 px-5 py-4 animate-pulse">
+                        <div className="h-10 w-10 rounded-full bg-muted" />
+                        <div className="min-w-0 flex-1 space-y-2">
+                          <div className="h-4 w-24 rounded bg-muted" />
+                          <div className="h-3 w-40 rounded bg-muted" />
+                        </div>
+                      </div>
+                      {i < arr.length && (
+                        <div className="mx-5 border-b border-border/50" />
+                      )}
+                    </div>
+                  );
+                })}
+
+              {agents?.map((agent, idx) => {
+                return (
+                  <Link
+                    key={agent.id}
+                    pathname="/agents/:id"
+                    options={{ pathParams: { id: agent.id } }}
+                    className="block no-underline text-inherit"
+                  >
+                    <AgentListRow
+                      agent={agent}
+                      isLast={idx === agents.length - 1}
+                    />
                   </Link>
                 );
               })}
@@ -271,32 +304,6 @@ export function ZeroJobsPage() {
         creating={creating}
       />
     </div>
-  );
-}
-
-function CreateTeammateButton({ onClick }: { onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="w-full h-full flex items-center gap-3 rounded-xl border border-dashed border-[hsl(var(--gray-400))] px-4 py-4 transition-colors hover:bg-muted/30 group cursor-pointer text-left"
-    >
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg">
-        <IconPlus
-          size={18}
-          stroke={2}
-          className="text-foreground/50 group-hover:text-foreground transition-colors"
-        />
-      </span>
-      <div className="min-w-0">
-        <p className="text-sm font-medium text-foreground/80 group-hover:text-foreground transition-colors">
-          Create teammate
-        </p>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          Add a specialized agent to your team
-        </p>
-      </div>
-    </button>
   );
 }
 
@@ -373,148 +380,176 @@ function CreateTeammateDialogContent({
   const displaySrc = resolveAvatarUrl(avatarUrl) ?? ZERO_AVATARS[0];
 
   return (
-    <DialogContent className="sm:max-w-[480px] p-0 gap-0">
-      <div className="flex flex-col items-center h-[min(360px,80dvh)]">
-        <DialogHeader className="px-6 pt-8 pb-4 flex flex-col items-center text-center">
-          <div className="relative group mb-3">
-            <img
-              src={displaySrc}
-              alt="New teammate"
-              className="h-16 w-16 rounded-full object-cover object-top"
-            />
-            <button
-              type="button"
-              onClick={() => {
-                return isCustom ? resetAvatarUrl() : fileInputEl?.click();
-              }}
-              disabled={uploading}
-              className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-              aria-label={isCustom ? "Remove custom avatar" : "Upload avatar"}
-            >
-              {uploading ? (
-                <IconLoader2 size={18} className="text-white animate-spin" />
-              ) : isCustom ? (
-                <IconTrash size={18} className="text-white" />
-              ) : (
-                <IconUpload size={18} className="text-white" />
-              )}
-            </button>
-            <input
-              ref={setFileInputEl}
-              type="file"
-              accept="image/png,image/jpeg,image/gif,image/webp"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) {
-                  handleUpload(file);
-                }
-                e.target.value = "";
-              }}
-            />
-          </div>
-          <DialogTitle className="text-base font-semibold">
-            Create a new teammate
-          </DialogTitle>
-          <p className="text-sm text-muted-foreground mt-1">
-            Name your sub-agent to get started.
-          </p>
-        </DialogHeader>
-
-        <div className="flex-1 flex items-center justify-center px-6">
-          <Input
-            value={newName}
+    <DialogContent className="sm:max-w-[420px]">
+      <DialogHeader className="flex flex-col items-center text-center pt-4">
+        <div className="relative group mb-2">
+          <img
+            src={displaySrc}
+            alt="New agent"
+            className="h-14 w-14 rounded-full object-cover object-top"
+          />
+          <button
+            type="button"
+            onClick={() => {
+              return isCustom ? resetAvatarUrl() : fileInputEl?.click();
+            }}
+            disabled={uploading}
+            className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+            aria-label={isCustom ? "Remove custom avatar" : "Upload avatar"}
+          >
+            {uploading ? (
+              <IconLoader2 size={18} className="text-white animate-spin" />
+            ) : isCustom ? (
+              <IconTrash size={18} className="text-white" />
+            ) : (
+              <IconUpload size={18} className="text-white" />
+            )}
+          </button>
+          <input
+            ref={setFileInputEl}
+            type="file"
+            accept="image/png,image/jpeg,image/gif,image/webp"
+            className="hidden"
             onChange={(e) => {
-              return onNameChange(e.target.value);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && newName.trim() && !creating) {
-                onConfirm(avatarUrl);
+              const file = e.target.files?.[0];
+              if (file) {
+                handleUpload(file);
               }
+              e.target.value = "";
             }}
-            placeholder="e.g. Research Assistant"
-            className="max-w-[280px] text-center"
-            autoFocus
-            disabled={creating}
           />
         </div>
+        <DialogTitle className="text-base font-semibold">
+          Create a new agent
+        </DialogTitle>
+        <p className="text-sm text-muted-foreground">
+          Name your agent to get started.
+        </p>
+      </DialogHeader>
 
-        <div className="px-6 pb-6 pt-4 flex justify-end gap-2 w-full">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onCancel}
-            disabled={creating}
-          >
-            Cancel
-          </Button>
-          <Button
-            size="sm"
-            onClick={() => {
-              return onConfirm(avatarUrl);
-            }}
-            disabled={!newName.trim() || creating}
-          >
-            {creating ? (
-              <span className="inline-flex items-center gap-1.5">
-                <IconLoader2 size={14} className="animate-spin" />
-                Creating...
-              </span>
-            ) : (
-              "Create"
-            )}
-          </Button>
-        </div>
+      <div className="py-2">
+        <Input
+          value={newName}
+          onChange={(e) => {
+            return onNameChange(e.target.value);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && newName.trim() && !creating) {
+              onConfirm(avatarUrl);
+            }
+          }}
+          placeholder="e.g. Research Assistant"
+          autoFocus
+          disabled={creating}
+        />
+      </div>
+
+      <div className="flex justify-end gap-2 pt-2">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onCancel}
+          disabled={creating}
+        >
+          Cancel
+        </Button>
+        <Button
+          size="sm"
+          onClick={() => {
+            return onConfirm(avatarUrl);
+          }}
+          disabled={!newName.trim() || creating}
+        >
+          {creating ? (
+            <span className="inline-flex items-center gap-1.5">
+              <IconLoader2 size={14} className="animate-spin" />
+              Creating...
+            </span>
+          ) : (
+            "Create"
+          )}
+        </Button>
       </div>
     </DialogContent>
   );
 }
 
-function AgentCard({
-  agent,
-}: {
+type AgentProps = {
   agent: {
     id: string;
     displayName?: string | null;
     description?: string | null;
   };
-}) {
+  lead?: boolean;
+};
+
+function AgentCard({ agent, lead }: AgentProps) {
   const avatarSrc = useAgentAvatar(agent.id);
   const displayName = agent.displayName ?? agent.id;
+  const description =
+    agent.description || (lead ? "Your core agent" : "Sub-agent");
   return (
     <Card className="zero-card cursor-pointer flex flex-col hover:bg-muted/30 transition-colors h-full">
-      <CardContent className="p-5 flex flex-col flex-1 gap-3">
-        <span className="self-start inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs text-muted-foreground">
-          <IconUsers
-            size={12}
-            stroke={1.5}
-            className="h-3 w-3 shrink-0 text-sky-600 dark:text-sky-400"
+      <CardContent className="px-5 py-4 flex items-center gap-3">
+        {avatarSrc ? (
+          <img
+            src={avatarSrc}
+            alt={displayName}
+            className="h-10 w-10 shrink-0 rounded-full object-cover object-top"
           />
-          Workspace
-        </span>
-        <div className="flex items-center gap-2.5">
-          {avatarSrc ? (
-            <img
-              src={avatarSrc}
-              alt={displayName}
-              className="h-10 w-10 shrink-0 rounded-full object-cover object-top"
-            />
-          ) : (
-            <div
-              className="h-10 w-10 shrink-0 rounded-full bg-muted"
-              aria-hidden
-            />
-          )}
-          <h2 className="text-base font-semibold tracking-tight text-foreground truncate">
-            {displayName}
-          </h2>
-        </div>
-        {agent.description && (
-          <p className="text-sm text-muted-foreground line-clamp-2">
-            {agent.description}
-          </p>
+        ) : (
+          <div
+            className="h-10 w-10 shrink-0 rounded-full bg-muted"
+            aria-hidden
+          />
         )}
+        <div className="flex-1 min-w-0">
+          <span className="text-sm font-medium text-foreground truncate block">
+            {displayName}
+          </span>
+          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
+            {description}
+          </p>
+        </div>
       </CardContent>
     </Card>
+  );
+}
+
+function AgentListRow({
+  agent,
+  lead,
+  isLast,
+}: AgentProps & { isLast?: boolean }) {
+  const avatarSrc = useAgentAvatar(agent.id);
+  const displayName = agent.displayName ?? agent.id;
+  const description =
+    agent.description || (lead ? "Your core agent" : "Sub-agent");
+  return (
+    <>
+      <div className="flex items-center gap-3 px-5 py-4 w-full text-left transition-colors hover:bg-muted/30 cursor-pointer">
+        {avatarSrc ? (
+          <img
+            src={avatarSrc}
+            alt={displayName}
+            className="h-10 w-10 shrink-0 rounded-full object-cover object-top"
+          />
+        ) : (
+          <div
+            className="h-10 w-10 shrink-0 rounded-full bg-muted"
+            aria-hidden
+          />
+        )}
+        <div className="flex-1 min-w-0">
+          <span className="text-sm font-medium text-foreground truncate block">
+            {displayName}
+          </span>
+          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
+            {description}
+          </p>
+        </div>
+      </div>
+      {!isLast && <div className="mx-5 border-b border-border/50" />}
+    </>
   );
 }

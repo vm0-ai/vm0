@@ -494,7 +494,7 @@ function JobPermissionsTab({
   if (allTypesLoadable.state !== "hasData" || connectorsLoading) {
     return (
       <div className="mx-auto max-w-[900px]">
-        <div className="rounded-[var(--zero-card-radius)] border-[0.7px] border-[hsl(var(--gray-400))] bg-card animate-pulse">
+        <div className="zero-card animate-pulse">
           {Array.from({ length: 4 }, (_, i) => {
             return (
               <div
@@ -521,7 +521,7 @@ function JobPermissionsTab({
   return (
     <div className="mx-auto max-w-[900px] flex flex-col gap-4">
       {connectedConnectors.length === 0 ? (
-        <div className="rounded-[var(--zero-card-radius)] border-[0.7px] border-[hsl(var(--gray-400))] bg-card py-8 text-center">
+        <div className="zero-card py-8 text-center">
           <p className="text-sm text-muted-foreground">
             No connected services yet. Head to the{" "}
             <Link
@@ -535,7 +535,7 @@ function JobPermissionsTab({
         </div>
       ) : (
         <>
-          <div className="rounded-[var(--zero-card-radius)] border-[0.7px] border-[hsl(var(--gray-400))] bg-card">
+          <div className="zero-card">
             <div className="relative border-b border-border/50">
               <div
                 className={cn(
