@@ -6,6 +6,7 @@ import { server } from "../../../mocks/server.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
+import { createDeferredPromise } from "../../../signals/utils.ts";
 
 const context = testContext();
 
@@ -271,6 +272,103 @@ describe("zero schedule page - agent labels", () => {
         screen.getAllByText("e0000000-0000-4000-a000-000000000003")[0],
       ).toBeInTheDocument();
     });
+  });
+
+  it("should only show schedules belonging to the filtered agent (SCHED-D-001)", async () => {
+    server.use(
+      http.get("*/api/zero/schedules", () => {
+        return HttpResponse.json({
+          schedules: [
+            {
+              ...mockScheduleBase(),
+              id: "f0000001-0000-4000-a000-000000000099",
+              agentId: "c0000000-0000-4000-a000-000000000001",
+              displayName: "Zero",
+              name: "alpha-only-task",
+              triggerType: "cron",
+              cronExpression: "0 9 * * 1-5",
+              atTime: null,
+              intervalSeconds: null,
+              timezone: "UTC",
+              prompt: "Alpha only task",
+              description: null,
+              enabled: true,
+              nextRunAt: null,
+              lastRunAt: null,
+              createdAt: "2026-03-01T00:00:00Z",
+              updatedAt: "2026-03-01T00:00:00Z",
+            },
+          ],
+        });
+      }),
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
+    );
+    await renderSchedulePage();
+    await waitFor(() => {
+      expect(screen.getAllByText("Alpha only task")[0]).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Beta only task")).not.toBeInTheDocument();
+  });
+
+  it("should display schedules from multiple agents with their respective agent labels (SCHED-D-006)", async () => {
+    server.use(
+      http.get("*/api/zero/schedules", () => {
+        return HttpResponse.json({
+          schedules: [
+            {
+              ...mockScheduleBase(),
+              id: "f0000001-0000-4000-a000-000000000011",
+              agentId: "c0000000-0000-4000-a000-000000000011",
+              displayName: "Alpha Bot",
+              name: "alpha-schedule",
+              triggerType: "cron",
+              cronExpression: "0 9 * * 1-5",
+              atTime: null,
+              intervalSeconds: null,
+              timezone: "UTC",
+              prompt: "Alpha daily standup",
+              description: null,
+              enabled: true,
+              nextRunAt: null,
+              lastRunAt: null,
+              createdAt: "2026-03-01T00:00:00Z",
+              updatedAt: "2026-03-01T00:00:00Z",
+            },
+            {
+              ...mockScheduleBase(),
+              id: "f0000001-0000-4000-a000-000000000022",
+              agentId: "c0000000-0000-4000-a000-000000000022",
+              displayName: "Beta Bot",
+              name: "beta-schedule",
+              triggerType: "loop",
+              cronExpression: null,
+              atTime: null,
+              intervalSeconds: 1800,
+              timezone: "UTC",
+              prompt: "Beta monitoring check",
+              description: null,
+              enabled: true,
+              nextRunAt: null,
+              lastRunAt: null,
+              createdAt: "2026-03-02T00:00:00Z",
+              updatedAt: "2026-03-02T00:00:00Z",
+            },
+          ],
+        });
+      }),
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
+    );
+    await renderSchedulePage();
+    await waitFor(() => {
+      expect(screen.getAllByText("Alpha daily standup")[0]).toBeInTheDocument();
+    });
+    expect(screen.getAllByText("Beta monitoring check")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("Alpha Bot")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("Beta Bot")[0]).toBeInTheDocument();
   });
 });
 
@@ -854,6 +952,34 @@ describe("zero schedule page - view modes", () => {
     await waitFor(() => {
       expect(screen.getByText("Week view")).toBeInTheDocument();
     });
+  });
+});
+
+describe("zero schedule page - loading state", () => {
+  it("should show skeleton while schedules are being fetched (SCHED-D-004)", async () => {
+    const hangDeferred = createDeferredPromise<void>(context.signal);
+    server.use(
+      http.get("*/api/zero/schedules", async () => {
+        await hangDeferred.promise;
+        return HttpResponse.json({ schedules: [] });
+      }),
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
+    );
+
+    // Do not await — page setup hangs waiting for schedules API to resolve
+    const pageSetupPromise = setupPage({ context, path: "/schedules" });
+
+    await waitFor(() => {
+      expect(
+        document.querySelectorAll(".animate-pulse").length,
+      ).toBeGreaterThan(0);
+    });
+
+    // Resolve to let setup complete
+    hangDeferred.resolve();
+    await pageSetupPromise;
   });
 });
 
