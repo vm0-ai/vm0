@@ -291,10 +291,13 @@ impl NbdCowDevice {
         // disconnected our device and recycled the index; blindly calling
         // disconnect(device_index) would tear down the new owner's device.
         if !self.disconnected {
-            self.disconnected = true;
             match self.device_ownership() {
-                DeviceOwnership::Ours => netlink::disconnect(self.device_index)?,
+                DeviceOwnership::Ours => {
+                    netlink::disconnect(self.device_index)?;
+                    self.disconnected = true;
+                }
                 DeviceOwnership::Foreign(pid) => {
+                    self.disconnected = true;
                     tracing::warn!(
                         device_index = self.device_index,
                         foreign_pid = pid,
@@ -302,6 +305,7 @@ impl NbdCowDevice {
                     );
                 }
                 DeviceOwnership::Unknown(err) => {
+                    self.disconnected = true;
                     tracing::warn!(
                         device_index = self.device_index,
                         error = %err,
