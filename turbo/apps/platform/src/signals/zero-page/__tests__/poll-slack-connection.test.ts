@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { http, HttpResponse } from "msw";
-import { delay } from "signal-timers";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
+import { createDeferredPromise } from "../../utils.ts";
 import {
   pollSlackConnection$,
   setSlackPollIntervalMs$,
@@ -21,9 +21,6 @@ async function setup() {
 
 const alwaysConnected = () => {
   return true;
-};
-const neverConnected = () => {
-  return false;
 };
 const connectedOnThirdCall = (n: number) => {
   return n >= 3;
@@ -89,24 +86,45 @@ describe("pollSlackConnection$", () => {
   });
 
   it("should stop polling when signal is aborted", async () => {
-    // Never return connected
-    const counter = mockSlackEndpoint(neverConnected);
+    const abortController = new AbortController();
+    const deferred = createDeferredPromise<void>(context.signal);
+    let callCount = 0;
+    server.use(
+      http.get("*/api/zero/integrations/slack", async () => {
+        callCount++;
+        // The second call is the first real poll — block it and abort the controller
+        if (callCount === 2) {
+          abortController.abort();
+          deferred.resolve();
+          await deferred.promise;
+        }
+        return HttpResponse.json({
+          isConnected: false,
+          isInstalled: true,
+          workspaceName: "Test Workspace",
+          isAdmin: false,
+          defaultAgentId: null,
+          agentOrgSlug: null,
+          environment: {
+            requiredSecrets: [],
+            requiredVars: [],
+            missingSecrets: [],
+            missingVars: [],
+          },
+        });
+      }),
+    );
 
     await setup();
 
-    const abortController = new AbortController();
     const pollPromise = context.store.set(
       pollSlackConnection$,
       abortController.signal,
     );
 
-    // Allow a few poll iterations before aborting
-    await delay(20);
-    abortController.abort();
-
     await expect(pollPromise).rejects.toThrow();
 
     // Should have polled at least once before abort
-    expect(counter.count).toBeGreaterThanOrEqual(1);
+    expect(callCount).toBeGreaterThanOrEqual(2);
   });
 });
