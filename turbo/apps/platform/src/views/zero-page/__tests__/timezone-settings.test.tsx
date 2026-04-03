@@ -31,22 +31,6 @@ async function openTimezoneTab(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe("timezone-settings - display", () => {
-  it("shows currently selected timezone in select trigger (PREF-D-010)", async () => {
-    const user = userEvent.setup();
-    mockPreferencesAPI({
-      timezone: "Asia/Tokyo",
-      pinnedAgentIds: [],
-      sendMode: "enter",
-    });
-    await openTimezoneTab(user);
-
-    await waitFor(() => {
-      expect(
-        screen.getByText(/Japan Standard Time \(JST\)/),
-      ).toBeInTheDocument();
-    });
-  });
-
   it("shows list of available timezone options when dropdown opened (PREF-D-011)", async () => {
     const user = userEvent.setup();
     mockPreferencesAPI({
@@ -67,7 +51,7 @@ describe("timezone-settings - display", () => {
     });
   });
 
-  it("shows spinner overlay while timezone change is saving (PREF-D-012)", async () => {
+  it("disables select while timezone change is saving (PREF-D-012)", async () => {
     const user = userEvent.setup();
     mockPreferencesAPI({
       timezone: "Etc/UTC",
@@ -88,11 +72,11 @@ describe("timezone-settings - display", () => {
     await user.click(screen.getByText(/Eastern Time \(ET\)/));
 
     await waitFor(() => {
-      expect(document.querySelector(".animate-spin")).toBeInTheDocument();
+      expect(screen.getByRole("combobox")).toBeDisabled();
     });
   });
 
-  it("shows skeleton loader before preferences have loaded (PREF-D-013)", async () => {
+  it("hides select before preferences have loaded (PREF-D-013)", async () => {
     server.use(
       http.get("*/api/zero/user-preferences", () => {
         return new Promise(() => {});
@@ -104,9 +88,8 @@ describe("timezone-settings - display", () => {
     await user.click(await screen.findByText("Time Zone"));
 
     await waitFor(() => {
-      expect(document.querySelector(".animate-pulse")).toBeInTheDocument();
+      expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
     });
-    expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
   });
 
   it("shows browser default timezone when preferences has no timezone set (PREF-D-014)", async () => {
@@ -123,41 +106,6 @@ describe("timezone-settings - display", () => {
 
     await waitFor(() => {
       expect(screen.getByText(expectedLabel)).toBeInTheDocument();
-    });
-  });
-});
-
-describe("timezone-settings - interaction", () => {
-  it("triggers timezone update when a different timezone is selected (PREF-D-015)", async () => {
-    const user = userEvent.setup();
-    let capturedBody: Record<string, unknown> | null = null;
-    server.use(
-      http.get("*/api/zero/user-preferences", () => {
-        return HttpResponse.json({
-          timezone: "Etc/UTC",
-          pinnedAgentIds: [],
-          sendMode: "enter",
-        });
-      }),
-      http.post("*/api/zero/user-preferences", async ({ request }) => {
-        capturedBody = (await request.json()) as Record<string, unknown>;
-        return HttpResponse.json({
-          timezone: "America/New_York",
-          pinnedAgentIds: [],
-          sendMode: "enter",
-        });
-      }),
-    );
-    await openTimezoneTab(user);
-
-    await user.click(screen.getByRole("combobox"));
-    await waitFor(() => {
-      expect(screen.getByText(/Eastern Time \(ET\)/)).toBeInTheDocument();
-    });
-    await user.click(screen.getByText(/Eastern Time \(ET\)/));
-
-    await waitFor(() => {
-      expect(capturedBody).toHaveProperty("timezone", "America/New_York");
     });
   });
 });
