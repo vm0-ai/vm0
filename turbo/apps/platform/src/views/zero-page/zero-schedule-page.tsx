@@ -35,7 +35,7 @@ import {
   COMMON_TIMEZONES,
   getTimezoneLabel,
 } from "../../signals/zero-page/cron.ts";
-import { detach, Reason, throwIfAbort } from "../../signals/utils.ts";
+import { detach, Reason } from "../../signals/utils.ts";
 import {
   allOrgScheduleEntries$,
   allOrgSchedulesLoaded$,
