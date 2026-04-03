@@ -241,7 +241,7 @@ function AgentGridView({
         (!agents || agents.length === 0) &&
         [1, 2, 3].map((i) => {
           return (
-            <Card key={i} className="zero-card" data-testid="agent-skeleton">
+            <Card key={i} className="zero-card">
               <CardContent className="p-4">
                 <div className="flex items-center gap-3 animate-pulse">
                   <div className="h-10 w-10 rounded-full bg-muted" />
@@ -302,7 +302,7 @@ function AgentListView({
         (!agents || agents.length === 0) &&
         [1, 2, 3].map((i, _, arr) => {
           return (
-            <div key={i} data-testid="agent-skeleton">
+            <div key={i}>
               <div className="flex items-center gap-3 px-5 py-4 animate-pulse">
                 <div className="h-10 w-10 rounded-full bg-muted" />
                 <div className="min-w-0 flex-1 space-y-2">

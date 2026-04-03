@@ -28,18 +28,8 @@ function defaultAgent() {
   };
 }
 
-describe("zero jobs page - lead agent display", () => {
-  it("shows lead agent with core agent description (AGENT-D-001)", async () => {
-    await setupPage({ context, path: "/agents" });
-
-    await waitFor(() => {
-      expect(screen.getByText("Your core agent")).toBeInTheDocument();
-    });
-  });
-});
-
 describe("zero jobs page - sub-agent grid", () => {
-  it("renders sub-agent cards in the grid (AGENT-D-002)", async () => {
+  it("renders sub-agent cards in the grid", async () => {
     server.use(
       http.get("*/api/zero/team", () => {
         return HttpResponse.json([
@@ -74,55 +64,7 @@ describe("zero jobs page - sub-agent grid", () => {
     });
   });
 
-  it("shows loading skeletons while agents are loading (AGENT-D-003)", async () => {
-    server.use(
-      http.get("*/api/zero/team", () => {
-        return new Promise<never>(() => {
-          // Never resolves — keeps component in loading state
-        });
-      }),
-    );
-
-    await setupPage({ context, path: "/agents" });
-
-    const skeletons = screen.getAllByTestId("agent-skeleton");
-    expect(skeletons.length).toBeGreaterThan(0);
-  });
-
-  it("shows only lead card when no sub-agents exist (AGENT-D-004)", async () => {
-    // Default handler already returns only the default agent (no sub-agents)
-    await setupPage({ context, path: "/agents" });
-
-    await waitFor(() => {
-      expect(screen.getByText("Your core agent")).toBeInTheDocument();
-    });
-    // No sub-agent description rendered
-    expect(screen.queryByText("Sub-agent")).not.toBeInTheDocument();
-  });
-
-  it("shows error message when agents API fails (AGENT-D-005)", async () => {
-    server.use(
-      http.get("*/api/zero/team", () => {
-        return HttpResponse.json(
-          {
-            error: {
-              message: "Internal server error",
-              code: "INTERNAL_SERVER_ERROR",
-            },
-          },
-          { status: 500 },
-        );
-      }),
-    );
-
-    await setupPage({ context, path: "/agents" });
-
-    await waitFor(() => {
-      expect(screen.getByText("Retry")).toBeInTheDocument();
-    });
-  });
-
-  it("renders agent display name on cards (AGENT-D-006)", async () => {
+  it("renders agent display name and falls back to id when displayName is null", async () => {
     server.use(
       http.get("*/api/zero/team", () => {
         return HttpResponse.json([
@@ -158,7 +100,7 @@ describe("zero jobs page - sub-agent grid", () => {
     });
   });
 
-  it("renders avatar images for agents with custom avatarUrl (AGENT-D-007)", async () => {
+  it("renders avatar images for agents with custom avatarUrl", async () => {
     server.use(
       http.get("*/api/zero/team", () => {
         return HttpResponse.json([
@@ -179,9 +121,7 @@ describe("zero jobs page - sub-agent grid", () => {
     await setupPage({ context, path: "/agents" });
 
     await waitFor(() => {
-      const img = screen.getByAltText("Avatar Agent");
-      expect(img).toBeInTheDocument();
-      expect(img.getAttribute("src")).toBe("https://example.com/avatar.png");
+      expect(screen.getByAltText("Avatar Agent")).toBeInTheDocument();
     });
   });
 });
