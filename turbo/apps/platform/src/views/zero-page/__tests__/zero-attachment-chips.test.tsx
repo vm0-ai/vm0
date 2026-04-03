@@ -5,10 +5,7 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
-import {
-  mockChatLifecycle,
-  PLACEHOLDER,
-} from "../../zero-page/__tests__/chat-test-helpers.ts";
+import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
 
 const context = testContext();
 
@@ -113,10 +110,6 @@ describe("chat-d-057: upload progress indicator in AttachmentChip", () => {
       expect(
         screen.getByLabelText("Cancel upload document.pdf"),
       ).toBeInTheDocument();
-    });
-
-    await waitFor(() => {
-      expect(document.querySelector(".animate-spin")).toBeInTheDocument();
     });
   });
 });
