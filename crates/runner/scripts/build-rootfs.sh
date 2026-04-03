@@ -211,7 +211,12 @@ extract_and_inject() {
 
   # Import proxy CA into Java's separate trust store (cacerts keystore).
   # Java does not read the system CA bundle — it has its own PKCS12 keystore.
-  sudo chroot "$EXTRACT_DIR" keytool -importcert -trustcacerts \
+  # In chroot, keytool can't find libjli.so via the default search path,
+  # so we locate it and add its directory to LD_LIBRARY_PATH.
+  local jli_dir
+  jli_dir=$(sudo chroot "$EXTRACT_DIR" find /usr/lib/jvm -name libjli.so -printf '%h' -quit)
+  sudo chroot "$EXTRACT_DIR" env LD_LIBRARY_PATH="$jli_dir" \
+    keytool -importcert -trustcacerts \
     -keystore /etc/ssl/certs/java/cacerts \
     -storepass changeit -noprompt \
     -alias vm0-proxy-ca \

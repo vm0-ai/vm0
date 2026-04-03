@@ -621,6 +621,29 @@ jobs:
           check_env "root" "--sudo"
           echo "PASS: environment variables"
 
+          # Test 6: verify HTTPS works through proxy for each runtime
+          # All traffic goes through mitmproxy, so TLS must trust the proxy CA.
+          echo "--- Test: HTTPS through proxy ---"
+          TLS_URL="https://www.vm0.ai"
+          tls_check() {
+            local label=$1; shift
+            OUTPUT=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" -- "$@" 2>&1) \
+              || fail "HTTPS $label: $OUTPUT"
+            echo "  HTTPS $label: ok"
+          }
+          tls_check "curl"      timeout 15 curl -sf --max-time 10 "$TLS_URL"
+          tls_check "wget"      timeout 15 wget -qO /dev/null --timeout=10 "$TLS_URL"
+          tls_check "git"       timeout 15 git ls-remote --exit-code https://github.com/anthropics/anthropic-sdk-python.git HEAD
+          tls_check "python"    timeout 15 python3 -c "import urllib.request; urllib.request.urlopen('$TLS_URL')"
+          tls_check "node"      timeout 15 node -e "const r=require('https').get('$TLS_URL',res=>{res.resume();res.on('end',()=>process.exit(0))});r.on('error',e=>{console.error(e);process.exit(1)})"
+          tls_check "ruby"      timeout 15 ruby -e "require 'net/http'; Net::HTTP.get(URI('$TLS_URL'))"
+          tls_check "php"       timeout 15 php -r "file_get_contents('$TLS_URL');"
+          tls_check "java"      timeout 30 bash -c "echo 'java.net.http.HttpClient.newHttpClient().send(java.net.http.HttpRequest.newBuilder(java.net.URI.create(\"$TLS_URL\")).build(),java.net.http.HttpResponse.BodyHandlers.discarding());' | jshell -"
+          tls_check "go"        timeout 30 bash -c "cd /tmp && echo 'package main; import (\"net/http\";\"os\"); func main(){r,e:=http.Get(os.Args[1]);if e!=nil{panic(e)};r.Body.Close()}' > tls.go && go run tls.go \"$TLS_URL\""
+          tls_check "cargo"     timeout 30 bash -c "CARGO_HOME=/tmp/cargo-test cargo search --limit 1 serde 2>&1 | head -1"
+          tls_check "chromium"  timeout 30 bash -c "chromium --headless --disable-gpu --no-sandbox --dump-dom \"$TLS_URL\" 2>/dev/null | head -1"
+          echo "PASS: HTTPS through proxy"
+
           # Stop transient service (kills sandbox, submit terminates naturally)
           sudo "$BIN_DIR/runner" service stop --name "$SVC"
           trap - EXIT
