@@ -151,12 +151,12 @@ describe("connector permission dialog", () => {
     // Dialog should close
     await waitFor(() => {
       expect(
-        screen.queryByText(/successfully connect with GitHub/),
+        screen.queryByText(/successfully connected with GitHub/),
       ).not.toBeInTheDocument();
     });
 
     // No API call should have been made
-    expect(putCalled).toBe(false);
+    expect(putCalled).toBeFalsy();
   });
 
   it("closes dialog without API calls when confirming with no selection", async () => {
@@ -182,11 +182,11 @@ describe("connector permission dialog", () => {
 
     await waitFor(() => {
       expect(
-        screen.queryByText(/successfully connect with GitHub/),
+        screen.queryByText(/successfully connected with GitHub/),
       ).not.toBeInTheDocument();
     });
 
-    expect(putCalled).toBe(false);
+    expect(putCalled).toBeFalsy();
   });
 
   it("persists permissions via API when confirming with selected agents", async () => {

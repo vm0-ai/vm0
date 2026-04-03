@@ -1,5 +1,6 @@
-import { useState } from "react";
-import { useLastResolved, useGet } from "ccstate-react";
+import { useEffect } from "react";
+import { useLastResolved, useGet, useSet } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import { IconSearch, IconCircleCheckFilled } from "@tabler/icons-react";
 import {
   Dialog,
@@ -9,18 +10,20 @@ import {
   DialogFooter,
 } from "@vm0/ui/components/ui/dialog";
 import { Button } from "@vm0/ui/components/ui/button";
-import {
-  CONNECTOR_TYPES,
-  zeroUserConnectorsContract,
-  type ConnectorType,
-} from "@vm0/core";
+import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
 import { agents$ } from "../../../../signals/zero-page/agents-list.ts";
-import { zeroClient$ } from "../../../../signals/api-client.ts";
-import { detach, Reason } from "../../../../signals/utils.ts";
 import { resolveAvatarUrl } from "../../avatar-utils.ts";
 import { ZERO_AVATARS } from "../../zero-avatars.ts";
-import { toast } from "@vm0/ui/components/ui/sonner";
 import { ConnectorIcon } from "./connector-icons.tsx";
+import {
+  permissionDialogSelected$,
+  togglePermissionDialogAgent$,
+  permissionDialogSearch$,
+  setPermissionDialogSearch$,
+  confirmPermissionDialog$,
+  resetPermissionDialog$,
+} from "../../../../signals/zero-page/settings/permission-dialog.ts";
+import { pageSignal$ } from "../../../../signals/page-signal.ts";
 
 const VISIBLE_AGENT_COUNT = 16;
 
@@ -34,10 +37,19 @@ export function ConnectorPermissionDialog({
   onClose,
 }: ConnectorPermissionDialogProps) {
   const allAgents = useLastResolved(agents$);
-  const createClient = useGet(zeroClient$);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [search, setSearch] = useState("");
-  const [submitting, setSubmitting] = useState(false);
+  const selected = useGet(permissionDialogSelected$);
+  const toggle = useSet(togglePermissionDialogAgent$);
+  const search = useGet(permissionDialogSearch$);
+  const setSearch = useSet(setPermissionDialogSearch$);
+  const [confirmLoadable, confirm] = useLoadableSet(confirmPermissionDialog$);
+  const reset = useSet(resetPermissionDialog$);
+  const pageSignal = useGet(pageSignal$);
+
+  const submitting = confirmLoadable.state === "loading";
+
+  useEffect(() => {
+    reset();
+  }, [reset]);
 
   const config = CONNECTOR_TYPES[connectorType];
 
@@ -56,50 +68,6 @@ export function ConnectorPermissionDialog({
 
   const visibleAgents = filtered.slice(0, VISIBLE_AGENT_COUNT);
   const remainingCount = filtered.length - VISIBLE_AGENT_COUNT;
-
-  const toggle = (id: string) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
-  };
-
-  const handleConfirm = () => {
-    if (selected.size === 0) {
-      onClose();
-      return;
-    }
-    setSubmitting(true);
-    const client = createClient(zeroUserConnectorsContract);
-    detach(
-      Promise.allSettled(
-        [...selected].map(async (agentId) => {
-          const existing = await client.get({ params: { id: agentId } });
-          const current =
-            existing.status === 200 ? existing.body.enabledTypes : [];
-          if (current.includes(connectorType)) {
-            return;
-          }
-          await client.update({
-            params: { id: agentId },
-            body: { enabledTypes: [...current, connectorType] },
-          });
-        }),
-      ).then(() => {
-        setSubmitting(false);
-        toast.success(
-          `${config.label} enabled for ${selected.size} agent${selected.size > 1 ? "s" : ""}`,
-        );
-        onClose();
-      }),
-      Reason.DomCallback,
-    );
-  };
 
   return (
     <Dialog
@@ -210,7 +178,9 @@ export function ConnectorPermissionDialog({
               Later
             </Button>
             <Button
-              onClick={handleConfirm}
+              onClick={() => {
+                confirm(connectorType, onClose, pageSignal);
+              }}
               disabled={submitting}
               className="h-9 w-[130px] rounded-[10px] bg-[#ed4e01] text-white hover:bg-[#d94500]"
             >
