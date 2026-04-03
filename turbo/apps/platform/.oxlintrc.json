@@ -239,7 +239,6 @@
     "no-fallthrough": "deny",
     "no-import-type-side-effects": "deny",
     "no-inferrable-types": "deny",
-    "no-invalid-fetch-options": "allow",
     "no-lonely-if": "deny",
     "no-multi-assign": "deny",
     "no-multi-string": "deny",
