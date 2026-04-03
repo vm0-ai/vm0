@@ -522,7 +522,7 @@ export function ZeroScheduleCard({
             onRunNow={
               handleRunNow
                 ? (entry) => {
-                    handleRunNow(entry).catch(() => {});
+                    detach(handleRunNow(entry), Reason.DomCallback);
                   }
                 : undefined
             }

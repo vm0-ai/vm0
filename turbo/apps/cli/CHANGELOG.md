@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.100.1](https://github.com/vm0-ai/vm0/compare/cli-v9.100.0...cli-v9.100.1) (2026-04-03)
+
+
+### Refactoring
+
+* **cli:** unify connector display style between whoami and agent view ([#7871](https://github.com/vm0-ai/vm0/issues/7871)) ([d11de51](https://github.com/vm0-ai/vm0/commit/d11de5172fbbfd8ce34596f9824ab4f8bd368746))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.148.0
+
 ## [9.100.0](https://github.com/vm0-ai/vm0/compare/cli-v9.99.0...cli-v9.100.0) (2026-04-03)
 
 

@@ -83,11 +83,12 @@ describe("recent thread skeleton (#7546)", () => {
 
     // Make chat-threads API hang so the only way the sidebar can show
     // threads is by retaining the previous useLastLoadable data.
-    // Deferred never resolves; context.signal rejects it on test cleanup.
+    // The deferred is resolved explicitly after assertions to allow clean
+    // clearAllDetached() completion in afterEach.
     const hangDeferred = createDeferredPromise<void>(context.signal);
     server.use(
       http.get("*/api/zero/chat-threads", async () => {
-        await hangDeferred.promise.catch(() => {});
+        await hangDeferred.promise;
         return HttpResponse.json({ threads: [] });
       }),
     );
@@ -102,5 +103,9 @@ describe("recent thread skeleton (#7546)", () => {
       expect(nav.querySelectorAll(".animate-pulse")).toHaveLength(0);
       expect(within(nav).getByText("My test conversation")).toBeInTheDocument();
     });
+
+    // Resolve the deferred so the hanging handler completes cleanly,
+    // allowing clearAllDetached() in afterEach to finish without timeout.
+    hangDeferred.resolve();
   });
 });

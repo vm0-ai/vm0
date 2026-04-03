@@ -12,23 +12,18 @@ export const copyStatus$ = computed((get) => {
  * Copy text to clipboard and show "copied" status for 5 seconds.
  */
 export const copyToClipboard$ = command(({ get, set }, text: string) => {
-  navigator.clipboard
-    .writeText(text)
-    .then(() => {
-      const existingTimeoutId = get(internalCopyTimeoutId$);
-      if (existingTimeoutId !== null) {
-        window.clearTimeout(existingTimeoutId);
-      }
+  return navigator.clipboard.writeText(text).then(() => {
+    const existingTimeoutId = get(internalCopyTimeoutId$);
+    if (existingTimeoutId !== null) {
+      window.clearTimeout(existingTimeoutId);
+    }
 
-      set(internalCopyStatus$, "copied");
+    set(internalCopyStatus$, "copied");
 
-      const timeoutId = window.setTimeout(() => {
-        set(internalCopyStatus$, "idle");
-        set(internalCopyTimeoutId$, null);
-      }, 5000);
-      set(internalCopyTimeoutId$, timeoutId);
-    })
-    .catch(() => {
-      // Clipboard access may fail in some environments
-    });
+    const timeoutId = window.setTimeout(() => {
+      set(internalCopyStatus$, "idle");
+      set(internalCopyTimeoutId$, null);
+    }, 5000);
+    set(internalCopyTimeoutId$, timeoutId);
+  });
 });

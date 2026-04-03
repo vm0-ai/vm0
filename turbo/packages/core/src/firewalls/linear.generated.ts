@@ -20,23 +20,7 @@ export const linearFirewall: FirewallConfig = {
           Authorization: "Bearer ${{ secrets.LINEAR_TOKEN }}",
         },
       },
-      permissions: [
-        {
-          name: "read",
-          description: "Read data (all GraphQL queries)",
-          rules: ["POST /graphql GraphQL type:query"],
-        },
-        {
-          name: "write",
-          description: "Modify data (all GraphQL mutations)",
-          rules: ["POST /graphql GraphQL type:mutation"],
-        },
-        {
-          name: "subscribe",
-          description: "Subscribe to real-time events",
-          rules: ["POST /graphql GraphQL type:subscription"],
-        },
-      ],
+      permissions: [],
     },
   ],
 };

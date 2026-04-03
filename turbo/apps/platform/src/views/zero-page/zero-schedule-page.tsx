@@ -506,14 +506,17 @@ export function ZeroSchedulePage() {
             : {}),
         },
         pageSignal,
-      )
-        .then((scheduleId) => {
+      ).then(
+        (scheduleId) => {
           setCreateOpen(false);
           navigate("/schedules/:id", {
             pathParams: { id: scheduleId },
           });
-        })
-        .catch(() => {}),
+        },
+        (_error: unknown) => {
+          // error is already captured by useLoadableSet and displayed in the dialog via saveError
+        },
+      ),
       Reason.DomCallback,
     );
   };
@@ -648,14 +651,14 @@ export function ZeroSchedulePage() {
                 }}
                 onEdit={openScheduleDetail}
                 onToggle={(entry, enabled) => {
-                  handleToggle(entry, enabled).catch(() => {});
+                  detach(handleToggle(entry, enabled), Reason.DomCallback);
                 }}
                 onDelete={handleDelete}
                 onNew={() => {
                   return setCreateOpen(true);
                 }}
                 onRunNow={(entry) => {
-                  handleRunNow(entry).catch(() => {});
+                  detach(handleRunNow(entry), Reason.DomCallback);
                 }}
                 onOpenDetails={openScheduleDetail}
               />

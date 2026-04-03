@@ -38,6 +38,8 @@ export default [
       "ccstate/no-new-abort-controller": "error",
       "ccstate/no-direct-local-storage": "error",
       "ccstate/no-detach-in-signals": "error",
+      "ccstate/no-direct-fetch": "error",
+      "ccstate/no-empty-promise-catch": "error",
     },
   },
   // Type-aware rules (only for TypeScript files)
@@ -106,6 +108,23 @@ export default [
     files: ["src/signals/utils.ts"],
     rules: {
       "ccstate/no-detach-in-signals": "off",
+    },
+  },
+  // Allow direct fetch$ in the abstraction layers and tests.
+  // View files below use fetch$ for multipart file uploads that lack ts-rest
+  // contracts — migrate them to zeroClient$ when contracts are added.
+  {
+    files: [
+      "src/signals/fetch.ts",
+      "src/signals/api-client.ts",
+      "src/signals/zero-page/chat-draft.ts",
+      "src/signals/__tests__/fetch.test.ts",
+      "src/views/zero-page/components/org-manage/org-general-tab.tsx",
+      "src/views/zero-page/zero-jobs-page.tsx",
+      "src/views/zero-page/zero-settings-tab.tsx",
+    ],
+    rules: {
+      "ccstate/no-direct-fetch": "off",
     },
   },
   // Allow direct localStorage in the abstraction layer only

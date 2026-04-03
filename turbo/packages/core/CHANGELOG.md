@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.148.0](https://github.com/vm0-ai/vm0/compare/core-v8.147.0...core-v8.148.0) (2026-04-03)
+
+
+### Features
+
+* **firewalls:** add jam connector firewall config ([#7872](https://github.com/vm0-ai/vm0/issues/7872)) ([81d8818](https://github.com/vm0-ai/vm0/commit/81d8818a6d532b8a6f0504b2bf9a63261c2521fa))
+
 ## [8.147.0](https://github.com/vm0-ai/vm0/compare/core-v8.146.0...core-v8.147.0) (2026-04-03)
 
 

@@ -10,7 +10,7 @@ import { notFound, badRequest, schedulePast } from "../../shared/errors";
 import { logger } from "../../shared/logger";
 import { createZeroRun } from "../zero-run-service";
 import { generateCallbackSecret, getApiUrl } from "../../infra/callback";
-import { generateScheduleDescription } from "../../shared/ai/lightweight-model";
+import { generateScheduleDescription } from "../ai/lightweight-model";
 import type { ScheduleLoopCallbackPayload } from "../../infra/callback/callback-payloads";
 
 const log = logger("service:schedule");

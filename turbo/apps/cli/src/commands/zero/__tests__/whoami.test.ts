@@ -237,7 +237,7 @@ describe("zero whoami command", () => {
       const output = getAllOutput();
       expect(
         output.some((line) => {
-          return line.includes("Connected Services:");
+          return line.includes("Connectors:");
         }),
       ).toBe(true);
       expect(
@@ -341,7 +341,7 @@ describe("zero whoami command", () => {
       ).toBe(true);
       expect(
         output.some((line) => {
-          return line.includes("Connected Services:");
+          return line.includes("Connectors:");
         }),
       ).toBe(false);
     });
@@ -380,7 +380,7 @@ describe("zero whoami command", () => {
       ).toBe(true);
       expect(
         output.some((line) => {
-          return line.includes("Connected Services:");
+          return line.includes("Connectors:");
         }),
       ).toBe(false);
     });
@@ -601,7 +601,7 @@ describe("zero whoami command", () => {
       const output = getAllOutput();
       expect(
         output.some((line) => {
-          return line.includes("Connected Services:");
+          return line.includes("Connectors:");
         }),
       ).toBe(true);
       expect(
@@ -758,7 +758,7 @@ describe("zero whoami command", () => {
       const output = getAllOutput();
       expect(
         output.some((line) => {
-          return line.includes("Connected Services:");
+          return line.includes("Connectors:");
         }),
       ).toBe(true);
       expect(

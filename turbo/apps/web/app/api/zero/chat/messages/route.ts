@@ -23,7 +23,7 @@ import {
   updateChatThreadTitle,
   getChatThreadContext,
 } from "../../../../../src/lib/zero/chat-thread/chat-thread-service";
-import { generateChatTitle } from "../../../../../src/lib/shared/ai/lightweight-model";
+import { generateChatTitle } from "../../../../../src/lib/zero/ai/lightweight-model";
 import { zeroAgents } from "../../../../../src/db/schema/zero-agent";
 import {
   getApiUrl,

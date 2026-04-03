@@ -2,7 +2,7 @@ import { createHandler, tsr } from "../../../../../src/lib/ts-rest-handler";
 import { runnerRealtimeTokenContract, createErrorResponse } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getRunnerAuth } from "../../../../../src/lib/auth/runner-auth";
-import { generateRunnerGroupToken } from "../../../../../src/lib/shared/realtime/client";
+import { generateRunnerGroupToken } from "../../../../../src/lib/infra/realtime/client";
 import { isOfficialRunnerGroup } from "../../../../../src/lib/infra/run/runner-group";
 import { logger } from "../../../../../src/lib/shared/logger";
 

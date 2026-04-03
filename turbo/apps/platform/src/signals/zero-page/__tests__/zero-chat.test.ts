@@ -466,9 +466,11 @@ describe("zero-chat signals", () => {
       useUploadHandler({ deferred: uploadDeferred });
       await setup();
 
-      const uploadPromise = context.store
-        .set(uploadZeroAttachment$, createTestFile(), context.signal)
-        .catch(() => {});
+      const uploadPromise = context.store.set(
+        uploadZeroAttachment$,
+        createTestFile(),
+        context.signal,
+      );
 
       // Wait for the placeholder to appear
       await vi.waitFor(() => {
@@ -480,7 +482,7 @@ describe("zero-chat signals", () => {
       // Cancel via removeZeroAttachment$ (which internally calls cancel$)
       context.store.set(removeZeroAttachment$, before[0]!);
 
-      await uploadPromise;
+      await expect(uploadPromise).rejects.toThrow();
 
       const after = context.store.get(zeroChatAttachments$);
       expect(after).toHaveLength(0);
@@ -529,20 +531,16 @@ describe("zero-chat signals", () => {
       );
       await setup();
 
-      const promise1 = context.store
-        .set(
-          uploadZeroAttachment$,
-          createTestFile("file-a.png"),
-          context.signal,
-        )
-        .catch(() => {});
-      const promise2 = context.store
-        .set(
-          uploadZeroAttachment$,
-          createTestFile("file-b.png"),
-          context.signal,
-        )
-        .catch(() => {});
+      const promise1 = context.store.set(
+        uploadZeroAttachment$,
+        createTestFile("file-a.png"),
+        context.signal,
+      );
+      const promise2 = context.store.set(
+        uploadZeroAttachment$,
+        createTestFile("file-b.png"),
+        context.signal,
+      );
 
       // Wait for both requests to reach the MSW handler
       await vi.waitFor(() => {
@@ -563,7 +561,7 @@ describe("zero-chat signals", () => {
         }
       }
 
-      await Promise.all([promise1, promise2]);
+      await Promise.allSettled([promise1, promise2]);
 
       const after = context.store.get(zeroChatAttachments$);
       // Only the second upload should remain, completed

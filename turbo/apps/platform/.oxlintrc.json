@@ -25,12 +25,6 @@
                 ],
                 "allowTypeImports": true,
                 "name": "ccstate"
-              },
-              {
-                "allowImportNames": ["useLoadableSet"],
-                "allowTypeImports": true,
-                "name": "ccstate-react/experimental",
-                "message": "Only useLoadableSet is allowed from ccstate-react/experimental in views/. For shared state, declare state()/computed()/command() in signals/ and consume with useGet()/useSet()."
               }
             ]
           }

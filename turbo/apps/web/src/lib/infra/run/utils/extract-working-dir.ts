@@ -1,5 +1,5 @@
 import { isSupportedFramework } from "@vm0/core";
-import { resolveFrameworkWorkingDir } from "../../../shared/framework/framework-config";
+import { resolveFrameworkWorkingDir } from "../../framework/framework-config";
 import { badRequest } from "../../../shared/errors";
 import type { AgentComposeYaml } from "../../../../types/agent-compose";
 

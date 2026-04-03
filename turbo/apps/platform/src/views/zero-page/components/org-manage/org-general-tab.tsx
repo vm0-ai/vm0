@@ -202,18 +202,18 @@ function ProfileSection({
       return;
     }
     setLogoLoaded(true);
-    fetchFn("/api/zero/org/logo")
-      .then((r) => {
-        return r.json();
-      })
-      .then((data: { logoUrl: string | null }) => {
-        if (data.logoUrl) {
-          setLogoUrl(data.logoUrl);
-        }
-      })
-      .catch(() => {
-        // Logo fetch is best-effort; the UI works without it
-      });
+    detach(
+      fetchFn("/api/zero/org/logo")
+        .then((r) => {
+          return r.json();
+        })
+        .then((data: { logoUrl: string | null }) => {
+          if (data.logoUrl) {
+            setLogoUrl(data.logoUrl);
+          }
+        }),
+      Reason.DomCallback,
+    );
   };
 
   return (

@@ -84,6 +84,7 @@ import { instagramFirewall } from "./instagram.generated";
 import { instantlyFirewall } from "./instantly.generated";
 import { intercomFirewall } from "./intercom.generated";
 import { intervalsIcuFirewall } from "./intervals-icu.generated";
+import { jamFirewall } from "./jam.generated";
 import { jiraFirewall } from "./jira.generated";
 import { jotformFirewall } from "./jotform.generated";
 import { kommoFirewall } from "./kommo.generated";
@@ -210,6 +211,7 @@ const CONNECTOR_FIREWALLS = {
   instantly: instantlyFirewall,
   intercom: intercomFirewall,
   "intervals-icu": intervalsIcuFirewall,
+  jam: jamFirewall,
   jira: jiraFirewall,
   jotform: jotformFirewall,
   kommo: kommoFirewall,
@@ -361,8 +363,7 @@ export type NonFirewallConnectorType =
   | "cloudinary" // SHA signature in form body + api_key param
   | "minio" // AWS Signature V4
   // Other
-  | "computer" // not an API connector
-  | "jam"; // no public REST API
+  | "computer"; // not an API connector
 
 /**
  * Compile-time exhaustiveness checks.

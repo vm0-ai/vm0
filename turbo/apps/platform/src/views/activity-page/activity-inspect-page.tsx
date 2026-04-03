@@ -1,5 +1,6 @@
 import { useGet, useSet, useLastResolved } from "ccstate-react";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import { detach, Reason } from "../../signals/utils.ts";
 import { IconSearch, IconChartLine, IconUpload } from "@tabler/icons-react";
 import { Button, Input, Tabs, TabsList, TabsTrigger } from "@vm0/ui";
 import { FeatureSwitchKey } from "@vm0/core";
@@ -78,7 +79,7 @@ function InspectEmptyState() {
               onChange={(e) => {
                 const file = e.target.files?.[0];
                 if (file) {
-                  loadFile(file, pageSignal).catch(() => {});
+                  detach(loadFile(file, pageSignal), Reason.DomCallback);
                 }
                 e.target.value = "";
               }}

@@ -63,6 +63,7 @@
     "generate:instantly": "tsx src/index.ts instantly",
     "generate:intercom": "tsx src/index.ts intercom",
     "generate:intervals-icu": "tsx src/index.ts intervals-icu",
+    "generate:jam": "tsx src/index.ts jam",
     "generate:jira": "tsx src/index.ts jira",
     "generate:jotform": "tsx src/index.ts jotform",
     "generate:kommo": "tsx src/index.ts kommo",
