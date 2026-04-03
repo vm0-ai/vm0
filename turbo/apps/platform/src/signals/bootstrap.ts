@@ -53,6 +53,7 @@ const setupNotFoundRedirect$ = command(({ set }) => {
 function redirectTo(target: string) {
   return command(({ get, set }) => {
     const signal = get(rootSignal$).signal;
+    // eslint-disable-next-line ccstate/no-detach-in-signals -- TODO: move to views layer
     detach(
       set(navigate$, target, { replace: true }, signal),
       Reason.DomCallback,
@@ -69,6 +70,7 @@ function redirectWithParams(buildTarget: (params: ParamData) => string) {
     const params = get(pathParams$) ?? {};
     const target = buildTarget(params);
     const signal = get(rootSignal$).signal;
+    // eslint-disable-next-line ccstate/no-detach-in-signals -- TODO: move to views layer
     detach(
       set(navigate$, target, { replace: true }, signal),
       Reason.DomCallback,

@@ -160,6 +160,30 @@ const EDITOR_CLASSES =
   "[&_pre]:bg-muted [&_pre]:rounded-md [&_pre]:p-3 [&_pre]:my-2 [&_pre_code]:bg-transparent [&_pre_code]:p-0 " +
   "[&_hr]:border-border [&_hr]:my-4";
 
+/**
+ * Tiptap extension that captures the markdown the editor produces right after
+ * parsing the initial content.  This "baseline" lets onUpdate distinguish
+ * Tiptap's own round-trip normalisation from genuine user edits.
+ */
+function createBaselineExtension(onChange: (markdown: string) => void) {
+  return Extension.create<Record<string, never>, { baseline: string | null }>({
+    name: "baselineMarkdown",
+    addStorage() {
+      return { baseline: null };
+    },
+    onCreate() {
+      this.storage.baseline = this.editor.getMarkdown();
+    },
+    onUpdate() {
+      const md = this.editor.getMarkdown();
+      if (md === this.storage.baseline) {
+        return;
+      }
+      onChange(md);
+    },
+  });
+}
+
 export function TiptapInstructionsEditor({
   initialContent,
   onChange,
@@ -167,13 +191,15 @@ export function TiptapInstructionsEditor({
   footerHint = "Edit the instructions directly to customize your agent's behavior.",
 }: TiptapInstructionsEditorProps) {
   const editor = useEditor({
-    extensions: [StarterKit, createLowlightPlugin(), Markdown],
+    extensions: [
+      StarterKit,
+      createLowlightPlugin(),
+      Markdown,
+      createBaselineExtension(onChange),
+    ],
     content: initialContent,
     contentType: "markdown",
     editable: !disabled,
-    onUpdate: ({ editor: e }) => {
-      onChange(e.getMarkdown());
-    },
     editorProps: {
       attributes: {
         class: EDITOR_CLASSES,

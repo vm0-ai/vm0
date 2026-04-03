@@ -62,6 +62,7 @@ export const setupChatSessionPage$ = command(
 
     // chatSessionSnapshot$ auto-fetches from URL. loadSessionFromSnapshot$
     // awaits it, populates server messages, syncs agent, resumes polling.
+    // eslint-disable-next-line ccstate/no-detach-in-signals -- TODO: move to views layer
     detach(set(loadSessionFromSnapshot$, signal), Reason.Entrance);
   },
 );

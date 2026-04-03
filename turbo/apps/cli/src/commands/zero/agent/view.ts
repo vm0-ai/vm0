@@ -4,6 +4,7 @@ import {
   getZeroAgent,
   getZeroAgentInstructions,
   getZeroAgentUserConnectors,
+  listZeroConnectors,
 } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
 import {
@@ -11,6 +12,7 @@ import {
   getConnectorFirewall,
   resolveFirewallPolicies,
   type FirewallPolicyValue,
+  type ConnectorResponse,
 } from "@vm0/core";
 
 interface ConnectorPermissionInfo {
@@ -52,10 +54,41 @@ function getConnectorPermissionInfo(
   return { type, hasFirewall: true, permissions, policies, allowed, total };
 }
 
-function formatConnectorSummary(info: ConnectorPermissionInfo): string {
-  if (!info.hasFirewall) return info.type;
-  if (!info.policies) return `${info.type} (full access)`;
-  return `${info.type} (${info.allowed}/${info.total} allowed)`;
+function formatConnectorIdentity(
+  connector: ConnectorResponse | undefined,
+): string {
+  if (!connector) return "";
+  if (connector.externalUsername) return `@${connector.externalUsername}`;
+  if (connector.externalEmail) return connector.externalEmail;
+  return "";
+}
+
+function formatConnectorSummary(
+  info: ConnectorPermissionInfo,
+  identity?: ConnectorResponse,
+): string {
+  const id = formatConnectorIdentity(identity);
+  const idStr = id ? ` ${id}` : "";
+  if (!info.hasFirewall) return `${info.type}${idStr}`;
+  if (!info.policies) return `${info.type}${idStr} (full access)`;
+  return `${info.type}${idStr} (${info.allowed}/${info.total} allowed)`;
+}
+
+function printAccountLine(connector: ConnectorResponse | undefined): void {
+  if (!connector) return;
+  let identity = "";
+  if (connector.externalUsername && connector.externalEmail) {
+    identity = `@${connector.externalUsername} (${connector.externalEmail})`;
+  } else if (connector.externalUsername) {
+    identity = `@${connector.externalUsername}`;
+  } else if (connector.externalEmail) {
+    identity = connector.externalEmail;
+  }
+  if (!identity) return;
+  if (connector.needsReconnect) {
+    identity += ` ${chalk.yellow("(needs reconnect)")}`;
+  }
+  console.log(`  Account: ${identity}`);
 }
 
 export const viewCommand = new Command()
@@ -79,25 +112,38 @@ Examples:
         agentId: string,
         options: { instructions?: boolean; permissions?: boolean },
       ) => {
-        const agent = await getZeroAgent(agentId);
+        const [agent, connectorTypes, connectorIdentities] = await Promise.all([
+          getZeroAgent(agentId),
+          getZeroAgentUserConnectors(agentId),
+          listZeroConnectors().catch(() => {
+            return { connectors: [] as ConnectorResponse[] };
+          }),
+        ]);
+
+        const identityMap = new Map<string, ConnectorResponse>(
+          connectorIdentities.connectors.map((c) => {
+            return [c.type, c];
+          }),
+        );
 
         console.log(chalk.bold(agent.agentId));
         if (agent.displayName) console.log(chalk.dim(agent.displayName));
         console.log();
         console.log(`Agent ID:     ${agent.agentId}`);
-        const connectors = await getZeroAgentUserConnectors(agentId);
 
         const resolvedPolicies = resolveFirewallPolicies(
           agent.firewallPolicies,
-          connectors,
+          connectorTypes,
         );
 
-        const connectorInfos = connectors.map((type) => {
+        const connectorInfos = connectorTypes.map((type) => {
           return getConnectorPermissionInfo(type, resolvedPolicies);
         });
 
         if (connectorInfos.length > 0) {
-          const summaries = connectorInfos.map(formatConnectorSummary);
+          const summaries = connectorInfos.map((info) => {
+            return formatConnectorSummary(info, identityMap.get(info.type));
+          });
           console.log(`Connectors:   ${summaries.join(", ")}`);
         }
 
@@ -113,12 +159,14 @@ Examples:
           for (const info of connectorInfos) {
             if (!info.hasFirewall) {
               console.log(chalk.dim(`── ${info.type} ──`));
+              printAccountLine(identityMap.get(info.type));
               console.log("  No firewall configured.");
               continue;
             }
 
             if (!info.policies) {
               console.log(chalk.dim(`── ${info.type} (full access) ──`));
+              printAccountLine(identityMap.get(info.type));
               console.log(
                 "  No permission rules configured — all API calls allowed.",
               );
@@ -130,6 +178,7 @@ Examples:
                 `── ${info.type} (${info.allowed}/${info.total} allowed) ──`,
               ),
             );
+            printAccountLine(identityMap.get(info.type));
 
             const nameWidth = Math.max(
               ...info.permissions.map((p) => {

@@ -1,5 +1,13 @@
 # Changelog
 
+## [8.147.0](https://github.com/vm0-ai/vm0/compare/core-v8.146.0...core-v8.147.0) (2026-04-03)
+
+
+### Features
+
+* add connector read capability and gate connector api endpoints ([#7819](https://github.com/vm0-ai/vm0/issues/7819)) ([9117bf1](https://github.com/vm0-ai/vm0/commit/9117bf144a7b317d021807d5a06ccd031023994f))
+* **firewalls:** add graphql permissions to linear connector ([#7824](https://github.com/vm0-ai/vm0/issues/7824)) ([7fe1da0](https://github.com/vm0-ai/vm0/commit/7fe1da0fa74959224df32bf8bcd49e62bf58b217))
+
 ## [8.146.0](https://github.com/vm0-ai/vm0/compare/core-v8.145.0...core-v8.146.0) (2026-04-02)
 
 

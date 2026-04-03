@@ -6,8 +6,18 @@ import {
   getToken,
   decodeZeroTokenPayload,
 } from "../../lib/api/config";
-import { listZeroConnectors } from "../../lib/api";
+import {
+  listZeroConnectors,
+  getZeroAgent,
+  getZeroAgentUserConnectors,
+} from "../../lib/api";
 import { withErrorHandler } from "../../lib/command";
+import {
+  isFirewallConnectorType,
+  getConnectorFirewall,
+  resolveFirewallPolicies,
+  type FirewallPolicies,
+} from "@vm0/core";
 
 /**
  * Detect if running inside a zero sandbox (agent runtime).
@@ -16,6 +26,62 @@ import { withErrorHandler } from "../../lib/command";
  */
 function isInsideSandbox(): boolean {
   return !!process.env.ZERO_AGENT_ID;
+}
+
+function formatConnectorIdentity(connector: {
+  externalUsername: string | null;
+  externalEmail: string | null;
+  needsReconnect: boolean;
+}): string {
+  let identity = "";
+  if (connector.externalUsername && connector.externalEmail) {
+    identity = `@${connector.externalUsername} (${connector.externalEmail})`;
+  } else if (connector.externalUsername) {
+    identity = `@${connector.externalUsername}`;
+  } else if (connector.externalEmail) {
+    identity = connector.externalEmail;
+  }
+  if (connector.needsReconnect) {
+    identity += ` ${chalk.yellow("(needs reconnect)")}`;
+  }
+  return identity;
+}
+
+function printConnectorPermissions(
+  type: string,
+  resolvedPolicies: FirewallPolicies | null,
+): void {
+  if (!isFirewallConnectorType(type)) return;
+
+  const policies = resolvedPolicies?.[type] ?? null;
+  if (!policies) {
+    console.log(chalk.dim("    full access — no permission rules configured"));
+    return;
+  }
+
+  const config = getConnectorFirewall(type);
+  const permissions = config.apis.flatMap((a) => {
+    return a.permissions ?? [];
+  });
+  if (permissions.length === 0) return;
+
+  const nameWidth = Math.max(
+    ...permissions.map((p) => {
+      return p.name.length;
+    }),
+  );
+
+  for (const perm of permissions) {
+    const policy = policies[perm.name] ?? "deny";
+    const icon =
+      policy === "allow"
+        ? chalk.green("✓")
+        : policy === "ask"
+          ? chalk.yellow("?")
+          : chalk.dim("✗");
+    const desc = perm.description ?? "";
+    console.log(`    ${icon} ${perm.name.padEnd(nameWidth)}  ${desc}`);
+  }
 }
 
 async function showSandboxInfo(): Promise<void> {
@@ -33,29 +99,44 @@ async function showSandboxInfo(): Promise<void> {
     console.log(`  ${payload.capabilities.join(", ")}`);
   }
 
-  // Connected Services section
+  // Connected Services section (identity + permissions)
   try {
-    const result = await listZeroConnectors();
-    const identities = result.connectors.filter((c) => {
+    const [connectorsResult, agentResult, enabledResult] =
+      await Promise.allSettled([
+        listZeroConnectors(),
+        getZeroAgent(agentId!),
+        getZeroAgentUserConnectors(agentId!),
+      ]);
+
+    // If connector API failed, skip entire section
+    if (connectorsResult.status === "rejected") return;
+
+    const identities = connectorsResult.value.connectors.filter((c) => {
       return c.externalUsername !== null || c.externalEmail !== null;
     });
 
-    if (identities.length > 0) {
-      console.log();
-      console.log(chalk.bold("Connected Services:"));
-      for (const connector of identities) {
-        let identity = "";
-        if (connector.externalUsername && connector.externalEmail) {
-          identity = `@${connector.externalUsername} (${connector.externalEmail})`;
-        } else if (connector.externalUsername) {
-          identity = `@${connector.externalUsername}`;
-        } else if (connector.externalEmail) {
-          identity = connector.externalEmail;
-        }
-        if (connector.needsReconnect) {
-          identity += ` ${chalk.yellow("(needs reconnect)")}`;
-        }
-        console.log(`  ${connector.type.padEnd(14)}${identity}`);
+    if (identities.length === 0) return;
+
+    // Resolve permissions if both agent APIs succeeded
+    let resolvedPolicies: FirewallPolicies | null = null;
+    const permissionDataAvailable =
+      agentResult.status === "fulfilled" &&
+      enabledResult.status === "fulfilled";
+    if (permissionDataAvailable) {
+      resolvedPolicies = resolveFirewallPolicies(
+        agentResult.value.firewallPolicies,
+        enabledResult.value,
+      );
+    }
+
+    console.log();
+    console.log(chalk.bold("Connected Services:"));
+    for (const connector of identities) {
+      const identity = formatConnectorIdentity(connector);
+      console.log(`  ${connector.type.padEnd(14)}${identity}`);
+
+      if (permissionDataAvailable) {
+        printConnectorPermissions(connector.type, resolvedPolicies);
       }
     }
   } catch {

@@ -58,6 +58,7 @@ import { zeroAgents } from "../db/schema/zero-agent";
 import { userConnectors } from "../db/schema/user-connector";
 import { userCache } from "../db/schema/user-cache";
 import { creditUsage } from "../db/schema/credit-usage";
+import { sandboxTelemetry } from "../db/schema/sandbox-telemetry";
 import { creditPricing } from "../db/schema/credit-pricing";
 import { users } from "../db/schema/user";
 import { and, eq, like, or, sql } from "drizzle-orm";
@@ -3933,7 +3934,7 @@ export async function findTestCreditUsage(id: string): Promise<
 export async function findTestCreditUsagesByRunId(runId: string): Promise<
   Array<{
     id: string;
-    runId: string;
+    runId: string | null;
     resultUuid: string | null;
     orgId: string;
     userId: string;
@@ -4464,16 +4465,59 @@ export async function insertTestCreditUsageForRun(params: {
   runId: string;
   orgId: string;
   userId: string;
-}): Promise<void> {
-  await globalThis.services.db.insert(creditUsage).values({
-    runId: params.runId,
-    orgId: params.orgId,
-    userId: params.userId,
-    model: "claude-3-5-sonnet-20241022",
-    modelProvider: "anthropic",
-    inputTokens: 100,
-    outputTokens: 50,
-  });
+  status?: string;
+  creditsCharged?: number;
+  processedAt?: Date | null;
+}): Promise<{ id: string }> {
+  const processedAt =
+    params.processedAt !== undefined
+      ? params.processedAt
+      : params.status === "processed"
+        ? new Date()
+        : null;
+
+  const [record] = await globalThis.services.db
+    .insert(creditUsage)
+    .values({
+      runId: params.runId,
+      orgId: params.orgId,
+      userId: params.userId,
+      model: "claude-3-5-sonnet-20241022",
+      modelProvider: "anthropic",
+      inputTokens: 100,
+      outputTokens: 50,
+      status: params.status ?? "pending",
+      creditsCharged: params.creditsCharged ?? null,
+      processedAt,
+    })
+    .returning({ id: creditUsage.id });
+
+  return { id: record!.id };
+}
+
+export async function insertTestSandboxTelemetry(params: {
+  runId: string;
+}): Promise<{ id: string }> {
+  const [record] = await globalThis.services.db
+    .insert(sandboxTelemetry)
+    .values({
+      runId: params.runId,
+      data: { systemLog: "test log", metrics: [] },
+    })
+    .returning({ id: sandboxTelemetry.id });
+
+  return { id: record!.id };
+}
+
+export async function findTestSandboxTelemetry(
+  runId: string,
+): Promise<{ id: string } | undefined> {
+  const [row] = await globalThis.services.db
+    .select({ id: sandboxTelemetry.id })
+    .from(sandboxTelemetry)
+    .where(eq(sandboxTelemetry.runId, runId))
+    .limit(1);
+  return row;
 }
 
 export async function insertTestConversation(params: {

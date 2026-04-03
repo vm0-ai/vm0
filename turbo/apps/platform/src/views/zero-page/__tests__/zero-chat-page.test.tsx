@@ -458,6 +458,47 @@ describe("zero chat page - connector label casing", () => {
   });
 });
 
+describe("zero chat page - invite button", () => {
+  it("renders invite button in DOM even when user is not admin", async () => {
+    server.use(
+      http.get("*/api/zero/org", () => {
+        return HttpResponse.json({
+          id: "org_1",
+          slug: "user-12345678",
+          name: "User 12345678",
+          role: "member",
+        });
+      }),
+    );
+
+    await renderChatPage();
+
+    // Wait for the page to fully load before checking the invite button
+    await waitFor(() => {
+      return screen.getByRole("button", { name: /Ideas & use cases/ });
+    });
+
+    const button = screen.getByTestId("invite-button");
+    expect(button).toBeInTheDocument();
+    expect(button).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("renders invite button as visible and accessible when user is admin", async () => {
+    await renderChatPage();
+
+    // Wait for the page to fully load before checking the invite button
+    await waitFor(() => {
+      return screen.getByRole("button", { name: /Ideas & use cases/ });
+    });
+
+    // Button is always in DOM; wait for aria-hidden to be removed once admin state resolves
+    await waitFor(() => {
+      const button = screen.getByTestId("invite-button");
+      expect(button).not.toHaveAttribute("aria-hidden", "true");
+    });
+  });
+});
+
 describe("zero chat page - agent avatar and greeting", () => {
   it("should render agent avatar link on the landing page", async () => {
     await renderChatPage();

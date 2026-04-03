@@ -24,6 +24,7 @@ export const setupWorksPage$ = command(async ({ set }, signal: AbortSignal) => {
     set(initSlackOrg$, signal),
   ]);
   signal.throwIfAborted();
+  // eslint-disable-next-line ccstate/no-detach-in-signals -- TODO: move to views layer
   detach(set(pollSlackConnection$, signal), Reason.Entrance);
 
   if (await set(onboardGuard$, signal)) {

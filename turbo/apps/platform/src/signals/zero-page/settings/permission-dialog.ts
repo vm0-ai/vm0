@@ -1,0 +1,93 @@
+import { command, computed, state } from "ccstate";
+import {
+  CONNECTOR_TYPES,
+  zeroUserConnectorsContract,
+  type ConnectorType,
+} from "@vm0/core";
+import { zeroClient$ } from "../../api-client.ts";
+import { toast } from "@vm0/ui/components/ui/sonner";
+
+// ---------------------------------------------------------------------------
+// Agent selection
+// ---------------------------------------------------------------------------
+
+const internalSelected$ = state<Set<string>>(new Set());
+export const permissionDialogSelected$ = computed((get) => {
+  return get(internalSelected$);
+});
+export const togglePermissionDialogAgent$ = command(
+  ({ get, set }, id: string) => {
+    const prev = get(internalSelected$);
+    const next = new Set(prev);
+    if (next.has(id)) {
+      next.delete(id);
+    } else {
+      next.add(id);
+    }
+    set(internalSelected$, next);
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Search filter
+// ---------------------------------------------------------------------------
+
+const internalSearch$ = state("");
+export const permissionDialogSearch$ = computed((get) => {
+  return get(internalSearch$);
+});
+export const setPermissionDialogSearch$ = command(({ set }, v: string) => {
+  set(internalSearch$, v);
+});
+
+// ---------------------------------------------------------------------------
+// Confirm (save) command
+// ---------------------------------------------------------------------------
+
+export const confirmPermissionDialog$ = command(
+  async (
+    { get },
+    connectorType: ConnectorType,
+    onClose: () => void,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const selected = get(internalSelected$);
+    if (selected.size === 0) {
+      onClose();
+      return;
+    }
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroUserConnectorsContract);
+    await Promise.allSettled(
+      [...selected].map(async (agentId) => {
+        signal.throwIfAborted();
+        const existing = await client.get({ params: { id: agentId } });
+        signal.throwIfAborted();
+        const current =
+          existing.status === 200 ? existing.body.enabledTypes : [];
+        if (current.includes(connectorType)) {
+          return;
+        }
+        await client.update({
+          params: { id: agentId },
+          body: { enabledTypes: [...current, connectorType] },
+        });
+      }),
+    );
+    signal.throwIfAborted();
+    const config = CONNECTOR_TYPES[connectorType];
+    toast.success(
+      `${config.label} enabled for ${selected.size} agent${selected.size > 1 ? "s" : ""}`,
+    );
+    onClose();
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Reset (called when dialog opens/closes)
+// ---------------------------------------------------------------------------
+
+export const resetPermissionDialog$ = command(({ set }) => {
+  set(internalSelected$, new Set());
+  set(internalSearch$, "");
+});

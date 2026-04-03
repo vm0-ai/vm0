@@ -21,6 +21,35 @@ const mockAgent = {
   firewallPolicies: null,
 };
 
+function mockConnectorListHandler(
+  connectors: Record<string, unknown>[] = [],
+  configuredTypes: string[] = [],
+) {
+  return http.get("http://localhost:3000/api/zero/connectors", () => {
+    return HttpResponse.json({
+      connectors,
+      configuredTypes,
+      connectorProvidedSecretNames: [],
+    });
+  });
+}
+
+function makeConnector(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "1",
+    type: "github",
+    authMethod: "oauth",
+    externalId: "12345",
+    externalUsername: "octocat",
+    externalEmail: "octocat@github.com",
+    oauthScopes: ["repo"],
+    needsReconnect: false,
+    createdAt: "2025-01-01T00:00:00Z",
+    updatedAt: "2025-01-01T00:00:00Z",
+    ...overrides,
+  };
+}
+
 describe("zero agent view command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
@@ -54,6 +83,7 @@ describe("zero agent view command", () => {
             return HttpResponse.json({ enabledTypes: ["github"] });
           },
         ),
+        mockConnectorListHandler(),
       );
 
       await viewCommand.parseAsync(["node", "cli", "my-agent"]);
@@ -86,6 +116,7 @@ describe("zero agent view command", () => {
             return HttpResponse.json({ enabledTypes: ["github"] });
           },
         ),
+        mockConnectorListHandler(),
       );
 
       await viewCommand.parseAsync(["node", "cli", "my-agent"]);
@@ -105,6 +136,7 @@ describe("zero agent view command", () => {
             return HttpResponse.json({ enabledTypes: [] });
           },
         ),
+        mockConnectorListHandler(),
         http.get(
           "http://localhost:3000/api/zero/agents/my-agent/instructions",
           () => {
@@ -138,6 +170,7 @@ describe("zero agent view command", () => {
             return HttpResponse.json({ enabledTypes: [] });
           },
         ),
+        mockConnectorListHandler(),
         http.get(
           "http://localhost:3000/api/zero/agents/my-agent/instructions",
           () => {
@@ -180,6 +213,7 @@ describe("zero agent view command", () => {
             return HttpResponse.json({ enabledTypes: ["github"] });
           },
         ),
+        mockConnectorListHandler(),
       );
 
       await viewCommand.parseAsync([
@@ -207,6 +241,7 @@ describe("zero agent view command", () => {
             return HttpResponse.json({ enabledTypes: ["github"] });
           },
         ),
+        mockConnectorListHandler(),
       );
 
       await viewCommand.parseAsync([
@@ -236,6 +271,7 @@ describe("zero agent view command", () => {
             });
           },
         ),
+        mockConnectorListHandler(),
       );
 
       await viewCommand.parseAsync([
@@ -248,6 +284,170 @@ describe("zero agent view command", () => {
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("custom-connector");
       expect(logCalls).toContain("No firewall configured.");
+    });
+  });
+
+  describe("connector identity", () => {
+    it("should show identity in connector summary line", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
+          return HttpResponse.json(mockAgent);
+        }),
+        http.get(
+          "http://localhost:3000/api/zero/agents/my-agent/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: ["github"] });
+          },
+        ),
+        mockConnectorListHandler([makeConnector()], ["github"]),
+      );
+
+      await viewCommand.parseAsync(["node", "cli", "my-agent"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("github @octocat (full access)");
+    });
+
+    it("should show Account line with identity in permissions detail", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
+          return HttpResponse.json(mockAgent);
+        }),
+        http.get(
+          "http://localhost:3000/api/zero/agents/my-agent/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: ["github"] });
+          },
+        ),
+        mockConnectorListHandler([makeConnector()], ["github"]),
+      );
+
+      await viewCommand.parseAsync([
+        "node",
+        "cli",
+        "my-agent",
+        "--permissions",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Account: @octocat (octocat@github.com)");
+    });
+
+    it("should work without identity when connector API fails", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
+          return HttpResponse.json(mockAgent);
+        }),
+        http.get(
+          "http://localhost:3000/api/zero/agents/my-agent/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: ["github"] });
+          },
+        ),
+        http.get("http://localhost:3000/api/zero/connectors", () => {
+          return HttpResponse.json(
+            { error: { message: "Forbidden", code: "FORBIDDEN" } },
+            { status: 403 },
+          );
+        }),
+      );
+
+      await viewCommand.parseAsync(["node", "cli", "my-agent"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("github (full access)");
+      expect(logCalls).not.toContain("Account:");
+    });
+
+    it("should skip Account line for connectors without identity", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
+          return HttpResponse.json(mockAgent);
+        }),
+        http.get(
+          "http://localhost:3000/api/zero/agents/my-agent/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: ["github"] });
+          },
+        ),
+        mockConnectorListHandler(
+          [
+            makeConnector({
+              authMethod: "api-token",
+              externalUsername: null,
+              externalEmail: null,
+            }),
+          ],
+          ["github"],
+        ),
+      );
+
+      await viewCommand.parseAsync([
+        "node",
+        "cli",
+        "my-agent",
+        "--permissions",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).not.toContain("Account:");
+    });
+
+    it("should show needs reconnect warning in Account line", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
+          return HttpResponse.json(mockAgent);
+        }),
+        http.get(
+          "http://localhost:3000/api/zero/agents/my-agent/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: ["github"] });
+          },
+        ),
+        mockConnectorListHandler(
+          [makeConnector({ needsReconnect: true })],
+          ["github"],
+        ),
+      );
+
+      await viewCommand.parseAsync([
+        "node",
+        "cli",
+        "my-agent",
+        "--permissions",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Account: @octocat (octocat@github.com)");
+      expect(logCalls).toContain("(needs reconnect)");
+    });
+
+    it("should show email-only identity when no username", async () => {
+      server.use(
+        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
+          return HttpResponse.json(mockAgent);
+        }),
+        http.get(
+          "http://localhost:3000/api/zero/agents/my-agent/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: ["github"] });
+          },
+        ),
+        mockConnectorListHandler(
+          [
+            makeConnector({
+              externalUsername: null,
+              externalEmail: "user@example.com",
+            }),
+          ],
+          ["github"],
+        ),
+      );
+
+      await viewCommand.parseAsync(["node", "cli", "my-agent"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("github user@example.com (full access)");
     });
   });
 
