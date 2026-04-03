@@ -63,8 +63,8 @@ describe("zero whoami command", () => {
       });
   }
 
-  async function runWhoami(): Promise<void> {
-    await zeroWhoamiCommand.parseAsync(["node", "cli"]);
+  async function runWhoami(args: string[] = []): Promise<void> {
+    await zeroWhoamiCommand.parseAsync(["node", "cli", ...args]);
   }
 
   describe("sandbox mode (ZERO_AGENT_ID set)", () => {
@@ -385,7 +385,72 @@ describe("zero whoami command", () => {
       ).toBe(false);
     });
 
-    it("should show connector permissions with allow/deny/ask icons", async () => {
+    it("should show identity without permission details by default", async () => {
+      const token = buildZeroToken({
+        userId: "user-1",
+        runId: "run-abc",
+        orgId: "org-xyz",
+        scope: "zero",
+        capabilities: ["agent:read", "connector:read"],
+        iat: 1000,
+        exp: 2000,
+      });
+      vi.stubEnv("ZERO_AGENT_ID", "agent-123");
+      vi.stubEnv("ZERO_TOKEN", token);
+      vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+
+      server.use(
+        http.get("http://localhost:3000/api/zero/connectors", () => {
+          return HttpResponse.json({
+            connectors: [
+              {
+                id: "1",
+                type: "github",
+                authMethod: "oauth",
+                externalId: "12345",
+                externalUsername: "octocat",
+                externalEmail: "octocat@github.com",
+                oauthScopes: ["repo"],
+                needsReconnect: false,
+                createdAt: "2025-01-01T00:00:00Z",
+                updatedAt: "2025-01-01T00:00:00Z",
+              },
+            ],
+            configuredTypes: ["github"],
+            connectorProvidedSecretNames: [],
+          });
+        }),
+      );
+
+      await runWhoami();
+
+      const output = getAllOutput();
+      expect(
+        output.some((line) => {
+          return line.includes("Connectors:");
+        }),
+      ).toBe(true);
+      expect(
+        output.some((line) => {
+          return (
+            line.includes("@octocat") && line.includes("(octocat@github.com)")
+          );
+        }),
+      ).toBe(true);
+      // No permission icons in default mode
+      expect(
+        output.some((line) => {
+          return line.includes("✓") || line.includes("✗") || line.includes("?");
+        }),
+      ).toBe(false);
+      expect(
+        output.some((line) => {
+          return line.includes("full access");
+        }),
+      ).toBe(false);
+    });
+
+    it("should show connector permissions with --permissions flag", async () => {
       const token = buildZeroToken({
         userId: "user-1",
         runId: "run-abc",
@@ -447,7 +512,7 @@ describe("zero whoami command", () => {
         ),
       );
 
-      await runWhoami();
+      await runWhoami(["--permissions"]);
 
       const output = getAllOutput();
       expect(
@@ -474,7 +539,7 @@ describe("zero whoami command", () => {
       ).toBe(true);
     });
 
-    it("should show full access for connector with null policies", async () => {
+    it("should show full access with --permissions for connector with null policies", async () => {
       const token = buildZeroToken({
         userId: "user-1",
         runId: "run-abc",
@@ -529,7 +594,7 @@ describe("zero whoami command", () => {
         ),
       );
 
-      await runWhoami();
+      await runWhoami(["--permissions"]);
 
       const output = getAllOutput();
       expect(
@@ -544,7 +609,7 @@ describe("zero whoami command", () => {
       ).toBe(true);
     });
 
-    it("should show identity only when agent API fails", async () => {
+    it("should show identity only when agent API fails with --permissions", async () => {
       const token = buildZeroToken({
         userId: "user-1",
         runId: "run-abc",
@@ -596,7 +661,7 @@ describe("zero whoami command", () => {
         ),
       );
 
-      await runWhoami();
+      await runWhoami(["--permissions"]);
 
       const output = getAllOutput();
       expect(
@@ -622,7 +687,7 @@ describe("zero whoami command", () => {
       ).toBe(false);
     });
 
-    it("should show identity only when one agent API fails", async () => {
+    it("should show identity only when one agent API fails with --permissions", async () => {
       const token = buildZeroToken({
         userId: "user-1",
         runId: "run-abc",
@@ -683,7 +748,7 @@ describe("zero whoami command", () => {
         ),
       );
 
-      await runWhoami();
+      await runWhoami(["--permissions"]);
 
       const output = getAllOutput();
       expect(

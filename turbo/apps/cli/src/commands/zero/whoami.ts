@@ -84,7 +84,7 @@ function printConnectorPermissions(
   }
 }
 
-async function showSandboxInfo(): Promise<void> {
+async function showSandboxInfo(showPermissions: boolean): Promise<void> {
   const agentId = process.env.ZERO_AGENT_ID;
   const payload = decodeZeroTokenPayload();
 
@@ -99,44 +99,60 @@ async function showSandboxInfo(): Promise<void> {
     console.log(`  ${payload.capabilities.join(", ")}`);
   }
 
-  // Connected Services section (identity + permissions)
+  // Connected Services section
   try {
-    const [connectorsResult, agentResult, enabledResult] =
-      await Promise.allSettled([
-        listZeroConnectors(),
-        getZeroAgent(agentId!),
-        getZeroAgentUserConnectors(agentId!),
-      ]);
+    if (showPermissions) {
+      // Full mode: fetch all 3 APIs for permission details
+      const [connectorsResult, agentResult, enabledResult] =
+        await Promise.allSettled([
+          listZeroConnectors(),
+          getZeroAgent(agentId!),
+          getZeroAgentUserConnectors(agentId!),
+        ]);
 
-    // If connector API failed, skip entire section
-    if (connectorsResult.status === "rejected") return;
+      if (connectorsResult.status === "rejected") return;
 
-    const identities = connectorsResult.value.connectors.filter((c) => {
-      return c.externalUsername !== null || c.externalEmail !== null;
-    });
+      const identities = connectorsResult.value.connectors.filter((c) => {
+        return c.externalUsername !== null || c.externalEmail !== null;
+      });
 
-    if (identities.length === 0) return;
+      if (identities.length === 0) return;
 
-    // Resolve permissions if both agent APIs succeeded
-    let resolvedPolicies: FirewallPolicies | null = null;
-    const permissionDataAvailable =
-      agentResult.status === "fulfilled" &&
-      enabledResult.status === "fulfilled";
-    if (permissionDataAvailable) {
-      resolvedPolicies = resolveFirewallPolicies(
-        agentResult.value.firewallPolicies,
-        enabledResult.value,
-      );
-    }
-
-    console.log();
-    console.log(chalk.bold("Connectors:"));
-    for (const connector of identities) {
-      const identity = formatConnectorIdentity(connector);
-      console.log(`  ${connector.type.padEnd(14)}${identity}`);
-
+      let resolvedPolicies: FirewallPolicies | null = null;
+      const permissionDataAvailable =
+        agentResult.status === "fulfilled" &&
+        enabledResult.status === "fulfilled";
       if (permissionDataAvailable) {
-        printConnectorPermissions(connector.type, resolvedPolicies);
+        resolvedPolicies = resolveFirewallPolicies(
+          agentResult.value.firewallPolicies,
+          enabledResult.value,
+        );
+      }
+
+      console.log();
+      console.log(chalk.bold("Connectors:"));
+      for (const connector of identities) {
+        const identity = formatConnectorIdentity(connector);
+        console.log(`  ${connector.type.padEnd(14)}${identity}`);
+
+        if (permissionDataAvailable) {
+          printConnectorPermissions(connector.type, resolvedPolicies);
+        }
+      }
+    } else {
+      // Default mode: only fetch connector identities (1 API call)
+      const connectors = await listZeroConnectors();
+      const identities = connectors.connectors.filter((c) => {
+        return c.externalUsername !== null || c.externalEmail !== null;
+      });
+
+      if (identities.length === 0) return;
+
+      console.log();
+      console.log(chalk.bold("Connectors:"));
+      for (const connector of identities) {
+        const identity = formatConnectorIdentity(connector);
+        console.log(`  ${connector.type.padEnd(14)}${identity}`);
       }
     }
   } catch {
@@ -176,20 +192,23 @@ async function showLocalInfo(): Promise<void> {
 export const zeroWhoamiCommand = new Command()
   .name("whoami")
   .description("Show agent identity, run ID, and capabilities")
+  .option("--permissions", "Show full permission details for each connector")
   .addHelpText(
     "after",
     `
 Examples:
   zero whoami
+  zero whoami --permissions
 
 Notes:
   - Inside sandbox: shows agent ID, run ID, org ID, and granted capabilities
+  - Use --permissions to see detailed permission breakdown per connector
   - Your agent ID is also available as $ZERO_AGENT_ID`,
   )
   .action(
-    withErrorHandler(async () => {
+    withErrorHandler(async (options: { permissions?: boolean }) => {
       if (isInsideSandbox()) {
-        await showSandboxInfo();
+        await showSandboxInfo(options.permissions ?? false);
       } else {
         await showLocalInfo();
       }
