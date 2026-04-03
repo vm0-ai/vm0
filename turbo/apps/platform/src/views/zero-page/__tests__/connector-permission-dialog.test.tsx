@@ -66,7 +66,7 @@ describe("connector permission dialog", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText(/successfully connect with GitHub/),
+        screen.getByText(/successfully connected with GitHub/),
       ).toBeInTheDocument();
     });
     expect(screen.getByText("Agent Alpha")).toBeInTheDocument();

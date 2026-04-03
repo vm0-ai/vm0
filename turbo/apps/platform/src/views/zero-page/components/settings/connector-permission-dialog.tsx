@@ -126,7 +126,7 @@ export function ConnectorPermissionDialog({
             <div className="flex flex-col items-center gap-6">
               <div className="flex flex-col items-center gap-2.5 text-center text-foreground">
                 <p className="text-lg font-medium leading-7">
-                  You&apos;ve successfully connect with {config.label}!
+                  You&apos;ve successfully connected with {config.label}!
                 </p>
                 <p className="text-sm leading-5">
                   You can now let some of your agents to use this connector
