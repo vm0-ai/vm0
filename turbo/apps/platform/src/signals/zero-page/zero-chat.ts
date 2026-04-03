@@ -758,7 +758,7 @@ export const loadSessionFromSnapshot$ = command(
     // Start daemon polling loops for each running assistant message.
     // These loops run until the run completes or the signal is aborted.
     // When all loops finish, trigger a final reload to pick up completed state.
-    Promise.all(
+    void Promise.all(
       assistantMessages.map((message) => {
         return set(message.beginLoop$!, signal);
       }),
@@ -771,8 +771,11 @@ export const loadSessionFromSnapshot$ = command(
           return n + 1;
         });
       })
-      .catch(() => {
-        // AbortError is expected when the page signal is aborted; ignore it.
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
+        throw error;
       });
   },
 );

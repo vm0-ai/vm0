@@ -1,9 +1,13 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { http, HttpResponse } from "msw";
+import { delay } from "signal-timers";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
-import { pollSlackConnection$ } from "../zero-slack.ts";
+import {
+  pollSlackConnection$,
+  setSlackPollIntervalMs$,
+} from "../zero-slack.ts";
 
 const context = testContext();
 
@@ -55,8 +59,9 @@ function mockSlackEndpoint(getIsConnected: (callCount: number) => boolean) {
 }
 
 describe("pollSlackConnection$", () => {
-  afterEach(() => {
-    vi.useRealTimers();
+  beforeEach(() => {
+    // Use a zero poll interval so tests run fast without fake timers.
+    context.store.set(setSlackPollIntervalMs$, 0);
   });
 
   it("should return immediately when already connected", async () => {
@@ -77,18 +82,9 @@ describe("pollSlackConnection$", () => {
 
     await setup();
 
-    vi.useFakeTimers();
-    const pollPromise = context.store.set(pollSlackConnection$, context.signal);
+    await context.store.set(pollSlackConnection$, context.signal);
 
-    // Advance through poll intervals until connected
-    for (let i = 0; i < 5; i++) {
-      await vi.advanceTimersByTimeAsync(3000);
-    }
-
-    await pollPromise;
-    vi.useRealTimers();
-
-    // Called at least 3 times: initial check + polls until connected
+    // Called at least 3 times: initial check + polls until connected on 3rd call
     expect(counter.count).toBeGreaterThanOrEqual(3);
   });
 
@@ -99,25 +95,18 @@ describe("pollSlackConnection$", () => {
     await setup();
 
     const abortController = new AbortController();
-
-    vi.useFakeTimers();
     const pollPromise = context.store.set(
       pollSlackConnection$,
       abortController.signal,
     );
 
-    // Let it poll a few times
-    for (let i = 0; i < 3; i++) {
-      await vi.advanceTimersByTimeAsync(3000);
-    }
-
-    // Abort the signal to stop polling
+    // Allow a few poll iterations before aborting
+    await delay(20);
     abortController.abort();
 
     await expect(pollPromise).rejects.toThrow();
-    vi.useRealTimers();
 
-    // Should have polled a few times before abort
+    // Should have polled at least once before abort
     expect(counter.count).toBeGreaterThanOrEqual(1);
   });
 });

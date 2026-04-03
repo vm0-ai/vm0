@@ -107,7 +107,11 @@ export const uninstallSlackOrg$ = command(
   },
 );
 
-const POLL_INTERVAL_MS = 3000;
+const slackPollIntervalMs$ = state(3000);
+
+export const setSlackPollIntervalMs$ = command(({ set }, ms: number) => {
+  set(slackPollIntervalMs$, ms);
+});
 
 /**
  * Poll Slack connection status until connected or aborted.
@@ -123,7 +127,7 @@ export const pollSlackConnection$ = command(
     }
 
     while (!signal.aborted) {
-      await delay(POLL_INTERVAL_MS, { signal });
+      await delay(get(slackPollIntervalMs$), { signal });
 
       const client = get(zeroClient$)(zeroIntegrationsSlackContract);
       const result = await client.getStatus();
