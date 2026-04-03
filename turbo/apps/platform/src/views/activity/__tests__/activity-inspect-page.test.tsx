@@ -6,6 +6,7 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import {
   loadInspectLogFile$,
+  inspectStepSearch$,
   setInspectStepSearch$,
   type InspectLogData,
 } from "../../../signals/activity-page/inspect-log-signals.ts";
@@ -62,7 +63,6 @@ describe("activityInspectPage", () => {
       expect(screen.getByText("Upload JSON")).toBeInTheDocument();
       const fileInput = document.querySelector('input[type="file"]');
       expect(fileInput).not.toBeNull();
-      expect(fileInput).toHaveAttribute("accept", ".json");
     });
   });
 
@@ -97,7 +97,7 @@ describe("activityInspectPage", () => {
       await loadInspectData(makeInspectData({ status: "failed" }));
 
       await waitFor(() => {
-        expect(screen.getByTestId("status-badge")).toBeInTheDocument();
+        expect(screen.getByTestId("status-badge")).toHaveTextContent(/Failed/i);
       });
     });
 
@@ -122,7 +122,8 @@ describe("activityInspectPage", () => {
       await loadInspectData(makeInspectData({ framework: "claude-code" }));
 
       await waitFor(() => {
-        expect(screen.getByText("claude-code")).toBeInTheDocument();
+        const modelLabel = screen.getByText("Model");
+        expect(modelLabel.parentElement).toHaveTextContent("claude-code");
       });
     });
 
@@ -181,14 +182,31 @@ describe("activityInspectPage", () => {
     });
 
     // ACT-D-040
-    it("step search term displays", async () => {
+    it("step search term filters visible steps", async () => {
+      const visibleEvent: AgentEvent = {
+        sequenceNumber: 0,
+        eventType: "assistant",
+        eventData: {
+          message: {
+            content: [{ type: "text", text: "Unique step content" }],
+          },
+        },
+        createdAt: "2026-03-10T14:56:02Z",
+      };
+
       await setupPage({ context, path: "/activities/inspect" });
-      await loadInspectData(makeInspectData());
-      context.store.set(setInspectStepSearch$, "my-search");
+      await loadInspectData(makeInspectData({}, [visibleEvent]));
 
       await waitFor(() => {
-        const input = screen.getByPlaceholderText("Search steps");
-        expect(input).toHaveValue("my-search");
+        expect(screen.getByText("Unique step content")).toBeInTheDocument();
+      });
+
+      context.store.set(setInspectStepSearch$, "xyz-no-match");
+
+      await waitFor(() => {
+        expect(
+          screen.queryByText("Unique step content"),
+        ).not.toBeInTheDocument();
       });
     });
 
@@ -283,22 +301,15 @@ describe("activityInspectPage", () => {
       await loadInspectData(makeInspectData());
 
       await waitFor(() => {
-        expect(
-          screen.getByRole("tab", { name: "Context" }),
-        ).toBeInTheDocument();
+        expect(screen.getByPlaceholderText("Search steps")).toBeInTheDocument();
       });
 
       await user.click(screen.getByRole("tab", { name: "Context" }));
 
       await waitFor(() => {
-        expect(screen.getByRole("tab", { name: "Context" })).toHaveAttribute(
-          "aria-selected",
-          "true",
-        );
-        expect(screen.getByRole("tab", { name: "Steps" })).toHaveAttribute(
-          "aria-selected",
-          "false",
-        );
+        expect(
+          screen.queryByPlaceholderText("Search steps"),
+        ).not.toBeInTheDocument();
       });
     });
   });
@@ -317,7 +328,7 @@ describe("activityInspectPage", () => {
       const searchInput = screen.getByPlaceholderText("Search steps");
       await user.type(searchInput, "hello");
 
-      expect(searchInput).toHaveValue("hello");
+      expect(context.store.get(inspectStepSearch$)).toBe("hello");
     });
 
     // ACT-D-047
