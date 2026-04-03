@@ -356,7 +356,17 @@ function CreateTeammateDialogContent({
   const pageSignal = useGet(pageSignal$);
 
   const handleUpload = (file: File) => {
-    detach(uploadAvatarFn(file, fetchFn, pageSignal), Reason.DomCallback);
+    detach(
+      uploadAvatarFn(file, fetchFn, pageSignal).then(
+        undefined,
+        (error: unknown) => {
+          toast.error(
+            error instanceof Error ? error.message : "Failed to upload avatar",
+          );
+        },
+      ),
+      Reason.DomCallback,
+    );
   };
 
   const isCustom = !avatarUrl.startsWith(AVATAR_PRESET_PREFIX);

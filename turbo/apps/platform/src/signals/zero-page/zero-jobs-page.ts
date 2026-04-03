@@ -1,7 +1,5 @@
 import { command, computed, state } from "ccstate";
 import { randomPresetAvatar } from "../../views/zero-page/avatar-utils.ts";
-import { throwIfAbort } from "../utils.ts";
-import { toast } from "@vm0/ui/components/ui/sonner";
 
 // ---------------------------------------------------------------------------
 // Create-teammate dialog state
@@ -57,22 +55,17 @@ export const uploadJobsAvatar$ = command(
     ) => Promise<Response>,
     _signal: AbortSignal,
   ): Promise<void> => {
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-      const res = await fetchFn("/api/zero/uploads", {
-        method: "POST",
-        body: formData,
-      });
-      if (!res.ok) {
-        throw new Error(`Upload failed (${res.status})`);
-      }
-      const data: { url: string } = await res.json();
-      set(internalAvatarUrl$, data.url);
-    } catch (error) {
-      throwIfAbort(error);
-      toast.error("Failed to upload avatar");
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetchFn("/api/zero/uploads", {
+      method: "POST",
+      body: formData,
+    });
+    if (!res.ok) {
+      throw new Error(`Upload failed (${res.status})`);
     }
+    const data: { url: string } = await res.json();
+    set(internalAvatarUrl$, data.url);
   },
 );
 
