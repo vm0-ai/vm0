@@ -588,11 +588,6 @@ jobs:
               || fail "command failed: $cmd"
             echo "  $cmd -> $(echo "$OUTPUT" | head -1)"
           done
-          # Verify localhost resolves (VM has no mDNS, needs /etc/hosts)
-          sudo "$BIN_DIR/runner" exec "$RUN_ID" -- "getent hosts localhost" \
-            || fail "localhost DNS resolution"
-          echo "  localhost resolves: ok"
-
           # Verify PostgreSQL can actually start (not just psql --version).
           # Test with TCP on localhost — users will connect via localhost:5432.
           sudo "$BIN_DIR/runner" exec "$RUN_ID" -- "mkdir -p /tmp/pgdata && /usr/lib/postgresql/16/bin/initdb -D /tmp/pgdata -A trust && /usr/lib/postgresql/16/bin/pg_ctl -D /tmp/pgdata -l /tmp/pgdata/log -o \"-c listen_addresses='localhost'\" start && pg_isready -h localhost && /usr/lib/postgresql/16/bin/pg_ctl -D /tmp/pgdata stop" \
@@ -664,6 +659,9 @@ jobs:
           # Test 7: verify DNS resolution works inside sandbox
           # Uses getent (libc-bin, always available) instead of nslookup (requires dnsutils).
           echo "--- Test: DNS resolution ---"
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" -- "getent hosts localhost" 2>&1) \
+            || fail "localhost resolution failed: $OUTPUT"
+          echo "  localhost: $OUTPUT"
           OUTPUT=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" -- getent hosts github.com 2>&1) \
             || fail "user DNS resolution failed: $OUTPUT"
           echo "  user: $OUTPUT"
