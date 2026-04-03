@@ -351,12 +351,6 @@ inject_files() {
     "::1 localhost" \
     | sudo tee "$ROOTFS_DIR/etc/hosts" > /dev/null
 
-  # Ensure /dev/shm exists (Chromium requires it for shared memory).
-  # debootstrap does not create it; Docker's ubuntu:24.04 image does.
-  # At runtime it is mounted as tmpfs by the kernel/init.
-  sudo mkdir -p "$ROOTFS_DIR/dev/shm"
-  sudo chmod 1777 "$ROOTFS_DIR/dev/shm"
-
   # Install guest binaries
   local -a bins=(
     "${GUEST_AGENT}:/usr/local/bin/guest-agent"
