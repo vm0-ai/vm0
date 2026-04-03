@@ -245,6 +245,7 @@ describe("sandbox-token", () => {
         "schedule:read",
         "schedule:write",
         "slack:write",
+        "connector:read",
       ]);
     });
 

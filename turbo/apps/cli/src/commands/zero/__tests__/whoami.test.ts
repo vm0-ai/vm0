@@ -4,6 +4,8 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import * as os from "os";
 import chalk from "chalk";
+import { http, HttpResponse } from "msw";
+import { server } from "../../../mocks/server";
 import { zeroWhoamiCommand } from "../whoami";
 
 // Mock os.homedir to use temp directory for config isolation
@@ -179,6 +181,277 @@ describe("zero whoami command", () => {
           return line.includes("unavailable");
         }),
       ).toBe(true);
+    });
+
+    it("should show connected service identities", async () => {
+      const token = buildZeroToken({
+        userId: "user-1",
+        runId: "run-abc",
+        orgId: "org-xyz",
+        scope: "zero",
+        capabilities: ["agent:read", "connector:read"],
+        iat: 1000,
+        exp: 2000,
+      });
+      vi.stubEnv("ZERO_AGENT_ID", "agent-123");
+      vi.stubEnv("ZERO_TOKEN", token);
+      vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+
+      server.use(
+        http.get("http://localhost:3000/api/zero/connectors", () => {
+          return HttpResponse.json({
+            connectors: [
+              {
+                id: "1",
+                type: "github",
+                authMethod: "oauth",
+                externalId: "12345",
+                externalUsername: "octocat",
+                externalEmail: "octocat@github.com",
+                oauthScopes: ["repo"],
+                needsReconnect: false,
+                createdAt: "2025-01-01T00:00:00Z",
+                updatedAt: "2025-01-01T00:00:00Z",
+              },
+              {
+                id: "2",
+                type: "google",
+                authMethod: "oauth",
+                externalId: "67890",
+                externalUsername: null,
+                externalEmail: "user@gmail.com",
+                oauthScopes: ["email"],
+                needsReconnect: false,
+                createdAt: "2025-01-01T00:00:00Z",
+                updatedAt: "2025-01-01T00:00:00Z",
+              },
+            ],
+            configuredTypes: ["github", "google"],
+            connectorProvidedSecretNames: [],
+          });
+        }),
+      );
+
+      await runWhoami();
+
+      const output = getAllOutput();
+      expect(
+        output.some((line) => {
+          return line.includes("Connected Services:");
+        }),
+      ).toBe(true);
+      expect(
+        output.some((line) => {
+          return (
+            line.includes("@octocat") && line.includes("(octocat@github.com)")
+          );
+        }),
+      ).toBe(true);
+      expect(
+        output.some((line) => {
+          return line.includes("google") && line.includes("user@gmail.com");
+        }),
+      ).toBe(true);
+    });
+
+    it("should show needs reconnect warning", async () => {
+      const token = buildZeroToken({
+        userId: "user-1",
+        runId: "run-abc",
+        orgId: "org-xyz",
+        scope: "zero",
+        capabilities: ["agent:read", "connector:read"],
+        iat: 1000,
+        exp: 2000,
+      });
+      vi.stubEnv("ZERO_AGENT_ID", "agent-123");
+      vi.stubEnv("ZERO_TOKEN", token);
+      vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+
+      server.use(
+        http.get("http://localhost:3000/api/zero/connectors", () => {
+          return HttpResponse.json({
+            connectors: [
+              {
+                id: "1",
+                type: "slack",
+                authMethod: "oauth",
+                externalId: "S123",
+                externalUsername: "john.doe",
+                externalEmail: null,
+                oauthScopes: ["chat:write"],
+                needsReconnect: true,
+                createdAt: "2025-01-01T00:00:00Z",
+                updatedAt: "2025-01-01T00:00:00Z",
+              },
+            ],
+            configuredTypes: ["slack"],
+            connectorProvidedSecretNames: [],
+          });
+        }),
+      );
+
+      await runWhoami();
+
+      const output = getAllOutput();
+      expect(
+        output.some((line) => {
+          return (
+            line.includes("@john.doe") && line.includes("(needs reconnect)")
+          );
+        }),
+      ).toBe(true);
+    });
+
+    it("should gracefully handle connector API error", async () => {
+      const token = buildZeroToken({
+        userId: "user-1",
+        runId: "run-abc",
+        orgId: "org-xyz",
+        scope: "zero",
+        capabilities: ["agent:read"],
+        iat: 1000,
+        exp: 2000,
+      });
+      vi.stubEnv("ZERO_AGENT_ID", "agent-123");
+      vi.stubEnv("ZERO_TOKEN", token);
+      vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+
+      server.use(
+        http.get("http://localhost:3000/api/zero/connectors", () => {
+          return HttpResponse.json(
+            { error: { message: "Forbidden", code: "FORBIDDEN" } },
+            { status: 403 },
+          );
+        }),
+      );
+
+      await runWhoami();
+
+      const output = getAllOutput();
+      expect(
+        output.some((line) => {
+          return line.includes("Agent ID:");
+        }),
+      ).toBe(true);
+      expect(
+        output.some((line) => {
+          return line.includes("run-abc");
+        }),
+      ).toBe(true);
+      expect(
+        output.some((line) => {
+          return line.includes("Connected Services:");
+        }),
+      ).toBe(false);
+    });
+
+    it("should skip connected services section when no connectors have identity", async () => {
+      const token = buildZeroToken({
+        userId: "user-1",
+        runId: "run-abc",
+        orgId: "org-xyz",
+        scope: "zero",
+        capabilities: ["agent:read", "connector:read"],
+        iat: 1000,
+        exp: 2000,
+      });
+      vi.stubEnv("ZERO_AGENT_ID", "agent-123");
+      vi.stubEnv("ZERO_TOKEN", token);
+      vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+
+      server.use(
+        http.get("http://localhost:3000/api/zero/connectors", () => {
+          return HttpResponse.json({
+            connectors: [],
+            configuredTypes: [],
+            connectorProvidedSecretNames: [],
+          });
+        }),
+      );
+
+      await runWhoami();
+
+      const output = getAllOutput();
+      expect(
+        output.some((line) => {
+          return line.includes("Agent ID:");
+        }),
+      ).toBe(true);
+      expect(
+        output.some((line) => {
+          return line.includes("Connected Services:");
+        }),
+      ).toBe(false);
+    });
+
+    it("should skip connectors without identity info", async () => {
+      const token = buildZeroToken({
+        userId: "user-1",
+        runId: "run-abc",
+        orgId: "org-xyz",
+        scope: "zero",
+        capabilities: ["agent:read", "connector:read"],
+        iat: 1000,
+        exp: 2000,
+      });
+      vi.stubEnv("ZERO_AGENT_ID", "agent-123");
+      vi.stubEnv("ZERO_TOKEN", token);
+      vi.stubEnv("VM0_API_URL", "http://localhost:3000");
+
+      server.use(
+        http.get("http://localhost:3000/api/zero/connectors", () => {
+          return HttpResponse.json({
+            connectors: [
+              {
+                id: "1",
+                type: "github",
+                authMethod: "oauth",
+                externalId: "12345",
+                externalUsername: "octocat",
+                externalEmail: "octocat@github.com",
+                oauthScopes: ["repo"],
+                needsReconnect: false,
+                createdAt: "2025-01-01T00:00:00Z",
+                updatedAt: "2025-01-01T00:00:00Z",
+              },
+              {
+                id: "2",
+                type: "axiom",
+                authMethod: "api-token",
+                externalId: null,
+                externalUsername: null,
+                externalEmail: null,
+                oauthScopes: null,
+                needsReconnect: false,
+                createdAt: "2025-01-01T00:00:00Z",
+                updatedAt: "2025-01-01T00:00:00Z",
+              },
+            ],
+            configuredTypes: ["github", "axiom"],
+            connectorProvidedSecretNames: [],
+          });
+        }),
+      );
+
+      await runWhoami();
+
+      const output = getAllOutput();
+      expect(
+        output.some((line) => {
+          return line.includes("Connected Services:");
+        }),
+      ).toBe(true);
+      expect(
+        output.some((line) => {
+          return line.includes("@octocat");
+        }),
+      ).toBe(true);
+      expect(
+        output.some((line) => {
+          return line.includes("axiom");
+        }),
+      ).toBe(false);
     });
   });
 

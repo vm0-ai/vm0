@@ -23,8 +23,8 @@ describe("agentDefinitionSchema strips unknown experimental_capabilities", () =>
 });
 
 describe("ZERO_CAPABILITIES", () => {
-  it("should have exactly 7 capabilities", () => {
-    expect(ZERO_CAPABILITIES).toHaveLength(7);
+  it("should have exactly 8 capabilities", () => {
+    expect(ZERO_CAPABILITIES).toHaveLength(8);
   });
 
   it("should follow {resource}:{action} naming pattern", () => {

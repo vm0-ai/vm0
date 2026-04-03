@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.61.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.61.1...runner-rs-v0.61.2) (2026-04-03)
+
+
+### Refactoring
+
+* centralize /etc/environment in build-rootfs.sh ([#7825](https://github.com/vm0-ai/vm0/issues/7825)) ([fbe263b](https://github.com/vm0-ai/vm0/commit/fbe263bcdbb5eac69be6583711589be82830af32))
+
 ## [0.61.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.61.0...runner-rs-v0.61.1) (2026-04-03)
 
 

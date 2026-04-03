@@ -1,5 +1,24 @@
 # Changelog
 
+## [12.189.0](https://github.com/vm0-ai/vm0/compare/web-v12.188.4...web-v12.189.0) (2026-04-03)
+
+
+### Features
+
+* add connector read capability and gate connector api endpoints ([#7819](https://github.com/vm0-ai/vm0/issues/7819)) ([9117bf1](https://github.com/vm0-ai/vm0/commit/9117bf144a7b317d021807d5a06ccd031023994f))
+
+
+### Bug Fixes
+
+* respect redirect_url query parameter after sign-in and sign-up ([#7814](https://github.com/vm0-ai/vm0/issues/7814)) ([ce0a58b](https://github.com/vm0-ai/vm0/commit/ce0a58b4ffd585fd8d3628b55acca5db291f0f2e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.147.0
+
 ## [12.188.4](https://github.com/vm0-ai/vm0/compare/web-v12.188.3...web-v12.188.4) (2026-04-03)
 
 

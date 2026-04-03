@@ -411,6 +411,9 @@ export const chatThreads$ = computed(async (get) => {
 
 export const deleteChatThread$ = command(
   async ({ get, set }, threadId: string, signal: AbortSignal) => {
+    const threadSnapshot = await get(chatThreads$);
+    signal.throwIfAborted();
+
     const client = get(zeroClient$)(chatThreadByIdContract);
     const result = await client.delete({
       params: { id: threadId },
@@ -428,7 +431,18 @@ export const deleteChatThread$ = command(
     toast.success("Chat deleted");
 
     if (get(chatThreadId$) === threadId) {
-      set(detachedNavigateTo$, "/");
+      const idx = threadSnapshot.findIndex((t) => {
+        return t.id === threadId;
+      });
+      const remaining = threadSnapshot.filter((t) => {
+        return t.id !== threadId;
+      });
+      if (remaining.length === 0) {
+        set(detachedNavigateTo$, "/");
+      } else {
+        const nextThread = remaining[idx] ?? remaining[remaining.length - 1];
+        set(navigateToChat$, nextThread.id);
+      }
     }
 
     set(internalReloadChatThreads$, (n) => {

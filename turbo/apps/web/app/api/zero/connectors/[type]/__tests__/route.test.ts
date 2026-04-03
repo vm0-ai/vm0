@@ -59,7 +59,7 @@ describe("GET /api/zero/connectors/:type", () => {
     expect(response.status).toBe(401);
   });
 
-  it("should allow access with ZERO_TOKEN (agent:read capability)", async () => {
+  it("should allow access with ZERO_TOKEN (connector:read capability)", async () => {
     const user = await context.setupUser();
 
     await context.createConnector(user.orgId, {

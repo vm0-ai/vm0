@@ -1,5 +1,22 @@
 # Changelog
 
+## [9.99.0](https://github.com/vm0-ai/vm0/compare/cli-v9.98.2...cli-v9.99.0) (2026-04-03)
+
+
+### Features
+
+* add connector read capability and gate connector api endpoints ([#7819](https://github.com/vm0-ai/vm0/issues/7819)) ([9117bf1](https://github.com/vm0-ai/vm0/commit/9117bf144a7b317d021807d5a06ccd031023994f))
+* add directed connect page for missing connector flow ([#7708](https://github.com/vm0-ai/vm0/issues/7708)) ([62a2ef3](https://github.com/vm0-ai/vm0/commit/62a2ef3cc72d1d70b4a5e23c80f3a1e328bfb297))
+* **cli:** show connected service identity in zero whoami ([#7820](https://github.com/vm0-ai/vm0/issues/7820)) ([0ef8219](https://github.com/vm0-ai/vm0/commit/0ef821989748f4b28c2f98c487d983581573c35b))
+* **cli:** show connector permission details in zero agent view ([#7839](https://github.com/vm0-ai/vm0/issues/7839)) ([521f3d9](https://github.com/vm0-ai/vm0/commit/521f3d901b5e1bf6c9b73ad5fa1f3a8c49970917))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.147.0
+
 ## [9.98.2](https://github.com/vm0-ai/vm0/compare/cli-v9.98.1...cli-v9.98.2) (2026-04-02)
 
 

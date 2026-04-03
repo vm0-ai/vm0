@@ -6,6 +6,7 @@ import {
   getToken,
   decodeZeroTokenPayload,
 } from "../../lib/api/config";
+import { listZeroConnectors } from "../../lib/api";
 import { withErrorHandler } from "../../lib/command";
 
 /**
@@ -30,6 +31,35 @@ async function showSandboxInfo(): Promise<void> {
     console.log();
     console.log(chalk.bold("Capabilities:"));
     console.log(`  ${payload.capabilities.join(", ")}`);
+  }
+
+  // Connected Services section
+  try {
+    const result = await listZeroConnectors();
+    const identities = result.connectors.filter((c) => {
+      return c.externalUsername !== null || c.externalEmail !== null;
+    });
+
+    if (identities.length > 0) {
+      console.log();
+      console.log(chalk.bold("Connected Services:"));
+      for (const connector of identities) {
+        let identity = "";
+        if (connector.externalUsername && connector.externalEmail) {
+          identity = `@${connector.externalUsername} (${connector.externalEmail})`;
+        } else if (connector.externalUsername) {
+          identity = `@${connector.externalUsername}`;
+        } else if (connector.externalEmail) {
+          identity = connector.externalEmail;
+        }
+        if (connector.needsReconnect) {
+          identity += ` ${chalk.yellow("(needs reconnect)")}`;
+        }
+        console.log(`  ${connector.type.padEnd(14)}${identity}`);
+      }
+    }
+  } catch {
+    // Silently skip — connector info is supplementary
   }
 }
 
