@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.61.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.61.3...runner-rs-v0.61.4) (2026-04-03)
+
+
+### Bug Fixes
+
+* ensure python, java, and rust trust proxy ca in sandbox rootfs ([#7890](https://github.com/vm0-ai/vm0/issues/7890)) ([c697dca](https://github.com/vm0-ai/vm0/commit/c697dca25e38610ff83629c326170b110bfa678f))
+
 ## [0.61.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.61.2...runner-rs-v0.61.3) (2026-04-03)
 
 

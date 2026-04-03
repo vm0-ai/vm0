@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.149.0](https://github.com/vm0-ai/vm0/compare/core-v8.148.0...core-v8.149.0) (2026-04-03)
+
+
+### Features
+
+* add developer-support server endpoint with consent code and zip bundle ([#7980](https://github.com/vm0-ai/vm0/issues/7980)) ([ec27476](https://github.com/vm0-ai/vm0/commit/ec2747693b605d90b1b47656bb88680c6a8a6cc4))
+
 ## [8.148.0](https://github.com/vm0-ai/vm0/compare/core-v8.147.0...core-v8.148.0) (2026-04-03)
 
 

@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.186.0](https://github.com/vm0-ai/vm0/compare/app-v0.185.0...app-v0.186.0) (2026-04-03)
+
+
+### Features
+
+* **platform:** add ccstate/require-accept eslint rule for zeroClient$ calls ([#7907](https://github.com/vm0-ai/vm0/issues/7907)) ([19706c6](https://github.com/vm0-ai/vm0/commit/19706c6cb4cb2bf1ec4a31d715c53615186e9bc1))
+
+
+### Bug Fixes
+
+* **platform:** use spy to override console.error in test setup and fix unsafe type cast ([d792894](https://github.com/vm0-ai/vm0/commit/d7928949223fa8bff648cd4c45224a7ce67c4154))
+* suppress act warnings and fix duplicate react keys in chat timeline ([#7894](https://github.com/vm0-ai/vm0/issues/7894)) ([32c94d2](https://github.com/vm0-ai/vm0/commit/32c94d2020df771ff18da4a7ded736c587eb6924))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.149.0
+
 ## [0.185.0](https://github.com/vm0-ai/vm0/compare/app-v0.184.0...app-v0.185.0) (2026-04-03)
 
 

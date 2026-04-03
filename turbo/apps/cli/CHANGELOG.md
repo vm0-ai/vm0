@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.100.2](https://github.com/vm0-ai/vm0/compare/cli-v9.100.1...cli-v9.100.2) (2026-04-03)
+
+
+### Refactoring
+
+* **cli:** add --permissions flag to zero whoami and hide permission details by default ([#7979](https://github.com/vm0-ai/vm0/issues/7979)) ([3181d42](https://github.com/vm0-ai/vm0/commit/3181d42612c58b08f7bfa3c6f23fbf5cc1942aa7)), closes [#7906](https://github.com/vm0-ai/vm0/issues/7906)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.149.0
+
 ## [9.100.1](https://github.com/vm0-ai/vm0/compare/cli-v9.100.0...cli-v9.100.1) (2026-04-03)
 
 

@@ -1,5 +1,24 @@
 # Changelog
 
+## [12.191.0](https://github.com/vm0-ai/vm0/compare/web-v12.190.0...web-v12.191.0) (2026-04-03)
+
+
+### Features
+
+* add developer-support server endpoint with consent code and zip bundle ([#7980](https://github.com/vm0-ai/vm0/issues/7980)) ([ec27476](https://github.com/vm0-ai/vm0/commit/ec2747693b605d90b1b47656bb88680c6a8a6cc4))
+
+
+### Refactoring
+
+* **web:** move clerk-config to shared directory ([#7983](https://github.com/vm0-ai/vm0/issues/7983)) ([538284c](https://github.com/vm0-ai/vm0/commit/538284cbf8aad04e85ce08bfad9d005d50baacb3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.149.0
+
 ## [12.190.0](https://github.com/vm0-ai/vm0/compare/web-v12.189.2...web-v12.190.0) (2026-04-03)
 
 
