@@ -1562,6 +1562,13 @@
       "when": 1775200000003,
       "tag": "0222_flashy_wonder_man",
       "breakpoints": true
+    },
+    {
+      "idx": 223,
+      "version": "7",
+      "when": 1775240392561,
+      "tag": "0223_brainy_black_cat",
+      "breakpoints": true
     }
   ]
 }

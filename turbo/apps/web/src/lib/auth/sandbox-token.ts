@@ -1,9 +1,21 @@
 import { createHmac, hkdfSync } from "crypto";
-import { ZERO_CAPABILITIES } from "@vm0/core";
+import {
+  ZERO_CAPABILITIES,
+  FeatureSwitchKey,
+  isFeatureEnabled,
+} from "@vm0/core";
 import { env } from "../../env";
 import { logger } from "../shared/logger";
 
 type ZeroCapability = (typeof ZERO_CAPABILITIES)[number];
+
+/**
+ * Capabilities that are conditionally included based on feature flags.
+ * Each entry maps a capability to the feature flag that gates it.
+ * Capabilities not listed here are always included.
+ */
+const CONDITIONAL_CAPABILITIES: ReadonlyMap<ZeroCapability, FeatureSwitchKey> =
+  new Map([["computer-use:write", FeatureSwitchKey.ComputerUse]]);
 
 const log = logger("auth:sandbox");
 
@@ -312,12 +324,25 @@ export async function generateZeroToken(
   const now = Math.floor(Date.now() / 1000);
   const expiresIn = 2 * 60 * 60; // 2 hours
 
+  // Build capabilities, filtering out gated ones where the flag is disabled
+  const capabilities: ZeroCapability[] = [];
+  for (const cap of ZERO_CAPABILITIES) {
+    const flag = CONDITIONAL_CAPABILITIES.get(cap);
+    if (flag) {
+      if (await isFeatureEnabled(flag, { userId, orgId })) {
+        capabilities.push(cap);
+      }
+    } else {
+      capabilities.push(cap);
+    }
+  }
+
   const payload: ZeroTokenPayload = {
     userId,
     runId,
     orgId,
     scope: "zero",
-    capabilities: [...ZERO_CAPABILITIES],
+    capabilities,
     iat: now,
     exp: now + expiresIn,
   };

@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   generateSandboxToken,
   verifySandboxToken,
@@ -15,6 +15,18 @@ import {
 } from "../sandbox-token";
 
 // SECRETS_ENCRYPTION_KEY is set in setup.ts
+
+// Mock isFeatureEnabled from @vm0/core for conditional capability tests
+const mockIsFeatureEnabled = vi.fn();
+vi.mock("@vm0/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@vm0/core")>();
+  return {
+    ...actual,
+    isFeatureEnabled: (...args: unknown[]) => {
+      return mockIsFeatureEnabled(...args) as Promise<boolean>;
+    },
+  };
+});
 
 describe("sandbox-token", () => {
   describe("generateSandboxToken", () => {
@@ -208,6 +220,15 @@ describe("sandbox-token", () => {
   });
 
   describe("zero tokens", () => {
+    beforeEach(() => {
+      // Default: all feature flags disabled (non-staff user)
+      mockIsFeatureEnabled.mockResolvedValue(false);
+    });
+
+    afterEach(() => {
+      mockIsFeatureEnabled.mockReset();
+    });
+
     it("should generate a prefixed zero token", async () => {
       const token = await generateZeroToken("user-123", "run-456", "org-789");
 
@@ -233,7 +254,9 @@ describe("sandbox-token", () => {
       expect(auth?.orgId).toBe("org-789");
     });
 
-    it("should include all ZERO_CAPABILITIES", async () => {
+    it("should exclude conditional capabilities when feature flags are disabled", async () => {
+      mockIsFeatureEnabled.mockResolvedValue(false);
+
       const token = await generateZeroToken("user-123", "run-456", "org-789");
       const auth = verifyZeroToken(token);
 
@@ -246,6 +269,27 @@ describe("sandbox-token", () => {
         "schedule:write",
         "slack:write",
         "connector:read",
+      ]);
+      expect(auth?.capabilities).not.toContain("computer-use:write");
+    });
+
+    it("should include computer-use:write when feature flag is enabled", async () => {
+      mockIsFeatureEnabled.mockResolvedValue(true);
+
+      const token = await generateZeroToken("user-123", "run-456", "org-789");
+      const auth = verifyZeroToken(token);
+
+      expect(auth?.capabilities).toContain("computer-use:write");
+      expect(auth?.capabilities).toEqual([
+        "agent:read",
+        "agent:write",
+        "agent-run:read",
+        "agent-run:write",
+        "schedule:read",
+        "schedule:write",
+        "slack:write",
+        "connector:read",
+        "computer-use:write",
       ]);
     });
 

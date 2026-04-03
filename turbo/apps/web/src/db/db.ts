@@ -49,6 +49,7 @@ import * as zeroAgentSessionSchema from "./schema/zero-agent-session";
 import * as storageVersionLineageSchema from "./schema/storage-version-lineage";
 import * as vm0ApiKeySchema from "./schema/vm0-api-key";
 import * as zeroSkillSchema from "./schema/zero-skill";
+import * as computerUseHostSchema from "./schema/computer-use-host";
 
 export const schema = {
   ...userSchema,
@@ -102,4 +103,5 @@ export const schema = {
   ...storageVersionLineageSchema,
   ...vm0ApiKeySchema,
   ...zeroSkillSchema,
+  ...computerUseHostSchema,
 };
