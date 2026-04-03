@@ -293,11 +293,10 @@ async fn gc_debootstrap(
                 path.display(),
                 human_bytes(*size)
             );
+        } else if let Err(e) = tokio::fs::remove_file(path).await {
+            tracing::warn!("remove {}: {e}", path.display());
+            continue;
         } else {
-            if let Err(e) = tokio::fs::remove_file(path).await {
-                tracing::warn!("remove {}: {e}", path.display());
-                continue;
-            }
             info!(
                 "debootstrap cache: removed {} ({})",
                 path.display(),

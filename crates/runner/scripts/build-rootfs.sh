@@ -14,13 +14,15 @@
 #   bash build-rootfs.sh \
 #     --output-dir /path/to/output \
 #     --ca-dir /path/to/ca \
+#     --debootstrap-dir /path/to/cache \
 #     --hash <input-hash> \
 #     --disk-mb 16384 \
 #     --dns-nameserver 8.8.8.8 \
 #     --guest-agent /path/to/guest-agent \
 #     --guest-download /path/to/guest-download \
 #     --guest-init /path/to/guest-init \
-#     --guest-mock-claude /path/to/guest-mock-claude
+#     --guest-mock-claude /path/to/guest-mock-claude \
+#     [--mirror http://archive.ubuntu.com/ubuntu]
 
 set -euo pipefail
 
@@ -151,9 +153,16 @@ debootstrap_build() {
   if [[ -f "$cache_tar" ]]; then
     echo "using cached debootstrap tarball: $cache_tar"
     sudo debootstrap --unpack-tarball="$(realpath "$cache_tar")" noble "$ROOTFS_DIR" "$MIRROR"
-    touch "$cache_tar"
+    sudo touch "$cache_tar"
   else
+    # --make-tarball downloads packages into a tarball without extracting.
+    # It always exits non-zero ("cannot exec ...") because it skips the
+    # second stage, so we check the tarball was created instead.
     sudo debootstrap --make-tarball="$cache_tar" noble "$ROOTFS_DIR" "$MIRROR" || true
+    if [[ ! -s "$cache_tar" ]]; then
+      echo "error: debootstrap --make-tarball failed to create $cache_tar" >&2
+      exit 1
+    fi
     sudo debootstrap --unpack-tarball="$(realpath "$cache_tar")" noble "$ROOTFS_DIR" "$MIRROR"
   fi
 
@@ -238,7 +247,7 @@ install_packages() {
 
   # Chromium from Debian Bookworm (Ubuntu 24.04 snap stub does not work).
   # Installed separately to avoid cross-distro dependency conflicts.
-  sudo chroot "$ROOTFS_DIR" bash -c '
+  sudo chroot "$ROOTFS_DIR" bash -c 'set -e
     export DEBIAN_FRONTEND=noninteractive
     curl -fsSL https://ftp-master.debian.org/keys/archive-key-12.asc \
       | gpg --dearmor -o /usr/share/keyrings/debian-bookworm.gpg
@@ -254,7 +263,7 @@ install_packages() {
   # Make NSS-based applications (Chromium, Firefox) trust the system CA store.
   # Replace Mozilla built-in trust module with p11-kit so proxy CA certs
   # injected via update-ca-certificates are trusted by all applications.
-  sudo chroot "$ROOTFS_DIR" bash -c '
+  sudo chroot "$ROOTFS_DIR" bash -c 'set -e
     find /usr/lib -name libnssckbi.so -exec sh -c \
       '\''p11=$(find /usr/lib -name p11-kit-trust.so | head -1) && ln -sf "$p11" "$1"'\'' _ {} \;
   '
