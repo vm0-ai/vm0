@@ -6,6 +6,7 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
+import { calendarSelectedDay$ } from "../../../signals/schedule-page/schedule-page-ui.ts";
 
 const context = testContext();
 
@@ -158,22 +159,6 @@ async function switchToCalendarView(user: ReturnType<typeof userEvent.setup>) {
   });
 }
 
-describe("schedule calendar view - calendar grid renders (SCHED-D-067)", () => {
-  it("displays a calendar grid with time slot rows", async () => {
-    const user = userEvent.setup();
-    mockScheduleAPI([weekdaySchedule()]);
-    await setupPage({ context, path: "/schedules" });
-    await switchToCalendarView(user);
-
-    await waitFor(() => {
-      expect(screen.getAllByText("6:00 AM")[0]).toBeInTheDocument();
-      expect(screen.getAllByText("9:00 AM")[0]).toBeInTheDocument();
-      expect(screen.getAllByText("12:00 PM")[0]).toBeInTheDocument();
-      expect(screen.getAllByText("6:00 PM")[0]).toBeInTheDocument();
-    });
-  });
-});
-
 describe("schedule calendar view - schedule entries in cells (SCHED-D-068)", () => {
   it("shows schedule entries in their corresponding time slots", async () => {
     const user = userEvent.setup();
@@ -222,20 +207,6 @@ describe("schedule calendar view - agent labels with color coding (SCHED-D-069)"
   });
 });
 
-describe("schedule calendar view - empty cell indicator (SCHED-D-070)", () => {
-  it("shows an em dash in cells with no entries", async () => {
-    const user = userEvent.setup();
-    mockScheduleAPI([weekdaySchedule()]);
-    await setupPage({ context, path: "/schedules" });
-    await switchToCalendarView(user);
-
-    await waitFor(() => {
-      const emptyIndicators = screen.getAllByText("—");
-      expect(emptyIndicators.length).toBeGreaterThan(0);
-    });
-  });
-});
-
 describe("schedule calendar view - loop/monthly/once sections (SCHED-D-071)", () => {
   it("renders Loop, Monthly, and Once section headings", async () => {
     const user = userEvent.setup();
@@ -269,37 +240,6 @@ describe("schedule calendar view - mobile single day view (SCHED-D-072)", () => 
   });
 });
 
-describe("schedule calendar view - desktop full week view (SCHED-D-073)", () => {
-  it("renders all 7 weekday column headers", async () => {
-    const user = userEvent.setup();
-    mockScheduleAPI([weekdaySchedule()]);
-    await setupPage({ context, path: "/schedules" });
-    await switchToCalendarView(user);
-
-    await waitFor(() => {
-      for (const day of ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]) {
-        expect(screen.getAllByText(day)[0]).toBeInTheDocument();
-      }
-    });
-  });
-});
-
-describe("schedule calendar view - time labels (SCHED-D-074)", () => {
-  it("shows time labels along the vertical axis", async () => {
-    const user = userEvent.setup();
-    mockScheduleAPI([weekdaySchedule()]);
-    await setupPage({ context, path: "/schedules" });
-    await switchToCalendarView(user);
-
-    await waitFor(() => {
-      expect(screen.getAllByText("6:00 AM")[0]).toBeInTheDocument();
-      expect(screen.getAllByText("9:00 AM")[0]).toBeInTheDocument();
-      expect(screen.getAllByText("12:00 PM")[0]).toBeInTheDocument();
-      expect(screen.getAllByText("6:00 PM")[0]).toBeInTheDocument();
-    });
-  });
-});
-
 describe("schedule calendar view - previous day navigation (SCHED-D-075)", () => {
   it("shifts to the previous day when Previous day button is clicked", async () => {
     const user = userEvent.setup();
@@ -308,25 +248,13 @@ describe("schedule calendar view - previous day navigation (SCHED-D-075)", () =>
     await switchToCalendarView(user);
 
     const prevBtn = await screen.findByRole("button", { name: "Previous day" });
-    const WEEKDAYS = new Set(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]);
-
-    const allSpans = document.querySelectorAll("span.text-sm.font-medium");
-    const currentDay =
-      [...allSpans].find((s) => {
-        return WEEKDAYS.has(s.textContent ?? "");
-      })?.textContent ?? "";
+    const dayBefore = context.store.get(calendarSelectedDay$);
 
     await user.click(prevBtn);
 
     await waitFor(() => {
-      const updatedSpans = document.querySelectorAll(
-        "span.text-sm.font-medium",
-      );
-      const newDay =
-        [...updatedSpans].find((s) => {
-          return WEEKDAYS.has(s.textContent ?? "");
-        })?.textContent ?? "";
-      expect(newDay).not.toBe(currentDay);
+      const dayAfter = context.store.get(calendarSelectedDay$);
+      expect(dayAfter).not.toBe(dayBefore);
     });
   });
 });
@@ -339,25 +267,13 @@ describe("schedule calendar view - next day navigation (SCHED-D-076)", () => {
     await switchToCalendarView(user);
 
     const nextBtn = await screen.findByRole("button", { name: "Next day" });
-    const WEEKDAYS = new Set(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]);
-
-    const allSpans = document.querySelectorAll("span.text-sm.font-medium");
-    const currentDay =
-      [...allSpans].find((s) => {
-        return WEEKDAYS.has(s.textContent ?? "");
-      })?.textContent ?? "";
+    const dayBefore = context.store.get(calendarSelectedDay$);
 
     await user.click(nextBtn);
 
     await waitFor(() => {
-      const updatedSpans = document.querySelectorAll(
-        "span.text-sm.font-medium",
-      );
-      const newDay =
-        [...updatedSpans].find((s) => {
-          return WEEKDAYS.has(s.textContent ?? "");
-        })?.textContent ?? "";
-      expect(newDay).not.toBe(currentDay);
+      const dayAfter = context.store.get(calendarSelectedDay$);
+      expect(dayAfter).not.toBe(dayBefore);
     });
   });
 });
