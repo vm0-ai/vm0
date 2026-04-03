@@ -84,7 +84,7 @@ const router = tsr.router(zeroDeveloperSupportContract, {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization, {
-      requiredCapability: "developer-support:write",
+      acceptAnySandboxCapability: true,
     });
     if (isAuthError(authCtx)) return authCtx;
 
