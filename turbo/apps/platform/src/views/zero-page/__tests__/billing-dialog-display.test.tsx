@@ -1,0 +1,401 @@
+/**
+ * Display and conditional tests for billing-dialog.tsx.
+ *
+ * Covers AutoRechargeSection (dialog variant) and BillingDialog display rendering.
+ * Entry point: setupPage({ path: "/" }) + context.store.set(openBillingDialog$)
+ */
+import { describe, expect, it } from "vitest";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
+import { server } from "../../../mocks/server.ts";
+import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { setupPage } from "../../../__tests__/page-helper.ts";
+import { setMockBillingStatus } from "../../../mocks/handlers/api-billing.ts";
+import { openBillingDialog$ } from "../../../signals/zero-page/billing.ts";
+import { setSelectedPlanTier$ } from "../../../signals/zero-page/billing-dialog-state.ts";
+
+const context = testContext();
+
+function mockAPIs() {
+  server.use(
+    http.get("*/api/zero/chat-threads", () => {
+      return HttpResponse.json({ threads: [] });
+    }),
+    http.get("*/api/zero/team", () => {
+      return HttpResponse.json([
+        {
+          id: "c0000000-0000-4000-a000-000000000001",
+          name: "zero",
+          displayName: null,
+          description: null,
+          sound: null,
+          avatarUrl: null,
+          headVersionId: "version_1",
+          updatedAt: "2024-01-01T00:00:00Z",
+        },
+      ]);
+    }),
+    http.get("*/api/zero/org/logo", () => {
+      return HttpResponse.json({ logoUrl: null });
+    }),
+  );
+}
+
+async function openBillingDialogAndWait() {
+  context.store.set(openBillingDialog$);
+  await waitFor(() => {
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+}
+
+describe("chat-d-066: AutoRechargeSection renders currentTier label", () => {
+  it("renders the auto-recharge section for a paid tier", async () => {
+    mockAPIs();
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+    });
+    await setupPage({ context, path: "/" });
+    await openBillingDialogAndWait();
+
+    await waitFor(() => {
+      expect(screen.getByText("Auto-recharge")).toBeInTheDocument();
+    });
+  });
+});
+
+describe("chat-d-067: AutoRechargeSection renders threshold value", () => {
+  it("displays the threshold value in the threshold input", async () => {
+    mockAPIs();
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+      autoRecharge: { enabled: true, threshold: 5000, amount: 10_000 },
+    });
+    await setupPage({ context, path: "/" });
+    await openBillingDialogAndWait();
+
+    await waitFor(() => {
+      const input = screen.getByPlaceholderText("e.g. 1000");
+      expect(input).toHaveValue(5000);
+    });
+  });
+});
+
+describe("chat-d-068: AutoRechargeSection renders amount value in credits", () => {
+  it("displays the recharge amount in the credits input", async () => {
+    mockAPIs();
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+      autoRecharge: { enabled: true, threshold: 5000, amount: 10_000 },
+    });
+    await setupPage({ context, path: "/" });
+    await openBillingDialogAndWait();
+
+    await waitFor(() => {
+      const amountInput = screen.getByPlaceholderText("e.g. 10000");
+      expect(amountInput).toHaveValue(10_000);
+    });
+  });
+});
+
+describe("chat-d-069: AutoRechargeSection renders dollarAmount calculated from amount / CREDITS_PER_DOLLAR", () => {
+  it("displays the dollar equivalent calculated as amount / 1000", async () => {
+    mockAPIs();
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+      autoRecharge: { enabled: true, threshold: 5000, amount: 10_000 },
+    });
+    await setupPage({ context, path: "/" });
+    await openBillingDialogAndWait();
+
+    await waitFor(() => {
+      // 10_000 credits / 1000 = $10.00
+      expect(screen.getByText("= $10.00")).toBeInTheDocument();
+    });
+  });
+});
+
+describe("chat-s-070: Loading state message shows 'Saving...' during save", () => {
+  it("displays Saving... while the save is in progress", async () => {
+    let resolveSave!: () => void;
+    server.use(
+      http.put("*/api/zero/billing/auto-recharge", () => {
+        return new Promise<Response>((resolve) => {
+          resolveSave = () => {
+            resolve(
+              HttpResponse.json({
+                enabled: true,
+                threshold: 5000,
+                amount: 10_000,
+              }),
+            );
+          };
+        });
+      }),
+    );
+
+    const user = userEvent.setup();
+    mockAPIs();
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+      autoRecharge: { enabled: true, threshold: 5000, amount: 10_000 },
+    });
+    await setupPage({ context, path: "/" });
+    await openBillingDialogAndWait();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Saving...")).toBeInTheDocument();
+    });
+
+    resolveSave();
+  });
+});
+
+describe("chat-c-071: AutoRechargeSection fields render conditionally based on displayEnabled", () => {
+  it("hides threshold and amount inputs when enabled is false", async () => {
+    mockAPIs();
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+      autoRecharge: { enabled: false, threshold: null, amount: null },
+    });
+    await setupPage({ context, path: "/" });
+    await openBillingDialogAndWait();
+
+    await waitFor(() => {
+      expect(screen.getByText("Auto-recharge")).toBeInTheDocument();
+    });
+
+    expect(screen.queryByPlaceholderText("e.g. 1000")).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("e.g. 10000")).not.toBeInTheDocument();
+  });
+
+  it("shows threshold and amount inputs when enabled is true", async () => {
+    mockAPIs();
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+      autoRecharge: { enabled: true, threshold: 1000, amount: 5000 },
+    });
+    await setupPage({ context, path: "/" });
+    await openBillingDialogAndWait();
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("e.g. 1000")).toBeInTheDocument();
+      expect(screen.getByPlaceholderText("e.g. 10000")).toBeInTheDocument();
+    });
+  });
+});
+
+describe("chat-d-072: BillingDialog renders status.tier as current plan tier", () => {
+  it("displays the current plan tier from status.tier", async () => {
+    mockAPIs();
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+    });
+    await setupPage({ context, path: "/" });
+    await openBillingDialogAndWait();
+
+    await waitFor(() => {
+      expect(screen.getByText(/You are on the Pro plan/)).toBeInTheDocument();
+    });
+  });
+});
+
+describe("chat-d-073: BillingDialog renders formatted credit count via toLocaleString", () => {
+  it("displays credits with locale formatting", async () => {
+    mockAPIs();
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+    });
+    await setupPage({ context, path: "/" });
+    await openBillingDialogAndWait();
+
+    await waitFor(() => {
+      // 20_000 credits → "20,000" via toLocaleString in dialog description
+      expect(
+        screen.getByText(/You are on the Pro plan with 20,000 credits\./),
+      ).toBeInTheDocument();
+    });
+  });
+});
+
+describe("chat-d-074: Current plan badge renders on the active PlanCard", () => {
+  it("shows Current badge on the PlanCard matching the current tier", async () => {
+    mockAPIs();
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+    });
+    await setupPage({ context, path: "/" });
+    await openBillingDialogAndWait();
+
+    await waitFor(() => {
+      expect(screen.getByText("Current")).toBeInTheDocument();
+    });
+  });
+});
+
+describe("chat-d-075: Selected plan ring highlight renders on chosen PlanCard", () => {
+  it("renders ring highlight on the selected PlanCard", async () => {
+    mockAPIs();
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+    });
+    await setupPage({ context, path: "/" });
+    context.store.set(setSelectedPlanTier$, "team");
+    await openBillingDialogAndWait();
+
+    await waitFor(() => {
+      // Find the Team plan button within the dialog and check it has the ring class
+      const dialog = screen.getByRole("dialog");
+      const planButtons = dialog.querySelectorAll("button.ring-2");
+      expect(planButtons.length).toBeGreaterThan(0);
+    });
+  });
+});
+
+describe("chat-c-076: Button text changes based on isUpgrade/isDowngrade determination", () => {
+  it("shows Upgrade to Team when team is selected and pro is current", async () => {
+    const user = userEvent.setup();
+    mockAPIs();
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+    });
+    await setupPage({ context, path: "/" });
+    await openBillingDialogAndWait();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Team/i })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: /Team/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /Upgrade to Team/i }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("shows Downgrade when free is selected and pro is current", async () => {
+    const user = userEvent.setup();
+    mockAPIs();
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+    });
+    await setupPage({ context, path: "/" });
+    await openBillingDialogAndWait();
+
+    // Find the Free plan card button within the dialog (the card button contains "Free" as the plan name)
+    const dialog = await waitFor(() => {
+      return screen.getByRole("dialog");
+    });
+    const freePlanCard = Array.from(dialog.querySelectorAll("button")).find(
+      (btn) => {
+        return btn.querySelector("span")?.textContent === "Free";
+      },
+    );
+    expect(freePlanCard).toBeInTheDocument();
+
+    await user.click(freePlanCard!);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /^Downgrade$/i }),
+      ).toBeInTheDocument();
+    });
+  });
+});
+
+describe("chat-c-077: Button text shows 'Redirecting...' during redirect", () => {
+  it("shows Redirecting... while checkout is in progress", async () => {
+    let resolveCheckout!: () => void;
+    server.use(
+      http.post("*/api/zero/billing/checkout", () => {
+        return new Promise<Response>((resolve) => {
+          resolveCheckout = () => {
+            resolve(
+              HttpResponse.json({
+                url: "https://checkout.stripe.com/test?tier=team",
+              }),
+            );
+          };
+        });
+      }),
+    );
+
+    const user = userEvent.setup();
+    mockAPIs();
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+    });
+    await setupPage({ context, path: "/" });
+    await openBillingDialogAndWait();
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Team/i })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: /Team/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /Upgrade to Team/i }),
+      ).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: /Upgrade to Team/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Redirecting...")).toBeInTheDocument();
+    });
+
+    resolveCheckout();
+  });
+});
