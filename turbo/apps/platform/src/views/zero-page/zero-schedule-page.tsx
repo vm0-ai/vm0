@@ -487,33 +487,36 @@ export function ZeroSchedulePage() {
 
   const handleCreateSave = (values: ScheduleFormValues) => {
     detach(
-      (async () => {
-        const scheduleId = await saveScheduleTracked(
-          {
-            prompt: values.prompt.trim(),
-            description: values.description.trim() || undefined,
-            freq: values.freq,
-            date: values.date,
-            hour: values.hour,
-            minute: values.minute,
-            timezone: values.timezone,
-            intervalSeconds: values.loopMinutes * 60,
-            agentId: values.agentId,
-            ...(values.freq === "every_week"
-              ? { dayOfWeek: values.dayOfWeek }
-              : {}),
-            ...(values.freq === "every_month"
-              ? { dayOfMonth: values.dayOfMonth }
-              : {}),
-          },
-          pageSignal,
-        );
-
-        setCreateOpen(false);
-        navigate("/schedules/:id", {
-          pathParams: { id: scheduleId },
-        });
-      })(),
+      saveScheduleTracked(
+        {
+          prompt: values.prompt.trim(),
+          description: values.description.trim() || undefined,
+          freq: values.freq,
+          date: values.date,
+          hour: values.hour,
+          minute: values.minute,
+          timezone: values.timezone,
+          intervalSeconds: values.loopMinutes * 60,
+          agentId: values.agentId,
+          ...(values.freq === "every_week"
+            ? { dayOfWeek: values.dayOfWeek }
+            : {}),
+          ...(values.freq === "every_month"
+            ? { dayOfMonth: values.dayOfMonth }
+            : {}),
+        },
+        pageSignal,
+      ).then(
+        (scheduleId) => {
+          setCreateOpen(false);
+          navigate("/schedules/:id", {
+            pathParams: { id: scheduleId },
+          });
+        },
+        (_error: unknown) => {
+          // error is already captured by useLoadableSet and displayed in the dialog via saveError
+        },
+      ),
       Reason.DomCallback,
     );
   };
