@@ -18,6 +18,7 @@
  * - no-getter-setter-params: Functions must not accept ccstate Getter/Setter — use command()
  * - no-new-abort-controller: Disallow new AbortController() — use signal hierarchy
  * - no-direct-local-storage: Disallow direct localStorage access — use localStorageSignals()
+ * - no-empty-promise-catch: Disallow .catch(() => {}) — use detach() for proper promise tracking
  */
 
 import signalDollarSuffix from "./rules/signal-dollar-suffix.ts";
@@ -38,6 +39,7 @@ import noGetterSetterParams from "./rules/no-getter-setter-params.ts";
 import noNewAbortController from "./rules/no-new-abort-controller.ts";
 import preferUserEvent from "./rules/prefer-user-event.ts";
 import noDirectLocalStorage from "./rules/no-direct-local-storage.ts";
+import noEmptyPromiseCatch from "./rules/no-empty-promise-catch.ts";
 
 const plugin = {
   meta: {
@@ -63,6 +65,7 @@ const plugin = {
     "no-new-abort-controller": noNewAbortController,
     "prefer-user-event": preferUserEvent,
     "no-direct-local-storage": noDirectLocalStorage,
+    "no-empty-promise-catch": noEmptyPromiseCatch,
   },
 };
 

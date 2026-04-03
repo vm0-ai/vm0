@@ -37,6 +37,7 @@ export default [
       "ccstate/no-non-zero-api": "error",
       "ccstate/no-new-abort-controller": "error",
       "ccstate/no-direct-local-storage": "error",
+      "ccstate/no-empty-promise-catch": "error",
     },
   },
   // Type-aware rules (only for TypeScript files)

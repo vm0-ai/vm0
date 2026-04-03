@@ -464,9 +464,11 @@ describe("zero-chat signals", () => {
       useUploadHandler({ delayMs: 500 });
       await setup();
 
-      const uploadPromise = context.store
-        .set(uploadZeroAttachment$, createTestFile(), context.signal)
-        .catch(() => {});
+      const uploadPromise = context.store.set(
+        uploadZeroAttachment$,
+        createTestFile(),
+        context.signal,
+      );
 
       // Wait for the placeholder to appear
       await delay(10);
@@ -476,7 +478,7 @@ describe("zero-chat signals", () => {
       // Cancel via removeZeroAttachment$ (which internally calls cancel$)
       context.store.set(removeZeroAttachment$, before[0]!);
 
-      await uploadPromise;
+      await expect(uploadPromise).rejects.toThrow();
 
       const after = context.store.get(zeroChatAttachments$);
       expect(after).toHaveLength(0);
@@ -521,20 +523,16 @@ describe("zero-chat signals", () => {
       );
       await setup();
 
-      const promise1 = context.store
-        .set(
-          uploadZeroAttachment$,
-          createTestFile("file-a.png"),
-          context.signal,
-        )
-        .catch(() => {});
-      const promise2 = context.store
-        .set(
-          uploadZeroAttachment$,
-          createTestFile("file-b.png"),
-          context.signal,
-        )
-        .catch(() => {});
+      const promise1 = context.store.set(
+        uploadZeroAttachment$,
+        createTestFile("file-a.png"),
+        context.signal,
+      );
+      const promise2 = context.store.set(
+        uploadZeroAttachment$,
+        createTestFile("file-b.png"),
+        context.signal,
+      );
 
       await vi.waitFor(() => {
         const before = context.store.get(zeroChatAttachments$);
@@ -544,7 +542,8 @@ describe("zero-chat signals", () => {
       const before = context.store.get(zeroChatAttachments$);
       context.store.set(removeZeroAttachment$, before[0]!);
 
-      await Promise.all([promise1, promise2]);
+      await expect(promise1).rejects.toThrow();
+      await promise2;
 
       const after = context.store.get(zeroChatAttachments$);
       // Only the second upload should remain, completed

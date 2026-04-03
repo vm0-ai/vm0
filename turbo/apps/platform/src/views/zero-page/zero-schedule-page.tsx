@@ -35,7 +35,7 @@ import {
   COMMON_TIMEZONES,
   getTimezoneLabel,
 } from "../../signals/zero-page/cron.ts";
-import { detach, Reason } from "../../signals/utils.ts";
+import { detach, Reason, throwIfAbort } from "../../signals/utils.ts";
 import {
   allOrgScheduleEntries$,
   allOrgSchedulesLoaded$,
@@ -487,33 +487,33 @@ export function ZeroSchedulePage() {
 
   const handleCreateSave = (values: ScheduleFormValues) => {
     detach(
-      saveScheduleTracked(
-        {
-          prompt: values.prompt.trim(),
-          description: values.description.trim() || undefined,
-          freq: values.freq,
-          date: values.date,
-          hour: values.hour,
-          minute: values.minute,
-          timezone: values.timezone,
-          intervalSeconds: values.loopMinutes * 60,
-          agentId: values.agentId,
-          ...(values.freq === "every_week"
-            ? { dayOfWeek: values.dayOfWeek }
-            : {}),
-          ...(values.freq === "every_month"
-            ? { dayOfMonth: values.dayOfMonth }
-            : {}),
-        },
-        pageSignal,
-      )
-        .then((scheduleId) => {
-          setCreateOpen(false);
-          navigate("/schedules/:id", {
-            pathParams: { id: scheduleId },
-          });
-        })
-        .catch(() => {}),
+      (async () => {
+        const scheduleId = await saveScheduleTracked(
+          {
+            prompt: values.prompt.trim(),
+            description: values.description.trim() || undefined,
+            freq: values.freq,
+            date: values.date,
+            hour: values.hour,
+            minute: values.minute,
+            timezone: values.timezone,
+            intervalSeconds: values.loopMinutes * 60,
+            agentId: values.agentId,
+            ...(values.freq === "every_week"
+              ? { dayOfWeek: values.dayOfWeek }
+              : {}),
+            ...(values.freq === "every_month"
+              ? { dayOfMonth: values.dayOfMonth }
+              : {}),
+          },
+          pageSignal,
+        );
+
+        setCreateOpen(false);
+        navigate("/schedules/:id", {
+          pathParams: { id: scheduleId },
+        });
+      })(),
       Reason.DomCallback,
     );
   };
@@ -648,14 +648,14 @@ export function ZeroSchedulePage() {
                 }}
                 onEdit={openScheduleDetail}
                 onToggle={(entry, enabled) => {
-                  handleToggle(entry, enabled).catch(() => {});
+                  detach(handleToggle(entry, enabled), Reason.DomCallback);
                 }}
                 onDelete={handleDelete}
                 onNew={() => {
                   return setCreateOpen(true);
                 }}
                 onRunNow={(entry) => {
-                  handleRunNow(entry).catch(() => {});
+                  detach(handleRunNow(entry), Reason.DomCallback);
                 }}
                 onOpenDetails={openScheduleDetail}
               />

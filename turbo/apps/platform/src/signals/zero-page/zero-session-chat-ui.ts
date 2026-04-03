@@ -35,16 +35,11 @@ export const copiedMessageIdValue$ = computed((get) => {
 
 export const copyMessageContent$ = command(
   ({ set }, messageId: string, content: string) => {
-    return navigator.clipboard
-      .writeText(content)
-      .then(() => {
-        set(copiedMessageId$, messageId);
-        window.setTimeout(() => {
-          return set(copiedMessageId$, null);
-        }, 2000);
-      })
-      .catch(() => {
-        /* clipboard unavailable – no feedback shown */
-      });
+    return navigator.clipboard.writeText(content).then(() => {
+      set(copiedMessageId$, messageId);
+      window.setTimeout(() => {
+        return set(copiedMessageId$, null);
+      }, 2000);
+    });
   },
 );

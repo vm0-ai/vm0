@@ -278,6 +278,35 @@ set(startLoop$, { runId }, resumeSignal);
 
 ## Detach, Floating Promises, and Test Cleanup
 
+### Never use `.catch(() => {})` to silence floating promises
+
+**Enforced by ESLint rule: `ccstate/no-empty-promise-catch`**
+
+`.catch(() => {})` technically satisfies `@typescript-eslint/no-floating-promises` (the promise is "handled"), but the empty handler means the promise is invisible to `clearAllDetached()` — it escapes test cleanup and can cause DOMException on teardown.
+
+```typescript
+// ❌ Silences lint but escapes cleanup — caught by no-empty-promise-catch
+loadFile(file, signal).catch(() => {});
+handleToggle(entry, enabled).catch(() => {});
+
+// ✅ Properly tracked for cleanup
+detach(loadFile(file, signal), Reason.DomCallback);
+detach(handleToggle(entry, enabled), Reason.DomCallback);
+```
+
+If the promise has a `.then()` chain before it, wrap the entire chain:
+
+```typescript
+// ❌ Empty catch at the end
+saveData(signal).then(() => { toast.success("Saved"); }).catch(() => {});
+
+// ✅ Wrap entire chain in detach
+detach(
+  saveData(signal).then(() => { toast.success("Saved"); }),
+  Reason.DomCallback,
+);
+```
+
 ### Scope of `detach()` usage
 
 **`detach()` should only appear in the views layer (React components), not in the signals directory.**

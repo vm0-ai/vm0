@@ -455,7 +455,7 @@ function ScheduleSettingsForm({
               checked={entry.enabled !== false}
               loading={toggling}
               onCheckedChange={(checked) => {
-                onToggle(checked).catch(() => {});
+                detach(onToggle(checked), Reason.DomCallback);
               }}
               ariaLabel={`${entry.enabled !== false ? "Disable" : "Enable"} this schedule`}
             />
@@ -905,7 +905,7 @@ function ScheduleDetailView({
                 className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg px-4 border text-sm font-medium transition-colors hover:bg-accent"
                 disabled={running || !entry.prompt.trim()}
                 onClick={() => {
-                  onRunNow().catch(() => {});
+                  detach(onRunNow(), Reason.DomCallback);
                 }}
               >
                 <IconPlayerPlay size={14} stroke={1.5} />

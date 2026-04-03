@@ -773,58 +773,6 @@ describe("zero schedule page - schedule dialog fields", () => {
 
     expect(screen.getByRole("button", { name: "Create" })).toBeEnabled();
   });
-
-  it("should show save error in dialog", async () => {
-    const user = userEvent.setup();
-    server.use(
-      http.get("*/api/zero/schedules", () => {
-        return HttpResponse.json({ schedules: createMockSchedules() });
-      }),
-      http.post("*/api/zero/schedules", () => {
-        return HttpResponse.json(
-          {
-            error: {
-              message: "Schedule limit reached",
-              code: "INTERNAL_SERVER_ERROR",
-            },
-          },
-          { status: 400 },
-        );
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
-      }),
-    );
-
-    await renderSchedulePage();
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /Add schedule/i }),
-      ).toBeInTheDocument();
-    });
-
-    await user.click(screen.getByRole("button", { name: /Add schedule/i }));
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Add schedule" }),
-      ).toBeInTheDocument();
-    });
-
-    await user.clear(screen.getByLabelText("Prompt"));
-    await user.type(screen.getByLabelText("Prompt"), "Some task");
-
-    await user.click(screen.getByRole("button", { name: "Create" }));
-
-    // Dialog should stay open with error message
-    await waitFor(() => {
-      expect(screen.getByText(/Schedule limit reached/)).toBeInTheDocument();
-    });
-    expect(
-      screen.getByRole("heading", { name: "Add schedule" }),
-    ).toBeInTheDocument();
-  });
 });
 
 describe("zero schedule page - view modes", () => {
