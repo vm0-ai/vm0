@@ -22,9 +22,12 @@ function UsageSkeleton() {
   );
 }
 
-function EmptyState({ message }: { message: string }) {
+function EmptyState({ message, testId }: { message: string; testId: string }) {
   return (
-    <div className="zero-card flex items-center justify-center p-12">
+    <div
+      className="zero-card flex items-center justify-center p-12"
+      data-testid={testId}
+    >
       <p className="text-sm text-muted-foreground">{message}</p>
     </div>
   );
@@ -61,11 +64,20 @@ export function UsagePage() {
           {isLoading ? (
             <UsageSkeleton />
           ) : hasError ? (
-            <EmptyState message="Failed to load usage data. Please try again later." />
+            <EmptyState
+              message="Failed to load usage data. Please try again later."
+              testId="usage-page-error"
+            />
           ) : !data?.period ? (
-            <EmptyState message="No active billing period. Usage tracking is available for paid plans." />
+            <EmptyState
+              message="No active billing period. Usage tracking is available for paid plans."
+              testId="usage-page-no-period"
+            />
           ) : data.members.length === 0 ? (
-            <EmptyState message="No usage recorded in this billing period." />
+            <EmptyState
+              message="No usage recorded in this billing period."
+              testId="usage-page-no-members"
+            />
           ) : (
             <div className="zero-card overflow-hidden">
               <table className="w-full text-sm">

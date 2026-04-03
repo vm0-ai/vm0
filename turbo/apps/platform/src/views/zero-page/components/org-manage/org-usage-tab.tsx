@@ -105,6 +105,7 @@ function CreditUsageBar({
       <PopoverAnchor asChild>
         <div
           className="group w-full cursor-default py-1.5 -my-1.5"
+          data-testid="credit-bar-hover-target"
           onPointerEnter={show}
           onPointerLeave={scheduleHide}
         >
@@ -369,7 +370,11 @@ export function OrgUsageTab() {
         {usageLoading && !usageData ? (
           <LoadingSkeleton />
         ) : usageError ? (
-          <div className="rounded-xl bg-card px-5 py-8 text-center text-sm text-muted-foreground zero-border">
+          <div
+            className="rounded-xl bg-card px-5 py-8 text-center text-sm text-muted-foreground zero-border"
+            data-testid="usage-tab-error"
+            role="alert"
+          >
             Failed to load usage. Please try again later.
           </div>
         ) : !period ? (

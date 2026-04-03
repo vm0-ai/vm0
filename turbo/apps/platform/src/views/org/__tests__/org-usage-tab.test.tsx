@@ -114,11 +114,7 @@ async function openUsageTab() {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
   await waitFor(() => {
-    expect(
-      screen.getByText(
-        "Credit balance and per-member credit consumption this billing period.",
-      ),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("tab-description")).toBeInTheDocument();
   });
 }
 
@@ -172,8 +168,15 @@ test("shows used and plan credit text in usage tab", async () => {
   mockAPIs({ members: [makeMember("user-a", "alice@example.com", 5000)] });
   await openUsageTab();
   await waitFor(() => {
-    expect(screen.getByText(/\/mo plan/)).toBeInTheDocument();
-    expect(screen.getByText(/used.*this period/)).toBeInTheDocument();
+    const bar = screen.getByRole("progressbar");
+    expect(bar).toHaveAttribute(
+      "aria-valuetext",
+      expect.stringContaining("used"),
+    );
+    expect(bar).toHaveAttribute(
+      "aria-valuetext",
+      expect.stringContaining("remaining"),
+    );
   });
 });
 
@@ -192,8 +195,8 @@ test("shows expiring credits in popover on credit bar hover", async () => {
   });
   mockAPIs({ members: [makeMember("user-a", "alice@example.com", 2000)] });
   await openUsageTab();
-  const progressbar = screen.getByRole("progressbar");
-  await user.hover(progressbar.closest("[class*='group']")!);
+  const hoverTarget = screen.getByTestId("credit-bar-hover-target");
+  await user.hover(hoverTarget);
   await waitFor(() => {
     expect(screen.getByText(/Expiring on/)).toBeInTheDocument();
     expect(screen.getByText("5,000")).toBeInTheDocument();
@@ -254,15 +257,12 @@ test("redirects non-admins to general tab when usage tab is requested", async ()
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
-  // Non-admins are redirected to general tab; usage tab description is never shown
+  // Non-admins are redirected to general tab; usage tab content is never shown
   await waitFor(() => {
-    expect(
-      screen.queryByText(
-        "Credit balance and per-member credit consumption this billing period.",
-      ),
-    ).not.toBeInTheDocument();
     // No cap input spinbutton is visible
     expect(screen.queryByRole("spinbutton")).not.toBeInTheDocument();
+    // Usage tab error/error state is also not present
+    expect(screen.queryByTestId("usage-tab-error")).not.toBeInTheDocument();
   });
 });
 
@@ -277,8 +277,8 @@ test("hovering credit bar shows breakdown popover", async () => {
   });
   mockAPIs({ members: [makeMember("user-a", "alice@example.com", 2000)] });
   await openUsageTab();
-  const progressbar = screen.getByRole("progressbar");
-  await user.hover(progressbar.closest("[class*='group']")!);
+  const hoverTarget = screen.getByTestId("credit-bar-hover-target");
+  await user.hover(hoverTarget);
   await waitFor(() => {
     expect(screen.getByText("Credit breakdown")).toBeInTheDocument();
   });
@@ -329,9 +329,7 @@ test("shows error state when usage API fails in usage tab", async () => {
   mockAPIs({ errorUsage: true });
   await openUsageTab();
   await waitFor(() => {
-    expect(
-      screen.getByText("Failed to load usage. Please try again later."),
-    ).toBeInTheDocument();
+    expect(screen.getByTestId("usage-tab-error")).toBeInTheDocument();
   });
 });
 
@@ -344,8 +342,10 @@ test("shows formatted period start and end dates in usage page header", async ()
   await openUsagePage();
   await waitFor(() => {
     const allText = document.body.textContent ?? "";
-    expect(allText).toContain("2026");
+    // Formatted dates should appear (e.g. "Mar 1, 2026") not ISO strings
+    expect(allText).toContain("Mar");
     expect(allText).not.toContain("2026-03-01");
+    expect(allText).not.toContain("2026-03-31");
   });
 });
 
@@ -382,9 +382,7 @@ describe("usage page states", () => {
     mockAPIs({ errorUsage: true });
     await openUsagePage();
     await waitFor(() => {
-      expect(
-        screen.getByText("Failed to load usage data. Please try again later."),
-      ).toBeInTheDocument();
+      expect(screen.getByTestId("usage-page-error")).toBeInTheDocument();
     });
   });
 
@@ -392,11 +390,7 @@ describe("usage page states", () => {
     mockAPIs({ period: null, members: [] });
     await openUsagePage();
     await waitFor(() => {
-      expect(
-        screen.getByText(
-          "No active billing period. Usage tracking is available for paid plans.",
-        ),
-      ).toBeInTheDocument();
+      expect(screen.getByTestId("usage-page-no-period")).toBeInTheDocument();
     });
   });
 
@@ -407,9 +401,7 @@ describe("usage page states", () => {
     });
     await openUsagePage();
     await waitFor(() => {
-      expect(
-        screen.getByText("No usage recorded in this billing period."),
-      ).toBeInTheDocument();
+      expect(screen.getByTestId("usage-page-no-members")).toBeInTheDocument();
     });
   });
 

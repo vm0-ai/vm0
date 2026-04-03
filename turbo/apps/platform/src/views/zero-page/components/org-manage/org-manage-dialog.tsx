@@ -270,7 +270,10 @@ export function OrgManageDialog({ open, onOpenChange }: OrgManageDialogProps) {
                 <h2 className="hidden sm:block text-xl font-semibold tracking-tight text-foreground">
                   {meta.title}
                 </h2>
-                <p className="text-sm text-muted-foreground mt-1">
+                <p
+                  className="text-sm text-muted-foreground mt-1"
+                  data-testid="tab-description"
+                >
                   {meta.description}
                 </p>
               </header>
