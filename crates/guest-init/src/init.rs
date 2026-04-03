@@ -10,8 +10,6 @@
 use nix::mount::{MsFlags, mount};
 use std::fs;
 
-const DEFAULT_PATH: &str = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
-
 /// Initialize virtual filesystems and environment.
 ///
 /// The kernel has already mounted `/dev/vda` as root (`root=/dev/vda rw`)
@@ -70,21 +68,9 @@ pub fn init_filesystem() -> Result<(), InitError> {
     // SAFETY: We are the init process, no other threads are running yet
     unsafe {
         load_etc_environment();
-        std::env::set_var("PATH", DEFAULT_PATH);
         std::env::set_var("HOME", "/root");
         std::env::set_var("USER", "root");
         std::env::set_var("SHELL", "/bin/bash");
-    }
-
-    // Write PATH for `su - user` (login shell).
-    // /etc/environment is baked into the rootfs by build-rootfs.sh.
-    // PATH goes in /etc/profile.d/ because /etc/profile overrides PATH
-    // from /etc/environment, omitting sbin dirs for non-root users.
-    if let Err(e) = fs::write(
-        "/etc/profile.d/vm0-path.sh",
-        format!("export PATH={DEFAULT_PATH}\n"),
-    ) {
-        eprintln!("[guest-init] Warning: failed to write /etc/profile.d/vm0-path.sh: {e}");
     }
 
     // 3. Change to root home directory (init runs as root;
