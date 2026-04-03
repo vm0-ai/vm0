@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.61.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.61.0...runner-rs-v0.61.1) (2026-04-03)
+
+
+### Bug Fixes
+
+* **runner:** warn instead of failing when gc cannot remove snapshot ([#7808](https://github.com/vm0-ai/vm0/issues/7808)) ([c349213](https://github.com/vm0-ai/vm0/commit/c349213828a6ebe80a116e5a75b265dca4168f18))
+
 ## [0.61.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.60.0...runner-rs-v0.61.0) (2026-04-03)
 
 

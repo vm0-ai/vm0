@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.188.4](https://github.com/vm0-ai/vm0/compare/web-v12.188.3...web-v12.188.4) (2026-04-03)
+
+
+### Refactoring
+
+* move loose lib/ files into proper architecture layers ([#7805](https://github.com/vm0-ai/vm0/issues/7805)) ([#7807](https://github.com/vm0-ai/vm0/issues/7807)) ([8853803](https://github.com/vm0-ai/vm0/commit/8853803e8fa8f6f1bc7dc868972d1fa07f31a5a0))
+
 ## [12.188.3](https://github.com/vm0-ai/vm0/compare/web-v12.188.2...web-v12.188.3) (2026-04-02)
 
 
