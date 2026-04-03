@@ -5,7 +5,7 @@
  * Entry point: setupPage({ path: "/" }) + context.store.set(openBillingDialog$)
  */
 import { describe, expect, it } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
@@ -62,7 +62,9 @@ describe("chat-d-066: AutoRechargeSection renders currentTier label", () => {
     await openBillingDialogAndWait();
 
     await waitFor(() => {
-      expect(screen.getByText("Auto-recharge")).toBeInTheDocument();
+      expect(
+        screen.getByRole("switch", { name: /auto-recharge/i }),
+      ).toBeInTheDocument();
     });
   });
 });
@@ -122,13 +124,15 @@ describe("chat-d-069: AutoRechargeSection renders dollarAmount calculated from a
 
     await waitFor(() => {
       // 10_000 credits / 1000 = $10.00
-      expect(screen.getByText("= $10.00")).toBeInTheDocument();
+      expect(
+        screen.getByLabelText(/dollar equivalent: \$10\.00/i),
+      ).toBeInTheDocument();
     });
   });
 });
 
-describe("chat-s-070: Loading state message shows 'Saving...' during save", () => {
-  it("displays Saving... while the save is in progress", async () => {
+describe("chat-s-070: Loading state disables Save button during save", () => {
+  it("disables the Save button while the save is in progress", async () => {
     let resolveSave!: () => void;
     server.use(
       http.put("*/api/zero/billing/auto-recharge", () => {
@@ -165,7 +169,7 @@ describe("chat-s-070: Loading state message shows 'Saving...' during save", () =
     await user.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => {
-      expect(screen.getByText("Saving...")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Saving..." })).toBeDisabled();
     });
 
     resolveSave();
@@ -186,7 +190,9 @@ describe("chat-c-071: AutoRechargeSection fields render conditionally based on d
     await openBillingDialogAndWait();
 
     await waitFor(() => {
-      expect(screen.getByText("Auto-recharge")).toBeInTheDocument();
+      expect(
+        screen.getByRole("switch", { name: /auto-recharge/i }),
+      ).toBeInTheDocument();
     });
 
     expect(screen.queryByPlaceholderText("e.g. 1000")).not.toBeInTheDocument();
@@ -212,8 +218,8 @@ describe("chat-c-071: AutoRechargeSection fields render conditionally based on d
   });
 });
 
-describe("chat-d-072: BillingDialog renders status.tier as current plan tier", () => {
-  it("displays the current plan tier from status.tier", async () => {
+describe("chat-d-072-073: BillingDialog renders status.tier and credit count", () => {
+  it("displays the current plan tier and locale-formatted credits in the description", async () => {
     mockAPIs();
     setMockBillingStatus({
       tier: "pro",
@@ -225,34 +231,22 @@ describe("chat-d-072: BillingDialog renders status.tier as current plan tier", (
     await openBillingDialogAndWait();
 
     await waitFor(() => {
-      expect(screen.getByText(/You are on the Pro plan/)).toBeInTheDocument();
-    });
-  });
-});
-
-describe("chat-d-073: BillingDialog renders formatted credit count via toLocaleString", () => {
-  it("displays credits with locale formatting", async () => {
-    mockAPIs();
-    setMockBillingStatus({
-      tier: "pro",
-      credits: 20_000,
-      subscriptionStatus: "active",
-      hasSubscription: true,
-    });
-    await setupPage({ context, path: "/" });
-    await openBillingDialogAndWait();
-
-    await waitFor(() => {
-      // 20_000 credits → "20,000" via toLocaleString in dialog description
-      expect(
-        screen.getByText(/You are on the Pro plan with 20,000 credits\./),
-      ).toBeInTheDocument();
+      const dialog = screen.getByRole("dialog");
+      // Check aria-current badge on the Pro plan card indicates current tier
+      const currentBadge = within(dialog).getByText(/^Current$/);
+      const proPlanCard = screen.getByRole("button", { name: /^Pro$/i });
+      expect(proPlanCard).toContainElement(currentBadge);
+      // Check 20,000 credits are shown in the dialog description (locale-formatted)
+      const description = within(dialog).getByText(
+        /You are on the Pro plan with 20,000 credits\./,
+      );
+      expect(description).toBeInTheDocument();
     });
   });
 });
 
 describe("chat-d-074: Current plan badge renders on the active PlanCard", () => {
-  it("shows Current badge on the PlanCard matching the current tier", async () => {
+  it("shows aria-current on the PlanCard matching the current tier", async () => {
     mockAPIs();
     setMockBillingStatus({
       tier: "pro",
@@ -264,13 +258,15 @@ describe("chat-d-074: Current plan badge renders on the active PlanCard", () => 
     await openBillingDialogAndWait();
 
     await waitFor(() => {
-      expect(screen.getByText("Current")).toBeInTheDocument();
+      const dialog = screen.getByRole("dialog");
+      const currentIndicator = within(dialog).getByText(/^Current$/);
+      expect(currentIndicator).toHaveAttribute("aria-current", "true");
     });
   });
 });
 
 describe("chat-d-075: Selected plan ring highlight renders on chosen PlanCard", () => {
-  it("renders ring highlight on the selected PlanCard", async () => {
+  it("renders aria-pressed on the selected PlanCard", async () => {
     mockAPIs();
     setMockBillingStatus({
       tier: "pro",
@@ -283,10 +279,8 @@ describe("chat-d-075: Selected plan ring highlight renders on chosen PlanCard", 
     await openBillingDialogAndWait();
 
     await waitFor(() => {
-      // Find the Team plan button within the dialog and check it has the ring class
-      const dialog = screen.getByRole("dialog");
-      const planButtons = dialog.querySelectorAll("button.ring-2");
-      expect(planButtons.length).toBeGreaterThan(0);
+      const teamButton = screen.getByRole("button", { name: /^Team$/i });
+      expect(teamButton).toHaveAttribute("aria-pressed", "true");
     });
   });
 });
@@ -305,10 +299,12 @@ describe("chat-c-076: Button text changes based on isUpgrade/isDowngrade determi
     await openBillingDialogAndWait();
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Team/i })).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /^Team$/i }),
+      ).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: /Team/i }));
+    await user.click(screen.getByRole("button", { name: /^Team$/i }));
 
     await waitFor(() => {
       expect(
@@ -329,18 +325,13 @@ describe("chat-c-076: Button text changes based on isUpgrade/isDowngrade determi
     await setupPage({ context, path: "/" });
     await openBillingDialogAndWait();
 
-    // Find the Free plan card button within the dialog (the card button contains "Free" as the plan name)
-    const dialog = await waitFor(() => {
-      return screen.getByRole("dialog");
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /^Free$/i }),
+      ).toBeInTheDocument();
     });
-    const freePlanCard = Array.from(dialog.querySelectorAll("button")).find(
-      (btn) => {
-        return btn.querySelector("span")?.textContent === "Free";
-      },
-    );
-    expect(freePlanCard).toBeInTheDocument();
 
-    await user.click(freePlanCard!);
+    await user.click(screen.getByRole("button", { name: /^Free$/i }));
 
     await waitFor(() => {
       expect(
@@ -350,8 +341,8 @@ describe("chat-c-076: Button text changes based on isUpgrade/isDowngrade determi
   });
 });
 
-describe("chat-c-077: Button text shows 'Redirecting...' during redirect", () => {
-  it("shows Redirecting... while checkout is in progress", async () => {
+describe("chat-c-077: Action button is disabled during redirect", () => {
+  it("disables the Upgrade button while checkout is in progress", async () => {
     let resolveCheckout!: () => void;
     server.use(
       http.post("*/api/zero/billing/checkout", () => {
@@ -379,10 +370,12 @@ describe("chat-c-077: Button text shows 'Redirecting...' during redirect", () =>
     await openBillingDialogAndWait();
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Team/i })).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /^Team$/i }),
+      ).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: /Team/i }));
+    await user.click(screen.getByRole("button", { name: /^Team$/i }));
 
     await waitFor(() => {
       expect(
@@ -393,7 +386,9 @@ describe("chat-c-077: Button text shows 'Redirecting...' during redirect", () =>
     await user.click(screen.getByRole("button", { name: /Upgrade to Team/i }));
 
     await waitFor(() => {
-      expect(screen.getByText("Redirecting...")).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /Redirecting/i }),
+      ).toBeDisabled();
     });
 
     resolveCheckout();
