@@ -6,6 +6,7 @@ import { createCursorPagination } from "../cursor-pagination.ts";
 import { zeroOnboardingStatus$ } from "../zero-page/zero-onboarding.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { createRunLoop } from "../zero-page/polling.ts";
+import { accept } from "../../lib/accept.ts";
 
 // ---------------------------------------------------------------------------
 // Filters — URL-derived
@@ -44,10 +45,7 @@ const orgAgents$ = computed((get) => {
 
 const fetchOrgAgents$ = command(async ({ get, set }, _signal: AbortSignal) => {
   const client = get(zeroClient$)(zeroComposesListContract);
-  const result = await client.list({ query: {} });
-  if (result.status !== 200) {
-    throw new Error(`Failed to fetch org agents (${result.status})`);
-  }
+  const result = await accept(client.list({ query: {} }), [200]);
   const agents: AgentOption[] = result.body.composes.map(
     (c: ComposeListItem) => {
       return {

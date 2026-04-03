@@ -13,6 +13,7 @@ import {
 } from "@vm0/core";
 import { zeroClient$ } from "../api-client.ts";
 import { pathParams$, searchParams$ } from "../route.ts";
+import { accept } from "../../lib/accept.ts";
 
 // ---------------------------------------------------------------------------
 // Route params
@@ -53,10 +54,9 @@ export const firewallAllowAgent$ = computed(async (get) => {
     return null;
   }
   const client = get(zeroClient$)(zeroAgentsByIdContract);
-  const result = await client.get({ params: { id: agentId } });
-  if (result.status !== 200) {
-    throw new Error(`Failed to fetch agent (${result.status})`);
-  }
+  const result = await accept(client.get({ params: { id: agentId } }), [200], {
+    toast: false,
+  });
   return result.body;
 });
 
@@ -103,13 +103,11 @@ export const firewallAccessRequests$ = computed(async (get) => {
   }
 
   const client = get(zeroClient$)(firewallAccessRequestsListContract);
-  const result = await client.list({
-    query: { agentId, status: "pending" },
-  });
-
-  if (result.status !== 200) {
-    throw new Error(`Failed to fetch access requests (${result.status})`);
-  }
+  const result = await accept(
+    client.list({ query: { agentId, status: "pending" } }),
+    [200],
+    { toast: false },
+  );
 
   // Filter to only requests for this firewall ref
   return result.body.filter((r) => {
@@ -129,20 +127,8 @@ const saveFirewallPolicies$ = command(
     signal: AbortSignal,
   ): Promise<void> => {
     const client = get(zeroClient$)(zeroAgentFirewallPoliciesContract);
-    const result = await client.update({
-      body: { agentId, policies },
-    });
+    await accept(client.update({ body: { agentId, policies } }), [200]);
     signal.throwIfAborted();
-    if (result.status !== 200) {
-      const detail =
-        result.status === 400 ||
-        result.status === 401 ||
-        result.status === 403 ||
-        result.status === 404
-          ? result.body.error.message
-          : `status ${result.status}`;
-      throw new Error(`Save failed: ${detail}`);
-    }
     set(internalAgentReload$, (prev) => {
       return prev + 1;
     });
@@ -161,20 +147,8 @@ const resolveAccessRequest$ = command(
     signal: AbortSignal,
   ): Promise<void> => {
     const client = get(zeroClient$)(firewallAccessRequestsResolveContract);
-    const result = await client.resolve({
-      body: { requestId, action },
-    });
+    await accept(client.resolve({ body: { requestId, action } }), [200]);
     signal.throwIfAborted();
-    if (result.status !== 200) {
-      const detail =
-        result.status === 400 ||
-        result.status === 401 ||
-        result.status === 403 ||
-        result.status === 404
-          ? result.body.error.message
-          : `status ${result.status}`;
-      throw new Error(`Resolve failed: ${detail}`);
-    }
     set(internalRequestsReload$, (prev) => {
       return prev + 1;
     });
@@ -202,20 +176,8 @@ const createAccessRequest$ = command(
     signal: AbortSignal,
   ): Promise<void> => {
     const client = get(zeroClient$)(firewallAccessRequestsCreateContract);
-    const result = await client.create({
-      body: params,
-    });
+    await accept(client.create({ body: params }), [201]);
     signal.throwIfAborted();
-    if (result.status !== 201) {
-      const detail =
-        result.status === 400 ||
-        result.status === 401 ||
-        result.status === 403 ||
-        result.status === 404
-          ? result.body.error.message
-          : `status ${result.status}`;
-      throw new Error(`Request failed: ${detail}`);
-    }
     set(internalRequestsReload$, (prev) => {
       return prev + 1;
     });

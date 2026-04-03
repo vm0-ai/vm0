@@ -2,6 +2,7 @@ import { computed } from "ccstate";
 import { zeroRunNetworkLogsContract } from "@vm0/core";
 import { zeroClient$ } from "../api-client.ts";
 import { currentRunId$ } from "./activity-signals.ts";
+import { accept } from "../../lib/accept.ts";
 
 /**
  * Network logs fetched from Axiom via the zero network API.
@@ -14,13 +15,13 @@ export const zeroActivityNetworkLogs$ = computed(async (get) => {
   }
 
   const client = get(zeroClient$)(zeroRunNetworkLogsContract);
-  const result = await client.getNetworkLogs({
-    params: { id: runId },
-    query: { limit: 500, order: "asc" },
-  });
-
-  if (result.status !== 200) {
-    return null;
-  }
+  const result = await accept(
+    client.getNetworkLogs({
+      params: { id: runId },
+      query: { limit: 500, order: "asc" },
+    }),
+    [200],
+    { toast: false },
+  );
   return result.body;
 });

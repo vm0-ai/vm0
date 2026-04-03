@@ -2,6 +2,7 @@ import { command } from "ccstate";
 import { zeroRunContextContract, zeroRunNetworkLogsContract } from "@vm0/core";
 import { zeroClient$ } from "../api-client.ts";
 import { logger } from "../log.ts";
+import { accept } from "../../lib/accept.ts";
 
 const L = logger("ActivityDownload");
 
@@ -21,19 +22,25 @@ export const fetchDownloadExtra$ = command(
     const extra: { context?: unknown; networkLogs?: unknown } = {};
 
     const [contextResult, networkResult] = await Promise.allSettled([
-      get(zeroClient$)(zeroRunContextContract)
-        .getContext({ params: { id: runId } })
-        .then((r) => {
-          return r.status === 200 ? r.body : null;
+      accept(
+        get(zeroClient$)(zeroRunContextContract).getContext({
+          params: { id: runId },
         }),
-      get(zeroClient$)(zeroRunNetworkLogsContract)
-        .getNetworkLogs({
+        [200],
+        { toast: false },
+      ).then((r) => {
+        return r.body;
+      }),
+      accept(
+        get(zeroClient$)(zeroRunNetworkLogsContract).getNetworkLogs({
           params: { id: runId },
           query: { limit: 500, order: "asc" },
-        })
-        .then((r) => {
-          return r.status === 200 ? r.body : null;
         }),
+        [200],
+        { toast: false },
+      ).then((r) => {
+        return r.body;
+      }),
     ]);
 
     if (contextResult.status === "fulfilled" && contextResult.value) {
