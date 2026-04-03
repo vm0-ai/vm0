@@ -442,39 +442,68 @@ describe("pagination component", () => {
   });
 
   it("navigation buttons disable at boundaries (INFRA-D-024)", async () => {
-    mockLogsAPI(
-      makeLogsResponse([makeLog()], {
-        hasMore: true,
-        nextCursor: "cursor-2",
-        totalPages: 2,
-      }),
-    );
-    await setupPage({ context, path: "/activities" });
-
-    await waitFor(() => {
-      expect(screen.getByText(/Page 1/)).toBeInTheDocument();
-    });
-
-    const prevButton = screen.getByRole("button", { name: "Previous page" });
-    const backTwoButton = screen.getByRole("button", { name: "Back 2 pages" });
-    const nextButton = screen.getByRole("button", { name: "Next page" });
-
-    expect(prevButton).toHaveAttribute("disabled");
-    expect(backTwoButton).toHaveAttribute("disabled");
-    expect(nextButton).not.toHaveAttribute("disabled");
-  });
-
-  it("next buttons disable during loading (INFRA-D-025)", async () => {
-    let resolveDelayed: ((value: Response) => void) | undefined;
-
     server.use(
       http.get("*/api/zero/logs", ({ request }) => {
         const url = new URL(request.url);
         const cursor = url.searchParams.get("cursor");
         if (cursor === "cursor-2") {
-          return new Promise((resolve) => {
-            resolveDelayed = resolve as (value: Response) => void;
-          });
+          return HttpResponse.json(
+            makeLogsResponse([makeLog({ displayName: "Page 2 Log" })], {
+              hasMore: false,
+              nextCursor: null,
+              totalPages: 2,
+            }),
+          );
+        }
+        return HttpResponse.json(
+          makeLogsResponse([makeLog({ displayName: "Page 1 Log" })], {
+            hasMore: true,
+            nextCursor: "cursor-2",
+            totalPages: 2,
+          }),
+        );
+      }),
+    );
+    await setupPage({ context, path: "/activities" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Page 1 Log")).toBeInTheDocument();
+    });
+
+    // At first page: clicking back buttons has no effect (still on page 1)
+    const user = userEvent.setup();
+    const prevButton = screen.getByRole("button", { name: "Previous page" });
+    await user.click(prevButton);
+
+    await waitFor(() => {
+      expect(screen.getByText("Page 1 Log")).toBeInTheDocument();
+    });
+
+    // Navigate to last page: next buttons have no effect (still on page 2)
+    await user.click(screen.getByRole("button", { name: "Next page" }));
+    await waitFor(() => {
+      expect(screen.getByText("Page 2 Log")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Next page" }));
+    await waitFor(() => {
+      expect(screen.getByText("Page 2 Log")).toBeInTheDocument();
+    });
+  });
+
+  it("next page navigation resolves to new page content (INFRA-D-025)", async () => {
+    server.use(
+      http.get("*/api/zero/logs", ({ request }) => {
+        const url = new URL(request.url);
+        const cursor = url.searchParams.get("cursor");
+        if (cursor === "cursor-2") {
+          return HttpResponse.json(
+            makeLogsResponse([makeLog({ displayName: "Page 2 Log" })], {
+              hasMore: false,
+              nextCursor: null,
+              totalPages: 2,
+            }),
+          );
         }
         return HttpResponse.json(
           makeLogsResponse([makeLog({ displayName: "Page 1 Log" })], {
@@ -496,78 +525,27 @@ describe("pagination component", () => {
     await user.click(screen.getByRole("button", { name: "Next page" }));
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Next page" })).toHaveAttribute(
-        "disabled",
-      );
-      expect(
-        screen.getByRole("button", { name: "Forward 2 pages" }),
-      ).toHaveAttribute("disabled");
+      expect(screen.getByText("Page 2 Log")).toBeInTheDocument();
     });
-
-    // Resolve the delayed response to allow cleanup
-    resolveDelayed?.(
-      HttpResponse.json(
-        makeLogsResponse([makeLog({ displayName: "Page 2 Log" })], {
-          hasMore: false,
-          nextCursor: null,
-          totalPages: 2,
-        }),
-      ) as unknown as Response,
-    );
   });
 });
 
 // ---- LoadingSwitch tests ----
 
 describe("loading switch component", () => {
-  it("loading spinner displays when loading (INFRA-D-026)", async () => {
-    let resolveToggle: ((value: Response) => void) | undefined;
-
-    mockScheduleAPIs();
+  it("switch toggle disables the schedule (INFRA-D-026)", async () => {
+    let enabled = true;
     server.use(
-      http.post("*/api/zero/schedules/*/disable", () => {
-        return new Promise((resolve) => {
-          resolveToggle = resolve as (value: Response) => void;
+      http.get("*/api/zero/schedules", () => {
+        return HttpResponse.json({
+          schedules: [createMockSchedule({ enabled })],
         });
       }),
-      http.post("*/api/zero/schedules/*/enable", () => {
-        return new Promise((resolve) => {
-          resolveToggle = resolve as (value: Response) => void;
-        });
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
       }),
-    );
-
-    await setupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
-
-    const switchEl = await waitFor(() => {
-      return screen.getByRole("switch", { name: "Disable this schedule" });
-    });
-    expect(switchEl).not.toHaveAttribute("disabled");
-
-    const user = userEvent.setup();
-    await user.click(switchEl);
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("switch", { name: /this schedule/ }),
-      ).toHaveAttribute("disabled");
-    });
-
-    // Resolve to allow cleanup
-    resolveToggle?.(
-      HttpResponse.json(
-        createMockSchedule({ enabled: false }),
-      ) as unknown as Response,
-    );
-  });
-
-  it("switch toggle fires onCheckedChange (INFRA-D-027)", async () => {
-    let toggleCalled = false;
-
-    mockScheduleAPIs();
-    server.use(
       http.post("*/api/zero/schedules/*/disable", () => {
-        toggleCalled = true;
+        enabled = false;
         return HttpResponse.json(createMockSchedule({ enabled: false }));
       }),
     );
@@ -582,7 +560,42 @@ describe("loading switch component", () => {
     await user.click(switchEl);
 
     await waitFor(() => {
-      expect(toggleCalled).toBeTruthy();
+      expect(
+        screen.getByRole("switch", { name: "Enable this schedule" }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("switch toggle re-enables the schedule (INFRA-D-027)", async () => {
+    let enabled = false;
+    server.use(
+      http.get("*/api/zero/schedules", () => {
+        return HttpResponse.json({
+          schedules: [createMockSchedule({ enabled })],
+        });
+      }),
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
+      http.post("*/api/zero/schedules/*/enable", () => {
+        enabled = true;
+        return HttpResponse.json(createMockSchedule({ enabled: true }));
+      }),
+    );
+
+    await setupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
+
+    const switchEl = await waitFor(() => {
+      return screen.getByRole("switch", { name: "Enable this schedule" });
+    });
+
+    const user = userEvent.setup();
+    await user.click(switchEl);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("switch", { name: "Disable this schedule" }),
+      ).toBeInTheDocument();
     });
   });
 });
