@@ -1328,7 +1328,7 @@ jobs:
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260324
     needs: [prepare]
-    timeout-minutes: 10
+    timeout-minutes: 20
     env:
       CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_RUSTFLAGS: "-C target-feature=+crt-static -C link-arg=-fuse-ld=mold"
       CARGO_PROFILE: ci

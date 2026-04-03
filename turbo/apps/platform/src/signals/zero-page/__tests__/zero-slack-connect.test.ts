@@ -1,5 +1,6 @@
-import { describe, it, expect, afterEach } from "vitest";
-import { delay } from "signal-timers";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { http, HttpResponse } from "msw";
+import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import {
@@ -28,8 +29,6 @@ async function setup(path: string) {
     path,
     withoutRender: true,
   });
-  // Allow the async init command (detached via Reason.Entrance) to complete
-  await delay(50);
 }
 
 describe("slack-connect-page signals", () => {
@@ -38,13 +37,24 @@ describe("slack-connect-page signals", () => {
       setMockSlackConnectData({ isConnected: true });
       await setup("/settings/slack?w=ws1&u=user1");
 
-      expect(context.store.get(slackConnectStatus$)).toBe("success");
+      await vi.waitFor(() => {
+        expect(context.store.get(slackConnectStatus$)).toBe("success");
+      });
     });
 
     it("should stay idle when not connected", async () => {
-      setMockSlackConnectData({ isConnected: false });
+      let checkCalled = false;
+      server.use(
+        http.get("*/api/zero/integrations/slack/connect", () => {
+          checkCalled = true;
+          return HttpResponse.json({ isConnected: false, isAdmin: false });
+        }),
+      );
       await setup("/settings/slack?w=ws1&u=user1");
 
+      await vi.waitFor(() => {
+        expect(checkCalled).toBeTruthy();
+      });
       expect(context.store.get(slackConnectStatus$)).toBe("idle");
     });
 

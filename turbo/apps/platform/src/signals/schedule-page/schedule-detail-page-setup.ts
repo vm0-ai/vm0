@@ -14,6 +14,7 @@ import {
   seedScheduleRunCursorHistory$,
 } from "./schedule-run-history.ts";
 import { initScheduleDetailTab$ } from "./schedule-detail-tab.ts";
+import { hideAppSkeleton$ } from "../app-skeleton.ts";
 
 export const setupScheduleDetailPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -39,6 +40,7 @@ export const setupScheduleDetailPage$ = command(
       set(fetchSlackChannels$, signal),
     ]);
     signal.throwIfAborted();
+    await set(hideAppSkeleton$, signal);
 
     set(reloadChatThreads$);
   },
