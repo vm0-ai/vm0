@@ -10,7 +10,53 @@ import {
   isFirewallConnectorType,
   getConnectorFirewall,
   resolveFirewallPolicies,
+  type FirewallPolicyValue,
 } from "@vm0/core";
+
+interface ConnectorPermissionInfo {
+  type: string;
+  hasFirewall: boolean;
+  permissions: Array<{ name: string; description?: string }>;
+  policies: Record<string, FirewallPolicyValue> | null;
+  allowed: number;
+  total: number;
+}
+
+function getConnectorPermissionInfo(
+  type: string,
+  resolvedPolicies: Record<string, Record<string, FirewallPolicyValue>> | null,
+): ConnectorPermissionInfo {
+  if (!isFirewallConnectorType(type)) {
+    return {
+      type,
+      hasFirewall: false,
+      permissions: [],
+      policies: null,
+      allowed: 0,
+      total: 0,
+    };
+  }
+
+  const policies = resolvedPolicies?.[type] ?? null;
+  const config = getConnectorFirewall(type);
+  const permissions = config.apis.flatMap((a) => {
+    return a.permissions ?? [];
+  });
+  const total = permissions.length;
+  const allowed = policies
+    ? permissions.filter((p) => {
+        return policies[p.name] === "allow";
+      }).length
+    : 0;
+
+  return { type, hasFirewall: true, permissions, policies, allowed, total };
+}
+
+function formatConnectorSummary(info: ConnectorPermissionInfo): string {
+  if (!info.hasFirewall) return info.type;
+  if (!info.policies) return `${info.type} (full access)`;
+  return `${info.type} (${info.allowed}/${info.total} allowed)`;
+}
 
 export const viewCommand = new Command()
   .name("view")
@@ -46,21 +92,12 @@ Examples:
           connectors,
         );
 
-        if (connectors.length > 0) {
-          const summaries = connectors.map((type) => {
-            if (!isFirewallConnectorType(type)) return type;
-            const policies = resolvedPolicies?.[type];
-            if (!policies) return `${type} (full access)`;
-            const config = getConnectorFirewall(type);
-            const allPerms = config.apis.flatMap((a) => {
-              return a.permissions ?? [];
-            });
-            const total = allPerms.length;
-            const allowed = allPerms.filter((p) => {
-              return policies[p.name] === "allow";
-            }).length;
-            return `${type} (${allowed}/${total} allowed)`;
-          });
+        const connectorInfos = connectors.map((type) => {
+          return getConnectorPermissionInfo(type, resolvedPolicies);
+        });
+
+        if (connectorInfos.length > 0) {
+          const summaries = connectorInfos.map(formatConnectorSummary);
           console.log(`Connectors:   ${summaries.join(", ")}`);
         }
 
@@ -71,45 +108,37 @@ Examples:
           console.log(`Description:  ${agent.description}`);
         if (agent.sound) console.log(`Sound:        ${agent.sound}`);
 
-        if (options.permissions && connectors.length > 0) {
+        if (options.permissions && connectorInfos.length > 0) {
           console.log();
-          for (const type of connectors) {
-            if (!isFirewallConnectorType(type)) {
-              console.log(chalk.dim(`── ${type} ──`));
+          for (const info of connectorInfos) {
+            if (!info.hasFirewall) {
+              console.log(chalk.dim(`── ${info.type} ──`));
               console.log("  No firewall configured.");
               continue;
             }
 
-            const policies = resolvedPolicies?.[type];
-            const config = getConnectorFirewall(type);
-            const allPerms = config.apis.flatMap((a) => {
-              return a.permissions ?? [];
-            });
-
-            if (!policies) {
-              console.log(chalk.dim(`── ${type} (full access) ──`));
+            if (!info.policies) {
+              console.log(chalk.dim(`── ${info.type} (full access) ──`));
               console.log(
                 "  No permission rules configured — all API calls allowed.",
               );
               continue;
             }
 
-            const total = allPerms.length;
-            const allowed = allPerms.filter((p) => {
-              return policies[p.name] === "allow";
-            }).length;
             console.log(
-              chalk.dim(`── ${type} (${allowed}/${total} allowed) ──`),
+              chalk.dim(
+                `── ${info.type} (${info.allowed}/${info.total} allowed) ──`,
+              ),
             );
 
             const nameWidth = Math.max(
-              ...allPerms.map((p) => {
+              ...info.permissions.map((p) => {
                 return p.name.length;
               }),
             );
 
-            for (const perm of allPerms) {
-              const policy = policies[perm.name] ?? "deny";
+            for (const perm of info.permissions) {
+              const policy = info.policies[perm.name] ?? "deny";
               const icon =
                 policy === "allow"
                   ? chalk.green("✓")
