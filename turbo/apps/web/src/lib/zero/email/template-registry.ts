@@ -3,6 +3,7 @@ import type { EmailTemplate } from "./types";
 import { AgentReplyEmail } from "./templates/agent-reply";
 import { InboundErrorEmail } from "./templates/inbound-error";
 import { DataExportReadyEmail } from "./templates/data-export-ready";
+import { DeveloperSupportEmail } from "./templates/developer-support";
 
 /**
  * Resolve an EmailTemplate discriminated union to a React element.
@@ -16,5 +17,7 @@ export function resolveTemplate(template: EmailTemplate): ReactElement {
       return InboundErrorEmail(template.props);
     case "data-export-ready":
       return DataExportReadyEmail(template.props);
+    case "developer-support":
+      return DeveloperSupportEmail(template.props);
   }
 }

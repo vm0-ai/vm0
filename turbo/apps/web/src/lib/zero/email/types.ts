@@ -29,10 +29,25 @@ interface DataExportReadyTemplate {
   };
 }
 
+interface DeveloperSupportTemplate {
+  template: "developer-support";
+  props: {
+    title: string;
+    description: string;
+    reference: string;
+    userId: string;
+    orgId: string;
+    runId: string;
+    downloadUrl: string;
+    expiresAt: string;
+  };
+}
+
 export type EmailTemplate =
   | AgentReplyTemplate
   | InboundErrorTemplate
-  | DataExportReadyTemplate;
+  | DataExportReadyTemplate
+  | DeveloperSupportTemplate;
 
 // ============================================================================
 // Post-Send Action Types (discriminated union)

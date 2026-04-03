@@ -35,6 +35,7 @@ export const ZERO_CAPABILITIES = [
   "schedule:write",
   "slack:write",
   "connector:read",
+  "developer-support:write",
 ] as const;
 
 /** Inferred union type of all zero capability strings. */
@@ -64,6 +65,10 @@ export const ZERO_CAPABILITY_META: Record<ZeroCapability, ZeroCapabilityMeta> =
     },
     "slack:write": { group: "Integrations", label: "Send Slack messages" },
     "connector:read": { group: "Connectors", label: "View connected services" },
+    "developer-support:write": {
+      group: "Support",
+      label: "Submit developer support requests",
+    },
   };
 
 /**

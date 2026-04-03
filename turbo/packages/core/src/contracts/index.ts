@@ -734,3 +734,10 @@ export {
   type AskUserAnswerStatus,
   type AskUserAnswerResponse,
 } from "./zero-ask-user";
+export {
+  zeroDeveloperSupportContract,
+  developerSupportBodySchema,
+  consentCodeResponseSchema,
+  submitResponseSchema,
+  type ZeroDeveloperSupportContract,
+} from "./zero-developer-support";
