@@ -630,7 +630,10 @@ function RunActivityLineView({
                 </span>
               )}
             </span>
-            <span className={`truncate ${isLast ? "zero-shimmer-text" : ""}`}>
+            <span
+              className={`truncate ${isLast ? "zero-shimmer-text" : ""}`}
+              aria-label={isLast ? "Current activity" : undefined}
+            >
               {summary}
             </span>
           </p>

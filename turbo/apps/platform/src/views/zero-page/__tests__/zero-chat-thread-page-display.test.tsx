@@ -71,7 +71,7 @@ describe("zero chat thread page display - thread header agent avatar and display
   });
 });
 
-// CHAT-C-033: Pin pill renders conditionally in ChatThreadHeader
+// CHAT-D-033: Pin pill renders conditionally in ChatThreadHeader
 describe("zero chat thread page display - pin pill conditional rendering", () => {
   it("shows pin pill when agent is not pinned", async () => {
     setMockUserPreferences({ pinnedAgentIds: [] });
@@ -165,12 +165,7 @@ describe("zero chat thread page display - run activity line summaries", () => {
     await setupPage({ context, path: "/chats/thread-test-1" });
 
     await waitFor(() => {
-      // Assert that at least one tool-use summary item is rendered
-      // (span.zero-shimmer-text appears on the active summary item,
-      // distinct from the p.zero-shimmer-text used in the no-summary thinking state)
-      expect(
-        document.querySelector("span.zero-shimmer-text"),
-      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Current activity")).toBeInTheDocument();
     });
   });
 });
