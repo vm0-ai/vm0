@@ -1,7 +1,7 @@
 import { command, computed, state } from "ccstate";
 import { delay } from "signal-timers";
 import { clerk$, watchOrgSwitch$ } from "./auth.ts";
-import { detach, onRef, Reason } from "./utils.ts";
+import { onRef } from "./utils.ts";
 
 const POLL_INTERVAL_MS = 30_000;
 
@@ -50,9 +50,10 @@ const pollUserInvitations$ = command(async ({ set }, signal: AbortSignal) => {
  */
 const orgSwitcherSetup$ = command(
   async ({ set }, el: HTMLElement, signal: AbortSignal) => {
-    // eslint-disable-next-line ccstate/no-detach-in-signals -- TODO: move to views layer
-    detach(set(watchOrgSwitch$, el, signal), Reason.Entrance);
-    await set(pollUserInvitations$, signal);
+    await Promise.all([
+      set(watchOrgSwitch$, el, signal),
+      set(pollUserInvitations$, signal),
+    ]);
   },
 );
 
