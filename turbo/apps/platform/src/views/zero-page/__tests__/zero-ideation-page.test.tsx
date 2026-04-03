@@ -96,6 +96,29 @@ describe("ideation page - category tabs", () => {
     }
   });
 
+  it("should highlight the selected category tab as active", async () => {
+    const user = userEvent.setup();
+    await renderIdeationPage();
+
+    const allTab = await waitFor(() => {
+      return screen.getByRole("button", { name: "All" });
+    });
+    const githubTab = screen.getByRole("button", { name: "GitHub" });
+
+    // Initially "All" tab should have active styling
+    expect(allTab.className).toContain("bg-muted");
+    expect(githubTab.className).not.toContain("bg-muted text-foreground");
+
+    // Click GitHub tab
+    await user.click(githubTab);
+
+    // GitHub tab should now have active styling, All should not
+    await waitFor(() => {
+      expect(githubTab.className).toContain("bg-muted");
+    });
+    expect(allTab.className).not.toContain("bg-muted text-foreground");
+  });
+
   it("should filter to a single category when its tab is clicked", async () => {
     const user = userEvent.setup();
     await renderIdeationPage();
@@ -208,6 +231,19 @@ describe("ideation page - use case cards", () => {
     expect(
       screen.getByText("Morning metrics become a slide deck posted to Slack"),
     ).toBeInTheDocument();
+  });
+
+  it("should render connector icons for use cases that have connectors", async () => {
+    await renderIdeationPage();
+
+    // "Daily standup report" has 5 connectors: github, sentry, axiom, plausible, slack
+    const cardTitle = await waitFor(() => {
+      return screen.getByText("Daily standup report");
+    });
+
+    const card = cardTitle.closest(".zero-card")!;
+    const connectorImages = card.querySelectorAll("img");
+    expect(connectorImages).toHaveLength(5);
   });
 });
 
