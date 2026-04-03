@@ -45,19 +45,19 @@ async function openCreateDialog(user: ReturnType<typeof userEvent.setup>) {
     expect(screen.getByText("Research Agent")).toBeInTheDocument();
   });
 
-  await user.click(screen.getByText("Create teammate"));
+  await user.click(screen.getByText("New agent"));
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 }
 
-describe("create teammate dialog - avatar", () => {
+describe("create agent dialog - avatar", () => {
   it("should show a preset avatar when dialog opens", async () => {
     const user = userEvent.setup();
     mockTeamWithSubagent();
     await openCreateDialog(user);
 
-    const avatar = screen.getByAltText("New teammate");
+    const avatar = screen.getByAltText("New agent");
     expect(avatar).toBeInTheDocument();
     // Avatar src should be a valid image (imported asset or data URL)
     expect(avatar.getAttribute("src")).toBeTruthy();
@@ -108,7 +108,7 @@ describe("create teammate dialog - avatar", () => {
 
     // After upload, avatar should show custom URL
     await waitFor(() => {
-      const avatar = screen.getByAltText("New teammate");
+      const avatar = screen.getByAltText("New agent");
       expect(avatar.getAttribute("src")).toBe(
         "https://cdn.example.com/custom.png",
       );
@@ -149,7 +149,7 @@ describe("create teammate dialog - avatar", () => {
     );
 
     await waitFor(() => {
-      const avatar = screen.getByAltText("New teammate");
+      const avatar = screen.getByAltText("New agent");
       // Should no longer be the custom URL
       expect(avatar.getAttribute("src")).not.toBe(
         "https://cdn.example.com/custom.png",

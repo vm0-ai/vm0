@@ -42,24 +42,24 @@ function mockTeamAPI(
 
 async function openDialog(user: ReturnType<typeof userEvent.setup>) {
   await waitFor(() => {
-    expect(screen.getByText("Create teammate")).toBeInTheDocument();
+    expect(screen.getByText("New agent")).toBeInTheDocument();
   });
-  await user.click(screen.getByText("Create teammate"));
+  await user.click(screen.getByText("New agent"));
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 }
 
-describe("zero jobs page - create teammate dialog", () => {
-  it("opens the dialog when create teammate button is clicked (AGENT-D-008)", async () => {
+describe("zero jobs page - create agent dialog", () => {
+  it("opens the dialog when create agent button is clicked (AGENT-D-008)", async () => {
     const user = userEvent.setup();
     mockTeamAPI();
     await setupPage({ context, path: "/agents" });
 
     await waitFor(() => {
-      expect(screen.getByText("Create teammate")).toBeInTheDocument();
+      expect(screen.getByText("New agent")).toBeInTheDocument();
     });
-    await user.click(screen.getByText("Create teammate"));
+    await user.click(screen.getByText("New agent"));
 
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
@@ -85,7 +85,7 @@ describe("zero jobs page - create teammate dialog", () => {
     await user.upload(fileInput!, file);
 
     await waitFor(() => {
-      expect(screen.getByAltText("New teammate").getAttribute("src")).toBe(
+      expect(screen.getByAltText("New agent").getAttribute("src")).toBe(
         "https://cdn.example.com/custom.png",
       );
     });
