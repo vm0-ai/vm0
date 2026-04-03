@@ -43,10 +43,10 @@ function getConsentKey(): Buffer {
   return cachedConsentKey;
 }
 
-function generateConsentCode(runId: string): string {
+function generateConsentCode(sessionId: string): string {
   const key = getConsentKey();
   return createHmac("sha256", key)
-    .update(runId)
+    .update(sessionId)
     .digest("hex")
     .slice(0, 4)
     .toUpperCase();
@@ -101,9 +101,50 @@ const router = tsr.router(zeroDeveloperSupportContract, {
       };
     }
 
+    const db = globalThis.services.db;
+
+    // Query run record early — both consent steps need sessionId
+    const [run] = await db
+      .select({
+        id: agentRuns.id,
+        status: agentRuns.status,
+        createdAt: agentRuns.createdAt,
+        startedAt: agentRuns.startedAt,
+        completedAt: agentRuns.completedAt,
+        agentComposeVersionId: agentRuns.agentComposeVersionId,
+        runnerGroup: agentRuns.runnerGroup,
+        continuedFromSessionId: agentRuns.continuedFromSessionId,
+      })
+      .from(agentRuns)
+      .where(eq(agentRuns.id, runId))
+      .limit(1);
+
+    if (!run) {
+      return {
+        status: 400 as const,
+        body: {
+          error: { message: "Run not found", code: "RUN_NOT_FOUND" },
+        },
+      };
+    }
+
+    const sessionId = run.continuedFromSessionId;
+    if (!sessionId) {
+      return {
+        status: 400 as const,
+        body: {
+          error: {
+            message:
+              "Developer support requires an active session. This command is only available in multi-turn conversations.",
+            code: "SESSION_REQUIRED",
+          },
+        },
+      };
+    }
+
     // Step 1: Generate consent code if none provided
     if (!body.consentCode) {
-      const consentCode = generateConsentCode(runId);
+      const consentCode = generateConsentCode(sessionId);
       return {
         status: 200 as const,
         body: { consentCode },
@@ -111,7 +152,7 @@ const router = tsr.router(zeroDeveloperSupportContract, {
     }
 
     // Step 2: Validate consent code
-    const expectedCode = generateConsentCode(runId);
+    const expectedCode = generateConsentCode(sessionId);
     if (body.consentCode !== expectedCode) {
       return {
         status: 400 as const,
@@ -125,41 +166,12 @@ const router = tsr.router(zeroDeveloperSupportContract, {
     }
 
     const reference = `ds-${crypto.randomUUID().slice(0, 8)}`;
-    const db = globalThis.services.db;
 
-    // Collect data in parallel
-    const [run, connectors] = await Promise.all([
-      db
-        .select({
-          id: agentRuns.id,
-          status: agentRuns.status,
-          createdAt: agentRuns.createdAt,
-          startedAt: agentRuns.startedAt,
-          completedAt: agentRuns.completedAt,
-          agentComposeVersionId: agentRuns.agentComposeVersionId,
-          runnerGroup: agentRuns.runnerGroup,
-          continuedFromSessionId: agentRuns.continuedFromSessionId,
-        })
-        .from(agentRuns)
-        .where(eq(agentRuns.id, runId))
-        .limit(1)
-        .then((rows) => {
-          return rows[0] ?? null;
-        }),
-      listConnectors(orgId, userId).catch((err) => {
-        log.warn("Failed to collect connectors", { error: String(err) });
-        return [];
-      }),
-    ]);
-
-    if (!run) {
-      return {
-        status: 400 as const,
-        body: {
-          error: { message: "Run not found", code: "RUN_NOT_FOUND" },
-        },
-      };
-    }
+    // Collect remaining data
+    const connectors = await listConnectors(orgId, userId).catch((err) => {
+      log.warn("Failed to collect connectors", { error: String(err) });
+      return [];
+    });
 
     // Collect agent config via compose version join
     let agentConfig: Record<string, unknown> = {};
@@ -192,12 +204,8 @@ const router = tsr.router(zeroDeveloperSupportContract, {
       }
     }
 
-    // Collect session messages if available
-    let conversation: unknown[] = [];
-    const sessionId = run.continuedFromSessionId;
-    if (sessionId) {
-      conversation = await getSessionChatMessages(sessionId);
-    }
+    // Collect session messages
+    const conversation = await getSessionChatMessages(sessionId);
 
     // Safe connector subset (no tokens)
     const safeConnectors = connectors.map((c) => {
@@ -219,7 +227,7 @@ const router = tsr.router(zeroDeveloperSupportContract, {
             userId,
             orgId,
             runId,
-            sessionId: sessionId ?? null,
+            sessionId,
             createdAt: new Date().toISOString(),
           },
           null,
