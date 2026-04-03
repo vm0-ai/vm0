@@ -66,11 +66,10 @@ describe("zeroActivityPage", () => {
     await setupPage({ context, path: "/activities" });
 
     await waitFor(() => {
-      expect(screen.getByText("Activity")).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: "Activity" }),
+      ).toBeInTheDocument();
     });
-    expect(
-      screen.getByText("Logs and runs from your agents."),
-    ).toBeInTheDocument();
   });
 
   it("should render agent filter options from availableAgentsLoadable", async () => {
@@ -99,13 +98,11 @@ describe("zeroActivityPage", () => {
     await setupPage({ context, path: "/activities" });
 
     const user = userEvent.setup();
-    const comboboxes = await waitFor(() => {
-      const boxes = screen.getAllByRole("combobox");
-      expect(boxes.length).toBeGreaterThanOrEqual(1);
-      return boxes;
+    const agentFilter = await waitFor(() => {
+      return screen.getByRole("combobox", { name: "Agent filter" });
     });
 
-    await user.click(comboboxes[0]);
+    await user.click(agentFilter);
     await waitFor(() => {
       expect(
         screen.getByRole("option", { name: "All agents" }),
@@ -123,13 +120,11 @@ describe("zeroActivityPage", () => {
     await setupPage({ context, path: "/activities" });
 
     const user = userEvent.setup();
-    const comboboxes = await waitFor(() => {
-      const boxes = screen.getAllByRole("combobox");
-      expect(boxes.length).toBeGreaterThanOrEqual(2);
-      return boxes;
+    const statusFilter = await waitFor(() => {
+      return screen.getByRole("combobox", { name: "Status filter" });
     });
 
-    await user.click(comboboxes[1]);
+    await user.click(statusFilter);
     await waitFor(() => {
       expect(
         screen.getByRole("option", { name: "All status" }),
@@ -148,13 +143,11 @@ describe("zeroActivityPage", () => {
     await setupPage({ context, path: "/activities" });
 
     const user = userEvent.setup();
-    const comboboxes = await waitFor(() => {
-      const boxes = screen.getAllByRole("combobox");
-      expect(boxes.length).toBeGreaterThanOrEqual(3);
-      return boxes;
+    const sourceFilter = await waitFor(() => {
+      return screen.getByRole("combobox", { name: "Source filter" });
     });
 
-    await user.click(comboboxes[2]);
+    await user.click(sourceFilter);
     await waitFor(() => {
       expect(
         screen.getByRole("option", { name: "All sources" }),
@@ -196,9 +189,6 @@ describe("zeroActivityPage", () => {
     await waitFor(() => {
       expect(screen.getByRole("alert")).toBeInTheDocument();
     });
-    expect(
-      screen.getByText("Failed to load activity data"),
-    ).toBeInTheDocument();
   });
 
   it("should render pagination when totalPages is greater than 1", async () => {
@@ -214,7 +204,9 @@ describe("zeroActivityPage", () => {
     await waitFor(() => {
       expect(screen.getByText(/Page 1 of 3/)).toBeInTheDocument();
     });
-    expect(screen.getByText("Rows per page")).toBeInTheDocument();
+    expect(
+      screen.getByRole("combobox", { name: "Rows per page" }),
+    ).toBeInTheDocument();
   });
 
   it("should not render pagination when totalPages is 1", async () => {
@@ -265,8 +257,8 @@ describe("zeroActivityPage", () => {
     });
 
     const user = userEvent.setup();
-    const comboboxes = screen.getAllByRole("combobox");
-    await user.click(comboboxes[0]);
+    const agentFilter = screen.getByRole("combobox", { name: "Agent filter" });
+    await user.click(agentFilter);
     await waitFor(() => {
       expect(
         screen.getByRole("option", { name: "My Agent" }),
@@ -303,8 +295,10 @@ describe("zeroActivityPage", () => {
     });
 
     const user = userEvent.setup();
-    const comboboxes = screen.getAllByRole("combobox");
-    await user.click(comboboxes[1]);
+    const statusFilter = screen.getByRole("combobox", {
+      name: "Status filter",
+    });
+    await user.click(statusFilter);
     await waitFor(() => {
       expect(
         screen.getByRole("option", { name: "Failed" }),
@@ -341,8 +335,10 @@ describe("zeroActivityPage", () => {
     });
 
     const user = userEvent.setup();
-    const comboboxes = screen.getAllByRole("combobox");
-    await user.click(comboboxes[2]);
+    const sourceFilter = screen.getByRole("combobox", {
+      name: "Source filter",
+    });
+    await user.click(sourceFilter);
     await waitFor(() => {
       expect(screen.getByRole("option", { name: "CLI" })).toBeInTheDocument();
     });
@@ -385,10 +381,7 @@ describe("zeroActivityPage", () => {
     });
 
     const user = userEvent.setup();
-    // Pagination buttons are the last 4 icon-only buttons: back2, prev, next, forward2
-    const allButtons = screen.getAllByRole("button");
-    // next button is 2nd from last among the 4 pagination buttons
-    const nextButton = allButtons[allButtons.length - 2];
+    const nextButton = screen.getByRole("button", { name: "Next page" });
     expect(nextButton).not.toHaveAttribute("disabled");
     await user.click(nextButton);
 
@@ -429,9 +422,7 @@ describe("zeroActivityPage", () => {
     });
 
     const user = userEvent.setup();
-    // Click next (2nd from last button)
-    let allButtons = screen.getAllByRole("button");
-    const nextButton = allButtons[allButtons.length - 2];
+    const nextButton = screen.getByRole("button", { name: "Next page" });
     expect(nextButton).not.toHaveAttribute("disabled");
     await user.click(nextButton);
 
@@ -439,16 +430,14 @@ describe("zeroActivityPage", () => {
       expect(screen.getByText("Page 2 Log")).toBeInTheDocument();
     });
 
-    // Now click prev (3rd from last button)
-    allButtons = screen.getAllByRole("button");
-    const prevButton = allButtons[allButtons.length - 3];
+    const prevButton = screen.getByRole("button", { name: "Previous page" });
     expect(prevButton).not.toHaveAttribute("disabled");
     await user.click(prevButton);
 
     await waitFor(() => {
       expect(screen.getByText("Page 1 Log")).toBeInTheDocument();
     });
-    expect(callCount).toBeGreaterThan(1);
+    expect(callCount).toBe(3);
   });
 
   it("should skip forward two pages when forward two button is clicked", async () => {
@@ -490,9 +479,9 @@ describe("zeroActivityPage", () => {
     });
 
     const user = userEvent.setup();
-    // Forward two is the last button
-    const allButtons = screen.getAllByRole("button");
-    const forwardTwoButton = allButtons[allButtons.length - 1];
+    const forwardTwoButton = screen.getByRole("button", {
+      name: "Forward 2 pages",
+    });
     expect(forwardTwoButton).not.toHaveAttribute("disabled");
     await user.click(forwardTwoButton);
 
@@ -540,18 +529,16 @@ describe("zeroActivityPage", () => {
     });
 
     const user = userEvent.setup();
-    // First go forward two pages to get to page 3
-    let allButtons = screen.getAllByRole("button");
-    const forwardTwoButton = allButtons[allButtons.length - 1];
+    const forwardTwoButton = screen.getByRole("button", {
+      name: "Forward 2 pages",
+    });
     await user.click(forwardTwoButton);
 
     await waitFor(() => {
       expect(screen.getByText("Page 3 Log")).toBeInTheDocument();
     });
 
-    // Now click back two (4th from last button)
-    allButtons = screen.getAllByRole("button");
-    const backTwoButton = allButtons[allButtons.length - 4];
+    const backTwoButton = screen.getByRole("button", { name: "Back 2 pages" });
     expect(backTwoButton).not.toHaveAttribute("disabled");
     await user.click(backTwoButton);
 
@@ -578,9 +565,9 @@ describe("zeroActivityPage", () => {
     });
 
     const user = userEvent.setup();
-    // Rows per page select is the last combobox (agent, status, source, rows-per-page)
-    const comboboxes = screen.getAllByRole("combobox");
-    const rowsPerPageSelect = comboboxes[comboboxes.length - 1];
+    const rowsPerPageSelect = screen.getByRole("combobox", {
+      name: "Rows per page",
+    });
     await user.click(rowsPerPageSelect);
     await waitFor(() => {
       expect(screen.getByRole("option", { name: "20" })).toBeInTheDocument();

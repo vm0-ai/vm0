@@ -123,7 +123,10 @@ export function ZeroActivityPage() {
                   return setFilter("agent", v);
                 }}
               >
-                <SelectTrigger className="zero-btn-morandi h-9 w-auto gap-1.5 rounded-lg px-3.5 text-sm font-medium">
+                <SelectTrigger
+                  aria-label="Agent filter"
+                  className="zero-btn-morandi h-9 w-auto gap-1.5 rounded-lg px-3.5 text-sm font-medium"
+                >
                   <IconUsers size={14} stroke={1.5} className="shrink-0" />
                   <SelectValue />
                 </SelectTrigger>
@@ -143,7 +146,10 @@ export function ZeroActivityPage() {
                   return setFilter("status", v);
                 }}
               >
-                <SelectTrigger className="zero-btn-morandi h-9 w-auto gap-1.5 rounded-lg px-3.5 text-sm font-medium">
+                <SelectTrigger
+                  aria-label="Status filter"
+                  className="zero-btn-morandi h-9 w-auto gap-1.5 rounded-lg px-3.5 text-sm font-medium"
+                >
                   <IconCircleDot size={14} stroke={1.5} className="shrink-0" />
                   <SelectValue />
                 </SelectTrigger>
@@ -163,7 +169,10 @@ export function ZeroActivityPage() {
                   return setFilter("source", v);
                 }}
               >
-                <SelectTrigger className="zero-btn-morandi h-9 w-auto gap-1.5 rounded-lg px-3.5 text-sm font-medium">
+                <SelectTrigger
+                  aria-label="Source filter"
+                  className="zero-btn-morandi h-9 w-auto gap-1.5 rounded-lg px-3.5 text-sm font-medium"
+                >
                   <IconPlugConnected
                     size={14}
                     stroke={1.5}

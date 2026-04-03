@@ -72,7 +72,10 @@ export function Pagination({
           value={String(rowsPerPage)}
           onValueChange={handleRowsPerPageChange}
         >
-          <SelectTrigger className="zero-btn-morandi h-8 w-[72px]">
+          <SelectTrigger
+            aria-label="Rows per page"
+            className="zero-btn-morandi h-8 w-[72px]"
+          >
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -102,6 +105,7 @@ export function Pagination({
       <div className="flex items-center gap-2">
         {/* Back two pages */}
         <Button
+          aria-label="Back 2 pages"
           variant="outline"
           size="icon"
           className={cn("h-8 w-8 bg-card", buttonClassName)}
@@ -112,6 +116,7 @@ export function Pagination({
         </Button>
         {/* Previous page */}
         <Button
+          aria-label="Previous page"
           variant="outline"
           size="icon"
           className={cn("h-8 w-8 bg-card", buttonClassName)}
@@ -122,6 +127,7 @@ export function Pagination({
         </Button>
         {/* Next page */}
         <Button
+          aria-label="Next page"
           variant="outline"
           size="icon"
           className={cn("h-8 w-8 bg-card", buttonClassName)}
@@ -132,6 +138,7 @@ export function Pagination({
         </Button>
         {/* Forward two pages */}
         <Button
+          aria-label="Forward 2 pages"
           variant="outline"
           size="icon"
           className={cn("h-8 w-8 bg-card", buttonClassName)}
