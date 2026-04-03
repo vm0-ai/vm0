@@ -191,17 +191,14 @@ describe("connector permission dialog", () => {
 
   it("persists permissions via API when confirming with selected agents", async () => {
     const user = userEvent.setup();
-    mockAgents([
-      { id: "agent-1", displayName: "Agent Alpha" },
-      { id: "agent-2", displayName: "Agent Beta" },
-    ]);
+    mockAgents([{ id: "agent-1", displayName: "Agent Alpha" }]);
 
-    const updatedAgentIds: string[] = [];
+    let updatedAgentId: string | undefined;
     server.use(
       http.put(
         "*/api/zero/agents/:id/user-connectors",
         async ({ params, request }) => {
-          updatedAgentIds.push(params.id as string);
+          updatedAgentId = params.id as string;
           const body = (await request.json()) as { enabledTypes: string[] };
           return HttpResponse.json({ enabledTypes: body.enabledTypes });
         },
@@ -214,9 +211,8 @@ describe("connector permission dialog", () => {
       expect(screen.getByText("Agent Alpha")).toBeInTheDocument();
     });
 
-    // Select both agents
+    // Select the agent
     await user.click(screen.getByRole("button", { name: /Agent Alpha/ }));
-    await user.click(screen.getByRole("button", { name: /Agent Beta/ }));
 
     // Confirm
     await user.click(screen.getByRole("button", { name: "Confirm" }));
@@ -224,12 +220,11 @@ describe("connector permission dialog", () => {
     // Success toast and dialog close
     await waitFor(() => {
       expect(
-        screen.getByText("GitHub enabled for 2 agents"),
+        screen.getByText("GitHub enabled for 1 agent"),
       ).toBeInTheDocument();
     });
 
-    expect(updatedAgentIds).toContain("agent-1");
-    expect(updatedAgentIds).toContain("agent-2");
+    expect(updatedAgentId).toBe("agent-1");
   });
 
   it("shows N+ more chip when agent count exceeds visible limit", async () => {

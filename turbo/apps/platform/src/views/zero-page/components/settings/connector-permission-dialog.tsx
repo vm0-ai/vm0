@@ -12,6 +12,7 @@ import {
 import { Button } from "@vm0/ui/components/ui/button";
 import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
 import { agents$ } from "../../../../signals/zero-page/agents-list.ts";
+import { detach, Reason } from "../../../../signals/utils.ts";
 import { resolveAvatarUrl } from "../../avatar-utils.ts";
 import { ZERO_AVATARS } from "../../zero-avatars.ts";
 import { ConnectorIcon } from "./connector-icons.tsx";
@@ -179,7 +180,10 @@ export function ConnectorPermissionDialog({
             </Button>
             <Button
               onClick={() => {
-                confirm(connectorType, onClose, pageSignal);
+                detach(
+                  confirm(connectorType, onClose, pageSignal),
+                  Reason.DomCallback,
+                );
               }}
               disabled={submitting}
               className="h-9 w-[130px] rounded-[10px] bg-[#ed4e01] text-white hover:bg-[#d94500]"
