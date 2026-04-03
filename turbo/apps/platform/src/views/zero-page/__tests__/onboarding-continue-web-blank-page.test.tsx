@@ -7,7 +7,7 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 import { pathname } from "../../../signals/location.ts";
-import { appSkeletonVisible$ } from "../../../signals/app-skeleton.ts";
+import { createDeferredPromise } from "../../../signals/utils.ts";
 
 const context = testContext();
 
@@ -15,6 +15,11 @@ const MOCK_AGENT_ID = "d0000000-0000-4000-a000-000000000001";
 const MOCK_THREAD_ID = "thread-blank-test-1";
 
 function mockMemberOnboardingWithChat() {
+  // Deferred that blocks the POST /complete API response until we release it.
+  // This creates a timing window to observe the skeleton while the async
+  // onboarding completion is in-flight.
+  const completeDeferred = createDeferredPromise<void>(context.signal);
+
   server.use(
     http.get("*/api/zero/onboarding/status", () => {
       return HttpResponse.json({
@@ -27,7 +32,8 @@ function mockMemberOnboardingWithChat() {
         defaultAgentSkills: [],
       });
     }),
-    http.post("*/api/zero/onboarding/complete", () => {
+    http.post("*/api/zero/onboarding/complete", async () => {
+      await completeDeferred.promise;
       return HttpResponse.json({ ok: true });
     }),
   );
@@ -36,20 +42,8 @@ function mockMemberOnboardingWithChat() {
 
   return {
     ctrl,
-    completeOnboarding: () => {
-      server.use(
-        http.get("*/api/zero/onboarding/status", () => {
-          return HttpResponse.json({
-            needsOnboarding: false,
-            isAdmin: false,
-            hasOrg: true,
-            hasDefaultAgent: true,
-            defaultAgentId: MOCK_AGENT_ID,
-            defaultAgentMetadata: { displayName: "Zero" },
-            defaultAgentSkills: [],
-          });
-        }),
-      );
+    releaseComplete: () => {
+      completeDeferred.resolve();
     },
   };
 }
@@ -68,11 +62,20 @@ describe("onboarding continue in web → skeleton → chat page (#7902)", () => 
     });
 
     // Skeleton should be hidden after onboarding page loaded
-    expect(context.store.get(appSkeletonVisible$)).toBeFalsy();
+    expect(screen.getByTestId("app-skeleton")).toHaveClass("opacity-0");
 
-    mock.completeOnboarding();
-
+    // Click starts the async onboarding completion; the POST API is deferred
+    // so the command is in-flight while we assert skeleton visibility.
     await user.click(screen.getByRole("button", { name: /Continue in web/ }));
+
+    // Skeleton must be visible during the transition (the fix for #7902)
+    await waitFor(() => {
+      expect(screen.getByTestId("app-skeleton")).toHaveClass("opacity-100");
+    });
+
+    // Release the deferred POST response to let onboarding complete and
+    // navigation to the chat page proceed.
+    mock.releaseComplete();
 
     // Verify navigation happened and chat page renders
     await waitFor(() => {
@@ -84,7 +87,9 @@ describe("onboarding continue in web → skeleton → chat page (#7902)", () => 
     });
 
     // Skeleton should be hidden after chat page setup completes
-    expect(context.store.get(appSkeletonVisible$)).toBeFalsy();
+    await waitFor(() => {
+      expect(screen.getByTestId("app-skeleton")).toHaveClass("opacity-0");
+    });
 
     mock.ctrl.completeRun("Hello!");
   });

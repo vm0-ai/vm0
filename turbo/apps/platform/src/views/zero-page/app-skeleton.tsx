@@ -51,6 +51,7 @@ const skeletonCSS = `
 export function AppSkeleton({ visible = true }: { visible?: boolean }) {
   return (
     <div
+      data-testid="app-skeleton"
       className={`fixed inset-0 z-50 flex items-center justify-center bg-background ${
         visible
           ? "opacity-100"
