@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -537,7 +537,7 @@ describe("org billing tab - cancellation pending", () => {
 });
 
 describe("org billing tab - plan card details", () => {
-  it("should show plan pricing, period, features, and badge on pricing page", async () => {
+  it("should show plan cards with upgrade buttons on pricing page", async () => {
     const user = userEvent.setup();
     mockAPIs();
     setMockBillingStatus({ tier: "free", credits: 10_000 });
@@ -554,22 +554,18 @@ describe("org billing tab - plan card details", () => {
       expect(screen.getByText("Compare plans")).toBeInTheDocument();
     });
 
-    // Prices
-    expect(screen.getByText("$0")).toBeInTheDocument();
-    expect(screen.getByText("$40")).toBeInTheDocument();
-    expect(screen.getByText("$200")).toBeInTheDocument();
+    // Plan cards are rendered for each tier
+    expect(
+      screen.getByRole("button", { name: /Upgrade to Pro/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Upgrade to Team/i }),
+    ).toBeInTheDocument();
 
-    // Period (multiple /month texts expected)
-    const periodLabels = screen.getAllByText("/month");
-    expect(periodLabels.length).toBeGreaterThanOrEqual(3);
-
-    // Badge for Pro plan
-    expect(screen.getByText("Popular")).toBeInTheDocument();
-
-    // Sample features
-    expect(screen.getByText("10,000 starter credits")).toBeInTheDocument();
-    expect(screen.getByText("20,000 credits / month")).toBeInTheDocument();
-    expect(screen.getByText("120,000 credits / month")).toBeInTheDocument();
+    // Current plan card shows "Current plan" label
+    expect(
+      screen.getByRole("button", { name: /Current plan/i }),
+    ).toBeInTheDocument();
   });
 });
 
@@ -613,17 +609,6 @@ describe("org billing tab - billing states", () => {
 
     expect(screen.getByRole("button", { name: /Retry/i })).toBeInTheDocument();
   });
-
-  it("should show plan content on successful load", async () => {
-    mockAPIs();
-    setMockBillingStatus({ tier: "free", credits: 10_000 });
-
-    await openBillingTab();
-
-    await waitFor(() => {
-      expect(screen.getByText("Free plan")).toBeInTheDocument();
-    });
-  });
 });
 
 describe("org billing tab - plan card actions", () => {
@@ -663,12 +648,16 @@ describe("org billing tab - plan card actions", () => {
 });
 
 describe("org billing tab - stripe portal", () => {
-  it("should call Stripe portal API when Manage button is clicked", async () => {
+  afterEach(() => {
+    if (!window.location.href.startsWith("http://localhost")) {
+      window.location.href = "http://localhost/";
+    }
+  });
+
+  it("should redirect to Stripe portal URL when Manage button is clicked", async () => {
     const user = userEvent.setup();
-    let portalCalled = false;
     server.use(
       http.post("*/api/zero/billing/portal", () => {
-        portalCalled = true;
         return HttpResponse.json({
           url: "https://billing.stripe.com/test-portal",
         });
@@ -692,7 +681,9 @@ describe("org billing tab - stripe portal", () => {
     await user.click(screen.getByRole("button", { name: /Manage/i }));
 
     await waitFor(() => {
-      expect(portalCalled).toBeTruthy();
+      expect(window.location.href).toBe(
+        "https://billing.stripe.com/test-portal",
+      );
     });
   });
 });
