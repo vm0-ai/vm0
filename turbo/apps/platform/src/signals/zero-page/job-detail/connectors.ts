@@ -1,6 +1,7 @@
 import { command, computed, state } from "ccstate";
 import { zeroUserConnectorsContract } from "@vm0/core";
 import { zeroClient$ } from "../../api-client.ts";
+import { accept } from "../../../lib/accept.ts";
 import { zeroJobDetail$ } from "./detail.ts";
 
 // ---------------------------------------------------------------------------
@@ -22,10 +23,11 @@ const seededConnectors$ = computed(async (get): Promise<string[]> => {
     return [];
   }
   const client = get(zeroClient$)(zeroUserConnectorsContract);
-  const result = await client.get({ params: { id: detail.agentId } });
-  if (result.status !== 200) {
-    throw new Error(`Failed to fetch connector permissions (${result.status})`);
-  }
+  const result = await accept(
+    client.get({ params: { id: detail.agentId } }),
+    [200],
+    { toast: false },
+  );
   return result.body.enabledTypes;
 });
 
@@ -95,19 +97,14 @@ export const saveZeroJobConnectors$ = command(
 
     const enabledTypes = get(internalAddedConnectors$) ?? [];
     const client = get(zeroClient$)(zeroUserConnectorsContract);
-    const result = await client.update({
-      params: { id: detail.agentId },
-      body: { enabledTypes },
-    });
+    await accept(
+      client.update({
+        params: { id: detail.agentId },
+        body: { enabledTypes },
+      }),
+      [200],
+    );
     signal.throwIfAborted();
-
-    if (result.status !== 200) {
-      const errorDetail =
-        result.status === 401 || result.status === 403 || result.status === 404
-          ? result.body.error.message
-          : `status ${result.status}`;
-      throw new Error(`Save failed: ${errorDetail}`);
-    }
 
     set(internalAddedConnectors$, null);
     set(reloadJobConnectors$);

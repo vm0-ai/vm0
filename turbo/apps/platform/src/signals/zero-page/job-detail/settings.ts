@@ -1,6 +1,7 @@
 import { command } from "ccstate";
 import { zeroAgentsByIdContract } from "@vm0/core";
 import { zeroClient$ } from "../../api-client.ts";
+import { accept } from "../../../lib/accept.ts";
 import { zeroJobDetail$, reloadJobDetail$ } from "./detail.ts";
 import { reloadAgents$ } from "../agents-list.ts";
 
@@ -24,18 +25,14 @@ export const zeroJobUpdateSettings$ = command(
     }
 
     const client = get(zeroClient$)(zeroAgentsByIdContract);
-    const result = await client.updateMetadata({
-      params: { id: detail.agentId },
-      body: update,
-    });
+    await accept(
+      client.updateMetadata({
+        params: { id: detail.agentId },
+        body: update,
+      }),
+      [200],
+    );
     signal.throwIfAborted();
-    if (result.status !== 200) {
-      const detail =
-        result.status === 401 || result.status === 403 || result.status === 404
-          ? result.body.error.message
-          : `status ${result.status}`;
-      throw new Error(`Save failed: ${detail}`);
-    }
 
     set(reloadJobDetail$);
     set(reloadAgents$);

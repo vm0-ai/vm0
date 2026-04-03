@@ -1,5 +1,6 @@
 import { command, computed, state } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
+import { accept } from "../../../lib/accept.ts";
 import {
   zeroSchedulesMainContract,
   zeroSchedulesByNameContract,
@@ -121,10 +122,7 @@ const rawSchedules$ = computed(async (get): Promise<ScheduleItem[]> => {
     return [];
   }
   const client = get(zeroClient$)(zeroSchedulesMainContract);
-  const result = await client.list();
-  if (result.status !== 200) {
-    throw new Error(`Failed to fetch schedules (${result.status})`);
-  }
+  const result = await accept(client.list(), [200], { toast: false });
   return result.body.schedules.filter((s) => {
     return s.agentId === detail.agentId;
   });
@@ -233,19 +231,8 @@ export const saveZeroJobSchedule$ = command(
     }
 
     const client = get(zeroClient$)(zeroSchedulesMainContract);
-    const result = await client.deploy({ body });
+    await accept(client.deploy({ body }), [200, 201]);
     signal.throwIfAborted();
-
-    if (result.status !== 200 && result.status !== 201) {
-      const detail =
-        result.status === 400 ||
-        result.status === 401 ||
-        result.status === 403 ||
-        result.status === 404
-          ? result.body.error.message
-          : `Save failed (${result.status})`;
-      throw new Error(detail);
-    }
 
     toast.success(params.editName ? "Schedule updated" : "Schedule created");
     set(reloadJobSchedule$);
@@ -266,17 +253,14 @@ export const toggleZeroJobScheduleEnabled$ = command(
 
     const client = get(zeroClient$)(zeroSchedulesEnableContract);
     const action = params.enabled ? "enable" : "disable";
-    const result = await client[action]({
-      params: { name: params.name },
-      body: { agentId: detail.agentId },
-    });
+    await accept(
+      client[action]({
+        params: { name: params.name },
+        body: { agentId: detail.agentId },
+      }),
+      [200],
+    );
     signal.throwIfAborted();
-
-    if (result.status !== 200) {
-      const message = `Failed to ${action} schedule (${result.status})`;
-      toast.error(message);
-      throw new Error(message);
-    }
 
     set(reloadJobSchedule$);
   },
@@ -291,19 +275,14 @@ export const deleteZeroJobSchedule$ = command(
     }
 
     const client = get(zeroClient$)(zeroSchedulesByNameContract);
-    const result = await client.delete({
-      params: { name: scheduleName },
-      query: { agentId: detail.agentId },
-    });
+    await accept(
+      client.delete({
+        params: { name: scheduleName },
+        query: { agentId: detail.agentId },
+      }),
+      [204],
+    );
     signal.throwIfAborted();
-
-    if (result.status !== 204) {
-      const msg =
-        result.status === 401 || result.status === 403 || result.status === 404
-          ? result.body.error.message
-          : `status ${result.status}`;
-      throw new Error(`Delete failed: ${msg}`);
-    }
 
     toast.success("Schedule deleted");
     set(reloadJobSchedule$);

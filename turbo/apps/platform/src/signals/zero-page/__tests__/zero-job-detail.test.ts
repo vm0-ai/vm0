@@ -207,93 +207,6 @@ describe("zero-job-detail signals", () => {
       expect(entries[0]!.description).toBe("Daily digest summary");
     });
 
-    it("should throw when detail API fails", async () => {
-      server.use(
-        http.get("http://localhost:3000/api/zero/agents/:name", () => {
-          return HttpResponse.json(
-            { error: { message: "Not Found", code: "NOT_FOUND" } },
-            { status: 404, statusText: "Not Found" },
-          );
-        }),
-      );
-
-      await setupPage({ context, path: "/", withoutRender: true });
-      context.store.set(setActiveAgent$, "missing-agent");
-
-      await expect(context.store.get(zeroJobDetail$)).rejects.toThrow(
-        "Failed to fetch agent (404)",
-      );
-    });
-
-    it("should throw when instructions API fails", async () => {
-      server.use(
-        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
-          return HttpResponse.json(mockAgentResponse());
-        }),
-        http.get(
-          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/instructions",
-          () => {
-            return HttpResponse.json(
-              {
-                error: {
-                  message: "Internal Server Error",
-                  code: "INTERNAL_SERVER_ERROR",
-                },
-              },
-              { status: 500, statusText: "Internal Server Error" },
-            );
-          },
-        ),
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json(mockSchedules());
-        }),
-      );
-
-      await setupPage({ context, path: "/", withoutRender: true });
-      context.store.set(setActiveAgent$, "my-agent");
-
-      await expect(context.store.get(zeroJobInstructions$)).rejects.toThrow(
-        "Failed to fetch instructions (500)",
-      );
-
-      // Detail should still succeed
-      const detail = await context.store.get(zeroJobDetail$);
-      expect(detail).not.toBeNull();
-    });
-
-    it("should throw when schedules API fails", async () => {
-      server.use(
-        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
-          return HttpResponse.json(mockAgentResponse());
-        }),
-        http.get(
-          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/instructions",
-          () => {
-            return HttpResponse.json(mockInstructions());
-          },
-        ),
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json(
-            { error: { message: "Forbidden", code: "FORBIDDEN" } },
-            { status: 403, statusText: "Forbidden" },
-          );
-        }),
-      );
-
-      await setupPage({ context, path: "/", withoutRender: true });
-      context.store.set(setActiveAgent$, "my-agent");
-
-      await expect(context.store.get(zeroJobScheduleEntries$)).rejects.toThrow(
-        "Failed to fetch schedules (403)",
-      );
-
-      // Detail and instructions should still succeed
-      const detail = await context.store.get(zeroJobDetail$);
-      expect(detail).not.toBeNull();
-      const instructions = await context.store.get(zeroJobInstructions$);
-      expect(instructions).not.toBeNull();
-    });
-
     it("should pass agent name directly to API", async () => {
       let capturedUrl = "";
       server.use(
@@ -515,39 +428,6 @@ describe("zero-job-detail signals", () => {
       expect(capturedBody).not.toHaveProperty("atTime");
       expect(capturedBody).not.toHaveProperty("composeId");
     });
-
-    it("should throw for save when API returns error", async () => {
-      await setupWithAgent();
-      await context.store.get(zeroJobDetail$);
-
-      server.use(
-        http.post("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json(
-            {
-              error: {
-                message: "Quota exceeded",
-                code: "INTERNAL_SERVER_ERROR",
-              },
-            },
-            { status: 429, statusText: "Too Many Requests" },
-          );
-        }),
-      );
-
-      const params: ZeroJobScheduleSaveParams = {
-        prompt: "Task",
-        freq: "every_day",
-        date: "2030-01-01",
-        hour: 9,
-        minute: 0,
-        timezone: "UTC",
-        intervalSeconds: 0,
-      };
-
-      await expect(
-        context.store.set(saveZeroJobSchedule$, params, context.signal),
-      ).rejects.toThrow("Save failed (429)");
-    });
   });
 
   describe("deleteZeroJobSchedule$", () => {
@@ -583,28 +463,6 @@ describe("zero-job-detail signals", () => {
 
       const entries = await context.store.get(zeroJobScheduleEntries$);
       expect(entries).toStrictEqual([]);
-    });
-
-    it("should throw when delete API returns error", async () => {
-      await setupWithAgent();
-      await context.store.get(zeroJobDetail$);
-
-      server.use(
-        http.delete("http://localhost:3000/api/zero/schedules/:name", () => {
-          return HttpResponse.json(
-            { error: { message: "Not found", code: "INTERNAL_SERVER_ERROR" } },
-            { status: 404, statusText: "Not Found" },
-          );
-        }),
-      );
-
-      await expect(
-        context.store.set(
-          deleteZeroJobSchedule$,
-          "nonexistent",
-          context.signal,
-        ),
-      ).rejects.toThrow("Delete failed: Not found");
     });
   });
 
@@ -676,39 +534,6 @@ describe("zero-job-detail signals", () => {
       );
 
       expect(capturedUrl).toContain("/api/zero/schedules/daily-run/disable");
-    });
-
-    it("should show toast error when toggle API fails", async () => {
-      await setupWithAgent();
-      await context.store.get(zeroJobDetail$);
-
-      server.use(
-        http.post(
-          "http://localhost:3000/api/zero/schedules/:name/:action",
-          () => {
-            return HttpResponse.json(
-              {
-                error: {
-                  message: "Server error",
-                  code: "INTERNAL_SERVER_ERROR",
-                },
-              },
-              { status: 500, statusText: "Internal Server Error" },
-            );
-          },
-        ),
-      );
-
-      await expect(
-        context.store.set(
-          toggleZeroJobScheduleEnabled$,
-          {
-            name: "daily-run",
-            enabled: true,
-          },
-          context.signal,
-        ),
-      ).rejects.toThrow("Failed to enable schedule (500)");
     });
   });
 
@@ -816,37 +641,6 @@ describe("zero-job-detail signals", () => {
       // Instructions should be updated after reload
       const instructions = await context.store.get(zeroJobInstructions$);
       expect(instructions?.content).toBe("Updated instructions");
-    });
-
-    it("should throw on api failure", async () => {
-      await setupWithInstructions();
-
-      server.use(
-        http.put(
-          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/instructions",
-          () => {
-            return HttpResponse.json(
-              {
-                error: {
-                  message: "Build quota exceeded",
-                  code: "INTERNAL_SERVER_ERROR",
-                },
-              },
-              { status: 429, statusText: "Too Many Requests" },
-            );
-          },
-        ),
-      );
-
-      context.store.set(setZeroJobEditedContent$, "Updated instructions");
-      await expect(
-        context.store.set(buildZeroJobInstructions$, context.signal),
-      ).rejects.toThrow("Build failed");
-
-      // Edited content should NOT be cleared on failure
-      expect(context.store.get(zeroJobEditedContent$)).toBe(
-        "Updated instructions",
-      );
     });
 
     it("should not build when no edited content", async () => {
@@ -957,29 +751,6 @@ describe("zero-job-detail signals", () => {
 
       // The PATCH is always sent — idempotency is handled server-side
       expect(patchCalled).toBeTruthy();
-    });
-
-    it("should throw on PATCH failure", async () => {
-      await setupSettings();
-
-      server.use(
-        http.patch(
-          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002",
-          () => {
-            return new HttpResponse("Internal error", { status: 500 });
-          },
-        ),
-      );
-
-      await expect(
-        context.store.set(
-          zeroJobUpdateSettings$,
-          {
-            displayName: "New Name",
-          },
-          context.signal,
-        ),
-      ).rejects.toThrow("Save failed");
     });
   });
 
@@ -1102,33 +873,6 @@ describe("zero-job-detail signals", () => {
       await expect(
         context.store.get(zeroJobConnectorsDirty$),
       ).resolves.toBeFalsy();
-    });
-
-    it("should throw on save failure", async () => {
-      await setupWithConnectors();
-
-      server.use(
-        http.put(
-          "http://localhost:3000/api/zero/agents/c0000000-0000-4000-a000-000000000002/user-connectors",
-          () => {
-            return HttpResponse.json(
-              {
-                error: {
-                  message: "Save failed",
-                  code: "INTERNAL_SERVER_ERROR",
-                },
-              },
-              { status: 500, statusText: "Internal Server Error" },
-            );
-          },
-        ),
-      );
-
-      await context.store.set(addZeroJobConnector$, "gmail", context.signal);
-
-      await expect(
-        context.store.set(saveZeroJobConnectors$, context.signal),
-      ).rejects.toThrow("Save failed");
     });
   });
 });

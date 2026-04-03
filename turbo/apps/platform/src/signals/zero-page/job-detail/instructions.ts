@@ -1,6 +1,7 @@
 import { command, computed, state } from "ccstate";
 import { zeroAgentInstructionsContract } from "@vm0/core";
 import { zeroClient$ } from "../../api-client.ts";
+import { accept } from "../../../lib/accept.ts";
 import type { AgentInstructions } from "../agent-types.ts";
 import { zeroJobDetail$, reloadJobDetail$ } from "./detail.ts";
 
@@ -24,10 +25,11 @@ export const zeroJobInstructions$ = computed(
       return null;
     }
     const client = get(zeroClient$)(zeroAgentInstructionsContract);
-    const result = await client.get({ params: { id: detail.agentId } });
-    if (result.status !== 200) {
-      throw new Error(`Failed to fetch instructions (${result.status})`);
-    }
+    const result = await accept(
+      client.get({ params: { id: detail.agentId } }),
+      [200],
+      { toast: false },
+    );
     return result.body;
   },
 );
@@ -68,22 +70,14 @@ export const buildZeroJobInstructions$ = command(
     const edited = raw.trim();
 
     const client = get(zeroClient$)(zeroAgentInstructionsContract);
-    const result = await client.update({
-      params: { id: detail.agentId },
-      body: { content: edited },
-    });
+    await accept(
+      client.update({
+        params: { id: detail.agentId },
+        body: { content: edited },
+      }),
+      [200],
+    );
     signal.throwIfAborted();
-
-    if (result.status !== 200) {
-      const errorDetail =
-        result.status === 401 ||
-        result.status === 403 ||
-        result.status === 404 ||
-        result.status === 422
-          ? result.body.error.message
-          : `status ${result.status}`;
-      throw new Error(`Build failed: ${errorDetail}`);
-    }
 
     set(editedContent$, null);
     set(reloadJobInstructions$);
