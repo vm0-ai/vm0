@@ -2,6 +2,8 @@ import { command, computed, state } from "ccstate";
 import { searchParams$ } from "../route.ts";
 import { zeroSlackConnectContract } from "@vm0/core";
 import { zeroClient$ } from "../api-client.ts";
+import { accept, ApiError } from "../../lib/accept.ts";
+import { throwIfAbort } from "../utils.ts";
 
 // Internal state
 const internalStatus$ = state<
@@ -49,10 +51,17 @@ export const initSlackConnectPage$ = command(
     if (!initialStatus && !initialError && workspaceId) {
       set(internalStatus$, "checking");
       const client = get(zeroClient$)(zeroSlackConnectContract);
-      const result = await client.getStatus();
-      if (result.status === 200 && result.body.isConnected) {
-        set(internalStatus$, "success");
-        return;
+      try {
+        const result = await accept(client.getStatus(), [200], {
+          toast: false,
+        });
+        if (result.body.isConnected) {
+          set(internalStatus$, "success");
+          return;
+        }
+      } catch (error) {
+        throwIfAbort(error);
+        // silently fall through to idle
       }
       set(internalStatus$, "idle");
     }
@@ -77,25 +86,26 @@ export const connectSlackAccount$ = command(
     const client = get(zeroClient$)(zeroSlackConnectContract);
     const channelId = params.get("c");
     const threadTs = params.get("t");
-    const result = await client.connect({
-      body: {
-        workspaceId,
-        slackUserId,
-        ...(channelId ? { channelId } : {}),
-        ...(threadTs ? { threadTs } : {}),
-      },
-    });
-
-    if (result.status === 200) {
+    try {
+      await accept(
+        client.connect({
+          body: {
+            workspaceId,
+            slackUserId,
+            ...(channelId ? { channelId } : {}),
+            ...(threadTs ? { threadTs } : {}),
+          },
+        }),
+        [200],
+        { toast: false },
+      );
       set(internalStatus$, "success");
       window.location.href = "slack://open";
-    } else {
+    } catch (error) {
+      throwIfAbort(error);
       const msg =
-        result.status === 400 ||
-        result.status === 401 ||
-        result.status === 403 ||
-        result.status === 404
-          ? result.body.error.message
+        error instanceof ApiError
+          ? error.message
           : "Failed to connect. Please try again.";
       set(internalErrorMsg$, msg);
       set(internalStatus$, "error");

@@ -1,9 +1,8 @@
 import { command, computed, state } from "ccstate";
 import { zeroSlackChannelsContract, type SlackChannel } from "@vm0/core";
-import { logger } from "../log.ts";
 import { zeroClient$ } from "../api-client.ts";
-
-const log = logger("slack-channels");
+import { accept } from "../../lib/accept.ts";
+import { throwIfAbort } from "../utils.ts";
 
 const slackChannelsState$ = state<SlackChannel[]>([]);
 const slackChannelsLoaded$ = state(false);
@@ -16,13 +15,14 @@ export const slackChannelsInitialized$ = computed((get) => {
 export const fetchSlackChannels$ = command(
   async ({ get, set }, _signal: AbortSignal) => {
     const client = get(zeroClient$)(zeroSlackChannelsContract);
-    const result = await client.list();
-    if (result.status !== 200) {
-      log.warn("Failed to fetch Slack channels", { status: result.status });
-      set(slackChannelsState$, []);
-    } else {
+    try {
+      const result = await accept(client.list(), [200], { toast: false });
       set(slackChannelsState$, result.body.channels);
+    } catch (error) {
+      throwIfAbort(error);
+      set(slackChannelsState$, []);
+    } finally {
+      set(slackChannelsLoaded$, true);
     }
-    set(slackChannelsLoaded$, true);
   },
 );
