@@ -177,6 +177,19 @@ extract_and_inject() {
   sudo rm -f "$resolv_path"
   echo -n "$RESOLV_CONF" | sudo tee "$resolv_path" > /dev/null
 
+  # Write /etc/hosts — the VM has no mDNS and resolv.conf only lists
+  # external nameservers, so "localhost" would fail to resolve without this.
+  printf '%s\n' \
+    "127.0.0.1 localhost" \
+    "::1 localhost" \
+    | sudo tee "${EXTRACT_DIR}/etc/hosts" > /dev/null
+
+  # Fix PostgreSQL socket directory permissions.
+  # The Dockerfile installs PostgreSQL 16, which creates /var/run/postgresql
+  # owned by postgres:postgres (setgid 2775).  The sandbox user (uid 1000)
+  # needs write access to start the server with default unix_socket_directories.
+  sudo chown 1000:1000 "${EXTRACT_DIR}/var/run/postgresql"
+
   # Install guest binaries
   local -a bins=(
     "${GUEST_AGENT}:/usr/local/bin/guest-agent"
