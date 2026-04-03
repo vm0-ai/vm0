@@ -10,8 +10,6 @@
 use nix::mount::{MsFlags, mount};
 use std::fs;
 
-const DEFAULT_PATH: &str = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
-
 /// Initialize virtual filesystems and environment.
 ///
 /// The kernel has already mounted `/dev/vda` as root (`root=/dev/vda rw`)
@@ -59,37 +57,20 @@ pub fn init_filesystem() -> Result<(), InitError> {
     })?;
     eprintln!("[guest-init] Virtual filesystems mounted");
 
-    // 2. Set environment variables for the init process (root).
-    // User commands run via `su - user` which resets env from /etc/passwd,
-    // so these only affect root/sudo commands (e.g. clock fix).
+    // 2. Load environment variables.
+    //
+    // /etc/environment is baked into the rootfs by build-rootfs.sh and
+    // contains variables shared by ALL users (LANG, NODE_EXTRA_CA_CERTS, …).
+    // PAM reads it for login shells (`su - user`), but the init process
+    // (root) and its children (vsock-guest → `sh -c`) don't go through PAM,
+    // so we load it explicitly here.
+    //
     // SAFETY: We are the init process, no other threads are running yet
     unsafe {
-        std::env::set_var("PATH", DEFAULT_PATH);
+        load_etc_environment();
         std::env::set_var("HOME", "/root");
         std::env::set_var("USER", "root");
         std::env::set_var("SHELL", "/bin/bash");
-        std::env::set_var("LANG", "C.UTF-8");
-    }
-
-    // Write environment for `su - user` (login shell). Docker ENV is lost
-    // during `docker export`, and `std::env::set_var` only affects the
-    // current process — `su -` resets the environment.
-    //
-    // LANG goes in /etc/environment (read by PAM, not overridden later).
-    // PATH goes in /etc/profile.d/ because Debian's /etc/profile overrides
-    // PATH from /etc/environment, omitting sbin dirs for non-root users.
-    // Scripts in /etc/profile.d/ run after /etc/profile, so our PATH wins.
-    if let Err(e) = fs::write(
-        "/etc/environment",
-        "LANG=C.UTF-8\nNPM_CONFIG_UPDATE_NOTIFIER=false\n",
-    ) {
-        eprintln!("[guest-init] Warning: failed to write /etc/environment: {e}");
-    }
-    if let Err(e) = fs::write(
-        "/etc/profile.d/vm0-path.sh",
-        format!("export PATH={DEFAULT_PATH}\n"),
-    ) {
-        eprintln!("[guest-init] Warning: failed to write /etc/profile.d/vm0-path.sh: {e}");
     }
 
     // 3. Change to root home directory (init runs as root;
@@ -117,3 +98,30 @@ impl std::fmt::Display for InitError {
 }
 
 impl std::error::Error for InitError {}
+
+/// Parse `/etc/environment` and set each `KEY=VALUE` pair via `set_var`.
+///
+/// Skips blank lines, comments, and lines without `=`.
+/// SAFETY: caller must ensure no other threads are running.
+unsafe fn load_etc_environment() {
+    let content = match fs::read_to_string("/etc/environment") {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("[guest-init] Warning: failed to read /etc/environment: {e}");
+            return;
+        }
+    };
+    for line in content.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        if let Some((key, value)) = line.split_once('=') {
+            let key = key.trim();
+            let value = value.trim().trim_matches('"');
+            if !key.is_empty() {
+                unsafe { std::env::set_var(key, value) };
+            }
+        }
+    }
+}

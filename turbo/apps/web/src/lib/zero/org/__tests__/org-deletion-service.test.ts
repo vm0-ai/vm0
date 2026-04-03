@@ -103,7 +103,8 @@ describe("deleteOrgData", () => {
     await deleteOrgData(orgId);
 
     expect(await countOrgRows("agent_runs", orgId)).toBe(0);
-    expect(await countOrgRows("credit_usage", orgId)).toBe(0);
+    // credit_usage preserved permanently (runId set to NULL)
+    expect(await countOrgRows("credit_usage", orgId)).toBe(1);
   });
 
   it("should cascade delete storages and versions", async () => {
@@ -287,7 +288,7 @@ describe("deleteOrgData", () => {
     // Execute deletion
     await deleteOrgData(orgId);
 
-    // Verify ALL tables are empty for this org
+    // Verify ALL tables are empty for this org (except credit_usage — preserved for audit)
     const tables = [
       "agent_runs",
       "agent_run_queue",
@@ -301,7 +302,6 @@ describe("deleteOrgData", () => {
       "export_jobs",
       "zero_agents",
       "zero_agent_schedules",
-      "credit_usage",
       "agent_sessions",
       "email_thread_sessions",
       "slack_org_installations",

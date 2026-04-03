@@ -261,6 +261,7 @@ export const submitApiToken$ = command(
     toast.success(`${CONNECTOR_TYPES[type].label} connected successfully`, {
       id: `connector-connected-${type}`,
     });
+    set(internalPermissionDialogType$, type);
   },
 );
 
@@ -285,6 +286,23 @@ const internalJustConnectedTypes$ = state<Set<string>>(new Set());
 export const justConnectedTypes$ = computed((get) => {
   return get(internalJustConnectedTypes$);
 });
+
+// ---------------------------------------------------------------------------
+// Post-connect permission dialog state
+// ---------------------------------------------------------------------------
+
+const internalPermissionDialogType$ = state<ConnectorType | null>(null);
+
+/** Connector type to show the permission dialog for (null = hidden). */
+export const permissionDialogType$ = computed((get) => {
+  return get(internalPermissionDialogType$);
+});
+
+export const setPermissionDialogType$ = command(
+  ({ set }, type: ConnectorType | null) => {
+    set(internalPermissionDialogType$, type);
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Connect command
@@ -347,9 +365,10 @@ export const connectConnector$ = command(
     const hidden = new Set(get(hiddenConnectorTypes$));
     hidden.delete(type);
     set(setHiddenConnectorTypes$, JSON.stringify([...hidden]));
-    // Close connect modal on OAuth success
+    // Close connect modal on OAuth success and show permission dialog
     if (isConnected) {
       set(internalSelectedConnectorType$, null);
+      set(internalPermissionDialogType$, type);
     }
     return isConnected;
   },

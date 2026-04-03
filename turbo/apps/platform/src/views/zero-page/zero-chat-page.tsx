@@ -146,6 +146,34 @@ function useUserFirstName(): string | undefined {
   return loadable.data?.firstName ?? undefined;
 }
 
+function InviteButton({ pageSignal }: { pageSignal: AbortSignal }) {
+  const isAdminLoadable = useLoadable(isOrgAdmin$);
+  const isAdmin =
+    isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
+  const setTab = useSet(setActiveTab$);
+  const setSubPage = useSet(setBillingSubPage$);
+  const openManage = useSet(setOrgManageDialogOpen$);
+  const handleInvite = () => {
+    setTab("members");
+    setSubPage(false);
+    detach(openManage(true, pageSignal), Reason.DomCallback);
+  };
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={handleInvite}
+      className={`zero-btn-morandi gap-1.5${isAdmin ? "" : " invisible"}`}
+      aria-hidden={isAdmin ? undefined : "true"}
+      tabIndex={isAdmin ? undefined : -1}
+      data-testid="invite-button"
+    >
+      <IconUserPlus size={14} stroke={1.5} />
+      Invite people
+    </Button>
+  );
+}
+
 export function ZeroChatPage() {
   // Agent resolution (moved from ZeroTalkPage)
   const chatAgentLoadable = useLastLoadable(zeroChatAgentId$);
@@ -207,19 +235,6 @@ export function ZeroChatPage() {
   // Agent ID from URL for ideas navigation
   const talkAgentId = useGet(currentAgentId$);
 
-  // Admin invite
-  const isAdminLoadable = useLoadable(isOrgAdmin$);
-  const isAdmin =
-    isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
-  const setTab = useSet(setActiveTab$);
-  const setSubPage = useSet(setBillingSubPage$);
-  const openManage = useSet(setOrgManageDialogOpen$);
-  const handleInvite = () => {
-    setTab("members");
-    setSubPage(false);
-    detach(openManage(true, pageSignal), Reason.DomCallback);
-  };
-
   // Pin pill (currentChatAgentId is resolved above)
   const pinnedLoadable = useLastLoadable(pinnedAgentIds$);
   const pinnedIds =
@@ -249,17 +264,7 @@ export function ZeroChatPage() {
     <div className="relative flex flex-1 flex-col min-h-0">
       <header className="hidden md:block shrink-0 bg-transparent px-4 sm:px-6 pt-4 pb-2">
         <div className="flex justify-end">
-          {isAdmin && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleInvite}
-              className="zero-btn-morandi gap-1.5"
-            >
-              <IconUserPlus size={14} stroke={1.5} />
-              Invite people
-            </Button>
-          )}
+          <InviteButton pageSignal={pageSignal} />
         </div>
       </header>
 

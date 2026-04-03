@@ -3,7 +3,12 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../../mocks/server.ts";
 import { testContext } from "../../../__tests__/test-helpers.ts";
 import { setupPage } from "../../../../__tests__/page-helper.ts";
-import { connectConnector$, pollingConnectorType$ } from "../connectors.ts";
+import {
+  connectConnector$,
+  permissionDialogType$,
+  pollingConnectorType$,
+  submitApiToken$,
+} from "../connectors.ts";
 import type { ConnectorListResponse } from "@vm0/core";
 
 const context = testContext();
@@ -112,5 +117,76 @@ describe("connectConnector$", () => {
 
     const polling = context.store.get(pollingConnectorType$);
     expect(polling).toBeNull();
+  });
+
+  it("sets permissionDialogType$ after successful OAuth connection", async () => {
+    await setupPage({ context, path: "/", withoutRender: true });
+
+    const mockWindow = { closed: false, close: vi.fn() };
+    vi.spyOn(window, "open").mockReturnValue(mockWindow as unknown as Window);
+
+    server.use(
+      http.get("*/api/zero/connectors", () => {
+        return HttpResponse.json(makeGithubConnectorResponse());
+      }),
+    );
+
+    vi.useFakeTimers();
+
+    const connectPromise = context.store.set(
+      connectConnector$,
+      "github",
+      context.signal,
+    );
+
+    await vi.advanceTimersByTimeAsync(2000);
+
+    await connectPromise;
+
+    expect(context.store.get(permissionDialogType$)).toBe("github");
+  });
+
+  it("does not set permissionDialogType$ when popup closed without connecting", async () => {
+    await setupPage({ context, path: "/", withoutRender: true });
+
+    const mockWindow = { closed: false, close: vi.fn() };
+    vi.spyOn(window, "open").mockReturnValue(mockWindow as unknown as Window);
+
+    server.use(
+      http.get("*/api/zero/connectors", () => {
+        return HttpResponse.json(makeEmptyConnectorResponse());
+      }),
+    );
+
+    vi.useFakeTimers();
+
+    const connectPromise = context.store.set(
+      connectConnector$,
+      "github",
+      context.signal,
+    );
+
+    await vi.advanceTimersByTimeAsync(2000);
+    mockWindow.closed = true;
+    await vi.advanceTimersByTimeAsync(2000);
+
+    await connectPromise;
+
+    expect(context.store.get(permissionDialogType$)).toBeNull();
+  });
+});
+
+describe("submitApiToken$", () => {
+  it("sets permissionDialogType$ after successful API token submission", async () => {
+    await setupPage({ context, path: "/", withoutRender: true });
+
+    await context.store.set(
+      submitApiToken$,
+      "github",
+      { GITHUB_PERSONAL_ACCESS_TOKEN: "ghp_test123" },
+      context.signal,
+    );
+
+    expect(context.store.get(permissionDialogType$)).toBe("github");
   });
 });

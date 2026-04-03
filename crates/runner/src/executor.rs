@@ -703,9 +703,6 @@ async fn restore_session(
     Ok(())
 }
 
-/// Proxy CA certificate path inside the guest rootfs (pre-baked at build time).
-const VM_PROXY_CA_PATH: &str = "/usr/local/share/ca-certificates/vm0-proxy-ca.crt";
-
 /// Returns true if the session ID contains only safe characters (alphanumeric, dash, underscore).
 fn is_valid_session_id(id: &str) -> bool {
     !id.is_empty()
@@ -783,11 +780,6 @@ fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, 
     {
         env.insert("USE_MOCK_CLAUDE".into(), val);
     }
-
-    // Tell Node.js/Bun to trust the proxy CA. All VMs route through
-    // mitmproxy, so the CA cert is always needed.
-    // The certificate is pre-baked into the rootfs at build time.
-    env.insert("NODE_EXTRA_CA_CERTS".into(), VM_PROXY_CA_PATH.into());
 
     // Artifact config
     if let Some(manifest) = &context.storage_manifest
@@ -872,10 +864,7 @@ fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::types::{
-        ArtifactEntry, Firewall, FirewallApi, FirewallAuth, ResumeSession, StorageEntry,
-        StorageManifest,
-    };
+    use crate::types::{ArtifactEntry, ResumeSession, StorageEntry, StorageManifest};
     use uuid::Uuid;
 
     fn minimal_context() -> ExecutionContext {
@@ -1155,37 +1144,6 @@ mod tests {
             Some(v) => unsafe { std::env::set_var("USE_MOCK_CLAUDE", v) },
             None => unsafe { std::env::remove_var("USE_MOCK_CLAUDE") },
         }
-    }
-
-    #[test]
-    fn build_env_json_firewall_enable_ca_certs() {
-        let mut ctx = minimal_context();
-        ctx.firewalls = Some(vec![Firewall {
-            name: "gmail".into(),
-            ref_key: "gmail".into(),
-            apis: vec![FirewallApi {
-                id: String::new(),
-                base: "https://gmail.googleapis.com/gmail/v1/users/me".into(),
-                auth: FirewallAuth {
-                    headers: std::collections::HashMap::from([(
-                        "Authorization".into(),
-                        "Bearer ${{ secrets.GMAIL_TOKEN }}".into(),
-                    )]),
-                    base: None,
-                },
-                permissions: None,
-            }],
-        }]);
-        let env = build_env_json(&ctx, "http://localhost");
-        assert_eq!(env.get("NODE_EXTRA_CA_CERTS").unwrap(), VM_PROXY_CA_PATH);
-    }
-
-    #[test]
-    fn build_env_json_empty_firewall_still_has_ca_certs() {
-        let mut ctx = minimal_context();
-        ctx.firewalls = Some(vec![]);
-        let env = build_env_json(&ctx, "http://localhost");
-        assert_eq!(env.get("NODE_EXTRA_CA_CERTS").unwrap(), VM_PROXY_CA_PATH);
     }
 
     #[test]

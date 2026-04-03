@@ -1,5 +1,36 @@
 # Changelog
 
+## [12.189.1](https://github.com/vm0-ai/vm0/compare/web-v12.189.0...web-v12.189.1) (2026-04-03)
+
+
+### Bug Fixes
+
+* clean up runs on agent deletion, preserve billing records ([#7846](https://github.com/vm0-ai/vm0/issues/7846)) ([0d676a7](https://github.com/vm0-ai/vm0/commit/0d676a7d5b20573c7ef45b3f6681f5065fdaa0f7))
+
+
+### Refactoring
+
+* decompose build-zero-context.ts into focused modules under zero/context/ ([#7856](https://github.com/vm0-ai/vm0/issues/7856)) ([c1e8b0f](https://github.com/vm0-ai/vm0/commit/c1e8b0ff49a4b27091ef40772478c8a2595971ff)), closes [#7848](https://github.com/vm0-ai/vm0/issues/7848)
+
+## [12.189.0](https://github.com/vm0-ai/vm0/compare/web-v12.188.4...web-v12.189.0) (2026-04-03)
+
+
+### Features
+
+* add connector read capability and gate connector api endpoints ([#7819](https://github.com/vm0-ai/vm0/issues/7819)) ([9117bf1](https://github.com/vm0-ai/vm0/commit/9117bf144a7b317d021807d5a06ccd031023994f))
+
+
+### Bug Fixes
+
+* respect redirect_url query parameter after sign-in and sign-up ([#7814](https://github.com/vm0-ai/vm0/issues/7814)) ([ce0a58b](https://github.com/vm0-ai/vm0/commit/ce0a58b4ffd585fd8d3628b55acca5db291f0f2e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.147.0
+
 ## [12.188.4](https://github.com/vm0-ai/vm0/compare/web-v12.188.3...web-v12.188.4) (2026-04-03)
 
 

@@ -22,6 +22,7 @@ export const loadInitialData$ = command(
     }
     await set(initZeroOnboarding$, signal);
     signal.throwIfAborted();
+    // eslint-disable-next-line ccstate/no-detach-in-signals -- TODO: move to views layer
     detach(set(initSlackOrg$, signal), Reason.Entrance);
     set(initialDataLoaded$, true);
     set(initSidebarCollapsed$);

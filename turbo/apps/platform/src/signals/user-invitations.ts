@@ -50,6 +50,7 @@ const pollUserInvitations$ = command(async ({ set }, signal: AbortSignal) => {
  */
 const orgSwitcherSetup$ = command(
   async ({ set }, el: HTMLElement, signal: AbortSignal) => {
+    // eslint-disable-next-line ccstate/no-detach-in-signals -- TODO: move to views layer
     detach(set(watchOrgSwitch$, el, signal), Reason.Entrance);
     await set(pollUserInvitations$, signal);
   },

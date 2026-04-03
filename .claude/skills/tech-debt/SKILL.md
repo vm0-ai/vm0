@@ -147,6 +147,64 @@ grep -r '"off"\|: 0[,}]' turbo/apps/*/eslint.config.* turbo/packages/*/eslint.co
 grep -r '"allow"' turbo --include=".oxlintrc.json"
 ```
 
+**18. Partial Internal Mocks (AP-6 Violations)**
+```bash
+# vi.importActual is a sign of partial mocking — usually wrong
+grep -r 'vi\.importActual' turbo --include="*.test.ts" --include="*.test.tsx" -l
+```
+
+**19. Direct Component Rendering (AP-10 Violations)**
+```bash
+# Platform test files using render() instead of setupPage — misses production bootstrap
+grep -r 'render(' turbo/apps/platform --include="*.test.tsx" -l
+```
+
+**20. Direct Database Operations in Tests**
+```bash
+# Tests should use API helpers, not direct DB insert/update/delete
+grep -r 'globalThis\.services\.db\.\(insert\|update\|delete\)' turbo \
+  --include="*.test.ts" --include="*.test.tsx" -l
+```
+
+**21. Tests Importing Internal Services**
+```bash
+# Test files importing from internal lib/ — means testing implementation, not behavior
+grep -rE "from.*['\"].*lib/infra|from.*['\"].*lib/zero" turbo \
+  --include="*.test.ts" --include="*.test.tsx" -l
+```
+
+**22. initServices() in Tests**
+```bash
+# Route tests should never call initServices() directly — API helpers handle it
+grep -r 'initServices()' turbo --include="*.test.ts" --include="*.test.tsx" -l
+```
+
+**23. ccstate-react/experimental in Views (eslint-disable)**
+```bash
+# Views files suppressing ccstate/no-use-ccstate-in-views — pending migration
+grep -rl "eslint-disable ccstate/no-use-ccstate-in-views" turbo/apps/platform/src/views/
+```
+
+**24. void Instead of detach() for Floating Promises**
+```bash
+# Using void to suppress floating promise lint — should use detach() with Reason
+grep -rEn 'void [a-zA-Z_$][a-zA-Z0-9_$]*\(' turbo/apps/platform --include="*.ts" --include="*.tsx" -l
+```
+
+**25. Manual Loading Boolean in Signals**
+```bash
+# Manual loading/saving boolean state — should use useLoadableSet or loadable pattern
+# Match signal names following the loading$/saving$/submitting$/creating$/deleting$ convention
+grep -rEn '\b(loading|saving|submitting|creating|deleting)\$\s*=\s*state\(' turbo/apps/platform/src/signals --include="*.ts" -l
+```
+
+**26. Orphaned resetSignal (No Parent Signal)**
+```bash
+# resetSignal called without parent signal — causes polling loops that never stop
+# Match set(resetXxx$) calls with no arguments after the signal name (no comma = no parent)
+grep -rEn 'set\(reset[A-Za-z0-9_]*\$\)' turbo/apps/platform/src/signals --include="*.ts"
+```
+
 #### Phase 2: Detailed Analysis
 
 For each file identified in Phase 1, perform detailed analysis:
@@ -169,7 +227,10 @@ For each file identified in Phase 1, perform detailed analysis:
 - AP-7: Testing Implementation Details
 - AP-8: Over-Testing
 - AP-9: Console Mocking Without Assertions
-- AP-10: Direct Component Rendering
+- AP-10: Direct Component Rendering (use setupPage, not render())
+- AP-11: Direct Database Operations in Tests (use API helpers)
+- AP-12: Importing Internal Services in Tests (tests internal implementation)
+- AP-13: initServices() in Tests (API helpers handle it)
 
 **Code Quality Issues:**
 - BS-3: Error Handling (unnecessary try/catch)
@@ -182,6 +243,13 @@ For each file identified in Phase 1, perform detailed analysis:
 - BS-15: Missing --max-warnings 0 (lint scripts must enforce zero warnings)
 - BS-16: ESLint "off" rules (each must be justified, e.g. react-in-jsx-scope is OK)
 - BS-17: Oxlint "allow" rules (audit non-test overrides; test-file allows are generally OK)
+
+**ccstate Anti-Patterns:**
+- CS-1: ccstate-react/experimental in views (pending migration to signals)
+- CS-2: void instead of detach() (floating promises not tracked for cleanup)
+- CS-3: Manual loading boolean in signals (use useLoadableSet or loadable pattern)
+- CS-4: Orphaned resetSignal without parent (causes polling leaks)
+- CS-5: Manual state synchronization (command sets multiple related states — use computed)
 
 **Severity Levels:**
 - **Critical (P0)**: Zero-tolerance violations that must be fixed
@@ -197,11 +265,21 @@ For each file identified in Phase 1, perform detailed analysis:
   - Hardcoded URLs
   - AP-2: Direct fetch mocking
   - AP-3: Filesystem mocking
+  - AP-6: Partial internal mocks (vi.importActual)
+  - AP-11: Direct database operations in tests
+  - AP-12: Importing internal services in tests
+  - AP-13: initServices() in tests
+  - CS-1: ccstate-react/experimental in views (pending migration)
+  - CS-2: void instead of detach() (untracked floating promises)
+  - CS-3: Manual loading boolean in signals
+  - CS-4: Orphaned resetSignal without parent signal
 - **Medium (P2)**: Issues that should be addressed
   - Files >1000 lines
   - Fallback patterns
   - AP-1: Testing mock calls
   - AP-5: Fake timers
+  - AP-10: Direct component rendering (use setupPage)
+  - CS-5: Manual state synchronization (use computed)
 - **Low (P3)**: Minor issues or code smells
   - Over-testing patterns
   - Console mocking without assertions
@@ -313,11 +391,21 @@ Create detailed report in `/tmp/tech-debt-YYYYMMDD/`:
 2. **Defensive Programming:** {count} files, {violations} try/catch blocks
 3. **Hardcoded URLs:** {count} files, {violations} URLs
 4. **Direct Fetch Mocking:** {count} test files
+5. **Partial Internal Mocks (AP-6):** {count} test files
+6. **Direct DB Operations in Tests:** {count} test files
+7. **Internal Service Imports in Tests:** {count} test files
+8. **initServices() in Tests:** {count} test files
+9. **ccstate-react/experimental in Views:** {count} view files
+10. **void Instead of detach():** {count} files
+11. **Manual Loading Boolean:** {count} signal files
+12. **Orphaned resetSignal:** {count} occurrences
 
 ### Medium Priority Issues
 1. **Fallback Patterns:** {count} files
 2. **Testing Mock Calls:** {count} test files
 3. **Fake Timers:** {count} test files
+4. **Direct Component Rendering (AP-10):** {count} test files
+5. **Manual State Synchronization:** {count} signal files
 
 ## File Statistics
 
@@ -537,11 +625,21 @@ This issue tracks technical debt identified through automated codebase scanning.
 - [ ] Remove defensive programming ({count} blocks)
 - [ ] Replace hardcoded URLs ({count} files)
 - [ ] Convert fetch mocks to MSW ({count} files)
+- [ ] Remove vi.importActual usage ({count} files)
+- [ ] Replace direct DB operations in tests with API helpers ({count} files)
+- [ ] Remove internal service imports from tests ({count} files)
+- [ ] Remove initServices() from tests ({count} files)
+- [ ] Migrate ccstate-react/experimental out of views ({count} files)
+- [ ] Replace void with detach() ({count} files)
+- [ ] Replace manual loading booleans with useLoadableSet ({count} files)
+- [ ] Fix orphaned resetSignal calls ({count} occurrences)
 
 ### Phase 3: Medium Priority (Target: 1-2 months)
 - [ ] Remove fallback patterns ({count} files)
 - [ ] Fix testing mock assertions ({count} files)
 - [ ] Replace fake timers ({count} files)
+- [ ] Replace direct component rendering with setupPage ({count} files)
+- [ ] Refactor manual state synchronization to computed ({count} files)
 
 ## Labels
 
@@ -707,12 +805,22 @@ Detailed reports are also available in:
 - Hardcoded URLs
 - Direct fetch mocking (AP-2)
 - Filesystem mocking (AP-3)
+- Partial internal mocks (AP-6)
+- Direct database operations in tests (AP-11)
+- Importing internal services in tests (AP-12)
+- initServices() in tests (AP-13)
+- ccstate-react/experimental in views (CS-1)
+- void instead of detach() (CS-2)
+- Manual loading boolean in signals (CS-3)
+- Orphaned resetSignal without parent (CS-4)
 
 **Medium Priority Issues (P2):**
 - Files >1000 lines
 - Fallback patterns
 - Testing mock calls (AP-1)
 - Fake timers (AP-5)
+- Direct component rendering (AP-10)
+- Manual state synchronization (CS-5)
 
 **Low Priority Issues (P3):**
 - Over-testing patterns
@@ -768,5 +876,9 @@ args: "issue"
 
 - Bad smell documentation: `/docs/bad-smell.md`
 - Testing anti-patterns: `/docs/testing.md`
+- Testing anti-patterns catalog: `/docs/testing/anti-patterns.md`
+- Web testing patterns: `/docs/testing/web-testing.md`
+- App testing patterns: `/docs/testing/app-testing.md`
+- ccstate patterns: `/.claude/skills/ccstate/SKILL.md`
 - Code quality skill: `/.claude/skills/code-quality/SKILL.md`
 - Project principles: `/CLAUDE.md`

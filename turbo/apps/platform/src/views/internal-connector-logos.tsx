@@ -6,7 +6,7 @@ import {
   iconSizes$,
   setIconSize$,
   type IconSize,
-} from "../signals/internal-connector-logos-setup.ts";
+} from "../signals/icon-size.ts";
 
 function getIconType(url: string): string {
   if (url.startsWith("data:image/svg+xml")) {

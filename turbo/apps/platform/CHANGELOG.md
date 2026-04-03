@@ -1,5 +1,43 @@
 # Changelog
 
+## [0.183.0](https://github.com/vm0-ai/vm0/compare/app-v0.182.0...app-v0.183.0) (2026-04-03)
+
+
+### Features
+
+* add connector permission dialog after successful connection ([#7813](https://github.com/vm0-ai/vm0/issues/7813)) ([73d5713](https://github.com/vm0-ai/vm0/commit/73d57137b7e315a7e644d6980110d77888bcd6a0))
+* add no-detach-in-signals eslint rule ([#7844](https://github.com/vm0-ai/vm0/issues/7844)) ([af92242](https://github.com/vm0-ai/vm0/commit/af9224200b188ffe49c39b9f99e82919b157222f))
+
+
+### Bug Fixes
+
+* prevent schedule instructions panel from prompting save without changes ([#7837](https://github.com/vm0-ai/vm0/issues/7837)) ([ccca3a8](https://github.com/vm0-ai/vm0/commit/ccca3a8dcccef23e76e627f8db1d5c9e15c5f9c5))
+* remove stale no-invalid-fetch-options allow rule from platform oxlint config ([#7845](https://github.com/vm0-ai/vm0/issues/7845)) ([c956d83](https://github.com/vm0-ai/vm0/commit/c956d8333dddb523a602517ba8934f8eca2664ea)), closes [#7841](https://github.com/vm0-ai/vm0/issues/7841)
+
+
+### Refactoring
+
+* replace dynamic import with static import in connector logos setup ([#7855](https://github.com/vm0-ai/vm0/issues/7855)) ([253d726](https://github.com/vm0-ai/vm0/commit/253d726386919048e89464ba193438cf63b4ceab))
+
+## [0.182.0](https://github.com/vm0-ai/vm0/compare/app-v0.181.2...app-v0.182.0) (2026-04-03)
+
+
+### Features
+
+* add directed connect page for missing connector flow ([#7708](https://github.com/vm0-ai/vm0/issues/7708)) ([62a2ef3](https://github.com/vm0-ai/vm0/commit/62a2ef3cc72d1d70b4a5e23c80f3a1e328bfb297))
+
+
+### Bug Fixes
+
+* respect redirect_url query parameter after sign-in and sign-up ([#7814](https://github.com/vm0-ai/vm0/issues/7814)) ([ce0a58b](https://github.com/vm0-ai/vm0/commit/ce0a58b4ffd585fd8d3628b55acca5db291f0f2e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.147.0
+
 ## [0.181.2](https://github.com/vm0-ai/vm0/compare/app-v0.181.1...app-v0.181.2) (2026-04-03)
 
 

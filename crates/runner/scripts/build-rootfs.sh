@@ -209,6 +209,18 @@ extract_and_inject() {
   # Update system CA bundle
   sudo chroot "$EXTRACT_DIR" update-ca-certificates
 
+  # Write /etc/environment (read by PAM for all login sessions).
+  # [sync:etc-environment] Keep in sync with: .github/workflows/crates.yml (runner-exec Test 5)
+  # - LANG: locale (Docker ENV is lost after export)
+  # - NPM_CONFIG_UPDATE_NOTIFIER: suppress npm update nags
+  # - NODE_EXTRA_CA_CERTS: Node.js uses its own root CAs, not the system bundle
+  printf '%s\n' \
+    "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+    "LANG=C.UTF-8" \
+    "NPM_CONFIG_UPDATE_NOTIFIER=false" \
+    "NODE_EXTRA_CA_CERTS=/${CA_ROOTFS_DEST}" \
+    | sudo tee "${EXTRACT_DIR}/etc/environment" > /dev/null
+
   echo "[OK] proxy CA installed and system bundle updated"
 }
 

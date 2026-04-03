@@ -33,6 +33,7 @@ export const setupScheduleDetailPage$ = command(
     set(setScheduleRunHistoryScheduleId$, scheduleId);
     set(seedScheduleRunCursorHistory$);
 
+    // eslint-disable-next-line ccstate/no-detach-in-signals -- TODO: move to views layer
     detach(set(fetchAllOrgSchedules$, signal), Reason.Entrance);
     await Promise.all([
       set(initZeroOnboarding$, signal),

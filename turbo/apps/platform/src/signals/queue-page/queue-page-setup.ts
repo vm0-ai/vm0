@@ -26,5 +26,6 @@ export const setupQueuePage$ = command(async ({ set }, signal: AbortSignal) => {
   }
 
   set(reloadChatThreads$);
+  // eslint-disable-next-line ccstate/no-detach-in-signals -- TODO: move to views layer
   detach(set(startQueuePolling$, signal), Reason.Entrance);
 });
