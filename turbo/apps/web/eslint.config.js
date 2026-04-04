@@ -35,6 +35,7 @@ export default [
     files: [
       "src/env.ts",
       "src/lib/shared/logger.ts",
+      "src/__tests__/global-setup.ts",
       "drizzle.config.ts",
       "next.config.js",
       "scripts/**",

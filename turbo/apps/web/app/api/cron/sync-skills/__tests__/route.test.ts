@@ -85,15 +85,17 @@ const EXTRA_SKILLS = {
 
 /** Build minimal seed skill entries for the tarball. */
 function seedSkillEntries() {
-  return ALL_SEED_SKILL_NAMES.map((name) => ({
-    name,
-    files: [
-      {
-        path: "SKILL.md",
-        content: `---\nname: ${name}\ndescription: ${name} skill\n---\n\n# ${name}\n`,
-      },
-    ],
-  }));
+  return ALL_SEED_SKILL_NAMES.map((name) => {
+    return {
+      name,
+      files: [
+        {
+          path: "SKILL.md",
+          content: `---\nname: ${name}\ndescription: ${name} skill\n---\n\n# ${name}\n`,
+        },
+      ],
+    };
+  });
 }
 
 /** Create a tarball containing all seed skills plus the given extra skills. */

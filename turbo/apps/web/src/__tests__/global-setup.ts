@@ -4,11 +4,15 @@
  * Seeds the skills + storage volumes tables so that every test file starts
  * with a pre-populated DB.  Because this runs in its own process it cannot
  * pollute module-level singletons (e.g. Stripe) in the test workers.
+ *
+ * Note: this file cannot use env() from src/env.ts because globalSetup runs
+ * outside the vitest worker context where env stubs are applied. It reads
+ * DATABASE_URL directly from the environment instead.
  */
 
 import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { schema } from "../db/db";
 import { skills } from "../db/schema/skill";
@@ -21,6 +25,7 @@ import {
 } from "@vm0/core";
 
 export async function setup() {
+  console.log("[globalSetup] Seeding skill data…");
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
   const db = drizzle(pool, { schema });
 
@@ -35,6 +40,13 @@ export async function setup() {
       .values(buildSeedSkillValues(allNames))
       .onConflictDoNothing();
 
+    const [{ count }] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(skills);
+    console.log(
+      `[globalSetup] Skills seeded: ${count} rows, ${allNames.length} names`,
+    );
+
     // 2. Seed storage volumes
     const entries = allNames.map((name) => {
       const fullPath = `vm0-ai/vm0-skills/tree/main/${name}`;
@@ -47,33 +59,41 @@ export async function setup() {
       const inserted = await tx
         .insert(storages)
         .values(
-          entries.map(({ storageName }) => ({
-            orgId: SYSTEM_ORG_ID,
-            userId: VOLUME_ORG_USER_ID,
-            name: storageName,
-            type: "volume" as const,
-            s3Prefix: `${SYSTEM_ORG_ID}/${storageName}`,
-          })),
+          entries.map(({ storageName }) => {
+            return {
+              orgId: SYSTEM_ORG_ID,
+              userId: VOLUME_ORG_USER_ID,
+              name: storageName,
+              type: "volume" as const,
+              s3Prefix: `${SYSTEM_ORG_ID}/${storageName}`,
+            };
+          }),
         )
         .onConflictDoNothing()
         .returning({ id: storages.id, name: storages.name });
 
       if (inserted.length === 0) return;
 
-      const nameToId = new Map(inserted.map((s) => [s.name, s.id]));
-      const newEntries = entries.filter(({ storageName }) =>
-        nameToId.has(storageName),
+      const nameToId = new Map(
+        inserted.map((s) => {
+          return [s.name, s.id];
+        }),
       );
+      const newEntries = entries.filter(({ storageName }) => {
+        return nameToId.has(storageName);
+      });
 
       await tx.insert(storageVersions).values(
-        newEntries.map(({ storageName, versionId }) => ({
-          id: versionId,
-          storageId: nameToId.get(storageName)!,
-          s3Key: `${SYSTEM_ORG_ID}/${storageName}/${versionId}`,
-          size: 100,
-          fileCount: 1,
-          createdBy: "test",
-        })),
+        newEntries.map(({ storageName, versionId }) => {
+          return {
+            id: versionId,
+            storageId: nameToId.get(storageName)!,
+            s3Key: `${SYSTEM_ORG_ID}/${storageName}/${versionId}`,
+            size: 100,
+            fileCount: 1,
+            createdBy: "test",
+          };
+        }),
       );
 
       for (const { storageName, versionId } of newEntries) {
@@ -86,4 +106,5 @@ export async function setup() {
   } finally {
     await pool.end();
   }
+  console.log("[globalSetup] Skill data seeded.");
 }
