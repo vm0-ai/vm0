@@ -8,6 +8,7 @@ import { http, HttpResponse } from "msw";
 import type {
   LogsListResponse,
   LogDetail,
+  AgentEventsResponse,
 } from "../../signals/zero-page/log-types.ts";
 
 // Mock data for log details
@@ -58,6 +59,26 @@ const mockLogDetails: LogDetail[] = [
       version: null,
     },
   },
+  {
+    id: "b0000000-0000-4000-b000-000000000001",
+    sessionId: null,
+    agentId: "link-agent",
+    displayName: "Link Agent",
+    framework: "claude-code",
+    modelProvider: null,
+    selectedModel: null,
+    triggerSource: "web",
+    triggerAgentName: null,
+    scheduleId: null,
+    status: "completed",
+    prompt: "",
+    appendSystemPrompt: null,
+    error: null,
+    createdAt: "2026-01-01T00:00:00Z",
+    startedAt: "2026-01-01T00:00:01Z",
+    completedAt: "2026-01-01T00:00:02Z",
+    artifact: { name: null, version: null },
+  },
 ];
 
 export const appLogsHandlers = [
@@ -104,6 +125,15 @@ export const appLogsHandlers = [
     };
 
     return HttpResponse.json(response);
+  }),
+
+  // GET /api/zero/runs/:id/telemetry/agent - Get agent events (default: empty)
+  http.get("*/api/zero/runs/:id/telemetry/agent", () => {
+    return HttpResponse.json({
+      events: [],
+      hasMore: false,
+      framework: "claude-code",
+    } satisfies AgentEventsResponse);
   }),
 
   // GET /api/zero/logs/:id - Get log detail
