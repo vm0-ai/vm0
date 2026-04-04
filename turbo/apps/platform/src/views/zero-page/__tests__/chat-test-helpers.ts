@@ -6,6 +6,51 @@ import type { SummaryEntry } from "@vm0/core";
 
 export const PLACEHOLDER = "Ask me to automate workflows, manage tasks...";
 
+const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
+export const SUB_AGENT_ID = "a1111111-0000-4000-a000-000000000001";
+
+export function mockSubagentThread(threadId: string) {
+  server.use(
+    http.get("*/api/zero/team", () => {
+      return HttpResponse.json([
+        {
+          id: DEFAULT_AGENT_ID,
+          displayName: null,
+          description: null,
+          sound: null,
+          avatarUrl: null,
+          headVersionId: "version_1",
+          updatedAt: "2024-01-01T00:00:00Z",
+        },
+        {
+          id: SUB_AGENT_ID,
+          displayName: "Assistant",
+          description: null,
+          sound: null,
+          avatarUrl: "https://example.com/avatar.png",
+          headVersionId: "version_2",
+          updatedAt: "2024-01-01T00:00:00Z",
+        },
+      ]);
+    }),
+    http.get("*/api/zero/chat-threads/:id", () => {
+      return HttpResponse.json({
+        id: threadId,
+        title: null,
+        agentId: SUB_AGENT_ID,
+        chatMessages: [],
+        latestSessionId: null,
+        unsavedRuns: [],
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+      });
+    }),
+    http.get("*/api/zero/chat-threads", () => {
+      return HttpResponse.json({ threads: [] });
+    }),
+  );
+}
+
 export async function sendMessageInUI(
   user: ReturnType<typeof userEvent.setup>,
   textarea: HTMLTextAreaElement,

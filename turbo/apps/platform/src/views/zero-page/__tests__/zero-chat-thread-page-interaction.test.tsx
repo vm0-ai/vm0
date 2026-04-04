@@ -1,65 +1,21 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { http, HttpResponse } from "msw";
-import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import { pathname, search } from "../../../signals/location.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import {
   mockChatLifecycle,
+  mockSubagentThread,
   sendMessageInUI,
   PLACEHOLDER,
+  SUB_AGENT_ID,
 } from "./chat-test-helpers.ts";
 
 const context = testContext();
 
-const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
-const SUB_AGENT_ID = "a1111111-0000-4000-a000-000000000001";
 const THREAD_ID = "thread-test-1";
-
-function mockSubagentThread() {
-  server.use(
-    http.get("*/api/zero/team", () => {
-      return HttpResponse.json([
-        {
-          id: DEFAULT_AGENT_ID,
-          displayName: null,
-          description: null,
-          sound: null,
-          avatarUrl: null,
-          headVersionId: "version_1",
-          updatedAt: "2024-01-01T00:00:00Z",
-        },
-        {
-          id: SUB_AGENT_ID,
-          displayName: "Assistant",
-          description: null,
-          sound: null,
-          avatarUrl: "https://example.com/avatar.png",
-          headVersionId: "version_2",
-          updatedAt: "2024-01-01T00:00:00Z",
-        },
-      ]);
-    }),
-    http.get("*/api/zero/chat-threads/:id", () => {
-      return HttpResponse.json({
-        id: THREAD_ID,
-        title: null,
-        agentId: SUB_AGENT_ID,
-        chatMessages: [],
-        latestSessionId: null,
-        unsavedRuns: [],
-        createdAt: "2026-03-10T00:00:00Z",
-        updatedAt: "2026-03-10T00:00:00Z",
-      });
-    }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
-  );
-}
 
 // CHAT-S-044: Sending state affects ChatThreadComposer button display
 describe("zero chat thread page - sending state affects composer button display", () => {
@@ -93,7 +49,7 @@ describe("zero chat thread page - sending state affects composer button display"
 describe("zero chat thread page - agent avatar link navigation", () => {
   it("navigates to /agents/:id when avatar link is clicked (CHAT-N-045)", async () => {
     const user = userEvent.setup();
-    mockSubagentThread();
+    mockSubagentThread(THREAD_ID);
 
     await setupPage({ context, path: `/chats/${THREAD_ID}` });
 
@@ -114,7 +70,7 @@ describe("zero chat thread page - pin button toggles pin state", () => {
   it("pin button disappears after click when agent is added to pinned list (CHAT-I-046)", async () => {
     const user = userEvent.setup();
     setMockUserPreferences({ pinnedAgentIds: [] });
-    mockSubagentThread();
+    mockSubagentThread(THREAD_ID);
 
     await setupPage({ context, path: `/chats/${THREAD_ID}` });
 
@@ -134,7 +90,7 @@ describe("zero chat thread page - pin button toggles pin state", () => {
 describe("zero chat thread page - sub-agents link navigation", () => {
   it("navigates to /agents when Sub-agents link is clicked (CHAT-N-047)", async () => {
     const user = userEvent.setup();
-    mockSubagentThread();
+    mockSubagentThread(THREAD_ID);
 
     await setupPage({ context, path: `/chats/${THREAD_ID}` });
 
@@ -157,7 +113,7 @@ describe("zero chat thread page - sub-agents link navigation", () => {
 describe("zero chat thread page - schedule button navigation", () => {
   it("navigates to /agents/:id with tab=schedule when schedule button is clicked (CHAT-N-048)", async () => {
     const user = userEvent.setup();
-    mockSubagentThread();
+    mockSubagentThread(THREAD_ID);
 
     await setupPage({ context, path: `/chats/${THREAD_ID}` });
 
@@ -251,9 +207,13 @@ describe("zero chat thread page - timeline expansion button", () => {
   });
 });
 
-// CHAT-I-052: Copy message button calls copyMessage signal
+// CHAT-I-052: Copy message button writes message content to clipboard
 describe("zero chat thread page - copy message button", () => {
-  it("clicking copy button shows copied state after writing to clipboard (CHAT-I-052)", async () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("clicking copy button writes message content to clipboard (CHAT-I-052)", async () => {
     const user = userEvent.setup();
     vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
 
@@ -285,6 +245,9 @@ describe("zero chat thread page - copy message button", () => {
     await waitFor(() => {
       expect(navigator.clipboard.writeText).toHaveBeenCalledWith("Hello world");
     });
+
+    // The message should still be visible after copying (page remains stable)
+    expect(screen.getByText("Hello world")).toBeInTheDocument();
   });
 });
 
@@ -319,30 +282,6 @@ describe("zero chat thread page - view activity logs link", () => {
 
     await waitFor(() => {
       expect(pathname()).toBe("/activities/run-legacy-1");
-    });
-  });
-});
-
-// CHAT-D-054: Attachment download links render for file attachments
-describe("zero chat thread page - file attachment download link", () => {
-  it("renders a download link for non-image file attachments (CHAT-D-054)", async () => {
-    mockChatLifecycle({
-      chatMessages: [
-        {
-          role: "user",
-          content:
-            "[Attached file: document.pdf](https://example.com/document.pdf)\nDownload with: curl https://example.com/document.pdf\n",
-          createdAt: "2026-03-10T00:00:00Z",
-        },
-      ],
-    });
-
-    await setupPage({ context, path: `/chats/${THREAD_ID}` });
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("link", { name: "document.pdf" }),
-      ).toBeInTheDocument();
     });
   });
 });

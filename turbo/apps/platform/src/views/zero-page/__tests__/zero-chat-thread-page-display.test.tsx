@@ -1,63 +1,21 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
-import { http, HttpResponse } from "msw";
-import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
-import { mockChatLifecycle, makeToolUseEvent } from "./chat-test-helpers.ts";
+import {
+  mockChatLifecycle,
+  makeToolUseEvent,
+  mockSubagentThread,
+  SUB_AGENT_ID,
+} from "./chat-test-helpers.ts";
 
 const context = testContext();
-
-const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
-const SUB_AGENT_ID = "a1111111-0000-4000-a000-000000000001";
-
-function mockSubagentThread() {
-  server.use(
-    http.get("*/api/zero/team", () => {
-      return HttpResponse.json([
-        {
-          id: DEFAULT_AGENT_ID,
-          displayName: null,
-          description: null,
-          sound: null,
-          avatarUrl: null,
-          headVersionId: "version_1",
-          updatedAt: "2024-01-01T00:00:00Z",
-        },
-        {
-          id: SUB_AGENT_ID,
-          displayName: "Assistant",
-          description: null,
-          sound: null,
-          avatarUrl: "https://example.com/avatar.png",
-          headVersionId: "version_2",
-          updatedAt: "2024-01-01T00:00:00Z",
-        },
-      ]);
-    }),
-    http.get("*/api/zero/chat-threads/:id", () => {
-      return HttpResponse.json({
-        id: "thread-header-test",
-        title: null,
-        agentId: SUB_AGENT_ID,
-        chatMessages: [],
-        latestSessionId: null,
-        unsavedRuns: [],
-        createdAt: "2026-03-10T00:00:00Z",
-        updatedAt: "2026-03-10T00:00:00Z",
-      });
-    }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
-  );
-}
 
 // CHAT-D-032: ChatThreadHeader renders agent avatar and display name
 describe("zero chat thread page display - thread header agent avatar and display name", () => {
   it("renders the agent display name and avatar image in the thread header", async () => {
-    mockSubagentThread();
+    mockSubagentThread("thread-header-test");
 
     await setupPage({ context, path: "/chats/thread-header-test" });
 
@@ -75,7 +33,7 @@ describe("zero chat thread page display - thread header agent avatar and display
 describe("zero chat thread page display - pin pill conditional rendering", () => {
   it("shows pin pill when agent is not pinned", async () => {
     setMockUserPreferences({ pinnedAgentIds: [] });
-    mockSubagentThread();
+    mockSubagentThread("thread-header-test");
 
     await setupPage({ context, path: "/chats/thread-header-test" });
 
@@ -86,7 +44,7 @@ describe("zero chat thread page display - pin pill conditional rendering", () =>
 
   it("does not show pin pill when agent is already pinned", async () => {
     setMockUserPreferences({ pinnedAgentIds: [SUB_AGENT_ID] });
-    mockSubagentThread();
+    mockSubagentThread("thread-header-test");
 
     await setupPage({ context, path: "/chats/thread-header-test" });
 
