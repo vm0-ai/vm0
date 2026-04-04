@@ -24,7 +24,7 @@ const context = testContext();
 
 const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 
-function mockBaseAPIs(role: "admin" | "member" = "admin") {
+function mockBaseAPIs() {
   server.use(
     http.get("*/api/zero/team", () => {
       return HttpResponse.json([
@@ -41,14 +41,6 @@ function mockBaseAPIs(role: "admin" | "member" = "admin") {
     }),
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
-    }),
-    http.get("*/api/zero/org", () => {
-      return HttpResponse.json({
-        id: "org_1",
-        slug: "test-org",
-        name: "Test Org",
-        role,
-      });
     }),
   );
 }
@@ -117,7 +109,7 @@ describe("sidebar layout - breadcrumb avatar displays for agent pages (SIDEBAR-D
 
 describe("sidebar layout - invite button shows for admins (SIDEBAR-D-048)", () => {
   it("renders the Invite button on chat routes for admin users", async () => {
-    mockBaseAPIs("admin");
+    mockBaseAPIs();
     await setupPage({ context, path: "/" });
     await waitFor(() => {
       expect(screen.getByText("Invite")).toBeInTheDocument();
@@ -127,7 +119,17 @@ describe("sidebar layout - invite button shows for admins (SIDEBAR-D-048)", () =
 
 describe("sidebar layout - invite button hidden for non-admins (SIDEBAR-D-049)", () => {
   it("does not render the Invite button for non-admin users", async () => {
-    mockBaseAPIs("member");
+    mockBaseAPIs();
+    server.use(
+      http.get("*/api/zero/org", () => {
+        return HttpResponse.json({
+          id: "org_1",
+          slug: "test-org",
+          name: "Test Org",
+          role: "member",
+        });
+      }),
+    );
     await setupPage({ context, path: "/" });
     await waitFor(() => {
       expect(screen.queryByText("Invite")).not.toBeInTheDocument();
@@ -198,10 +200,19 @@ describe("sidebar layout - breadcrumb section link navigates (SIDEBAR-D-051)", (
 describe("sidebar layout - invite button opens member dialog (SIDEBAR-D-052)", () => {
   it("opens the org manage dialog on the members tab when Invite is clicked", async () => {
     const user = userEvent.setup();
-    mockBaseAPIs("admin");
+    mockBaseAPIs();
     server.use(
       http.get("*/api/zero/org/logo", () => {
         return HttpResponse.json({ logoUrl: null });
+      }),
+      http.get("*/api/zero/org/members", () => {
+        return HttpResponse.json({
+          slug: "test-org",
+          role: "admin",
+          members: [],
+          pendingInvitations: [],
+          createdAt: "2024-01-01T00:00:00Z",
+        });
       }),
     );
 
@@ -214,6 +225,13 @@ describe("sidebar layout - invite button opens member dialog (SIDEBAR-D-052)", (
 
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
+    });
+
+    // Verify the Members tab is active (not General, Billing, etc.)
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Members" }),
+      ).toBeInTheDocument();
     });
   });
 });
