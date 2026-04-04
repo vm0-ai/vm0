@@ -24,7 +24,7 @@ import { createDeferredPromise } from "../../../signals/utils.ts";
 const context = testContext();
 
 const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
-const PINNED_AGENT_ID = "agent-pinned-avatar-test";
+const PINNED_AGENT_ID = "c0000000-0000-4000-a000-000000000002";
 
 function mockBaseAPIs(
   agents: {
@@ -76,9 +76,8 @@ describe("agent avatar renders from database (SIDEBAR-D-042)", () => {
 
     await waitFor(() => {
       const sidebar = getSidebar();
-      expect(
-        within(sidebar).getByRole("img", { name: "DB Agent" }),
-      ).toBeInTheDocument();
+      const img = within(sidebar).getByRole("img", { name: "DB Agent" });
+      expect(img).toHaveAttribute("src", "https://example.com/my-avatar.png");
     });
   });
 });
@@ -98,9 +97,8 @@ describe("agent avatar shows fallback when no image (SIDEBAR-D-043)", () => {
 
     await waitFor(() => {
       const sidebar = getSidebar();
-      expect(
-        within(sidebar).getByRole("img", { name: "Fallback Agent" }),
-      ).toBeInTheDocument();
+      const img = within(sidebar).getByRole("img", { name: "Fallback Agent" });
+      expect(img.getAttribute("src")).toBeTruthy();
     });
   });
 });
