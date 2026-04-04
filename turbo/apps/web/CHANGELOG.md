@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.192.6](https://github.com/vm0-ai/vm0/compare/web-v12.192.5...web-v12.192.6) (2026-04-04)
+
+
+### Bug Fixes
+
+* handle ngrok domain already reserved on computer-use registration ([#8149](https://github.com/vm0-ai/vm0/issues/8149)) ([6984663](https://github.com/vm0-ai/vm0/commit/69846636a4b84c9a02065eaabe1458dc4525a732))
+
 ## [12.192.5](https://github.com/vm0-ai/vm0/compare/web-v12.192.4...web-v12.192.5) (2026-04-04)
 
 
