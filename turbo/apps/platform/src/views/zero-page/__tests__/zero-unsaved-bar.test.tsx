@@ -74,8 +74,7 @@ describe("zero unsaved bar - unsaved changes indicator (SCHED-D-093)", () => {
     await loadAndMakeDirty(user);
 
     await waitFor(() => {
-      expect(screen.getByText("Save")).toBeInTheDocument();
-      expect(screen.getByText("Discard")).toBeInTheDocument();
+      expect(screen.getByTestId("unsaved-bar")).toBeInTheDocument();
     });
   });
 });
@@ -102,23 +101,19 @@ describe("zero unsaved bar - save button loading state (SCHED-D-094)", () => {
     await loadAndMakeDirty(user);
 
     await waitFor(() => {
-      expect(screen.getByText("Save")).toBeInTheDocument();
+      expect(screen.getByTestId("unsaved-bar")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText("Save"));
+    await user.click(screen.getByTestId("save-button"));
 
     await waitFor(() => {
-      expect(
-        screen.getAllByRole("button").find((el) => {
-          return el.textContent?.trim() === "Save";
-        }),
-      ).toBeDisabled();
+      expect(screen.getByTestId("save-button")).toBeDisabled();
     });
 
     resolvePost();
 
     await waitFor(() => {
-      expect(screen.queryByText("Save")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("unsaved-bar")).not.toBeInTheDocument();
     });
   });
 });
@@ -130,13 +125,13 @@ describe("zero unsaved bar - discard button reverts changes (SCHED-D-095)", () =
     await loadAndMakeDirty(user);
 
     await waitFor(() => {
-      expect(screen.getByText("Save")).toBeInTheDocument();
+      expect(screen.getByTestId("unsaved-bar")).toBeInTheDocument();
     });
 
     await user.click(screen.getByText("Discard"));
 
     await waitFor(() => {
-      expect(screen.queryByText("Discard")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("unsaved-bar")).not.toBeInTheDocument();
     });
   });
 });
@@ -159,13 +154,13 @@ describe("zero unsaved bar - save button persists changes (SCHED-D-096)", () => 
     await loadAndMakeDirty(user);
 
     await waitFor(() => {
-      expect(screen.getByText("Save")).toBeInTheDocument();
+      expect(screen.getByTestId("unsaved-bar")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText("Save"));
+    await user.click(screen.getByTestId("save-button"));
 
     await waitFor(() => {
-      expect(screen.queryByText("Save")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("unsaved-bar")).not.toBeInTheDocument();
     });
   });
 });
