@@ -67,7 +67,8 @@ export async function registerHost(
   }
 
   // Generate names for ngrok resources
-  const orgIdShort = orgId.substring(0, 8);
+  // Replace underscores with hyphens — ngrok rejects underscores in domain names
+  const orgIdShort = orgId.substring(0, 8).replace(/_/g, "-");
   const subdomainName = `vm0-cu-${orgIdShort}`;
   const endpointPrefix = `vm0-cu-${orgId}`;
   const botUserName = `vm0-cu-${orgId}`;
