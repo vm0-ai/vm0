@@ -5,7 +5,7 @@ import { http, HttpResponse } from "msw";
 import type { ScheduleResponse } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { fill, setupPage } from "../../../__tests__/page-helper.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 
 const context = testContext();
@@ -269,8 +269,7 @@ describe("zero-schedule-card - save error", () => {
       expect(screen.getByLabelText("Prompt")).toBeInTheDocument();
     });
 
-    await user.clear(screen.getByLabelText("Prompt"));
-    await user.type(screen.getByLabelText("Prompt"), "New task");
+    await fill(screen.getByLabelText("Prompt"), "New task");
     await user.click(screen.getByText("Create"));
 
     await waitFor(() => {
