@@ -4,7 +4,7 @@
  * Orchestrates ngrok resource provisioning and connector lifecycle
  * for authenticated local tunneling.
  */
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import { eq, and } from "drizzle-orm";
 import type { ComputerConnectorCreateResponse } from "@vm0/core";
 import { connectors } from "../../../db/schema/connector";
@@ -58,15 +58,15 @@ export async function createComputerConnector(
     throw badRequest("NGROK_API_KEY is not configured");
   }
 
-  // Generate unique subdomain name for this user
-  // Truncate org ID to keep subdomain short (ngrok has length limits)
-  // Replace underscores with hyphens — ngrok rejects underscores in domain names
-  const sanitizedOrgId = orgId.replace(/_/g, "-");
-  const orgIdShort = sanitizedOrgId.substring(0, 8);
-  const subdomainName = `vm0-user-${orgIdShort}`;
-  const endpointPrefix = `vm0-user-${sanitizedOrgId}`;
+  // Generate a DNS-safe slug from orgId hash (hex chars only)
+  const slug = createHash("sha256")
+    .update(orgId)
+    .digest("hex")
+    .substring(0, 12);
+  const subdomainName = `vm0-user-${slug}`;
+  const endpointPrefix = `vm0-user-${slug}`;
 
-  const botUserName = `vm0-user-${sanitizedOrgId}`;
+  const botUserName = `vm0-user-${slug}`;
 
   // Provision ngrok resources
   const botUser = await findOrCreateBotUser(apiKey, botUserName);
