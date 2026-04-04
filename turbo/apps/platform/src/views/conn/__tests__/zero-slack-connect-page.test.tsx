@@ -128,19 +128,22 @@ describe("zero-slack-connect-page - back to settings link (CONN-N-055)", () => {
 
 // CONN-I-056: Connect button initiates Slack connection
 describe("zero-slack-connect-page - connect button (CONN-I-056)", () => {
-  it("clicking Connect calls the Slack connect API", async () => {
+  it("clicking Connect submits the workspace and user IDs to the Slack connect API", async () => {
     const user = userEvent.setup();
-    let connectCalled = false;
+    let submittedBody: Record<string, string> | undefined;
 
     server.use(
-      http.post("*/api/zero/integrations/slack/connect", () => {
-        connectCalled = true;
-        return HttpResponse.json({
-          success: true,
-          connectionId: "conn-001",
-          role: "member",
-        });
-      }),
+      http.post(
+        "*/api/zero/integrations/slack/connect",
+        async ({ request }) => {
+          submittedBody = (await request.json()) as Record<string, string>;
+          return HttpResponse.json({
+            success: true,
+            connectionId: "conn-001",
+            role: "member",
+          });
+        },
+      ),
     );
 
     await setupPage({ context, path: "/settings/slack?w=ws1&u=u1" });
@@ -152,7 +155,9 @@ describe("zero-slack-connect-page - connect button (CONN-I-056)", () => {
     await user.click(connectButton);
 
     await waitFor(() => {
-      expect(connectCalled).toBeTruthy();
+      expect(submittedBody).toBeDefined();
+      expect(submittedBody?.workspaceId).toBe("ws1");
+      expect(submittedBody?.slackUserId).toBe("u1");
     });
   });
 });
