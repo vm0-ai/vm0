@@ -435,7 +435,10 @@ function SelfDemoteAction({ email }: { email: string }) {
     >
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/50 transition-colors">
+          <button
+            aria-label={`Actions for ${email}`}
+            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/50 transition-colors"
+          >
             <IconDots size={15} stroke={1.5} />
           </button>
         </DropdownMenuTrigger>
@@ -504,7 +507,10 @@ function MemberActions({ member }: { member: OrgMember }) {
     >
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/50 transition-colors">
+          <button
+            aria-label={`Actions for ${member.email}`}
+            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/50 transition-colors"
+          >
             <IconDots size={15} stroke={1.5} />
           </button>
         </DropdownMenuTrigger>
@@ -610,7 +616,10 @@ function PendingInvitationRow({
           >
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/50 transition-colors">
+                <button
+                  aria-label={`Actions for ${invitation.email}`}
+                  className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/50 transition-colors"
+                >
                   <IconDots size={15} stroke={1.5} />
                 </button>
               </DropdownMenuTrigger>

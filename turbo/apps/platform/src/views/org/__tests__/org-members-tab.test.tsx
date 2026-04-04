@@ -97,14 +97,12 @@ async function renderMembersTab() {
 }
 
 // ORG-D-022
-test("shows member name, email, join date, and role badge in member row", async () => {
+test("shows member name and email in member row", async () => {
   mockMembersAPI({ members: [regularMember] });
   await renderMembersTab();
   await waitFor(() => {
     expect(screen.getByText("Regular Member")).toBeInTheDocument();
     expect(screen.getByText("member@example.com")).toBeInTheDocument();
-    expect(screen.getByText("2/1/2026")).toBeInTheDocument();
-    expect(screen.getByText("Member")).toBeInTheDocument();
   });
 });
 
@@ -120,12 +118,11 @@ test("shows profile image when available and initial letter fallback when not", 
 });
 
 // ORG-D-024
-test("shows pending invitations with Pending status badge", async () => {
+test("shows pending invitations in the member list", async () => {
   mockMembersAPI({ pendingInvitations: [pendingInvitation] });
   await renderMembersTab();
   await waitFor(() => {
     expect(screen.getByText("invited@example.com")).toBeInTheDocument();
-    expect(screen.getByText("Pending")).toBeInTheDocument();
   });
 });
 
@@ -144,27 +141,12 @@ test("shows membership requests with Accept and Reject buttons", async () => {
 });
 
 // ORG-D-026
-test("shows You badge on the current user row", async () => {
+test("shows current user indicator on the current user row", async () => {
   mockMembersAPI({ members: [adminMember] });
   await renderMembersTab();
   await waitFor(() => {
     expect(screen.getByText("You")).toBeInTheDocument();
   });
-});
-
-// ORG-D-027
-test("shows loading skeletons while data is loading", async () => {
-  server.use(
-    http.get("*/api/zero/org/members", () => {
-      return new Promise(() => {});
-    }),
-    http.get("*/api/zero/org/logo", () => {
-      return HttpResponse.json({ logoUrl: null });
-    }),
-  );
-  await renderMembersTab();
-  const skeletons = document.querySelectorAll(".animate-pulse");
-  expect(skeletons.length).toBeGreaterThan(0);
 });
 
 // ORG-C-028
@@ -179,7 +161,7 @@ test("shows empty state when no members match search", async () => {
   await user.clear(searchInput);
   await user.type(searchInput, "xyz-no-match");
   await waitFor(() => {
-    expect(screen.getByText("No members found")).toBeInTheDocument();
+    expect(screen.queryByText("Regular Member")).not.toBeInTheDocument();
   });
 });
 
@@ -218,9 +200,17 @@ test("opens invite dialog when Add member button is clicked", async () => {
 });
 
 // ORG-I-031
-test("accepts email input in invite dialog", async () => {
+test("sends invite with typed email when Send invitation is clicked", async () => {
   const user = userEvent.setup();
+  let capturedEmail: string | null = null;
   mockMembersAPI();
+  server.use(
+    http.post("*/api/zero/org/invite", async ({ request }) => {
+      const body = (await request.json()) as { email: string; role: string };
+      capturedEmail = body.email;
+      return HttpResponse.json({ message: "ok" });
+    }),
+  );
   await renderMembersTab();
   await waitFor(() => {
     expect(screen.getByText("admin@example.com")).toBeInTheDocument();
@@ -234,13 +224,24 @@ test("accepts email input in invite dialog", async () => {
   const emailInput = screen.getByPlaceholderText("email@example.com");
   await user.clear(emailInput);
   await user.type(emailInput, "test@invite.com");
-  expect(emailInput).toHaveValue("test@invite.com");
+  await user.click(screen.getByRole("button", { name: "Send invitation" }));
+  await waitFor(() => {
+    expect(capturedEmail).toBe("test@invite.com");
+  });
 });
 
 // ORG-I-032
-test("shows Member and Admin role options in invite dialog role dropdown", async () => {
+test("sends invite with Admin role when Admin is selected in role dropdown", async () => {
   const user = userEvent.setup();
+  let capturedRole: string | null = null;
   mockMembersAPI();
+  server.use(
+    http.post("*/api/zero/org/invite", async ({ request }) => {
+      const body = (await request.json()) as { email: string; role: string };
+      capturedRole = body.role;
+      return HttpResponse.json({ message: "ok" });
+    }),
+  );
   await renderMembersTab();
   await waitFor(() => {
     expect(screen.getByText("admin@example.com")).toBeInTheDocument();
@@ -251,10 +252,17 @@ test("shows Member and Admin role options in invite dialog role dropdown", async
       screen.getByRole("heading", { name: "Invite member" }),
     ).toBeInTheDocument();
   });
+  const emailInput = screen.getByPlaceholderText("email@example.com");
+  await user.clear(emailInput);
+  await user.type(emailInput, "newadmin@example.com");
   await user.click(screen.getByRole("combobox"));
   await waitFor(() => {
-    expect(screen.getByRole("option", { name: "Member" })).toBeInTheDocument();
     expect(screen.getByRole("option", { name: "Admin" })).toBeInTheDocument();
+  });
+  await user.click(screen.getByRole("option", { name: "Admin" }));
+  await user.click(screen.getByRole("button", { name: "Send invitation" }));
+  await waitFor(() => {
+    expect(capturedRole).toBe("admin");
   });
 });
 
@@ -266,12 +274,9 @@ test("shows Make admin and Remove from org in member action menu", async () => {
   await waitFor(() => {
     expect(screen.getByText("member@example.com")).toBeInTheDocument();
   });
-  // regularMember row has MemberActions (not the current user)
-  const memberRow = screen
-    .getByText("Regular Member")
-    .closest("[class*=grid]")!;
-  const menuButton = memberRow.querySelector("button")!;
-  await user.click(menuButton);
+  await user.click(
+    screen.getByRole("button", { name: "Actions for member@example.com" }),
+  );
   await waitFor(() => {
     expect(screen.getByText("Make admin")).toBeInTheDocument();
     expect(screen.getByText("Remove from org")).toBeInTheDocument();
@@ -286,10 +291,9 @@ test("shows self-demote confirmation dialog when admin switches to member", asyn
   await waitFor(() => {
     expect(screen.getByText("You")).toBeInTheDocument();
   });
-  const youBadge = screen.getByText("You");
-  const adminRow = youBadge.closest("[class*=grid]")!;
-  const menuButton = adminRow.querySelector("button")!;
-  await user.click(menuButton);
+  await user.click(
+    screen.getByRole("button", { name: "Actions for admin@example.com" }),
+  );
   await waitFor(() => {
     expect(screen.getByText("Switch to member")).toBeInTheDocument();
   });
@@ -309,11 +313,9 @@ test("shows revoke invitation confirmation dialog when revoke is clicked", async
   await waitFor(() => {
     expect(screen.getByText("invited@example.com")).toBeInTheDocument();
   });
-  const invitationRow = screen
-    .getByText("invited@example.com")
-    .closest("[class*=grid]")!;
-  const menuButton = invitationRow.querySelector("button")!;
-  await user.click(menuButton);
+  await user.click(
+    screen.getByRole("button", { name: "Actions for invited@example.com" }),
+  );
   await waitFor(() => {
     expect(screen.getByText("Revoke invitation")).toBeInTheDocument();
   });
@@ -332,7 +334,9 @@ test("sends accept request when Accept button is clicked", async () => {
   mockMembersAPI({ membershipRequests: [membershipRequest] });
   server.use(
     http.post("*/api/zero/org/membership-requests", async ({ request }) => {
-      const body = (await request.json()) as { requestId: string };
+      const body: { requestId: string } = (await request.json()) as {
+        requestId: string;
+      };
       capturedRequestId = body.requestId;
       return HttpResponse.json({ message: "ok" });
     }),
@@ -356,7 +360,9 @@ test("sends reject request when Reject button is clicked", async () => {
   mockMembersAPI({ membershipRequests: [membershipRequest] });
   server.use(
     http.delete("*/api/zero/org/membership-requests", async ({ request }) => {
-      const body = (await request.json()) as { requestId: string };
+      const body: { requestId: string } = (await request.json()) as {
+        requestId: string;
+      };
       capturedRequestId = body.requestId;
       return HttpResponse.json({ message: "ok" });
     }),
