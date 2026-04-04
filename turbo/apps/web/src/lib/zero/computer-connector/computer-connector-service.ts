@@ -61,7 +61,7 @@ export async function createComputerConnector(
   // Generate unique subdomain name for this user
   // Truncate org ID to keep subdomain short (ngrok has length limits)
   // Replace underscores with hyphens — ngrok rejects underscores in domain names
-  const sanitizedOrgId = orgId.replace(/_/g, "-");
+  const sanitizedOrgId = orgId.replace(/_/g, "-").toLowerCase();
   const orgIdShort = sanitizedOrgId.substring(0, 8);
   const subdomainName = `vm0-user-${orgIdShort}`;
   const endpointPrefix = `vm0-user-${sanitizedOrgId}`;
