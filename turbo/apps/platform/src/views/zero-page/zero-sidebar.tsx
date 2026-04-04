@@ -1019,7 +1019,11 @@ function TalkToSection({
               currentChatAgentId === agent.id;
             const isFromChat = selectedAgentIdFromChat === agent.id;
             return (
-              <div key={agent.id} className="group relative">
+              <div
+                key={agent.id}
+                className="group relative"
+                data-testid="pinned-agent-card"
+              >
                 <Link
                   pathname="/agents/:id/chat"
                   options={{ pathParams: { id: agent.id } }}

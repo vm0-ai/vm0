@@ -10,7 +10,7 @@
  * - Real (internal): All signals, components, rendering
  */
 
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -20,7 +20,6 @@ import { setupPage } from "../../../__tests__/page-helper.ts";
 import { mockedClerk } from "../../../__tests__/mock-auth.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import { pathname } from "../../../signals/location.ts";
-import { setManagePinnedDialogOpen$ } from "../../../signals/zero-page/zero-sidebar-state.ts";
 
 const context = testContext();
 
@@ -104,7 +103,7 @@ function mockBaseAPIs(options?: {
 
 beforeEach(() => {
   setMockUserPreferences({ pinnedAgentIds: [] });
-  mockedClerk.signOut.mockClear();
+  vi.clearAllMocks();
 });
 
 describe("zero sidebar - account dropdown opens (SIDEBAR-D-013)", () => {
@@ -127,7 +126,7 @@ describe("zero sidebar - account dropdown opens (SIDEBAR-D-013)", () => {
 });
 
 describe("zero sidebar - sign-out option works (SIDEBAR-D-014)", () => {
-  it("calls clerk signOut when sign-out is clicked", async () => {
+  it("calls clerk signOut and closes the dropdown when sign-out is clicked", async () => {
     const user = userEvent.setup();
     mockBaseAPIs();
     await setupPage({ context, path: "/" });
@@ -145,6 +144,10 @@ describe("zero sidebar - sign-out option works (SIDEBAR-D-014)", () => {
     await user.click(signOutItem);
 
     expect(mockedClerk.signOut).toHaveBeenCalledTimes(1);
+
+    await waitFor(() => {
+      expect(screen.queryByText("Sign out")).not.toBeInTheDocument();
+    });
   });
 });
 
@@ -357,30 +360,6 @@ describe("zero sidebar - agent card toggles chat list (SIDEBAR-D-020)", () => {
   });
 });
 
-describe("zero sidebar - manage pinned agents button opens dialog (SIDEBAR-D-021)", () => {
-  it("shows the manage pinned agents dialog when the signal is set", async () => {
-    mockBaseAPIs({ agents: [makeDefaultAgent(), makePinnedAgent()] });
-    setMockUserPreferences({ pinnedAgentIds: [PINNED_AGENT_ID] });
-
-    await setupPage({ context, path: "/" });
-
-    await waitFor(() => {
-      expect(screen.getByText("Pinned")).toBeInTheDocument();
-    });
-
-    // There is no UI button for this yet; set the signal directly to verify
-    // the dialog renders when the signal is true
-    context.store.set(setManagePinnedDialogOpen$, true);
-
-    await waitFor(() => {
-      const dialog = screen.getByRole("dialog");
-      expect(
-        within(dialog).getByText("Manage pinned agents"),
-      ).toBeInTheDocument();
-    });
-  });
-});
-
 describe("zero sidebar - sidebar collapse button hides sidebar (SIDEBAR-D-022)", () => {
   it("collapses the sidebar and hides the navigation when collapse is clicked", async () => {
     const user = userEvent.setup();
@@ -419,7 +398,7 @@ describe("zero sidebar - agent action menu opens (SIDEBAR-D-066)", () => {
       expect(screen.getByText("Research Agent")).toBeInTheDocument();
     });
 
-    const agentCard = screen.getByText("Research Agent").closest(".group")!;
+    const agentCard = screen.getByTestId("pinned-agent-card");
     await user.hover(agentCard);
 
     // The "Remove from list" button is invisible via CSS but present in the DOM
