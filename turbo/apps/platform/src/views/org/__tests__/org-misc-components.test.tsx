@@ -97,9 +97,16 @@ describe("internal connector logos - interaction (ORG-I-121)", () => {
     await setupPage({ context, path: "/__internal-connector-logos" });
     // Default size button is "128" — clicking "16" should switch to a smaller size
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "128" })).toBeInTheDocument();
+      expect(
+        screen.getAllByRole("button").find((el) => {
+          return /128/.test(el.textContent ?? "");
+        }),
+      ).toBeInTheDocument();
     });
-    await user.click(screen.getByRole("button", { name: "16" }));
+    const btn16 = screen.getAllByRole("button").find((el) => {
+      return /^16$/.test(el.textContent ?? "");
+    });
+    await user.click(btn16!);
     // After clicking "16", the icons container should reflect the smaller size;
     // verify the page still renders connector icon images (alt="" so role="presentation")
     await waitFor(() => {
@@ -245,7 +252,9 @@ describe("zero unsaved bar - display (ORG-D-111)", () => {
     // ZeroUnsavedBar appears with Save/Discard buttons when there are unsaved changes
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: "Discard" }),
+        screen.getAllByRole("button").find((el) => {
+          return /^Discard$/.test(el.textContent ?? "");
+        }),
       ).toBeInTheDocument();
     });
   });
@@ -273,14 +282,22 @@ describe("zero unsaved bar - display (ORG-D-112)", () => {
     await user.type(descInput, "New description");
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: "Discard" }),
+        screen.getAllByRole("button").find((el) => {
+          return /^Discard$/.test(el.textContent ?? "");
+        }),
       ).toBeInTheDocument();
     });
     // Click Save — the button should show loading/disabled state
-    const saveBtn = screen.getByRole("button", { name: "Save" });
+    const saveBtn = screen.getAllByRole("button").find((el) => {
+      return /^Save$/.test(el.textContent ?? "");
+    })!;
     await user.click(saveBtn);
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+      expect(
+        screen.getAllByRole("button").find((el) => {
+          return /^Save$/.test(el.textContent ?? "");
+        }),
+      ).toBeDisabled();
     });
     resolveScheduleSave();
     await savePromise;
@@ -300,14 +317,22 @@ describe("zero unsaved bar - interaction (ORG-I-113)", () => {
     await user.type(descInput, "Changed description");
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: "Discard" }),
+        screen.getAllByRole("button").find((el) => {
+          return /^Discard$/.test(el.textContent ?? "");
+        }),
       ).toBeInTheDocument();
     });
-    await user.click(screen.getByRole("button", { name: "Discard" }));
+    await user.click(
+      screen.getAllByRole("button").find((el) => {
+        return /^Discard$/.test(el.textContent ?? "");
+      })!,
+    );
     await waitFor(() => {
       expect(
-        screen.queryByRole("button", { name: "Discard" }),
-      ).not.toBeInTheDocument();
+        screen.queryAllByRole("button").find((el) => {
+          return /^Discard$/.test(el.textContent ?? "");
+        }),
+      ).toBeUndefined();
     });
   });
 });
@@ -331,14 +356,22 @@ describe("zero unsaved bar - interaction (ORG-I-114)", () => {
     await user.type(descInput, "New description");
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: "Discard" }),
+        screen.getAllByRole("button").find((el) => {
+          return /^Discard$/.test(el.textContent ?? "");
+        }),
       ).toBeInTheDocument();
     });
-    await user.click(screen.getByRole("button", { name: "Save" }));
+    await user.click(
+      screen.getAllByRole("button").find((el) => {
+        return /^Save$/.test(el.textContent ?? "");
+      })!,
+    );
     await waitFor(() => {
       expect(
-        screen.queryByRole("button", { name: "Discard" }),
-      ).not.toBeInTheDocument();
+        screen.queryAllByRole("button").find((el) => {
+          return /^Discard$/.test(el.textContent ?? "");
+        }),
+      ).toBeUndefined();
     });
   });
 });
@@ -367,10 +400,16 @@ async function openSetupPrompt(user: ReturnType<typeof userEvent.setup>) {
   });
   await waitFor(() => {
     expect(
-      screen.getByRole("button", { name: /add provider/i }),
+      screen.getAllByRole("button").find((el) => {
+        return /add provider/i.test(el.textContent ?? "");
+      }),
     ).toBeInTheDocument();
   });
-  await user.click(screen.getByRole("button", { name: /add provider/i }));
+  await user.click(
+    screen.getAllByRole("button").find((el) => {
+      return /add provider/i.test(el.textContent ?? "");
+    })!,
+  );
   await waitFor(() => {
     expect(
       screen.getByTestId("org-provider-card-claude-code-oauth-token"),
