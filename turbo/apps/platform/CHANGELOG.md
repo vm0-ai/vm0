@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.187.4](https://github.com/vm0-ai/vm0/compare/app-v0.187.3...app-v0.187.4) (2026-04-04)
+
+
+### Bug Fixes
+
+* stabilize flaky chat tagline test (CHAT-D-002) ([#8150](https://github.com/vm0-ai/vm0/issues/8150)) ([2fbded2](https://github.com/vm0-ai/vm0/commit/2fbded2a2569cb9dcc7178c768d8d1d49b3f7c8e))
+* **test/platform:** replace css class selector with data-testid in sidebar-d-046 ([#8164](https://github.com/vm0-ai/vm0/issues/8164)) ([f773e9a](https://github.com/vm0-ai/vm0/commit/f773e9a34b6bf37077208c5b3214216c626a56da))
+
+
+### Performance Improvements
+
+* replace sha1 with fnv1a in feature switch for synchronous hashing ([#8162](https://github.com/vm0-ai/vm0/issues/8162)) ([7c41de5](https://github.com/vm0-ai/vm0/commit/7c41de5371ec0dc440b72f06b1fc99d825680f20))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.150.1
+
 ## [0.187.3](https://github.com/vm0-ai/vm0/compare/app-v0.187.2...app-v0.187.3) (2026-04-04)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.150.1](https://github.com/vm0-ai/vm0/compare/core-v8.150.0...core-v8.150.1) (2026-04-04)
+
+
+### Performance Improvements
+
+* replace sha1 with fnv1a in feature switch for synchronous hashing ([#8162](https://github.com/vm0-ai/vm0/issues/8162)) ([7c41de5](https://github.com/vm0-ai/vm0/commit/7c41de5371ec0dc440b72f06b1fc99d825680f20))
+
 ## [8.150.0](https://github.com/vm0-ai/vm0/compare/core-v8.149.1...core-v8.150.0) (2026-04-03)
 
 

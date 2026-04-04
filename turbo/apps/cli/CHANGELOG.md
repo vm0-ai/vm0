@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.102.2](https://github.com/vm0-ai/vm0/compare/cli-v9.102.1...cli-v9.102.2) (2026-04-04)
+
+
+### Performance Improvements
+
+* replace sha1 with fnv1a in feature switch for synchronous hashing ([#8162](https://github.com/vm0-ai/vm0/issues/8162)) ([7c41de5](https://github.com/vm0-ai/vm0/commit/7c41de5371ec0dc440b72f06b1fc99d825680f20))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.150.1
+
 ## [9.102.1](https://github.com/vm0-ai/vm0/compare/cli-v9.102.0...cli-v9.102.1) (2026-04-04)
 
 
