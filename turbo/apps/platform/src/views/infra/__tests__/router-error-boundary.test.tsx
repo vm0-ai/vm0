@@ -187,7 +187,9 @@ describe("error boundary", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByTestId("event-id")).toBeInTheDocument();
+      expect(screen.getByTestId("event-id")).not.toHaveTextContent(
+        "no-event-id",
+      );
     });
     unmount();
   });
