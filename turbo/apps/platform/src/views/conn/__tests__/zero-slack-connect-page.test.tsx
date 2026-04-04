@@ -47,7 +47,7 @@ describe("zero-slack-connect-page - connection status indicator (CONN-D-050)", (
 
 // CONN-D-051: Status icon is displayed
 describe("zero-slack-connect-page - status icon (CONN-D-051)", () => {
-  it("shows success icon/heading when connected", async () => {
+  it("shows success heading when connected", async () => {
     setMockSlackConnectData({ isConnected: true });
     await setupPage({ context, path: "/settings/slack?w=ws1&u=u1" });
 
