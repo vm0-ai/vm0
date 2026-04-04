@@ -328,4 +328,49 @@ mod tests {
         let entry = parse_query_line(line).unwrap();
         assert_eq!(entry.source_ip, "10.200.0.2");
     }
+
+    #[test]
+    fn write_jsonl_creates_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("dns.jsonl");
+        let entry = DnsQueryEntry {
+            source_ip: "10.200.0.2".to_string(),
+            domain: "api.github.com".to_string(),
+        };
+        write_jsonl(&path, &entry);
+        let content = std::fs::read_to_string(&path).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(content.trim()).unwrap();
+        assert_eq!(parsed["type"], "dns");
+        assert_eq!(parsed["host"], "api.github.com");
+        assert_eq!(parsed["port"], 53);
+        assert!(parsed["timestamp"].is_string());
+    }
+
+    #[test]
+    fn write_jsonl_appends_multiple_entries() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("dns.jsonl");
+        for domain in ["a.com", "b.com", "c.com"] {
+            write_jsonl(
+                &path,
+                &DnsQueryEntry {
+                    source_ip: "10.0.0.1".to_string(),
+                    domain: domain.to_string(),
+                },
+            );
+        }
+        let content = std::fs::read_to_string(&path).unwrap();
+        let lines: Vec<&str> = content.lines().collect();
+        assert_eq!(lines.len(), 3);
+        for (i, domain) in ["a.com", "b.com", "c.com"].iter().enumerate() {
+            let parsed: serde_json::Value = serde_json::from_str(lines[i]).unwrap();
+            assert_eq!(parsed["host"], *domain);
+        }
+    }
+
+    #[test]
+    fn find_available_port_returns_nonzero() {
+        let port = find_available_port().unwrap();
+        assert!(port > 0);
+    }
 }

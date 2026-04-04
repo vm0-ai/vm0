@@ -162,4 +162,69 @@ mod tests {
         assert_eq!(rs.backoff, Duration::from_secs(1));
         assert_eq!(rs.consecutive_failures, 0);
     }
+
+    #[test]
+    fn record_initial_failure_sets_state() {
+        let mut rs: RetryState<()> =
+            RetryState::new(Duration::from_secs(1), Duration::from_secs(60), None);
+        rs.record_initial_failure();
+        assert_eq!(rs.consecutive_failures(), 1);
+        assert!(rs.restart_at.is_some());
+    }
+
+    #[test]
+    fn timer_ready_requires_no_handle_and_past_restart() {
+        let mut rs: RetryState<()> =
+            RetryState::new(Duration::from_secs(0), Duration::from_secs(60), None);
+        // No restart_at → not ready
+        assert!(!rs.timer_ready());
+        // Set restart_at to now (backoff is 0s)
+        rs.schedule();
+        std::thread::sleep(Duration::from_millis(1));
+        assert!(rs.timer_ready());
+    }
+
+    #[test]
+    fn clear_timer_clears_restart_at() {
+        let mut rs: RetryState<()> =
+            RetryState::new(Duration::from_secs(0), Duration::from_secs(60), None);
+        rs.schedule();
+        assert!(rs.restart_at.is_some());
+        rs.clear_timer();
+        assert!(rs.restart_at.is_none());
+        assert!(!rs.timer_ready());
+    }
+
+    #[test]
+    fn backoff_doubles_up_to_max() {
+        let mut rs: RetryState<()> =
+            RetryState::new(Duration::from_secs(1), Duration::from_secs(8), None);
+        assert_eq!(rs.backoff(), Duration::from_secs(1));
+        let _ = rs.on_failure();
+        assert_eq!(rs.backoff(), Duration::from_secs(2));
+        let _ = rs.on_failure();
+        assert_eq!(rs.backoff(), Duration::from_secs(4));
+        let _ = rs.on_failure();
+        assert_eq!(rs.backoff(), Duration::from_secs(8));
+        let _ = rs.on_failure();
+        assert_eq!(rs.backoff(), Duration::from_secs(8)); // capped
+    }
+
+    #[test]
+    fn circuit_breaker_not_tripped_below_threshold() {
+        let mut rs: RetryState<()> =
+            RetryState::new(Duration::from_secs(1), Duration::from_secs(60), Some(3));
+        assert!(rs.on_failure()); // 1
+        assert!(rs.on_failure()); // 2
+        assert!(!rs.on_failure()); // 3 = max → trips
+    }
+
+    #[test]
+    fn no_circuit_breaker_when_none() {
+        let mut rs: RetryState<()> =
+            RetryState::new(Duration::from_secs(1), Duration::from_secs(60), None);
+        for _ in 0..100 {
+            assert!(rs.on_failure());
+        }
+    }
 }

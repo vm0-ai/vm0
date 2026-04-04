@@ -226,4 +226,66 @@ mod tests {
         let val: u64 = fs::read_to_string(&pos).unwrap().trim().parse().unwrap();
         assert_eq!(val, 42);
     }
+
+    #[test]
+    fn read_file_delta_truncated_file() {
+        // Position file says we read 100 bytes, but file is shorter → no new data.
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("log.txt");
+        let pos = dir.path().join("log.pos");
+        fs::write(&file, "short").unwrap();
+        fs::write(&pos, "100").unwrap();
+
+        let (content, new_pos) = read_file_delta(file.to_str().unwrap(), pos.to_str().unwrap());
+        assert!(content.is_empty());
+        assert_eq!(new_pos, 100);
+    }
+
+    #[test]
+    fn read_file_delta_corrupt_pos_file() {
+        // Corrupt position file → starts from 0.
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("log.txt");
+        let pos = dir.path().join("log.pos");
+        fs::write(&file, "data").unwrap();
+        fs::write(&pos, "notanumber").unwrap();
+
+        let (content, new_pos) = read_file_delta(file.to_str().unwrap(), pos.to_str().unwrap());
+        assert_eq!(content, "data");
+        assert_eq!(new_pos, 4);
+    }
+
+    #[test]
+    fn read_jsonl_delta_empty_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("empty.jsonl");
+        let pos = dir.path().join("empty.pos");
+        fs::write(&file, "").unwrap();
+
+        let (entries, new_pos) = read_jsonl_delta(file.to_str().unwrap(), pos.to_str().unwrap());
+        assert!(entries.is_empty());
+        assert_eq!(new_pos, 0);
+    }
+
+    #[test]
+    fn read_jsonl_delta_all_invalid_lines() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("bad.jsonl");
+        let pos = dir.path().join("bad.pos");
+        fs::write(&file, "bad1\nbad2\nbad3\n").unwrap();
+
+        let (entries, new_pos) = read_jsonl_delta(file.to_str().unwrap(), pos.to_str().unwrap());
+        assert!(entries.is_empty());
+        assert!(new_pos > 0);
+    }
+
+    #[test]
+    fn save_position_overwrites_existing() {
+        let dir = tempfile::tempdir().unwrap();
+        let pos = dir.path().join("overwrite.pos");
+        save_position(pos.to_str().unwrap(), 10);
+        save_position(pos.to_str().unwrap(), 20);
+        let val: u64 = fs::read_to_string(&pos).unwrap().trim().parse().unwrap();
+        assert_eq!(val, 20);
+    }
 }

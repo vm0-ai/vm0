@@ -174,4 +174,74 @@ mod tests {
         assert_eq!(parse_meminfo_value("  0 kB"), 0);
         assert_eq!(parse_meminfo_value(""), 0);
     }
+
+    #[test]
+    fn parse_meminfo_value_large_values() {
+        assert_eq!(parse_meminfo_value("  16384000 kB"), 16384000);
+        assert_eq!(parse_meminfo_value("1 kB"), 1);
+    }
+
+    #[test]
+    fn parse_meminfo_value_non_numeric() {
+        assert_eq!(parse_meminfo_value("  abc kB"), 0);
+    }
+
+    #[test]
+    fn cpu_tracker_multiple_reads_are_consistent() {
+        let mut tracker = CpuTracker::new();
+        let mut prev = 0.0;
+        for _ in 0..5 {
+            let pct = tracker.get_cpu_percent();
+            assert!((0.0..=100.0).contains(&pct), "pct={pct} out of range");
+            prev = pct;
+        }
+        // Last value should still be in valid range
+        assert!((0.0..=100.0).contains(&prev));
+    }
+
+    #[test]
+    fn get_memory_info_returns_valid_values() {
+        let (used, total) = get_memory_info();
+        // On Linux with /proc, total > 0
+        if std::path::Path::new("/proc/meminfo").exists() {
+            assert!(total > 0, "total memory should be > 0");
+            assert!(used <= total, "used should be <= total");
+        }
+    }
+
+    #[test]
+    fn get_disk_info_returns_valid_values() {
+        let (used, total) = get_disk_info();
+        assert!(total > 0, "total disk should be > 0");
+        assert!(used <= total, "used should be <= total");
+    }
+
+    #[test]
+    fn collect_metrics_returns_complete_entry() {
+        let mut tracker = CpuTracker::new();
+        let entry = collect_metrics(&mut tracker);
+        assert!(!entry.ts.is_empty());
+        assert!((0.0..=100.0).contains(&entry.cpu));
+        assert!(entry.mem_total > 0);
+        assert!(entry.disk_total > 0);
+    }
+
+    #[test]
+    fn metrics_entry_serializes_to_json() {
+        let entry = MetricsEntry {
+            ts: "2026-01-01T00:00:00Z".to_string(),
+            cpu: 42.5,
+            mem_used: 1024,
+            mem_total: 4096,
+            disk_used: 8192,
+            disk_total: 16384,
+        };
+        let json = serde_json::to_value(&entry).unwrap();
+        assert_eq!(json["ts"], "2026-01-01T00:00:00Z");
+        assert_eq!(json["cpu"], 42.5);
+        assert_eq!(json["mem_used"], 1024);
+        assert_eq!(json["mem_total"], 4096);
+        assert_eq!(json["disk_used"], 8192);
+        assert_eq!(json["disk_total"], 16384);
+    }
 }
