@@ -10,12 +10,21 @@ export interface MockedInvitation {
   };
 }
 
+export interface MockedMembership {
+  id: string;
+  organization?: {
+    id: string;
+    name: string;
+    imageUrl?: string | null;
+  };
+}
+
 interface MockedUser {
   id: string;
   fullName: string;
   firstName?: string;
   primaryEmailAddress: { emailAddress: string } | null;
-  organizationMemberships: { id: string }[];
+  organizationMemberships: MockedMembership[];
   getOrganizationInvitations: (params?: {
     status?: string;
   }) => Promise<{ data: MockedInvitation[]; total_count: number }>;
@@ -29,7 +38,7 @@ let internalMockedOrganization: {
   reload: () => Promise<void>;
 } | null = null;
 let internalMockedInvitations: MockedInvitation[] = [];
-let internalMockedMemberships: { id: string }[] = [{ id: "org_default" }];
+let internalMockedMemberships: MockedMembership[] = [{ id: "org_default" }];
 
 export function mockUser(
   user: {
@@ -65,7 +74,7 @@ export function mockUser(
  */
 export function mockOrganization(options: {
   activeOrg?: { id: string; name: string } | null;
-  memberships?: { id: string }[];
+  memberships?: MockedMembership[];
   pendingInvitations?: MockedInvitation[];
 }) {
   internalMockedOrganization = options.activeOrg
@@ -89,6 +98,8 @@ export function clearMockedAuth() {
   internalMockedInvitations = [];
   internalMockedMemberships = [{ id: "org_default" }];
   clerkListeners.length = 0;
+  mockedClerk.setActive.mockClear();
+  mockedClerk.createOrganization.mockClear();
 }
 
 const clerkListeners: (() => void)[] = [];
@@ -127,6 +138,12 @@ export const mockedClerk = {
     };
   },
   redirectToSignIn: vi.fn(),
+  setActive: vi.fn((_params: { organization: string }) => {
+    return Promise.resolve();
+  }),
+  createOrganization: vi.fn((_params: { name: string; slug: string }) => {
+    return Promise.resolve({ id: "new-org-id" });
+  }),
 };
 
 /** Fire all registered Clerk listeners (simulates token refresh / auth change). */

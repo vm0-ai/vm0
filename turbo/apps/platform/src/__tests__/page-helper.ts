@@ -6,6 +6,7 @@ import type { TestContext } from "../signals/__tests__/test-helpers";
 import {
   clearMockedAuth,
   type MockedInvitation,
+  type MockedMembership,
   mockOrganization,
   mockUser,
 } from "./mock-auth";
@@ -38,7 +39,7 @@ export async function setupPage(options: {
   session?: { token: string } | null;
   org?: {
     activeOrg?: { id: string; name: string } | null;
-    memberships?: { id: string }[];
+    memberships?: MockedMembership[];
     pendingInvitations?: MockedInvitation[];
   };
   debugLoggers?: string[];
