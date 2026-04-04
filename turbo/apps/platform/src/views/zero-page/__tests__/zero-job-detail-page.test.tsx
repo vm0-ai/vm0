@@ -107,11 +107,11 @@ describe("zero job detail page", () => {
     });
 
     // Click Profile tab
-    await user.click(
-      screen.getAllByRole("tab").find((el) => {
-        return /Profile/i.test(el.textContent ?? "");
-      })!,
-    );
+    const profileTab = screen.getAllByRole("tab").find((el) => {
+      return /Profile/i.test(el.textContent ?? "");
+    });
+    expect(profileTab).toBeDefined();
+    await user.click(profileTab!);
 
     // Profile tab should show settings form with agent name input
     await waitFor(() => {

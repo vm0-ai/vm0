@@ -518,11 +518,11 @@ describe("zero chat page - ideation page", () => {
     await navigateToIdeation(user);
 
     // Click a specific category tab
-    await user.click(
-      screen.getAllByRole("button").find((el) => {
-        return el.textContent?.trim() === "GitHub";
-      })!,
-    );
+    const githubCategoryBtn = screen.getAllByRole("button").find((el) => {
+      return el.textContent?.trim() === "GitHub";
+    });
+    expect(githubCategoryBtn).toBeDefined();
+    await user.click(githubCategoryBtn!);
 
     await waitFor(() => {
       // The selected category heading should be visible

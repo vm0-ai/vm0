@@ -115,11 +115,11 @@ describe("zero job detail page - interaction and state", () => {
     await waitForPageLoad();
 
     // Switch to Scheduled tab
-    await user.click(
-      screen.getAllByRole("tab").find((el) => {
-        return /Scheduled/i.test(el.textContent ?? "");
-      })!,
-    );
+    const scheduledTab = screen.getAllByRole("tab").find((el) => {
+      return /Scheduled/i.test(el.textContent ?? "");
+    });
+    expect(scheduledTab).toBeDefined();
+    await user.click(scheduledTab!);
     await waitFor(() => {
       expect(screen.getByText("No runs scheduled")).toBeInTheDocument();
     });

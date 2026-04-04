@@ -62,7 +62,7 @@ async function renderMembersTab() {
 
 describe("org members - invite dialog loading state", () => {
   it("should show loading state and close after invite completes", async () => {
-    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const user = userEvent.setup();
     let resolveInvite: (() => void) | null = null;
 
     mockMembersAPI();
@@ -120,7 +120,7 @@ describe("org members - invite dialog loading state", () => {
   });
 
   it("should disable input and cancel during invite", async () => {
-    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const user = userEvent.setup();
     let resolveInvite: (() => void) | null = null;
 
     mockMembersAPI();
@@ -173,7 +173,7 @@ describe("org members - invite dialog loading state", () => {
 
 describe("org members - invite dialog role selector", () => {
   it("should show role selector defaulting to Member", async () => {
-    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const user = userEvent.setup();
     mockMembersAPI();
     server.use(
       http.post("*/api/zero/org/invite", () => {
@@ -203,7 +203,7 @@ describe("org members - invite dialog role selector", () => {
   });
 
   it("should send invite with selected admin role", async () => {
-    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const user = userEvent.setup();
     let capturedBody: Record<string, unknown> | null = null;
 
     mockMembersAPI();

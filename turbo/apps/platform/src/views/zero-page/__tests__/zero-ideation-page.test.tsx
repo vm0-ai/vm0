@@ -107,18 +107,19 @@ describe("ideation page - category tabs", () => {
     });
     const githubTab = screen.getAllByRole("button").find((el) => {
       return el.textContent?.trim() === "GitHub";
-    })!;
+    });
+    expect(githubTab).toBeDefined();
 
     // Initially "All" tab should have active styling
     expect(allTab.className).toContain("bg-muted text-foreground");
-    expect(githubTab.className).not.toContain("bg-muted text-foreground");
+    expect(githubTab!.className).not.toContain("bg-muted text-foreground");
 
     // Click GitHub tab
-    await user.click(githubTab);
+    await user.click(githubTab!);
 
     // GitHub tab should now have active styling, All should not
     await waitFor(() => {
-      expect(githubTab.className).toContain("bg-muted text-foreground");
+      expect(githubTab!.className).toContain("bg-muted text-foreground");
     });
     expect(allTab.className).not.toContain("bg-muted text-foreground");
   });

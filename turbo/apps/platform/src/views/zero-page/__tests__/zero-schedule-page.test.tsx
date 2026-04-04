@@ -135,9 +135,17 @@ async function openMenuAndClick(
   )[0];
   await user.click(menuTrigger);
   await waitFor(() => {
-    expect(screen.getByText(action)).toBeInTheDocument();
+    expect(
+      screen.getAllByRole("menuitem").find((el) => {
+        return el.textContent?.includes(action);
+      }),
+    ).toBeDefined();
   });
-  await user.click(screen.getByText(action));
+  await user.click(
+    screen.getAllByRole("menuitem").find((el) => {
+      return el.textContent?.includes(action);
+    })!,
+  );
 }
 
 describe("zero schedule page - agent labels", () => {
