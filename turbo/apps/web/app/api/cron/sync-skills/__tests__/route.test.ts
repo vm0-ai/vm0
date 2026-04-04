@@ -5,6 +5,7 @@ import {
   createTestRequest,
   findTestSkillByUrl,
   findTestSystemStorageByName,
+  reseedSkills,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
 import { reloadEnv } from "../../../../../src/env";
@@ -469,14 +470,28 @@ describe("GET /api/cron/sync-skills", () => {
       const syncLogger = logger("skills:sync");
       const errorSpy = vi.spyOn(syncLogger, "error");
 
-      // Sync with a tarball that has most seeds but is missing a few.
-      // We use the standard extras-only tarball (slack + github) WITHOUT
-      // seed entries — this triggers the SEED_SKILLS validation warning
-      // because none of the SEED_SKILLS are in the tarball.
-      const tarball = createMockTarball([
-        EXTRA_SKILLS.alphaSkill,
-        EXTRA_SKILLS.betaSkill,
-      ]);
+      // Build a tarball with most seed skills but deliberately omit the first
+      // two SEED_SKILLS entries.  This triggers the validation warning without
+      // orphan-deleting all seeds (which would break concurrent tests).
+      const { SEED_SKILLS: seedSkillNames } =
+        await import("../../../../../src/lib/zero/seed-skills");
+      const omitted = seedSkillNames.slice(0, 2);
+      const kept = ALL_SEED_SKILL_NAMES.filter((n) => {
+        return !omitted.includes(n);
+      });
+      const tarball = createMockTarball(
+        kept.map((name) => {
+          return {
+            name,
+            files: [
+              {
+                path: "SKILL.md",
+                content: `---\nname: ${name}\ndescription: ${name} skill\n---\n\n# ${name}\n`,
+              },
+            ],
+          };
+        }),
+      );
       setupMswHandlers(testSha, tarball);
 
       await GET(cronRequest(cronSecret));
@@ -489,6 +504,9 @@ describe("GET /api/cron/sync-skills", () => {
           ]),
         }),
       );
+
+      // Re-seed the omitted skills so subsequent tests aren't affected
+      await reseedSkills(omitted);
 
       errorSpy.mockRestore();
     });

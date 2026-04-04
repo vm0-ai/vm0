@@ -3544,6 +3544,19 @@ export async function seedTestSkill(
 }
 
 /**
+ * Re-seed specific skill names into the skills table.
+ * Used to restore skills that were removed by orphan-deletion in tests.
+ */
+export async function reseedSkills(names: readonly string[]): Promise<void> {
+  const { buildSeedSkillValues } = await import("../lib/zero/seed-skills");
+  initServices();
+  await globalThis.services.db
+    .insert(skills)
+    .values(buildSeedSkillValues(names))
+    .onConflictDoNothing();
+}
+
+/**
  * Find a skill by its canonical URL.
  */
 export async function findTestSkillByUrl(url: string) {
