@@ -3544,16 +3544,76 @@ export async function seedTestSkill(
 }
 
 /**
- * Re-seed specific skill names into the skills table.
- * Used to restore skills that were removed by orphan-deletion in tests.
+ * Re-seed specific skill names plus their storage volumes.
+ * Used to restore skills + storages removed by orphan-deletion in tests.
  */
 export async function reseedSkills(names: readonly string[]): Promise<void> {
   const { buildSeedSkillValues } = await import("../lib/zero/seed-skills");
   initServices();
-  await globalThis.services.db
+  const db = globalThis.services.db;
+
+  // 1. Re-insert skill rows
+  await db
     .insert(skills)
     .values(buildSeedSkillValues(names))
     .onConflictDoNothing();
+
+  // 2. Re-insert storage volumes + versions
+  const entries = names.map((name) => {
+    const fullPath = `vm0-ai/vm0-skills/tree/main/${name}`;
+    const storageName = `agent-skills@${fullPath}`;
+    const versionId = randomUUID().replace(/-/g, "").repeat(2).slice(0, 64);
+    return { storageName, versionId };
+  });
+
+  await db.transaction(async (tx) => {
+    const inserted = await tx
+      .insert(storages)
+      .values(
+        entries.map(({ storageName }) => {
+          return {
+            orgId: SYSTEM_ORG_ID,
+            userId: VOLUME_ORG_USER_ID,
+            name: storageName,
+            type: "volume" as const,
+            s3Prefix: `${SYSTEM_ORG_ID}/${storageName}`,
+          };
+        }),
+      )
+      .onConflictDoNothing()
+      .returning({ id: storages.id, name: storages.name });
+
+    if (inserted.length === 0) return;
+
+    const nameToId = new Map(
+      inserted.map((s) => {
+        return [s.name, s.id];
+      }),
+    );
+    const newEntries = entries.filter(({ storageName }) => {
+      return nameToId.has(storageName);
+    });
+
+    await tx.insert(storageVersions).values(
+      newEntries.map(({ storageName, versionId }) => {
+        return {
+          id: versionId,
+          storageId: nameToId.get(storageName)!,
+          s3Key: `${SYSTEM_ORG_ID}/${storageName}/${versionId}`,
+          size: 100,
+          fileCount: 1,
+          createdBy: "test",
+        };
+      }),
+    );
+
+    for (const { storageName, versionId } of newEntries) {
+      await tx
+        .update(storages)
+        .set({ headVersionId: versionId })
+        .where(eq(storages.id, nameToId.get(storageName)!));
+    }
+  });
 }
 
 /**
