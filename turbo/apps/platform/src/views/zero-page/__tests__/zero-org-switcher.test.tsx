@@ -5,7 +5,11 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
-import { mockedClerk, mockOrganization } from "../../../__tests__/mock-auth.ts";
+import {
+  fireClerkListeners,
+  mockedClerk,
+  mockOrganization,
+} from "../../../__tests__/mock-auth.ts";
 
 const context = testContext();
 
@@ -290,7 +294,32 @@ describe("zero org switcher - manage button opens org management (SIDEBAR-D-060)
 });
 
 describe("zero org switcher - org switch menu item switches organization (SIDEBAR-D-061)", () => {
-  it("calls setActive with the selected organization id and closes the dropdown", async () => {
+  it("calls setActive with the selected org and closes the dropdown", async () => {
+    // Simulate the production behavior: setActive updates the active org in Clerk
+    // and fires the org-change listener. In production, watchOrgSwitch$ detects
+    // the change and navigates to "/" for a full page reload with the new org
+    // context. Here we verify the component correctly hands off to Clerk and the
+    // dropdown closes as the visible UI outcome.
+    mockedClerk.setActive.mockImplementation(
+      ({ organization }: { organization: string }) => {
+        mockOrganization({
+          activeOrg: { id: organization, name: "Other Org" },
+          memberships: [
+            {
+              id: "org_1",
+              organization: { id: "org_1", name: "Current Org" },
+            },
+            {
+              id: "org_2",
+              organization: { id: "org_2", name: "Other Org" },
+            },
+          ],
+        });
+        fireClerkListeners();
+        return Promise.resolve();
+      },
+    );
+
     mockAPIs();
     await setupPage({
       context,
@@ -316,13 +345,13 @@ describe("zero org switcher - org switch menu item switches organization (SIDEBA
     });
     await user.click(screen.getByText("Other Org"));
 
-    // The dropdown closes after selecting an org (DropdownMenuItem default behavior)
-    await waitFor(() => {
-      expect(screen.queryByText("Create workspace")).not.toBeInTheDocument();
-    });
-    // setActive is called with the selected org id to trigger the org switch
+    // Verify setActive was called with the correct org id (Clerk API boundary)
     expect(mockedClerk.setActive).toHaveBeenCalledWith({
       organization: "org_2",
+    });
+    // Dropdown closes after selection (visible UI outcome)
+    await waitFor(() => {
+      expect(screen.queryByText("Create workspace")).not.toBeInTheDocument();
     });
   });
 });
@@ -378,7 +407,29 @@ describe("zero org switcher - join button accepts invitation (SIDEBAR-D-062)", (
 });
 
 describe("zero org switcher - create workspace item starts creation flow (SIDEBAR-D-063)", () => {
-  it("closes the dropdown and calls createOrganization when Create workspace is clicked", async () => {
+  it("calls createOrganization and activates the new workspace", async () => {
+    // Simulate the production behavior: createOrganization creates the org, then
+    // setActive activates it. In production, watchOrgSwitch$ detects the active
+    // org change and navigates to "/" for a full page reload with the new workspace
+    // context. Here we verify the component calls createOrganization with a
+    // workspace-prefixed name, then activates the new org via setActive.
+    mockedClerk.setActive.mockImplementation(
+      ({ organization }: { organization: string }) => {
+        mockOrganization({
+          activeOrg: { id: organization, name: "New Workspace" },
+          memberships: [
+            { id: "org_1", organization: { id: "org_1", name: "Current Org" } },
+            {
+              id: organization,
+              organization: { id: organization, name: "New Workspace" },
+            },
+          ],
+        });
+        fireClerkListeners();
+        return Promise.resolve();
+      },
+    );
+
     mockAPIs();
     await setupPage({
       context,
@@ -401,14 +452,20 @@ describe("zero org switcher - create workspace item starts creation flow (SIDEBA
     });
     await user.click(screen.getByText("Create workspace"));
 
-    // The dropdown closes after clicking the item (DropdownMenuItem default behavior)
+    // createOrganization is called with a workspace-prefixed name
+    await waitFor(() => {
+      expect(mockedClerk.createOrganization).toHaveBeenCalledWith(
+        expect.objectContaining({ name: expect.stringMatching(/^workspace-/) }),
+      );
+    });
+    // setActive is called with the newly created org id to activate it
+    expect(mockedClerk.setActive).toHaveBeenCalledWith({
+      organization: "new-org-id",
+    });
+    // Dropdown closes after activation (visible UI outcome)
     await waitFor(() => {
       expect(screen.queryByText("Create workspace")).not.toBeInTheDocument();
     });
-    // createOrganization is called with a generated workspace slug
-    expect(mockedClerk.createOrganization).toHaveBeenCalledWith(
-      expect.objectContaining({ name: expect.stringMatching(/^workspace-/) }),
-    );
   });
 });
 
