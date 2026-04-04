@@ -12,7 +12,6 @@ interface ErrorFallbackProps {
 interface Props {
   children?: ReactNode;
   fallback?: (props: ErrorFallbackProps) => ReactNode;
-  captureSentryEvent?: (error: Error) => void;
 }
 
 interface State {

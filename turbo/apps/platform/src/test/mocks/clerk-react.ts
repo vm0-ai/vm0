@@ -1,6 +1,5 @@
 // Mock for @clerk/clerk-react
-import { createElement } from "react";
-import type { ReactNode } from "react";
+import { createElement, type ReactNode } from "react";
 
 interface ClerkProviderProps {
   children: ReactNode;

@@ -32,10 +32,12 @@ describe("main - toaster", () => {
     toast("test");
 
     await waitFor(() => {
-      const toaster = document.querySelector("[data-sonner-toaster]");
+      const toaster = document.querySelector<HTMLElement>(
+        "[data-sonner-toaster]",
+      );
       expect(toaster).not.toBeNull();
-      expect(toaster?.getAttribute("data-y-position")).toBe("top");
-      expect(toaster?.getAttribute("data-x-position")).toBe("center");
+      expect(toaster?.dataset.yPosition).toBe("top");
+      expect(toaster?.dataset.xPosition).toBe("center");
     });
   });
 });
@@ -55,7 +57,7 @@ describe("router - page signal rendering", () => {
 });
 
 describe("router - app skeleton", () => {
-  it("AppSkeleton shows when skeletonVisible is true (INFRA-D-003)", async () => {
+  it("appSkeleton shows when skeletonVisible is true (INFRA-D-003)", async () => {
     await setupPage({
       context,
       path: "/select-org",
@@ -70,7 +72,7 @@ describe("router - app skeleton", () => {
     });
   });
 
-  it("AppSkeleton hides once page loads (INFRA-D-004)", async () => {
+  it("appSkeleton hides once page loads (INFRA-D-004)", async () => {
     await setupPage({
       context,
       path: "/select-org",
@@ -111,7 +113,7 @@ function renderWithRoot(ui: ReactElement): {
     container,
     unmount: () => {
       root.unmount();
-      document.body.removeChild(container);
+      container.remove();
     },
   };
 }
