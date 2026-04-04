@@ -54,6 +54,19 @@ const ACTION_COMMANDS: Record<MouseAction, string> = {
 export const VALID_ACTIONS = new Set<string>(Object.keys(ACTION_COMMANDS));
 
 /**
+ * Check whether cliclick is available on the system.
+ * Returns true if installed, false otherwise.
+ */
+export async function isCliclickInstalled(): Promise<boolean> {
+  try {
+    await execFileAsync("which", ["cliclick"]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Verify that cliclick is installed on the system.
  * Throws with install instructions if not found.
  */
