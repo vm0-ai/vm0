@@ -1,8 +1,9 @@
 /**
  * Display and conditional tests for firewall-allow-page.tsx.
  *
- * Covers agent ID resolution, firewall reference types, HTTP method/path display,
- * loading/error states, PolicyPill states, and admin/member view branching.
+ * Covers agent ID resolution, firewall reference types, loading/error states,
+ * and PolicyPill active/disabled states. Admin/member view branching and
+ * HTTP method/path display are already covered in firewall-allow-page.test.tsx.
  */
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
@@ -97,47 +98,6 @@ describe("fw-d-001: agent ID renders from signal", () => {
     });
     await waitFor(() => {
       expect(screen.getByText(/Special Agent Smith/)).toBeInTheDocument();
-    });
-  });
-});
-
-describe("fw-d-002: firewall reference type displays", () => {
-  it("shows the firewall reference type in the page header", async () => {
-    mockFirewallRequests();
-    await setupPage({
-      context,
-      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read`,
-    });
-    await waitFor(() => {
-      expect(screen.getByText(/GitHub Firewall/)).toBeInTheDocument();
-    });
-  });
-});
-
-describe("fw-d-003: HTTP method displays", () => {
-  it("shows the HTTP method in the blocked request context box", async () => {
-    mockFirewallRequests();
-    await setupPage({
-      context,
-      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read&method=POST&path=/repos/owner/repo/issues`,
-    });
-    await waitFor(() => {
-      expect(screen.getByText(/POST/)).toBeInTheDocument();
-    });
-  });
-});
-
-describe("fw-d-004: request path displays", () => {
-  it("shows the request path in the blocked request context box", async () => {
-    mockFirewallRequests();
-    await setupPage({
-      context,
-      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read&method=GET&path=/repos/owner/repo/issues`,
-    });
-    await waitFor(() => {
-      expect(
-        screen.getByText(/\/repos\/owner\/repo\/issues/),
-      ).toBeInTheDocument();
     });
   });
 });
@@ -251,73 +211,6 @@ describe("fw-d-008: error state shows when agent load fails", () => {
   });
 });
 
-describe("fw-d-009: AdminFocusedView renders for admins with focused permission", () => {
-  it("renders AdminFocusedView with Save button for admin with a permission in URL", async () => {
-    mockFirewallRequests();
-    await setupPage({
-      context,
-      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read`,
-    });
-    await waitFor(() => {
-      expect(screen.getByText("issues:read")).toBeInTheDocument();
-    });
-    expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
-  });
-});
-
-describe("fw-d-010: MemberFocusedView renders for non-admins with focused permission", () => {
-  it("renders MemberFocusedView without Save button for non-admin with a permission in URL", async () => {
-    setupMemberContext({
-      firewallPolicies: { github: { "issues:read": "deny" } },
-    });
-    mockFirewallRequests();
-    await setupPage({
-      context,
-      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read`,
-    });
-    await waitFor(() => {
-      expect(screen.getByText("issues:read")).toBeInTheDocument();
-    });
-    expect(
-      screen.queryByRole("button", { name: "Save" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Request Access" }),
-    ).toBeInTheDocument();
-  });
-});
-
-describe("fw-d-011: AdminListView renders for admins without focused permission", () => {
-  it("renders AdminListView with Permissions heading and Save button for admin without permission param", async () => {
-    mockFirewallRequests();
-    await setupPage({
-      context,
-      path: `/agents/${AGENT_ID}/permissions?ref=github`,
-    });
-    await waitFor(() => {
-      expect(screen.getByText("Permissions")).toBeInTheDocument();
-    });
-    expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
-  });
-});
-
-describe("fw-d-012: MemberListView renders for non-admins without focused permission", () => {
-  it("renders MemberListView with Permissions heading and no Save button for non-admin without permission param", async () => {
-    setupMemberContext();
-    mockFirewallRequests();
-    await setupPage({
-      context,
-      path: `/agents/${AGENT_ID}/permissions?ref=github`,
-    });
-    await waitFor(() => {
-      expect(screen.getByText("Permissions")).toBeInTheDocument();
-    });
-    expect(
-      screen.queryByRole("button", { name: "Save" }),
-    ).not.toBeInTheDocument();
-  });
-});
-
 describe("fw-d-013: PolicyPill shows allow state with check icon", () => {
   it("renders the Allow button as active when the policy is allow", async () => {
     mockFirewallRequests();
@@ -330,7 +223,7 @@ describe("fw-d-013: PolicyPill shows allow state with check icon", () => {
     });
     const allowButtons = screen.getAllByRole("button", { name: /Allow/ });
     const policyAllowBtn = allowButtons.find((btn) => {
-      return btn.className.includes("bg-muted");
+      return btn.getAttribute("aria-pressed") === "true";
     });
     expect(policyAllowBtn).toBeDefined();
   });
@@ -353,7 +246,7 @@ describe("fw-d-014: PolicyPill shows deny state with ban icon", () => {
     });
     const denyButtons = screen.getAllByRole("button", { name: /Deny/ });
     const policyDenyBtn = denyButtons.find((btn) => {
-      return btn.className.includes("bg-muted");
+      return btn.getAttribute("aria-pressed") === "true";
     });
     expect(policyDenyBtn).toBeDefined();
   });
