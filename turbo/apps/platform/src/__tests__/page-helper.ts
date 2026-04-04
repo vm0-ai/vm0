@@ -171,7 +171,7 @@ export async function fill(element: Element, value: string): Promise<void> {
   const fastUser = userEvent.setup({ delay: null });
   await fastUser.click(element);
   await fastUser.keyboard("{Control>}a{/Control}");
-  await fastUser.keyboard(value);
+  await fastUser.paste(value);
 }
 
 function createTestStoreProvider(store: Store) {
