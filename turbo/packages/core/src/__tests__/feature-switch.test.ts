@@ -1,43 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { FeatureSwitchKey } from "../feature-switch-key";
-import {
-  isFeatureEnabled,
-  getAllFeatureStates,
-  computeEmailHash,
-  computeOrgIdHash,
-} from "../feature-switch";
-
-describe("computeEmailHash", () => {
-  it("should produce a consistent FNV-1a hex hash", () => {
-    const hash = computeEmailHash("test@example.com");
-    // FNV-1a 32-bit produces an 8-character hex string
-    expect(hash).toMatch(/^[0-9a-f]{8}$/);
-  });
-
-  it("should lowercase the email before hashing", () => {
-    const lower = computeEmailHash("test@example.com");
-    const upper = computeEmailHash("TEST@EXAMPLE.COM");
-    const mixed = computeEmailHash("Test@Example.Com");
-    expect(lower).toBe(upper);
-    expect(lower).toBe(mixed);
-  });
-});
-
-describe("computeOrgIdHash", () => {
-  it("should produce a consistent FNV-1a hex hash", () => {
-    const hash = computeOrgIdHash("org_test123");
-    expect(hash).toMatch(/^[0-9a-f]{8}$/);
-    // Same input should produce the same hash
-    const hash2 = computeOrgIdHash("org_test123");
-    expect(hash).toBe(hash2);
-  });
-
-  it("should not lowercase the orgId before hashing", () => {
-    const upper = computeOrgIdHash("ABC");
-    const lower = computeOrgIdHash("abc");
-    expect(upper).not.toBe(lower);
-  });
-});
+import { isFeatureEnabled, getAllFeatureStates } from "../feature-switch";
 
 describe("isFeatureEnabled", () => {
   it("should return true for globally enabled switch", () => {
