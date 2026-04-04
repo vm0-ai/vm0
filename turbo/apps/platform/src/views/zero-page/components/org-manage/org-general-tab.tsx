@@ -238,6 +238,7 @@ function ProfileSection({
                   setFileInputEl(el);
                 }}
                 type="file"
+                aria-label="Upload logo"
                 accept="image/png,image/jpeg,image/gif,image/webp"
                 className="hidden"
                 onChange={(e) => {

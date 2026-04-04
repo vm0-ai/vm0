@@ -156,12 +156,9 @@ describe("org general tab - display", () => {
     await openGeneralTab();
     // Wait for admin inputs to load
     await screen.findByDisplayValue("Test Org");
-    const dialog = screen.getByRole("dialog");
-    const fileInput =
-      dialog.querySelector<HTMLInputElement>('input[type="file"]');
-    expect(fileInput).toBeTruthy();
+    const fileInput = screen.getByLabelText("Upload logo");
     const file = new File(["img"], "logo.png", { type: "image/png" });
-    await user.upload(fileInput!, file);
+    await user.upload(fileInput, file);
     await waitFor(() => {
       const img = screen.getByAltText("test-org");
       expect(img).toHaveAttribute("src", "blob:mock-preview");
@@ -170,6 +167,10 @@ describe("org general tab - display", () => {
 });
 
 describe("org general tab - interaction", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   // ORG-I-015
   it("name input field is editable", async () => {
     const user = userEvent.setup();
@@ -277,6 +278,10 @@ describe("org general tab - interaction", () => {
 });
 
 describe("org general tab - validation", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   // ORG-V-021
   it("delete workspace requires typing exact slug", async () => {
     const user = userEvent.setup();
