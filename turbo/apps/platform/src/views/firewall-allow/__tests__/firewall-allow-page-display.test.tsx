@@ -221,11 +221,9 @@ describe("fw-d-013: PolicyPill shows allow state with check icon", () => {
     await waitFor(() => {
       expect(screen.getByText("issues:read")).toBeInTheDocument();
     });
-    const allowButtons = screen.getAllByRole("button", { name: /Allow/ });
-    const policyAllowBtn = allowButtons.find((btn) => {
-      return btn.getAttribute("aria-pressed") === "true";
-    });
-    expect(policyAllowBtn).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: /Allow/, pressed: true }),
+    ).toBeInTheDocument();
   });
 });
 
@@ -244,11 +242,9 @@ describe("fw-d-014: PolicyPill shows deny state with ban icon", () => {
     await waitFor(() => {
       expect(screen.getByText("issues:read")).toBeInTheDocument();
     });
-    const denyButtons = screen.getAllByRole("button", { name: /Deny/ });
-    const policyDenyBtn = denyButtons.find((btn) => {
-      return btn.getAttribute("aria-pressed") === "true";
-    });
-    expect(policyDenyBtn).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: /Deny/, pressed: true }),
+    ).toBeInTheDocument();
   });
 });
 
