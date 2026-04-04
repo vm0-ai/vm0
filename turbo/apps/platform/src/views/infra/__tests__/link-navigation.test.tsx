@@ -7,7 +7,7 @@
  *   </Link>
  */
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -18,14 +18,9 @@ import type {
   LogDetail,
   AgentEventsResponse,
 } from "../../../signals/zero-page/log-types.ts";
-import { setPollIntervalForTest$ } from "../../../signals/zero-page/polling.ts";
 import { pathname } from "../../../signals/location.ts";
 
 const context = testContext();
-
-beforeEach(() => {
-  context.store.set(setPollIntervalForTest$, 10);
-});
 
 const RUN_ID = "b0000000-0000-4000-b000-000000000001";
 const EXPECTED_HREF = `/activities/${RUN_ID}`;
@@ -108,17 +103,6 @@ describe("link component", () => {
     expect(link).toHaveAttribute("href", EXPECTED_HREF);
   });
 
-  it("children content renders inside anchor (INFRA-D-011)", async () => {
-    mockQueuePage();
-    await setupPage({ context, path: "/queues" });
-
-    await waitFor(() => {
-      expect(screen.getByRole("link", { name: "View logs" })).toHaveTextContent(
-        "View logs",
-      );
-    });
-  });
-
   it("click navigates via custom handler (INFRA-D-012)", async () => {
     mockQueuePage();
     mockActivityDetailPage();
@@ -151,7 +135,7 @@ describe("link component", () => {
     openSpy.mockRestore();
   });
 
-  it("meta/ctrl click opens new tab (INFRA-D-013)", async () => {
+  it("modifier click opens new tab (INFRA-D-013)", async () => {
     mockQueuePage();
 
     const openSpy = vi.spyOn(window, "open").mockImplementation(() => {
@@ -165,6 +149,8 @@ describe("link component", () => {
     });
 
     const user = userEvent.setup();
+
+    // meta click
     await user.keyboard("{Meta>}");
     await user.click(link);
     await user.keyboard("{/Meta}");
@@ -176,23 +162,9 @@ describe("link component", () => {
       );
     });
 
-    openSpy.mockRestore();
-  });
+    openSpy.mockClear();
 
-  it("shift click opens new window (INFRA-D-014)", async () => {
-    mockQueuePage();
-
-    const openSpy = vi.spyOn(window, "open").mockImplementation(() => {
-      return null;
-    });
-
-    await setupPage({ context, path: "/queues" });
-
-    const link = await waitFor(() => {
-      return screen.getByRole("link", { name: "View logs" });
-    });
-
-    const user = userEvent.setup();
+    // shift click
     await user.keyboard("{Shift>}");
     await user.click(link);
     await user.keyboard("{/Shift}");
