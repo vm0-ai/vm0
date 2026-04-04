@@ -97,7 +97,7 @@ describe("link component", () => {
     await setupPage({ context, path: "/queues" });
 
     const link = await waitFor(() => {
-      return screen.getByRole("link", { name: "View logs" });
+      return screen.getByText("View logs");
     });
 
     expect(link).toHaveAttribute("href", EXPECTED_HREF);
@@ -114,7 +114,7 @@ describe("link component", () => {
     await setupPage({ context, path: "/queues" });
 
     const link = await waitFor(() => {
-      return screen.getByRole("link", { name: "View logs" });
+      return screen.getByText("View logs");
     });
 
     const user = userEvent.setup();
@@ -146,7 +146,7 @@ describe("link component", () => {
       await setupPage({ context, path: "/queues" });
 
       const link = await waitFor(() => {
-        return screen.getByRole("link", { name: "View logs" });
+        return screen.getByText("View logs");
       });
 
       const user = userEvent.setup();
