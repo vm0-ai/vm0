@@ -40,11 +40,11 @@ export async function setup() {
       .values(buildSeedSkillValues(allNames))
       .onConflictDoNothing();
 
-    const [{ count }] = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(skills);
+    const rows = await db.select({ count: sql<number>`count(*)` }).from(skills);
+    const seedCount = rows[0]?.count ?? 0;
+    const samples = await db.select({ url: skills.url }).from(skills).limit(1);
     console.log(
-      `[globalSetup] Skills seeded: ${count} rows, ${allNames.length} names`,
+      `[globalSetup] Skills seeded: ${seedCount} rows, ${allNames.length} names, sample url: ${samples[0]?.url}`,
     );
 
     // 2. Seed storage volumes
