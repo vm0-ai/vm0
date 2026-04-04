@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.150.2](https://github.com/vm0-ai/vm0/compare/core-v8.150.1...core-v8.150.2) (2026-04-04)
+
+
+### Refactoring
+
+* extract connector utils and schemas from connectors.ts ([#8165](https://github.com/vm0-ai/vm0/issues/8165)) ([36a2458](https://github.com/vm0-ai/vm0/commit/36a2458574416bf72862f5e24b88c099ba443fa0)), closes [#7833](https://github.com/vm0-ai/vm0/issues/7833)
+
 ## [8.150.1](https://github.com/vm0-ai/vm0/compare/core-v8.150.0...core-v8.150.1) (2026-04-04)
 
 

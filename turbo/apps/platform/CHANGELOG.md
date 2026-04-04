@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.187.5](https://github.com/vm0-ai/vm0/compare/app-v0.187.4...app-v0.187.5) (2026-04-04)
+
+
+### Performance Improvements
+
+* **platform:** add fill() test helper and enforce no-user-clear-tab lint rule ([#8168](https://github.com/vm0-ai/vm0/issues/8168)) ([c936530](https://github.com/vm0-ai/vm0/commit/c93653020efc65707362b33a8f5a5434e7d22317))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.150.2
+
 ## [0.187.4](https://github.com/vm0-ai/vm0/compare/app-v0.187.3...app-v0.187.4) (2026-04-04)
 
 
