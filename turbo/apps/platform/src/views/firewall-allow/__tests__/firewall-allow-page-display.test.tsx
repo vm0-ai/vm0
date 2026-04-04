@@ -221,9 +221,11 @@ describe("fw-d-013: PolicyPill shows allow state with check icon", () => {
     await waitFor(() => {
       expect(screen.getByText("issues:read")).toBeInTheDocument();
     });
-    expect(
-      screen.getByRole("button", { name: /Allow/, pressed: true }),
-    ).toBeInTheDocument();
+    const allowBtn = screen.getAllByRole("button").find((el) => {
+      return /Allow/.test(el.textContent ?? "");
+    });
+    expect(allowBtn).toBeDefined();
+    expect(allowBtn).toHaveAttribute("aria-pressed", "true");
   });
 });
 
@@ -242,9 +244,11 @@ describe("fw-d-014: PolicyPill shows deny state with ban icon", () => {
     await waitFor(() => {
       expect(screen.getByText("issues:read")).toBeInTheDocument();
     });
-    expect(
-      screen.getByRole("button", { name: /Deny/, pressed: true }),
-    ).toBeInTheDocument();
+    const denyBtn = screen.getAllByRole("button").find((el) => {
+      return /Deny/.test(el.textContent ?? "");
+    });
+    expect(denyBtn).toBeDefined();
+    expect(denyBtn).toHaveAttribute("aria-pressed", "true");
   });
 });
 
@@ -261,7 +265,15 @@ describe("fw-d-023: MemberFocusedView PolicyPill is read-only", () => {
     await waitFor(() => {
       expect(screen.getByText("issues:read")).toBeInTheDocument();
     });
-    expect(screen.getByRole("button", { name: /Allow/ })).toBeDisabled();
-    expect(screen.getByRole("button", { name: /Deny/ })).toBeDisabled();
+    expect(
+      screen.getAllByRole("button").find((el) => {
+        return /Allow/.test(el.textContent ?? "");
+      }),
+    ).toBeDisabled();
+    expect(
+      screen.getAllByRole("button").find((el) => {
+        return /Deny/.test(el.textContent ?? "");
+      }),
+    ).toBeDisabled();
   });
 });

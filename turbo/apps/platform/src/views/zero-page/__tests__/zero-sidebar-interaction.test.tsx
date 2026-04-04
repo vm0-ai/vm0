@@ -163,7 +163,8 @@ describe("zero sidebar - search input accepts text (SIDEBAR-D-015)", () => {
       expect(screen.getByText("First chat")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: "Search chats" }));
+    const searchChatsBtn1 = screen.getByLabelText("Search chats");
+    await user.click(searchChatsBtn1);
 
     const searchInput = screen.getByPlaceholderText(/Search chat with/);
     await user.type(searchInput, "hello");
@@ -188,14 +189,16 @@ describe("zero sidebar - clear search button resets search (SIDEBAR-D-016)", () 
       expect(screen.getByText("Second chat")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: "Search chats" }));
+    const searchChatsBtn2 = screen.getByLabelText("Search chats");
+    await user.click(searchChatsBtn2);
 
     const searchInput = screen.getByPlaceholderText(/Search chat with/);
     await user.type(searchInput, "First");
 
     expect(screen.queryByText("Second chat")).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Close search" }));
+    const closeSearchBtn = screen.getByLabelText("Close search");
+    await user.click(closeSearchBtn);
 
     await waitFor(() => {
       expect(screen.getByText("First chat")).toBeInTheDocument();
@@ -325,10 +328,13 @@ describe("zero sidebar - confirm delete removes thread (SIDEBAR-D-019)", () => {
       return screen.getByRole("dialog");
     });
 
-    const confirmButton = within(dialog).getByRole("button", {
-      name: "Delete",
-    });
-    await user.click(confirmButton);
+    const confirmButton = within(dialog)
+      .getAllByRole("button")
+      .find((el) => {
+        return el.textContent?.trim() === "Delete";
+      });
+    expect(confirmButton).toBeDefined();
+    await user.click(confirmButton!);
 
     await waitFor(() => {
       expect(screen.queryByText("First chat")).not.toBeInTheDocument();
@@ -372,7 +378,8 @@ describe("zero sidebar - sidebar collapse button hides sidebar (SIDEBAR-D-022)",
       ).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: "Collapse sidebar" }));
+    const collapseBtn = screen.getByLabelText("Collapse sidebar");
+    await user.click(collapseBtn);
 
     await waitFor(() => {
       expect(
@@ -380,9 +387,7 @@ describe("zero sidebar - sidebar collapse button hides sidebar (SIDEBAR-D-022)",
       ).not.toBeInTheDocument();
     });
 
-    expect(
-      screen.getByRole("button", { name: "Expand sidebar" }),
-    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Expand sidebar")).toBeDefined();
   });
 });
 

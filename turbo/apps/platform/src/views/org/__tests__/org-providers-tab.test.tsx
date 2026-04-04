@@ -144,10 +144,16 @@ describe("org providers tab - interaction", () => {
     await openProvidersPage();
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: /add provider/i }),
-      ).toBeInTheDocument();
+        screen.getAllByRole("button").find((el) => {
+          return /add provider/i.test(el.textContent ?? "");
+        }),
+      ).toBeDefined();
     });
-    await user.click(screen.getByRole("button", { name: /add provider/i }));
+    const addProviderBtn1 = screen.getAllByRole("button").find((el) => {
+      return /add provider/i.test(el.textContent ?? "");
+    });
+    expect(addProviderBtn1).toBeDefined();
+    await user.click(addProviderBtn1!);
     await waitFor(() => {
       expect(
         screen.getByText("Add workspace model provider"),
@@ -164,12 +170,16 @@ describe("org providers tab - interaction", () => {
     await openProvidersPage();
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: /Anthropic API key/i }),
-      ).toBeInTheDocument();
+        screen.getAllByRole("button").find((el) => {
+          return /Anthropic API key/i.test(el.textContent ?? "");
+        }),
+      ).toBeDefined();
     });
-    await user.click(
-      screen.getByRole("button", { name: /Anthropic API key/i }),
-    );
+    const anthropicBtn = screen.getAllByRole("button").find((el) => {
+      return /Anthropic API key/i.test(el.textContent ?? "");
+    });
+    expect(anthropicBtn).toBeDefined();
+    await user.click(anthropicBtn!);
     await waitFor(() => {
       expect(
         screen.getByText(/Edit workspace Anthropic API key/i),
@@ -234,11 +244,10 @@ describe("org providers tab - interaction", () => {
     });
     await openProvidersPage();
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /more options/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByLabelText("More options")).toBeInTheDocument();
     });
-    await user.click(screen.getByRole("button", { name: /more options/i }));
+    const moreOptionsBtn1 = screen.getByLabelText("More options");
+    await user.click(moreOptionsBtn1);
     await waitFor(() => {
       expect(screen.getByText("Edit")).toBeInTheDocument();
       expect(screen.getByText("Delete")).toBeInTheDocument();
@@ -254,10 +263,16 @@ describe("org add provider dialog - display", () => {
     await openProvidersPage();
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: /add provider/i }),
-      ).toBeInTheDocument();
+        screen.getAllByRole("button").find((el) => {
+          return /add provider/i.test(el.textContent ?? "");
+        }),
+      ).toBeDefined();
     });
-    await user.click(screen.getByRole("button", { name: /add provider/i }));
+    const addProviderBtn2 = screen.getAllByRole("button").find((el) => {
+      return /add provider/i.test(el.textContent ?? "");
+    });
+    expect(addProviderBtn2).toBeDefined();
+    await user.click(addProviderBtn2!);
     await waitFor(() => {
       expect(
         screen.getByText("Add workspace model provider"),
@@ -283,8 +298,10 @@ describe("org add provider dialog - display", () => {
     await openProvidersPage();
     await waitFor(() => {
       expect(
-        screen.queryByRole("button", { name: /add provider/i }),
-      ).not.toBeInTheDocument();
+        screen.queryAllByRole("button").find((el) => {
+          return /add provider/i.test(el.textContent ?? "");
+        }),
+      ).toBeUndefined();
     });
   });
 });
@@ -297,10 +314,16 @@ describe("org add provider dialog - interaction", () => {
     await openProvidersPage();
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: /add provider/i }),
-      ).toBeInTheDocument();
+        screen.getAllByRole("button").find((el) => {
+          return /add provider/i.test(el.textContent ?? "");
+        }),
+      ).toBeDefined();
     });
-    await user.click(screen.getByRole("button", { name: /add provider/i }));
+    const addProviderBtn3 = screen.getAllByRole("button").find((el) => {
+      return /add provider/i.test(el.textContent ?? "");
+    });
+    expect(addProviderBtn3).toBeDefined();
+    await user.click(addProviderBtn3!);
     await waitFor(() => {
       expect(
         screen.getByTestId("org-provider-card-anthropic-api-key"),
@@ -324,11 +347,10 @@ describe("org delete provider dialog - display", () => {
     });
     await openProvidersPage();
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /more options/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByLabelText("More options")).toBeInTheDocument();
     });
-    await user.click(screen.getByRole("button", { name: /more options/i }));
+    const moreOptionsBtn2 = screen.getByLabelText("More options");
+    await user.click(moreOptionsBtn2);
     await waitFor(() => {
       expect(screen.getByText("Delete")).toBeInTheDocument();
     });
@@ -348,11 +370,10 @@ describe("org delete provider dialog - display", () => {
 
 async function openDeleteDialog(user: ReturnType<typeof userEvent.setup>) {
   await waitFor(() => {
-    expect(
-      screen.getByRole("button", { name: /more options/i }),
-    ).toBeInTheDocument();
+    expect(screen.getByLabelText("More options")).toBeInTheDocument();
   });
-  await user.click(screen.getByRole("button", { name: /more options/i }));
+  const moreOptionsBtn = screen.getByLabelText("More options");
+  await user.click(moreOptionsBtn);
   await waitFor(() => {
     expect(screen.getByText("Delete")).toBeInTheDocument();
   });
@@ -375,7 +396,11 @@ describe("org delete provider dialog - interaction", () => {
     });
     await openProvidersPage();
     await openDeleteDialog(user);
-    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    const cancelBtn = screen.getAllByRole("button").find((el) => {
+      return el.textContent?.trim() === "Cancel";
+    });
+    expect(cancelBtn).toBeDefined();
+    await user.click(cancelBtn!);
     await waitFor(() => {
       expect(
         screen.queryByText(
@@ -404,11 +429,17 @@ describe("org delete provider dialog - interaction", () => {
     );
     await openProvidersPage();
     await openDeleteDialog(user);
-    await user.click(screen.getByRole("button", { name: "Delete" }));
+    const deleteBtn = screen.getAllByRole("button").find((el) => {
+      return el.textContent?.trim() === "Delete";
+    });
+    expect(deleteBtn).toBeDefined();
+    await user.click(deleteBtn!);
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: "Deleting..." }),
-      ).toBeInTheDocument();
+        screen.getAllByRole("button").find((el) => {
+          return el.textContent?.trim() === "Deleting...";
+        }),
+      ).toBeDefined();
     });
     resolveDelete();
     await deletePromise;

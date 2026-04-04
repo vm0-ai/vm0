@@ -156,14 +156,21 @@ async function switchToCalendarView(user: ReturnType<typeof userEvent.setup>) {
   // Wait for the page to finish loading (schedule list or empty state is visible)
   await waitFor(() => {
     const hasScheduled =
-      screen.queryAllByRole("button", { name: /More actions for/ }).length > 0;
+      screen.queryAllByLabelText(/More actions for/i).length > 0;
     const hasEmpty = screen.queryByText("No runs scheduled") !== null;
-    const hasTab = screen.queryByRole("tab", { name: /Calendar/i }) !== null;
+    const hasTab =
+      screen.queryAllByRole("tab").find((el) => {
+        return /Calendar/i.test(el.textContent ?? "");
+      }) !== undefined;
     if (!hasTab || (!hasScheduled && !hasEmpty)) {
       throw new Error("page not loaded");
     }
   });
-  await user.click(screen.getByRole("tab", { name: /Calendar/i }));
+  const calendarTab = screen.getAllByRole("tab").find((el) => {
+    return /Calendar/i.test(el.textContent ?? "");
+  });
+  expect(calendarTab).toBeDefined();
+  await user.click(calendarTab!);
   await waitFor(() => {
     expect(
       screen.getByRole("heading", { name: "Week view" }),
@@ -179,9 +186,7 @@ describe("schedule calendar view - schedule entries in cells (SCHED-D-068)", () 
     await switchToCalendarView(user);
 
     await waitFor(() => {
-      expect(
-        screen.getAllByRole("button", { name: /Morning briefing/i })[0],
-      ).toBeInTheDocument();
+      expect(screen.getAllByLabelText(/Morning briefing/i)[0]).toBeDefined();
     });
   });
 });
@@ -209,12 +214,8 @@ describe("schedule calendar view - agent labels with color coding (SCHED-D-069)"
     await switchToCalendarView(user);
 
     await waitFor(() => {
-      expect(
-        screen.getAllByRole("button", { name: /Alpha:/i })[0],
-      ).toBeInTheDocument();
-      expect(
-        screen.getAllByRole("button", { name: /Beta:/i })[0],
-      ).toBeInTheDocument();
+      expect(screen.getAllByLabelText(/Alpha:/i)[0]).toBeDefined();
+      expect(screen.getAllByLabelText(/Beta:/i)[0]).toBeDefined();
     });
   });
 });
@@ -234,9 +235,7 @@ describe("schedule calendar view - loop/monthly/once sections (SCHED-D-071)", ()
       ).toBeInTheDocument();
       expect(screen.getByRole("heading", { name: "Once" })).toBeInTheDocument();
       // Each section renders exactly one edit button for its single entry
-      expect(screen.getAllByRole("button", { name: /^Edit /i })).toHaveLength(
-        3,
-      );
+      expect(screen.getAllByLabelText(/^Edit /i)).toHaveLength(3);
     });
   });
 });
@@ -249,12 +248,8 @@ describe("schedule calendar view - mobile single day view (SCHED-D-072)", () => 
     await switchToCalendarView(user);
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Previous day" }),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByRole("button", { name: "Next day" }),
-      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Previous day")).toBeDefined();
+      expect(screen.getByLabelText("Next day")).toBeDefined();
     });
   });
 });
@@ -271,7 +266,8 @@ describe("schedule calendar view - previous day navigation (SCHED-D-075)", () =>
     });
     const initialLabel = navBar.textContent;
 
-    await user.click(screen.getByRole("button", { name: "Previous day" }));
+    const prevDayBtn = screen.getByLabelText("Previous day");
+    await user.click(prevDayBtn);
 
     await waitFor(() => {
       expect(navBar.textContent).not.toBe(initialLabel);
@@ -291,7 +287,8 @@ describe("schedule calendar view - next day navigation (SCHED-D-076)", () => {
     });
     const initialLabel = navBar.textContent;
 
-    await user.click(screen.getByRole("button", { name: "Next day" }));
+    const nextDayBtn = screen.getByLabelText("Next day");
+    await user.click(nextDayBtn);
 
     await waitFor(() => {
       expect(navBar.textContent).not.toBe(initialLabel);
@@ -309,8 +306,8 @@ describe("schedule calendar view - entry popover on hover (SCHED-D-077)", () => 
     await setupPage({ context, path: "/schedules" });
     await switchToCalendarView(user);
 
-    const entryBtn = await screen.findByRole("button", {
-      name: /Morning briefing/i,
+    const entryBtn = await waitFor(() => {
+      return screen.getAllByLabelText(/Morning briefing/i)[0];
     });
     await user.hover(entryBtn);
 
@@ -329,8 +326,10 @@ describe("schedule calendar view - double-click opens edit (SCHED-D-078)", () =>
     await setupPage({ context, path: "/schedules" });
     await switchToCalendarView(user);
 
-    const entryBtns = await screen.findAllByRole("button", {
-      name: /Morning briefing/i,
+    const entryBtns = await waitFor(() => {
+      const btns = screen.getAllByLabelText(/Morning briefing/i);
+      expect(btns.length).toBeGreaterThan(0);
+      return btns;
     });
     await user.dblClick(entryBtns[0]);
 
@@ -350,8 +349,8 @@ describe("schedule calendar view - edit button in popover (SCHED-D-079)", () => 
     await setupPage({ context, path: "/schedules" });
     await switchToCalendarView(user);
 
-    const entryBtn = await screen.findByRole("button", {
-      name: /Morning briefing/i,
+    const entryBtn = await waitFor(() => {
+      return screen.getAllByLabelText(/Morning briefing/i)[0];
     });
 
     // Hover the entry button to open the popover, then immediately move the
@@ -359,8 +358,8 @@ describe("schedule calendar view - edit button in popover (SCHED-D-079)", () => 
     // own onMouseEnter handler, and click the edit button.
     await user.hover(entryBtn);
 
-    const editBtn = await screen.findByRole("button", {
-      name: /Edit Every week/i,
+    const editBtn = await waitFor(() => {
+      return screen.getByLabelText(/Edit Every week/i);
     });
     await user.pointer({ target: editBtn, keys: "[MouseLeft]" });
 

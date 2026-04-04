@@ -148,7 +148,11 @@ describe("chat-i-079: threshold input updates form state on change", () => {
     await user.clear(thresholdInput);
     await user.type(thresholdInput, "2000");
 
-    await user.click(screen.getByRole("button", { name: "Save" }));
+    const saveBtn1 = screen.getAllByRole("button").find((el) => {
+      return el.textContent?.trim() === "Save";
+    });
+    expect(saveBtn1).toBeDefined();
+    await user.click(saveBtn1!);
 
     await waitFor(() => {
       expect(capturedBody).toMatchObject({ threshold: 2000 });
@@ -190,7 +194,11 @@ describe("chat-i-080: amount input updates form state on change", () => {
     await user.clear(amountInput);
     await user.type(amountInput, "20000");
 
-    await user.click(screen.getByRole("button", { name: "Save" }));
+    const saveBtn2 = screen.getAllByRole("button").find((el) => {
+      return el.textContent?.trim() === "Save";
+    });
+    expect(saveBtn2).toBeDefined();
+    await user.click(saveBtn2!);
 
     await waitFor(() => {
       expect(capturedBody).toMatchObject({ amount: 20_000 });
@@ -225,10 +233,18 @@ describe("chat-i-081: save button saves auto-recharge settings", () => {
     await openBillingDialogAndWait();
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
+      expect(
+        screen.getAllByRole("button").find((el) => {
+          return el.textContent?.trim() === "Save";
+        }),
+      ).toBeDefined();
     });
 
-    await user.click(screen.getByRole("button", { name: "Save" }));
+    const saveBtn3 = screen.getAllByRole("button").find((el) => {
+      return el.textContent?.trim() === "Save";
+    });
+    expect(saveBtn3).toBeDefined();
+    await user.click(saveBtn3!);
 
     await waitFor(() => {
       expect(capturedBody).toMatchObject({
@@ -239,7 +255,11 @@ describe("chat-i-081: save button saves auto-recharge settings", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled();
+      expect(
+        screen.getAllByRole("button").find((el) => {
+          return el.textContent?.trim() === "Save";
+        }),
+      ).not.toBeDisabled();
     });
   });
 });
@@ -258,16 +278,17 @@ describe("chat-i-082: plan card click updates selected tier", () => {
     await openBillingDialogAndWait();
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /^Team$/i })).toHaveAttribute(
+      expect(screen.getByLabelText("Team")).toHaveAttribute(
         "aria-pressed",
         "false",
       );
     });
 
-    await user.click(screen.getByRole("button", { name: /^Team$/i }));
+    const teamBtn1 = screen.getByLabelText("Team");
+    await user.click(teamBtn1);
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /^Team$/i })).toHaveAttribute(
+      expect(screen.getByLabelText("Team")).toHaveAttribute(
         "aria-pressed",
         "true",
       );
@@ -299,20 +320,25 @@ describe("chat-i-083: upgrade/downgrade button triggers plan change action", () 
     await openBillingDialogAndWait();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /^Team$/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Team")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: /^Team$/i }));
+    const teamBtn2 = screen.getByLabelText("Team");
+    await user.click(teamBtn2);
 
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: /Upgrade to Team/i }),
-      ).toBeInTheDocument();
+        screen.getAllByRole("button").find((el) => {
+          return /Upgrade to Team/i.test(el.textContent ?? "");
+        }),
+      ).toBeDefined();
     });
 
-    await user.click(screen.getByRole("button", { name: /Upgrade to Team/i }));
+    const upgradeBtn1 = screen.getAllByRole("button").find((el) => {
+      return /Upgrade to Team/i.test(el.textContent ?? "");
+    });
+    expect(upgradeBtn1).toBeDefined();
+    await user.click(upgradeBtn1!);
 
     await waitFor(() => {
       expect(capturedCheckoutBody).toMatchObject({ tier: "team" });
@@ -332,20 +358,25 @@ describe("chat-i-083: upgrade/downgrade button triggers plan change action", () 
     await openBillingDialogAndWait();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /^Free$/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Free")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: /^Free$/i }));
+    const freeBtn1 = screen.getByLabelText("Free");
+    await user.click(freeBtn1);
 
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: /^Downgrade$/i }),
-      ).toBeInTheDocument();
+        screen.getAllByRole("button").find((el) => {
+          return /^Downgrade$/i.test(el.textContent ?? "");
+        }),
+      ).toBeDefined();
     });
 
-    await user.click(screen.getByRole("button", { name: /^Downgrade$/i }));
+    const downgradeBtn = screen.getAllByRole("button").find((el) => {
+      return /^Downgrade$/i.test(el.textContent ?? "");
+    });
+    expect(downgradeBtn).toBeDefined();
+    await user.click(downgradeBtn!);
 
     await waitFor(() => {
       expect(context.store.get(downgradeDialogOpen$)).toBeTruthy();

@@ -175,7 +175,8 @@ describe("zero sidebar - search results filter (SIDEBAR-D-003)", () => {
       ).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: "Search chats" }));
+    const searchChatsBtn1 = screen.getByLabelText("Search chats");
+    await user.click(searchChatsBtn1);
     const searchInput = screen.getByPlaceholderText(/Search chat with/);
     await user.type(searchInput, "deploy");
 
@@ -211,7 +212,8 @@ describe("zero sidebar - search term displays in input (SIDEBAR-D-004)", () => {
       ).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: "Search chats" }));
+    const searchChatsBtn2 = screen.getByLabelText("Search chats");
+    await user.click(searchChatsBtn2);
     const searchInput = screen.getByPlaceholderText(/Search chat with/);
     await user.type(searchInput, "deploy");
 
@@ -305,7 +307,12 @@ describe("zero sidebar - active tab indicator (SIDEBAR-D-007)", () => {
 
     await waitFor(() => {
       const nav = getSidebar();
-      const agentsLink = within(nav).getByRole("link", { name: "Agents" });
+      const agentsLink = within(nav)
+        .getAllByRole("link")
+        .find((el) => {
+          return el.textContent?.trim() === "Agents";
+        });
+      expect(agentsLink).toBeDefined();
       expect(agentsLink).toHaveAttribute("aria-current", "page");
     });
   });
@@ -387,8 +394,10 @@ describe("zero sidebar - Slack scope mismatch indicator (SIDEBAR-D-009)", () => 
 
     await waitFor(() => {
       expect(
-        screen.getByRole("link", { name: /Where Zero works/i }),
-      ).toBeInTheDocument();
+        screen.getAllByRole("link").find((el) => {
+          return /Where Zero works/i.test(el.textContent ?? "");
+        }),
+      ).toBeDefined();
     });
 
     // The mismatch badge should be present in the sidebar
@@ -404,9 +413,7 @@ describe("zero sidebar - new chat button enabled/disabled state (SIDEBAR-D-010)"
     await setupPage({ context, path: "/" });
 
     await waitFor(() => {
-      const newChatButton = screen.getByRole("button", {
-        name: /New chat with/i,
-      });
+      const newChatButton = screen.getByLabelText(/New chat with/i);
       expect(newChatButton).not.toBeDisabled();
     });
   });
@@ -435,19 +442,16 @@ describe("zero sidebar - new chat button enabled/disabled state (SIDEBAR-D-010)"
     await setupPage({ context, path: "/" });
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /New chat with/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByLabelText(/New chat with/i)).toBeDefined();
     });
 
     // Trigger new chat creation
-    await user.click(screen.getByRole("button", { name: /New chat with/i }));
+    const newChatBtn = screen.getByLabelText(/New chat with/i);
+    await user.click(newChatBtn);
 
     // Button should become disabled while POST is in flight
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /New chat with/i }),
-      ).toBeDisabled();
+      expect(screen.getByLabelText(/New chat with/i)).toBeDisabled();
     });
 
     deferred.resolve();

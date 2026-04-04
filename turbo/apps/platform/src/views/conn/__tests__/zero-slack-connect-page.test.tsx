@@ -111,7 +111,10 @@ describe("zero-slack-connect-page - back to settings link (CONN-N-055)", () => {
     await setupPage({ context, path: "/settings/slack?w=ws1&u=u1" });
 
     await waitFor(() => {
-      const link = screen.getByRole("link", { name: /Back to settings/i });
+      const link = screen.getAllByRole("link").find((el) => {
+        return /Back to settings/i.test(el.textContent ?? "");
+      });
+      expect(link).toBeDefined();
       expect(link).toHaveAttribute("href", "/works");
     });
   });
@@ -140,7 +143,11 @@ describe("zero-slack-connect-page - connect button (CONN-I-056)", () => {
     await setupPage({ context, path: "/settings/slack?w=ws1&u=u1" });
 
     const connectButton = await waitFor(() => {
-      return screen.getByRole("button", { name: /^Connect$/i });
+      const btn = screen.getAllByRole("button").find((el) => {
+        return /^Connect$/i.test(el.textContent ?? "");
+      });
+      expect(btn).toBeDefined();
+      return btn!;
     });
 
     await user.click(connectButton);
@@ -163,7 +170,11 @@ describe("zero-slack-connect-page - open slack button on success (CONN-I-057)", 
     await setupPage({ context, path: "/settings/slack?w=ws1&u=u1" });
 
     const openSlackBtn = await waitFor(() => {
-      return screen.getByRole("button", { name: /Open Slack/i });
+      const btn = screen.getAllByRole("button").find((el) => {
+        return /Open Slack/i.test(el.textContent ?? "");
+      });
+      expect(btn).toBeDefined();
+      return btn!;
     });
 
     await user.click(openSlackBtn);

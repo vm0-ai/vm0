@@ -126,19 +126,35 @@ describe("chat-s-070: Loading state disables Save button during save", () => {
     await openBillingDialogAndWait();
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
+      expect(
+        screen.getAllByRole("button").find((el) => {
+          return el.textContent?.trim() === "Save";
+        }),
+      ).toBeDefined();
     });
 
-    await user.click(screen.getByRole("button", { name: "Save" }));
+    const saveBtn1 = screen.getAllByRole("button").find((el) => {
+      return el.textContent?.trim() === "Save";
+    });
+    expect(saveBtn1).toBeDefined();
+    await user.click(saveBtn1!);
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Saving..." })).toBeDisabled();
+      expect(
+        screen.getAllByRole("button").find((el) => {
+          return el.textContent?.trim() === "Saving...";
+        }),
+      ).toBeDisabled();
     });
 
     resolveSave();
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled();
+      expect(
+        screen.getAllByRole("button").find((el) => {
+          return el.textContent?.trim() === "Save";
+        }),
+      ).not.toBeDisabled();
     });
   });
 });
@@ -201,7 +217,8 @@ describe("chat-d-072-073: BillingDialog renders status.tier and credit count", (
       const dialog = screen.getByRole("dialog");
       // Check aria-current badge on the Pro plan card indicates current tier
       const currentBadge = within(dialog).getByText(/^Current$/);
-      const proPlanCard = screen.getByRole("button", { name: /^Pro$/i });
+      const proPlanCard = screen.getByLabelText("Pro");
+      expect(proPlanCard).toBeInTheDocument();
       expect(proPlanCard).toContainElement(currentBadge);
       // Check 20,000 credits are shown in the dialog description (locale-formatted)
       const description = within(dialog).getByText(
@@ -226,7 +243,7 @@ describe("chat-d-075: Selected plan ring highlight renders on chosen PlanCard", 
     await openBillingDialogAndWait();
 
     await waitFor(() => {
-      const teamButton = screen.getByRole("button", { name: /^Team$/i });
+      const teamButton = screen.getByLabelText("Team");
       expect(teamButton).toHaveAttribute("aria-pressed", "true");
     });
   });
@@ -246,17 +263,18 @@ describe("chat-c-076: Button text changes based on isUpgrade/isDowngrade determi
     await openBillingDialogAndWait();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /^Team$/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Team")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: /^Team$/i }));
+    const teamBtn1 = screen.getByLabelText("Team");
+    await user.click(teamBtn1);
 
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: /Upgrade to Team/i }),
-      ).toBeInTheDocument();
+        screen.getAllByRole("button").find((el) => {
+          return /Upgrade to Team/i.test(el.textContent ?? "");
+        }),
+      ).toBeDefined();
     });
   });
 
@@ -273,17 +291,18 @@ describe("chat-c-076: Button text changes based on isUpgrade/isDowngrade determi
     await openBillingDialogAndWait();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /^Free$/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Free")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: /^Free$/i }));
+    const freeBtn1 = screen.getByLabelText("Free");
+    await user.click(freeBtn1);
 
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: /^Downgrade$/i }),
-      ).toBeInTheDocument();
+        screen.getAllByRole("button").find((el) => {
+          return /^Downgrade$/i.test(el.textContent ?? "");
+        }),
+      ).toBeDefined();
     });
   });
 });
@@ -317,24 +336,31 @@ describe("chat-c-077: Action button is disabled during redirect", () => {
     await openBillingDialogAndWait();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /^Team$/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Team")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: /^Team$/i }));
+    const teamBtn2 = screen.getByLabelText("Team");
+    await user.click(teamBtn2);
 
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: /Upgrade to Team/i }),
-      ).toBeInTheDocument();
+        screen.getAllByRole("button").find((el) => {
+          return /Upgrade to Team/i.test(el.textContent ?? "");
+        }),
+      ).toBeDefined();
     });
 
-    await user.click(screen.getByRole("button", { name: /Upgrade to Team/i }));
+    const upgradeBtn1 = screen.getAllByRole("button").find((el) => {
+      return /Upgrade to Team/i.test(el.textContent ?? "");
+    });
+    expect(upgradeBtn1).toBeDefined();
+    await user.click(upgradeBtn1!);
 
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: /Redirecting/i }),
+        screen.getAllByRole("button").find((el) => {
+          return /Redirecting/i.test(el.textContent ?? "");
+        }),
       ).toBeDisabled();
     });
 
@@ -342,7 +368,9 @@ describe("chat-c-077: Action button is disabled during redirect", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: /Upgrade to Team/i }),
+        screen.getAllByRole("button").find((el) => {
+          return /Upgrade to Team/i.test(el.textContent ?? "");
+        }),
       ).not.toBeDisabled();
     });
   });

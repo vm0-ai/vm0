@@ -118,13 +118,13 @@ describe("scope review modal - display", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: "Reconnect" }),
-      ).toBeInTheDocument();
+        screen.getAllByRole("button").find((el) => {
+          return el.textContent?.trim() === "Reconnect";
+        }),
+      ).toBeDefined();
     });
     const dialog = screen.getByRole("dialog");
-    const closeButtons = within(dialog).getAllByRole("button", {
-      name: "Close",
-    });
+    const closeButtons = within(dialog).getAllByRole("button");
     const textCloseButton = closeButtons.find((btn) => {
       return btn.textContent?.trim() === "Close";
     });
@@ -154,8 +154,10 @@ describe("scope review modal - states", () => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
     expect(
-      screen.queryByRole("button", { name: "Reconnect" }),
-    ).not.toBeInTheDocument();
+      screen.queryAllByRole("button").find((el) => {
+        return el.textContent?.trim() === "Reconnect";
+      }),
+    ).toBeUndefined();
   });
 
   it("error state shows dialog without Reconnect button (CONN-C-038)", async () => {
@@ -180,8 +182,10 @@ describe("scope review modal - states", () => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
     expect(
-      screen.queryByRole("button", { name: "Reconnect" }),
-    ).not.toBeInTheDocument();
+      screen.queryAllByRole("button").find((el) => {
+        return el.textContent?.trim() === "Reconnect";
+      }),
+    ).toBeUndefined();
   });
 });
 
@@ -200,12 +204,18 @@ describe("scope review modal - interactions", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: "Reconnect" }),
-      ).toBeInTheDocument();
+        screen.getAllByRole("button").find((el) => {
+          return el.textContent?.trim() === "Reconnect";
+        }),
+      ).toBeDefined();
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Reconnect" }));
+    const reconnectBtn = screen.getAllByRole("button").find((el) => {
+      return el.textContent?.trim() === "Reconnect";
+    });
+    expect(reconnectBtn).toBeDefined();
+    await user.click(reconnectBtn!);
 
     await waitFor(() => {
       expect(openSpy).toHaveBeenCalledWith(
@@ -230,9 +240,7 @@ describe("scope review modal - interactions", () => {
 
     const user = userEvent.setup();
     const dialog = screen.getByRole("dialog");
-    const closeButtons = within(dialog).getAllByRole("button", {
-      name: "Close",
-    });
+    const closeButtons = within(dialog).getAllByRole("button");
     const textCloseButton = closeButtons.find((btn) => {
       return btn.textContent?.trim() === "Close";
     });

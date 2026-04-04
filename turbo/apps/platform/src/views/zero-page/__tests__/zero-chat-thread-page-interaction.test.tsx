@@ -54,7 +54,7 @@ describe("zero chat thread page - agent avatar link navigation", () => {
     await setupPage({ context, path: `/chats/${THREAD_ID}` });
 
     const link = await waitFor(() => {
-      return screen.getByRole("link", { name: "View agent profile" });
+      return screen.getByLabelText("View agent profile");
     });
 
     await user.click(link);
@@ -95,12 +95,10 @@ describe("zero chat thread page - sub-agents link navigation", () => {
     await setupPage({ context, path: `/chats/${THREAD_ID}` });
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("link", { name: "Sub-agents" }),
-      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Sub-agents")).toBeInTheDocument();
     });
 
-    const link = screen.getByRole("link", { name: "Sub-agents" });
+    const link = screen.getByLabelText("Sub-agents");
     await user.click(link);
 
     await waitFor(() => {
@@ -277,7 +275,7 @@ describe("zero chat thread page - view activity logs link", () => {
       expect(screen.getByText("Hello world")).toBeInTheDocument();
     });
 
-    const logLink = screen.getByRole("link", { name: "View run logs" });
+    const logLink = screen.getByLabelText("View run logs");
     await user.click(logLink);
 
     await waitFor(() => {
@@ -304,7 +302,7 @@ describe("zero chat thread page - file attachment download does not navigate awa
     await setupPage({ context, path: `/chats/${THREAD_ID}` });
 
     const downloadLink = await waitFor(() => {
-      return screen.getByRole("link", { name: "document.pdf" });
+      return screen.getByTitle("document.pdf");
     });
 
     const initialPathname = pathname();
