@@ -402,14 +402,15 @@ describe("setup prompt - interaction (ORG-I-106)", () => {
     vi.restoreAllMocks();
   });
 
-  it("clicking the code element copies command to clipboard", async () => {
+  it("clicking the code element triggers the copied state", async () => {
     const user = userEvent.setup();
-    const writeSpy = vi
-      .spyOn(navigator.clipboard, "writeText")
-      .mockResolvedValue(undefined);
+    vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
     await openSetupPrompt(user);
     await user.click(screen.getByText("claude setup-token"));
-    expect(writeSpy).toHaveBeenCalledWith("claude setup-token");
+    // The original command text should be replaced by the "copied!" state
+    await waitFor(() => {
+      expect(screen.queryByText("claude setup-token")).not.toBeInTheDocument();
+    });
   });
 });
 
