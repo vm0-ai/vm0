@@ -178,5 +178,10 @@ RUN curl -s https://packages.stripe.dev/api/security/keypair/stripe-cli-gpg/publ
     && apt-get install -y --no-install-recommends stripe \
     && rm -rf /var/lib/apt/lists/*
 
+# Install tmux for terminal multiplexing
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    tmux \
+    && rm -rf /var/lib/apt/lists/*
+
 # Default command
 CMD ["/usr/bin/zsh"]
