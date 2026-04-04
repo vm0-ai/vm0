@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.187.3](https://github.com/vm0-ai/vm0/compare/app-v0.187.2...app-v0.187.3) (2026-04-04)
+
+
+### Bug Fixes
+
+* **test:** wrap openspy in try/finally to prevent spy leak on assertion failure ([#8142](https://github.com/vm0-ai/vm0/issues/8142)) ([88c39bd](https://github.com/vm0-ai/vm0/commit/88c39bdd9555a187778e4bd3d6ef6c38d12c9ee6))
+
 ## [0.187.2](https://github.com/vm0-ai/vm0/compare/app-v0.187.1...app-v0.187.2) (2026-04-04)
 
 

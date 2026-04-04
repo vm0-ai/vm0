@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.192.5](https://github.com/vm0-ai/vm0/compare/web-v12.192.4...web-v12.192.5) (2026-04-04)
+
+
+### Bug Fixes
+
+* resolve computer-use re-registration endpoint conflict ([#8145](https://github.com/vm0-ai/vm0/issues/8145)) ([746abef](https://github.com/vm0-ai/vm0/commit/746abef75df4af8e54650f41b2e6a6223721f258))
+
 ## [12.192.4](https://github.com/vm0-ai/vm0/compare/web-v12.192.3...web-v12.192.4) (2026-04-04)
 
 
