@@ -154,9 +154,10 @@ describe("zero-slack-connect-page - connect button (CONN-I-056)", () => {
   });
 });
 
-// CONN-I-057: Open Slack button appears on success
+// CONN-I-057: Open Slack button navigates to slack://open on click
 describe("zero-slack-connect-page - open slack button on success (CONN-I-057)", () => {
-  it("shows an Open Slack button when already connected and it is clickable", async () => {
+  it("clicking Open Slack button sets window.location.href to slack://open", async () => {
+    const user = userEvent.setup();
     // Use isConnected: true via mock API to get success state without URL-triggered redirect
     setMockSlackConnectData({ isConnected: true });
     await setupPage({ context, path: "/settings/slack?w=ws1&u=u1" });
@@ -164,7 +165,9 @@ describe("zero-slack-connect-page - open slack button on success (CONN-I-057)", 
     const openSlackBtn = await waitFor(() => {
       return screen.getByRole("button", { name: /Open Slack/i });
     });
-    expect(openSlackBtn).toBeInTheDocument();
-    expect(openSlackBtn).toBeEnabled();
+
+    await user.click(openSlackBtn);
+
+    expect(window.location.href).toBe("slack://open");
   });
 });
