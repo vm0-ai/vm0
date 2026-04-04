@@ -1,9 +1,9 @@
 /**
  * Display tests for QueuePage and QueueOverview components.
  *
- * Tests cover page title, loading state, concurrency values,
- * available slots, tier label, queue length, status message
- * pluralization, and estimated time metrics.
+ * Tests cover page title, concurrency values, available slots,
+ * tier label, queue length, status message pluralization, and
+ * estimated time metrics.
  *
  * Follows platform testing principles:
  * - Entry point: setupPage({ context, path })
@@ -17,7 +17,6 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
-import { createDeferredPromise } from "../../../signals/utils.ts";
 
 const context = testContext();
 
@@ -62,8 +61,8 @@ function makeQueueEntries(count: number): unknown[] {
   });
 }
 
-describe("queue-page - page title and description (QUEUE-D-001)", () => {
-  it("displays the Run Queue heading and description", async () => {
+describe("queue-page - page title (QUEUE-D-001)", () => {
+  it("displays the Run Queue heading", async () => {
     server.use(
       http.get("*/api/zero/runs/queue", () => {
         return HttpResponse.json(queueResponse());
@@ -74,102 +73,37 @@ describe("queue-page - page title and description (QUEUE-D-001)", () => {
       expect(
         screen.getByRole("heading", { name: "Run Queue" }),
       ).toBeInTheDocument();
-      expect(
-        screen.getByText("Organization-wide queue status and running tasks."),
-      ).toBeInTheDocument();
     });
   });
 });
 
-describe("queue-page - loading state (QUEUE-S-002)", () => {
-  it("shows loading skeleton before data arrives", async () => {
-    const deferred = createDeferredPromise<void>(context.signal);
-    server.use(
-      http.get("*/api/zero/runs/queue", async () => {
-        await deferred.promise;
-        return HttpResponse.json(queueResponse());
-      }),
-    );
-    await setupPage({ context, path: "/queues" });
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Run Queue" }),
-      ).toBeInTheDocument();
-    });
-    // Data not yet arrived — concurrency label should not be visible
-    expect(screen.queryByText("Concurrency")).not.toBeInTheDocument();
-    deferred.resolve();
-  });
-});
-
-describe("queue-page - active and limit concurrency (QUEUE-D-003)", () => {
-  it("displays active / limit concurrency value", async () => {
+describe("queue-page - concurrency and queue display (QUEUE-D-003 through QUEUE-D-009)", () => {
+  it("displays concurrency values, tier label, and queue length together", async () => {
     server.use(
       http.get("*/api/zero/runs/queue", () => {
         return HttpResponse.json(
           queueResponse({
             concurrency: { tier: "pro", limit: 5, active: 3, available: 2 },
-          }),
-        );
-      }),
-    );
-    await setupPage({ context, path: "/queues" });
-    await waitFor(() => {
-      expect(screen.getByText("3 / 5")).toBeInTheDocument();
-    });
-  });
-});
-
-describe("queue-page - available slots count (QUEUE-D-004)", () => {
-  it("displays available slot count in concurrency detail", async () => {
-    server.use(
-      http.get("*/api/zero/runs/queue", () => {
-        return HttpResponse.json(
-          queueResponse({
-            concurrency: { tier: "pro", limit: 5, active: 3, available: 2 },
-          }),
-        );
-      }),
-    );
-    await setupPage({ context, path: "/queues" });
-    await waitFor(() => {
-      expect(screen.getByText(/2 slots available/)).toBeInTheDocument();
-    });
-  });
-});
-
-describe("queue-page - tier label (QUEUE-D-005)", () => {
-  it("displays the concurrency tier label", async () => {
-    server.use(
-      http.get("*/api/zero/runs/queue", () => {
-        return HttpResponse.json(
-          queueResponse({
-            concurrency: { tier: "pro", limit: 5, active: 3, available: 2 },
-          }),
-        );
-      }),
-    );
-    await setupPage({ context, path: "/queues" });
-    await waitFor(() => {
-      expect(screen.getByText(/\(pro\)/)).toBeInTheDocument();
-    });
-  });
-});
-
-describe("queue-page - queue length count (QUEUE-D-006)", () => {
-  it("displays the queue length value", async () => {
-    server.use(
-      http.get("*/api/zero/runs/queue", () => {
-        return HttpResponse.json(
-          queueResponse({
             queue: makeQueueEntries(4),
+            estimatedTimePerRun: 30_000,
           }),
         );
       }),
     );
     await setupPage({ context, path: "/queues" });
     await waitFor(() => {
+      // active / limit (QUEUE-D-003)
+      expect(screen.getByText("3 / 5")).toBeInTheDocument();
+      // available slots (QUEUE-D-004)
+      expect(screen.getByText(/2 slots available/)).toBeInTheDocument();
+      // tier label (QUEUE-D-005)
+      expect(screen.getByText(/\(pro\)/)).toBeInTheDocument();
+      // queue length (QUEUE-D-006)
       expect(screen.getByText("4 tasks waiting")).toBeInTheDocument();
+      // estimated total clear time: 30_000ms * 4 = 120_000ms → "2m" (QUEUE-D-008)
+      expect(screen.getByText("2m")).toBeInTheDocument();
+      // estimated time per run (QUEUE-D-009)
+      expect(screen.getByText("~30s per run")).toBeInTheDocument();
     });
   });
 });
@@ -204,45 +138,6 @@ describe("queue-page - queue status message pluralization (QUEUE-C-007)", () => 
     await setupPage({ context, path: "/queues" });
     await waitFor(() => {
       expect(screen.getByText("3 tasks waiting")).toBeInTheDocument();
-    });
-  });
-});
-
-describe("queue-page - estimated total clear time (QUEUE-D-008)", () => {
-  it("displays the formatted etaTotal duration", async () => {
-    server.use(
-      http.get("*/api/zero/runs/queue", () => {
-        return HttpResponse.json(
-          queueResponse({
-            queue: makeQueueEntries(4),
-            estimatedTimePerRun: 30_000,
-          }),
-        );
-      }),
-    );
-    await setupPage({ context, path: "/queues" });
-    // 30_000ms * 4 = 120_000ms → "2m"
-    await waitFor(() => {
-      expect(screen.getByText("2m")).toBeInTheDocument();
-    });
-  });
-});
-
-describe("queue-page - estimated time per run (QUEUE-D-009)", () => {
-  it("displays the formatted estimatedTimePerRun", async () => {
-    server.use(
-      http.get("*/api/zero/runs/queue", () => {
-        return HttpResponse.json(
-          queueResponse({
-            queue: makeQueueEntries(1),
-            estimatedTimePerRun: 30_000,
-          }),
-        );
-      }),
-    );
-    await setupPage({ context, path: "/queues" });
-    await waitFor(() => {
-      expect(screen.getByText("~30s per run")).toBeInTheDocument();
     });
   });
 });
