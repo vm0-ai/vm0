@@ -21,9 +21,6 @@ import {
   insertTestCreditUsageForRun,
   insertTestSandboxTelemetry,
   findTestSandboxTelemetry,
-  seedSeedSkills,
-  seedSeedSkillStorages,
-  clearSkillsData,
   createTestSchedule,
   enableTestSchedule,
   createTestSessionWithConversation,
@@ -155,8 +152,6 @@ function putAgentInstructions(
 describe("Zero Agents API", () => {
   beforeEach(async () => {
     context.setupMocks();
-    await clearSkillsData();
-    await seedSeedSkills();
     user = await context.setupUser();
     testCliToken = await createTestCliToken(user.userId);
   });
@@ -236,16 +231,6 @@ describe("Zero Agents API", () => {
         name: "custom-skill@data-tool",
         version: "latest",
       });
-    });
-
-    it("should return 422 when skills are not cached", async () => {
-      await clearSkillsData();
-
-      const response = await postAgent({}, testCliToken);
-
-      expect(response.status).toBe(422);
-      const data = await response.json();
-      expect(data.error.code).toBe("UNPROCESSABLE_ENTITY");
     });
 
     it("should return 401 without auth", async () => {
@@ -1444,7 +1429,6 @@ describe("Zero Agents API", () => {
       // Regression: serverSideCompose was called without instructions param,
       // so agent-instructions storage was never created. Schedule runs then
       // failed with "Storage agent-instructions@<id> not found".
-      await seedSeedSkillStorages();
       await createTestOrgModelProvider("anthropic-api-key", "test-key");
 
       // 1. Create agent via POST /api/zero/agents

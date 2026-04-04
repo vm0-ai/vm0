@@ -6,8 +6,6 @@ import {
   createTestRequest,
   createTestCliToken,
   insertOrgMembersCacheEntry,
-  seedSeedSkills,
-  clearSkillsData,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
@@ -60,8 +58,6 @@ function putPolicies(
 describe("PUT /api/zero/firewall-policies", () => {
   beforeEach(async () => {
     context.setupMocks();
-    await clearSkillsData();
-    await seedSeedSkills();
     const user = await context.setupUser();
     testUserId = user.userId;
     testOrgId = user.orgId;

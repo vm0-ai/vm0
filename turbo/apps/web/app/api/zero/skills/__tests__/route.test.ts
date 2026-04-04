@@ -9,7 +9,6 @@ import {
 import {
   createTestRequest,
   createTestCliToken,
-  seedSeedSkills,
   bindCustomSkillToAgent,
   seedTestCompose,
   getAgentCustomSkills,
@@ -120,7 +119,6 @@ function mockSkillContent(
 describe("Zero Skills API (org-level)", () => {
   beforeEach(async () => {
     context.setupMocks();
-    await seedSeedSkills();
     user = await context.setupUser();
     testCliToken = await createTestCliToken(user.userId);
   });
