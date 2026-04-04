@@ -256,35 +256,28 @@ mod tests {
     }
 
     #[test]
-    fn mask_string_no_match() {
+    fn mask_value_mixed_json_tree() {
         let masker = SecretMasker {
             patterns: vec!["secret".to_string()],
         };
-        let result = masker.mask_string("no match here");
-        assert_eq!(result, "no match here");
-    }
-
-    #[test]
-    fn mask_value_leaves_non_string_types_unchanged() {
-        let masker = SecretMasker {
-            patterns: vec!["secret".to_string()],
-        };
-        let mut val = json!({"num": 42, "bool": true, "null": null});
+        let mut val = json!({
+            "token": "my secret key",
+            "num": 42,
+            "bool": true,
+            "null": null,
+            "list": ["no match", "has secret here"],
+            "nested": {"deep": "another secret value"}
+        });
         masker.mask_value(&mut val);
+        // Strings containing "secret" are masked
+        assert_eq!(val["token"], "my *** key");
+        assert_eq!(val["list"][1], "has *** here");
+        assert_eq!(val["nested"]["deep"], "another *** value");
+        // Non-string types and non-matching strings are untouched
         assert_eq!(val["num"], 42);
         assert_eq!(val["bool"], true);
         assert!(val["null"].is_null());
-    }
-
-    #[test]
-    fn mask_value_masks_array_elements() {
-        let masker = SecretMasker {
-            patterns: vec!["secret".to_string()],
-        };
-        let mut val = json!(["no match", "has secret here"]);
-        masker.mask_value(&mut val);
-        assert_eq!(val[0], "no match");
-        assert_eq!(val[1], "has *** here");
+        assert_eq!(val["list"][0], "no match");
     }
 
     #[test]
