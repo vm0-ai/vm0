@@ -6,7 +6,7 @@
  * Real (internal): signals, components, rendering
  */
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -14,6 +14,10 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 const context = testContext();
 
@@ -147,5 +151,113 @@ describe("directed connect page", () => {
 
     const logoLink = screen.getByLabelText("VM0");
     expect(logoLink.closest("a")).toHaveAttribute("href", "/connectors");
+  });
+
+  it("shows error toast when api token submission fails (CONN-D-045)", async () => {
+    const user = userEvent.setup();
+
+    server.use(
+      http.post("*/api/zero/secrets", () => {
+        return HttpResponse.json(
+          { error: { message: "Invalid API token", code: "UNAUTHORIZED" } },
+          { status: 401 },
+        );
+      }),
+    );
+
+    await setupPage({ context, path: "/connectors/axiom/connect" });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Connect" }),
+      ).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Connect" }));
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("xaat-...")).toBeInTheDocument();
+    });
+
+    await user.type(screen.getByPlaceholderText("xaat-..."), "bad-token");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Invalid API token")).toBeInTheDocument();
+    });
+  });
+
+  it("connect button opens OAuth flow for OAuth-enabled connector (CONN-I-047)", async () => {
+    const user = userEvent.setup();
+    const openSpy = vi
+      .spyOn(window, "open")
+      .mockReturnValue({ closed: true } as Window);
+
+    await setupPage({ context, path: "/connectors/gmail/connect" });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Connect" }),
+      ).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Connect" }));
+
+    expect(openSpy).toHaveBeenCalledWith(
+      expect.stringContaining("/api/zero/connectors/gmail/authorize"),
+      "_blank",
+      expect.any(String),
+    );
+  });
+
+  it("save button submits the api token to the server (CONN-I-049)", async () => {
+    const user = userEvent.setup();
+    let capturedBody: { name: string; value: string } | undefined;
+
+    server.use(
+      http.post("*/api/zero/secrets", async ({ request }) => {
+        capturedBody = (await request.json()) as {
+          name: string;
+          value: string;
+        };
+        return HttpResponse.json(
+          {
+            id: crypto.randomUUID(),
+            name: capturedBody.name,
+            type: "user",
+            description: null,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+          { status: 201 },
+        );
+      }),
+    );
+
+    await setupPage({ context, path: "/connectors/axiom/connect" });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Connect" }),
+      ).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "Connect" }));
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("xaat-...")).toBeInTheDocument();
+    });
+
+    await user.type(
+      screen.getByPlaceholderText("xaat-..."),
+      "test-token-value",
+    );
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(capturedBody).toBeDefined();
+      expect(capturedBody?.name).toBe("AXIOM_TOKEN");
+      expect(capturedBody?.value).toBe("test-token-value");
+    });
   });
 });
