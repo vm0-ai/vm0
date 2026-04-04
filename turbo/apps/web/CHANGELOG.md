@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.192.2](https://github.com/vm0-ai/vm0/compare/web-v12.192.1...web-v12.192.2) (2026-04-04)
+
+
+### Bug Fixes
+
+* sanitize underscores in full org id for all ngrok domain names ([#8111](https://github.com/vm0-ai/vm0/issues/8111)) ([83abffc](https://github.com/vm0-ai/vm0/commit/83abffcc4f61ca0615e2010ed959e146265a98b7))
+
 ## [12.192.1](https://github.com/vm0-ai/vm0/compare/web-v12.192.0...web-v12.192.1) (2026-04-04)
 
 
