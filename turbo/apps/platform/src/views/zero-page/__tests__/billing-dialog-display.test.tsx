@@ -2,7 +2,7 @@
  * Display and conditional tests for billing-dialog.tsx.
  *
  * Covers AutoRechargeSection (dialog variant) and BillingDialog display rendering.
- * Entry point: setupPage({ path: "/" }) + context.store.set(openBillingDialog$)
+ * Entry point: setupPage({ path: "/" }) + context.store.set(setBillingDialogOpen$, true)
  */
 import { describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
@@ -12,7 +12,7 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import { setMockBillingStatus } from "../../../mocks/handlers/api-billing.ts";
-import { openBillingDialog$ } from "../../../signals/zero-page/billing.ts";
+import { setBillingDialogOpen$ } from "../../../signals/zero-page/billing.ts";
 import { setSelectedPlanTier$ } from "../../../signals/zero-page/billing-dialog-state.ts";
 
 const context = testContext();
@@ -43,7 +43,7 @@ function mockAPIs() {
 }
 
 async function openBillingDialogAndWait() {
-  context.store.set(openBillingDialog$);
+  context.store.set(setBillingDialogOpen$, true);
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
