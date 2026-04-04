@@ -5,7 +5,7 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { fill, setupPage } from "../../../__tests__/page-helper.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 
 const context = testContext();
@@ -583,8 +583,7 @@ describe("zero schedule page - create dialog", () => {
 
     // Fill in prompt
     const promptInput = screen.getByLabelText("Prompt");
-    await user.clear(promptInput);
-    await user.type(promptInput, "Daily standup summary");
+    await fill(promptInput, "Daily standup summary");
 
     // Click Create
     await user.click(screen.getByText("Create"));
@@ -794,8 +793,7 @@ describe("zero schedule page - create dialog confirm close", () => {
     });
 
     const promptInput = screen.getByLabelText("Prompt");
-    await user.clear(promptInput);
-    await user.type(promptInput, "Some new task");
+    await fill(promptInput, "Some new task");
 
     await user.click(screen.getByText("Cancel"));
 
@@ -892,8 +890,7 @@ describe("zero schedule page - schedule dialog fields", () => {
       ).toBeInTheDocument();
     });
 
-    await user.clear(screen.getByLabelText("Prompt"));
-    await user.type(screen.getByLabelText("Prompt"), "Do something");
+    await fill(screen.getByLabelText("Prompt"), "Do something");
 
     expect(screen.getByText("Create")).toBeEnabled();
   });
@@ -934,8 +931,7 @@ describe("zero schedule page - schedule dialog fields", () => {
       ).toBeInTheDocument();
     });
 
-    await user.clear(screen.getByLabelText("Prompt"));
-    await user.type(screen.getByLabelText("Prompt"), "Some task");
+    await fill(screen.getByLabelText("Prompt"), "Some task");
 
     await user.click(screen.getByText("Create"));
 
@@ -1038,8 +1034,7 @@ describe("zero schedule page - create dialog timezone default", () => {
       ).toBeInTheDocument();
     });
 
-    await user.clear(screen.getByLabelText("Prompt"));
-    await user.type(screen.getByLabelText("Prompt"), "Daily task");
+    await fill(screen.getByLabelText("Prompt"), "Daily task");
     await user.click(screen.getByText("Create"));
 
     await waitFor(() => {
@@ -1082,8 +1077,7 @@ describe("zero schedule page - create dialog timezone default", () => {
       ).toBeInTheDocument();
     });
 
-    await user.clear(screen.getByLabelText("Prompt"));
-    await user.type(screen.getByLabelText("Prompt"), "Daily task");
+    await fill(screen.getByLabelText("Prompt"), "Daily task");
     await user.click(screen.getByText("Create"));
 
     await waitFor(() => {

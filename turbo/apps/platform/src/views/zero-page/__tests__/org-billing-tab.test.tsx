@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { fill, setupPage } from "../../../__tests__/page-helper.ts";
 import { setMockBillingStatus } from "../../../mocks/handlers/api-billing.ts";
 
 const context = testContext();
@@ -360,11 +360,9 @@ describe("org billing tab - auto-recharge section", () => {
       /auto-recharge credit amount in credits/i,
     );
 
-    await user.clear(thresholdInput);
-    await user.type(thresholdInput, "2000");
-    await user.clear(amountInput);
-    await user.type(amountInput, "10000");
-    await user.tab();
+    await fill(thresholdInput, "2000");
+    await fill(amountInput, "10000");
+    amountInput.blur();
 
     await waitFor(() => {
       expect(capturedBody).toStrictEqual({
@@ -376,7 +374,6 @@ describe("org billing tab - auto-recharge section", () => {
   });
 
   it("should send correct data when saving auto-recharge config", async () => {
-    const user = userEvent.setup();
     let capturedBody: unknown = null;
     server.use(
       http.put("*/api/zero/billing/auto-recharge", async ({ request }) => {
@@ -414,9 +411,8 @@ describe("org billing tab - auto-recharge section", () => {
     });
 
     // Change threshold and blur to trigger save
-    await user.clear(thresholdInput);
-    await user.type(thresholdInput, "3000");
-    await user.tab();
+    await fill(thresholdInput, "3000");
+    thresholdInput.blur();
 
     await waitFor(() => {
       expect(capturedBody).toStrictEqual({

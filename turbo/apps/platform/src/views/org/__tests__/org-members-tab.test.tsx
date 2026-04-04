@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { fill, setupPage } from "../../../__tests__/page-helper.ts";
 import type {
   OrgMember,
   OrgPendingInvitation,
@@ -147,15 +147,13 @@ test("shows current user indicator on the current user row", async () => {
 
 // ORG-C-028
 test("shows empty state when no members match search", async () => {
-  const user = userEvent.setup();
   mockMembersAPI({ members: [regularMember] });
   await renderMembersTab();
   await waitFor(() => {
     expect(screen.getByText("Regular Member")).toBeInTheDocument();
   });
   const searchInput = screen.getByPlaceholderText("Search");
-  await user.clear(searchInput);
-  await user.type(searchInput, "xyz-no-match");
+  await fill(searchInput, "xyz-no-match");
   await waitFor(() => {
     expect(screen.queryByText("Regular Member")).not.toBeInTheDocument();
     expect(screen.getByText("No members found")).toBeInTheDocument();
@@ -164,7 +162,6 @@ test("shows empty state when no members match search", async () => {
 
 // ORG-I-029
 test("filters member list when search input is used", async () => {
-  const user = userEvent.setup();
   mockMembersAPI({ members: [adminMember, regularMember] });
   await renderMembersTab();
   await waitFor(() => {
@@ -172,8 +169,7 @@ test("filters member list when search input is used", async () => {
     expect(screen.getByText("member@example.com")).toBeInTheDocument();
   });
   const searchInput = screen.getByPlaceholderText("Search");
-  await user.clear(searchInput);
-  await user.type(searchInput, "admin");
+  await fill(searchInput, "admin");
   await waitFor(() => {
     expect(screen.getByText("admin@example.com")).toBeInTheDocument();
     expect(screen.queryByText("member@example.com")).not.toBeInTheDocument();
@@ -230,8 +226,7 @@ test("sends invite with typed email when Send invitation is clicked", async () =
     ).toBeInTheDocument();
   });
   const emailInput = screen.getByPlaceholderText("email@example.com");
-  await user.clear(emailInput);
-  await user.type(emailInput, "test@invite.com");
+  await fill(emailInput, "test@invite.com");
   const sendButton031 = screen.getAllByRole("button").find((el) => {
     return el.textContent === "Send invitation";
   });
@@ -272,8 +267,7 @@ test("sends invite with Admin role when Admin is selected in role dropdown", asy
     ).toBeInTheDocument();
   });
   const emailInput = screen.getByPlaceholderText("email@example.com");
-  await user.clear(emailInput);
-  await user.type(emailInput, "newadmin@example.com");
+  await fill(emailInput, "newadmin@example.com");
   await user.click(screen.getByRole("combobox"));
   await waitFor(() => {
     expect(screen.getByRole("option", { name: "Admin" })).toBeInTheDocument();

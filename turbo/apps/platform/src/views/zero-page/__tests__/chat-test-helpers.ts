@@ -3,6 +3,7 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import type { AgentEvent } from "../../../signals/zero-page/log-types.ts";
 import type { SummaryEntry } from "@vm0/core";
+import { fill } from "../../../__tests__/page-helper.ts";
 
 export const PLACEHOLDER = "Ask me to automate workflows, manage tasks...";
 
@@ -56,8 +57,7 @@ export async function sendMessageInUI(
   textarea: HTMLTextAreaElement,
   text: string,
 ): Promise<void> {
-  await user.clear(textarea);
-  await user.type(textarea, text);
+  await fill(textarea, text);
   await user.keyboard("{Enter}");
 }
 

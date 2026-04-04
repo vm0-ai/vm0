@@ -6,7 +6,7 @@ import userEvent, {
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { fill, setupPage } from "../../../__tests__/page-helper.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 
 const context = testContext();
@@ -200,8 +200,7 @@ describe("schedule dialog - save error (SCHED-D-047)", () => {
     );
     await openCreateDialog(user);
     const promptInput = screen.getByLabelText("Prompt");
-    await user.clear(promptInput);
-    await user.type(promptInput, "My task");
+    await fill(promptInput, "My task");
     await user.click(screen.getByText("Create"));
     await waitFor(() => {
       expect(screen.getByText(/HTTP 500/i)).toBeInTheDocument();
@@ -221,8 +220,7 @@ describe("schedule dialog - loading state (SCHED-D-048)", () => {
     const user = userEvent.setup();
     await openCreateDialog(user);
     const promptInput = screen.getByLabelText("Prompt");
-    await user.clear(promptInput);
-    await user.type(promptInput, "My task");
+    await fill(promptInput, "My task");
     await user.click(screen.getByText("Create"));
     await waitFor(() => {
       expect(screen.getByText("Creating\u2026")).toBeInTheDocument();
@@ -486,8 +484,7 @@ describe("schedule dialog - save button (SCHED-D-063)", () => {
     const user = userEvent.setup();
     await openCreateDialog(user);
     const promptInput = screen.getByLabelText("Prompt");
-    await user.clear(promptInput);
-    await user.type(promptInput, "My task");
+    await fill(promptInput, "My task");
     await user.click(screen.getByText("Create"));
     await waitFor(() => {
       expect(captured).toBeTruthy();

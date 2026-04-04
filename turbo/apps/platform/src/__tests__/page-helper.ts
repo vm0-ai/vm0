@@ -1,5 +1,6 @@
 import { createElement, type ReactNode } from "react";
 import { render } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { command, type Store } from "ccstate";
 import { StoreProvider } from "ccstate-react";
 import type { TestContext } from "../signals/__tests__/test-helpers";
@@ -159,6 +160,18 @@ export function createPushStateMock(signal: AbortSignal) {
   mockReplaceState(replaceFn, signal);
 
   return fn;
+}
+
+/**
+ * Fast input helper: selects all existing content then types the new value.
+ * Uses `delay: null` to skip per-keystroke timeouts — same events, zero delay.
+ * Use this instead of `user.clear() + user.type()`.
+ */
+export async function fill(element: Element, value: string): Promise<void> {
+  const fastUser = userEvent.setup({ delay: null });
+  await fastUser.click(element);
+  await fastUser.keyboard("{Control>}a{/Control}");
+  await fastUser.keyboard(value);
 }
 
 function createTestStoreProvider(store: Store) {

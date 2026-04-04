@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { fill, setupPage } from "../../../__tests__/page-helper.ts";
 
 const context = testContext();
 
@@ -77,13 +77,11 @@ describe("org general tab - profile section", () => {
   });
 
   it("should show save/discard buttons when slug is changed", async () => {
-    const user = userEvent.setup();
     mockAPIs({ slug: "old-slug" });
     await openGeneralTab();
 
     const slugInput = await screen.findByDisplayValue("old-slug");
-    await user.clear(slugInput);
-    await user.type(slugInput, "new-slug");
+    await fill(slugInput, "new-slug");
 
     expect(screen.getByText("Save changes")).toBeInTheDocument();
     expect(screen.getByText("Discard")).toBeInTheDocument();
@@ -95,8 +93,7 @@ describe("org general tab - profile section", () => {
     await openGeneralTab();
 
     const slugInput = await screen.findByDisplayValue("original-slug");
-    await user.clear(slugInput);
-    await user.type(slugInput, "changed-slug");
+    await fill(slugInput, "changed-slug");
 
     expect(screen.getByDisplayValue("changed-slug")).toBeInTheDocument();
 
@@ -124,8 +121,7 @@ describe("org general tab - profile section", () => {
     await openGeneralTab();
 
     const slugInput = await screen.findByDisplayValue("old-slug");
-    await user.clear(slugInput);
-    await user.type(slugInput, "new-slug");
+    await fill(slugInput, "new-slug");
 
     await user.click(screen.getByText("Save changes"));
 
@@ -157,10 +153,8 @@ describe("org general tab - profile section", () => {
     const nameInput = await screen.findByDisplayValue("Old Name");
     const slugInput = screen.getByDisplayValue("old-slug");
 
-    await user.clear(nameInput);
-    await user.type(nameInput, "New Name");
-    await user.clear(slugInput);
-    await user.type(slugInput, "new-slug");
+    await fill(nameInput, "New Name");
+    await fill(slugInput, "new-slug");
 
     await user.click(screen.getByText("Save changes"));
 
@@ -193,8 +187,7 @@ describe("org general tab - profile section", () => {
     await openGeneralTab();
 
     const slugInput = await screen.findByDisplayValue("old-slug");
-    await user.clear(slugInput);
-    await user.type(slugInput, "taken-slug");
+    await fill(slugInput, "taken-slug");
 
     await user.click(screen.getByText("Save changes"));
 
@@ -223,8 +216,7 @@ describe("org general tab - profile section", () => {
     await openGeneralTab();
 
     const slugInput = await screen.findByDisplayValue("old-slug");
-    await user.clear(slugInput);
-    await user.type(slugInput, "taken-slug");
+    await fill(slugInput, "taken-slug");
 
     await user.click(screen.getByText("Save changes"));
 
@@ -272,8 +264,7 @@ describe("org general tab - profile section", () => {
     await openGeneralTab();
 
     const nameInput = await screen.findByDisplayValue("Old Name");
-    await user.clear(nameInput);
-    await user.type(nameInput, "New Name");
+    await fill(nameInput, "New Name");
 
     await user.click(screen.getByText("Save changes"));
 

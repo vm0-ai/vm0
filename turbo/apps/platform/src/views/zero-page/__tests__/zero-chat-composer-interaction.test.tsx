@@ -5,7 +5,7 @@ import { http, HttpResponse } from "msw";
 import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { fill, setupPage } from "../../../__tests__/page-helper.ts";
 import {
   mockChatLifecycle,
   sendMessageInUI,
@@ -63,7 +63,6 @@ function mockConnectors() {
 describe("zero chat composer - textarea interaction", () => {
   // CHAT-I-022
   it("updates textarea value to reflect typed text", async () => {
-    const user = userEvent.setup();
     mockChatLifecycle();
 
     await setupPage({ context, path: CHAT_PATH });
@@ -72,8 +71,7 @@ describe("zero chat composer - textarea interaction", () => {
       return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
     });
 
-    await user.clear(textarea);
-    await user.type(textarea, "Hello world");
+    await fill(textarea, "Hello world");
 
     expect(textarea.value).toBe("Hello world");
   });
@@ -234,8 +232,7 @@ describe("zero chat composer - send and stop actions", () => {
       return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
     });
 
-    await user.clear(textarea);
-    await user.type(textarea, "Hello");
+    await fill(textarea, "Hello");
 
     const sendButton = await waitFor(() => {
       return screen.getByLabelText("Send");
@@ -337,8 +334,7 @@ describe("zero chat composer - add connectors dialog", () => {
     });
 
     // Type a filter that won't match GitHub
-    await user.clear(searchInput);
-    await user.type(searchInput, "Slack");
+    await fill(searchInput, "Slack");
 
     await waitFor(() => {
       expect(screen.queryByLabelText("Connect GitHub")).not.toBeInTheDocument();

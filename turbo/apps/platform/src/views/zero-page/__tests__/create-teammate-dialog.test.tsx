@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { fill, setupPage } from "../../../__tests__/page-helper.ts";
 
 const context = testContext();
 
@@ -195,8 +195,7 @@ describe("create agent dialog - avatar", () => {
     await openCreateDialog(user);
 
     const input = screen.getByPlaceholderText("e.g. Research Assistant");
-    await user.clear(input);
-    await user.type(input, "My New Agent");
+    await fill(input, "My New Agent");
     await user.click(screen.getByText("Create"));
 
     await waitFor(() => {
@@ -267,8 +266,7 @@ describe("create agent dialog - avatar", () => {
 
     // Fill name and create
     const input = screen.getByPlaceholderText("e.g. Research Assistant");
-    await user.clear(input);
-    await user.type(input, "Custom Avatar Agent");
+    await fill(input, "Custom Avatar Agent");
     await user.click(screen.getByText("Create"));
 
     await waitFor(() => {
@@ -321,8 +319,7 @@ describe("create agent dialog - avatar", () => {
     await openCreateDialog(user);
 
     const input = screen.getByPlaceholderText("e.g. Research Assistant");
-    await user.clear(input);
-    await user.type(input, "Enter Agent");
+    await fill(input, "Enter Agent");
     await user.keyboard("{Enter}");
 
     await waitFor(() => {

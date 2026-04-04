@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { fill, setupPage } from "../../../__tests__/page-helper.ts";
 import { getCategories } from "../zero-ideation-data.ts";
 
 const context = testContext();
@@ -142,7 +142,6 @@ describe("zero chat page - composer", () => {
   });
 
   it("should enable Send button when input has text", async () => {
-    const user = userEvent.setup();
     await renderChatPage();
 
     const textarea = await waitFor(() => {
@@ -151,8 +150,7 @@ describe("zero chat page - composer", () => {
       );
     });
 
-    await user.clear(textarea);
-    await user.type(textarea, "Hello");
+    await fill(textarea, "Hello");
 
     await waitFor(() => {
       expect(screen.getByLabelText("Send")).not.toBeDisabled();
@@ -264,8 +262,7 @@ describe("zero chat page - connectors popover", () => {
     });
 
     // Type a filter that won't match GitHub
-    await user.clear(searchInput);
-    await user.type(searchInput, "Slack");
+    await fill(searchInput, "Slack");
 
     await waitFor(() => {
       expect(screen.queryByLabelText("Connect GitHub")).not.toBeInTheDocument();

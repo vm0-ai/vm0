@@ -50,6 +50,7 @@ import noEmptyPromiseCatch from "./rules/no-empty-promise-catch.ts";
 import noTestDelay from "./rules/no-test-delay.ts";
 import requireAccept from "./rules/require-accept.ts";
 import noGetByRoleName from "./rules/no-get-by-role-name.ts";
+import noUserClearTab from "./rules/no-user-clear-tab.ts";
 
 const plugin = {
   meta: {
@@ -81,6 +82,7 @@ const plugin = {
     "no-test-delay": noTestDelay,
     "require-accept": requireAccept,
     "no-get-by-role-name": noGetByRoleName,
+    "no-user-clear-tab": noUserClearTab,
   },
 };
 

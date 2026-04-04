@@ -82,6 +82,7 @@ export default [
       "ccstate/prefer-user-event": "error",
       "ccstate/no-test-delay": "error",
       "ccstate/no-get-by-role-name": "error",
+      "ccstate/no-user-clear-tab": "error",
       "no-restricted-syntax": [
         "error",
         {

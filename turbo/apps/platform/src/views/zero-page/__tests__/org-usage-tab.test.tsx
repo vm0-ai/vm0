@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { fill, setupPage } from "../../../__tests__/page-helper.ts";
 import { setMockBillingStatus } from "../../../mocks/handlers/api-billing.ts";
 
 const context = testContext();
@@ -205,7 +205,6 @@ describe("org usage tab - member usage table", () => {
 
 describe("org usage tab - inline cap editing", () => {
   it("should allow setting a credit cap via inline input", async () => {
-    const user = userEvent.setup();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -237,9 +236,8 @@ describe("org usage tab - inline cap editing", () => {
     expect(capInput).toBeInTheDocument();
 
     // Type a cap value and commit by blurring
-    await user.clear(capInput);
-    await user.type(capInput, "5000");
-    await user.tab();
+    await fill(capInput, "5000");
+    capInput.blur();
 
     // Wait for save to complete
     await waitFor(() => {
@@ -276,8 +274,7 @@ describe("org usage tab - inline cap editing", () => {
     });
 
     const capInput = screen.getByRole("spinbutton");
-    await user.clear(capInput);
-    await user.type(capInput, "3000");
+    await fill(capInput, "3000");
     await user.keyboard("{Enter}");
 
     await waitFor(() => {

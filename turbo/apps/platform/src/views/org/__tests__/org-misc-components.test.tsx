@@ -23,7 +23,7 @@ import {
 } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { fill, setupPage } from "../../../__tests__/page-helper.ts";
 
 const context = testContext();
 
@@ -68,11 +68,9 @@ describe("internal connector logos - display (ORG-D-118)", () => {
         0,
       );
     });
-    // Verify that all connector type keys appear somewhere in the document
+    // All connectors are rendered at once, so sync checks suffice after the first waitFor
     for (const type of connectorTypes) {
-      await waitFor(() => {
-        expect(screen.queryAllByText(type).length).toBeGreaterThan(0);
-      });
+      expect(screen.queryAllByText(type).length).toBeGreaterThan(0);
     }
   });
 });
@@ -241,14 +239,12 @@ async function openScheduleSettings() {
 
 describe("zero unsaved bar - display (ORG-D-111)", () => {
   it("shows unsaved changes indicator when settings are changed", async () => {
-    const user = userEvent.setup();
     await openScheduleSettings();
     // Modify the description input to trigger unsaved state
     const descInput = screen.getByPlaceholderText(
       "Leave blank to auto-generate",
     );
-    await user.clear(descInput);
-    await user.type(descInput, "New description");
+    await fill(descInput, "New description");
     // ZeroUnsavedBar appears with Save/Discard buttons when there are unsaved changes
     await waitFor(() => {
       expect(
@@ -278,8 +274,7 @@ describe("zero unsaved bar - display (ORG-D-112)", () => {
     const descInput = screen.getByPlaceholderText(
       "Leave blank to auto-generate",
     );
-    await user.clear(descInput);
-    await user.type(descInput, "New description");
+    await fill(descInput, "New description");
     await waitFor(() => {
       expect(
         screen.getAllByRole("button").find((el) => {
@@ -313,8 +308,7 @@ describe("zero unsaved bar - interaction (ORG-I-113)", () => {
     );
     // Original value from schedule (description is "A test description", but the form
     // shows it via schedule.description. Let's clear and type a new value)
-    await user.clear(descInput);
-    await user.type(descInput, "Changed description");
+    await fill(descInput, "Changed description");
     await waitFor(() => {
       expect(
         screen.getAllByRole("button").find((el) => {
@@ -352,8 +346,7 @@ describe("zero unsaved bar - interaction (ORG-I-114)", () => {
     const descInput = screen.getByPlaceholderText(
       "Leave blank to auto-generate",
     );
-    await user.clear(descInput);
-    await user.type(descInput, "New description");
+    await fill(descInput, "New description");
     await waitFor(() => {
       expect(
         screen.getAllByRole("button").find((el) => {

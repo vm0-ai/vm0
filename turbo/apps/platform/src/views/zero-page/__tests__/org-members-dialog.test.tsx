@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { fill, setupPage } from "../../../__tests__/page-helper.ts";
 import type { OrgMember } from "../../../signals/external/org-members.ts";
 
 const context = testContext();
@@ -92,8 +92,7 @@ describe("org members - invite dialog loading state", () => {
     });
 
     const emailInput = screen.getByPlaceholderText("email@example.com");
-    await user.clear(emailInput);
-    await user.type(emailInput, "new@example.com");
+    await fill(emailInput, "new@example.com");
     await user.click(screen.getByText("Send invitation"));
 
     // Should show loading state while dialog stays open
@@ -150,8 +149,7 @@ describe("org members - invite dialog loading state", () => {
     });
 
     const emailInput = screen.getByPlaceholderText("email@example.com");
-    await user.clear(emailInput);
-    await user.type(emailInput, "new@example.com");
+    await fill(emailInput, "new@example.com");
     await user.click(screen.getByText("Send invitation"));
 
     await waitFor(() => {
@@ -230,8 +228,7 @@ describe("org members - invite dialog role selector", () => {
 
     // Fill email
     const emailInput = screen.getByPlaceholderText("email@example.com");
-    await user.clear(emailInput);
-    await user.type(emailInput, "new-admin@example.com");
+    await fill(emailInput, "new-admin@example.com");
 
     // Change role to Admin
     await user.click(screen.getByRole("combobox"));

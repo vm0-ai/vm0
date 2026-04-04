@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { fill, setupPage } from "../../../__tests__/page-helper.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import { refreshOrg$ } from "../../../signals/org.ts";
 
@@ -139,8 +139,7 @@ describe("org general tab - display", () => {
     );
     await openGeneralTab();
     const slugInput = await screen.findByDisplayValue("old-slug");
-    await user.clear(slugInput);
-    await user.type(slugInput, "taken-slug");
+    await fill(slugInput, "taken-slug");
     await user.click(screen.getByText("Save changes"));
     await waitFor(() => {
       expect(screen.getByText("Slug already taken")).toBeInTheDocument();
@@ -173,23 +172,19 @@ describe("org general tab - interaction", () => {
 
   // ORG-I-015
   it("name input field is editable", async () => {
-    const user = userEvent.setup();
     mockAPIs({ name: "Old Name" });
     await openGeneralTab();
     const nameInput = await screen.findByDisplayValue("Old Name");
-    await user.clear(nameInput);
-    await user.type(nameInput, "New Name");
+    await fill(nameInput, "New Name");
     expect(screen.getByDisplayValue("New Name")).toBeInTheDocument();
   });
 
   // ORG-I-016
   it("slug input field is editable", async () => {
-    const user = userEvent.setup();
     mockAPIs({ slug: "old-slug" });
     await openGeneralTab();
     const slugInput = await screen.findByDisplayValue("old-slug");
-    await user.clear(slugInput);
-    await user.type(slugInput, "new-slug");
+    await fill(slugInput, "new-slug");
     expect(screen.getByDisplayValue("new-slug")).toBeInTheDocument();
   });
 
@@ -222,8 +217,7 @@ describe("org general tab - interaction", () => {
     );
     await openGeneralTab();
     const nameInput = await screen.findByDisplayValue("Old Name");
-    await user.clear(nameInput);
-    await user.type(nameInput, "New Name");
+    await fill(nameInput, "New Name");
     await user.click(screen.getByText("Save changes"));
     await waitFor(() => {
       expect(requestBody).toHaveBeenCalledWith({ name: "New Name" });
@@ -238,8 +232,7 @@ describe("org general tab - interaction", () => {
     mockAPIs({ name: "Original Name" });
     await openGeneralTab();
     const nameInput = await screen.findByDisplayValue("Original Name");
-    await user.clear(nameInput);
-    await user.type(nameInput, "Changed Name");
+    await fill(nameInput, "Changed Name");
     expect(screen.getByDisplayValue("Changed Name")).toBeInTheDocument();
     await user.click(screen.getByText("Discard"));
     expect(screen.getByDisplayValue("Original Name")).toBeInTheDocument();
@@ -318,9 +311,8 @@ describe("org general tab - validation", () => {
     const confirmInput = screen.getByPlaceholderText("my-workspace");
     await user.type(confirmInput, "wrong-slug");
     expect(deleteBtn).toBeDisabled();
-    // Clear and type correct slug — now enabled
-    await user.clear(confirmInput);
-    await user.type(confirmInput, "my-workspace");
+    // Fill correct slug — now enabled
+    await fill(confirmInput, "my-workspace");
     expect(deleteBtn).not.toBeDisabled();
   });
 });

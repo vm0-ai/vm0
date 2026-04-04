@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { fill, setupPage } from "../../../__tests__/page-helper.ts";
 import { setMockBillingStatus } from "../../../mocks/handlers/api-billing.ts";
 
 const context = testContext();
@@ -286,7 +286,6 @@ test("hovering credit bar shows breakdown popover", async () => {
 
 // ORG-I-057
 test("credit cap input accepts value and updates on blur", async () => {
-  const user = userEvent.setup();
   setMockBillingStatus({
     tier: "pro",
     credits: 20_000,
@@ -310,9 +309,8 @@ test("credit cap input accepts value and updates on blur", async () => {
     expect(screen.getByRole("spinbutton")).toBeInTheDocument();
   });
   const capInput = screen.getByRole("spinbutton");
-  await user.clear(capInput);
-  await user.type(capInput, "5000");
-  await user.tab();
+  await fill(capInput, "5000");
+  capInput.blur();
   await waitFor(() => {
     expect(capturedCap).toBe(5000);
   });

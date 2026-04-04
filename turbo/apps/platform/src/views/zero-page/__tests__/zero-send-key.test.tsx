@@ -5,7 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { fill, setupPage } from "../../../__tests__/page-helper.ts";
 
 const context = testContext();
 
@@ -73,8 +73,7 @@ describe("send-key behavior — enter mode", () => {
     const api = await renderChatPage("enter");
 
     const textarea = await getTextarea();
-    await user.clear(textarea);
-    await user.type(textarea, "Hello");
+    await fill(textarea, "Hello");
 
     await user.keyboard("{Enter}");
 
@@ -88,8 +87,7 @@ describe("send-key behavior — enter mode", () => {
     const api = await renderChatPage("enter");
 
     const textarea = await getTextarea();
-    await user.clear(textarea);
-    await user.type(textarea, "Hello");
+    await fill(textarea, "Hello");
 
     await user.keyboard("{Shift>}{Enter}{/Shift}");
 
@@ -103,8 +101,7 @@ describe("send-key behavior — cmd-enter mode", () => {
     const api = await renderChatPage("cmd-enter");
 
     const textarea = await getTextarea();
-    await user.clear(textarea);
-    await user.type(textarea, "Hello");
+    await fill(textarea, "Hello");
 
     await user.keyboard("{Meta>}{Enter}{/Meta}");
 
@@ -118,8 +115,7 @@ describe("send-key behavior — cmd-enter mode", () => {
     const api = await renderChatPage("cmd-enter");
 
     const textarea = await getTextarea();
-    await user.clear(textarea);
-    await user.type(textarea, "Hello");
+    await fill(textarea, "Hello");
 
     await user.keyboard("{Enter}");
 
@@ -133,8 +129,7 @@ describe("send-key behavior — IME composition", () => {
     const api = await renderChatPage("enter");
 
     const textarea = await getTextarea();
-    await user.clear(textarea);
-    await user.type(textarea, "Hello");
+    await fill(textarea, "Hello");
 
     // Start IME composition
     fireEvent.compositionStart(textarea);

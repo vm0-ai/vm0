@@ -5,7 +5,7 @@ import { http, HttpResponse } from "msw";
 import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { fill, setupPage } from "../../../__tests__/page-helper.ts";
 import {
   mockChatLifecycle,
   sendMessageInUI,
@@ -163,8 +163,7 @@ describe("chat-d-018: add dialog with search filtering", () => {
       expect(screen.getByLabelText("Connect GitHub")).toBeInTheDocument();
     });
 
-    await user.clear(searchInput);
-    await user.type(searchInput, "Slack");
+    await fill(searchInput, "Slack");
 
     await waitFor(() => {
       expect(screen.queryByLabelText("Connect GitHub")).not.toBeInTheDocument();

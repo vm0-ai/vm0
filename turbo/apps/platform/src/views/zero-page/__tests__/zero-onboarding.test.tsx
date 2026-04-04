@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { fill, setupPage } from "../../../__tests__/page-helper.ts";
 
 const context = testContext();
 
@@ -60,8 +60,7 @@ describe("zero onboarding - step 1: workspace name", () => {
 
     // Fill in workspace name so Next is enabled
     const input = screen.getByPlaceholderText("e.g. Acme Corp");
-    await user.clear(input);
-    await user.type(input, "Test Workspace");
+    await fill(input, "Test Workspace");
 
     await user.click(screen.getByText("Next"));
 
@@ -85,8 +84,7 @@ describe("zero onboarding - step 2: choose tools", () => {
     });
 
     const input = screen.getByPlaceholderText("e.g. Acme Corp");
-    await user.clear(input);
-    await user.type(input, "Test Workspace");
+    await fill(input, "Test Workspace");
     await user.click(screen.getByText("Next"));
 
     // Should reach step 2 (choose tools) — search input is the structural anchor
@@ -189,13 +187,11 @@ describe("onboarding step indicator renders (AGENT-D-056)", () => {
 
 describe("workspace name input accepts text (AGENT-D-069)", () => {
   it("workspace name input updates with typed text", async () => {
-    const user = userEvent.setup();
     mockOnboardingNeeded();
     await renderOnboardingPage();
 
     const input = await screen.findByPlaceholderText("e.g. Acme Corp");
-    await user.clear(input);
-    await user.type(input, "Acme Corp");
+    await fill(input, "Acme Corp");
     expect(input).toHaveValue("Acme Corp");
   });
 });
@@ -211,8 +207,7 @@ describe("step-specific content renders (AGENT-D-057)", () => {
     await renderOnboardingPage();
 
     const input = await screen.findByPlaceholderText("e.g. Acme Corp");
-    await user.clear(input);
-    await user.type(input, "Acme");
+    await fill(input, "Acme");
     await user.click(screen.getByText("Next"));
 
     await waitFor(() => {
@@ -231,8 +226,7 @@ describe("step-specific content renders (AGENT-D-057)", () => {
     await renderOnboardingPage();
 
     const input = await screen.findByPlaceholderText("e.g. Acme Corp");
-    await user.clear(input);
-    await user.type(input, "Acme");
+    await fill(input, "Acme");
     await user.click(screen.getByText("Next"));
 
     await waitFor(() => {
@@ -259,8 +253,7 @@ describe("connector selection display renders (AGENT-D-058)", () => {
     await renderOnboardingPage();
 
     const input = await screen.findByPlaceholderText("e.g. Acme Corp");
-    await user.clear(input);
-    await user.type(input, "Acme");
+    await fill(input, "Acme");
     await user.click(screen.getByText("Next"));
 
     await waitFor(() => {
@@ -286,8 +279,7 @@ describe("selected connectors display renders (AGENT-D-060)", () => {
     await renderOnboardingPage();
 
     const input = await screen.findByPlaceholderText("e.g. Acme Corp");
-    await user.clear(input);
-    await user.type(input, "Acme");
+    await fill(input, "Acme");
     await user.click(screen.getByText("Next"));
 
     await waitFor(() => {
@@ -317,8 +309,7 @@ describe("connector selection buttons toggle (AGENT-D-064)", () => {
     await renderOnboardingPage();
 
     const input = await screen.findByPlaceholderText("e.g. Acme Corp");
-    await user.clear(input);
-    await user.type(input, "Acme");
+    await fill(input, "Acme");
     await user.click(screen.getByText("Next"));
 
     await waitFor(() => {
@@ -354,8 +345,7 @@ describe("connector search input filters list (AGENT-D-065)", () => {
     await renderOnboardingPage();
 
     const input = await screen.findByPlaceholderText("e.g. Acme Corp");
-    await user.clear(input);
-    await user.type(input, "Acme");
+    await fill(input, "Acme");
     await user.click(screen.getByText("Next"));
 
     await waitFor(() => {
@@ -383,8 +373,7 @@ describe("connector search input filters list (AGENT-D-065)", () => {
 
 async function navigateToStep3(user: ReturnType<typeof userEvent.setup>) {
   const input = await screen.findByPlaceholderText("e.g. Acme Corp");
-  await user.clear(input);
-  await user.type(input, "Acme");
+  await fill(input, "Acme");
   await user.click(screen.getByText("Next"));
 
   await waitFor(() => {
@@ -427,8 +416,7 @@ describe("connector polling status shows (AGENT-D-059)", () => {
     await renderOnboardingPage();
 
     const input = await screen.findByPlaceholderText("e.g. Acme Corp");
-    await user.clear(input);
-    await user.type(input, "Acme");
+    await fill(input, "Acme");
     await user.click(screen.getByText("Next"));
 
     await waitFor(() => {
@@ -461,8 +449,7 @@ describe("back button returns to previous step (AGENT-D-068)", () => {
 
     // Navigate to step 2
     const input = await screen.findByPlaceholderText("e.g. Acme Corp");
-    await user.clear(input);
-    await user.type(input, "Acme");
+    await fill(input, "Acme");
     await user.click(screen.getByText("Next"));
 
     await waitFor(() => {

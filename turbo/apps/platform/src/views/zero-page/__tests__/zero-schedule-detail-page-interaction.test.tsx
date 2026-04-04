@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { fill, setupPage } from "../../../__tests__/page-helper.ts";
 
 const context = testContext();
 
@@ -114,15 +114,13 @@ async function openRunHistoryTab(user: ReturnType<typeof userEvent.setup>) {
 describe("zero schedule detail page - settings form inputs accept text (SCHED-D-020)", () => {
   it("should accept and display text typed into the description input", async () => {
     mockAPIs();
-    const user = userEvent.setup();
     await setupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
     await waitForPageLoad();
 
     const descriptionInput = screen.getByPlaceholderText(
       "Leave blank to auto-generate",
     );
-    await user.clear(descriptionInput);
-    await user.type(descriptionInput, "New description");
+    await fill(descriptionInput, "New description");
 
     expect(descriptionInput).toHaveValue("New description");
     await waitFor(() => {
@@ -196,8 +194,7 @@ describe("zero schedule detail page - settings save button persists changes (SCH
     const descriptionInput = screen.getByPlaceholderText(
       "Leave blank to auto-generate",
     );
-    await user.clear(descriptionInput);
-    await user.type(descriptionInput, "Updated");
+    await fill(descriptionInput, "Updated");
 
     await waitFor(() => {
       expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();

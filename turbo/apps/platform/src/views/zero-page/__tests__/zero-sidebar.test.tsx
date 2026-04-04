@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers";
-import { setupPage } from "../../../__tests__/page-helper";
+import { fill, setupPage } from "../../../__tests__/page-helper";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { featureSwitch$ } from "../../../signals/external/feature-switch";
@@ -180,8 +180,7 @@ describe("zero sidebar", () => {
 
     // Type search query
     const searchInput = screen.getByPlaceholderText("Search chat with Zero");
-    await user.clear(searchInput);
-    await user.type(searchInput, "First");
+    await fill(searchInput, "First");
 
     // Only matching thread should be visible
     expect(screen.getByText("First chat")).toBeInTheDocument();
@@ -204,8 +203,7 @@ describe("zero sidebar", () => {
 
     // Type search query that filters out one thread
     const searchInput = screen.getByPlaceholderText("Search chat with Zero");
-    await user.clear(searchInput);
-    await user.type(searchInput, "First");
+    await fill(searchInput, "First");
 
     expect(screen.queryByText("Second chat")).not.toBeInTheDocument();
 

@@ -13,7 +13,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { fill, setupPage } from "../../../__tests__/page-helper.ts";
 import { mockConnectors } from "./zero-connectors-page-test-helpers.ts";
 
 const context = testContext();
@@ -58,7 +58,6 @@ describe("connectors page", () => {
   });
 
   it("filters connectors by search term", async () => {
-    const user = userEvent.setup();
     await setupPage({ context, path: "/connectors" });
 
     await waitFor(() => {
@@ -66,8 +65,7 @@ describe("connectors page", () => {
     });
 
     const searchInput = screen.getByPlaceholderText("Search connectors");
-    await user.clear(searchInput);
-    await user.type(searchInput, "github");
+    await fill(searchInput, "github");
 
     await waitFor(() => {
       expect(screen.getByText("GitHub")).toBeInTheDocument();
@@ -77,7 +75,6 @@ describe("connectors page", () => {
   });
 
   it("shows empty state when search has no matches", async () => {
-    const user = userEvent.setup();
     await setupPage({ context, path: "/connectors" });
 
     await waitFor(() => {
@@ -85,8 +82,7 @@ describe("connectors page", () => {
     });
 
     const searchInput = screen.getByPlaceholderText("Search connectors");
-    await user.clear(searchInput);
-    await user.type(searchInput, "nonexistent-connector-xyz");
+    await fill(searchInput, "nonexistent-connector-xyz");
 
     await waitFor(() => {
       expect(screen.getByText(/No connectors matching/)).toBeInTheDocument();

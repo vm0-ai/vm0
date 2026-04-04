@@ -8,7 +8,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { fill, setupPage } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 
 const context = testContext();
@@ -329,8 +329,7 @@ describe("zero settings tab - interaction", () => {
     await openProfileTab(user);
 
     const nameInput = await screen.findByDisplayValue("My Agent");
-    await user.clear(nameInput);
-    await user.type(nameInput, "Renamed Agent");
+    await fill(nameInput, "Renamed Agent");
 
     expect(screen.getByDisplayValue("Renamed Agent")).toBeInTheDocument();
   });
@@ -341,8 +340,7 @@ describe("zero settings tab - interaction", () => {
     await openProfileTab(user);
 
     const descTextarea = await screen.findByDisplayValue("A helpful agent");
-    await user.clear(descTextarea);
-    await user.type(descTextarea, "Updated description");
+    await fill(descTextarea, "Updated description");
 
     expect(screen.getByDisplayValue("Updated description")).toBeInTheDocument();
   });
@@ -379,8 +377,7 @@ describe("zero settings tab - interaction", () => {
     );
 
     const nameInput = await screen.findByDisplayValue("My Agent");
-    await user.clear(nameInput);
-    await user.type(nameInput, "Renamed Agent");
+    await fill(nameInput, "Renamed Agent");
 
     await waitFor(() => {
       expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
@@ -401,8 +398,7 @@ describe("zero settings tab - interaction", () => {
     await openProfileTab(user);
 
     const nameInput = await screen.findByDisplayValue("My Agent");
-    await user.clear(nameInput);
-    await user.type(nameInput, "Changed Name");
+    await fill(nameInput, "Changed Name");
 
     await waitFor(() => {
       expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();

@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { fill, setupPage } from "../../../__tests__/page-helper.ts";
 import { getCategories } from "../zero-ideation-data.ts";
 import { pathname } from "../../../signals/location.ts";
 
@@ -200,15 +200,13 @@ describe("ideation page - search", () => {
   });
 
   it("should filter use cases by title", async () => {
-    const user = userEvent.setup();
     await renderIdeationPage();
 
     const searchInput = await waitFor(() => {
       return screen.getByRole("searchbox", { name: "Search use cases" });
     });
 
-    await user.clear(searchInput);
-    await user.type(searchInput, "Daily standup");
+    await fill(searchInput, "Daily standup");
 
     await waitFor(() => {
       expect(screen.getByText("Daily standup report")).toBeInTheDocument();
@@ -219,15 +217,13 @@ describe("ideation page - search", () => {
   });
 
   it("should show empty message when no use cases match", async () => {
-    const user = userEvent.setup();
     await renderIdeationPage();
 
     const searchInput = await waitFor(() => {
       return screen.getByRole("searchbox", { name: "Search use cases" });
     });
 
-    await user.clear(searchInput);
-    await user.type(searchInput, "xyznonexistentquery");
+    await fill(searchInput, "xyznonexistentquery");
 
     await waitFor(() => {
       expect(
