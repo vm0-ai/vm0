@@ -64,9 +64,7 @@ describe("zero chat thread page display - thread header agent avatar and display
     await waitFor(() => {
       const spans = screen.getAllByText("Assistant");
       expect(spans.length).toBeGreaterThan(0);
-      expect(
-        screen.getByRole("link", { name: "View agent profile" }),
-      ).toBeInTheDocument();
+      expect(screen.getByLabelText("View agent profile")).toBeInTheDocument();
     });
   });
 });
@@ -139,9 +137,7 @@ describe("zero chat thread page display - attachment file preview", () => {
     await setupPage({ context, path: "/chats/thread-test-1" });
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("link", { name: "document.pdf" }),
-      ).toBeInTheDocument();
+      expect(screen.getByTitle("document.pdf")).toBeInTheDocument();
     });
   });
 });

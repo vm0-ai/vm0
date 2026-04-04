@@ -175,7 +175,7 @@ describe("zero sidebar", () => {
     expect(screen.getByText("Second chat")).toBeInTheDocument();
 
     // Click search button
-    const searchButton = screen.getByRole("button", { name: "Search chats" });
+    const searchButton = screen.getByLabelText("Search chats");
     await user.click(searchButton);
 
     // Type search query
@@ -199,7 +199,7 @@ describe("zero sidebar", () => {
     });
 
     // Open search
-    const searchButton = screen.getByRole("button", { name: "Search chats" });
+    const searchButton = screen.getByLabelText("Search chats");
     await user.click(searchButton);
 
     // Type search query that filters out one thread
@@ -210,7 +210,7 @@ describe("zero sidebar", () => {
     expect(screen.queryByText("Second chat")).not.toBeInTheDocument();
 
     // Close search
-    const closeButton = screen.getByRole("button", { name: "Close search" });
+    const closeButton = screen.getByLabelText("Close search");
     await user.click(closeButton);
 
     // Both threads should be visible again (search term was reset)

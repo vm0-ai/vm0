@@ -78,10 +78,10 @@ describe("zero about page", () => {
     context.store.set(setZeroShowAboutPage$, true);
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /back/i })).toBeInTheDocument();
+      expect(screen.getByText(/back/i)).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: /back/i }));
+    await user.click(screen.getByText(/back/i));
 
     await waitFor(() => {
       expect(

@@ -109,12 +109,12 @@ describe("firewall allow page - PolicyPill interactions", () => {
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: /Allow/ }));
+    await user.click(screen.getByText(/Allow/));
 
     // After clicking Allow, policy override is "allow" but current policy from server is "deny"
     // so isDirty = true → Save becomes enabled
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled();
+      expect(screen.getByText("Save")).not.toBeDisabled();
     });
   });
 
@@ -132,11 +132,11 @@ describe("firewall allow page - PolicyPill interactions", () => {
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: /Deny/ }));
+    await user.click(screen.getByText(/Deny/));
 
     // After clicking Deny, policy is dirty (override deny, current allow), Save becomes enabled
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled();
+      expect(screen.getByText("Save")).not.toBeDisabled();
     });
   });
 
@@ -154,8 +154,8 @@ describe("firewall allow page - PolicyPill interactions", () => {
       expect(screen.getByText("issues:read")).toBeInTheDocument();
     });
 
-    const allowButton = screen.getByRole("button", { name: /Allow/ });
-    const denyButton = screen.getByRole("button", { name: /Deny/ });
+    const allowButton = screen.getByText(/Allow/);
+    const denyButton = screen.getByText(/Deny/);
 
     expect(allowButton).toBeDisabled();
     expect(denyButton).toBeDisabled();
@@ -202,12 +202,12 @@ describe("firewall allow page - AdminFocusedView", () => {
 
     const user = userEvent.setup();
     // Current policy from agent mock starts as "deny", so clicking Allow makes it dirty
-    await user.click(screen.getByRole("button", { name: /Allow/ }));
+    await user.click(screen.getByText(/Allow/));
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled();
+      expect(screen.getByText("Save")).not.toBeDisabled();
     });
 
-    await user.click(screen.getByRole("button", { name: "Save" }));
+    await user.click(screen.getByText("Save"));
 
     await waitFor(() => {
       expect(screen.getByText("Saved")).toBeInTheDocument();
@@ -230,7 +230,7 @@ describe("firewall allow page - AdminFocusedView", () => {
       expect(screen.getByText("issues:read")).toBeInTheDocument();
     });
 
-    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+    expect(screen.getByText("Save")).toBeDisabled();
   });
 
   it("fw-d-020: Save button is disabled while saving", async () => {
@@ -274,17 +274,17 @@ describe("firewall allow page - AdminFocusedView", () => {
 
     const user = userEvent.setup();
     // Current policy from agent mock starts as "deny", so clicking Allow makes it dirty
-    await user.click(screen.getByRole("button", { name: /Allow/ }));
+    await user.click(screen.getByText(/Allow/));
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled();
+      expect(screen.getByText("Save")).not.toBeDisabled();
     });
 
-    await user.click(screen.getByRole("button", { name: "Save" }));
+    await user.click(screen.getByText("Save"));
 
     await waitFor(() => {
       expect(screen.getByText("Saving...")).toBeInTheDocument();
     });
-    expect(screen.getByRole("button", { name: "Saving..." })).toBeDisabled();
+    expect(screen.getByText("Saving...")).toBeDisabled();
 
     unblock();
 
@@ -320,10 +320,10 @@ describe("firewall allow page - AdminFocusedView", () => {
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: /Approve/ }));
+    await user.click(screen.getByText(/Approve/));
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Approve/ })).toBeDisabled();
+      expect(screen.getByText(/Approve/)).toBeDisabled();
     });
 
     // Unblock the resolve handler; reload will return empty requests
@@ -362,10 +362,10 @@ describe("firewall allow page - AdminFocusedView", () => {
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: /Reject/ }));
+    await user.click(screen.getByText(/Reject/));
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Reject/ })).toBeDisabled();
+      expect(screen.getByText(/Reject/)).toBeDisabled();
     });
 
     // Unblock the resolve handler; reload will return empty requests
@@ -390,21 +390,17 @@ describe("firewall allow page - MemberFocusedView request form", () => {
     });
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Request Access" }),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Request Access")).toBeInTheDocument();
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Request Access" }));
+    await user.click(screen.getByText("Request Access"));
 
     await waitFor(() => {
       expect(screen.getByRole("textbox")).toBeInTheDocument();
     });
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Submit Request" }),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Cancel")).toBeInTheDocument();
+    expect(screen.getByText("Submit Request")).toBeInTheDocument();
   });
 
   it("fw-d-025: Reason textarea accepts input", async () => {
@@ -417,13 +413,11 @@ describe("firewall allow page - MemberFocusedView request form", () => {
     });
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Request Access" }),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Request Access")).toBeInTheDocument();
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Request Access" }));
+    await user.click(screen.getByText("Request Access"));
 
     await waitFor(() => {
       expect(screen.getByRole("textbox")).toBeInTheDocument();
@@ -445,26 +439,22 @@ describe("firewall allow page - MemberFocusedView request form", () => {
     });
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Request Access" }),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Request Access")).toBeInTheDocument();
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Request Access" }));
+    await user.click(screen.getByText("Request Access"));
 
     await waitFor(() => {
       expect(screen.getByRole("textbox")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await user.click(screen.getByText("Cancel"));
 
     await waitFor(() => {
       expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
     });
-    expect(
-      screen.getByRole("button", { name: "Request Access" }),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Request Access")).toBeInTheDocument();
   });
 
   it("fw-d-027: Submit Request button sends the request", async () => {
@@ -503,28 +493,22 @@ describe("firewall allow page - MemberFocusedView request form", () => {
     });
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Request Access" }),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Request Access")).toBeInTheDocument();
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Request Access" }));
+    await user.click(screen.getByText("Request Access"));
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Submit Request" }),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Submit Request")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: "Submit Request" }));
+    await user.click(screen.getByText("Submit Request"));
 
     await waitFor(() => {
       expect(screen.getByText("Submitting...")).toBeInTheDocument();
     });
-    expect(
-      screen.getByRole("button", { name: "Submitting..." }),
-    ).toBeDisabled();
+    expect(screen.getByText("Submitting...")).toBeDisabled();
 
     unblock();
 
@@ -569,12 +553,10 @@ describe("firewall allow page - AdminListView", () => {
     if (!categoryHeader) {
       throw new Error("Category header not found");
     }
-    await user.click(
-      within(categoryHeader).getByRole("button", { name: /Deny/ }),
-    );
+    await user.click(within(categoryHeader).getByText(/Deny/));
 
     // Click Save to persist all policies
-    await user.click(screen.getByRole("button", { name: "Save" }));
+    await user.click(screen.getByText("Save"));
 
     await waitFor(() => {
       expect(savedBody).toBeDefined();
@@ -614,9 +596,9 @@ describe("firewall allow page - AdminListView", () => {
     if (!permRow) {
       throw new Error("Permission row not found");
     }
-    await user.click(within(permRow).getByRole("button", { name: /Deny/ }));
+    await user.click(within(permRow).getByText(/Deny/));
 
-    await user.click(screen.getByRole("button", { name: "Save" }));
+    await user.click(screen.getByText("Save"));
 
     await waitFor(() => {
       expect(savedBody).toBeDefined();
@@ -647,21 +629,21 @@ describe("firewall allow page - AdminListView", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
+      expect(screen.getByText("Save")).toBeInTheDocument();
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Save" }));
+    await user.click(screen.getByText("Save"));
 
     await waitFor(() => {
       expect(screen.getByText("Saving...")).toBeInTheDocument();
     });
-    expect(screen.getByRole("button", { name: "Saving..." })).toBeDisabled();
+    expect(screen.getByText("Saving...")).toBeDisabled();
 
     unblock();
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled();
+      expect(screen.getByText("Save")).not.toBeDisabled();
     });
   });
 });

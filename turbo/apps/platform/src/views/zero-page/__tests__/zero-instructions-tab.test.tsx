@@ -174,12 +174,8 @@ describe("zero instructions tab - display", () => {
 
     // After typing, the unsaved changes bar should show Discard and Save buttons
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /Discard/i }),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByRole("button", { name: /^Save$/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/Discard/i)).toBeInTheDocument();
+      expect(screen.getByText(/^Save$/i)).toBeInTheDocument();
     });
   });
 
@@ -199,17 +195,13 @@ describe("zero instructions tab - display", () => {
     await user.type(editorEl, "some edit");
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /Discard/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/Discard/i)).toBeInTheDocument();
     });
-    await user.click(screen.getByRole("button", { name: /Discard/i }));
+    await user.click(screen.getByText(/Discard/i));
 
     // After discarding, the unsaved bar should disappear
     await waitFor(() => {
-      expect(
-        screen.queryByRole("button", { name: /Discard/i }),
-      ).not.toBeInTheDocument();
+      expect(screen.queryByText(/Discard/i)).not.toBeInTheDocument();
     });
   });
 
@@ -246,11 +238,9 @@ describe("zero instructions tab - display", () => {
     await user.type(editorEl, "my instructions");
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /^Save$/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/^Save$/i)).toBeInTheDocument();
     });
-    await user.click(screen.getByRole("button", { name: /^Save$/i }));
+    await user.click(screen.getByText(/^Save$/i));
 
     await waitFor(() => {
       expect(putCallCount).toBe(1);
@@ -300,9 +290,9 @@ describe("zero instructions tab - bubble menu toolbar", () => {
     const { user } = await renderWithSelection("Hello world");
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Bold" })).toBeInTheDocument();
+      expect(screen.getByTitle("Bold")).toBeInTheDocument();
     });
-    await user.click(screen.getByRole("button", { name: "Bold" }));
+    await user.click(screen.getByTitle("Bold"));
 
     await waitFor(() => {
       expect(document.querySelector("strong")).toBeInTheDocument();
@@ -313,11 +303,9 @@ describe("zero instructions tab - bubble menu toolbar", () => {
     const { user } = await renderWithSelection("Hello world");
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Italic" }),
-      ).toBeInTheDocument();
+      expect(screen.getByTitle("Italic")).toBeInTheDocument();
     });
-    await user.click(screen.getByRole("button", { name: "Italic" }));
+    await user.click(screen.getByTitle("Italic"));
 
     await waitFor(() => {
       expect(document.querySelector("em")).toBeInTheDocument();
@@ -328,11 +316,9 @@ describe("zero instructions tab - bubble menu toolbar", () => {
     const { user } = await renderWithSelection("Hello world");
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Strikethrough" }),
-      ).toBeInTheDocument();
+      expect(screen.getByTitle("Strikethrough")).toBeInTheDocument();
     });
-    await user.click(screen.getByRole("button", { name: "Strikethrough" }));
+    await user.click(screen.getByTitle("Strikethrough"));
 
     await waitFor(() => {
       expect(document.querySelector("s")).toBeInTheDocument();
@@ -343,11 +329,9 @@ describe("zero instructions tab - bubble menu toolbar", () => {
     const { user } = await renderWithSelection("Hello world");
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Inline code" }),
-      ).toBeInTheDocument();
+      expect(screen.getByTitle("Inline code")).toBeInTheDocument();
     });
-    await user.click(screen.getByRole("button", { name: "Inline code" }));
+    await user.click(screen.getByTitle("Inline code"));
 
     await waitFor(() => {
       expect(document.querySelector("code")).toBeInTheDocument();
@@ -358,11 +342,9 @@ describe("zero instructions tab - bubble menu toolbar", () => {
     const { user } = await renderWithSelection("Hello world");
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Heading 1" }),
-      ).toBeInTheDocument();
+      expect(screen.getByTitle("Heading 1")).toBeInTheDocument();
     });
-    await user.click(screen.getByRole("button", { name: "Heading 1" }));
+    await user.click(screen.getByTitle("Heading 1"));
 
     await waitFor(() => {
       expect(document.querySelector("h1")).toBeInTheDocument();
@@ -373,11 +355,9 @@ describe("zero instructions tab - bubble menu toolbar", () => {
     const { user } = await renderWithSelection("Hello world");
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Heading 2" }),
-      ).toBeInTheDocument();
+      expect(screen.getByTitle("Heading 2")).toBeInTheDocument();
     });
-    await user.click(screen.getByRole("button", { name: "Heading 2" }));
+    await user.click(screen.getByTitle("Heading 2"));
 
     await waitFor(() => {
       expect(document.querySelector("h2")).toBeInTheDocument();
@@ -388,11 +368,9 @@ describe("zero instructions tab - bubble menu toolbar", () => {
     const { user } = await renderWithSelection("Hello world");
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Heading 3" }),
-      ).toBeInTheDocument();
+      expect(screen.getByTitle("Heading 3")).toBeInTheDocument();
     });
-    await user.click(screen.getByRole("button", { name: "Heading 3" }));
+    await user.click(screen.getByTitle("Heading 3"));
 
     await waitFor(() => {
       expect(document.querySelector("h3")).toBeInTheDocument();
@@ -403,11 +381,9 @@ describe("zero instructions tab - bubble menu toolbar", () => {
     const { user } = await renderWithSelection("Hello world");
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Bullet list" }),
-      ).toBeInTheDocument();
+      expect(screen.getByTitle("Bullet list")).toBeInTheDocument();
     });
-    await user.click(screen.getByRole("button", { name: "Bullet list" }));
+    await user.click(screen.getByTitle("Bullet list"));
 
     await waitFor(() => {
       expect(document.querySelector("ul")).toBeInTheDocument();
@@ -418,11 +394,9 @@ describe("zero instructions tab - bubble menu toolbar", () => {
     const { user } = await renderWithSelection("Hello world");
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Ordered list" }),
-      ).toBeInTheDocument();
+      expect(screen.getByTitle("Ordered list")).toBeInTheDocument();
     });
-    await user.click(screen.getByRole("button", { name: "Ordered list" }));
+    await user.click(screen.getByTitle("Ordered list"));
 
     await waitFor(() => {
       expect(document.querySelector("ol")).toBeInTheDocument();
@@ -433,16 +407,10 @@ describe("zero instructions tab - bubble menu toolbar", () => {
     await renderWithSelection("Hello world");
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Bold" })).toBeInTheDocument();
-      expect(
-        screen.getByRole("button", { name: "Italic" }),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByRole("button", { name: "Strikethrough" }),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByRole("button", { name: "Inline code" }),
-      ).toBeInTheDocument();
+      expect(screen.getByTitle("Bold")).toBeInTheDocument();
+      expect(screen.getByTitle("Italic")).toBeInTheDocument();
+      expect(screen.getByTitle("Strikethrough")).toBeInTheDocument();
+      expect(screen.getByTitle("Inline code")).toBeInTheDocument();
     });
   });
 });

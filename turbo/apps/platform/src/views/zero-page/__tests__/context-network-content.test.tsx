@@ -165,7 +165,7 @@ async function setupAndNavigateToTab(tabName: "Context" | "Network") {
     ).toBeInTheDocument();
   });
 
-  const tab = screen.getByRole("tab", { name: tabName });
+  const tab = screen.getByText(tabName);
   await user.click(tab);
 
   return user;
@@ -405,26 +405,41 @@ describe("networkContent", () => {
 
     // Check column headers exist
     expect(
-      screen.getByRole("columnheader", { name: "Time" }),
-    ).toBeInTheDocument();
+      screen.getAllByRole("columnheader").find((el) => {
+        return el.textContent?.trim() === "Time";
+      }),
+    ).toBeDefined();
+    const columnHeaders = screen.getAllByRole("columnheader");
     expect(
-      screen.getByRole("columnheader", { name: "Type" }),
-    ).toBeInTheDocument();
+      columnHeaders.find((el) => {
+        return el.textContent?.trim() === "Type";
+      }),
+    ).toBeDefined();
     expect(
-      screen.getByRole("columnheader", { name: "Method" }),
-    ).toBeInTheDocument();
+      columnHeaders.find((el) => {
+        return el.textContent?.trim() === "Method";
+      }),
+    ).toBeDefined();
     expect(
-      screen.getByRole("columnheader", { name: "URL / Host" }),
-    ).toBeInTheDocument();
+      columnHeaders.find((el) => {
+        return el.textContent?.trim() === "URL / Host";
+      }),
+    ).toBeDefined();
     expect(
-      screen.getByRole("columnheader", { name: "Status" }),
-    ).toBeInTheDocument();
+      columnHeaders.find((el) => {
+        return el.textContent?.trim() === "Status";
+      }),
+    ).toBeDefined();
     expect(
-      screen.getByRole("columnheader", { name: "Latency" }),
-    ).toBeInTheDocument();
+      columnHeaders.find((el) => {
+        return el.textContent?.trim() === "Latency";
+      }),
+    ).toBeDefined();
     expect(
-      screen.getByRole("columnheader", { name: "Firewall" }),
-    ).toBeInTheDocument();
+      columnHeaders.find((el) => {
+        return el.textContent?.trim() === "Firewall";
+      }),
+    ).toBeDefined();
 
     // TCP entry renders host:port
     expect(screen.getByText("db.internal:5432")).toBeInTheDocument();

@@ -257,7 +257,7 @@ describe("org-provider-dialog - interaction", () => {
       screen.getByText(/Add workspace Anthropic API key/i),
     ).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await user.click(screen.getByText("Cancel"));
 
     await waitFor(() => {
       expect(
@@ -293,12 +293,14 @@ describe("org-provider-dialog - interaction", () => {
     const input = screen.getByPlaceholderText("Enter your API key");
     await user.type(input, "sk-ant-some-key-value");
 
-    const addButton = screen.getByRole("button", { name: "Add" });
+    const addButton = screen.getByText("Add");
     await user.click(addButton);
 
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: /Add|Saving/i }),
+        screen.getAllByRole("button").find((el) => {
+          return /^(Add|Saving)/i.test(el.textContent?.trim() ?? "");
+        })!,
       ).toBeDisabled();
     });
 
@@ -314,7 +316,7 @@ describe("org-provider-dialog - validation", () => {
     const user = userEvent.setup();
     await openAddDialog("anthropic-api-key", /Add workspace/i);
 
-    await user.click(screen.getByRole("button", { name: "Add" }));
+    await user.click(screen.getByText("Add"));
 
     await waitFor(() => {
       expect(screen.getByText("API key is required")).toBeInTheDocument();

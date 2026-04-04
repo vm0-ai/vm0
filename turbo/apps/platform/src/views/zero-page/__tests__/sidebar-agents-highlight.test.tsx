@@ -43,7 +43,7 @@ function mockAgentAPIs() {
  */
 function getAgentsNavLink(): HTMLElement {
   const nav = screen.getByRole("navigation", { name: "Sidebar" });
-  return within(nav).getByRole("link", { name: "Agents" });
+  return within(nav).getByText("Agents").closest("a")!;
 }
 
 describe("sidebar Agents tab highlight", () => {

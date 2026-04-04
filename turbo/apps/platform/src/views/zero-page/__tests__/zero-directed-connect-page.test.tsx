@@ -56,7 +56,7 @@ describe("directed connect page", () => {
     expect(
       screen.getByText(CONNECTOR_TYPES.gmail.helpText),
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Connect" })).toBeInTheDocument();
+    expect(screen.getByText("Connect")).toBeInTheDocument();
   });
 
   it("shows connected state when connector is already connected", async () => {
@@ -68,9 +68,7 @@ describe("directed connect page", () => {
       expect(screen.getByText("GitHub connected")).toBeInTheDocument();
     });
     expect(screen.getByText("Connected")).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Connect" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Connect")).not.toBeInTheDocument();
   });
 
   it("normalizes uppercase type in URL to match connector key", async () => {
@@ -92,9 +90,7 @@ describe("directed connect page", () => {
         screen.queryByText(/Zero needs .* to proceed/),
       ).not.toBeInTheDocument();
     });
-    expect(
-      screen.queryByRole("button", { name: "Connect" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Connect")).not.toBeInTheDocument();
   });
 
   it("opens api-token dialog for a connector without oauth", async () => {
@@ -126,7 +122,7 @@ describe("directed connect page", () => {
       ).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: "Connect" }));
+    await user.click(screen.getByText("Connect"));
 
     // Dialog should open with the connector label as title
     await waitFor(() => {

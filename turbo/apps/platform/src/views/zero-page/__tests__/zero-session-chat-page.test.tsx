@@ -182,7 +182,7 @@ describe("agent avatar link", () => {
     await setupPage({ context, path: "/chats/thread-avatar-test" });
 
     const link = await waitFor(() => {
-      return screen.getByRole("link", { name: "View agent profile" });
+      return screen.getByLabelText("View agent profile");
     });
     expect(link).toHaveAttribute(
       "href",

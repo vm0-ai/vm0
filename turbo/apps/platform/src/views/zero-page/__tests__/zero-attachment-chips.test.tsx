@@ -256,7 +256,7 @@ describe("chat-i-060: close button closes lightbox", () => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: "Close" }));
+    await user.click(screen.getByLabelText("Close"));
 
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();

@@ -150,7 +150,7 @@ describe("zero jobs page - create agent dialog", () => {
     await user.clear(input);
     await user.type(input, "Marketing Bot");
 
-    await user.click(screen.getByRole("button", { name: "Create" }));
+    await user.click(screen.getByText("Create"));
 
     await waitFor(() => {
       expect(screen.getByText("Marketing Bot")).toBeInTheDocument();
@@ -164,7 +164,7 @@ describe("zero jobs page - create agent dialog", () => {
 
     await openDialog(user);
 
-    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await user.click(screen.getByText("Cancel"));
 
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();

@@ -79,9 +79,7 @@ describe("org billing tab - plan display", () => {
       expect(screen.getByText("Free plan")).toBeInTheDocument();
     });
 
-    expect(
-      screen.getByRole("button", { name: /Upgrade/i }),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Upgrade/i)).toBeInTheDocument();
   });
 
   it("should show Compare all plans link", async () => {
@@ -139,7 +137,7 @@ describe("org billing tab - pricing sub-page navigation", () => {
       expect(screen.getByText("Compare plans")).toBeInTheDocument();
     });
 
-    const backButton = screen.getByRole("button", { name: /Back/i });
+    const backButton = screen.getByLabelText("Back");
     await user.click(backButton);
 
     await waitFor(() => {
@@ -170,8 +168,8 @@ describe("org billing tab - pricing sub-page navigation", () => {
     });
 
     // The "Current plan" button for the pro plan should be disabled
-    const currentPlanButtons = screen.getAllByRole("button", {
-      name: /Current plan/i,
+    const currentPlanButtons = screen.getAllByRole("button").filter((el) => {
+      return /Current plan/i.test(el.textContent ?? "");
     });
     expect(currentPlanButtons.length).toBeGreaterThanOrEqual(1);
     for (const btn of currentPlanButtons) {
@@ -487,8 +485,10 @@ describe("org billing tab - cancellation pending", () => {
     });
 
     expect(
-      screen.queryByRole("button", { name: /Downgrade/i }),
-    ).not.toBeInTheDocument();
+      screen.queryAllByRole("button").filter((el) => {
+        return el.textContent?.trim() === "Downgrade";
+      }),
+    ).toHaveLength(0);
   });
 
   it("should show Manage button when cancellation is pending", async () => {
@@ -508,7 +508,11 @@ describe("org billing tab - cancellation pending", () => {
       expect(screen.getByText("Pro plan")).toBeInTheDocument();
     });
 
-    expect(screen.getByRole("button", { name: /Manage/i })).toBeInTheDocument();
+    expect(
+      screen.getAllByRole("button").find((el) => {
+        return el.textContent?.trim() === "Manage";
+      }),
+    ).toBeDefined();
   });
 
   it("should show normal state when cancelAtPeriodEnd is false", async () => {
@@ -529,8 +533,10 @@ describe("org billing tab - cancellation pending", () => {
     });
 
     expect(
-      screen.getByRole("button", { name: /Downgrade/i }),
-    ).toBeInTheDocument();
+      screen.getAllByRole("button").find((el) => {
+        return el.textContent?.trim() === "Downgrade";
+      }),
+    ).toBeDefined();
 
     expect(screen.queryByText(/has been cancelled/)).not.toBeInTheDocument();
   });
@@ -555,17 +561,11 @@ describe("org billing tab - plan card details", () => {
     });
 
     // Plan cards are rendered for each tier
-    expect(
-      screen.getByRole("button", { name: /Upgrade to Pro/i }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: /Upgrade to Team/i }),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Upgrade to Pro/i)).toBeInTheDocument();
+    expect(screen.getByText(/Upgrade to Team/i)).toBeInTheDocument();
 
     // Current plan card shows "Current plan" label
-    expect(
-      screen.getByRole("button", { name: /Current plan/i }),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Current plan/i)).toBeInTheDocument();
   });
 });
 
@@ -607,7 +607,7 @@ describe("org billing tab - billing states", () => {
       ).toBeInTheDocument();
     });
 
-    expect(screen.getByRole("button", { name: /Retry/i })).toBeInTheDocument();
+    expect(screen.getByText(/Retry/i)).toBeInTheDocument();
   });
 });
 
@@ -639,7 +639,7 @@ describe("org billing tab - plan card actions", () => {
       expect(screen.getByText("Compare plans")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: /Upgrade to Pro/i }));
+    await user.click(screen.getByText(/Upgrade to Pro/i));
 
     await waitFor(() => {
       expect(capturedBody).toMatchObject({ tier: "pro" });
@@ -678,7 +678,11 @@ describe("org billing tab - stripe portal", () => {
       expect(screen.getByText("Pro plan")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: /Manage/i }));
+    await user.click(
+      screen.getAllByRole("button").find((el) => {
+        return el.textContent?.trim() === "Manage";
+      })!,
+    );
 
     await waitFor(() => {
       expect(window.location.href).toBe(
@@ -705,8 +709,10 @@ describe("org billing tab - downgrade flow", () => {
     });
 
     expect(
-      screen.getByRole("button", { name: /Downgrade/i }),
-    ).toBeInTheDocument();
+      screen.getAllByRole("button").find((el) => {
+        return el.textContent?.trim() === "Downgrade";
+      }),
+    ).toBeDefined();
   });
 
   it("should show Downgrade button for team tier", async () => {
@@ -725,8 +731,10 @@ describe("org billing tab - downgrade flow", () => {
     });
 
     expect(
-      screen.getByRole("button", { name: /Downgrade/i }),
-    ).toBeInTheDocument();
+      screen.getAllByRole("button").find((el) => {
+        return el.textContent?.trim() === "Downgrade";
+      }),
+    ).toBeDefined();
   });
 
   it("should not show Downgrade button for free tier", async () => {
@@ -740,8 +748,10 @@ describe("org billing tab - downgrade flow", () => {
     });
 
     expect(
-      screen.queryByRole("button", { name: /Downgrade/i }),
-    ).not.toBeInTheDocument();
+      screen.queryAllByRole("button").filter((el) => {
+        return el.textContent?.trim() === "Downgrade";
+      }),
+    ).toHaveLength(0);
   });
 
   it("should open downgrade dialog on Downgrade button click for pro user", async () => {
@@ -760,7 +770,11 @@ describe("org billing tab - downgrade flow", () => {
       expect(screen.getByText("Pro plan")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: /Downgrade/i }));
+    await user.click(
+      screen.getAllByRole("button").find((el) => {
+        return el.textContent?.trim() === "Downgrade";
+      })!,
+    );
 
     await waitFor(() => {
       expect(screen.getByText("Downgrade plan")).toBeInTheDocument();
@@ -788,7 +802,11 @@ describe("org billing tab - downgrade flow", () => {
       expect(screen.getByText("Team plan")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: /Downgrade/i }));
+    await user.click(
+      screen.getAllByRole("button").find((el) => {
+        return el.textContent?.trim() === "Downgrade";
+      })!,
+    );
 
     await waitFor(() => {
       expect(screen.getByText("Downgrade plan")).toBeInTheDocument();
@@ -824,14 +842,20 @@ describe("org billing tab - downgrade flow", () => {
       expect(screen.getByText("Pro plan")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: /Downgrade/i }));
+    await user.click(
+      screen.getAllByRole("button").find((el) => {
+        return el.textContent?.trim() === "Downgrade";
+      })!,
+    );
 
     await waitFor(() => {
       expect(screen.getByText("Downgrade plan")).toBeInTheDocument();
     });
 
     await user.click(
-      screen.getByRole("button", { name: /Downgrade to Free/i }),
+      screen.getAllByRole("button").find((el) => {
+        return /Downgrade to Free/i.test(el.textContent ?? "");
+      })!,
     );
 
     await waitFor(() => {
@@ -863,13 +887,17 @@ describe("org billing tab - downgrade flow", () => {
       expect(screen.getByText("Pro plan")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: /Downgrade/i }));
+    await user.click(
+      screen.getAllByRole("button").find((el) => {
+        return el.textContent?.trim() === "Downgrade";
+      })!,
+    );
 
     await waitFor(() => {
       expect(screen.getByText("Downgrade plan")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: /Cancel/i }));
+    await user.click(screen.getByText(/Cancel/i));
 
     await waitFor(() => {
       expect(screen.queryByText("Downgrade plan")).not.toBeInTheDocument();
@@ -902,8 +930,8 @@ describe("org billing tab - downgrade flow", () => {
     });
 
     // Click "Manage subscription" (the downgrade button on pricing page for free tier)
-    const manageButtons = screen.getAllByRole("button", {
-      name: /Manage subscription/i,
+    const manageButtons = screen.getAllByRole("button").filter((el) => {
+      return /Manage subscription/i.test(el.textContent ?? "");
     });
     expect(manageButtons.length).toBeGreaterThanOrEqual(1);
 

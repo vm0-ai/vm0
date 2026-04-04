@@ -162,9 +162,7 @@ describe("zeroActivityDetailPageInteraction", () => {
       ).toBeInTheDocument();
     });
 
-    const downloadButton = screen.getByRole("button", {
-      name: "Download raw data",
-    });
+    const downloadButton = screen.getByLabelText("Download raw data");
     await user.click(downloadButton);
 
     await waitFor(() => {
@@ -216,7 +214,7 @@ describe("zeroActivityDetailPageInteraction", () => {
       ).toBeInTheDocument();
     });
 
-    const contextTab = screen.getByRole("tab", { name: "Context" });
+    const contextTab = screen.getByText("Context");
     await user.click(contextTab);
 
     await waitFor(() => {

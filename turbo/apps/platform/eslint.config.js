@@ -81,6 +81,7 @@ export default [
     rules: {
       "ccstate/prefer-user-event": "error",
       "ccstate/no-test-delay": "error",
+      "ccstate/no-get-by-role-name": "error",
       "no-restricted-syntax": [
         "error",
         {

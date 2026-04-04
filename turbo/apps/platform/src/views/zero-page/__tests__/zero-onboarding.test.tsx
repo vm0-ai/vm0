@@ -45,7 +45,7 @@ describe("zero onboarding - step 1: workspace name", () => {
     await renderOnboardingPage();
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Next" })).toBeInTheDocument();
+      expect(screen.getByText("Next")).toBeInTheDocument();
     });
   });
 
@@ -55,7 +55,7 @@ describe("zero onboarding - step 1: workspace name", () => {
     await renderOnboardingPage();
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Next" })).toBeInTheDocument();
+      expect(screen.getByText("Next")).toBeInTheDocument();
     });
 
     // Fill in workspace name so Next is enabled
@@ -63,7 +63,7 @@ describe("zero onboarding - step 1: workspace name", () => {
     await user.clear(input);
     await user.type(input, "Test Workspace");
 
-    await user.click(screen.getByRole("button", { name: "Next" }));
+    await user.click(screen.getByText("Next"));
 
     await waitFor(() => {
       expect(
@@ -81,13 +81,13 @@ describe("zero onboarding - step 2: choose tools", () => {
 
     // Step 1 -> fill name -> Next
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Next" })).toBeInTheDocument();
+      expect(screen.getByText("Next")).toBeInTheDocument();
     });
 
     const input = screen.getByPlaceholderText("e.g. Acme Corp");
     await user.clear(input);
     await user.type(input, "Test Workspace");
-    await user.click(screen.getByRole("button", { name: "Next" }));
+    await user.click(screen.getByText("Next"));
 
     // Should reach step 2 (choose tools) — search input is the structural anchor
     await waitFor(() => {
@@ -156,13 +156,9 @@ describe("member welcome - step navigation", () => {
       ).toBeInTheDocument();
     });
 
-    expect(
-      screen.getByRole("button", { name: /Add .+ to Slack/ }),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Add .+ to Slack/)).toBeInTheDocument();
 
-    expect(
-      screen.getByRole("button", { name: /Continue in web/ }),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Continue in web/)).toBeInTheDocument();
   });
 });
 
@@ -217,7 +213,7 @@ describe("step-specific content renders (AGENT-D-057)", () => {
     const input = await screen.findByPlaceholderText("e.g. Acme Corp");
     await user.clear(input);
     await user.type(input, "Acme");
-    await user.click(screen.getByRole("button", { name: "Next" }));
+    await user.click(screen.getByText("Next"));
 
     await waitFor(() => {
       expect(
@@ -237,14 +233,14 @@ describe("step-specific content renders (AGENT-D-057)", () => {
     const input = await screen.findByPlaceholderText("e.g. Acme Corp");
     await user.clear(input);
     await user.type(input, "Acme");
-    await user.click(screen.getByRole("button", { name: "Next" }));
+    await user.click(screen.getByText("Next"));
 
     await waitFor(() => {
       expect(
         screen.getByTestId("onboarding-step-select-connectors"),
       ).toBeInTheDocument();
     });
-    await user.click(screen.getByRole("button", { name: "Next" }));
+    await user.click(screen.getByText("Next"));
 
     await waitFor(() => {
       expect(screen.getByTestId("onboarding-step-connect")).toBeInTheDocument();
@@ -265,7 +261,7 @@ describe("connector selection display renders (AGENT-D-058)", () => {
     const input = await screen.findByPlaceholderText("e.g. Acme Corp");
     await user.clear(input);
     await user.type(input, "Acme");
-    await user.click(screen.getByRole("button", { name: "Next" }));
+    await user.click(screen.getByText("Next"));
 
     await waitFor(() => {
       expect(
@@ -292,7 +288,7 @@ describe("selected connectors display renders (AGENT-D-060)", () => {
     const input = await screen.findByPlaceholderText("e.g. Acme Corp");
     await user.clear(input);
     await user.type(input, "Acme");
-    await user.click(screen.getByRole("button", { name: "Next" }));
+    await user.click(screen.getByText("Next"));
 
     await waitFor(() => {
       expect(
@@ -323,7 +319,7 @@ describe("connector selection buttons toggle (AGENT-D-064)", () => {
     const input = await screen.findByPlaceholderText("e.g. Acme Corp");
     await user.clear(input);
     await user.type(input, "Acme");
-    await user.click(screen.getByRole("button", { name: "Next" }));
+    await user.click(screen.getByText("Next"));
 
     await waitFor(() => {
       expect(
@@ -360,7 +356,7 @@ describe("connector search input filters list (AGENT-D-065)", () => {
     const input = await screen.findByPlaceholderText("e.g. Acme Corp");
     await user.clear(input);
     await user.type(input, "Acme");
-    await user.click(screen.getByRole("button", { name: "Next" }));
+    await user.click(screen.getByText("Next"));
 
     await waitFor(() => {
       expect(
@@ -389,7 +385,7 @@ async function navigateToStep3(user: ReturnType<typeof userEvent.setup>) {
   const input = await screen.findByPlaceholderText("e.g. Acme Corp");
   await user.clear(input);
   await user.type(input, "Acme");
-  await user.click(screen.getByRole("button", { name: "Next" }));
+  await user.click(screen.getByText("Next"));
 
   await waitFor(() => {
     expect(
@@ -401,7 +397,7 @@ async function navigateToStep3(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByTestId("connector-card-github"));
 
   // Advance to step 3
-  await user.click(screen.getByRole("button", { name: "Next" }));
+  await user.click(screen.getByText("Next"));
 
   await waitFor(() => {
     expect(screen.getByTestId("onboarding-step-connect")).toBeInTheDocument();
@@ -416,7 +412,7 @@ describe("connect button is present in step 3 (AGENT-D-066)", () => {
 
     await navigateToStep3(user);
 
-    expect(screen.getByRole("button", { name: "Connect" })).toBeInTheDocument();
+    expect(screen.getByText("Connect")).toBeInTheDocument();
   });
 });
 
@@ -433,7 +429,7 @@ describe("connector polling status shows (AGENT-D-059)", () => {
     const input = await screen.findByPlaceholderText("e.g. Acme Corp");
     await user.clear(input);
     await user.type(input, "Acme");
-    await user.click(screen.getByRole("button", { name: "Next" }));
+    await user.click(screen.getByText("Next"));
 
     await waitFor(() => {
       expect(
@@ -442,7 +438,7 @@ describe("connector polling status shows (AGENT-D-059)", () => {
     });
 
     // Skip selection and go directly to step 3
-    await user.click(screen.getByRole("button", { name: "Next" }));
+    await user.click(screen.getByText("Next"));
 
     await waitFor(() => {
       expect(screen.getByTestId("onboarding-step-connect")).toBeInTheDocument();
@@ -467,7 +463,7 @@ describe("back button returns to previous step (AGENT-D-068)", () => {
     const input = await screen.findByPlaceholderText("e.g. Acme Corp");
     await user.clear(input);
     await user.type(input, "Acme");
-    await user.click(screen.getByRole("button", { name: "Next" }));
+    await user.click(screen.getByText("Next"));
 
     await waitFor(() => {
       expect(
@@ -476,7 +472,7 @@ describe("back button returns to previous step (AGENT-D-068)", () => {
     });
 
     // Click Back
-    await user.click(screen.getByRole("button", { name: "Back" }));
+    await user.click(screen.getByText("Back"));
 
     await waitFor(() => {
       expect(
@@ -496,12 +492,8 @@ describe("slack/web integration setup cards render (AGENT-D-061)", () => {
     await renderOnboardingPage();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /Add .+ to Slack/ }),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByRole("button", { name: /Continue in web/ }),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/Add .+ to Slack/)).toBeInTheDocument();
+      expect(screen.getByText(/Continue in web/)).toBeInTheDocument();
     });
   });
 });

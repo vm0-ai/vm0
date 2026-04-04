@@ -66,9 +66,7 @@ describe("connect modal - content by auth method", () => {
     await openConnectModal("github");
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Sign in with GitHub" }),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Sign in with GitHub")).toBeInTheDocument();
     });
   });
 
@@ -79,7 +77,7 @@ describe("connect modal - content by auth method", () => {
       expect(screen.getByPlaceholderText("xaat-...")).toBeInTheDocument();
     });
 
-    expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
+    expect(screen.getByText("Save")).toBeInTheDocument();
   });
 });
 
@@ -110,15 +108,11 @@ describe("connect modal - loading states", () => {
     await openConnectModal("github");
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Sign in with GitHub" }),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Sign in with GitHub")).toBeInTheDocument();
     });
 
     const user = userEvent.setup();
-    await user.click(
-      screen.getByRole("button", { name: "Sign in with GitHub" }),
-    );
+    await user.click(screen.getByText("Sign in with GitHub"));
 
     await waitFor(() => {
       expect(screen.getByText("Connecting...")).toBeInTheDocument();
@@ -136,15 +130,11 @@ describe("connect modal - interactions", () => {
     await openConnectModal("github");
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Sign in with GitHub" }),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Sign in with GitHub")).toBeInTheDocument();
     });
 
     const user = userEvent.setup();
-    await user.click(
-      screen.getByRole("button", { name: "Sign in with GitHub" }),
-    );
+    await user.click(screen.getByText("Sign in with GitHub"));
 
     expect(openSpy).toHaveBeenCalledWith(
       expect.stringContaining("/api/zero/connectors/github/authorize"),
@@ -187,7 +177,7 @@ describe("connect modal - interactions", () => {
       screen.getByPlaceholderText("xaat-..."),
       "test-token-value",
     );
-    await user.click(screen.getByRole("button", { name: "Save" }));
+    await user.click(screen.getByText("Save"));
 
     await waitFor(() => {
       expect(submittedSecret).toBeDefined();
@@ -219,7 +209,7 @@ describe("connect modal - state management", () => {
     });
 
     // Close dialog via the close button
-    const closeButton = screen.getByRole("button", { name: /close/i });
+    const closeButton = screen.getByLabelText(/close/i);
     await user.click(closeButton);
 
     await waitFor(() => {

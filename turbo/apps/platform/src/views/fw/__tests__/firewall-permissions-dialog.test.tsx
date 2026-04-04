@@ -114,16 +114,12 @@ async function openPermissionsDrawer(connectorLabel: string) {
 
   await waitFor(() => {
     expect(
-      screen.getByRole("button", {
-        name: `Manage ${connectorLabel} permissions`,
-      }),
+      screen.getByLabelText(`Manage ${connectorLabel} permissions`),
     ).toBeInTheDocument();
   });
 
   await user.click(
-    screen.getByRole("button", {
-      name: `Manage ${connectorLabel} permissions`,
-    }),
+    screen.getByLabelText(`Manage ${connectorLabel} permissions`),
   );
 
   await waitFor(() => {
@@ -197,15 +193,9 @@ describe("firewall permissions dialog - grouped connector (GitHub)", () => {
     await openPermissionsDrawer("GitHub");
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /Read \(\d+\)/i }),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByRole("button", { name: /Write \(\d+\)/i }),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByRole("button", { name: /Admin \(\d+\)/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/Read \(\d+\)/i)).toBeInTheDocument();
+      expect(screen.getByText(/Write \(\d+\)/i)).toBeInTheDocument();
+      expect(screen.getByText(/Admin \(\d+\)/i)).toBeInTheDocument();
     });
   });
 
@@ -214,7 +204,7 @@ describe("firewall permissions dialog - grouped connector (GitHub)", () => {
     await setupPage({ context, path: "/agents/my-agent" });
     const user = await openPermissionsDrawer("GitHub");
 
-    const readButton = screen.getByRole("button", { name: /Read \(\d+\)/i });
+    const readButton = screen.getByText(/Read \(\d+\)/i);
 
     // Expand
     await user.click(readButton);
@@ -250,7 +240,7 @@ describe("firewall permissions dialog - grouped connector (GitHub)", () => {
     await setupPage({ context, path: "/agents/my-agent" });
     const user = await openPermissionsDrawer("GitHub");
 
-    await user.click(screen.getByRole("button", { name: "Apply" }));
+    await user.click(screen.getByText("Apply"));
 
     await waitFor(() => {
       return expect(putCalled).toBeTruthy();
@@ -269,16 +259,16 @@ describe("firewall permissions dialog - grouped connector (GitHub)", () => {
 
     // The footer "Close" button (text content) should be present
     await waitFor(() => {
-      const closeButtons = screen.getAllByRole("button", { name: "Close" });
+      const closeButtons = screen.getAllByRole("button").filter((el) => {
+        return el.textContent?.trim() === "Close";
+      });
       // At least one of them is the footer close button (not the X icon)
       const footerClose = closeButtons.find((b) => {
         return b.textContent?.trim() === "Close";
       });
       expect(footerClose).toBeDefined();
     });
-    expect(
-      screen.queryByRole("button", { name: "Apply" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Apply")).not.toBeInTheDocument();
 
     // All policy pill buttons (Allow/Deny) should be disabled
     const allButtons = screen.getAllByRole("button");

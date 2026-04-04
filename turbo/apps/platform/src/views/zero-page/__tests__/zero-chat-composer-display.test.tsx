@@ -68,9 +68,7 @@ describe("chat-d-015: attachment chips in composer", () => {
     await setupPage({ context, path: "/" });
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Attach" }),
-      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Attach")).toBeInTheDocument();
     });
 
     const fileInput =
@@ -82,9 +80,9 @@ describe("chat-d-015: attachment chips in composer", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("button", {
-          name: /Remove test-image\.png|Cancel upload test-image\.png/,
-        }),
+        screen.getByLabelText(
+          /Remove test-image\.png|Cancel upload test-image\.png/,
+        ),
       ).toBeInTheDocument();
     });
   });
@@ -105,7 +103,7 @@ describe("chat-d-016: connected connector icons in composer trigger", () => {
     await setupPage({ context, path: "/" });
 
     const connectorsButton = await waitFor(() => {
-      return screen.getByRole("button", { name: "Connectors" });
+      return screen.getByLabelText("Connectors");
     });
     await user.click(connectorsButton);
 
@@ -125,7 +123,7 @@ describe("chat-d-017: connector list in popover", () => {
     await setupPage({ context, path: "/" });
 
     const connectorsButton = await waitFor(() => {
-      return screen.getByRole("button", { name: "Connectors" });
+      return screen.getByLabelText("Connectors");
     });
     await user.click(connectorsButton);
 
@@ -147,7 +145,7 @@ describe("chat-d-018: add dialog with search filtering", () => {
     await setupPage({ context, path: "/" });
 
     const connectorsButton = await waitFor(() => {
-      return screen.getByRole("button", { name: "Connectors" });
+      return screen.getByLabelText("Connectors");
     });
     await user.click(connectorsButton);
 
@@ -162,21 +160,15 @@ describe("chat-d-018: add dialog with search filtering", () => {
     expect(searchInput).toBeInTheDocument();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Connect GitHub" }),
-      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Connect GitHub")).toBeInTheDocument();
     });
 
     await user.clear(searchInput);
     await user.type(searchInput, "Slack");
 
     await waitFor(() => {
-      expect(
-        screen.queryByRole("button", { name: "Connect GitHub" }),
-      ).not.toBeInTheDocument();
-      expect(
-        screen.getByRole("button", { name: "Connect Slack" }),
-      ).toBeInTheDocument();
+      expect(screen.queryByLabelText("Connect GitHub")).not.toBeInTheDocument();
+      expect(screen.getByLabelText("Connect Slack")).toBeInTheDocument();
     });
   });
 });
@@ -188,7 +180,7 @@ describe("chat-d-019: connector description in add dialog", () => {
     await setupPage({ context, path: "/" });
 
     const connectorsButton = await waitFor(() => {
-      return screen.getByRole("button", { name: "Connectors" });
+      return screen.getByLabelText("Connectors");
     });
     await user.click(connectorsButton);
 
@@ -200,9 +192,7 @@ describe("chat-d-019: connector description in add dialog", () => {
     await waitFor(() => {
       // Each connector card has a Connect button — verify at least one is present,
       // confirming the dialog renders connector items with actionable controls.
-      expect(
-        screen.getByRole("button", { name: "Connect GitHub" }),
-      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Connect GitHub")).toBeInTheDocument();
     });
   });
 });
@@ -224,7 +214,7 @@ describe("chat-d-020: connectors popover after load", () => {
     await setupPage({ context, path: "/" });
 
     const connectorsButton = await waitFor(() => {
-      return screen.getByRole("button", { name: "Connectors" });
+      return screen.getByLabelText("Connectors");
     });
     await user.click(connectorsButton);
 
@@ -248,23 +238,19 @@ describe("chat-d-021: send button state changes", () => {
       return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
     });
 
-    expect(screen.getByRole("button", { name: "Send" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Send")).toBeInTheDocument();
 
     await sendMessageInUI(user, textarea, "Hello");
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Stop" })).toBeInTheDocument();
-      expect(
-        screen.queryByRole("button", { name: "Send" }),
-      ).not.toBeInTheDocument();
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+      expect(screen.queryByLabelText("Send")).not.toBeInTheDocument();
     });
 
     ctrl.completeRun("Done");
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Send" })).toBeInTheDocument();
-      expect(
-        screen.queryByRole("button", { name: "Stop" }),
-      ).not.toBeInTheDocument();
+      expect(screen.getByLabelText("Send")).toBeInTheDocument();
+      expect(screen.queryByLabelText("Stop")).not.toBeInTheDocument();
     });
   });
 });

@@ -134,7 +134,7 @@ describe("zeroActivityDetailPageDisplay", () => {
       ).toBeInTheDocument();
     });
 
-    const scheduleLink = screen.getByRole("link", { name: "Schedule" });
+    const scheduleLink = screen.getByText("Schedule");
     expect(scheduleLink).toBeInTheDocument();
     expect(scheduleLink.getAttribute("href")).toContain("/schedules/sched-123");
   });

@@ -47,10 +47,10 @@ describe("zero chat page display - suggested prompt connector icons", () => {
     mockChatAPI();
     await setupPage({ context, path: "/" });
 
-    const exploreButton = await waitFor(() => {
-      return screen.getByRole("button", { name: /Ideas & use cases/ });
+    const exploreText = await waitFor(() => {
+      return screen.getByText(/Ideas & use cases/);
     });
-    const promptGrid = exploreButton.parentElement!;
+    const promptGrid = exploreText.closest("button")!.parentElement!;
     const gridButtons = within(promptGrid).getAllByRole("button");
 
     const promptCards = gridButtons.filter((btn) => {

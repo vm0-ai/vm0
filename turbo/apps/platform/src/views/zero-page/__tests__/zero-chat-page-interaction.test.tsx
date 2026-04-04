@@ -43,15 +43,13 @@ describe("zero chat page - agent avatar link", () => {
     await setupPage({ context, path: "/" });
 
     const link = await waitFor(() => {
-      return screen.getByRole("link", { name: "View agent profile" });
+      return screen.getByLabelText("View agent profile");
     });
 
     await user.click(link);
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("tab", { name: /Scheduled/i }),
-      ).toBeInTheDocument();
+      expect(screen.getAllByText(/Scheduled/i).length).toBeGreaterThan(0);
     });
   });
 });
@@ -64,7 +62,7 @@ describe("zero chat page - pin button", () => {
     await setupPage({ context, path: `/agents/${SUBAGENT_ID}/chat` });
 
     const pinButton = await waitFor(() => {
-      return screen.getByRole("button", { name: "Pin to sidebar" });
+      return screen.getByLabelText("Pin to sidebar");
     });
 
     await user.click(pinButton);

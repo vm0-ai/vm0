@@ -68,7 +68,7 @@ describe("create agent dialog - avatar", () => {
     mockTeamWithSubagent();
     await openCreateDialog(user);
 
-    const uploadBtn = screen.getByRole("button", { name: "Upload avatar" });
+    const uploadBtn = screen.getByLabelText("Upload avatar");
     expect(uploadBtn).toBeInTheDocument();
   });
 
@@ -85,7 +85,7 @@ describe("create agent dialog - avatar", () => {
     const clickSpy = vi.fn();
     fileInput!.click = clickSpy;
 
-    await user.click(screen.getByRole("button", { name: "Upload avatar" }));
+    await user.click(screen.getByLabelText("Upload avatar"));
     expect(clickSpy).toHaveBeenCalledOnce();
   });
 
@@ -115,9 +115,7 @@ describe("create agent dialog - avatar", () => {
     });
 
     // Should now show "Remove custom avatar" button instead of upload
-    expect(
-      screen.getByRole("button", { name: "Remove custom avatar" }),
-    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Remove custom avatar")).toBeInTheDocument();
   });
 
   it("should revert to a preset avatar after removing custom upload", async () => {
@@ -138,15 +136,11 @@ describe("create agent dialog - avatar", () => {
     await user.upload(fileInput!, file);
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Remove custom avatar" }),
-      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Remove custom avatar")).toBeInTheDocument();
     });
 
     // Click delete — should revert to preset avatar
-    await user.click(
-      screen.getByRole("button", { name: "Remove custom avatar" }),
-    );
+    await user.click(screen.getByLabelText("Remove custom avatar"));
 
     await waitFor(() => {
       const avatar = screen.getByAltText("New agent");
@@ -157,9 +151,7 @@ describe("create agent dialog - avatar", () => {
     });
 
     // Upload button should be back
-    expect(
-      screen.getByRole("button", { name: "Upload avatar" }),
-    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Upload avatar")).toBeInTheDocument();
   });
 
   it("should send chosen avatar when creating agent", async () => {
@@ -205,7 +197,7 @@ describe("create agent dialog - avatar", () => {
     const input = screen.getByPlaceholderText("e.g. Research Assistant");
     await user.clear(input);
     await user.type(input, "My New Agent");
-    await user.click(screen.getByRole("button", { name: "Create" }));
+    await user.click(screen.getByText("Create"));
 
     await waitFor(() => {
       expect(capturedPayload).toBeTruthy();
@@ -270,16 +262,14 @@ describe("create agent dialog - avatar", () => {
     await user.upload(fileInput!, file);
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Remove custom avatar" }),
-      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Remove custom avatar")).toBeInTheDocument();
     });
 
     // Fill name and create
     const input = screen.getByPlaceholderText("e.g. Research Assistant");
     await user.clear(input);
     await user.type(input, "Custom Avatar Agent");
-    await user.click(screen.getByRole("button", { name: "Create" }));
+    await user.click(screen.getByText("Create"));
 
     await waitFor(() => {
       expect(capturedPayload).toBeTruthy();

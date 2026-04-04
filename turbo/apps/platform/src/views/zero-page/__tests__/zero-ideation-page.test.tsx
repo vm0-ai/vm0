@@ -70,13 +70,15 @@ describe("ideation page - category tabs", () => {
     await renderIdeationPage();
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "All" })).toBeInTheDocument();
+      expect(screen.getByText("All")).toBeInTheDocument();
     });
 
     for (const category of categories) {
       expect(
-        screen.getByRole("button", { name: category.title }),
-      ).toBeInTheDocument();
+        screen.getAllByRole("button").find((el) => {
+          return el.textContent?.trim() === category.title;
+        }),
+      ).toBeDefined();
     }
   });
 
@@ -101,9 +103,11 @@ describe("ideation page - category tabs", () => {
     await renderIdeationPage();
 
     const allTab = await waitFor(() => {
-      return screen.getByRole("button", { name: "All" });
+      return screen.getByText("All");
     });
-    const githubTab = screen.getByRole("button", { name: "GitHub" });
+    const githubTab = screen.getAllByRole("button").find((el) => {
+      return el.textContent?.trim() === "GitHub";
+    })!;
 
     // Initially "All" tab should have active styling
     expect(allTab.className).toContain("bg-muted text-foreground");
@@ -125,11 +129,17 @@ describe("ideation page - category tabs", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: "GitHub" }),
-      ).toBeInTheDocument();
+        screen.getAllByRole("button").find((el) => {
+          return el.textContent?.trim() === "GitHub";
+        }),
+      ).toBeDefined();
     });
 
-    await user.click(screen.getByRole("button", { name: "GitHub" }));
+    await user.click(
+      screen.getAllByRole("button").find((el) => {
+        return el.textContent?.trim() === "GitHub";
+      })!,
+    );
 
     await waitFor(() => {
       expect(
@@ -149,11 +159,17 @@ describe("ideation page - category tabs", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: "GitHub" }),
-      ).toBeInTheDocument();
+        screen.getAllByRole("button").find((el) => {
+          return el.textContent?.trim() === "GitHub";
+        }),
+      ).toBeDefined();
     });
 
-    await user.click(screen.getByRole("button", { name: "GitHub" }));
+    await user.click(
+      screen.getAllByRole("button").find((el) => {
+        return el.textContent?.trim() === "GitHub";
+      })!,
+    );
 
     await waitFor(() => {
       expect(
@@ -161,7 +177,7 @@ describe("ideation page - category tabs", () => {
       ).not.toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: "All" }));
+    await user.click(screen.getByText("All"));
 
     await waitFor(() => {
       expect(

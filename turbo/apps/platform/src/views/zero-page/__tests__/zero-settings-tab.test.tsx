@@ -80,7 +80,7 @@ async function openProfileTab(user: ReturnType<typeof userEvent.setup>) {
       screen.getByRole("heading", { name: "My Agent" }),
     ).toBeInTheDocument();
   });
-  await user.click(screen.getByRole("tab", { name: /Profile/i }));
+  await user.click(screen.getByText(/Profile/i));
   await waitFor(() => {
     expect(screen.getByLabelText(/name/i)).toBeInTheDocument();
   });
@@ -229,7 +229,7 @@ describe("zero settings tab - display", () => {
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Zero" })).toBeInTheDocument();
     });
-    await user.click(screen.getByRole("tab", { name: /Profile/i }));
+    await user.click(screen.getByText(/Profile/i));
     await waitFor(() => {
       expect(screen.getByLabelText(/name/i)).toBeInTheDocument();
     });
@@ -356,7 +356,7 @@ describe("zero settings tab - interaction", () => {
       expect(screen.getByText("Clear and polished")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: /Direct/i }));
+    await user.click(screen.getByText(/Direct/i));
 
     await waitFor(() => {
       expect(screen.getByText("To the point")).toBeInTheDocument();
@@ -386,7 +386,7 @@ describe("zero settings tab - interaction", () => {
       expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: /^Save$/i }));
+    await user.click(screen.getByText(/^Save$/i));
 
     await waitFor(() => {
       expect(
@@ -408,7 +408,7 @@ describe("zero settings tab - interaction", () => {
       expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: /Discard/i }));
+    await user.click(screen.getByText(/Discard/i));
 
     await waitFor(() => {
       expect(screen.getByDisplayValue("My Agent")).toBeInTheDocument();
@@ -424,12 +424,10 @@ describe("zero settings tab - interaction", () => {
     await openProfileTab(user);
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /Delete agent/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/Delete agent/i)).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: /Delete agent/i }));
+    await user.click(screen.getByText(/Delete agent/i));
 
     await waitFor(() => {
       expect(screen.getByText("Delete My Agent?")).toBeInTheDocument();
@@ -442,18 +440,16 @@ describe("zero settings tab - interaction", () => {
     await openProfileTab(user);
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /Delete agent/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/Delete agent/i)).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: /Delete agent/i }));
+    await user.click(screen.getByText(/Delete agent/i));
 
     await waitFor(() => {
       expect(screen.getByText("Delete My Agent?")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: /^Cancel$/i }));
+    await user.click(screen.getByText(/^Cancel$/i));
 
     await waitFor(() => {
       expect(screen.queryByText("Delete My Agent?")).not.toBeInTheDocument();
@@ -471,19 +467,17 @@ describe("zero settings tab - interaction", () => {
     await openProfileTab(user);
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /Delete agent/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/Delete agent/i)).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: /Delete agent/i }));
+    await user.click(screen.getByText(/Delete agent/i));
 
     await waitFor(() => {
       expect(screen.getByText("Delete My Agent?")).toBeInTheDocument();
     });
 
-    const deleteButtons = screen.getAllByRole("button", {
-      name: /Delete agent/i,
+    const deleteButtons = screen.getAllByRole("button").filter((el) => {
+      return /Delete agent/i.test(el.textContent ?? "");
     });
     await user.click(deleteButtons[deleteButtons.length - 1]);
 
