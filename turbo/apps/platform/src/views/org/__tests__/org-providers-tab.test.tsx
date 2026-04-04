@@ -10,14 +10,10 @@ import { describe, it, expect } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import {
-  type ModelProviderResponse,
-  getSelectableProviderTypes,
-} from "@vm0/core";
+import { type ModelProviderResponse, MODEL_PROVIDER_TYPES } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
-import { setOrgAddProviderDialogOpen$ } from "../../../signals/zero-page/settings/org-model-providers.ts";
 
 const context = testContext();
 
@@ -273,8 +269,10 @@ describe("org add provider dialog - display", () => {
   });
 
   // ORG-C-084
-  it("shows all providers configured message when no providers are available to add", async () => {
-    const allTypes = getSelectableProviderTypes();
+  it("hides add provider button when all providers are configured", async () => {
+    const allTypes = Object.keys(
+      MODEL_PROVIDER_TYPES,
+    ) as ModelProviderResponse["type"][];
     const allProviders = allTypes.map((type, idx) => {
       return makeProvider(type, {
         id: `00000000-0000-4000-a000-${String(idx).padStart(12, "0")}`,
@@ -283,13 +281,10 @@ describe("org add provider dialog - display", () => {
     });
     mockAPIs({ providers: allProviders });
     await openProvidersPage();
-    // When all providers are configured, the "Add provider" button is hidden
-    // Open the dialog directly and verify the empty state message
-    context.store.set(setOrgAddProviderDialogOpen$, true);
     await waitFor(() => {
       expect(
-        screen.getByText("All providers have been configured."),
-      ).toBeInTheDocument();
+        screen.queryByRole("button", { name: /add provider/i }),
+      ).not.toBeInTheDocument();
     });
   });
 });
