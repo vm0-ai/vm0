@@ -377,7 +377,10 @@ function MemberRow({
             <span className="flex items-center gap-1.5 text-sm font-medium text-foreground truncate">
               {name}
               {isCurrentUser && (
-                <span className="inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-medium bg-muted text-muted-foreground leading-none">
+                <span
+                  data-testid="current-user-indicator"
+                  className="inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-medium bg-muted text-muted-foreground leading-none"
+                >
                   You
                 </span>
               )}

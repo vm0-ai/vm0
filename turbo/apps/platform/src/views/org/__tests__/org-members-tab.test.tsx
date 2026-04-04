@@ -145,7 +145,7 @@ test("shows current user indicator on the current user row", async () => {
   mockMembersAPI({ members: [adminMember] });
   await renderMembersTab();
   await waitFor(() => {
-    expect(screen.getByText("You")).toBeInTheDocument();
+    expect(screen.getByTestId("current-user-indicator")).toBeInTheDocument();
   });
 });
 
@@ -162,6 +162,7 @@ test("shows empty state when no members match search", async () => {
   await user.type(searchInput, "xyz-no-match");
   await waitFor(() => {
     expect(screen.queryByText("Regular Member")).not.toBeInTheDocument();
+    expect(screen.getByText("No members found")).toBeInTheDocument();
   });
 });
 
@@ -267,9 +268,19 @@ test("sends invite with Admin role when Admin is selected in role dropdown", asy
 });
 
 // ORG-I-033
-test("shows Make admin and Remove from org in member action menu", async () => {
+test("sends role update when Make admin is clicked in member action menu", async () => {
   const user = userEvent.setup();
+  let capturedRoleUpdate: { email: string; role: string } | null = null;
   mockMembersAPI({ members: [adminMember, regularMember] });
+  server.use(
+    http.patch("*/api/zero/org/members", async ({ request }) => {
+      capturedRoleUpdate = (await request.json()) as {
+        email: string;
+        role: string;
+      };
+      return HttpResponse.json({ message: "ok" });
+    }),
+  );
   await renderMembersTab();
   await waitFor(() => {
     expect(screen.getByText("member@example.com")).toBeInTheDocument();
@@ -279,7 +290,13 @@ test("shows Make admin and Remove from org in member action menu", async () => {
   );
   await waitFor(() => {
     expect(screen.getByText("Make admin")).toBeInTheDocument();
-    expect(screen.getByText("Remove from org")).toBeInTheDocument();
+  });
+  await user.click(screen.getByText("Make admin"));
+  await waitFor(() => {
+    expect(capturedRoleUpdate).toStrictEqual({
+      email: "member@example.com",
+      role: "admin",
+    });
   });
 });
 
@@ -289,7 +306,7 @@ test("shows self-demote confirmation dialog when admin switches to member", asyn
   mockMembersAPI({ members: [adminMember, secondAdmin, regularMember] });
   await renderMembersTab();
   await waitFor(() => {
-    expect(screen.getByText("You")).toBeInTheDocument();
+    expect(screen.getByTestId("current-user-indicator")).toBeInTheDocument();
   });
   await user.click(
     screen.getByRole("button", { name: "Actions for admin@example.com" }),
@@ -334,9 +351,7 @@ test("sends accept request when Accept button is clicked", async () => {
   mockMembersAPI({ membershipRequests: [membershipRequest] });
   server.use(
     http.post("*/api/zero/org/membership-requests", async ({ request }) => {
-      const body: { requestId: string } = (await request.json()) as {
-        requestId: string;
-      };
+      const body = (await request.json()) as { requestId: string };
       capturedRequestId = body.requestId;
       return HttpResponse.json({ message: "ok" });
     }),
@@ -360,9 +375,7 @@ test("sends reject request when Reject button is clicked", async () => {
   mockMembersAPI({ membershipRequests: [membershipRequest] });
   server.use(
     http.delete("*/api/zero/org/membership-requests", async ({ request }) => {
-      const body: { requestId: string } = (await request.json()) as {
-        requestId: string;
-      };
+      const body = (await request.json()) as { requestId: string };
       capturedRequestId = body.requestId;
       return HttpResponse.json({ message: "ok" });
     }),
