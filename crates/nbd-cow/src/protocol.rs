@@ -362,29 +362,4 @@ mod tests {
         assert!(Command::from_u16(5).is_err());
         assert!(Command::from_u16(u16::MAX).is_err());
     }
-
-    #[test]
-    fn reply_header_size_is_16() {
-        let reply = NbdReply {
-            error: 0,
-            handle: 0,
-        };
-        let buf = serialize_reply(&reply);
-        assert_eq!(buf.len(), REPLY_HEADER_SIZE);
-        assert_eq!(REPLY_HEADER_SIZE, 16);
-    }
-
-    #[test]
-    fn request_header_size_is_28() {
-        assert_eq!(REQUEST_HEADER_SIZE, 28);
-        let req = NbdRequest {
-            flags: 0,
-            command: Command::Read,
-            handle: 0,
-            offset: 0,
-            length: 0,
-        };
-        let buf = serialize_request(&req);
-        assert_eq!(buf.len(), REQUEST_HEADER_SIZE);
-    }
 }

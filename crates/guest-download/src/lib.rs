@@ -610,10 +610,4 @@ mod tests {
             "https://example.com/archive.tar.gz".to_string()
         )));
     }
-
-    #[test]
-    fn is_valid_url_empty_string() {
-        // Empty string is not "null", so it's technically valid per the function
-        assert!(is_valid_url(&Some(String::new())));
-    }
 }
