@@ -108,6 +108,7 @@ describe("zero unsaved bar - save button loading state (SCHED-D-094)", () => {
 
     await waitFor(() => {
       expect(screen.getByTestId("save-button")).toBeDisabled();
+      expect(screen.getByTestId("save-spinner")).toBeInTheDocument();
     });
 
     resolvePost();
@@ -128,7 +129,7 @@ describe("zero unsaved bar - discard button reverts changes (SCHED-D-095)", () =
       expect(screen.getByTestId("unsaved-bar")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText("Discard"));
+    await user.click(screen.getByTestId("discard-button"));
 
     await waitFor(() => {
       expect(screen.queryByTestId("unsaved-bar")).not.toBeInTheDocument();

@@ -29,6 +29,7 @@ export function ZeroUnsavedBar({
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <Button
+            data-testid="discard-button"
             variant="ghost"
             size="sm"
             className="text-destructive hover:bg-destructive/10 hover:text-destructive"
@@ -46,6 +47,7 @@ export function ZeroUnsavedBar({
           >
             {saving ? (
               <IconLoader2
+                data-testid="save-spinner"
                 size={14}
                 stroke={1.5}
                 className="animate-spin mr-1.5"
