@@ -103,10 +103,6 @@ export const setBillingDialogOpen$ = command(({ set }, open: boolean) => {
   set(internalDialogOpen$, open);
 });
 
-export const closeBillingDialog$ = command(({ set }) => {
-  set(internalDialogOpen$, false);
-});
-
 export const startCheckout$ = command(
   async ({ get }, tier: "pro" | "team", _signal: AbortSignal) => {
     const currentUrl = window.location.href;

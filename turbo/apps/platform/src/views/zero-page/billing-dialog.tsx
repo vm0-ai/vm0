@@ -17,7 +17,7 @@ import {
   apiTierToBillingTier,
   billingDialogOpen$,
   billingStatusAsync$,
-  closeBillingDialog$,
+  setBillingDialogOpen$,
   startCheckout$,
   openDowngradeDialog$,
   saveAutoRecharge$,
@@ -416,7 +416,7 @@ export function BillingDialog() {
   const statusLoadable = useLastLoadable(billingStatusAsync$);
   const status =
     statusLoadable.state === "hasData" ? statusLoadable.data : null;
-  const close = useSet(closeBillingDialog$);
+  const close = useSet(setBillingDialogOpen$);
   const [checkoutLoadable, checkout] = useLoadableSet(startCheckout$);
   const openDowngrade = useSet(openDowngradeDialog$);
   const selectedTier = useGet(selectedPlanTier$);
@@ -443,7 +443,7 @@ export function BillingDialog() {
     <Dialog
       open={open}
       onOpenChange={(v) => {
-        return !v && close();
+        return !v && close(false);
       }}
     >
       <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-[600px]">
