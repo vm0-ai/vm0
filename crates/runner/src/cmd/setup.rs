@@ -587,14 +587,19 @@ mod tests {
     }
 
     #[test]
-    fn check_system_ca_bundle_error_message() {
-        // Verify the error message references the expected path and fix command.
-        // The function itself may succeed or fail depending on host, so we test
-        // the error path by checking what it would return for a missing bundle.
-        if !std::path::Path::new(SYSTEM_CA_BUNDLE).exists() {
-            let err = check_system_ca_bundle().unwrap_err().to_string();
-            assert!(err.contains(SYSTEM_CA_BUNDLE), "error should mention path");
-            assert!(err.contains("ca-certificates"), "error should suggest fix");
+    fn check_system_ca_bundle_consistent_with_filesystem() {
+        let result = check_system_ca_bundle();
+        let exists = std::path::Path::new(SYSTEM_CA_BUNDLE).exists();
+        assert_eq!(
+            result.is_ok(),
+            exists,
+            "check_system_ca_bundle should succeed iff {} exists",
+            SYSTEM_CA_BUNDLE
+        );
+        if let Err(e) = result {
+            let msg = e.to_string();
+            assert!(msg.contains(SYSTEM_CA_BUNDLE), "error should mention path");
+            assert!(msg.contains("ca-certificates"), "error should suggest fix");
         }
     }
 }

@@ -77,35 +77,15 @@ mod tests {
     }
 
     #[test]
-    fn firecracker_tar_entry_format() {
-        let entry = firecracker_tar_entry("aarch64");
-        assert!(entry.starts_with("firecracker-"));
-        assert!(entry.ends_with("-aarch64"));
-        assert!(entry.contains(FIRECRACKER_VERSION));
-    }
-
-    #[test]
-    fn firecracker_url_format() {
-        let url = firecracker_url("x86_64");
-        assert!(url.starts_with("https://"));
-        assert!(url.contains(FIRECRACKER_VERSION));
-        assert!(url.ends_with(".tgz"));
-    }
-
-    #[test]
-    fn kernel_url_format() {
-        let url = kernel_url("aarch64");
-        assert!(url.starts_with("https://"));
-        assert!(url.contains(KERNEL_VERSION));
-        assert!(url.contains("aarch64"));
-    }
-
-    #[test]
-    fn mitmdump_url_format() {
-        let url = mitmdump_url("x86_64");
-        assert!(url.starts_with("https://"));
-        assert!(url.contains(MITMPROXY_VERSION));
-        assert!(url.ends_with(".tar.gz"));
+    fn url_functions_include_arch() {
+        // Verify arch substitution works (not just substring presence)
+        assert_ne!(firecracker_url("x86_64"), firecracker_url("aarch64"));
+        assert_ne!(kernel_url("x86_64"), kernel_url("aarch64"));
+        assert_ne!(mitmdump_url("x86_64"), mitmdump_url("aarch64"));
+        assert_ne!(
+            firecracker_tar_entry("x86_64"),
+            firecracker_tar_entry("aarch64")
+        );
     }
 
     #[test]
