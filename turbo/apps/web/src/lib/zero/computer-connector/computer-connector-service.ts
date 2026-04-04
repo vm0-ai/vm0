@@ -61,11 +61,12 @@ export async function createComputerConnector(
   // Generate unique subdomain name for this user
   // Truncate org ID to keep subdomain short (ngrok has length limits)
   // Replace underscores with hyphens — ngrok rejects underscores in domain names
-  const orgIdShort = orgId.substring(0, 8).replace(/_/g, "-");
+  const sanitizedOrgId = orgId.replace(/_/g, "-");
+  const orgIdShort = sanitizedOrgId.substring(0, 8);
   const subdomainName = `vm0-user-${orgIdShort}`;
-  const endpointPrefix = `vm0-user-${orgId}`;
+  const endpointPrefix = `vm0-user-${sanitizedOrgId}`;
 
-  const botUserName = `vm0-user-${orgId}`;
+  const botUserName = `vm0-user-${sanitizedOrgId}`;
 
   // Provision ngrok resources
   const botUser = await findOrCreateBotUser(apiKey, botUserName);
