@@ -111,28 +111,30 @@ describe("link component", () => {
       return null;
     });
 
-    await setupPage({ context, path: "/queues" });
+    try {
+      await setupPage({ context, path: "/queues" });
 
-    const link = await waitFor(() => {
-      return screen.getByText("View logs");
-    });
+      const link = await waitFor(() => {
+        return screen.getByText("View logs");
+      });
 
-    const user = userEvent.setup();
-    await user.click(link);
+      const user = userEvent.setup();
+      await user.click(link);
 
-    // Wait for the activity detail page to fully initialize so there is no
-    // pending async work when the test ends (which would cause an unhandled
-    // rejection from route.ts).
-    await waitFor(() => {
-      expect(pathname()).toBe(EXPECTED_HREF);
-      expect(
-        screen.getByRole("heading", { name: "Link Agent" }),
-      ).toBeInTheDocument();
-    });
+      // Wait for the activity detail page to fully initialize so there is no
+      // pending async work when the test ends (which would cause an unhandled
+      // rejection from route.ts).
+      await waitFor(() => {
+        expect(pathname()).toBe(EXPECTED_HREF);
+        expect(
+          screen.getByRole("heading", { name: "Link Agent" }),
+        ).toBeInTheDocument();
+      });
 
-    expect(openSpy).not.toHaveBeenCalled();
-
-    openSpy.mockRestore();
+      expect(openSpy).not.toHaveBeenCalled();
+    } finally {
+      openSpy.mockRestore();
+    }
   });
 
   it("modifier click opens new tab (INFRA-D-013)", async () => {
