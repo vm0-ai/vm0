@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.192.1](https://github.com/vm0-ai/vm0/compare/web-v12.192.0...web-v12.192.1) (2026-04-04)
+
+
+### Bug Fixes
+
+* replace underscores in org id for ngrok subdomain names ([#8096](https://github.com/vm0-ai/vm0/issues/8096)) ([3ecd2d1](https://github.com/vm0-ai/vm0/commit/3ecd2d1496858e3ec09ab402c51b1401c38152ab))
+
 ## [12.192.0](https://github.com/vm0-ai/vm0/compare/web-v12.191.1...web-v12.192.0) (2026-04-03)
 
 
