@@ -125,6 +125,9 @@ describe("zero schedule detail page - settings form inputs accept text (SCHED-D-
     await user.type(descriptionInput, "New description");
 
     expect(descriptionInput).toHaveValue("New description");
+    await waitFor(() => {
+      expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
+    });
   });
 });
 
@@ -173,12 +176,10 @@ describe("zero schedule detail page - toggle switch changes enabled state (SCHED
 });
 
 describe("zero schedule detail page - settings save button persists changes (SCHED-D-022)", () => {
-  it("should call the save API when save button is clicked after changes", async () => {
+  it("should save settings and dismiss the unsaved changes banner", async () => {
     mockAPIs();
-    let saveCalled = false;
     server.use(
       http.post("*/api/zero/schedules", () => {
-        saveCalled = true;
         return HttpResponse.json(
           {
             schedule: createMockSchedule({ description: "Updated" }),
@@ -205,8 +206,11 @@ describe("zero schedule detail page - settings save button persists changes (SCH
     await user.click(screen.getByText("Save"));
 
     await waitFor(() => {
-      expect(saveCalled).toBeTruthy();
+      expect(
+        screen.queryByText("You have unsaved changes"),
+      ).not.toBeInTheDocument();
     });
+    expect(screen.getByText("Schedule updated")).toBeInTheDocument();
   });
 });
 
@@ -226,14 +230,25 @@ describe("zero schedule detail page - delete button opens confirmation dialog (S
 });
 
 describe("zero schedule detail page - instruction save button saves instructions (SCHED-D-024)", () => {
-  it("should call the save API when save is clicked after editing instructions", async () => {
-    mockAPIs();
-    let saveCalled = false;
+  it("should save instructions and show a success confirmation", async () => {
+    const newPrompt = "New instruction content";
+    let saved = false;
     server.use(
+      http.get("*/api/zero/schedules", () => {
+        return HttpResponse.json({
+          schedules: [createMockSchedule(saved ? { prompt: newPrompt } : {})],
+        });
+      }),
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
       http.post("*/api/zero/schedules", () => {
-        saveCalled = true;
+        saved = true;
         return HttpResponse.json(
-          { schedule: createMockSchedule(), created: false },
+          {
+            schedule: createMockSchedule({ prompt: newPrompt }),
+            created: false,
+          },
           { status: 200 },
         );
       }),
@@ -262,7 +277,7 @@ describe("zero schedule detail page - instruction save button saves instructions
     await user.click(screen.getByText("Save"));
 
     await waitFor(() => {
-      expect(saveCalled).toBeTruthy();
+      expect(screen.getByText("Schedule updated")).toBeInTheDocument();
     });
   });
 });
@@ -470,12 +485,10 @@ describe("zero schedule detail page - status filter select filters runs (SCHED-D
 });
 
 describe("zero schedule detail page - run now button triggers immediate run (SCHED-D-032)", () => {
-  it("should call the run API when run now button is clicked", async () => {
+  it("should show a run started confirmation when run now button is clicked", async () => {
     mockAPIs();
-    let runNowCalled = false;
     server.use(
       http.post("*/api/zero/schedules/run", () => {
-        runNowCalled = true;
         return HttpResponse.json(
           { runId: "r0000000-0000-4000-a000-000000000001" },
           { status: 201 },
@@ -489,7 +502,7 @@ describe("zero schedule detail page - run now button triggers immediate run (SCH
     await user.click(screen.getByText(/Run now/i));
 
     await waitFor(() => {
-      expect(runNowCalled).toBeTruthy();
+      expect(screen.getByText(/Run started/i)).toBeInTheDocument();
     });
   });
 });
