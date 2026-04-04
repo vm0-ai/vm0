@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
+import type { ScheduleResponse } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
@@ -23,7 +24,9 @@ function mockScheduleBase() {
   };
 }
 
-function weekdaySchedule(overrides: Record<string, unknown> = {}) {
+function weekdaySchedule(
+  overrides: Partial<ScheduleResponse> = {},
+): ScheduleResponse {
   return {
     ...mockScheduleBase(),
     id: "f0000001-0000-4000-a000-000000000001",
@@ -46,7 +49,9 @@ function weekdaySchedule(overrides: Record<string, unknown> = {}) {
 
 // Monday-only schedule — renders exactly one CalendarEntryPopover instance
 // (desktop Mon column only; mobile shows Fri and has no entry since today is Fri)
-function mondayOnlySchedule(overrides: Record<string, unknown> = {}) {
+function mondayOnlySchedule(
+  overrides: Partial<ScheduleResponse> = {},
+): ScheduleResponse {
   return {
     ...mockScheduleBase(),
     id: "f0000001-0000-4000-a000-000000000001",
@@ -67,7 +72,9 @@ function mondayOnlySchedule(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function loopSchedule(overrides: Record<string, unknown> = {}) {
+function loopSchedule(
+  overrides: Partial<ScheduleResponse> = {},
+): ScheduleResponse {
   return {
     ...mockScheduleBase(),
     id: "f0000001-0000-4000-a000-000000000002",
@@ -88,7 +95,9 @@ function loopSchedule(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function monthlySchedule(overrides: Record<string, unknown> = {}) {
+function monthlySchedule(
+  overrides: Partial<ScheduleResponse> = {},
+): ScheduleResponse {
   return {
     ...mockScheduleBase(),
     id: "f0000001-0000-4000-a000-000000000003",
@@ -109,7 +118,9 @@ function monthlySchedule(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function onceSchedule(overrides: Record<string, unknown> = {}) {
+function onceSchedule(
+  overrides: Partial<ScheduleResponse> = {},
+): ScheduleResponse {
   return {
     ...mockScheduleBase(),
     id: "f0000001-0000-4000-a000-000000000004",
@@ -130,7 +141,7 @@ function onceSchedule(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function mockScheduleAPI(schedules: unknown[]) {
+function mockScheduleAPI(schedules: ScheduleResponse[]) {
   server.use(
     http.get("*/api/zero/schedules", () => {
       return HttpResponse.json({ schedules });
@@ -154,7 +165,9 @@ async function switchToCalendarView(user: ReturnType<typeof userEvent.setup>) {
   });
   await user.click(screen.getByRole("tab", { name: /Calendar/i }));
   await waitFor(() => {
-    expect(screen.getByText("Week view")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Week view" }),
+    ).toBeInTheDocument();
   });
 }
 
@@ -214,23 +227,16 @@ describe("schedule calendar view - loop/monthly/once sections (SCHED-D-071)", ()
     await switchToCalendarView(user);
 
     await waitFor(() => {
-      // Assert that each section heading is rendered and has an edit button beneath it
-      const loopHeading = screen.getByText("Loop");
-      expect(loopHeading).toBeInTheDocument();
-      const monthlyHeading = screen.getByText("Monthly");
-      expect(monthlyHeading).toBeInTheDocument();
-      const onceHeading = screen.getByText("Once");
-      expect(onceHeading).toBeInTheDocument();
-      // Each section must contain at least one edit button
+      // Each schedule type renders its own section heading
+      expect(screen.getByRole("heading", { name: "Loop" })).toBeInTheDocument();
       expect(
-        loopHeading.closest("div")?.querySelector("button"),
-      ).not.toBeNull();
-      expect(
-        monthlyHeading.closest("div")?.querySelector("button"),
-      ).not.toBeNull();
-      expect(
-        onceHeading.closest("div")?.querySelector("button"),
-      ).not.toBeNull();
+        screen.getByRole("heading", { name: "Monthly" }),
+      ).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: "Once" })).toBeInTheDocument();
+      // Each section renders exactly one edit button for its single entry
+      expect(screen.getAllByRole("button", { name: /^Edit /i })).toHaveLength(
+        3,
+      );
     });
   });
 });
