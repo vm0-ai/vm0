@@ -9,7 +9,6 @@ import {
 import type { OrgData } from "./org-cache-service";
 import { badRequest } from "../../shared/errors";
 import { logger } from "../../shared/logger";
-import type { ResolvedOrg } from "./resolve-org";
 
 const log = logger("service:org");
 

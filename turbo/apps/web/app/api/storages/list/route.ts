@@ -14,7 +14,6 @@ import {
 } from "../../../../src/lib/auth/require-auth";
 import { isSandboxAuth } from "../../../../src/lib/auth/capability-check";
 import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";
-import { getOrgData } from "../../../../src/lib/zero/org/org-cache-service";
 import { logger } from "../../../../src/lib/shared/logger";
 
 const log = logger("api:storages:list");

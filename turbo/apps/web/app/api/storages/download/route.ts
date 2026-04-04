@@ -15,7 +15,6 @@ import {
 import { isSandboxAuth } from "../../../../src/lib/auth/capability-check";
 import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";
 import { generatePresignedUrl } from "../../../../src/lib/infra/s3/s3-client";
-import { getOrgData } from "../../../../src/lib/zero/org/org-cache-service";
 import { env } from "../../../../src/env";
 import { resolveVersionByPrefix } from "../../../../src/lib/infra/storage/version-resolver";
 import { logger } from "../../../../src/lib/shared/logger";

@@ -61,7 +61,7 @@ export async function getOrgDataOrNull(
  * Lightweight org type based on org_metadata data.
  * Contains only orgId and tier — no Clerk-derived fields (slug, name).
  */
-export interface ResolvedOrg {
+interface ResolvedOrg {
   orgId: string;
   tier: string;
 }
