@@ -1,15 +1,15 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
+import { connectorTypeSchema } from "./connectors";
 import {
   computerConnectorCreateResponseSchema,
   connectorListResponseSchema,
   connectorResponseSchema,
   connectorSessionResponseSchema,
   connectorSessionStatusResponseSchema,
-  connectorTypeSchema,
   scopeDiffResponseSchema,
-} from "./connectors";
+} from "./connector-schemas";
 
 const c = initContract();
 

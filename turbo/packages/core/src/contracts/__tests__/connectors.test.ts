@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { connectorTypeSchema } from "../connectors";
 import {
   hasRequiredScopes,
   getConnectorManagedSecretNames,
@@ -7,8 +8,7 @@ import {
   getConnectorProvidedSecretNames,
   getConnectorAuthMethods,
   getConnectorOAuthConfig,
-  connectorTypeSchema,
-} from "../connectors";
+} from "../connector-utils";
 
 describe("hasRequiredScopes", () => {
   it("returns true for non-OAuth connector type", () => {

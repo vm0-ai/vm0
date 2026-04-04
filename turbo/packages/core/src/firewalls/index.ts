@@ -26,7 +26,7 @@ export {
   type ConnectorCategories,
   type PermissionGroup,
 } from "./categories";
-import { getConnectorEnvironmentMapping } from "../contracts/connectors";
+import { getConnectorEnvironmentMapping } from "../contracts/connector-utils";
 import { agentmailFirewall } from "./agentmail.generated";
 import { ahrefsFirewall } from "./ahrefs.generated";
 import { airtableFirewall } from "./airtable.generated";

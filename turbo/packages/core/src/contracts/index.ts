@@ -348,12 +348,15 @@ export {
 
 export {
   connectorTypeSchema,
-  connectorSessionStatusSchema,
-  connectorResponseSchema,
-  connectorListResponseSchema,
-  connectorSessionResponseSchema,
-  connectorSessionStatusResponseSchema,
   CONNECTOR_TYPES,
+  type ConnectorType,
+  type ConnectorConfig,
+  type ConnectorSecretConfig,
+  type ConnectorAuthMethodConfig,
+  type ConnectorAuthMethodType,
+  type ConnectorOAuthConfig,
+} from "./connectors";
+export {
   getConnectorAuthMethods,
   getConnectorDefaultAuthMethod,
   getConnectorSecretsForAuthMethod,
@@ -367,26 +370,27 @@ export {
   getConnectorOAuthConfig,
   hasRequiredScopes,
   getScopeDiff,
-  scopeDiffResponseSchema,
   type ScopeDiff,
-  type ScopeDiffResponse,
   getApiTokenRequiredSecretNames,
   getApiTokenFieldsByType,
   deriveApiTokenConnectedTypes,
-  type ConnectorType,
+} from "./connector-utils";
+export {
+  connectorSessionStatusSchema,
+  connectorResponseSchema,
+  connectorListResponseSchema,
+  connectorSessionResponseSchema,
+  connectorSessionStatusResponseSchema,
+  scopeDiffResponseSchema,
+  computerConnectorCreateResponseSchema,
+  type ScopeDiffResponse,
   type ConnectorSessionStatus,
   type ConnectorResponse,
   type ConnectorListResponse,
   type ConnectorSessionResponse,
   type ConnectorSessionStatusResponse,
-  type ConnectorConfig,
-  type ConnectorSecretConfig,
-  type ConnectorAuthMethodConfig,
-  type ConnectorAuthMethodType,
-  type ConnectorOAuthConfig,
-  computerConnectorCreateResponseSchema,
   type ComputerConnectorCreateResponse,
-} from "./connectors";
+} from "./connector-schemas";
 
 export {
   basicAuthTemplateRe,

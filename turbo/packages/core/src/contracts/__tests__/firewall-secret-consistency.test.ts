@@ -3,7 +3,7 @@ import { connectorTypeSchema } from "../connectors";
 import {
   getConnectorEnvironmentMapping,
   getConnectorAuthMethods,
-} from "../connectors";
+} from "../connector-utils";
 import { getConnectorFirewall, isFirewallConnectorType } from "../../firewalls";
 
 /**
