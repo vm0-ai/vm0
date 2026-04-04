@@ -177,7 +177,7 @@ describe("POST /api/zero/computer-use/register", () => {
     expect(ngrokCalls.createEndpoint.length).toBe(1);
   });
 
-  it("should return 409 if host already registered", async () => {
+  it("should return 200 on re-registration (idempotent)", async () => {
     const userId = uniqueId("zcu-dup");
     await setupOrg(userId);
     setupNgrokMocks();
@@ -185,8 +185,12 @@ describe("POST /api/zero/computer-use/register", () => {
     const response1 = await POST(createPostRequest());
     expect(response1.status).toBe(200);
 
+    setupNgrokMocks();
     const response2 = await POST(createPostRequest());
-    expect(response2.status).toBe(409);
+    expect(response2.status).toBe(200);
+    const data = await response2.json();
+    expect(data.domain).toBeDefined();
+    expect(data.token).toBeDefined();
   });
 });
 
