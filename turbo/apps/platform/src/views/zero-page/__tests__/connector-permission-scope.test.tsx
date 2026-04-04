@@ -74,11 +74,18 @@ describe("scope review modal - display", () => {
     });
 
     await waitFor(() => {
-      const plusItems = screen.getAllByText("+");
-      expect(plusItems.length).toBeGreaterThan(0);
+      expect(screen.getByText("New permissions")).toBeInTheDocument();
     });
-    expect(screen.getByText("repo")).toBeInTheDocument();
-    expect(screen.getByText("project")).toBeInTheDocument();
+    const newPermissionsSection = screen
+      .getByText("New permissions")
+      .closest("div");
+    expect(newPermissionsSection).toBeInTheDocument();
+    expect(
+      within(newPermissionsSection!).getByText("repo"),
+    ).toBeInTheDocument();
+    expect(
+      within(newPermissionsSection!).getByText("project"),
+    ).toBeInTheDocument();
   });
 
   it("shows removed scopes with - prefix (CONN-D-035)", async () => {
@@ -90,10 +97,15 @@ describe("scope review modal - display", () => {
     });
 
     await waitFor(() => {
-      const minusItems = screen.getAllByText("-");
-      expect(minusItems.length).toBeGreaterThan(0);
+      expect(screen.getByText("Removed permissions")).toBeInTheDocument();
     });
-    expect(screen.getByText("read:user")).toBeInTheDocument();
+    const removedPermissionsSection = screen
+      .getByText("Removed permissions")
+      .closest("div");
+    expect(removedPermissionsSection).toBeInTheDocument();
+    expect(
+      within(removedPermissionsSection!).getByText("read:user"),
+    ).toBeInTheDocument();
   });
 
   it("shows Reconnect and Close buttons when scope data is loaded (CONN-D-036)", async () => {
@@ -177,7 +189,7 @@ describe("scope review modal - interactions", () => {
   it("reconnect button triggers connector reconnection (CONN-I-039)", async () => {
     const openSpy = vi
       .spyOn(window, "open")
-      .mockReturnValue({ closed: true } as Window);
+      .mockReturnValue({ closed: true } as unknown as Window);
 
     await openScopeReviewModal("github", {
       addedScopes: ["repo"],
