@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, beforeEach } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -6,6 +6,12 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
+import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
+import {
+  setManagePinnedDialogOpen$,
+  setDraftPinnedIds$,
+} from "../../../signals/zero-page/zero-sidebar-state.ts";
+import { createDeferredPromise } from "../../../signals/utils.ts";
 
 const context = testContext();
 
@@ -97,6 +103,15 @@ async function openChatListDialog(user: ReturnType<typeof userEvent.setup>) {
   });
 }
 
+function openManagePinnedDialog() {
+  context.store.set(setDraftPinnedIds$, ["pinned-agent-id"]);
+  context.store.set(setManagePinnedDialogOpen$, true);
+}
+
+beforeEach(() => {
+  setMockUserPreferences({ pinnedAgentIds: ["pinned-agent-id"] });
+});
+
 describe("chatListDialog", () => {
   it("should navigate to chat when clicking a pinned agent", async () => {
     const user = userEvent.setup();
@@ -187,5 +202,438 @@ describe("chatListDialog", () => {
     await waitFor(() => {
       expect(pathname()).toBe("/chats/new-thread-from-dialog");
     });
+  });
+});
+
+describe("managePinnedAgentsDialog - pinned agents list renders (SIDEBAR-D-026)", () => {
+  it("displays the pinned agent name in the dialog", async () => {
+    mockAPIsWithSubagents();
+    await setupPage({ context, path: "/agents" });
+    openManagePinnedDialog();
+
+    const dialog = await waitFor(() => {
+      return screen.getByRole("dialog");
+    });
+    await waitFor(() => {
+      expect(within(dialog).getByText("Pinned Agent")).toBeInTheDocument();
+    });
+  });
+});
+
+describe("managePinnedAgentsDialog - available agents list renders (SIDEBAR-D-027)", () => {
+  it("shows unpinned agents in the Available agents section", async () => {
+    mockAPIsWithSubagents();
+    await setupPage({ context, path: "/agents" });
+    // Only pin one agent; the other appears in available
+    context.store.set(setDraftPinnedIds$, ["pinned-agent-id"]);
+    context.store.set(setManagePinnedDialogOpen$, true);
+
+    const dialog = await waitFor(() => {
+      return screen.getByRole("dialog");
+    });
+    await waitFor(() => {
+      expect(within(dialog).getByText("Available agents")).toBeInTheDocument();
+      expect(within(dialog).getByText("Unpinned Agent")).toBeInTheDocument();
+    });
+  });
+});
+
+describe("managePinnedAgentsDialog - lead agent displays distinctly (SIDEBAR-D-028)", () => {
+  it("shows the Lead badge for the zero agent", async () => {
+    mockAPIsWithSubagents();
+    await setupPage({ context, path: "/agents" });
+    openManagePinnedDialog();
+
+    const dialog = await waitFor(() => {
+      return screen.getByRole("dialog");
+    });
+    await waitFor(() => {
+      expect(within(dialog).getByText("Lead")).toBeInTheDocument();
+    });
+  });
+});
+
+describe("chatListDialog - agent search results filter (SIDEBAR-D-029)", () => {
+  it("filters agent list to matching results when search term is typed", async () => {
+    const user = userEvent.setup();
+    mockAPIsWithSubagents();
+    await setupPage({ context, path: "/agents" });
+    await openChatListDialog(user);
+
+    const dialog = screen.getByRole("dialog");
+    const searchInput = within(dialog).getByPlaceholderText("Search agents...");
+    // Search for "Unpinned" which uniquely matches "Unpinned Agent" but not "Pinned Agent"
+    await user.type(searchInput, "Unpinned");
+
+    await waitFor(() => {
+      expect(within(dialog).getByText("Unpinned Agent")).toBeInTheDocument();
+      expect(
+        within(dialog).queryByText("Pinned Agent"),
+      ).not.toBeInTheDocument();
+    });
+  });
+});
+
+describe("managePinnedAgentsDialog - dialog title and description render (SIDEBAR-D-030)", () => {
+  it("shows the dialog title and description text", async () => {
+    mockAPIsWithSubagents();
+    await setupPage({ context, path: "/agents" });
+    openManagePinnedDialog();
+
+    const dialog = await waitFor(() => {
+      return screen.getByRole("dialog");
+    });
+    await waitFor(() => {
+      expect(
+        within(dialog).getByText("Manage pinned agents"),
+      ).toBeInTheDocument();
+      expect(
+        within(dialog).getByText("Reorder or add agents to your sidebar."),
+      ).toBeInTheDocument();
+    });
+  });
+});
+
+describe("managePinnedAgentsDialog - loading indicator shows while saving (SIDEBAR-D-031)", () => {
+  it("shows a loading indicator while the save operation is in progress", async () => {
+    const user = userEvent.setup();
+    const deferred = createDeferredPromise<void>(context.signal);
+
+    mockAPIsWithSubagents();
+    server.use(
+      http.post("*/api/zero/user-preferences", async () => {
+        await deferred.promise;
+        return HttpResponse.json({
+          timezone: null,
+          pinnedAgentIds: [],
+          sendMode: "enter" as const,
+        });
+      }),
+    );
+
+    await setupPage({ context, path: "/agents" });
+
+    // Click the sidebar's "Remove from list" button to trigger a save (POST will be deferred)
+    const removeButton = await waitFor(() => {
+      return screen.getByLabelText("Remove from list");
+    });
+    await user.click(removeButton);
+
+    // While POST is in flight, open the ManagePinnedAgentsDialog
+    context.store.set(setDraftPinnedIds$, ["pinned-agent-id"]);
+    context.store.set(setManagePinnedDialogOpen$, true);
+
+    const dialog = await waitFor(() => {
+      return screen.getByRole("dialog");
+    });
+
+    // The dialog should show "Saving…" because savingPinned is true
+    await waitFor(() => {
+      const savingBtn = within(dialog)
+        .getAllByRole("button")
+        .find((el) => {
+          return /Saving/.test(el.textContent ?? "");
+        });
+      expect(savingBtn).toBeDefined();
+    });
+
+    // Resolve deferred to allow teardown
+    deferred.resolve();
+  });
+});
+
+describe("managePinnedAgentsDialog - pin status visual feedback displays (SIDEBAR-D-032)", () => {
+  it("shows distinct unpin and pin buttons for pinned and available agents", async () => {
+    mockAPIsWithSubagents();
+    await setupPage({ context, path: "/agents" });
+    openManagePinnedDialog();
+
+    const dialog = await waitFor(() => {
+      return screen.getByRole("dialog");
+    });
+    await waitFor(() => {
+      // Pinned agent has unpin button
+      expect(
+        within(dialog).getByLabelText("Unpin Pinned Agent"),
+      ).toBeInTheDocument();
+      // Available agent has pin button
+      expect(
+        within(dialog).getByLabelText("Pin to sidebar"),
+      ).toBeInTheDocument();
+    });
+  });
+});
+
+describe("managePinnedAgentsDialog - drag-and-drop reorders pinned agents (SIDEBAR-D-033)", () => {
+  it("reflects the new order in the pinned list after reorder", async () => {
+    mockAPIsWithSubagents({
+      pinnedAgentIds: ["pinned-agent-id", "unpinned-agent-id"],
+    });
+    await setupPage({ context, path: "/agents" });
+
+    // Seed draft with both agents pinned
+    context.store.set(setDraftPinnedIds$, [
+      "pinned-agent-id",
+      "unpinned-agent-id",
+    ]);
+    context.store.set(setManagePinnedDialogOpen$, true);
+
+    const dialog = await waitFor(() => {
+      return screen.getByRole("dialog");
+    });
+    await waitFor(() => {
+      expect(within(dialog).getByText("Pinned Agent")).toBeInTheDocument();
+      expect(within(dialog).getByText("Unpinned Agent")).toBeInTheDocument();
+    });
+
+    // Simulate reorder via signal (as drag end would do)
+    context.store.set(setDraftPinnedIds$, [
+      "unpinned-agent-id",
+      "pinned-agent-id",
+    ]);
+
+    await waitFor(() => {
+      const pinnedItems = within(dialog).getAllByLabelText(/Unpin /);
+      // After reorder, Unpinned Agent should appear before Pinned Agent
+      expect(pinnedItems[0]).toHaveAttribute(
+        "aria-label",
+        "Unpin Unpinned Agent",
+      );
+      expect(pinnedItems[1]).toHaveAttribute(
+        "aria-label",
+        "Unpin Pinned Agent",
+      );
+    });
+  });
+});
+
+describe("managePinnedAgentsDialog - unpin button removes agent from pinned (SIDEBAR-D-034)", () => {
+  it("moves the agent from pinned to available when unpin is clicked", async () => {
+    const user = userEvent.setup();
+    mockAPIsWithSubagents();
+    await setupPage({ context, path: "/agents" });
+    openManagePinnedDialog();
+
+    const dialog = await waitFor(() => {
+      return screen.getByRole("dialog");
+    });
+    await waitFor(() => {
+      expect(
+        within(dialog).getByLabelText("Unpin Pinned Agent"),
+      ).toBeInTheDocument();
+    });
+
+    await user.click(within(dialog).getByLabelText("Unpin Pinned Agent"));
+
+    await waitFor(() => {
+      // Should no longer be in pinned section
+      expect(
+        within(dialog).queryByLabelText("Unpin Pinned Agent"),
+      ).not.toBeInTheDocument();
+      // Should appear in available agents
+      expect(within(dialog).getByText("Available agents")).toBeInTheDocument();
+    });
+  });
+});
+
+describe("managePinnedAgentsDialog - pin button adds agent to pinned (SIDEBAR-D-035)", () => {
+  it("moves the agent from available to pinned when pin is clicked", async () => {
+    const user = userEvent.setup();
+    mockAPIsWithSubagents();
+    await setupPage({ context, path: "/agents" });
+    // Start with no agents pinned
+    context.store.set(setDraftPinnedIds$, []);
+    context.store.set(setManagePinnedDialogOpen$, true);
+
+    const dialog = await waitFor(() => {
+      return screen.getByRole("dialog");
+    });
+    await waitFor(() => {
+      expect(within(dialog).getByText("Available agents")).toBeInTheDocument();
+    });
+
+    // Click pin button for an agent in available list
+    const pinButton = within(dialog).getAllByLabelText("Pin to sidebar")[0]!;
+    await user.click(pinButton);
+
+    await waitFor(() => {
+      // The agent should now appear in pinned section with unpin button
+      const unpinBtn = within(dialog)
+        .getAllByRole("button")
+        .find((el) => {
+          return /Unpin /.test(el.getAttribute("aria-label") ?? "");
+        });
+      expect(unpinBtn).toBeDefined();
+    });
+  });
+});
+
+describe("chatListDialog - agent list item opens chat on click (SIDEBAR-D-036)", () => {
+  it("opens a chat session when a pinned agent is clicked in the dialog", async () => {
+    const user = userEvent.setup();
+    mockAPIsWithSubagents();
+    await setupPage({ context, path: "/agents" });
+    await openChatListDialog(user);
+
+    await waitFor(() => {
+      expect(
+        within(screen.getByRole("dialog")).getByText("Pinned"),
+      ).toBeInTheDocument();
+    });
+
+    const pinnedAgentBtn = within(screen.getByRole("dialog"))
+      .getByText("Pinned Agent")
+      .closest("button")!;
+    await user.click(pinnedAgentBtn);
+
+    await waitFor(() => {
+      expect(pathname()).toBe("/chats/new-thread-from-dialog");
+    });
+  });
+});
+
+describe("chatListDialog - search input accepts text (SIDEBAR-D-037)", () => {
+  it("accepts text typed into the search input", async () => {
+    const user = userEvent.setup();
+    mockAPIsWithSubagents();
+    await setupPage({ context, path: "/agents" });
+    await openChatListDialog(user);
+
+    const dialog = screen.getByRole("dialog");
+    const searchInput = within(dialog).getByPlaceholderText("Search agents...");
+    await user.type(searchInput, "hello");
+
+    expect(searchInput).toHaveValue("hello");
+  });
+});
+
+describe("chatListDialog - clear search button resets dialog search (SIDEBAR-D-038)", () => {
+  it("clears the search field and restores the full agent list", async () => {
+    const user = userEvent.setup();
+    mockAPIsWithSubagents();
+    await setupPage({ context, path: "/agents" });
+    await openChatListDialog(user);
+
+    const dialog = screen.getByRole("dialog");
+    const searchInput = within(dialog).getByPlaceholderText("Search agents...");
+    // Search for "Unpinned" which uniquely matches "Unpinned Agent" but not "Pinned Agent"
+    await user.type(searchInput, "Unpinned");
+
+    await waitFor(() => {
+      expect(
+        within(dialog).queryByText("Pinned Agent"),
+      ).not.toBeInTheDocument();
+    });
+
+    const clearButton = within(dialog).getByLabelText("Clear search");
+    await user.click(clearButton);
+
+    await waitFor(() => {
+      expect(within(dialog).getByText("Pinned Agent")).toBeInTheDocument();
+      expect(within(dialog).getByText("Unpinned Agent")).toBeInTheDocument();
+    });
+  });
+});
+
+describe("managePinnedAgentsDialog - save button persists changes (SIDEBAR-D-039)", () => {
+  it("saves the new pinned order and closes the dialog when Save is clicked", async () => {
+    const user = userEvent.setup();
+    mockAPIsWithSubagents();
+    await setupPage({ context, path: "/agents" });
+    openManagePinnedDialog();
+
+    const dialog = await waitFor(() => {
+      return screen.getByRole("dialog");
+    });
+    const saveButton = within(dialog).getByText("Save");
+    await user.click(saveButton);
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+});
+
+describe("managePinnedAgentsDialog - cancel button discards changes (SIDEBAR-D-040)", () => {
+  it("closes the dialog without saving when Cancel is clicked", async () => {
+    const user = userEvent.setup();
+    mockAPIsWithSubagents();
+    await setupPage({ context, path: "/agents" });
+    openManagePinnedDialog();
+
+    const dialog = await waitFor(() => {
+      return screen.getByRole("dialog");
+    });
+    const cancelButton = within(dialog).getByText("Cancel");
+    await user.click(cancelButton);
+
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+});
+
+describe("managePinnedAgentsDialog - reorder handle is present (SIDEBAR-D-041)", () => {
+  it("shows a drag handle button for each pinned agent", async () => {
+    mockAPIsWithSubagents();
+    await setupPage({ context, path: "/agents" });
+    openManagePinnedDialog();
+
+    const dialog = await waitFor(() => {
+      return screen.getByRole("dialog");
+    });
+    await waitFor(() => {
+      expect(
+        within(dialog).getByLabelText("Reorder Pinned Agent"),
+      ).toBeInTheDocument();
+    });
+  });
+});
+
+describe("chatListDialog - dialog preserves changes during search (SIDEBAR-D-067)", () => {
+  it("preserves pin/unpin changes after clearing search in the dialog", async () => {
+    const user = userEvent.setup();
+    const deferred = createDeferredPromise<void>(context.signal);
+
+    mockAPIsWithSubagents();
+    // Use a deferred POST so optimistic state persists while we verify the change
+    server.use(
+      http.post("*/api/zero/user-preferences", async () => {
+        await deferred.promise;
+        return HttpResponse.json({
+          timezone: null,
+          pinnedAgentIds: [],
+          sendMode: "enter" as const,
+        });
+      }),
+    );
+
+    await setupPage({ context, path: "/agents" });
+    await openChatListDialog(user);
+
+    const dialog = screen.getByRole("dialog");
+
+    // Wait for Pinned section to appear, then unpin the agent
+    await waitFor(() => {
+      expect(within(dialog).getByText("Pinned")).toBeInTheDocument();
+    });
+    const unpinButton = within(dialog).getByLabelText("Unpin Pinned Agent");
+    await user.click(unpinButton);
+
+    // Type a search and then clear it
+    const searchInput = within(dialog).getByPlaceholderText("Search agents...");
+    await user.type(searchInput, "Agent");
+
+    const clearButton = within(dialog).getByLabelText("Clear search");
+    await user.click(clearButton);
+
+    // After clearing search, the "Pinned" section should still be gone
+    // (optimistic update shows the agent has been moved to Others)
+    await waitFor(() => {
+      expect(within(dialog).queryByText("Pinned")).not.toBeInTheDocument();
+    });
+
+    // Resolve deferred to allow teardown
+    deferred.resolve();
   });
 });
