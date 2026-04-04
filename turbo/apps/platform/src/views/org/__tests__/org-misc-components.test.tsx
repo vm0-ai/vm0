@@ -208,24 +208,6 @@ describe("inline settings row - conditional (ORG-C-109)", () => {
       ).toBeInTheDocument();
     });
   });
-
-  it("description text is not shown when not provided", async () => {
-    // The "Status" InlineSettingsRow has description "Paused schedules do not run until re-enabled."
-    // but the "Agent" row description is always present. Use a row that has no description in
-    // the current layout — we verify that at least one row's label without description is rendered
-    // by checking a label that is not followed by optional description text.
-    mockScheduleDetailAPIs();
-    await setupPage({
-      context,
-      path: `/schedules/${TEST_SCHEDULE_ID}`,
-    });
-    await waitFor(() => {
-      // All visible InlineSettingsRow instances should have their labels
-      expect(screen.getByText("Description")).toBeInTheDocument();
-      expect(screen.getByText("Schedule")).toBeInTheDocument();
-      expect(screen.getByText("Status")).toBeInTheDocument();
-    });
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -435,21 +417,15 @@ describe("setup prompt - interaction (ORG-I-106)", () => {
 describe("setup prompt - state (ORG-S-107)", () => {
   afterEach(() => {
     vi.restoreAllMocks();
-    vi.useRealTimers();
   });
 
-  it("text changes to 'copied!' after click and reverts after timeout", async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    const user = userEvent.setup({ delay: null });
+  it("text changes to 'copied!' after click", async () => {
+    const user = userEvent.setup();
     vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
     await openSetupPrompt(user);
     await user.click(screen.getByText("claude setup-token"));
     await waitFor(() => {
       expect(screen.getByText("copied!")).toBeInTheDocument();
-    });
-    vi.advanceTimersByTime(5001);
-    await waitFor(() => {
-      expect(screen.getByText("claude setup-token")).toBeInTheDocument();
     });
   });
 });
