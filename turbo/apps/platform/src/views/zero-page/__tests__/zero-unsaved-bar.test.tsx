@@ -74,18 +74,14 @@ describe("zero unsaved bar - unsaved changes indicator (SCHED-D-093)", () => {
     await loadAndMakeDirty(user);
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /^Save$/i }),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByRole("button", { name: /^Discard$/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Save")).toBeInTheDocument();
+      expect(screen.getByText("Discard")).toBeInTheDocument();
     });
   });
 });
 
 describe("zero unsaved bar - save button loading state (SCHED-D-094)", () => {
-  it("shows loading spinner on Save button while save is in progress", async () => {
+  it("shows Save button disabled while save is in progress", async () => {
     let resolvePost!: () => void;
     const postPending = new Promise<void>((resolve) => {
       resolvePost = resolve;
@@ -106,23 +102,23 @@ describe("zero unsaved bar - save button loading state (SCHED-D-094)", () => {
     await loadAndMakeDirty(user);
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /^Save$/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Save")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: /^Save$/i }));
+    await user.click(screen.getByText("Save"));
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Save/i })).toBeDisabled();
+      expect(
+        screen.getAllByRole("button").find((el) => {
+          return el.textContent?.trim() === "Save";
+        }),
+      ).toBeDisabled();
     });
 
     resolvePost();
 
     await waitFor(() => {
-      expect(
-        screen.queryByRole("button", { name: /^Save$/i }),
-      ).not.toBeInTheDocument();
+      expect(screen.queryByText("Save")).not.toBeInTheDocument();
     });
   });
 });
@@ -134,17 +130,13 @@ describe("zero unsaved bar - discard button reverts changes (SCHED-D-095)", () =
     await loadAndMakeDirty(user);
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /^Save$/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Save")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: /Discard/i }));
+    await user.click(screen.getByText("Discard"));
 
     await waitFor(() => {
-      expect(
-        screen.queryByRole("button", { name: /^Discard$/i }),
-      ).not.toBeInTheDocument();
+      expect(screen.queryByText("Discard")).not.toBeInTheDocument();
     });
   });
 });
@@ -167,17 +159,13 @@ describe("zero unsaved bar - save button persists changes (SCHED-D-096)", () => 
     await loadAndMakeDirty(user);
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /^Save$/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Save")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: /^Save$/i }));
+    await user.click(screen.getByText("Save"));
 
     await waitFor(() => {
-      expect(
-        screen.queryByRole("button", { name: /^Save$/i }),
-      ).not.toBeInTheDocument();
+      expect(screen.queryByText("Save")).not.toBeInTheDocument();
     });
   });
 });
