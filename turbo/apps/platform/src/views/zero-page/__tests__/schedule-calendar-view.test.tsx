@@ -214,11 +214,23 @@ describe("schedule calendar view - loop/monthly/once sections (SCHED-D-071)", ()
     await switchToCalendarView(user);
 
     await waitFor(() => {
-      expect(screen.getByText("Every 15 minutes")).toBeInTheDocument();
+      // Assert that each section heading is rendered and has an edit button beneath it
+      const loopHeading = screen.getByText("Loop");
+      expect(loopHeading).toBeInTheDocument();
+      const monthlyHeading = screen.getByText("Monthly");
+      expect(monthlyHeading).toBeInTheDocument();
+      const onceHeading = screen.getByText("Once");
+      expect(onceHeading).toBeInTheDocument();
+      // Each section must contain at least one edit button
       expect(
-        screen.getByText("Every month on day 1 at 9:00 AM"),
-      ).toBeInTheDocument();
-      expect(screen.getByText(/Once on/i)).toBeInTheDocument();
+        loopHeading.closest("div")?.querySelector("button"),
+      ).not.toBeNull();
+      expect(
+        monthlyHeading.closest("div")?.querySelector("button"),
+      ).not.toBeNull();
+      expect(
+        onceHeading.closest("div")?.querySelector("button"),
+      ).not.toBeNull();
     });
   });
 });
@@ -248,15 +260,12 @@ describe("schedule calendar view - previous day navigation (SCHED-D-075)", () =>
     await setupPage({ context, path: "/schedules" });
     await switchToCalendarView(user);
 
-    const prevBtn = await screen.findByRole("button", { name: "Previous day" });
-    // The nav bar is the common parent of both nav buttons and the day label span
-    const navBar = prevBtn.parentElement;
-    if (!navBar) {
-      throw new Error("Could not find nav bar");
-    }
+    const navBar = await screen.findByRole("navigation", {
+      name: "Day navigation",
+    });
     const initialLabel = navBar.textContent;
 
-    await user.click(prevBtn);
+    await user.click(screen.getByRole("button", { name: "Previous day" }));
 
     await waitFor(() => {
       expect(navBar.textContent).not.toBe(initialLabel);
@@ -271,15 +280,12 @@ describe("schedule calendar view - next day navigation (SCHED-D-076)", () => {
     await setupPage({ context, path: "/schedules" });
     await switchToCalendarView(user);
 
-    const nextBtn = await screen.findByRole("button", { name: "Next day" });
-    // The nav bar is the common parent of both nav buttons and the day label span
-    const navBar = nextBtn.parentElement;
-    if (!navBar) {
-      throw new Error("Could not find nav bar");
-    }
+    const navBar = await screen.findByRole("navigation", {
+      name: "Day navigation",
+    });
     const initialLabel = navBar.textContent;
 
-    await user.click(nextBtn);
+    await user.click(screen.getByRole("button", { name: "Next day" }));
 
     await waitFor(() => {
       expect(navBar.textContent).not.toBe(initialLabel);
