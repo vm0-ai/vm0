@@ -123,7 +123,10 @@ export function ZeroOrgSwitcher() {
             <span className="relative shrink-0">
               <OrgAvatar name={orgName} imageUrl={currentOrg?.imageUrl} />
               {hasPendingInvitations && (
-                <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-destructive ring-2 ring-sidebar" />
+                <span
+                  data-testid="pending-invitations-badge"
+                  className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-destructive ring-2 ring-sidebar"
+                />
               )}
             </span>
             <span className="min-w-0 flex-1 text-left text-sm font-semibold leading-tight truncate">

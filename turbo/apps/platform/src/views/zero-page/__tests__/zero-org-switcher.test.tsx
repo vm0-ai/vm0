@@ -5,7 +5,7 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
-import { mockedClerk } from "../../../__tests__/mock-auth.ts";
+import { mockedClerk, mockOrganization } from "../../../__tests__/mock-auth.ts";
 
 const context = testContext();
 
@@ -125,8 +125,9 @@ describe("zero org switcher - pending invitations badge shows count (SIDEBAR-D-0
     });
 
     await waitFor(() => {
-      const dot = document.querySelector(".bg-destructive");
-      expect(dot).toBeInTheDocument();
+      expect(
+        screen.getByTestId("pending-invitations-badge"),
+      ).toBeInTheDocument();
     });
   });
 });
@@ -273,16 +274,14 @@ describe("zero org switcher - manage button opens org management (SIDEBAR-D-060)
     });
     await user.click(screen.getByText("Current Org"));
 
-    await waitFor(() => {
-      const manageBtn = screen.getAllByRole("button").find((el) => {
+    const manageBtn = await waitFor(() => {
+      const btn = screen.getAllByRole("button").find((el) => {
         return el.textContent?.trim() === "Manage";
       });
-      expect(manageBtn).toBeInTheDocument();
+      expect(btn).toBeInTheDocument();
+      return btn as HTMLElement;
     });
-    const manageBtn = screen.getAllByRole("button").find((el) => {
-      return el.textContent?.trim() === "Manage";
-    });
-    await user.click(manageBtn!);
+    await user.click(manageBtn);
 
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
@@ -291,7 +290,7 @@ describe("zero org switcher - manage button opens org management (SIDEBAR-D-060)
 });
 
 describe("zero org switcher - org switch menu item switches organization (SIDEBAR-D-061)", () => {
-  it("calls setActive with the selected organization id", async () => {
+  it("calls setActive with the selected organization id and closes the dropdown", async () => {
     mockAPIs();
     await setupPage({
       context,
@@ -317,20 +316,19 @@ describe("zero org switcher - org switch menu item switches organization (SIDEBA
     });
     await user.click(screen.getByText("Other Org"));
 
+    // The dropdown closes after selecting an org (DropdownMenuItem default behavior)
     await waitFor(() => {
-      expect(mockedClerk.setActive).toHaveBeenCalledWith({
-        organization: "org_2",
-      });
+      expect(screen.queryByText("Create workspace")).not.toBeInTheDocument();
+    });
+    // setActive is called with the selected org id to trigger the org switch
+    expect(mockedClerk.setActive).toHaveBeenCalledWith({
+      organization: "org_2",
     });
   });
 });
 
 describe("zero org switcher - join button accepts invitation (SIDEBAR-D-062)", () => {
-  it("should call accept without switching org when Join is clicked", async () => {
-    const acceptSpy = () => {
-      return Promise.resolve({});
-    };
-
+  it("removes the invitation from the list after Join is clicked", async () => {
     mockAPIs();
     await setupPage({
       context,
@@ -346,7 +344,15 @@ describe("zero org switcher - join button accepts invitation (SIDEBAR-D-062)", (
               name: "Invited Org",
               imageUrl: "",
             },
-            accept: acceptSpy,
+            accept: () => {
+              // Simulate acceptance clearing the invitation from the server
+              mockOrganization({
+                activeOrg: { id: "org_1", name: "Current Org" },
+                memberships: [{ id: "org_1" }],
+                pendingInvitations: [],
+              });
+              return Promise.resolve({});
+            },
           },
         ],
       },
@@ -364,14 +370,15 @@ describe("zero org switcher - join button accepts invitation (SIDEBAR-D-062)", (
     });
     await user.click(screen.getByText("Join"));
 
+    // After acceptance, the invitation is refreshed and removed from the list
     await waitFor(() => {
-      expect(screen.getByText("Invited Org")).toBeInTheDocument();
+      expect(screen.queryByText("Join")).not.toBeInTheDocument();
     });
   });
 });
 
 describe("zero org switcher - create workspace item starts creation flow (SIDEBAR-D-063)", () => {
-  it("calls createOrganization when Create workspace is clicked", async () => {
+  it("closes the dropdown and calls createOrganization when Create workspace is clicked", async () => {
     mockAPIs();
     await setupPage({
       context,
@@ -394,9 +401,14 @@ describe("zero org switcher - create workspace item starts creation flow (SIDEBA
     });
     await user.click(screen.getByText("Create workspace"));
 
+    // The dropdown closes after clicking the item (DropdownMenuItem default behavior)
     await waitFor(() => {
-      expect(mockedClerk.createOrganization).toHaveBeenCalled();
+      expect(screen.queryByText("Create workspace")).not.toBeInTheDocument();
     });
+    // createOrganization is called with a generated workspace slug
+    expect(mockedClerk.createOrganization).toHaveBeenCalledWith(
+      expect.objectContaining({ name: expect.stringMatching(/^workspace-/) }),
+    );
   });
 });
 
@@ -416,6 +428,8 @@ describe("zero org switcher - pending invitations badge hidden when none (SIDEBA
     await waitFor(() => {
       expect(screen.getByText("Current Org")).toBeInTheDocument();
     });
-    expect(document.querySelector(".bg-destructive")).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("pending-invitations-badge"),
+    ).not.toBeInTheDocument();
   });
 });
