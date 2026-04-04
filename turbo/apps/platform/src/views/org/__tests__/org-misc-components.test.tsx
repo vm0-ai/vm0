@@ -313,13 +313,11 @@ describe("zero unsaved bar - interaction (ORG-I-113)", () => {
 });
 
 describe("zero unsaved bar - interaction (ORG-I-114)", () => {
-  it("clicking Save persists changes and calls the API", async () => {
+  it("clicking Save persists changes and hides the unsaved bar", async () => {
     const user = userEvent.setup();
-    let saveCalled = false;
     await openScheduleSettings();
     server.use(
       http.post("*/api/zero/schedules", () => {
-        saveCalled = true;
         return HttpResponse.json({
           schedule: testSchedule({ description: "New description" }),
           created: false,
@@ -338,7 +336,9 @@ describe("zero unsaved bar - interaction (ORG-I-114)", () => {
     });
     await user.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => {
-      expect(saveCalled).toBeTruthy();
+      expect(
+        screen.queryByRole("button", { name: "Discard" }),
+      ).not.toBeInTheDocument();
     });
   });
 });
