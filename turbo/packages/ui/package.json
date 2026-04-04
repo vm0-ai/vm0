@@ -25,7 +25,7 @@
     "@types/node": "^24.3.0",
     "@types/react": "^19.1.12",
     "@types/react-dom": "^19.1.9",
-    "@vitejs/plugin-react": "^5.1.4",
+    "@vitejs/plugin-react": "^6.0.1",
     "@vm0/eslint-config": "workspace:*",
     "@vm0/typescript-config": "workspace:*",
     "autoprefixer": "^10.4.21",
