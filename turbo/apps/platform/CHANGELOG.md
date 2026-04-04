@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.187.2](https://github.com/vm0-ai/vm0/compare/app-v0.187.1...app-v0.187.2) (2026-04-04)
+
+
+### Performance Improvements
+
+* **test:** replace slow by-role name queries in 54 test files ([#8126](https://github.com/vm0-ai/vm0/issues/8126)) ([d8220ea](https://github.com/vm0-ai/vm0/commit/d8220ea3b63eeaa910287fd5258ed67f603a7876))
+
 ## [0.187.1](https://github.com/vm0-ai/vm0/compare/app-v0.187.0...app-v0.187.1) (2026-04-04)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.192.4](https://github.com/vm0-ai/vm0/compare/web-v12.192.3...web-v12.192.4) (2026-04-04)
+
+
+### Refactoring
+
+* make computer-use host registration idempotent ([#8137](https://github.com/vm0-ai/vm0/issues/8137)) ([a5dd154](https://github.com/vm0-ai/vm0/commit/a5dd154577a767c09872639eae6dca495708957e))
+
 ## [12.192.3](https://github.com/vm0-ai/vm0/compare/web-v12.192.2...web-v12.192.3) (2026-04-04)
 
 

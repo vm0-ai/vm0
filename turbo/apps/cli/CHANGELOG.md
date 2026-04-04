@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.102.1](https://github.com/vm0-ai/vm0/compare/cli-v9.102.0...cli-v9.102.1) (2026-04-04)
+
+
+### Refactoring
+
+* make computer-use host registration idempotent ([#8137](https://github.com/vm0-ai/vm0/issues/8137)) ([a5dd154](https://github.com/vm0-ai/vm0/commit/a5dd154577a767c09872639eae6dca495708957e))
+
 ## [9.102.0](https://github.com/vm0-ai/vm0/compare/cli-v9.101.0...cli-v9.102.0) (2026-04-04)
 
 
