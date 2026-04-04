@@ -51,8 +51,10 @@ export function computeOrgIdHash(orgId: string): string {
   return fnv1a(orgId);
 }
 
-// To add a user hash: run fnv1a("<your-clerk-user-id>") and paste the result here.
-// Example: node -e "let h=2166136261>>>0; for(const c of '<id>') { h^=c.charCodeAt(0); h=Math.imul(h,16777619)>>>0; } console.log(h.toString(16).padStart(8,'0'))"
+// NOTE: Migrated from SHA-1 to FNV-1a. Original user IDs are not stored in the codebase,
+// so hashes could not be auto-migrated. Staff access continues to work via STAFF_ORG_ID_HASHES.
+// Each team member can add their own FNV-1a hash by running:
+//   node -e "let h=2166136261>>>0; for(const c of '<your-clerk-user-id>') { h^=c.charCodeAt(0); h=Math.imul(h,16777619)>>>0; } console.log(h.toString(16).padStart(8,'0'))"
 const STAFF_USER_HASHES: readonly string[] = [];
 
 const STAFF_ORG_ID_HASHES: readonly string[] = [
