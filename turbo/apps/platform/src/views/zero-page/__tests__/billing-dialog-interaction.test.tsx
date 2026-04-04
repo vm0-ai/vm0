@@ -237,6 +237,10 @@ describe("chat-i-081: save button saves auto-recharge settings", () => {
         amount: 5000,
       });
     });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled();
+    });
   });
 });
 

@@ -4,19 +4,26 @@
  * Covers AutoRechargeSection (dialog variant) and BillingDialog display rendering.
  * Entry point: setupPage({ path: "/" }) + context.store.set(setBillingDialogOpen$, true)
  */
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
-import { setMockBillingStatus } from "../../../mocks/handlers/api-billing.ts";
+import {
+  resetMockBilling,
+  setMockBillingStatus,
+} from "../../../mocks/handlers/api-billing.ts";
 import { setBillingDialogOpen$ } from "../../../signals/zero-page/billing.ts";
 import { setSelectedPlanTier$ } from "../../../signals/zero-page/billing-dialog-state.ts";
 import { mockBillingPageAPIs } from "./billing-dialog-test-helpers.ts";
 
 const context = testContext();
+
+beforeEach(() => {
+  resetMockBilling();
+});
 
 async function openBillingDialogAndWait() {
   context.store.set(setBillingDialogOpen$, true);
