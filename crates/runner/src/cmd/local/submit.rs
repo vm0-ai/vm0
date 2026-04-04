@@ -185,12 +185,16 @@ pub async fn run_submit(args: SubmitArgs) -> RunnerResult<ExitCode> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    /// Serialize tests that mutate environment variables to prevent UB.
+    static ENV_MUTEX: Mutex<()> = Mutex::new(());
 
     #[test]
     fn detect_system_timezone_from_env() {
-        // Save and restore to avoid polluting other tests
+        let _lock = ENV_MUTEX.lock().unwrap();
         let original = std::env::var("TZ").ok();
-        // SAFETY: single-threaded test; no other thread reads TZ concurrently.
+        // SAFETY: ENV_MUTEX ensures no other test mutates env concurrently.
         unsafe { std::env::set_var("TZ", "America/New_York") };
         let tz = detect_system_timezone();
         match original {
@@ -202,8 +206,9 @@ mod tests {
 
     #[test]
     fn detect_system_timezone_empty_env() {
+        let _lock = ENV_MUTEX.lock().unwrap();
         let original = std::env::var("TZ").ok();
-        // SAFETY: single-threaded test; no other thread reads TZ concurrently.
+        // SAFETY: ENV_MUTEX ensures no other test mutates env concurrently.
         unsafe { std::env::set_var("TZ", "") };
         let tz = detect_system_timezone();
         match original {

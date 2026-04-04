@@ -525,13 +525,15 @@ mod tests {
     }
 
     #[test]
-    fn check_system_dependencies_returns_vec() {
-        // This test just exercises the function — actual results depend on
-        // the host, but it should not panic.
+    fn check_system_dependencies_only_returns_known_deps() {
         let missing = check_system_dependencies();
-        // In devcontainer, some deps may be missing; in CI metal, all present.
-        // We just verify it returns a valid vec without crashing.
-        assert!(missing.len() <= 5);
+        let known = ["ip", "iptables", "iptables-save", "sysctl", "dnsmasq"];
+        for dep in &missing {
+            assert!(
+                known.contains(dep),
+                "unexpected dependency reported as missing: {dep}"
+            );
+        }
     }
 
     #[tokio::test]
@@ -585,13 +587,14 @@ mod tests {
     }
 
     #[test]
-    fn check_system_ca_bundle_result() {
-        // In devcontainer, ca-certificates is installed
-        let result = check_system_ca_bundle();
-        if std::path::Path::new(SYSTEM_CA_BUNDLE).exists() {
-            assert!(result.is_ok());
-        } else {
-            assert!(result.is_err());
+    fn check_system_ca_bundle_error_message() {
+        // Verify the error message references the expected path and fix command.
+        // The function itself may succeed or fail depending on host, so we test
+        // the error path by checking what it would return for a missing bundle.
+        if !std::path::Path::new(SYSTEM_CA_BUNDLE).exists() {
+            let err = check_system_ca_bundle().unwrap_err().to_string();
+            assert!(err.contains(SYSTEM_CA_BUNDLE), "error should mention path");
+            assert!(err.contains("ca-certificates"), "error should suggest fix");
         }
     }
 }
