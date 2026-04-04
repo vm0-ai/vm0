@@ -20,10 +20,7 @@ import { setupPage } from "../../../__tests__/page-helper.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import { resetMockBilling } from "../../../mocks/handlers/api-billing.ts";
 import { pathname } from "../../../signals/location.ts";
-import {
-  isScrolled$,
-  setIsScrolled$,
-} from "../../../signals/zero-page/zero-sidebar-state.ts";
+import { setIsScrolled$ } from "../../../signals/zero-page/zero-sidebar-state.ts";
 
 const context = testContext();
 
@@ -265,32 +262,33 @@ describe("zero sidebar - settings button navigates to settings (SIDEBAR-D-025)",
 });
 
 describe("zero sidebar - sidebar scroll state persists (SIDEBAR-D-065)", () => {
-  it("reflects updated scroll position in the sidebar when isScrolled$ state changes", async () => {
+  it("applies a box shadow to the scroll area when scrolled and removes it when back at top", async () => {
     mockBaseAPIs();
     await setupPage({ context, path: "/" });
 
-    await waitFor(() => {
-      expect(
-        screen.getByRole("navigation", { name: "Sidebar" }),
-      ).toBeInTheDocument();
+    const scrollArea = await waitFor(() => {
+      return screen.getByTestId("sidebar-scroll-area");
     });
 
-    // Initially not scrolled
-    expect(context.store.get(isScrolled$)).toBeFalsy();
+    // Initially not scrolled: no shadow
+    expect(scrollArea.style.boxShadow).toBe("none");
 
-    // Simulate scroll state update (as the scroll handler would do)
+    // Simulate scroll state update (as the onScroll handler would do)
     context.store.set(setIsScrolled$, true);
 
-    // Signal should reflect scrolled state
+    // Shadow should appear when scrolled
     await waitFor(() => {
-      expect(context.store.get(isScrolled$)).toBeTruthy();
+      expect(scrollArea.style.boxShadow).toBe(
+        "0 -1px 0 0 hsl(var(--border) / 0.4)",
+      );
     });
 
     // Simulate scrolling back to top
     context.store.set(setIsScrolled$, false);
 
+    // Shadow should be removed
     await waitFor(() => {
-      expect(context.store.get(isScrolled$)).toBeFalsy();
+      expect(scrollArea.style.boxShadow).toBe("none");
     });
   });
 });

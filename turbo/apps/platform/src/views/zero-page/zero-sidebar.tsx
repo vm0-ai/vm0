@@ -1102,11 +1102,13 @@ function OverlayScrollArea({
   children,
   onScroll,
   style,
+  "data-testid": dataTestId,
 }: {
   className?: string;
   children: ReactNode;
   onScroll?: (e: React.UIEvent<HTMLDivElement>) => void;
   style?: React.CSSProperties;
+  "data-testid"?: string;
 }) {
   const thumbStyleValue = useGet(thumbStyle$);
   const setThumbStyleFn = useSet(setThumbStyle$);
@@ -1148,6 +1150,7 @@ function OverlayScrollArea({
         className="h-full overflow-y-auto overflow-x-hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         style={style}
         onScroll={handleScroll}
+        data-testid={dataTestId}
       >
         {children}
       </div>
@@ -1543,6 +1546,7 @@ export function ZeroSidebar() {
           {/* Scrollable: Pinned + Recent chats */}
           <OverlayScrollArea
             className="flex-1 min-h-0 -mx-2 px-2 mt-2 pt-2"
+            data-testid="sidebar-scroll-area"
             onScroll={(e) => {
               return setIsScrolledFn(e.currentTarget.scrollTop > 0);
             }}
