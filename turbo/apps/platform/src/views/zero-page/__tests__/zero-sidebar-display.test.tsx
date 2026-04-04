@@ -136,9 +136,9 @@ describe("zero sidebar - loading state (SIDEBAR-D-002)", () => {
     // While the chat-threads request is hanging, skeletons should be visible
     await waitFor(() => {
       const sidebar = getSidebar();
-      expect(sidebar.querySelectorAll(".animate-pulse").length).toBeGreaterThan(
-        0,
-      );
+      expect(
+        within(sidebar).getAllByTestId("sidebar-skeleton").length,
+      ).toBeGreaterThan(0);
     });
 
     deferred.resolve();
@@ -252,8 +252,9 @@ describe("zero sidebar - error state (SIDEBAR-D-005)", () => {
 
     await waitFor(() => {
       const sidebar = getSidebar();
-      // The error paragraph appears inside the sidebar with text-destructive
-      expect(sidebar.querySelector("p.text-destructive")).toBeInTheDocument();
+      expect(
+        within(sidebar).getByTestId("chat-threads-error"),
+      ).toBeInTheDocument();
     });
   });
 });
@@ -390,11 +391,10 @@ describe("zero sidebar - Slack scope mismatch indicator (SIDEBAR-D-009)", () => 
       ).toBeInTheDocument();
     });
 
-    // The mismatch badge (sibling span) should be present inside the footer link
-    const worksLink = screen.getByRole("link", { name: /Where Zero works/i });
-    // The badge is a sibling span rendered next to the label text
-    const badge = worksLink.querySelector("span.rounded-full");
-    expect(badge).toBeInTheDocument();
+    // The mismatch badge should be present in the sidebar
+    expect(
+      screen.getByTestId("slack-scope-mismatch-indicator"),
+    ).toBeInTheDocument();
   });
 });
 

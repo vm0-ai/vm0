@@ -626,7 +626,11 @@ function RecentChatList({
       <>
         {["w-3/4", "w-1/2", "w-2/3"].map((w) => {
           return (
-            <div key={w} className="flex h-8 items-center rounded-lg p-2">
+            <div
+              key={w}
+              data-testid="sidebar-skeleton"
+              className="flex h-8 items-center rounded-lg p-2"
+            >
               <Skeleton className={`h-4 ${w}`} />
             </div>
           );
@@ -635,7 +639,14 @@ function RecentChatList({
     );
   }
   if (error) {
-    return <p className="px-2 py-2 text-xs text-destructive">{error}</p>;
+    return (
+      <p
+        data-testid="chat-threads-error"
+        className="px-2 py-2 text-xs text-destructive"
+      >
+        {error}
+      </p>
+    );
   }
   if (sessions.length === 0) {
     return (
@@ -1616,7 +1627,10 @@ export function ZeroSidebar() {
                     )}
                     <span className="truncate flex-1">{label}</span>
                     {id === "works" && slackScopeMismatch && (
-                      <span className="h-2 w-2 shrink-0 rounded-full bg-red-500" />
+                      <span
+                        data-testid="slack-scope-mismatch-indicator"
+                        className="h-2 w-2 shrink-0 rounded-full bg-red-500"
+                      />
                     )}
                   </Link>
                 );
