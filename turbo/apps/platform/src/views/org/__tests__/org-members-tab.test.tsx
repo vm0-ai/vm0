@@ -207,7 +207,10 @@ test("sends invite with typed email when Send invitation is clicked", async () =
   mockMembersAPI();
   server.use(
     http.post("*/api/zero/org/invite", async ({ request }) => {
-      const body = (await request.json()) as { email: string; role: string };
+      const body = (await request.json()) as unknown as {
+        email: string;
+        role: string;
+      };
       capturedEmail = body.email;
       return HttpResponse.json({ message: "ok" });
     }),
@@ -238,7 +241,10 @@ test("sends invite with Admin role when Admin is selected in role dropdown", asy
   mockMembersAPI();
   server.use(
     http.post("*/api/zero/org/invite", async ({ request }) => {
-      const body = (await request.json()) as { email: string; role: string };
+      const body = (await request.json()) as unknown as {
+        email: string;
+        role: string;
+      };
       capturedRole = body.role;
       return HttpResponse.json({ message: "ok" });
     }),
@@ -274,7 +280,7 @@ test("sends role update when Make admin is clicked in member action menu", async
   mockMembersAPI({ members: [adminMember, regularMember] });
   server.use(
     http.patch("*/api/zero/org/members", async ({ request }) => {
-      capturedRoleUpdate = (await request.json()) as {
+      capturedRoleUpdate = (await request.json()) as unknown as {
         email: string;
         role: string;
       };
@@ -351,7 +357,7 @@ test("sends accept request when Accept button is clicked", async () => {
   mockMembersAPI({ membershipRequests: [membershipRequest] });
   server.use(
     http.post("*/api/zero/org/membership-requests", async ({ request }) => {
-      const body = (await request.json()) as { requestId: string };
+      const body = (await request.json()) as unknown as { requestId: string };
       capturedRequestId = body.requestId;
       return HttpResponse.json({ message: "ok" });
     }),
@@ -375,7 +381,7 @@ test("sends reject request when Reject button is clicked", async () => {
   mockMembersAPI({ membershipRequests: [membershipRequest] });
   server.use(
     http.delete("*/api/zero/org/membership-requests", async ({ request }) => {
-      const body = (await request.json()) as { requestId: string };
+      const body = (await request.json()) as unknown as { requestId: string };
       capturedRequestId = body.requestId;
       return HttpResponse.json({ message: "ok" });
     }),
