@@ -89,7 +89,9 @@ function MobileTopBar() {
               {breadcrumb.name && (
                 <>
                   <span className="text-foreground/30 select-none">/</span>
-                  <span className="truncate">{breadcrumb.name}</span>
+                  <span className="truncate" data-testid="breadcrumb-name">
+                    {breadcrumb.name}
+                  </span>
                 </>
               )}
             </div>

@@ -87,11 +87,10 @@ describe("sidebar layout - breadcrumb name renders (SIDEBAR-D-046)", () => {
     await setupPage({ context, path: `/agents/${DEFAULT_AGENT_ID}` });
 
     await waitFor(() => {
-      // The breadcrumb name renders as a truncated span next to the section link
-      const spans = screen.getAllByText("My Agent").filter((el) => {
-        return el.classList.contains("truncate");
-      });
-      expect(spans.length).toBeGreaterThan(0);
+      // The breadcrumb name renders as a truncated span with data-testid="breadcrumb-name"
+      expect(screen.getByTestId("breadcrumb-name")).toHaveTextContent(
+        "My Agent",
+      );
     });
   });
 });
