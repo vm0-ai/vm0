@@ -108,3 +108,43 @@ async fn run_openssl(args: &[&str]) -> RunnerResult<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::paths::HomePaths;
+
+    #[tokio::test]
+    async fn ensure_generates_ca_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().to_path_buf());
+
+        ensure(&home).await.unwrap();
+
+        let ca_dir = home.ca_dir();
+        assert!(ca_dir.join(CA_CERT).exists(), "cert should exist");
+        assert!(ca_dir.join(CA_KEY).exists(), "key should exist");
+        assert!(ca_dir.join(CA_COMBINED).exists(), "combined should exist");
+
+        // Combined should contain both cert and key
+        let combined = std::fs::read_to_string(ca_dir.join(CA_COMBINED)).unwrap();
+        assert!(combined.contains("BEGIN CERTIFICATE"));
+        assert!(
+            combined.contains("BEGIN PRIVATE KEY") || combined.contains("BEGIN RSA PRIVATE KEY")
+        );
+    }
+
+    #[tokio::test]
+    async fn ensure_is_idempotent() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = HomePaths::with_root(dir.path().to_path_buf());
+
+        ensure(&home).await.unwrap();
+        let cert1 = std::fs::read(home.ca_dir().join(CA_CERT)).unwrap();
+
+        // Second call should not regenerate
+        ensure(&home).await.unwrap();
+        let cert2 = std::fs::read(home.ca_dir().join(CA_CERT)).unwrap();
+        assert_eq!(cert1, cert2, "cert should not change on second call");
+    }
+}

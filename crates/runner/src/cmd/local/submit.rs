@@ -186,6 +186,80 @@ pub async fn run_submit(args: SubmitArgs) -> RunnerResult<ExitCode> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn detect_system_timezone_from_env() {
+        // Save and restore to avoid polluting other tests
+        let original = std::env::var("TZ").ok();
+        // SAFETY: single-threaded test; no other thread reads TZ concurrently.
+        unsafe { std::env::set_var("TZ", "America/New_York") };
+        let tz = detect_system_timezone();
+        match original {
+            Some(orig) => unsafe { std::env::set_var("TZ", orig) },
+            None => unsafe { std::env::remove_var("TZ") },
+        }
+        assert_eq!(tz, Some("America/New_York".to_string()));
+    }
+
+    #[test]
+    fn detect_system_timezone_empty_env() {
+        let original = std::env::var("TZ").ok();
+        // SAFETY: single-threaded test; no other thread reads TZ concurrently.
+        unsafe { std::env::set_var("TZ", "") };
+        let tz = detect_system_timezone();
+        match original {
+            Some(orig) => unsafe { std::env::set_var("TZ", orig) },
+            None => unsafe { std::env::remove_var("TZ") },
+        }
+        // Empty TZ falls through to /etc/timezone
+        assert_ne!(tz, Some("".to_string()));
+    }
+
+    #[test]
+    fn try_read_result_nonexistent_returns_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("does-not-exist.result");
+        assert!(try_read_result(&path).is_none());
+    }
+
+    #[test]
+    fn try_read_result_empty_returns_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("empty.result");
+        std::fs::write(&path, b"").unwrap();
+        assert!(try_read_result(&path).is_none());
+    }
+
+    #[test]
+    fn try_read_result_with_content_returns_some() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("valid.result");
+        std::fs::write(&path, b"{\"exit_code\":0}").unwrap();
+        let result = try_read_result(&path).unwrap();
+        assert_eq!(result, b"{\"exit_code\":0}");
+    }
+
+    #[test]
+    fn cleanup_files_is_idempotent() {
+        let dir = tempfile::tempdir().unwrap();
+        let group_dir = dir.path();
+        let job_id = Uuid::new_v4();
+        let job_path = group_dir.join(format!("{job_id}.job"));
+        let result_path = group_dir.join(format!("{job_id}.result"));
+        let cancel_path = group_dir.join(format!("{job_id}.cancel"));
+
+        // Create some files
+        std::fs::write(&job_path, b"{}").unwrap();
+        std::fs::write(&result_path, b"{}").unwrap();
+
+        // First cleanup
+        cleanup_files(&job_path, &result_path, &cancel_path, group_dir, job_id);
+        assert!(!job_path.exists());
+        assert!(!result_path.exists());
+
+        // Second cleanup (idempotent — no panic on missing files)
+        cleanup_files(&job_path, &result_path, &cancel_path, group_dir, job_id);
+    }
+
     #[tokio::test]
     async fn rejects_invalid_profile_name() {
         let args = SubmitArgs {

@@ -483,3 +483,115 @@ fn check_kvm() {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn check_architecture_returns_current() {
+        let arch = check_architecture().unwrap();
+        assert!(
+            arch == "x86_64" || arch == "aarch64",
+            "unexpected arch: {arch}"
+        );
+        assert_eq!(arch, std::env::consts::ARCH);
+    }
+
+    #[test]
+    fn select_sha_x86_64() {
+        assert_eq!(select_sha("x86_64", "sha_x86", "sha_arm"), "sha_x86");
+    }
+
+    #[test]
+    fn select_sha_aarch64() {
+        assert_eq!(select_sha("aarch64", "sha_x86", "sha_arm"), "sha_arm");
+    }
+
+    #[test]
+    fn verify_sha256_matching() {
+        let result = verify_sha256("abc123", "abc123", "test");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn verify_sha256_mismatch() {
+        let result = verify_sha256("abc123", "def456", "test");
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("SHA256 mismatch"), "got: {err}");
+        assert!(err.contains("abc123"));
+        assert!(err.contains("def456"));
+    }
+
+    #[test]
+    fn check_system_dependencies_returns_vec() {
+        // This test just exercises the function — actual results depend on
+        // the host, but it should not panic.
+        let missing = check_system_dependencies();
+        // In devcontainer, some deps may be missing; in CI metal, all present.
+        // We just verify it returns a valid vec without crashing.
+        assert!(missing.len() <= 5);
+    }
+
+    #[tokio::test]
+    async fn file_sha256_computes_correctly() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.bin");
+        std::fs::write(&path, b"hello world").unwrap();
+        let sha = file_sha256(&path).await.unwrap();
+        // SHA256("hello world") = b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9
+        assert_eq!(
+            sha,
+            "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
+        );
+    }
+
+    #[tokio::test]
+    async fn file_sha256_empty_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("empty.bin");
+        std::fs::write(&path, b"").unwrap();
+        let sha = file_sha256(&path).await.unwrap();
+        // SHA256("") = e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+        assert_eq!(
+            sha,
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
+    }
+
+    #[tokio::test]
+    async fn is_already_installed_returns_false_for_missing() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("nonexistent");
+        assert!(!is_already_installed(&path, "anything").await);
+    }
+
+    #[tokio::test]
+    async fn is_already_installed_returns_false_for_wrong_sha() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("file.bin");
+        std::fs::write(&path, b"content").unwrap();
+        assert!(!is_already_installed(&path, "wrong_sha").await);
+    }
+
+    #[tokio::test]
+    async fn is_already_installed_returns_true_for_matching_sha() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("file.bin");
+        std::fs::write(&path, b"content").unwrap();
+        let sha = file_sha256(&path).await.unwrap();
+        assert!(is_already_installed(&path, &sha).await);
+    }
+
+    #[test]
+    fn check_system_ca_bundle_result() {
+        // In devcontainer, ca-certificates is installed
+        let result = check_system_ca_bundle();
+        if std::path::Path::new(SYSTEM_CA_BUNDLE).exists() {
+            assert!(result.is_ok());
+        } else {
+            assert!(result.is_err());
+        }
+    }
+}

@@ -30,3 +30,30 @@ pub fn prefetch_memory(path: &Path) {
     }
     info!(bytes = total, path = %path.display(), "memory prefetch complete");
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn prefetch_memory_reads_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("memory.bin");
+        std::fs::write(&path, vec![0u8; 4096]).unwrap();
+        // Should not panic
+        prefetch_memory(&path);
+    }
+
+    #[test]
+    fn prefetch_memory_missing_file_does_not_panic() {
+        prefetch_memory(Path::new("/nonexistent/memory.bin"));
+    }
+
+    #[test]
+    fn prefetch_memory_empty_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("empty.bin");
+        std::fs::write(&path, b"").unwrap();
+        prefetch_memory(&path);
+    }
+}

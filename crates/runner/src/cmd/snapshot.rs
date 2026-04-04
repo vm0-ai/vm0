@@ -194,6 +194,35 @@ mod tests {
     }
 
     #[test]
+    fn human_bytes_zero() {
+        assert_eq!(human_bytes(0), "0 B");
+    }
+
+    #[test]
+    fn human_bytes_bytes() {
+        assert_eq!(human_bytes(1), "1 B");
+        assert_eq!(human_bytes(1023), "1023 B");
+    }
+
+    #[test]
+    fn human_bytes_kib() {
+        assert_eq!(human_bytes(1024), "1.0 KiB");
+        assert_eq!(human_bytes(1536), "1.5 KiB");
+    }
+
+    #[test]
+    fn human_bytes_mib() {
+        assert_eq!(human_bytes(1048576), "1.0 MiB");
+        assert_eq!(human_bytes(10 * 1048576), "10.0 MiB");
+    }
+
+    #[test]
+    fn human_bytes_gib() {
+        assert_eq!(human_bytes(1073741824), "1.0 GiB");
+        assert_eq!(human_bytes(2 * 1073741824 + 536870912), "2.5 GiB");
+    }
+
+    #[test]
     fn different_inputs_produce_different_hashes() {
         let provider = sandbox_fc::FirecrackerSnapshotProvider;
         let base = SnapshotArgs {

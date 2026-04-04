@@ -66,3 +66,63 @@ pub fn mitmdump_url(arch: &str) -> String {
         "https://downloads.mitmproxy.org/{MITMPROXY_VERSION}/mitmproxy-{MITMPROXY_VERSION}-linux-{arch}.tar.gz"
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn strip_patch_version() {
+        assert_eq!(FIRECRACKER_MINOR, "v1.14");
+    }
+
+    #[test]
+    fn firecracker_tar_entry_format() {
+        let entry = firecracker_tar_entry("aarch64");
+        assert!(entry.starts_with("firecracker-"));
+        assert!(entry.ends_with("-aarch64"));
+        assert!(entry.contains(FIRECRACKER_VERSION));
+    }
+
+    #[test]
+    fn firecracker_url_format() {
+        let url = firecracker_url("x86_64");
+        assert!(url.starts_with("https://"));
+        assert!(url.contains(FIRECRACKER_VERSION));
+        assert!(url.ends_with(".tgz"));
+    }
+
+    #[test]
+    fn kernel_url_format() {
+        let url = kernel_url("aarch64");
+        assert!(url.starts_with("https://"));
+        assert!(url.contains(KERNEL_VERSION));
+        assert!(url.contains("aarch64"));
+    }
+
+    #[test]
+    fn mitmdump_url_format() {
+        let url = mitmdump_url("x86_64");
+        assert!(url.starts_with("https://"));
+        assert!(url.contains(MITMPROXY_VERSION));
+        assert!(url.ends_with(".tar.gz"));
+    }
+
+    #[test]
+    fn sha256_checksums_are_valid_hex() {
+        for sha in [
+            FIRECRACKER_SHA256_X86_64,
+            FIRECRACKER_SHA256_AARCH64,
+            KERNEL_SHA256_X86_64,
+            KERNEL_SHA256_AARCH64,
+            MITMDUMP_SHA256_X86_64,
+            MITMDUMP_SHA256_AARCH64,
+        ] {
+            assert_eq!(sha.len(), 64, "SHA256 hex should be 64 chars: {sha}");
+            assert!(
+                sha.chars().all(|c| c.is_ascii_hexdigit()),
+                "SHA256 should be valid hex: {sha}"
+            );
+        }
+    }
+}

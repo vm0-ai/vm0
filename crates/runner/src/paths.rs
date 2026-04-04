@@ -203,3 +203,130 @@ impl LogPaths {
             || (name.starts_with("runner-") && name.ends_with(".log"))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn home_paths_structure() {
+        let home = HomePaths::with_root(PathBuf::from("/test"));
+        assert_eq!(home.bin_dir(), PathBuf::from("/test/bin"));
+        assert_eq!(home.rootfs_dir(), PathBuf::from("/test/rootfs"));
+        assert_eq!(home.snapshots_dir(), PathBuf::from("/test/snapshots"));
+        assert_eq!(home.logs_dir(), PathBuf::from("/test/logs"));
+        assert_eq!(home.runners_dir(), PathBuf::from("/test/runners"));
+        assert_eq!(home.groups_dir(), PathBuf::from("/test/groups"));
+        assert_eq!(home.ca_dir(), PathBuf::from("/test/ca"));
+        assert_eq!(home.debootstrap_dir(), PathBuf::from("/test/debootstrap"));
+        assert_eq!(home.locks_dir(), PathBuf::from("/test/locks"));
+    }
+
+    #[test]
+    fn firecracker_paths() {
+        let home = HomePaths::with_root(PathBuf::from("/test"));
+        assert_eq!(
+            home.firecracker_bin("v1.10.1"),
+            PathBuf::from("/test/firecracker/v1.10.1/firecracker")
+        );
+        assert_eq!(
+            home.kernel_bin("v1.10.1", "6.1"),
+            PathBuf::from("/test/firecracker/v1.10.1/vmlinux-6.1")
+        );
+    }
+
+    #[test]
+    fn mitmdump_path() {
+        let home = HomePaths::with_root(PathBuf::from("/test"));
+        assert_eq!(
+            home.mitmdump_bin("11.1.3"),
+            PathBuf::from("/test/mitmproxy/11.1.3/mitmdump")
+        );
+    }
+
+    #[test]
+    fn lock_paths() {
+        let home = HomePaths::with_root(PathBuf::from("/test"));
+        let rootfs_lock = home.rootfs_lock("abc123");
+        assert!(rootfs_lock.starts_with("/test/locks/"));
+        assert!(rootfs_lock.to_string_lossy().contains("rootfs-abc123"));
+
+        let snapshot_lock = home.snapshot_lock("def456");
+        assert!(snapshot_lock.to_string_lossy().contains("snapshot-def456"));
+    }
+
+    #[test]
+    fn base_dir_lock_is_deterministic() {
+        let home = HomePaths::with_root(PathBuf::from("/test"));
+        let lock1 = home.base_dir_lock(Path::new("/data/runner-01"));
+        let lock2 = home.base_dir_lock(Path::new("/data/runner-01"));
+        assert_eq!(lock1, lock2);
+
+        // Different base dirs produce different locks
+        let lock3 = home.base_dir_lock(Path::new("/data/runner-02"));
+        assert_ne!(lock1, lock3);
+    }
+
+    #[test]
+    fn runner_paths_structure() {
+        let rp = RunnerPaths::new(PathBuf::from("/data/r1"));
+        assert_eq!(rp.status(), PathBuf::from("/data/r1/status.json"));
+        assert_eq!(rp.mitm_addon_dir(), PathBuf::from("/data/r1/mitm-addon"));
+        assert_eq!(
+            rp.proxy_registry(),
+            PathBuf::from("/data/r1/proxy-registry.json")
+        );
+        assert_eq!(
+            rp.proxy_registry_lock(),
+            PathBuf::from("/data/r1/proxy-registry.json.lock")
+        );
+    }
+
+    #[test]
+    fn rootfs_paths_structure() {
+        let home = HomePaths::with_root(PathBuf::from("/test"));
+        let rp = RootfsPaths::new(&home, "abc123");
+        assert_eq!(rp.dir(), Path::new("/test/rootfs/abc123"));
+        assert_eq!(
+            rp.rootfs(),
+            PathBuf::from("/test/rootfs/abc123/rootfs.ext4")
+        );
+    }
+
+    #[test]
+    fn log_paths_structure() {
+        let lp = LogPaths::new(PathBuf::from("/test/logs"));
+        let id = uuid::Uuid::nil();
+        assert!(lp.network_log(id).to_string_lossy().contains("network-"));
+        assert!(lp.system_log(id).to_string_lossy().contains("system-"));
+        assert!(lp.metrics_log(id).to_string_lossy().contains("metrics-"));
+    }
+
+    #[test]
+    fn is_gc_eligible_log_matching() {
+        assert!(LogPaths::is_gc_eligible_log(
+            "network-550e8400-e29b-41d4-a716-446655440000.jsonl"
+        ));
+        assert!(LogPaths::is_gc_eligible_log(
+            "system-550e8400-e29b-41d4-a716-446655440000.log"
+        ));
+        assert!(LogPaths::is_gc_eligible_log(
+            "metrics-550e8400-e29b-41d4-a716-446655440000.jsonl"
+        ));
+        assert!(LogPaths::is_gc_eligible_log("runner-2026-04-01.log"));
+    }
+
+    #[test]
+    fn is_gc_eligible_log_non_matching() {
+        assert!(!LogPaths::is_gc_eligible_log("config.yaml"));
+        assert!(!LogPaths::is_gc_eligible_log("status.json"));
+        assert!(!LogPaths::is_gc_eligible_log("network-.log")); // wrong extension
+        assert!(!LogPaths::is_gc_eligible_log("system-.jsonl")); // wrong extension
+        assert!(!LogPaths::is_gc_eligible_log("other-file.jsonl"));
+    }
+
+    #[test]
+    fn touch_mtime_nonexistent_dir_does_not_panic() {
+        touch_mtime(Path::new("/nonexistent/dir"));
+    }
+}
