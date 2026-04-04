@@ -5,7 +5,7 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
-import { pathname, search } from "../../../signals/location.ts";
+import { pathname } from "../../../signals/location.ts";
 
 const context = testContext();
 
@@ -41,28 +41,6 @@ function mockChatSessionAPIs() {
 }
 
 describe("chat session page wrapper navigation", () => {
-  it("should navigate to agent schedule when clicking schedule button", async () => {
-    const user = userEvent.setup();
-    mockChatSessionAPIs();
-
-    await setupPage({ context, path: "/chats/session-thread-1" });
-
-    // Wait for chat messages to render
-    await waitFor(() => {
-      expect(screen.getByText("Task is running.")).toBeInTheDocument();
-    });
-
-    // Click the schedule button in the session header
-    const scheduledButton = screen.getByLabelText("Scheduled");
-    await user.click(scheduledButton);
-
-    // Verify navigation to /team/c0000000-0000-4000-a000-000000000001 with tab=schedule
-    await waitFor(() => {
-      expect(pathname()).toBe("/agents/c0000000-0000-4000-a000-000000000001");
-      expect(search()).toContain("tab=schedule");
-    });
-  });
-
   it("should navigate to agent profile when clicking chat avatar", async () => {
     const user = userEvent.setup();
     mockChatSessionAPIs();

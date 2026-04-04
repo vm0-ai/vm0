@@ -10,8 +10,6 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   IconAlertCircle,
   IconLoader2,
-  IconUsers,
-  IconCalendar,
   IconPhoto,
   IconChartLine,
   IconPlayerStop,
@@ -21,7 +19,6 @@ import {
   IconPin,
 } from "@tabler/icons-react";
 import {
-  Button,
   Skeleton,
   Tooltip,
   TooltipContent,
@@ -70,7 +67,6 @@ import {
 } from "../../signals/zero-page/zero-session-chat-ui.ts";
 import { useAgentAvatar } from "./zero-sidebar-shared.tsx";
 import { zeroSubagents$ } from "../../signals/zero-page/zero-agents.ts";
-import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { useLayoutEffect } from "react";
 
 function scrollToLatestMessage() {
@@ -182,7 +178,6 @@ function ChatThreadHeader() {
   const { currentChatAgentId, resolvedAgentId, displayName, avatarSrc } =
     useChatAgentIdentity();
   const pageSignal = useGet(pageSignal$);
-  const navigateTo = useSet(detachedNavigateTo$);
 
   // Pin pill
   const pinnedLoadable = useLastLoadable(pinnedAgentIds$);
@@ -257,49 +252,7 @@ function ChatThreadHeader() {
         </div>
         <span className="font-semibold text-foreground">{displayName}</span>
       </div>
-      <div className="hidden sm:flex items-center gap-0.5">
-        <TooltipProvider delayDuration={200}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Link
-                pathname="/agents"
-                className="inline-flex items-center justify-center h-8 w-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent"
-                aria-label="Sub-agents"
-              >
-                <IconUsers size={18} stroke={1.5} />
-              </Link>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              <p className="text-xs">Agents</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-        <TooltipProvider delayDuration={200}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                onPointerDown={() => {
-                  if (resolvedAgentId) {
-                    navigateTo("/agents/:id", {
-                      pathParams: { id: resolvedAgentId },
-                      searchParams: new URLSearchParams({ tab: "schedule" }),
-                    });
-                  }
-                }}
-                aria-label="Scheduled"
-              >
-                <IconCalendar size={18} stroke={1.5} />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              <p className="text-xs">Schedule</p>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      </div>
+      <div className="hidden sm:flex items-center gap-0.5" />
     </header>
   );
 }
@@ -862,7 +815,7 @@ function StaticAssistantMessage({
     scrollToLatestMessage();
   }, [content]);
   const avatar = (
-    <div className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 shrink-0 mt-0.5 overflow-hidden rounded-xl">
+    <div className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 shrink-0 @[900px]:mt-0.5 overflow-hidden rounded-xl">
       <AvatarOrPlaceholder
         src={avatarSrc}
         className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 rounded-full object-cover object-top"
@@ -952,7 +905,7 @@ function StaticAssistantMessage({
       >
         <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
           {avatar}
-          <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-1.5 text-sm leading-relaxed min-w-0 break-words">
+          <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-sm leading-relaxed min-w-0 break-words">
             {hasSummaries && (
               <CollapsibleTimeline
                 summaries={message.summaries!}
@@ -1017,7 +970,7 @@ function StaticAssistantMessage({
       <div className="group flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
         <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
           {avatar}
-          <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-1.5 text-sm leading-relaxed min-w-0 break-words">
+          <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-sm leading-relaxed min-w-0 break-words">
             {hasSummaries && (
               <CollapsibleTimeline
                 summaries={message.summaries!}
