@@ -16,7 +16,6 @@ import {
 } from "../../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
 import { registerHost } from "../../../../../src/lib/zero/computer-use/computer-use-service";
-import { isConflict } from "../../../../../src/lib/shared/errors";
 
 const router = tsr.router(zeroComputerUseRegisterContract, {
   register: async ({ headers }) => {
@@ -36,18 +35,8 @@ const router = tsr.router(zeroComputerUseRegisterContract, {
       return createErrorResponse("FORBIDDEN", "Computer use is not enabled");
     }
 
-    try {
-      const result = await registerHost(org.orgId, userId);
-      return { status: 200 as const, body: result };
-    } catch (error) {
-      if (isConflict(error)) {
-        return createErrorResponse(
-          "CONFLICT",
-          "Computer-use host already registered",
-        );
-      }
-      throw error;
-    }
+    const result = await registerHost(org.orgId, userId);
+    return { status: 200 as const, body: result };
   },
 });
 

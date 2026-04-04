@@ -16,19 +16,6 @@ import {
   stopDesktopTunnel,
 } from "../../../lib/computer-use/ngrok";
 
-async function registerWithRecovery() {
-  try {
-    return await registerComputerUseHost();
-  } catch (error) {
-    if (error instanceof ApiRequestError && error.status === 409) {
-      console.log(chalk.yellow("Stale registration found, cleaning up..."));
-      await unregisterComputerUseHost();
-      return await registerComputerUseHost();
-    }
-    throw error;
-  }
-}
-
 export const hostStartCommand = new Command()
   .name("start")
   .description("Start the computer-use host daemon (macOS only)")
@@ -52,7 +39,7 @@ export const hostStartCommand = new Command()
       }
 
       console.log(chalk.cyan("Registering computer-use host..."));
-      const credentials = await registerWithRecovery();
+      const credentials = await registerComputerUseHost();
 
       const port = await getRandomPort();
       const server = await startDesktopServer(credentials.token, port);

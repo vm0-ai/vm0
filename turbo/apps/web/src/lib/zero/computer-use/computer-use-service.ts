@@ -7,7 +7,7 @@
 import { createHash, randomUUID } from "crypto";
 import { eq, and, gt } from "drizzle-orm";
 import { computerUseHosts } from "../../../db/schema/computer-use-host";
-import { conflict, notFound } from "../../shared/errors";
+import { notFound } from "../../shared/errors";
 import { logger } from "../../shared/logger";
 import {
   findOrCreateBotUser,
@@ -44,7 +44,7 @@ export async function registerHost(
 ): Promise<RegisterHostResult> {
   const db = globalThis.services.db;
 
-  // Check for existing host
+  // If existing host found, clean it up first (idempotent re-registration)
   const [existing] = await db
     .select({ id: computerUseHosts.id })
     .from(computerUseHosts)
@@ -57,7 +57,8 @@ export async function registerHost(
     .limit(1);
 
   if (existing) {
-    throw conflict("Computer-use host already registered");
+    log.debug("Cleaning up existing host registration", { orgId, userId });
+    await unregisterHost(orgId, userId);
   }
 
   const env = globalThis.services.env;
