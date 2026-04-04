@@ -74,7 +74,12 @@ describe("zero unsaved bar - unsaved changes indicator (SCHED-D-093)", () => {
     await loadAndMakeDirty(user);
 
     await waitFor(() => {
-      expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /^Save$/i }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /^Discard$/i }),
+      ).toBeInTheDocument();
     });
   });
 });
@@ -101,17 +106,24 @@ describe("zero unsaved bar - save button loading state (SCHED-D-094)", () => {
     await loadAndMakeDirty(user);
 
     await waitFor(() => {
-      expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /^Save$/i }),
+      ).toBeInTheDocument();
     });
 
     await user.click(screen.getByRole("button", { name: /^Save$/i }));
 
     await waitFor(() => {
-      const saveButton = screen.getByRole("button", { name: /Save/i });
-      expect(saveButton.querySelector(".animate-spin")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Save/i })).toBeDisabled();
     });
 
     resolvePost();
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("button", { name: /^Save$/i }),
+      ).not.toBeInTheDocument();
+    });
   });
 });
 
@@ -122,14 +134,16 @@ describe("zero unsaved bar - discard button reverts changes (SCHED-D-095)", () =
     await loadAndMakeDirty(user);
 
     await waitFor(() => {
-      expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /^Save$/i }),
+      ).toBeInTheDocument();
     });
 
     await user.click(screen.getByRole("button", { name: /Discard/i }));
 
     await waitFor(() => {
       expect(
-        screen.queryByText("You have unsaved changes"),
+        screen.queryByRole("button", { name: /^Discard$/i }),
       ).not.toBeInTheDocument();
     });
   });
@@ -153,14 +167,16 @@ describe("zero unsaved bar - save button persists changes (SCHED-D-096)", () => 
     await loadAndMakeDirty(user);
 
     await waitFor(() => {
-      expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /^Save$/i }),
+      ).toBeInTheDocument();
     });
 
     await user.click(screen.getByRole("button", { name: /^Save$/i }));
 
     await waitFor(() => {
       expect(
-        screen.queryByText("You have unsaved changes"),
+        screen.queryByRole("button", { name: /^Save$/i }),
       ).not.toBeInTheDocument();
     });
   });
