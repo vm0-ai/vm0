@@ -279,4 +279,112 @@ mod tests {
             }
         ));
     }
+
+    #[test]
+    fn empty_buffer() {
+        let err = parse_request(&[]).unwrap_err();
+        assert!(matches!(
+            err,
+            ProtocolError::BufferTooShort {
+                expected: 28,
+                actual: 0
+            }
+        ));
+    }
+
+    #[test]
+    fn error_display_invalid_magic() {
+        let err = ProtocolError::InvalidRequestMagic(0xBAD);
+        let msg = err.to_string();
+        assert!(msg.contains("invalid request magic"), "got: {msg}");
+    }
+
+    #[test]
+    fn error_display_unknown_command() {
+        let err = ProtocolError::UnknownCommand(99);
+        let msg = err.to_string();
+        assert!(msg.contains("unknown NBD command"), "got: {msg}");
+        assert!(msg.contains("99"), "got: {msg}");
+    }
+
+    #[test]
+    fn error_display_buffer_too_short() {
+        let err = ProtocolError::BufferTooShort {
+            expected: 28,
+            actual: 10,
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("28") && msg.contains("10"), "got: {msg}");
+    }
+
+    #[test]
+    fn round_trip_reply_with_error() {
+        let reply = NbdReply {
+            error: 5, // EIO
+            handle: 0xAAAA_BBBB_CCCC_DDDD,
+        };
+        let buf = serialize_reply(&reply);
+        assert_eq!(
+            u32::from_be_bytes([buf[0], buf[1], buf[2], buf[3]]),
+            REPLY_MAGIC
+        );
+        assert_eq!(u32::from_be_bytes([buf[4], buf[5], buf[6], buf[7]]), 5);
+        assert_eq!(
+            u64::from_be_bytes([
+                buf[8], buf[9], buf[10], buf[11], buf[12], buf[13], buf[14], buf[15]
+            ]),
+            0xAAAA_BBBB_CCCC_DDDD
+        );
+    }
+
+    #[test]
+    fn round_trip_request_with_flags() {
+        let req = NbdRequest {
+            flags: 0x0001, // FUA
+            command: Command::Write,
+            handle: 42,
+            offset: 8192,
+            length: 1024,
+        };
+        let buf = serialize_request(&req);
+        let parsed = parse_request(&buf).unwrap();
+        assert_eq!(parsed.flags, 0x0001);
+        assert_eq!(parsed.command, Command::Write);
+        assert_eq!(parsed.handle, 42);
+        assert_eq!(parsed.offset, 8192);
+        assert_eq!(parsed.length, 1024);
+    }
+
+    #[test]
+    fn command_from_u16_boundary_values() {
+        assert!(Command::from_u16(0).is_ok());
+        assert!(Command::from_u16(4).is_ok());
+        assert!(Command::from_u16(5).is_err());
+        assert!(Command::from_u16(u16::MAX).is_err());
+    }
+
+    #[test]
+    fn reply_header_size_is_16() {
+        let reply = NbdReply {
+            error: 0,
+            handle: 0,
+        };
+        let buf = serialize_reply(&reply);
+        assert_eq!(buf.len(), REPLY_HEADER_SIZE);
+        assert_eq!(REPLY_HEADER_SIZE, 16);
+    }
+
+    #[test]
+    fn request_header_size_is_28() {
+        assert_eq!(REQUEST_HEADER_SIZE, 28);
+        let req = NbdRequest {
+            flags: 0,
+            command: Command::Read,
+            handle: 0,
+            offset: 0,
+            length: 0,
+        };
+        let buf = serialize_request(&req);
+        assert_eq!(buf.len(), REQUEST_HEADER_SIZE);
+    }
 }

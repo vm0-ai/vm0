@@ -209,4 +209,112 @@ mod tests {
         assert_eq!(url_encode("hello world"), "hello%20world");
         assert_eq!(url_encode("a+b=c"), "a%2Bb%3Dc");
     }
+
+    #[test]
+    fn from_raw_empty_string() {
+        let masker = SecretMasker::from_raw("");
+        assert!(masker.patterns.is_empty());
+    }
+
+    #[test]
+    fn from_raw_invalid_base64() {
+        let masker = SecretMasker::from_raw("not-valid-b64!!!");
+        assert!(masker.patterns.is_empty());
+    }
+
+    #[test]
+    fn from_raw_skips_short_secrets() {
+        let engine = base64::engine::general_purpose::STANDARD;
+        let short = engine.encode("abcd"); // 4 chars < MIN_SECRET_LEN
+        let masker = SecretMasker::from_raw(&short);
+        assert!(masker.patterns.is_empty());
+    }
+
+    #[test]
+    fn from_raw_includes_url_encoded_variant() {
+        let engine = base64::engine::general_purpose::STANDARD;
+        // Secret with special chars that need URL encoding
+        let secret = "key=value&token=abc123";
+        let encoded = engine.encode(secret);
+        let masker = SecretMasker::from_raw(&encoded);
+        // Should contain plain, base64, and url-encoded variants
+        assert!(masker.patterns.contains(&secret.to_string()));
+        assert!(masker.patterns.contains(&encoded));
+        let url = url_encode(secret);
+        assert!(masker.patterns.contains(&url));
+    }
+
+    #[test]
+    fn from_raw_no_url_variant_when_same() {
+        let engine = base64::engine::general_purpose::STANDARD;
+        // Secret with only unreserved chars — url_encode returns same string
+        let secret = "simple-secret";
+        let encoded = engine.encode(secret);
+        let masker = SecretMasker::from_raw(&encoded);
+        // Should only have plain + base64 (no duplicate url variant)
+        assert_eq!(masker.patterns.len(), 2);
+    }
+
+    #[test]
+    fn mask_string_no_match() {
+        let masker = SecretMasker {
+            patterns: vec!["secret".to_string()],
+        };
+        let result = masker.mask_string("no match here");
+        assert_eq!(result, "no match here");
+    }
+
+    #[test]
+    fn mask_value_leaves_non_string_types_unchanged() {
+        let masker = SecretMasker {
+            patterns: vec!["secret".to_string()],
+        };
+        let mut val = json!({"num": 42, "bool": true, "null": null});
+        masker.mask_value(&mut val);
+        assert_eq!(val["num"], 42);
+        assert_eq!(val["bool"], true);
+        assert!(val["null"].is_null());
+    }
+
+    #[test]
+    fn mask_value_masks_array_elements() {
+        let masker = SecretMasker {
+            patterns: vec!["secret".to_string()],
+        };
+        let mut val = json!(["no match", "has secret here"]);
+        masker.mask_value(&mut val);
+        assert_eq!(val[0], "no match");
+        assert_eq!(val[1], "has *** here");
+    }
+
+    #[test]
+    fn mask_string_multiple_occurrences() {
+        let masker = SecretMasker {
+            patterns: vec!["token".to_string()],
+        };
+        let result = masker.mask_string("token and token again");
+        assert_eq!(result, "*** and *** again");
+    }
+
+    #[test]
+    fn url_encode_preserves_unreserved() {
+        // All unreserved chars per ECMAScript spec
+        let unreserved = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.!~*'()";
+        assert_eq!(url_encode(unreserved), unreserved);
+    }
+
+    #[test]
+    fn url_encode_encodes_slash_and_at() {
+        assert_eq!(url_encode("/"), "%2F");
+        assert_eq!(url_encode("@"), "%40");
+    }
+
+    #[test]
+    fn hex_digit_all_values() {
+        for n in 0..=15u8 {
+            let c = hex_digit(n);
+            let expected = format!("{n:X}").chars().next().unwrap();
+            assert_eq!(c, expected, "hex_digit({n})");
+        }
+    }
 }

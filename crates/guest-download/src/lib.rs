@@ -472,3 +472,148 @@ fn download_and_extract(url: &str, target_path: &str) -> Result<(), DownloadErro
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // -- normalize_path tests --
+
+    #[test]
+    fn normalize_path_removes_dot() {
+        assert_eq!(normalize_path(Path::new("/a/./b")), PathBuf::from("/a/b"));
+    }
+
+    #[test]
+    fn normalize_path_collapses_parent() {
+        assert_eq!(
+            normalize_path(Path::new("/a/b/../c")),
+            PathBuf::from("/a/c")
+        );
+    }
+
+    #[test]
+    fn normalize_path_does_not_escape_root() {
+        // Going above root should not pop the root component
+        assert_eq!(normalize_path(Path::new("/a/../../b")), PathBuf::from("/b"));
+    }
+
+    #[test]
+    fn normalize_path_already_clean() {
+        assert_eq!(
+            normalize_path(Path::new("/usr/local/bin")),
+            PathBuf::from("/usr/local/bin")
+        );
+    }
+
+    #[test]
+    fn normalize_path_multiple_dots() {
+        assert_eq!(
+            normalize_path(Path::new("/a/./b/./c")),
+            PathBuf::from("/a/b/c")
+        );
+    }
+
+    // -- is_within tests --
+
+    #[test]
+    fn is_within_simple_child() {
+        assert!(is_within(
+            Path::new("/target/subdir/file.txt"),
+            Path::new("/target")
+        ));
+    }
+
+    #[test]
+    fn is_within_rejects_traversal() {
+        assert!(!is_within(
+            Path::new("/target/../etc/passwd"),
+            Path::new("/target")
+        ));
+    }
+
+    #[test]
+    fn is_within_exact_match() {
+        assert!(is_within(Path::new("/target"), Path::new("/target")));
+    }
+
+    #[test]
+    fn is_within_dot_in_path() {
+        assert!(is_within(
+            Path::new("/target/./subdir"),
+            Path::new("/target")
+        ));
+    }
+
+    #[test]
+    fn is_within_rejects_sibling() {
+        assert!(!is_within(
+            Path::new("/target/../sibling/file"),
+            Path::new("/target")
+        ));
+    }
+
+    // -- ancestors_within_target tests --
+
+    #[test]
+    fn ancestors_within_target_simple() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path();
+        std::fs::create_dir_all(target.join("sub")).unwrap();
+        assert!(ancestors_within_target(
+            &target.join("sub/file.txt"),
+            target
+        ));
+    }
+
+    #[test]
+    fn ancestors_within_target_non_existent_parent() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path();
+        // Parent "sub" doesn't exist yet — should walk up to target itself
+        assert!(ancestors_within_target(
+            &target.join("sub/deep/file.txt"),
+            target
+        ));
+    }
+
+    #[test]
+    fn ancestors_within_target_symlink_escape() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("target");
+        let outside = dir.path().join("outside");
+        std::fs::create_dir_all(&target).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        // Create a symlink inside target that points outside
+        std::os::unix::fs::symlink(&outside, target.join("escape")).unwrap();
+        assert!(!ancestors_within_target(
+            &target.join("escape/file.txt"),
+            &target
+        ));
+    }
+
+    // -- is_valid_url tests --
+
+    #[test]
+    fn is_valid_url_none() {
+        assert!(!is_valid_url(&None));
+    }
+
+    #[test]
+    fn is_valid_url_null_string() {
+        assert!(!is_valid_url(&Some("null".to_string())));
+    }
+
+    #[test]
+    fn is_valid_url_valid() {
+        assert!(is_valid_url(&Some(
+            "https://example.com/archive.tar.gz".to_string()
+        )));
+    }
+
+    #[test]
+    fn is_valid_url_empty_string() {
+        // Empty string is not "null", so it's technically valid per the function
+        assert!(is_valid_url(&Some(String::new())));
+    }
+}

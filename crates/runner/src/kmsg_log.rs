@@ -355,4 +355,83 @@ mod tests {
         assert!(parsed.get("action").is_none());
         assert!(parsed["timestamp"].is_string());
     }
+
+    #[test]
+    fn write_jsonl_icmp_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("icmp.jsonl");
+        let entry = LogEntry {
+            source_ip: "10.200.0.2".to_string(),
+            dst_ip: "1.1.1.1".to_string(),
+            dst_port: 0,
+            protocol: "icmp".to_string(),
+            packet_size: 84,
+        };
+        write_jsonl(&path, &entry);
+        let content = std::fs::read_to_string(&path).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(content.trim()).unwrap();
+        assert_eq!(parsed["type"], "icmp");
+        assert_eq!(parsed["port"], 0);
+        assert_eq!(parsed["request_size"], 84);
+    }
+
+    #[test]
+    fn write_jsonl_appends_multiple_entries() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("multi.jsonl");
+        for dst in ["8.8.8.8", "1.1.1.1", "9.9.9.9"] {
+            write_jsonl(
+                &path,
+                &LogEntry {
+                    source_ip: "10.0.0.1".to_string(),
+                    dst_ip: dst.to_string(),
+                    dst_port: 53,
+                    protocol: "udp".to_string(),
+                    packet_size: 64,
+                },
+            );
+        }
+        let content = std::fs::read_to_string(&path).unwrap();
+        let lines: Vec<&str> = content.lines().collect();
+        assert_eq!(lines.len(), 3);
+        for (i, dst) in ["8.8.8.8", "1.1.1.1", "9.9.9.9"].iter().enumerate() {
+            let parsed: serde_json::Value = serde_json::from_str(lines[i]).unwrap();
+            assert_eq!(parsed["host"], *dst);
+        }
+    }
+
+    #[test]
+    fn extract_field_at_start_of_line() {
+        let fields = "SRC=10.0.0.1 DST=8.8.8.8";
+        assert_eq!(extract_field(fields, "SRC="), Some("10.0.0.1"));
+    }
+
+    #[test]
+    fn extract_field_missing_key() {
+        let fields = "SRC=10.0.0.1 DST=8.8.8.8";
+        assert_eq!(extract_field(fields, "PROTO="), None);
+    }
+
+    #[test]
+    fn extract_field_empty_value() {
+        let fields = "KEY= NEXT=val";
+        assert_eq!(extract_field(fields, "KEY="), Some(""));
+    }
+
+    #[test]
+    fn parse_log_empty_string() {
+        assert!(parse_log_message("").is_none());
+    }
+
+    #[test]
+    fn parse_log_prefix_only() {
+        assert!(parse_log_message("VM0:").is_none());
+    }
+
+    #[test]
+    fn parse_log_missing_fields() {
+        // Has prefix and IP but missing DST/LEN/PROTO
+        let msg = "VM0:10.200.0.2:IN=eth0 SRC=10.200.0.2";
+        assert!(parse_log_message(msg).is_none());
+    }
 }
