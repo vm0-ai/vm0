@@ -98,8 +98,8 @@ export function clearMockedAuth() {
   internalMockedInvitations = [];
   internalMockedMemberships = [{ id: "org_default" }];
   clerkListeners.length = 0;
-  mockedClerk.setActive.mockClear();
-  mockedClerk.createOrganization.mockClear();
+  mockedClerk.setActive.mockReset();
+  mockedClerk.createOrganization.mockReset();
 }
 
 const clerkListeners: (() => void)[] = [];

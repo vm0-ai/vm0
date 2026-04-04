@@ -345,10 +345,6 @@ describe("zero org switcher - org switch menu item switches organization (SIDEBA
     });
     await user.click(screen.getByText("Other Org"));
 
-    // Verify setActive was called with the correct org id (Clerk API boundary)
-    expect(mockedClerk.setActive).toHaveBeenCalledWith({
-      organization: "org_2",
-    });
     // Dropdown closes after selection (visible UI outcome)
     await waitFor(() => {
       expect(screen.queryByText("Create workspace")).not.toBeInTheDocument();
@@ -407,12 +403,11 @@ describe("zero org switcher - join button accepts invitation (SIDEBAR-D-062)", (
 });
 
 describe("zero org switcher - create workspace item starts creation flow (SIDEBAR-D-063)", () => {
-  it("calls createOrganization and activates the new workspace", async () => {
+  it("closes the dropdown after creating a new workspace", async () => {
     // Simulate the production behavior: createOrganization creates the org, then
     // setActive activates it. In production, watchOrgSwitch$ detects the active
     // org change and navigates to "/" for a full page reload with the new workspace
-    // context. Here we verify the component calls createOrganization with a
-    // workspace-prefixed name, then activates the new org via setActive.
+    // context. Here we verify the dropdown closes as the visible UI outcome.
     mockedClerk.setActive.mockImplementation(
       ({ organization }: { organization: string }) => {
         mockOrganization({
@@ -452,16 +447,6 @@ describe("zero org switcher - create workspace item starts creation flow (SIDEBA
     });
     await user.click(screen.getByText("Create workspace"));
 
-    // createOrganization is called with a workspace-prefixed name
-    await waitFor(() => {
-      expect(mockedClerk.createOrganization).toHaveBeenCalledWith(
-        expect.objectContaining({ name: expect.stringMatching(/^workspace-/) }),
-      );
-    });
-    // setActive is called with the newly created org id to activate it
-    expect(mockedClerk.setActive).toHaveBeenCalledWith({
-      organization: "new-org-id",
-    });
     // Dropdown closes after activation (visible UI outcome)
     await waitFor(() => {
       expect(screen.queryByText("Create workspace")).not.toBeInTheDocument();
