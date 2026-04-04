@@ -4,6 +4,7 @@ import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import {
   registerComputerUseHost,
   unregisterComputerUseHost,
+  ApiRequestError,
 } from "../../../lib/api";
 import {
   getRandomPort,
@@ -13,6 +14,19 @@ import {
   startDesktopTunnel,
   stopDesktopTunnel,
 } from "../../../lib/computer-use/ngrok";
+
+async function registerWithRecovery() {
+  try {
+    return await registerComputerUseHost();
+  } catch (error) {
+    if (error instanceof ApiRequestError && error.status === 409) {
+      console.log(chalk.yellow("Stale registration found, cleaning up..."));
+      await unregisterComputerUseHost();
+      return await registerComputerUseHost();
+    }
+    throw error;
+  }
+}
 
 export const hostStartCommand = new Command()
   .name("start")
@@ -27,7 +41,7 @@ export const hostStartCommand = new Command()
       }
 
       console.log(chalk.cyan("Registering computer-use host..."));
-      const credentials = await registerComputerUseHost();
+      const credentials = await registerWithRecovery();
 
       const port = await getRandomPort();
       const server = await startDesktopServer(credentials.token, port);
@@ -74,6 +88,25 @@ export const hostStartCommand = new Command()
         await stopDesktopTunnel();
         await unregisterComputerUseHost().catch(() => {});
         console.log(chalk.green("✓ Host stopped"));
+      }
+    }),
+  );
+
+export const hostStopCommand = new Command()
+  .name("stop")
+  .description("Stop and unregister the computer-use host")
+  .action(
+    withErrorHandler(async () => {
+      console.log(chalk.cyan("Unregistering computer-use host..."));
+      try {
+        await unregisterComputerUseHost();
+        console.log(chalk.green("✓ Host unregistered"));
+      } catch (error) {
+        if (error instanceof ApiRequestError && error.status === 404) {
+          console.log(chalk.yellow("No active host registration found"));
+          return;
+        }
+        throw error;
       }
     }),
   );
