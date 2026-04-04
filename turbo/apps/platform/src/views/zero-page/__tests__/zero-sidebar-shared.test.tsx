@@ -98,7 +98,7 @@ describe("agent avatar shows fallback when no image (SIDEBAR-D-043)", () => {
     await waitFor(() => {
       const sidebar = getSidebar();
       const img = within(sidebar).getByRole("img", { name: "Fallback Agent" });
-      expect(img.getAttribute("src")).toBeTruthy();
+      expect(img.getAttribute("src")).toMatch(/avatar_1/);
     });
   });
 });
@@ -140,9 +140,7 @@ describe("avatar loading state shows no image initially (SIDEBAR-D-044)", () => 
 
     // While team API is still pending, no avatar img should be rendered
     const sidebar = getSidebar();
-    expect(
-      within(sidebar).queryByRole("img", { name: "Loading Agent" }),
-    ).not.toBeInTheDocument();
+    expect(within(sidebar).queryAllByRole("img")).toHaveLength(0);
 
     deferred.resolve();
 
