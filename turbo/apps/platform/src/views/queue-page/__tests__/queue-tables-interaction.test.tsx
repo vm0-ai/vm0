@@ -236,7 +236,11 @@ describe("queue-i-014: cancel button cancels a running task", () => {
     await waitFor(() => {
       expect(screen.getByText("Cancel Agent")).toBeInTheDocument();
     });
-    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    const cancelBtn = screen.getAllByRole("button").find((el) => {
+      return el.textContent?.trim() === "Cancel";
+    });
+    expect(cancelBtn).toBeDefined();
+    await user.click(cancelBtn!);
     await waitFor(() => {
       expect(cancelledRunId).toBe("run-cancel-001");
     });
@@ -385,7 +389,9 @@ describe("queue-c-018: cancel button shown only for owner tasks with runId", () 
     await waitFor(() => {
       expect(screen.getByText("Owner Agent")).toBeInTheDocument();
     });
-    const cancelButtons = screen.getAllByRole("button", { name: "Cancel" });
+    const cancelButtons = screen.getAllByRole("button").filter((el) => {
+      return el.textContent?.trim() === "Cancel";
+    });
     expect(cancelButtons).toHaveLength(1);
   });
 });
@@ -428,7 +434,11 @@ describe("queue-i-019: cancel button cancels a waiting task", () => {
     await waitFor(() => {
       expect(screen.getByText("Wait Cancel Agent")).toBeInTheDocument();
     });
-    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    const waitCancelBtn = screen.getAllByRole("button").find((el) => {
+      return el.textContent?.trim() === "Cancel";
+    });
+    expect(waitCancelBtn).toBeDefined();
+    await user.click(waitCancelBtn!);
     await waitFor(() => {
       expect(cancelledRunId).toBe("run-wait-cancel-001");
     });

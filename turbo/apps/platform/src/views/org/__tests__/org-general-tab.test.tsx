@@ -252,9 +252,17 @@ describe("org general tab - interaction", () => {
     mockAPIs({ role: "member" });
     await openGeneralTab();
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Leave" })).toBeInTheDocument();
+      expect(
+        screen.getAllByRole("button").find((el) => {
+          return el.textContent?.trim() === "Leave";
+        }),
+      ).toBeInTheDocument();
     });
-    await user.click(screen.getByRole("button", { name: "Leave" }));
+    await user.click(
+      screen.getAllByRole("button").find((el) => {
+        return el.textContent?.trim() === "Leave";
+      })!,
+    );
     await waitFor(() => {
       expect(screen.getByText("Leave workspace?")).toBeInTheDocument();
     });
@@ -267,7 +275,11 @@ describe("org general tab - interaction", () => {
     await openGeneralTab();
     // Wait for page to load
     await screen.findByDisplayValue("acme-org");
-    await user.click(screen.getByRole("button", { name: "Delete" }));
+    const deleteButton = screen.getAllByRole("button").find((el) => {
+      return el.textContent?.trim() === "Delete";
+    });
+    expect(deleteButton).toBeDefined();
+    await user.click(deleteButton!);
     await waitFor(() => {
       expect(screen.getByText("Delete workspace?")).toBeInTheDocument();
     });
@@ -288,12 +300,19 @@ describe("org general tab - validation", () => {
     mockAPIs({ slug: "my-workspace" });
     await openGeneralTab();
     await screen.findByDisplayValue("my-workspace");
-    await user.click(screen.getByRole("button", { name: "Delete" }));
+    const deleteWorkspaceBtn = screen.getAllByRole("button").find((el) => {
+      return el.textContent?.trim() === "Delete";
+    });
+    expect(deleteWorkspaceBtn).toBeDefined();
+    await user.click(deleteWorkspaceBtn!);
     await waitFor(() => {
       expect(screen.getByText("Delete workspace?")).toBeInTheDocument();
     });
     // Get the destructive "Delete workspace" button inside the dialog footer
-    const deleteBtn = screen.getByRole("button", { name: "Delete workspace" });
+    const deleteBtn = screen.getAllByRole("button").find((el) => {
+      return el.textContent?.trim() === "Delete workspace";
+    });
+    expect(deleteBtn).toBeDefined();
     expect(deleteBtn).toBeDisabled();
     // Type wrong slug — still disabled
     const confirmInput = screen.getByPlaceholderText("my-workspace");
