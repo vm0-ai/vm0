@@ -39,6 +39,7 @@ function AgentAvatarInTopBar({ agentId }: { agentId: string }) {
       src={src}
       alt=""
       role="presentation"
+      data-testid="agent-avatar"
       className="h-6 w-6 shrink-0 rounded-full object-cover object-top"
     />
   );
@@ -142,6 +143,7 @@ function SidebarLayoutInner({ children }: { children: ReactNode }) {
       {!sidebarCollapsed && (
         <div
           className="fixed inset-0 z-30 bg-black/40 md:hidden"
+          aria-label="Sidebar overlay"
           onClick={() => {
             return setSidebarCollapsed(true);
           }}

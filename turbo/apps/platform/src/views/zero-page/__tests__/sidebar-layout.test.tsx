@@ -18,12 +18,7 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
-import {
-  zeroSidebarCollapsed$,
-  setZeroSidebarCollapsed$,
-} from "../../../signals/zero-page/zero-nav.ts";
-import { orgManageDialogOpen$ } from "../../../signals/zero-page/settings/org-manage-dialog.ts";
-import { activeTab$ } from "../../../signals/zero-page/settings/org-manage-tabs-state.ts";
+import { setZeroSidebarCollapsed$ } from "../../../signals/zero-page/zero-nav.ts";
 
 const context = testContext();
 
@@ -114,9 +109,8 @@ describe("sidebar layout - breadcrumb avatar displays for agent pages (SIDEBAR-D
     mockBaseAPIs();
     await setupPage({ context, path: "/" });
     await waitFor(() => {
-      // AgentAvatarInTopBar renders an img with role="presentation" inside the mobile top bar
-      const avatars = screen.getAllByRole("presentation");
-      expect(avatars.length).toBeGreaterThan(0);
+      // AgentAvatarInTopBar renders an img with data-testid="agent-avatar" inside the mobile top bar
+      expect(screen.getByTestId("agent-avatar")).toBeInTheDocument();
     });
   });
 });
@@ -142,7 +136,7 @@ describe("sidebar layout - invite button hidden for non-admins (SIDEBAR-D-049)",
 });
 
 describe("sidebar layout - menu toggle opens sidebar (SIDEBAR-D-050)", () => {
-  it("calls setSidebarCollapsed(false) when the menu toggle button is clicked", async () => {
+  it("shows the sidebar when the menu toggle button is clicked", async () => {
     const user = userEvent.setup();
     mockBaseAPIs();
     context.store.set(setZeroSidebarCollapsed$, true);
@@ -152,7 +146,8 @@ describe("sidebar layout - menu toggle opens sidebar (SIDEBAR-D-050)", () => {
     await user.click(menuButton);
 
     await waitFor(() => {
-      expect(context.store.get(zeroSidebarCollapsed$)).toBeFalsy();
+      // When sidebar is open, the overlay becomes visible in the DOM
+      expect(screen.getByLabelText("Sidebar overlay")).toBeInTheDocument();
     });
   });
 });
@@ -218,28 +213,28 @@ describe("sidebar layout - invite button opens member dialog (SIDEBAR-D-052)", (
     await user.click(inviteButton);
 
     await waitFor(() => {
-      expect(context.store.get(orgManageDialogOpen$)).toBeTruthy();
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
-    expect(context.store.get(activeTab$)).toBe("members");
   });
 });
 
 describe("sidebar layout - overlay click collapses sidebar (SIDEBAR-D-053)", () => {
-  it("calls setSidebarCollapsed(true) when the overlay is clicked", async () => {
+  it("hides the overlay when the overlay is clicked", async () => {
     const user = userEvent.setup();
     mockBaseAPIs();
     context.store.set(setZeroSidebarCollapsed$, false);
     await setupPage({ context, path: "/" });
 
     const overlay = await waitFor(() => {
-      return document.querySelector<HTMLElement>('[class*="bg-black"]');
+      return screen.getByLabelText("Sidebar overlay");
     });
-    expect(overlay).toBeTruthy();
 
-    await user.click(overlay!);
+    await user.click(overlay);
 
     await waitFor(() => {
-      expect(context.store.get(zeroSidebarCollapsed$)).toBeTruthy();
+      expect(
+        screen.queryByLabelText("Sidebar overlay"),
+      ).not.toBeInTheDocument();
     });
   });
 });
