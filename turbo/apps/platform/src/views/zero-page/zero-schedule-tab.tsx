@@ -29,7 +29,7 @@ const SKELETON_KEYS = ["s-0", "s-1", "s-2", "s-3", "s-4"] as const;
 
 function ScheduleTabSkeleton() {
   return (
-    <Card className="zero-card">
+    <Card className="zero-card" data-testid="schedule-tab-skeleton">
       <CardContent className="p-0 flex flex-col">
         <div className="flex flex-wrap items-end justify-between gap-4 px-5 pt-5 pb-4 border-b border-border/50">
           <div className="min-w-0 flex flex-col gap-1.5">

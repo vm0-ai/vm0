@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
+import type { ScheduleResponse } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
@@ -10,7 +11,9 @@ import { createDeferredPromise } from "../../../signals/utils.ts";
 const context = testContext();
 const AGENT_ID = "e0000000-0000-4000-a000-000000000010";
 
-function defaultSchedule() {
+function defaultSchedule(
+  overrides: Partial<ScheduleResponse> = {},
+): ScheduleResponse {
   return {
     id: "f0000002-0000-4000-a000-000000000001",
     agentId: AGENT_ID,
@@ -32,15 +35,14 @@ function defaultSchedule() {
     appendSystemPrompt: null,
     vars: null,
     secretNames: null,
-    artifactName: null,
-    artifactVersion: null,
     volumeVersions: null,
     retryStartedAt: null,
     consecutiveFailures: 0,
+    ...overrides,
   };
 }
 
-function mockBaseAPIs(schedules: ReturnType<typeof defaultSchedule>[]) {
+function mockBaseAPIs(schedules: ScheduleResponse[]) {
   server.use(
     http.get("*/api/zero/team", () => {
       return HttpResponse.json([
@@ -111,11 +113,11 @@ async function openMenuAndClick(
       }),
     ).toBeDefined();
   });
-  await user.click(
-    screen.getAllByRole("menuitem").find((el) => {
-      return el.textContent?.includes(action);
-    })!,
-  );
+  const item = screen.getAllByRole("menuitem").find((el) => {
+    return el.textContent?.includes(action);
+  });
+  expect(item).toBeDefined();
+  await user.click(item as HTMLElement);
 }
 
 describe("zero-schedule-card - schedule list", () => {
@@ -142,12 +144,14 @@ describe("zero-schedule-card - schedule list", () => {
   });
 
   it("renders the prompt text for each schedule entry (SCHED-D-036)", async () => {
-    mockBaseAPIs([defaultSchedule()]);
+    mockBaseAPIs([
+      defaultSchedule({ prompt: "Check overnight alerts and summarize" }),
+    ]);
     await navigateToScheduleTab();
 
     await waitFor(() => {
       expect(
-        screen.getAllByText("Summarize yesterday's threads")[0],
+        screen.getAllByText("Check overnight alerts and summarize")[0],
       ).toBeInTheDocument();
     });
   });
@@ -203,7 +207,7 @@ describe("zero-schedule-card - view mode", () => {
       return /Calendar/i.test(el.textContent ?? "");
     });
     expect(calendarTab).toBeDefined();
-    await user.click(calendarTab!);
+    await user.click(calendarTab as HTMLElement);
 
     await waitFor(() => {
       expect(screen.getByText("Week view")).toBeInTheDocument();
@@ -348,50 +352,8 @@ describe("zero-schedule-card - delete", () => {
 describe("zero-schedule-tab - loading state", () => {
   it("renders skeleton while schedule data is loading (SCHED-D-043)", async () => {
     const hangDeferred = createDeferredPromise<void>(context.signal);
+    mockBaseAPIs([defaultSchedule()]);
     server.use(
-      http.get("*/api/zero/team", () => {
-        return HttpResponse.json([
-          {
-            id: "c0000000-0000-4000-a000-000000000001",
-            name: "zero",
-            displayName: null,
-            description: null,
-            sound: null,
-            avatarUrl: null,
-            headVersionId: "version_1",
-            updatedAt: "2024-01-01T00:00:00Z",
-          },
-          {
-            id: "agent-detail-id",
-            name: "my-agent",
-            displayName: "My Agent",
-            description: "A helpful agent",
-            sound: null,
-            avatarUrl: null,
-            headVersionId: "version_2",
-            updatedAt: "2024-01-02T00:00:00Z",
-          },
-        ]);
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
-      }),
-      http.get("*/api/zero/agents/my-agent", () => {
-        return HttpResponse.json({
-          name: "my-agent",
-          agentId: AGENT_ID,
-          ownerId: "test-owner-id",
-          description: "A helpful agent",
-          displayName: "My Agent",
-          sound: null,
-          avatarUrl: null,
-          connectors: [],
-          firewallPolicies: null,
-        });
-      }),
-      http.get("*/api/zero/agents/:name/instructions", () => {
-        return HttpResponse.json({ content: null, filename: null });
-      }),
       http.get("*/api/zero/schedules", async () => {
         await hangDeferred.promise;
         return HttpResponse.json({ schedules: [] });
@@ -404,15 +366,8 @@ describe("zero-schedule-tab - loading state", () => {
     });
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "My Agent" }),
-      ).toBeInTheDocument();
+      expect(screen.getByTestId("schedule-tab-skeleton")).toBeInTheDocument();
     });
-
-    // Schedule entries should not be visible while loading
-    expect(screen.queryAllByText("Summarize yesterday's threads")).toHaveLength(
-      0,
-    );
 
     hangDeferred.resolve();
     await pagePromise;
@@ -421,50 +376,8 @@ describe("zero-schedule-tab - loading state", () => {
 
 describe("zero-schedule-tab - error state", () => {
   it("displays error message when schedule fetch fails (SCHED-D-044)", async () => {
+    mockBaseAPIs([]);
     server.use(
-      http.get("*/api/zero/team", () => {
-        return HttpResponse.json([
-          {
-            id: "c0000000-0000-4000-a000-000000000001",
-            name: "zero",
-            displayName: null,
-            description: null,
-            sound: null,
-            avatarUrl: null,
-            headVersionId: "version_1",
-            updatedAt: "2024-01-01T00:00:00Z",
-          },
-          {
-            id: "agent-detail-id",
-            name: "my-agent",
-            displayName: "My Agent",
-            description: "A helpful agent",
-            sound: null,
-            avatarUrl: null,
-            headVersionId: "version_2",
-            updatedAt: "2024-01-02T00:00:00Z",
-          },
-        ]);
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json({ threads: [] });
-      }),
-      http.get("*/api/zero/agents/my-agent", () => {
-        return HttpResponse.json({
-          name: "my-agent",
-          agentId: AGENT_ID,
-          ownerId: "test-owner-id",
-          description: "A helpful agent",
-          displayName: "My Agent",
-          sound: null,
-          avatarUrl: null,
-          connectors: [],
-          firewallPolicies: null,
-        });
-      }),
-      http.get("*/api/zero/agents/:name/instructions", () => {
-        return HttpResponse.json({ content: null, filename: null });
-      }),
       http.get("*/api/zero/schedules", () => {
         return HttpResponse.json(
           {
