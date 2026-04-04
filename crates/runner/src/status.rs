@@ -23,6 +23,8 @@ struct RunnerStatus {
     active_run_ids: Vec<Uuid>,
     #[serde(skip_serializing_if = "Option::is_none")]
     proxy_port: Option<u16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    dns_port: Option<u16>,
     #[serde(serialize_with = "serialize_iso")]
     started_at: DateTime<Utc>,
     #[serde(serialize_with = "serialize_iso")]
@@ -41,6 +43,7 @@ pub struct StatusTracker {
     started_at: DateTime<Utc>,
     max_concurrent: usize,
     proxy_port: Option<u16>,
+    dns_port: Option<u16>,
     path: PathBuf,
     state: Mutex<MutableState>,
 }
@@ -56,6 +59,7 @@ impl StatusTracker {
             started_at: Utc::now(),
             max_concurrent,
             proxy_port: None,
+            dns_port: None,
             path,
             state: Mutex::new(MutableState {
                 mode: RunnerMode::Running,
@@ -66,6 +70,12 @@ impl StatusTracker {
 
     pub async fn set_proxy_port(&mut self, port: u16) {
         self.proxy_port = Some(port);
+        let state = self.state.lock().await;
+        self.write_status(&state).await;
+    }
+
+    pub async fn set_dns_port(&mut self, port: u16) {
+        self.dns_port = Some(port);
         let state = self.state.lock().await;
         self.write_status(&state).await;
     }
@@ -102,6 +112,7 @@ impl StatusTracker {
             active_runs: state.active_run_ids.len(),
             active_run_ids: state.active_run_ids.iter().copied().collect(),
             proxy_port: self.proxy_port,
+            dns_port: self.dns_port,
             started_at: self.started_at,
             updated_at: Utc::now(),
         };

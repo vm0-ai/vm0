@@ -104,15 +104,11 @@ async function openPermissionsDrawer() {
   // Wait for connectors to load
   await waitFor(() => {
     expect(
-      screen.getByRole("button", {
-        name: /Manage GitHub permissions/i,
-      }),
+      screen.getByLabelText(/Manage GitHub permissions/i),
     ).toBeInTheDocument();
   });
 
-  await user.click(
-    screen.getByRole("button", { name: /Manage GitHub permissions/i }),
-  );
+  await user.click(screen.getByLabelText(/Manage GitHub permissions/i));
 
   // Wait for drawer to open
   await waitFor(() => {
@@ -131,15 +127,9 @@ describe("firewall permissions dialog - grouped connector (GitHub)", () => {
     await openPermissionsDrawer();
 
     // Category groups should be visible
-    expect(
-      screen.getByRole("button", { name: /Read \(\d+\)/i }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: /Write \(\d+\)/i }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: /Admin \(\d+\)/i }),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Read \(\d+\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/Write \(\d+\)/i)).toBeInTheDocument();
+    expect(screen.getByText(/Admin \(\d+\)/i)).toBeInTheDocument();
 
     // Global "Select all" should NOT be present (grouped connectors don't show it)
     expect(screen.queryByText(/Select all/i)).not.toBeInTheDocument();
@@ -154,7 +144,7 @@ describe("firewall permissions dialog - grouped connector (GitHub)", () => {
     await setupPage({ context, path: "/agents/my-agent" });
     const user = await openPermissionsDrawer();
 
-    const readButton = screen.getByRole("button", { name: /Read \(\d+\)/i });
+    const readButton = screen.getByText(/Read \(\d+\)/i);
 
     // Click to expand
     await user.click(readButton);
@@ -186,7 +176,7 @@ describe("firewall permissions dialog - grouped connector (GitHub)", () => {
     await openPermissionsDrawer();
 
     // Find the Read group row — it contains the group button and a PolicyPill
-    const readButton = screen.getByRole("button", { name: /Read \(\d+\)/i });
+    const readButton = screen.getByText(/Read \(\d+\)/i);
     const readRow = readButton.closest(
       ".flex.items-center.justify-between",
     ) as HTMLElement;
@@ -216,7 +206,7 @@ describe("firewall permissions dialog - grouped connector (GitHub)", () => {
     await setupPage({ context, path: "/agents/my-agent" });
     await openPermissionsDrawer();
 
-    const readButton = screen.getByRole("button", { name: /Read \(\d+\)/i });
+    const readButton = screen.getByText(/Read \(\d+\)/i);
     const readRow = readButton.closest(
       ".flex.items-center.justify-between",
     ) as HTMLElement;
@@ -236,7 +226,7 @@ describe("firewall permissions dialog - grouped connector (GitHub)", () => {
     const user = await openPermissionsDrawer();
 
     // Click Deny on the Read group
-    const readButton = screen.getByRole("button", { name: /Read \(\d+\)/i });
+    const readButton = screen.getByText(/Read \(\d+\)/i);
     const readRow = readButton.closest(
       ".flex.items-center.justify-between",
     ) as HTMLElement;

@@ -64,7 +64,7 @@ describe("onboarding continue in web → skeleton → chat page (#7902)", () => 
 
     // Click starts the async onboarding completion; the POST API is deferred
     // so the command is in-flight while we assert skeleton visibility.
-    await user.click(screen.getByRole("button", { name: /Continue in web/ }));
+    await user.click(screen.getByText(/Continue in web/));
 
     // Skeleton must be visible during the transition (the fix for #7902)
     await waitFor(() => {

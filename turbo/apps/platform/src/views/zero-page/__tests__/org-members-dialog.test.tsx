@@ -84,19 +84,17 @@ describe("org members - invite dialog loading state", () => {
       expect(screen.getByText("admin@example.com")).toBeInTheDocument();
     });
 
-    // Open invite dialog
-    await user.click(screen.getByRole("button", { name: /Add member/i }));
+    await user.click(screen.getByText("Add member"));
     await waitFor(() => {
       expect(
         screen.getByRole("heading", { name: "Invite member" }),
       ).toBeInTheDocument();
     });
 
-    // Fill email and submit
     const emailInput = screen.getByPlaceholderText("email@example.com");
     await user.clear(emailInput);
     await user.type(emailInput, "new@example.com");
-    await user.click(screen.getByRole("button", { name: /Send invitation/i }));
+    await user.click(screen.getByText("Send invitation"));
 
     // Should show loading state while dialog stays open
     await waitFor(() => {
@@ -107,8 +105,8 @@ describe("org members - invite dialog loading state", () => {
     ).toBeInTheDocument();
 
     // Buttons should be disabled during loading
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Sending..." })).toBeDisabled();
+    expect(screen.getByText("Cancel")).toBeDisabled();
+    expect(screen.getByText("Sending...")).toBeDisabled();
 
     // Resolve the API call
     resolveInvite!();
@@ -144,7 +142,7 @@ describe("org members - invite dialog loading state", () => {
       expect(screen.getByText("admin@example.com")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: /Add member/i }));
+    await user.click(screen.getByText("Add member"));
     await waitFor(() => {
       expect(
         screen.getByRole("heading", { name: "Invite member" }),
@@ -154,7 +152,7 @@ describe("org members - invite dialog loading state", () => {
     const emailInput = screen.getByPlaceholderText("email@example.com");
     await user.clear(emailInput);
     await user.type(emailInput, "new@example.com");
-    await user.click(screen.getByRole("button", { name: /Send invitation/i }));
+    await user.click(screen.getByText("Send invitation"));
 
     await waitFor(() => {
       expect(screen.getByText("Sending...")).toBeInTheDocument();
@@ -190,7 +188,7 @@ describe("org members - invite dialog role selector", () => {
     });
 
     // Open invite dialog
-    await user.click(screen.getByRole("button", { name: /Add member/i }));
+    await user.click(screen.getByText("Add member"));
     await waitFor(() => {
       expect(
         screen.getByRole("heading", { name: "Invite member" }),
@@ -223,7 +221,7 @@ describe("org members - invite dialog role selector", () => {
     });
 
     // Open invite dialog
-    await user.click(screen.getByRole("button", { name: /Add member/i }));
+    await user.click(screen.getByText("Add member"));
     await waitFor(() => {
       expect(
         screen.getByRole("heading", { name: "Invite member" }),
@@ -243,7 +241,7 @@ describe("org members - invite dialog role selector", () => {
     await user.click(screen.getByRole("option", { name: "Admin" }));
 
     // Submit
-    await user.click(screen.getByRole("button", { name: /Send invitation/i }));
+    await user.click(screen.getByText("Send invitation"));
 
     // Wait for dialog to close (invite succeeded)
     await waitFor(() => {

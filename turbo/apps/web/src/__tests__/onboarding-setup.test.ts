@@ -4,12 +4,7 @@ import { GET as getOnboardingStatus } from "../../app/api/zero/onboarding/status
 import { GET as listAgents } from "../../app/api/zero/agents/route";
 import { GET as getUserConnectors } from "../../app/api/zero/agents/[id]/user-connectors/route";
 import { GET as listModelProviders } from "../../app/api/zero/model-providers/route";
-import {
-  createTestRequest,
-  seedSeedSkills,
-  clearSkillsData,
-  getOrgDefaultAgent,
-} from "./api-test-helpers";
+import { createTestRequest, getOrgDefaultAgent } from "./api-test-helpers";
 import { testContext } from "./test-helpers";
 import { mockClerk } from "./clerk-mock";
 
@@ -28,10 +23,8 @@ function postSetup(body: Record<string, unknown>) {
 }
 
 describe("POST /api/zero/onboarding/setup", () => {
-  beforeEach(async () => {
+  beforeEach(() => {
     context.setupMocks();
-    await clearSkillsData();
-    await seedSeedSkills();
   });
 
   it("should create agent and complete onboarding in a single call", async () => {

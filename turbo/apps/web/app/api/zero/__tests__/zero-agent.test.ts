@@ -4,10 +4,6 @@ import { GET as getAgentRoute } from "../agents/[id]/route";
 import { POST as createRunRoute } from "../runs/route";
 import { POST as claimJobRoute } from "../../runners/jobs/[id]/claim/route";
 import { generateZeroToken } from "../../../../src/lib/auth/sandbox-token";
-import {
-  seedSeedSkills,
-  seedSeedSkillStorages,
-} from "../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../src/__tests__/test-helpers";
 import { onboardNewOrgAndUser } from "./zero-api-test-helper";
 
@@ -27,10 +23,6 @@ describe("Zero Agent E2E: create → run → zero token access", () => {
 
   beforeEach(async () => {
     context.setupMocks();
-    // Re-seed skills before each test to avoid concurrency issues with other
-    // test workers that call clearSkillsData() in their beforeEach.
-    await seedSeedSkills();
-    await seedSeedSkillStorages();
     const result = await onboardNewOrgAndUser(context);
     orgId = result.user.orgId;
     userId = result.user.userId;

@@ -4,8 +4,6 @@ import { POST as postAgentRoute } from "../../../route";
 import {
   createTestRequest,
   createTestCliToken,
-  seedSeedSkills,
-  clearSkillsData,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -70,8 +68,6 @@ function putUserConnectors(
 describe("User Connectors API", () => {
   beforeEach(async () => {
     context.setupMocks();
-    await clearSkillsData();
-    await seedSeedSkills();
     user = await context.setupUser();
     testCliToken = await createTestCliToken(user.userId);
   });

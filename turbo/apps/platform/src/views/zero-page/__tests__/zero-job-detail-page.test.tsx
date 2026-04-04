@@ -72,14 +72,27 @@ describe("zero job detail page", () => {
     expect(screen.getByText("A helpful agent")).toBeInTheDocument();
 
     // All tabs should be visible
+    const tabs = screen.getAllByRole("tab");
     expect(
-      screen.getByRole("tab", { name: /Authorization/i }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /Scheduled/i })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /Profile/i })).toBeInTheDocument();
+      tabs.some((el) => {
+        return /Authorization/i.test(el.textContent ?? "");
+      }),
+    ).toBeTruthy();
     expect(
-      screen.getByRole("tab", { name: /Instructions/i }),
-    ).toBeInTheDocument();
+      tabs.some((el) => {
+        return /Scheduled/i.test(el.textContent ?? "");
+      }),
+    ).toBeTruthy();
+    expect(
+      tabs.some((el) => {
+        return /Profile/i.test(el.textContent ?? "");
+      }),
+    ).toBeTruthy();
+    expect(
+      tabs.some((el) => {
+        return /Instructions/i.test(el.textContent ?? "");
+      }),
+    ).toBeTruthy();
   });
 
   it("should switch to profile tab and show settings form", async () => {
@@ -94,7 +107,11 @@ describe("zero job detail page", () => {
     });
 
     // Click Profile tab
-    await user.click(screen.getByRole("tab", { name: /Profile/i }));
+    const profileTab = screen.getAllByRole("tab").find((el) => {
+      return /Profile/i.test(el.textContent ?? "");
+    });
+    expect(profileTab).toBeDefined();
+    await user.click(profileTab!);
 
     // Profile tab should show settings form with agent name input
     await waitFor(() => {
@@ -239,14 +256,14 @@ async function openScheduleMenuAndClick(
   timeLabel: string,
   action: "Edit" | "Delete" | "Run now",
 ) {
-  const menuTrigger = screen.getByRole("button", {
-    name: `More actions for ${timeLabel}`,
-  });
+  const menuTrigger = screen.getAllByLabelText(
+    `More actions for ${timeLabel}`,
+  )[0];
   await user.click(menuTrigger);
   await waitFor(() => {
-    expect(screen.getByRole("menuitem", { name: action })).toBeInTheDocument();
+    expect(screen.getByText(action)).toBeInTheDocument();
   });
-  await user.click(screen.getByRole("menuitem", { name: action }));
+  await user.click(screen.getByText(action));
 }
 
 describe("zero job detail page - schedule card delete confirmation", () => {
@@ -267,8 +284,8 @@ describe("zero job detail page - schedule card delete confirmation", () => {
       expect(screen.getByText("Delete schedule?")).toBeInTheDocument();
     });
     expect(screen.getByText("morning-briefing")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument();
+    expect(screen.getByText("Cancel")).toBeInTheDocument();
+    expect(screen.getByText("Delete")).toBeInTheDocument();
   });
 
   it("should close dialog without deleting when Cancel is clicked in card view", async () => {
@@ -297,7 +314,7 @@ describe("zero job detail page - schedule card delete confirmation", () => {
       expect(screen.getByText("Delete schedule?")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await user.click(screen.getByText("Cancel"));
 
     await waitFor(() => {
       expect(screen.queryByText("Delete schedule?")).not.toBeInTheDocument();
@@ -331,7 +348,7 @@ describe("zero job detail page - schedule card delete confirmation", () => {
       expect(screen.getByText("Delete schedule?")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: "Delete" }));
+    await user.click(screen.getByText("Delete"));
 
     await waitFor(() => {
       expect(deletedName).toBe("morning-briefing");

@@ -77,8 +77,8 @@ describe("schedule page", () => {
     });
 
     // The "Add schedule" button appears in the header and in the empty state
-    const addButtons = screen.getAllByRole("button", {
-      name: /Add schedule/,
+    const addButtons = screen.getAllByRole("button").filter((el) => {
+      return /Add schedule/.test(el.textContent ?? "");
     });
     expect(addButtons.length).toBeGreaterThanOrEqual(1);
   });

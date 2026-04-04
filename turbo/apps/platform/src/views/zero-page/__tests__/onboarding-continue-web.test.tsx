@@ -125,7 +125,7 @@ describe("onboarding continue in web → agent chat page", () => {
 
     switchToAdminComplete();
 
-    await user.click(screen.getByRole("button", { name: /Continue in web/ }));
+    await user.click(screen.getByText(/Continue in web/));
 
     await waitFor(() => {
       expect(pathname()).toBe(`/agents/${MOCK_AGENT_ID}/chat`);
@@ -147,7 +147,7 @@ describe("onboarding continue in web → agent chat page", () => {
 
     switchToMemberComplete();
 
-    await user.click(screen.getByRole("button", { name: /Continue in web/ }));
+    await user.click(screen.getByText(/Continue in web/));
 
     await waitFor(() => {
       expect(pathname()).toBe(`/agents/${MOCK_MEMBER_AGENT_ID}/chat`);
@@ -169,7 +169,7 @@ describe("onboarding add to Slack → works page", () => {
 
     switchToAdminComplete();
 
-    await user.click(screen.getByRole("button", { name: /Add .+ to Slack/ }));
+    await user.click(screen.getByText(/Add .+ to Slack/));
 
     await waitFor(() => {
       expect(pathname()).toBe("/works");
@@ -191,7 +191,7 @@ describe("onboarding add to Slack → works page", () => {
 
     switchToMemberComplete();
 
-    await user.click(screen.getByRole("button", { name: /Add .+ to Slack/ }));
+    await user.click(screen.getByText(/Add .+ to Slack/));
 
     await waitFor(() => {
       expect(pathname()).toBe("/works");

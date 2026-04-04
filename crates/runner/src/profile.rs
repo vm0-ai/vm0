@@ -1,11 +1,7 @@
 use crate::error::{RunnerError, RunnerResult};
 
-const EMBEDDED_DOCKERFILE_DEFAULT: &str = include_str!("../scripts/rootfs-default.Dockerfile");
-
-/// A platform-defined profile specifying rootfs image and VM resources.
+/// A platform-defined profile specifying VM resources.
 pub struct ProfileDef {
-    /// Embedded Dockerfile content for building the rootfs.
-    pub dockerfile: &'static str,
     /// Number of vCPUs for VMs using this profile.
     pub vcpu: u32,
     /// Memory in MiB for VMs using this profile.
@@ -19,7 +15,6 @@ pub const DEFAULT_PROFILE: &str = "vm0/default";
 /// Return the profile definition for a given profile name.
 pub fn get(name: &str) -> RunnerResult<&'static ProfileDef> {
     static DEFAULT: ProfileDef = ProfileDef {
-        dockerfile: EMBEDDED_DOCKERFILE_DEFAULT,
         vcpu: 2,
         memory_mb: 4096,
         disk_mb: 16384,
@@ -65,7 +60,6 @@ mod tests {
         assert_eq!(def.vcpu, 2);
         assert_eq!(def.memory_mb, 4096);
         assert_eq!(def.disk_mb, 16384);
-        assert!(!def.dockerfile.is_empty());
     }
 
     #[test]

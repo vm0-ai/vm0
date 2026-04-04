@@ -257,13 +257,22 @@ describe("activityInspectPage", () => {
       await loadInspectData(makeInspectData());
 
       await waitFor(() => {
-        expect(screen.getByRole("tab", { name: "Steps" })).toBeInTheDocument();
+        const tabs = screen.getAllByRole("tab");
         expect(
-          screen.getByRole("tab", { name: "Context" }),
-        ).toBeInTheDocument();
+          tabs.some((el) => {
+            return el.textContent?.trim() === "Steps";
+          }),
+        ).toBeTruthy();
         expect(
-          screen.getByRole("tab", { name: "Network" }),
-        ).toBeInTheDocument();
+          tabs.some((el) => {
+            return el.textContent?.trim() === "Context";
+          }),
+        ).toBeTruthy();
+        expect(
+          tabs.some((el) => {
+            return el.textContent?.trim() === "Network";
+          }),
+        ).toBeTruthy();
       });
     });
 
@@ -279,14 +288,20 @@ describe("activityInspectPage", () => {
       });
 
       expect(
-        screen.queryByRole("tab", { name: "Steps" }),
-      ).not.toBeInTheDocument();
+        screen.queryAllByRole("tab").find((el) => {
+          return el.textContent?.trim() === "Steps";
+        }),
+      ).toBeUndefined();
       expect(
-        screen.queryByRole("tab", { name: "Context" }),
-      ).not.toBeInTheDocument();
+        screen.queryAllByRole("tab").find((el) => {
+          return el.textContent?.trim() === "Context";
+        }),
+      ).toBeUndefined();
       expect(
-        screen.queryByRole("tab", { name: "Network" }),
-      ).not.toBeInTheDocument();
+        screen.queryAllByRole("tab").find((el) => {
+          return el.textContent?.trim() === "Network";
+        }),
+      ).toBeUndefined();
     });
 
     // ACT-D-048
@@ -303,7 +318,7 @@ describe("activityInspectPage", () => {
         expect(screen.getByPlaceholderText("Search steps")).toBeInTheDocument();
       });
 
-      await user.click(screen.getByRole("tab", { name: "Context" }));
+      await user.click(screen.getByText("Context"));
 
       await waitFor(() => {
         expect(

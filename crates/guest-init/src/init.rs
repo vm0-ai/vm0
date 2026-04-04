@@ -55,6 +55,22 @@ pub fn init_filesystem() -> Result<(), InitError> {
         target: "/sys".into(),
         source: e,
     })?;
+
+    // Mount tmpfs on /dev/shm — required by Chromium for shared memory.
+    // devtmpfs (CONFIG_DEVTMPFS_MOUNT=y) doesn't create /dev/shm.
+    let _ = fs::create_dir_all("/dev/shm");
+    mount(
+        Some("tmpfs"),
+        "/dev/shm",
+        Some("tmpfs"),
+        MsFlags::empty(),
+        Some("mode=1777"),
+    )
+    .map_err(|e| InitError::Mount {
+        target: "/dev/shm".into(),
+        source: e,
+    })?;
+
     eprintln!("[guest-init] Virtual filesystems mounted");
 
     // 2. Load environment variables.

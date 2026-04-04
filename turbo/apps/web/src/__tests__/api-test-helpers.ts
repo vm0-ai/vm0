@@ -68,7 +68,6 @@ import { encryptSecretsMap } from "../lib/shared/crypto/secrets-encryption";
 import {
   VOLUME_ORG_USER_ID,
   SYSTEM_ORG_ID,
-  getEligibleConnectorTypes,
   type StoredExecutionContext,
   type FirewallPolicies,
 } from "@vm0/core";
@@ -3545,50 +3544,29 @@ export async function seedTestSkill(
 }
 
 /**
- * Seed all SEED_SKILLS plus GA connector type skills into the skills table so
- * that server-side compose succeeds when buildComposeContent injects them.
- * Feature-flagged OAuth-only connectors are excluded to match buildComposeContent behaviour.
+ * Re-seed specific skill names plus their storage volumes.
+ * Used to restore skills + storages removed by orphan-deletion in tests.
  */
-export async function seedSeedSkills(): Promise<void> {
-  const { SEED_SKILLS, buildSeedSkillValues } =
-    await import("../lib/zero/seed-skills");
+export async function reseedSkills(names: readonly string[]): Promise<void> {
+  const { buildSeedSkillValues } = await import("../lib/zero/seed-skills");
   initServices();
-  const allNames = [
-    ...new Set([...SEED_SKILLS, ...getEligibleConnectorTypes()]),
-  ];
-  const values = buildSeedSkillValues(allNames);
-  await globalThis.services.db
+  const db = globalThis.services.db;
+
+  // 1. Re-insert skill rows
+  await db
     .insert(skills)
-    .values(values)
+    .values(buildSeedSkillValues(names))
     .onConflictDoNothing();
-}
 
-/**
- * Seed storage volumes for all SEED_SKILLS plus GA connector types under SYSTEM_ORG_ID.
- * Required for tests that dispatch runs with zero-agent composes,
- * because skill volumes must exist at runtime for storage manifest resolution.
- *
- * Uses a single batched transaction to minimise the time window during which
- * concurrent workers running clearSkillsData() could cause FK violations.
- */
-export async function seedSeedSkillStorages(): Promise<void> {
-  const { SEED_SKILLS } = await import("../lib/zero/seed-skills");
-  const allNames = [
-    ...new Set([...SEED_SKILLS, ...getEligibleConnectorTypes()]),
-  ];
-
-  initServices();
-
-  // Pre-compute stable version IDs so we can reference them after the insert.
-  const entries = allNames.map((name) => {
+  // 2. Re-insert storage volumes + versions
+  const entries = names.map((name) => {
     const fullPath = `vm0-ai/vm0-skills/tree/main/${name}`;
     const storageName = `agent-skills@${fullPath}`;
     const versionId = randomUUID().replace(/-/g, "").repeat(2).slice(0, 64);
     return { storageName, versionId };
   });
 
-  await globalThis.services.db.transaction(async (tx) => {
-    // Batch-insert all storages; skip any that already exist.
+  await db.transaction(async (tx) => {
     const inserted = await tx
       .insert(storages)
       .values(
@@ -3612,13 +3590,10 @@ export async function seedSeedSkillStorages(): Promise<void> {
         return [s.name, s.id];
       }),
     );
-
-    // Only create versions for storages that were actually inserted.
     const newEntries = entries.filter(({ storageName }) => {
       return nameToId.has(storageName);
     });
 
-    // Batch-insert all versions.
     await tx.insert(storageVersions).values(
       newEntries.map(({ storageName, versionId }) => {
         return {
@@ -3632,7 +3607,6 @@ export async function seedSeedSkillStorages(): Promise<void> {
       }),
     );
 
-    // Batch-update headVersionId for each newly created storage.
     for (const { storageName, versionId } of newEntries) {
       await tx
         .update(storages)
@@ -3640,18 +3614,6 @@ export async function seedSeedSkillStorages(): Promise<void> {
         .where(eq(storages.id, nameToId.get(storageName)!));
     }
   });
-}
-
-/**
- * Delete all skills and system storages.
- * Used for test isolation in cron/sync-skills tests.
- */
-export async function clearSkillsData(): Promise<void> {
-  initServices();
-  await globalThis.services.db.delete(skills);
-  await globalThis.services.db
-    .delete(storages)
-    .where(eq(storages.orgId, SYSTEM_ORG_ID));
 }
 
 /**
@@ -3667,20 +3629,15 @@ export async function findTestSkillByUrl(url: string) {
 }
 
 /**
- * Get all skills from the database.
+ * Find a single system storage by name.
  */
-export async function findAllTestSkills() {
-  return globalThis.services.db.select().from(skills);
-}
-
-/**
- * Get all system storages (orgId = SYSTEM_ORG_ID).
- */
-export async function findTestSystemStorages() {
-  return globalThis.services.db
+export async function findTestSystemStorageByName(name: string) {
+  const [storage] = await globalThis.services.db
     .select()
     .from(storages)
-    .where(eq(storages.orgId, SYSTEM_ORG_ID));
+    .where(and(eq(storages.orgId, SYSTEM_ORG_ID), eq(storages.name, name)))
+    .limit(1);
+  return storage ?? null;
 }
 
 /**

@@ -115,13 +115,17 @@ describe("zero job detail page - interaction and state", () => {
     await waitForPageLoad();
 
     // Switch to Scheduled tab
-    await user.click(screen.getByRole("tab", { name: /Scheduled/i }));
+    const scheduledTab = screen.getAllByRole("tab").find((el) => {
+      return /Scheduled/i.test(el.textContent ?? "");
+    });
+    expect(scheduledTab).toBeDefined();
+    await user.click(scheduledTab!);
     await waitFor(() => {
       expect(screen.getByText("No runs scheduled")).toBeInTheDocument();
     });
 
     // Switch to Authorization tab
-    await user.click(screen.getByRole("tab", { name: /Authorization/i }));
+    await user.click(screen.getByText(/Authorization/i));
     await waitFor(() => {
       expect(screen.getByText("GitHub")).toBeInTheDocument();
     });
@@ -157,9 +161,7 @@ describe("zero job detail page - interaction and state", () => {
     await setupPage({ context, path: "/agents/my-agent" });
     await waitForPageLoad();
 
-    await user.click(
-      screen.getByRole("button", { name: "Chat with My Agent" }),
-    );
+    await user.click(screen.getByText("Chat with My Agent"));
 
     // Navigation should have updated the pathname to a chat path
     await waitFor(() => {
@@ -206,13 +208,11 @@ describe("zero job detail page - interaction and state", () => {
     // Wait for connectors to load
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: /Manage GitHub permissions/i }),
+        screen.getByLabelText(/Manage GitHub permissions/i),
       ).toBeInTheDocument();
     });
 
-    await user.click(
-      screen.getByRole("button", { name: /Manage GitHub permissions/i }),
-    );
+    await user.click(screen.getByLabelText(/Manage GitHub permissions/i));
 
     // Drawer should open with GitHub permissions heading
     await waitFor(() => {
@@ -235,7 +235,7 @@ describe("zero job detail page - interaction and state", () => {
     });
 
     // Click search button to activate search
-    await user.click(screen.getByRole("button", { name: "Search connectors" }));
+    await user.click(screen.getByLabelText("Search connectors"));
 
     // Type search query
     const searchInput = screen.getByPlaceholderText("Search connectors...");
@@ -261,7 +261,7 @@ describe("zero job detail page - interaction and state", () => {
     });
 
     // Activate search and filter
-    await user.click(screen.getByRole("button", { name: "Search connectors" }));
+    await user.click(screen.getByLabelText("Search connectors"));
     const searchInput = screen.getByPlaceholderText("Search connectors...");
     await user.type(searchInput, "git");
 
@@ -270,7 +270,7 @@ describe("zero job detail page - interaction and state", () => {
     });
 
     // Click close search button
-    await user.click(screen.getByRole("button", { name: "Close search" }));
+    await user.click(screen.getByLabelText("Close search"));
 
     // Both connectors should be visible again
     await waitFor(() => {
@@ -286,7 +286,7 @@ describe("zero job detail page - interaction and state", () => {
     await waitForPageLoad();
 
     // Switch to Profile tab
-    await user.click(screen.getByRole("tab", { name: /Profile/i }));
+    await user.click(screen.getByText(/Profile/i));
 
     // Wait for settings form to load
     await waitFor(() => {
@@ -294,7 +294,7 @@ describe("zero job detail page - interaction and state", () => {
     });
 
     // Click delete agent button
-    await user.click(screen.getByRole("button", { name: /Delete agent/i }));
+    await user.click(screen.getByText(/Delete agent/i));
 
     // Confirmation dialog should appear
     await waitFor(() => {

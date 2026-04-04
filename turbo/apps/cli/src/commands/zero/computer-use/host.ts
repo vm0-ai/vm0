@@ -4,11 +4,13 @@ import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import {
   registerComputerUseHost,
   unregisterComputerUseHost,
+  ApiRequestError,
 } from "../../../lib/api";
 import {
   getRandomPort,
   startDesktopServer,
 } from "../../../lib/computer-use/desktop-server";
+import { isCliclickInstalled } from "../../../lib/computer-use/cliclick";
 import {
   startDesktopTunnel,
   stopDesktopTunnel,
@@ -24,6 +26,16 @@ export const hostStartCommand = new Command()
           "Computer-use host requires macOS\n\n" +
             "The host daemon uses macOS-specific commands (screencapture, system_profiler).",
         );
+      }
+
+      if (!(await isCliclickInstalled())) {
+        console.log(
+          chalk.yellow(
+            "⚠ cliclick not found. Mouse and keyboard operations will not be available.\n" +
+              "  Install with: brew install cliclick",
+          ),
+        );
+        console.log();
       }
 
       console.log(chalk.cyan("Registering computer-use host..."));
@@ -74,6 +86,25 @@ export const hostStartCommand = new Command()
         await stopDesktopTunnel();
         await unregisterComputerUseHost().catch(() => {});
         console.log(chalk.green("✓ Host stopped"));
+      }
+    }),
+  );
+
+export const hostStopCommand = new Command()
+  .name("stop")
+  .description("Stop and unregister the computer-use host")
+  .action(
+    withErrorHandler(async () => {
+      console.log(chalk.cyan("Unregistering computer-use host..."));
+      try {
+        await unregisterComputerUseHost();
+        console.log(chalk.green("✓ Host unregistered"));
+      } catch (error) {
+        if (error instanceof ApiRequestError && error.status === 404) {
+          console.log(chalk.yellow("No active host registration found"));
+          return;
+        }
+        throw error;
       }
     }),
   );

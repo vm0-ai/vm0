@@ -23,6 +23,7 @@
  * - no-empty-promise-catch: Disallow .catch(() => {}) — use detach() for proper promise tracking
  * - no-test-delay: Disallow manual delays/timers in tests — use createDeferredPromise + waitFor
  * - require-accept: Enforce that zeroClient$ calls are wrapped in accept()
+ * - no-get-by-role-name: Avoid *ByRole(role, { name }) for text-content roles — causes ~300ms/call slowdown in happy-dom
  */
 
 import signalDollarSuffix from "./rules/signal-dollar-suffix.ts";
@@ -48,6 +49,7 @@ import noDirectFetch from "./rules/no-direct-fetch.ts";
 import noEmptyPromiseCatch from "./rules/no-empty-promise-catch.ts";
 import noTestDelay from "./rules/no-test-delay.ts";
 import requireAccept from "./rules/require-accept.ts";
+import noGetByRoleName from "./rules/no-get-by-role-name.ts";
 
 const plugin = {
   meta: {
@@ -78,6 +80,7 @@ const plugin = {
     "no-empty-promise-catch": noEmptyPromiseCatch,
     "no-test-delay": noTestDelay,
     "require-accept": requireAccept,
+    "no-get-by-role-name": noGetByRoleName,
   },
 };
 

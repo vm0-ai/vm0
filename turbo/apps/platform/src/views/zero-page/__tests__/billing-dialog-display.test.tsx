@@ -4,43 +4,26 @@
  * Covers AutoRechargeSection (dialog variant) and BillingDialog display rendering.
  * Entry point: setupPage({ path: "/" }) + context.store.set(setBillingDialogOpen$, true)
  */
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
-import { setMockBillingStatus } from "../../../mocks/handlers/api-billing.ts";
+import {
+  resetMockBilling,
+  setMockBillingStatus,
+} from "../../../mocks/handlers/api-billing.ts";
 import { setBillingDialogOpen$ } from "../../../signals/zero-page/billing.ts";
 import { setSelectedPlanTier$ } from "../../../signals/zero-page/billing-dialog-state.ts";
+import { mockBillingPageAPIs } from "./billing-dialog-test-helpers.ts";
 
 const context = testContext();
 
-function mockAPIs() {
-  server.use(
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
-    http.get("*/api/zero/team", () => {
-      return HttpResponse.json([
-        {
-          id: "c0000000-0000-4000-a000-000000000001",
-          name: "zero",
-          displayName: null,
-          description: null,
-          sound: null,
-          avatarUrl: null,
-          headVersionId: "version_1",
-          updatedAt: "2024-01-01T00:00:00Z",
-        },
-      ]);
-    }),
-    http.get("*/api/zero/org/logo", () => {
-      return HttpResponse.json({ logoUrl: null });
-    }),
-  );
-}
+beforeEach(() => {
+  resetMockBilling();
+});
 
 async function openBillingDialogAndWait() {
   context.store.set(setBillingDialogOpen$, true);
@@ -51,7 +34,7 @@ async function openBillingDialogAndWait() {
 
 describe("chat-d-067: AutoRechargeSection renders threshold value", () => {
   it("displays the threshold value in the threshold input", async () => {
-    mockAPIs();
+    mockBillingPageAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -71,7 +54,7 @@ describe("chat-d-067: AutoRechargeSection renders threshold value", () => {
 
 describe("chat-d-068: AutoRechargeSection renders amount value in credits", () => {
   it("displays the recharge amount in the credits input", async () => {
-    mockAPIs();
+    mockBillingPageAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -91,7 +74,7 @@ describe("chat-d-068: AutoRechargeSection renders amount value in credits", () =
 
 describe("chat-d-069: AutoRechargeSection renders dollarAmount calculated from amount / CREDITS_PER_DOLLAR", () => {
   it("displays the dollar equivalent calculated as amount / 1000", async () => {
-    mockAPIs();
+    mockBillingPageAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -131,7 +114,7 @@ describe("chat-s-070: Loading state disables Save button during save", () => {
     );
 
     const user = userEvent.setup();
-    mockAPIs();
+    mockBillingPageAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -143,26 +126,42 @@ describe("chat-s-070: Loading state disables Save button during save", () => {
     await openBillingDialogAndWait();
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
+      expect(
+        screen.getAllByRole("button").find((el) => {
+          return el.textContent?.trim() === "Save";
+        }),
+      ).toBeDefined();
     });
 
-    await user.click(screen.getByRole("button", { name: "Save" }));
+    const saveBtn1 = screen.getAllByRole("button").find((el) => {
+      return el.textContent?.trim() === "Save";
+    });
+    expect(saveBtn1).toBeDefined();
+    await user.click(saveBtn1!);
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Saving..." })).toBeDisabled();
+      expect(
+        screen.getAllByRole("button").find((el) => {
+          return el.textContent?.trim() === "Saving...";
+        }),
+      ).toBeDisabled();
     });
 
     resolveSave();
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled();
+      expect(
+        screen.getAllByRole("button").find((el) => {
+          return el.textContent?.trim() === "Save";
+        }),
+      ).not.toBeDisabled();
     });
   });
 });
 
 describe("chat-c-071: AutoRechargeSection fields render conditionally based on displayEnabled", () => {
   it("hides threshold and amount inputs when enabled is false", async () => {
-    mockAPIs();
+    mockBillingPageAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -184,7 +183,7 @@ describe("chat-c-071: AutoRechargeSection fields render conditionally based on d
   });
 
   it("shows threshold and amount inputs when enabled is true", async () => {
-    mockAPIs();
+    mockBillingPageAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -204,7 +203,7 @@ describe("chat-c-071: AutoRechargeSection fields render conditionally based on d
 
 describe("chat-d-072-073: BillingDialog renders status.tier and credit count", () => {
   it("displays the current plan tier and locale-formatted credits in the description", async () => {
-    mockAPIs();
+    mockBillingPageAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -218,7 +217,8 @@ describe("chat-d-072-073: BillingDialog renders status.tier and credit count", (
       const dialog = screen.getByRole("dialog");
       // Check aria-current badge on the Pro plan card indicates current tier
       const currentBadge = within(dialog).getByText(/^Current$/);
-      const proPlanCard = screen.getByRole("button", { name: /^Pro$/i });
+      const proPlanCard = screen.getByLabelText("Pro");
+      expect(proPlanCard).toBeInTheDocument();
       expect(proPlanCard).toContainElement(currentBadge);
       // Check 20,000 credits are shown in the dialog description (locale-formatted)
       const description = within(dialog).getByText(
@@ -231,7 +231,7 @@ describe("chat-d-072-073: BillingDialog renders status.tier and credit count", (
 
 describe("chat-d-075: Selected plan ring highlight renders on chosen PlanCard", () => {
   it("renders aria-pressed on the selected PlanCard", async () => {
-    mockAPIs();
+    mockBillingPageAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -243,7 +243,7 @@ describe("chat-d-075: Selected plan ring highlight renders on chosen PlanCard", 
     await openBillingDialogAndWait();
 
     await waitFor(() => {
-      const teamButton = screen.getByRole("button", { name: /^Team$/i });
+      const teamButton = screen.getByLabelText("Team");
       expect(teamButton).toHaveAttribute("aria-pressed", "true");
     });
   });
@@ -252,7 +252,7 @@ describe("chat-d-075: Selected plan ring highlight renders on chosen PlanCard", 
 describe("chat-c-076: Button text changes based on isUpgrade/isDowngrade determination", () => {
   it("shows Upgrade to Team when team is selected and pro is current", async () => {
     const user = userEvent.setup();
-    mockAPIs();
+    mockBillingPageAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -263,23 +263,24 @@ describe("chat-c-076: Button text changes based on isUpgrade/isDowngrade determi
     await openBillingDialogAndWait();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /^Team$/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Team")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: /^Team$/i }));
+    const teamBtn1 = screen.getByLabelText("Team");
+    await user.click(teamBtn1);
 
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: /Upgrade to Team/i }),
-      ).toBeInTheDocument();
+        screen.getAllByRole("button").find((el) => {
+          return /Upgrade to Team/i.test(el.textContent ?? "");
+        }),
+      ).toBeDefined();
     });
   });
 
   it("shows Downgrade when free is selected and pro is current", async () => {
     const user = userEvent.setup();
-    mockAPIs();
+    mockBillingPageAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -290,17 +291,18 @@ describe("chat-c-076: Button text changes based on isUpgrade/isDowngrade determi
     await openBillingDialogAndWait();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /^Free$/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Free")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: /^Free$/i }));
+    const freeBtn1 = screen.getByLabelText("Free");
+    await user.click(freeBtn1);
 
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: /^Downgrade$/i }),
-      ).toBeInTheDocument();
+        screen.getAllByRole("button").find((el) => {
+          return /^Downgrade$/i.test(el.textContent ?? "");
+        }),
+      ).toBeDefined();
     });
   });
 });
@@ -323,7 +325,7 @@ describe("chat-c-077: Action button is disabled during redirect", () => {
     );
 
     const user = userEvent.setup();
-    mockAPIs();
+    mockBillingPageAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -334,24 +336,31 @@ describe("chat-c-077: Action button is disabled during redirect", () => {
     await openBillingDialogAndWait();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /^Team$/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Team")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: /^Team$/i }));
+    const teamBtn2 = screen.getByLabelText("Team");
+    await user.click(teamBtn2);
 
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: /Upgrade to Team/i }),
-      ).toBeInTheDocument();
+        screen.getAllByRole("button").find((el) => {
+          return /Upgrade to Team/i.test(el.textContent ?? "");
+        }),
+      ).toBeDefined();
     });
 
-    await user.click(screen.getByRole("button", { name: /Upgrade to Team/i }));
+    const upgradeBtn1 = screen.getAllByRole("button").find((el) => {
+      return /Upgrade to Team/i.test(el.textContent ?? "");
+    });
+    expect(upgradeBtn1).toBeDefined();
+    await user.click(upgradeBtn1!);
 
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: /Redirecting/i }),
+        screen.getAllByRole("button").find((el) => {
+          return /Redirecting/i.test(el.textContent ?? "");
+        }),
       ).toBeDisabled();
     });
 
@@ -359,7 +368,9 @@ describe("chat-c-077: Action button is disabled during redirect", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("button", { name: /Upgrade to Team/i }),
+        screen.getAllByRole("button").find((el) => {
+          return /Upgrade to Team/i.test(el.textContent ?? "");
+        }),
       ).not.toBeDisabled();
     });
   });

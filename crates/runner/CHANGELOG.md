@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.62.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.62.0...runner-rs-v0.62.1) (2026-04-04)
+
+
+### Bug Fixes
+
+* add dnsmasq to system dependency check and doctor diagnostics ([#8065](https://github.com/vm0-ai/vm0/issues/8065)) ([6a7a0f8](https://github.com/vm0-ai/vm0/commit/6a7a0f8fa8939671d7b4d678df4aea49dd7fcbbe))
+
+
+### Performance Improvements
+
+* **runner:** replace docker build with debootstrap for rootfs creation ([#8042](https://github.com/vm0-ai/vm0/issues/8042)) ([41e932a](https://github.com/vm0-ai/vm0/commit/41e932aacb06a8a10234b1eb5219f90e84135917))
+
 ## [0.62.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.61.4...runner-rs-v0.62.0) (2026-04-03)
 
 

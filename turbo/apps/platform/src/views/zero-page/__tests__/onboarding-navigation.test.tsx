@@ -128,9 +128,7 @@ describe("onboarding navigation", () => {
     );
 
     // Click "Continue in web" to trigger handleContinueWithWeb -> navigate("/")
-    const continueButton = screen.getByRole("button", {
-      name: /Continue in web/,
-    });
+    const continueButton = screen.getByText(/Continue in web/);
     await user.click(continueButton);
 
     // Verify navigation to / (which then redirects to /talk/:name)
@@ -186,9 +184,7 @@ describe("onboarding navigation", () => {
     );
 
     // Click "Continue in web" to trigger handleContinueWeb -> navigate("/")
-    const chatButton = screen.getByRole("button", {
-      name: /Continue in web/,
-    });
+    const chatButton = screen.getByText(/Continue in web/);
     await user.click(chatButton);
 
     // Verify navigation away from /onboarding (/ redirects to /talk/:name)

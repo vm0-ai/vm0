@@ -24,17 +24,15 @@ test("connect button opens api-token form (CONN-I-011)", async () => {
   await setupPage({ context, path: "/connectors" });
 
   await waitFor(() => {
-    expect(
-      screen.getByRole("button", { name: "Connect Axiom" }),
-    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Connect Axiom")).toBeInTheDocument();
   });
 
-  await user.click(screen.getByRole("button", { name: "Connect Axiom" }));
+  await user.click(screen.getByLabelText("Connect Axiom"));
 
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
-  expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument();
+  expect(screen.getByText("Save")).toBeInTheDocument();
 });
 
 test("review button opens scope diff with added permissions (CONN-I-013)", async () => {

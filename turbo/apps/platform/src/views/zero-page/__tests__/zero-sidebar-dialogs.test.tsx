@@ -132,9 +132,16 @@ describe("chatListDialog", () => {
     await openChatListDialog(user);
 
     // Find the unpinned agent button and click it
-    const unpinnedAgentButton = await waitFor(() => {
-      return screen.getByRole("button", { name: /Unpinned Agent/ });
+    const dialog = screen.getByRole("dialog");
+    await waitFor(() => {
+      expect(within(dialog).getByText("Others")).toBeInTheDocument();
     });
+    const unpinnedAgentText = within(dialog)
+      .getAllByText(/Unpinned Agent/)
+      .find((el) => {
+        return el.closest("button") !== null;
+      })!;
+    const unpinnedAgentButton = unpinnedAgentText.closest("button")!;
 
     await user.click(unpinnedAgentButton);
 

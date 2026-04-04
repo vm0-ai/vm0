@@ -136,12 +136,10 @@ describe("zero schedule detail page - instruction editor (SCHED-D-016)", () => {
     const user = userEvent.setup();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("tab", { name: /Instructions/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/Instructions/i)).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("tab", { name: /Instructions/i }));
+    await user.click(screen.getByText(/Instructions/i));
 
     await waitFor(() => {
       // Verify the editor is rendered with the actual prompt content
@@ -188,12 +186,10 @@ describe("zero schedule detail page - run history table with pagination (SCHED-D
     const user = userEvent.setup();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("tab", { name: /Run History/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/Run History/i)).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("tab", { name: /Run History/i }));
+    await user.click(screen.getByText(/Run History/i));
 
     await waitFor(() => {
       // Status badge from log data ("completed" renders as "Done") indicates table rows are rendering
@@ -212,12 +208,10 @@ describe("zero schedule detail page - status filter dropdown (SCHED-D-018)", () 
     const user = userEvent.setup();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("tab", { name: /Run History/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/Run History/i)).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("tab", { name: /Run History/i }));
+    await user.click(screen.getByText(/Run History/i));
 
     await waitFor(() => {
       expect(

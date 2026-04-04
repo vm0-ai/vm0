@@ -87,11 +87,9 @@ async function openCreateDialog(user: ReturnType<typeof userEvent.setup>) {
   mockCreateModeAPIs();
   await setupPage({ context, path: "/schedules" });
   await waitFor(() => {
-    expect(
-      screen.getByRole("button", { name: /Add schedule/i }),
-    ).not.toBeDisabled();
+    expect(screen.getByText(/Add schedule/i)).not.toBeDisabled();
   });
-  await user.click(screen.getByRole("button", { name: /Add schedule/i }));
+  await user.click(screen.getByText(/Add schedule/i));
   await waitFor(() => {
     expect(
       screen.getByRole("heading", { name: "Add schedule" }),
@@ -141,27 +139,20 @@ function mockEditModeAPIs() {
 
 async function openEditDialog(user: ReturnType<typeof userEvent.setup>) {
   mockEditModeAPIs();
-  await setupPage({ context, path: "/agents/my-agent" });
-  await waitFor(() => {
-    expect(screen.getByRole("tab", { name: /Scheduled/i })).toBeInTheDocument();
-  });
-  await user.click(screen.getByRole("tab", { name: /Scheduled/i }));
+  // Navigate with ?tab=schedule so resetActiveTab$ picks up the schedule tab from the URL.
+  await setupPage({ context, path: "/agents/my-agent?tab=schedule" });
   await waitFor(() => {
     expect(
-      screen.getByRole("button", {
-        name: "More actions for Every weekday at 9:00 AM",
-      }),
+      screen.getAllByLabelText("More actions for Every weekday at 9:00 AM")[0],
     ).toBeInTheDocument();
   });
   await user.click(
-    screen.getByRole("button", {
-      name: "More actions for Every weekday at 9:00 AM",
-    }),
+    screen.getAllByLabelText("More actions for Every weekday at 9:00 AM")[0],
   );
   await waitFor(() => {
-    expect(screen.getByRole("menuitem", { name: "Edit" })).toBeInTheDocument();
+    expect(screen.getByText("Edit")).toBeInTheDocument();
   });
-  await user.click(screen.getByRole("menuitem", { name: "Edit" }));
+  await user.click(screen.getByText("Edit"));
   await waitFor(() => {
     expect(
       screen.getByRole("heading", { name: "Edit schedule" }),
@@ -211,7 +202,7 @@ describe("schedule dialog - save error (SCHED-D-047)", () => {
     const promptInput = screen.getByLabelText("Prompt");
     await user.clear(promptInput);
     await user.type(promptInput, "My task");
-    await user.click(screen.getByRole("button", { name: "Create" }));
+    await user.click(screen.getByText("Create"));
     await waitFor(() => {
       expect(screen.getByText(/HTTP 500/i)).toBeInTheDocument();
     });
@@ -232,11 +223,9 @@ describe("schedule dialog - loading state (SCHED-D-048)", () => {
     const promptInput = screen.getByLabelText("Prompt");
     await user.clear(promptInput);
     await user.type(promptInput, "My task");
-    await user.click(screen.getByRole("button", { name: "Create" }));
+    await user.click(screen.getByText("Create"));
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Creating\u2026" }),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Creating\u2026")).toBeInTheDocument();
     });
     hangDeferred.resolve();
   });
@@ -255,7 +244,7 @@ describe("schedule dialog - unsaved confirmation overlay (SCHED-D-050)", () => {
     const user = userEvent.setup();
     await openCreateDialog(user);
     await user.type(screen.getByLabelText("Prompt"), "Some text");
-    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await user.click(screen.getByText("Cancel"));
     await waitFor(() => {
       expect(screen.getByRole("alertdialog")).toBeInTheDocument();
     });
@@ -367,16 +356,13 @@ describe("schedule dialog - day of week (SCHED-D-057)", () => {
     await openCreateDialog(user);
     await switchFrequency(user, "Every week");
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Tue" })).toBeInTheDocument();
+      expect(screen.getByText("Tue")).toBeInTheDocument();
     });
-    const tueBefore = screen.getByRole("button", { name: "Tue" });
+    const tueBefore = screen.getByText("Tue");
     expect(tueBefore).toHaveAttribute("aria-pressed", "false");
     await user.click(tueBefore);
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Tue" })).toHaveAttribute(
-        "aria-pressed",
-        "true",
-      );
+      expect(screen.getByText("Tue")).toHaveAttribute("aria-pressed", "true");
     });
   });
 });
@@ -479,7 +465,7 @@ describe("schedule dialog - cancel button (SCHED-D-062)", () => {
   it("closes dialog without saving when Cancel is clicked on clean form", async () => {
     const user = userEvent.setup();
     await openCreateDialog(user);
-    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await user.click(screen.getByText("Cancel"));
     await waitFor(() => {
       expect(
         screen.queryByRole("heading", { name: "Add schedule" }),
@@ -502,7 +488,7 @@ describe("schedule dialog - save button (SCHED-D-063)", () => {
     const promptInput = screen.getByLabelText("Prompt");
     await user.clear(promptInput);
     await user.type(promptInput, "My task");
-    await user.click(screen.getByRole("button", { name: "Create" }));
+    await user.click(screen.getByText("Create"));
     await waitFor(() => {
       expect(captured).toBeTruthy();
     });
@@ -518,10 +504,9 @@ describe("schedule dialog - close button (SCHED-D-064)", () => {
   it("closes dialog when Close button is clicked on clean form", async () => {
     const user = userEvent.setup();
     await openCreateDialog(user);
-    // The dialog has a custom Close button (first one) plus Radix's hidden Close button.
-    // Click the first one (the custom X button rendered in ScheduleFormDialogInner).
-    const closeButtons = screen.getAllByRole("button", { name: "Close" });
-    await user.click(closeButtons[0]);
+    // The dialog has a custom Close button with aria-label="Close" (the X icon).
+    // Use getAllByLabelText and pick the first one (the custom X button).
+    await user.click(screen.getAllByLabelText("Close")[0]);
     await waitFor(() => {
       expect(
         screen.queryByRole("heading", { name: "Add schedule" }),
@@ -539,11 +524,11 @@ describe("schedule dialog - unsaved discard (SCHED-D-065)", () => {
     });
     await openCreateDialog(user);
     await user.type(screen.getByLabelText("Prompt"), "Something");
-    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await user.click(screen.getByText("Cancel"));
     await waitFor(() => {
       expect(screen.getByRole("alertdialog")).toBeInTheDocument();
     });
-    await user.click(screen.getByRole("button", { name: "Discard Changes" }));
+    await user.click(screen.getByText("Discard Changes"));
     await waitFor(() => {
       expect(
         screen.queryByRole("heading", { name: "Add schedule" }),
@@ -561,11 +546,11 @@ describe("schedule dialog - unsaved continue (SCHED-D-066)", () => {
     });
     await openCreateDialog(user);
     await user.type(screen.getByLabelText("Prompt"), "Something");
-    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await user.click(screen.getByText("Cancel"));
     await waitFor(() => {
       expect(screen.getByRole("alertdialog")).toBeInTheDocument();
     });
-    await user.click(screen.getByRole("button", { name: "Continue Editing" }));
+    await user.click(screen.getByText("Continue Editing"));
     await waitFor(() => {
       expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
       expect(

@@ -127,7 +127,7 @@ describe("org domains tab - interaction", () => {
       expect(screen.queryAllByTestId("domain-row")).toHaveLength(0);
     });
 
-    await user.click(screen.getByRole("button", { name: /Add domain/i }));
+    await user.click(screen.getByText(/Add domain/i));
 
     await waitFor(() => {
       expect(
@@ -143,7 +143,7 @@ describe("org domains tab - interaction", () => {
     mockAPIs([]);
     await openDomainsTab();
 
-    await user.click(screen.getByRole("button", { name: /Add domain/i }));
+    await user.click(screen.getByText(/Add domain/i));
 
     await waitFor(() => {
       expect(
@@ -181,12 +181,8 @@ describe("org domains tab - interaction", () => {
     await user.click(within(row).getByRole("button"));
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("menuitem", { name: /Unverify/i }),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByRole("menuitem", { name: /Remove/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/Unverify/i)).toBeInTheDocument();
+      expect(screen.getByText(/Remove/i)).toBeInTheDocument();
     });
   });
 
@@ -204,11 +200,9 @@ describe("org domains tab - interaction", () => {
     await user.click(within(row).getByRole("button"));
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("menuitem", { name: /Remove/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/Remove/i)).toBeInTheDocument();
     });
-    await user.click(screen.getByRole("menuitem", { name: /Remove/i }));
+    await user.click(screen.getByText(/Remove/i));
 
     await waitFor(() => {
       expect(
@@ -225,7 +219,7 @@ describe("org domains tab - validation", () => {
     mockAPIs([]);
     await openDomainsTab();
 
-    await user.click(screen.getByRole("button", { name: /Add domain/i }));
+    await user.click(screen.getByText(/Add domain/i));
 
     await waitFor(() => {
       expect(

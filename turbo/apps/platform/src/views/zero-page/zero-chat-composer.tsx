@@ -189,9 +189,15 @@ function AddConnectorsDialog({
           <div className="grid grid-cols-2 gap-3">
             {filtered.map((item) => {
               return (
-                <div
+                <button
+                  type="button"
                   key={item.type}
-                  className="rounded-lg bg-card overflow-hidden"
+                  onClick={() => {
+                    return onSelect(item.type);
+                  }}
+                  disabled={pollingType === item.type}
+                  aria-label={`Connect ${item.label}`}
+                  className="rounded-lg bg-card overflow-hidden transition-colors hover:bg-muted/30 cursor-pointer text-left w-full"
                   style={{ border: "0.7px solid hsl(var(--gray-400))" }}
                 >
                   <div className="flex items-center gap-2.5 px-4 pt-4 pb-1">
@@ -219,16 +225,9 @@ function AddConnectorsDialog({
                         className="shrink-0 text-muted-foreground animate-spin"
                       />
                     ) : (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          return onSelect(item.type);
-                        }}
-                        className="shrink-0 flex h-7 w-7 items-center justify-center rounded-md border border-border/60 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                        aria-label={`Connect ${item.label}`}
-                      >
+                      <span className="shrink-0 flex h-7 w-7 items-center justify-center rounded-md border border-border/60 text-muted-foreground">
                         <IconPlus size={14} stroke={1.5} />
-                      </button>
+                      </span>
                     )}
                   </div>
                   <div className="px-4 pb-4 pt-1">
@@ -236,7 +235,7 @@ function AddConnectorsDialog({
                       {item.helpText ?? ""}
                     </div>
                   </div>
-                </div>
+                </button>
               );
             })}
           </div>

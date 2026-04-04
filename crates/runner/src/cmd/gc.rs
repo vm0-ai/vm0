@@ -54,9 +54,11 @@ pub async fn run_gc(args: GcArgs) -> RunnerResult<()> {
     let (job_logs_removed, job_logs_freed) = gc_job_logs(&home, args.dry_run).await?;
     let versions_removed = gc_versions(&home, args.dry_run).await?;
 
+    let debootstrap_freed = gc_debootstrap(&home, args.keep_latest, args.dry_run).await?;
+
     let nbd_orphans = gc_nbd_orphans(args.dry_run).await?;
 
-    let total = rootfs_freed + snapshot_freed + job_logs_freed;
+    let total = rootfs_freed + snapshot_freed + job_logs_freed + debootstrap_freed;
     if total == 0
         && locks_removed == 0
         && job_logs_removed == 0
@@ -225,6 +227,85 @@ fn probe_lock(path: &Path) -> LockProbe {
         Err((_, e)) if e == nix::errno::Errno::EWOULDBLOCK => LockProbe::Held,
         Err((_, e)) => LockProbe::Error(e.to_string()),
     }
+}
+
+/// Remove cached debootstrap tarballs, keeping the `keep_latest` most recent.
+async fn gc_debootstrap(
+    home: &HomePaths,
+    keep_latest: Option<usize>,
+    dry_run: bool,
+) -> RunnerResult<u64> {
+    let dir = home.debootstrap_dir();
+    let mut entries = match tokio::fs::read_dir(&dir).await {
+        Ok(e) => e,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+        Err(e) => {
+            return Err(RunnerError::Internal(format!(
+                "read {}: {e}",
+                dir.display()
+            )));
+        }
+    };
+
+    let mut files: Vec<(PathBuf, u64, SystemTime)> = Vec::new();
+    while let Some(entry) = entries
+        .next_entry()
+        .await
+        .map_err(|e| RunnerError::Internal(format!("read entry in {}: {e}", dir.display())))?
+    {
+        let path = entry.path();
+        let meta = match tokio::fs::metadata(&path).await {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+        if !meta.is_file() {
+            continue;
+        }
+        let mtime = meta.modified().unwrap_or(std::time::UNIX_EPOCH);
+        files.push((path, meta.len(), mtime));
+    }
+
+    // Skip files touched recently (same GC_MIN_AGE as rootfs/snapshots).
+    let now = SystemTime::now();
+    files.retain(|(path, _, mtime)| {
+        let age = now.duration_since(*mtime).unwrap_or_default();
+        if age < GC_MIN_AGE {
+            info!(
+                "debootstrap cache: {} too recent ({}s old), skipping",
+                path.display(),
+                age.as_secs()
+            );
+            false
+        } else {
+            true
+        }
+    });
+
+    // Sort newest first, keep the N most recent.
+    files.sort_by(|a, b| b.2.cmp(&a.2));
+    let keep = keep_latest.unwrap_or(0);
+
+    let mut freed: u64 = 0;
+    for (path, size, _) in files.iter().skip(keep) {
+        if dry_run {
+            info!(
+                "debootstrap cache: would remove {} ({})",
+                path.display(),
+                human_bytes(*size)
+            );
+        } else if let Err(e) = tokio::fs::remove_file(path).await {
+            tracing::warn!("remove {}: {e}", path.display());
+            continue;
+        } else {
+            info!(
+                "debootstrap cache: removed {} ({})",
+                path.display(),
+                human_bytes(*size)
+            );
+        }
+        freed += size;
+    }
+    Ok(freed)
 }
 
 /// Remove unused lock files. Any lock file that can be exclusively locked is

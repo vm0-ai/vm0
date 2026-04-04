@@ -144,14 +144,14 @@ describe("pagination component", () => {
     });
 
     const user = userEvent.setup();
-    const nextButton = screen.getByRole("button", { name: "Next page" });
+    const nextButton = screen.getByLabelText("Next page");
     await user.click(nextButton);
 
     await waitFor(() => {
       expect(screen.getByText("Page 2 Log")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: "Next page" }));
+    await user.click(screen.getByLabelText("Next page"));
 
     await waitFor(() => {
       expect(screen.getByText(/Page 3 of/)).toBeInTheDocument();
@@ -272,13 +272,13 @@ describe("pagination component", () => {
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Next page" }));
+    await user.click(screen.getByLabelText("Next page"));
 
     await waitFor(() => {
       expect(screen.getByText("Page 2 Log")).toBeInTheDocument();
     });
 
-    const prevButton = screen.getByRole("button", { name: "Previous page" });
+    const prevButton = screen.getByLabelText("Previous page");
     expect(prevButton).not.toHaveAttribute("disabled");
     await user.click(prevButton);
 
@@ -317,7 +317,7 @@ describe("pagination component", () => {
     });
 
     const user = userEvent.setup();
-    const nextButton = screen.getByRole("button", { name: "Next page" });
+    const nextButton = screen.getByLabelText("Next page");
     expect(nextButton).not.toHaveAttribute("disabled");
     await user.click(nextButton);
 
@@ -365,13 +365,13 @@ describe("pagination component", () => {
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Forward 2 pages" }));
+    await user.click(screen.getByLabelText("Forward 2 pages"));
 
     await waitFor(() => {
       expect(screen.getByText("Page 3 Log")).toBeInTheDocument();
     });
 
-    const backTwoButton = screen.getByRole("button", { name: "Back 2 pages" });
+    const backTwoButton = screen.getByLabelText("Back 2 pages");
     expect(backTwoButton).not.toHaveAttribute("disabled");
     await user.click(backTwoButton);
 
@@ -419,9 +419,7 @@ describe("pagination component", () => {
     });
 
     const user = userEvent.setup();
-    const forwardTwoButton = screen.getByRole("button", {
-      name: "Forward 2 pages",
-    });
+    const forwardTwoButton = screen.getByLabelText("Forward 2 pages");
     expect(forwardTwoButton).not.toHaveAttribute("disabled");
     await user.click(forwardTwoButton);
 
@@ -461,7 +459,7 @@ describe("pagination component", () => {
 
     // At first page: clicking back buttons has no effect (still on page 1)
     const user = userEvent.setup();
-    const prevButton = screen.getByRole("button", { name: "Previous page" });
+    const prevButton = screen.getByLabelText("Previous page");
     await user.click(prevButton);
 
     await waitFor(() => {
@@ -469,12 +467,12 @@ describe("pagination component", () => {
     });
 
     // Navigate to last page: next buttons have no effect (still on page 2)
-    await user.click(screen.getByRole("button", { name: "Next page" }));
+    await user.click(screen.getByLabelText("Next page"));
     await waitFor(() => {
       expect(screen.getByText("Page 2 Log")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: "Next page" }));
+    await user.click(screen.getByLabelText("Next page"));
     await waitFor(() => {
       expect(screen.getByText("Page 2 Log")).toBeInTheDocument();
     });
@@ -511,7 +509,7 @@ describe("pagination component", () => {
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByRole("button", { name: "Next page" }));
+    await user.click(screen.getByLabelText("Next page"));
 
     await waitFor(() => {
       expect(screen.getByText("Page 2 Log")).toBeInTheDocument();

@@ -55,16 +55,18 @@ describe("org manage dialog - display", () => {
 
     // Always-visible tabs
     expect(
-      screen.getByRole("button", { name: /General/i }),
+      screen.getAllByRole("button").find((el) => {
+        return /General/i.test(el.textContent ?? "");
+      })!,
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: /Members/i }),
+      screen.getAllByRole("button").find((el) => {
+        return /Members/i.test(el.textContent ?? "");
+      })!,
     ).toBeInTheDocument();
 
     // Admin-visible tabs
-    expect(
-      screen.getByRole("button", { name: /Model Providers/i }),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Model Providers/i)).toBeInTheDocument();
   });
 
   it("shows the active tab heading on initial load", async () => {
@@ -86,7 +88,9 @@ describe("org manage dialog - conditional", () => {
 
     // Desktop sidebar has tab buttons
     expect(
-      screen.getByRole("button", { name: /General/i }),
+      screen.getAllByRole("button").find((el) => {
+        return /General/i.test(el.textContent ?? "");
+      })!,
     ).toBeInTheDocument();
 
     // Mobile nav has a combobox/select
@@ -139,7 +143,11 @@ describe("org manage dialog - interaction", () => {
       ).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: /Members/i }));
+    await user.click(
+      screen.getAllByRole("button").find((el) => {
+        return /Members/i.test(el.textContent ?? "");
+      })!,
+    );
 
     await waitFor(() => {
       expect(
@@ -197,7 +205,7 @@ describe("org manage dialog - state", () => {
 
     expect(screen.getByRole("dialog")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: /close/i }));
+    await user.click(screen.getByLabelText(/close/i));
 
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();

@@ -182,9 +182,7 @@ describe("talk navigation", () => {
     // Click "Continue in web" which triggers:
     // 1. completeZeroOnboarding$ (single setup API call)
     // 2. navigate to /agents/:id/chat
-    const continueButton = screen.getByRole("button", {
-      name: /Continue in web/,
-    });
+    const continueButton = screen.getByText(/Continue in web/);
     await user.click(continueButton);
 
     // The final URL should be /agents/:id/chat (no auto-intro message)

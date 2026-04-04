@@ -130,14 +130,22 @@ async function openMenuAndClick(
   timeLabel: string,
   action: "Edit" | "Delete" | "Run now",
 ) {
-  const menuTrigger = screen.getByRole("button", {
-    name: `More actions for ${timeLabel}`,
-  });
+  const menuTrigger = screen.getAllByLabelText(
+    `More actions for ${timeLabel}`,
+  )[0];
   await user.click(menuTrigger);
   await waitFor(() => {
-    expect(screen.getByRole("menuitem", { name: action })).toBeInTheDocument();
+    expect(
+      screen.getAllByRole("menuitem").find((el) => {
+        return el.textContent?.includes(action);
+      }),
+    ).toBeDefined();
   });
-  await user.click(screen.getByRole("menuitem", { name: action }));
+  await user.click(
+    screen.getAllByRole("menuitem").find((el) => {
+      return el.textContent?.includes(action);
+    })!,
+  );
 }
 
 describe("zero schedule page - agent labels", () => {
@@ -327,15 +335,15 @@ describe("zero schedule page - agent labels", () => {
     await renderSchedulePage();
     await waitFor(() => {
       expect(
-        screen.getByRole("link", { name: /Open schedule Alpha only task/ }),
+        screen.getAllByLabelText(/Open schedule Alpha only task/)[0],
       ).toBeInTheDocument();
     });
     expect(
-      screen.getByRole("link", { name: /Open schedule Beta only task/ }),
+      screen.getAllByLabelText(/Open schedule Beta only task/)[0],
     ).toBeInTheDocument();
     expect(
-      screen.queryByRole("link", { name: /Open schedule Gamma only task/ }),
-    ).not.toBeInTheDocument();
+      screen.queryAllByLabelText(/Open schedule Gamma only task/),
+    ).toHaveLength(0);
   });
 
   it("should display schedules from multiple agents with their respective agent labels (SCHED-D-006)", async () => {
@@ -391,16 +399,18 @@ describe("zero schedule page - agent labels", () => {
     await renderSchedulePage();
     await waitFor(() => {
       expect(
-        screen.getByRole("link", { name: /Open schedule Alpha daily standup/ }),
+        screen.getAllByLabelText(/Open schedule Alpha daily standup/)[0],
       ).toBeInTheDocument();
     });
     expect(
-      screen.getByRole("link", { name: /Open schedule Beta monitoring check/ }),
+      screen.getAllByLabelText(/Open schedule Beta monitoring check/)[0],
     ).toBeInTheDocument();
     // Two distinct schedules from two distinct agents should both be rendered
-    expect(screen.getAllByRole("link", { name: /Open schedule/ })).toHaveLength(
-      2,
-    );
+    expect(
+      screen.getAllByRole("link").filter((el) => {
+        return /Open schedule/.test(el.getAttribute("aria-label") ?? "");
+      }),
+    ).toHaveLength(2);
   });
 });
 
@@ -457,9 +467,7 @@ describe("zero schedule page - list view", () => {
     await renderSchedulePage();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /Add schedule/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/Add schedule/i)).toBeInTheDocument();
     });
   });
 
@@ -472,7 +480,9 @@ describe("zero schedule page - list view", () => {
         screen.getAllByText("Summarize yesterday's threads")[0],
       ).toBeInTheDocument();
     });
-    const menus = screen.getAllByRole("button", { name: /More actions for/ });
+    const menus = screen.getAllByRole("button").filter((el) => {
+      return /More actions for/.test(el.getAttribute("aria-label") ?? "");
+    });
     expect(menus).toHaveLength(3);
   });
 
@@ -486,9 +496,9 @@ describe("zero schedule page - list view", () => {
       ).toBeInTheDocument();
     });
     expect(
-      screen.getByRole("link", {
-        name: /Open schedule Summarize yesterday's threads/i,
-      }),
+      screen.getAllByLabelText(
+        /Open schedule Summarize yesterday's threads/i,
+      )[0],
     ).toBeInTheDocument();
   });
 
@@ -502,20 +512,14 @@ describe("zero schedule page - list view", () => {
         screen.getAllByText("Summarize yesterday's threads")[0],
       ).toBeInTheDocument();
     });
-    const menuTrigger = screen.getByRole("button", {
-      name: "More actions for Every weekday at 9:00 AM",
-    });
+    const menuTrigger = screen.getAllByLabelText(
+      "More actions for Every weekday at 9:00 AM",
+    )[0];
     await user.click(menuTrigger);
     await waitFor(() => {
-      expect(
-        screen.getByRole("menuitem", { name: /Run now/ }),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByRole("menuitem", { name: "Edit" }),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByRole("menuitem", { name: "Delete" }),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/Run now/)).toBeInTheDocument();
+      expect(screen.getByText("Edit")).toBeInTheDocument();
+      expect(screen.getByText("Delete")).toBeInTheDocument();
     });
   });
 });
@@ -533,7 +537,7 @@ describe("zero schedule page - create dialog", () => {
       ).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: /Add schedule/i }));
+    await user.click(screen.getByText(/Add schedule/i));
 
     await waitFor(() => {
       expect(
@@ -569,7 +573,7 @@ describe("zero schedule page - create dialog", () => {
       ).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: /Add schedule/i }));
+    await user.click(screen.getByText(/Add schedule/i));
 
     await waitFor(() => {
       expect(
@@ -583,7 +587,7 @@ describe("zero schedule page - create dialog", () => {
     await user.type(promptInput, "Daily standup summary");
 
     // Click Create
-    await user.click(screen.getByRole("button", { name: "Create" }));
+    await user.click(screen.getByText("Create"));
 
     await waitFor(() => {
       expect(capturedBody).toBeTruthy();
@@ -649,8 +653,8 @@ describe("zero schedule page - delete confirmation", () => {
       expect(screen.getByText("Delete schedule?")).toBeInTheDocument();
     });
     expect(screen.getByText("morning-briefing")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument();
+    expect(screen.getByText("Cancel")).toBeInTheDocument();
+    expect(screen.getByText("Delete")).toBeInTheDocument();
   });
 
   it("should close dialog without deleting when Cancel is clicked", async () => {
@@ -684,7 +688,7 @@ describe("zero schedule page - delete confirmation", () => {
       expect(screen.getByText("Delete schedule?")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await user.click(screen.getByText("Cancel"));
 
     await waitFor(() => {
       expect(screen.queryByText("Delete schedule?")).not.toBeInTheDocument();
@@ -723,7 +727,7 @@ describe("zero schedule page - delete confirmation", () => {
       expect(screen.getByText("Delete schedule?")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: "Delete" }));
+    await user.click(screen.getByText("Delete"));
 
     await waitFor(() => {
       expect(deletedName).toBe("morning-briefing");
@@ -761,7 +765,7 @@ describe("zero schedule page - delete confirmation", () => {
       expect(screen.getByText("Delete schedule?")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: "Delete" }));
+    await user.click(screen.getByText("Delete"));
 
     // Dialog should close immediately
     await waitFor(() => {
@@ -778,12 +782,10 @@ describe("zero schedule page - create dialog confirm close", () => {
     await renderSchedulePage();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /Add schedule/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/Add schedule/i)).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: /Add schedule/i }));
+    await user.click(screen.getByText(/Add schedule/i));
 
     await waitFor(() => {
       expect(
@@ -795,7 +797,7 @@ describe("zero schedule page - create dialog confirm close", () => {
     await user.clear(promptInput);
     await user.type(promptInput, "Some new task");
 
-    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await user.click(screen.getByText("Cancel"));
 
     await waitFor(() => {
       expect(screen.getByText("You have unsaved changes")).toBeInTheDocument();
@@ -808,12 +810,10 @@ describe("zero schedule page - create dialog confirm close", () => {
     await renderSchedulePage();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /Add schedule/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/Add schedule/i)).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: /Add schedule/i }));
+    await user.click(screen.getByText(/Add schedule/i));
 
     await waitFor(() => {
       expect(
@@ -821,7 +821,7 @@ describe("zero schedule page - create dialog confirm close", () => {
       ).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await user.click(screen.getByText("Cancel"));
 
     await waitFor(() => {
       expect(
@@ -841,12 +841,10 @@ describe("zero schedule page - schedule dialog fields", () => {
     await renderSchedulePage();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /Add schedule/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/Add schedule/i)).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: /Add schedule/i }));
+    await user.click(screen.getByText(/Add schedule/i));
 
     await waitFor(() => {
       expect(
@@ -863,12 +861,10 @@ describe("zero schedule page - schedule dialog fields", () => {
     await renderSchedulePage();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /Add schedule/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/Add schedule/i)).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: /Add schedule/i }));
+    await user.click(screen.getByText(/Add schedule/i));
 
     await waitFor(() => {
       expect(
@@ -876,7 +872,7 @@ describe("zero schedule page - schedule dialog fields", () => {
       ).toBeInTheDocument();
     });
 
-    expect(screen.getByRole("button", { name: "Create" })).toBeDisabled();
+    expect(screen.getByText("Create")).toBeDisabled();
   });
 
   it("should enable Create button when prompt is filled", async () => {
@@ -885,12 +881,10 @@ describe("zero schedule page - schedule dialog fields", () => {
     await renderSchedulePage();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /Add schedule/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/Add schedule/i)).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: /Add schedule/i }));
+    await user.click(screen.getByText(/Add schedule/i));
 
     await waitFor(() => {
       expect(
@@ -901,7 +895,7 @@ describe("zero schedule page - schedule dialog fields", () => {
     await user.clear(screen.getByLabelText("Prompt"));
     await user.type(screen.getByLabelText("Prompt"), "Do something");
 
-    expect(screen.getByRole("button", { name: "Create" })).toBeEnabled();
+    expect(screen.getByText("Create")).toBeEnabled();
   });
 
   it("should show save error in dialog", async () => {
@@ -929,12 +923,10 @@ describe("zero schedule page - schedule dialog fields", () => {
     await renderSchedulePage();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /Add schedule/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/Add schedule/i)).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: /Add schedule/i }));
+    await user.click(screen.getByText(/Add schedule/i));
 
     await waitFor(() => {
       expect(
@@ -945,7 +937,7 @@ describe("zero schedule page - schedule dialog fields", () => {
     await user.clear(screen.getByLabelText("Prompt"));
     await user.type(screen.getByLabelText("Prompt"), "Some task");
 
-    await user.click(screen.getByRole("button", { name: "Create" }));
+    await user.click(screen.getByText("Create"));
 
     // Dialog should stay open with error message
     await waitFor(() => {
@@ -963,9 +955,9 @@ describe("zero schedule page - view modes", () => {
     await renderSchedulePage();
 
     await waitFor(() => {
-      expect(screen.getByRole("tab", { name: /List/i })).toBeInTheDocument();
+      expect(screen.getByText(/List/i)).toBeInTheDocument();
     });
-    expect(screen.getByRole("tab", { name: /Calendar/i })).toBeInTheDocument();
+    expect(screen.getByText(/Calendar/i)).toBeInTheDocument();
   });
 
   it("should switch to calendar view when Calendar tab is clicked", async () => {
@@ -974,12 +966,10 @@ describe("zero schedule page - view modes", () => {
     await renderSchedulePage();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("tab", { name: /Calendar/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/Calendar/i)).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("tab", { name: /Calendar/i }));
+    await user.click(screen.getByText(/Calendar/i));
 
     await waitFor(() => {
       expect(screen.getByText("Week view")).toBeInTheDocument();
@@ -1041,7 +1031,7 @@ describe("zero schedule page - create dialog timezone default", () => {
       ).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: /Add schedule/i }));
+    await user.click(screen.getByText(/Add schedule/i));
     await waitFor(() => {
       expect(
         screen.getByRole("heading", { name: "Add schedule" }),
@@ -1050,7 +1040,7 @@ describe("zero schedule page - create dialog timezone default", () => {
 
     await user.clear(screen.getByLabelText("Prompt"));
     await user.type(screen.getByLabelText("Prompt"), "Daily task");
-    await user.click(screen.getByRole("button", { name: "Create" }));
+    await user.click(screen.getByText("Create"));
 
     await waitFor(() => {
       expect(capturedBody).toBeTruthy();
@@ -1085,7 +1075,7 @@ describe("zero schedule page - create dialog timezone default", () => {
       ).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: /Add schedule/i }));
+    await user.click(screen.getByText(/Add schedule/i));
     await waitFor(() => {
       expect(
         screen.getByRole("heading", { name: "Add schedule" }),
@@ -1094,7 +1084,7 @@ describe("zero schedule page - create dialog timezone default", () => {
 
     await user.clear(screen.getByLabelText("Prompt"));
     await user.type(screen.getByLabelText("Prompt"), "Daily task");
-    await user.click(screen.getByRole("button", { name: "Create" }));
+    await user.click(screen.getByText("Create"));
 
     await waitFor(() => {
       expect(capturedBody).toBeTruthy();

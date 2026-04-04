@@ -74,8 +74,8 @@ describe("connector permission dialog", () => {
     expect(
       screen.getByPlaceholderText("Search your agents"),
     ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Later" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Confirm" })).toBeInTheDocument();
+    expect(screen.getByText("Later")).toBeInTheDocument();
+    expect(screen.getByText("Confirm")).toBeInTheDocument();
   });
 
   it("filters agents by search term", async () => {
@@ -113,7 +113,9 @@ describe("connector permission dialog", () => {
     });
 
     // Click to select — the avatar should be replaced by a check icon
-    const agentButton = screen.getByRole("button", { name: /Agent Alpha/ });
+    const agentButton = screen.getAllByRole("button").find((el) => {
+      return /Agent Alpha/.test(el.textContent ?? "");
+    })!;
     await user.click(agentButton);
 
     // The check icon (svg) should now be rendered instead of the avatar img
@@ -143,10 +145,10 @@ describe("connector permission dialog", () => {
     });
 
     // Select an agent
-    await user.click(screen.getByRole("button", { name: /Agent Alpha/ }));
+    await user.click(screen.getByText(/Agent Alpha/));
 
     // Click Later
-    await user.click(screen.getByRole("button", { name: "Later" }));
+    await user.click(screen.getByText("Later"));
 
     // Dialog should close
     await waitFor(() => {
@@ -178,7 +180,7 @@ describe("connector permission dialog", () => {
     });
 
     // Confirm without selecting any agent
-    await user.click(screen.getByRole("button", { name: "Confirm" }));
+    await user.click(screen.getByText("Confirm"));
 
     await waitFor(() => {
       expect(
@@ -212,10 +214,10 @@ describe("connector permission dialog", () => {
     });
 
     // Select the agent
-    await user.click(screen.getByRole("button", { name: /Agent Alpha/ }));
+    await user.click(screen.getByText(/Agent Alpha/));
 
     // Confirm
-    await user.click(screen.getByRole("button", { name: "Confirm" }));
+    await user.click(screen.getByText("Confirm"));
 
     // Success toast and dialog close
     await waitFor(() => {

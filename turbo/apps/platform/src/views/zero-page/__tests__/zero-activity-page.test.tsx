@@ -385,7 +385,7 @@ describe("zeroActivityPage", () => {
     });
 
     const user = userEvent.setup();
-    const nextButton = screen.getByRole("button", { name: "Next page" });
+    const nextButton = screen.getByLabelText("Next page");
     expect(nextButton).not.toHaveAttribute("disabled");
     await user.click(nextButton);
 
@@ -426,7 +426,7 @@ describe("zeroActivityPage", () => {
     });
 
     const user = userEvent.setup();
-    const nextButton = screen.getByRole("button", { name: "Next page" });
+    const nextButton = screen.getByLabelText("Next page");
     expect(nextButton).not.toHaveAttribute("disabled");
     await user.click(nextButton);
 
@@ -434,7 +434,7 @@ describe("zeroActivityPage", () => {
       expect(screen.getByText("Page 2 Log")).toBeInTheDocument();
     });
 
-    const prevButton = screen.getByRole("button", { name: "Previous page" });
+    const prevButton = screen.getByLabelText("Previous page");
     expect(prevButton).not.toHaveAttribute("disabled");
     await user.click(prevButton);
 
@@ -483,9 +483,7 @@ describe("zeroActivityPage", () => {
     });
 
     const user = userEvent.setup();
-    const forwardTwoButton = screen.getByRole("button", {
-      name: "Forward 2 pages",
-    });
+    const forwardTwoButton = screen.getByLabelText("Forward 2 pages");
     expect(forwardTwoButton).not.toHaveAttribute("disabled");
     await user.click(forwardTwoButton);
 
@@ -533,16 +531,14 @@ describe("zeroActivityPage", () => {
     });
 
     const user = userEvent.setup();
-    const forwardTwoButton = screen.getByRole("button", {
-      name: "Forward 2 pages",
-    });
+    const forwardTwoButton = screen.getByLabelText("Forward 2 pages");
     await user.click(forwardTwoButton);
 
     await waitFor(() => {
       expect(screen.getByText("Page 3 Log")).toBeInTheDocument();
     });
 
-    const backTwoButton = screen.getByRole("button", { name: "Back 2 pages" });
+    const backTwoButton = screen.getByLabelText("Back 2 pages");
     expect(backTwoButton).not.toHaveAttribute("disabled");
     await user.click(backTwoButton);
 

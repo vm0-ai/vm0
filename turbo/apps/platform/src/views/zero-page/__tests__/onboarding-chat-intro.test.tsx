@@ -116,7 +116,7 @@ describe("onboarding → chat page (no auto-intro)", () => {
       }),
     );
 
-    await user.click(screen.getByRole("button", { name: /Continue in web/ }));
+    await user.click(screen.getByText(/Continue in web/));
 
     // Should navigate directly to the agent chat page
     await waitFor(() => {
@@ -154,7 +154,7 @@ describe("onboarding → chat page (no auto-intro)", () => {
       }),
     );
 
-    await user.click(screen.getByRole("button", { name: /Continue in web/ }));
+    await user.click(screen.getByText(/Continue in web/));
 
     await waitFor(() => {
       expect(pathname()).toBe(`/agents/${MOCK_MEMBER_AGENT_ID}/chat`);

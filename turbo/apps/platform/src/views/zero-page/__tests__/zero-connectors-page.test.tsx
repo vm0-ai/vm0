@@ -117,15 +117,13 @@ describe("connectors page", () => {
     });
 
     // Radix DropdownMenu opens on click
-    const moreButton = screen.getByRole("button", { name: "More options" });
+    const moreButton = screen.getByLabelText("More options");
     await user.click(moreButton);
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("menuitem", { name: "Disconnect" }),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Disconnect")).toBeInTheDocument();
     });
-    await user.click(screen.getByRole("menuitem", { name: "Disconnect" }));
+    await user.click(screen.getByText("Disconnect"));
 
     // Loading toast should appear while API is in-flight
     await waitFor(() => {
@@ -158,15 +156,13 @@ describe("connectors page", () => {
     });
 
     // Radix DropdownMenu opens on click
-    const moreButton = screen.getByRole("button", { name: "More options" });
+    const moreButton = screen.getByLabelText("More options");
     await user.click(moreButton);
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("menuitem", { name: "Disconnect" }),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Disconnect")).toBeInTheDocument();
     });
-    await user.click(screen.getByRole("menuitem", { name: "Disconnect" }));
+    await user.click(screen.getByText("Disconnect"));
 
     await waitFor(() => {
       expect(

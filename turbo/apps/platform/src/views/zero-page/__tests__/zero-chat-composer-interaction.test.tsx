@@ -108,9 +108,7 @@ describe("zero chat composer - file input", () => {
     await user.upload(fileInput, file);
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /test\.png/ }),
-      ).toBeInTheDocument();
+      expect(screen.getByLabelText(/test\.png/)).toBeInTheDocument();
     });
   });
 });
@@ -125,7 +123,7 @@ describe("zero chat composer - connectors popover", () => {
     await setupPage({ context, path: CHAT_PATH });
 
     const connectorsButton = await waitFor(() => {
-      return screen.getByRole("button", { name: "Connectors" });
+      return screen.getByLabelText("Connectors");
     });
 
     await user.click(connectorsButton);
@@ -178,7 +176,7 @@ describe("zero chat composer - connectors popover", () => {
     await setupPage({ context, path: CHAT_PATH });
 
     const connectorsButton = await waitFor(() => {
-      return screen.getByRole("button", { name: "Connectors" });
+      return screen.getByLabelText("Connectors");
     });
     await user.click(connectorsButton);
 
@@ -205,7 +203,7 @@ describe("zero chat composer - connectors popover", () => {
     await setupPage({ context, path: CHAT_PATH });
 
     const connectorsButton = await waitFor(() => {
-      return screen.getByRole("button", { name: "Connectors" });
+      return screen.getByLabelText("Connectors");
     });
     await user.click(connectorsButton);
 
@@ -240,7 +238,7 @@ describe("zero chat composer - send and stop actions", () => {
     await user.type(textarea, "Hello");
 
     const sendButton = await waitFor(() => {
-      return screen.getByRole("button", { name: "Send" });
+      return screen.getByLabelText("Send");
     });
     await user.click(sendButton);
 
@@ -264,7 +262,7 @@ describe("zero chat composer - send and stop actions", () => {
 
     // Stop button should appear during send
     const stopButton = await waitFor(() => {
-      return screen.getByRole("button", { name: "Stop" });
+      return screen.getByLabelText("Stop");
     });
     expect(stopButton).toBeInTheDocument();
 
@@ -320,7 +318,7 @@ describe("zero chat composer - add connectors dialog", () => {
     await setupPage({ context, path: CHAT_PATH });
 
     const connectorsButton = await waitFor(() => {
-      return screen.getByRole("button", { name: "Connectors" });
+      return screen.getByLabelText("Connectors");
     });
     await user.click(connectorsButton);
 
@@ -335,9 +333,7 @@ describe("zero chat composer - add connectors dialog", () => {
 
     // Before filtering: GitHub should be visible
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Connect GitHub" }),
-      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Connect GitHub")).toBeInTheDocument();
     });
 
     // Type a filter that won't match GitHub
@@ -345,12 +341,8 @@ describe("zero chat composer - add connectors dialog", () => {
     await user.type(searchInput, "Slack");
 
     await waitFor(() => {
-      expect(
-        screen.queryByRole("button", { name: "Connect GitHub" }),
-      ).not.toBeInTheDocument();
-      expect(
-        screen.getByRole("button", { name: "Connect Slack" }),
-      ).toBeInTheDocument();
+      expect(screen.queryByLabelText("Connect GitHub")).not.toBeInTheDocument();
+      expect(screen.getByLabelText("Connect Slack")).toBeInTheDocument();
     });
   });
 
@@ -362,7 +354,7 @@ describe("zero chat composer - add connectors dialog", () => {
     await setupPage({ context, path: CHAT_PATH });
 
     const connectorsButton = await waitFor(() => {
-      return screen.getByRole("button", { name: "Connectors" });
+      return screen.getByLabelText("Connectors");
     });
     await user.click(connectorsButton);
 
@@ -373,7 +365,7 @@ describe("zero chat composer - add connectors dialog", () => {
 
     // Verify unconnected connectors are listed
     const connectGitHubButton = await waitFor(() => {
-      return screen.getByRole("button", { name: "Connect GitHub" });
+      return screen.getByLabelText("Connect GitHub");
     });
     await user.click(connectGitHubButton);
 

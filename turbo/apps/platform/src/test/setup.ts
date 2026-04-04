@@ -18,6 +18,13 @@ vi.hoisted(() => {
 });
 
 beforeAll(() => {
+  // Disable CSS animations/transitions so Radix UI dialog open/close
+  // does not wait for animation frames to settle in act().
+  const style = document.createElement("style");
+  style.textContent =
+    "*, *::before, *::after { animation-duration: 0s !important; transition-duration: 0s !important; animation-delay: 0s !important; }";
+  document.head.appendChild(style);
+
   server.listen({ onUnhandledRequest: "error" });
 
   // Override console.error to throw on unexpected errors.

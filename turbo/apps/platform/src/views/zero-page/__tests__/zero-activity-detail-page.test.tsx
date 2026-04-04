@@ -103,7 +103,9 @@ describe("zeroActivityDetailPage", () => {
     });
 
     // The breadcrumb link to /activity should not be present
-    const activityLinks = screen.queryAllByRole("link", { name: /Activity/i });
+    const activityLinks = screen.queryAllByRole("link").filter((el) => {
+      return /Activity/i.test(el.textContent ?? "");
+    });
     expect(activityLinks).toHaveLength(0);
   });
 
@@ -123,7 +125,9 @@ describe("zeroActivityDetailPage", () => {
     });
 
     // The breadcrumb link to /activity should be present
-    const activityLinks = screen.queryAllByRole("link", { name: /Activity/i });
+    const activityLinks = screen.queryAllByRole("link").filter((el) => {
+      return /Activity/i.test(el.textContent ?? "");
+    });
     expect(activityLinks.length).toBeGreaterThan(0);
   });
 
@@ -177,7 +181,7 @@ describe("zeroActivityDetailPage", () => {
     });
 
     // "Schedule" label should be rendered as a link pointing to the schedule page
-    const scheduleLink = screen.getByRole("link", { name: "Schedule" });
+    const scheduleLink = screen.getByText("Schedule");
     expect(scheduleLink).toBeInTheDocument();
     expect(scheduleLink.getAttribute("href")).toBe("/schedules/sched-abc-123");
   });
@@ -233,7 +237,11 @@ describe("zeroActivityDetailPage", () => {
 
     // "Schedule" should be plain text, not a link
     expect(screen.getByText("Schedule")).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Schedule" })).toBeNull();
+    expect(
+      screen.queryAllByRole("link").find((el) => {
+        return el.textContent?.trim() === "Schedule";
+      }),
+    ).toBeUndefined();
   });
 
   it("should render non-schedule source as plain text", async () => {
@@ -252,7 +260,11 @@ describe("zeroActivityDetailPage", () => {
 
     // "Web" source should be plain text, not a link
     expect(screen.getByText("Web")).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Web" })).toBeNull();
+    expect(
+      screen.queryAllByRole("link").find((el) => {
+        return el.textContent?.trim() === "Web";
+      }),
+    ).toBeUndefined();
   });
 
   it("should not truncate system prompt containing unknown HTML-like tags", async () => {

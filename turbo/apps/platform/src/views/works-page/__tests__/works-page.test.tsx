@@ -88,9 +88,7 @@ describe("zero works page - slack card connected state", () => {
     await renderWorksPage();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "More options" }),
-      ).toBeInTheDocument();
+      expect(screen.getByLabelText("More options")).toBeInTheDocument();
     });
   });
 
@@ -100,12 +98,10 @@ describe("zero works page - slack card connected state", () => {
     await renderWorksPage();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "More options" }),
-      ).toBeInTheDocument();
+      expect(screen.getByLabelText("More options")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: "More options" }));
+    await user.click(screen.getByLabelText("More options"));
 
     await waitFor(() => {
       expect(screen.getByText("Disconnect")).toBeInTheDocument();
@@ -118,12 +114,10 @@ describe("zero works page - slack card connected state", () => {
     await renderWorksPage();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "More options" }),
-      ).toBeInTheDocument();
+      expect(screen.getByLabelText("More options")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: "More options" }));
+    await user.click(screen.getByLabelText("More options"));
 
     await waitFor(() => {
       expect(screen.getByText("Uninstall")).toBeInTheDocument();
@@ -139,9 +133,7 @@ describe("zero works page - slack card connected state", () => {
     });
 
     expect(screen.queryByText("Install to Slack")).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Connect" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Connect")).not.toBeInTheDocument();
   });
 
   it("should show default description when installed", async () => {
@@ -206,9 +198,7 @@ describe("zero works page - slack installed but not connected", () => {
     await renderWorksPage();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Connect" }),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Connect")).toBeInTheDocument();
     });
   });
 
@@ -217,9 +207,7 @@ describe("zero works page - slack installed but not connected", () => {
     await renderWorksPage();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Connect" }),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Connect")).toBeInTheDocument();
     });
 
     expect(screen.queryByText("Connected")).not.toBeInTheDocument();
@@ -233,12 +221,10 @@ describe("zero works page - uninstall confirmation dialog", () => {
     await renderWorksPage();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "More options" }),
-      ).toBeInTheDocument();
+      expect(screen.getByLabelText("More options")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: "More options" }));
+    await user.click(screen.getByLabelText("More options"));
 
     await waitFor(() => {
       expect(screen.getByText("Uninstall")).toBeInTheDocument();
@@ -262,12 +248,10 @@ describe("zero works page - uninstall confirmation dialog", () => {
     await renderWorksPage();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "More options" }),
-      ).toBeInTheDocument();
+      expect(screen.getByLabelText("More options")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: "More options" }));
+    await user.click(screen.getByLabelText("More options"));
 
     await waitFor(() => {
       expect(screen.getByText("Uninstall")).toBeInTheDocument();
@@ -281,7 +265,7 @@ describe("zero works page - uninstall confirmation dialog", () => {
       ).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await user.click(screen.getByText("Cancel"));
 
     await waitFor(() => {
       expect(
@@ -308,12 +292,10 @@ describe("zero works page - uninstall confirmation dialog", () => {
     await renderWorksPage();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "More options" }),
-      ).toBeInTheDocument();
+      expect(screen.getByLabelText("More options")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: "More options" }));
+    await user.click(screen.getByLabelText("More options"));
 
     await waitFor(() => {
       expect(screen.getByText("Uninstall")).toBeInTheDocument();
@@ -329,7 +311,7 @@ describe("zero works page - uninstall confirmation dialog", () => {
 
     // Click "Uninstall" button in dialog to confirm
     const dialog = screen.getByRole("dialog");
-    await user.click(within(dialog).getByRole("button", { name: "Uninstall" }));
+    await user.click(within(dialog).getByText("Uninstall"));
 
     await waitFor(() => {
       expect(uninstallCalled).toBeTruthy();
@@ -347,14 +329,10 @@ describe("zero works page - admin vs non-admin permissions", () => {
     await renderWorksPage();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Connect" }),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Connect")).toBeInTheDocument();
     });
 
-    expect(
-      screen.queryByRole("button", { name: "More options" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("More options")).not.toBeInTheDocument();
   });
 
   it("should show more options for non-admin when connected (for disconnect)", async () => {
@@ -367,12 +345,10 @@ describe("zero works page - admin vs non-admin permissions", () => {
     await renderWorksPage();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "More options" }),
-      ).toBeInTheDocument();
+      expect(screen.getByLabelText("More options")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: "More options" }));
+    await user.click(screen.getByLabelText("More options"));
 
     await waitFor(() => {
       expect(screen.getByText("Disconnect")).toBeInTheDocument();
@@ -402,12 +378,10 @@ describe("zero works page - disconnect", () => {
     await renderWorksPage();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "More options" }),
-      ).toBeInTheDocument();
+      expect(screen.getByLabelText("More options")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: "More options" }));
+    await user.click(screen.getByLabelText("More options"));
 
     await waitFor(() => {
       expect(screen.getByText("Disconnect")).toBeInTheDocument();

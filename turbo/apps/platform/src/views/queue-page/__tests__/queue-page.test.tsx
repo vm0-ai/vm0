@@ -48,7 +48,9 @@ describe("queue page", () => {
     });
 
     // Owner should see the Cancel button
-    const cancelButtons = screen.getAllByRole("button", { name: "Cancel" });
+    const cancelButtons = screen.getAllByRole("button").filter((el) => {
+      return el.textContent?.trim() === "Cancel";
+    });
     expect(cancelButtons).toHaveLength(1);
   });
 
@@ -79,7 +81,11 @@ describe("queue page", () => {
     });
 
     // Non-owner should NOT see a Cancel button
-    expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
+    expect(
+      screen.queryAllByRole("button").find((el) => {
+        return el.textContent?.trim() === "Cancel";
+      }),
+    ).toBeUndefined();
   });
 
   it("should show cancel button for owner's queued entries", async () => {
@@ -112,7 +118,9 @@ describe("queue page", () => {
       expect(screen.getByText("Queued Agent")).toBeInTheDocument();
     });
 
-    const cancelButtons = screen.getAllByRole("button", { name: "Cancel" });
+    const cancelButtons = screen.getAllByRole("button").filter((el) => {
+      return el.textContent?.trim() === "Cancel";
+    });
     expect(cancelButtons).toHaveLength(1);
   });
 
@@ -143,7 +151,11 @@ describe("queue page", () => {
     });
 
     // No cancel button when runId is null, even for owner
-    expect(screen.queryByRole("button", { name: "Cancel" })).toBeNull();
+    expect(
+      screen.queryAllByRole("button").find((el) => {
+        return el.textContent?.trim() === "Cancel";
+      }),
+    ).toBeUndefined();
   });
 
   it("should call cancel endpoint when cancel button is clicked", async () => {
@@ -182,7 +194,9 @@ describe("queue page", () => {
       expect(screen.getByText("Cancel Test Agent")).toBeInTheDocument();
     });
 
-    const cancelButton = screen.getByRole("button", { name: "Cancel" });
+    const cancelButton = screen.getAllByRole("button").find((el) => {
+      return el.textContent?.trim() === "Cancel";
+    })!;
     cancelButton.click();
 
     await waitFor(() => {

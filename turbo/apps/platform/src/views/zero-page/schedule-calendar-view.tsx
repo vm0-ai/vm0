@@ -191,7 +191,11 @@ export function ScheduleCalendarView<T extends ScheduleEntry>({
         <div className="rounded-xl zero-border bg-muted/20 overflow-hidden">
           {/* Mobile: single-day view */}
           <div className="md:hidden">
-            <div className="flex items-center justify-between bg-muted/50 px-3 py-2 border-b border-border/60">
+            <div
+              role="navigation"
+              aria-label="Day navigation"
+              className="flex items-center justify-between bg-muted/50 px-3 py-2 border-b border-border/60"
+            >
               <TooltipProvider delayDuration={200}>
                 <Tooltip>
                   <TooltipTrigger asChild>

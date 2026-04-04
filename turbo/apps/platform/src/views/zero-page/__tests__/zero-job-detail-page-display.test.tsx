@@ -179,9 +179,7 @@ describe("zero job detail page - display", () => {
 
     // Not-found state shows a "Back to team" link instead of the agent heading
     await waitFor(() => {
-      expect(
-        screen.getByRole("link", { name: "Back to team" }),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Back to team")).toBeInTheDocument();
       expect(
         screen.queryByRole("heading", { name: "My Agent" }),
       ).not.toBeInTheDocument();
@@ -220,7 +218,7 @@ describe("zero job detail page - connector display", () => {
       expect(screen.getByText("Linear")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: "Search connectors" }));
+    await user.click(screen.getByLabelText("Search connectors"));
     await user.type(screen.getByPlaceholderText("Search connectors..."), "git");
 
     await waitFor(() => {
@@ -243,7 +241,7 @@ describe("zero job detail page - connector display", () => {
     ).toBeInTheDocument();
     // Manage button visible (GitHub has firewall permissions)
     expect(
-      screen.getByRole("button", { name: /Manage GitHub permissions/i }),
+      screen.getByLabelText(/Manage GitHub permissions/i),
     ).toBeInTheDocument();
   });
 });
@@ -266,14 +264,14 @@ describe("zero job detail page - delete dialog", () => {
     });
 
     // Switch to Profile tab
-    await user.click(screen.getByRole("tab", { name: /Profile/i }));
+    await user.click(screen.getByText(/Profile/i));
 
     // Wait for settings form
     await waitFor(() => {
       expect(screen.getByLabelText(/name/i)).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: /Delete agent/i }));
+    await user.click(screen.getByText(/Delete agent/i));
 
     // Confirm the dialog is open via its accessible role
     await waitFor(() => {

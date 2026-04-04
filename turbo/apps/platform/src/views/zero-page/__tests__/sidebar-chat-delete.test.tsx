@@ -102,7 +102,7 @@ async function deleteThread(
     return screen.getByRole("dialog");
   });
 
-  const confirmBtn = within(dialog).getByRole("button", { name: "Delete" });
+  const confirmBtn = within(dialog).getByText("Delete");
   await user.click(confirmBtn);
 }
 

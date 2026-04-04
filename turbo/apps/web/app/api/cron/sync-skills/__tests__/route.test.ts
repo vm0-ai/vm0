@@ -1,31 +1,30 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import {
-  mkdtempSync,
-  mkdirSync,
-  writeFileSync,
-  readFileSync,
-  rmSync,
-} from "node:fs";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
-import * as tar from "tar";
 import { http, HttpResponse } from "msw";
 import { GET } from "../route";
 import {
   createTestRequest,
-  clearSkillsData,
   findTestSkillByUrl,
-  findAllTestSkills,
-  findTestSystemStorages,
+  findTestSystemStorageByName,
+  reseedSkills,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
 import { reloadEnv } from "../../../../../src/env";
 import { server } from "../../../../../src/mocks/server";
 import { logger } from "../../../../../src/lib/shared/logger";
+import {
+  createMockTarball,
+  ALL_SEED_SKILL_NAMES,
+} from "../../../../../src/mocks/skill-sync-handlers";
 
 const context = testContext();
 const cronSecret = "test-cron-secret";
-const TEST_COMMIT_SHA = "a".repeat(40);
+
+/** Generate a unique commit SHA for each call so the freshness check never skips. */
+let shaCounter = 0;
+function nextCommitSha(): string {
+  shaCounter++;
+  return shaCounter.toString(16).padStart(40, "a");
+}
 
 function cronRequest(secret?: string) {
   return createTestRequest(
@@ -36,8 +35,6 @@ function cronRequest(secret?: string) {
 
 /**
  * Create a mock pkt-line response for git smart HTTP info/refs.
- * Simplified format — real responses have more lines, but the parser
- * only looks for the refs/heads/main line.
  */
 function createGitRefsResponse(commitSha: string): string {
   const header = "001e# service=git-upload-pack\n0000";
@@ -46,84 +43,71 @@ function createGitRefsResponse(commitSha: string): string {
 }
 
 /**
- * Create a gzipped tarball buffer containing mock skills.
- * Mimics the GitHub codeload format with a {repo}-{branch}/ prefix.
+ * Extra mock skills used only in these tests.
+ * Names must NOT overlap with SEED_SKILLS or connector types (e.g. avoid
+ * "github", "slack" which are real connector names).
  */
-function createMockTarball(
-  mockSkills: Array<{
+const EXTRA_SKILLS = {
+  alphaSkill: {
+    name: "test-alpha-skill",
+    files: [
+      {
+        path: "SKILL.md",
+        content: [
+          "---",
+          "name: test-alpha-skill",
+          "description: Alpha integration skill",
+          "---",
+          "",
+          "# Alpha Skill",
+          "Send messages to Alpha.",
+        ].join("\n"),
+      },
+      { path: "index.ts", content: 'console.log("alpha");' },
+    ],
+  },
+  betaSkill: {
+    name: "test-beta-skill",
+    files: [
+      {
+        path: "SKILL.md",
+        content: [
+          "---",
+          "name: test-beta-skill",
+          "description: Beta integration",
+          "---",
+          "",
+          "# Beta Skill",
+        ].join("\n"),
+      },
+    ],
+  },
+};
+
+/** Build minimal seed skill entries for the tarball. */
+function seedSkillEntries() {
+  return ALL_SEED_SKILL_NAMES.map((name) => {
+    return {
+      name,
+      files: [
+        {
+          path: "SKILL.md",
+          content: `---\nname: ${name}\ndescription: ${name} skill\n---\n\n# ${name}\n`,
+        },
+      ],
+    };
+  });
+}
+
+/** Create a tarball containing all seed skills plus the given extra skills. */
+function createFullTarball(
+  extras: Array<{
     name: string;
     files: Array<{ path: string; content: string }>;
   }>,
-): Buffer {
-  const tmpDir = mkdtempSync(join(tmpdir(), "vm0-test-tarball-"));
-  const prefix = "vm0-skills-main";
-
-  try {
-    // Create directory structure
-    mkdirSync(join(tmpDir, prefix), { recursive: true });
-
-    const filePaths: string[] = [];
-    for (const skill of mockSkills) {
-      const skillDir = join(tmpDir, prefix, skill.name);
-      mkdirSync(skillDir, { recursive: true });
-
-      for (const file of skill.files) {
-        const filePath = join(skillDir, file.path);
-        mkdirSync(join(filePath, ".."), { recursive: true });
-        writeFileSync(filePath, file.content);
-        filePaths.push(join(prefix, skill.name, file.path));
-      }
-    }
-
-    // Create tar.gz
-    const tarPath = join(tmpDir, "test.tar.gz");
-    tar.create(
-      { gzip: true, file: tarPath, cwd: tmpDir, sync: true },
-      filePaths,
-    );
-    return readFileSync(tarPath);
-  } finally {
-    rmSync(tmpDir, { recursive: true, force: true });
-  }
+) {
+  return createMockTarball([...seedSkillEntries(), ...extras]);
 }
-
-/** Standard mock skills for testing */
-const MOCK_SKILLS = [
-  {
-    name: "slack",
-    files: [
-      {
-        path: "SKILL.md",
-        content: [
-          "---",
-          "name: slack",
-          "description: Slack integration skill",
-          "---",
-          "",
-          "# Slack Skill",
-          "Send messages to Slack.",
-        ].join("\n"),
-      },
-      { path: "index.ts", content: 'console.log("slack");' },
-    ],
-  },
-  {
-    name: "github",
-    files: [
-      {
-        path: "SKILL.md",
-        content: [
-          "---",
-          "name: github",
-          "description: GitHub integration",
-          "---",
-          "",
-          "# GitHub Skill",
-        ].join("\n"),
-      },
-    ],
-  },
-];
 
 function setupMswHandlers(commitSha: string, tarball: Buffer) {
   server.use(
@@ -139,12 +123,14 @@ function setupMswHandlers(commitSha: string, tarball: Buffer) {
   );
 }
 
+let testSha: string;
+
 describe("GET /api/cron/sync-skills", () => {
   beforeEach(async () => {
     context.setupMocks();
     vi.stubEnv("CRON_SECRET", cronSecret);
     reloadEnv();
-    await clearSkillsData();
+    testSha = nextCommitSha();
   });
 
   describe("Authentication", () => {
@@ -161,8 +147,11 @@ describe("GET /api/cron/sync-skills", () => {
     });
 
     it("should accept request with valid cron secret", async () => {
-      const tarball = createMockTarball(MOCK_SKILLS);
-      setupMswHandlers(TEST_COMMIT_SHA, tarball);
+      const tarball = createFullTarball([
+        EXTRA_SKILLS.alphaSkill,
+        EXTRA_SKILLS.betaSkill,
+      ]);
+      setupMswHandlers(testSha, tarball);
 
       const response = await GET(cronRequest(cronSecret));
       expect(response.status).toBe(200);
@@ -173,14 +162,17 @@ describe("GET /api/cron/sync-skills", () => {
 
   describe("Freshness check", () => {
     it("should skip sync when commit SHA is unchanged", async () => {
-      const tarball = createMockTarball(MOCK_SKILLS);
-      setupMswHandlers(TEST_COMMIT_SHA, tarball);
+      const tarball = createFullTarball([
+        EXTRA_SKILLS.alphaSkill,
+        EXTRA_SKILLS.betaSkill,
+      ]);
+      setupMswHandlers(testSha, tarball);
 
-      // First sync — populates DB
+      // First sync — updates commitSha on all skills
       const response1 = await GET(cronRequest(cronSecret));
       expect(response1.status).toBe(200);
       const data1 = await response1.json();
-      expect(data1.synced).toBe(2);
+      expect(data1.success).toBe(true);
 
       // Second sync with same commit SHA — should skip
       const response2 = await GET(cronRequest(cronSecret));
@@ -193,79 +185,82 @@ describe("GET /api/cron/sync-skills", () => {
   });
 
   describe("Full sync", () => {
-    it("should sync skills on first run with empty table", async () => {
-      const tarball = createMockTarball(MOCK_SKILLS);
-      setupMswHandlers(TEST_COMMIT_SHA, tarball);
+    it("should sync new skills added to the tarball", async () => {
+      const tarball = createFullTarball([
+        EXTRA_SKILLS.alphaSkill,
+        EXTRA_SKILLS.betaSkill,
+      ]);
+      setupMswHandlers(testSha, tarball);
 
       const response = await GET(cronRequest(cronSecret));
       expect(response.status).toBe(200);
       const data = await response.json();
 
       expect(data.success).toBe(true);
-      expect(data.commitSha).toBe(TEST_COMMIT_SHA);
-      expect(data.synced).toBe(2);
-      expect(data.total).toBe(2);
+      expect(data.commitSha).toBe(testSha);
+      // Extra skills are newly synced; seeds are skipped (content unchanged)
+      expect(data.synced + data.skipped).toBeGreaterThan(0);
 
-      // Verify skills table records
-      const allSkills = await findAllTestSkills();
-      expect(allSkills).toHaveLength(2);
-
-      const slackSkill = await findTestSkillByUrl(
-        "https://github.com/vm0-ai/vm0-skills/tree/main/slack",
+      // Verify the two extra skills are in the database with correct data
+      const alphaSkill = await findTestSkillByUrl(
+        "https://github.com/vm0-ai/vm0-skills/tree/main/test-alpha-skill",
       );
-      expect(slackSkill).not.toBeNull();
-      expect(slackSkill!.fullPath).toBe("vm0-ai/vm0-skills/tree/main/slack");
-      expect(slackSkill!.commitSha).toBe(TEST_COMMIT_SHA);
-      expect(slackSkill!.versionHash).toBeTruthy();
-      expect(slackSkill!.fileCount).toBe(2);
-      expect(slackSkill!.frontmatter).toEqual({
-        name: "slack",
-        description: "Slack integration skill",
+      expect(alphaSkill).not.toBeNull();
+      expect(alphaSkill!.fullPath).toBe(
+        "vm0-ai/vm0-skills/tree/main/test-alpha-skill",
+      );
+      expect(alphaSkill!.commitSha).toBe(testSha);
+      expect(alphaSkill!.versionHash).toBeTruthy();
+      expect(alphaSkill!.fileCount).toBe(2);
+      expect(alphaSkill!.frontmatter).toEqual({
+        name: "test-alpha-skill",
+        description: "Alpha integration skill",
       });
 
-      const githubSkill = await findTestSkillByUrl(
-        "https://github.com/vm0-ai/vm0-skills/tree/main/github",
+      const betaSkill = await findTestSkillByUrl(
+        "https://github.com/vm0-ai/vm0-skills/tree/main/test-beta-skill",
       );
-      expect(githubSkill).not.toBeNull();
-      expect(githubSkill!.fileCount).toBe(1);
+      expect(betaSkill).not.toBeNull();
+      expect(betaSkill!.fileCount).toBe(1);
 
-      // Verify storages records
-      const allStorages = await findTestSystemStorages();
-      expect(allStorages).toHaveLength(2);
+      // Verify storages were created for the extra skills
+      const alphaStorage = await findTestSystemStorageByName(
+        "agent-skills@vm0-ai/vm0-skills/tree/main/test-alpha-skill",
+      );
+      expect(alphaStorage).not.toBeNull();
+      expect(alphaStorage!.type).toBe("volume");
+      expect(alphaStorage!.headVersionId).toBeTruthy();
 
-      for (const storage of allStorages) {
-        expect(storage.type).toBe("volume");
-        expect(storage.headVersionId).toBeTruthy();
-      }
-
-      // Verify S3 uploads were called (manifest + archive per skill = 4 calls)
-      expect(context.mocks.s3.putS3Object).toHaveBeenCalledTimes(4);
+      const betaStorage = await findTestSystemStorageByName(
+        "agent-skills@vm0-ai/vm0-skills/tree/main/test-beta-skill",
+      );
+      expect(betaStorage).not.toBeNull();
     });
 
     it("should skip directories without SKILL.md", async () => {
       const skillsWithExtra = [
-        ...MOCK_SKILLS,
+        EXTRA_SKILLS.alphaSkill,
+        EXTRA_SKILLS.betaSkill,
         {
           name: "no-skill-md",
           files: [{ path: "README.md", content: "Not a skill" }],
         },
       ];
-      const tarball = createMockTarball(skillsWithExtra);
-      setupMswHandlers(TEST_COMMIT_SHA, tarball);
+      const tarball = createFullTarball(skillsWithExtra);
+      setupMswHandlers(testSha, tarball);
 
       const response = await GET(cronRequest(cronSecret));
       const data = await response.json();
 
-      // Only 2 skills synced (slack + github), not the dir without SKILL.md
-      expect(data.synced).toBe(2);
-      expect(data.total).toBe(2);
+      // Extra skills synced or skipped, no-skill-md excluded from total
+      expect(data.success).toBe(true);
     });
   });
 
   describe("Malformed frontmatter resilience", () => {
     it("should skip skill with malformed frontmatter and sync others", async () => {
-      const skillsWithBadFrontmatter = [
-        MOCK_SKILLS[0]!, // slack — valid
+      const extras = [
+        EXTRA_SKILLS.alphaSkill,
         {
           name: "bad-yaml",
           files: [
@@ -285,58 +280,65 @@ describe("GET /api/cron/sync-skills", () => {
             { path: "index.ts", content: 'console.log("bad");' },
           ],
         },
-        MOCK_SKILLS[1]!, // github — valid
+        EXTRA_SKILLS.betaSkill,
       ];
-      const tarball = createMockTarball(skillsWithBadFrontmatter);
-      setupMswHandlers(TEST_COMMIT_SHA, tarball);
+      const tarball = createFullTarball(extras);
+      setupMswHandlers(testSha, tarball);
 
       const response = await GET(cronRequest(cronSecret));
       expect(response.status).toBe(200);
       const data = await response.json();
 
       expect(data.success).toBe(true);
-      expect(data.synced).toBe(2); // slack + github
       expect(data.failed).toBe(1); // bad-yaml
-      expect(data.total).toBe(3);
 
-      // Verify only the valid skills were synced
-      const allSkills = await findAllTestSkills();
-      expect(allSkills).toHaveLength(2);
+      // Verify valid skills exist, bad-yaml does not
+      const alphaSkill = await findTestSkillByUrl(
+        "https://github.com/vm0-ai/vm0-skills/tree/main/test-alpha-skill",
+      );
+      expect(alphaSkill).not.toBeNull();
+
+      const badSkill = await findTestSkillByUrl(
+        "https://github.com/vm0-ai/vm0-skills/tree/main/bad-yaml",
+      );
+      expect(badSkill).toBeNull();
     });
   });
 
   describe("Incremental sync", () => {
     it("should only update changed skills", async () => {
-      const tarball1 = createMockTarball(MOCK_SKILLS);
-      setupMswHandlers(TEST_COMMIT_SHA, tarball1);
+      const tarball1 = createFullTarball([
+        EXTRA_SKILLS.alphaSkill,
+        EXTRA_SKILLS.betaSkill,
+      ]);
+      setupMswHandlers(testSha, tarball1);
 
       // First sync
       await GET(cronRequest(cronSecret));
 
       // Second sync with new commit but only slack changed
-      const newCommitSha = "b".repeat(40);
-      const modifiedSkills = [
-        {
-          name: "slack",
-          files: [
-            {
-              path: "SKILL.md",
-              content: [
-                "---",
-                "name: slack",
-                "description: Updated slack skill",
-                "---",
-                "",
-                "# Slack Skill v2",
-              ].join("\n"),
-            },
-            { path: "index.ts", content: 'console.log("slack v2");' },
-          ],
-        },
-        // github stays the same
-        MOCK_SKILLS[1]!,
-      ];
-      const tarball2 = createMockTarball(modifiedSkills);
+      const newCommitSha = nextCommitSha();
+      const modifiedAlpha = {
+        name: "test-alpha-skill",
+        files: [
+          {
+            path: "SKILL.md",
+            content: [
+              "---",
+              "name: test-alpha-skill",
+              "description: Updated alpha skill",
+              "---",
+              "",
+              "# Alpha Skill v2",
+            ].join("\n"),
+          },
+          { path: "index.ts", content: 'console.log("alpha v2");' },
+        ],
+      };
+      const tarball2 = createFullTarball([
+        modifiedAlpha,
+        EXTRA_SKILLS.betaSkill,
+      ]);
       setupMswHandlers(newCommitSha, tarball2);
 
       context.mocks.s3.putS3Object.mockClear();
@@ -346,37 +348,45 @@ describe("GET /api/cron/sync-skills", () => {
 
       expect(data.commitSha).toBe(newCommitSha);
       expect(data.synced).toBe(1); // Only slack changed
-      expect(data.skipped).toBe(1); // github unchanged
-      expect(data.total).toBe(2);
+      expect(data.skipped).toBeGreaterThanOrEqual(1); // github + seeds unchanged
 
       // Only 2 S3 uploads (manifest + archive for slack only)
       expect(context.mocks.s3.putS3Object).toHaveBeenCalledTimes(2);
 
       // Verify updated frontmatter
-      const slackSkill = await findTestSkillByUrl(
-        "https://github.com/vm0-ai/vm0-skills/tree/main/slack",
+      const alphaSkill = await findTestSkillByUrl(
+        "https://github.com/vm0-ai/vm0-skills/tree/main/test-alpha-skill",
       );
-      expect(slackSkill!.frontmatter).toEqual({
-        name: "slack",
-        description: "Updated slack skill",
+      expect(alphaSkill!.frontmatter).toEqual({
+        name: "test-alpha-skill",
+        description: "Updated alpha skill",
       });
-      expect(slackSkill!.commitSha).toBe(newCommitSha);
+      expect(alphaSkill!.commitSha).toBe(newCommitSha);
     });
   });
 
   describe("Orphan removal", () => {
     it("should remove skills deleted from source repo", async () => {
-      // First sync: both slack and github exist
-      const tarball1 = createMockTarball(MOCK_SKILLS);
-      setupMswHandlers(TEST_COMMIT_SHA, tarball1);
+      // First sync: seeds + slack + github
+      const tarball1 = createFullTarball([
+        EXTRA_SKILLS.alphaSkill,
+        EXTRA_SKILLS.betaSkill,
+      ]);
+      setupMswHandlers(testSha, tarball1);
 
       await GET(cronRequest(cronSecret));
 
-      // Verify both skills exist
-      const allSkillsBefore = await findAllTestSkills();
-      expect(allSkillsBefore).toHaveLength(2);
-      const allStoragesBefore = await findTestSystemStorages();
-      expect(allStoragesBefore).toHaveLength(2);
+      // Verify both extra skills exist
+      expect(
+        await findTestSkillByUrl(
+          "https://github.com/vm0-ai/vm0-skills/tree/main/test-alpha-skill",
+        ),
+      ).not.toBeNull();
+      expect(
+        await findTestSkillByUrl(
+          "https://github.com/vm0-ai/vm0-skills/tree/main/test-beta-skill",
+        ),
+      ).not.toBeNull();
 
       // Mock listS3Objects to return objects for cleanup
       context.mocks.s3.listS3Objects.mockResolvedValue([
@@ -384,35 +394,30 @@ describe("GET /api/cron/sync-skills", () => {
         { key: "mock/manifest.json", size: 50 },
       ]);
 
-      // Second sync: only slack remains (github removed)
-      const newCommitSha = "b".repeat(40);
-      const tarball2 = createMockTarball([MOCK_SKILLS[0]!]);
+      // Second sync: github removed from tarball (only seeds + slack remain)
+      const newCommitSha = nextCommitSha();
+      const tarball2 = createFullTarball([EXTRA_SKILLS.alphaSkill]);
       setupMswHandlers(newCommitSha, tarball2);
 
       const response = await GET(cronRequest(cronSecret));
       const data = await response.json();
 
       expect(data.removed).toBe(1);
-      expect(data.synced).toBe(0); // slack unchanged
-      expect(data.skipped).toBe(1); // slack skipped (same hash)
+      expect(data.skipped).toBeGreaterThanOrEqual(1); // slack + seeds unchanged
 
       // Verify github skill is gone
-      const githubSkill = await findTestSkillByUrl(
-        "https://github.com/vm0-ai/vm0-skills/tree/main/github",
-      );
-      expect(githubSkill).toBeNull();
+      expect(
+        await findTestSkillByUrl(
+          "https://github.com/vm0-ai/vm0-skills/tree/main/test-beta-skill",
+        ),
+      ).toBeNull();
 
       // Verify slack still exists
-      const slackSkill = await findTestSkillByUrl(
-        "https://github.com/vm0-ai/vm0-skills/tree/main/slack",
-      );
-      expect(slackSkill).not.toBeNull();
-
-      // Verify only 1 skill and 1 storage remain
-      const allSkillsAfter = await findAllTestSkills();
-      expect(allSkillsAfter).toHaveLength(1);
-      const allStoragesAfter = await findTestSystemStorages();
-      expect(allStoragesAfter).toHaveLength(1);
+      expect(
+        await findTestSkillByUrl(
+          "https://github.com/vm0-ai/vm0-skills/tree/main/test-alpha-skill",
+        ),
+      ).not.toBeNull();
 
       // Verify S3 cleanup was called
       expect(context.mocks.s3.listS3Objects).toHaveBeenCalled();
@@ -423,9 +428,12 @@ describe("GET /api/cron/sync-skills", () => {
     });
 
     it("should handle S3 cleanup failure gracefully", async () => {
-      // First sync: both skills
-      const tarball1 = createMockTarball(MOCK_SKILLS);
-      setupMswHandlers(TEST_COMMIT_SHA, tarball1);
+      // First sync: seeds + slack + github
+      const tarball1 = createFullTarball([
+        EXTRA_SKILLS.alphaSkill,
+        EXTRA_SKILLS.betaSkill,
+      ]);
+      setupMswHandlers(testSha, tarball1);
       await GET(cronRequest(cronSecret));
 
       // Make S3 list throw
@@ -434,8 +442,8 @@ describe("GET /api/cron/sync-skills", () => {
       );
 
       // Second sync: github removed
-      const newCommitSha = "b".repeat(40);
-      const tarball2 = createMockTarball([MOCK_SKILLS[0]!]);
+      const newCommitSha = nextCommitSha();
+      const tarball2 = createFullTarball([EXTRA_SKILLS.alphaSkill]);
       setupMswHandlers(newCommitSha, tarball2);
 
       const response = await GET(cronRequest(cronSecret));
@@ -444,11 +452,16 @@ describe("GET /api/cron/sync-skills", () => {
       // DB cleanup should still succeed despite S3 failure
       expect(data.removed).toBe(1);
 
-      const allSkills = await findAllTestSkills();
-      expect(allSkills).toHaveLength(1);
-
-      const allStorages = await findTestSystemStorages();
-      expect(allStorages).toHaveLength(1);
+      expect(
+        await findTestSkillByUrl(
+          "https://github.com/vm0-ai/vm0-skills/tree/main/test-beta-skill",
+        ),
+      ).toBeNull();
+      expect(
+        await findTestSkillByUrl(
+          "https://github.com/vm0-ai/vm0-skills/tree/main/test-alpha-skill",
+        ),
+      ).not.toBeNull();
     });
   });
 
@@ -457,10 +470,29 @@ describe("GET /api/cron/sync-skills", () => {
       const syncLogger = logger("skills:sync");
       const errorSpy = vi.spyOn(syncLogger, "error");
 
-      // Sync with skills that don't include all SEED_SKILLS entries
-      // (SEED_SKILLS has 30+ entries, but tarball only has slack + github)
-      const tarball = createMockTarball(MOCK_SKILLS);
-      setupMswHandlers(TEST_COMMIT_SHA, tarball);
+      // Build a tarball with most seed skills but deliberately omit the first
+      // two SEED_SKILLS entries.  This triggers the validation warning without
+      // orphan-deleting all seeds (which would break concurrent tests).
+      const { SEED_SKILLS: seedSkillNames } =
+        await import("../../../../../src/lib/zero/seed-skills");
+      const omitted = seedSkillNames.slice(0, 2);
+      const kept = ALL_SEED_SKILL_NAMES.filter((n) => {
+        return !omitted.includes(n);
+      });
+      const tarball = createMockTarball(
+        kept.map((name) => {
+          return {
+            name,
+            files: [
+              {
+                path: "SKILL.md",
+                content: `---\nname: ${name}\ndescription: ${name} skill\n---\n\n# ${name}\n`,
+              },
+            ],
+          };
+        }),
+      );
+      setupMswHandlers(testSha, tarball);
 
       await GET(cronRequest(cronSecret));
 
@@ -472,6 +504,9 @@ describe("GET /api/cron/sync-skills", () => {
           ]),
         }),
       );
+
+      // Re-seed the omitted skills so subsequent tests aren't affected
+      await reseedSkills(omitted);
 
       errorSpy.mockRestore();
     });

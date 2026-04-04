@@ -56,7 +56,7 @@
       }
     },
     {
-      "files": ["**/__tests__/**/*.{ts,tsx}"],
+      "files": ["**/__tests__/**/*.{ts,tsx}", "src/test/mocks/**/*.{ts,tsx}"],
       "plugins": ["jest", "vitest"],
       "rules": {
         "no-restricted-imports": "allow",

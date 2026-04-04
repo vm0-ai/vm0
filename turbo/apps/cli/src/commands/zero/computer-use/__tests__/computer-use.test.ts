@@ -108,7 +108,7 @@ describe("computer-use command visibility", () => {
     expect(subNames).toContain("client");
   });
 
-  it("should have start under host subcommand", () => {
+  it("should have start and stop under host subcommand", () => {
     const prog = new Command();
     registerZeroCommands(prog);
 
@@ -124,6 +124,7 @@ describe("computer-use command visibility", () => {
       return c.name();
     });
     expect(hostSubs).toContain("start");
+    expect(hostSubs).toContain("stop");
   });
 
   it("should have screenshot, info, mouse, scroll, clipboard, and keyboard commands under client subcommand", () => {

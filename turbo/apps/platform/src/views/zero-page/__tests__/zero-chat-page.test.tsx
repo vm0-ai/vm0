@@ -40,13 +40,13 @@ describe("zero chat page - suggested prompts", () => {
   it("should render suggested prompt cards from the use case dataset", async () => {
     await renderChatPage();
 
-    const exploreButton = await waitFor(() => {
-      return screen.getByRole("button", { name: /Ideas & use cases/ });
+    const exploreText = await waitFor(() => {
+      return screen.getByText(/Ideas & use cases/);
     });
-    expect(exploreButton).toBeInTheDocument();
+    expect(exploreText).toBeInTheDocument();
 
-    // The prompt grid is the parent of the "Ideas & use cases" button
-    const promptGrid = exploreButton.parentElement!;
+    // The prompt grid is the grandparent: <p> → <button> → <div.grid>
+    const promptGrid = exploreText.closest("button")!.parentElement!;
     const gridButtons = within(promptGrid).getAllByRole("button");
 
     // 2 random prompt cards + 1 "Ideas & use cases" card
@@ -69,10 +69,10 @@ describe("zero chat page - suggested prompts", () => {
     const user = userEvent.setup();
     await renderChatPage();
 
-    const exploreButton = await waitFor(() => {
-      return screen.getByRole("button", { name: /Ideas & use cases/ });
+    const exploreText = await waitFor(() => {
+      return screen.getByText(/Ideas & use cases/);
     });
-    const promptGrid = exploreButton.parentElement!;
+    const promptGrid = exploreText.closest("button")!.parentElement!;
     const gridButtons = within(promptGrid).getAllByRole("button");
 
     // Find the first random prompt card (not "Ideas & use cases")
@@ -114,7 +114,7 @@ describe("zero chat page - composer", () => {
     await renderChatPage();
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Send" })).toBeInTheDocument();
+      expect(screen.getByLabelText("Send")).toBeInTheDocument();
     });
   });
 
@@ -122,18 +122,14 @@ describe("zero chat page - composer", () => {
     await renderChatPage();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Attach" }),
-      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Attach")).toBeInTheDocument();
     });
   });
 
   it("should have accessible name on connectors button", async () => {
     await renderChatPage();
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Connectors" }),
-      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Connectors")).toBeInTheDocument();
     });
   });
 
@@ -141,7 +137,7 @@ describe("zero chat page - composer", () => {
     await renderChatPage();
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+      expect(screen.getByLabelText("Send")).toBeDisabled();
     });
   });
 
@@ -159,7 +155,7 @@ describe("zero chat page - composer", () => {
     await user.type(textarea, "Hello");
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Send" })).not.toBeDisabled();
+      expect(screen.getByLabelText("Send")).not.toBeDisabled();
     });
   });
 });
@@ -170,7 +166,7 @@ describe("zero chat page - file input ref", () => {
     await renderChatPage();
 
     const attachButton = await waitFor(() => {
-      return screen.getByRole("button", { name: "Attach" });
+      return screen.getByLabelText("Attach");
     });
 
     // The hidden file input should exist in the DOM
@@ -197,7 +193,7 @@ describe("zero chat page - connectors popover", () => {
     await renderChatPage();
 
     const connectorsButton = await waitFor(() => {
-      return screen.getByRole("button", { name: "Connectors" });
+      return screen.getByLabelText("Connectors");
     });
 
     await user.click(connectorsButton);
@@ -220,7 +216,7 @@ describe("zero chat page - connectors popover", () => {
     await renderChatPage();
 
     const connectorsButton = await waitFor(() => {
-      return screen.getByRole("button", { name: "Connectors" });
+      return screen.getByLabelText("Connectors");
     });
     await user.click(connectorsButton);
 
@@ -238,7 +234,9 @@ describe("zero chat page - connectors popover", () => {
 
     // Default mock has no org connectors, so all types are unconnected.
     // Check that at least one "Connect X" button exists.
-    const connectButtons = screen.getAllByRole("button", { name: /^Connect / });
+    const connectButtons = screen.getAllByRole("button").filter((el) => {
+      return (el.getAttribute("aria-label") ?? "").startsWith("Connect ");
+    });
     expect(connectButtons.length).toBeGreaterThan(0);
   });
 
@@ -247,7 +245,7 @@ describe("zero chat page - connectors popover", () => {
     await renderChatPage();
 
     const connectorsButton = await waitFor(() => {
-      return screen.getByRole("button", { name: "Connectors" });
+      return screen.getByLabelText("Connectors");
     });
     await user.click(connectorsButton);
 
@@ -262,9 +260,7 @@ describe("zero chat page - connectors popover", () => {
 
     // Before filtering: GitHub should be visible
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Connect GitHub" }),
-      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Connect GitHub")).toBeInTheDocument();
     });
 
     // Type a filter that won't match GitHub
@@ -272,12 +268,8 @@ describe("zero chat page - connectors popover", () => {
     await user.type(searchInput, "Slack");
 
     await waitFor(() => {
-      expect(
-        screen.queryByRole("button", { name: "Connect GitHub" }),
-      ).not.toBeInTheDocument();
-      expect(
-        screen.getByRole("button", { name: "Connect Slack" }),
-      ).toBeInTheDocument();
+      expect(screen.queryByLabelText("Connect GitHub")).not.toBeInTheDocument();
+      expect(screen.getByLabelText("Connect Slack")).toBeInTheDocument();
     });
   });
 
@@ -328,7 +320,7 @@ describe("zero chat page - connectors popover", () => {
 
     const user = userEvent.setup();
     const connectorsButton = await waitFor(() => {
-      return screen.getByRole("button", { name: "Connectors" });
+      return screen.getByLabelText("Connectors");
     });
     await user.click(connectorsButton);
 
@@ -402,7 +394,7 @@ describe("zero chat page - connector label casing", () => {
     await setupPage({ context, path: "/" });
 
     const connectorsButton = await waitFor(() => {
-      return screen.getByRole("button", { name: "Connectors" });
+      return screen.getByLabelText("Connectors");
     });
 
     await user.click(connectorsButton);
@@ -431,7 +423,7 @@ describe("zero chat page - invite button", () => {
 
     // Wait for the page to fully load before checking the invite button
     await waitFor(() => {
-      return screen.getByRole("button", { name: /Ideas & use cases/ });
+      return screen.getByText(/Ideas & use cases/);
     });
 
     const button = screen.getByTestId("invite-button");
@@ -444,7 +436,7 @@ describe("zero chat page - invite button", () => {
 
     // Wait for the page to fully load before checking the invite button
     await waitFor(() => {
-      return screen.getByRole("button", { name: /Ideas & use cases/ });
+      return screen.getByText(/Ideas & use cases/);
     });
 
     // Button is always in DOM; wait for aria-hidden to be removed once admin state resolves
@@ -460,9 +452,7 @@ describe("zero chat page - agent avatar and greeting", () => {
     await renderChatPage();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("link", { name: "View agent profile" }),
-      ).toBeInTheDocument();
+      expect(screen.getByLabelText("View agent profile")).toBeInTheDocument();
     });
   });
 
@@ -470,7 +460,7 @@ describe("zero chat page - agent avatar and greeting", () => {
     await renderChatPage();
 
     const link = await waitFor(() => {
-      return screen.getByRole("link", { name: "View agent profile" });
+      return screen.getByLabelText("View agent profile");
     });
     expect(link).toHaveAttribute(
       "href",
@@ -502,9 +492,9 @@ describe("zero chat page - ideation page", () => {
     });
 
     // Category tabs should be visible
-    expect(screen.getByRole("button", { name: "All" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Reports" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "GitHub" })).toBeInTheDocument();
+    expect(screen.getByText("All")).toBeInTheDocument();
+    expect(screen.getAllByText("Reports").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("GitHub").length).toBeGreaterThan(0);
   });
 
   async function navigateToIdeation(user: ReturnType<typeof userEvent.setup>) {
@@ -528,7 +518,11 @@ describe("zero chat page - ideation page", () => {
     await navigateToIdeation(user);
 
     // Click a specific category tab
-    await user.click(screen.getByRole("button", { name: "GitHub" }));
+    const githubCategoryBtn = screen.getAllByRole("button").find((el) => {
+      return el.textContent?.trim() === "GitHub";
+    });
+    expect(githubCategoryBtn).toBeDefined();
+    await user.click(githubCategoryBtn!);
 
     await waitFor(() => {
       // The selected category heading should be visible

@@ -69,9 +69,7 @@ describe("talk to activity agent retention", () => {
     });
 
     // Click the "Activity logs" nav tab in the sidebar
-    const activityNavLink = screen.getByRole("link", {
-      name: "Activity logs",
-    });
+    const activityNavLink = screen.getByText("Activity logs");
     await user.click(activityNavLink);
 
     // Wait for navigation to /activity to complete

@@ -116,10 +116,7 @@ function GlobalConnectorCard({
   })();
 
   return (
-    <div
-      className="flex flex-col rounded-[var(--zero-card-radius)] bg-card shadow-[var(--zero-card-shadow)]"
-      style={{ border: "0.7px solid hsl(var(--gray-400))" }}
-    >
+    <div className="zero-card flex flex-col">
       <div className="flex h-14 items-center gap-2.5 px-5">
         <span className="flex h-5 w-5 shrink-0 items-center justify-center">
           {connector.type in CONNECTOR_TYPES ? (
@@ -172,10 +169,7 @@ function AvailableConnectorCard({
   onConnect: () => void;
 }) {
   return (
-    <div
-      className="rounded-[var(--zero-card-radius)] bg-card overflow-hidden"
-      style={{ border: "0.7px solid hsl(var(--gray-400))" }}
-    >
+    <div className="zero-card cursor-pointer overflow-hidden">
       <div className="flex items-center gap-2.5 px-5 pt-4 pb-1">
         <span className="flex h-5 w-5 shrink-0 items-center justify-center">
           {connector.type in CONNECTOR_TYPES ? (
@@ -399,7 +393,7 @@ export function ZeroConnectorsPage() {
                   <div
                     key={i}
                     data-testid="connector-skeleton"
-                    className="flex flex-col rounded-[var(--zero-card-radius)] border border-border/50 bg-card animate-pulse"
+                    className="zero-card flex flex-col animate-pulse"
                   >
                     <div className="flex h-14 items-center gap-2.5 px-5">
                       <span className="h-5 w-5 shrink-0 rounded-lg bg-muted/50" />

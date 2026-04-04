@@ -60,9 +60,7 @@ describe("works page - slack integration status display", () => {
     // When data is loaded and the user is connected+admin, the More options button
     // appears — confirming the Slack card rendered with integration status.
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "More options" }),
-      ).toBeInTheDocument();
+      expect(screen.getByLabelText("More options")).toBeInTheDocument();
     });
   });
 
@@ -88,9 +86,7 @@ describe("works page - slack integration status display", () => {
     await renderWorksPage();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /update permissions/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/update permissions/i)).toBeInTheDocument();
     });
   });
 });
@@ -106,9 +102,7 @@ describe("works page - install and connect button visibility", () => {
     await renderWorksPage();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /install to slack/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/install to slack/i)).toBeInTheDocument();
     });
   });
 
@@ -122,9 +116,7 @@ describe("works page - install and connect button visibility", () => {
     await renderWorksPage();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /^connect$/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/^connect$/i)).toBeInTheDocument();
     });
   });
 });
@@ -145,12 +137,10 @@ describe("works page - install to slack interaction", () => {
     await renderWorksPage();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /install to slack/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/install to slack/i)).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: /install to slack/i }));
+    await user.click(screen.getByText(/install to slack/i));
 
     expect(openSpy).toHaveBeenCalledWith(
       expect.stringContaining("slack.com/oauth/install"),
@@ -166,20 +156,14 @@ describe("works page - more options dropdown", () => {
     await renderWorksPage();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "More options" }),
-      ).toBeInTheDocument();
+      expect(screen.getByLabelText("More options")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: "More options" }));
+    await user.click(screen.getByLabelText("More options"));
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Disconnect" }),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByRole("button", { name: "Uninstall" }),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Disconnect")).toBeInTheDocument();
+      expect(screen.getByText("Uninstall")).toBeInTheDocument();
     });
   });
 
@@ -189,27 +173,19 @@ describe("works page - more options dropdown", () => {
     await renderWorksPage();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "More options" }),
-      ).toBeInTheDocument();
+      expect(screen.getByLabelText("More options")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: "More options" }));
+    await user.click(screen.getByLabelText("More options"));
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Uninstall" }),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Uninstall")).toBeInTheDocument();
     });
-    await user.click(screen.getByRole("button", { name: "Uninstall" }));
+    await user.click(screen.getByText("Uninstall"));
 
     const dialog = await screen.findByRole("dialog");
-    expect(
-      within(dialog).getByRole("button", { name: /cancel/i }),
-    ).toBeInTheDocument();
-    expect(
-      within(dialog).getByRole("button", { name: /uninstall/i }),
-    ).toBeInTheDocument();
+    expect(within(dialog).getByText(/cancel/i)).toBeInTheDocument();
+    expect(within(dialog).getAllByText(/uninstall/i).length).toBeGreaterThan(0);
   });
 
   it("clicking Disconnect calls the disconnect API (CONN-I-066)", async () => {
@@ -230,19 +206,15 @@ describe("works page - more options dropdown", () => {
     await renderWorksPage();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "More options" }),
-      ).toBeInTheDocument();
+      expect(screen.getByLabelText("More options")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: "More options" }));
+    await user.click(screen.getByLabelText("More options"));
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Disconnect" }),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Disconnect")).toBeInTheDocument();
     });
-    await user.click(screen.getByRole("button", { name: "Disconnect" }));
+    await user.click(screen.getByText("Disconnect"));
 
     await waitFor(() => {
       expect(disconnectCalled).toBeTruthy();
@@ -267,14 +239,10 @@ describe("works page - update permissions interaction", () => {
     await renderWorksPage();
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: /update permissions/i }),
-      ).toBeInTheDocument();
+      expect(screen.getByText(/update permissions/i)).toBeInTheDocument();
     });
 
-    await user.click(
-      screen.getByRole("button", { name: /update permissions/i }),
-    );
+    await user.click(screen.getByText(/update permissions/i));
 
     expect(openSpy).toHaveBeenCalledWith(
       expect.stringContaining("slack.com/oauth/reinstall"),

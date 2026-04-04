@@ -77,7 +77,7 @@ pub struct RootfsArgs {
         arg(long, help = "Path to guest-mock-claude binary (required)")
     )]
     guest_mock_claude: Option<PathBuf>,
-    /// Profile to build (determines Dockerfile)
+    /// Profile to build (determines VM resources and disk size)
     #[arg(long)]
     pub profile: String,
     /// Compute and print the input hash without building
@@ -118,7 +118,6 @@ async fn resolve_guest(
 /// Build rootfs and return the content hash of the inputs.
 pub async fn run_rootfs(args: RootfsArgs) -> RunnerResult<String> {
     let def = profile::get(&args.profile)?;
-    let dockerfile = def.dockerfile;
     let disk_mb = def.disk_mb;
     let dry_run = args.dry_run;
 
@@ -146,9 +145,9 @@ pub async fn run_rootfs(args: RootfsArgs) -> RunnerResult<String> {
         ),
     ];
 
-    // Compute input hash: script + dockerfile + guest binaries + disk size.
+    // Compute input hash: script + guest binaries + disk size.
     // The build script content is included so any logic change invalidates cache.
-    let hash = compute_input_hash(dockerfile, &bins, disk_mb).await?;
+    let hash = compute_input_hash(&bins, disk_mb).await?;
     tracing::info!("rootfs input hash: {hash}");
     // Machine-readable output — do not change format without updating consumers
     println!("rootfs_hash={hash}");
@@ -188,7 +187,7 @@ pub async fn run_rootfs(args: RootfsArgs) -> RunnerResult<String> {
         .await
         .map_err(|e| RunnerError::Internal(format!("create {}: {e}", output_dir.display())))?;
 
-    // Write scripts and Dockerfile to a temp directory
+    // Write scripts to a temp directory
     let work_dir =
         tempfile::tempdir().map_err(|e| RunnerError::Internal(format!("create temp dir: {e}")))?;
     tokio::fs::write(work_dir.path().join("build-rootfs.sh"), BUILD_SCRIPT)
@@ -197,19 +196,20 @@ pub async fn run_rootfs(args: RootfsArgs) -> RunnerResult<String> {
     tokio::fs::write(work_dir.path().join("verify-rootfs.sh"), VERIFY_SCRIPT)
         .await
         .map_err(|e| RunnerError::Internal(format!("write verify script: {e}")))?;
-    tokio::fs::write(work_dir.path().join("Dockerfile"), dockerfile)
-        .await
-        .map_err(|e| RunnerError::Internal(format!("write Dockerfile: {e}")))?;
 
     // Run build script with stdout/stderr inherited (visible to the user)
     let script_path = work_dir.path().join("build-rootfs.sh");
     let output_dir_str = output_dir.to_string_lossy();
-    let work_dir_str = work_dir.path().to_string_lossy();
     let guest_agent_str = guest_agent.to_string_lossy();
     let guest_download_str = guest_download.to_string_lossy();
     let guest_init_str = guest_init.to_string_lossy();
     let guest_mock_claude_str = guest_mock_claude.to_string_lossy();
     let ca_dir_str = paths.ca_dir().to_string_lossy().to_string();
+    let debootstrap_dir = paths.debootstrap_dir();
+    tokio::fs::create_dir_all(&debootstrap_dir)
+        .await
+        .map_err(|e| RunnerError::Internal(format!("create {}: {e}", debootstrap_dir.display())))?;
+    let debootstrap_dir_str = debootstrap_dir.to_string_lossy().to_string();
     let disk_mb_str = disk_mb.to_string();
 
     let status = tokio::process::Command::new("bash")
@@ -217,10 +217,10 @@ pub async fn run_rootfs(args: RootfsArgs) -> RunnerResult<String> {
         .args([
             "--output-dir",
             &output_dir_str,
-            "--work-dir",
-            &work_dir_str,
             "--ca-dir",
             &ca_dir_str,
+            "--debootstrap-dir",
+            &debootstrap_dir_str,
             "--hash",
             &hash,
             "--disk-mb",
@@ -324,25 +324,17 @@ async fn is_build_complete(rootfs: &RootfsPaths) -> RunnerResult<bool> {
     Ok(true)
 }
 
-/// Hash all deterministic inputs: build script, Dockerfile, and guest binaries.
-async fn compute_input_hash(
-    dockerfile: &str,
-    guest_bins: &[(&Path, &str)],
-    disk_mb: u32,
-) -> RunnerResult<String> {
+/// Hash all deterministic inputs: build script and guest binaries.
+async fn compute_input_hash(guest_bins: &[(&Path, &str)], disk_mb: u32) -> RunnerResult<String> {
     let mut hasher = Sha256::new();
 
     // Cache version seed — bump ROOTFS_CACHE_VERSION to force invalidation.
     hasher.update(b"version:");
     hasher.update(ROOTFS_CACHE_VERSION.to_le_bytes());
 
-    // Hash build script content (includes resolv.conf, constants, all logic)
+    // Hash build script content (includes package list, constants, all logic)
     hasher.update(b"script:");
     hasher.update(BUILD_SCRIPT.as_bytes());
-
-    // Hash Dockerfile content
-    hasher.update(b"dockerfile:");
-    hasher.update(dockerfile.as_bytes());
 
     // Hash disk size
     hasher.update(b"disk_mb:");
