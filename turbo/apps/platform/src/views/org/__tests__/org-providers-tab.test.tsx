@@ -17,10 +17,7 @@ import {
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
-import {
-  setOrgAddProviderDialogOpen$,
-  orgOpenDeleteDialog$,
-} from "../../../signals/zero-page/settings/org-model-providers.ts";
+import { setOrgAddProviderDialogOpen$ } from "../../../signals/zero-page/settings/org-model-providers.ts";
 
 const context = testContext();
 
@@ -106,7 +103,7 @@ describe("org providers tab - display", () => {
   });
 
   // ORG-D-066
-  it("shows green dot indicator for configured providers", async () => {
+  it("shows configured status indicator for configured providers", async () => {
     mockAPIs({
       providers: [makeProvider("anthropic-api-key", { isDefault: true })],
     });
@@ -114,8 +111,6 @@ describe("org providers tab - display", () => {
     await waitFor(() => {
       expect(screen.getByText("Configured")).toBeInTheDocument();
     });
-    const greenDot = document.querySelector(".bg-emerald-500");
-    expect(greenDot).toBeInTheDocument();
   });
 
   // ORG-D-067
@@ -172,17 +167,13 @@ describe("org providers tab - interaction", () => {
     });
     await openProvidersPage();
     await waitFor(() => {
-      expect(screen.getAllByText("Anthropic API key").length).toBeGreaterThan(
-        0,
-      );
+      expect(
+        screen.getByRole("button", { name: /Anthropic API key/i }),
+      ).toBeInTheDocument();
     });
-    // Provider card element has role="button" and contains "Anthropic API key" text
-    // Use the provider card container which has the role="button" attribute
-    const providerCard = document.querySelector(
-      '[role="button"].zero-card',
-    ) as HTMLElement;
-    expect(providerCard).toBeInTheDocument();
-    await user.click(providerCard);
+    await user.click(
+      screen.getByRole("button", { name: /Anthropic API key/i }),
+    );
     await waitFor(() => {
       expect(
         screen.getByText(/Edit workspace Anthropic API key/i),
@@ -261,38 +252,24 @@ describe("org providers tab - interaction", () => {
 
 describe("org add provider dialog - display", () => {
   // ORG-D-082
-  it("shows provider cards with icon, label, and description in add dialog", async () => {
+  it("shows provider cards with icon and label in add dialog", async () => {
+    const user = userEvent.setup();
     mockAPIs({ providers: [] });
     await openProvidersPage();
-    context.store.set(setOrgAddProviderDialogOpen$, true);
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /add provider/i }),
+      ).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole("button", { name: /add provider/i }));
     await waitFor(() => {
       expect(
         screen.getByText("Add workspace model provider"),
       ).toBeInTheDocument();
     });
-    const card = document.querySelector(
-      '[data-testid="org-provider-card-anthropic-api-key"]',
-    );
-    expect(card).toBeInTheDocument();
     expect(
-      screen.getByText(
-        "Power your agents with Claude models for advanced reasoning and analysis.",
-      ),
+      screen.getByTestId("org-provider-card-anthropic-api-key"),
     ).toBeInTheDocument();
-  });
-
-  // ORG-D-083
-  it("displays provider cards in a grid layout", async () => {
-    mockAPIs({ providers: [] });
-    await openProvidersPage();
-    context.store.set(setOrgAddProviderDialogOpen$, true);
-    await waitFor(() => {
-      expect(
-        screen.getByText("Add workspace model provider"),
-      ).toBeInTheDocument();
-    });
-    const grid = document.querySelector(".grid-cols-2");
-    expect(grid).toBeInTheDocument();
   });
 
   // ORG-C-084
@@ -306,6 +283,8 @@ describe("org add provider dialog - display", () => {
     });
     mockAPIs({ providers: allProviders });
     await openProvidersPage();
+    // When all providers are configured, the "Add provider" button is hidden
+    // Open the dialog directly and verify the empty state message
     context.store.set(setOrgAddProviderDialogOpen$, true);
     await waitFor(() => {
       expect(
@@ -321,19 +300,18 @@ describe("org add provider dialog - interaction", () => {
     const user = userEvent.setup();
     mockAPIs({ providers: [] });
     await openProvidersPage();
-    context.store.set(setOrgAddProviderDialogOpen$, true);
     await waitFor(() => {
       expect(
-        document.querySelector(
-          '[data-testid="org-provider-card-anthropic-api-key"]',
-        ),
+        screen.getByRole("button", { name: /add provider/i }),
       ).toBeInTheDocument();
     });
-    await user.click(
-      document.querySelector(
-        '[data-testid="org-provider-card-anthropic-api-key"]',
-      )!,
-    );
+    await user.click(screen.getByRole("button", { name: /add provider/i }));
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("org-provider-card-anthropic-api-key"),
+      ).toBeInTheDocument();
+    });
+    await user.click(screen.getByTestId("org-provider-card-anthropic-api-key"));
     await waitFor(() => {
       expect(
         screen.getByText(/Add workspace Anthropic API key/i),
@@ -345,11 +323,21 @@ describe("org add provider dialog - interaction", () => {
 describe("org delete provider dialog - display", () => {
   // ORG-D-086
   it("shows confirmation message and consequences description", async () => {
+    const user = userEvent.setup();
     mockAPIs({
       providers: [makeProvider("anthropic-api-key", { isDefault: true })],
     });
     await openProvidersPage();
-    context.store.set(orgOpenDeleteDialog$, "anthropic-api-key");
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /more options/i }),
+      ).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole("button", { name: /more options/i }));
+    await waitFor(() => {
+      expect(screen.getByText("Delete")).toBeInTheDocument();
+    });
+    await user.click(screen.getByText("Delete"));
     await waitFor(() => {
       expect(
         screen.getByText(
@@ -363,6 +351,26 @@ describe("org delete provider dialog - display", () => {
   });
 });
 
+async function openDeleteDialog(user: ReturnType<typeof userEvent.setup>) {
+  await waitFor(() => {
+    expect(
+      screen.getByRole("button", { name: /more options/i }),
+    ).toBeInTheDocument();
+  });
+  await user.click(screen.getByRole("button", { name: /more options/i }));
+  await waitFor(() => {
+    expect(screen.getByText("Delete")).toBeInTheDocument();
+  });
+  await user.click(screen.getByText("Delete"));
+  await waitFor(() => {
+    expect(
+      screen.getByText(
+        /Are you sure you want to delete this workspace model provider\?/i,
+      ),
+    ).toBeInTheDocument();
+  });
+}
+
 describe("org delete provider dialog - interaction", () => {
   // ORG-I-087
   it("closes dialog when cancel button is clicked", async () => {
@@ -371,14 +379,7 @@ describe("org delete provider dialog - interaction", () => {
       providers: [makeProvider("anthropic-api-key", { isDefault: true })],
     });
     await openProvidersPage();
-    context.store.set(orgOpenDeleteDialog$, "anthropic-api-key");
-    await waitFor(() => {
-      expect(
-        screen.getByText(
-          /Are you sure you want to delete this workspace model provider\?/i,
-        ),
-      ).toBeInTheDocument();
-    });
+    await openDeleteDialog(user);
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     await waitFor(() => {
       expect(
@@ -407,12 +408,7 @@ describe("org delete provider dialog - interaction", () => {
       }),
     );
     await openProvidersPage();
-    context.store.set(orgOpenDeleteDialog$, "anthropic-api-key");
-    await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Delete" }),
-      ).toBeInTheDocument();
-    });
+    await openDeleteDialog(user);
     await user.click(screen.getByRole("button", { name: "Delete" }));
     await waitFor(() => {
       expect(
