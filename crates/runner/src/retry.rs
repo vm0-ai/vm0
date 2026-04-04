@@ -178,9 +178,8 @@ mod tests {
             RetryState::new(Duration::from_secs(0), Duration::from_secs(60), None);
         // No restart_at → not ready
         assert!(!rs.timer_ready());
-        // Set restart_at to now (backoff is 0s)
-        rs.schedule();
-        std::thread::sleep(Duration::from_millis(1));
+        // Set restart_at to the past so it's immediately ready.
+        rs.restart_at = Some(Instant::now() - Duration::from_secs(1));
         assert!(rs.timer_ready());
     }
 

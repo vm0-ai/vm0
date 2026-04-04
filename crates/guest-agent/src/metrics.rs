@@ -189,14 +189,13 @@ mod tests {
     #[test]
     fn cpu_tracker_multiple_reads_are_consistent() {
         let mut tracker = CpuTracker::new();
-        let mut prev = 0.0;
-        for _ in 0..5 {
+        for i in 0..5 {
             let pct = tracker.get_cpu_percent();
-            assert!((0.0..=100.0).contains(&pct), "pct={pct} out of range");
-            prev = pct;
+            assert!(
+                (0.0..=100.0).contains(&pct),
+                "read {i}: pct={pct} out of range"
+            );
         }
-        // Last value should still be in valid range
-        assert!((0.0..=100.0).contains(&prev));
     }
 
     #[test]
@@ -227,21 +226,15 @@ mod tests {
     }
 
     #[test]
-    fn metrics_entry_serializes_to_json() {
-        let entry = MetricsEntry {
-            ts: "2026-01-01T00:00:00Z".to_string(),
-            cpu: 42.5,
-            mem_used: 1024,
-            mem_total: 4096,
-            disk_used: 8192,
-            disk_total: 16384,
-        };
-        let json = serde_json::to_value(&entry).unwrap();
-        assert_eq!(json["ts"], "2026-01-01T00:00:00Z");
-        assert_eq!(json["cpu"], 42.5);
-        assert_eq!(json["mem_used"], 1024);
-        assert_eq!(json["mem_total"], 4096);
-        assert_eq!(json["disk_used"], 8192);
-        assert_eq!(json["disk_total"], 16384);
+    fn collect_metrics_serializes_to_valid_jsonl() {
+        let mut tracker = CpuTracker::new();
+        let entry = collect_metrics(&mut tracker);
+        let json = serde_json::to_string(&entry).unwrap();
+        // Verify it round-trips through the same path metrics_loop uses.
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert!(parsed["ts"].is_string());
+        assert!(parsed["cpu"].is_f64());
+        assert!(parsed["mem_total"].is_u64());
+        assert!(parsed["disk_total"].is_u64());
     }
 }
