@@ -19,7 +19,7 @@ vi.mock("@vm0/core", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@vm0/core")>();
   return {
     ...actual,
-    isFeatureEnabled: vi.fn().mockResolvedValue(true),
+    isFeatureEnabled: vi.fn().mockReturnValue(true),
   };
 });
 
@@ -145,7 +145,7 @@ function createPostRequest() {
 describe("POST /api/zero/computer-use/register", () => {
   beforeEach(() => {
     context.setupMocks();
-    mockIsFeatureEnabled.mockResolvedValue(true);
+    mockIsFeatureEnabled.mockReturnValue(true);
   });
 
   it("should return 401 when not authenticated", async () => {
@@ -158,7 +158,7 @@ describe("POST /api/zero/computer-use/register", () => {
   it("should return 403 when feature flag is disabled", async () => {
     const userId = uniqueId("zcu-ff");
     await setupOrg(userId);
-    mockIsFeatureEnabled.mockResolvedValue(false);
+    mockIsFeatureEnabled.mockReturnValue(false);
 
     const response = await POST(createPostRequest());
     expect(response.status).toBe(403);
@@ -205,7 +205,7 @@ describe("POST /api/zero/computer-use/register", () => {
 describe("GET /api/zero/computer-use/host", () => {
   beforeEach(() => {
     context.setupMocks();
-    mockIsFeatureEnabled.mockResolvedValue(true);
+    mockIsFeatureEnabled.mockReturnValue(true);
   });
 
   it("should return 401 when not authenticated", async () => {
@@ -218,7 +218,7 @@ describe("GET /api/zero/computer-use/host", () => {
   it("should return 403 when feature flag is disabled", async () => {
     const userId = uniqueId("zcu-host-ff");
     await setupOrg(userId);
-    mockIsFeatureEnabled.mockResolvedValue(false);
+    mockIsFeatureEnabled.mockReturnValue(false);
 
     const response = await GET(createTestRequest(hostUrl()));
     expect(response.status).toBe(403);
@@ -251,7 +251,7 @@ describe("GET /api/zero/computer-use/host", () => {
 describe("DELETE /api/zero/computer-use/unregister", () => {
   beforeEach(() => {
     context.setupMocks();
-    mockIsFeatureEnabled.mockResolvedValue(true);
+    mockIsFeatureEnabled.mockReturnValue(true);
   });
 
   it("should return 401 when not authenticated", async () => {
@@ -266,7 +266,7 @@ describe("DELETE /api/zero/computer-use/unregister", () => {
   it("should return 403 when feature flag is disabled", async () => {
     const userId = uniqueId("zcu-unreg-ff");
     await setupOrg(userId);
-    mockIsFeatureEnabled.mockResolvedValue(false);
+    mockIsFeatureEnabled.mockReturnValue(false);
 
     const response = await DELETE(
       createTestRequest(unregisterUrl(), { method: "DELETE" }),
