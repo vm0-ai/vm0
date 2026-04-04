@@ -4,45 +4,28 @@
  * Covers AutoRechargeSection switch/input interactions and BillingDialog plan selection.
  * Entry point: setupPage({ path: "/" }) + context.store.set(setBillingDialogOpen$, true)
  */
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
-import { setMockBillingStatus } from "../../../mocks/handlers/api-billing.ts";
+import {
+  resetMockBilling,
+  setMockBillingStatus,
+} from "../../../mocks/handlers/api-billing.ts";
 import {
   downgradeDialogOpen$,
   setBillingDialogOpen$,
 } from "../../../signals/zero-page/billing.ts";
+import { mockBillingPageAPIs } from "./billing-dialog-test-helpers.ts";
 
 const context = testContext();
 
-function mockAPIs() {
-  server.use(
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
-    http.get("*/api/zero/team", () => {
-      return HttpResponse.json([
-        {
-          id: "c0000000-0000-4000-a000-000000000001",
-          name: "zero",
-          displayName: null,
-          description: null,
-          sound: null,
-          avatarUrl: null,
-          headVersionId: "version_1",
-          updatedAt: "2024-01-01T00:00:00Z",
-        },
-      ]);
-    }),
-    http.get("*/api/zero/org/logo", () => {
-      return HttpResponse.json({ logoUrl: null });
-    }),
-  );
-}
+beforeEach(() => {
+  resetMockBilling();
+});
 
 async function openBillingDialogAndWait() {
   context.store.set(setBillingDialogOpen$, true);
@@ -66,7 +49,7 @@ describe("chat-i-078: auto-recharge switch toggles enabled state", () => {
     );
 
     const user = userEvent.setup();
-    mockAPIs();
+    mockBillingPageAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -93,7 +76,7 @@ describe("chat-i-078: auto-recharge switch toggles enabled state", () => {
 
 describe("chat-s-084: auto-recharge toggle state reflects enabled value from server", () => {
   it("shows aria-checked=false when auto-recharge is disabled", async () => {
-    mockAPIs();
+    mockBillingPageAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -112,7 +95,7 @@ describe("chat-s-084: auto-recharge toggle state reflects enabled value from ser
   });
 
   it("shows aria-checked=true when auto-recharge is enabled", async () => {
-    mockAPIs();
+    mockBillingPageAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -146,7 +129,7 @@ describe("chat-i-079: threshold input updates form state on change", () => {
     );
 
     const user = userEvent.setup();
-    mockAPIs();
+    mockBillingPageAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -188,7 +171,7 @@ describe("chat-i-080: amount input updates form state on change", () => {
     );
 
     const user = userEvent.setup();
-    mockAPIs();
+    mockBillingPageAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -230,7 +213,7 @@ describe("chat-i-081: save button saves auto-recharge settings", () => {
     );
 
     const user = userEvent.setup();
-    mockAPIs();
+    mockBillingPageAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -248,7 +231,11 @@ describe("chat-i-081: save button saves auto-recharge settings", () => {
     await user.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => {
-      expect(capturedBody).toMatchObject({ enabled: true });
+      expect(capturedBody).toMatchObject({
+        enabled: true,
+        threshold: 2000,
+        amount: 5000,
+      });
     });
   });
 });
@@ -256,7 +243,7 @@ describe("chat-i-081: save button saves auto-recharge settings", () => {
 describe("chat-i-082: plan card click updates selected tier", () => {
   it("sets Team card to aria-pressed=true when clicked", async () => {
     const user = userEvent.setup();
-    mockAPIs();
+    mockBillingPageAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -297,7 +284,7 @@ describe("chat-i-083: upgrade/downgrade button triggers plan change action", () 
     );
 
     const user = userEvent.setup();
-    mockAPIs();
+    mockBillingPageAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -330,7 +317,7 @@ describe("chat-i-083: upgrade/downgrade button triggers plan change action", () 
 
   it("opens downgrade dialog when Downgrade is clicked after selecting Free", async () => {
     const user = userEvent.setup();
-    mockAPIs();
+    mockBillingPageAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
