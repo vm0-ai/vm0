@@ -22,7 +22,7 @@ function makeInvoice(overrides?: InvoiceOverrides) {
   return {
     id: overrides?.id ?? "inv_001",
     number: overrides?.number !== undefined ? overrides.number : "INV-001",
-    date: overrides?.date ?? 1700000000,
+    date: overrides?.date ?? 1_700_000_000,
     amount: overrides?.amount ?? 4999,
     status: overrides?.status !== undefined ? overrides.status : "paid",
     hostedInvoiceUrl:
@@ -111,13 +111,13 @@ describe("invoice list display", () => {
 
 // ORG-D-060
 it("formats date and amount correctly", async () => {
-  const timestamp = 1700000000;
+  const timestamp = 1_700_000_000;
   const expectedDate = new Date(timestamp * 1000).toLocaleDateString();
   mockAPIs();
   server.use(
     http.get("*/api/zero/billing/invoices", () => {
       return HttpResponse.json({
-        invoices: [makeInvoice({ date: timestamp, amount: 12050 })],
+        invoices: [makeInvoice({ date: timestamp, amount: 12_050 })],
       });
     }),
   );
@@ -179,18 +179,22 @@ it("shows empty state when no invoices exist", async () => {
 
 // ORG-D-063
 it("shows loading state while invoices load", async () => {
-  const deferred = createDeferredPromise<Response>(context.signal);
+  const deferred = createDeferredPromise<void>(context.signal);
   mockAPIs();
   server.use(
-    http.get("*/api/zero/billing/invoices", () => {
-      return deferred.promise;
+    http.get("*/api/zero/billing/invoices", async () => {
+      await deferred.promise;
+      return HttpResponse.json({ invoices: [] });
     }),
   );
   await openInvoicesTab();
   await waitFor(() => {
     expect(screen.getByText("Loading invoices...")).toBeInTheDocument();
   });
-  deferred.resolve(HttpResponse.json({ invoices: [] }) as unknown as Response);
+  deferred.resolve();
+  await waitFor(() => {
+    expect(screen.getByText("No invoices yet.")).toBeInTheDocument();
+  });
 });
 
 // ORG-I-064
@@ -212,19 +216,18 @@ it("shows tooltip when hovering download link", async () => {
       screen.getAllByRole("link").some((el) => {
         return /Download invoice/.test(el.getAttribute("aria-label") ?? "");
       }),
-    ).toBe(true);
+    ).toBeTruthy();
   });
   const downloadLink = screen.getAllByRole("link").find((el) => {
     return /Download invoice/.test(el.getAttribute("aria-label") ?? "");
   });
-  if (!downloadLink) throw new Error("Download link not found");
+  if (!downloadLink) {
+    throw new Error("Download link not found");
+  }
   await user.hover(downloadLink);
   await waitFor(() => {
-    const tooltipElements = screen.getAllByText("Download invoice");
-    expect(tooltipElements.length).toBeGreaterThanOrEqual(1);
-    const tooltipContent = tooltipElements.find((el) => {
-      return el.tagName === "P" && el.className === "text-xs";
-    });
-    expect(tooltipContent).toBeInTheDocument();
+    expect(
+      screen.getAllByText("Download invoice").length,
+    ).toBeGreaterThanOrEqual(2);
   });
 });
