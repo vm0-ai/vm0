@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.187.1](https://github.com/vm0-ai/vm0/compare/app-v0.187.0...app-v0.187.1) (2026-04-04)
+
+
+### Bug Fixes
+
+* **test:** improve scope assertions and type cast in connector-permission-scope tests ([#8115](https://github.com/vm0-ai/vm0/issues/8115)) ([8f22a5d](https://github.com/vm0-ai/vm0/commit/8f22a5db449b8430ebd086f8b5e198e9171f6b24))
+
 ## [0.187.0](https://github.com/vm0-ai/vm0/compare/app-v0.186.3...app-v0.187.0) (2026-04-03)
 
 

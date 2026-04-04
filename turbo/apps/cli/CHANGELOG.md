@@ -1,5 +1,17 @@
 # Changelog
 
+## [9.102.0](https://github.com/vm0-ai/vm0/compare/cli-v9.101.0...cli-v9.102.0) (2026-04-04)
+
+
+### Features
+
+* **cli:** check cliclick dependency on computer-use host start ([#8132](https://github.com/vm0-ai/vm0/issues/8132)) ([6a8ffab](https://github.com/vm0-ai/vm0/commit/6a8ffabfe5b39aa8cf3ca5c87cae353206c727f9)), closes [#8127](https://github.com/vm0-ai/vm0/issues/8127)
+
+
+### Bug Fixes
+
+* **cli:** add host stop command and auto-recover stale registration on start ([#8131](https://github.com/vm0-ai/vm0/issues/8131)) ([33df853](https://github.com/vm0-ai/vm0/commit/33df8532f7413bf1c9c75683e2f10af8025acc02)), closes [#8130](https://github.com/vm0-ai/vm0/issues/8130)
+
 ## [9.101.0](https://github.com/vm0-ai/vm0/compare/cli-v9.100.3...cli-v9.101.0) (2026-04-03)
 
 
