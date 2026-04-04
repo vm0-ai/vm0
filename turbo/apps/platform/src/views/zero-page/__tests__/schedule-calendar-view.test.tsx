@@ -158,10 +158,9 @@ async function switchToCalendarView(user: ReturnType<typeof userEvent.setup>) {
     const hasScheduled =
       screen.queryAllByLabelText(/More actions for/i).length > 0;
     const hasEmpty = screen.queryByText("No runs scheduled") !== null;
-    const hasTab =
-      screen.queryAllByRole("tab").find((el) => {
-        return /Calendar/i.test(el.textContent ?? "");
-      }) !== undefined;
+    const hasTab = screen.queryAllByRole("tab").some((el) => {
+      return /Calendar/i.test(el.textContent ?? "");
+    });
     if (!hasTab || (!hasScheduled && !hasEmpty)) {
       throw new Error("page not loaded");
     }
