@@ -70,14 +70,18 @@ export async function registerHost(
     // Delete credential and endpoint (need new token + routing), keep domain
     if (existing.ngrokCredentialId) {
       await safeDeleteNgrokResource(
-        () => deleteCredential(apiKey, existing.ngrokCredentialId!),
+        () => {
+          return deleteCredential(apiKey, existing.ngrokCredentialId!);
+        },
         "Credential",
         existing.ngrokCredentialId,
       );
     }
     if (existing.ngrokEndpointId) {
       await safeDeleteNgrokResource(
-        () => deleteCloudEndpoint(apiKey, existing.ngrokEndpointId!),
+        () => {
+          return deleteCloudEndpoint(apiKey, existing.ngrokEndpointId!);
+        },
         "Cloud endpoint",
         existing.ngrokEndpointId,
       );
