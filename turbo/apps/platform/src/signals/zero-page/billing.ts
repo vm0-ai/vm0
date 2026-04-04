@@ -99,8 +99,8 @@ export const reloadBillingStatus$ = command(({ set }) => {
   });
 });
 
-export const closeBillingDialog$ = command(({ set }) => {
-  set(internalDialogOpen$, false);
+export const setBillingDialogOpen$ = command(({ set }, open: boolean) => {
+  set(internalDialogOpen$, open);
 });
 
 export const startCheckout$ = command(

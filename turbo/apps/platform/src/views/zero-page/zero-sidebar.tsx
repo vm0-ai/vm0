@@ -626,7 +626,11 @@ function RecentChatList({
       <>
         {["w-3/4", "w-1/2", "w-2/3"].map((w) => {
           return (
-            <div key={w} className="flex h-8 items-center rounded-lg p-2">
+            <div
+              key={w}
+              data-testid="sidebar-skeleton"
+              className="flex h-8 items-center rounded-lg p-2"
+            >
               <Skeleton className={`h-4 ${w}`} />
             </div>
           );
@@ -635,7 +639,14 @@ function RecentChatList({
     );
   }
   if (error) {
-    return <p className="px-2 py-2 text-xs text-destructive">{error}</p>;
+    return (
+      <p
+        data-testid="chat-threads-error"
+        className="px-2 py-2 text-xs text-destructive"
+      >
+        {error}
+      </p>
+    );
   }
   if (sessions.length === 0) {
     return (
@@ -921,6 +932,7 @@ function TalkToSection({
     <div className="shrink-0">
       <div
         className="group flex h-8 cursor-pointer items-center justify-between rounded-lg pl-2 pr-0 hover:bg-sidebar-accent/50 transition-colors"
+        data-testid="pinned-section-header"
         onClick={() => {
           return setCollapsed(!collapsed);
         }}
@@ -1008,7 +1020,11 @@ function TalkToSection({
               currentChatAgentId === agent.id;
             const isFromChat = selectedAgentIdFromChat === agent.id;
             return (
-              <div key={agent.id} className="group relative">
+              <div
+                key={agent.id}
+                className="group relative"
+                data-testid="pinned-agent-card"
+              >
                 <Link
                   pathname="/agents/:id/chat"
                   options={{ pathParams: { id: agent.id } }}
@@ -1616,7 +1632,10 @@ export function ZeroSidebar() {
                     )}
                     <span className="truncate flex-1">{label}</span>
                     {id === "works" && slackScopeMismatch && (
-                      <span className="h-2 w-2 shrink-0 rounded-full bg-red-500" />
+                      <span
+                        data-testid="slack-scope-mismatch-indicator"
+                        className="h-2 w-2 shrink-0 rounded-full bg-red-500"
+                      />
                     )}
                   </Link>
                 );

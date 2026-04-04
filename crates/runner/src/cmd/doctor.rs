@@ -67,6 +67,8 @@ enum Warning {
     },
     /// Runner is stopped but mitmproxy process is still running (leaked).
     StaleMitmproxy { pid: u32, port: u16 },
+    /// status.json lists a dns_port but no dnsmasq process found on it.
+    NoDnsmasq { port: u16, base_dir: PathBuf },
     /// A network namespace whose pool lock is not held by any process.
     OrphanNamespace { ns_name: String, pool_idx: u32 },
     /// An NBD device whose owning process has exited without disconnecting.
@@ -81,6 +83,9 @@ impl fmt::Display for Warning {
             Self::ApiUnreachable { .. } => write!(f, "API unreachable"),
             Self::NoMitmproxy { port, .. } => {
                 write!(f, "no mitmproxy process on port {port}")
+            }
+            Self::NoDnsmasq { port, .. } => {
+                write!(f, "no dnsmasq process on port {port}")
             }
             Self::NoFirecrackerForRun { run_id, .. } => {
                 write!(f, "no firecracker process for run {run_id}")
@@ -154,6 +159,12 @@ impl Warning {
                 }
                 // Resolved if mode transitioned to stopped/draining (proxy
                 // shutdown is expected in these modes).
+                !matches!(read_status(base_dir).await, Some(st) if is_inactive_mode(&st.mode))
+            }
+            Self::NoDnsmasq { port, base_dir } => {
+                if fresh.dnsmasqs.iter().any(|d| d.port == *port) {
+                    return false;
+                }
                 !matches!(read_status(base_dir).await, Some(st) if is_inactive_mode(&st.mode))
             }
             Self::NoFirecrackerForRun { run_id, base_dir } => {
@@ -241,6 +252,7 @@ struct RunnerReport {
     status: Option<StatusInfo>,
     api_ok: Option<bool>,
     proxy_pid: Option<u32>,
+    dns_pid: Option<u32>,
     jobs: Vec<JobReport>,
     warnings: Vec<Warning>,
 }
@@ -256,6 +268,7 @@ struct StatusInfo {
     started_at: String,
     active_run_ids: Vec<String>,
     proxy_port: Option<u16>,
+    dns_port: Option<u16>,
 }
 
 struct InstalledService {
@@ -297,6 +310,7 @@ pub async fn run_doctor(args: DoctorArgs) -> RunnerResult<ExitCode> {
             runner,
             &discovered.firecrackers,
             &discovered.mitmdumps,
+            &discovered.dnsmasqs,
             &installed_services,
         )
         .await;
@@ -403,6 +417,7 @@ async fn build_runner_report(
     runner: &process::RunnerProcessInfo,
     fc_procs: &[process::FirecrackerProcessInfo],
     mitm_procs: &[process::MitmproxyProcessInfo],
+    dns_procs: &[process::DnsmasqProcessInfo],
     installed: &[InstalledService],
 ) -> RunnerReport {
     let mut warnings = Vec::new();
@@ -465,6 +480,20 @@ async fn build_runner_report(
         None
     };
 
+    // DNS proxy check (same pattern as proxy check).
+    let dns_pid = if let Some(st) = &status
+        && let Some(port) = st.dns_port
+    {
+        let pid = dns_procs.iter().find(|d| d.port == port).map(|d| d.pid);
+        if st.mode == "running" && pid.is_none() {
+            let bd = base_dir.map(|p| p.to_path_buf()).unwrap_or_default();
+            warnings.push(Warning::NoDnsmasq { port, base_dir: bd });
+        }
+        pid
+    } else {
+        None
+    };
+
     // Job correlation
     let jobs = if let (Some(st), Some(bd)) = (&status, base_dir) {
         let (job_reports, job_warnings) = correlate_jobs(st, bd, fc_procs);
@@ -484,6 +513,7 @@ async fn build_runner_report(
         status,
         api_ok,
         proxy_pid,
+        dns_pid,
         jobs,
         warnings,
     }
@@ -608,6 +638,8 @@ struct StatusFile {
     started_at: String,
     #[serde(default)]
     proxy_port: Option<u16>,
+    #[serde(default)]
+    dns_port: Option<u16>,
 }
 
 /// Returns `true` for modes where proxy absence is expected (not a warning).
@@ -624,6 +656,7 @@ async fn read_status(base_dir: &Path) -> Option<StatusInfo> {
         started_at: file.started_at,
         active_run_ids: file.active_run_ids,
         proxy_port: file.proxy_port,
+        dns_port: file.dns_port,
     })
 }
 
@@ -908,6 +941,14 @@ fn print_report(
             (None, None) => println!("    Proxy:   unknown"),
         }
 
+        // DNS proxy
+        match (r.dns_pid, r.status.as_ref().and_then(|st| st.dns_port)) {
+            (Some(pid), Some(port)) => println!("    DNS:     PID {pid} (port {port})"),
+            (Some(pid), None) => println!("    DNS:     PID {pid}"),
+            (None, Some(port)) => println!("    DNS:     NOT FOUND (port {port})"),
+            (None, None) => {}
+        }
+
         // Jobs
         if !r.jobs.is_empty() {
             let active_count = r
@@ -1048,6 +1089,7 @@ mod tests {
             started_at: "2026-01-01T00:00:00.000Z".into(),
             active_run_ids: vec!["abc".into(), "def".into()],
             proxy_port: None,
+            dns_port: None,
         };
         let fc = vec![
             process::FirecrackerProcessInfo {
@@ -1079,6 +1121,7 @@ mod tests {
             started_at: "2026-01-01T00:00:00.000Z".into(),
             active_run_ids: vec!["abc".into()],
             proxy_port: None,
+            dns_port: None,
         };
         let fc: Vec<process::FirecrackerProcessInfo> = vec![];
         let (jobs, warnings) = correlate_jobs(&status, Path::new("/data/r1"), &fc);
@@ -1094,6 +1137,7 @@ mod tests {
             started_at: "2026-01-01T00:00:00.000Z".into(),
             active_run_ids: vec![],
             proxy_port: None,
+            dns_port: None,
         };
         let fc = vec![process::FirecrackerProcessInfo {
             pid: 200,
@@ -1114,6 +1158,7 @@ mod tests {
             started_at: "2026-01-01T00:00:00.000Z".into(),
             active_run_ids: vec!["abc".into()],
             proxy_port: None,
+            dns_port: None,
         };
         // This firecracker belongs to a different runner (different base_dir)
         let fc = vec![process::FirecrackerProcessInfo {
@@ -1150,6 +1195,7 @@ mod tests {
             status: None,
             api_ok: None,
             proxy_pid: None,
+            dns_pid: None,
             jobs: vec![],
             warnings: vec![],
         }];
@@ -1170,6 +1216,7 @@ mod tests {
             status: None,
             api_ok: None,
             proxy_pid: None,
+            dns_pid: None,
             jobs: vec![],
             warnings: vec![],
         }

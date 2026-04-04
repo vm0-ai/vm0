@@ -1,5 +1,26 @@
 # Changelog
 
+## [12.192.3](https://github.com/vm0-ai/vm0/compare/web-v12.192.2...web-v12.192.3) (2026-04-04)
+
+
+### Refactoring
+
+* use hash-based slug for ngrok domain names ([#8117](https://github.com/vm0-ai/vm0/issues/8117)) ([a448dfc](https://github.com/vm0-ai/vm0/commit/a448dfc9053bd31147544d7d323aae0939714775))
+
+## [12.192.2](https://github.com/vm0-ai/vm0/compare/web-v12.192.1...web-v12.192.2) (2026-04-04)
+
+
+### Bug Fixes
+
+* sanitize underscores in full org id for all ngrok domain names ([#8111](https://github.com/vm0-ai/vm0/issues/8111)) ([83abffc](https://github.com/vm0-ai/vm0/commit/83abffcc4f61ca0615e2010ed959e146265a98b7))
+
+## [12.192.1](https://github.com/vm0-ai/vm0/compare/web-v12.192.0...web-v12.192.1) (2026-04-04)
+
+
+### Bug Fixes
+
+* replace underscores in org id for ngrok subdomain names ([#8096](https://github.com/vm0-ai/vm0/issues/8096)) ([3ecd2d1](https://github.com/vm0-ai/vm0/commit/3ecd2d1496858e3ec09ab402c51b1401c38152ab))
+
 ## [12.192.0](https://github.com/vm0-ai/vm0/compare/web-v12.191.1...web-v12.192.0) (2026-04-03)
 
 

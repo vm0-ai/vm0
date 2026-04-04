@@ -117,6 +117,10 @@ impl HomePaths {
         self.root.join("ca")
     }
 
+    pub fn debootstrap_dir(&self) -> PathBuf {
+        self.root.join("debootstrap")
+    }
+
     pub fn locks_dir(&self) -> PathBuf {
         self.root.join("locks")
     }

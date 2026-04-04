@@ -752,7 +752,7 @@ dependencies = [
 
 [[package]]
 name = "guest-init"
-version = "0.15.1"
+version = "0.15.2"
 dependencies = [
  "libc",
  "nix",
@@ -1690,7 +1690,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.62.0"
+version = "0.62.1"
 dependencies = [
  "ably-subscriber",
  "async-trait",
@@ -2651,7 +2651,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vsock-guest"
-version = "0.8.0"
+version = "0.8.1"
 dependencies = [
  "libc",
  "vsock-proto",
@@ -2672,7 +2672,7 @@ version = "0.7.0"
 
 [[package]]
 name = "vsock-test"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "tokio",
  "vsock-guest",

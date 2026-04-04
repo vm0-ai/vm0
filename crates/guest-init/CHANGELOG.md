@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.15.2](https://github.com/vm0-ai/vm0/compare/guest-init-v0.15.1...guest-init-v0.15.2) (2026-04-04)
+
+
+### Performance Improvements
+
+* **runner:** replace docker build with debootstrap for rootfs creation ([#8042](https://github.com/vm0-ai/vm0/issues/8042)) ([41e932a](https://github.com/vm0-ai/vm0/commit/41e932aacb06a8a10234b1eb5219f90e84135917))
+
 ## [0.15.1](https://github.com/vm0-ai/vm0/compare/guest-init-v0.15.0...guest-init-v0.15.1) (2026-04-03)
 
 

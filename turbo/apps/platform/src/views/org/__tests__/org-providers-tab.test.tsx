@@ -1,0 +1,416 @@
+/**
+ * Tests for OrgProvidersTab, OrgAddProviderDialog, and OrgDeleteProviderDialog.
+ *
+ * Entry point: setupPage({ path: "/?settings=providers" })
+ * External mocks: MSW for HTTP endpoints
+ * Internal: real signals, components, rendering
+ */
+
+import { describe, it, expect } from "vitest";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
+import { type ModelProviderResponse, MODEL_PROVIDER_TYPES } from "@vm0/core";
+import { server } from "../../../mocks/server.ts";
+import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { setupPage } from "../../../__tests__/page-helper.ts";
+
+const context = testContext();
+
+function makeProvider(
+  type: ModelProviderResponse["type"],
+  overrides: Partial<ModelProviderResponse> = {},
+): ModelProviderResponse {
+  return {
+    id: "00000000-0000-4000-a000-000000000001",
+    type,
+    framework: "claude-code",
+    secretName: "ANTHROPIC_API_KEY",
+    authMethod: null,
+    secretNames: null,
+    isDefault: false,
+    selectedModel: null,
+    createdAt: "2024-01-01T00:00:00Z",
+    updatedAt: "2024-01-01T00:00:00Z",
+    ...overrides,
+  };
+}
+
+function mockAPIs(options?: {
+  providers?: ModelProviderResponse[];
+  role?: string;
+}) {
+  const providers = options?.providers ?? [];
+  const role = options?.role ?? "admin";
+
+  server.use(
+    http.get("*/api/zero/org", () => {
+      return HttpResponse.json({
+        id: "org_1",
+        slug: "user-12345678",
+        name: "Test Org",
+        role,
+      });
+    }),
+    http.get("*/api/zero/model-providers", () => {
+      return HttpResponse.json({ modelProviders: providers });
+    }),
+    http.get("*/api/zero/chat-threads", () => {
+      return HttpResponse.json({ threads: [] });
+    }),
+    http.get("*/api/zero/team", () => {
+      return HttpResponse.json([]);
+    }),
+    http.get("*/api/zero/org/logo", () => {
+      return HttpResponse.json({ logoUrl: null });
+    }),
+    http.get("*/api/zero/org/members", () => {
+      return HttpResponse.json({
+        members: [],
+        pendingInvitations: [],
+        membershipRequests: [],
+      });
+    }),
+  );
+}
+
+async function openProvidersPage() {
+  await setupPage({ context, path: "/?settings=providers" });
+  await waitFor(() => {
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+}
+
+describe("org providers tab - display", () => {
+  // ORG-D-065
+  it("shows provider icon, label, and configured status for each provider", async () => {
+    mockAPIs({
+      providers: [makeProvider("anthropic-api-key", { isDefault: true })],
+    });
+    await openProvidersPage();
+    await waitFor(() => {
+      expect(screen.getAllByText("Anthropic API key").length).toBeGreaterThan(
+        0,
+      );
+    });
+    expect(screen.getByText("Configured")).toBeInTheDocument();
+    const imgs = document.querySelectorAll("img[alt='']");
+    expect(imgs.length).toBeGreaterThan(0);
+  });
+
+  // ORG-D-066
+  it("shows configured status indicator for configured providers", async () => {
+    mockAPIs({
+      providers: [makeProvider("anthropic-api-key", { isDefault: true })],
+    });
+    await openProvidersPage();
+    await waitFor(() => {
+      expect(screen.getByText("Configured")).toBeInTheDocument();
+    });
+  });
+
+  // ORG-D-067
+  it("shows current default provider in the default provider select dropdown", async () => {
+    mockAPIs({
+      providers: [makeProvider("anthropic-api-key", { isDefault: true })],
+    });
+    await openProvidersPage();
+    await waitFor(() => {
+      // The default provider select shows the current default value
+      // Multiple comboboxes may exist (tab nav + default provider select)
+      const comboboxes = screen.getAllByRole("combobox");
+      const defaultSelect = comboboxes.find((el) => {
+        return el.textContent?.includes("Anthropic API key");
+      });
+      expect(defaultSelect).toBeInTheDocument();
+    });
+  });
+
+  // ORG-C-068
+  it("shows no providers configured message when provider list is empty (admin)", async () => {
+    mockAPIs({ providers: [] });
+    await openProvidersPage();
+    await waitFor(() => {
+      expect(screen.getByText("No providers configured")).toBeInTheDocument();
+    });
+  });
+});
+
+describe("org providers tab - interaction", () => {
+  // ORG-I-069
+  it("opens add provider dialog when add provider button is clicked", async () => {
+    const user = userEvent.setup();
+    mockAPIs({ providers: [] });
+    await openProvidersPage();
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /add provider/i }),
+      ).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole("button", { name: /add provider/i }));
+    await waitFor(() => {
+      expect(
+        screen.getByText("Add workspace model provider"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  // ORG-I-070
+  it("opens edit dialog when provider card is clicked by admin", async () => {
+    const user = userEvent.setup();
+    mockAPIs({
+      providers: [makeProvider("anthropic-api-key", { isDefault: true })],
+    });
+    await openProvidersPage();
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /Anthropic API key/i }),
+      ).toBeInTheDocument();
+    });
+    await user.click(
+      screen.getByRole("button", { name: /Anthropic API key/i }),
+    );
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Edit workspace Anthropic API key/i),
+      ).toBeInTheDocument();
+    });
+  });
+
+  // ORG-I-071
+  it("updates default provider when select dropdown value is changed", async () => {
+    const user = userEvent.setup();
+    let capturedDefaultType: string | null = null;
+    mockAPIs({
+      providers: [
+        makeProvider("anthropic-api-key", { isDefault: true }),
+        makeProvider("openrouter-api-key", {
+          id: "00000000-0000-4000-a000-000000000002",
+          isDefault: false,
+        }),
+      ],
+    });
+    server.use(
+      http.post("*/api/zero/model-providers/:type/default", ({ params }) => {
+        capturedDefaultType = params.type as string;
+        return HttpResponse.json(
+          makeProvider(params.type as ModelProviderResponse["type"], {
+            isDefault: true,
+          }),
+        );
+      }),
+    );
+    await openProvidersPage();
+    await waitFor(() => {
+      // Find the default provider select (shows "Anthropic API key"), not the tab nav select
+      const comboboxes = screen.getAllByRole("combobox");
+      const defaultSelect = comboboxes.find((el) => {
+        return el.textContent?.includes("Anthropic API key");
+      });
+      expect(defaultSelect).toBeInTheDocument();
+    });
+    const comboboxes = screen.getAllByRole("combobox");
+    const defaultSelect = comboboxes.find((el) => {
+      return el.textContent?.includes("Anthropic API key");
+    })!;
+    await user.click(defaultSelect);
+    await waitFor(() => {
+      expect(screen.getAllByText("OpenRouter").length).toBeGreaterThan(0);
+    });
+    // Click the select option (not the provider card that also shows "OpenRouter")
+    const openRouterOptions = screen.getAllByText("OpenRouter");
+    const selectOption = openRouterOptions[openRouterOptions.length - 1];
+    await user.click(selectOption);
+    await waitFor(() => {
+      expect(capturedDefaultType).toBe("openrouter-api-key");
+    });
+  });
+
+  // ORG-I-072
+  it("shows edit and delete options in provider action menu", async () => {
+    const user = userEvent.setup();
+    mockAPIs({
+      providers: [makeProvider("anthropic-api-key", { isDefault: true })],
+    });
+    await openProvidersPage();
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /more options/i }),
+      ).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole("button", { name: /more options/i }));
+    await waitFor(() => {
+      expect(screen.getByText("Edit")).toBeInTheDocument();
+      expect(screen.getByText("Delete")).toBeInTheDocument();
+    });
+  });
+});
+
+describe("org add provider dialog - display", () => {
+  // ORG-D-082
+  it("shows provider cards with icon and label in add dialog", async () => {
+    const user = userEvent.setup();
+    mockAPIs({ providers: [] });
+    await openProvidersPage();
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /add provider/i }),
+      ).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole("button", { name: /add provider/i }));
+    await waitFor(() => {
+      expect(
+        screen.getByText("Add workspace model provider"),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.getByTestId("org-provider-card-anthropic-api-key"),
+    ).toBeInTheDocument();
+  });
+
+  // ORG-C-084
+  it("hides add provider button when all providers are configured", async () => {
+    const allTypes = Object.keys(
+      MODEL_PROVIDER_TYPES,
+    ) as ModelProviderResponse["type"][];
+    const allProviders = allTypes.map((type, idx) => {
+      return makeProvider(type, {
+        id: `00000000-0000-4000-a000-${String(idx).padStart(12, "0")}`,
+        isDefault: idx === 0,
+      });
+    });
+    mockAPIs({ providers: allProviders });
+    await openProvidersPage();
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("button", { name: /add provider/i }),
+      ).not.toBeInTheDocument();
+    });
+  });
+});
+
+describe("org add provider dialog - interaction", () => {
+  // ORG-I-085
+  it("triggers add flow when provider card is clicked", async () => {
+    const user = userEvent.setup();
+    mockAPIs({ providers: [] });
+    await openProvidersPage();
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /add provider/i }),
+      ).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole("button", { name: /add provider/i }));
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("org-provider-card-anthropic-api-key"),
+      ).toBeInTheDocument();
+    });
+    await user.click(screen.getByTestId("org-provider-card-anthropic-api-key"));
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Add workspace Anthropic API key/i),
+      ).toBeInTheDocument();
+    });
+  });
+});
+
+describe("org delete provider dialog - display", () => {
+  // ORG-D-086
+  it("shows confirmation message and consequences description", async () => {
+    const user = userEvent.setup();
+    mockAPIs({
+      providers: [makeProvider("anthropic-api-key", { isDefault: true })],
+    });
+    await openProvidersPage();
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: /more options/i }),
+      ).toBeInTheDocument();
+    });
+    await user.click(screen.getByRole("button", { name: /more options/i }));
+    await waitFor(() => {
+      expect(screen.getByText("Delete")).toBeInTheDocument();
+    });
+    await user.click(screen.getByText("Delete"));
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          /Are you sure you want to delete this workspace model provider\?/i,
+        ),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText(/This will remove the workspace provider/i),
+    ).toBeInTheDocument();
+  });
+});
+
+async function openDeleteDialog(user: ReturnType<typeof userEvent.setup>) {
+  await waitFor(() => {
+    expect(
+      screen.getByRole("button", { name: /more options/i }),
+    ).toBeInTheDocument();
+  });
+  await user.click(screen.getByRole("button", { name: /more options/i }));
+  await waitFor(() => {
+    expect(screen.getByText("Delete")).toBeInTheDocument();
+  });
+  await user.click(screen.getByText("Delete"));
+  await waitFor(() => {
+    expect(
+      screen.getByText(
+        /Are you sure you want to delete this workspace model provider\?/i,
+      ),
+    ).toBeInTheDocument();
+  });
+}
+
+describe("org delete provider dialog - interaction", () => {
+  // ORG-I-087
+  it("closes dialog when cancel button is clicked", async () => {
+    const user = userEvent.setup();
+    mockAPIs({
+      providers: [makeProvider("anthropic-api-key", { isDefault: true })],
+    });
+    await openProvidersPage();
+    await openDeleteDialog(user);
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => {
+      expect(
+        screen.queryByText(
+          /Are you sure you want to delete this workspace model provider\?/i,
+        ),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  // ORG-I-088
+  it("shows Deleting... state and calls delete endpoint when delete button is clicked", async () => {
+    const user = userEvent.setup();
+    let resolveDelete!: () => void;
+    const deletePromise = new Promise<void>((resolve) => {
+      resolveDelete = resolve;
+    });
+
+    mockAPIs({
+      providers: [makeProvider("anthropic-api-key", { isDefault: true })],
+    });
+    server.use(
+      http.delete("*/api/zero/model-providers/:type", async () => {
+        await deletePromise;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    await openProvidersPage();
+    await openDeleteDialog(user);
+    await user.click(screen.getByRole("button", { name: "Delete" }));
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "Deleting..." }),
+      ).toBeInTheDocument();
+    });
+    resolveDelete();
+    await deletePromise;
+  });
+});

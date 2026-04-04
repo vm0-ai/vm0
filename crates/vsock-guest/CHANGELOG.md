@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.1](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.8.0...vsock-guest-v0.8.1) (2026-04-04)
+
+
+### Performance Improvements
+
+* **runner:** replace docker build with debootstrap for rootfs creation ([#8042](https://github.com/vm0-ai/vm0/issues/8042)) ([41e932a](https://github.com/vm0-ai/vm0/commit/41e932aacb06a8a10234b1eb5219f90e84135917))
+
 ## [0.8.0](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.7.0...vsock-guest-v0.8.0) (2026-03-20)
 
 

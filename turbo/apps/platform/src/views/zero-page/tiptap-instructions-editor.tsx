@@ -210,7 +210,7 @@ export function TiptapInstructionsEditor({
 
   return (
     <div
-      className={`relative rounded-xl zero-border bg-card transition-colors focus-within:border-primary ${disabled ? "opacity-60 pointer-events-none" : ""}`}
+      className={`zero-card relative transition-colors focus-within:border-primary ${disabled ? "opacity-60 pointer-events-none" : ""}`}
     >
       {editor && (
         <BubbleMenu

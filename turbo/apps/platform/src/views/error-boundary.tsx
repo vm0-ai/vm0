@@ -12,7 +12,6 @@ interface ErrorFallbackProps {
 interface Props {
   children?: ReactNode;
   fallback?: (props: ErrorFallbackProps) => ReactNode;
-  captureSentryEvent?: (error: Error) => void;
 }
 
 interface State {
@@ -45,18 +44,24 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   public render() {
-    if (this.state.hasError && this.state.error && this.state.errorInfo) {
-      const fallbackProps: ErrorFallbackProps = {
-        error: this.state.error,
-        errorInfo: this.state.errorInfo,
-        sentryEventId: this.state.sentryEventId,
-      };
+    if (this.state.hasError) {
+      if (this.state.error && this.state.errorInfo) {
+        const fallbackProps: ErrorFallbackProps = {
+          error: this.state.error,
+          errorInfo: this.state.errorInfo,
+          sentryEventId: this.state.sentryEventId,
+        };
 
-      if (this.props.fallback) {
-        return this.props.fallback(fallbackProps);
+        if (this.props.fallback) {
+          return this.props.fallback(fallbackProps);
+        }
+
+        return <DefaultErrorFallback {...fallbackProps} />;
       }
 
-      return <DefaultErrorFallback {...fallbackProps} />;
+      // hasError is true but errorInfo not yet set (componentDidCatch hasn't fired).
+      // Return null to avoid re-throwing by rendering children again.
+      return null;
     }
 
     return this.props.children;

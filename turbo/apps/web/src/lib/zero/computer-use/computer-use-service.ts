@@ -4,7 +4,7 @@
  * Orchestrates ngrok resource provisioning and host lifecycle
  * for computer-use remote desktop sessions.
  */
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import { eq, and, gt } from "drizzle-orm";
 import { computerUseHosts } from "../../../db/schema/computer-use-host";
 import { conflict, notFound } from "../../shared/errors";
@@ -66,11 +66,14 @@ export async function registerHost(
     throw new Error("NGROK_API_KEY is not configured");
   }
 
-  // Generate names for ngrok resources
-  const orgIdShort = orgId.substring(0, 8);
-  const subdomainName = `vm0-cu-${orgIdShort}`;
-  const endpointPrefix = `vm0-cu-${orgId}`;
-  const botUserName = `vm0-cu-${orgId}`;
+  // Generate a DNS-safe slug from orgId+userId hash (hex chars only)
+  const slug = createHash("sha256")
+    .update(`${orgId}:${userId}`)
+    .digest("hex")
+    .substring(0, 12);
+  const subdomainName = `vm0-cu-${slug}`;
+  const endpointPrefix = `vm0-cu-${slug}`;
+  const botUserName = `vm0-cu-${slug}`;
 
   // Provision ngrok resources
   const botUser = await findOrCreateBotUser(apiKey, botUserName);

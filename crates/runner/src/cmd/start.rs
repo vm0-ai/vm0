@@ -230,6 +230,7 @@ pub async fn run_start(
 
     let mut status = StatusTracker::new(paths.status(), estimated_capacity);
     status.set_proxy_port(mitm.port()).await;
+    status.set_dns_port(dns_handle.port()).await;
     let status = Arc::new(status);
 
     // Create provider — handles discovery + claim + complete

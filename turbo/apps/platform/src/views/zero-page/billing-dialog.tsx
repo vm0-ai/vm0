@@ -17,7 +17,7 @@ import {
   apiTierToBillingTier,
   billingDialogOpen$,
   billingStatusAsync$,
-  closeBillingDialog$,
+  setBillingDialogOpen$,
   startCheckout$,
   openDowngradeDialog$,
   saveAutoRecharge$,
@@ -80,6 +80,8 @@ function PlanCard({
     <button
       type="button"
       onClick={onSelect}
+      aria-pressed={isSelected}
+      aria-label={plan.name}
       className={`flex flex-col rounded-lg border p-4 text-left transition-colors ${
         isSelected
           ? "border-primary ring-2 ring-primary/20"
@@ -91,7 +93,10 @@ function PlanCard({
           {plan.name}
         </span>
         {isCurrent && (
-          <span className="text-xs bg-muted text-muted-foreground px-2 py-0.5 rounded-full">
+          <span
+            aria-current="true"
+            className="text-xs bg-muted text-muted-foreground px-2 py-0.5 rounded-full"
+          >
             Current
           </span>
         )}
@@ -329,6 +334,7 @@ export function AutoRechargeSection({
           type="button"
           role="switch"
           aria-checked={enabled}
+          aria-label="Auto-recharge"
           onClick={() => {
             saveCurrent({ enabled: !enabled });
           }}
@@ -377,7 +383,10 @@ export function AutoRechargeSection({
                 placeholder="e.g. 10000"
                 className="flex-1"
               />
-              <span className="text-xs text-muted-foreground whitespace-nowrap">
+              <span
+                aria-label={`dollar equivalent: $${dollarAmount}`}
+                className="text-xs text-muted-foreground whitespace-nowrap"
+              >
                 = ${dollarAmount}
               </span>
             </div>
@@ -407,7 +416,7 @@ export function BillingDialog() {
   const statusLoadable = useLastLoadable(billingStatusAsync$);
   const status =
     statusLoadable.state === "hasData" ? statusLoadable.data : null;
-  const close = useSet(closeBillingDialog$);
+  const close = useSet(setBillingDialogOpen$);
   const [checkoutLoadable, checkout] = useLoadableSet(startCheckout$);
   const openDowngrade = useSet(openDowngradeDialog$);
   const selectedTier = useGet(selectedPlanTier$);
@@ -434,7 +443,7 @@ export function BillingDialog() {
     <Dialog
       open={open}
       onOpenChange={(v) => {
-        return !v && close();
+        return !v && close(false);
       }}
     >
       <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-[600px]">

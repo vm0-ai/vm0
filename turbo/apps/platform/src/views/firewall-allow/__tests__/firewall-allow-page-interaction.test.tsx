@@ -378,7 +378,6 @@ describe("firewall allow page - AdminFocusedView", () => {
   });
 });
 
-// fw-d-023 is intentionally skipped — reserved for future MemberListView display tests
 describe("firewall allow page - MemberFocusedView request form", () => {
   it("fw-d-024: Request Access button shows form", async () => {
     setupMemberContext();

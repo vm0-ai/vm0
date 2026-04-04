@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { hostStartCommand } from "./host";
+import { hostStartCommand, hostStopCommand } from "./host";
 import {
   clientScreenshotCommand,
   clientZoomCommand,
@@ -26,7 +26,8 @@ import {
 const hostCommand = new Command()
   .name("host")
   .description("Manage computer-use host daemon")
-  .addCommand(hostStartCommand);
+  .addCommand(hostStartCommand)
+  .addCommand(hostStopCommand);
 
 const clientCommand = new Command()
   .name("client")
@@ -62,6 +63,7 @@ export const zeroComputerUseCommand = new Command()
     `
 Examples:
   Start the host daemon (on macOS):  zero computer-use host start
+  Stop the host daemon:              zero computer-use host stop
   Take a screenshot (from agent):    zero computer-use client screenshot
   Zoom into a region (from agent):   zero computer-use client zoom --x 0 --y 0 --width 500 --height 500
   Get screen info (from agent):      zero computer-use client info

@@ -5,16 +5,24 @@
 # part of the build-input hash, so any change here automatically invalidates
 # the rootfs cache.
 #
+# Uses debootstrap + chroot instead of Docker to avoid the Docker daemon
+# dependency and eliminate multiple I/O round-trips (tar export, tar extract,
+# cp to ext4 mount). mkfs.ext4 -d populates the ext4 image directly from
+# the rootfs directory.
+#
 # Usage:
 #   bash build-rootfs.sh \
 #     --output-dir /path/to/output \
-#     --work-dir /path/to/workdir \
 #     --ca-dir /path/to/ca \
+#     --debootstrap-dir /path/to/cache \
+#     --hash <input-hash> \
 #     --disk-mb 16384 \
+#     --dns-nameserver 8.8.8.8 \
 #     --guest-agent /path/to/guest-agent \
 #     --guest-download /path/to/guest-download \
 #     --guest-init /path/to/guest-init \
-#     --guest-mock-claude /path/to/guest-mock-claude
+#     --guest-mock-claude /path/to/guest-mock-claude \
+#     [--mirror http://archive.ubuntu.com/ubuntu]
 
 set -euo pipefail
 
@@ -23,8 +31,8 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 
 OUTPUT_DIR=""
-WORK_DIR=""
 CA_DIR=""
+DEBOOTSTRAP_DIR=""
 INPUT_HASH=""
 DISK_MB=""
 GUEST_AGENT=""
@@ -32,24 +40,32 @@ GUEST_DOWNLOAD=""
 GUEST_INIT=""
 GUEST_MOCK_CLAUDE=""
 DNS_NAMESERVER=""
+# Default mirror: archive.ubuntu.com only hosts amd64/i386;
+# arm64 and other ports use ports.ubuntu.com.
+if [[ "$(dpkg --print-architecture 2>/dev/null)" == "arm64" ]]; then
+  MIRROR="http://ports.ubuntu.com/ubuntu-ports"
+else
+  MIRROR="http://archive.ubuntu.com/ubuntu"
+fi
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --output-dir)       OUTPUT_DIR="$2";       shift 2 ;;
-    --work-dir)   WORK_DIR="$2";   shift 2 ;;
-    --ca-dir)     CA_DIR="$2";     shift 2 ;;
-    --hash)       INPUT_HASH="$2"; shift 2 ;;
-    --disk-mb)    DISK_MB="$2";    shift 2 ;;
-    --guest-agent)      GUEST_AGENT="$2";      shift 2 ;;
-    --guest-download)   GUEST_DOWNLOAD="$2";   shift 2 ;;
-    --guest-init)       GUEST_INIT="$2";       shift 2 ;;
+    --output-dir)        OUTPUT_DIR="$2";        shift 2 ;;
+    --ca-dir)            CA_DIR="$2";            shift 2 ;;
+    --debootstrap-dir)   DEBOOTSTRAP_DIR="$2";   shift 2 ;;
+    --hash)              INPUT_HASH="$2";        shift 2 ;;
+    --disk-mb)           DISK_MB="$2";           shift 2 ;;
+    --guest-agent)       GUEST_AGENT="$2";       shift 2 ;;
+    --guest-download)    GUEST_DOWNLOAD="$2";    shift 2 ;;
+    --guest-init)        GUEST_INIT="$2";        shift 2 ;;
     --guest-mock-claude) GUEST_MOCK_CLAUDE="$2"; shift 2 ;;
-    --dns-nameserver)   DNS_NAMESERVER="$2";   shift 2 ;;
+    --dns-nameserver)    DNS_NAMESERVER="$2";    shift 2 ;;
+    --mirror)            MIRROR="$2";            shift 2 ;;
     *) echo "error: unknown argument: $1" >&2; exit 1 ;;
   esac
 done
 
-for var in OUTPUT_DIR WORK_DIR CA_DIR INPUT_HASH DISK_MB GUEST_AGENT GUEST_DOWNLOAD GUEST_INIT GUEST_MOCK_CLAUDE DNS_NAMESERVER; do
+for var in OUTPUT_DIR CA_DIR DEBOOTSTRAP_DIR INPUT_HASH DISK_MB GUEST_AGENT GUEST_DOWNLOAD GUEST_INIT GUEST_MOCK_CLAUDE DNS_NAMESERVER; do
   if [[ -z "${!var}" ]]; then
     echo "error: --$(echo "$var" | tr '_' '-' | tr '[:upper:]' '[:lower:]') is required" >&2
     exit 1
@@ -60,27 +76,23 @@ done
 # Constants
 # ---------------------------------------------------------------------------
 
-DOCKER="docker"
-IMAGE_NAME="vm0-rootfs"
 ROOTFS_FILE="rootfs.ext4"
 CA_CERT_FILE="mitmproxy-ca-cert.pem"
-CA_KEY_FILE="mitmproxy-ca-key.pem"
-CA_COMBINED_FILE="mitmproxy-ca.pem"
 CA_ROOTFS_DEST="usr/local/share/ca-certificates/vm0-proxy-ca.crt"
 
-RESOLV_CONF="nameserver ${DNS_NAMESERVER}
-"
-
-CONTAINER_NAME="vm0-rootfs-tmp-$$"
-TAR_FILE="rootfs-export-$$.tar"
 TMP_ROOTFS="${ROOTFS_FILE}.tmp.$$"
 
 # Paths derived from arguments
 ROOTFS_PATH="${OUTPUT_DIR}/${ROOTFS_FILE}"
-TAR_PATH="${OUTPUT_DIR}/${TAR_FILE}"
 TMP_ROOTFS_PATH="${OUTPUT_DIR}/${TMP_ROOTFS}"
-EXTRACT_DIR=""
-EXT4_MOUNT_DIR=""
+ROOTFS_DIR=""
+
+# Pinned versions (changes here invalidate the rootfs cache via script hash)
+GO_VERSION="1.26.1"
+CLAUDE_CODE_VERSION="2.1.91"
+GWS_CLI_VERSION="0.22.5"
+XURL_VERSION="1.0.3"
+AGENT_BROWSER_VERSION="0.24.0"
 
 # ---------------------------------------------------------------------------
 # Dependency checks
@@ -89,7 +101,7 @@ EXT4_MOUNT_DIR=""
 check_dependencies() {
   local missing=()
 
-  for cmd in docker sudo tar chroot mktemp stat mkfs.ext4; do
+  for cmd in debootstrap sudo chroot mktemp stat mkfs.ext4; do
     if ! command -v "$cmd" &> /dev/null; then
       missing+=("$cmd")
     fi
@@ -100,12 +112,6 @@ check_dependencies() {
     exit 1
   fi
 
-  # Check if docker works without sudo
-  if ! docker info &> /dev/null; then
-    echo "[INFO] docker requires sudo (user not in docker group)"
-    DOCKER="sudo docker"
-  fi
-
   echo "[OK] all dependencies found"
 }
 
@@ -113,76 +119,248 @@ check_dependencies() {
 # Cleanup
 # ---------------------------------------------------------------------------
 
+cleanup_chroot() {
+  if [[ -n "$ROOTFS_DIR" ]]; then
+    # -R unmounts recursively — bind-mounting /dev brings in sub-mounts
+    # like /dev/shm, /dev/mqueue, /dev/hugepages that must be removed first.
+    sudo umount -R "$ROOTFS_DIR/dev" 2>/dev/null || true
+    sudo umount "$ROOTFS_DIR/sys" 2>/dev/null || true
+    sudo umount "$ROOTFS_DIR/proc" 2>/dev/null || true
+  fi
+}
+
 cleanup() {
   echo "cleaning up..."
-  # Unmount ext4 loop mount if still active
-  if [[ -n "$EXT4_MOUNT_DIR" ]]; then
-    sudo umount "$EXT4_MOUNT_DIR" 2>/dev/null || true
-    rmdir "$EXT4_MOUNT_DIR" 2>/dev/null || true
-  fi
-  # Remove root-owned temp files
-  sudo rm -f "$TAR_PATH" 2>/dev/null || true
+  cleanup_chroot
   sudo rm -f "$TMP_ROOTFS_PATH" 2>/dev/null || true
-  if [[ -n "$EXTRACT_DIR" ]]; then
-    sudo rm -rf "$EXTRACT_DIR" 2>/dev/null || true
+  if [[ -n "$ROOTFS_DIR" ]]; then
+    sudo rm -rf "$ROOTFS_DIR" 2>/dev/null || true
   fi
-  # Remove temp container
-  $DOCKER rm -f "$CONTAINER_NAME" 2>/dev/null || true
 }
 
 trap cleanup EXIT
 
 # ---------------------------------------------------------------------------
-# Docker build & export
+# Bootstrap Ubuntu 24.04 rootfs
 # ---------------------------------------------------------------------------
 
-docker_build() {
-  echo "building docker image..."
-  $DOCKER build -t "$IMAGE_NAME" "$WORK_DIR"
-  echo "[OK] docker image built"
+debootstrap_build() {
+  echo "bootstrapping Ubuntu 24.04 rootfs..."
+  ROOTFS_DIR="$(mktemp -d)"
+
+  # Cache the base package tarball so repeated builds (e.g. after changing
+  # a pinned version) skip the ~200 MB download from the Ubuntu mirror.
+  local cache_tar="${DEBOOTSTRAP_DIR}/noble-$(dpkg --print-architecture).tar"
+  if [[ -f "$cache_tar" ]]; then
+    echo "using cached debootstrap tarball: $cache_tar"
+    sudo debootstrap --unpack-tarball="$(realpath "$cache_tar")" noble "$ROOTFS_DIR" "$MIRROR"
+    sudo touch "$cache_tar"
+  else
+    # --make-tarball downloads packages into a tarball without extracting.
+    # It always exits non-zero ("cannot exec ...") because it skips the
+    # second stage, so we check the tarball was created instead.
+    sudo debootstrap --make-tarball="$cache_tar" noble "$ROOTFS_DIR" "$MIRROR" || true
+    if [[ ! -s "$cache_tar" ]]; then
+      echo "error: debootstrap --make-tarball failed to create $cache_tar" >&2
+      exit 1
+    fi
+    sudo debootstrap --unpack-tarball="$(realpath "$cache_tar")" noble "$ROOTFS_DIR" "$MIRROR"
+  fi
+
+  # Mount virtual filesystems for chroot operations.
+  # --bind /dev recursively brings in sub-mounts (pts, shm, etc.);
+  # cleanup_chroot uses umount -R to tear them all down.
+  sudo mount --bind /proc "$ROOTFS_DIR/proc"
+  sudo mount --bind /sys "$ROOTFS_DIR/sys"
+  sudo mount --bind /dev "$ROOTFS_DIR/dev"
+
+  # Copy host DNS for build-time package downloads (overwritten by inject_files)
+  sudo rm -f "$ROOTFS_DIR/etc/resolv.conf"
+  sudo cp /etc/resolv.conf "$ROOTFS_DIR/etc/resolv.conf"
+
+  echo "[OK] base system bootstrapped"
 }
 
-docker_export() {
-  echo "exporting docker filesystem..."
+# ---------------------------------------------------------------------------
+# Install APT packages
+# ---------------------------------------------------------------------------
 
-  # Remove any existing temp container
-  $DOCKER rm -f "$CONTAINER_NAME" 2>/dev/null || true
+install_packages() {
+  echo "installing packages..."
 
-  # Create container (don't start it)
-  $DOCKER create --name "$CONTAINER_NAME" "$IMAGE_NAME"
+  # Step 1: Enable universe repo (debootstrap only enables main) and install
+  # bootstrap tools needed to add external APT repositories.
+  sudo chroot "$ROOTFS_DIR" bash -c 'set -e
+  export DEBIAN_FRONTEND=noninteractive
+  # debootstrap generates DEB822-format sources with "Components: main".
+  # Add universe for packages like ripgrep.
+  if [[ -f /etc/apt/sources.list.d/ubuntu.sources ]]; then
+    sed -i "s/^Components: main$/Components: main universe/" /etc/apt/sources.list.d/ubuntu.sources
+  else
+    sed -i "s/ main$/ main universe/" /etc/apt/sources.list
+  fi
+  apt-get update
+  apt-get install -y ca-certificates curl gnupg
+  '
 
-  # Export to temp file in output_dir (avoids tmpfs memory pressure)
-  $DOCKER export "$CONTAINER_NAME" -o "$TAR_PATH"
+  # Step 2: Add external APT repositories (needs curl and gpg from step 1).
+  sudo chroot "$ROOTFS_DIR" bash -c 'set -e
+  # NodeSource repository (Node.js 24)
+  curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+    | gpg --dearmor -o /usr/share/keyrings/nodesource.gpg
+  echo "deb [signed-by=/usr/share/keyrings/nodesource.gpg] https://deb.nodesource.com/node_24.x nodistro main" \
+    > /etc/apt/sources.list.d/nodesource.list
+  printf "Package: nodejs\nPin: origin deb.nodesource.com\nPin-Priority: 600\n" \
+    > /etc/apt/preferences.d/nodesource
 
-  # Cleanup container
-  $DOCKER rm -f "$CONTAINER_NAME"
+  # GitHub CLI repository
+  curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+    > /usr/share/keyrings/githubcli-archive-keyring.gpg
+  chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg
+  echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+    > /etc/apt/sources.list.d/github-cli.list
+  '
 
-  echo "[OK] filesystem exported"
+  # Step 3: Install all Ubuntu packages in single pass.
+  sudo chroot "$ROOTFS_DIR" bash -c 'set -e
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update
+  apt-get install -y \
+    procps wget git ripgrep jq file iproute2 sudo \
+    libnss3 p11-kit-modules unzip \
+    nodejs \
+    python3 python3-pip \
+    ruby-full bundler \
+    php php-cli php-common php-curl php-mbstring php-xml php-zip \
+    default-jdk maven gradle \
+    gcc g++ clang make cmake \
+    postgresql-16 postgresql-contrib \
+    redis-server \
+    gh
+
+  # Clean up third-party APT sources (no longer needed at runtime)
+  rm -f /etc/apt/sources.list.d/nodesource.list \
+       /etc/apt/preferences.d/nodesource \
+       /usr/share/keyrings/nodesource.gpg \
+       /etc/apt/sources.list.d/github-cli.list \
+       /usr/share/keyrings/githubcli-archive-keyring.gpg
+  rm -rf /var/lib/apt/lists/* /var/cache/apt/*
+  '
+
+  # Chromium from Debian Bookworm (Ubuntu 24.04 snap stub does not work).
+  # Installed separately to avoid cross-distro dependency conflicts.
+  sudo chroot "$ROOTFS_DIR" bash -c 'set -e
+    export DEBIAN_FRONTEND=noninteractive
+    curl -fsSL https://ftp-master.debian.org/keys/archive-key-12.asc \
+      | gpg --dearmor -o /usr/share/keyrings/debian-bookworm.gpg
+    echo "deb [signed-by=/usr/share/keyrings/debian-bookworm.gpg] http://deb.debian.org/debian bookworm main" \
+      > /etc/apt/sources.list.d/debian-bookworm.list
+    apt-get update
+    apt-get install -y -t bookworm chromium
+    rm -f /etc/apt/sources.list.d/debian-bookworm.list \
+         /usr/share/keyrings/debian-bookworm.gpg
+    rm -rf /var/lib/apt/lists/* /var/cache/apt/*
+  '
+
+  # Make NSS-based applications (Chromium, Firefox) trust the system CA store.
+  # Replace Mozilla built-in trust module with p11-kit so proxy CA certs
+  # injected via update-ca-certificates are trusted by all applications.
+  sudo chroot "$ROOTFS_DIR" bash -c 'set -e
+    find /usr/lib -name libnssckbi.so -exec sh -c \
+      '\''p11=$(find /usr/lib -name p11-kit-trust.so | head -1) && ln -sf "$p11" "$1"'\'' _ {} \;
+  '
+
+  echo "[OK] packages installed"
 }
 
 # ---------------------------------------------------------------------------
-# Extract & inject
+# Install non-APT runtimes and tools
 # ---------------------------------------------------------------------------
 
-extract_and_inject() {
-  echo "extracting and injecting files..."
+install_runtimes() {
+  echo "installing language runtimes and CLIs..."
 
-  EXTRACT_DIR="$(mktemp -d)"
+  # User account (Ubuntu 24.04 ships 'ubuntu' at UID 1000; remove it first)
+  sudo chroot "$ROOTFS_DIR" bash -c '
+    userdel -r ubuntu 2>/dev/null || true
+    useradd -m -u 1000 -s /bin/bash user
+    usermod -aG sudo,postgres user
+    echo "user ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+    passwd -d user
+  '
 
-  # Extract tar
-  sudo tar -xf "$TAR_PATH" -C "$EXTRACT_DIR"
+  # Go (official tarball)
+  sudo chroot "$ROOTFS_DIR" bash -c "
+    ARCH=\$(dpkg --print-architecture)
+    curl -fsSL \"https://go.dev/dl/go${GO_VERSION}.linux-\${ARCH}.tar.gz\" -o /tmp/go.tar.gz
+    tar -C /usr/local -xzf /tmp/go.tar.gz
+    rm /tmp/go.tar.gz
+    ln -s /usr/local/go/bin/go /usr/local/bin/go
+    ln -s /usr/local/go/bin/gofmt /usr/local/bin/gofmt
+    echo 'export PATH=\$PATH:\$HOME/go/bin' > /etc/profile.d/golang.sh
+  "
 
-  # Write resolv.conf
-  local resolv_path="${EXTRACT_DIR}/etc/resolv.conf"
-  sudo rm -f "$resolv_path"
-  echo -n "$RESOLV_CONF" | sudo tee "$resolv_path" > /dev/null
+  # Rust (stable toolchain via rustup)
+  sudo chroot "$ROOTFS_DIR" bash -c '
+    export RUSTUP_HOME=/usr/local/rustup
+    export CARGO_HOME=/usr/local/cargo
+    curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs \
+      | sh -s -- -y --default-toolchain stable --no-modify-path
+    for bin in /usr/local/cargo/bin/*; do ln -s "$bin" /usr/local/bin/; done
+    printf "export RUSTUP_HOME=/usr/local/rustup\nexport CARGO_HOME=\$HOME/.cargo\nexport PATH=\$PATH:\$HOME/.cargo/bin\n" \
+      > /etc/profile.d/rust.sh
+  '
+
+  # PHP Composer
+  sudo chroot "$ROOTFS_DIR" bash -c '
+    curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
+  '
+
+  # Claude Code CLI (standalone Bun-compiled binary)
+  sudo chroot "$ROOTFS_DIR" bash -c "
+    ARCH=\$(dpkg --print-architecture)
+    case \"\$ARCH\" in
+      amd64) PLATFORM=\"linux-x64\" ;;
+      arm64) PLATFORM=\"linux-arm64\" ;;
+      *) echo \"Unsupported architecture: \$ARCH\" >&2; exit 1 ;;
+    esac
+    GCS_BUCKET=\"https://storage.googleapis.com/claude-code-dist-86c565f3-f756-42ad-8dfa-d59b1c096819/claude-code-releases\"
+    curl -fsSL \"\${GCS_BUCKET}/${CLAUDE_CODE_VERSION}/\${PLATFORM}/claude\" -o /usr/local/bin/claude
+    CHECKSUM=\$(curl -fsSL \"\${GCS_BUCKET}/${CLAUDE_CODE_VERSION}/manifest.json\" \
+      | jq -r \".platforms[\\\"\$PLATFORM\\\"].checksum\")
+    echo \"\${CHECKSUM}  /usr/local/bin/claude\" | sha256sum -c -
+    chmod +x /usr/local/bin/claude
+  "
+
+  # npm global packages (combined into one install)
+  sudo chroot "$ROOTFS_DIR" bash -c "
+    npm install -g \
+      @googleworkspace/cli@${GWS_CLI_VERSION} \
+      @xdevplatform/xurl@${XURL_VERSION} \
+      agent-browser@${AGENT_BROWSER_VERSION}
+    npm cache clean --force
+  "
+
+  echo "[OK] runtimes and CLIs installed"
+}
+
+# ---------------------------------------------------------------------------
+# Inject guest binaries, CA certificates, and configuration files
+# ---------------------------------------------------------------------------
+
+inject_files() {
+  echo "injecting guest binaries and CA..."
+
+  # Final resolv.conf for the VM (single nameserver — UDP 53 redirected to dnsmasq)
+  sudo rm -f "$ROOTFS_DIR/etc/resolv.conf"
+  echo "nameserver ${DNS_NAMESERVER}" | sudo tee "$ROOTFS_DIR/etc/resolv.conf" > /dev/null
 
   # Write /etc/hosts — the VM has no mDNS and resolv.conf only lists
   # external nameservers, so "localhost" would fail to resolve without this.
   printf '%s\n' \
     "127.0.0.1 localhost" \
     "::1 localhost" \
-    | sudo tee "${EXTRACT_DIR}/etc/hosts" > /dev/null
+    | sudo tee "$ROOTFS_DIR/etc/hosts" > /dev/null
 
   # Install guest binaries
   local -a bins=(
@@ -191,14 +369,13 @@ extract_and_inject() {
     "${GUEST_INIT}:/sbin/guest-init"
     "${GUEST_MOCK_CLAUDE}:/usr/local/bin/guest-mock-claude"
   )
-
   for entry in "${bins[@]}"; do
     local src="${entry%%:*}"
     local dest="${entry#*:}"
-    local target="${EXTRACT_DIR}${dest}"
+    local target="${ROOTFS_DIR}${dest}"
     sudo cp "$src" "$target"
     sudo chmod 755 "$target"
-    echo "[OK] installed ${src}"
+    echo "[OK] installed ${dest}"
   done
 
   # Install proxy CA certificate (generated by `runner build` in CA_DIR)
@@ -208,21 +385,22 @@ extract_and_inject() {
     exit 1
   fi
 
-  local ca_target="${EXTRACT_DIR}/${CA_ROOTFS_DEST}"
+  local ca_target="${ROOTFS_DIR}/${CA_ROOTFS_DEST}"
   sudo mkdir -p "$(dirname "$ca_target")"
   sudo cp "$ca_cert" "$ca_target"
   sudo chmod 644 "$ca_target"
 
-  # Update system CA bundle
-  sudo chroot "$EXTRACT_DIR" update-ca-certificates
+  # Update system CA bundle (OpenSSL/NSS).
+  # proc/sys/dev are still mounted from debootstrap_build.
+  sudo chroot "$ROOTFS_DIR" update-ca-certificates
 
   # Import proxy CA into Java's separate trust store (cacerts keystore).
   # Java does not read the system CA bundle — it has its own PKCS12 keystore.
   # In chroot, keytool can't find libjli.so via the default search path,
   # so we locate it and add its directory to LD_LIBRARY_PATH.
   local jli_dir
-  jli_dir=$(sudo chroot "$EXTRACT_DIR" find /usr/lib/jvm -name libjli.so -printf '%h' -quit)
-  sudo chroot "$EXTRACT_DIR" env LD_LIBRARY_PATH="$jli_dir" \
+  jli_dir=$(sudo chroot "$ROOTFS_DIR" find /usr/lib/jvm -name libjli.so -printf '%h' -quit)
+  sudo chroot "$ROOTFS_DIR" env LD_LIBRARY_PATH="$jli_dir" \
     keytool -importcert -trustcacerts \
     -keystore /etc/ssl/certs/java/cacerts \
     -storepass changeit -noprompt \
@@ -231,7 +409,7 @@ extract_and_inject() {
 
   # Write /etc/environment (read by PAM for all login sessions).
   # [sync:etc-environment] Keep in sync with: .github/workflows/crates.yml (runner-exec Test 5)
-  # - LANG: locale (Docker ENV is lost after export)
+  # - LANG: locale
   # - NPM_CONFIG_UPDATE_NOTIFIER: suppress npm update nags
   # - NODE_EXTRA_CA_CERTS: Node.js uses its own root CAs, not the system bundle
   # - SSL_CERT_FILE: Python (certifi/pip/requests), Go, Rust (native-tls)
@@ -245,7 +423,7 @@ extract_and_inject() {
     "SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt" \
     "REQUESTS_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt" \
     "CARGO_HTTP_CAINFO=/etc/ssl/certs/ca-certificates.crt" \
-    | sudo tee "${EXTRACT_DIR}/etc/environment" > /dev/null
+    | sudo tee "${ROOTFS_DIR}/etc/environment" > /dev/null
 
   echo "[OK] proxy CA installed and system bundle updated"
 }
@@ -257,11 +435,8 @@ extract_and_inject() {
 create_ext4() {
   echo "creating ext4 image..."
 
-  # Image size from profile disk_mb.
-  # With dm-snapshot COW, the guest filesystem is limited to this image
-  # size — there is no separate writable layer.
   local content_bytes
-  content_bytes=$(sudo du -sb "$EXTRACT_DIR" | cut -f1)
+  content_bytes=$(sudo du -sb "$ROOTFS_DIR" | cut -f1)
   local image_bytes=$(( DISK_MB * 1024 * 1024 ))
 
   if (( image_bytes < content_bytes )); then
@@ -270,26 +445,17 @@ create_ext4() {
     exit 1
   fi
 
-  # Derive a deterministic UUID from the input hash.  ext4 uses the UUID
-  # as the htree seed for directory hashing — a fixed UUID ensures
-  # identical block layout for identical content, making the rootfs
-  # reproducible.  This matters because dm-snapshot COW files record
-  # sector-level offsets: if the rootfs is rebuilt with a different block
-  # layout, existing snapshots become corrupt.
+  # Derive a deterministic UUID from the input hash. ext4 uses the UUID as
+  # the htree seed for directory hashing — a fixed UUID ensures identical
+  # block layout for identical content, making the rootfs reproducible.
   local fs_uuid="${INPUT_HASH:0:8}-${INPUT_HASH:8:4}-${INPUT_HASH:12:4}-${INPUT_HASH:16:4}-${INPUT_HASH:20:12}"
 
-  truncate -s "$image_bytes" "$TMP_ROOTFS_PATH"
-  mkfs.ext4 -F -q -U "$fs_uuid" "$TMP_ROOTFS_PATH"
+  # mktemp -d creates 0700; ext4 root inode must be 0755 for non-root access.
+  sudo chmod 755 "$ROOTFS_DIR"
 
-  EXT4_MOUNT_DIR=$(mktemp -d)
-  sudo mount -o loop "$TMP_ROOTFS_PATH" "$EXT4_MOUNT_DIR"
-  sudo cp -a "$EXTRACT_DIR"/. "$EXT4_MOUNT_DIR"/
-  # mktemp -d creates 0700 directories; cp -a preserves that on the ext4
-  # root inode, locking out non-root users. Restore standard 0755.
-  sudo chmod 755 "$EXT4_MOUNT_DIR"
-  sudo umount "$EXT4_MOUNT_DIR"
-  rmdir "$EXT4_MOUNT_DIR"
-  EXT4_MOUNT_DIR=""
+  # Create ext4 image populated directly from directory (no loopback mount needed)
+  truncate -s "$image_bytes" "$TMP_ROOTFS_PATH"
+  mkfs.ext4 -F -q -U "$fs_uuid" -d "$ROOTFS_DIR" "$TMP_ROOTFS_PATH"
 
   echo "[OK] ext4 image created"
 }
@@ -299,12 +465,13 @@ create_ext4() {
 # ---------------------------------------------------------------------------
 
 check_dependencies
-docker_build
-docker_export
+debootstrap_build
+install_packages
+install_runtimes
+inject_files
 
-extract_and_inject
-# Free disk space early
-sudo rm -f "$TAR_PATH"
+# Unmount virtual filesystems before creating ext4 image
+cleanup_chroot
 
 create_ext4
 
