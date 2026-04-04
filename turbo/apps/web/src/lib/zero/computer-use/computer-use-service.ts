@@ -44,9 +44,15 @@ export async function registerHost(
 ): Promise<RegisterHostResult> {
   const db = globalThis.services.db;
 
-  // If existing host found, clean it up first (idempotent re-registration)
+  const env = globalThis.services.env;
+  const apiKey = env.NGROK_API_KEY;
+  if (!apiKey) {
+    throw new Error("NGROK_API_KEY is not configured");
+  }
+
+  // If existing host found, partially clean up (keep domain and bot user)
   const [existing] = await db
-    .select({ id: computerUseHosts.id })
+    .select()
     .from(computerUseHosts)
     .where(
       and(
@@ -56,15 +62,35 @@ export async function registerHost(
     )
     .limit(1);
 
+  let reusableDomain: { domain: string; id: string } | null = null;
+
   if (existing) {
     log.debug("Cleaning up existing host registration", { orgId, userId });
-    await unregisterHost(orgId, userId);
-  }
 
-  const env = globalThis.services.env;
-  const apiKey = env.NGROK_API_KEY;
-  if (!apiKey) {
-    throw new Error("NGROK_API_KEY is not configured");
+    // Delete credential and endpoint (need new token + routing), keep domain
+    if (existing.ngrokCredentialId) {
+      await safeDeleteNgrokResource(
+        () => deleteCredential(apiKey, existing.ngrokCredentialId!),
+        "Credential",
+        existing.ngrokCredentialId,
+      );
+    }
+    if (existing.ngrokEndpointId) {
+      await safeDeleteNgrokResource(
+        () => deleteCloudEndpoint(apiKey, existing.ngrokEndpointId!),
+        "Cloud endpoint",
+        existing.ngrokEndpointId,
+      );
+    }
+
+    // Preserve domain for reuse (same user = same deterministic slug)
+    if (existing.ngrokDomainId && existing.domain) {
+      reusableDomain = { domain: existing.domain, id: existing.ngrokDomainId };
+    }
+
+    await db
+      .delete(computerUseHosts)
+      .where(eq(computerUseHosts.id, existing.id));
   }
 
   // Generate a DNS-safe slug from orgId+userId hash (hex chars only)
@@ -82,12 +108,22 @@ export async function registerHost(
     `bind:*.${endpointPrefix}.internal`,
   ]);
 
-  const reservedDomain = await createReservedDomain(
-    apiKey,
-    subdomainName,
-    "us",
-  );
-  const domain = reservedDomain.domain;
+  // Reuse existing domain or create new one
+  let domain: string;
+  let domainId: string;
+  if (reusableDomain) {
+    domain = reusableDomain.domain;
+    domainId = reusableDomain.id;
+    log.debug("Reusing existing reserved domain", { domain, domainId });
+  } else {
+    const reservedDomain = await createReservedDomain(
+      apiKey,
+      subdomainName,
+      "us",
+    );
+    domain = reservedDomain.domain;
+    domainId = reservedDomain.id;
+  }
 
   const bridgeToken = randomUUID();
 
@@ -136,7 +172,7 @@ export async function registerHost(
       ngrokBotUserId: botUser.id,
       ngrokCredentialId: credential.id,
       ngrokEndpointId: cloudEndpoint.id,
-      ngrokDomainId: reservedDomain.id,
+      ngrokDomainId: domainId,
       expiresAt: new Date(Date.now() + HOST_TTL_MS),
     })
     .returning();
