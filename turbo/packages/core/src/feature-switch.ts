@@ -34,23 +34,6 @@ function fnv1a(input: string): string {
   return h.toString(16).padStart(8, "0");
 }
 
-/**
- * Compute the FNV-1a hash of an email address (lowercased).
- * Used for email-based feature switch targeting.
- */
-export function computeEmailHash(email: string): string {
-  return fnv1a(email.toLowerCase());
-}
-
-/**
- * Compute the FNV-1a hash of an organization ID.
- * Used for org-based feature switch targeting.
- * No lowercasing — orgId is case-sensitive.
- */
-export function computeOrgIdHash(orgId: string): string {
-  return fnv1a(orgId);
-}
-
 // NOTE: Migrated from SHA-1 to FNV-1a. Original user IDs are not stored in the codebase,
 // so hashes could not be auto-migrated. Staff access continues to work via STAFF_ORG_ID_HASHES.
 // Each team member can add their own FNV-1a hash by running:
