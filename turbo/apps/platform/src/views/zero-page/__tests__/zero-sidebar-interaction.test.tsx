@@ -351,7 +351,7 @@ describe("zero sidebar - agent card toggles chat list (SIDEBAR-D-020)", () => {
       expect(screen.getByText("Research Agent")).toBeInTheDocument();
     });
 
-    const pinnedHeader = screen.getByText("Pinned").closest("div")!;
+    const pinnedHeader = screen.getByTestId("pinned-section-header");
     await user.click(pinnedHeader);
 
     await waitFor(() => {
@@ -401,8 +401,8 @@ describe("zero sidebar - agent action menu opens (SIDEBAR-D-066)", () => {
     const agentCard = screen.getByTestId("pinned-agent-card");
     await user.hover(agentCard);
 
-    // The "Remove from list" button is invisible via CSS but present in the DOM
+    // The "Remove from list" button is revealed via CSS on hover
     const removeButton = screen.getByLabelText("Remove from list");
-    expect(removeButton).toBeInTheDocument();
+    expect(removeButton).toBeVisible();
   });
 });
