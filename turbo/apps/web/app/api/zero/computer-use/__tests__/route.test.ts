@@ -53,6 +53,7 @@ function setupNgrokMocks() {
   const calls = {
     createBotUser: [] as string[],
     listBotUsers: 0,
+    listReservedDomains: 0,
     createCredential: [] as string[],
     deleteCredential: [] as string[],
     createEndpoint: [] as string[],
@@ -91,6 +92,13 @@ function setupNgrokMocks() {
     http.delete("https://api.ngrok.com/credentials/:id", ({ params }) => {
       calls.deleteCredential.push(params.id as string);
       return new HttpResponse(null, { status: 204 });
+    }),
+    http.get("https://api.ngrok.com/reserved_domains", () => {
+      calls.listReservedDomains++;
+      return HttpResponse.json({
+        reserved_domains: [],
+        next_page_uri: null,
+      });
     }),
     http.post("https://api.ngrok.com/reserved_domains", async ({ request }) => {
       const body = (await request.json()) as {

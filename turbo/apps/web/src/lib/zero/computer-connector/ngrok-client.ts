@@ -211,6 +211,58 @@ export async function createReservedDomain(
   return domain;
 }
 
+interface NgrokReservedDomainsPage {
+  reserved_domains: NgrokDomain[];
+  next_page_uri: string | null;
+}
+
+/**
+ * Find a reserved domain by name. Paginates through all results.
+ */
+async function findReservedDomainByName(
+  apiKey: string,
+  name: string,
+): Promise<NgrokDomain | undefined> {
+  let nextPageUri: string | null = "/reserved_domains";
+
+  while (nextPageUri) {
+    const response = await ngrokFetch(apiKey, nextPageUri);
+    const page = (await response.json()) as NgrokReservedDomainsPage;
+
+    const found = page.reserved_domains.find((d) => {
+      return d.domain.startsWith(`${name}.`);
+    });
+    if (found) {
+      return found;
+    }
+
+    nextPageUri = page.next_page_uri;
+  }
+
+  return undefined;
+}
+
+/**
+ * Find an existing reserved domain by name, or create a new one.
+ */
+export async function findOrCreateReservedDomain(
+  apiKey: string,
+  name: string,
+  region: string = "us",
+): Promise<NgrokDomain> {
+  const existing = await findReservedDomainByName(apiKey, name);
+  if (existing) {
+    log.debug("Found existing reserved domain", {
+      id: existing.id,
+      domain: existing.domain,
+    });
+    return existing;
+  }
+
+  log.debug("Creating new reserved domain", { name });
+  return createReservedDomain(apiKey, name, region);
+}
+
 /**
  * Delete a reserved domain by ID.
  */

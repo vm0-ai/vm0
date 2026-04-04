@@ -15,7 +15,7 @@ import {
   deleteCredential,
   createCloudEndpoint,
   deleteCloudEndpoint,
-  createReservedDomain,
+  findOrCreateReservedDomain,
   deleteReservedDomain,
 } from "../computer-connector/ngrok-client";
 
@@ -120,7 +120,7 @@ export async function registerHost(
     domainId = reusableDomain.id;
     log.debug("Reusing existing reserved domain", { domain, domainId });
   } else {
-    const reservedDomain = await createReservedDomain(
+    const reservedDomain = await findOrCreateReservedDomain(
       apiKey,
       subdomainName,
       "us",
