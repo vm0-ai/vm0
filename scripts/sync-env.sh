@@ -61,7 +61,7 @@ configure_runner_group() {
   # Derive from git email + hostname (e.g. alice@vm0.ai on macbook -> alice-macbook)
   local username hostname_short
   username=$(git config user.email 2>/dev/null | sed 's/@.*//' | tr '[:upper:].' '[:lower:]-' | sed 's/-$//' || true)
-  hostname_short=$(hostname -s)
+  hostname_short=$("$SCRIPT_DIR/cn.sh")
 
   if [[ -z "$username" ]]; then
     echo "  ✗ RUNNER_DEFAULT_GROUP skipped (git user.email not configured)"

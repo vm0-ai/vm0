@@ -67,7 +67,7 @@ else
   if [[ "$DOMAIN" == "vm0.ai" ]]; then
     MODE="named"
     USERNAME="${EMAIL%%@*}"
-    MACHINE_HOSTNAME=$(hostname)
+    MACHINE_HOSTNAME=$(bash "$(dirname "$0")/cn.sh")
 
     # Map well-known ports to service names
     case "$PORT" in
