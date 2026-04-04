@@ -23,7 +23,7 @@ vi.mock("@vm0/core", async (importOriginal) => {
   return {
     ...actual,
     isFeatureEnabled: (...args: unknown[]) => {
-      return mockIsFeatureEnabled(...args) as Promise<boolean>;
+      return mockIsFeatureEnabled(...args) as boolean;
     },
   };
 });
@@ -222,7 +222,7 @@ describe("sandbox-token", () => {
   describe("zero tokens", () => {
     beforeEach(() => {
       // Default: all feature flags disabled (non-staff user)
-      mockIsFeatureEnabled.mockResolvedValue(false);
+      mockIsFeatureEnabled.mockReturnValue(false);
     });
 
     afterEach(() => {
@@ -255,7 +255,7 @@ describe("sandbox-token", () => {
     });
 
     it("should exclude conditional capabilities when feature flags are disabled", async () => {
-      mockIsFeatureEnabled.mockResolvedValue(false);
+      mockIsFeatureEnabled.mockReturnValue(false);
 
       const token = await generateZeroToken("user-123", "run-456", "org-789");
       const auth = verifyZeroToken(token);
@@ -274,7 +274,7 @@ describe("sandbox-token", () => {
     });
 
     it("should include computer-use:write when feature flag is enabled", async () => {
-      mockIsFeatureEnabled.mockResolvedValue(true);
+      mockIsFeatureEnabled.mockReturnValue(true);
 
       const token = await generateZeroToken("user-123", "run-456", "org-789");
       const auth = verifyZeroToken(token);
