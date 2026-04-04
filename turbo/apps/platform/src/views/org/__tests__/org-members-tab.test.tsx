@@ -131,12 +131,8 @@ test("shows membership requests with Accept and Reject buttons", async () => {
   mockMembersAPI({ membershipRequests: [membershipRequest] });
   await renderMembersTab();
   await waitFor(() => {
-    expect(
-      screen.getByRole("button", { name: "Accept request" }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Reject request" }),
-    ).toBeInTheDocument();
+    expect(screen.getByTitle("Accept request")).toBeInTheDocument();
+    expect(screen.getByTitle("Reject request")).toBeInTheDocument();
   });
 });
 
@@ -192,7 +188,11 @@ test("opens invite dialog when Add member button is clicked", async () => {
   await waitFor(() => {
     expect(screen.getByText("admin@example.com")).toBeInTheDocument();
   });
-  await user.click(screen.getByRole("button", { name: /Add member/i }));
+  await user.click(
+    screen.getAllByRole("button").find((el) => {
+      return /Add member/i.test(el.textContent ?? "");
+    })!,
+  );
   await waitFor(() => {
     expect(
       screen.getByRole("heading", { name: "Invite member" }),
@@ -219,7 +219,11 @@ test("sends invite with typed email when Send invitation is clicked", async () =
   await waitFor(() => {
     expect(screen.getByText("admin@example.com")).toBeInTheDocument();
   });
-  await user.click(screen.getByRole("button", { name: /Add member/i }));
+  await user.click(
+    screen.getAllByRole("button").find((el) => {
+      return /Add member/i.test(el.textContent ?? "");
+    })!,
+  );
   await waitFor(() => {
     expect(
       screen.getByRole("heading", { name: "Invite member" }),
@@ -228,7 +232,11 @@ test("sends invite with typed email when Send invitation is clicked", async () =
   const emailInput = screen.getByPlaceholderText("email@example.com");
   await user.clear(emailInput);
   await user.type(emailInput, "test@invite.com");
-  await user.click(screen.getByRole("button", { name: "Send invitation" }));
+  await user.click(
+    screen.getAllByRole("button").find((el) => {
+      return el.textContent === "Send invitation";
+    })!,
+  );
   await waitFor(() => {
     expect(capturedEmail).toBe("test@invite.com");
   });
@@ -253,7 +261,11 @@ test("sends invite with Admin role when Admin is selected in role dropdown", asy
   await waitFor(() => {
     expect(screen.getByText("admin@example.com")).toBeInTheDocument();
   });
-  await user.click(screen.getByRole("button", { name: /Add member/i }));
+  await user.click(
+    screen.getAllByRole("button").find((el) => {
+      return /Add member/i.test(el.textContent ?? "");
+    })!,
+  );
   await waitFor(() => {
     expect(
       screen.getByRole("heading", { name: "Invite member" }),
@@ -267,7 +279,11 @@ test("sends invite with Admin role when Admin is selected in role dropdown", asy
     expect(screen.getByRole("option", { name: "Admin" })).toBeInTheDocument();
   });
   await user.click(screen.getByRole("option", { name: "Admin" }));
-  await user.click(screen.getByRole("button", { name: "Send invitation" }));
+  await user.click(
+    screen.getAllByRole("button").find((el) => {
+      return el.textContent === "Send invitation";
+    })!,
+  );
   await waitFor(() => {
     expect(capturedRole).toBe("admin");
   });
@@ -292,7 +308,9 @@ test("sends role update when Make admin is clicked in member action menu", async
     expect(screen.getByText("member@example.com")).toBeInTheDocument();
   });
   await user.click(
-    screen.getByRole("button", { name: "Actions for member@example.com" }),
+    screen.getAllByRole("button").find((el) => {
+      return el.getAttribute("aria-label") === "Actions for member@example.com";
+    })!,
   );
   await waitFor(() => {
     expect(screen.getByText("Make admin")).toBeInTheDocument();
@@ -315,7 +333,9 @@ test("shows self-demote confirmation dialog when admin switches to member", asyn
     expect(screen.getByTestId("current-user-indicator")).toBeInTheDocument();
   });
   await user.click(
-    screen.getByRole("button", { name: "Actions for admin@example.com" }),
+    screen.getAllByRole("button").find((el) => {
+      return el.getAttribute("aria-label") === "Actions for admin@example.com";
+    })!,
   );
   await waitFor(() => {
     expect(screen.getByText("Switch to member")).toBeInTheDocument();
@@ -337,7 +357,11 @@ test("shows revoke invitation confirmation dialog when revoke is clicked", async
     expect(screen.getByText("invited@example.com")).toBeInTheDocument();
   });
   await user.click(
-    screen.getByRole("button", { name: "Actions for invited@example.com" }),
+    screen.getAllByRole("button").find((el) => {
+      return (
+        el.getAttribute("aria-label") === "Actions for invited@example.com"
+      );
+    })!,
   );
   await waitFor(() => {
     expect(screen.getByText("Revoke invitation")).toBeInTheDocument();
@@ -364,11 +388,9 @@ test("sends accept request when Accept button is clicked", async () => {
   );
   await renderMembersTab();
   await waitFor(() => {
-    expect(
-      screen.getByRole("button", { name: "Accept request" }),
-    ).toBeInTheDocument();
+    expect(screen.getByTitle("Accept request")).toBeInTheDocument();
   });
-  await user.click(screen.getByRole("button", { name: "Accept request" }));
+  await user.click(screen.getByTitle("Accept request"));
   await waitFor(() => {
     expect(capturedRequestId).toBe("req-001");
   });
@@ -388,11 +410,9 @@ test("sends reject request when Reject button is clicked", async () => {
   );
   await renderMembersTab();
   await waitFor(() => {
-    expect(
-      screen.getByRole("button", { name: "Reject request" }),
-    ).toBeInTheDocument();
+    expect(screen.getByTitle("Reject request")).toBeInTheDocument();
   });
-  await user.click(screen.getByRole("button", { name: "Reject request" }));
+  await user.click(screen.getByTitle("Reject request"));
   await waitFor(() => {
     expect(capturedRequestId).toBe("req-001");
   });
