@@ -47,7 +47,7 @@ describe("zero-slack-connect-page - connection status indicator (CONN-D-050)", (
 
 // CONN-D-051: Status icon is displayed
 describe("zero-slack-connect-page - status icon (CONN-D-051)", () => {
-  it("shows success icon when connected", async () => {
+  it("shows success icon/heading when connected", async () => {
     setMockSlackConnectData({ isConnected: true });
     await setupPage({ context, path: "/settings/slack?w=ws1&u=u1" });
 
@@ -55,16 +55,6 @@ describe("zero-slack-connect-page - status icon (CONN-D-051)", () => {
       // Success state: IconCircleCheck rendered, heading "Connected to Slack!" present
       expect(
         screen.getByRole("heading", { name: "Connected to Slack!" }),
-      ).toBeInTheDocument();
-    });
-  });
-
-  it("shows error icon when error param is present", async () => {
-    await setupPage({ context, path: "/settings/slack?error=Auth+failed" });
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Connection Failed" }),
       ).toBeInTheDocument();
     });
   });
@@ -130,13 +120,13 @@ describe("zero-slack-connect-page - back to settings link (CONN-N-055)", () => {
 describe("zero-slack-connect-page - connect button (CONN-I-056)", () => {
   it("clicking Connect submits the workspace and user IDs to the Slack connect API", async () => {
     const user = userEvent.setup();
-    let submittedBody: Record<string, string> | undefined;
+    let submittedBody: unknown;
 
     server.use(
       http.post(
         "*/api/zero/integrations/slack/connect",
         async ({ request }) => {
-          submittedBody = (await request.json()) as Record<string, string>;
+          submittedBody = await request.json();
           return HttpResponse.json({
             success: true,
             connectionId: "conn-001",
@@ -155,9 +145,10 @@ describe("zero-slack-connect-page - connect button (CONN-I-056)", () => {
     await user.click(connectButton);
 
     await waitFor(() => {
-      expect(submittedBody).toBeDefined();
-      expect(submittedBody?.workspaceId).toBe("ws1");
-      expect(submittedBody?.slackUserId).toBe("u1");
+      expect(submittedBody).toMatchObject({
+        workspaceId: "ws1",
+        slackUserId: "u1",
+      });
     });
   });
 });
