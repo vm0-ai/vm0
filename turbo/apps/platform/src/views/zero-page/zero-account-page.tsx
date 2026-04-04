@@ -68,6 +68,7 @@ function AppearanceSettings() {
               <button
                 key={value}
                 type="button"
+                aria-pressed={currentPref === value}
                 onClick={() => {
                   return setTheme(value);
                 }}
@@ -132,21 +133,20 @@ function SendModeSettings() {
         </div>
         <div className="flex gap-2 shrink-0">
           {SEND_OPTIONS.map(({ value, label }) => {
+            const isActive =
+              saving === value ? true : saving === null && current === value;
             return (
               <button
                 key={value}
                 type="button"
+                aria-pressed={isActive}
                 disabled={saving !== null}
                 onClick={() => {
                   return handleChange(value);
                 }}
                 className={cn(
                   "flex items-center gap-2 rounded-lg border border-[0.7px] px-3.5 py-2 text-sm font-medium transition-all duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                  (
-                    saving === value
-                      ? true
-                      : saving === null && current === value
-                  )
+                  isActive
                     ? "border-primary/40 bg-primary/10 text-primary dark:border-primary/50 dark:bg-primary/15"
                     : "zero-chip text-muted-foreground hover:text-foreground",
                   saving !== null && "opacity-60 cursor-not-allowed",

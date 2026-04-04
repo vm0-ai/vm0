@@ -42,9 +42,8 @@ function findButtonByText(text: string) {
 
 function findCmdEnterButton() {
   return screen.getAllByRole("button").find((btn) => {
-    return (
-      btn.textContent?.includes("\u2318") && btn.textContent?.includes("Enter")
-    );
+    const text = btn.textContent?.replace(/\s+/g, " ").trim() ?? "";
+    return text.includes("Enter") && text !== "Enter";
   });
 }
 
@@ -60,10 +59,10 @@ describe("zero-account-page - theme display", () => {
     await waitFor(() => {
       const systemBtn = findButtonByText("System");
       expect(systemBtn).toBeInTheDocument();
-      expect(systemBtn).toHaveClass("bg-primary/10");
+      expect(systemBtn).toHaveAttribute("aria-pressed", "true");
       const lightBtn = findButtonByText("Light");
       expect(lightBtn).toBeInTheDocument();
-      expect(lightBtn).not.toHaveClass("bg-primary/10");
+      expect(lightBtn).toHaveAttribute("aria-pressed", "false");
     });
   });
 });
@@ -78,9 +77,8 @@ describe("zero-account-page - send mode display", () => {
     await renderPreferencesPage();
 
     await waitFor(() => {
-      expect(
-        screen.getByText("Press Enter to send, Shift+Enter for new line"),
-      ).toBeInTheDocument();
+      const enterBtn = findButtonByText("Enter");
+      expect(enterBtn).toHaveAttribute("aria-pressed", "true");
     });
   });
 });
@@ -127,8 +125,11 @@ describe("zero-account-page - theme interaction", () => {
     await user.click(lightBtn);
 
     await waitFor(() => {
-      expect(lightBtn).toHaveClass("bg-primary/10");
-      expect(findButtonByText("System")).not.toHaveClass("bg-primary/10");
+      expect(lightBtn).toHaveAttribute("aria-pressed", "true");
+      expect(findButtonByText("System")).toHaveAttribute(
+        "aria-pressed",
+        "false",
+      );
     });
   });
 
@@ -150,8 +151,11 @@ describe("zero-account-page - theme interaction", () => {
     await user.click(darkBtn);
 
     await waitFor(() => {
-      expect(darkBtn).toHaveClass("bg-primary/10");
-      expect(findButtonByText("System")).not.toHaveClass("bg-primary/10");
+      expect(darkBtn).toHaveAttribute("aria-pressed", "true");
+      expect(findButtonByText("System")).toHaveAttribute(
+        "aria-pressed",
+        "false",
+      );
     });
   });
 
@@ -172,15 +176,15 @@ describe("zero-account-page - theme interaction", () => {
 
     await user.click(lightBtn);
     await waitFor(() => {
-      expect(lightBtn).toHaveClass("bg-primary/10");
+      expect(lightBtn).toHaveAttribute("aria-pressed", "true");
     });
 
     const systemBtn = findButtonByText("System") as HTMLElement;
     await user.click(systemBtn);
 
     await waitFor(() => {
-      expect(systemBtn).toHaveClass("bg-primary/10");
-      expect(lightBtn).not.toHaveClass("bg-primary/10");
+      expect(systemBtn).toHaveAttribute("aria-pressed", "true");
+      expect(lightBtn).toHaveAttribute("aria-pressed", "false");
     });
   });
 });
@@ -258,7 +262,7 @@ describe("zero-account-page - send mode interaction", () => {
     await user.click(enterBtn);
 
     await waitFor(() => {
-      expect(enterBtn).toHaveClass("bg-primary/10");
+      expect(enterBtn).toHaveAttribute("aria-pressed", "true");
     });
 
     deferred.resolve();
@@ -296,7 +300,7 @@ describe("zero-account-page - send mode interaction", () => {
     await user.click(cmdEnterBtn);
 
     await waitFor(() => {
-      expect(cmdEnterBtn).toHaveClass("bg-primary/10");
+      expect(cmdEnterBtn).toHaveAttribute("aria-pressed", "true");
     });
 
     deferred.resolve();
