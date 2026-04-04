@@ -127,7 +127,7 @@ async function resolveAuthMethod(
   const orgId = await getActiveOrg();
   const oauthAvailable =
     "oauth" in config.authMethods &&
-    (!oauthFlag || (await isFeatureEnabled(oauthFlag, { orgId })));
+    (!oauthFlag || isFeatureEnabled(oauthFlag, { orgId }));
   const apiTokenAvailable = "api-token" in config.authMethods;
 
   if (tokenFlag) {

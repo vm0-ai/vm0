@@ -329,7 +329,7 @@ export async function generateZeroToken(
   for (const cap of ZERO_CAPABILITIES) {
     const flag = CONDITIONAL_CAPABILITIES.get(cap);
     if (flag) {
-      if (await isFeatureEnabled(flag, { userId, orgId })) {
+      if (isFeatureEnabled(flag, { userId, orgId })) {
         capabilities.push(cap);
       }
     } else {

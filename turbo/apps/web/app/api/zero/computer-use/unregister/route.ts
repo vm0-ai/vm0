@@ -28,7 +28,7 @@ const router = tsr.router(zeroComputerUseUnregisterContract, {
 
     const { org } = await resolveOrg(authCtx);
 
-    const enabled = await isFeatureEnabled(FeatureSwitchKey.ComputerUse, {
+    const enabled = isFeatureEnabled(FeatureSwitchKey.ComputerUse, {
       orgId: org.orgId,
       userId,
     });

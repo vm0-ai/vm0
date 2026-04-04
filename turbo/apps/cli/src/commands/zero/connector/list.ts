@@ -29,11 +29,7 @@ export const listCommand = new Command()
       for (const type of allTypesRaw) {
         const flag = CONNECTOR_TYPES[type].featureFlag;
         const hasApiToken = "api-token" in CONNECTOR_TYPES[type].authMethods;
-        if (
-          flag &&
-          !(await isFeatureEnabled(flag, { orgId })) &&
-          !hasApiToken
-        ) {
+        if (flag && !isFeatureEnabled(flag, { orgId }) && !hasApiToken) {
           continue;
         }
         allTypes.push(type);
