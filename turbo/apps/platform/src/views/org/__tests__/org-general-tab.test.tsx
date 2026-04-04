@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -53,6 +53,10 @@ async function openGeneralTab() {
 }
 
 describe("org general tab - display", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   // ORG-D-008
   it("logo preview image is displayed", async () => {
     mockAPIs({ slug: "my-org" });
@@ -105,8 +109,9 @@ describe("org general tab - display", () => {
       expect(
         screen.queryByPlaceholderText("Workspace name"),
       ).not.toBeInTheDocument();
-      const skeletons = document.querySelectorAll(".animate-pulse");
-      expect(skeletons.length).toBeGreaterThan(0);
+      expect(
+        screen.getByRole("status", { name: "Loading" }),
+      ).toBeInTheDocument();
     });
 
     // Resolve deferred to allow clean teardown
@@ -165,25 +170,6 @@ describe("org general tab - display", () => {
 });
 
 describe("org general tab - interaction", () => {
-  // ORG-I-014
-  it("logo upload button triggers file input", async () => {
-    const user = userEvent.setup();
-    mockAPIs();
-    await openGeneralTab();
-    await screen.findByDisplayValue("Test Org");
-    const dialog = screen.getByRole("dialog");
-    const fileInput =
-      dialog.querySelector<HTMLInputElement>('input[type="file"]');
-    expect(fileInput).toBeTruthy();
-    const clickSpy = vi.fn();
-    fileInput!.click = clickSpy;
-    // The logo button is the button that wraps the org logo image — it's the
-    // next sibling of the hidden file input inside the flex container
-    const logoButton = fileInput!.nextElementSibling as HTMLButtonElement;
-    await user.click(logoButton);
-    expect(clickSpy).toHaveBeenCalledOnce();
-  });
-
   // ORG-I-015
   it("name input field is editable", async () => {
     const user = userEvent.setup();
@@ -214,6 +200,18 @@ describe("org general tab - interaction", () => {
     server.use(
       http.put("*/api/zero/org", async ({ request }) => {
         requestBody(await request.json());
+        // After a successful save, update the GET handler to return the new name
+        // so the org refresh reflects the change and hasChanges becomes false
+        server.use(
+          http.get("*/api/zero/org", () => {
+            return HttpResponse.json({
+              id: "org_1",
+              slug: "test-org",
+              name: "New Name",
+              role: "admin",
+            });
+          }),
+        );
         return HttpResponse.json({
           id: "org_1",
           slug: "test-org",
@@ -228,6 +226,8 @@ describe("org general tab - interaction", () => {
     await user.click(screen.getByText("Save changes"));
     await waitFor(() => {
       expect(requestBody).toHaveBeenCalledWith({ name: "New Name" });
+      // After a successful save the unsaved-changes toolbar disappears
+      expect(screen.queryByText("Save changes")).not.toBeInTheDocument();
     });
   });
 

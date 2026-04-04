@@ -577,7 +577,7 @@ export function OrgGeneralTab() {
 
 function GeneralTabSkeleton() {
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-8" role="status" aria-label="Loading">
       {/* Profile section skeleton */}
       <section className="flex flex-col gap-3">
         <div className="h-4 w-12 rounded bg-muted/50 animate-pulse" />
