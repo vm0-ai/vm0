@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const googleCalendarFirewall: FirewallConfig = {
+export const googleCalendarFirewall = {
   name: "google-calendar",
   description: "Google Calendar API",
   placeholders: {
@@ -293,4 +293,4 @@ export const googleCalendarFirewall: FirewallConfig = {
       ],
     },
   ],
-};
+} as const satisfies FirewallConfig;

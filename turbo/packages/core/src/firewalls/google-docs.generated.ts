@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const googleDocsFirewall: FirewallConfig = {
+export const googleDocsFirewall = {
   name: "google-docs",
   description: "Google Docs API",
   placeholders: {
@@ -65,4 +65,4 @@ export const googleDocsFirewall: FirewallConfig = {
       ],
     },
   ],
-};
+} as const satisfies FirewallConfig;

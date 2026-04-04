@@ -7,7 +7,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const googleDriveFirewall: FirewallConfig = {
+export const googleDriveFirewall = {
   name: "google-drive",
   description: "Google Drive API",
   placeholders: {
@@ -743,4 +743,4 @@ export const googleDriveFirewall: FirewallConfig = {
       ],
     },
   ],
-};
+} as const satisfies FirewallConfig;

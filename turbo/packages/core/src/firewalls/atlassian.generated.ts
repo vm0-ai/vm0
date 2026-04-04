@@ -562,6 +562,7 @@ export const atlassianFirewall: FirewallConfig = {
             "GET /ex/jira/{cloudId}/rest/api/3/field",
             "GET /ex/jira/{cloudId}/rest/api/3/field/search",
             "GET /ex/jira/{cloudId}/rest/api/3/field/search/trashed",
+            "GET /ex/jira/{cloudId}/rest/api/3/field/{fieldId}/association/project",
             "GET /ex/jira/{cloudId}/rest/api/3/field/{fieldKey}/option/suggestions/edit",
             "GET /ex/jira/{cloudId}/rest/api/3/field/{fieldKey}/option/suggestions/search",
             "GET /ex/jira/{cloudId}/rest/api/3/filter/defaultShareScope",

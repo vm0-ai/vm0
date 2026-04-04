@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const youtubeFirewall: FirewallConfig = {
+export const youtubeFirewall = {
   name: "youtube",
   description: "YouTube Data API",
   placeholders: {
@@ -394,4 +394,4 @@ export const youtubeFirewall: FirewallConfig = {
       ],
     },
   ],
-};
+} as const satisfies FirewallConfig;
