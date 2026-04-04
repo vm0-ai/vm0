@@ -306,11 +306,14 @@ function ScheduleTimingFields({
       {/* Day of month */}
       {freq === "every_month" && (
         <div className="flex flex-col gap-2">
-          <label className="text-sm font-medium text-foreground">
+          <label
+            htmlFor="schedule-dialog-day-of-month"
+            className="text-sm font-medium text-foreground"
+          >
             Day of month
           </label>
           <Select value={dayOfMonth} onValueChange={setDayOfMonth}>
-            <SelectTrigger className="h-9">
+            <SelectTrigger id="schedule-dialog-day-of-month" className="h-9">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -337,7 +340,11 @@ function ScheduleTimingFields({
                 return setHour(Number(v));
               }}
             >
-              <SelectTrigger className="h-9 w-20">
+              <SelectTrigger
+                id="schedule-dialog-hour"
+                aria-label="Hour"
+                className="h-9 w-20"
+              >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -357,7 +364,11 @@ function ScheduleTimingFields({
                 return setMinute(Number(v));
               }}
             >
-              <SelectTrigger className="h-9 w-20">
+              <SelectTrigger
+                id="schedule-dialog-minute"
+                aria-label="Minute"
+                className="h-9 w-20"
+              >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -427,6 +438,7 @@ function DayOfWeekPicker({
             <button
               key={value}
               type="button"
+              aria-pressed={selected}
               className={`h-8 min-w-[40px] rounded-lg border text-xs font-medium transition-colors ${
                 selected
                   ? "border-primary bg-primary text-primary-foreground"

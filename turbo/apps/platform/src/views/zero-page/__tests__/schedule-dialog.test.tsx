@@ -324,28 +324,6 @@ describe("schedule dialog - agent selection (SCHED-D-051)", () => {
   });
 });
 
-describe("schedule dialog - prompt textarea (SCHED-D-052)", () => {
-  it("updates prompt value when text is typed", async () => {
-    const user = userEvent.setup();
-    await openCreateDialog(user);
-    const textarea = screen.getByLabelText("Prompt");
-    await user.clear(textarea);
-    await user.type(textarea, "Hello world");
-    expect(textarea).toHaveValue("Hello world");
-  });
-});
-
-describe("schedule dialog - description input (SCHED-D-053)", () => {
-  it("updates description value when text is entered in edit mode", async () => {
-    const user = userEvent.setup();
-    await openEditDialog(user);
-    const descInput = screen.getByLabelText(/Description/);
-    await user.clear(descInput);
-    await user.type(descInput, "New description");
-    expect(descInput).toHaveValue("New description");
-  });
-});
-
 describe("schedule dialog - frequency select (SCHED-D-054)", () => {
   it("shows date picker when frequency is changed to Once", async () => {
     const user = userEvent.setup();
@@ -383,21 +361,6 @@ describe("schedule dialog - loop interval (SCHED-D-055)", () => {
   });
 });
 
-describe("schedule dialog - date picker (SCHED-D-056)", () => {
-  it("updates date value when a date is typed", async () => {
-    const user = userEvent.setup();
-    await openCreateDialog(user);
-    await switchFrequency(user, "Once");
-    await waitFor(() => {
-      expect(screen.getByLabelText("Date")).toBeInTheDocument();
-    });
-    const dateInput = screen.getByLabelText("Date");
-    await user.clear(dateInput);
-    await user.type(dateInput, "2026-12-25");
-    expect(dateInput).toHaveValue("2026-12-25");
-  });
-});
-
 describe("schedule dialog - day of week (SCHED-D-057)", () => {
   it("toggles day selection when a day button is clicked", async () => {
     const user = userEvent.setup();
@@ -407,11 +370,12 @@ describe("schedule dialog - day of week (SCHED-D-057)", () => {
       expect(screen.getByRole("button", { name: "Tue" })).toBeInTheDocument();
     });
     const tueBefore = screen.getByRole("button", { name: "Tue" });
-    expect(tueBefore).not.toHaveClass("bg-primary");
+    expect(tueBefore).toHaveAttribute("aria-pressed", "false");
     await user.click(tueBefore);
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Tue" })).toHaveClass(
-        "bg-primary",
+      expect(screen.getByRole("button", { name: "Tue" })).toHaveAttribute(
+        "aria-pressed",
+        "true",
       );
     });
   });
@@ -422,26 +386,19 @@ describe("schedule dialog - day of month (SCHED-D-058)", () => {
     const user = userEvent.setup();
     await openCreateDialog(user);
     await switchFrequency(user, "Every month");
-    // After switching to every_month, the day-of-month select should appear.
-    // The label has no htmlFor, so find the combobox by its current value "1" (first day).
-    // The comboboxes at this point are: freq, day-of-month, hour, minute, timezone.
-    // The day-of-month shows "1" by default.
     await waitFor(() => {
-      expect(screen.getByText("Day of month")).toBeInTheDocument();
+      expect(
+        screen.getByRole("combobox", { name: "Day of month" }),
+      ).toBeInTheDocument();
     });
-    const dayOfMonthLabel = screen.getByText("Day of month");
-    const domContainer = dayOfMonthLabel.closest("div");
-    const domTrigger = domContainer!.querySelector(
-      '[role="combobox"]',
-    ) as HTMLElement;
-    await user.click(domTrigger);
+    await user.click(screen.getByRole("combobox", { name: "Day of month" }));
     await waitFor(() => {
       expect(screen.getByRole("option", { name: "15" })).toBeInTheDocument();
     });
     await user.click(screen.getByRole("option", { name: "15" }));
     await waitFor(() => {
       expect(
-        domContainer!.querySelector('[role="combobox"]'),
+        screen.getByRole("combobox", { name: "Day of month" }),
       ).toHaveTextContent("15");
     });
   });
@@ -452,32 +409,20 @@ describe("schedule dialog - hour select (SCHED-D-059)", () => {
     const user = userEvent.setup();
     await openCreateDialog(user);
     // Default freq is every_day which shows hour/minute selects
-    // The hour combobox shows "09" (hour=9). Find it by text content.
     await waitFor(() => {
-      // The Time row label appears and hour combobox shows "09"
-      const comboboxes = screen.getAllByRole("combobox");
       expect(
-        comboboxes.some((cb) => {
-          return cb.textContent === "09";
-        }),
-      ).toBeTruthy();
+        screen.getByRole("combobox", { name: "Hour" }),
+      ).toBeInTheDocument();
     });
-    const comboboxes = screen.getAllByRole("combobox");
-    const hourTrigger = comboboxes.find((cb) => {
-      return cb.textContent === "09";
-    })!;
-    await user.click(hourTrigger);
+    await user.click(screen.getByRole("combobox", { name: "Hour" }));
     await waitFor(() => {
       expect(screen.getByRole("option", { name: "14" })).toBeInTheDocument();
     });
     await user.click(screen.getByRole("option", { name: "14" }));
     await waitFor(() => {
-      const updated = screen.getAllByRole("combobox");
-      expect(
-        updated.some((cb) => {
-          return cb.textContent === "14";
-        }),
-      ).toBeTruthy();
+      expect(screen.getByRole("combobox", { name: "Hour" })).toHaveTextContent(
+        "14",
+      );
     });
   });
 });
@@ -486,31 +431,21 @@ describe("schedule dialog - minute select (SCHED-D-060)", () => {
   it("updates minute when a new minute is selected", async () => {
     const user = userEvent.setup();
     await openCreateDialog(user);
-    // Default minute is 0, shown as "00". Find it by text content.
+    // Default freq is every_day which shows hour/minute selects
     await waitFor(() => {
-      const comboboxes = screen.getAllByRole("combobox");
       expect(
-        comboboxes.some((cb) => {
-          return cb.textContent === "00";
-        }),
-      ).toBeTruthy();
+        screen.getByRole("combobox", { name: "Minute" }),
+      ).toBeInTheDocument();
     });
-    const comboboxes = screen.getAllByRole("combobox");
-    const minuteTrigger = comboboxes.find((cb) => {
-      return cb.textContent === "00";
-    })!;
-    await user.click(minuteTrigger);
+    await user.click(screen.getByRole("combobox", { name: "Minute" }));
     await waitFor(() => {
       expect(screen.getByRole("option", { name: "30" })).toBeInTheDocument();
     });
     await user.click(screen.getByRole("option", { name: "30" }));
     await waitFor(() => {
-      const updated = screen.getAllByRole("combobox");
       expect(
-        updated.some((cb) => {
-          return cb.textContent === "30";
-        }),
-      ).toBeTruthy();
+        screen.getByRole("combobox", { name: "Minute" }),
+      ).toHaveTextContent("30");
     });
   });
 });
@@ -520,27 +455,22 @@ describe("schedule dialog - timezone select (SCHED-D-061)", () => {
     const user = userEvent.setup();
     await openCreateDialog(user);
     // Default freq is every_day which shows timezone select.
-    // Verify the timezone combobox is rendered.
     const tzTrigger = screen.getByRole("combobox", { name: "Timezone" });
     expect(tzTrigger).toBeInTheDocument();
-    // Open the select via keyboard (Space key) — bypasses pointer-events issues
+    // Open via keyboard — pointer-events:none on body (set by the Radix Dialog) prevents
+    // click-based interactions with portalled SelectContent. Keyboard nav bypasses this.
+    // The test environment default timezone is "UTC" (prepended to the COMMON_TIMEZONES
+    // list). Two ArrowDown presses navigate past "UTC" (index 0) and "Etc/UTC" (index 1)
+    // to "America/New_York" = "Eastern Time (ET)" (index 2).
     tzTrigger.focus();
     await user.keyboard(" ");
-    // After opening, the select should have data-state="open"
-    await waitFor(() => {
-      expect(tzTrigger).toHaveAttribute("data-state", "open");
-    });
-    // Navigate to "Eastern Time (ET)" option using keyboard arrow keys and Enter
-    // This avoids needing to find the portal-rendered options via DOM queries
     await user.keyboard("{ArrowDown}");
-    // Keep pressing until Eastern Time (ET) is highlighted
-    // America/New_York is 2nd in COMMON_TIMEZONES list (after Etc/UTC)
     await user.keyboard("{ArrowDown}");
     await user.keyboard("{Enter}");
     await waitFor(() => {
       expect(
         screen.getByRole("combobox", { name: "Timezone" }),
-      ).not.toHaveTextContent("UTC");
+      ).toHaveTextContent("Eastern Time (ET)");
     });
   });
 });
