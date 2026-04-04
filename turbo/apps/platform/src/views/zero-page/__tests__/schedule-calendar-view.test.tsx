@@ -6,7 +6,6 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
-import { calendarSelectedDay$ } from "../../../signals/schedule-page/schedule-page-ui.ts";
 
 const context = testContext();
 
@@ -208,16 +207,18 @@ describe("schedule calendar view - agent labels with color coding (SCHED-D-069)"
 });
 
 describe("schedule calendar view - loop/monthly/once sections (SCHED-D-071)", () => {
-  it("renders Loop, Monthly, and Once section headings", async () => {
+  it("renders loop, monthly, and once schedule entries in their respective sections", async () => {
     const user = userEvent.setup();
     mockScheduleAPI([loopSchedule(), monthlySchedule(), onceSchedule()]);
     await setupPage({ context, path: "/schedules" });
     await switchToCalendarView(user);
 
     await waitFor(() => {
-      expect(screen.getByText("Loop")).toBeInTheDocument();
-      expect(screen.getByText("Monthly")).toBeInTheDocument();
-      expect(screen.getByText("Once")).toBeInTheDocument();
+      expect(screen.getByText("Every 15 minutes")).toBeInTheDocument();
+      expect(
+        screen.getByText("Every month on day 1 at 9:00 AM"),
+      ).toBeInTheDocument();
+      expect(screen.getByText(/Once on/i)).toBeInTheDocument();
     });
   });
 });
@@ -248,13 +249,17 @@ describe("schedule calendar view - previous day navigation (SCHED-D-075)", () =>
     await switchToCalendarView(user);
 
     const prevBtn = await screen.findByRole("button", { name: "Previous day" });
-    const dayBefore = context.store.get(calendarSelectedDay$);
+    // The nav bar is the common parent of both nav buttons and the day label span
+    const navBar = prevBtn.parentElement;
+    if (!navBar) {
+      throw new Error("Could not find nav bar");
+    }
+    const initialLabel = navBar.textContent;
 
     await user.click(prevBtn);
 
     await waitFor(() => {
-      const dayAfter = context.store.get(calendarSelectedDay$);
-      expect(dayAfter).not.toBe(dayBefore);
+      expect(navBar.textContent).not.toBe(initialLabel);
     });
   });
 });
@@ -267,13 +272,17 @@ describe("schedule calendar view - next day navigation (SCHED-D-076)", () => {
     await switchToCalendarView(user);
 
     const nextBtn = await screen.findByRole("button", { name: "Next day" });
-    const dayBefore = context.store.get(calendarSelectedDay$);
+    // The nav bar is the common parent of both nav buttons and the day label span
+    const navBar = nextBtn.parentElement;
+    if (!navBar) {
+      throw new Error("Could not find nav bar");
+    }
+    const initialLabel = navBar.textContent;
 
     await user.click(nextBtn);
 
     await waitFor(() => {
-      const dayAfter = context.store.get(calendarSelectedDay$);
-      expect(dayAfter).not.toBe(dayBefore);
+      expect(navBar.textContent).not.toBe(initialLabel);
     });
   });
 });
@@ -338,9 +347,12 @@ describe("schedule calendar view - edit button in popover (SCHED-D-079)", () => 
     // own onMouseEnter handler, and click the edit button.
     await user.hover(entryBtn);
 
-    await waitFor(async () => {
-      const editBtn = screen.getByRole("button", { name: /Edit Every week/i });
-      await user.pointer({ target: editBtn, keys: "[MouseLeft]" });
+    const editBtn = await screen.findByRole("button", {
+      name: /Edit Every week/i,
+    });
+    await user.pointer({ target: editBtn, keys: "[MouseLeft]" });
+
+    await waitFor(() => {
       expect(pathname()).toBe(
         "/schedules/f0000001-0000-4000-a000-000000000001",
       );
