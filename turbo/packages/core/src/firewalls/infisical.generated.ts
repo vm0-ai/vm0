@@ -17,9 +17,7 @@ export const infisicalFirewall = {
     {
       base: "https://app.infisical.com",
       auth: {
-        headers: {
-          Authorization: "${{ basic(secrets.INFISICAL_CLIENT_ID, secrets.INFISICAL_CLIENT_SECRET) }}",
-        },
+        headers: {},
       },
       permissions: [],
     },
