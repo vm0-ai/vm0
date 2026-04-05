@@ -1,6 +1,6 @@
 import { command, computed, state, type Computed } from "ccstate";
 import type { AgentEvent, LogStatus } from "./log-types.ts";
-import { resetSignal, throwIfAbort } from "../utils.ts";
+import { createScrollController, resetSignal, throwIfAbort } from "../utils.ts";
 import { detachedNavigateTo$ } from "../route.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { logger } from "../log.ts";
@@ -76,6 +76,7 @@ export interface UserChatMessage {
   content: string;
   attachments?: ZeroChatMessageAttachment[];
   createdAt?: string;
+  scrollController?: ReturnType<typeof createScrollController>;
 }
 
 export interface AssistantChatMessage {
@@ -91,6 +92,7 @@ export interface AssistantChatMessage {
   summaries$?: Computed<Promise<string[]>>;
   beginLoop$?: ReturnType<typeof createRunLoop>["beginLoop$"];
   createdAt?: string;
+  scrollController?: ReturnType<typeof createScrollController>;
 }
 
 export type ZeroChatMessage = UserChatMessage | AssistantChatMessage;
@@ -508,7 +510,8 @@ function createActiveRunMessage(
   runId: string,
   prompt: string,
 ): { userMessage: UserChatMessage; assistantMessage: AssistantChatMessage } {
-  const runLoop = createRunLoop(runId);
+  const scrollController = createScrollController();
+  const runLoop = createRunLoop(runId, scrollController.scrollDown$);
 
   const result$ = computed(async (get) => {
     const pages = await get(runLoop.pagedEventsList$);
@@ -536,6 +539,7 @@ function createActiveRunMessage(
       result$,
       summaries$,
       beginLoop$: runLoop.beginLoop$,
+      scrollController,
     },
   };
 }
@@ -897,10 +901,12 @@ const prepareUserMessage$ = command(
               };
             })
           : undefined,
+      scrollController: createScrollController(),
     };
     set(internalLocalMessages$, (prev) => {
       return [...prev, userMessage];
     });
+    void set(userMessage.scrollController.scrollDown$);
 
     // Clear the draft after preparing the message
     if (draft) {
