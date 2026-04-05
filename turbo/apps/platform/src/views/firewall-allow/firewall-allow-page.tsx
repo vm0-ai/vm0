@@ -399,7 +399,11 @@ function MemberFocusedView({
               >
                 Cancel
               </Button>
-              <Button size="sm" onPointerDown={handleSubmit} disabled={submitting}>
+              <Button
+                size="sm"
+                onPointerDown={handleSubmit}
+                disabled={submitting}
+              >
                 {submitting ? "Submitting..." : "Submit Request"}
               </Button>
             </div>
