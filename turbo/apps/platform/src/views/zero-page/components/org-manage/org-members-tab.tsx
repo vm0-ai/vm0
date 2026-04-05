@@ -338,7 +338,11 @@ function InviteDialog() {
           >
             Cancel
           </Button>
-          <Button size="sm" disabled={!isValid || sending} onPointerDown={handleSend}>
+          <Button
+            size="sm"
+            disabled={!isValid || sending}
+            onPointerDown={handleSend}
+          >
             {sending ? "Sending..." : "Send invitation"}
           </Button>
         </DialogFooter>
