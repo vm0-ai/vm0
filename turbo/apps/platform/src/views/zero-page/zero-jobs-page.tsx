@@ -122,7 +122,7 @@ export function ZeroJobsPage() {
                 variant="outline"
                 size="sm"
                 className="zero-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
-                onClick={() => {
+                onPointerDown={() => {
                   return setDialogOpen(true);
                 }}
               >
@@ -416,7 +416,7 @@ function CreateTeammateDialogContent({
           />
           <button
             type="button"
-            onClick={() => {
+            onPointerDown={() => {
               return isCustom ? resetAvatarUrl() : fileInputEl?.click();
             }}
             disabled={uploading}
@@ -474,14 +474,14 @@ function CreateTeammateDialogContent({
         <Button
           variant="ghost"
           size="sm"
-          onClick={onCancel}
+          onPointerDown={onCancel}
           disabled={creating}
         >
           Cancel
         </Button>
         <Button
           size="sm"
-          onClick={() => {
+          onPointerDown={() => {
             return onConfirm(avatarUrl);
           }}
           disabled={!newName.trim() || creating}
