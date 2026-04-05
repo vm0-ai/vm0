@@ -131,7 +131,7 @@ export function ConnectorPermissionDialog({
                   <button
                     key={agent.id}
                     type="button"
-                    onClick={() => {
+                    onPointerDown={() => {
                       toggle(agent.id);
                     }}
                     className="flex items-center gap-2 rounded-xl border-[0.7px] border-[#c6cdd7] bg-white p-2.5 shadow-[0px_1px_3px_0px_rgba(45,49,57,0.08)] transition-colors hover:bg-muted"
@@ -172,14 +172,14 @@ export function ConnectorPermissionDialog({
           <DialogFooter className="flex-row items-center justify-center gap-2 sm:justify-center sm:gap-2">
             <Button
               variant="outline"
-              onClick={onClose}
+              onPointerDown={onClose}
               disabled={submitting}
               className="h-9 w-[130px] rounded-[10px]"
             >
               Later
             </Button>
             <Button
-              onClick={() => {
+              onPointerDown={() => {
                 detach(
                   confirm(connectorType, onClose, pageSignal),
                   Reason.DomCallback,
