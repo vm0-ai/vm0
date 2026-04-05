@@ -39,6 +39,7 @@ GUEST_AGENT=""
 GUEST_DOWNLOAD=""
 GUEST_INIT=""
 GUEST_MOCK_CLAUDE=""
+GUEST_RESEED=""
 DNS_NAMESERVER=""
 # Default mirror: archive.ubuntu.com only hosts amd64/i386;
 # arm64 and other ports use ports.ubuntu.com.
@@ -59,13 +60,14 @@ while [[ $# -gt 0 ]]; do
     --guest-download)    GUEST_DOWNLOAD="$2";    shift 2 ;;
     --guest-init)        GUEST_INIT="$2";        shift 2 ;;
     --guest-mock-claude) GUEST_MOCK_CLAUDE="$2"; shift 2 ;;
+    --guest-reseed)      GUEST_RESEED="$2";      shift 2 ;;
     --dns-nameserver)    DNS_NAMESERVER="$2";    shift 2 ;;
     --mirror)            MIRROR="$2";            shift 2 ;;
     *) echo "error: unknown argument: $1" >&2; exit 1 ;;
   esac
 done
 
-for var in OUTPUT_DIR CA_DIR DEBOOTSTRAP_DIR INPUT_HASH DISK_MB GUEST_AGENT GUEST_DOWNLOAD GUEST_INIT GUEST_MOCK_CLAUDE DNS_NAMESERVER; do
+for var in OUTPUT_DIR CA_DIR DEBOOTSTRAP_DIR INPUT_HASH DISK_MB GUEST_AGENT GUEST_DOWNLOAD GUEST_INIT GUEST_MOCK_CLAUDE GUEST_RESEED DNS_NAMESERVER; do
   if [[ -z "${!var}" ]]; then
     echo "error: --$(echo "$var" | tr '_' '-' | tr '[:upper:]' '[:lower:]') is required" >&2
     exit 1
@@ -368,6 +370,7 @@ inject_files() {
     "${GUEST_DOWNLOAD}:/usr/local/bin/guest-download"
     "${GUEST_INIT}:/sbin/guest-init"
     "${GUEST_MOCK_CLAUDE}:/usr/local/bin/guest-mock-claude"
+    "${GUEST_RESEED}:/sbin/guest-reseed"
   )
   for entry in "${bins[@]}"; do
     local src="${entry%%:*}"

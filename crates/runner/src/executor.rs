@@ -216,6 +216,7 @@ async fn run_in_sandbox(
     // 1. Fix guest clock after snapshot restore (must happen before HTTPS calls)
     if use_snapshot {
         fix_guest_clock(sandbox).await?;
+        reseed_guest_entropy(sandbox).await?;
     }
 
     // 2. Set guest timezone from user preference (best-effort, never fails).
@@ -581,6 +582,39 @@ pub(crate) async fn fix_guest_clock(sandbox: &dyn Sandbox) -> RunnerResult<()> {
             sudo: true,
         })
         .await?;
+    Ok(())
+}
+
+/// Reseed guest CRNG after snapshot restore.
+///
+/// On ARM64 with kernel 6.1, VMGenID does not work (the driver only supports
+/// ACPI; DeviceTree support requires kernel 6.10+). All VMs restored from the
+/// same snapshot share identical CRNG state, producing identical random output.
+///
+/// This function injects fresh host entropy and forces an immediate CRNG reseed
+/// so each VM produces unique random numbers from the first `getrandom()` call.
+async fn reseed_guest_entropy(sandbox: &dyn Sandbox) -> RunnerResult<()> {
+    use std::io::Read;
+
+    const ENTROPY_SIZE: usize = 256;
+    const ENTROPY_PATH: &str = "/tmp/.vm0-entropy";
+
+    let mut entropy = vec![0u8; ENTROPY_SIZE];
+    std::fs::File::open("/dev/urandom")
+        .and_then(|mut f| f.read_exact(&mut entropy))
+        .map_err(|e| RunnerError::Internal(format!("read host entropy: {e}")))?;
+
+    sandbox.write_file(ENTROPY_PATH, &entropy).await?;
+
+    sandbox
+        .exec(&ExecRequest {
+            cmd: &format!("guest-reseed {ENTROPY_PATH}"),
+            timeout: DEFAULT_EXEC_TIMEOUT,
+            env: &[],
+            sudo: true,
+        })
+        .await?;
+
     Ok(())
 }
 
@@ -1412,6 +1446,22 @@ mod tests {
         let sandbox = MockSandbox::new("test");
         sandbox.push_exec_result(Err(SandboxError::ExecFailed("timeout".into())));
         let result = fix_guest_clock(&sandbox).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn reseed_guest_entropy_succeeds() {
+        let sandbox = MockSandbox::new("test");
+        // write_file returns Ok by default, exec returns exit 0 by default.
+        reseed_guest_entropy(&sandbox).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn reseed_guest_entropy_propagates_exec_error() {
+        let sandbox = MockSandbox::new("test");
+        // First exec call (reseed) fails.
+        sandbox.push_exec_result(Err(SandboxError::ExecFailed("reseed failed".into())));
+        let result = reseed_guest_entropy(&sandbox).await;
         assert!(result.is_err());
     }
 

@@ -27,6 +27,7 @@ fn main() {
         ("GUEST_DOWNLOAD_PATH", "BUNDLED_GUEST_DOWNLOAD"),
         ("GUEST_INIT_PATH", "BUNDLED_GUEST_INIT"),
         ("GUEST_MOCK_CLAUDE_PATH", "BUNDLED_GUEST_MOCK_CLAUDE"),
+        ("GUEST_RESEED_PATH", "BUNDLED_GUEST_RESEED"),
     ];
 
     // Always rebuild when any of these env vars change.

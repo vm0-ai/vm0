@@ -21,6 +21,7 @@ mod embedded {
     pub const GUEST_DOWNLOAD: &[u8] = include_bytes!(env!("BUNDLED_GUEST_DOWNLOAD"));
     pub const GUEST_AGENT: &[u8] = include_bytes!(env!("BUNDLED_GUEST_AGENT"));
     pub const GUEST_MOCK_CLAUDE: &[u8] = include_bytes!(env!("BUNDLED_GUEST_MOCK_CLAUDE"));
+    pub const GUEST_RESEED: &[u8] = include_bytes!(env!("BUNDLED_GUEST_RESEED"));
 }
 
 #[cfg(bundled_guests)]
@@ -30,6 +31,7 @@ fn bundled_guest(name: &str) -> Option<&'static [u8]> {
         "guest-download" => Some(embedded::GUEST_DOWNLOAD),
         "guest-init" => Some(embedded::GUEST_INIT),
         "guest-mock-claude" => Some(embedded::GUEST_MOCK_CLAUDE),
+        "guest-reseed" => Some(embedded::GUEST_RESEED),
         _ => None,
     }
 }
@@ -77,6 +79,15 @@ pub struct RootfsArgs {
         arg(long, help = "Path to guest-mock-claude binary (required)")
     )]
     guest_mock_claude: Option<PathBuf>,
+    #[cfg_attr(
+        bundled_guests,
+        arg(long, help = "Path to guest-reseed binary [default: bundled]")
+    )]
+    #[cfg_attr(
+        not(bundled_guests),
+        arg(long, help = "Path to guest-reseed binary (required)")
+    )]
+    guest_reseed: Option<PathBuf>,
     /// Profile to build (determines VM resources and disk size)
     #[arg(long)]
     pub profile: String,
@@ -133,9 +144,10 @@ pub async fn run_rootfs(args: RootfsArgs) -> RunnerResult<String> {
     let guest_init = resolve_guest(args.guest_init, "guest-init", tmp_dir.path()).await?;
     let guest_mock_claude =
         resolve_guest(args.guest_mock_claude, "guest-mock-claude", tmp_dir.path()).await?;
+    let guest_reseed = resolve_guest(args.guest_reseed, "guest-reseed", tmp_dir.path()).await?;
 
     // Sorted by dest name for deterministic hashing.
-    let bins: [(&Path, &str); 4] = [
+    let bins: [(&Path, &str); 5] = [
         (guest_agent.as_path(), "/usr/local/bin/guest-agent"),
         (guest_download.as_path(), "/usr/local/bin/guest-download"),
         (guest_init.as_path(), "/sbin/guest-init"),
@@ -143,6 +155,7 @@ pub async fn run_rootfs(args: RootfsArgs) -> RunnerResult<String> {
             guest_mock_claude.as_path(),
             "/usr/local/bin/guest-mock-claude",
         ),
+        (guest_reseed.as_path(), "/sbin/guest-reseed"),
     ];
 
     // Compute input hash: script + guest binaries + disk size.
@@ -204,6 +217,7 @@ pub async fn run_rootfs(args: RootfsArgs) -> RunnerResult<String> {
     let guest_download_str = guest_download.to_string_lossy();
     let guest_init_str = guest_init.to_string_lossy();
     let guest_mock_claude_str = guest_mock_claude.to_string_lossy();
+    let guest_reseed_str = guest_reseed.to_string_lossy();
     let ca_dir_str = paths.ca_dir().to_string_lossy().to_string();
     let debootstrap_dir = paths.debootstrap_dir();
     tokio::fs::create_dir_all(&debootstrap_dir)
@@ -233,6 +247,8 @@ pub async fn run_rootfs(args: RootfsArgs) -> RunnerResult<String> {
             &guest_init_str,
             "--guest-mock-claude",
             &guest_mock_claude_str,
+            "--guest-reseed",
+            &guest_reseed_str,
             // Dummy nameserver — all UDP 53 is iptables-REDIRECT'd to dnsmasq.
             // Must be routable (not loopback/gateway) so packets leave the VM.
             "--dns-nameserver",

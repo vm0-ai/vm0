@@ -19,6 +19,7 @@ This workspace contains Rust crates for the vm0 sandbox runtime — VM orchestra
 | **guest-common** | Shared utilities for guest crates — logging macros, telemetry recording, environment accessors |
 | **guest-download** | Downloads and extracts storage archives — parallel downloads (4 concurrent), streaming extraction, retry logic |
 | **guest-mock-claude** | Mock Claude CLI for testing — executes bash commands and outputs Claude-compatible JSONL |
+| **guest-reseed** | Entropy reseed after snapshot restore — injects host entropy via RNDADDENTROPY and forces CRNG reseed via RNDRESEEDCRNG |
 | **ably-subscriber** | Ably Pub/Sub subscribe-only realtime client — WebSocket/MessagePack protocol with token auth and automatic reconnection |
 | **reqeast** | Thin reqwest wrapper — auto-installs `ring` TLS crypto provider, avoiding `aws-lc-sys` musl cross-compilation issues |
 
@@ -67,7 +68,7 @@ cargo build --release
 # Cross-compile for aarch64 (production target)
 # Step 1: build guest binaries
 cargo build --target aarch64-unknown-linux-musl \
-  -p guest-agent -p guest-download -p guest-init -p guest-mock-claude \
+  -p guest-agent -p guest-download -p guest-init -p guest-mock-claude -p guest-reseed \
   --release
 
 # Step 2: build runner with embedded guests
@@ -75,6 +76,7 @@ GUEST_AGENT_PATH=target/aarch64-unknown-linux-musl/release/guest-agent \
 GUEST_DOWNLOAD_PATH=target/aarch64-unknown-linux-musl/release/guest-download \
 GUEST_INIT_PATH=target/aarch64-unknown-linux-musl/release/guest-init \
 GUEST_MOCK_CLAUDE_PATH=target/aarch64-unknown-linux-musl/release/guest-mock-claude \
+GUEST_RESEED_PATH=target/aarch64-unknown-linux-musl/release/guest-reseed \
 cargo build --target aarch64-unknown-linux-musl -p runner --release
 ```
 

@@ -41,6 +41,7 @@ guest-agent = { workspace = true }
 guest-download = { workspace = true }
 guest-init = { workspace = true }
 guest-mock-claude = { workspace = true }
+guest-reseed = { workspace = true }
 sandbox-mock = { workspace = true }
 
 [lints]

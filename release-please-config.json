@@ -50,6 +50,9 @@
         "crates/guest-mock-claude": {
             "release-type": "rust"
         },
+        "crates/guest-reseed": {
+            "release-type": "rust"
+        },
         "crates/reqeast": {
             "release-type": "rust"
         },

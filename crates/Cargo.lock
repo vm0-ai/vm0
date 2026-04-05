@@ -768,6 +768,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "guest-reseed"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "libc",
+]
+
+[[package]]
 name = "h2"
 version = "0.4.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1703,6 +1711,7 @@ dependencies = [
  "guest-download",
  "guest-init",
  "guest-mock-claude",
+ "guest-reseed",
  "hex",
  "nbd-cow",
  "nix",

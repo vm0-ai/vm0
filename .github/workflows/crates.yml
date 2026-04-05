@@ -68,6 +68,7 @@ jobs:
       guest-download-changed: ${{ steps.detect.outputs.guest-download-changed }}
       guest-agent-changed: ${{ steps.detect.outputs.guest-agent-changed }}
       guest-mock-claude-changed: ${{ steps.detect.outputs.guest-mock-claude-changed }}
+      guest-reseed-changed: ${{ steps.detect.outputs.guest-reseed-changed }}
       nbd-cow-changed: ${{ steps.detect.outputs.nbd-cow-changed }}
       metal-host: ${{ steps.host.outputs.host }}
       metal-job-ref: ${{ steps.host.outputs.job-ref }}
@@ -113,6 +114,7 @@ jobs:
           check_crate guest-download
           check_crate guest-agent
           check_crate guest-mock-claude
+          check_crate guest-reseed
           check_crate nbd-cow
 
           # Aggregate: true if any crate or CI config changed
@@ -300,7 +302,8 @@ jobs:
       needs.detect.outputs.guest-init-changed == 'true' ||
       needs.detect.outputs.guest-download-changed == 'true' ||
       needs.detect.outputs.guest-agent-changed == 'true' ||
-      needs.detect.outputs.guest-mock-claude-changed == 'true'
+      needs.detect.outputs.guest-mock-claude-changed == 'true' ||
+      needs.detect.outputs.guest-reseed-changed == 'true'
     timeout-minutes: 20
     env:
       CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_RUSTFLAGS: "-C target-feature=+crt-static -C link-arg=-fuse-ld=mold"
@@ -333,7 +336,7 @@ jobs:
         run: |
           cd crates
           cargo build --profile "$CARGO_PROFILE" --target "$TARGET_TRIPLE" \
-            -p guest-agent -p guest-download -p guest-init -p guest-mock-claude
+            -p guest-agent -p guest-download -p guest-init -p guest-mock-claude -p guest-reseed
 
       - name: Cross-compile runner with embedded guests for ARM64
         run: |
@@ -342,6 +345,7 @@ jobs:
           GUEST_DOWNLOAD_PATH="target/$TARGET_TRIPLE/$CARGO_PROFILE/guest-download" \
           GUEST_INIT_PATH="target/$TARGET_TRIPLE/$CARGO_PROFILE/guest-init" \
           GUEST_MOCK_CLAUDE_PATH="target/$TARGET_TRIPLE/$CARGO_PROFILE/guest-mock-claude" \
+          GUEST_RESEED_PATH="target/$TARGET_TRIPLE/$CARGO_PROFILE/guest-reseed" \
           cargo build --profile "$CARGO_PROFILE" --target "$TARGET_TRIPLE" -p runner
 
       - name: Setup SSH via Cloudflare Tunnel
