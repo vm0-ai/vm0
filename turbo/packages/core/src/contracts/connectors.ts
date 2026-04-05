@@ -142,6 +142,29 @@ const CONNECTOR_TYPES_DEF = {
     },
     defaultAuthMethod: "api-token",
   },
+  agentphone: {
+    label: "AgentPhone",
+    environmentMapping: {
+      AGENTPHONE_TOKEN: "$secrets.AGENTPHONE_TOKEN",
+    },
+    helpText:
+      "Connect your AgentPhone account to make and receive phone calls, send SMS, manage phone numbers, and build voice AI agents",
+    authMethods: {
+      "api-token": {
+        label: "API Key",
+        helpText:
+          "1. Sign up at [agentphone.to](https://agentphone.to)\n2. Go to your account settings\n3. Copy your API key (starts with `sk_live_`)",
+        secrets: {
+          AGENTPHONE_TOKEN: {
+            label: "API Key",
+            required: true,
+            placeholder: "sk_live_...",
+          },
+        },
+      },
+    },
+    defaultAuthMethod: "api-token",
+  },
   airtable: {
     label: "Airtable",
     environmentMapping: {

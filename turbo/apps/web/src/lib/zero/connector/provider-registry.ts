@@ -6,6 +6,7 @@ import {
   type ProviderHandler,
 } from "./provider-types";
 import { agentmailHandler } from "./providers/agentmail-handler";
+import { agentphoneHandler } from "./providers/agentphone-handler";
 import { ahrefsHandler } from "./providers/ahrefs-handler";
 import { airtableHandler } from "./providers/airtable-handler";
 import { apolloHandler } from "./providers/apollo-handler";
@@ -142,6 +143,7 @@ export const PROVIDER_HANDLERS: Record<
   ProviderHandler
 > = {
   agentmail: agentmailHandler,
+  agentphone: agentphoneHandler,
   ahrefs: ahrefsHandler,
   airtable: airtableHandler,
   apollo: apolloHandler,
