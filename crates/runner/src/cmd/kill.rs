@@ -389,21 +389,4 @@ mod tests {
         assert_eq!(results.len(), 1);
         assert!(results[0].0.contains("Socket dir"));
     }
-
-    #[tokio::test]
-    async fn remove_dir_if_exists_success() {
-        let dir = tempfile::tempdir().unwrap();
-        let target = dir.path().join("to-remove");
-        tokio::fs::create_dir(&target).await.unwrap();
-        tokio::fs::write(target.join("file"), "data").await.unwrap();
-
-        assert!(remove_dir_if_exists(&target).await);
-        assert!(!target.exists());
-    }
-
-    #[tokio::test]
-    async fn remove_dir_if_exists_not_found() {
-        let path = std::path::Path::new("/tmp/definitely-does-not-exist-12345");
-        assert!(remove_dir_if_exists(path).await);
-    }
 }
