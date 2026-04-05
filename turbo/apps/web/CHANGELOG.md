@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.194.0](https://github.com/vm0-ai/vm0/compare/web-v12.193.0...web-v12.194.0) (2026-04-05)
+
+
+### Features
+
+* add AgentPhone API token connector ([#8203](https://github.com/vm0-ai/vm0/issues/8203)) ([e11b420](https://github.com/vm0-ai/vm0/commit/e11b420fcd8caf7601cc141ebcc442b61c1d17f7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.152.0
+
 ## [12.193.0](https://github.com/vm0-ai/vm0/compare/web-v12.192.8...web-v12.193.0) (2026-04-05)
 
 
