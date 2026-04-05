@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -159,6 +160,7 @@ describe("queue page", () => {
   });
 
   it("should call cancel endpoint when cancel button is clicked", async () => {
+    const user = userEvent.setup();
     let cancelledRunId: string | null = null;
 
     server.use(
@@ -197,7 +199,7 @@ describe("queue page", () => {
     const cancelButton = screen.getAllByRole("button").find((el) => {
       return el.textContent?.trim() === "Cancel";
     })!;
-    cancelButton.click();
+    await user.click(cancelButton);
 
     await waitFor(() => {
       expect(cancelledRunId).toBe("run-to-cancel");
