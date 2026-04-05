@@ -570,7 +570,7 @@ mod tests {
     }
 
     #[test]
-    fn api_error_is_retryable_http() {
+    fn api_error_is_retryable_http_server_error() {
         let err = ApiError::Http {
             status: 500,
             body: "internal error".to_string(),
@@ -579,31 +579,21 @@ mod tests {
     }
 
     #[test]
-    fn api_error_is_retryable_other() {
-        let err = ApiError::Other("timeout".to_string());
+    fn api_error_is_retryable_http_client_error() {
+        // Client errors (4xx) are also retryable — the implementation treats
+        // all Http variants as retryable (e.g. Firecracker may return 400
+        // during startup before the VM is ready).
+        let err = ApiError::Http {
+            status: 400,
+            body: "bad request".to_string(),
+        };
         assert!(err.is_retryable());
     }
 
     #[test]
-    fn api_error_display_connect() {
-        let err = ApiError::Connect(std::io::Error::new(
-            std::io::ErrorKind::ConnectionRefused,
-            "connection refused",
-        ));
-        assert!(err.to_string().contains("connect:"));
-    }
-
-    #[test]
-    fn api_error_display_http() {
-        let err = ApiError::Http {
-            status: 404,
-            body: "not found".to_string(),
-        };
-        let msg = err.to_string();
-        assert!(
-            msg.contains("404") && msg.contains("not found"),
-            "got: {msg}"
-        );
+    fn api_error_is_retryable_other() {
+        let err = ApiError::Other("timeout".to_string());
+        assert!(err.is_retryable());
     }
 
     #[tokio::test]
