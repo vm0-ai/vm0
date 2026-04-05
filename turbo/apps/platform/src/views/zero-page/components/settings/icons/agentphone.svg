@@ -1,0 +1,16 @@
+<svg viewBox="0 0 105 105" width="28" height="28" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Antenna stem -->
+  <line x1="36" y1="17" x2="36" y2="7" stroke="#2CC55D" stroke-width="5.5" stroke-linecap="round"/>
+  <!-- Antenna tip -->
+  <circle cx="36" cy="3.5" r="3.5" fill="#2CC55D"/>
+  <!-- Robot head (rounded square) -->
+  <rect x="4" y="17" width="62" height="63" rx="11" ry="11" stroke="#2CC55D" stroke-width="6" fill="none"/>
+  <!-- Left eye -->
+  <circle cx="22" cy="39" r="5" fill="#2CC55D"/>
+  <!-- Right eye -->
+  <circle cx="48" cy="39" r="5" fill="#2CC55D"/>
+  <!-- Smile -->
+  <path d="M 18 56 Q 35 72 52 56" stroke="#2CC55D" stroke-width="5.5" stroke-linecap="round" fill="none"/>
+  <!-- Phone handset: earpiece top, handle, mouthpiece bottom -->
+  <path d="M 66 27 Q 88 20 92 38 Q 86 48 74 44 Q 64 40 62 50 Q 60 60 68 68 Q 84 74 90 62 Q 104 66 98 88 Q 88 108 66 100" stroke="#2CC55D" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+</svg>

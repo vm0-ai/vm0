@@ -153,7 +153,7 @@ const CONNECTOR_TYPES_DEF = {
       "api-token": {
         label: "API Key",
         helpText:
-          "1. Sign up at [agentphone.to](https://agentphone.to)\n2. Go to your account settings\n3. Copy your API key (starts with `sk_live_`)",
+          "1. Sign up at [agentphone.to](https://agentphone.to)\n2. Go to **Dashboard > API Keys**\n3. Create a new API key and copy it (starts with `sk_live_`)",
         secrets: {
           AGENTPHONE_TOKEN: {
             label: "API Key",
