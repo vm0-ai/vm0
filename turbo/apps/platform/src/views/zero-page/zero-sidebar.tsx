@@ -398,7 +398,7 @@ export function AccountDropdown({
         {!hidePreferences && (
           <>
             <DropdownMenuItem
-              onClick={() => {
+              onPointerDown={() => {
                 return handleAccountAction("preferences");
               }}
               className="gap-3 px-3 py-2.5 rounded-lg"
@@ -435,7 +435,7 @@ export function AccountDropdown({
                 return (
                   <DropdownMenuItem
                     key={account.sessionId}
-                    onClick={() => {
+                    onPointerDown={() => {
                       return handleSwitchSession(account.sessionId);
                     }}
                     className="gap-3 px-3 py-2.5 rounded-lg"
@@ -458,7 +458,7 @@ export function AccountDropdown({
               })}
               <DropdownMenuSeparator />
               <DropdownMenuItem
-                onClick={handleAddAccount}
+                onPointerDown={handleAddAccount}
                 className="gap-3 px-3 py-2.5 rounded-lg"
               >
                 <IconPlus
@@ -472,7 +472,7 @@ export function AccountDropdown({
           </DropdownMenuSub>
         ) : (
           <DropdownMenuItem
-            onClick={handleAddAccount}
+            onPointerDown={handleAddAccount}
             className="gap-3 px-3 py-2.5 rounded-lg"
           >
             <IconPlus
@@ -484,7 +484,7 @@ export function AccountDropdown({
           </DropdownMenuItem>
         )}
         <DropdownMenuItem
-          onClick={() => {
+          onPointerDown={() => {
             return handleAccountAction("manage");
           }}
           className="gap-3 px-3 py-2.5 rounded-lg"
@@ -494,7 +494,7 @@ export function AccountDropdown({
         </DropdownMenuItem>
         {showExportData && (
           <DropdownMenuItem
-            onClick={() => {
+            onPointerDown={() => {
               return window.open(`${apiBase}/export`, "_blank");
             }}
             className="gap-3 px-3 py-2.5 rounded-lg"
@@ -509,7 +509,7 @@ export function AccountDropdown({
         )}
         <DropdownMenuSeparator />
         <DropdownMenuItem
-          onClick={() => {
+          onPointerDown={() => {
             return handleAccountAction("signout");
           }}
           className="gap-3 px-3 py-2.5 rounded-lg"
@@ -548,7 +548,7 @@ function ChatThreadItem({
       <Link
         pathname="/chats/:id"
         options={{ pathParams: { id: session.id } }}
-        onClick={(e) => {
+        onPointerDown={(e) => {
           if (e.metaKey || e.ctrlKey || e.shiftKey) {
             return;
           }
@@ -571,7 +571,7 @@ function ChatThreadItem({
             <TooltipTrigger asChild>
               <button
                 type="button"
-                onClick={handleDeleteClick}
+                onPointerDown={handleDeleteClick}
                 className={`flex h-6 w-6 cursor-pointer items-center justify-center rounded-md invisible group-hover:visible transition-opacity duration-150 ${
                   isSelected
                     ? "text-slate-500 hover:text-slate-900 hover:bg-slate-300"
@@ -688,13 +688,13 @@ function RecentChatList({
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() => {
+              onPointerDown={() => {
                 setPendingDeleteThreadId(null);
               }}
             >
               Cancel
             </Button>
-            <Button variant="destructive" onClick={confirmDelete}>
+            <Button variant="destructive" onPointerDown={confirmDelete}>
               Delete
             </Button>
           </DialogFooter>
@@ -803,7 +803,7 @@ function RecentChatSection({
           <div className="flex h-8 w-8 shrink-0 items-center justify-center">
             <button
               type="button"
-              onClick={() => {
+              onPointerDown={() => {
                 setSearchOpen(false);
               }}
               className="shrink-0 flex items-center justify-center h-5 w-5 rounded text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
@@ -816,7 +816,7 @@ function RecentChatSection({
       ) : (
         <div
           className="zero-nav-recent-label group flex h-8 shrink-0 cursor-pointer items-center justify-between rounded-lg pl-2 pr-0 hover:bg-sidebar-accent/50 transition-colors"
-          onClick={() => {
+          onPointerDown={() => {
             return setCollapsed(!collapsed);
           }}
         >
@@ -836,7 +836,7 @@ function RecentChatSection({
                 <TooltipTrigger asChild>
                   <button
                     type="button"
-                    onClick={(e) => {
+                    onPointerDown={(e) => {
                       e.stopPropagation();
                       setSearchOpen(true);
                     }}
@@ -857,7 +857,7 @@ function RecentChatSection({
                   <TooltipTrigger asChild>
                     <button
                       type="button"
-                      onClick={(e) => {
+                      onPointerDown={(e) => {
                         e.stopPropagation();
                         handleNewChat();
                       }}
@@ -933,7 +933,7 @@ function TalkToSection({
       <div
         className="group flex h-8 cursor-pointer items-center justify-between rounded-lg pl-2 pr-0 hover:bg-sidebar-accent/50 transition-colors"
         data-testid="pinned-section-header"
-        onClick={() => {
+        onPointerDown={() => {
           return setCollapsed(!collapsed);
         }}
       >
@@ -952,7 +952,7 @@ function TalkToSection({
             <TooltipTrigger asChild>
               <button
                 type="button"
-                onClick={(e) => {
+                onPointerDown={(e) => {
                   e.stopPropagation();
                   setChatListOpenFn(true);
                   reloadAgents();
@@ -1051,7 +1051,7 @@ function TalkToSection({
                       <TooltipTrigger asChild>
                         <button
                           type="button"
-                          onClick={(e) => {
+                          onPointerDown={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
                             onPinnedIdsChange(
@@ -1211,7 +1211,7 @@ function SidebarUpgradeCard() {
   return (
     <button
       type="button"
-      onClick={handleClick}
+      onPointerDown={handleClick}
       className="flex w-full items-center gap-3 rounded-lg p-2.5 text-left transition-colors hover:bg-muted/30 zero-card shadow-[0_1px_2px_hsl(220_12%_20%/0.04),0_4px_12px_hsl(220_12%_20%/0.03)]"
     >
       <div className="min-w-0 flex-1">
@@ -1368,7 +1368,7 @@ export function ZeroSidebar() {
                   <button
                     type="button"
                     className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                    onClick={onCollapse}
+                    onPointerDown={onCollapse}
                     aria-label="Expand sidebar"
                   >
                     <IconLayoutSidebarLeftCollapse
@@ -1403,7 +1403,7 @@ export function ZeroSidebar() {
                             pathname={
                               navPath as Parameters<typeof Link>[0]["pathname"]
                             }
-                            onClick={(e) => {
+                            onPointerDown={(e) => {
                               if (e.metaKey || e.ctrlKey || e.shiftKey) {
                                 return;
                               }
@@ -1463,7 +1463,7 @@ export function ZeroSidebar() {
                   <button
                     type="button"
                     className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
-                    onClick={onCollapse}
+                    onPointerDown={onCollapse}
                     aria-label="Collapse sidebar"
                   >
                     <IconLayoutSidebarLeftCollapse size={18} />
@@ -1485,7 +1485,7 @@ export function ZeroSidebar() {
           <div className="shrink-0">
             <div
               className="group flex h-8 shrink-0 cursor-pointer items-center justify-between rounded-lg pl-2 pr-0 hover:bg-sidebar-accent/50 transition-colors"
-              onClick={() => {
+              onPointerDown={() => {
                 return setManageCollapsed(!manageCollapsed);
               }}
             >
@@ -1519,7 +1519,7 @@ export function ZeroSidebar() {
                         pathname={
                           navPath as Parameters<typeof Link>[0]["pathname"]
                         }
-                        onClick={(e) => {
+                        onPointerDown={(e) => {
                           if (e.metaKey || e.ctrlKey || e.shiftKey) {
                             return;
                           }
@@ -1610,7 +1610,7 @@ export function ZeroSidebar() {
                   <Link
                     key={id}
                     pathname={navPath as Parameters<typeof Link>[0]["pathname"]}
-                    onClick={(e) => {
+                    onPointerDown={(e) => {
                       if (e.metaKey || e.ctrlKey || e.shiftKey) {
                         return;
                       }
