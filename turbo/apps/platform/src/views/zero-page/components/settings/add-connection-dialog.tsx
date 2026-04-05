@@ -144,7 +144,7 @@ function ApiTokenForm({
         );
       })}
       <Button
-        onClick={handleSubmit}
+        onPointerDown={handleSubmit}
         disabled={!allFilled || submitting}
         className="w-full"
       >
@@ -191,7 +191,7 @@ function ConnectModalContent({
       {hasOAuth && (
         <Button
           variant="outline"
-          onClick={() => {
+          onPointerDown={() => {
             return detach(
               connectAndSettle(item.type, onSuccess, pageSignal),
               Reason.DomCallback,
