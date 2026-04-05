@@ -93,19 +93,19 @@ function OnboardingConnectorCard({
   label,
   isSelected,
   isPolling,
-  onClick,
+  onPointerDown,
 }: {
   type: ConnectorType;
   label: string;
   isSelected: boolean;
   isPolling: boolean;
-  onClick: () => void;
+  onPointerDown: () => void;
 }) {
   return (
     <button
       type="button"
       data-testid={`connector-card-${type}`}
-      onPointerDown={onClick}
+      onPointerDown={onPointerDown}
       disabled={isPolling}
       className={`flex items-center gap-3 rounded-xl px-4 py-3.5 transition-colors focus:outline-none zero-border ${
         isPolling ? "bg-yellow-500/5" : "hover:bg-muted/30 cursor-pointer"
