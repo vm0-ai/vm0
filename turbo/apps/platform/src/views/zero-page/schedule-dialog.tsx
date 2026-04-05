@@ -148,9 +148,9 @@ function ConfirmCloseOverlay({
       aria-labelledby="confirm-close-title"
       aria-describedby="confirm-close-desc"
     >
-      {/* eslint-disable-next-line ccstate/no-onclick -- backdrop click must use onClick so the overlay stays mounted until after the click event, preventing onInteractOutside from re-triggering the dialog */}
       <div
         className="fixed inset-0 bg-black/50 dark:bg-black/70"
+        // eslint-disable-next-line ccstate/no-onclick -- backdrop click must use onClick so the overlay stays mounted until after the click event, preventing onInteractOutside from re-triggering the dialog
         onClick={onContinue}
         role="presentation"
       />
