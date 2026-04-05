@@ -253,4 +253,33 @@ mod tests {
             compute_snapshot_hash(&different_dry_run, &provider)
         );
     }
+
+    #[test]
+    fn mock_provider_produces_different_hash_than_real() {
+        let args = SnapshotArgs {
+            rootfs_hash: "abc123".into(),
+            vcpu: 2,
+            memory_mb: 2048,
+            dry_run: false,
+        };
+        let real_hash = compute_snapshot_hash(&args, &sandbox_fc::FirecrackerSnapshotProvider);
+        let mock_hash = compute_snapshot_hash(&args, &sandbox_mock::MockSnapshotProvider);
+        // Different providers have different config_hash() → different snapshot hashes.
+        assert_ne!(real_hash, mock_hash);
+    }
+
+    #[test]
+    fn snapshot_hash_deterministic_with_mock() {
+        let args = SnapshotArgs {
+            rootfs_hash: "test-rootfs".into(),
+            vcpu: 4,
+            memory_mb: 4096,
+            dry_run: false,
+        };
+        let provider = sandbox_mock::MockSnapshotProvider;
+        let h1 = compute_snapshot_hash(&args, &provider);
+        let h2 = compute_snapshot_hash(&args, &provider);
+        assert_eq!(h1, h2);
+        assert_eq!(h1.len(), 64); // SHA-256 hex
+    }
 }

@@ -311,4 +311,99 @@ mod tests {
         let msg = e.to_string();
         assert!(msg.contains("must not be empty"), "error: {msg}");
     }
+
+    #[test]
+    fn resolve_target_empty_list() {
+        let fcs: Vec<FirecrackerProcessInfo> = vec![];
+        let result = resolve_target("abc", &fcs);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn resolve_target_exact_match_among_many() {
+        let fcs = vec![
+            make_fc(100, "abc-111"),
+            make_fc(101, "abc-222"),
+            make_fc(102, "def-333"),
+        ];
+        // Full match on "abc-111" should return exactly one result
+        let result = resolve_target("abc-111", &fcs).unwrap();
+        assert_eq!(result.pid, 100);
+    }
+
+    // -----------------------------------------------------------------------
+    // Orphan cleanup tests (using sandbox-mock)
+    // -----------------------------------------------------------------------
+
+    use sandbox_mock::MockSandboxControl;
+
+    #[tokio::test]
+    async fn cleanup_orphan_removes_workspace_and_socket_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path();
+
+        // Create workspace dir that should be cleaned up
+        let workspace = base.join("workspaces").join("run-123");
+        tokio::fs::create_dir_all(&workspace).await.unwrap();
+        tokio::fs::write(workspace.join("file.txt"), "data")
+            .await
+            .unwrap();
+
+        // Create socket dir via MockSandboxControl base path
+        let sock_base = tempfile::tempdir().unwrap();
+        let control = MockSandboxControl::new(sock_base.path());
+        let sock_dir = control.runtime_dir("run-123");
+        tokio::fs::create_dir_all(&sock_dir).await.unwrap();
+
+        let results = cleanup_orphan("run-123", Some(base), &control).await;
+
+        assert_eq!(results.len(), 2);
+        assert!(results[0].1, "workspace cleanup should succeed");
+        assert!(results[1].1, "socket cleanup should succeed");
+        assert!(!workspace.exists());
+        assert!(!sock_dir.exists());
+    }
+
+    #[tokio::test]
+    async fn cleanup_orphan_succeeds_when_dirs_missing() {
+        let control = MockSandboxControl::new("/tmp/nonexistent-base");
+        let results = cleanup_orphan(
+            "run-456",
+            Some(std::path::Path::new("/tmp/no-such-dir")),
+            &control,
+        )
+        .await;
+
+        // Both should "succeed" — NotFound is treated as success
+        assert_eq!(results.len(), 2);
+        assert!(results[0].1);
+        assert!(results[1].1);
+    }
+
+    #[tokio::test]
+    async fn cleanup_orphan_no_base_dir() {
+        let control = MockSandboxControl::new("/tmp/test");
+        let results = cleanup_orphan("run-789", None, &control).await;
+
+        // Only socket dir cleanup, no workspace
+        assert_eq!(results.len(), 1);
+        assert!(results[0].0.contains("Socket dir"));
+    }
+
+    #[tokio::test]
+    async fn remove_dir_if_exists_success() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("to-remove");
+        tokio::fs::create_dir(&target).await.unwrap();
+        tokio::fs::write(target.join("file"), "data").await.unwrap();
+
+        assert!(remove_dir_if_exists(&target).await);
+        assert!(!target.exists());
+    }
+
+    #[tokio::test]
+    async fn remove_dir_if_exists_not_found() {
+        let path = std::path::Path::new("/tmp/definitely-does-not-exist-12345");
+        assert!(remove_dir_if_exists(path).await);
+    }
 }
