@@ -51,7 +51,7 @@ export function OrgDeleteProviderDialog() {
         <DialogFooter>
           <Button
             variant="outline"
-            onClick={() => {
+            onPointerDown={() => {
               return closeDelete();
             }}
             disabled={isLoading}
@@ -60,7 +60,7 @@ export function OrgDeleteProviderDialog() {
           </Button>
           <Button
             variant="destructive"
-            onClick={handleDelete}
+            onPointerDown={handleDelete}
             disabled={isLoading}
           >
             {isLoading ? "Deleting..." : "Delete"}
