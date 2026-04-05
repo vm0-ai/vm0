@@ -128,7 +128,7 @@ function PageContent({
           <Button
             size="default"
             className="w-full gap-2"
-            onClick={() => {
+            onPointerDown={() => {
               window.location.href = "slack://open";
             }}
           >
@@ -177,7 +177,7 @@ function PageContent({
         <Button
           className="w-full"
           size="default"
-          onClick={onConnect}
+          onPointerDown={onConnect}
           disabled={connectStatus === "connecting"}
         >
           {connectStatus === "connecting" ? (
