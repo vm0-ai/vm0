@@ -1602,4 +1602,124 @@ mod tests {
         assert_eq!(env.get("VM0_MEMORY_NAME").unwrap(), "project-mem");
         assert_eq!(env.get("VM0_MEMORY_VERSION_ID").unwrap(), "v2");
     }
+
+    // -----------------------------------------------------------------------
+    // copy_guest_logs tests
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn copy_guest_logs_writes_files_to_host() {
+        let dir = tempfile::tempdir().unwrap();
+        let log_paths = LogPaths::new(dir.path().to_path_buf());
+        let sandbox = MockSandbox::new("test");
+        let ctx = minimal_context();
+
+        // Queue two exec results: system log + metrics log
+        sandbox.push_exec_result(Ok(ExecResult {
+            exit_code: 0,
+            stdout: b"system log line 1\nsystem log line 2\n".to_vec(),
+            stderr: Vec::new(),
+        }));
+        sandbox.push_exec_result(Ok(ExecResult {
+            exit_code: 0,
+            stdout: b"{\"cpu\":0.5}\n".to_vec(),
+            stderr: Vec::new(),
+        }));
+
+        copy_guest_logs(&sandbox, &ctx, &log_paths).await;
+
+        let system_log = tokio::fs::read_to_string(log_paths.system_log(ctx.run_id))
+            .await
+            .unwrap();
+        assert_eq!(system_log, "system log line 1\nsystem log line 2\n");
+
+        let metrics_log = tokio::fs::read_to_string(log_paths.metrics_log(ctx.run_id))
+            .await
+            .unwrap();
+        assert_eq!(metrics_log, "{\"cpu\":0.5}\n");
+    }
+
+    #[tokio::test]
+    async fn copy_guest_logs_skips_on_nonzero_exit() {
+        let dir = tempfile::tempdir().unwrap();
+        let log_paths = LogPaths::new(dir.path().to_path_buf());
+        let sandbox = MockSandbox::new("test");
+        let ctx = minimal_context();
+
+        // cat fails (file doesn't exist in guest)
+        sandbox.push_exec_result(Ok(ExecResult {
+            exit_code: 1,
+            stdout: Vec::new(),
+            stderr: b"No such file".to_vec(),
+        }));
+        sandbox.push_exec_result(Ok(ExecResult {
+            exit_code: 1,
+            stdout: Vec::new(),
+            stderr: Vec::new(),
+        }));
+
+        copy_guest_logs(&sandbox, &ctx, &log_paths).await;
+
+        // Host files should not be created
+        assert!(!log_paths.system_log(ctx.run_id).exists());
+        assert!(!log_paths.metrics_log(ctx.run_id).exists());
+    }
+
+    #[tokio::test]
+    async fn copy_guest_logs_skips_on_exec_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let log_paths = LogPaths::new(dir.path().to_path_buf());
+        let sandbox = MockSandbox::new("test");
+        let ctx = minimal_context();
+
+        sandbox.push_exec_result(Err(SandboxError::ExecFailed("vsock down".into())));
+        sandbox.push_exec_result(Err(SandboxError::ExecFailed("vsock down".into())));
+
+        copy_guest_logs(&sandbox, &ctx, &log_paths).await;
+
+        assert!(!log_paths.system_log(ctx.run_id).exists());
+        assert!(!log_paths.metrics_log(ctx.run_id).exists());
+    }
+
+    // -----------------------------------------------------------------------
+    // drain_stdout_to_file tests
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn drain_stdout_writes_chunks_to_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("stdout.log");
+
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        tx.send(b"chunk 1\n".to_vec()).unwrap();
+        tx.send(b"chunk 2\n".to_vec()).unwrap();
+        drop(tx); // close channel
+
+        drain_stdout_to_file(rx, path.clone()).await;
+
+        let content = tokio::fs::read_to_string(&path).await.unwrap();
+        assert_eq!(content, "chunk 1\nchunk 2\n");
+    }
+
+    #[tokio::test]
+    async fn drain_stdout_empty_channel() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("empty.log");
+
+        let (_tx, rx) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
+        drop(_tx);
+
+        drain_stdout_to_file(rx, path.clone()).await;
+
+        let content = tokio::fs::read_to_string(&path).await.unwrap();
+        assert!(content.is_empty());
+    }
+
+    #[tokio::test]
+    async fn drain_stdout_invalid_path_does_not_panic() {
+        let (_tx, rx) = tokio::sync::mpsc::unbounded_channel::<Vec<u8>>();
+        drop(_tx);
+        // /dev/null/impossible cannot be created — should handle gracefully
+        drain_stdout_to_file(rx, std::path::PathBuf::from("/dev/null/impossible/file")).await;
+    }
 }
