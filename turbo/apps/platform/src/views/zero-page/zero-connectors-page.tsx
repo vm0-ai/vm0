@@ -69,7 +69,7 @@ function GlobalConnectorCard({
           </span>
           <button
             type="button"
-            onClick={onConnect}
+            onPointerDown={onConnect}
             className="font-medium text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300 transition-colors"
           >
             Reconnect
@@ -86,7 +86,7 @@ function GlobalConnectorCard({
           </span>
           <button
             type="button"
-            onClick={onReviewScopes}
+            onPointerDown={onReviewScopes}
             className="font-medium text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300 transition-colors"
           >
             Review
@@ -107,7 +107,7 @@ function GlobalConnectorCard({
     return (
       <button
         type="button"
-        onClick={onConnect}
+        onPointerDown={onConnect}
         className="text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
       >
         Connect
@@ -148,6 +148,7 @@ function GlobalConnectorCard({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-44">
+              {/* eslint-disable-next-line ccstate/no-onclick -- Radix DropdownMenuItem only exposes onClick in its API */}
               <DropdownMenuItem onClick={onDisconnect}>
                 Disconnect
               </DropdownMenuItem>
@@ -194,7 +195,7 @@ function AvailableConnectorCard({
         ) : (
           <button
             type="button"
-            onClick={onConnect}
+            onPointerDown={onConnect}
             className="shrink-0 flex h-7 w-7 items-center justify-center rounded-md border border-border/60 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
             aria-label={`Connect ${connector.label}`}
           >
