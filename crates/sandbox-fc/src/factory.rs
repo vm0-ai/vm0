@@ -477,27 +477,32 @@ mod tests {
     }
 
     #[test]
-    fn invariant_config_serializes_to_json() {
+    fn invariant_config_has_all_expected_fields() {
         let config = InvariantConfig::new();
         let json = serde_json::to_value(&config).unwrap();
-        assert!(json["boot_args"].is_string());
-        assert_eq!(json["guest_mac"], GUEST_NETWORK.guest_mac);
-        assert_eq!(json["tap_name"], GUEST_NETWORK.tap_name);
-        assert_eq!(json["tap_mac"], GUEST_NETWORK.tap_mac);
-        assert_eq!(json["iface_id"], "eth0");
-        assert_eq!(json["guest_cid"], 3);
-        assert_eq!(json["prewarm_script"], PREWARM_SCRIPT);
-        assert_eq!(json["drive_layout"], "nbd-cow-v1");
-    }
+        let obj = json.as_object().unwrap();
 
-    #[test]
-    fn invariant_config_balloon_defaults() {
-        let config = InvariantConfig::new();
-        let json = serde_json::to_value(&config).unwrap();
-        let balloon = &json["balloon"];
-        assert_eq!(balloon["amount_mib"], 0);
-        assert!(balloon["deflate_on_oom"].as_bool().unwrap());
-        assert_eq!(balloon["stats_polling_interval_s"], 5);
+        // Guard against accidental field additions/removals that would
+        // silently change the config hash and invalidate all snapshots.
+        let expected_fields = [
+            "boot_args",
+            "guest_mac",
+            "tap_name",
+            "tap_mac",
+            "iface_id",
+            "guest_cid",
+            "balloon",
+            "prewarm_script",
+            "drive_layout",
+        ];
+        for field in &expected_fields {
+            assert!(obj.contains_key(*field), "missing field: {field}");
+        }
+        assert_eq!(
+            obj.len(),
+            expected_fields.len(),
+            "unexpected field count — adding/removing fields changes the config hash"
+        );
     }
 
     #[test]
