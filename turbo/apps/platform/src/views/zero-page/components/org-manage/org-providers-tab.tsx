@@ -150,7 +150,7 @@ function ProviderListSection({ isAdmin }: { isAdmin: boolean }) {
         {isAdmin && !allConfigured && (
           <button
             type="button"
-            onClick={() => {
+            onPointerDown={() => {
               return setAddDialogOpen(true);
             }}
             className="flex flex-col overflow-hidden transition-colors hover:bg-muted/30 group zero-border-dashed rounded-xl"
@@ -189,7 +189,7 @@ function ProviderListSection({ isAdmin }: { isAdmin: boolean }) {
                 key={p.type}
                 role={isAdmin ? "button" : undefined}
                 tabIndex={isAdmin ? 0 : undefined}
-                onClick={
+                onPointerDown={
                   isAdmin
                     ? () => {
                         return openEdit(p);
@@ -221,7 +221,7 @@ function ProviderListSection({ isAdmin }: { isAdmin: boolean }) {
                 </div>
                 <div
                   className="flex h-11 items-center justify-between pl-5 pr-2 zero-border-t"
-                  onClick={
+                  onPointerDown={
                     isAdmin
                       ? (e) => {
                           return e.stopPropagation();
@@ -247,7 +247,7 @@ function ProviderListSection({ isAdmin }: { isAdmin: boolean }) {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end" className="w-40">
                         <DropdownMenuItem
-                          onClick={() => {
+                          onPointerDown={() => {
                             return openEdit(p);
                           }}
                         >
@@ -255,7 +255,7 @@ function ProviderListSection({ isAdmin }: { isAdmin: boolean }) {
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           className="text-destructive"
-                          onClick={() => {
+                          onPointerDown={() => {
                             return openDelete(p.type);
                           }}
                         >
