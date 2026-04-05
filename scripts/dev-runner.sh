@@ -59,7 +59,7 @@ cmd_deploy() {
   log "Building guest binaries..."
   cd "$CRATES_DIR"
   cargo build --release --target "$TARGET" \
-    -p guest-agent -p guest-download -p guest-init -p guest-mock-claude
+    -p guest-agent -p guest-download -p guest-init -p guest-mock-claude -p guest-reseed
 
   # Build runner
   log "Building runner with embedded guests..."
@@ -67,6 +67,7 @@ cmd_deploy() {
   GUEST_DOWNLOAD_PATH="target/$TARGET/release/guest-download" \
   GUEST_INIT_PATH="target/$TARGET/release/guest-init" \
   GUEST_MOCK_CLAUDE_PATH="target/$TARGET/release/guest-mock-claude" \
+  GUEST_RESEED_PATH="target/$TARGET/release/guest-reseed" \
   cargo build --release --target "$TARGET" -p runner
 
   BINARY="$CRATES_DIR/target/$TARGET/release/runner"
