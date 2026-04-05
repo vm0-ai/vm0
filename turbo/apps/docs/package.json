@@ -8,7 +8,7 @@
     "dev": "next dev --turbo --port 3001",
     "start": "next start",
     "lint": "oxlint && eslint . --max-warnings 0",
-    "check-types": "fumadocs-mdx && next typegen && tsc --noEmit",
+    "check-types": "next typegen && fumadocs-mdx && tsc --noEmit",
     "postinstall": "fumadocs-mdx"
   },
   "dependencies": {
