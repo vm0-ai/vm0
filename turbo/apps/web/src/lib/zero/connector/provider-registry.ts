@@ -35,6 +35,8 @@ import { discordWebhookHandler } from "./providers/discord-webhook-handler";
 import { deepseekHandler } from "./providers/deepseek-handler";
 import { difyHandler } from "./providers/dify-handler";
 import { devtoHandler } from "./providers/devto-handler";
+import { dopplerHandler } from "./providers/doppler-handler";
+import { infisicalHandler } from "./providers/infisical-handler";
 import { docusignHandler } from "./providers/docusign-handler";
 import { dropboxHandler } from "./providers/dropbox-handler";
 import { elevenlabsHandler } from "./providers/elevenlabs-handler";
@@ -169,6 +171,8 @@ export const PROVIDER_HANDLERS: Record<
   deepseek: deepseekHandler,
   dify: difyHandler,
   devto: devtoHandler,
+  doppler: dopplerHandler,
+  infisical: infisicalHandler,
   docusign: docusignHandler,
   dropbox: dropboxHandler,
   elevenlabs: elevenlabsHandler,
