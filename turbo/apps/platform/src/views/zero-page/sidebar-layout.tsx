@@ -65,7 +65,7 @@ function MobileTopBar() {
     <div className="md:hidden shrink-0 flex items-center h-12 px-3 gap-2 bg-background border-b border-border/50 z-10">
       <button
         type="button"
-        onClick={() => {
+        onPointerDown={() => {
           return setSidebarCollapsed(false);
         }}
         className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
@@ -102,7 +102,7 @@ function MobileTopBar() {
       {showInvite && (
         <button
           type="button"
-          onClick={() => {
+          onPointerDown={() => {
             setTab("members");
             setSubPage(false);
             detach(openManage(true, pageSignal), Reason.DomCallback);
@@ -146,7 +146,7 @@ function SidebarLayoutInner({ children }: { children: ReactNode }) {
         <div
           className="fixed inset-0 z-30 bg-black/40 md:hidden"
           aria-label="Sidebar overlay"
-          onClick={() => {
+          onPointerDown={() => {
             return setSidebarCollapsed(true);
           }}
         />
