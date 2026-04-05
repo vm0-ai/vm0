@@ -30,7 +30,8 @@ import {
 } from "@vm0/ui";
 import { RUN_ERROR_GUIDANCE } from "@vm0/core";
 import { Markdown } from "../components/markdown.tsx";
-import { detach, Reason } from "../../signals/utils.ts";
+import { detach, noopOnRef$, Reason } from "../../signals/utils.ts";
+import { appStore } from "../../signals/app-store.ts";
 import { FileAttachmentChip, ImageLightbox } from "./zero-attachment-chips.tsx";
 import {
   lightboxUrl$ as attachmentLightboxUrl$,
@@ -70,6 +71,7 @@ import {
 import { useAgentAvatar } from "./zero-sidebar-shared.tsx";
 import { zeroSubagents$ } from "../../signals/zero-page/zero-agents.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
+import { useRef } from "react";
 function AvatarOrPlaceholder({
   src,
   className,
@@ -263,10 +265,19 @@ export function ZeroChatThreadPage() {
       : null;
   const messagesLoading = messagesLoadable.state === "loading";
 
-  // Auto-scroll when messages change — ref callback runs at commit time
-  const scrollAnchorRef = (el: HTMLDivElement | null) => {
-    if (el && messages.length > 0) {
-      el.scrollIntoView({ behavior: "instant" });
+  const atBottomRef = useRef(true);
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 50;
+    if (atBottom === atBottomRef.current) return;
+    atBottomRef.current = atBottom;
+    for (const msg of messages) {
+      const ctrl = msg.scrollController;
+      if (!ctrl) continue;
+      detach(
+        appStore.set(atBottom ? ctrl.enable$ : ctrl.disable$),
+        Reason.DomCallback,
+      );
     }
   };
 
@@ -275,7 +286,7 @@ export function ZeroChatThreadPage() {
       <ChatThreadHeader />
 
       {/* Scrollable area — messages + sticky composer share the same scroll context */}
-      <div className="flex-1 overflow-auto flex flex-col min-h-0">
+      <div className="flex-1 overflow-auto flex flex-col min-h-0" onScroll={handleScroll}>
         <main className="flex-1 px-4 sm:px-6 py-4 items-center @container">
           <div className="w-full max-w-[900px] mx-auto flex flex-1 flex-col gap-6 pb-4 overflow-visible">
             {sessionError && (
@@ -299,7 +310,6 @@ export function ZeroChatThreadPage() {
             {messages.map((msg) => {
               return <ChatMessageRow key={msg.id} message={msg} />;
             })}
-            <div ref={scrollAnchorRef} />
           </div>
         </main>
 
@@ -393,10 +403,19 @@ function ChatSkeleton() {
 // ---------------------------------------------------------------------------
 
 function ChatMessageRow({ message }: { message: ZeroChatMessage }) {
+  const setRef = useSet(message.scrollController?.onRef$ ?? noopOnRef$);
   if (message.role === "user") {
-    return <UserMessage message={message} />;
+    return (
+      <div ref={setRef}>
+        <UserMessage message={message} />
+      </div>
+    );
   }
-  return <AssistantMessage message={message} />;
+  return (
+    <div ref={setRef}>
+      <AssistantMessage message={message} />
+    </div>
+  );
 }
 
 /**
