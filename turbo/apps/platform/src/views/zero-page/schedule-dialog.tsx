@@ -150,7 +150,7 @@ function ConfirmCloseOverlay({
     >
       <div
         className="fixed inset-0 bg-black/50 dark:bg-black/70"
-        onClick={onContinue}
+        onPointerDown={onContinue}
         role="presentation"
       />
       <div className="relative z-10 mx-4 max-w-sm rounded-lg border border-border bg-card p-6 shadow-xl">
@@ -167,10 +167,10 @@ function ConfirmCloseOverlay({
           Are you sure you want to close? Your changes will be lost.
         </p>
         <div className="flex justify-end gap-2">
-          <Button variant="outline" size="sm" onClick={onContinue}>
+          <Button variant="outline" size="sm" onPointerDown={onContinue}>
             Continue Editing
           </Button>
-          <Button variant="destructive" size="sm" onClick={onDiscard}>
+          <Button variant="destructive" size="sm" onPointerDown={onDiscard}>
             Discard Changes
           </Button>
         </div>
@@ -444,7 +444,7 @@ function DayOfWeekPicker({
                   ? "border-primary bg-primary text-primary-foreground"
                   : "border-input bg-background text-muted-foreground hover:bg-muted"
               }`}
-              onClick={() => {
+              onPointerDown={() => {
                 const current = dayOfWeek.split(",").filter(Boolean);
                 if (selected) {
                   if (current.length > 1) {
@@ -606,7 +606,7 @@ function ScheduleFormDialogInner({
           type="button"
           className="absolute right-4 top-4 flex items-center justify-center size-9 rounded-lg transition-colors opacity-70 hover:opacity-100 hover:bg-accent focus:outline-none"
           aria-label="Close"
-          onClick={requestClose}
+          onPointerDown={requestClose}
         >
           <IconX size={20} className="text-foreground" />
         </button>
@@ -734,13 +734,13 @@ function ScheduleFormDialogInner({
             type="button"
             variant="outline"
             className="zero-btn-morandi"
-            onClick={requestClose}
+            onPointerDown={requestClose}
           >
             Cancel
           </Button>
           <Button
             type="button"
-            onClick={handleSave}
+            onPointerDown={handleSave}
             disabled={
               !form.prompt.trim() || (agents ? !form.agentId : false) || saving
             }
