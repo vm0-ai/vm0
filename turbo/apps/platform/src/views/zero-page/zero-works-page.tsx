@@ -71,7 +71,7 @@ function SlackCardActions({
           variant="outline"
           size="sm"
           className="h-8 shrink-0 gap-1.5 rounded-lg"
-          onClick={() => {
+          onPointerDown={() => {
             return openFreshOAuth(installUrl);
           }}
         >
@@ -84,7 +84,7 @@ function SlackCardActions({
           variant="outline"
           size="sm"
           className="h-8 shrink-0 gap-1.5 rounded-lg"
-          onClick={() => {
+          onPointerDown={() => {
             return openFreshOAuth(connectUrl);
           }}
         >
@@ -111,7 +111,7 @@ function SlackCardActions({
                 type="button"
                 aria-label="Disconnect"
                 className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left hover:bg-accent hover:text-accent-foreground transition-colors"
-                onClick={onDisconnect}
+                onPointerDown={onDisconnect}
               >
                 Disconnect
               </button>
@@ -121,7 +121,7 @@ function SlackCardActions({
                 type="button"
                 aria-label="Uninstall"
                 className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left text-destructive hover:bg-accent hover:text-accent-foreground transition-colors"
-                onClick={onUninstall}
+                onPointerDown={onUninstall}
               >
                 Uninstall
               </button>
@@ -190,7 +190,7 @@ function SlackCard({ displayName }: { displayName: string }) {
               variant="outline"
               size="sm"
               className="h-7 shrink-0 text-xs"
-              onClick={() => {
+              onPointerDown={() => {
                 return openFreshOAuth(reinstallUrl);
               }}
             >
@@ -214,7 +214,7 @@ function SlackCard({ displayName }: { displayName: string }) {
           <DialogFooter>
             <Button
               variant="outline"
-              onClick={() => {
+              onPointerDown={() => {
                 return setShowUninstallDialog(false);
               }}
             >
@@ -222,7 +222,7 @@ function SlackCard({ displayName }: { displayName: string }) {
             </Button>
             <Button
               variant="destructive"
-              onClick={() => {
+              onPointerDown={() => {
                 setShowUninstallDialog(false);
                 detach(uninstall(pageSignal), Reason.DomCallback);
               }}
