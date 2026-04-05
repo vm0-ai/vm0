@@ -190,6 +190,27 @@ describe("POST /api/zero/computer-use/register", () => {
     expect(ngrokCalls.createEndpoint.length).toBe(1);
   });
 
+  it("should clean up resources when endpoint creation fails", async () => {
+    const userId = uniqueId("zcu-fail");
+    await setupOrg(userId);
+    const ngrokCalls = setupNgrokMocks();
+
+    // Override endpoint creation to fail
+    server.use(
+      http.post("https://api.ngrok.com/endpoints", () => {
+        return HttpResponse.json({ error: "internal error" }, { status: 500 });
+      }),
+    );
+
+    const response = await POST(createPostRequest());
+    expect(response.status).toBe(500);
+
+    // Verify all previously-created resources were cleaned up
+    expect(ngrokCalls.deleteBotUser).toEqual(["bot_test_cu_123"]);
+    expect(ngrokCalls.deleteCredential).toEqual(["cr_test_cu_456"]);
+    expect(ngrokCalls.deleteReservedDomain).toEqual(["rd_test_cu_abc"]);
+  });
+
   it("should return 200 on re-registration (idempotent)", async () => {
     const userId = uniqueId("zcu-dup");
     await setupOrg(userId);

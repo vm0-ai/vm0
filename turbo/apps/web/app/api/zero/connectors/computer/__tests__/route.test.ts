@@ -163,6 +163,27 @@ describe("POST /api/zero/connectors/computer", () => {
     expect(ngrokCalls.createEndpoint.length).toBe(1);
   });
 
+  it("should clean up resources when endpoint creation fails", async () => {
+    const userId = uniqueId("zcomp-fail");
+    await setupOrg(userId);
+    const ngrokCalls = setupNgrokMocks();
+
+    // Override endpoint creation to fail
+    server.use(
+      http.post("https://api.ngrok.com/endpoints", () => {
+        return HttpResponse.json({ error: "internal error" }, { status: 500 });
+      }),
+    );
+
+    const response = await POST(createPostRequest());
+    expect(response.status).toBe(500);
+
+    // Verify all previously-created resources were cleaned up
+    expect(ngrokCalls.deleteBotUser).toEqual(["bot_test_123"]);
+    expect(ngrokCalls.deleteCredential).toEqual(["cr_test_456"]);
+    expect(ngrokCalls.deleteReservedDomain).toEqual(["rd_test_abc"]);
+  });
+
   it("should return 409 if connector already exists", async () => {
     const userId = uniqueId("zcomp-dup");
     await setupOrg(userId);
