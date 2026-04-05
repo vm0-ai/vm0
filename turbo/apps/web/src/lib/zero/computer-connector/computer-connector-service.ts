@@ -19,8 +19,10 @@ import {
   deleteCredential,
   createCloudEndpoint,
   deleteCloudEndpoint,
-  createReservedDomain,
+  findOrCreateReservedDomain,
   deleteReservedDomain,
+  deleteBotUser,
+  safeDelete,
 } from "./ngrok-client";
 
 const log = logger("service:computer-connector");
@@ -68,149 +70,185 @@ export async function createComputerConnector(
 
   const botUserName = `vm0-user-${slug}`;
 
-  // Provision ngrok resources
-  const botUser = await findOrCreateBotUser(apiKey, botUserName);
-  const credential = await createCredential(apiKey, botUser.id, [
-    `bind:*.${endpointPrefix}.internal`,
-  ]);
+  // Provision ngrok resources — clean up on partial failure
+  let botUserId: string | undefined;
+  let credentialId: string | undefined;
+  let domainId: string | undefined;
+  let endpointId: string | undefined;
+  let connectorRowId: string | undefined;
 
-  // Create reserved domain - ngrok will assign: {subdomainName}.ngrok-free.app
-  const reservedDomain = await createReservedDomain(
-    apiKey,
-    subdomainName,
-    "us",
-  );
-  const domain = reservedDomain.domain; // e.g., "vm0-user-abc12345.ngrok-free.app"
-
-  const bridgeToken = randomUUID();
-
-  // Create Cloud Endpoint with traffic policy
-  // Create traffic policy to verify bridge token and forward to internal endpoint
-  // Domain format: *.vm0-user-abc12345.ngrok-free.app
-  // Service URLs: test.vm0-user-abc12345.ngrok-free.app, api.vm0-user-abc12345.ngrok-free.app, etc.
-  const trafficPolicy = JSON.stringify({
-    on_http_request: [
-      {
-        // Deny if no x-vm0-token or token doesn't match
-        expressions: [
-          `!('x-vm0-token' in req.headers) || req.headers['x-vm0-token'][0] != '${bridgeToken}'`,
-        ],
-        actions: [{ type: "deny", config: { status_code: 403 } }],
-      },
-      {
-        actions: [
-          {
-            type: "forward-internal",
-            config: {
-              // Extract service name from subdomain
-              // e.g., test.vm0-user-abc12345.ngrok-free.app → test.vm0-user-{orgId}.internal
-              // The full endpointPrefix (vm0-user-{orgId}) is used for ACL matching
-              url: `https://$\{conn.server_name.split('.${domain}')[0]}.${endpointPrefix}.internal`,
-              on_error: "continue",
-            },
-          },
-          {
-            type: "custom-response",
-            config: { status_code: 502, body: "Agent offline" },
-          },
-        ],
-      },
-    ],
-  });
-
-  // Create cloud endpoint with wildcard subdomain
-  // Format: https://*.vm0-user-abc12345.ngrok-free.app
-  const endpointUrl = `https://*.${domain}`;
-  const cloudEndpoint = await createCloudEndpoint(
-    apiKey,
-    endpointUrl,
-    trafficPolicy,
-  );
-
-  // Create connector row
-  // Store ngrok resource IDs:
-  // - externalId: Bot User ID
-  // - externalUsername: Credential ID
-  // - externalEmail: Cloud Endpoint ID
-  // - oauthScopes: null (not used for computer connector)
-  const db = globalThis.services.db;
-  const [connectorRow] = await db
-    .insert(connectors)
-    .values({
-      userId,
-      orgId,
-      type: "computer",
-      authMethod: "api",
-      externalId: botUser.id,
-      externalUsername: credential.id,
-      externalEmail: cloudEndpoint.id,
-      oauthScopes: null,
-    })
-    .returning();
-
-  if (!connectorRow) {
-    throw new Error("Failed to create connector");
-  }
-
-  // Store secrets (ngrok token is one-time use, returned to client only)
-  await Promise.all([
-    upsertSecretByOrg(
-      orgId,
-      userId,
-      "COMPUTER_CONNECTOR_BRIDGE_TOKEN",
-      bridgeToken,
-      "connector",
-      "Computer connector: COMPUTER_CONNECTOR_BRIDGE_TOKEN",
-    ),
-    upsertSecretByOrg(
-      orgId,
-      userId,
-      "COMPUTER_CONNECTOR_DOMAIN_ID",
-      reservedDomain.id,
-      "connector",
-      "Computer connector: COMPUTER_CONNECTOR_DOMAIN_ID",
-    ),
-    upsertSecretByOrg(
-      orgId,
-      userId,
-      "COMPUTER_CONNECTOR_DOMAIN",
-      domain,
-      "connector",
-      "Computer connector: COMPUTER_CONNECTOR_DOMAIN",
-    ),
-  ]);
-
-  log.debug("Computer connector created", {
-    connectorId: connectorRow.id,
-    botUserId: botUser.id,
-    domain,
-  });
-
-  return {
-    id: connectorRow.id,
-    ngrokToken: credential.token,
-    bridgeToken,
-    endpointPrefix,
-    domain,
-  };
-}
-
-/**
- * Helper to safely delete ngrok resource, ignoring 404 errors.
- */
-async function safeDeleteNgrokResource(
-  deleteFn: () => Promise<void>,
-  resourceName: string,
-  resourceId: string,
-): Promise<void> {
   try {
-    await deleteFn();
-  } catch (error) {
-    if (error instanceof Error && error.message.includes("404")) {
-      log.debug(`${resourceName} already deleted`, { id: resourceId });
-    } else {
-      throw error;
+    const botUser = await findOrCreateBotUser(apiKey, botUserName);
+    botUserId = botUser.id;
+
+    const credential = await createCredential(apiKey, botUser.id, [
+      `bind:*.${endpointPrefix}.internal`,
+    ]);
+    credentialId = credential.id;
+
+    const reservedDomain = await findOrCreateReservedDomain(
+      apiKey,
+      subdomainName,
+      "us",
+    );
+    const domain = reservedDomain.domain; // e.g., "vm0-user-abc12345.ngrok-free.app"
+    domainId = reservedDomain.id;
+
+    const bridgeToken = randomUUID();
+
+    // Traffic policy: verify bridge token and forward to internal endpoint
+    const trafficPolicy = JSON.stringify({
+      on_http_request: [
+        {
+          expressions: [
+            `!('x-vm0-token' in req.headers) || req.headers['x-vm0-token'][0] != '${bridgeToken}'`,
+          ],
+          actions: [{ type: "deny", config: { status_code: 403 } }],
+        },
+        {
+          actions: [
+            {
+              type: "forward-internal",
+              config: {
+                url: `https://$\{conn.server_name.split('.${domain}')[0]}.${endpointPrefix}.internal`,
+                on_error: "continue",
+              },
+            },
+            {
+              type: "custom-response",
+              config: { status_code: 502, body: "Agent offline" },
+            },
+          ],
+        },
+      ],
+    });
+
+    const endpointUrl = `https://*.${domain}`;
+    const cloudEndpoint = await createCloudEndpoint(
+      apiKey,
+      endpointUrl,
+      trafficPolicy,
+    );
+    endpointId = cloudEndpoint.id;
+
+    // Create connector row
+    const db = globalThis.services.db;
+    const [connectorRow] = await db
+      .insert(connectors)
+      .values({
+        userId,
+        orgId,
+        type: "computer",
+        authMethod: "api",
+        externalId: botUserId,
+        externalUsername: credentialId,
+        externalEmail: cloudEndpoint.id,
+        oauthScopes: null,
+      })
+      .returning();
+
+    if (!connectorRow) {
+      throw new Error("Failed to create connector");
     }
+    connectorRowId = connectorRow.id;
+
+    // Store secrets (ngrok token is one-time use, returned to client only)
+    await Promise.all([
+      upsertSecretByOrg(
+        orgId,
+        userId,
+        "COMPUTER_CONNECTOR_BRIDGE_TOKEN",
+        bridgeToken,
+        "connector",
+        "Computer connector: COMPUTER_CONNECTOR_BRIDGE_TOKEN",
+      ),
+      upsertSecretByOrg(
+        orgId,
+        userId,
+        "COMPUTER_CONNECTOR_DOMAIN_ID",
+        domainId,
+        "connector",
+        "Computer connector: COMPUTER_CONNECTOR_DOMAIN_ID",
+      ),
+      upsertSecretByOrg(
+        orgId,
+        userId,
+        "COMPUTER_CONNECTOR_DOMAIN",
+        domain,
+        "connector",
+        "Computer connector: COMPUTER_CONNECTOR_DOMAIN",
+      ),
+    ]);
+
+    log.debug("Computer connector created", {
+      connectorId: connectorRow.id,
+      botUserId,
+      domain,
+    });
+
+    return {
+      id: connectorRow.id,
+      ngrokToken: credential.token,
+      bridgeToken,
+      endpointPrefix,
+      domain,
+    };
+  } catch (error) {
+    // Clean up any resources created before the failure (best-effort to avoid masking original error)
+    log.error("Failed to create computer connector, cleaning up", { orgId });
+    const eid = endpointId;
+    const cid = credentialId;
+    const did = domainId;
+    const bid = botUserId;
+    const rid = connectorRowId;
+    if (eid) {
+      await safeDelete(
+        () => {
+          return deleteCloudEndpoint(apiKey, eid);
+        },
+        "Cloud endpoint",
+        eid,
+        true,
+      );
+    }
+    if (cid) {
+      await safeDelete(
+        () => {
+          return deleteCredential(apiKey, cid);
+        },
+        "Credential",
+        cid,
+        true,
+      );
+    }
+    if (did) {
+      await safeDelete(
+        () => {
+          return deleteReservedDomain(apiKey, did);
+        },
+        "Reserved domain",
+        did,
+        true,
+      );
+    }
+    if (bid) {
+      await safeDelete(
+        () => {
+          return deleteBotUser(apiKey, bid);
+        },
+        "Bot user",
+        bid,
+        true,
+      );
+    }
+    if (rid) {
+      const db = globalThis.services.db;
+      await db
+        .delete(connectors)
+        .where(eq(connectors.id, rid))
+        .catch(() => {});
+    }
+    throw error;
   }
 }
 
@@ -226,9 +264,9 @@ export async function deleteComputerConnector(
   const [connector] = await db
     .select({
       id: connectors.id,
+      externalId: connectors.externalId,
       externalUsername: connectors.externalUsername,
       externalEmail: connectors.externalEmail,
-      oauthScopes: connectors.oauthScopes,
     })
     .from(connectors)
     .where(
@@ -248,7 +286,7 @@ export async function deleteComputerConnector(
 
   // Delete ngrok resources (ignore 404 errors if already deleted)
   if (apiKey && connector.externalUsername) {
-    await safeDeleteNgrokResource(
+    await safeDelete(
       () => {
         return deleteCredential(apiKey, connector.externalUsername!);
       },
@@ -258,7 +296,7 @@ export async function deleteComputerConnector(
   }
 
   if (apiKey && connector.externalEmail) {
-    await safeDeleteNgrokResource(
+    await safeDelete(
       () => {
         return deleteCloudEndpoint(apiKey, connector.externalEmail!);
       },
@@ -289,12 +327,23 @@ export async function deleteComputerConnector(
         encryptionKey,
       );
 
-      await safeDeleteNgrokResource(
+      await safeDelete(
         () => {
           return deleteReservedDomain(apiKey, domainId);
         },
         "Reserved domain",
         domainId,
+      );
+    }
+
+    // Delete Bot User last (other resources depend on it)
+    if (connector.externalId) {
+      await safeDelete(
+        () => {
+          return deleteBotUser(apiKey, connector.externalId!);
+        },
+        "Bot user",
+        connector.externalId,
       );
     }
   }

@@ -190,7 +190,7 @@ export async function deleteCloudEndpoint(
  * @param region - Region (e.g., "us", "eu", "ap", "au", "sa", "jp", "in")
  * @returns The created reserved domain
  */
-export async function createReservedDomain(
+async function createReservedDomain(
   apiKey: string,
   name: string,
   region: string = "us",
@@ -273,4 +273,44 @@ export async function deleteReservedDomain(
   await ngrokFetch(apiKey, `/reserved_domains/${domainId}`, {
     method: "DELETE",
   });
+}
+
+/**
+ * Delete a Bot User by ID.
+ */
+export async function deleteBotUser(
+  apiKey: string,
+  botUserId: string,
+): Promise<void> {
+  await ngrokFetch(apiKey, `/bot_users/${botUserId}`, {
+    method: "DELETE",
+  });
+}
+
+/**
+ * Safely delete an ngrok resource, ignoring 404 (already deleted).
+ *
+ * @param bestEffort - If true, log and swallow all errors (use in cleanup-on-failure paths
+ *   to avoid masking the original error). If false (default), only swallow 404.
+ */
+export async function safeDelete(
+  deleteFn: () => Promise<void>,
+  resourceName: string,
+  resourceId: string,
+  bestEffort = false,
+): Promise<void> {
+  try {
+    await deleteFn();
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("404")) {
+      log.debug(`${resourceName} already deleted`, { id: resourceId });
+    } else if (bestEffort) {
+      log.warn(`Failed to clean up ${resourceName}`, {
+        id: resourceId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    } else {
+      throw error;
+    }
+  }
 }

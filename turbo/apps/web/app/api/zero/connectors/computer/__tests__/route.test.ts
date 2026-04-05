@@ -34,8 +34,10 @@ function setupNgrokMocks() {
     deleteCredential: [] as string[],
     createEndpoint: [] as string[],
     deleteEndpoint: [] as string[],
+    listReservedDomains: 0,
     createReservedDomain: [] as string[],
     deleteReservedDomain: [] as string[],
+    deleteBotUser: [] as string[],
   };
 
   server.use(
@@ -69,6 +71,13 @@ function setupNgrokMocks() {
       calls.deleteCredential.push(params.id as string);
       return new HttpResponse(null, { status: 204 });
     }),
+    http.get("https://api.ngrok.com/reserved_domains", () => {
+      calls.listReservedDomains++;
+      return HttpResponse.json({
+        reserved_domains: [],
+        next_page_uri: null,
+      });
+    }),
     http.post("https://api.ngrok.com/reserved_domains", async ({ request }) => {
       const body = (await request.json()) as {
         name: string;
@@ -96,6 +105,10 @@ function setupNgrokMocks() {
     }),
     http.delete("https://api.ngrok.com/endpoints/:id", ({ params }) => {
       calls.deleteEndpoint.push(params.id as string);
+      return new HttpResponse(null, { status: 204 });
+    }),
+    http.delete("https://api.ngrok.com/bot_users/:id", ({ params }) => {
+      calls.deleteBotUser.push(params.id as string);
       return new HttpResponse(null, { status: 204 });
     }),
   );
@@ -238,6 +251,7 @@ describe("DELETE /api/zero/connectors/computer", () => {
     expect(ngrokCalls.deleteCredential).toEqual(["cr_test_456"]);
     expect(ngrokCalls.deleteEndpoint).toEqual(["ep_test_789"]);
     expect(ngrokCalls.deleteReservedDomain).toEqual(["rd_test_abc"]);
+    expect(ngrokCalls.deleteBotUser).toEqual(["bot_test_123"]);
 
     // Verify GET returns 404
     const getResponse = await GET(createTestRequest(computerUrl()));

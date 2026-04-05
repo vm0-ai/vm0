@@ -60,6 +60,7 @@ function setupNgrokMocks() {
     deleteEndpoint: [] as string[],
     createReservedDomain: [] as string[],
     deleteReservedDomain: [] as string[],
+    deleteBotUser: [] as string[],
   };
 
   server.use(
@@ -127,6 +128,10 @@ function setupNgrokMocks() {
     }),
     http.delete("https://api.ngrok.com/endpoints/:id", ({ params }) => {
       calls.deleteEndpoint.push(params.id as string);
+      return new HttpResponse(null, { status: 204 });
+    }),
+    http.delete("https://api.ngrok.com/bot_users/:id", ({ params }) => {
+      calls.deleteBotUser.push(params.id as string);
       return new HttpResponse(null, { status: 204 });
     }),
   );
@@ -299,6 +304,7 @@ describe("DELETE /api/zero/computer-use/unregister", () => {
     expect(ngrokCalls.deleteCredential).toEqual(["cr_test_cu_456"]);
     expect(ngrokCalls.deleteEndpoint).toEqual(["ep_test_cu_789"]);
     expect(ngrokCalls.deleteReservedDomain).toEqual(["rd_test_cu_abc"]);
+    expect(ngrokCalls.deleteBotUser).toEqual(["bot_test_cu_123"]);
 
     // Verify GET returns 404 after unregister
     const getResponse = await GET(createTestRequest(hostUrl()));
