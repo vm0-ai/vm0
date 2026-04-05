@@ -148,9 +148,10 @@ function ConfirmCloseOverlay({
       aria-labelledby="confirm-close-title"
       aria-describedby="confirm-close-desc"
     >
+      {/* eslint-disable-next-line ccstate/no-onclick -- backdrop click must use onClick so the overlay stays mounted until after the click event, preventing onInteractOutside from re-triggering the dialog */}
       <div
         className="fixed inset-0 bg-black/50 dark:bg-black/70"
-        onPointerDown={onContinue}
+        onClick={onContinue}
         role="presentation"
       />
       <div className="relative z-10 mx-4 max-w-sm rounded-lg border border-border bg-card p-6 shadow-xl">
@@ -167,10 +168,12 @@ function ConfirmCloseOverlay({
           Are you sure you want to close? Your changes will be lost.
         </p>
         <div className="flex justify-end gap-2">
-          <Button variant="outline" size="sm" onPointerDown={onContinue}>
+          {/* eslint-disable-next-line ccstate/no-onclick -- must use onClick: if onPointerDown unmounts the overlay early, the subsequent click fires on the Radix Dialog backdrop triggering onInteractOutside which re-shows the overlay */}
+          <Button variant="outline" size="sm" onClick={onContinue}>
             Continue Editing
           </Button>
-          <Button variant="destructive" size="sm" onPointerDown={onDiscard}>
+          {/* eslint-disable-next-line ccstate/no-onclick -- same reason as Continue Editing */}
+          <Button variant="destructive" size="sm" onClick={onDiscard}>
             Discard Changes
           </Button>
         </div>
