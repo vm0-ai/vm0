@@ -1099,8 +1099,11 @@ mod tests {
     fn truncate_preview_over_limit() {
         let s = "y".repeat(COMMAND_PREVIEW_MAX_LEN + 50);
         let result = truncate_preview(&s);
-        assert!(result.ends_with("..."));
-        assert!(result.len() <= COMMAND_PREVIEW_MAX_LEN + 3); // + "..."
+        // Single-byte ASCII: truncates to exactly COMMAND_PREVIEW_MAX_LEN + "..."
+        assert_eq!(
+            result,
+            format!("{}{}", "y".repeat(COMMAND_PREVIEW_MAX_LEN), "...")
+        );
     }
 
     #[test]
@@ -1161,6 +1164,15 @@ mod tests {
             .status()
             .unwrap();
         assert_eq!(extract_exit_code(status), 42);
+    }
+
+    #[test]
+    fn extract_exit_code_signal_kill() {
+        // Kill a process with SIGKILL and verify 128 + 9 = 137
+        let mut child = Command::new("sleep").arg("60").spawn().unwrap();
+        unsafe { libc::kill(child.id() as i32, libc::SIGKILL) };
+        let status = child.wait().unwrap();
+        assert_eq!(extract_exit_code(status), 137);
     }
 
     /// Verify that a normal exec still returns correct results.
