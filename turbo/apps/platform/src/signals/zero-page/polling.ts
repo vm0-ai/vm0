@@ -1,4 +1,4 @@
-import { command, computed, state, type Computed } from "ccstate";
+import { command, computed, state, type Command, type Computed } from "ccstate";
 import type { AgentEvent } from "./log-types.ts";
 import { delay } from "signal-timers";
 import {
@@ -168,7 +168,10 @@ const THINKING_MESSAGES = [
   "Just a moment...",
 ] as const;
 
-export function createRunLoop(runId: string) {
+export function createRunLoop(
+  runId: string,
+  afterDataInsert$?: Command<Promise<void> | void>,
+) {
   const {
     detail$: runDetail$,
     reload$: reloadRunStatus$,
@@ -242,6 +245,9 @@ export function createRunLoop(runId: string) {
 
       const lastPage = await get(nextPage$);
       signal.throwIfAborted();
+      if (afterDataInsert$) {
+        await set(afterDataInsert$);
+      }
       if (finished && !lastPage.hasMore) {
         break;
       }
