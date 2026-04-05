@@ -249,7 +249,11 @@ function AddDomainDialog() {
           >
             Cancel
           </Button>
-          <Button size="sm" disabled={!isValid || adding} onPointerDown={handleAdd}>
+          <Button
+            size="sm"
+            disabled={!isValid || adding}
+            onPointerDown={handleAdd}
+          >
             {adding ? "Adding..." : "Add domain"}
           </Button>
         </DialogFooter>
