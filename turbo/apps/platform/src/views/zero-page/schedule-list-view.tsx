@@ -58,7 +58,7 @@ function ScheduleListRow<T extends ScheduleEntry>({
       role={clickable ? "link" : undefined}
       tabIndex={clickable ? 0 : undefined}
       aria-label={clickable ? `Open schedule ${entry.prompt}` : undefined}
-      onClick={
+      onPointerDown={
         clickable
           ? () => {
               return onOpenDetails(entry);
@@ -112,7 +112,7 @@ function ScheduleListRow<T extends ScheduleEntry>({
       {onToggle && (
         <td
           className="py-2.5 px-3 align-middle w-16"
-          onClick={(e) => {
+          onPointerDown={(e) => {
             return e.stopPropagation();
           }}
         >
@@ -130,7 +130,7 @@ function ScheduleListRow<T extends ScheduleEntry>({
       )}
       <td
         className="py-2.5 pl-2 align-middle text-right w-10"
-        onClick={(e) => {
+        onPointerDown={(e) => {
           return e.stopPropagation();
         }}
       >
@@ -183,7 +183,7 @@ function RowActions<T extends ScheduleEntry>({
           <DropdownMenuItem
             disabled={running || !entry.prompt.trim()}
             className="gap-2"
-            onClick={() => {
+            onPointerDown={() => {
               onRunNow(entry);
             }}
           >
@@ -193,7 +193,7 @@ function RowActions<T extends ScheduleEntry>({
         )}
         <DropdownMenuItem
           className="gap-2"
-          onClick={() => {
+          onPointerDown={() => {
             return onEdit(entry);
           }}
         >
@@ -203,7 +203,7 @@ function RowActions<T extends ScheduleEntry>({
         {onDelete && entry.name !== undefined && (
           <DropdownMenuItem
             className="gap-2 text-destructive focus:text-destructive"
-            onClick={() => {
+            onPointerDown={() => {
               return onDelete(entry);
             }}
           >
@@ -256,7 +256,7 @@ function ScheduleListCard<T extends ScheduleEntry>({
       role={clickable ? "button" : undefined}
       tabIndex={clickable ? 0 : undefined}
       aria-label={clickable ? `Open schedule ${entry.prompt}` : undefined}
-      onClick={
+      onPointerDown={
         clickable
           ? () => {
               return onOpenDetails(entry);
@@ -308,7 +308,7 @@ function ScheduleListCard<T extends ScheduleEntry>({
       {/* Right: toggle + more button */}
       <div
         className="flex items-center gap-4 shrink-0"
-        onClick={(e) => {
+        onPointerDown={(e) => {
           return e.stopPropagation();
         }}
       >
@@ -382,7 +382,7 @@ export function ScheduleListView<T extends ScheduleEntry>({
             variant="outline"
             size="sm"
             className="zero-btn-morandi mt-2 h-9 gap-2 rounded-lg border"
-            onClick={onNew}
+            onPointerDown={onNew}
           >
             <IconPlus size={14} stroke={2} />
             Add schedule
