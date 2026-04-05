@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.188.0](https://github.com/vm0-ai/vm0/compare/app-v0.187.5...app-v0.188.0) (2026-04-05)
+
+
+### Features
+
+* **lint:** add no-onclick rule — enforce onPointerDown for mobile-safe events ([#8188](https://github.com/vm0-ai/vm0/issues/8188)) ([5cecc06](https://github.com/vm0-ai/vm0/commit/5cecc06b503e2b1a4bad2702f2dd6e370979b9a3))
+
 ## [0.187.5](https://github.com/vm0-ai/vm0/compare/app-v0.187.4...app-v0.187.5) (2026-04-04)
 
 
