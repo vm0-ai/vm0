@@ -175,3 +175,152 @@ pub struct CompleteRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn poll_response_with_job() {
+        let json = json!({
+            "job": {
+                "runId": "550e8400-e29b-41d4-a716-446655440000",
+                "experimentalProfile": "browser"
+            }
+        });
+        let resp: PollResponse = serde_json::from_value(json).unwrap();
+        let job = resp.job.unwrap();
+        assert_eq!(
+            job.run_id,
+            "550e8400-e29b-41d4-a716-446655440000"
+                .parse::<Uuid>()
+                .unwrap()
+        );
+        assert_eq!(job.experimental_profile.as_deref(), Some("browser"));
+    }
+
+    #[test]
+    fn poll_response_no_job() {
+        let json = json!({ "job": null });
+        let resp: PollResponse = serde_json::from_value(json).unwrap();
+        assert!(resp.job.is_none());
+    }
+
+    #[test]
+    fn job_optional_profile_defaults_to_none() {
+        let json = json!({
+            "runId": "550e8400-e29b-41d4-a716-446655440000"
+        });
+        let job: Job = serde_json::from_value(json).unwrap();
+        assert!(job.experimental_profile.is_none());
+    }
+
+    #[test]
+    fn execution_context_minimal() {
+        let json = json!({
+            "runId": "550e8400-e29b-41d4-a716-446655440000",
+            "prompt": "hello",
+            "sandboxToken": "tok-123",
+            "workingDir": "/home/user",
+            "cliAgentType": "claude_code"
+        });
+        let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
+        assert_eq!(ctx.prompt, "hello");
+        assert_eq!(ctx.sandbox_token, "tok-123");
+        assert_eq!(ctx.working_dir, "/home/user");
+        assert_eq!(ctx.cli_agent_type, "claude_code");
+        assert!(ctx.append_system_prompt.is_none());
+        assert!(ctx.vars.is_none());
+        assert!(ctx.firewalls.is_none());
+        assert!(ctx.secret_values.is_none());
+    }
+
+    #[test]
+    fn firewall_round_trip() {
+        let fw = Firewall {
+            name: "github".into(),
+            ref_key: "github".into(),
+            apis: vec![FirewallApi {
+                id: "api-1".into(),
+                base: "https://api.github.com".into(),
+                auth: FirewallAuth {
+                    headers: [("Authorization".into(), "Bearer tok".into())]
+                        .into_iter()
+                        .collect(),
+                    base: None,
+                },
+                permissions: Some(vec![FirewallPermission {
+                    name: "metadata:read".into(),
+                    description: Some("read repo metadata".into()),
+                    rules: vec!["GET /repos/{owner}/{repo}".into()],
+                }]),
+            }],
+        };
+        let json = serde_json::to_value(&fw).unwrap();
+        // `ref_key` serializes as "ref"
+        assert_eq!(json["ref"], "github");
+        assert!(json.get("ref_key").is_none());
+        // round-trip
+        let deserialized: Firewall = serde_json::from_value(json).unwrap();
+        assert_eq!(deserialized.ref_key, "github");
+        assert_eq!(
+            deserialized.apis[0].permissions.as_ref().unwrap()[0].name,
+            "metadata:read"
+        );
+    }
+
+    #[test]
+    fn firewall_auth_base_omitted_when_none() {
+        let auth = FirewallAuth {
+            headers: HashMap::new(),
+            base: None,
+        };
+        let json = serde_json::to_value(&auth).unwrap();
+        assert!(json.get("base").is_none());
+    }
+
+    #[test]
+    fn complete_request_camel_case() {
+        let req = CompleteRequest {
+            run_id: "550e8400-e29b-41d4-a716-446655440000".parse().unwrap(),
+            exit_code: 0,
+            error: None,
+        };
+        let json = serde_json::to_value(&req).unwrap();
+        assert!(json.get("runId").is_some());
+        assert!(json.get("exitCode").is_some());
+        // error omitted when None
+        assert!(json.get("error").is_none());
+    }
+
+    #[test]
+    fn complete_request_with_error() {
+        let req = CompleteRequest {
+            run_id: "550e8400-e29b-41d4-a716-446655440000".parse().unwrap(),
+            exit_code: 1,
+            error: Some("timeout".into()),
+        };
+        let json = serde_json::to_value(&req).unwrap();
+        assert_eq!(json["error"], "timeout");
+    }
+
+    #[test]
+    fn storage_manifest_camel_case() {
+        let json = json!({
+            "storages": [{"mountPath": "/workspace"}],
+            "artifact": {
+                "mountPath": "/artifacts",
+                "vasStorageName": "my-artifact",
+                "vasVersionId": "v1"
+            }
+        });
+        let manifest: StorageManifest = serde_json::from_value(json).unwrap();
+        assert_eq!(manifest.storages[0].mount_path, "/workspace");
+        assert_eq!(
+            manifest.artifact.as_ref().unwrap().vas_storage_name,
+            "my-artifact"
+        );
+        assert!(manifest.memory.is_none());
+    }
+}

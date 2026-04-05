@@ -115,18 +115,12 @@ impl std::fmt::Display for InitError {
 
 impl std::error::Error for InitError {}
 
-/// Parse `/etc/environment` and set each `KEY=VALUE` pair via `set_var`.
+/// Parse environment file content into key-value pairs.
 ///
 /// Skips blank lines, comments, and lines without `=`.
-/// SAFETY: caller must ensure no other threads are running.
-unsafe fn load_etc_environment() {
-    let content = match fs::read_to_string("/etc/environment") {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("[guest-init] Warning: failed to read /etc/environment: {e}");
-            return;
-        }
-    };
+/// Values may be optionally wrapped in double quotes which are stripped.
+fn parse_env_content(content: &str) -> Vec<(&str, &str)> {
+    let mut pairs = Vec::new();
     for line in content.lines() {
         let line = line.trim();
         if line.is_empty() || line.starts_with('#') {
@@ -136,8 +130,100 @@ unsafe fn load_etc_environment() {
             let key = key.trim();
             let value = value.trim().trim_matches('"');
             if !key.is_empty() {
-                unsafe { std::env::set_var(key, value) };
+                pairs.push((key, value));
             }
         }
+    }
+    pairs
+}
+
+/// Parse `/etc/environment` and set each `KEY=VALUE` pair via `set_var`.
+///
+/// SAFETY: caller must ensure no other threads are running.
+unsafe fn load_etc_environment() {
+    let content = match fs::read_to_string("/etc/environment") {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("[guest-init] Warning: failed to read /etc/environment: {e}");
+            return;
+        }
+    };
+    for (key, value) in parse_env_content(&content) {
+        unsafe { std::env::set_var(key, value) };
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_env_basic() {
+        let content = "LANG=en_US.UTF-8\nPATH=/usr/bin:/bin";
+        let pairs = parse_env_content(content);
+        assert_eq!(
+            pairs,
+            vec![("LANG", "en_US.UTF-8"), ("PATH", "/usr/bin:/bin")]
+        );
+    }
+
+    #[test]
+    fn parse_env_quoted_values() {
+        let content = r#"FOO="bar baz""#;
+        let pairs = parse_env_content(content);
+        assert_eq!(pairs, vec![("FOO", "bar baz")]);
+    }
+
+    #[test]
+    fn parse_env_skips_comments_and_blanks() {
+        let content = "# comment\n\nKEY=value\n  \n# another comment\n";
+        let pairs = parse_env_content(content);
+        assert_eq!(pairs, vec![("KEY", "value")]);
+    }
+
+    #[test]
+    fn parse_env_skips_lines_without_equals() {
+        let content = "no_equals_sign\nGOOD=yes";
+        let pairs = parse_env_content(content);
+        assert_eq!(pairs, vec![("GOOD", "yes")]);
+    }
+
+    #[test]
+    fn parse_env_trims_whitespace() {
+        let content = "  KEY  =  value  ";
+        let pairs = parse_env_content(content);
+        assert_eq!(pairs, vec![("KEY", "value")]);
+    }
+
+    #[test]
+    fn parse_env_empty_value() {
+        let content = "EMPTY=";
+        let pairs = parse_env_content(content);
+        assert_eq!(pairs, vec![("EMPTY", "")]);
+    }
+
+    #[test]
+    fn parse_env_value_with_equals() {
+        let content = "NODE_EXTRA_CA_CERTS=/etc/ssl/ca.pem";
+        let pairs = parse_env_content(content);
+        assert_eq!(pairs, vec![("NODE_EXTRA_CA_CERTS", "/etc/ssl/ca.pem")]);
+    }
+
+    #[test]
+    fn parse_env_empty_key_skipped() {
+        let content = "=value";
+        let pairs = parse_env_content(content);
+        assert!(pairs.is_empty());
+    }
+
+    #[test]
+    fn init_error_display() {
+        let err = InitError::Mount {
+            target: "/proc".into(),
+            source: nix::Error::EACCES,
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("/proc"));
+        assert!(msg.contains("EACCES"));
     }
 }
