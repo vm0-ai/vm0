@@ -32,6 +32,8 @@ import { ahrefsFirewall } from "./ahrefs.generated";
 import { airtableFirewall } from "./airtable.generated";
 import { apolloFirewall } from "./apollo.generated";
 import { apifyFirewall } from "./apify.generated";
+import { dopplerFirewall } from "./doppler.generated";
+import { infisicalFirewall } from "./infisical.generated";
 import { asanaFirewall } from "./asana.generated";
 import { atlassianFirewall } from "./atlassian.generated";
 import { axiomFirewall } from "./axiom.generated";
@@ -181,6 +183,8 @@ const CONNECTOR_FIREWALLS = {
   deepseek: deepseekFirewall,
   devto: devtoFirewall,
   dify: difyFirewall,
+  doppler: dopplerFirewall,
+  infisical: infisicalFirewall,
   discord: discordFirewall,
   "discord-webhook": discordWebhookFirewall,
   docusign: docusignFirewall,
