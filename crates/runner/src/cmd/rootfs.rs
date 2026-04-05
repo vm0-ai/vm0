@@ -374,4 +374,61 @@ mod tests {
             assert_eq!(human_bytes(input), expected, "human_bytes({input})");
         }
     }
+
+    #[tokio::test]
+    async fn compute_input_hash_deterministic() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin = dir.path().join("agent");
+        tokio::fs::write(&bin, b"binary-content").await.unwrap();
+        let bins: &[(&Path, &str)] = &[(&bin, "/usr/local/bin/guest-agent")];
+
+        let h1 = compute_input_hash(bins, 16384).await.unwrap();
+        let h2 = compute_input_hash(bins, 16384).await.unwrap();
+        assert_eq!(h1, h2);
+        assert_eq!(h1.len(), 64); // SHA-256 hex
+    }
+
+    #[tokio::test]
+    async fn compute_input_hash_differs_by_binary_content() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin_a = dir.path().join("agent-a");
+        let bin_b = dir.path().join("agent-b");
+        tokio::fs::write(&bin_a, b"content-a").await.unwrap();
+        tokio::fs::write(&bin_b, b"content-b").await.unwrap();
+
+        let ha = compute_input_hash(&[(&bin_a, "/usr/local/bin/guest-agent")], 16384)
+            .await
+            .unwrap();
+        let hb = compute_input_hash(&[(&bin_b, "/usr/local/bin/guest-agent")], 16384)
+            .await
+            .unwrap();
+        assert_ne!(ha, hb);
+    }
+
+    #[tokio::test]
+    async fn compute_input_hash_differs_by_disk_mb() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin = dir.path().join("agent");
+        tokio::fs::write(&bin, b"same-content").await.unwrap();
+        let bins: &[(&Path, &str)] = &[(&bin, "/usr/local/bin/guest-agent")];
+
+        let h1 = compute_input_hash(bins, 16384).await.unwrap();
+        let h2 = compute_input_hash(bins, 32768).await.unwrap();
+        assert_ne!(h1, h2);
+    }
+
+    #[tokio::test]
+    async fn compute_input_hash_differs_by_dest_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin = dir.path().join("agent");
+        tokio::fs::write(&bin, b"same-content").await.unwrap();
+
+        let h1 = compute_input_hash(&[(&bin, "/usr/local/bin/guest-agent")], 16384)
+            .await
+            .unwrap();
+        let h2 = compute_input_hash(&[(&bin, "/usr/local/bin/guest-download")], 16384)
+            .await
+            .unwrap();
+        assert_ne!(h1, h2);
+    }
 }
