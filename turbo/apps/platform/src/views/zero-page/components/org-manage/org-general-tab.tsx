@@ -259,7 +259,7 @@ function ProfileSection({
               }}
               className="group relative h-9 w-9 shrink-0 rounded-lg overflow-hidden"
               disabled={!isAdmin}
-              onClick={() => {
+              onPointerDown={() => {
                 if (isAdmin) {
                   fileInputEl?.click();
                 }
@@ -340,7 +340,7 @@ function ProfileSection({
             <Button
               size="sm"
               className="rounded-lg"
-              onClick={() => {
+              onPointerDown={() => {
                 return detach(handleSave(), Reason.DomCallback);
               }}
               disabled={saving}
@@ -351,7 +351,7 @@ function ProfileSection({
               variant="ghost"
               size="sm"
               className="rounded-lg text-muted-foreground"
-              onClick={handleDiscard}
+              onPointerDown={handleDiscard}
               disabled={saving}
             >
               Discard
@@ -473,7 +473,7 @@ function DangerZoneSection({
                     <Button
                       variant="destructive"
                       size="sm"
-                      onClick={() => {
+                      onPointerDown={() => {
                         return detach(handleLeave(), Reason.DomCallback);
                       }}
                       disabled={leaving}
@@ -538,7 +538,7 @@ function DangerZoneSection({
                     <Button
                       variant="destructive"
                       size="sm"
-                      onClick={() => {
+                      onPointerDown={() => {
                         return detach(handleDelete(), Reason.DomCallback);
                       }}
                       disabled={deleting || deleteConfirm !== org.slug}
