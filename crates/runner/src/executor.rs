@@ -508,6 +508,12 @@ async fn drain_stdout_to_file(
             break;
         }
     }
+    // Flush to ensure the last spawn_blocking write completes before we return.
+    // tokio::fs::File::poll_write returns Ready before the blocking write finishes,
+    // so without flush the caller may observe incomplete file contents.
+    if let Err(e) = tokio::io::AsyncWriteExt::flush(&mut file).await {
+        warn!(error = %e, path = %path.display(), "failed to flush stdout log");
+    }
 }
 
 /// Copy guest log files to host (best-effort, post-job).
