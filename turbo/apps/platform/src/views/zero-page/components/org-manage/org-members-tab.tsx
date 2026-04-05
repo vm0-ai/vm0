@@ -331,14 +331,14 @@ function InviteDialog() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => {
+            onPointerDown={() => {
               return setOpen(false);
             }}
             disabled={sending}
           >
             Cancel
           </Button>
-          <Button size="sm" disabled={!isValid || sending} onClick={handleSend}>
+          <Button size="sm" disabled={!isValid || sending} onPointerDown={handleSend}>
             {sending ? "Sending..." : "Send invitation"}
           </Button>
         </DialogFooter>
@@ -464,7 +464,7 @@ function SelfDemoteAction({ email }: { email: string }) {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => {
+            onPointerDown={() => {
               return setOpen(false);
             }}
             disabled={loading}
@@ -475,7 +475,7 @@ function SelfDemoteAction({ email }: { email: string }) {
             variant="destructive"
             size="sm"
             disabled={loading}
-            onClick={handleConfirm}
+            onPointerDown={handleConfirm}
           >
             {loading ? "Switching..." : "Confirm"}
           </Button>
@@ -519,7 +519,7 @@ function MemberActions({ member }: { member: OrgMember }) {
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-48">
           <DropdownMenuItem
-            onClick={() => {
+            onPointerDown={() => {
               return detach(
                 doChangeRole(member.email, newRole, pageSignal),
                 Reason.DomCallback,
@@ -548,7 +548,7 @@ function MemberActions({ member }: { member: OrgMember }) {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => {
+            onPointerDown={() => {
               return setRemoveTarget(null);
             }}
             disabled={removing}
@@ -559,7 +559,7 @@ function MemberActions({ member }: { member: OrgMember }) {
             variant="destructive"
             size="sm"
             disabled={removing}
-            onClick={handleRemove}
+            onPointerDown={handleRemove}
           >
             {removing ? "Removing..." : "Remove"}
           </Button>
@@ -647,7 +647,7 @@ function PendingInvitationRow({
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => {
+                  onPointerDown={() => {
                     return setRevokeTarget(null);
                   }}
                   disabled={revoking}
@@ -658,7 +658,7 @@ function PendingInvitationRow({
                   variant="destructive"
                   size="sm"
                   disabled={revoking}
-                  onClick={handleRevoke}
+                  onPointerDown={handleRevoke}
                 >
                   {revoking ? "Revoking..." : "Revoke"}
                 </Button>
@@ -719,7 +719,7 @@ function MembershipRequestRow({ request }: { request: OrgMembershipRequest }) {
       <div className="flex justify-end gap-1">
         <button
           className="flex h-7 w-7 items-center justify-center rounded-md text-green-600 hover:bg-green-50 dark:hover:bg-green-950/30 transition-colors disabled:opacity-50"
-          onClick={handleAccept}
+          onPointerDown={handleAccept}
           disabled={loading}
           title="Accept request"
         >
@@ -727,7 +727,7 @@ function MembershipRequestRow({ request }: { request: OrgMembershipRequest }) {
         </button>
         <button
           className="flex h-7 w-7 items-center justify-center rounded-md text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
-          onClick={handleReject}
+          onPointerDown={handleReject}
           disabled={loading}
           title="Reject request"
         >
