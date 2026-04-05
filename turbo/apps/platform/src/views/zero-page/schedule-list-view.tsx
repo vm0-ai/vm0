@@ -180,10 +180,10 @@ function RowActions<T extends ScheduleEntry>({
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-44">
         {onRunNow && (
-          // eslint-disable-next-line ccstate/no-onclick -- Radix DropdownMenuItem only exposes onClick in its API
           <DropdownMenuItem
             disabled={running || !entry.prompt.trim()}
             className="gap-2"
+            // eslint-disable-next-line ccstate/no-onclick -- Radix DropdownMenuItem only exposes onClick in its API
             onClick={() => {
               onRunNow(entry);
             }}
@@ -192,9 +192,9 @@ function RowActions<T extends ScheduleEntry>({
             {running ? "Starting\u2026" : "Run now"}
           </DropdownMenuItem>
         )}
-        {/* eslint-disable-next-line ccstate/no-onclick -- Radix DropdownMenuItem only exposes onClick in its API */}
         <DropdownMenuItem
           className="gap-2"
+          // eslint-disable-next-line ccstate/no-onclick -- Radix DropdownMenuItem only exposes onClick in its API
           onClick={() => {
             return onEdit(entry);
           }}
@@ -203,9 +203,9 @@ function RowActions<T extends ScheduleEntry>({
           Edit
         </DropdownMenuItem>
         {onDelete && entry.name !== undefined && (
-          // eslint-disable-next-line ccstate/no-onclick -- Radix DropdownMenuItem only exposes onClick in its API
           <DropdownMenuItem
             className="gap-2 text-destructive focus:text-destructive"
+            // eslint-disable-next-line ccstate/no-onclick -- Radix DropdownMenuItem only exposes onClick in its API
             onClick={() => {
               return onDelete(entry);
             }}
