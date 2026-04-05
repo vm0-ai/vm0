@@ -242,14 +242,14 @@ function AddDomainDialog() {
           <Button
             variant="outline"
             size="sm"
-            onClick={() => {
+            onPointerDown={() => {
               return setOpen(false);
             }}
             disabled={adding}
           >
             Cancel
           </Button>
-          <Button size="sm" disabled={!isValid || adding} onClick={handleAdd}>
+          <Button size="sm" disabled={!isValid || adding} onPointerDown={handleAdd}>
             {adding ? "Adding..." : "Add domain"}
           </Button>
         </DialogFooter>
@@ -347,7 +347,7 @@ function DomainRow({ domain }: { domain: OrgDomain }) {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem
-                onClick={() => {
+                onPointerDown={() => {
                   return handleSetVerified(!isVerified);
                 }}
                 disabled={settingVerified}
@@ -361,7 +361,7 @@ function DomainRow({ domain }: { domain: OrgDomain }) {
               </DropdownMenuItem>
               <DropdownMenuItem
                 className="text-destructive focus:text-destructive"
-                onClick={() => {
+                onPointerDown={() => {
                   return setRemoveTarget(domain.id);
                 }}
               >
@@ -382,7 +382,7 @@ function DomainRow({ domain }: { domain: OrgDomain }) {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => {
+                onPointerDown={() => {
                   return setRemoveTarget(null);
                 }}
                 disabled={removing}
@@ -393,7 +393,7 @@ function DomainRow({ domain }: { domain: OrgDomain }) {
                 variant="destructive"
                 size="sm"
                 disabled={removing}
-                onClick={handleRemove}
+                onPointerDown={handleRemove}
               >
                 {removing ? "Removing..." : "Remove"}
               </Button>
