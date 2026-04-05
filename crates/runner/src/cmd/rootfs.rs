@@ -352,3 +352,26 @@ async fn compute_input_hash(guest_bins: &[(&Path, &str)], disk_mb: u32) -> Runne
 
     Ok(hex::encode(hasher.finalize()))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn human_bytes_formatting() {
+        let cases: &[(u64, &str)] = &[
+            (0, "0 B"),
+            (1, "1 B"),
+            (1023, "1023 B"),
+            (1024, "1.0 KiB"),
+            (1536, "1.5 KiB"),
+            (1048576, "1.0 MiB"),
+            (10 * 1048576, "10.0 MiB"),
+            (1073741824, "1.0 GiB"),
+            (2 * 1073741824 + 536870912, "2.5 GiB"),
+        ];
+        for &(input, expected) in cases {
+            assert_eq!(human_bytes(input), expected, "human_bytes({input})");
+        }
+    }
+}

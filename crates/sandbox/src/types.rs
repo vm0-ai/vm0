@@ -33,3 +33,52 @@ pub struct ProcessExit {
     pub stdout: Vec<u8>,
     pub stderr: Vec<u8>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn timeout_ms_normal() {
+        let req = ExecRequest {
+            cmd: "echo hi",
+            timeout: Duration::from_millis(5000),
+            env: &[],
+            sudo: false,
+        };
+        assert_eq!(req.timeout_ms(), 5000);
+    }
+
+    #[test]
+    fn timeout_ms_zero() {
+        let req = ExecRequest {
+            cmd: "true",
+            timeout: Duration::ZERO,
+            env: &[],
+            sudo: false,
+        };
+        assert_eq!(req.timeout_ms(), 0);
+    }
+
+    #[test]
+    fn timeout_ms_saturates_at_u32_max() {
+        let req = ExecRequest {
+            cmd: "sleep infinity",
+            timeout: Duration::from_secs(u64::MAX / 1000),
+            env: &[],
+            sudo: false,
+        };
+        assert_eq!(req.timeout_ms(), u32::MAX);
+    }
+
+    #[test]
+    fn timeout_ms_exact_u32_max() {
+        let req = ExecRequest {
+            cmd: "cmd",
+            timeout: Duration::from_millis(u32::MAX as u64),
+            env: &[],
+            sudo: false,
+        };
+        assert_eq!(req.timeout_ms(), u32::MAX);
+    }
+}

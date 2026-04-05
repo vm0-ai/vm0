@@ -551,6 +551,61 @@ mod tests {
     use std::path::PathBuf;
     use tokio::net::UnixListener;
 
+    #[test]
+    fn api_error_is_retryable_connection_refused() {
+        let err = ApiError::Connect(std::io::Error::new(
+            std::io::ErrorKind::ConnectionRefused,
+            "connection refused",
+        ));
+        assert!(err.is_retryable());
+    }
+
+    #[test]
+    fn api_error_is_not_retryable_permission_denied() {
+        let err = ApiError::Connect(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "permission denied",
+        ));
+        assert!(!err.is_retryable());
+    }
+
+    #[test]
+    fn api_error_is_retryable_http() {
+        let err = ApiError::Http {
+            status: 500,
+            body: "internal error".to_string(),
+        };
+        assert!(err.is_retryable());
+    }
+
+    #[test]
+    fn api_error_is_retryable_other() {
+        let err = ApiError::Other("timeout".to_string());
+        assert!(err.is_retryable());
+    }
+
+    #[test]
+    fn api_error_display_connect() {
+        let err = ApiError::Connect(std::io::Error::new(
+            std::io::ErrorKind::ConnectionRefused,
+            "connection refused",
+        ));
+        assert!(err.to_string().contains("connect:"));
+    }
+
+    #[test]
+    fn api_error_display_http() {
+        let err = ApiError::Http {
+            status: 404,
+            body: "not found".to_string(),
+        };
+        let msg = err.to_string();
+        assert!(
+            msg.contains("404") && msg.contains("not found"),
+            "got: {msg}"
+        );
+    }
+
     #[tokio::test]
     async fn wait_for_ready_succeeds_on_200() {
         let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("tempdir: {e}"));
