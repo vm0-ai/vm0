@@ -69,7 +69,7 @@ function AppearanceSettings() {
                 key={value}
                 type="button"
                 aria-pressed={currentPref === value}
-                onClick={() => {
+                onPointerDown={() => {
                   return setTheme(value);
                 }}
                 className={cn(
@@ -141,7 +141,7 @@ function SendModeSettings() {
                 type="button"
                 aria-pressed={isActive}
                 disabled={saving !== null}
-                onClick={() => {
+                onPointerDown={() => {
                   return handleChange(value);
                 }}
                 className={cn(
