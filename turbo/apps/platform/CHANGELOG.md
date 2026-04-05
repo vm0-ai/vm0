@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.189.0](https://github.com/vm0-ai/vm0/compare/app-v0.188.1...app-v0.189.0) (2026-04-05)
+
+
+### Features
+
+* add PWA manifest and iOS meta tags to platform ([#8200](https://github.com/vm0-ai/vm0/issues/8200)) ([1adc236](https://github.com/vm0-ai/vm0/commit/1adc236dad5fd66d4b72a36b7117c4864f18925e))
+
 ## [0.188.1](https://github.com/vm0-ai/vm0/compare/app-v0.188.0...app-v0.188.1) (2026-04-05)
 
 
