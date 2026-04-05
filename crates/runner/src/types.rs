@@ -237,6 +237,65 @@ mod tests {
     }
 
     #[test]
+    fn execution_context_all_optional_fields() {
+        let json = json!({
+            "runId": "550e8400-e29b-41d4-a716-446655440000",
+            "prompt": "analyze code",
+            "sandboxToken": "tok-456",
+            "workingDir": "/workspace",
+            "cliAgentType": "claude_code",
+            "appendSystemPrompt": "be concise",
+            "agentComposeVersionId": "sha256-abc",
+            "vars": {"API_KEY": "secret"},
+            "checkpointId": "660e8400-e29b-41d4-a716-446655440000",
+            "storageManifest": {
+                "storages": [{"mountPath": "/data", "archiveUrl": "https://s3/archive.tar.gz"}],
+                "artifact": {
+                    "mountPath": "/artifacts",
+                    "vasStorageName": "art-1",
+                    "vasVersionId": "v1"
+                },
+                "memory": {
+                    "mountPath": "/memory",
+                    "vasStorageName": "mem-1",
+                    "vasVersionId": "v2"
+                }
+            },
+            "environment": {"NODE_ENV": "production"},
+            "resumeSession": {"sessionId": "sess-1", "sessionHistory": "/tmp/history"},
+            "secretValues": ["s1", "s2"],
+            "encryptedSecrets": "enc-blob",
+            "secretConnectorMap": {"github": "oauth"},
+            "debugNoMockClaude": true,
+            "apiStartTime": 1700000000000.0,
+            "userTimezone": "America/New_York",
+            "memoryName": "project-mem",
+            "firewalls": [{
+                "name": "github",
+                "ref": "github",
+                "apis": [{"base": "https://api.github.com", "auth": {"headers": {}}}]
+            }],
+            "disallowedTools": ["CronCreate"],
+            "tools": ["Bash", "Read"],
+            "settings": "{\"hooks\":{}}",
+            "experimentalProfile": "browser"
+        });
+        let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
+        assert_eq!(ctx.append_system_prompt.as_deref(), Some("be concise"));
+        assert_eq!(ctx.vars.as_ref().unwrap()["API_KEY"], "secret");
+        assert_eq!(ctx.environment.as_ref().unwrap()["NODE_ENV"], "production");
+        assert_eq!(ctx.resume_session.as_ref().unwrap().session_id, "sess-1");
+        assert_eq!(ctx.secret_values.as_ref().unwrap().len(), 2);
+        assert_eq!(ctx.encrypted_secrets.as_deref(), Some("enc-blob"));
+        assert!(ctx.debug_no_mock_claude.unwrap());
+        assert_eq!(ctx.firewalls.as_ref().unwrap()[0].name, "github");
+        assert_eq!(ctx.disallowed_tools.as_ref().unwrap(), &["CronCreate"]);
+        assert_eq!(ctx.tools.as_ref().unwrap(), &["Bash", "Read"]);
+        assert_eq!(ctx.settings.as_deref(), Some("{\"hooks\":{}}"));
+        assert!(ctx.storage_manifest.is_some());
+    }
+
+    #[test]
     fn firewall_round_trip() {
         let fw = Firewall {
             name: "github".into(),
