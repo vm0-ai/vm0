@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.151.0](https://github.com/vm0-ai/vm0/compare/core-v8.150.2...core-v8.151.0) (2026-04-05)
+
+
+### Features
+
+* add Doppler and Infisical secret manager connectors ([#8198](https://github.com/vm0-ai/vm0/issues/8198)) ([a951ae6](https://github.com/vm0-ai/vm0/commit/a951ae612e5ae9e92b8d8e37afb28745b4a6b362))
+
 ## [8.150.2](https://github.com/vm0-ai/vm0/compare/core-v8.150.1...core-v8.150.2) (2026-04-04)
 
 

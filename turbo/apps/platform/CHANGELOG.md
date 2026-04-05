@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.188.1](https://github.com/vm0-ai/vm0/compare/app-v0.188.0...app-v0.188.1) (2026-04-05)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.151.0
+
 ## [0.188.0](https://github.com/vm0-ai/vm0/compare/app-v0.187.5...app-v0.188.0) (2026-04-05)
 
 

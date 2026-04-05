@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.193.0](https://github.com/vm0-ai/vm0/compare/web-v12.192.8...web-v12.193.0) (2026-04-05)
+
+
+### Features
+
+* add Doppler and Infisical secret manager connectors ([#8198](https://github.com/vm0-ai/vm0/issues/8198)) ([a951ae6](https://github.com/vm0-ai/vm0/commit/a951ae612e5ae9e92b8d8e37afb28745b4a6b362))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.151.0
+
 ## [12.192.8](https://github.com/vm0-ai/vm0/compare/web-v12.192.7...web-v12.192.8) (2026-04-04)
 
 
