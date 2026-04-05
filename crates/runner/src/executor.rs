@@ -1386,4 +1386,220 @@ mod tests {
         let env = build_env_json(&ctx, "http://localhost");
         assert!(!env.contains_key("VM0_SETTINGS"));
     }
+
+    // -----------------------------------------------------------------------
+    // Sandbox-interacting function tests (using sandbox-mock)
+    // -----------------------------------------------------------------------
+
+    use sandbox::{ExecResult, SandboxError};
+    use sandbox_mock::MockSandbox;
+
+    #[tokio::test]
+    async fn fix_guest_clock_calls_date_command() {
+        let sandbox = MockSandbox::new("test");
+        // Default mock returns exit 0 — clock fix should succeed.
+        fix_guest_clock(&sandbox).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn fix_guest_clock_propagates_exec_error() {
+        let sandbox = MockSandbox::new("test");
+        sandbox.push_exec_result(Err(SandboxError::ExecFailed("timeout".into())));
+        let result = fix_guest_clock(&sandbox).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn sync_guest_timezone_valid_tz() {
+        let sandbox = MockSandbox::new("test");
+        let mut ctx = minimal_context();
+        ctx.user_timezone = Some("America/New_York".into());
+        // Should exec one command and not panic.
+        sync_guest_timezone(&sandbox, &ctx).await;
+    }
+
+    #[tokio::test]
+    async fn sync_guest_timezone_skips_when_none() {
+        let sandbox = MockSandbox::new("test");
+        let ctx = minimal_context();
+        // No timezone — should skip without calling exec.
+        // Push an error to detect if exec is called unexpectedly.
+        sandbox.push_exec_result(Err(SandboxError::ExecFailed("should not be called".into())));
+        sync_guest_timezone(&sandbox, &ctx).await;
+    }
+
+    #[tokio::test]
+    async fn sync_guest_timezone_rejects_shell_injection() {
+        let sandbox = MockSandbox::new("test");
+        let mut ctx = minimal_context();
+        ctx.user_timezone = Some("$(rm -rf /)".into());
+        // Push an error to detect if exec is called — it should NOT be.
+        sandbox.push_exec_result(Err(SandboxError::ExecFailed("should not be called".into())));
+        sync_guest_timezone(&sandbox, &ctx).await;
+    }
+
+    #[tokio::test]
+    async fn sync_guest_timezone_empty_string_skips() {
+        let sandbox = MockSandbox::new("test");
+        let mut ctx = minimal_context();
+        ctx.user_timezone = Some(String::new());
+        sandbox.push_exec_result(Err(SandboxError::ExecFailed("should not be called".into())));
+        sync_guest_timezone(&sandbox, &ctx).await;
+    }
+
+    #[tokio::test]
+    async fn read_guest_error_file_returns_content() {
+        let sandbox = MockSandbox::new("test");
+        sandbox.push_exec_result(Ok(ExecResult {
+            exit_code: 0,
+            stdout: b"checkpoint error: disk full".to_vec(),
+            stderr: Vec::new(),
+        }));
+        let msg = read_guest_error_file(&sandbox, Uuid::nil()).await;
+        assert_eq!(msg.as_deref(), Some("checkpoint error: disk full"));
+    }
+
+    #[tokio::test]
+    async fn read_guest_error_file_returns_none_on_missing_file() {
+        let sandbox = MockSandbox::new("test");
+        sandbox.push_exec_result(Ok(ExecResult {
+            exit_code: 1, // cat fails — file not found
+            stdout: Vec::new(),
+            stderr: b"No such file".to_vec(),
+        }));
+        let msg = read_guest_error_file(&sandbox, Uuid::nil()).await;
+        assert!(msg.is_none());
+    }
+
+    #[tokio::test]
+    async fn read_guest_error_file_returns_none_on_empty_content() {
+        let sandbox = MockSandbox::new("test");
+        sandbox.push_exec_result(Ok(ExecResult {
+            exit_code: 0,
+            stdout: b"   \n  ".to_vec(), // whitespace-only
+            stderr: Vec::new(),
+        }));
+        let msg = read_guest_error_file(&sandbox, Uuid::nil()).await;
+        assert!(msg.is_none());
+    }
+
+    #[tokio::test]
+    async fn read_guest_error_file_returns_none_on_exec_error() {
+        let sandbox = MockSandbox::new("test");
+        sandbox.push_exec_result(Err(SandboxError::ExecFailed("vsock timeout".into())));
+        let msg = read_guest_error_file(&sandbox, Uuid::nil()).await;
+        assert!(msg.is_none());
+    }
+
+    #[tokio::test]
+    async fn download_storages_success() {
+        let sandbox = MockSandbox::new("test");
+        // write_file succeeds by default, exec returns exit 0 by default.
+        let ctx = minimal_context();
+        let manifest = StorageManifest {
+            storages: vec![StorageEntry {
+                mount_path: "/data".into(),
+                archive_url: Some("https://s3/archive.tar.gz".into()),
+            }],
+            artifact: None,
+            memory: None,
+        };
+        download_storages(&sandbox, &ctx, &manifest, "/tmp/log")
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn download_storages_nonzero_exit_code() {
+        let sandbox = MockSandbox::new("test");
+        // write_file succeeds, but exec returns non-zero.
+        sandbox.push_exec_result(Ok(ExecResult {
+            exit_code: 1,
+            stdout: Vec::new(),
+            stderr: b"download failed".to_vec(),
+        }));
+        let ctx = minimal_context();
+        let manifest = StorageManifest {
+            storages: vec![],
+            artifact: None,
+            memory: None,
+        };
+        let err = download_storages(&sandbox, &ctx, &manifest, "/tmp/log")
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("storage download failed"));
+    }
+
+    #[tokio::test]
+    async fn restore_session_writes_history() {
+        let sandbox = MockSandbox::new("test");
+        let mut ctx = minimal_context();
+        ctx.cli_agent_type = "claude-code".into();
+        let session = ResumeSession {
+            session_id: "sess-abc-123".into(),
+            session_history: r#"{"type":"init"}"#.into(),
+        };
+        // mkdir exec + write_file — both succeed by default.
+        restore_session(&sandbox, &ctx, &session).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn restore_session_rejects_invalid_session_id() {
+        let sandbox = MockSandbox::new("test");
+        let ctx = minimal_context();
+        let session = ResumeSession {
+            session_id: "../../etc/passwd".into(),
+            session_history: "data".into(),
+        };
+        let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
+        assert!(err.to_string().contains("invalid session_id"));
+    }
+
+    #[tokio::test]
+    async fn restore_session_skips_non_claude_agent() {
+        let sandbox = MockSandbox::new("test");
+        let mut ctx = minimal_context();
+        ctx.cli_agent_type = "custom-agent".into();
+        let session = ResumeSession {
+            session_id: "sess-1".into(),
+            session_history: "data".into(),
+        };
+        // Should return Ok without calling exec or write_file.
+        // Push an error to detect unexpected calls.
+        sandbox.push_exec_result(Err(SandboxError::ExecFailed("should not be called".into())));
+        restore_session(&sandbox, &ctx, &session).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn restore_session_allows_empty_agent_type() {
+        let sandbox = MockSandbox::new("test");
+        let mut ctx = minimal_context();
+        ctx.cli_agent_type = String::new(); // empty defaults to claude-code
+        let session = ResumeSession {
+            session_id: "sess-1".into(),
+            session_history: "{}".into(),
+        };
+        // Should proceed (empty agent type treated as claude-code).
+        restore_session(&sandbox, &ctx, &session).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn build_env_json_with_memory() {
+        let mut ctx = minimal_context();
+        ctx.storage_manifest = Some(StorageManifest {
+            storages: vec![],
+            artifact: None,
+            memory: Some(ArtifactEntry {
+                mount_path: "/memory".into(),
+                archive_url: None,
+                vas_storage_name: "project-mem".into(),
+                vas_version_id: "v2".into(),
+            }),
+        });
+        let env = build_env_json(&ctx, "http://localhost");
+        assert_eq!(env.get("VM0_MEMORY_DRIVER").unwrap(), "vas");
+        assert_eq!(env.get("VM0_MEMORY_MOUNT_PATH").unwrap(), "/memory");
+        assert_eq!(env.get("VM0_MEMORY_NAME").unwrap(), "project-mem");
+        assert_eq!(env.get("VM0_MEMORY_VERSION_ID").unwrap(), "v2");
+    }
 }
