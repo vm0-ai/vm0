@@ -167,14 +167,14 @@ export function OrgProviderDialog() {
         <DialogFooter>
           <Button
             variant="outline"
-            onClick={() => {
+            onPointerDown={() => {
               return close();
             }}
             disabled={isLoading}
           >
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={isLoading}>
+          <Button onPointerDown={handleSubmit} disabled={isLoading}>
             {isLoading ? "Saving..." : isEdit ? "Save changes" : "Add"}
           </Button>
         </DialogFooter>
