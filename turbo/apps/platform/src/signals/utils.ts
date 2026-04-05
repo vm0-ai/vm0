@@ -170,6 +170,62 @@ export function onRef<T extends HTMLElement | SVGSVGElement>(
 }
 
 /**
+ * Per-message scroll controller. Tracks whether auto-scroll is enabled and
+ * the DOM element to scroll into view. Call `scrollDown$` after each data
+ * insert; it awaits a requestAnimationFrame so the browser has painted before
+ * the scroll fires.
+ */
+export function createScrollController() {
+  const el$ = state<HTMLElement | null>(null);
+  const autoScroll$ = state(true);
+
+  const attachEl$ = command(
+    ({ set }, el: HTMLElement, signal: AbortSignal): void => {
+      set(el$, el);
+      signal.addEventListener(
+        "abort",
+        () => {
+          set(el$, null);
+        },
+        { once: true },
+      );
+    },
+  );
+
+  const onRef$ = onRef<HTMLElement>(attachEl$);
+
+  const scrollDown$ = command(async ({ get }): Promise<void> => {
+    if (!get(autoScroll$)) return;
+    const el = get(el$);
+    if (!el) return;
+    await new Promise<void>((r) => {
+      requestAnimationFrame(() => {
+        r();
+      });
+    });
+    if (!get(autoScroll$)) return;
+    el.scrollIntoView({ behavior: "instant", block: "end" });
+  });
+
+  const enable$ = command(({ set }): void => {
+    set(autoScroll$, true);
+  });
+
+  const disable$ = command(({ set }): void => {
+    set(autoScroll$, false);
+  });
+
+  return { onRef$, scrollDown$, enable$, disable$ };
+}
+
+/** Stable no-op ref for message rows that have no scroll controller. */
+export const noopOnRef$ = onRef<HTMLElement>(
+  command(
+    (_store, _el: HTMLElement, _signal: AbortSignal): void => {},
+  ),
+);
+
+/**
  * Create a deferred promise that can be resolved/rejected externally.
  * The promise is automatically rejected when the abort signal is triggered.
  */
