@@ -109,7 +109,7 @@ export function Pagination({
           variant="outline"
           size="icon"
           className={cn("h-8 w-8 bg-card", buttonClassName)}
-          onClick={onBackTwoPages}
+          onPointerDown={onBackTwoPages}
           disabled={!canGoBackTwo}
         >
           <IconChevronsLeft className="size-4" />
@@ -120,7 +120,7 @@ export function Pagination({
           variant="outline"
           size="icon"
           className={cn("h-8 w-8 bg-card", buttonClassName)}
-          onClick={onPrevPage}
+          onPointerDown={onPrevPage}
           disabled={!hasPrev}
         >
           <IconChevronLeft className="size-4" />
@@ -131,7 +131,7 @@ export function Pagination({
           variant="outline"
           size="icon"
           className={cn("h-8 w-8 bg-card", buttonClassName)}
-          onClick={onNextPage}
+          onPointerDown={onNextPage}
           disabled={!hasNext || isLoading}
         >
           <IconChevronRight className="size-4" />
@@ -142,7 +142,7 @@ export function Pagination({
           variant="outline"
           size="icon"
           className={cn("h-8 w-8 bg-card", buttonClassName)}
-          onClick={onForwardTwoPages}
+          onPointerDown={onForwardTwoPages}
           disabled={!hasNext || isLoading}
         >
           <IconChevronsRight className="size-4" />
