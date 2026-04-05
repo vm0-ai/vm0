@@ -606,7 +606,7 @@ pub(crate) async fn reseed_guest_entropy(sandbox: &dyn Sandbox) -> RunnerResult<
 
     sandbox.write_file(ENTROPY_PATH, &entropy).await?;
 
-    sandbox
+    let result = sandbox
         .exec(&ExecRequest {
             cmd: &format!("guest-reseed {ENTROPY_PATH}"),
             timeout: DEFAULT_EXEC_TIMEOUT,
@@ -614,6 +614,14 @@ pub(crate) async fn reseed_guest_entropy(sandbox: &dyn Sandbox) -> RunnerResult<
             sudo: true,
         })
         .await?;
+
+    if result.exit_code != 0 {
+        let stderr = String::from_utf8_lossy(&result.stderr);
+        return Err(RunnerError::Internal(format!(
+            "guest-reseed failed (exit code {}): {stderr}",
+            result.exit_code
+        )));
+    }
 
     Ok(())
 }
@@ -1459,10 +1467,25 @@ mod tests {
     #[tokio::test]
     async fn reseed_guest_entropy_propagates_exec_error() {
         let sandbox = MockSandbox::new("test");
-        // First exec call (reseed) fails.
+        // Sandbox-level failure (vsock connection issue).
         sandbox.push_exec_result(Err(SandboxError::ExecFailed("reseed failed".into())));
         let result = reseed_guest_entropy(&sandbox).await;
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn reseed_guest_entropy_fails_on_nonzero_exit() {
+        let sandbox = MockSandbox::new("test");
+        // guest-reseed exits with code 1 (e.g., ioctl failed).
+        sandbox.push_exec_result(Ok(ExecResult {
+            exit_code: 1,
+            stdout: Vec::new(),
+            stderr: b"RNDADDENTROPY failed: Operation not permitted".to_vec(),
+        }));
+        let result = reseed_guest_entropy(&sandbox).await;
+        assert!(result.is_err());
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("guest-reseed failed"), "got: {msg}");
     }
 
     #[tokio::test]
