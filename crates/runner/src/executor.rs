@@ -593,7 +593,7 @@ pub(crate) async fn fix_guest_clock(sandbox: &dyn Sandbox) -> RunnerResult<()> {
 ///
 /// This function injects fresh host entropy and forces an immediate CRNG reseed
 /// so each VM produces unique random numbers from the first `getrandom()` call.
-async fn reseed_guest_entropy(sandbox: &dyn Sandbox) -> RunnerResult<()> {
+pub(crate) async fn reseed_guest_entropy(sandbox: &dyn Sandbox) -> RunnerResult<()> {
     use std::io::Read;
 
     const ENTROPY_SIZE: usize = 256;

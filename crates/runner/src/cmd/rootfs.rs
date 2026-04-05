@@ -151,11 +151,11 @@ pub async fn run_rootfs(args: RootfsArgs) -> RunnerResult<String> {
         (guest_agent.as_path(), "/usr/local/bin/guest-agent"),
         (guest_download.as_path(), "/usr/local/bin/guest-download"),
         (guest_init.as_path(), "/sbin/guest-init"),
+        (guest_reseed.as_path(), "/sbin/guest-reseed"),
         (
             guest_mock_claude.as_path(),
             "/usr/local/bin/guest-mock-claude",
         ),
-        (guest_reseed.as_path(), "/sbin/guest-reseed"),
     ];
 
     // Compute input hash: script + guest binaries + disk size.

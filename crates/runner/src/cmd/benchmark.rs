@@ -236,13 +236,23 @@ async fn run_in_sandbox(
     info!(boot_ms, "sandbox started");
 
     let t = Instant::now();
-    if is_snapshot && let Err(e) = executor::fix_guest_clock(sandbox).await {
-        let timing = Timing {
-            boot_ms,
-            clock_ms: t.elapsed().as_millis(),
-            exec_ms: 0,
-        };
-        return (Err(e), timing);
+    if is_snapshot {
+        if let Err(e) = executor::fix_guest_clock(sandbox).await {
+            let timing = Timing {
+                boot_ms,
+                clock_ms: t.elapsed().as_millis(),
+                exec_ms: 0,
+            };
+            return (Err(e), timing);
+        }
+        if let Err(e) = executor::reseed_guest_entropy(sandbox).await {
+            let timing = Timing {
+                boot_ms,
+                clock_ms: t.elapsed().as_millis(),
+                exec_ms: 0,
+            };
+            return (Err(e), timing);
+        }
     }
     let clock_ms = t.elapsed().as_millis();
 
