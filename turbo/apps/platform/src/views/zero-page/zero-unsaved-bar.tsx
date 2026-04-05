@@ -33,7 +33,7 @@ export function ZeroUnsavedBar({
             variant="ghost"
             size="sm"
             className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-            onClick={onDiscard}
+            onPointerDown={onDiscard}
             disabled={saving}
           >
             Discard
@@ -42,7 +42,7 @@ export function ZeroUnsavedBar({
             data-testid="save-button"
             size="sm"
             className="h-9 rounded-lg px-4 bg-primary text-primary-foreground hover:bg-primary/90"
-            onClick={onSave}
+            onPointerDown={onSave}
             disabled={saving}
           >
             {saving ? (
