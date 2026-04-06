@@ -6,12 +6,15 @@ export const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> =
     (() => {
       const allIcons = Object.fromEntries(
         Object.entries(
-          import.meta.glob<string>("./icons/*.svg", {
+          import.meta.glob<string>("./icons/*.{svg,png}", {
             eager: true,
             import: "default",
           }),
         ).map(([path, url]) => {
-          return [path.replace("./icons/", "").replace(".svg", ""), url];
+          return [
+            path.replace("./icons/", "").replace(/\.(svg|png)$/, ""),
+            url,
+          ];
         }),
       );
 
@@ -36,6 +39,7 @@ export const CONNECTOR_ICONS: Readonly<Record<ConnectorType, string>> =
  * Dark single-fill logos (e.g. navy) are *not* listed here—they invert for contrast on dark UI.
  */
 const CONNECTOR_ICON_COLORFUL = {
+  agentphone: true,
   ahrefs: true,
   airtable: true,
   anthropic: true,
