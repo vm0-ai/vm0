@@ -11,6 +11,7 @@ import { ClerkProvider } from "@clerk/nextjs";
 import { getClerkPublishableKey } from "../src/lib/shared/clerk-config";
 import { getAppUrl } from "../src/lib/zero/url";
 import { ThemeProvider } from "./components/ThemeProvider";
+import { HtmlLangSetter } from "./components/HtmlLangSetter";
 import { env } from "../src/env";
 import "./globals.css";
 import "./landing.css";
@@ -48,83 +49,82 @@ const jetBrainsMono = JetBrains_Mono({
   preload: false,
 });
 
-export const metadata: Metadata = {
-  metadataBase: new URL("https://vm0.ai"),
-  title: {
-    default: "VM0 - Your Trustworthy AI Teammate",
-    template: "%s | VM0",
-  },
-  description:
-    "Meet Zero, your AI teammate that works in Slack and on the web. Secure, intelligent, and built for individuals and teams to do more together.",
-  keywords: [
-    "AI teammate",
-    "AI agents",
-    "Slack AI",
-    "AI assistant",
-    "team collaboration",
-    "AI automation",
-    "secure AI",
-    "VM0",
-    "Zero AI",
-    "AI for teams",
-    "AI productivity",
-    "workflow automation",
-  ],
-  authors: [{ name: "VM0", url: "https://vm0.ai" }],
-  creator: "VM0",
-  publisher: "VM0",
-  applicationName: "VM0",
-  referrer: "origin-when-cross-origin",
-  formatDetection: {
-    email: false,
-    address: false,
-    telephone: false,
-  },
-  alternates: {},
-  verification: {
-    // Add verification codes when available
-    // google: "your-google-verification-code",
-    // yandex: "your-yandex-verification-code",
-    // bing: "your-bing-verification-code",
-  },
-  openGraph: {
-    type: "website",
-    locale: "en_US",
-    url: "https://vm0.ai",
-    title: "VM0 - Your Trustworthy AI Teammate",
+export function generateMetadata(): Metadata {
+  return {
+    metadataBase: new URL("https://vm0.ai"),
+    title: {
+      default: "VM0 - Your Trustworthy AI Teammate",
+      template: "%s | VM0",
+    },
     description:
       "Meet Zero, your AI teammate that works in Slack and on the web. Secure, intelligent, and built for individuals and teams to do more together.",
-    siteName: "VM0",
-    images: [
-      {
-        url: "/og-image.png",
-        width: 1200,
-        height: 630,
-        alt: "VM0 - Your Trustworthy AI Teammate",
-      },
+    keywords: [
+      "AI teammate",
+      "AI agents",
+      "Slack AI",
+      "AI assistant",
+      "team collaboration",
+      "AI automation",
+      "secure AI",
+      "VM0",
+      "Zero AI",
+      "AI for teams",
+      "AI productivity",
+      "workflow automation",
     ],
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "VM0 - Your Trustworthy AI Teammate",
-    description:
-      "Meet Zero, your AI teammate that works in Slack and on the web. Secure, intelligent, and built for teams.",
-    images: ["/og-image.png"],
-    creator: "@vm0_ai",
-    site: "@vm0_ai",
-  },
-  robots: {
-    index: true,
-    follow: true,
-    googleBot: {
+    authors: [{ name: "VM0", url: "https://vm0.ai" }],
+    creator: "VM0",
+    publisher: "VM0",
+    applicationName: "VM0",
+    referrer: "origin-when-cross-origin",
+    formatDetection: {
+      email: false,
+      address: false,
+      telephone: false,
+    },
+    alternates: {},
+    verification: {
+      google: env().GOOGLE_SITE_VERIFICATION,
+    },
+    openGraph: {
+      type: "website",
+      locale: "en_US",
+      url: "https://vm0.ai",
+      title: "VM0 - Your Trustworthy AI Teammate",
+      description:
+        "Meet Zero, your AI teammate that works in Slack and on the web. Secure, intelligent, and built for individuals and teams to do more together.",
+      siteName: "VM0",
+      images: [
+        {
+          url: "/og-image.png",
+          width: 1200,
+          height: 630,
+          alt: "VM0 - Your Trustworthy AI Teammate",
+        },
+      ],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: "VM0 - Your Trustworthy AI Teammate",
+      description:
+        "Meet Zero, your AI teammate that works in Slack and on the web. Secure, intelligent, and built for teams.",
+      images: ["/og-image.png"],
+      creator: "@vm0_ai",
+      site: "@vm0_ai",
+    },
+    robots: {
       index: true,
       follow: true,
-      "max-video-preview": -1,
-      "max-image-preview": "large",
-      "max-snippet": -1,
+      googleBot: {
+        index: true,
+        follow: true,
+        "max-video-preview": -1,
+        "max-image-preview": "large",
+        "max-snippet": -1,
+      },
     },
-  },
-};
+  };
+}
 
 export default function RootLayout({
   children,
@@ -248,6 +248,7 @@ export default function RootLayout({
               }),
             }}
           />
+          <HtmlLangSetter />
           <ThemeProvider>{children}</ThemeProvider>
           <Script
             src="https://api.dashboard.instatus.com/widget?host=status.vm0.ai&code=02c0ef5a&locale=en"
