@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.191.2](https://github.com/vm0-ai/vm0/compare/app-v0.191.1...app-v0.191.2) (2026-04-06)
+
+
+### Bug Fixes
+
+* update agentphone icon to official brand logo ([#8229](https://github.com/vm0-ai/vm0/issues/8229)) ([cee4c56](https://github.com/vm0-ai/vm0/commit/cee4c56ccaf3f3958f645b97f49110e64ae7f67d))
+
 ## [0.191.1](https://github.com/vm0-ai/vm0/compare/app-v0.191.0...app-v0.191.1) (2026-04-06)
 
 
