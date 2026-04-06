@@ -11,6 +11,7 @@ import { ahrefsHandler } from "./providers/ahrefs-handler";
 import { airtableHandler } from "./providers/airtable-handler";
 import { apolloHandler } from "./providers/apollo-handler";
 import { apifyHandler } from "./providers/apify-handler";
+import { pikaHandler } from "./providers/pika-handler";
 import { axiomHandler } from "./providers/axiom-handler";
 import { asanaHandler } from "./providers/asana-handler";
 import { atlassianHandler } from "./providers/atlassian-handler";
@@ -148,6 +149,7 @@ export const PROVIDER_HANDLERS: Record<
   airtable: airtableHandler,
   apollo: apolloHandler,
   apify: apifyHandler,
+  pika: pikaHandler,
   axiom: axiomHandler,
   asana: asanaHandler,
   atlassian: atlassianHandler,

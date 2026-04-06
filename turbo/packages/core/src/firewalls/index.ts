@@ -33,6 +33,7 @@ import { ahrefsFirewall } from "./ahrefs.generated";
 import { airtableFirewall } from "./airtable.generated";
 import { apolloFirewall } from "./apollo.generated";
 import { apifyFirewall } from "./apify.generated";
+import { pikaFirewall } from "./pika.generated";
 import { dopplerFirewall } from "./doppler.generated";
 import { infisicalFirewall } from "./infisical.generated";
 import { asanaFirewall } from "./asana.generated";
@@ -162,6 +163,7 @@ const CONNECTOR_FIREWALLS = {
   ahrefs: ahrefsFirewall,
   airtable: airtableFirewall,
   apollo: apolloFirewall,
+  pika: pikaFirewall,
   apify: apifyFirewall,
   asana: asanaFirewall,
   atlassian: atlassianFirewall,
