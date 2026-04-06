@@ -80,21 +80,31 @@ export function ZeroChatListPage() {
   );
 
   // Filter sessions by current agent
-  const subagentIds = new Set(subagents.map((a) => a.id));
+  const subagentIds = new Set(
+    subagents.map((a) => {
+      return a.id;
+    }),
+  );
   const agentSessions = currentChatAgentId
-    ? recentSessions.filter((s) => s.agentId === currentChatAgentId)
-    : recentSessions.filter((s) => !subagentIds.has(s.agentId));
+    ? recentSessions.filter((s) => {
+        return s.agentId === currentChatAgentId;
+      })
+    : recentSessions.filter((s) => {
+        return !subagentIds.has(s.agentId);
+      });
 
-  const matchedAgent = subagents.find((a) => a.id === currentChatAgentId);
+  const matchedAgent = subagents.find((a) => {
+    return a.id === currentChatAgentId;
+  });
   const agentLabel = currentChatAgentId
     ? (matchedAgent?.displayName ?? matchedAgent?.id ?? displayNameStr)
     : displayNameStr;
 
   const trimmedTerm = searchTerm.trim().toLowerCase();
   const filteredSessions = trimmedTerm
-    ? agentSessions.filter((s) =>
-        (s.title ?? "").toLowerCase().includes(trimmedTerm),
-      )
+    ? agentSessions.filter((s) => {
+        return (s.title ?? "").toLowerCase().includes(trimmedTerm);
+      })
     : agentSessions;
 
   const onNewChat = () => {
@@ -135,14 +145,18 @@ export function ZeroChatListPage() {
           <input
             type="text"
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) => {
+              return setSearchTerm(e.target.value);
+            }}
             placeholder={`Search chats with ${agentLabel}`}
             className="flex-1 min-w-0 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
           />
           {searchTerm && (
             <button
               type="button"
-              onPointerDown={() => setSearchTerm("")}
+              onPointerDown={() => {
+                return setSearchTerm("");
+              }}
               className="shrink-0 text-muted-foreground hover:text-foreground"
               aria-label="Clear search"
             >
@@ -212,11 +226,13 @@ function ChatList({
   if (loading && sessions.length === 0) {
     return (
       <div className="flex flex-col gap-2">
-        {["w-3/4", "w-1/2", "w-2/3", "w-4/5", "w-3/5"].map((w) => (
-          <div key={w} className="flex h-12 items-center rounded-lg px-3">
-            <Skeleton className={`h-4 ${w}`} />
-          </div>
-        ))}
+        {["w-3/4", "w-1/2", "w-2/3", "w-4/5", "w-3/5"].map((w) => {
+          return (
+            <div key={w} className="flex h-12 items-center rounded-lg px-3">
+              <Skeleton className={`h-4 ${w}`} />
+            </div>
+          );
+        })}
       </div>
     );
   }
@@ -238,15 +254,19 @@ function ChatList({
   return (
     <>
       <div className="flex flex-col gap-1">
-        {sessions.map((session) => (
-          <ChatListItem
-            key={session.id}
-            session={session}
-            isSelected={selectedRecentId === session.id}
-            onSelect={onRecentSelect}
-            onDelete={() => setPendingDeleteThreadId(session.id)}
-          />
-        ))}
+        {sessions.map((session) => {
+          return (
+            <ChatListItem
+              key={session.id}
+              session={session}
+              isSelected={selectedRecentId === session.id}
+              onSelect={onRecentSelect}
+              onDelete={() => {
+                return setPendingDeleteThreadId(session.id);
+              }}
+            />
+          );
+        })}
       </div>
 
       <Dialog
@@ -268,7 +288,9 @@ function ChatList({
           <DialogFooter>
             <Button
               variant="outline"
-              onPointerDown={() => setPendingDeleteThreadId(null)}
+              onPointerDown={() => {
+                return setPendingDeleteThreadId(null);
+              }}
             >
               Cancel
             </Button>
