@@ -3,7 +3,7 @@ import { localStorageSignals } from "../external/local-storage";
 import { Level, logger } from "../log";
 import { throwIfAbort } from "../utils";
 
-const { get$, set$ } = localStorageSignals("debugLogger");
+const { get$, set$, clear$ } = localStorageSignals("debugLogger");
 
 const L = logger("Logger");
 
@@ -39,7 +39,8 @@ export const extendDebugLoggerLocalStorage$ = command(
         loggerNames = JSON.parse(debugLoggers);
       } catch (error) {
         throwIfAbort(error);
-        // silence JSON parse errors because this data only for debugging
+        // Corrupted localStorage value — clear it and start fresh
+        set(clear$);
       }
     }
     if (!loggerNames.includes(loggerName)) {

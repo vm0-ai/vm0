@@ -32,6 +32,27 @@ import { accept, ApiError } from "../../lib/accept.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 import { delay } from "signal-timers";
 
+/**
+ * Returns a promise that resolves on the next animation frame.
+ * Uses `requestAnimationFrame` via signal-timers, which respects the provided
+ * AbortSignal and is safe in test environments (signal-timers resolves RAF
+ * synchronously when a mock clock is active).
+ *
+ * In background tabs where RAF is throttled to ~1 fps this will delay by up
+ * to ~1 second per call, which is acceptable for scroll-after-data-fetch use
+ * cases but should not be used in tight performance-critical loops.
+ */
+function nextFrame(signal: AbortSignal): Promise<void> {
+  return new Promise<void>((resolve) => {
+    animationFrame(
+      () => {
+        resolve();
+      },
+      { signal },
+    );
+  });
+}
+
 export {
   zeroChatInput$,
   setZeroChatInput$,
@@ -756,6 +777,9 @@ export const loadSessionFromSnapshot$ = command(
     const snapshot = await get(chatSessionSnapshot$);
     signal.throwIfAborted();
     if (!snapshot?.activeRunMessages.length) {
+      await nextFrame(signal);
+      signal.throwIfAborted();
+      set(scrollChat$);
       return;
     }
 
@@ -785,6 +809,9 @@ export const loadSessionFromSnapshot$ = command(
 
         while (true) {
           const finished = await set(message.runLoop.checkFinished$, signal);
+          await nextFrame(signal);
+          signal.throwIfAborted();
+          set(scrollChat$);
           if (finished) {
             break;
           }
@@ -927,6 +954,9 @@ const prepareUserMessage$ = command(
     set(internalLocalMessages$, (prev) => {
       return [...prev, userMessage];
     });
+    await nextFrame(signal);
+    signal.throwIfAborted();
+    set(scrollChat$);
 
     // Clear the draft after preparing the message
     if (draft) {
@@ -1051,6 +1081,9 @@ export const sendExistingThreadMessage$ = command(
 
     while (true) {
       const finished = await set(runLoop.checkFinished$, signal);
+      await nextFrame(signal);
+      signal.throwIfAborted();
+      set(scrollChat$);
       if (finished) {
         break;
       }
