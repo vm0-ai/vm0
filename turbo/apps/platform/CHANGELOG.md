@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.191.0](https://github.com/vm0-ai/vm0/compare/app-v0.190.0...app-v0.191.0) (2026-04-06)
+
+
+### Features
+
+* add Pika connector ([#8218](https://github.com/vm0-ai/vm0/issues/8218)) ([9a1bacb](https://github.com/vm0-ai/vm0/commit/9a1bacb8e18ab800c6f57951192b3a3675670066))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.153.0
+
 ## [0.190.0](https://github.com/vm0-ai/vm0/compare/app-v0.189.0...app-v0.190.0) (2026-04-05)
 
 

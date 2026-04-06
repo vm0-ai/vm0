@@ -1,5 +1,24 @@
 # Changelog
 
+## [12.195.0](https://github.com/vm0-ai/vm0/compare/web-v12.194.0...web-v12.195.0) (2026-04-06)
+
+
+### Features
+
+* add Pika connector ([#8218](https://github.com/vm0-ai/vm0/issues/8218)) ([9a1bacb](https://github.com/vm0-ai/vm0/commit/9a1bacb8e18ab800c6f57951192b3a3675670066))
+
+
+### Bug Fixes
+
+* prevent ngrok resource leaks in computer-use and connector services ([#8206](https://github.com/vm0-ai/vm0/issues/8206)) ([0a81e01](https://github.com/vm0-ai/vm0/commit/0a81e01b200800af3d13348b8bbc58d02c5d3b93))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.153.0
+
 ## [12.194.0](https://github.com/vm0-ai/vm0/compare/web-v12.193.0...web-v12.194.0) (2026-04-05)
 
 

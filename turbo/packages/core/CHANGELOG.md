@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.153.0](https://github.com/vm0-ai/vm0/compare/core-v8.152.0...core-v8.153.0) (2026-04-06)
+
+
+### Features
+
+* add Pika connector ([#8218](https://github.com/vm0-ai/vm0/issues/8218)) ([9a1bacb](https://github.com/vm0-ai/vm0/commit/9a1bacb8e18ab800c6f57951192b3a3675670066))
+
 ## [8.152.0](https://github.com/vm0-ai/vm0/compare/core-v8.151.0...core-v8.152.0) (2026-04-05)
 
 

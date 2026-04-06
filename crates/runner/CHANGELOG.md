@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.62.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.62.1...runner-rs-v0.62.2) (2026-04-06)
+
+
+### Bug Fixes
+
+* **runner:** flush tokio file in drain_stdout_to_file to prevent data loss ([#8216](https://github.com/vm0-ai/vm0/issues/8216)) ([b19f692](https://github.com/vm0-ai/vm0/commit/b19f692c39046a3c0614e0c1c23de82b5af9a8b7))
+
 ## [0.62.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.62.0...runner-rs-v0.62.1) (2026-04-04)
 
 

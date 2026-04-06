@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.31.1](https://github.com/vm0-ai/vm0/compare/docs-v2.31.0...docs-v2.31.1) (2026-04-06)
+
+
+### Bug Fixes
+
+* **docs:** fix flaky check-types by reordering fumadocs-mdx and next typegen ([#8209](https://github.com/vm0-ai/vm0/issues/8209)) ([4cd72da](https://github.com/vm0-ai/vm0/commit/4cd72dae0168c68aa53f5dcf3bc34462c5abad4e))
+
 ## [2.31.0](https://github.com/vm0-ai/vm0/compare/docs-v2.30.1...docs-v2.31.0) (2026-04-01)
 
 
