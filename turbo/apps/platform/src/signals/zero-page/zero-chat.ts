@@ -30,7 +30,7 @@ import {
 } from "@vm0/core";
 import { accept, ApiError } from "../../lib/accept.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
-import { animationFrame, delay } from "signal-timers";
+import { delay } from "signal-timers";
 
 export {
   zeroChatInput$,
@@ -126,7 +126,7 @@ const attachScrollContainer$ = command(
 
 export const scrollContainerRef$ = onRef<HTMLElement>(attachScrollContainer$);
 
-const scrollChat$ = command(({ get }): void => {
+export const scrollChat$ = command(({ get }): void => {
   const container = get(scrollContainerEl$);
   if (!container) {
     return;
@@ -843,16 +843,6 @@ export const loadSessionFromSnapshot$ = command(
     const snapshot = await get(chatSessionSnapshot$);
     signal.throwIfAborted();
     if (!snapshot?.activeRunMessages.length) {
-      await new Promise<void>((resolve) => {
-        animationFrame(
-          () => {
-            resolve();
-          },
-          { signal },
-        );
-      });
-      signal.throwIfAborted();
-      set(scrollChat$);
       return;
     }
 
@@ -882,16 +872,6 @@ export const loadSessionFromSnapshot$ = command(
 
         while (true) {
           const finished = await set(message.runLoop.checkFinished$, signal);
-          await new Promise<void>((resolve) => {
-            animationFrame(
-              () => {
-                resolve();
-              },
-              { signal },
-            );
-          });
-          signal.throwIfAborted();
-          set(scrollChat$);
           if (finished) {
             break;
           }
@@ -1034,16 +1014,6 @@ const prepareUserMessage$ = command(
     set(internalLocalMessages$, (prev) => {
       return [...prev, userMessage];
     });
-    await new Promise<void>((resolve) => {
-      animationFrame(
-        () => {
-          resolve();
-        },
-        { signal },
-      );
-    });
-    signal.throwIfAborted();
-    set(scrollChat$);
 
     // Clear the draft after preparing the message
     if (draft) {
@@ -1168,16 +1138,6 @@ export const sendExistingThreadMessage$ = command(
 
     while (true) {
       const finished = await set(runLoop.checkFinished$, signal);
-      await new Promise<void>((resolve) => {
-        animationFrame(
-          () => {
-            resolve();
-          },
-          { signal },
-        );
-      });
-      signal.throwIfAborted();
-      set(scrollChat$);
       if (finished) {
         break;
       }

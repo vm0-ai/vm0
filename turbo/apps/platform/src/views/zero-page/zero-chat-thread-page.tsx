@@ -57,6 +57,7 @@ import {
   type AssistantChatMessage,
   cancelActiveRun$,
   scrollContainerRef$,
+  scrollChat$,
   thinkingMessage$,
 } from "../../signals/zero-page/zero-chat.ts";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
@@ -72,6 +73,8 @@ import {
 import { useAgentAvatar } from "./zero-sidebar-shared.tsx";
 import { zeroSubagents$ } from "../../signals/zero-page/zero-agents.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
+// eslint-disable-next-line no-restricted-imports -- useLayoutEffect needed for scroll-before-paint
+import { useLayoutEffect } from "react";
 function AvatarOrPlaceholder({
   src,
   className,
@@ -800,11 +803,15 @@ function StaticAssistantMessage({
   message: AssistantChatMessage;
   renderActivityLine?: React.ReactNode;
 }) {
+  const triggerScroll = useSet(scrollChat$);
   const { avatarSrc } = useChatAgentIdentity();
   const setOrgManageOpen = useSet(setOrgManageDialogOpen$);
   const setTab = useSet(setActiveTab$);
   const pageSignal = useGet(pageSignal$);
   const content = useLastResolved(message.result$) ?? "";
+  useLayoutEffect(() => {
+    triggerScroll();
+  }, [triggerScroll, content]);
   const avatar = (
     <div className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 shrink-0 mt-0.5 overflow-hidden rounded-xl">
       <AvatarOrPlaceholder
