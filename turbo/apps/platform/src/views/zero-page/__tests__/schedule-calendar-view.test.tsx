@@ -7,6 +7,7 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
+import { setCalendarSelectedDay$ } from "../../../signals/schedule-page/schedule-page-ui.ts";
 
 const context = testContext();
 
@@ -47,8 +48,11 @@ function weekdaySchedule(
   };
 }
 
-// Monday-only schedule — renders exactly one CalendarEntryPopover instance
-// (desktop Mon column only; mobile shows Fri and has no entry since today is Fri)
+// Monday-only schedule — used with an explicit calendarSelectedDay$ override
+// (see SCHED-D-077/079) so that only the desktop Mon column renders an entry.
+// Without the override the mobile view follows today's day, which may also be
+// Monday, producing two simultaneous CalendarEntryPopover instances and
+// causing DismissableLayer conflicts in happy-dom.
 function mondayOnlySchedule(
   overrides: Partial<ScheduleResponse> = {},
 ): ScheduleResponse {
@@ -298,11 +302,13 @@ describe("schedule calendar view - next day navigation (SCHED-D-076)", () => {
 describe("schedule calendar view - entry popover on hover (SCHED-D-077)", () => {
   it("shows a popover with schedule details on mouseenter", async () => {
     const user = userEvent.setup();
-    // Use a Monday-only schedule so only one CalendarEntryPopover instance
-    // renders in the desktop grid (avoids DismissableLayer conflicts with
-    // multiple simultaneous popover instances in happy-dom)
+    // Monday-only schedule: only one desktop entry renders.
+    // Pin mobile to Friday so the mobile view has no entry and there is
+    // only one CalendarEntryPopover instance — avoids DismissableLayer
+    // conflicts when two popover instances are open simultaneously in happy-dom.
     mockScheduleAPI([mondayOnlySchedule()]);
     await setupPage({ context, path: "/schedules" });
+    context.store.set(setCalendarSelectedDay$, 4); // Friday — no Monday entry in mobile
     await switchToCalendarView(user);
 
     const entryBtn = await waitFor(() => {
@@ -343,9 +349,11 @@ describe("schedule calendar view - double-click opens edit (SCHED-D-078)", () =>
 describe("schedule calendar view - edit button in popover (SCHED-D-079)", () => {
   it("navigates to schedule detail when edit button in popover is clicked", async () => {
     const user = userEvent.setup();
-    // Use a Monday-only schedule for a single popover instance
+    // Monday-only schedule: only one desktop entry renders.
+    // Pin mobile to Friday — same reasoning as SCHED-D-077.
     mockScheduleAPI([mondayOnlySchedule()]);
     await setupPage({ context, path: "/schedules" });
+    context.store.set(setCalendarSelectedDay$, 4); // Friday — no Monday entry in mobile
     await switchToCalendarView(user);
 
     const entryBtn = await waitFor(() => {
