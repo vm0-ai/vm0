@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.63.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.63.0...runner-rs-v0.63.1) (2026-04-06)
+
+
+### Refactoring
+
+* **nbd:** deduplicate nbds_max, add concurrent test and bitmap assertion ([#8228](https://github.com/vm0-ai/vm0/issues/8228)) ([c0b98df](https://github.com/vm0-ai/vm0/commit/c0b98df3eb69ec81b26373d23d093a9526839752))
+
 ## [0.63.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.62.2...runner-rs-v0.63.0) (2026-04-06)
 
 

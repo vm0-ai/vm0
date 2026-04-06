@@ -1,8 +1,9 @@
 //! Mock implementations of all sandbox traits for testing.
 //!
 //! All mocks succeed by default with exit code 0 and empty output.
-//! Use [`MockSandbox::push_exec_result`] / [`MockSandboxControl::push_exec_remote_result`]
-//! to queue custom responses consumed in FIFO order.
+//! Use [`MockSandbox::push_exec_result`], [`MockSandbox::push_write_file_result`],
+//! or [`MockSandboxControl::push_exec_remote_result`] to queue custom responses
+//! consumed in FIFO order.
 //!
 //! ```toml
 //! [dev-dependencies]
@@ -23,12 +24,14 @@ use sandbox::*;
 
 /// A mock [`Sandbox`] that succeeds on all operations by default.
 ///
-/// Queue custom `exec` results with [`push_exec_result`](Self::push_exec_result).
-/// When the queue is empty, `exec` returns exit code 0 with empty output.
+/// Queue custom results with [`push_exec_result`](Self::push_exec_result)
+/// and [`push_write_file_result`](Self::push_write_file_result).
+/// When a queue is empty, the operation returns its default success value.
 pub struct MockSandbox {
     id: String,
     source_ip: String,
     exec_results: Mutex<VecDeque<Result<ExecResult>>>,
+    write_file_results: Mutex<VecDeque<Result<()>>>,
 }
 
 impl MockSandbox {
@@ -37,6 +40,7 @@ impl MockSandbox {
             id: id.into(),
             source_ip: "10.0.0.1".into(),
             exec_results: Mutex::new(VecDeque::new()),
+            write_file_results: Mutex::new(VecDeque::new()),
         }
     }
 
@@ -48,6 +52,15 @@ impl MockSandbox {
     /// Queue an exec result. Results are consumed in FIFO order.
     pub fn push_exec_result(&self, result: Result<ExecResult>) {
         self.exec_results
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push_back(result);
+    }
+
+    /// Queue a write_file result. Results are consumed in FIFO order.
+    /// When the queue is empty, write_file returns `Ok(())`.
+    pub fn push_write_file_result(&self, result: Result<()>) {
+        self.write_file_results
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .push_back(result);
@@ -93,7 +106,11 @@ impl Sandbox for MockSandbox {
     }
 
     async fn write_file(&self, _path: &str, _content: &[u8]) -> Result<()> {
-        Ok(())
+        self.write_file_results
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .pop_front()
+            .unwrap_or(Ok(()))
     }
 
     async fn spawn_watch(
@@ -388,6 +405,24 @@ mod tests {
             control.runtime_dir("sandbox-1"),
             PathBuf::from("/tmp/test/sandbox-1")
         );
+    }
+
+    #[tokio::test]
+    async fn sandbox_write_file_default_succeeds() {
+        let sandbox = MockSandbox::new("test-1");
+        sandbox.write_file("/tmp/test.txt", b"hello").await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn sandbox_write_file_queued_error() {
+        let sandbox = MockSandbox::new("test-1");
+        sandbox.push_write_file_result(Err(SandboxError::ExecFailed("disk full".into())));
+
+        let result = sandbox.write_file("/tmp/test.txt", b"data").await;
+        assert!(result.is_err());
+
+        // Falls back to default Ok.
+        sandbox.write_file("/tmp/test.txt", b"data").await.unwrap();
     }
 
     #[tokio::test]

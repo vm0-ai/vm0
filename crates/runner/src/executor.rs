@@ -1799,4 +1799,52 @@ mod tests {
         // /dev/null/impossible cannot be created — should handle gracefully
         drain_stdout_to_file(rx, std::path::PathBuf::from("/dev/null/impossible/file")).await;
     }
+
+    // -----------------------------------------------------------------------
+    // write_file failure tests (using push_write_file_result)
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn download_storages_fails_on_write_file_error() {
+        let sandbox = MockSandbox::new("test");
+        sandbox.push_write_file_result(Err(SandboxError::ExecFailed("vsock write failed".into())));
+        let ctx = minimal_context();
+        let manifest = StorageManifest {
+            storages: vec![],
+            artifact: None,
+            memory: None,
+        };
+        let err = download_storages(&sandbox, &ctx, &manifest, "/tmp/log")
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("vsock write failed"), "got: {err}");
+    }
+
+    #[tokio::test]
+    async fn restore_session_fails_on_write_file_error() {
+        let sandbox = MockSandbox::new("test");
+        let ctx = minimal_context();
+        let session = ResumeSession {
+            session_id: "sess-abc".into(),
+            session_history: r#"{"type":"init"}"#.into(),
+        };
+        // First exec (mkdir) succeeds by default, write_file fails.
+        sandbox.push_write_file_result(Err(SandboxError::ExecFailed("disk full".into())));
+        let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
+        assert!(err.to_string().contains("disk full"), "got: {err}");
+    }
+
+    #[tokio::test]
+    async fn restore_session_fails_on_mkdir_exec_error() {
+        let sandbox = MockSandbox::new("test");
+        let ctx = minimal_context();
+        let session = ResumeSession {
+            session_id: "sess-abc".into(),
+            session_history: "data".into(),
+        };
+        // mkdir exec fails
+        sandbox.push_exec_result(Err(SandboxError::ExecFailed("vsock down".into())));
+        let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
+        assert!(err.to_string().contains("vsock down"), "got: {err}");
+    }
 }
