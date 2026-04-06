@@ -67,7 +67,6 @@ import {
 } from "../../signals/zero-page/zero-session-chat-ui.ts";
 import { useAgentAvatar } from "./zero-sidebar-shared.tsx";
 import { zeroSubagents$ } from "../../signals/zero-page/zero-agents.ts";
-import { detachedNavigateTo$ } from "../../signals/route.ts";
 function scrollToLatestMessage() {
   const scrollEl = document.querySelector<HTMLElement>(
     "[data-scroll-container]",
