@@ -54,7 +54,7 @@ function mockPinnedAgents() {
 
 /** Find the pinned agent link inside the sidebar nav (not the main page area). */
 function getPinnedLink(name: string): HTMLAnchorElement {
-  const sidebar = screen.getByRole("navigation");
+  const sidebar = screen.getByRole("navigation", { name: "Sidebar" });
   const link = within(sidebar).getByText(name).closest("a");
   if (!link) {
     throw new Error(`Pinned link for "${name}" not found in sidebar`);
@@ -72,7 +72,9 @@ describe("pinned agent switch (#6897)", () => {
     // Wait for pinned agents to render in the sidebar
     await waitFor(() => {
       expect(
-        within(screen.getByRole("navigation")).getByText("Alpha Bot"),
+        within(screen.getByRole("navigation", { name: "Sidebar" })).getByText(
+          "Alpha Bot",
+        ),
       ).toBeInTheDocument();
     });
 
@@ -102,7 +104,9 @@ describe("pinned agent switch (#6897)", () => {
 
     await waitFor(() => {
       expect(
-        within(screen.getByRole("navigation")).getByText("Alpha Bot"),
+        within(screen.getByRole("navigation", { name: "Sidebar" })).getByText(
+          "Alpha Bot",
+        ),
       ).toBeInTheDocument();
     });
 

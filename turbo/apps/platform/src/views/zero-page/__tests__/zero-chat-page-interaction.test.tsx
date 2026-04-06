@@ -69,7 +69,9 @@ describe("zero chat page - pin button", () => {
 
     await waitFor(() => {
       expect(
-        within(screen.getByRole("navigation")).getByText("Test Subagent"),
+        within(screen.getByRole("navigation", { name: "Sidebar" })).getByText(
+          "Test Subagent",
+        ),
       ).toBeInTheDocument();
     });
   });

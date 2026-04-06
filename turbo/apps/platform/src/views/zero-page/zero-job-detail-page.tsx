@@ -129,6 +129,7 @@ function Breadcrumb({
 }) {
   return (
     <nav
+      aria-label="Breadcrumb"
       className={`hidden md:flex shrink-0 items-center gap-1 px-4 pt-4 text-sm text-muted-foreground${className ? ` ${className}` : ""}`}
     >
       <Link

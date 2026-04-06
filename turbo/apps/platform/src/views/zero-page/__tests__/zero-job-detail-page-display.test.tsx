@@ -131,12 +131,7 @@ describe("zero job detail page - display", () => {
       ).toBeInTheDocument();
     });
 
-    // Find the breadcrumb nav (not the sidebar nav which has aria-label="Sidebar")
-    const navs = screen.getAllByRole("navigation");
-    const breadcrumb = navs.find((nav) => {
-      return nav.getAttribute("aria-label") !== "Sidebar";
-    });
-    expect(breadcrumb).toBeDefined();
+    const breadcrumb = screen.getByRole("navigation", { name: "Breadcrumb" });
     expect(breadcrumb).toHaveTextContent("Agents");
     expect(breadcrumb).toHaveTextContent("My Agent");
   });

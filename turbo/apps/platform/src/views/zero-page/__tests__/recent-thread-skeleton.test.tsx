@@ -74,7 +74,7 @@ describe("recent thread skeleton (#7546)", () => {
     await setupPage({ context, path: "/agents/agent-alpha/chat" });
 
     // Wait for the recent thread to appear in the sidebar
-    const sidebar = screen.getByRole("navigation");
+    const sidebar = screen.getByRole("navigation", { name: "Sidebar" });
     await waitFor(() => {
       expect(
         within(sidebar).getByText("My test conversation"),
@@ -99,7 +99,7 @@ describe("recent thread skeleton (#7546)", () => {
     // After navigation, the sidebar should still show the thread text
     // (retained by useLastLoadable) instead of skeleton placeholders.
     await waitFor(() => {
-      const nav = screen.getByRole("navigation");
+      const nav = screen.getByRole("navigation", { name: "Sidebar" });
       expect(nav.querySelectorAll(".animate-pulse")).toHaveLength(0);
       expect(within(nav).getByText("My test conversation")).toBeInTheDocument();
     });
