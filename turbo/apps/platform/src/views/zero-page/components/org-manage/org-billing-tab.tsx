@@ -57,7 +57,7 @@ const PLANS = [
     image: planFreeImg,
     features: [
       "10,000 starter credits",
-      "1 active agent",
+      "1 concurrent run",
       "Unlimited total agents",
       "Bring your own LLM keys",
       "Community support",
@@ -75,10 +75,10 @@ const PLANS = [
     image: planProImg,
     features: [
       "20,000 credits / month",
-      "2 active agents",
+      "Pay as you go after that",
+      "2 concurrent runs",
       "Unlimited total agents",
       "Bring your own LLM keys",
-      "Credits rollover (1 month)",
       "Email support",
     ],
   },
@@ -92,10 +92,10 @@ const PLANS = [
     image: planTeamImg,
     features: [
       "120,000 credits / month",
-      "5 active agents",
+      "Pay as you go after that",
+      "5 concurrent runs",
       "Unlimited total agents",
       "Bring your own LLM keys",
-      "Credits rollover (1 month)",
       "Priority support",
     ],
   },
@@ -169,7 +169,7 @@ function PlanCard({
         />
       )}
 
-      <h3 className="text-sm font-semibold uppercase tracking-wider text-primary font-mono">
+      <h3 className="text-sm font-semibold uppercase tracking-wider text-[#D27939] font-mono">
         {plan.name}
       </h3>
 
@@ -221,8 +221,8 @@ function PlanCard({
                 ? "default"
                 : "outline"
           }
-          size="sm"
-          className="w-full h-9 text-xs"
+          size="default"
+          className="w-full h-11 text-sm font-medium"
           disabled={loading || isCurrent}
           onClick={() => {
             return onAction(plan.tier);

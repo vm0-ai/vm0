@@ -60,7 +60,7 @@ export function SidebarUpgradeCard() {
       <div className="min-w-0 flex-1">
         <p className="text-sm font-medium text-foreground">Get {next.label}</p>
         <p className="text-[11px] text-muted-foreground mt-0.5">
-          More credits & active agents
+          More credits & concurrent runs
         </p>
       </div>
       <img

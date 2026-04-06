@@ -4,8 +4,6 @@ import {
   zeroRunsQueueContract,
   zeroRunsCancelContract,
   type QueueResponse,
-  type QueueEntry,
-  type RunningTask,
 } from "@vm0/core";
 import { throwIfAbort } from "../utils.ts";
 import { zeroClient$ } from "../api-client.ts";
@@ -13,10 +11,7 @@ import { accept } from "../../lib/accept.ts";
 
 const POLL_INTERVAL = 5000;
 
-export type { QueueEntry, RunningTask };
-export type QueueData = QueueResponse;
-
-const internalQueueData$ = state<QueueData | null>(null);
+const internalQueueData$ = state<QueueResponse | null>(null);
 
 export const queueData$ = computed((get) => {
   return get(internalQueueData$);

@@ -51,14 +51,14 @@ const PLANS = [
     name: "Pro",
     price: "$40",
     period: "/month",
-    features: ["20,000 credits/month", "Credits rollover", "Priority support"],
+    features: ["20,000 credits/month", "Priority support"],
   },
   {
     tier: "team" as const,
     name: "Team",
     price: "$200",
     period: "/month",
-    features: ["120,000 credits/month", "Credits rollover", "Priority support"],
+    features: ["120,000 credits/month", "Priority support"],
   },
 ] as const;
 
@@ -442,7 +442,7 @@ export function BillingDialog() {
         return !v && close(false);
       }}
     >
-      <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-[600px]">
+      <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-[600px] max-h-[calc(100dvh-2rem)] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Choose your plan</DialogTitle>
           <DialogDescription>
