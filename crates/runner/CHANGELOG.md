@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.63.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.62.2...runner-rs-v0.63.0) (2026-04-06)
+
+
+### Features
+
+* **crates:** add guest-reseed for post-snapshot entropy injection ([#8215](https://github.com/vm0-ai/vm0/issues/8215)) ([c9a9005](https://github.com/vm0-ai/vm0/commit/c9a9005a05398f787d7e9dbe2f591b51b44bbab9))
+
 ## [0.62.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.62.1...runner-rs-v0.62.2) (2026-04-06)
 
 
