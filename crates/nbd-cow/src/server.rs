@@ -748,4 +748,148 @@ mod tests {
         writer.write_all(&serialize_request(&disc)).await.unwrap();
         task.await.unwrap().unwrap();
     }
+
+    /// Two dispatch tasks sharing the same COW layer handle concurrent
+    /// read+write without deadlock or data corruption.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn dispatch_concurrent_read_write() {
+        let base_data = vec![0xAA; 8192];
+        let (_base, _cow_file, cow) = create_test_cow(&base_data);
+        let cow = Arc::new(RwLock::new(cow));
+        let shutdown = CancellationToken::new();
+
+        // Spawn two dispatch tasks sharing the same COW layer (mimics production NUM_CONNECTIONS).
+        let mut clients = Vec::new();
+        let mut tasks = Vec::new();
+        for _ in 0..2 {
+            let (client_fd, server_fd) = {
+                let mut fds = [0i32; 2];
+                let ret = unsafe {
+                    libc::socketpair(libc::AF_UNIX, libc::SOCK_STREAM, 0, fds.as_mut_ptr())
+                };
+                assert_eq!(ret, 0);
+                unsafe { (OwnedFd::from_raw_fd(fds[0]), OwnedFd::from_raw_fd(fds[1])) }
+            };
+            let cow_clone = cow.clone();
+            let token = shutdown.clone();
+            tasks.push(tokio::spawn(async move {
+                dispatch(server_fd, cow_clone, token).await
+            }));
+            let client_std =
+                unsafe { std::os::unix::net::UnixStream::from_raw_fd(client_fd.into_raw_fd()) };
+            client_std.set_nonblocking(true).unwrap();
+            let stream = UnixStream::from_std(client_std).unwrap();
+            clients.push(stream);
+        }
+
+        let (mut reader0, mut writer0) = clients.remove(0).into_split();
+        let (mut reader1, mut writer1) = clients.remove(0).into_split();
+
+        // Connection 0: write block 0
+        let write_req = NbdRequest {
+            flags: 0,
+            command: Command::Write,
+            handle: 10,
+            offset: 0,
+            length: 4096,
+        };
+        writer0
+            .write_all(&serialize_request(&write_req))
+            .await
+            .unwrap();
+        writer0.write_all(&vec![0xBB; 4096]).await.unwrap();
+        let mut reply_buf = [0u8; 16];
+        reader0.read_exact(&mut reply_buf).await.unwrap();
+        assert_eq!(
+            u32::from_be_bytes([reply_buf[4], reply_buf[5], reply_buf[6], reply_buf[7]]),
+            0
+        );
+
+        // Connection 1: read block 0 concurrently — should see the written data
+        let read_req = NbdRequest {
+            flags: 0,
+            command: Command::Read,
+            handle: 20,
+            offset: 0,
+            length: 4096,
+        };
+        writer1
+            .write_all(&serialize_request(&read_req))
+            .await
+            .unwrap();
+        reader1.read_exact(&mut reply_buf).await.unwrap();
+        assert_eq!(
+            u32::from_be_bytes([reply_buf[4], reply_buf[5], reply_buf[6], reply_buf[7]]),
+            0
+        );
+        let mut data = vec![0u8; 4096];
+        reader1.read_exact(&mut data).await.unwrap();
+        assert!(
+            data.iter().all(|&b| b == 0xBB),
+            "connection 1 should read data written by connection 0"
+        );
+
+        // Connection 1: write block 1 while connection 0 reads block 1 concurrently
+        let write_req2 = NbdRequest {
+            flags: 0,
+            command: Command::Write,
+            handle: 21,
+            offset: 4096,
+            length: 4096,
+        };
+        let read_req2 = NbdRequest {
+            flags: 0,
+            command: Command::Read,
+            handle: 11,
+            offset: 4096,
+            length: 4096,
+        };
+
+        // Send both requests concurrently
+        let (write_result, read_result) = tokio::join!(
+            async {
+                writer1
+                    .write_all(&serialize_request(&write_req2))
+                    .await
+                    .unwrap();
+                writer1.write_all(&vec![0xCC; 4096]).await.unwrap();
+                let mut buf = [0u8; 16];
+                reader1.read_exact(&mut buf).await.unwrap();
+                u32::from_be_bytes([buf[4], buf[5], buf[6], buf[7]])
+            },
+            async {
+                writer0
+                    .write_all(&serialize_request(&read_req2))
+                    .await
+                    .unwrap();
+                let mut buf = [0u8; 16];
+                reader0.read_exact(&mut buf).await.unwrap();
+                let error = u32::from_be_bytes([buf[4], buf[5], buf[6], buf[7]]);
+                let mut data = vec![0u8; 4096];
+                reader0.read_exact(&mut data).await.unwrap();
+                (error, data)
+            }
+        );
+
+        assert_eq!(write_result, 0, "concurrent write should succeed");
+        assert_eq!(read_result.0, 0, "concurrent read should succeed");
+        // Read may return either base data (0xAA) or written data (0xCC)
+        // depending on scheduling — both are valid. The key assertion is no
+        // deadlock, no error, and no data corruption (all bytes the same).
+        let byte = read_result.1[0];
+        assert!(
+            byte == 0xAA || byte == 0xCC,
+            "data should be base (0xAA) or written (0xCC), got {byte:#x}"
+        );
+        assert!(
+            read_result.1.iter().all(|&b| b == byte),
+            "all bytes in block should be consistent"
+        );
+
+        // Shutdown both connections
+        shutdown.cancel();
+        for task in tasks {
+            task.await.unwrap().unwrap();
+        }
+    }
 }

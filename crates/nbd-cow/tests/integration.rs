@@ -409,8 +409,12 @@ async fn snapshot_restore_round_trip() {
         device.destroy().await.expect("destroy");
     }
 
-    // After destroy, COW and bitmap should be cleaned up
+    // After destroy, COW and bitmap should both be cleaned up
     assert!(!cow.exists(), "COW file should be removed after destroy");
+    assert!(
+        !bitmap.exists(),
+        "bitmap file should be removed after destroy"
+    );
 }
 
 // ---------------------------------------------------------------------------

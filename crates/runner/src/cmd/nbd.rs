@@ -1,17 +1,10 @@
 //! Shared NBD sysfs helpers used by `gc` and `doctor`.
 
-/// Default upper bound for NBD device indices when `/sys/module/nbd/parameters/nbds_max`
-/// is unreadable (e.g. module not loaded). The actual limit is set by ansible
-/// (`modprobe nbd nbds_max=4096`); this fallback only applies when the sysfs
-/// parameter cannot be read, which implies no devices exist anyway.
-const NBD_DEFAULT_MAX: u32 = 256;
-
 /// Read the maximum number of NBD devices from the kernel module parameter.
+/// Delegates to `nbd_cow::netlink::nbds_max()` which reads sysfs and falls
+/// back to 256 when the module is not loaded.
 pub(crate) fn read_nbds_max() -> u32 {
-    std::fs::read_to_string("/sys/module/nbd/parameters/nbds_max")
-        .ok()
-        .and_then(|s| s.trim().parse::<u32>().ok())
-        .unwrap_or(NBD_DEFAULT_MAX)
+    nbd_cow::netlink::nbds_max()
 }
 
 /// Parse the PID from `/sys/block/nbd{i}/pid`. Returns `None` if the file
