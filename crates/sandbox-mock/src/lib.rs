@@ -140,7 +140,36 @@ impl Sandbox for MockSandbox {
 // ---------------------------------------------------------------------------
 
 /// A mock [`SandboxFactory`] that creates [`MockSandbox`] instances.
-pub struct MockSandboxFactory;
+///
+/// Queue custom `create` results with [`push_create_result`](Self::push_create_result).
+/// When the queue is empty, `create` returns a default `MockSandbox`.
+pub struct MockSandboxFactory {
+    create_results: Mutex<VecDeque<Result<()>>>,
+}
+
+impl MockSandboxFactory {
+    pub fn new() -> Self {
+        Self {
+            create_results: Mutex::new(VecDeque::new()),
+        }
+    }
+
+    /// Queue a create result. `Ok(())` creates a normal `MockSandbox`;
+    /// `Err(...)` makes `create` return that error.
+    /// Results are consumed in FIFO order.
+    pub fn push_create_result(&self, result: Result<()>) {
+        self.create_results
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push_back(result);
+    }
+}
+
+impl Default for MockSandboxFactory {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 #[async_trait]
 impl SandboxFactory for MockSandboxFactory {
@@ -157,6 +186,14 @@ impl SandboxFactory for MockSandboxFactory {
     }
 
     async fn create(&self, config: SandboxConfig) -> Result<Box<dyn Sandbox>> {
+        if let Some(result) = self
+            .create_results
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .pop_front()
+        {
+            result?;
+        }
         Ok(Box::new(MockSandbox::new(config.id.to_string())))
     }
 
@@ -175,7 +212,7 @@ pub struct MockSandboxRuntime;
 #[async_trait]
 impl SandboxRuntime for MockSandboxRuntime {
     async fn create_factory(&self, _config: FactoryConfig) -> Result<Box<dyn SandboxFactory>> {
-        Ok(Box::new(MockSandboxFactory))
+        Ok(Box::new(MockSandboxFactory::new()))
     }
 
     async fn shutdown(&mut self) {}
@@ -348,7 +385,7 @@ mod tests {
 
     #[tokio::test]
     async fn factory_creates_sandbox() {
-        let mut factory = MockSandboxFactory;
+        let mut factory = MockSandboxFactory::new();
         factory.startup().await.unwrap();
         let config = SandboxConfig {
             id: uuid::Uuid::new_v4(),
@@ -423,6 +460,33 @@ mod tests {
 
         // Falls back to default Ok.
         sandbox.write_file("/tmp/test.txt", b"data").await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn factory_create_queued_error() {
+        let mut factory = MockSandboxFactory::new();
+        factory.startup().await.unwrap();
+        factory.push_create_result(Err(SandboxError::CreationFailed("out of resources".into())));
+
+        let config = SandboxConfig {
+            id: uuid::Uuid::new_v4(),
+            resources: ResourceLimits {
+                cpu_count: 2,
+                memory_mb: 1024,
+            },
+        };
+        let result = factory.create(config).await;
+        assert!(result.is_err());
+
+        // Next create falls back to default success.
+        let config2 = SandboxConfig {
+            id: uuid::Uuid::new_v4(),
+            resources: ResourceLimits {
+                cpu_count: 2,
+                memory_mb: 1024,
+            },
+        };
+        factory.create(config2).await.unwrap();
     }
 
     #[tokio::test]
