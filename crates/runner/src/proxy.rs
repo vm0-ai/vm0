@@ -417,6 +417,15 @@ pub struct ProxyRegistryHandle {
 }
 
 impl ProxyRegistryHandle {
+    /// Create a handle from explicit paths (for testing).
+    #[cfg(test)]
+    pub fn new(registry_path: PathBuf, lock_path: PathBuf) -> Self {
+        Self {
+            registry_path,
+            lock_path,
+        }
+    }
+
     /// Register a VM in the proxy registry.
     pub async fn register_vm(
         &self,
