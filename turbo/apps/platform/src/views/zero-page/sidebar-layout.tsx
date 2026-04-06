@@ -8,8 +8,11 @@ import {
   setZeroShowAboutPage$,
   sidebarExpanded$,
   setSidebarExpanded$,
+  sidebarChatAgentId$,
   isChatRoute,
 } from "../../signals/zero-page/zero-nav.ts";
+import { detachedNavigateTo$ } from "../../signals/route.ts";
+import { defaultAgentId$ } from "../../signals/zero-page/zero-agent-name.ts";
 import { activeRoute$ } from "../../signals/active-route.ts";
 import { mobileBreadcrumb$ } from "../../signals/zero-page/zero-mobile-breadcrumb.ts";
 import { ZeroAboutPage } from "./zero-about-page.tsx";
@@ -46,7 +49,13 @@ function AgentAvatarInTopBar({ agentId }: { agentId: string }) {
 }
 
 function MobileTopBar() {
-  const setSidebarExpandedFn = useSet(setSidebarExpanded$);
+  const navigateTo = useSet(detachedNavigateTo$);
+  const currentAgentId = useGet(sidebarChatAgentId$);
+  const defaultAgentIdLoadable = useLastLoadable(defaultAgentId$);
+  const defaultAgent =
+    defaultAgentIdLoadable.state === "hasData"
+      ? defaultAgentIdLoadable.data
+      : null;
   const breadcrumbLoadable = useLastLoadable(mobileBreadcrumb$);
   const breadcrumb =
     breadcrumbLoadable.state === "hasData" ? breadcrumbLoadable.data : null;
@@ -61,13 +70,22 @@ function MobileTopBar() {
 
   const showInvite = isChatRoute(activeId) && isAdmin;
 
+  const handleMenuClick = () => {
+    const agentId = currentAgentId ?? defaultAgent;
+    if (agentId) {
+      navigateTo("/chats", {
+        searchParams: new URLSearchParams({ agentId }),
+      });
+    } else {
+      navigateTo("/chats");
+    }
+  };
+
   return (
     <div className="md:hidden shrink-0 flex items-center h-12 px-3 gap-2 bg-background border-b border-border/50 z-10">
       <button
         type="button"
-        onPointerDown={() => {
-          return setSidebarExpandedFn(true);
-        }}
+        onPointerDown={handleMenuClick}
         className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
         aria-label="Open menu"
       >

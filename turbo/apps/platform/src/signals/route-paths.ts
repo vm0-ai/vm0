@@ -9,6 +9,7 @@ export const ROUTES = {
   activities: "/activities",
   activityInspect: "/activities/inspect",
   activityDetail: "/activities/:id",
+  chatList: "/chats",
   chat: "/chats/:id",
   schedules: "/schedules",
   scheduleDetail: "/schedules/:id",

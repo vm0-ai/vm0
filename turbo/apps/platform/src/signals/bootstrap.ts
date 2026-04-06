@@ -34,6 +34,7 @@ import { setupConnectorsPage$ } from "./connectors-page/connectors-page-setup.ts
 import { setupDirectedConnectPage$ } from "./connectors-page/directed-connect-page-setup.ts";
 import { setupSignInTokenPage$ } from "./sign-in-token-setup.ts";
 import { setupFirewallAllowPage$ } from "./firewall-allow/firewall-allow-page-setup.ts";
+import { setupChatListPage$ } from "./zero-page/chat-list-page-setup.ts";
 
 /**
  * Catch-all fallback — redirects unknown paths to /.
@@ -73,6 +74,10 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.selectOrg,
     setup: setupAuthPageWrapper(setupSelectOrgPage$),
+  },
+  {
+    path: ROUTES.chatList,
+    setup: setupAuthPageWrapper(setupChatListPage$),
   },
   {
     path: ROUTES.chat,
