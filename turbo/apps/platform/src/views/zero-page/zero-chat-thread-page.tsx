@@ -71,7 +71,6 @@ import {
 import { useAgentAvatar } from "./zero-sidebar-shared.tsx";
 import { zeroSubagents$ } from "../../signals/zero-page/zero-agents.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
-// eslint-disable-next-line no-restricted-imports -- useLayoutEffect needed for scroll-before-paint
 import { useLayoutEffect } from "react";
 
 function scrollToLatestMessage() {
