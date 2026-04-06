@@ -248,4 +248,52 @@ describe("connector permission dialog", () => {
     // Should show the "N+ more" chip
     expect(screen.getByText("2+ more")).toBeInTheDocument();
   });
+
+  it("clears search input and selected agents when dialog is reopened for a new connector", async () => {
+    const user = userEvent.setup();
+    mockAgents([
+      { id: "agent-1", displayName: "Agent Alpha" },
+      { id: "agent-2", displayName: "Agent Beta" },
+    ]);
+
+    await openPermissionDialog("github");
+
+    await waitFor(() => {
+      expect(screen.getByText("Agent Alpha")).toBeInTheDocument();
+    });
+
+    // Type a search term to set dialog search state
+    const searchInput = screen.getByPlaceholderText("Search your agents");
+    await user.type(searchInput, "alpha");
+
+    await waitFor(() => {
+      expect(screen.queryByText("Agent Beta")).not.toBeInTheDocument();
+    });
+
+    // Select Agent Alpha
+    await user.click(screen.getByText("Agent Alpha"));
+
+    // Reopen for a different connector — setPermissionDialogType$ should reset state
+    context.store.set(setPermissionDialogType$, "linear");
+
+    // Dialog should still be open (now for linear)
+    await waitFor(() => {
+      expect(
+        screen.getByText(/successfully connected with Linear/),
+      ).toBeInTheDocument();
+    });
+
+    // Search input should be cleared
+    expect(screen.getByPlaceholderText("Search your agents")).toHaveValue("");
+
+    // All agents should be visible again (no search filter)
+    expect(screen.getByText("Agent Alpha")).toBeInTheDocument();
+    expect(screen.getByText("Agent Beta")).toBeInTheDocument();
+
+    // Agent Alpha should no longer be selected (no check icon)
+    const agentAlphaBtn = screen.getAllByRole("button").find((el) => {
+      return /Agent Alpha/.test(el.textContent ?? "");
+    });
+    expect(agentAlphaBtn?.querySelector("svg")).not.toBeInTheDocument();
+  });
 });

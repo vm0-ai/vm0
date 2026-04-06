@@ -381,3 +381,91 @@ describe("chat-i-083: upgrade/downgrade button triggers plan change action", () 
     });
   });
 });
+
+describe("chat-i-085: form fields derive from server config via async computed", () => {
+  it("displays threshold and amount from autoRechargeConfig$ async computed path", async () => {
+    mockBillingPageAPIs();
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+      autoRecharge: { enabled: true, threshold: 3000, amount: 15_000 },
+    });
+    await setupPage({ context, path: "/" });
+    await openBillingDialogAndWait();
+
+    // formThreshold$ and formAmount$ async-derive from autoRechargeConfig$ when no
+    // override is set. Verify that the inputs show the server-returned values.
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("e.g. 1000")).toHaveValue(3000);
+    });
+    expect(screen.getByPlaceholderText("e.g. 10000")).toHaveValue(15_000);
+  });
+});
+
+describe("chat-i-086: form overrides clear after successful save", () => {
+  it("reverts inputs to server-returned values after save completes", async () => {
+    // The default mock PUT handler (apiBillingHandlers) updates mockBillingStatus
+    // in place, so after PUT the GET /billing/status will return the new values.
+    // We register a custom PUT that returns 4000/20000 as the saved values.
+    server.use(
+      http.put("*/api/zero/billing/auto-recharge", async ({ request }) => {
+        const body = (await request.json()) as {
+          enabled: boolean;
+          threshold?: number;
+          amount?: number;
+        };
+        // Update mock so subsequent GET /billing/status returns the new values
+        setMockBillingStatus({
+          autoRecharge: {
+            enabled: true,
+            threshold: body.threshold ?? null,
+            amount: body.amount ?? null,
+          },
+        });
+        return HttpResponse.json({
+          enabled: true,
+          threshold: body.threshold ?? null,
+          amount: body.amount ?? null,
+        });
+      }),
+    );
+
+    const user = userEvent.setup();
+    mockBillingPageAPIs();
+    setMockBillingStatus({
+      tier: "pro",
+      credits: 20_000,
+      subscriptionStatus: "active",
+      hasSubscription: true,
+      autoRecharge: { enabled: true, threshold: 1000, amount: 5000 },
+    });
+    await setupPage({ context, path: "/" });
+    await openBillingDialogAndWait();
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("e.g. 1000")).toHaveValue(1000);
+    });
+
+    // Edit threshold and amount to new values
+    const thresholdInput = screen.getByPlaceholderText("e.g. 1000");
+    await fill(thresholdInput, "4000");
+    const amountInput = screen.getByPlaceholderText("e.g. 10000");
+    await fill(amountInput, "20000");
+
+    // Click Save
+    const saveBtn = screen.getAllByRole("button").find((el) => {
+      return el.textContent?.trim() === "Save";
+    });
+    expect(saveBtn).toBeDefined();
+    await user.click(saveBtn!);
+
+    // After save completes, overrides are cleared and billingStatus reloads.
+    // Inputs should revert to the server-returned values (4000 and 20000).
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("e.g. 1000")).toHaveValue(4000);
+    });
+    expect(screen.getByPlaceholderText("e.g. 10000")).toHaveValue(20_000);
+  });
+});

@@ -55,30 +55,6 @@ export const setPendingEnabled$ = command(({ set }, value: boolean | null) => {
   set(internalPendingEnabled$, value);
 });
 
-export const formThreshold$ = computed(async (get) => {
-  const override = get(internalFormThresholdOverride$);
-  if (override !== null) {
-    return override;
-  }
-  const config = await get(autoRechargeConfig$);
-  return config.threshold;
-});
-export const formAmount$ = computed(async (get) => {
-  const override = get(internalFormAmountOverride$);
-  if (override !== null) {
-    return override;
-  }
-  const config = await get(autoRechargeConfig$);
-  return config.amount;
-});
-
-export const setFormThreshold$ = command(({ set }, value: string) => {
-  set(internalFormThresholdOverride$, value);
-});
-export const setFormAmount$ = command(({ set }, value: string) => {
-  set(internalFormAmountOverride$, value);
-});
-
 /**
  * Async computed signal that fetches billing status on first access.
  * Use with useLastLoadable() in views for automatic loading.
@@ -185,6 +161,34 @@ export const autoRechargeConfig$ = computed(async (get) => {
     threshold: ar.threshold !== null ? String(ar.threshold) : "",
     amount: ar.amount !== null ? String(ar.amount) : "",
   };
+});
+
+// ---------------------------------------------------------------------------
+// Form override signals — derive from autoRechargeConfig$ when no override set
+// ---------------------------------------------------------------------------
+
+export const formThreshold$ = computed(async (get) => {
+  const override = get(internalFormThresholdOverride$);
+  if (override !== null) {
+    return override;
+  }
+  const config = await get(autoRechargeConfig$);
+  return config.threshold;
+});
+export const formAmount$ = computed(async (get) => {
+  const override = get(internalFormAmountOverride$);
+  if (override !== null) {
+    return override;
+  }
+  const config = await get(autoRechargeConfig$);
+  return config.amount;
+});
+
+export const setFormThreshold$ = command(({ set }, value: string) => {
+  set(internalFormThresholdOverride$, value);
+});
+export const setFormAmount$ = command(({ set }, value: string) => {
+  set(internalFormAmountOverride$, value);
 });
 
 // ---------------------------------------------------------------------------
