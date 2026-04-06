@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.192.0](https://github.com/vm0-ai/vm0/compare/app-v0.191.4...app-v0.192.0) (2026-04-06)
+
+
+### Features
+
+* **chat:** add /chats page for mobile chat list navigation ([#8243](https://github.com/vm0-ai/vm0/issues/8243)) ([2e87f7d](https://github.com/vm0-ai/vm0/commit/2e87f7d5a5bcbb8033f7148feeccc0e8fc4c7333))
+
 ## [0.191.4](https://github.com/vm0-ai/vm0/compare/app-v0.191.3...app-v0.191.4) (2026-04-06)
 
 
