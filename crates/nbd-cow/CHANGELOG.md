@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.4](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.3.3...nbd-cow-v0.3.4) (2026-04-06)
+
+
+### Refactoring
+
+* **nbd:** deduplicate nbds_max, add concurrent test and bitmap assertion ([#8228](https://github.com/vm0-ai/vm0/issues/8228)) ([c0b98df](https://github.com/vm0-ai/vm0/commit/c0b98df3eb69ec81b26373d23d093a9526839752))
+
 ## [0.3.3](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.3.2...nbd-cow-v0.3.3) (2026-04-03)
 
 
