@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.196.0](https://github.com/vm0-ai/vm0/compare/web-v12.195.1...web-v12.196.0) (2026-04-06)
+
+
+### Features
+
+* **web:** fix critical seo issues for vm0.ai ([#8239](https://github.com/vm0-ai/vm0/issues/8239)) ([44e66f6](https://github.com/vm0-ai/vm0/commit/44e66f628cd701b096c7855e591b4cf730a3e28b))
+
 ## [12.195.1](https://github.com/vm0-ai/vm0/compare/web-v12.195.0...web-v12.195.1) (2026-04-06)
 
 

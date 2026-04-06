@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.191.4](https://github.com/vm0-ai/vm0/compare/app-v0.191.3...app-v0.191.4) (2026-04-06)
+
+
+### Bug Fixes
+
+* **platform:** remove schedule/agents icons and fix avatar-text alignment ([#8110](https://github.com/vm0-ai/vm0/issues/8110)) ([086d881](https://github.com/vm0-ai/vm0/commit/086d8818ae50d2ad6d911183a02ec13fa7abe4cd))
+
+
+### Refactoring
+
+* **platform:** ban useeffect and move side effects to signals layer ([#8235](https://github.com/vm0-ai/vm0/issues/8235)) ([61cd0d7](https://github.com/vm0-ai/vm0/commit/61cd0d7c066169fc7b0a139eecce442419598284))
+* **sidebar:** replace js viewport detection with css-only responsive ([#8240](https://github.com/vm0-ai/vm0/issues/8240)) ([9e94399](https://github.com/vm0-ai/vm0/commit/9e9439954f4de5eaf812d3c425426d089f2ec21a))
+
 ## [0.191.3](https://github.com/vm0-ai/vm0/compare/app-v0.191.2...app-v0.191.3) (2026-04-06)
 
 
