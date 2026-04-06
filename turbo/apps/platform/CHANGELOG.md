@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.191.3](https://github.com/vm0-ai/vm0/compare/app-v0.191.2...app-v0.191.3) (2026-04-06)
+
+
+### Bug Fixes
+
+* **chat:** replace scroll anchor with dual-anchor scroll strategy ([#8234](https://github.com/vm0-ai/vm0/issues/8234)) ([8e697d4](https://github.com/vm0-ai/vm0/commit/8e697d479580ac1bd2c640feb3d6ff8ead089259))
+
 ## [0.191.2](https://github.com/vm0-ai/vm0/compare/app-v0.191.1...app-v0.191.2) (2026-04-06)
 
 
