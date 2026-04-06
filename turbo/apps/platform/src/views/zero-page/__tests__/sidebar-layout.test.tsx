@@ -17,7 +17,7 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
-import { pathname } from "../../../signals/location.ts";
+import { pathname, search } from "../../../signals/location.ts";
 import { setSidebarExpanded$ } from "../../../signals/zero-page/zero-nav.ts";
 
 const context = testContext();
@@ -269,6 +269,9 @@ describe("sidebar layout - menu toggle passes agent ID to chat list (SIDEBAR-D-0
     await waitFor(() => {
       // Navigates to /chats with agentId search param for the default agent
       expect(pathname()).toBe("/chats");
+      expect(new URLSearchParams(search()).get("agentId")).toBe(
+        DEFAULT_AGENT_ID,
+      );
     });
 
     // Wait for the chat list page to fully render after navigation
