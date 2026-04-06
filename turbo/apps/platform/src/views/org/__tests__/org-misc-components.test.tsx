@@ -479,7 +479,7 @@ describe("clerk provider - display (ORG-D-122)", () => {
     // Verify that app content rendered — the mock-auth Clerk instance is in "hasData"
     // state, so the provider should allow children to render.
     await waitFor(() => {
-      expect(screen.getByRole("navigation")).toBeInTheDocument();
+      expect(screen.getAllByRole("navigation").length).toBeGreaterThan(0);
     });
   });
 });
