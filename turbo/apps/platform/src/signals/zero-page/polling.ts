@@ -1,6 +1,6 @@
 import { command, computed, state, type Computed } from "ccstate";
 import type { AgentEvent } from "./log-types.ts";
-import { delay } from "signal-timers";
+
 import {
   zeroRunAgentEventsContract,
   logsByIdContract,
@@ -19,7 +19,7 @@ export const setPollIntervalForTest$ = command(({ set }, interval: number) => {
   set(internalPollInterval$, interval);
 });
 
-const poolInterval$ = computed((get) => {
+export const pollInterval$ = computed((get) => {
   return get(internalPollInterval$);
 });
 
@@ -155,19 +155,6 @@ function createRunPagedEvents(runId: string) {
   });
 }
 
-const THINKING_MESSAGES = [
-  "On it, grab a coffee",
-  "Thinking hard...",
-  "Cooking up something good...",
-  "Give me a sec...",
-  "Working my magic...",
-  "Hang tight...",
-  "Let me figure this out...",
-  "Brewing ideas...",
-  "Crunching the numbers...",
-  "Just a moment...",
-] as const;
-
 export function createRunLoop(runId: string) {
   const {
     detail$: runDetail$,
@@ -188,64 +175,48 @@ export function createRunLoop(runId: string) {
     return [...initial, ...looped];
   });
 
-  const reloadThinkingMessage$ = state(0);
-
-  const thinkingMessage$ = computed((get) => {
-    get(reloadThinkingMessage$);
-    return THINKING_MESSAGES[
-      Math.floor(Math.random() * THINKING_MESSAGES.length)
-    ];
-  });
-
-  const beginLoop$ = command(async ({ set, get }, signal: AbortSignal) => {
+  const checkFinished$ = command(async ({ set, get }, signal: AbortSignal) => {
     let status = (await get(runDetail$)).status;
     signal.throwIfAborted();
 
-    while (status === "pending") {
-      await delay(get(poolInterval$), { signal });
+    if (status === "pending") {
       set(reloadRunStatus$);
       set(reloadQueuePosition$);
       status = (await get(runDetail$)).status;
       signal.throwIfAborted();
     }
 
+    if (status === "pending") {
+      return false;
+    }
+
     const initialPagedEvents = await get(initialRunPagedEvents$);
     signal.throwIfAborted();
 
-    while (true) {
-      // First, we need to check the "finish" status. If it has finished,
-      // we still need to pull the chat data from the page one last time.
-      // This ensures that the final set of data is successfully included.
-      const finished = await get(finished$);
-      signal.throwIfAborted();
+    const loopedPagedEvents = get(internalLoopedPagedEvents$);
+    const lastPagedEventsLists =
+      loopedPagedEvents.length > 0 ? loopedPagedEvents : initialPagedEvents;
+    const lastPagedEvents =
+      lastPagedEventsLists[lastPagedEventsLists.length - 1] ?? null;
+    const since = lastPagedEvents
+      ? (await get(lastPagedEvents)).events.slice(-1)[0]?.createdAt
+      : undefined;
+    signal.throwIfAborted();
 
-      const loopedPagedEvents = get(internalLoopedPagedEvents$);
-      const lastPagedEventsLists =
-        loopedPagedEvents.length > 0 ? loopedPagedEvents : initialPagedEvents;
-      const lastPagedEvents =
-        lastPagedEventsLists[lastPagedEventsLists.length - 1] ?? null;
-      const since = lastPagedEvents
-        ? (await get(lastPagedEvents)).events.slice(-1)[0]?.createdAt
-        : undefined;
-      signal.throwIfAborted();
+    const nextPage$ = createEventPageComputed(runId, since);
+    set(internalLoopedPagedEvents$, (prev) => {
+      return [...prev, nextPage$];
+    });
 
-      const nextPage$ = createEventPageComputed(runId, since);
-      set(internalLoopedPagedEvents$, (prev) => {
-        return [...prev, nextPage$];
-      });
+    set(reloadRunStatus$);
 
-      await delay(get(poolInterval$), { signal });
-      set(reloadRunStatus$);
-      set(reloadThinkingMessage$, (x) => {
-        return x + 1;
-      });
+    const lastPage = await get(nextPage$);
+    signal.throwIfAborted();
 
-      const lastPage = await get(nextPage$);
-      signal.throwIfAborted();
-      if (finished && !lastPage.hasMore) {
-        break;
-      }
-    }
+    const finished = await get(finished$);
+    signal.throwIfAborted();
+
+    return finished && !lastPage.hasMore;
   });
 
   const cancel$ = command(async ({ get }, signal: AbortSignal) => {
@@ -262,11 +233,10 @@ export function createRunLoop(runId: string) {
 
   return {
     pagedEventsList$,
-    beginLoop$,
+    checkFinished$,
     cancel$,
     detail$: runDetail$,
     queuePosition$,
     finished$,
-    thinkingMessage$,
   };
 }

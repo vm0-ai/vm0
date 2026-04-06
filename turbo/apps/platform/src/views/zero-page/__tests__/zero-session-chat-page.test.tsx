@@ -3,7 +3,10 @@ import { screen, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  setupPage,
+} from "../../../__tests__/page-helper.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 
 const context = testContext();
@@ -34,7 +37,7 @@ describe("userMessage line break rendering", () => {
       }),
     );
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/chats/thread-multiline",
     });
@@ -74,7 +77,7 @@ describe("userMessage line break rendering", () => {
       }),
     );
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/chats/thread-singleline",
     });
@@ -115,7 +118,7 @@ describe("provider incompatibility error", () => {
       }),
     );
 
-    await setupPage({ context, path: "/chats/thread-provider-error" });
+    detachedSetupPage({ context, path: "/chats/thread-provider-error" });
 
     await waitFor(() => {
       expect(screen.getByText(/different model provider/)).toBeInTheDocument();
@@ -150,7 +153,7 @@ describe("provider incompatibility error", () => {
       }),
     );
 
-    await setupPage({ context, path: "/chats/thread-signature-error" });
+    detachedSetupPage({ context, path: "/chats/thread-signature-error" });
 
     await waitFor(() => {
       expect(screen.getByText(/different model provider/)).toBeInTheDocument();
@@ -179,7 +182,7 @@ describe("agent avatar link", () => {
       }),
     );
 
-    await setupPage({ context, path: "/chats/thread-avatar-test" });
+    detachedSetupPage({ context, path: "/chats/thread-avatar-test" });
 
     const link = await waitFor(() => {
       return screen.getByLabelText("View agent profile");
@@ -216,7 +219,7 @@ describe("chat message activity line", () => {
       },
     ]);
 
-    await setupPage({ context, path: "/chats/thread-activity-running" });
+    detachedSetupPage({ context, path: "/chats/thread-activity-running" });
 
     // The result content should be rendered
     await waitFor(() => {
@@ -256,7 +259,7 @@ describe("chat message activity line", () => {
       },
     ]);
 
-    await setupPage({ context, path: "/chats/thread-activity-done" });
+    detachedSetupPage({ context, path: "/chats/thread-activity-done" });
 
     // Wait for content to appear
     await waitFor(() => {

@@ -27,6 +27,7 @@ import { setFeatureSwitchLocalStorage$ } from "../signals/external/feature-switc
 import { setDebugLoggerLocalStorage$ } from "../signals/bootstrap/loggers";
 import { setPollIntervalForTest$ } from "../signals/zero-page/polling";
 import { setValidateResponseForTest$ } from "../signals/api-client";
+import { detach, Reason } from "../signals/utils";
 
 export async function setupPage(options: {
   context: TestContext;
@@ -123,6 +124,10 @@ export async function setupPage(options: {
       options.context.signal,
     );
   }
+}
+
+export function detachedSetupPage(options: Parameters<typeof setupPage>[0]) {
+  detach(setupPage(options), Reason.Entrance, "test");
 }
 
 /**

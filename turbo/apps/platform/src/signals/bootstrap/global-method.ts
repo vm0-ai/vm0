@@ -7,10 +7,11 @@ import {
   overrideFeatureSwitch$,
 } from "../external/feature-switch";
 import { inspectLogInput$ } from "./inspect-log-input";
+import { extendDebugLoggerLocalStorage$ } from "./loggers";
 
 const L = logger("GlobalMethod");
 
-function createLoggerControl(name: string) {
+const createLoggerControl$ = command(({ set }, name: string) => {
   const loggers = getLoggers();
   const loggerInstance = loggers[name];
   if (!loggerInstance) {
@@ -24,12 +25,13 @@ function createLoggerControl(name: string) {
     set debug(value: boolean) {
       if (value) {
         loggerInstance.level = Level.Debug;
+        set(extendDebugLoggerLocalStorage$, name);
       } else if (loggerInstance.level === Level.Debug) {
         loggerInstance.level = Level.Info;
       }
     },
   };
-}
+});
 
 export const setupGlobalMethod$ = command(
   async ({ set, get }, signal: AbortSignal) => {
@@ -40,7 +42,7 @@ export const setupGlobalMethod$ = command(
         const loggers = getLoggers();
         const result: DebugLoggers = {};
         for (const name of Object.keys(loggers)) {
-          result[name] = createLoggerControl(name);
+          result[name] = set(createLoggerControl$, name);
         }
         return result;
       },

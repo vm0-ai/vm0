@@ -56,6 +56,8 @@ import {
   type UserChatMessage,
   type AssistantChatMessage,
   cancelActiveRun$,
+  scrollContainerRef$,
+  thinkingMessage$,
 } from "../../signals/zero-page/zero-chat.ts";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
 import { Link } from "../router/link.tsx";
@@ -263,21 +265,22 @@ export function ZeroChatThreadPage() {
       : null;
   const messagesLoading = messagesLoadable.state === "loading";
 
-  // Auto-scroll when messages change — ref callback runs at commit time
-  const scrollAnchorRef = (el: HTMLDivElement | null) => {
-    if (el && messages.length > 0) {
-      el.scrollIntoView({ behavior: "instant" });
-    }
-  };
+  const setContainerRef = useSet(scrollContainerRef$);
 
   return (
     <div className="flex flex-1 flex-col min-h-0 bg-transparent">
       <ChatThreadHeader />
 
       {/* Scrollable area — messages + sticky composer share the same scroll context */}
-      <div className="flex-1 overflow-auto flex flex-col min-h-0">
+      <div
+        data-scroll-container
+        className="flex-1 overflow-auto flex flex-col min-h-0"
+      >
         <main className="flex-1 px-4 sm:px-6 py-4 items-center @container">
-          <div className="w-full max-w-[900px] mx-auto flex flex-1 flex-col gap-6 pb-4 overflow-visible">
+          <div
+            ref={setContainerRef}
+            className="w-full max-w-[900px] mx-auto flex flex-1 flex-col gap-6 pb-4 overflow-visible"
+          >
             {sessionError && (
               <div className="flex-1 flex items-center justify-center py-16">
                 <div className="flex items-center gap-2 text-destructive">
@@ -299,7 +302,6 @@ export function ZeroChatThreadPage() {
             {messages.map((msg) => {
               return <ChatMessageRow key={msg.id} message={msg} />;
             })}
-            <div ref={scrollAnchorRef} />
           </div>
         </main>
 
@@ -393,10 +395,15 @@ function ChatSkeleton() {
 // ---------------------------------------------------------------------------
 
 function ChatMessageRow({ message }: { message: ZeroChatMessage }) {
-  if (message.role === "user") {
-    return <UserMessage message={message} />;
-  }
-  return <AssistantMessage message={message} />;
+  return (
+    <div data-role={message.role}>
+      {message.role === "user" ? (
+        <UserMessage message={message} />
+      ) : (
+        <AssistantMessage message={message} />
+      )}
+    </div>
+  );
 }
 
 /**
@@ -456,7 +463,7 @@ function UserMessage({ message }: { message: UserChatMessage }) {
   ];
 
   return (
-    <>
+    <div data-role="user">
       <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex flex-col items-end w-full">
@@ -502,7 +509,7 @@ function UserMessage({ message }: { message: UserChatMessage }) {
         </div>
       </div>
       {lightboxUrl && <ImageLightbox url={lightboxUrl} />}
-    </>
+    </div>
   );
 }
 
@@ -532,7 +539,7 @@ function MessageRunActivityLine({
   const queuePosition =
     queueLoadable.state === "hasData" ? queueLoadable.data : 0;
   const isQueued = runStatus === "queued";
-  const thinkingMsg = useGet(message.runLoop!.thinkingMessage$);
+  const thinkingMsg = useGet(thinkingMessage$);
   return (
     <RunActivityLineView
       summaries={rawSummaries}
@@ -883,7 +890,10 @@ function StaticAssistantMessage({
       message.error.includes("Cannot continue session") ||
       message.error.includes("Invalid signature in thinking block");
     return (
-      <div className="group flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
+      <div
+        data-role="assistant"
+        className="group flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300"
+      >
         <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
           {avatar}
           <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-1.5 text-sm leading-relaxed min-w-0 break-words">
@@ -977,7 +987,10 @@ function StaticAssistantMessage({
 
   // Thinking / loading state — show live run activity
   return (
-    <div className="flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
+    <div
+      data-role="assistant"
+      className="flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300"
+    >
       <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
         {avatar}
         <div className="zero-chat-bubble-assistant rounded-xl py-4 text-sm leading-relaxed min-w-0 overflow-hidden">

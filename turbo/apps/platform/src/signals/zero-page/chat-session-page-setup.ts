@@ -62,8 +62,6 @@ export const setupChatSessionPage$ = command(
     signal.throwIfAborted();
     set(setSidebarChatAgent$, chatAgentId);
 
-    // chatSessionSnapshot$ auto-fetches from URL. loadSessionFromSnapshot$
-    // awaits it, populates server messages, syncs agent, resumes polling.
     await set(loadSessionFromSnapshot$, signal);
   },
 );

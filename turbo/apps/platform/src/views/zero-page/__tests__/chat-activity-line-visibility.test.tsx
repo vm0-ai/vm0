@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  setupPage,
+} from "../../../__tests__/page-helper.ts";
 import { mockChatLifecycle, makeToolUseEvent } from "./chat-test-helpers.ts";
 
 const context = testContext();
@@ -28,7 +31,7 @@ describe("activity line visibility while run is still running", () => {
       ],
     });
 
-    await setupPage({ context, path: "/chats/thread-activity-vis" });
+    detachedSetupPage({ context, path: "/chats/thread-activity-vis" });
 
     // Wait for the active run to appear with thinking state
     await waitFor(() => {
@@ -83,7 +86,7 @@ describe("activity line visibility while run is still running", () => {
       ],
     });
 
-    await setupPage({ context, path: "/chats/thread-activity-terminal" });
+    detachedSetupPage({ context, path: "/chats/thread-activity-terminal" });
 
     // Thinking state initially
     await waitFor(() => {

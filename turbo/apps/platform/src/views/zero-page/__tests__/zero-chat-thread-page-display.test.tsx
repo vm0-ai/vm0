@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  setupPage,
+} from "../../../__tests__/page-helper.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import {
   mockChatLifecycle,
@@ -17,7 +20,7 @@ describe("zero chat thread page display - thread header agent avatar and display
   it("renders the agent display name and avatar image in the thread header", async () => {
     mockSubagentThread("thread-header-test");
 
-    await setupPage({ context, path: "/chats/thread-header-test" });
+    detachedSetupPage({ context, path: "/chats/thread-header-test" });
 
     await waitFor(() => {
       const spans = screen.getAllByText("Assistant");
@@ -33,7 +36,7 @@ describe("zero chat thread page display - pin pill conditional rendering", () =>
     setMockUserPreferences({ pinnedAgentIds: [] });
     mockSubagentThread("thread-header-test");
 
-    await setupPage({ context, path: "/chats/thread-header-test" });
+    detachedSetupPage({ context, path: "/chats/thread-header-test" });
 
     await waitFor(() => {
       expect(screen.getByLabelText("Pin to sidebar")).toBeInTheDocument();
@@ -44,7 +47,7 @@ describe("zero chat thread page display - pin pill conditional rendering", () =>
     setMockUserPreferences({ pinnedAgentIds: [SUB_AGENT_ID] });
     mockSubagentThread("thread-header-test");
 
-    await setupPage({ context, path: "/chats/thread-header-test" });
+    detachedSetupPage({ context, path: "/chats/thread-header-test" });
 
     await waitFor(() => {
       const spans = screen.getAllByText("Assistant");
@@ -68,7 +71,7 @@ describe("zero chat thread page display - attachment image preview", () => {
       ],
     });
 
-    await setupPage({ context, path: "/chats/thread-test-1" });
+    detachedSetupPage({ context, path: "/chats/thread-test-1" });
 
     await waitFor(() => {
       expect(
@@ -92,7 +95,7 @@ describe("zero chat thread page display - attachment file preview", () => {
       ],
     });
 
-    await setupPage({ context, path: "/chats/thread-test-1" });
+    detachedSetupPage({ context, path: "/chats/thread-test-1" });
 
     await waitFor(() => {
       expect(screen.getByTitle("document.pdf")).toBeInTheDocument();
@@ -116,7 +119,7 @@ describe("zero chat thread page display - run activity line summaries", () => {
     });
     ctrl.setEvents([makeToolUseEvent("Bash", { command: "ls" }, 1)]);
 
-    await setupPage({ context, path: "/chats/thread-test-1" });
+    detachedSetupPage({ context, path: "/chats/thread-test-1" });
 
     await waitFor(() => {
       expect(screen.getByLabelText("Current activity")).toBeInTheDocument();
@@ -141,7 +144,7 @@ describe("zero chat thread page display - run activity line queue position", () 
     ctrl.setRunStatus("queued");
     ctrl.setQueuePosition(3);
 
-    await setupPage({ context, path: "/chats/thread-test-1" });
+    detachedSetupPage({ context, path: "/chats/thread-test-1" });
 
     await waitFor(() => {
       const el = screen.getByText((_content, element) => {
@@ -174,7 +177,7 @@ describe("zero chat thread page display - timeline of steps", () => {
       ],
     });
 
-    await setupPage({ context, path: "/chats/thread-test-1" });
+    detachedSetupPage({ context, path: "/chats/thread-test-1" });
 
     await waitFor(() => {
       expect(screen.getByText(/Took 1 step/)).toBeInTheDocument();
@@ -197,7 +200,7 @@ describe("zero chat thread page display - message status indicators", () => {
       ],
     });
 
-    await setupPage({ context, path: "/chats/thread-test-1" });
+    detachedSetupPage({ context, path: "/chats/thread-test-1" });
 
     await waitFor(() => {
       expect(screen.getByLabelText("Stop")).toBeInTheDocument();

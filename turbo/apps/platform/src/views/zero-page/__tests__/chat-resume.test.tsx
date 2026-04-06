@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  setupPage,
+} from "../../../__tests__/page-helper.ts";
 import { mockChatLifecycle, makeToolUseEvent } from "./chat-test-helpers.ts";
 
 const context = testContext();
@@ -33,7 +36,7 @@ describe("chat resume", () => {
       ],
     });
 
-    await setupPage({ context, path: "/chats/thread-resume" });
+    detachedSetupPage({ context, path: "/chats/thread-resume" });
 
     // History messages should be visible
     await waitFor(() => {
@@ -77,7 +80,7 @@ describe("chat resume", () => {
       ],
     });
 
-    await setupPage({ context, path: "/chats/thread-resume-2" });
+    detachedSetupPage({ context, path: "/chats/thread-resume-2" });
 
     // Wait for the page to load with history
     await waitFor(() => {
@@ -111,7 +114,7 @@ describe("chat resume", () => {
       ],
     });
 
-    await setupPage({ context, path: "/chats/thread-resume-3" });
+    detachedSetupPage({ context, path: "/chats/thread-resume-3" });
 
     // Wait for sending state
     await waitFor(() => {
