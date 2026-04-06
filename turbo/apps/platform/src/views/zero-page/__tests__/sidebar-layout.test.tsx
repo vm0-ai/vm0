@@ -18,6 +18,7 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
+import { setSidebarExpanded$ } from "../../../signals/zero-page/zero-nav.ts";
 
 const context = testContext();
 
@@ -150,7 +151,9 @@ describe("sidebar layout - menu toggle navigates to chat list (SIDEBAR-D-050)", 
 
     // Wait for the chat list page to fully render after navigation
     await waitFor(() => {
-      expect(document.title).toContain("Chats");
+      expect(
+        screen.getByRole("heading", { name: /Chats with/ }),
+      ).toBeInTheDocument();
     });
   });
 });
@@ -270,7 +273,31 @@ describe("sidebar layout - menu toggle passes agent ID to chat list (SIDEBAR-D-0
 
     // Wait for the chat list page to fully render after navigation
     await waitFor(() => {
-      expect(document.title).toContain("Chats");
+      expect(
+        screen.getByRole("heading", { name: /Chats with/ }),
+      ).toBeInTheDocument();
+    });
+  });
+});
+
+describe("sidebar layout - overlay click collapses sidebar (SIDEBAR-D-054)", () => {
+  it("hides the sidebar overlay when the overlay is clicked", async () => {
+    const user = userEvent.setup();
+    mockBaseAPIs();
+    await setupPage({ context, path: "/" });
+
+    // Expand the sidebar via signal to show the overlay
+    context.store.set(setSidebarExpanded$, true);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Sidebar overlay")).toBeInTheDocument();
+    });
+
+    const overlay = screen.getByLabelText("Sidebar overlay");
+    await user.click(overlay);
+
+    await waitFor(() => {
+      expect(screen.queryByLabelText("Open menu")).toBeInTheDocument();
     });
   });
 });
