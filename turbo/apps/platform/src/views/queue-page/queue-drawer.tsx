@@ -1,5 +1,4 @@
-import { useEffect } from "react";
-import { useGet, useSet } from "ccstate-react";
+import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, Button } from "@vm0/ui";
 import { IconCrown } from "@tabler/icons-react";
@@ -7,10 +6,7 @@ import {
   queueDrawerOpen$,
   setQueueDrawerOpen$,
 } from "../../signals/queue-page/queue-drawer-state.ts";
-import {
-  queueData$,
-  startQueuePolling$,
-} from "../../signals/queue-page/queue-signals.ts";
+import { queueData$ } from "../../signals/queue-page/queue-signals.ts";
 import { startCheckout$ } from "../../signals/zero-page/billing.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -28,7 +24,7 @@ interface UpgradePath {
   features: readonly string[];
 }
 
-const UPGRADE_PATHS: Record<string, UpgradePath> = {
+const UPGRADE_PATHS = {
   free: {
     targetTier: "pro",
     targetLabel: "Pro",
@@ -59,7 +55,7 @@ const UPGRADE_PATHS: Record<string, UpgradePath> = {
       "Priority support",
     ],
   },
-};
+} as const satisfies Record<string, UpgradePath>;
 
 // ---------------------------------------------------------------------------
 // Check icon matching plan comparison page
@@ -89,7 +85,8 @@ function CheckCircleIcon() {
 // ---------------------------------------------------------------------------
 
 function QueueDrawerContent() {
-  const data = useGet(queueData$);
+  const dataLoadable = useLastLoadable(queueData$);
+  const data = dataLoadable.state === "hasData" ? dataLoadable.data : null;
   const pageSignal = useGet(pageSignal$);
   const [checkoutLoadable, checkout] = useLoadableSet(startCheckout$);
   const checkoutLoading = checkoutLoadable.state === "loading";
@@ -106,7 +103,10 @@ function QueueDrawerContent() {
   const { concurrency } = data;
   const tierLabel =
     concurrency.tier.charAt(0).toUpperCase() + concurrency.tier.slice(1);
-  const upgrade = UPGRADE_PATHS[concurrency.tier];
+  const upgrade =
+    concurrency.tier in UPGRADE_PATHS
+      ? UPGRADE_PATHS[concurrency.tier as keyof typeof UPGRADE_PATHS]
+      : undefined;
 
   const tierColor = "text-[#D27939]";
 
@@ -173,7 +173,7 @@ function QueueDrawerContent() {
           </div>
 
           <ul className="flex flex-col gap-2">
-            {upgrade.features.map((feature) => {
+            {upgrade.features.map((feature: string) => {
               return (
                 <li key={feature} className="flex items-center gap-2">
                   <CheckCircleIcon />
@@ -207,27 +207,9 @@ function QueueDrawerContent() {
   );
 }
 
-function useQueuePolling(open: boolean) {
-  const startPolling = useSet(startQueuePolling$);
-  const pageSignal = useGet(pageSignal$);
-
-  useEffect(() => {
-    if (!open || pageSignal.aborted) {
-      return;
-    }
-    startPolling(pageSignal).catch((error: unknown) => {
-      if (error instanceof Error && error.name === "AbortError") {
-        return;
-      }
-    });
-  }, [open, startPolling, pageSignal]);
-}
-
 export function QueueDrawer() {
   const open = useGet(queueDrawerOpen$);
   const setOpen = useSet(setQueueDrawerOpen$);
-
-  useQueuePolling(open);
 
   return (
     <Sheet
