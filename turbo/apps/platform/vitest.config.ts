@@ -23,6 +23,5 @@ export default defineConfig({
     globals: true,
     environment: "happy-dom",
     setupFiles: ["./src/test/setup.ts"],
-    testTimeout: 15_000,
   },
 });

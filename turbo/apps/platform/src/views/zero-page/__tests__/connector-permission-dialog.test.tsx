@@ -15,6 +15,7 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import { setPermissionDialogType$ } from "../../../signals/zero-page/settings/connectors.ts";
+import { permissionDialogSelected$ } from "../../../signals/zero-page/settings/permission-dialog.ts";
 import type { ConnectorType } from "@vm0/core";
 
 const context = testContext();
@@ -290,10 +291,7 @@ describe("connector permission dialog", () => {
     expect(screen.getByText("Agent Alpha")).toBeInTheDocument();
     expect(screen.getByText("Agent Beta")).toBeInTheDocument();
 
-    // Agent Alpha should no longer be selected — avatar img is shown instead of check icon
-    const agentAlphaBtn = screen.getAllByRole("button").find((el) => {
-      return /Agent Alpha/.test(el.textContent ?? "");
-    });
-    expect(agentAlphaBtn?.querySelector("img")).toBeInTheDocument();
+    // Agent Alpha should no longer be selected — selection set is empty
+    expect(context.store.get(permissionDialogSelected$).size).toBe(0);
   });
 });
