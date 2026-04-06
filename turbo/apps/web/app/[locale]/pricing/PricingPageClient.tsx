@@ -47,7 +47,7 @@ function PricingCard({
         return setIsHovered(false);
       }}
     >
-      <h3
+      <h2
         style={{
           fontSize: "18px",
           fontWeight: 600,
@@ -59,7 +59,7 @@ function PricingCard({
         }}
       >
         {title}
-      </h3>
+      </h2>
       <div
         style={{
           fontSize: "42px",
@@ -259,7 +259,7 @@ export default function PricingPageClient() {
             }}
           >
             <div>
-              <h3
+              <h2
                 style={{
                   fontSize: "24px",
                   fontWeight: 400,
@@ -269,7 +269,7 @@ export default function PricingPageClient() {
                 }}
               >
                 Need more credits?
-              </h3>
+              </h2>
               <p
                 style={{
                   fontSize: "15px",
@@ -738,7 +738,7 @@ function FAQItem({ question, answer }: { question: string; answer: string }) {
           gap: "16px",
         }}
       >
-        <h4
+        <h3
           style={{
             fontSize: "18px",
             fontWeight: 400,
@@ -748,7 +748,7 @@ function FAQItem({ question, answer }: { question: string; answer: string }) {
           }}
         >
           {question}
-        </h4>
+        </h3>
         <svg
           width="20"
           height="20"
