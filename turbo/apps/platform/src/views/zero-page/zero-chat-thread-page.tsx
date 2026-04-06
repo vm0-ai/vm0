@@ -56,8 +56,6 @@ import {
   type UserChatMessage,
   type AssistantChatMessage,
   cancelActiveRun$,
-  scrollContainerRef$,
-  scrollChat$,
   thinkingMessage$,
 } from "../../signals/zero-page/zero-chat.ts";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
@@ -75,6 +73,61 @@ import { zeroSubagents$ } from "../../signals/zero-page/zero-agents.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 // eslint-disable-next-line no-restricted-imports -- useLayoutEffect needed for scroll-before-paint
 import { useLayoutEffect } from "react";
+
+function scrollToLatestMessage() {
+  const scrollEl = document.querySelector<HTMLElement>(
+    "[data-scroll-container]",
+  );
+  const container = document.querySelector<HTMLElement>(
+    "[data-message-container]",
+  );
+  if (!scrollEl || !container) {
+    return;
+  }
+
+  const children = container.children;
+  if (children.length === 0) {
+    return;
+  }
+
+  let lastUser: HTMLElement | null = null;
+  let lastAssistant: HTMLElement | null = null;
+  for (let i = children.length - 1; i >= 0; i--) {
+    const child = children[i] as HTMLElement;
+    const role = child.dataset.role;
+    if (!lastAssistant && role === "assistant") {
+      lastAssistant = child;
+    }
+    if (!lastUser && role === "user") {
+      lastUser = child;
+    }
+    if (lastUser && lastAssistant) {
+      break;
+    }
+  }
+
+  if (!lastUser) {
+    return;
+  }
+
+  const visibleHeight = scrollEl.clientHeight;
+  const userTop = lastUser.offsetTop - container.offsetTop;
+
+  if (lastAssistant && lastAssistant.offsetTop > lastUser.offsetTop) {
+    const assistantBottom =
+      lastAssistant.offsetTop -
+      container.offsetTop +
+      lastAssistant.offsetHeight;
+    if (assistantBottom - userTop <= visibleHeight) {
+      scrollEl.scrollTop = userTop;
+    } else {
+      scrollEl.scrollTop = assistantBottom - visibleHeight;
+    }
+  } else {
+    scrollEl.scrollTop = userTop;
+  }
+}
+
 function AvatarOrPlaceholder({
   src,
   className,
@@ -268,8 +321,6 @@ export function ZeroChatThreadPage() {
       : null;
   const messagesLoading = messagesLoadable.state === "loading";
 
-  const setContainerRef = useSet(scrollContainerRef$);
-
   return (
     <div className="flex flex-1 flex-col min-h-0 bg-transparent">
       <ChatThreadHeader />
@@ -281,7 +332,7 @@ export function ZeroChatThreadPage() {
       >
         <main className="flex-1 px-4 sm:px-6 py-4 items-center @container">
           <div
-            ref={setContainerRef}
+            data-message-container
             className="w-full max-w-[900px] mx-auto flex flex-1 flex-col gap-6 pb-4 overflow-visible"
           >
             {sessionError && (
@@ -803,15 +854,14 @@ function StaticAssistantMessage({
   message: AssistantChatMessage;
   renderActivityLine?: React.ReactNode;
 }) {
-  const triggerScroll = useSet(scrollChat$);
   const { avatarSrc } = useChatAgentIdentity();
   const setOrgManageOpen = useSet(setOrgManageDialogOpen$);
   const setTab = useSet(setActiveTab$);
   const pageSignal = useGet(pageSignal$);
   const content = useLastResolved(message.result$) ?? "";
   useLayoutEffect(() => {
-    triggerScroll();
-  }, [triggerScroll, content]);
+    scrollToLatestMessage();
+  }, [content]);
   const avatar = (
     <div className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 shrink-0 mt-0.5 overflow-hidden rounded-xl">
       <AvatarOrPlaceholder

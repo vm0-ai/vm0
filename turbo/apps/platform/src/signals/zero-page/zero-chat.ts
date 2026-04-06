@@ -1,6 +1,6 @@
 import { command, computed, state, type Computed } from "ccstate";
 import type { AgentEvent, LogStatus } from "./log-types.ts";
-import { onRef, resetSignal, throwIfAbort } from "../utils.ts";
+import { resetSignal, throwIfAbort } from "../utils.ts";
 import { detachedNavigateTo$ } from "../route.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { logger } from "../log.ts";
@@ -103,93 +103,6 @@ const internalLocalMessages$ = state<ZeroChatMessage[]>([]);
 
 export const resetLocalMessages$ = command(({ set }) => {
   set(internalLocalMessages$, []);
-});
-
-// ---------------------------------------------------------------------------
-// Scroll container ref + auto-scroll logic
-// ---------------------------------------------------------------------------
-
-const scrollContainerEl$ = state<HTMLElement | null>(null);
-
-const attachScrollContainer$ = command(
-  ({ set }, el: HTMLElement, signal: AbortSignal): void => {
-    set(scrollContainerEl$, el);
-    signal.addEventListener(
-      "abort",
-      () => {
-        set(scrollContainerEl$, null);
-      },
-      { once: true },
-    );
-  },
-);
-
-export const scrollContainerRef$ = onRef<HTMLElement>(attachScrollContainer$);
-
-export const scrollChat$ = command(({ get }): void => {
-  const container = get(scrollContainerEl$);
-  if (!container) {
-    return;
-  }
-
-  const children = container.children;
-  if (children.length === 0) {
-    return;
-  }
-
-  // Find last user and last assistant message rows
-  let lastUser: HTMLElement | null = null;
-  let lastAssistant: HTMLElement | null = null;
-  for (let i = children.length - 1; i >= 0; i--) {
-    const child = children[i] as HTMLElement;
-    const role = child.dataset.role;
-    if (!lastAssistant && role === "assistant") {
-      lastAssistant = child;
-    }
-    if (!lastUser && role === "user") {
-      lastUser = child;
-    }
-    if (lastUser && lastAssistant) {
-      break;
-    }
-  }
-
-  if (!lastUser) {
-    return;
-  }
-
-  const scrollEl = container.closest<HTMLElement>("[data-scroll-container]");
-  if (!scrollEl) {
-    return;
-  }
-
-  const visibleHeight = scrollEl.clientHeight;
-  const userTop = lastUser.offsetTop - container.offsetTop;
-
-  if (lastAssistant && lastAssistant.offsetTop > lastUser.offsetTop) {
-    const assistantBottom =
-      lastAssistant.offsetTop -
-      container.offsetTop +
-      lastAssistant.offsetHeight;
-    if (assistantBottom - userTop <= visibleHeight) {
-      L.debug("scroll: pin user top", {
-        userTop,
-        assistantBottom,
-        visibleHeight,
-      });
-      scrollEl.scrollTop = userTop;
-    } else {
-      L.debug("scroll: pin assistant bottom", {
-        userTop,
-        assistantBottom,
-        visibleHeight,
-      });
-      scrollEl.scrollTop = assistantBottom - visibleHeight;
-    }
-  } else {
-    L.debug("scroll: pin user top (no assistant)", { userTop, visibleHeight });
-    scrollEl.scrollTop = userTop;
-  }
 });
 
 /**
