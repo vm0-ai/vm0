@@ -597,18 +597,16 @@ pub(crate) async fn reseed_guest_entropy(sandbox: &dyn Sandbox) -> RunnerResult<
     use std::io::Read;
 
     const ENTROPY_SIZE: usize = 256;
-    const ENTROPY_PATH: &str = "/tmp/.vm0-entropy";
 
     let mut entropy = vec![0u8; ENTROPY_SIZE];
     std::fs::File::open("/dev/urandom")
         .and_then(|mut f| f.read_exact(&mut entropy))
         .map_err(|e| RunnerError::Internal(format!("read host entropy: {e}")))?;
 
-    sandbox.write_file(ENTROPY_PATH, &entropy).await?;
-
+    let hex = hex::encode(&entropy);
     let result = sandbox
         .exec(&ExecRequest {
-            cmd: &format!("guest-reseed {ENTROPY_PATH}"),
+            cmd: &format!("guest-reseed {hex}"),
             timeout: DEFAULT_EXEC_TIMEOUT,
             env: &[],
             sudo: true,
