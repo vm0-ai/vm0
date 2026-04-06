@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.153.1](https://github.com/vm0-ai/vm0/compare/core-v8.153.0...core-v8.153.1) (2026-04-06)
+
+
+### Bug Fixes
+
+* **firewall:** add wildcard permission to Pika connector ([#8226](https://github.com/vm0-ai/vm0/issues/8226)) ([c324bc4](https://github.com/vm0-ai/vm0/commit/c324bc4e45f0239d1995c6ab555febba55818ee7))
+
 ## [8.153.0](https://github.com/vm0-ai/vm0/compare/core-v8.152.0...core-v8.153.0) (2026-04-06)
 
 
