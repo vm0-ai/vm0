@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { useLastResolved, useGet, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { IconSearch, IconCircleCheckFilled } from "@tabler/icons-react";
@@ -22,7 +21,6 @@ import {
   permissionDialogSearch$,
   setPermissionDialogSearch$,
   confirmPermissionDialog$,
-  resetPermissionDialog$,
 } from "../../../../signals/zero-page/settings/permission-dialog.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 
@@ -43,14 +41,9 @@ export function ConnectorPermissionDialog({
   const search = useGet(permissionDialogSearch$);
   const setSearch = useSet(setPermissionDialogSearch$);
   const [confirmLoadable, confirm] = useLoadableSet(confirmPermissionDialog$);
-  const reset = useSet(resetPermissionDialog$);
   const pageSignal = useGet(pageSignal$);
 
   const submitting = confirmLoadable.state === "loading";
-
-  useEffect(() => {
-    reset();
-  }, [reset]);
 
   const config = CONNECTOR_TYPES[connectorType];
 

@@ -17,6 +17,7 @@ import { zeroClient$ } from "../../api-client.ts";
 import { throwIfAbort } from "../../utils.ts";
 import { delay } from "signal-timers";
 import { localStorageSignals } from "../../external/local-storage.ts";
+import { resetPermissionDialog$ } from "./permission-dialog.ts";
 
 const HIDDEN_CONNECTIONS_STORAGE_KEY = "vm0.connections.hiddenTypes";
 const { get$: hiddenConnectorTypesRaw$, set$: setHiddenConnectorTypes$ } =
@@ -297,6 +298,9 @@ export const permissionDialogType$ = computed((get) => {
 
 export const setPermissionDialogType$ = command(
   ({ set }, type: ConnectorType | null) => {
+    if (type !== null) {
+      set(resetPermissionDialog$);
+    }
     set(internalPermissionDialogType$, type);
   },
 );

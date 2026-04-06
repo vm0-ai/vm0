@@ -293,6 +293,15 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/toolchain-init
+      - name: Validate oxlintrc.json react allowImportNames
+        working-directory: turbo
+        run: |
+          allowed=$(jq -r '.overrides[0].rules."no-restricted-imports"[1].paths[0].allowImportNames | sort | join(",")' apps/platform/.oxlintrc.json)
+          expected="Component,StrictMode"
+          if [ "$allowed" != "$expected" ]; then
+            echo "::error::platform oxlintrc.json allowImportNames must be [\"StrictMode\", \"Component\"], got: $allowed"
+            exit 1
+          fi
       - name: Lint
         working-directory: turbo
         run: pnpm lint

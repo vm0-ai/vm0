@@ -1,5 +1,9 @@
-import { useEffect } from "react";
-import { useGet, useSet, useLastLoadable } from "ccstate-react";
+import {
+  useGet,
+  useSet,
+  useLastLoadable,
+  useLastResolved,
+} from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -28,7 +32,6 @@ import {
   formAmount$,
   setFormThreshold$,
   setFormAmount$,
-  syncFormFromConfig$,
 } from "../../signals/zero-page/billing.ts";
 import {
   selectedPlanTier$,
@@ -152,17 +155,10 @@ export function AutoRechargeSection({
   const pendingEnabled = useGet(pendingEnabled$);
   const setPendingEnabled = useSet(setPendingEnabled$);
 
-  const thresholdValue = useGet(formThreshold$);
-  const amountValue = useGet(formAmount$);
+  const thresholdValue = useLastResolved(formThreshold$) ?? config.threshold;
+  const amountValue = useLastResolved(formAmount$) ?? config.amount;
   const setThreshold = useSet(setFormThreshold$);
   const setAmount = useSet(setFormAmount$);
-  const syncForm = useSet(syncFormFromConfig$);
-
-  // Sync form fields when server config changes (initial load or after save)
-  const { threshold: serverThreshold, amount: serverAmount } = config;
-  useEffect(() => {
-    syncForm({ threshold: serverThreshold, amount: serverAmount });
-  }, [syncForm, serverThreshold, serverAmount]);
 
   if (currentTier === "free") {
     return null;
@@ -182,7 +178,7 @@ export function AutoRechargeSection({
       threshold:
         thresholdValue !== "" && Number.isFinite(tVal)
           ? tVal
-          : Number(serverThreshold),
+          : Number(config.threshold),
       amount: amountValue !== "" && Number.isFinite(aVal) ? aVal : amountNum,
     };
   };
@@ -242,8 +238,8 @@ export function AutoRechargeSection({
                   saveCurrent({ enabled: false });
                   return;
                 }
-                const t = Number(serverThreshold);
-                const a = Number(serverAmount);
+                const t = Number(config.threshold);
+                const a = Number(config.amount);
                 if (!loading && t > 0 && a >= CREDITS_PER_DOLLAR) {
                   saveCurrent({ enabled: true, threshold: t, amount: a });
                 } else {
