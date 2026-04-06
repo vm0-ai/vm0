@@ -71,61 +71,7 @@ import {
 import { useAgentAvatar } from "./zero-sidebar-shared.tsx";
 import { zeroSubagents$ } from "../../signals/zero-page/zero-agents.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
-import { useLayoutEffect } from "react";
-
-function scrollToLatestMessage() {
-  const scrollEl = document.querySelector<HTMLElement>(
-    "[data-scroll-container]",
-  );
-  const container = document.querySelector<HTMLElement>(
-    "[data-message-container]",
-  );
-  if (!scrollEl || !container) {
-    return;
-  }
-
-  const children = container.children;
-  if (children.length === 0) {
-    return;
-  }
-
-  let lastUser: HTMLElement | null = null;
-  let lastAssistant: HTMLElement | null = null;
-  for (let i = children.length - 1; i >= 0; i--) {
-    const child = children[i] as HTMLElement;
-    const role = child.dataset.role;
-    if (!lastAssistant && role === "assistant") {
-      lastAssistant = child;
-    }
-    if (!lastUser && role === "user") {
-      lastUser = child;
-    }
-    if (lastUser && lastAssistant) {
-      break;
-    }
-  }
-
-  if (!lastUser) {
-    return;
-  }
-
-  const visibleHeight = scrollEl.clientHeight;
-  const userTop = lastUser.offsetTop - container.offsetTop;
-
-  if (lastAssistant && lastAssistant.offsetTop > lastUser.offsetTop) {
-    const assistantBottom =
-      lastAssistant.offsetTop -
-      container.offsetTop +
-      lastAssistant.offsetHeight;
-    if (assistantBottom - userTop <= visibleHeight) {
-      scrollEl.scrollTop = userTop;
-    } else {
-      scrollEl.scrollTop = assistantBottom - visibleHeight;
-    }
-  } else {
-    scrollEl.scrollTop = userTop;
-  }
-}
+import { useMessageAnchor } from "../components/message-anchor.ts";
 
 function AvatarOrPlaceholder({
   src,
@@ -853,14 +799,12 @@ function StaticAssistantMessage({
   message: AssistantChatMessage;
   renderActivityLine?: React.ReactNode;
 }) {
+  useMessageAnchor(message);
   const { avatarSrc } = useChatAgentIdentity();
   const setOrgManageOpen = useSet(setOrgManageDialogOpen$);
   const setTab = useSet(setActiveTab$);
   const pageSignal = useGet(pageSignal$);
   const content = useLastResolved(message.result$) ?? "";
-  useLayoutEffect(() => {
-    scrollToLatestMessage();
-  }, [content]);
   const avatar = (
     <div className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 shrink-0 mt-0.5 overflow-hidden rounded-xl">
       <AvatarOrPlaceholder

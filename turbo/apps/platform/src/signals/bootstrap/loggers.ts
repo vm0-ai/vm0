@@ -18,20 +18,21 @@ export const setupLoggers$ = command(({ get }) => {
       // silence JSON parse errors because this data only for debugging
     }
     if (loggerNames.length > 0) {
-      L.warnGroup("Enable DEBUG for loggers:");
+      L.infoGroup("Enable DEBUG for loggers:");
       for (const name of loggerNames) {
-        L.warn(name);
+        L.info(name);
         const l = logger(name);
         l.level = Level.Debug;
       }
-      L.warnGroupEnd();
+      L.infoGroupEnd();
     }
   }
 });
 
 export const setDebugLoggerLocalStorage$ = set$;
+
 export const extendDebugLoggerLocalStorage$ = command(
-  ({ get, set }, loggerName: string) => {
+  ({ get, set }, loggerName: string, enabled: boolean) => {
     const debugLoggers = get(get$);
     let loggerNames: string[] = [];
     if (debugLoggers) {
@@ -43,9 +44,15 @@ export const extendDebugLoggerLocalStorage$ = command(
         set(clear$);
       }
     }
-    if (!loggerNames.includes(loggerName)) {
+
+    if (enabled && !loggerNames.includes(loggerName)) {
       loggerNames.push(loggerName);
-      set(set$, JSON.stringify(loggerNames));
+    } else if (!enabled && loggerNames.includes(loggerName)) {
+      loggerNames = loggerNames.filter((name) => {
+        return name !== loggerName;
+      });
     }
+
+    set(set$, JSON.stringify(loggerNames));
   },
 );
