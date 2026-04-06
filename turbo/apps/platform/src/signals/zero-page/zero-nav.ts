@@ -2,6 +2,7 @@ import { command, computed, state } from "ccstate";
 import { detachedNavigateTo$, pathParams$ } from "../route.ts";
 import { ROUTES, type RouteKey } from "../route-paths.ts";
 import { activeRoute$ } from "../active-route.ts";
+import { localStorageSignals } from "../external/local-storage.ts";
 
 /** Re-export activeRoute$ for consumers that used to import zeroActiveId$ */
 export { activeRoute$ } from "../active-route.ts";
@@ -72,24 +73,40 @@ export const setZeroShowAboutPage$ = command(({ set }, show: boolean) => {
   set(internalShowAboutPage$, show);
 });
 
-const internalSidebarCollapsed$ = state(false);
+// ---------------------------------------------------------------------------
+// Sidebar visibility — two independent states, no JS viewport detection
+// ---------------------------------------------------------------------------
 
-/** Whether the sidebar is collapsed. */
-export const zeroSidebarCollapsed$ = computed((get) => {
-  return get(internalSidebarCollapsed$);
+const {
+  get$: sidebarOffRaw$,
+  set$: setSidebarOffRaw$,
+  clear$: clearSidebarOff$,
+} = localStorageSignals("sidebarOff");
+
+/** Whether the user has turned off the sidebar on desktop. Persisted. */
+export const sidebarOff$ = computed((get) => {
+  return get(sidebarOffRaw$) !== null;
 });
 
-/** Set sidebar collapsed state. */
-export const setZeroSidebarCollapsed$ = command(
-  ({ set }, collapsed: boolean) => {
-    set(internalSidebarCollapsed$, collapsed);
-  },
-);
+/** Toggle sidebar off/on for desktop. Persisted in localStorage. */
+export const toggleSidebarOff$ = command(({ get, set }) => {
+  if (get(sidebarOffRaw$) !== null) {
+    set(clearSidebarOff$);
+  } else {
+    set(setSidebarOffRaw$, "1");
+  }
+});
 
-/** Initialize sidebar collapsed state from viewport width. */
-export const initSidebarCollapsed$ = command(({ set }) => {
-  const isMobile = typeof window !== "undefined" && window.innerWidth < 768;
-  set(internalSidebarCollapsed$, isMobile);
+const internalSidebarExpanded$ = state(false);
+
+/** Whether the mobile sidebar overlay is expanded. In-memory only. */
+export const sidebarExpanded$ = computed((get) => {
+  return get(internalSidebarExpanded$);
+});
+
+/** Set mobile sidebar expanded state. */
+export const setSidebarExpanded$ = command(({ set }, expanded: boolean) => {
+  set(internalSidebarExpanded$, expanded);
 });
 
 // ---------------------------------------------------------------------------

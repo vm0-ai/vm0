@@ -382,9 +382,9 @@ describe("zero sidebar - sidebar collapse button hides sidebar (SIDEBAR-D-022)",
     await user.click(collapseBtn);
 
     await waitFor(() => {
-      expect(
-        screen.queryByRole("navigation", { name: "Sidebar" }),
-      ).not.toBeInTheDocument();
+      // The expanded sidebar's parent aside gets data-sidebar-off attribute
+      const nav = screen.getByRole("navigation", { name: "Sidebar" });
+      expect(nav.closest("aside")).toHaveAttribute("data-sidebar-off");
     });
 
     expect(screen.getByLabelText("Expand sidebar")).toBeDefined();

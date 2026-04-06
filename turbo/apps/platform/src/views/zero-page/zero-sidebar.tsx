@@ -59,8 +59,10 @@ import { detach, Reason } from "../../signals/utils.ts";
 import {
   activeRoute$,
   chatThreadId$,
-  zeroSidebarCollapsed$,
-  setZeroSidebarCollapsed$,
+  sidebarOff$,
+  toggleSidebarOff$,
+  sidebarExpanded$,
+  setSidebarExpanded$,
   handleZeroNavSelect$,
   handleZeroAccountAction$,
   navigateToChat$,
@@ -1257,15 +1259,22 @@ export function ZeroSidebar() {
         })
       : [];
   const currentChatAgentId = useGet(sidebarChatAgentId$);
-  const collapsed = useGet(zeroSidebarCollapsed$);
-  const setSidebarCollapsed = useSet(setZeroSidebarCollapsed$);
+  const off = useGet(sidebarOff$);
+  const toggleOff = useSet(toggleSidebarOff$);
+  const expanded = useGet(sidebarExpanded$);
+  const setExpanded = useSet(setSidebarExpanded$);
   const onCollapse = () => {
-    return setSidebarCollapsed(!collapsed);
+    return toggleOff();
   };
-  const onSelect = useSet(handleZeroNavSelect$);
+  const rawOnSelect = useSet(handleZeroNavSelect$);
+  const onSelect = (id: SidebarNavId) => {
+    rawOnSelect(id);
+    setExpanded(false);
+  };
   const navigateToChat = useSet(navigateToChat$);
   const onRecentSelect = (chatThreadId: string) => {
-    return navigateToChat(chatThreadId);
+    navigateToChat(chatThreadId);
+    setExpanded(false);
   };
   const selectedRecentId = useGet(chatThreadId$);
   const onAccountAction = useSet(handleZeroAccountAction$);
@@ -1276,6 +1285,7 @@ export function ZeroSidebar() {
   const pageSignal = useGet(pageSignal$);
   const onNewChat = (agentId: string | null) => {
     detach(createNewChat(agentId, pageSignal), Reason.DomCallback);
+    setExpanded(false);
   };
   const displayName = displayNameRaw || "Zero";
   const pinnedIdsLoadable = useLastLoadable(pinnedAgentIds$);
@@ -1356,101 +1366,99 @@ export function ZeroSidebar() {
     }),
   ];
 
-  if (collapsed) {
-    return (
-      <VM0ClerkProvider>
-        <aside className="zero-nav box-border hidden md:flex h-full w-16 shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar px-2 transition-all duration-300">
-          {/* Expand — same row pattern as every nav icon (centered in content column) */}
-          <div className="flex w-full shrink-0 justify-center pt-3 pb-1">
-            <TooltipProvider delayDuration={200}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                    onPointerDown={onCollapse}
-                    aria-label="Expand sidebar"
-                  >
-                    <IconLayoutSidebarLeftCollapse
-                      size={18}
-                      className="rotate-180"
-                    />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="right">
-                  <p className="text-xs">Expand sidebar</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </div>
-
-          {/* Icon-only nav: one centered column; inline-flex links never stretch */}
-          <nav className="flex min-h-0 w-full min-w-0 flex-1 flex-col items-center gap-1 pb-2 pt-0">
-            <TooltipProvider delayDuration={100}>
-              {allNavItems.map(
-                ({ id, activeKeys, pathname: navPath, label, icon: Icon }) => {
-                  const isActive =
-                    activeId !== null &&
-                    (activeKeys as readonly RouteKey[]).includes(activeId);
-                  return (
-                    <div
-                      key={id}
-                      className="flex w-full shrink-0 justify-center"
-                    >
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <Link
-                            pathname={
-                              navPath as Parameters<typeof Link>[0]["pathname"]
-                            }
-                            onPointerDown={(e) => {
-                              if (e.metaKey || e.ctrlKey || e.shiftKey) {
-                                return;
-                              }
-                              e.preventDefault();
-                              if (id === "chat") {
-                                onSelect("chat");
-                                onNewChat?.(null);
-                              } else {
-                                onSelect(id);
-                              }
-                            }}
-                            className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 ${
-                              isActive
-                                ? "bg-gray-200 text-gray-900"
-                                : "text-sidebar-foreground hover:bg-sidebar-accent"
-                            }`}
-                          >
-                            <span className="relative inline-flex">
-                              <Icon size={16} className="shrink-0" />
-                              {id === "works" && slackScopeMismatch && (
-                                <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-red-500" />
-                              )}
-                            </span>
-                          </Link>
-                        </TooltipTrigger>
-                        <TooltipContent side="right">
-                          <p className="text-xs">{label}</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </div>
-                  );
-                },
-              )}
-            </TooltipProvider>
-          </nav>
-
-          <div className="flex w-full shrink-0 justify-center pb-2 pt-1">
-            <AccountDropdown onAccountAction={onAccountAction} collapsed />
-          </div>
-        </aside>
-      </VM0ClerkProvider>
-    );
-  }
-
   return (
     <VM0ClerkProvider>
-      <aside className="zero-nav flex h-full w-[300px] shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar transition-all duration-300 max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:shadow-xl">
+      {/* Collapsed icon-only sidebar — desktop only, shown when sidebarOff */}
+      <aside
+        data-sidebar-off={off || undefined}
+        className="zero-nav box-border hidden data-[sidebar-off]:md:flex h-full w-16 shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar px-2 transition-all duration-300"
+      >
+        <div className="flex w-full shrink-0 justify-center pt-3 pb-1">
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                  onPointerDown={onCollapse}
+                  aria-label="Expand sidebar"
+                >
+                  <IconLayoutSidebarLeftCollapse
+                    size={18}
+                    className="rotate-180"
+                  />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="right">
+                <p className="text-xs">Expand sidebar</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+
+        <nav className="flex min-h-0 w-full min-w-0 flex-1 flex-col items-center gap-1 pb-2 pt-0">
+          <TooltipProvider delayDuration={100}>
+            {allNavItems.map(
+              ({ id, activeKeys, pathname: navPath, label, icon: Icon }) => {
+                const isActive =
+                  activeId !== null &&
+                  (activeKeys as readonly RouteKey[]).includes(activeId);
+                return (
+                  <div key={id} className="flex w-full shrink-0 justify-center">
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Link
+                          pathname={
+                            navPath as Parameters<typeof Link>[0]["pathname"]
+                          }
+                          onPointerDown={(e) => {
+                            if (e.metaKey || e.ctrlKey || e.shiftKey) {
+                              return;
+                            }
+                            e.preventDefault();
+                            if (id === "chat") {
+                              onSelect("chat");
+                              onNewChat?.(null);
+                            } else {
+                              onSelect(id);
+                            }
+                          }}
+                          className={`inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors duration-200 ${
+                            isActive
+                              ? "bg-gray-200 text-gray-900"
+                              : "text-sidebar-foreground hover:bg-sidebar-accent"
+                          }`}
+                        >
+                          <span className="relative inline-flex">
+                            <Icon size={16} className="shrink-0" />
+                            {id === "works" && slackScopeMismatch && (
+                              <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-red-500" />
+                            )}
+                          </span>
+                        </Link>
+                      </TooltipTrigger>
+                      <TooltipContent side="right">
+                        <p className="text-xs">{label}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                );
+              },
+            )}
+          </TooltipProvider>
+        </nav>
+
+        <div className="flex w-full shrink-0 justify-center pb-2 pt-1">
+          <AccountDropdown onAccountAction={onAccountAction} collapsed />
+        </div>
+      </aside>
+
+      {/* Expanded full sidebar — desktop default, mobile overlay when expanded */}
+      <aside
+        data-sidebar-off={off || undefined}
+        data-sidebar-expanded={expanded || undefined}
+        className="zero-nav hidden md:flex data-[sidebar-off]:md:hidden data-[sidebar-expanded]:max-md:flex h-full w-[300px] shrink-0 flex-col border-r-[0.7px] border-sidebar-border bg-sidebar transition-all duration-300 max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:z-40 max-md:shadow-xl"
+      >
         {/* Organization switcher */}
         <div className="shrink-0 px-2 pt-1.5 pb-0">
           <div className="flex items-center justify-between gap-2 rounded-lg py-0.5">

@@ -6,8 +6,8 @@ import { useAgentAvatar } from "./zero-sidebar-shared.tsx";
 import {
   zeroShowAboutPage$,
   setZeroShowAboutPage$,
-  zeroSidebarCollapsed$,
-  setZeroSidebarCollapsed$,
+  sidebarExpanded$,
+  setSidebarExpanded$,
   isChatRoute,
 } from "../../signals/zero-page/zero-nav.ts";
 import { activeRoute$ } from "../../signals/active-route.ts";
@@ -46,7 +46,7 @@ function AgentAvatarInTopBar({ agentId }: { agentId: string }) {
 }
 
 function MobileTopBar() {
-  const setSidebarCollapsed = useSet(setZeroSidebarCollapsed$);
+  const setSidebarExpandedFn = useSet(setSidebarExpanded$);
   const breadcrumbLoadable = useLastLoadable(mobileBreadcrumb$);
   const breadcrumb =
     breadcrumbLoadable.state === "hasData" ? breadcrumbLoadable.data : null;
@@ -66,7 +66,7 @@ function MobileTopBar() {
       <button
         type="button"
         onPointerDown={() => {
-          return setSidebarCollapsed(false);
+          return setSidebarExpandedFn(true);
         }}
         className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
         aria-label="Open menu"
@@ -135,22 +135,21 @@ function OrgManageDialogMount() {
 function SidebarLayoutInner({ children }: { children: ReactNode }) {
   const showAboutPage = useGet(zeroShowAboutPage$);
   const setShowAboutPage = useSet(setZeroShowAboutPage$);
-  const sidebarCollapsed = useGet(zeroSidebarCollapsed$);
-  const setSidebarCollapsed = useSet(setZeroSidebarCollapsed$);
+  const expanded = useGet(sidebarExpanded$);
+  const setExpanded = useSet(setSidebarExpanded$);
 
   return (
     <div className="zero-app flex h-dvh w-full bg-background">
       <OrgManageDialogMount />
       <ZeroSidebar />
-      {!sidebarCollapsed && (
-        <div
-          className="fixed inset-0 z-30 bg-black/40 md:hidden"
-          aria-label="Sidebar overlay"
-          onPointerDown={() => {
-            return setSidebarCollapsed(true);
-          }}
-        />
-      )}
+      <div
+        data-sidebar-expanded={expanded || undefined}
+        className="fixed inset-0 z-30 bg-black/40 hidden data-[sidebar-expanded]:max-md:block"
+        aria-label="Sidebar overlay"
+        onPointerDown={() => {
+          return setExpanded(false);
+        }}
+      />
       <div className="flex flex-1 flex-col min-w-0 min-h-0 zero-workspace-bg">
         <MobileTopBar />
         {showAboutPage ? (

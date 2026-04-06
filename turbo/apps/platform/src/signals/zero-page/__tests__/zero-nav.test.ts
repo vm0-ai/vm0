@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { mockLocation } from "../../location.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { createPushStateMock } from "../../../__tests__/page-helper.ts";
@@ -7,9 +7,10 @@ import {
   chatThreadId$,
   zeroShowAboutPage$,
   setZeroShowAboutPage$,
-  zeroSidebarCollapsed$,
-  setZeroSidebarCollapsed$,
-  initSidebarCollapsed$,
+  sidebarOff$,
+  toggleSidebarOff$,
+  sidebarExpanded$,
+  setSidebarExpanded$,
   handleZeroNavSelect$,
   handleZeroAccountAction$,
 } from "../zero-nav.ts";
@@ -135,35 +136,31 @@ describe("zero-nav", () => {
     });
   });
 
-  describe("zeroSidebarCollapsed$", () => {
+  describe("sidebarOff$", () => {
     it("should default to false", () => {
-      expect(context.store.get(zeroSidebarCollapsed$)).toBeFalsy();
+      expect(context.store.get(sidebarOff$)).toBeFalsy();
     });
 
-    it("should toggle via setZeroSidebarCollapsed$", () => {
-      context.store.set(setZeroSidebarCollapsed$, true);
-      expect(context.store.get(zeroSidebarCollapsed$)).toBeTruthy();
+    it("should toggle via toggleSidebarOff$", () => {
+      context.store.set(toggleSidebarOff$);
+      expect(context.store.get(sidebarOff$)).toBeTruthy();
 
-      context.store.set(setZeroSidebarCollapsed$, false);
-      expect(context.store.get(zeroSidebarCollapsed$)).toBeFalsy();
+      context.store.set(toggleSidebarOff$);
+      expect(context.store.get(sidebarOff$)).toBeFalsy();
+    });
+  });
+
+  describe("sidebarExpanded$", () => {
+    it("should default to false", () => {
+      expect(context.store.get(sidebarExpanded$)).toBeFalsy();
     });
 
-    it("should initialize as collapsed on mobile viewport", () => {
-      vi.spyOn(window, "innerWidth", "get").mockReturnValue(500);
+    it("should set via setSidebarExpanded$", () => {
+      context.store.set(setSidebarExpanded$, true);
+      expect(context.store.get(sidebarExpanded$)).toBeTruthy();
 
-      context.store.set(initSidebarCollapsed$);
-      expect(context.store.get(zeroSidebarCollapsed$)).toBeTruthy();
-
-      vi.restoreAllMocks();
-    });
-
-    it("should initialize as expanded on desktop viewport", () => {
-      vi.spyOn(window, "innerWidth", "get").mockReturnValue(1024);
-
-      context.store.set(initSidebarCollapsed$);
-      expect(context.store.get(zeroSidebarCollapsed$)).toBeFalsy();
-
-      vi.restoreAllMocks();
+      context.store.set(setSidebarExpanded$, false);
+      expect(context.store.get(sidebarExpanded$)).toBeFalsy();
     });
   });
 
