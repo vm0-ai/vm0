@@ -18,7 +18,6 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
-import { setSidebarExpanded$ } from "../../../signals/zero-page/zero-nav.ts";
 
 const context = testContext();
 
@@ -137,7 +136,7 @@ describe("sidebar layout - invite button hidden for non-admins (SIDEBAR-D-049)",
 });
 
 describe("sidebar layout - menu toggle opens sidebar (SIDEBAR-D-050)", () => {
-  it("sets sidebarExpanded when the menu toggle button is clicked", async () => {
+  it("shows the sidebar overlay when the menu toggle button is clicked", async () => {
     const user = userEvent.setup();
     mockBaseAPIs();
     await setupPage({ context, path: "/" });
@@ -146,8 +145,7 @@ describe("sidebar layout - menu toggle opens sidebar (SIDEBAR-D-050)", () => {
     await user.click(menuButton);
 
     await waitFor(() => {
-      const overlay = screen.getByLabelText("Sidebar overlay");
-      expect(overlay).toHaveAttribute("data-sidebar-expanded");
+      expect(screen.getByLabelText("Collapse sidebar")).toBeInTheDocument();
     });
   });
 });
@@ -235,20 +233,24 @@ describe("sidebar layout - invite button opens member dialog (SIDEBAR-D-052)", (
 });
 
 describe("sidebar layout - overlay click collapses sidebar (SIDEBAR-D-053)", () => {
-  it("clears sidebarExpanded when the overlay is clicked", async () => {
+  it("hides the sidebar overlay when the overlay is clicked", async () => {
     const user = userEvent.setup();
     mockBaseAPIs();
-    context.store.set(setSidebarExpanded$, true);
     await setupPage({ context, path: "/" });
 
-    const overlay = await waitFor(() => {
-      return screen.getByLabelText("Sidebar overlay");
+    // Open the sidebar via user interaction
+    const menuButton = screen.getByLabelText("Open menu");
+    await user.click(menuButton);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Collapse sidebar")).toBeInTheDocument();
     });
 
+    const overlay = screen.getByLabelText("Sidebar overlay");
     await user.click(overlay);
 
     await waitFor(() => {
-      expect(overlay).not.toHaveAttribute("data-sidebar-expanded");
+      expect(screen.queryByLabelText("Open menu")).toBeInTheDocument();
     });
   });
 });

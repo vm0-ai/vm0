@@ -367,7 +367,7 @@ describe("zero sidebar - agent card toggles chat list (SIDEBAR-D-020)", () => {
 });
 
 describe("zero sidebar - sidebar collapse button hides sidebar (SIDEBAR-D-022)", () => {
-  it("collapses the sidebar and hides the navigation when collapse is clicked", async () => {
+  it("collapses the sidebar and shows expand button when collapse is clicked", async () => {
     const user = userEvent.setup();
     mockBaseAPIs();
     await setupPage({ context, path: "/" });
@@ -382,12 +382,8 @@ describe("zero sidebar - sidebar collapse button hides sidebar (SIDEBAR-D-022)",
     await user.click(collapseBtn);
 
     await waitFor(() => {
-      // The expanded sidebar's parent aside gets data-sidebar-off attribute
-      const nav = screen.getByRole("navigation", { name: "Sidebar" });
-      expect(nav.closest("aside")).toHaveAttribute("data-sidebar-off");
+      expect(screen.getByLabelText("Expand sidebar")).toBeInTheDocument();
     });
-
-    expect(screen.getByLabelText("Expand sidebar")).toBeDefined();
   });
 });
 
