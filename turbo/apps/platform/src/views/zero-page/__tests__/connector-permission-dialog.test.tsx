@@ -290,10 +290,10 @@ describe("connector permission dialog", () => {
     expect(screen.getByText("Agent Alpha")).toBeInTheDocument();
     expect(screen.getByText("Agent Beta")).toBeInTheDocument();
 
-    // Agent Alpha should no longer be selected (no check icon)
+    // Agent Alpha should no longer be selected — avatar img is shown instead of check icon
     const agentAlphaBtn = screen.getAllByRole("button").find((el) => {
       return /Agent Alpha/.test(el.textContent ?? "");
     });
-    expect(agentAlphaBtn?.querySelector("svg")).not.toBeInTheDocument();
+    expect(agentAlphaBtn?.querySelector("img")).toBeInTheDocument();
   });
 });

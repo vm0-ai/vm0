@@ -383,8 +383,11 @@ describe("chat-i-083: upgrade/downgrade button triggers plan change action", () 
 });
 
 describe("chat-i-085: form fields derive from server config via async computed", () => {
-  it("displays threshold and amount from autoRechargeConfig$ async computed path", async () => {
+  beforeEach(() => {
     mockBillingPageAPIs();
+  });
+
+  it("displays threshold and amount from autoRechargeConfig$ async computed path", async () => {
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,
@@ -405,6 +408,10 @@ describe("chat-i-085: form fields derive from server config via async computed",
 });
 
 describe("chat-i-086: form overrides clear after successful save", () => {
+  beforeEach(() => {
+    mockBillingPageAPIs();
+  });
+
   it("reverts inputs to server-returned values after save completes", async () => {
     // The default mock PUT handler (apiBillingHandlers) updates mockBillingStatus
     // in place, so after PUT the GET /billing/status will return the new values.
@@ -433,7 +440,6 @@ describe("chat-i-086: form overrides clear after successful save", () => {
     );
 
     const user = userEvent.setup();
-    mockBillingPageAPIs();
     setMockBillingStatus({
       tier: "pro",
       credits: 20_000,

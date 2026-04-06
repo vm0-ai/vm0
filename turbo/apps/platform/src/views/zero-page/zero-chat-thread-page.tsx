@@ -67,8 +67,7 @@ import {
 } from "../../signals/zero-page/zero-session-chat-ui.ts";
 import { useAgentAvatar } from "./zero-sidebar-shared.tsx";
 import { zeroSubagents$ } from "../../signals/zero-page/zero-agents.ts";
-import { useLayoutEffect } from "react";
-
+import { detachedNavigateTo$ } from "../../signals/route.ts";
 function scrollToLatestMessage() {
   const scrollEl = document.querySelector<HTMLElement>(
     "[data-scroll-container]",
@@ -285,6 +284,22 @@ export function ZeroChatThreadPage() {
         <main className="flex-1 px-4 sm:px-6 py-4 items-center @container">
           <div
             data-message-container
+            ref={(node) => {
+              if (!node) {
+                return;
+              }
+              const observer = new MutationObserver(() => {
+                scrollToLatestMessage();
+              });
+              observer.observe(node, {
+                childList: true,
+                subtree: true,
+                characterData: true,
+              });
+              return () => {
+                observer.disconnect();
+              };
+            }}
             className="w-full max-w-[900px] mx-auto flex flex-1 flex-col gap-6 pb-4 overflow-visible"
           >
             {sessionError && (
@@ -811,9 +826,6 @@ function StaticAssistantMessage({
   const setTab = useSet(setActiveTab$);
   const pageSignal = useGet(pageSignal$);
   const content = useLastResolved(message.result$) ?? "";
-  useLayoutEffect(() => {
-    scrollToLatestMessage();
-  }, [content]);
   const avatar = (
     <div className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 shrink-0 @[900px]:mt-0.5 overflow-hidden rounded-xl">
       <AvatarOrPlaceholder
