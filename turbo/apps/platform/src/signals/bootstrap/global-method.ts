@@ -28,6 +28,7 @@ const createLoggerControl$ = command(({ set }, name: string) => {
         set(extendDebugLoggerLocalStorage$, name, true);
       } else if (loggerInstance.level === Level.Debug) {
         loggerInstance.level = Level.Info;
+        set(extendDebugLoggerLocalStorage$, name, false);
       }
     },
   };
