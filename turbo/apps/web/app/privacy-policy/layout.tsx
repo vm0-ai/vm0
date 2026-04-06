@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 export const metadata: Metadata = {
   title: "Privacy Policy",
   description:
-    "VM0 Privacy Policy \u2014 how we collect, use, and protect your data.",
+    "VM0 Privacy Policy — how we collect, use, and protect your data.",
   alternates: {
     canonical: "https://vm0.ai/privacy-policy",
   },
