@@ -700,4 +700,4 @@ export const sentryFirewall = {
       ],
     },
   ],
-};
+} as const satisfies FirewallConfig;

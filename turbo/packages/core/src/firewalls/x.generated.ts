@@ -467,4 +467,4 @@ export const xFirewall = {
       ],
     },
   ],
-};
+} as const satisfies FirewallConfig;

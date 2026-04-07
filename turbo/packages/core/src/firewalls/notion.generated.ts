@@ -98,4 +98,4 @@ export const notionFirewall = {
       ],
     },
   ],
-};
+} as const satisfies FirewallConfig;

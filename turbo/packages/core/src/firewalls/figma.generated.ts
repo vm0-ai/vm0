@@ -200,4 +200,4 @@ export const figmaFirewall = {
       ],
     },
   ],
-};
+} as const satisfies FirewallConfig;

@@ -132,7 +132,7 @@ function generateTypeScript(permissions: PermissionGroup[]): string {
   lines.push("      ],");
   lines.push("    },");
   lines.push("  ],");
-  lines.push("};");
+  lines.push("} as const satisfies FirewallConfig;");
   lines.push("");
 
   return lines.join("\n");

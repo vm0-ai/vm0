@@ -943,4 +943,4 @@ export const atlassianFirewall = {
       ],
     },
   ],
-};
+} as const satisfies FirewallConfig;
