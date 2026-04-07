@@ -1,3 +1,129 @@
+/* ===== LANDING HEADING FONT ===== */
+.landing-heading {
+  font-family:
+    var(--font-instrument-sans), "Instrument Sans", system-ui, sans-serif;
+}
+
+/* ===== DECORATIVE SHAPE FLOAT ANIMATIONS ===== */
+@keyframes decoFloat1 {
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  33% {
+    transform: translate(6px, -10px) rotate(2deg);
+  }
+  66% {
+    transform: translate(-4px, 5px) rotate(-1.5deg);
+  }
+}
+
+@keyframes decoFloat2 {
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  25% {
+    transform: translate(-8px, 6px) rotate(-2deg);
+  }
+  50% {
+    transform: translate(3px, -8px) rotate(1deg);
+  }
+  75% {
+    transform: translate(-5px, -3px) rotate(-1deg);
+  }
+}
+
+@keyframes decoFloat3 {
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  40% {
+    transform: translate(7px, 8px) rotate(2.5deg);
+  }
+  70% {
+    transform: translate(-6px, -4px) rotate(-1deg);
+  }
+}
+
+@keyframes decoFloat4 {
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  30% {
+    transform: translate(-5px, -9px) rotate(-2deg);
+  }
+  60% {
+    transform: translate(8px, 4px) rotate(1.5deg);
+  }
+}
+
+@keyframes decoFloat5 {
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  50% {
+    transform: translate(5px, -7px) rotate(3deg);
+  }
+}
+
+@keyframes decoFloat6 {
+  0%,
+  100% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  35% {
+    transform: translate(-7px, 6px) rotate(-2.5deg);
+  }
+  65% {
+    transform: translate(4px, -5px) rotate(1.5deg);
+  }
+}
+
+.deco-float-1 {
+  animation: decoFloat1 8s ease-in-out infinite;
+  transform-origin: center;
+}
+.deco-float-2 {
+  animation: decoFloat2 10s ease-in-out infinite;
+  transform-origin: center;
+}
+.deco-float-3 {
+  animation: decoFloat3 9s ease-in-out infinite 0.5s;
+  transform-origin: center;
+}
+.deco-float-4 {
+  animation: decoFloat4 11s ease-in-out infinite 1s;
+  transform-origin: center;
+}
+.deco-float-5 {
+  animation: decoFloat5 7s ease-in-out infinite 0.3s;
+  transform-origin: center;
+}
+.deco-float-6 {
+  animation: decoFloat6 8.5s ease-in-out infinite 0.8s;
+  transform-origin: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .deco-float-1,
+  .deco-float-2,
+  .deco-float-3,
+  .deco-float-4,
+  .deco-float-5,
+  .deco-float-6 {
+    animation: none;
+  }
+}
+
+/* ===== LANDING HERO ===== */
+.landing-hero {
+  min-height: 100svh;
+}
+
 /* ===== LANDING PAGE BACKGROUNDS ===== */
 .paper-bg-layer {
   background-image: url("/images/paper-bg.png");

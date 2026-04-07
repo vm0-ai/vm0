@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Script from "next/script";
 import {
   Noto_Sans,
+  Instrument_Sans,
   Fira_Code,
   Fira_Mono,
   JetBrains_Mono,
@@ -23,6 +24,14 @@ const notoSans = Noto_Sans({
   variable: "--font-noto-sans",
   display: "swap",
   preload: true,
+});
+
+const instrumentSans = Instrument_Sans({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-instrument-sans",
+  display: "swap",
+  preload: false,
 });
 
 const firaCode = Fira_Code({
@@ -153,20 +162,11 @@ export default function RootLayout({
             crossOrigin="anonymous"
           />
           <link rel="dns-prefetch" href="https://plausible.io" />
-          <script
+          <Script
+            id="theme-init"
+            strategy="beforeInteractive"
             dangerouslySetInnerHTML={{
-              __html: `
-                (function() {
-                  try {
-                    var theme = localStorage.getItem('theme');
-                    if (theme === 'light' || theme === 'dark') {
-                      document.documentElement.setAttribute('data-theme', theme);
-                    } else if (window.matchMedia('(prefers-color-scheme: light)').matches) {
-                      document.documentElement.setAttribute('data-theme', 'light');
-                    }
-                  } catch (e) {}
-                })();
-              `,
+              __html: `(function(){try{var t=localStorage.getItem('theme');if(t==='light'||t==='dark'){document.documentElement.setAttribute('data-theme',t)}else if(window.matchMedia('(prefers-color-scheme: light)').matches){document.documentElement.setAttribute('data-theme','light')}}catch(e){}})()`,
             }}
           />
           {env().NEXT_PUBLIC_PLAUSIBLE_SCRIPT_URL && (
@@ -183,7 +183,7 @@ export default function RootLayout({
           )}
         </head>
         <body
-          className={`${notoSans.variable} ${firaCode.variable} ${firaMono.variable} ${jetBrainsMono.variable}`}
+          className={`${notoSans.variable} ${instrumentSans.variable} ${firaCode.variable} ${firaMono.variable} ${jetBrainsMono.variable}`}
         >
           <Script
             id="json-ld"
