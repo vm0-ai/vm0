@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, beforeEach, afterEach } from "vitest";
 // eslint-disable-next-line ccstate/prefer-user-event -- fireEvent needed for compositionStart/End which have no userEvent equivalent; confirmed by ethan@vm0.ai
 import { screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -140,5 +140,70 @@ describe("send-key behavior — IME composition", () => {
 
     // End IME composition
     fireEvent.compositionEnd(textarea);
+  });
+});
+
+describe("send-key behavior — mobile (pointer: coarse)", () => {
+  let originalMatchMedia: typeof window.matchMedia;
+
+  beforeEach(() => {
+    originalMatchMedia = window.matchMedia;
+    window.matchMedia = (query: string) => {
+      return {
+        matches: query === "(pointer: coarse)",
+        media: query,
+        onchange: null,
+        addListener: () => {
+          return undefined;
+        },
+        removeListener: () => {
+          return undefined;
+        },
+        addEventListener: () => {
+          return undefined;
+        },
+        removeEventListener: () => {
+          return undefined;
+        },
+        dispatchEvent: () => {
+          return false;
+        },
+      } as MediaQueryList;
+    };
+  });
+
+  afterEach(() => {
+    window.matchMedia = originalMatchMedia;
+  });
+
+  it("should not send when Enter is pressed on a touch device (enter mode)", async () => {
+    const user = userEvent.setup();
+    const api = await renderChatPage("enter");
+
+    const textarea = await getTextarea();
+    await fill(textarea, "Hello");
+
+    await user.keyboard("{Enter}");
+
+    expect(api.wasMessageSent()).toBeFalsy();
+  });
+
+  it("should not send when Cmd+Enter is pressed on a touch device (enter mode)", async () => {
+    const user = userEvent.setup();
+    const api = await renderChatPage("enter");
+
+    const textarea = await getTextarea();
+    await fill(textarea, "Hello");
+
+    await user.keyboard("{Meta>}{Enter}{/Meta}");
+
+    expect(api.wasMessageSent()).toBeFalsy();
+  });
+
+  it("should have enterKeyHint set to newline on the textarea", async () => {
+    await renderChatPage("enter");
+
+    const textarea = await getTextarea();
+    expect(textarea).toHaveAttribute("enterkeyhint", "enter");
   });
 });
