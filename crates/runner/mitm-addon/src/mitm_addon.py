@@ -9,6 +9,7 @@ This addon runs on the runner HOST (not inside VMs) and:
 4. Logs network activity per-run to JSONL files
 """
 
+import base64
 import json
 import os
 import time
@@ -162,6 +163,7 @@ async def request(flow: http.HTTPFlow) -> None:
     flow.metadata["vm_run_id"] = run_id
     flow.metadata["vm_client_ip"] = client_ip
     flow.metadata["vm_network_log_path"] = vm_info.get("networkLogPath", "")
+    flow.metadata["capture_body"] = vm_info.get("captureNetworkBodies", False)
 
     # Get target hostname
     hostname = flow.request.pretty_host.lower()
@@ -224,18 +226,112 @@ async def request(flow: http.HTTPFlow) -> None:
 
 def responseheaders(flow: http.HTTPFlow) -> None:
     """
-    Enable streaming for all responses to avoid ZlibError.
+    Enable streaming for responses to avoid ZlibError.
 
     Without streaming, mitmproxy buffers the entire response body and
     decompresses/recompresses gzip content, which causes ZlibError for
     chunked gzip responses (e.g., api.anthropic.com).
 
-    Since the response() hook does not process response bodies, it is
-    safe to stream all responses unconditionally.
+    When body capture is enabled for a run, streaming is skipped so that
+    ``flow.response.content`` is available in the ``response()`` hook.
     """
     if not flow.response:
         return
+    # Don't stream when body capture is enabled — need buffered body.
+    if flow.metadata.get("capture_body"):
+        return
     flow.response.stream = True
+
+
+# ---------------------------------------------------------------------------
+# Body capture helpers (opt-in per run via captureNetworkBodies registry flag)
+# ---------------------------------------------------------------------------
+
+_MAX_BODY_SIZE = 64 * 1024  # 64 KB
+
+_TEXT_CONTENT_TYPES = (
+    "text/",
+    "application/json",
+    "application/xml",
+    "application/javascript",
+    "application/x-www-form-urlencoded",
+    "application/graphql",
+)
+
+# Header names containing any of these keywords (case-insensitive) are redacted.
+_SENSITIVE_HEADER_KEYWORDS = ("auth", "token", "secret", "key", "credential", "password", "cookie")
+
+
+def _is_text_content(content_type: str) -> bool:
+    """Check if content-type indicates text-like content worth capturing."""
+    if not content_type:
+        return True  # assume text when unspecified
+    ct = content_type.lower().split(";")[0].strip()
+    return any(ct.startswith(prefix) for prefix in _TEXT_CONTENT_TYPES)
+
+
+def _encode_body(content: bytes, content_type: str) -> tuple:
+    """Encode body content. Returns (encoded_string, encoding_type)."""
+    if not _is_text_content(content_type):
+        return base64.b64encode(content).decode("ascii"), "base64"
+    try:
+        return content.decode("utf-8"), "utf-8"
+    except UnicodeDecodeError:
+        return base64.b64encode(content).decode("ascii"), "base64"
+
+
+def _is_sensitive_header(name: str) -> bool:
+    """Check if a header name likely carries sensitive data."""
+    lower = name.lower()
+    return any(kw in lower for kw in _SENSITIVE_HEADER_KEYWORDS)
+
+
+def _redact_headers(headers) -> dict:
+    """Build a dict of headers with sensitive values replaced by [REDACTED]."""
+    result = {}
+    for name, value in headers.items(multi=True):
+        if name in result:
+            continue  # keep first occurrence only (headers.items gives all)
+        result[name] = "[REDACTED]" if _is_sensitive_header(name) else value
+    return result
+
+
+def _add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
+    """Add request headers, request body, and response body to a log entry."""
+    # Request headers (always available)
+    log_entry["request_headers"] = _redact_headers(flow.request.headers)
+
+    # Request body
+    if flow.request.content:
+        req_ct = flow.request.headers.get("content-type", "")
+        body = flow.request.content
+        truncated = len(body) > _MAX_BODY_SIZE
+        if truncated:
+            body = body[:_MAX_BODY_SIZE]
+        encoded, encoding = _encode_body(body, req_ct)
+        log_entry["request_body"] = encoded
+        log_entry["request_body_encoding"] = encoding
+        if truncated:
+            log_entry["request_body_truncated"] = True
+
+    # Response body — only available when streaming is disabled
+    if flow.response:
+        try:
+            body = flow.response.content
+            if not body:
+                return
+        except Exception:
+            # ZlibError or other decompression failure — skip body
+            return
+        res_ct = flow.response.headers.get("content-type", "")
+        truncated = len(body) > _MAX_BODY_SIZE
+        if truncated:
+            body = body[:_MAX_BODY_SIZE]
+        encoded, encoding = _encode_body(body, res_ct)
+        log_entry["response_body"] = encoded
+        log_entry["response_body_encoding"] = encoding
+        if truncated:
+            log_entry["response_body_truncated"] = True
 
 
 def response(flow: http.HTTPFlow) -> None:
@@ -287,6 +383,10 @@ def response(flow: http.HTTPFlow) -> None:
         firewall_base = flow.metadata.get("firewall_base")
         if firewall_base:
             add_firewall_metadata(flow, log_entry)
+
+        # Add request headers, request body, and response body when capture is enabled
+        if flow.metadata.get("capture_body"):
+            _add_capture_fields(flow, log_entry)
 
         log_network_entry(network_log_path, log_entry)
 

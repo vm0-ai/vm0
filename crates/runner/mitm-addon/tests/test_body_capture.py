@@ -1,0 +1,207 @@
+"""Tests for HTTP body capture helpers in mitm_addon."""
+
+import base64
+from unittest.mock import MagicMock
+
+from mitm_addon import (
+    _MAX_BODY_SIZE,
+    _add_capture_fields,
+    _encode_body,
+    _is_sensitive_header,
+    _is_text_content,
+    _redact_headers,
+)
+
+
+class TestIsTextContent:
+    def test_json(self):
+        assert _is_text_content("application/json") is True
+
+    def test_json_with_charset(self):
+        assert _is_text_content("application/json; charset=utf-8") is True
+
+    def test_text_html(self):
+        assert _is_text_content("text/html") is True
+
+    def test_xml(self):
+        assert _is_text_content("application/xml") is True
+
+    def test_form_urlencoded(self):
+        assert _is_text_content("application/x-www-form-urlencoded") is True
+
+    def test_image_png(self):
+        assert _is_text_content("image/png") is False
+
+    def test_octet_stream(self):
+        assert _is_text_content("application/octet-stream") is False
+
+    def test_empty_assumes_text(self):
+        assert _is_text_content("") is True
+
+    def test_graphql(self):
+        assert _is_text_content("application/graphql") is True
+
+
+class TestEncodeBody:
+    def test_utf8_text(self):
+        body = b'{"key": "value"}'
+        encoded, encoding = _encode_body(body, "application/json")
+        assert encoded == '{"key": "value"}'
+        assert encoding == "utf-8"
+
+    def test_binary_content_type(self):
+        body = b"\x89PNG\r\n"
+        encoded, encoding = _encode_body(body, "image/png")
+        assert encoded == base64.b64encode(body).decode("ascii")
+        assert encoding == "base64"
+
+    def test_invalid_utf8_falls_back_to_base64(self):
+        body = b"\xff\xfe invalid utf8"
+        encoded, encoding = _encode_body(body, "text/plain")
+        assert encoding == "base64"
+        assert base64.b64decode(encoded) == body
+
+
+class TestIsSensitiveHeader:
+    def test_authorization(self):
+        assert _is_sensitive_header("Authorization") is True
+
+    def test_cookie(self):
+        assert _is_sensitive_header("Cookie") is True
+
+    def test_set_cookie(self):
+        assert _is_sensitive_header("Set-Cookie") is True
+
+    def test_x_api_key(self):
+        assert _is_sensitive_header("X-Api-Key") is True
+
+    def test_x_auth_token(self):
+        assert _is_sensitive_header("X-Auth-Token") is True
+
+    def test_proxy_authorization(self):
+        assert _is_sensitive_header("Proxy-Authorization") is True
+
+    def test_content_type_not_sensitive(self):
+        assert _is_sensitive_header("Content-Type") is False
+
+    def test_host_not_sensitive(self):
+        assert _is_sensitive_header("Host") is False
+
+    def test_x_secret_custom(self):
+        assert _is_sensitive_header("X-Secret-Foo") is True
+
+    def test_x_credential(self):
+        assert _is_sensitive_header("X-Credential") is True
+
+    def test_password_header(self):
+        assert _is_sensitive_header("X-Password") is True
+
+
+class TestRedactHeaders:
+    def test_redacts_sensitive_keeps_others(self):
+        headers = MagicMock()
+        headers.items.return_value = [
+            ("Content-Type", "application/json"),
+            ("Authorization", "Bearer sk-secret-123"),
+            ("Host", "api.example.com"),
+            ("Cookie", "session=abc"),
+        ]
+        result = _redact_headers(headers)
+        assert result["Content-Type"] == "application/json"
+        assert result["Authorization"] == "[REDACTED]"
+        assert result["Host"] == "api.example.com"
+        assert result["Cookie"] == "[REDACTED]"
+
+
+class TestAddCaptureFields:
+    def _make_flow(
+        self,
+        request_body=None,
+        response_body=None,
+        request_ct="application/json",
+        response_ct="application/json",
+    ):
+        flow = MagicMock()
+        flow.request.content = request_body
+        flow.request.headers = MagicMock()
+        flow.request.headers.get.return_value = request_ct
+        flow.request.headers.items.return_value = [
+            ("Content-Type", request_ct),
+            ("Host", "api.example.com"),
+        ]
+        flow.response = MagicMock()
+        flow.response.content = response_body
+        flow.response.headers = MagicMock()
+        flow.response.headers.get.return_value = response_ct
+        return flow
+
+    def test_captures_request_body(self):
+        flow = self._make_flow(request_body=b'{"prompt": "hello"}')
+        entry = {}
+        _add_capture_fields(flow, entry)
+        assert entry["request_body"] == '{"prompt": "hello"}'
+        assert entry["request_body_encoding"] == "utf-8"
+        assert "request_body_truncated" not in entry
+
+    def test_captures_response_body(self):
+        flow = self._make_flow(response_body=b'{"result": "ok"}')
+        entry = {}
+        _add_capture_fields(flow, entry)
+        assert entry["response_body"] == '{"result": "ok"}'
+        assert entry["response_body_encoding"] == "utf-8"
+
+    def test_captures_request_headers(self):
+        flow = self._make_flow()
+        entry = {}
+        _add_capture_fields(flow, entry)
+        assert "request_headers" in entry
+        assert entry["request_headers"]["Content-Type"] == "application/json"
+        assert entry["request_headers"]["Host"] == "api.example.com"
+
+    def test_truncates_large_request_body(self):
+        body = b"x" * (_MAX_BODY_SIZE + 1000)
+        flow = self._make_flow(request_body=body, request_ct="text/plain")
+        entry = {}
+        _add_capture_fields(flow, entry)
+        assert entry["request_body_truncated"] is True
+        assert len(entry["request_body"]) == _MAX_BODY_SIZE
+
+    def test_truncates_large_response_body(self):
+        body = b"y" * (_MAX_BODY_SIZE + 1000)
+        flow = self._make_flow(response_body=body, response_ct="text/plain")
+        entry = {}
+        _add_capture_fields(flow, entry)
+        assert entry["response_body_truncated"] is True
+        assert len(entry["response_body"]) == _MAX_BODY_SIZE
+
+    def test_no_body_fields_when_empty(self):
+        flow = self._make_flow(request_body=None, response_body=None)
+        # response.content is None
+        flow.response.content = None
+        entry = {}
+        _add_capture_fields(flow, entry)
+        assert "request_body" not in entry
+        assert "response_body" not in entry
+        assert "request_headers" in entry  # headers always captured
+
+    def test_response_decompression_error_skips_body(self):
+        flow = self._make_flow(request_body=b"ok")
+        # Simulate ZlibError when accessing response content
+        type(flow.response).content = property(
+            lambda self: (_ for _ in ()).throw(Exception("ZlibError"))
+        )
+        entry = {}
+        _add_capture_fields(flow, entry)
+        assert "request_body" in entry  # request body still captured
+        assert "response_body" not in entry  # response body skipped
+
+    def test_both_request_and_response(self):
+        flow = self._make_flow(
+            request_body=b'{"q": "test"}',
+            response_body=b'{"a": "result"}',
+        )
+        entry = {}
+        _add_capture_fields(flow, entry)
+        assert entry["request_body"] == '{"q": "test"}'
+        assert entry["response_body"] == '{"a": "result"}'
+        assert entry["request_headers"]["Host"] == "api.example.com"

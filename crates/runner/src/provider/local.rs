@@ -247,6 +247,7 @@ impl JobProvider for LocalProvider {
             api_start_time: None,
             user_timezone: req.user_timezone,
             memory_name: None,
+            capture_network_bodies: None,
             firewalls: None,
             disallowed_tools: None,
             tools: None,

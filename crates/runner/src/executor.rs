@@ -303,6 +303,7 @@ async fn register_proxy(config: &ExecutorConfig, context: &ExecutionContext, sou
         encrypted_secrets: context.encrypted_secrets.as_deref(),
         secret_connector_map: context.secret_connector_map.as_ref(),
         vars: context.vars.as_ref(),
+        capture_network_bodies: context.capture_network_bodies.unwrap_or(false),
     };
     if let Err(e) = config.registry.register_vm(source_ip, &registration).await {
         warn!(run_id = %context.run_id, error = %e, "failed to register VM in proxy");
@@ -1080,6 +1081,7 @@ mod tests {
             api_start_time: None,
             user_timezone: None,
             memory_name: None,
+            capture_network_bodies: None,
             firewalls: None,
             disallowed_tools: None,
             tools: None,

@@ -72,6 +72,8 @@ pub struct ExecutionContext {
     #[serde(default)]
     pub memory_name: Option<String>,
     #[serde(default)]
+    pub capture_network_bodies: Option<bool>,
+    #[serde(default)]
     pub firewalls: Option<Vec<Firewall>>,
     #[serde(default)]
     pub disallowed_tools: Option<Vec<String>>,
