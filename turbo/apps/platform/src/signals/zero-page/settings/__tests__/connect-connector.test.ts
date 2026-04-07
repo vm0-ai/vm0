@@ -53,6 +53,19 @@ function makeGithubConnectorResponse(): ConnectorListResponse {
   };
 }
 
+function mockMatchMedia(standalone: boolean) {
+  vi.spyOn(window, "matchMedia").mockReturnValue({
+    matches: standalone,
+    media: "(display-mode: standalone)",
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  } as MediaQueryList);
+}
+
 describe("connectConnector$", () => {
   it("detects connector via API polling while popup is open", async () => {
     await setupPage({ context, path: "/", withoutRender: true });
@@ -155,6 +168,87 @@ describe("connectConnector$", () => {
     await context.store.set(connectConnector$, "github", context.signal);
 
     expect(context.store.get(permissionDialogType$)).toBeNull();
+  });
+
+  it("opens without popup features in standalone mode", async () => {
+    await setupPage({ context, path: "/", withoutRender: true });
+
+    mockMatchMedia(true);
+    const openSpy = vi.spyOn(window, "open").mockReturnValue(null);
+    openSpy.mockClear();
+
+    server.use(
+      http.get("*/api/zero/connectors", () => {
+        return HttpResponse.json(makeGithubConnectorResponse());
+      }),
+    );
+
+    await context.store.set(connectConnector$, "github", context.signal);
+
+    expect(openSpy).toHaveBeenCalledWith(expect.any(String), "_blank");
+    expect(openSpy).not.toHaveBeenCalledWith(
+      expect.any(String),
+      "_blank",
+      expect.stringContaining("width"),
+    );
+  });
+
+  it("does not throw when window.open returns null in standalone mode", async () => {
+    await setupPage({ context, path: "/", withoutRender: true });
+
+    mockMatchMedia(true);
+    vi.spyOn(window, "open").mockReturnValue(null);
+
+    server.use(
+      http.get("*/api/zero/connectors", () => {
+        return HttpResponse.json(makeGithubConnectorResponse());
+      }),
+    );
+
+    const result = await context.store.set(
+      connectConnector$,
+      "github",
+      context.signal,
+    );
+
+    expect(result).toBeTruthy();
+    expect(context.store.get(pollingConnectorType$)).toBeNull();
+  });
+
+  it("exits polling after timeout in standalone mode", async () => {
+    await setupPage({ context, path: "/", withoutRender: true });
+
+    mockMatchMedia(true);
+    vi.spyOn(window, "open").mockReturnValue(null);
+
+    // Mock Date.now to simulate timeout elapsed
+    const startTime = Date.now();
+    let callCount = 0;
+    vi.spyOn(Date, "now").mockImplementation(() => {
+      callCount++;
+      // After 3 calls, simulate timeout exceeded (> 10 minutes)
+      if (callCount > 3) {
+        return startTime + 11 * 60 * 1000;
+      }
+      return startTime;
+    });
+
+    server.use(
+      http.get("*/api/zero/connectors", () => {
+        return HttpResponse.json(makeEmptyConnectorResponse());
+      }),
+    );
+
+    const result = await context.store.set(
+      connectConnector$,
+      "github",
+      context.signal,
+    );
+
+    expect(result).toBeFalsy();
+    expect(context.store.get(pollingConnectorType$)).toBeNull();
+
+    vi.spyOn(Date, "now").mockRestore();
   });
 });
 

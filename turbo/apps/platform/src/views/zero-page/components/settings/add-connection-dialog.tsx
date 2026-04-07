@@ -177,7 +177,13 @@ function ConnectModalContent({
 
   // While OAuth is in progress, only show connecting state
   if (isPolling) {
-    return <p className="text-sm text-muted-foreground">Connecting...</p>;
+    const standaloneHint = window.matchMedia("(display-mode: standalone)")
+      .matches
+      ? " Switch back here after completing sign-in."
+      : "";
+    return (
+      <p className="text-sm text-muted-foreground">{`Connecting...${standaloneHint}`}</p>
+    );
   }
 
   if (settling) {
