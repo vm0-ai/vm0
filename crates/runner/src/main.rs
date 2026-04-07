@@ -7,6 +7,7 @@ mod error;
 mod executor;
 mod host;
 mod http;
+mod idle_pool;
 mod kmsg_log;
 mod lock;
 mod network_logs;

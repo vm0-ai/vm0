@@ -163,6 +163,16 @@ pub struct ResumeSession {
     pub session_history: String,
 }
 
+impl ExecutionContext {
+    /// Extract the session ID for keep-alive VM reuse.
+    ///
+    /// Phase 1: only continued sessions (with `resume_session`) benefit.
+    /// Phase 2: a top-level `session_id` field will enable first-turn reuse.
+    pub fn session_id(&self) -> Option<&str> {
+        self.resume_session.as_ref().map(|r| r.session_id.as_str())
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Complete
 // ---------------------------------------------------------------------------
@@ -362,6 +372,36 @@ mod tests {
         };
         let json = serde_json::to_value(&req).unwrap();
         assert_eq!(json["error"], "timeout");
+    }
+
+    #[test]
+    fn session_id_returns_none_without_resume() {
+        let json = json!({
+            "runId": "550e8400-e29b-41d4-a716-446655440000",
+            "prompt": "hello",
+            "sandboxToken": "tok",
+            "workingDir": "/home/user",
+            "cliAgentType": "claude_code"
+        });
+        let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
+        assert!(ctx.session_id().is_none());
+    }
+
+    #[test]
+    fn session_id_returns_id_from_resume_session() {
+        let json = json!({
+            "runId": "550e8400-e29b-41d4-a716-446655440000",
+            "prompt": "hello",
+            "sandboxToken": "tok",
+            "workingDir": "/home/user",
+            "cliAgentType": "claude_code",
+            "resumeSession": {
+                "sessionId": "sess-abc-123",
+                "sessionHistory": "{}"
+            }
+        });
+        let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
+        assert_eq!(ctx.session_id(), Some("sess-abc-123"));
     }
 
     #[test]

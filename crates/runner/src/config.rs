@@ -46,6 +46,12 @@ pub struct SandboxConfig {
     pub max_concurrent: usize,
     /// Overcommit factor applied to both CPU and memory budgets (default: 1.0).
     pub concurrency_factor: f64,
+    /// Keep VMs alive between conversation turns for session reuse (default: false).
+    pub keep_alive: bool,
+    /// Idle timeout in seconds for kept-alive VMs (default: 300).
+    pub keep_alive_timeout_secs: u64,
+    /// Maximum number of idle VMs to keep (0 = no limit, default: 0).
+    pub keep_alive_max_idle: usize,
 }
 
 impl Default for SandboxConfig {
@@ -53,6 +59,9 @@ impl Default for SandboxConfig {
         Self {
             max_concurrent: DEFAULT_MAX_CONCURRENT,
             concurrency_factor: DEFAULT_CONCURRENCY_FACTOR,
+            keep_alive: false,
+            keep_alive_timeout_secs: 300,
+            keep_alive_max_idle: 0,
         }
     }
 }
@@ -595,6 +604,7 @@ sandbox:
             sandbox: SandboxConfig {
                 max_concurrent: 8,
                 concurrency_factor: 2.0,
+                ..SandboxConfig::default()
             },
             server: Some(ServerConfig {
                 url: "https://api.example.com".into(),
@@ -681,5 +691,86 @@ profiles:
         let snap = fc.snapshot.unwrap();
         assert_eq!(snap.hash, "def456");
         assert_eq!(snap.output_dir, home.snapshots_dir().join("def456"));
+    }
+
+    #[tokio::test]
+    async fn keep_alive_config_round_trip() {
+        let dir = tempfile::tempdir().unwrap();
+        let fc = dir.path().join("firecracker");
+        let kernel = dir.path().join("vmlinux");
+        for f in [&fc, &kernel] {
+            tokio::fs::write(f, b"").await.unwrap();
+        }
+        let home = test_home_with_artifacts(dir.path(), &[("abc123", Some("def456"))]).await;
+
+        let runner_dir = dir.path().join("my-runner");
+        let config = RunnerConfig {
+            name: "test-runner".into(),
+            group: "vm0/prod".into(),
+            base_dir: runner_dir.clone(),
+            ca_dir: dir.path().to_path_buf(),
+            firecracker: FirecrackerConfig { binary: fc, kernel },
+            profiles: make_profiles(),
+            sandbox: SandboxConfig {
+                max_concurrent: 4,
+                concurrency_factor: 1.5,
+                keep_alive: true,
+                keep_alive_timeout_secs: 600,
+                keep_alive_max_idle: 10,
+            },
+            server: None,
+        };
+
+        generate(&config).await.unwrap();
+
+        let loaded = load_with_home(&runner_dir.join("runner.yaml"), &home)
+            .await
+            .unwrap();
+        assert!(loaded.sandbox.keep_alive);
+        assert_eq!(loaded.sandbox.keep_alive_timeout_secs, 600);
+        assert_eq!(loaded.sandbox.keep_alive_max_idle, 10);
+        assert_eq!(loaded, config);
+    }
+
+    #[tokio::test]
+    async fn keep_alive_defaults_when_omitted() {
+        let dir = tempfile::tempdir().unwrap();
+        let fc = dir.path().join("firecracker");
+        let kernel = dir.path().join("vmlinux");
+        for f in [&fc, &kernel] {
+            tokio::fs::write(f, b"").await.unwrap();
+        }
+        let home = test_home_with_artifacts(dir.path(), &[("abc", None)]).await;
+
+        // YAML without any keep_alive fields
+        let yaml = format!(
+            r#"
+name: test
+group: test/group
+base_dir: {base_dir}
+ca_dir: {ca_dir}
+firecracker:
+  binary: {fc}
+  kernel: {kernel}
+profiles:
+  vm0/default:
+    rootfs_hash: abc
+    vcpu: 2
+    memory_mb: 4096
+    disk_mb: 16384
+"#,
+            base_dir = dir.path().display(),
+            ca_dir = dir.path().display(),
+            fc = fc.display(),
+            kernel = kernel.display(),
+        );
+
+        let config_path = dir.path().join("runner.yaml");
+        tokio::fs::write(&config_path, &yaml).await.unwrap();
+
+        let config = load_with_home(&config_path, &home).await.unwrap();
+        assert!(!config.sandbox.keep_alive);
+        assert_eq!(config.sandbox.keep_alive_timeout_secs, 300);
+        assert_eq!(config.sandbox.keep_alive_max_idle, 0);
     }
 }

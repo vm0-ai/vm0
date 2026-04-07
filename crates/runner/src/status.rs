@@ -21,6 +21,9 @@ struct RunnerStatus {
     max_concurrent: usize,
     active_runs: usize,
     active_run_ids: Vec<Uuid>,
+    idle_vms: usize,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    idle_sessions: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     proxy_port: Option<u16>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -51,6 +54,8 @@ pub struct StatusTracker {
 struct MutableState {
     mode: RunnerMode,
     active_run_ids: BTreeSet<Uuid>,
+    idle_vms: usize,
+    idle_sessions: Vec<String>,
 }
 
 impl StatusTracker {
@@ -64,6 +69,8 @@ impl StatusTracker {
             state: Mutex::new(MutableState {
                 mode: RunnerMode::Running,
                 active_run_ids: BTreeSet::new(),
+                idle_vms: 0,
+                idle_sessions: Vec::new(),
             }),
         }
     }
@@ -98,6 +105,14 @@ impl StatusTracker {
         self.write_status(&state).await;
     }
 
+    /// Update idle VM count and session list in the status file.
+    pub async fn set_idle_info(&self, idle_vms: usize, idle_sessions: Vec<String>) {
+        let mut state = self.state.lock().await;
+        state.idle_vms = idle_vms;
+        state.idle_sessions = idle_sessions;
+        self.write_status(&state).await;
+    }
+
     /// Write the initial status file.
     pub async fn write_initial(&self) {
         let state = self.state.lock().await;
@@ -111,6 +126,8 @@ impl StatusTracker {
             max_concurrent: self.max_concurrent,
             active_runs: state.active_run_ids.len(),
             active_run_ids: state.active_run_ids.iter().copied().collect(),
+            idle_vms: state.idle_vms,
+            idle_sessions: state.idle_sessions.clone(),
             proxy_port: self.proxy_port,
             dns_port: self.dns_port,
             started_at: self.started_at,
@@ -244,5 +261,48 @@ mod tests {
         assert!(started.ends_with('Z'));
         assert!(started.contains('T'));
         assert_eq!(started.len(), 24); // "2026-02-10T12:34:56.789Z"
+    }
+
+    #[tokio::test]
+    async fn set_idle_info_updates_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("status.json");
+        let tracker = StatusTracker::new(path.clone(), 4);
+
+        tracker.write_initial().await;
+
+        let status = read_status(&path);
+        assert_eq!(status["idle_vms"], 0);
+        assert!(status.get("idle_sessions").is_none()); // empty vec omitted
+
+        tracker
+            .set_idle_info(2, vec!["sess-1".into(), "sess-2".into()])
+            .await;
+
+        let status = read_status(&path);
+        assert_eq!(status["idle_vms"], 2);
+        let sessions: Vec<String> = status["idle_sessions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_str().unwrap().to_string())
+            .collect();
+        assert_eq!(sessions, vec!["sess-1", "sess-2"]);
+    }
+
+    #[tokio::test]
+    async fn set_idle_info_empty_sessions_omitted() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("status.json");
+        let tracker = StatusTracker::new(path.clone(), 4);
+
+        tracker.set_idle_info(0, vec![]).await;
+
+        let status = read_status(&path);
+        assert_eq!(status["idle_vms"], 0);
+        assert!(
+            status.get("idle_sessions").is_none(),
+            "empty idle_sessions should be omitted from JSON"
+        );
     }
 }
