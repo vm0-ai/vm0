@@ -541,7 +541,6 @@ describe("zero-chat signals", () => {
     });
 
     it("should create new thread when first thread has a title", async () => {
-      let createCalled = false;
       server.use(
         http.get("*/api/zero/chat-threads", () => {
           return HttpResponse.json({
@@ -557,7 +556,6 @@ describe("zero-chat signals", () => {
           });
         }),
         http.post("*/api/zero/chat-threads", () => {
-          createCalled = true;
           return HttpResponse.json(
             {
               id: "new-thread-created",
@@ -574,18 +572,15 @@ describe("zero-chat signals", () => {
 
       await context.store.set(createNewChatThread$, null, context.signal);
 
-      expect(createCalled).toBeTruthy();
       expect(context.store.get(chatThreadId$)).toBe("new-thread-created");
     });
 
     it("should create new thread when thread list is empty", async () => {
-      let createCalled = false;
       server.use(
         http.get("*/api/zero/chat-threads", () => {
           return HttpResponse.json({ threads: [] });
         }),
         http.post("*/api/zero/chat-threads", () => {
-          createCalled = true;
           return HttpResponse.json(
             {
               id: "new-thread-empty-list",
@@ -602,12 +597,10 @@ describe("zero-chat signals", () => {
 
       await context.store.set(createNewChatThread$, null, context.signal);
 
-      expect(createCalled).toBeTruthy();
       expect(context.store.get(chatThreadId$)).toBe("new-thread-empty-list");
     });
 
     it("should not navigate to second thread when first has a title", async () => {
-      let createCalled = false;
       server.use(
         http.get("*/api/zero/chat-threads", () => {
           return HttpResponse.json({
@@ -630,7 +623,6 @@ describe("zero-chat signals", () => {
           });
         }),
         http.post("*/api/zero/chat-threads", () => {
-          createCalled = true;
           return HttpResponse.json(
             {
               id: "brand-new-thread",
@@ -648,7 +640,6 @@ describe("zero-chat signals", () => {
       await context.store.set(createNewChatThread$, null, context.signal);
 
       // Should NOT navigate to empty-second-thread; should create brand new
-      expect(createCalled).toBeTruthy();
       expect(context.store.get(chatThreadId$)).toBe("brand-new-thread");
     });
   });
