@@ -210,6 +210,46 @@ class TestAddCaptureFields:
         _add_capture_fields(flow, entry)
         assert "response_body" not in entry
 
+    def test_request_body_exactly_at_limit_not_truncated(self):
+        body = b"x" * _MAX_BODY_SIZE
+        flow = self._make_flow(request_body=body, request_ct="text/plain")
+        entry = {}
+        _add_capture_fields(flow, entry)
+        assert "request_body_truncated" not in entry
+        assert len(entry["request_body"]) == _MAX_BODY_SIZE
+
+    def test_response_body_exactly_at_limit_not_truncated(self):
+        body = b"y" * _MAX_BODY_SIZE
+        flow = self._make_flow(response_body=body, response_ct="text/plain")
+        entry = {}
+        _add_capture_fields(flow, entry)
+        assert "response_body_truncated" not in entry
+        assert len(entry["response_body"]) == _MAX_BODY_SIZE
+
+    def test_duplicate_headers_keeps_first(self):
+        headers = MagicMock()
+        headers.items.return_value = [
+            ("Set-Cookie", "a=1"),
+            ("Set-Cookie", "b=2"),
+            ("Host", "example.com"),
+        ]
+        result = _redact_headers(headers)
+        assert result["Set-Cookie"] == "[REDACTED]"
+        assert result["Host"] == "example.com"
+        assert len(result) == 2
+
+    def test_text_request_with_binary_response(self):
+        flow = self._make_flow(
+            request_body=b'{"q": "test"}',
+            response_body=b"\x89PNG\r\n",
+            request_ct="application/json",
+            response_ct="image/png",
+        )
+        entry = {}
+        _add_capture_fields(flow, entry)
+        assert entry["request_body"] == '{"q": "test"}'
+        assert "response_body" not in entry
+
     def test_both_request_and_response(self):
         flow = self._make_flow(
             request_body=b'{"q": "test"}',
