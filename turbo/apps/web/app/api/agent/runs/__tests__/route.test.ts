@@ -1394,4 +1394,80 @@ describe("GET /api/agent/runs - List Runs", () => {
     });
     expect(prompts).toContain("Target org run");
   });
+
+  describe("captureNetworkBodies gate", () => {
+    it("should reject non-vm0.ai accounts in production", async () => {
+      // Use a fresh user so user_cache is empty for this email
+      const freshUser = await context.setupUser({ prefix: "capture-ext" });
+      mockClerk({ userId: freshUser.userId, email: "external@gmail.com" });
+      const { composeId } = await createTestCompose(uniqueId("cap-agent"));
+
+      vi.stubEnv("VERCEL_ENV", "production");
+      reloadEnv();
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentComposeId: composeId,
+            prompt: "Test capture",
+            captureNetworkBodies: true,
+          }),
+        },
+      );
+      const response = await POST(request);
+
+      expect(response.status).toBe(403);
+    });
+
+    it("should allow vm0.ai accounts in production", async () => {
+      const freshUser = await context.setupUser({ prefix: "capture-int" });
+      mockClerk({ userId: freshUser.userId, email: "team@vm0.ai" });
+      const { composeId } = await createTestCompose(uniqueId("cap-agent"));
+
+      vi.stubEnv("VERCEL_ENV", "production");
+      reloadEnv();
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentComposeId: composeId,
+            prompt: "Test capture",
+            captureNetworkBodies: true,
+          }),
+        },
+      );
+      const response = await POST(request);
+
+      expect(response.status).toBe(201);
+    });
+
+    it("should allow any account in non-production", async () => {
+      // Default VERCEL_ENV is not "production" in test env
+      const freshUser = await context.setupUser({ prefix: "capture-dev" });
+      mockClerk({ userId: freshUser.userId, email: "external@gmail.com" });
+      const { composeId } = await createTestCompose(uniqueId("cap-agent"));
+
+      const request = createTestRequest(
+        "http://localhost:3000/api/agent/runs",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentComposeId: composeId,
+            prompt: "Test capture",
+            captureNetworkBodies: true,
+          }),
+        },
+      );
+      const response = await POST(request);
+
+      expect(response.status).toBe(201);
+    });
+  });
 });
