@@ -1,6 +1,7 @@
 import { defineConfig } from "tsup";
 import { readFileSync } from "fs";
 import { execSync } from "child_process";
+import { resolve } from "path";
 
 const pkg = JSON.parse(readFileSync("./package.json", "utf-8")) as {
   version: string;
@@ -28,6 +29,11 @@ export default defineConfig({
   },
   // Only keep native/loader-hook packages external; everything else is bundled
   external: ["@sentry/node", "@ngrok/ngrok"],
+  // Resolve packages from the CLI's node_modules when bundling workspace deps
+  // (e.g. @vm0/core imports zod, which lives in apps/cli/node_modules)
+  esbuildOptions(options) {
+    options.nodePaths = [resolve("node_modules")];
+  },
   // Inject version and default Sentry DSN from package.json/env at build time
   define: {
     __CLI_VERSION__: JSON.stringify(pkg.version),
