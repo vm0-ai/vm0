@@ -29,7 +29,6 @@ import {
 import { detach, Reason } from "../../signals/utils.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import {
-  orgManageTab$,
   setActiveOrgManageTab$,
   setBillingSubPage$,
 } from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
@@ -197,9 +196,14 @@ export function AgentChatPage() {
   const input = useGet(chatPageInput$);
   const setInput = useSet(setChatPageInput$);
   const taglineIndex = useGet(chatPageTaglineIndex$);
-  const tagline = currentChatAgentDisplayName
-    ? getTagline(currentChatAgentDisplayName, userFirstName, taglineIndex)
-    : "";
+  const tagline =
+    currentChatAgentDisplayName !== undefined
+      ? getTagline(
+          currentChatAgentDisplayName ?? "Zero",
+          userFirstName,
+          taglineIndex,
+        )
+      : "";
 
   const suggestedPrompts = useGet(suggestedPrompts$);
   const navigate = useSet(detachedNavigateTo$);

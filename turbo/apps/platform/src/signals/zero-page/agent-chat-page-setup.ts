@@ -4,7 +4,11 @@ import { SidebarLayout } from "../../views/zero-page/sidebar-layout.tsx";
 import { AgentChatPage } from "../../views/zero-page/agent-chat-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
-import { searchParams$, updateSearchParams$ } from "../route.ts";
+import {
+  searchParams$,
+  updateSearchParams$,
+  detachedNavigateTo$,
+} from "../route.ts";
 import { onboardGuard$ } from "./onboard-guard.ts";
 import { currentAgentId$, defaultAgentId$, subagents$ } from "../agent.ts";
 import {
@@ -48,6 +52,22 @@ export const setupAgentChatPage$ = command(
     // /api/zero/agents/:id round-trip on every navigation.
     const defaultId = await get(defaultAgentId$);
     signal.throwIfAborted();
+
+    // Validate agent exists; redirect to default if unknown.
+    if (agentId !== defaultId) {
+      const subagentList = await get(subagents$);
+      signal.throwIfAborted();
+      const agentExists = subagentList.some((a) => {
+        return a.id === agentId;
+      });
+      if (!agentExists && defaultId) {
+        set(detachedNavigateTo$, "/agents/:id/chat", {
+          pathParams: { id: defaultId },
+          replace: true,
+        });
+        return;
+      }
+    }
 
     let agentName: string;
     if (agentId === defaultId) {

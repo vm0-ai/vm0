@@ -13,16 +13,13 @@ export const setChatPageInput$ = command(({ get, set }, value: string) => {
   set(get(talkDraft$).setInput$, value);
 });
 
-const internalTaglineIndex$ = state(0);
+const internalTaglineIndex$ = state(Math.floor(Math.random() * 18));
 export const reloadTagline$ = command(({ set }) => {
-  set(internalTaglineIndex$, (x) => {
-    return x + 1;
-  });
+  set(internalTaglineIndex$, Math.floor(Math.random() * 18));
 });
 
 export const chatPageTaglineIndex$ = computed((get) => {
-  get(internalTaglineIndex$);
-  return Math.floor(Math.random() * 18);
+  return get(internalTaglineIndex$);
 });
 
 // ---------------------------------------------------------------------------
