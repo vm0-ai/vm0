@@ -57,13 +57,16 @@ pub async fn run_gc(args: GcArgs) -> RunnerResult<()> {
     let debootstrap_freed = gc_debootstrap(&home, args.keep_latest, args.dry_run).await?;
 
     let nbd_orphans = gc_nbd_orphans(args.dry_run).await?;
+    let (workspace_orphans, workspace_freed) = gc_workspace_orphans(&home, args.dry_run).await?;
 
-    let total = rootfs_freed + snapshot_freed + job_logs_freed + debootstrap_freed;
+    let total =
+        rootfs_freed + snapshot_freed + job_logs_freed + debootstrap_freed + workspace_freed;
     if total == 0
         && locks_removed == 0
         && job_logs_removed == 0
         && versions_removed.is_empty()
         && nbd_orphans == 0
+        && workspace_orphans == 0
     {
         info!("nothing to clean up");
     } else {
@@ -619,6 +622,168 @@ async fn gc_nbd_orphans(dry_run: bool) -> RunnerResult<u32> {
     }
 
     Ok(cleaned)
+}
+
+/// Read base_dir paths from lock files written by `runner start`.
+///
+/// Returns all known base_dirs, regardless of whether the owning runner is
+/// still alive. Callers combine this with process discovery to build the
+/// complete picture.
+fn discover_registered_base_dirs(home: &HomePaths) -> Vec<PathBuf> {
+    let locks_dir = home.locks_dir();
+    let entries = match std::fs::read_dir(&locks_dir) {
+        Ok(rd) => rd,
+        Err(_) => return Vec::new(),
+    };
+
+    let mut base_dirs = Vec::new();
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        let Some(name) = name.to_str() else { continue };
+        if !name.starts_with("base-dir-") || !name.ends_with(".lock") {
+            continue;
+        }
+        let Ok(content) = std::fs::read_to_string(entry.path()) else {
+            continue;
+        };
+        let path = content.trim();
+        if path.is_empty() {
+            continue; // pre-upgrade lock file without base_dir
+        }
+        base_dirs.push(PathBuf::from(path));
+    }
+    base_dirs
+}
+
+/// Remove workspace directories not owned by any running Firecracker process.
+///
+/// Discovery has two sources:
+/// 1. Live Firecracker processes — extract base_dir from `/proc/{pid}/cwd`
+/// 2. Lock files — read base_dir path written by `runner start`
+///
+/// A workspace is orphaned if no Firecracker process has its CWD pointing to
+/// it. Recently-created workspaces (< [`GC_MIN_AGE`]) are skipped to avoid
+/// racing with sandbox creation and CowPool pre-warming.
+async fn gc_workspace_orphans(home: &HomePaths, dry_run: bool) -> RunnerResult<(u32, u64)> {
+    use std::collections::HashSet;
+
+    // 1. Discover active workspaces from running Firecracker processes.
+    let discovered = crate::process::discover_all().await;
+    let active: HashSet<PathBuf> = discovered
+        .firecrackers
+        .iter()
+        .filter_map(|fc| {
+            fc.base_dir
+                .as_ref()
+                .map(|bd| bd.join("workspaces").join(&fc.run_id))
+        })
+        .collect();
+
+    // Also collect base_dirs from live processes.
+    let mut base_dirs: HashSet<PathBuf> = discovered
+        .firecrackers
+        .iter()
+        .filter_map(|fc| fc.base_dir.clone())
+        .collect();
+
+    // 2. Add base_dirs from lock file registration (covers dead runners).
+    for bd in discover_registered_base_dirs(home) {
+        base_dirs.insert(bd);
+    }
+
+    if base_dirs.is_empty() {
+        tracing::debug!("workspace gc: no base_dirs discovered");
+        return Ok((0, 0));
+    }
+
+    // 3. Scan each base_dir/workspaces/ for orphans.
+    let now = SystemTime::now();
+    let mut cleaned: u32 = 0;
+    let mut freed: u64 = 0;
+
+    for base_dir in &base_dirs {
+        let workspaces_dir = base_dir.join("workspaces");
+        let mut entries = match tokio::fs::read_dir(&workspaces_dir).await {
+            Ok(rd) => rd,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) => {
+                tracing::debug!(
+                    "workspace gc: cannot read {}: {e}",
+                    workspaces_dir.display()
+                );
+                continue;
+            }
+        };
+
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            let path = entry.path();
+            let Ok(meta) = tokio::fs::metadata(&path).await else {
+                continue;
+            };
+            if !meta.is_dir() {
+                continue;
+            }
+
+            // Skip if actively owned by a running process.
+            if active.contains(&path) {
+                continue;
+            }
+
+            // Age-gate: skip recently created workspaces.
+            let age = meta
+                .modified()
+                .ok()
+                .and_then(|mtime| now.duration_since(mtime).ok())
+                .unwrap_or_default();
+            if age < GC_MIN_AGE {
+                tracing::debug!(
+                    "workspace gc: {} too recent ({}s), skipping",
+                    path.display(),
+                    age.as_secs()
+                );
+                continue;
+            }
+
+            let (size, _) = dir_stats(&path).await;
+            if dry_run {
+                info!(
+                    "[dry-run] would remove orphaned workspace {} ({})",
+                    path.display(),
+                    human_bytes(size)
+                );
+            } else {
+                match tokio::fs::remove_dir_all(&path).await {
+                    Ok(()) => {
+                        info!(
+                            "removed orphaned workspace {} ({})",
+                            path.display(),
+                            human_bytes(size)
+                        );
+                    }
+                    Err(e) => {
+                        warn!("workspace gc: cannot remove {}: {e}", path.display());
+                        continue;
+                    }
+                }
+            }
+            cleaned += 1;
+            freed += size;
+        }
+    }
+
+    if cleaned > 0 {
+        info!(
+            "workspace orphans: {cleaned} cleaned ({})",
+            human_bytes(freed)
+        );
+    } else {
+        tracing::debug!(
+            "workspace gc: no orphans found across {} base_dirs",
+            base_dirs.len()
+        );
+    }
+
+    Ok((cleaned, freed))
 }
 
 fn human_bytes(bytes: u64) -> String {
@@ -1221,5 +1386,155 @@ mod tests {
         // On CI this is expected; on a host with NBD it returns the actual value.
         let max = crate::cmd::nbd::read_nbds_max();
         assert!(max > 0);
+    }
+
+    // -----------------------------------------------------------------------
+    // Workspace orphan GC tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn discover_registered_base_dirs_reads_lock_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let locks_dir = home.locks_dir();
+        std::fs::create_dir_all(&locks_dir).unwrap();
+
+        std::fs::write(locks_dir.join("base-dir-abc123.lock"), "/data/runner-01").unwrap();
+        std::fs::write(locks_dir.join("base-dir-def456.lock"), "/data/runner-02").unwrap();
+
+        let dirs = discover_registered_base_dirs(&home);
+        assert_eq!(dirs.len(), 2);
+        assert!(dirs.contains(&PathBuf::from("/data/runner-01")));
+        assert!(dirs.contains(&PathBuf::from("/data/runner-02")));
+    }
+
+    #[test]
+    fn discover_registered_base_dirs_skips_empty_and_non_matching() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let locks_dir = home.locks_dir();
+        std::fs::create_dir_all(&locks_dir).unwrap();
+
+        // Empty lock file (pre-upgrade runner)
+        std::fs::write(locks_dir.join("base-dir-empty.lock"), "").unwrap();
+        // Non-base-dir lock file
+        std::fs::write(locks_dir.join("rootfs-abc.lock"), "/some/path").unwrap();
+
+        let dirs = discover_registered_base_dirs(&home);
+        assert!(dirs.is_empty());
+    }
+
+    #[test]
+    fn discover_registered_base_dirs_missing_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        // locks dir does not exist
+        let dirs = discover_registered_base_dirs(&home);
+        assert!(dirs.is_empty());
+    }
+
+    #[tokio::test]
+    async fn gc_workspace_orphans_deletes_old_orphan() {
+        use std::fs::FileTimes;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let locks_dir = home.locks_dir();
+        std::fs::create_dir_all(&locks_dir).unwrap();
+
+        // Create a fake base_dir with a workspace
+        let base_dir = dir.path().join("runner-data");
+        let workspaces_dir = base_dir.join("workspaces");
+        let workspace = workspaces_dir.join("run-abc-123");
+        std::fs::create_dir_all(&workspace).unwrap();
+        std::fs::write(workspace.join("cow.img"), vec![0u8; 4096]).unwrap();
+
+        // Register base_dir in lock file
+        std::fs::write(
+            locks_dir.join("base-dir-test.lock"),
+            base_dir.to_str().unwrap(),
+        )
+        .unwrap();
+
+        // Set workspace mtime to 1 hour ago (past GC_MIN_AGE)
+        let old_time = SystemTime::now() - Duration::from_secs(3600);
+        std::fs::File::open(&workspace)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(old_time))
+            .unwrap();
+
+        let (cleaned, freed) = gc_workspace_orphans(&home, false).await.unwrap();
+
+        assert!(!workspace.exists(), "orphaned workspace should be deleted");
+        assert_eq!(cleaned, 1);
+        assert!(freed > 0 || cfg!(target_os = "macos"));
+    }
+
+    #[tokio::test]
+    async fn gc_workspace_orphans_skips_recent() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let locks_dir = home.locks_dir();
+        std::fs::create_dir_all(&locks_dir).unwrap();
+
+        let base_dir = dir.path().join("runner-data");
+        let workspace = base_dir.join("workspaces").join("run-new-456");
+        std::fs::create_dir_all(&workspace).unwrap();
+        std::fs::write(workspace.join("cow.img"), b"data").unwrap();
+        // mtime = now (default), so workspace is too recent
+
+        std::fs::write(
+            locks_dir.join("base-dir-test.lock"),
+            base_dir.to_str().unwrap(),
+        )
+        .unwrap();
+
+        let (cleaned, _) = gc_workspace_orphans(&home, false).await.unwrap();
+
+        assert!(workspace.exists(), "recent workspace should NOT be deleted");
+        assert_eq!(cleaned, 0);
+    }
+
+    #[tokio::test]
+    async fn gc_workspace_orphans_dry_run_preserves() {
+        use std::fs::FileTimes;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let locks_dir = home.locks_dir();
+        std::fs::create_dir_all(&locks_dir).unwrap();
+
+        let base_dir = dir.path().join("runner-data");
+        let workspace = base_dir.join("workspaces").join("run-dry-789");
+        std::fs::create_dir_all(&workspace).unwrap();
+        std::fs::write(workspace.join("cow.img"), b"data").unwrap();
+
+        std::fs::write(
+            locks_dir.join("base-dir-test.lock"),
+            base_dir.to_str().unwrap(),
+        )
+        .unwrap();
+
+        let old_time = SystemTime::now() - Duration::from_secs(3600);
+        std::fs::File::open(&workspace)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(old_time))
+            .unwrap();
+
+        let (cleaned, freed) = gc_workspace_orphans(&home, true).await.unwrap();
+
+        assert!(workspace.exists(), "dry-run should NOT delete");
+        assert_eq!(cleaned, 1);
+        assert!(freed > 0 || cfg!(target_os = "macos"));
+    }
+
+    #[tokio::test]
+    async fn gc_workspace_orphans_no_base_dirs() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        // No lock files, no running processes → no base_dirs
+        let (cleaned, freed) = gc_workspace_orphans(&home, false).await.unwrap();
+        assert_eq!(cleaned, 0);
+        assert_eq!(freed, 0);
     }
 }
