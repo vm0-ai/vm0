@@ -11,7 +11,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { setupPage, fill } from "../../../__tests__/page-helper.ts";
 
 const context = testContext();
 
@@ -451,8 +451,7 @@ describe("firewall allow page - member request form", () => {
 
     const user = userEvent.setup();
     const textarea = screen.getByRole("textbox");
-    await user.clear(textarea);
-    await user.type(textarea, "Edited reason");
+    await fill(textarea, "Edited reason");
 
     await user.click(screen.getByText("Request approval"));
 
