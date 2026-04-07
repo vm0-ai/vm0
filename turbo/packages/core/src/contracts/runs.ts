@@ -47,6 +47,9 @@ const unifiedRunRequestSchema = z.object({
   // Debug flag to force real Claude in mock environments (internal use only)
   debugNoMockClaude: z.boolean().optional(),
 
+  // Capture HTTP request headers, request bodies, and response bodies in network logs
+  captureNetworkBodies: z.boolean().optional(),
+
   // Required
   prompt: z.string().min(1, "Missing prompt"),
 

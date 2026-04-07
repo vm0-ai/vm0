@@ -33,6 +33,8 @@ export async function createRun(body: {
   volumeVersions?: Record<string, string>;
   // Debug flag (internal use only)
   debugNoMockClaude?: boolean;
+  // Capture HTTP request headers, request bodies, and response bodies in network logs
+  captureNetworkBodies?: boolean;
   // Append text to the agent's system prompt
   appendSystemPrompt?: string;
   // Tools to disable in Claude CLI (passed as --disallowed-tools)

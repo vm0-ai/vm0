@@ -85,6 +85,8 @@ interface BuildZeroContextParams {
   continuedFromSessionId?: string;
   // Debug flag to force real Claude in mock environments (internal use only)
   debugNoMockClaude?: boolean;
+  // Capture HTTP request headers, request bodies, and response bodies in network logs
+  captureNetworkBodies?: boolean;
   // Model provider for automatic secret injection
   modelProvider?: string;
   // API start time for E2E timing metrics
@@ -653,6 +655,7 @@ export async function buildZeroExecutionContext(
       continuedFromSessionId: params.continuedFromSessionId,
       // Debug flag
       debugNoMockClaude: params.debugNoMockClaude,
+      captureNetworkBodies: params.captureNetworkBodies,
       // API start time for E2E timing metrics
       apiStartTime: params.apiStartTime,
     },

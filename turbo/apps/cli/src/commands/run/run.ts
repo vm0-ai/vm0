@@ -87,6 +87,10 @@ export const mainRunCommand = new Command()
     'Firewall policies JSON (e.g., \'{"github": {"actions:read": "allow"}}\')',
   )
   .option("--verbose", "Show full tool inputs and outputs")
+  .option(
+    "--capture-network-bodies",
+    "Capture HTTP request headers, request bodies, and response bodies in network logs",
+  )
   .addOption(new Option("--debug-no-mock-claude").hideHelp())
   .addOption(new Option("--no-auto-update").hideHelp())
   .action(
@@ -109,6 +113,7 @@ export const mainRunCommand = new Command()
           settings?: string;
           firewallPolicies?: string;
           verbose?: boolean;
+          captureNetworkBodies?: boolean;
           debugNoMockClaude?: boolean;
           autoUpdate?: boolean;
         },
@@ -194,6 +199,7 @@ export const mainRunCommand = new Command()
           tools: options.tools,
           settings: options.settings,
           firewallPolicies: parseFirewallPolicies(options.firewallPolicies),
+          captureNetworkBodies: options.captureNetworkBodies || undefined,
           debugNoMockClaude: options.debugNoMockClaude || undefined,
         });
 

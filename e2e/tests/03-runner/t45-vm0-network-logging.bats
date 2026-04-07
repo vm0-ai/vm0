@@ -109,3 +109,26 @@ EOF
     # UDP entries render as: [timestamp] UDP   <size> 8.8.8.8:9999
     wait_for_log "$RUN_ID" --network -- "UDP" ":9999"
 }
+
+@test "t45-3: capture-network-bodies captures request headers and response body" {
+    create_agent
+
+    # Make an HTTP GET request with --capture-network-bodies enabled.
+    # The response body from httpbin.org/get should be captured.
+    run $VM0_CLI run "$AGENT_NAME" \
+        --artifact-name "$ARTIFACT_NAME" \
+        --capture-network-bodies \
+        "curl -s https://httpbin.org/get | head -5 && echo CAPTURE_DONE=true"
+    assert_success
+    assert_output --partial "CAPTURE_DONE=true"
+
+    RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
+    [ -n "$RUN_ID" ] || {
+        echo "# Failed to extract Run ID"
+        return 1
+    }
+
+    # Verify network logs contain captured body fields.
+    # request_headers should include Host, response_body should contain JSON from httpbin.
+    wait_for_log "$RUN_ID" --network -- "request_headers" "response_body" "httpbin.org"
+}
