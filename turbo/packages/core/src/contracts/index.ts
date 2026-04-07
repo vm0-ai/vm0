@@ -110,6 +110,7 @@ export {
   type MetricsResponse,
   type AgentEventsResponse,
   type NetworkLogEntry,
+  type AxiomNetworkEvent,
   type NetworkLogsResponse,
   type SearchResult,
   type LogsSearchResponse,

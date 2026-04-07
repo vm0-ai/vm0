@@ -12,21 +12,23 @@ import {
 } from "../../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../../src/__tests__/clerk-mock";
 import { randomUUID } from "crypto";
+import type { AxiomNetworkEvent } from "@vm0/core";
 
 const context = testContext();
 
-// [NETWORK_LOG_FIELDS] — subset for testing; see route.ts for full definition
-interface AxiomNetworkEvent {
-  _time: string;
-  runId: string;
-  userId: string;
-  method: string;
-  url: string;
-  status: number;
-  latency_ms: number;
-  request_size: number;
-  response_size: number;
-}
+// Subset of AxiomNetworkEvent fields used in tests
+type TestAxiomNetworkEvent = Pick<
+  AxiomNetworkEvent,
+  | "_time"
+  | "runId"
+  | "userId"
+  | "method"
+  | "url"
+  | "status"
+  | "latency_ms"
+  | "request_size"
+  | "response_size"
+>;
 
 function createAxiomNetworkEvent(
   timestamp: string,
@@ -35,7 +37,7 @@ function createAxiomNetworkEvent(
   status: number,
   runId: string,
   userId: string,
-): AxiomNetworkEvent {
+): TestAxiomNetworkEvent {
   return {
     _time: timestamp,
     runId,

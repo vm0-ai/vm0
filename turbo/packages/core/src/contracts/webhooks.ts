@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
+import { networkLogEntrySchema } from "./runs";
 import {
   storageTypeSchema,
   fileEntryWithHashSchema,
@@ -286,36 +287,8 @@ const sandboxOperationSchema = z.object({
   error: z.string().optional(),
 });
 
-/**
- * Network log entry schema (from mitmproxy addon)
- * [NETWORK_LOG_FIELDS] — keep in sync with all network log schemas
- */
-const networkLogSchema = z.object({
-  timestamp: z.string(),
-  type: z.string().optional(),
-  action: z.enum(["ALLOW", "DENY"]).optional(),
-  host: z.string().optional(),
-  port: z.number().optional(),
-  method: z.string().optional(),
-  url: z.string().optional(),
-  status: z.number().optional(),
-  latency_ms: z.number().optional(),
-  request_size: z.number().optional(),
-  response_size: z.number().optional(),
-  firewall_base: z.string().optional(),
-  firewall_name: z.string().optional(),
-  firewall_ref: z.string().optional(),
-  firewall_permission: z.string().optional(),
-  firewall_rule_match: z.string().optional(),
-  firewall_params: z.record(z.string(), z.string()).optional(),
-  firewall_error: z.string().optional(),
-  auth_resolved_secrets: z.array(z.string()).optional(),
-  auth_refreshed_connectors: z.array(z.string()).optional(),
-  auth_refreshed_secrets: z.array(z.string()).optional(),
-  auth_cache_hit: z.boolean().optional(),
-  auth_url_rewrite: z.boolean().optional(),
-  error: z.string().optional(),
-});
+// Network log schema — uses the shared definition from runs.ts.
+// [NETWORK_LOG_FIELDS]
 
 /**
  * Webhook telemetry contract for /api/webhooks/agent/telemetry
@@ -333,7 +306,7 @@ export const webhookTelemetryContract = c.router({
       runId: z.string().min(1, "runId is required"),
       systemLog: z.string().optional(),
       metrics: z.array(metricDataSchema).optional(),
-      networkLogs: z.array(networkLogSchema).optional(),
+      networkLogs: z.array(networkLogEntrySchema).optional(),
       sandboxOperations: z.array(sandboxOperationSchema).optional(),
     }),
     responses: {
