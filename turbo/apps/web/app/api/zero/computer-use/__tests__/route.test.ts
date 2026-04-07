@@ -53,7 +53,9 @@ function setupNgrokMocks() {
   const calls = {
     createBotUser: [] as string[],
     listBotUsers: 0,
-    listReservedDomains: 0,
+    filterEndpoints: [] as string[],
+    patchEndpoint: [] as string[],
+    filterReservedDomains: [] as string[],
     createCredential: [] as string[],
     deleteCredential: [] as string[],
     createEndpoint: [] as string[],
@@ -94,8 +96,10 @@ function setupNgrokMocks() {
       calls.deleteCredential.push(params.id as string);
       return new HttpResponse(null, { status: 204 });
     }),
-    http.get("https://api.ngrok.com/reserved_domains", () => {
-      calls.listReservedDomains++;
+    http.get("https://api.ngrok.com/reserved_domains", ({ request }) => {
+      const url = new URL(request.url);
+      const filter = url.searchParams.get("filter");
+      calls.filterReservedDomains.push(filter ?? "");
       return HttpResponse.json({
         reserved_domains: [],
         next_page_uri: null,
@@ -117,6 +121,22 @@ function setupNgrokMocks() {
     http.delete("https://api.ngrok.com/reserved_domains/:id", ({ params }) => {
       calls.deleteReservedDomain.push(params.id as string);
       return new HttpResponse(null, { status: 204 });
+    }),
+    http.get("https://api.ngrok.com/endpoints", ({ request }) => {
+      const url = new URL(request.url);
+      const filter = url.searchParams.get("filter");
+      calls.filterEndpoints.push(filter ?? "");
+      return HttpResponse.json({
+        endpoints: [],
+        next_page_uri: null,
+      });
+    }),
+    http.patch("https://api.ngrok.com/endpoints/:id", async ({ params }) => {
+      calls.patchEndpoint.push(params.id as string);
+      return HttpResponse.json({
+        id: params.id as string,
+        url: "https://*.patched.ngrok-free.app",
+      });
     }),
     http.post("https://api.ngrok.com/endpoints", async ({ request }) => {
       const body = (await request.json()) as { url: string };
@@ -186,7 +206,9 @@ describe("POST /api/zero/computer-use/register", () => {
 
     expect(ngrokCalls.createBotUser.length).toBe(1);
     expect(ngrokCalls.createCredential.length).toBe(1);
+    expect(ngrokCalls.filterReservedDomains.length).toBe(1);
     expect(ngrokCalls.createReservedDomain.length).toBe(1);
+    expect(ngrokCalls.filterEndpoints.length).toBe(1);
     expect(ngrokCalls.createEndpoint.length).toBe(1);
   });
 
@@ -209,6 +231,37 @@ describe("POST /api/zero/computer-use/register", () => {
     expect(ngrokCalls.deleteBotUser).toEqual(["bot_test_cu_123"]);
     expect(ngrokCalls.deleteCredential).toEqual(["cr_test_cu_456"]);
     expect(ngrokCalls.deleteReservedDomain).toEqual(["rd_test_cu_abc"]);
+  });
+
+  it("should update existing orphaned endpoint instead of creating new one", async () => {
+    const userId = uniqueId("zcu-orphan");
+    await setupOrg(userId);
+    const ngrokCalls = setupNgrokMocks();
+
+    // Override GET /endpoints to return an orphaned endpoint
+    server.use(
+      http.get("https://api.ngrok.com/endpoints", ({ request }) => {
+        const url = new URL(request.url);
+        const filter = url.searchParams.get("filter");
+        ngrokCalls.filterEndpoints.push(filter ?? "");
+        return HttpResponse.json({
+          endpoints: [
+            { id: "ep_orphaned_123", url: "https://*.orphan.ngrok-free.app" },
+          ],
+          next_page_uri: null,
+        });
+      }),
+    );
+
+    const response = await POST(createPostRequest());
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.id).toBeDefined();
+
+    // Should PATCH the existing endpoint, not create a new one
+    expect(ngrokCalls.patchEndpoint).toEqual(["ep_orphaned_123"]);
+    expect(ngrokCalls.createEndpoint.length).toBe(0);
   });
 
   it("should return 200 on re-registration (idempotent)", async () => {

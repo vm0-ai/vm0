@@ -282,4 +282,37 @@ mod tests {
         assert_eq!(h1, h2);
         assert_eq!(h1.len(), 64); // SHA-256 hex
     }
+
+    #[tokio::test]
+    async fn run_snapshot_dry_run_returns_hash() {
+        let provider = sandbox_mock::MockSnapshotProvider;
+        let args = SnapshotArgs {
+            rootfs_hash: "abc123".into(),
+            vcpu: 2,
+            memory_mb: 2048,
+            dry_run: true,
+        };
+        let expected_hash = compute_snapshot_hash(&args, &provider);
+        let result = run_snapshot(args, &provider).await.unwrap();
+        assert_eq!(result, expected_hash);
+    }
+
+    #[tokio::test]
+    async fn file_sizes_existing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.bin");
+        tokio::fs::write(&path, vec![0u8; 1024]).await.unwrap();
+
+        let (logical, disk) = file_sizes(&path).await;
+        assert_eq!(logical, "1.0 KiB");
+        // disk usage may differ from logical size
+        assert_ne!(disk, "?");
+    }
+
+    #[tokio::test]
+    async fn file_sizes_nonexistent_file() {
+        let (logical, disk) = file_sizes(std::path::Path::new("/nonexistent/file.bin")).await;
+        assert_eq!(logical, "?");
+        assert_eq!(disk, "?");
+    }
 }

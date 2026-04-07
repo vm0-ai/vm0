@@ -41,7 +41,6 @@ export default [
       "ccstate/no-direct-fetch": "error",
       "ccstate/no-empty-promise-catch": "error",
       "ccstate/require-accept": "error",
-      "ccstate/no-onclick": "error",
     },
   },
   // Type-aware rules (only for TypeScript files)

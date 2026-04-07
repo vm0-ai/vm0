@@ -577,4 +577,80 @@ mod tests {
         assert!(create_archive("/tmp", &tar_path, &[]));
         assert!(tar_path.exists());
     }
+
+    #[test]
+    fn collect_file_metadata_excludes_git_and_vm0() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+
+        // Regular file
+        std::fs::write(root.join("main.rs"), "fn main() {}").unwrap();
+
+        // .git directory (should be excluded)
+        std::fs::create_dir(root.join(".git")).unwrap();
+        std::fs::write(root.join(".git/HEAD"), "ref: refs/heads/main").unwrap();
+        std::fs::create_dir(root.join(".git/objects")).unwrap();
+        std::fs::write(root.join(".git/objects/pack"), "data").unwrap();
+
+        // .vm0 directory (should be excluded)
+        std::fs::create_dir(root.join(".vm0")).unwrap();
+        std::fs::write(root.join(".vm0/config.json"), "{}").unwrap();
+
+        // Nested directory with a .git-like name (should NOT be excluded)
+        std::fs::create_dir(root.join("src")).unwrap();
+        std::fs::write(root.join("src/lib.rs"), "pub fn hello() {}").unwrap();
+
+        let files = collect_file_metadata(root.to_str().unwrap());
+        let paths: Vec<&str> = files.iter().map(|f| f.path.as_str()).collect();
+
+        assert!(paths.contains(&"main.rs"));
+        assert!(paths.contains(&"src/lib.rs"));
+
+        // .git and .vm0 contents must NOT be present
+        assert!(!paths.iter().any(|p| p.starts_with(".git")));
+        assert!(!paths.iter().any(|p| p.starts_with(".vm0")));
+    }
+
+    #[test]
+    fn compute_file_hash_known_value() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.txt");
+        std::fs::write(&path, "hello world").unwrap();
+
+        let (hash, size) = compute_file_hash(&path).unwrap();
+        assert_eq!(size, 11);
+        // SHA-256 of "hello world"
+        assert_eq!(
+            hash,
+            "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
+        );
+    }
+
+    #[test]
+    fn compute_file_hash_empty_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("empty.txt");
+        std::fs::write(&path, "").unwrap();
+
+        let (hash, size) = compute_file_hash(&path).unwrap();
+        assert_eq!(size, 0);
+        // SHA-256 of empty string
+        assert_eq!(
+            hash,
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
+    }
+
+    #[test]
+    fn collect_file_metadata_empty_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let files = collect_file_metadata(dir.path().to_str().unwrap());
+        assert!(files.is_empty());
+    }
+
+    #[test]
+    fn collect_file_metadata_nonexistent_dir() {
+        let files = collect_file_metadata("/nonexistent/path/that/does/not/exist");
+        assert!(files.is_empty());
+    }
 }

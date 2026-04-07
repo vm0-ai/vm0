@@ -233,7 +233,6 @@ describe("sidebar new chat navigation", () => {
     });
 
     // 2. Verify sidebar shows "New chat" entry (thread has title: null)
-    // Use selector to target the thread title span specifically, not the tooltip label
     await waitFor(() => {
       expect(
         screen.getByText("New chat", { selector: "span" }),

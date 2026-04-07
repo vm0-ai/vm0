@@ -600,7 +600,7 @@ export function ZeroSchedulePage() {
               size="sm"
               className="zero-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
               disabled={agents.length === 0}
-              onPointerDown={() => {
+              onClick={() => {
                 return setCreateOpen(true);
               }}
             >
@@ -715,13 +715,13 @@ export function ZeroSchedulePage() {
           <DialogFooter>
             <Button
               variant="outline"
-              onPointerDown={() => {
+              onClick={() => {
                 return setPendingDelete(null);
               }}
             >
               Cancel
             </Button>
-            <Button variant="destructive" onPointerDown={confirmDelete}>
+            <Button variant="destructive" onClick={confirmDelete}>
               Delete
             </Button>
           </DialogFooter>

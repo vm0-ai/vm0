@@ -68,7 +68,7 @@ function SortablePinnedAgent({
       {onChat ? (
         <button
           type="button"
-          onPointerDown={onChat}
+          onClick={onChat}
           className="flex items-center gap-2 flex-1 min-w-0"
         >
           <AgentAvatarImg
@@ -105,7 +105,7 @@ function SortablePinnedAgent({
         <button
           type="button"
           className="shrink-0 flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted-foreground/12 hover:text-foreground dark:hover:bg-muted-foreground/18"
-          onPointerDown={onUnpin}
+          onClick={onUnpin}
           aria-label={`Unpin ${agent.displayName ?? agent.id}`}
         >
           <IconX size={16} stroke={2} />
@@ -297,7 +297,7 @@ export function ManagePinnedAgentsDialog({
                           <button
                             type="button"
                             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-all duration-150 group-hover:opacity-100 group-focus-within:opacity-100 hover:bg-muted-foreground/12 hover:text-foreground dark:hover:bg-muted-foreground/18"
-                            onPointerDown={() => {
+                            onClick={() => {
                               return togglePin(agent.id);
                             }}
                             aria-label="Pin to sidebar"
@@ -330,13 +330,13 @@ export function ManagePinnedAgentsDialog({
             variant="outline"
             size="sm"
             className="zero-btn-morandi"
-            onPointerDown={() => {
+            onClick={() => {
               return onOpenChange(false);
             }}
           >
             Cancel
           </Button>
-          <Button size="sm" onPointerDown={handleSave} disabled={saving}>
+          <Button size="sm" onClick={handleSave} disabled={saving}>
             {saving ? "Saving\u2026" : "Save"}
           </Button>
         </div>
@@ -472,7 +472,7 @@ export function ChatListDialog({
             {query && (
               <button
                 type="button"
-                onPointerDown={() => {
+                onClick={() => {
                   return setQuery("");
                 }}
                 className="absolute right-1.5 top-1/2 -translate-y-1/2 flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
@@ -493,7 +493,7 @@ export function ChatListDialog({
               </span>
               <button
                 type="button"
-                onPointerDown={() => {
+                onClick={() => {
                   return handleChat(null);
                 }}
                 className="flex w-full items-center gap-2 px-1 py-2 rounded-lg hover:bg-accent transition-colors"
@@ -575,7 +575,7 @@ export function ChatListDialog({
                     >
                       <button
                         type="button"
-                        onPointerDown={() => {
+                        onClick={() => {
                           return handleChat(agent.id);
                         }}
                         className="flex items-center gap-2 flex-1 min-w-0"
@@ -595,7 +595,7 @@ export function ChatListDialog({
                             <button
                               type="button"
                               className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-all duration-150 group-hover:opacity-100 group-focus-within:opacity-100 hover:bg-muted-foreground/12 hover:text-foreground dark:hover:bg-muted-foreground/18"
-                              onPointerDown={() => {
+                              onClick={() => {
                                 return togglePin(agent.id);
                               }}
                               aria-label="Pin to sidebar"

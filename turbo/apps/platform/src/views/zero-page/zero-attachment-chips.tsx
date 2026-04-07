@@ -56,13 +56,13 @@ export function ImageLightbox({ url }: { url: string }) {
       ref={dialogRef}
       tabIndex={-1}
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-in fade-in duration-200 outline-none"
-      onPointerDown={handleBackdropClick}
+      onClick={handleBackdropClick}
       role="dialog"
       aria-modal="true"
     >
       <button
         type="button"
-        onPointerDown={() => {
+        onClick={() => {
           return closeLightbox(null);
         }}
         className="absolute top-4 right-4 p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
@@ -140,7 +140,7 @@ function AttachmentChip({
         {isImage ? (
           <button
             type="button"
-            onPointerDown={() => {
+            onClick={() => {
               return url && setLightboxUrlFn(url);
             }}
             disabled={!url}
@@ -184,7 +184,7 @@ function AttachmentChip({
         )}
         <button
           type="button"
-          onPointerDown={onRemove}
+          onClick={onRemove}
           className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-muted hover:bg-destructive hover:text-destructive-foreground transition-colors"
           aria-label={
             uploading

@@ -191,4 +191,62 @@ describe("getOrgBillingPeriod", () => {
 
     expect(result).toBeNull();
   });
+
+  it("refreshes from Stripe when currentPeriodEnd is in the past", async () => {
+    const userId = uniqueId("test-user");
+    const slug = uniqueId("org");
+    mockClerk({ userId });
+    const { id: orgId } = await createTestOrg(slug);
+
+    const subId = uniqueId("sub");
+    const stalePeriodEnd = new Date("2026-03-01T00:00:00Z"); // past date
+
+    await updateOrgStripeFields(orgId, {
+      stripeSubscriptionId: subId,
+      stripeCustomerId: uniqueId("cus"),
+      subscriptionStatus: "active",
+      currentPeriodEnd: stalePeriodEnd,
+    });
+
+    const newPeriodEndUnix = Math.floor(
+      new Date("2026-04-01T00:00:00Z").getTime() / 1000,
+    );
+
+    stripeMocks.subscriptionsRetrieve.mockResolvedValueOnce({
+      latest_invoice: "inv_fresh123",
+    });
+    stripeMocks.invoicesRetrieve.mockResolvedValueOnce({
+      period_end: newPeriodEndUnix,
+    });
+
+    const result = await getOrgBillingPeriod(orgId);
+
+    if (!result) throw new Error("expected result to be non-null");
+    expect(result.end).toEqual(new Date("2026-04-01T00:00:00Z"));
+    expect(stripeMocks.subscriptionsRetrieve).toHaveBeenCalledWith(subId);
+    expect(stripeMocks.invoicesRetrieve).toHaveBeenCalledWith("inv_fresh123");
+  });
+
+  it("uses cached value when currentPeriodEnd is in the future", async () => {
+    const userId = uniqueId("test-user");
+    const slug = uniqueId("org");
+    mockClerk({ userId });
+    const { id: orgId } = await createTestOrg(slug);
+
+    const futurePeriodEnd = new Date("2026-05-01T00:00:00Z"); // future date
+
+    await updateOrgStripeFields(orgId, {
+      stripeSubscriptionId: uniqueId("sub"),
+      stripeCustomerId: uniqueId("cus"),
+      subscriptionStatus: "active",
+      currentPeriodEnd: futurePeriodEnd,
+    });
+
+    const result = await getOrgBillingPeriod(orgId);
+
+    if (!result) throw new Error("expected result to be non-null");
+    expect(result.end).toEqual(futurePeriodEnd);
+    // Stripe should NOT have been called — we used the cached value
+    expect(stripeMocks.subscriptionsRetrieve).not.toHaveBeenCalled();
+  });
 });

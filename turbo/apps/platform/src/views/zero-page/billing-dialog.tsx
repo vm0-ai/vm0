@@ -82,7 +82,7 @@ function PlanCard({
   return (
     <button
       type="button"
-      onPointerDown={onSelect}
+      onClick={onSelect}
       aria-pressed={isSelected}
       aria-label={plan.name}
       className={`flex flex-col rounded-lg border p-4 text-left transition-colors ${
@@ -331,7 +331,7 @@ export function AutoRechargeSection({
           role="switch"
           aria-checked={enabled}
           aria-label="Auto-recharge"
-          onPointerDown={() => {
+          onClick={() => {
             saveCurrent({ enabled: !enabled });
           }}
           className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
@@ -395,7 +395,7 @@ export function AutoRechargeSection({
           size="sm"
           variant="outline"
           disabled={loading}
-          onPointerDown={() => {
+          onClick={() => {
             return persistIfValid();
           }}
         >
@@ -473,7 +473,7 @@ export function BillingDialog() {
             <Button
               disabled={loading}
               variant={isDowngrade ? "outline" : "default"}
-              onPointerDown={handleAction}
+              onClick={handleAction}
             >
               {loading
                 ? "Redirecting..."

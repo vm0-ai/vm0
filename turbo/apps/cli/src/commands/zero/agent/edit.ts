@@ -1,12 +1,22 @@
 import { Command } from "commander";
 import { readFileSync } from "node:fs";
 import chalk from "chalk";
+import { zeroAgentCustomSkillNameSchema } from "@vm0/core";
 import {
   getZeroAgent,
   updateZeroAgent,
   updateZeroAgentInstructions,
 } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
+
+function validateSkillName(name: string): void {
+  const result = zeroAgentCustomSkillNameSchema.safeParse(name);
+  if (!result.success) {
+    throw new Error(
+      `Invalid skill name "${name}": must be 2-64 characters, lowercase alphanumeric and hyphens only (e.g. my-skill)`,
+    );
+  }
+}
 
 function resolveCustomSkills(
   options: { skills?: string; addSkill?: string; removeSkill?: string },
@@ -17,12 +27,17 @@ function resolveCustomSkills(
   }
 
   if (options.skills) {
-    return options.skills.split(",").map((s) => {
+    const names = options.skills.split(",").map((s) => {
       return s.trim();
     });
+    for (const name of names) {
+      validateSkillName(name);
+    }
+    return names;
   }
 
   if (options.addSkill) {
+    validateSkillName(options.addSkill);
     if (existing.includes(options.addSkill)) {
       throw new Error(
         `Skill "${options.addSkill}" is already attached to this agent`,

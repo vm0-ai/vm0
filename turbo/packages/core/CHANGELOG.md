@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.154.1](https://github.com/vm0-ai/vm0/compare/core-v8.154.0...core-v8.154.1) (2026-04-07)
+
+
+### Bug Fixes
+
+* **onboarding:** prevent double-click and handle 409 conflict ([#8262](https://github.com/vm0-ai/vm0/issues/8262)) ([6613990](https://github.com/vm0-ai/vm0/commit/6613990bf91184c2aa051294acd6deae49f46b38))
+
+## [8.154.0](https://github.com/vm0-ai/vm0/compare/core-v8.153.1...core-v8.154.0) (2026-04-07)
+
+
+### Features
+
+* **chat:** gate mobile chat list page navigation behind feature switch ([#8251](https://github.com/vm0-ai/vm0/issues/8251)) ([5ad7565](https://github.com/vm0-ai/vm0/commit/5ad756579cf7a54784681357f85096b0920be198))
+
 ## [8.153.1](https://github.com/vm0-ai/vm0/compare/core-v8.153.0...core-v8.153.1) (2026-04-06)
 
 

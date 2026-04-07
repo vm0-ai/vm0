@@ -301,7 +301,7 @@ export function ActivityHeaderCard({
                     size="sm"
                     aria-label="Download raw data"
                     className="h-7 w-7 ml-auto shrink-0 rounded-lg text-muted-foreground hover:text-foreground p-0"
-                    onPointerDown={() => {
+                    onClick={() => {
                       if (onDownload) {
                         onDownload();
                       } else if (logDetail) {

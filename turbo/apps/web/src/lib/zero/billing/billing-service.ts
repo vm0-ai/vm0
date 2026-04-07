@@ -245,7 +245,7 @@ export async function handleInvoicePaid(invoice: InvoiceInput): Promise<void> {
     : undefined;
 
   if (!subscriptionId) {
-    log.debug("invoice.paid without subscription — skipping", {
+    log.warn("invoice.paid without subscription — skipping", {
       invoiceId: invoice.id,
     });
     return;
@@ -307,7 +307,11 @@ export async function handleInvoicePaid(invoice: InvoiceInput): Promise<void> {
   const credits = TIER_MONTHLY_CREDITS[tier];
 
   if (credits <= 0) {
-    log.debug("no credits to grant for tier", { tier, invoiceId: invoice.id });
+    log.warn("no credits to grant for tier", {
+      tier,
+      invoiceId: invoice.id,
+      orgId: org.orgId,
+    });
     return;
   }
 

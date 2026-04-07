@@ -467,4 +467,71 @@ mod tests {
 
         handle.abort();
     }
+
+    #[test]
+    fn exec_request_default_timeout() {
+        // timeout_secs has a serde default of 30
+        let json = r#"{"command":"echo hi"}"#;
+        let req: ExecRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.command, "echo hi");
+        assert_eq!(req.timeout_secs, 30);
+        assert!(!req.sudo);
+    }
+
+    #[test]
+    fn exec_request_with_sudo() {
+        let json = r#"{"command":"apt install curl","timeout_secs":60,"sudo":true}"#;
+        let req: ExecRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.command, "apt install curl");
+        assert_eq!(req.timeout_secs, 60);
+        assert!(req.sudo);
+    }
+
+    #[test]
+    fn exec_response_success_serialization() {
+        let resp = ExecResponse::Success {
+            exit_code: 0,
+            stdout: BASE64.encode(b"output\n"),
+            stderr: BASE64.encode(b""),
+        };
+        let json = serde_json::to_value(&resp).unwrap();
+        // Untagged enum: no "type" field, just the fields directly
+        assert_eq!(json["exit_code"], 0);
+        assert!(json.get("stdout").is_some());
+        assert!(json.get("stderr").is_some());
+        assert!(json.get("error").is_none());
+    }
+
+    #[test]
+    fn exec_response_error_serialization() {
+        let resp = ExecResponse::Error {
+            error: "sandbox not running".into(),
+        };
+        let json = serde_json::to_value(&resp).unwrap();
+        assert_eq!(json["error"], "sandbox not running");
+        assert!(json.get("exit_code").is_none());
+    }
+
+    #[tokio::test]
+    async fn send_exec_connect_timeout() {
+        let dir = tempfile::tempdir().unwrap();
+        let sock_path = dir.path().join("nonexistent.sock");
+
+        let request = ExecRequest {
+            command: "echo test".into(),
+            timeout_secs: 5,
+            sudo: false,
+        };
+
+        let result = send_exec(&sock_path, &request, Duration::from_millis(100)).await;
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn resolve_control_socket_nonexistent_dir() {
+        let result = resolve_control_socket("nonexistent-id-12345");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, SandboxControlError::Connection(_)));
+    }
 }

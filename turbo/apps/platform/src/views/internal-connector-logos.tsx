@@ -99,7 +99,7 @@ export function InternalConnectorLogos() {
             return (
               <button
                 key={s}
-                onPointerDown={() => {
+                onClick={() => {
                   return setSize(s as IconSize);
                 }}
                 style={{

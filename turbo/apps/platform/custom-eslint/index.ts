@@ -24,7 +24,6 @@
  * - no-test-delay: Disallow manual delays/timers in tests — use createDeferredPromise + waitFor
  * - require-accept: Enforce that zeroClient$ calls are wrapped in accept()
  * - no-get-by-role-name: Avoid *ByRole(role, { name }) for text-content roles — causes ~300ms/call slowdown in happy-dom
- * - no-onclick: Disallow onClick on JSX elements — use onPointerDown for mobile-safe event handling
  */
 
 import signalDollarSuffix from "./rules/signal-dollar-suffix.ts";
@@ -52,7 +51,6 @@ import noTestDelay from "./rules/no-test-delay.ts";
 import requireAccept from "./rules/require-accept.ts";
 import noGetByRoleName from "./rules/no-get-by-role-name.ts";
 import noUserClearTab from "./rules/no-user-clear-tab.ts";
-import noOnclick from "./rules/no-onclick.ts";
 
 const plugin = {
   meta: {
@@ -85,7 +83,6 @@ const plugin = {
     "require-accept": requireAccept,
     "no-get-by-role-name": noGetByRoleName,
     "no-user-clear-tab": noUserClearTab,
-    "no-onclick": noOnclick,
   },
 };
 

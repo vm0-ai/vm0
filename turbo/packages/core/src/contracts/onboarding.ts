@@ -72,6 +72,7 @@ export const onboardingSetupContract = c.router({
     responses: {
       200: z.object({ agentId: z.string() }),
       401: apiErrorSchema,
+      409: z.object({ agentId: z.string() }),
       422: apiErrorSchema,
     },
     summary: "Complete admin onboarding in a single request",

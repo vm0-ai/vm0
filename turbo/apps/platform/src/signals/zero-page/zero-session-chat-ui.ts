@@ -1,4 +1,5 @@
 import { state, computed, command } from "ccstate";
+import { writeToClipboard } from "./clipboard.ts";
 
 // ---------------------------------------------------------------------------
 // Collapsible timeline expanded state
@@ -34,12 +35,15 @@ export const copiedMessageIdValue$ = computed((get) => {
 });
 
 export const copyMessageContent$ = command(
-  ({ set }, messageId: string, content: string) => {
-    return navigator.clipboard.writeText(content).then(() => {
-      set(copiedMessageId$, messageId);
-      window.setTimeout(() => {
-        return set(copiedMessageId$, null);
-      }, 2000);
-    });
+  async ({ set }, messageId: string, content: string, signal: AbortSignal) => {
+    const ok = await writeToClipboard(content);
+    signal.throwIfAborted();
+    if (!ok) {
+      return;
+    }
+    set(copiedMessageId$, messageId);
+    window.setTimeout(() => {
+      return set(copiedMessageId$, null);
+    }, 2000);
   },
 );

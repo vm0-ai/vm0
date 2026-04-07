@@ -98,8 +98,8 @@ describe("evaluateMemberCaps", () => {
     mockClerk({ userId });
     const { id: orgId } = await createTestOrg(slug);
 
-    // Set up billing period
-    const periodEnd = new Date("2026-04-01T00:00:00Z");
+    // Set up billing period (future date to avoid stale-period Stripe refresh)
+    const periodEnd = new Date("2099-04-01T00:00:00Z");
     await updateOrgStripeFields(orgId, {
       stripeSubscriptionId: uniqueId("sub"),
       stripeCustomerId: uniqueId("cus"),
@@ -120,7 +120,7 @@ describe("evaluateMemberCaps", () => {
       userId,
       status: "processed",
       creditsCharged: 75,
-      processedAt: new Date("2026-03-15T00:00:00Z"),
+      processedAt: new Date("2099-03-15T00:00:00Z"),
     });
 
     await evaluateMemberCaps(orgId, [userId]);
@@ -135,8 +135,8 @@ describe("evaluateMemberCaps", () => {
     mockClerk({ userId });
     const { id: orgId } = await createTestOrg(slug);
 
-    // Set up billing period
-    const periodEnd = new Date("2026-04-01T00:00:00Z");
+    // Set up billing period (future date to avoid stale-period Stripe refresh)
+    const periodEnd = new Date("2099-04-01T00:00:00Z");
     await updateOrgStripeFields(orgId, {
       stripeSubscriptionId: uniqueId("sub"),
       stripeCustomerId: uniqueId("cus"),
@@ -157,7 +157,7 @@ describe("evaluateMemberCaps", () => {
       userId,
       status: "processed",
       creditsCharged: 25,
-      processedAt: new Date("2026-03-15T00:00:00Z"),
+      processedAt: new Date("2099-03-15T00:00:00Z"),
     });
 
     await evaluateMemberCaps(orgId, [userId]);
@@ -173,8 +173,8 @@ describe("evaluateMemberCaps", () => {
     mockClerk({ userId: userId1 });
     const { id: orgId } = await createTestOrg(slug);
 
-    // Set up billing period
-    const periodEnd = new Date("2026-04-01T00:00:00Z");
+    // Set up billing period (future date to avoid stale-period Stripe refresh)
+    const periodEnd = new Date("2099-04-01T00:00:00Z");
     await updateOrgStripeFields(orgId, {
       stripeSubscriptionId: uniqueId("sub"),
       stripeCustomerId: uniqueId("cus"),
@@ -193,7 +193,7 @@ describe("evaluateMemberCaps", () => {
       userId: userId1,
       status: "processed",
       creditsCharged: 75,
-      processedAt: new Date("2026-03-15T00:00:00Z"),
+      processedAt: new Date("2099-03-15T00:00:00Z"),
     });
 
     // User2: cap 100, usage 30 (under cap -> should remain enabled)
@@ -207,7 +207,7 @@ describe("evaluateMemberCaps", () => {
       userId: userId2,
       status: "processed",
       creditsCharged: 30,
-      processedAt: new Date("2026-03-15T00:00:00Z"),
+      processedAt: new Date("2099-03-15T00:00:00Z"),
     });
 
     await evaluateMemberCaps(orgId, [userId1, userId2]);
@@ -225,8 +225,8 @@ describe("evaluateMemberCaps", () => {
     mockClerk({ userId });
     const { id: orgId } = await createTestOrg(slug);
 
-    // Set up billing period
-    const periodEnd = new Date("2026-04-01T00:00:00Z");
+    // Set up billing period (future date to avoid stale-period Stripe refresh)
+    const periodEnd = new Date("2099-04-01T00:00:00Z");
     await updateOrgStripeFields(orgId, {
       stripeSubscriptionId: uniqueId("sub"),
       stripeCustomerId: uniqueId("cus"),
@@ -247,7 +247,7 @@ describe("evaluateMemberCaps", () => {
       userId,
       status: "processed",
       creditsCharged: 999,
-      processedAt: new Date("2026-03-15T00:00:00Z"),
+      processedAt: new Date("2099-03-15T00:00:00Z"),
     });
 
     await evaluateMemberCaps(orgId, [userId]);
@@ -262,8 +262,8 @@ describe("evaluateMemberCaps", () => {
     mockClerk({ userId });
     const { id: orgId } = await createTestOrg(slug);
 
-    // Set up billing period
-    const periodEnd = new Date("2026-04-01T00:00:00Z");
+    // Set up billing period (future date to avoid stale-period Stripe refresh)
+    const periodEnd = new Date("2099-04-01T00:00:00Z");
     await updateOrgStripeFields(orgId, {
       stripeSubscriptionId: uniqueId("sub"),
       stripeCustomerId: uniqueId("cus"),
@@ -284,7 +284,7 @@ describe("evaluateMemberCaps", () => {
       userId,
       status: "processed",
       creditsCharged: 10,
-      processedAt: new Date("2026-03-15T00:00:00Z"),
+      processedAt: new Date("2099-03-15T00:00:00Z"),
     });
 
     await evaluateMemberCaps(orgId, [userId]);

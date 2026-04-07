@@ -1,5 +1,30 @@
 # Changelog
 
+## [9.102.10](https://github.com/vm0-ai/vm0/compare/cli-v9.102.9...cli-v9.102.10) (2026-04-07)
+
+
+### Bug Fixes
+
+* add validation error logging and client-side skill name checks ([#8109](https://github.com/vm0-ai/vm0/issues/8109)) ([#8283](https://github.com/vm0-ai/vm0/issues/8283)) ([51d259a](https://github.com/vm0-ai/vm0/commit/51d259a9de2d7e1f8932fb85fb6759b4e2085c07))
+
+## [9.102.9](https://github.com/vm0-ai/vm0/compare/cli-v9.102.8...cli-v9.102.9) (2026-04-07)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.154.1
+
+## [9.102.8](https://github.com/vm0-ai/vm0/compare/cli-v9.102.7...cli-v9.102.8) (2026-04-07)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.154.0
+
 ## [9.102.7](https://github.com/vm0-ai/vm0/compare/cli-v9.102.6...cli-v9.102.7) (2026-04-06)
 
 

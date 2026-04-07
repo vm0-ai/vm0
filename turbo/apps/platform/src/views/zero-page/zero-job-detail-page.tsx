@@ -383,7 +383,7 @@ function PermissionRow({
                   <span
                     role="button"
                     tabIndex={0}
-                    onPointerDown={() => {
+                    onClick={() => {
                       onManage?.();
                     }}
                     onKeyDown={(e) => {
@@ -575,7 +575,7 @@ function JobPermissionsTab({
                   />
                   <button
                     type="button"
-                    onPointerDown={() => {
+                    onClick={() => {
                       setSearch("");
                       setSearchActive(false);
                     }}
@@ -589,7 +589,7 @@ function JobPermissionsTab({
               {!searchActive && (
                 <button
                   type="button"
-                  onPointerDown={() => {
+                  onClick={() => {
                     return setSearchActive(true);
                   }}
                   className="absolute right-3 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
@@ -838,7 +838,7 @@ export function ZeroJobDetailPage({ agentId }: ZeroJobDetailPageProps) {
               variant="outline"
               size="sm"
               className="shrink-0 zero-btn-morandi gap-1.5"
-              onPointerDown={() => {
+              onClick={() => {
                 nav("/agents/:id/chat", { pathParams: { id: agentId } });
               }}
               aria-label={`Chat with ${displayName}`}

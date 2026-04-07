@@ -93,19 +93,19 @@ function OnboardingConnectorCard({
   label,
   isSelected,
   isPolling,
-  onPointerDown,
+  onClick,
 }: {
   type: ConnectorType;
   label: string;
   isSelected: boolean;
   isPolling: boolean;
-  onPointerDown: () => void;
+  onClick: () => void;
 }) {
   return (
     <button
       type="button"
       data-testid={`connector-card-${type}`}
-      onPointerDown={onPointerDown}
+      onClick={onClick}
       disabled={isPolling}
       className={`flex items-center gap-3 rounded-xl px-4 py-3.5 transition-colors focus:outline-none zero-border ${
         isPolling ? "bg-yellow-500/5" : "hover:bg-muted/30 cursor-pointer"
@@ -193,7 +193,7 @@ function SelectConnectorsContent() {
               label={config.label}
               isSelected={selectedSet.has(type)}
               isPolling={false}
-              onPointerDown={() => {
+              onClick={() => {
                 return toggleConnector(type);
               }}
             />
@@ -319,7 +319,7 @@ function ConnectStepContent() {
                     size="sm"
                     variant="outline"
                     className="rounded-lg text-xs h-8"
-                    onPointerDown={() => {
+                    onClick={() => {
                       return handleConnect(type);
                     }}
                   >
@@ -375,7 +375,7 @@ function WhereToWorkContent() {
       <div className="flex flex-col gap-5 w-full">
         <button
           type="button"
-          onPointerDown={() => {
+          onClick={() => {
             detach(addToSlack(pageSignal), Reason.DomCallback);
           }}
           disabled={saving}
@@ -396,7 +396,7 @@ function WhereToWorkContent() {
         </button>
         <button
           type="button"
-          onPointerDown={() => {
+          onClick={() => {
             detach(continueWeb(pageSignal), Reason.DomCallback);
           }}
           disabled={saving}
@@ -808,7 +808,7 @@ function OnboardingPageLayout({ children }: { children: React.ReactNode }) {
                 <Button
                   variant="ghost"
                   className="rounded-lg text-muted-foreground"
-                  onPointerDown={() => {
+                  onClick={() => {
                     detach(stepBack(pageSignal), Reason.DomCallback);
                   }}
                 >
@@ -819,7 +819,7 @@ function OnboardingPageLayout({ children }: { children: React.ReactNode }) {
             <div>
               {showNext && (
                 <Button
-                  onPointerDown={() => {
+                  onClick={() => {
                     detach(stepNext(pageSignal), Reason.DomCallback);
                   }}
                   className="rounded-lg min-w-[100px]"

@@ -127,7 +127,7 @@ describe("zero doctor missing-token command", () => {
       expect(logCalls).toContain("Sandbox env: not present");
       expect(logCalls).toContain("not authorized");
       expect(logCalls).toContain(
-        "[Authorize GitHub](https://app.vm0.ai/team/agent-abc-123?tab=authorization)",
+        "[Authorize GitHub](https://app.vm0.ai/connectors/github/authorize?agentId=agent-abc-123)",
       );
     });
   });
@@ -192,7 +192,7 @@ describe("zero doctor missing-token command", () => {
       );
       expect(logCalls).toContain("not authorized");
       expect(logCalls).toContain(
-        "[Authorize GitHub](https://app.vm0.ai/team/agent-abc-123?tab=authorization)",
+        "[Authorize GitHub](https://app.vm0.ai/connectors/github/authorize?agentId=agent-abc-123)",
       );
     });
   });

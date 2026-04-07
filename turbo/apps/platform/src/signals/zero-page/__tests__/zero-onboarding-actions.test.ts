@@ -10,6 +10,7 @@ import {
 } from "../zero-onboarding-actions.ts";
 import { setZeroAgentName$, zeroOnboardingStep$ } from "../zero-onboarding.ts";
 import { pathname } from "../../../signals/location.ts";
+import { createDeferredPromise } from "../../utils.ts";
 
 const context = testContext();
 
@@ -205,5 +206,59 @@ describe("onboardingContinueWeb$", () => {
     await context.store.set(onboardingContinueWeb$, context.signal);
 
     expect(pathname()).toBe(`/agents/${MOCK_MEMBER_AGENT_ID}/chat`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Double-click guard
+// ---------------------------------------------------------------------------
+
+describe("onboarding double-click guard", () => {
+  it("should only send one setup request when continueWeb is invoked concurrently", async () => {
+    mockAdminOnboarding();
+
+    const deferred = createDeferredPromise<void>(context.signal);
+    let requestCount = 0;
+
+    server.use(
+      http.post("*/api/zero/onboarding/setup", async () => {
+        requestCount++;
+        // Hold the first request open until we release it
+        await deferred.promise;
+        return HttpResponse.json({ agentId: MOCK_AGENT_ID });
+      }),
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
+    );
+
+    await setupPage({ context, path: "/onboarding", withoutRender: true });
+
+    // Switch status to complete after the command runs
+    server.use(
+      http.get("*/api/zero/onboarding/status", () => {
+        return HttpResponse.json({
+          needsOnboarding: false,
+          isAdmin: true,
+          hasOrg: true,
+          hasDefaultAgent: true,
+          defaultAgentId: MOCK_AGENT_ID,
+          defaultAgentMetadata: null,
+          defaultAgentSkills: [],
+        });
+      }),
+    );
+
+    // Fire two concurrent invocations (simulates double-click)
+    const first = context.store.set(onboardingContinueWeb$, context.signal);
+    const second = context.store.set(onboardingContinueWeb$, context.signal);
+
+    // Release the held request
+    deferred.resolve();
+
+    await Promise.all([first, second]);
+
+    // Only one setup request should have been made
+    expect(requestCount).toBe(1);
   });
 });

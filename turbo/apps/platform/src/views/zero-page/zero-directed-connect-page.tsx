@@ -200,7 +200,7 @@ function ApiTokenForm({
       })}
       <button
         type="button"
-        onPointerDown={handleSubmit}
+        onClick={handleSubmit}
         disabled={!allFilled || submitting}
         className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-[10px] bg-[#ed4e01] text-sm font-medium text-white transition-colors hover:bg-[#d35400] disabled:opacity-60"
       >
@@ -327,7 +327,7 @@ function DirectedConnectCard() {
                   <button
                     type="button"
                     disabled={isConnecting}
-                    onPointerDown={handleConnect}
+                    onClick={handleConnect}
                     className="inline-flex h-9 w-[100px] items-center justify-center gap-2 rounded-[10px] bg-[#ed4e01] text-sm font-medium text-white transition-colors hover:bg-[#d35400] disabled:opacity-60"
                   >
                     {isConnecting && (

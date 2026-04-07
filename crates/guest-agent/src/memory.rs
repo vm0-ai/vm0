@@ -100,4 +100,19 @@ mod tests {
     fn encode_project_name_no_leading_slash() {
         assert_eq!(encode_project_name("relative/path"), "-relative-path");
     }
+
+    #[test]
+    fn encode_project_name_single_component() {
+        assert_eq!(encode_project_name("/workspace"), "-workspace");
+    }
+
+    #[test]
+    fn encode_project_name_empty() {
+        assert_eq!(encode_project_name(""), "-");
+    }
+
+    #[test]
+    fn encode_project_name_workspaces_vm0() {
+        assert_eq!(encode_project_name("/workspaces/vm0"), "-workspaces-vm0");
+    }
 }

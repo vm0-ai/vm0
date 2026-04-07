@@ -224,7 +224,7 @@ function PlanCard({
           size="sm"
           className="w-full h-9 text-xs"
           disabled={loading || isCurrent}
-          onPointerDown={() => {
+          onClick={() => {
             return onAction(plan.tier);
           }}
         >
@@ -269,7 +269,7 @@ function PricingPage({
             <TooltipTrigger asChild>
               <button
                 type="button"
-                onPointerDown={onBack}
+                onClick={onBack}
                 className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
                 aria-label="Back"
               >
@@ -350,7 +350,7 @@ function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
           <div className="flex flex-col gap-2 mt-2">
             <button
               type="button"
-              onPointerDown={() => {
+              onClick={() => {
                 return setSelectedTarget("pro");
               }}
               className={`flex items-center justify-between rounded-lg border p-3 text-left transition-colors ${
@@ -370,7 +370,7 @@ function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
             </button>
             <button
               type="button"
-              onPointerDown={() => {
+              onClick={() => {
                 return setSelectedTarget("free");
               }}
               className={`flex items-center justify-between rounded-lg border p-3 text-left transition-colors ${
@@ -396,7 +396,7 @@ function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
         <div className="flex justify-end gap-2 mt-4">
           <Button
             variant="outline"
-            onPointerDown={() => {
+            onClick={() => {
               return close();
             }}
             disabled={loading}
@@ -405,7 +405,7 @@ function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
           </Button>
           <Button
             variant="destructive"
-            onPointerDown={handleConfirm}
+            onClick={handleConfirm}
             disabled={loading}
           >
             {loading
@@ -444,7 +444,7 @@ function PlanActionButtons({
           size="sm"
           className="rounded-lg h-8 text-xs"
           disabled={loading}
-          onPointerDown={onUpgrade}
+          onClick={onUpgrade}
         >
           Upgrade
         </Button>
@@ -455,7 +455,7 @@ function PlanActionButtons({
           size="sm"
           className="h-8 text-xs"
           disabled={loading}
-          onPointerDown={onDowngrade}
+          onClick={onDowngrade}
         >
           Downgrade
         </Button>
@@ -532,7 +532,7 @@ export function OrgBillingTab() {
               <Button
                 size="sm"
                 variant="outline"
-                onPointerDown={() => {
+                onClick={() => {
                   return reloadBilling();
                 }}
               >
@@ -590,7 +590,7 @@ export function OrgBillingTab() {
                       size="sm"
                       className="shrink-0 h-8 text-xs gap-1.5"
                       disabled={loading}
-                      onPointerDown={() => {
+                      onClick={() => {
                         return detach(portal(pageSignal), Reason.DomCallback);
                       }}
                     >
@@ -604,7 +604,7 @@ export function OrgBillingTab() {
               <button
                 type="button"
                 className="flex w-full items-center justify-between gap-4 px-5 py-3 text-left transition-colors bg-muted/20 hover:bg-muted/35"
-                onPointerDown={() => {
+                onClick={() => {
                   return setPricingOpen(true);
                 }}
               >

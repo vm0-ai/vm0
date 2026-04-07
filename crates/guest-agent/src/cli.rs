@@ -461,4 +461,69 @@ mod tests {
         let args = build_claude_args("", "", "", "", "", "test");
         assert!(!args.contains(&"--settings".to_string()));
     }
+
+    #[test]
+    fn build_claude_args_all_options_combined() {
+        let args = build_claude_args(
+            "sess-abc",
+            "Be concise.",
+            "CronCreate,CronDelete",
+            "Bash,Read",
+            r#"{"hooks":{}}"#,
+            "do something",
+        );
+        for expected in [
+            "--resume",
+            "sess-abc",
+            "--append-system-prompt",
+            "Be concise.",
+            "--disallowed-tools",
+            "CronCreate",
+            "CronDelete",
+            "--tools",
+            "Bash",
+            "Read",
+            "--settings",
+            r#"{"hooks":{}}"#,
+        ] {
+            assert!(args.iter().any(|a| a == expected), "missing: {expected}");
+        }
+        assert_prompt_with_separator(&args, "do something");
+    }
+
+    #[test]
+    fn build_claude_args_disallowed_tools_whitespace_trimmed() {
+        let args = build_claude_args("", "", " CronCreate , CronDelete ", "", "", "test");
+        let dt_idx = args.iter().position(|a| a == "--disallowed-tools").unwrap();
+        assert_eq!(args[dt_idx + 1], "CronCreate");
+        assert_eq!(args[dt_idx + 2], "CronDelete");
+    }
+
+    #[test]
+    fn build_claude_args_tools_whitespace_trimmed() {
+        let args = build_claude_args("", "", "", " Bash , Read ", "", "test");
+        let t_idx = args.iter().position(|a| a == "--tools").unwrap();
+        assert_eq!(args[t_idx + 1], "Bash");
+        assert_eq!(args[t_idx + 2], "Read");
+    }
+
+    #[test]
+    fn build_claude_args_disallowed_tools_empty_items_skipped() {
+        // Trailing comma produces an empty token that should be skipped
+        let args = build_claude_args("", "", "CronCreate,,CronDelete,", "", "", "test");
+        let dt_idx = args.iter().position(|a| a == "--disallowed-tools").unwrap();
+        // Only non-empty tools should be present
+        let tool_args: Vec<&str> = args[dt_idx + 1..]
+            .iter()
+            .take_while(|a| a.as_str() != "--" && !a.starts_with("--"))
+            .map(|s| s.as_str())
+            .collect();
+        assert_eq!(tool_args, vec!["CronCreate", "CronDelete"]);
+    }
+
+    #[test]
+    fn build_claude_args_prompt_always_last() {
+        let args = build_claude_args("", "", "", "", "", "my prompt");
+        assert_eq!(args.last().unwrap(), "my prompt");
+    }
 }

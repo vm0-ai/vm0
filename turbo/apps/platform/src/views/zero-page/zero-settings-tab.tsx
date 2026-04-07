@@ -176,7 +176,7 @@ export function ZeroSettingsTab({
                         role="radio"
                         aria-checked={isSelected}
                         aria-label={`Avatar ${idx + 1}`}
-                        onPointerDown={() => {
+                        onClick={() => {
                           return setAvatarUrl(presetValue);
                         }}
                         className={cn(
@@ -212,7 +212,7 @@ export function ZeroSettingsTab({
                           role="radio"
                           aria-checked={isSelected}
                           aria-label="Custom avatar"
-                          onPointerDown={() => {
+                          onClick={() => {
                             return setAvatarUrl(customAvatarUrl);
                           }}
                           className={cn(
@@ -241,7 +241,7 @@ export function ZeroSettingsTab({
                     })()}
                   <button
                     type="button"
-                    onPointerDown={() => {
+                    onClick={() => {
                       return fileInputEl?.click();
                     }}
                     disabled={uploading}
@@ -329,7 +329,7 @@ export function ZeroSettingsTab({
                       <button
                         key={opt}
                         type="button"
-                        onPointerDown={() => {
+                        onClick={() => {
                           return setTone(opt);
                         }}
                         className={cn(
@@ -414,7 +414,7 @@ export function ZeroSettingsTab({
                           variant="destructive"
                           size="sm"
                           disabled={deleting}
-                          onPointerDown={handleDelete}
+                          onClick={handleDelete}
                         >
                           {deleting ? "Deleting…" : "Delete agent"}
                         </Button>

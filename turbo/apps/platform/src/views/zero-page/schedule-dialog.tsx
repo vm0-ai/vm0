@@ -150,7 +150,6 @@ function ConfirmCloseOverlay({
     >
       <div
         className="fixed inset-0 bg-black/50 dark:bg-black/70"
-        // eslint-disable-next-line ccstate/no-onclick -- backdrop click must use onClick so the overlay stays mounted until after the click event, preventing onInteractOutside from re-triggering the dialog
         onClick={onContinue}
         role="presentation"
       />
@@ -168,11 +167,9 @@ function ConfirmCloseOverlay({
           Are you sure you want to close? Your changes will be lost.
         </p>
         <div className="flex justify-end gap-2">
-          {/* eslint-disable-next-line ccstate/no-onclick -- must use onClick: if onPointerDown unmounts the overlay early, the subsequent click fires on the Radix Dialog backdrop triggering onInteractOutside which re-shows the overlay */}
           <Button variant="outline" size="sm" onClick={onContinue}>
             Continue Editing
           </Button>
-          {/* eslint-disable-next-line ccstate/no-onclick -- same reason as Continue Editing */}
           <Button variant="destructive" size="sm" onClick={onDiscard}>
             Discard Changes
           </Button>
@@ -447,7 +444,7 @@ function DayOfWeekPicker({
                   ? "border-primary bg-primary text-primary-foreground"
                   : "border-input bg-background text-muted-foreground hover:bg-muted"
               }`}
-              onPointerDown={() => {
+              onClick={() => {
                 const current = dayOfWeek.split(",").filter(Boolean);
                 if (selected) {
                   if (current.length > 1) {
@@ -609,7 +606,7 @@ function ScheduleFormDialogInner({
           type="button"
           className="absolute right-4 top-4 flex items-center justify-center size-9 rounded-lg transition-colors opacity-70 hover:opacity-100 hover:bg-accent focus:outline-none"
           aria-label="Close"
-          onPointerDown={requestClose}
+          onClick={requestClose}
         >
           <IconX size={20} className="text-foreground" />
         </button>
@@ -737,13 +734,13 @@ function ScheduleFormDialogInner({
             type="button"
             variant="outline"
             className="zero-btn-morandi"
-            onPointerDown={requestClose}
+            onClick={requestClose}
           >
             Cancel
           </Button>
           <Button
             type="button"
-            onPointerDown={handleSave}
+            onClick={handleSave}
             disabled={
               !form.prompt.trim() || (agents ? !form.agentId : false) || saving
             }

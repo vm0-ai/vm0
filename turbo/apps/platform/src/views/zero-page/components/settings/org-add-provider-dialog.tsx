@@ -31,7 +31,7 @@ function ProviderCardInDialog({
   return (
     <button
       type="button"
-      onPointerDown={onAdd}
+      onClick={onAdd}
       className="rounded-lg bg-card overflow-hidden transition-colors hover:bg-muted/30 cursor-pointer text-left w-full"
       style={{ border: "0.7px solid hsl(var(--gray-400))" }}
       data-testid={`org-provider-card-${type}`}

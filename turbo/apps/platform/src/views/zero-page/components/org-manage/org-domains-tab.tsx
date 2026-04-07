@@ -242,18 +242,14 @@ function AddDomainDialog() {
           <Button
             variant="outline"
             size="sm"
-            onPointerDown={() => {
+            onClick={() => {
               return setOpen(false);
             }}
             disabled={adding}
           >
             Cancel
           </Button>
-          <Button
-            size="sm"
-            disabled={!isValid || adding}
-            onPointerDown={handleAdd}
-          >
+          <Button size="sm" disabled={!isValid || adding} onClick={handleAdd}>
             {adding ? "Adding..." : "Add domain"}
           </Button>
         </DialogFooter>
@@ -351,7 +347,7 @@ function DomainRow({ domain }: { domain: OrgDomain }) {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               <DropdownMenuItem
-                onPointerDown={() => {
+                onClick={() => {
                   return handleSetVerified(!isVerified);
                 }}
                 disabled={settingVerified}
@@ -365,7 +361,7 @@ function DomainRow({ domain }: { domain: OrgDomain }) {
               </DropdownMenuItem>
               <DropdownMenuItem
                 className="text-destructive focus:text-destructive"
-                onPointerDown={() => {
+                onClick={() => {
                   return setRemoveTarget(domain.id);
                 }}
               >
@@ -386,7 +382,7 @@ function DomainRow({ domain }: { domain: OrgDomain }) {
               <Button
                 variant="outline"
                 size="sm"
-                onPointerDown={() => {
+                onClick={() => {
                   return setRemoveTarget(null);
                 }}
                 disabled={removing}
@@ -397,7 +393,7 @@ function DomainRow({ domain }: { domain: OrgDomain }) {
                 variant="destructive"
                 size="sm"
                 disabled={removing}
-                onPointerDown={handleRemove}
+                onClick={handleRemove}
               >
                 {removing ? "Removing..." : "Remove"}
               </Button>

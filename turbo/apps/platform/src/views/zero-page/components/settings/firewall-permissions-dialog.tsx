@@ -141,7 +141,7 @@ function PolicyPill({
                 ? { borderLeft: "0.7px solid hsl(var(--gray-400))" }
                 : undefined
             }
-            onPointerDown={(e) => {
+            onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
               onChange?.(opt.value);
@@ -320,7 +320,7 @@ export function FirewallPermissionsDrawer({
                         <div className="flex items-center justify-between px-3 py-2">
                           <button
                             type="button"
-                            onPointerDown={() => {
+                            onClick={() => {
                               return toggleGroup(group.category);
                             }}
                             className="flex items-center gap-1.5 text-xs font-medium text-foreground hover:text-foreground/80 transition-colors"
@@ -407,11 +407,11 @@ export function FirewallPermissionsDrawer({
         )}
 
         <SheetFooter>
-          <Button variant="outline" onPointerDown={onClose}>
+          <Button variant="outline" onClick={onClose}>
             {readOnly ? "Close" : "Cancel"}
           </Button>
           {!readOnly && (
-            <Button onPointerDown={handleApply} disabled={!config || saving}>
+            <Button onClick={handleApply} disabled={!config || saving}>
               {saving ? "Saving..." : "Apply"}
             </Button>
           )}

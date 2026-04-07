@@ -30,11 +30,13 @@ function setupNgrokMocks() {
   const calls = {
     createBotUser: [] as string[],
     listBotUsers: 0,
+    filterEndpoints: [] as string[],
+    patchEndpoint: [] as string[],
+    filterReservedDomains: [] as string[],
     createCredential: [] as string[],
     deleteCredential: [] as string[],
     createEndpoint: [] as string[],
     deleteEndpoint: [] as string[],
-    listReservedDomains: 0,
     createReservedDomain: [] as string[],
     deleteReservedDomain: [] as string[],
     deleteBotUser: [] as string[],
@@ -71,8 +73,10 @@ function setupNgrokMocks() {
       calls.deleteCredential.push(params.id as string);
       return new HttpResponse(null, { status: 204 });
     }),
-    http.get("https://api.ngrok.com/reserved_domains", () => {
-      calls.listReservedDomains++;
+    http.get("https://api.ngrok.com/reserved_domains", ({ request }) => {
+      const url = new URL(request.url);
+      const filter = url.searchParams.get("filter");
+      calls.filterReservedDomains.push(filter ?? "");
       return HttpResponse.json({
         reserved_domains: [],
         next_page_uri: null,
@@ -94,6 +98,22 @@ function setupNgrokMocks() {
     http.delete("https://api.ngrok.com/reserved_domains/:id", ({ params }) => {
       calls.deleteReservedDomain.push(params.id as string);
       return new HttpResponse(null, { status: 204 });
+    }),
+    http.get("https://api.ngrok.com/endpoints", ({ request }) => {
+      const url = new URL(request.url);
+      const filter = url.searchParams.get("filter");
+      calls.filterEndpoints.push(filter ?? "");
+      return HttpResponse.json({
+        endpoints: [],
+        next_page_uri: null,
+      });
+    }),
+    http.patch("https://api.ngrok.com/endpoints/:id", async ({ params }) => {
+      calls.patchEndpoint.push(params.id as string);
+      return HttpResponse.json({
+        id: params.id as string,
+        url: "https://*.patched.ngrok-free.app",
+      });
     }),
     http.post("https://api.ngrok.com/endpoints", async ({ request }) => {
       const body = (await request.json()) as { url: string };
