@@ -23,6 +23,7 @@ export const ROUTES = {
   settingsSlack: "/settings/slack",
   onboarding: "/onboarding",
   signInToken: "/sign-in-token",
+  lab: "/_/lab",
   internalConnectorLogos: "/__internal-connector-logos",
 } as const;
 

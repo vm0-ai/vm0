@@ -24,10 +24,14 @@ interface MockedUser {
   fullName: string;
   firstName?: string;
   primaryEmailAddress: { emailAddress: string } | null;
+  unsafeMetadata: Record<string, unknown>;
   organizationMemberships: MockedMembership[];
   getOrganizationInvitations: (params?: {
     status?: string;
   }) => Promise<{ data: MockedInvitation[]; total_count: number }>;
+  update: (params: {
+    unsafeMetadata: Record<string, unknown>;
+  }) => Promise<void>;
 }
 
 let internalMockedUser: MockedUser | null = null;
@@ -53,6 +57,7 @@ export function mockUser(
     internalMockedUser = {
       ...user,
       primaryEmailAddress: user.email ? { emailAddress: user.email } : null,
+      unsafeMetadata: {},
       get organizationMemberships() {
         return internalMockedMemberships;
       },
@@ -61,6 +66,12 @@ export function mockUser(
           data: internalMockedInvitations,
           total_count: internalMockedInvitations.length,
         });
+      },
+      update: (params: { unsafeMetadata: Record<string, unknown> }) => {
+        if (internalMockedUser) {
+          internalMockedUser.unsafeMetadata = params.unsafeMetadata;
+        }
+        return Promise.resolve();
       },
     };
   } else {

@@ -34,12 +34,6 @@ function fnv1a(input: string): string {
   return h.toString(16).padStart(8, "0");
 }
 
-// NOTE: Migrated from SHA-1 to FNV-1a. Original user IDs are not stored in the codebase,
-// so hashes could not be auto-migrated. Staff access continues to work via STAFF_ORG_ID_HASHES.
-// Each team member can add their own FNV-1a hash by running:
-//   node -e "let h=2166136261>>>0; for(const c of '<your-clerk-user-id>') { h^=c.charCodeAt(0); h=Math.imul(h,16777619)>>>0; } console.log(h.toString(16).padStart(8,'0'))"
-const STAFF_USER_HASHES: readonly string[] = [];
-
 const STAFF_ORG_ID_HASHES: readonly string[] = [
   "afce210e", // org_3ANttyrbWYJk6JKRSTRLEsbsDLe
 ];
@@ -75,165 +69,110 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.AhrefsConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
-    enabledUserHashes: STAFF_USER_HASHES,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.CanvaConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
-    enabledUserHashes: STAFF_USER_HASHES,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ComputerConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
-    enabledUserHashes: STAFF_USER_HASHES,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.DeelConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
-    enabledUserHashes: STAFF_USER_HASHES,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.DocuSignConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
-    enabledUserHashes: STAFF_USER_HASHES,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.DropboxConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
-    enabledUserHashes: STAFF_USER_HASHES,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.FigmaConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
-    enabledUserHashes: STAFF_USER_HASHES,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.MercuryConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
-    enabledUserHashes: STAFF_USER_HASHES,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.NeonConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
-    enabledUserHashes: STAFF_USER_HASHES,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.GarminConnectConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
-    enabledUserHashes: STAFF_USER_HASHES,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-
   [FeatureSwitchKey.RedditConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
-    enabledUserHashes: STAFF_USER_HASHES,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.SupabaseConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
-    enabledUserHashes: STAFF_USER_HASHES,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.CloseConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
-    enabledUserHashes: STAFF_USER_HASHES,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.WebflowConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
-    enabledUserHashes: STAFF_USER_HASHES,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.OutlookMailConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
-    enabledUserHashes: STAFF_USER_HASHES,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.OutlookCalendarConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
-    enabledUserHashes: STAFF_USER_HASHES,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.MetaAdsConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
-    enabledUserHashes: STAFF_USER_HASHES,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.StripeConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
-    enabledUserHashes: STAFF_USER_HASHES,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.PosthogConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
-    enabledUserHashes: STAFF_USER_HASHES,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.MailchimpConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
-    enabledUserHashes: STAFF_USER_HASHES,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ResendConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
-    enabledUserHashes: STAFF_USER_HASHES,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.SpotifyConnector]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
-    enabledUserHashes: STAFF_USER_HASHES,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.GitHubIntegration]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
-    enabledUserHashes: STAFF_USER_HASHES,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.TelegramIntegration]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
-    enabledUserHashes: STAFF_USER_HASHES,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.DataExport]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
-    enabledUserHashes: STAFF_USER_HASHES,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ShowSystemPrompt]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
-    enabledUserHashes: STAFF_USER_HASHES,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.Usage]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
-    enabledUserHashes: STAFF_USER_HASHES,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ConcurrentAddOn]: {
     maintainer: "ethan@vm0.ai",
@@ -246,25 +185,24 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.ModelDetail]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ActivityLogList]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ZeroDebug]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ComputerUse]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
-    enabledUserHashes: STAFF_USER_HASHES,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.MobileChatListPage]: {
+    maintainer: "ethan@vm0.ai",
+    enabled: false,
+  },
+  [FeatureSwitchKey.Lab]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,

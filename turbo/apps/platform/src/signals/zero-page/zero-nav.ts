@@ -123,7 +123,8 @@ export type SidebarNavId =
   | "works"
   | "settings"
   | "settingsUsage"
-  | "queues";
+  | "queues"
+  | "lab";
 
 /** Check if a route key corresponds to the chat section. */
 export function isChatRoute(key: RouteKey | null): boolean {
@@ -155,6 +156,8 @@ export const handleZeroNavSelect$ = command(({ set }, id: SidebarNavId) => {
     set(detachedNavigateTo$, ROUTES.settingsUsage);
   } else if (id === "queues") {
     set(detachedNavigateTo$, ROUTES.queues);
+  } else if (id === "lab") {
+    set(detachedNavigateTo$, ROUTES.lab);
   }
   set(internalShowAboutPage$, false);
 });

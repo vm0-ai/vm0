@@ -27,6 +27,7 @@ import {
   IconDatabaseExport,
   IconPlug,
   IconTrash,
+  IconFlask,
 } from "@tabler/icons-react";
 import { FeatureSwitchKey, type ChatThreadListItem } from "@vm0/core";
 import {
@@ -210,6 +211,15 @@ const FOOTER_NAV = [
     icon: IconChartBar as NavIcon,
     iconImg: undefined,
     featureGate: FeatureSwitchKey.Usage,
+  },
+  {
+    id: "lab",
+    activeKeys: ["lab"],
+    pathname: "/_/lab",
+    label: "Lab",
+    icon: IconFlask as NavIcon,
+    iconImg: undefined,
+    featureGate: FeatureSwitchKey.Lab,
   },
 ] as const satisfies readonly FooterNavItem[];
 

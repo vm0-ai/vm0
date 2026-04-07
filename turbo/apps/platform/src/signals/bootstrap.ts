@@ -35,6 +35,7 @@ import { setupDirectedConnectPage$ } from "./connectors-page/directed-connect-pa
 import { setupSignInTokenPage$ } from "./sign-in-token-setup.ts";
 import { setupFirewallAllowPage$ } from "./firewall-allow/firewall-allow-page-setup.ts";
 import { setupChatListPage$ } from "./zero-page/chat-list-page-setup.ts";
+import { setupLabPage$ } from "./lab-page/lab-page-setup.ts";
 
 /**
  * Catch-all fallback — redirects unknown paths to /.
@@ -154,6 +155,10 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.settingsUsage,
     setup: setupAuthPageWrapper(setupUsagePage$),
+  },
+  {
+    path: ROUTES.lab,
+    setup: setupAuthPageWrapper(setupLabPage$),
   },
   {
     path: ROUTES.onboarding,
