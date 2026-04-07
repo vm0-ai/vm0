@@ -10,6 +10,7 @@ import { agentRunCallbacks } from "../../../db/schema/agent-run-callback";
 import { notFound, badRequest } from "../../shared/errors";
 
 import { logger } from "../../shared/logger";
+import type { Database } from "../../../types/global";
 import type { AgentComposeYaml } from "../agent-compose/types";
 import { prepareForExecution } from "./context/execution-preparer";
 import { executeRunnerJob } from "./executors/runner-executor";
@@ -579,6 +580,55 @@ export interface CreateRunRecordResult {
 }
 
 /**
+ * Parameters for the pure INSERT into agent_runs.
+ * Subset of CreateRunParams — only the fields needed for the INSERT.
+ */
+interface InsertRunParams {
+  userId: string;
+  orgId: string;
+  agentComposeVersionId: string;
+  prompt: string;
+  appendSystemPrompt?: string;
+  vars?: Record<string, string>;
+  secrets?: Record<string, string>;
+  resumedFromCheckpointId?: string;
+  sessionId?: string;
+}
+
+/**
+ * Pure INSERT into agent_runs within an existing transaction.
+ * No business logic — caller is responsible for authorization,
+ * validation, and concurrency checks.
+ */
+export async function insertRunRecord(
+  tx: Database,
+  params: InsertRunParams,
+): Promise<{ id: string; createdAt: Date }> {
+  const [newRun] = await tx
+    .insert(agentRuns)
+    .values({
+      userId: params.userId,
+      orgId: params.orgId,
+      agentComposeVersionId: params.agentComposeVersionId,
+      status: "pending",
+      prompt: params.prompt,
+      appendSystemPrompt: params.appendSystemPrompt ?? null,
+      vars: params.vars ?? null,
+      secretNames: params.secrets ? Object.keys(params.secrets) : null,
+      resumedFromCheckpointId: params.resumedFromCheckpointId ?? null,
+      continuedFromSessionId: params.sessionId ?? null,
+      lastHeartbeatAt: new Date(),
+    })
+    .returning();
+
+  if (!newRun) {
+    throw new Error("Failed to create run record");
+  }
+
+  return newRun;
+}
+
+/**
  * Create a run record without dispatching.
  *
  * Handles steps 1-5 of the run creation pipeline:
@@ -592,22 +642,23 @@ export interface CreateRunRecordResult {
  * Does NOT handle the enqueueRun() fallback — callers decide how to handle
  * ConcurrentRunLimitError.
  *
+ * Used by startRun() for the legacy CLI path.
+ *
  * @throws ForbiddenError - user cannot access compose
  * @throws BadRequestError - validation failure (missing vars, mutual exclusivity)
  * @throws NotFoundError - compose version not found
  * @throws ConcurrentRunLimitError - org has reached concurrent run limit
  */
-export async function createRunRecord(
+async function createRunRecord(
   params: CreateRunParams,
 ): Promise<CreateRunRecordResult> {
   const apiStartTime = Date.now();
-  const { userId, agentComposeVersionId, prompt } = params;
 
   // Steps 1-2: Load compose and authorize
   const { composeContent, compose } =
     params.preloadedCompose ??
-    (await loadCompose(agentComposeVersionId, params.composeId));
-  authorizeCompose(userId, params.orgId, compose);
+    (await loadCompose(params.agentComposeVersionId, params.composeId));
+  authorizeCompose(params.userId, params.orgId, compose);
   const authorizeTime = Date.now();
 
   // Step 3: Validate template vars and image access (for new runs only)
@@ -622,46 +673,17 @@ export async function createRunRecord(
     );
   }
 
-  // Org context for the run record and storage (required from caller)
   const orgId = params.orgId;
 
   // Step 5: Concurrency check + INSERT in a transaction with advisory lock
-  // to prevent TOCTOU race where two concurrent requests both pass the
-  // concurrency check before either inserts.
   const run = await globalThis.services.db.transaction(async (tx) => {
-    // Acquire per-org advisory lock (released when transaction ends)
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${orgId}))`);
-
-    // Check concurrent run limit within the serialized transaction
     await checkRunConcurrencyLimit(orgId, params.orgTier ?? "free", tx);
-
-    // INSERT within the same transaction
-    const [newRun] = await tx
-      .insert(agentRuns)
-      .values({
-        userId,
-        orgId,
-        agentComposeVersionId,
-        status: "pending",
-        prompt,
-        appendSystemPrompt: params.appendSystemPrompt ?? null,
-        vars: params.vars ?? null,
-        secretNames: params.secrets ? Object.keys(params.secrets) : null,
-        resumedFromCheckpointId: params.resumedFromCheckpointId ?? null,
-        continuedFromSessionId: params.sessionId ?? null,
-        lastHeartbeatAt: new Date(),
-      })
-      .returning();
-
-    if (!newRun) {
-      throw new Error("Failed to create run record");
-    }
-
-    return newRun;
+    return insertRunRecord(tx, params);
   });
 
   const transactionTime = Date.now();
-  log.debug(`Created run ${run.id} for user ${userId}`);
+  log.debug(`Created run ${run.id} for user ${params.userId}`);
 
   return {
     run: { id: run.id, createdAt: run.createdAt },

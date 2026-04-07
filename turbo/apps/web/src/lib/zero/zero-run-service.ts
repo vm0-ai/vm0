@@ -1,4 +1,4 @@
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import {
   resolveFirewallPolicies,
   orgTierSchema,
@@ -9,7 +9,7 @@ import {
   connectorTypeSchema,
 } from "@vm0/core";
 import {
-  createRunRecord,
+  insertRunRecord,
   buildAndDispatchRun,
   loadCompose,
   markRunFailed,
@@ -19,6 +19,11 @@ import {
   type CreateRunRecordResult,
 } from "../infra/run";
 import { resolveStartRunCompose } from "./zero-run-validation";
+import {
+  checkRunConcurrencyLimit,
+  authorizeCompose,
+  validateComposeRequirements,
+} from "./zero-run-policy";
 import {
   enqueueRun,
   drainOrgQueue,
@@ -328,11 +333,19 @@ export async function createZeroRunRecord(
     orgTier,
   };
 
-  // 3. Pre-flight checks: credits + model provider (before createRunRecord)
+  // 3. Pre-flight checks: load compose, authorize, validate, credits, model provider
+  const apiStartTime = Date.now();
   const preloadedCompose = await loadCompose(
     resolved.agentComposeVersionId,
     resolved.composeId,
   );
+  authorizeCompose(params.userId, resolved.orgId, preloadedCompose.compose);
+  const authorizeTime = Date.now();
+
+  if (!params.sessionId) {
+    await validateComposeRequirements(preloadedCompose.composeContent);
+  }
+
   await Promise.all([
     checkOrgCredits(resolved.orgId, params.userId, params.modelProvider),
     checkModelProviderConfigured(
@@ -342,10 +355,16 @@ export async function createZeroRunRecord(
     ),
   ]);
 
-  // 4. Create run record (may throw ConcurrentRunLimitError)
-  let record;
+  // 4. Advisory lock + concurrency check + INSERT (zero owns the transaction)
+  let run;
   try {
-    record = await createRunRecord({ ...runParams, preloadedCompose });
+    run = await globalThis.services.db.transaction(async (tx) => {
+      await tx.execute(
+        sql`SELECT pg_advisory_xact_lock(hashtext(${resolved.orgId}))`,
+      );
+      await checkRunConcurrencyLimit(resolved.orgId, orgTier, tx);
+      return insertRunRecord(tx, runParams);
+    });
   } catch (error) {
     if (isConcurrentRunLimit(error)) {
       // Enqueue without token — dispatchQueuedZeroRun generates a fresh
@@ -364,10 +383,21 @@ export async function createZeroRunRecord(
     throw error;
   }
 
+  const transactionTime = Date.now();
+
+  const record: CreateRunRecordResult = {
+    run: { id: run.id, createdAt: run.createdAt },
+    composeContent: preloadedCompose.composeContent,
+    orgId: resolved.orgId,
+    apiStartTime,
+    authorizeTime,
+    transactionTime,
+  };
+
   return {
-    runId: record.run.id,
+    runId: run.id,
     status: "pending",
-    createdAt: record.run.createdAt,
+    createdAt: run.createdAt,
     record,
     runParams,
     orgId: resolved.orgId,

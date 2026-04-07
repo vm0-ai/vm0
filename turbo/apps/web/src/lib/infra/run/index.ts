@@ -5,7 +5,7 @@
 
 export {
   startRun,
-  createRunRecord,
+  insertRunRecord,
   buildAndDispatchRun,
   loadCompose,
   markRunFailed,
