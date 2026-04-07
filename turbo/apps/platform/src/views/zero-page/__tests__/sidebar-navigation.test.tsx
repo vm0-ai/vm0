@@ -234,7 +234,9 @@ describe("sidebar new chat navigation", () => {
 
     // 2. Verify sidebar shows "New chat" entry (thread has title: null)
     await waitFor(() => {
-      expect(screen.getByText("New chat", { selector: "span" })).toBeInTheDocument();
+      expect(
+        screen.getByText("New chat", { selector: "span" }),
+      ).toBeInTheDocument();
     });
 
     // 3. Verify textarea has focus (autoFocus triggers because chatMessages is empty)
