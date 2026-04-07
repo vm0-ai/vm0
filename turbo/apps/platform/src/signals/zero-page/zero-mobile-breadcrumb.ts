@@ -152,7 +152,7 @@ const chatBreadcrumb$ = computed(async (get): Promise<MobileBreadcrumb> => {
         return a.id === subagentId;
       });
       return {
-        section: subagent?.displayName ?? displayName,
+        section: subagent?.displayName ?? displayName ?? "Zero",
         sectionPath: CHAT_PATH,
         avatarAgentId: subagentId,
       };
