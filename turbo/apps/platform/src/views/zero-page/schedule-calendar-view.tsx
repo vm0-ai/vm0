@@ -117,7 +117,7 @@ function CalendarEntryPopover<T extends ScheduleEntry>({
           <div className="absolute top-0 right-0">
             <button
               type="button"
-              onPointerDown={() => {
+              onClick={() => {
                 return onEdit(entry);
               }}
               className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
@@ -201,7 +201,7 @@ export function ScheduleCalendarView<T extends ScheduleEntry>({
                   <TooltipTrigger asChild>
                     <button
                       type="button"
-                      onPointerDown={() => {
+                      onClick={() => {
                         return setSelectedDay(
                           (selectedDay - 1 + WEEKDAY_LABELS.length) %
                             WEEKDAY_LABELS.length,
@@ -226,7 +226,7 @@ export function ScheduleCalendarView<T extends ScheduleEntry>({
                   <TooltipTrigger asChild>
                     <button
                       type="button"
-                      onPointerDown={() => {
+                      onClick={() => {
                         return setSelectedDay(
                           (selectedDay + 1) % WEEKDAY_LABELS.length,
                         );
@@ -396,7 +396,7 @@ export function ScheduleCalendarView<T extends ScheduleEntry>({
                         <span className="text-foreground">{entry.time}</span>
                         <button
                           type="button"
-                          onPointerDown={() => {
+                          onClick={() => {
                             return onEdit(entry);
                           }}
                           className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"

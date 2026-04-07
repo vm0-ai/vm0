@@ -467,7 +467,7 @@ export function ZeroScheduleCard({
               variant="outline"
               size="sm"
               className="zero-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
-              onPointerDown={openAddSchedule}
+              onClick={openAddSchedule}
             >
               <IconPlus size={14} stroke={2} />
               Add schedule
@@ -588,13 +588,13 @@ export function ZeroScheduleCard({
             <DialogFooter>
               <Button
                 variant="outline"
-                onPointerDown={() => {
+                onClick={() => {
                   return setPendingDelete(null);
                 }}
               >
                 Cancel
               </Button>
-              <Button variant="destructive" onPointerDown={confirmDelete}>
+              <Button variant="destructive" onClick={confirmDelete}>
                 Delete
               </Button>
             </DialogFooter>

@@ -79,7 +79,7 @@ export function ZeroIdeationPage() {
       <nav className="flex shrink-0 items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
         <button
           type="button"
-          onPointerDown={handleBack}
+          onClick={handleBack}
           className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors cursor-pointer"
         >
           <IconMessageCircle size={14} stroke={1.5} className="shrink-0" />
@@ -115,7 +115,7 @@ export function ZeroIdeationPage() {
                         ? "bg-muted text-foreground"
                         : "bg-background text-muted-foreground hover:bg-muted/50 hover:text-foreground",
                     )}
-                    onPointerDown={() => {
+                    onClick={() => {
                       return setActiveTab("all");
                     }}
                   >
@@ -132,7 +132,7 @@ export function ZeroIdeationPage() {
                             ? "bg-muted text-foreground"
                             : "bg-background text-muted-foreground hover:bg-muted/50 hover:text-foreground",
                         )}
-                        onPointerDown={() => {
+                        onClick={() => {
                           return setActiveTab(category.id);
                         }}
                       >
@@ -184,7 +184,7 @@ export function ZeroIdeationPage() {
                             <Card
                               key={useCase.title}
                               className="zero-card cursor-pointer hover:bg-muted/30 transition-colors"
-                              onPointerDown={() => {
+                              onClick={() => {
                                 return handleSelectPrompt(useCase.prompt);
                               }}
                             >

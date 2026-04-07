@@ -325,7 +325,7 @@ function NetworkLogRow({
     <>
       <TableRow
         className="cursor-pointer hover:bg-muted/50"
-        onPointerDown={() => {
+        onClick={() => {
           toggleExpanded(rowKey);
         }}
       >

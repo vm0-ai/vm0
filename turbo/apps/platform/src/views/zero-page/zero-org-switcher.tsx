@@ -158,7 +158,7 @@ export function ZeroOrgSwitcher() {
             </div>
             <button
               type="button"
-              onPointerDown={handleManage}
+              onClick={handleManage}
               className="shrink-0 flex items-center gap-1 px-2 h-7 rounded-md text-xs font-medium text-muted-foreground border border-border hover:text-foreground hover:bg-accent transition-colors"
             >
               <IconSettings size={13} />
@@ -174,7 +174,7 @@ export function ZeroOrgSwitcher() {
                 return (
                   <DropdownMenuItem
                     key={membership.organization.id}
-                    onPointerDown={() => {
+                    onClick={() => {
                       handleSwitchOrg(membership.organization.id);
                     }}
                     className="gap-3 px-3 py-2.5 rounded-lg"
@@ -211,7 +211,7 @@ export function ZeroOrgSwitcher() {
                     </span>
                     <button
                       type="button"
-                      onPointerDown={() => {
+                      onClick={() => {
                         handleAcceptInvitation(invitation);
                       }}
                       className="shrink-0 flex items-center gap-1 px-2 h-7 rounded-md text-xs font-medium text-muted-foreground border border-border hover:text-foreground hover:bg-accent transition-colors"
@@ -228,7 +228,7 @@ export function ZeroOrgSwitcher() {
           {/* Create workspace */}
           <DropdownMenuSeparator />
           <DropdownMenuItem
-            onPointerDown={handleCreateOrg}
+            onClick={handleCreateOrg}
             disabled={!isClerkReady}
             className="gap-3 px-3 py-2.5 rounded-lg"
           >

@@ -162,7 +162,7 @@ function InviteButton({ pageSignal }: { pageSignal: AbortSignal }) {
     <Button
       variant="outline"
       size="sm"
-      onPointerDown={handleInvite}
+      onClick={handleInvite}
       className={`zero-btn-morandi gap-1.5${isAdmin ? "" : " invisible"}`}
       aria-hidden={isAdmin ? undefined : "true"}
       tabIndex={isAdmin ? undefined : -1}
@@ -325,7 +325,7 @@ export function ZeroChatPage() {
                     <TooltipTrigger asChild>
                       <button
                         type="button"
-                        onPointerDown={handlePin}
+                        onClick={handlePin}
                         className="absolute -top-0.5 -right-0.5 flex h-6 w-6 items-center justify-center rounded-full zero-border bg-background text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground hover:shadow-md cursor-pointer"
                         aria-label="Pin to sidebar"
                       >
@@ -368,7 +368,7 @@ export function ZeroChatPage() {
                     key={title}
                     type="button"
                     className="zero-card cursor-pointer p-4 text-left flex flex-col relative group hover:bg-muted/30 transition-colors"
-                    onPointerDown={() => {
+                    onClick={() => {
                       return setInput(prompt);
                     }}
                   >
@@ -404,7 +404,7 @@ export function ZeroChatPage() {
             <button
               type="button"
               className="zero-card cursor-pointer p-4 text-left flex flex-col relative group hover:bg-muted/30 transition-colors"
-              onPointerDown={() => {
+              onClick={() => {
                 if (talkAgentId) {
                   navigate("/agents/:id/ideas", {
                     pathParams: { id: talkAgentId },

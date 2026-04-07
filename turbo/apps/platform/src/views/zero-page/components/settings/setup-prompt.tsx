@@ -14,7 +14,7 @@ export function ClaudeCodeSetupPrompt() {
       You can find it by entering{" "}
       <code
         className="cursor-pointer rounded border border-border bg-gray-50 px-1 py-0.5 font-mono hover:bg-gray-100 active:bg-gray-200"
-        onPointerDown={() => {
+        onClick={() => {
           detach(copyToClipboard("claude setup-token"), Reason.DomCallback);
         }}
         title="Click to copy"

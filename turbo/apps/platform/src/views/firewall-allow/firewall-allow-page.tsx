@@ -79,7 +79,7 @@ function PolicyPill({
                 ? { borderLeft: "0.7px solid hsl(var(--gray-400))" }
                 : undefined
             }
-            onPointerDown={(e) => {
+            onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
               onChange?.(opt.value);
@@ -201,7 +201,7 @@ function AdminFocusedView({
           <PolicyPill policy={policy} onChange={setPolicy} />
           <Button
             size="sm"
-            onPointerDown={handleSave}
+            onClick={handleSave}
             disabled={saving || (!isDirty && !saved)}
           >
             {saving ? "Saving..." : saved && !isDirty ? "Saved" : "Save"}
@@ -238,7 +238,7 @@ function AdminFocusedView({
                     <Button
                       size="sm"
                       variant="outline"
-                      onPointerDown={() => {
+                      onClick={() => {
                         return handleResolve(req.id, "reject");
                       }}
                       disabled={resolving && currentResolvingId === req.id}
@@ -248,7 +248,7 @@ function AdminFocusedView({
                     </Button>
                     <Button
                       size="sm"
-                      onPointerDown={() => {
+                      onClick={() => {
                         return handleResolve(req.id, "approve");
                       }}
                       disabled={resolving && currentResolvingId === req.id}
@@ -367,7 +367,7 @@ function MemberFocusedView({
                 <Button
                   size="sm"
                   variant="outline"
-                  onPointerDown={() => {
+                  onClick={() => {
                     return setShowFormValue(true);
                   }}
                 >
@@ -393,17 +393,13 @@ function MemberFocusedView({
               <Button
                 size="sm"
                 variant="outline"
-                onPointerDown={() => {
+                onClick={() => {
                   setShowFormValue(false);
                 }}
               >
                 Cancel
               </Button>
-              <Button
-                size="sm"
-                onPointerDown={handleSubmit}
-                disabled={submitting}
-              >
+              <Button size="sm" onClick={handleSubmit} disabled={submitting}>
                 {submitting ? "Submitting..." : "Submit Request"}
               </Button>
             </div>
@@ -476,7 +472,7 @@ function CategoryHeader({
                     ? { borderLeft: "0.7px solid hsl(var(--gray-400))" }
                     : undefined
                 }
-                onPointerDown={() => {
+                onClick={() => {
                   return onSetAll(opt.value);
                 }}
                 className="flex items-center gap-1 px-2.5 py-1.5 transition-colors text-muted-foreground hover:text-foreground hover:bg-muted/50"
@@ -538,7 +534,7 @@ function AdminListView({
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-medium text-foreground">Permissions</h2>
-        <Button size="sm" onPointerDown={handleSave} disabled={saving}>
+        <Button size="sm" onClick={handleSave} disabled={saving}>
           {saving ? "Saving..." : "Save"}
         </Button>
       </div>

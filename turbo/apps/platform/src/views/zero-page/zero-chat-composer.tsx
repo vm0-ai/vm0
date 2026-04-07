@@ -192,7 +192,7 @@ function AddConnectorsDialog({
                 <button
                   type="button"
                   key={item.type}
-                  onPointerDown={() => {
+                  onClick={() => {
                     return onSelect(item.type);
                   }}
                   disabled={pollingType === item.type}
@@ -362,7 +362,7 @@ function ConnectorsPopoverButton({
           <button
             type="button"
             className="flex w-full items-center gap-2 px-2 py-1.5 rounded-md text-sm text-foreground hover:bg-accent transition-colors"
-            onPointerDown={() => {
+            onClick={() => {
               return onOpenAddDialog();
             }}
           >
@@ -588,7 +588,7 @@ export function ZeroChatComposer({
                   type="button"
                   className="p-[9px] rounded-lg hover:bg-accent hover:text-foreground transition-colors duration-200"
                   aria-label="Attach"
-                  onPointerDown={handleFileSelect}
+                  onClick={handleFileSelect}
                 >
                   <IconPaperclip size={18} stroke={1.5} />
                 </button>
@@ -608,7 +608,7 @@ export function ZeroChatComposer({
                     size="sm"
                     variant="destructive"
                     className="rounded-lg h-9 w-9 p-0 shrink-0"
-                    onPointerDown={onCancel}
+                    onClick={onCancel}
                     aria-label="Stop"
                   >
                     <IconPlayerStop size={16} />
@@ -617,7 +617,7 @@ export function ZeroChatComposer({
                   <Button
                     size="sm"
                     className="rounded-lg h-9 w-9 p-0 shrink-0"
-                    onPointerDown={handleSend}
+                    onClick={handleSend}
                     disabled={!input.trim() || !!sending}
                     aria-label="Send"
                   >

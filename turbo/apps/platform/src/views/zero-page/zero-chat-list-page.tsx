@@ -154,7 +154,7 @@ export function ZeroChatListPage() {
           {searchTerm && (
             <button
               type="button"
-              onPointerDown={() => {
+              onClick={() => {
                 return setSearchTerm("");
               }}
               className="shrink-0 text-muted-foreground hover:text-foreground"
@@ -170,7 +170,7 @@ export function ZeroChatListPage() {
       <div className="shrink-0 px-4 py-2">
         <button
           type="button"
-          onPointerDown={onNewChat}
+          onClick={onNewChat}
           disabled={creating}
           className="flex w-full h-10 items-center justify-center gap-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
         >
@@ -288,13 +288,13 @@ function ChatList({
           <DialogFooter>
             <Button
               variant="outline"
-              onPointerDown={() => {
+              onClick={() => {
                 return setPendingDeleteThreadId(null);
               }}
             >
               Cancel
             </Button>
-            <Button variant="destructive" onPointerDown={confirmDelete}>
+            <Button variant="destructive" onClick={confirmDelete}>
               Delete
             </Button>
           </DialogFooter>
@@ -320,7 +320,7 @@ function ChatListItem({
       <Link
         pathname="/chats/:id"
         options={{ pathParams: { id: session.id } }}
-        onPointerDown={(e) => {
+        onClick={(e) => {
           if (e.metaKey || e.ctrlKey || e.shiftKey) {
             return;
           }
@@ -340,7 +340,7 @@ function ChatListItem({
       <div className="absolute right-2 top-0 flex h-12 items-center">
         <button
           type="button"
-          onPointerDown={(e) => {
+          onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
             onDelete();

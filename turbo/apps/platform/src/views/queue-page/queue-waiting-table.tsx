@@ -113,7 +113,7 @@ export function QueueWaitingTable({
                     <button
                       type="button"
                       className="text-sm text-destructive hover:underline"
-                      onPointerDown={() => {
+                      onClick={() => {
                         detach(
                           cancelRun(runId, pageSignal),
                           Reason.DomCallback,

@@ -20,7 +20,7 @@ export function ZeroAboutPage({ onBack }: ZeroAboutPageProps) {
                 variant="ghost"
                 size="sm"
                 className="-ml-2 mb-6 text-muted-foreground hover:text-foreground"
-                onPointerDown={onBack}
+                onClick={onBack}
               >
                 ← Back
               </Button>

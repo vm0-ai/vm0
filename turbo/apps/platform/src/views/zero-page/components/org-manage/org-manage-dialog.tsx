@@ -228,7 +228,7 @@ export function OrgManageDialog({ open, onOpenChange }: OrgManageDialogProps) {
                         <button
                           key={item.id}
                           type="button"
-                          onPointerDown={() => {
+                          onClick={() => {
                             return setActiveTab(item.id);
                           }}
                           className={cn(
