@@ -98,6 +98,10 @@ const ROUTE_CONFIG = [
     setup: setupAuthPageWrapper(setupDirectedConnectPage$),
   },
   {
+    path: ROUTES.directedAuthorize,
+    setup: setupAuthPageWrapper(setupDirectedConnectPage$),
+  },
+  {
     path: ROUTES.connectors,
     setup: setupAuthPageWrapper(setupConnectorsPage$),
   },
