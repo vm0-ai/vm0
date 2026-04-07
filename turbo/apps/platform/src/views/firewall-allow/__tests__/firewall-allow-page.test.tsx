@@ -94,6 +94,22 @@ describe("firewall allow page", () => {
     });
   });
 
+  it("shows error for unknown permission", async () => {
+    mockFirewallRequests();
+    mockAgentWithPolicy(null);
+
+    await setupPage({
+      context,
+      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=nonexistent:perm`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Unknown permission: nonexistent:perm/),
+      ).toBeInTheDocument();
+    });
+  });
+
   it("shows error for unknown firewall ref", async () => {
     await setupPage({
       context,

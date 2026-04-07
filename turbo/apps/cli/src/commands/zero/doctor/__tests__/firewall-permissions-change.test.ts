@@ -420,5 +420,39 @@ describe("zero doctor firewall-permissions-change command", () => {
         "https://app.vm0.ai/agents/agent-1/permissions?",
       );
     });
+
+    it("should include action=allow param for --enable", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-1");
+
+      await firewallPermissionsChangeCommand.parseAsync([
+        "node",
+        "cli",
+        "github",
+        "--permission",
+        "contents:read",
+        "--enable",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("action=allow");
+    });
+
+    it("should include action=deny param for --disable", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-1");
+
+      await firewallPermissionsChangeCommand.parseAsync([
+        "node",
+        "cli",
+        "github",
+        "--permission",
+        "contents:read",
+        "--disable",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("action=deny");
+    });
   });
 });
