@@ -9,10 +9,8 @@ import { isSandboxAuth } from "../../../../../../src/lib/auth/capability-check";
 import { resolveOrg } from "../../../../../../src/lib/zero/org/resolve-org";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import { eq, and } from "drizzle-orm";
-import {
-  cancelRun,
-  dispatchCancelSideEffects,
-} from "../../../../../../src/lib/infra/run/run-service";
+import { cancelRun } from "../../../../../../src/lib/zero/zero-run-cancel";
+import { dispatchCancelSideEffects } from "../../../../../../src/lib/infra/run/run-service";
 import {
   dispatchQueuedZeroRun,
   drainOrgQueue,
