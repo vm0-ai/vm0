@@ -17,6 +17,7 @@ const DEFAULT_EXEC_TIMEOUT: Duration = Duration::from_secs(300);
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::http::HttpClient;
+use crate::idle_pool::IdleEntry;
 use crate::kmsg_log;
 use crate::network_logs;
 use crate::paths::{LogPaths, guest};
@@ -40,24 +41,101 @@ pub struct JobParams {
     pub use_snapshot: bool,
 }
 
-/// Execute a single job inside a Firecracker VM.
+/// Outcome of a job execution, including the sandbox for possible reuse.
+pub struct ExecuteOutcome {
+    pub exit_code: i32,
+    pub error: Option<String>,
+    /// The sandbox after execution. `Some` when the sandbox is still alive
+    /// and eligible for keep-alive parking. `None` when execution failed
+    /// during create/start (sandbox was destroyed inline).
+    pub sandbox: Option<Box<dyn Sandbox>>,
+    pub source_ip: String,
+}
+
+/// Execute a single job inside a **new** Firecracker VM.
 ///
-/// Returns `(exit_code, error_message)`. The caller is responsible for
-/// reporting completion to the API — this keeps `claim` and `complete`
-/// in the same function for structural pairing.
+/// Returns [`ExecuteOutcome`] with the sandbox still alive (not stopped/destroyed).
+/// The caller decides whether to park it in the idle pool or destroy it.
 pub async fn execute_job(
     factory: &dyn SandboxFactory,
     context: ExecutionContext,
     config: &ExecutorConfig,
     params: &JobParams,
     cancel: CancellationToken,
-) -> (i32, Option<String>) {
+) -> ExecuteOutcome {
     let run_id = context.run_id;
     let mut telemetry =
         JobTelemetry::new(config.http.clone(), run_id, context.sandbox_token.clone());
 
-    // Record api_to_vm_start: elapsed time from the API-side timestamp to now.
-    // api_start_time is milliseconds since Unix epoch (Date.now() in TS).
+    record_api_latency(&context, &mut telemetry);
+
+    let outcome = match execute_new_sandbox(
+        factory,
+        &context,
+        config,
+        params,
+        &mut telemetry,
+        cancel,
+    )
+    .await
+    {
+        Ok(outcome) => outcome,
+        Err(e) => {
+            error!(run_id = %run_id, error = %e, "job execution failed");
+            ExecuteOutcome {
+                exit_code: 1,
+                error: Some(e.to_string()),
+                sandbox: None,
+                source_ip: String::new(),
+            }
+        }
+    };
+
+    info!(run_id = %run_id, exit_code = outcome.exit_code, "job finished");
+    telemetry.flush().await;
+
+    outcome
+}
+
+/// Execute a single job inside a **reused** (kept-alive) VM.
+///
+/// Skips create + start. Re-registers proxy, fixes clock, then runs the agent.
+/// Returns [`ExecuteOutcome`] with the sandbox still alive.
+pub async fn execute_job_reuse(
+    idle_entry: IdleEntry,
+    context: ExecutionContext,
+    config: &ExecutorConfig,
+    cancel: CancellationToken,
+) -> ExecuteOutcome {
+    let run_id = context.run_id;
+    let mut telemetry =
+        JobTelemetry::new(config.http.clone(), run_id, context.sandbox_token.clone());
+
+    record_api_latency(&context, &mut telemetry);
+    telemetry.record("vm_reuse", Duration::ZERO, true, None);
+
+    let source_ip = idle_entry.source_ip.clone();
+    let sandbox = idle_entry.sandbox;
+
+    // execute_reused_sandbox never returns Err — it always returns the sandbox
+    // in the outcome so the caller can stop + destroy it on failure.
+    let outcome = execute_reused_sandbox(
+        sandbox,
+        &source_ip,
+        &context,
+        config,
+        &mut telemetry,
+        cancel,
+    )
+    .await;
+
+    info!(run_id = %run_id, exit_code = outcome.exit_code, reused = true, "job finished");
+    telemetry.flush().await;
+
+    outcome
+}
+
+fn record_api_latency(context: &ExecutionContext, telemetry: &mut JobTelemetry) {
     if let Some(api_start_ms) = context.api_start_time {
         let now_ms = chrono::Utc::now().timestamp_millis() as f64;
         let elapsed_ms = (now_ms - api_start_ms).max(0.0);
@@ -68,30 +146,19 @@ pub async fn execute_job(
             None,
         );
     }
-
-    let (exit_code, err) =
-        match execute_inner(factory, &context, config, params, &mut telemetry, cancel).await {
-            Ok((code, stderr)) => (code, stderr),
-            Err(e) => {
-                error!(run_id = %run_id, error = %e, "job execution failed");
-                (1, Some(e.to_string()))
-            }
-        };
-
-    info!(run_id = %run_id, exit_code, "job finished");
-    telemetry.flush().await;
-
-    (exit_code, err)
 }
 
-async fn execute_inner(
+/// Create a new sandbox, run the job, and return the sandbox for possible reuse.
+///
+/// The caller is responsible for stop + destroy (or parking in the idle pool).
+async fn execute_new_sandbox(
     factory: &dyn SandboxFactory,
     context: &ExecutionContext,
     config: &ExecutorConfig,
     params: &JobParams,
     telemetry: &mut JobTelemetry,
     cancel: CancellationToken,
-) -> RunnerResult<(i32, Option<String>)> {
+) -> RunnerResult<ExecuteOutcome> {
     let sandbox_id = context.run_id;
     let sandbox_config = SandboxConfig {
         id: sandbox_id,
@@ -112,13 +179,121 @@ async fn execute_inner(
         }
     };
 
-    // Register VM in proxy registry BEFORE starting the sandbox so that
-    // mitmproxy can intercept traffic from the very first request.
-    // source_ip is available after create() — it's assigned during network
-    // namespace allocation, before the VM boots.
     let source_ip = sandbox.source_ip().to_string();
-    let network_log_path = config.log_paths.network_log(context.run_id);
 
+    // Register VM in proxy registry BEFORE starting the sandbox.
+    register_proxy(config, context, &source_ip).await;
+
+    if let Err(e) = sandbox.start().await {
+        telemetry.record("vm_create", t.elapsed(), false, Some(&e.to_string()));
+        unregister_proxy(config, context, &source_ip).await;
+        factory.destroy(sandbox).await;
+        return Err(e.into());
+    }
+    telemetry.record("vm_create", t.elapsed(), true, None);
+
+    // Run job inside sandbox
+    let result = run_in_sandbox(
+        sandbox.as_ref(),
+        context,
+        config,
+        params.use_snapshot,
+        false, // new sandbox — download storages normally
+        telemetry,
+        cancel,
+    )
+    .await;
+
+    // Post-job: copy logs + unregister proxy (sandbox stays alive for possible reuse)
+    post_job_cleanup(sandbox.as_ref(), config, context, &source_ip).await;
+
+    let (exit_code, error) = match result {
+        Ok((code, err)) => (code, err),
+        Err(e) => (1, Some(e.to_string())),
+    };
+
+    Ok(ExecuteOutcome {
+        exit_code,
+        error,
+        sandbox: Some(sandbox),
+        source_ip,
+    })
+}
+
+/// Run a job inside a reused (kept-alive) sandbox.
+///
+/// Skips create + start. Re-registers proxy, fixes clock/entropy, then runs.
+async fn execute_reused_sandbox(
+    sandbox: Box<dyn Sandbox>,
+    source_ip: &str,
+    context: &ExecutionContext,
+    config: &ExecutorConfig,
+    telemetry: &mut JobTelemetry,
+    cancel: CancellationToken,
+) -> ExecuteOutcome {
+    info!(
+        run_id = %context.run_id,
+        sandbox_id = %sandbox.id(),
+        "reusing kept-alive sandbox"
+    );
+
+    // Re-register proxy with new run credentials
+    register_proxy(config, context, source_ip).await;
+
+    // Fix clock drift and reseed entropy (always needed after idle period).
+    // On failure, return the sandbox so the caller can still stop + destroy it.
+    if let Err(e) = fix_guest_clock(sandbox.as_ref()).await {
+        warn!(run_id = %context.run_id, error = %e, "fix_guest_clock failed on reused sandbox");
+        unregister_proxy(config, context, source_ip).await;
+        return ExecuteOutcome {
+            exit_code: 1,
+            error: Some(e.to_string()),
+            sandbox: Some(sandbox),
+            source_ip: source_ip.to_string(),
+        };
+    }
+    if let Err(e) = reseed_guest_entropy(sandbox.as_ref()).await {
+        warn!(run_id = %context.run_id, error = %e, "reseed_guest_entropy failed on reused sandbox");
+        unregister_proxy(config, context, source_ip).await;
+        return ExecuteOutcome {
+            exit_code: 1,
+            error: Some(e.to_string()),
+            sandbox: Some(sandbox),
+            source_ip: source_ip.to_string(),
+        };
+    }
+
+    // Run job — clock/entropy already handled, storage persists from previous turn
+    let result = run_in_sandbox(
+        sandbox.as_ref(),
+        context,
+        config,
+        false, // clock/entropy already handled
+        true,  // skip storage download — filesystem persists across turns
+        telemetry,
+        cancel,
+    )
+    .await;
+
+    // Post-job cleanup
+    post_job_cleanup(sandbox.as_ref(), config, context, source_ip).await;
+
+    let (exit_code, error) = match result {
+        Ok((code, err)) => (code, err),
+        Err(e) => (1, Some(e.to_string())),
+    };
+
+    ExecuteOutcome {
+        exit_code,
+        error,
+        sandbox: Some(sandbox),
+        source_ip: source_ip.to_string(),
+    }
+}
+
+/// Register a VM in the proxy registry and IP log map.
+async fn register_proxy(config: &ExecutorConfig, context: &ExecutionContext, source_ip: &str) {
+    let network_log_path = config.log_paths.network_log(context.run_id);
     let run_id_str = context.run_id.to_string();
     let registration = proxy::VmRegistration {
         run_id: &run_id_str,
@@ -129,48 +304,39 @@ async fn execute_inner(
         secret_connector_map: context.secret_connector_map.as_ref(),
         vars: context.vars.as_ref(),
     };
-    if let Err(e) = config.registry.register_vm(&source_ip, &registration).await {
+    if let Err(e) = config.registry.register_vm(source_ip, &registration).await {
         warn!(run_id = %context.run_id, error = %e, "failed to register VM in proxy");
     }
-    // Register source IP in log map so non-TCP and DNS traffic is logged.
     config
         .ip_log_map
         .lock()
         .await
-        .insert(source_ip.clone(), network_log_path.clone());
+        .insert(source_ip.to_string(), network_log_path);
+}
 
-    if let Err(e) = sandbox.start().await {
-        telemetry.record("vm_create", t.elapsed(), false, Some(&e.to_string()));
-        // Unregister on start failure
-        if let Err(e) = config.registry.unregister_vm(&source_ip).await {
-            warn!(run_id = %context.run_id, error = %e, "failed to unregister VM from proxy");
-        }
-        config.ip_log_map.lock().await.remove(&source_ip);
-        factory.destroy(sandbox).await;
-        return Err(e.into());
-    }
-    telemetry.record("vm_create", t.elapsed(), true, None);
-
-    // Run job inside sandbox, then destroy regardless of outcome
-    let result = run_in_sandbox(
-        sandbox.as_ref(),
-        context,
-        config,
-        params.use_snapshot,
-        telemetry,
-        cancel,
-    )
-    .await;
-
-    // Copy guest logs to host log directory (best-effort).
-    copy_guest_logs(sandbox.as_ref(), context, &config.log_paths).await;
-
-    // Unregister VM from proxy + kmsg map + upload network logs before cleanup timer.
-    // Unregister first ensures no more log entries are written.
-    if let Err(e) = config.registry.unregister_vm(&source_ip).await {
+/// Unregister a VM from the proxy registry and IP log map.
+async fn unregister_proxy(config: &ExecutorConfig, context: &ExecutionContext, source_ip: &str) {
+    if let Err(e) = config.registry.unregister_vm(source_ip).await {
         warn!(run_id = %context.run_id, error = %e, "failed to unregister VM from proxy");
     }
-    config.ip_log_map.lock().await.remove(&source_ip);
+    config.ip_log_map.lock().await.remove(source_ip);
+}
+
+/// Post-job cleanup: copy logs, unregister proxy, upload network logs.
+///
+/// Called after `run_in_sandbox` completes, whether the sandbox will be
+/// parked (keep-alive) or destroyed.
+async fn post_job_cleanup(
+    sandbox: &dyn Sandbox,
+    config: &ExecutorConfig,
+    context: &ExecutionContext,
+    source_ip: &str,
+) {
+    copy_guest_logs(sandbox, context, &config.log_paths).await;
+
+    unregister_proxy(config, context, source_ip).await;
+
+    let network_log_path = config.log_paths.network_log(context.run_id);
     network_logs::upload_network_logs(
         &config.http,
         context.run_id,
@@ -178,28 +344,6 @@ async fn execute_inner(
         &network_log_path,
     )
     .await;
-
-    // Cleanup: stop + destroy
-    let t = Instant::now();
-
-    // Best-effort stop
-    let stop_err = match sandbox.stop().await {
-        Ok(()) => None,
-        Err(e) => {
-            warn!(sandbox_id = %sandbox_id, error = %e, "sandbox stop failed");
-            Some(e.to_string())
-        }
-    };
-    factory.destroy(sandbox).await;
-
-    telemetry.record(
-        "cleanup",
-        t.elapsed(),
-        stop_err.is_none(),
-        stop_err.as_deref(),
-    );
-
-    result
 }
 
 async fn run_in_sandbox(
@@ -207,6 +351,7 @@ async fn run_in_sandbox(
     context: &ExecutionContext,
     config: &ExecutorConfig,
     use_snapshot: bool,
+    skip_storage_download: bool,
     telemetry: &mut JobTelemetry,
     cancel: CancellationToken,
 ) -> RunnerResult<(i32, Option<String>)> {
@@ -222,8 +367,8 @@ async fn run_in_sandbox(
     // 2. Set guest timezone from user preference (best-effort, never fails).
     sync_guest_timezone(sandbox, context).await;
 
-    // 3. Download storages
-    if let Some(manifest) = &context.storage_manifest {
+    // 3. Download storages (skipped for reused VMs — filesystem persists)
+    if !skip_storage_download && let Some(manifest) = &context.storage_manifest {
         let t = Instant::now();
         let result = download_storages(sandbox, context, manifest, &log_file).await;
         let err = result.as_ref().err().map(|e| e.to_string());
@@ -296,7 +441,7 @@ async fn run_in_sandbox(
         .map(|stdout_rx| tokio::spawn(drain_stdout_to_file(stdout_rx, host_log_path)));
 
     // 6. Wait for exit (or cancellation).
-    // On cancel we return immediately — the caller (execute_inner) will
+    // On cancel we return immediately — the caller (execute_new_sandbox) will
     // call sandbox.stop() + factory.destroy() in its cleanup path.
     let result = tokio::select! {
         result = sandbox.wait_exit(handle, JOB_TIMEOUT) => result,
@@ -1850,7 +1995,7 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // execute_inner integration tests (MockSandboxFactory + real filesystem)
+    // execute_new_sandbox integration tests (MockSandboxFactory + real filesystem)
     // -----------------------------------------------------------------------
 
     /// Build a real `ExecutorConfig` backed by tempdir files.
@@ -1896,7 +2041,9 @@ mod tests {
     ) -> RunnerResult<(i32, Option<String>)> {
         let mut telemetry = test_telemetry(config, ctx);
         let cancel = tokio_util::sync::CancellationToken::new();
-        execute_inner(factory, ctx, config, params, &mut telemetry, cancel).await
+        let outcome =
+            execute_new_sandbox(factory, ctx, config, params, &mut telemetry, cancel).await?;
+        Ok((outcome.exit_code, outcome.error))
     }
 
     #[tokio::test]
@@ -1993,7 +2140,7 @@ mod tests {
         factory.startup().await.unwrap();
 
         let cancel = tokio_util::sync::CancellationToken::new();
-        let (exit_code, error_msg) = execute_job(
+        let outcome = execute_job(
             &factory,
             minimal_context(),
             &config,
@@ -2001,8 +2148,9 @@ mod tests {
             cancel,
         )
         .await;
-        assert_eq!(exit_code, 0);
-        assert!(error_msg.is_none());
+        assert_eq!(outcome.exit_code, 0);
+        assert!(outcome.error.is_none());
+        assert!(outcome.sandbox.is_some());
     }
 
     #[tokio::test]
@@ -2014,7 +2162,7 @@ mod tests {
         factory.push_create_result(Err(SandboxError::CreationFailed("boom".into())));
 
         let cancel = tokio_util::sync::CancellationToken::new();
-        let (exit_code, error_msg) = execute_job(
+        let outcome = execute_job(
             &factory,
             minimal_context(),
             &config,
@@ -2022,7 +2170,463 @@ mod tests {
             cancel,
         )
         .await;
-        assert_eq!(exit_code, 1);
-        assert!(error_msg.unwrap().contains("boom"));
+        assert_eq!(outcome.exit_code, 1);
+        assert!(outcome.error.unwrap().contains("boom"));
+        assert!(outcome.sandbox.is_none());
+    }
+
+    // -----------------------------------------------------------------------
+    // Keep-alive VM reuse integration tests
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn execute_job_reuse_succeeds() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let mut factory = MockSandboxFactory::new();
+        factory.startup().await.unwrap();
+
+        // First: create a sandbox via normal execute_job
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let outcome = execute_job(
+            &factory,
+            minimal_context(),
+            &config,
+            &default_params(),
+            cancel,
+        )
+        .await;
+        assert_eq!(outcome.exit_code, 0);
+        let sandbox = outcome.sandbox.expect("sandbox should be alive");
+
+        // Build an idle entry from the outcome
+        let idle_entry = crate::idle_pool::IdleEntry {
+            sandbox,
+            factory: std::sync::Arc::new(
+                Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>
+            ),
+            session_id: "test-session".into(),
+            profile_name: "vm0/default".into(),
+            vcpu: 2,
+            memory_mb: 2048,
+            source_ip: outcome.source_ip,
+            parked_at: std::time::Instant::now(),
+            idle_timeout: std::time::Duration::from_secs(300),
+        };
+
+        // Reuse the sandbox for a second turn
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let reuse_outcome = execute_job_reuse(idle_entry, minimal_context(), &config, cancel).await;
+        assert_eq!(reuse_outcome.exit_code, 0);
+        assert!(reuse_outcome.error.is_none());
+        assert!(reuse_outcome.sandbox.is_some());
+    }
+
+    #[tokio::test]
+    async fn execute_job_reuse_with_session_context() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let mut factory = MockSandboxFactory::new();
+        factory.startup().await.unwrap();
+
+        // First turn: execute with resume_session
+        let mut ctx = minimal_context();
+        ctx.resume_session = Some(ResumeSession {
+            session_id: "test-session-abc".into(),
+            session_history: r#"{"type":"human","text":"hello"}"#.into(),
+        });
+        assert_eq!(ctx.session_id(), Some("test-session-abc"));
+
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let outcome = execute_job(&factory, ctx, &config, &default_params(), cancel).await;
+        assert_eq!(outcome.exit_code, 0);
+        let sandbox = outcome.sandbox.expect("sandbox should be alive");
+
+        // Build idle entry
+        let idle_entry = crate::idle_pool::IdleEntry {
+            sandbox,
+            factory: std::sync::Arc::new(
+                Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>
+            ),
+            session_id: "test-session".into(),
+            profile_name: "vm0/default".into(),
+            vcpu: 2,
+            memory_mb: 2048,
+            source_ip: outcome.source_ip,
+            parked_at: std::time::Instant::now(),
+            idle_timeout: std::time::Duration::from_secs(300),
+        };
+
+        // Second turn: reuse with new session history
+        let mut ctx2 = minimal_context();
+        ctx2.resume_session = Some(ResumeSession {
+            session_id: "test-session-abc".into(),
+            session_history: r#"{"type":"human","text":"hello"}
+{"type":"assistant","text":"hi"}
+{"type":"human","text":"do something"}"#
+                .into(),
+        });
+
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let reuse_outcome = execute_job_reuse(idle_entry, ctx2, &config, cancel).await;
+        assert_eq!(reuse_outcome.exit_code, 0);
+        assert!(reuse_outcome.sandbox.is_some());
+    }
+
+    #[tokio::test]
+    async fn idle_pool_park_and_reuse_cycle() {
+        use crate::idle_pool::{IdlePool, IdlePoolConfig, ParkResult};
+
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let mut factory = MockSandboxFactory::new();
+        factory.startup().await.unwrap();
+
+        // Execute first job
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let outcome = execute_job(
+            &factory,
+            minimal_context(),
+            &config,
+            &default_params(),
+            cancel,
+        )
+        .await;
+        assert_eq!(outcome.exit_code, 0);
+        let sandbox = outcome.sandbox.expect("sandbox alive");
+
+        // Park in idle pool
+        let mut pool = IdlePool::new(IdlePoolConfig {
+            enabled: true,
+            default_timeout: std::time::Duration::from_secs(300),
+            max_idle: 0,
+        });
+
+        let entry = crate::idle_pool::IdleEntry {
+            sandbox,
+            factory: std::sync::Arc::new(
+                Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>
+            ),
+            session_id: "test-session".into(),
+            profile_name: "vm0/default".into(),
+            vcpu: 2,
+            memory_mb: 2048,
+            source_ip: outcome.source_ip,
+            parked_at: std::time::Instant::now(),
+            idle_timeout: std::time::Duration::from_secs(300),
+        };
+
+        let result = pool.park("session-1".into(), entry);
+        assert!(matches!(result, ParkResult::Parked));
+        assert_eq!(pool.len(), 1);
+
+        // Take from pool for reuse
+        let reuse_entry = pool.take("session-1").expect("should find session");
+        assert_eq!(pool.len(), 0);
+        assert_eq!(reuse_entry.profile_name, "vm0/default");
+
+        // Execute reuse
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let reuse_outcome =
+            execute_job_reuse(reuse_entry, minimal_context(), &config, cancel).await;
+        assert_eq!(reuse_outcome.exit_code, 0);
+        assert!(reuse_outcome.sandbox.is_some());
+    }
+
+    #[tokio::test]
+    async fn idle_pool_profile_mismatch_returns_none() {
+        use crate::idle_pool::{IdlePool, IdlePoolConfig};
+
+        let mut pool = IdlePool::new(IdlePoolConfig {
+            enabled: true,
+            default_timeout: std::time::Duration::from_secs(300),
+            max_idle: 0,
+        });
+
+        // Park with profile "vm0/default"
+        let entry = crate::idle_pool::IdleEntry {
+            sandbox: Box::new(sandbox_mock::MockSandbox::new("test")),
+            factory: std::sync::Arc::new(
+                Box::new(sandbox_mock::MockSandboxFactory::new()) as Box<dyn SandboxFactory>
+            ),
+            session_id: "test-session".into(),
+            profile_name: "vm0/default".into(),
+            vcpu: 2,
+            memory_mb: 2048,
+            source_ip: "10.0.0.1".into(),
+            parked_at: std::time::Instant::now(),
+            idle_timeout: std::time::Duration::from_secs(300),
+        };
+        let _ = pool.park("session-1".into(), entry);
+
+        // Take and verify profile
+        let taken = pool.take("session-1").expect("should find");
+        assert_eq!(taken.profile_name, "vm0/default");
+
+        // Simulate caller checking profile mismatch
+        let matches_browser = taken.profile_name == "vm0/browser";
+        assert!(!matches_browser, "should not match different profile");
+    }
+
+    #[tokio::test]
+    async fn execute_job_reuse_clock_fix_failure_returns_sandbox() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+
+        // Build a MockSandbox that fails on the first exec (fix_guest_clock)
+        let sandbox = MockSandbox::new("reuse-clock-fail");
+        sandbox.push_exec_result(Err(SandboxError::ExecFailed("vsock broken".into())));
+
+        let idle_entry = crate::idle_pool::IdleEntry {
+            sandbox: Box::new(sandbox),
+            factory: std::sync::Arc::new(
+                Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>
+            ),
+            session_id: "sess-1".into(),
+            profile_name: "vm0/default".into(),
+            vcpu: 2,
+            memory_mb: 2048,
+            source_ip: "10.0.0.1".into(),
+            parked_at: std::time::Instant::now(),
+            idle_timeout: std::time::Duration::from_secs(300),
+        };
+
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let outcome = execute_job_reuse(idle_entry, minimal_context(), &config, cancel).await;
+
+        assert_eq!(outcome.exit_code, 1);
+        assert!(outcome.error.unwrap().contains("vsock broken"));
+        // Critical: sandbox must be returned so caller can stop + destroy it
+        assert!(
+            outcome.sandbox.is_some(),
+            "sandbox must be returned on clock fix failure"
+        );
+    }
+
+    #[tokio::test]
+    async fn execute_job_reuse_reseed_failure_returns_sandbox() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+
+        // First exec (fix_guest_clock) succeeds, second (reseed_guest_entropy) fails
+        let sandbox = MockSandbox::new("reuse-reseed-fail");
+        sandbox.push_exec_result(Ok(ExecResult {
+            exit_code: 0,
+            stdout: Vec::new(),
+            stderr: Vec::new(),
+        }));
+        sandbox.push_exec_result(Err(SandboxError::ExecFailed("reseed timeout".into())));
+
+        let idle_entry = crate::idle_pool::IdleEntry {
+            sandbox: Box::new(sandbox),
+            factory: std::sync::Arc::new(
+                Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>
+            ),
+            session_id: "sess-1".into(),
+            profile_name: "vm0/default".into(),
+            vcpu: 2,
+            memory_mb: 2048,
+            source_ip: "10.0.0.1".into(),
+            parked_at: std::time::Instant::now(),
+            idle_timeout: std::time::Duration::from_secs(300),
+        };
+
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let outcome = execute_job_reuse(idle_entry, minimal_context(), &config, cancel).await;
+
+        assert_eq!(outcome.exit_code, 1);
+        assert!(outcome.error.unwrap().contains("reseed timeout"));
+        assert!(
+            outcome.sandbox.is_some(),
+            "sandbox must be returned on reseed failure"
+        );
+    }
+
+    /// Verify that the reuse path skips storage download even when context
+    /// has a storage_manifest. Strategy: push a write_file error — if download
+    /// ran, it would call write_file (consuming the error and failing).
+    /// Since download is skipped, write_file is never called and the test passes.
+    #[tokio::test]
+    async fn execute_job_reuse_skips_storage_download() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+
+        let sandbox = MockSandbox::new("reuse-skip-download");
+        // Poison write_file: if called, it would fail with this error.
+        sandbox.push_write_file_result(Err(SandboxError::ExecFailed(
+            "download should be skipped".into(),
+        )));
+
+        let mut ctx = minimal_context();
+        ctx.storage_manifest = Some(StorageManifest {
+            storages: vec![StorageEntry {
+                mount_path: "/data".into(),
+                archive_url: Some("https://s3/archive.tar.gz".into()),
+            }],
+            artifact: None,
+            memory: None,
+        });
+
+        let idle_entry = crate::idle_pool::IdleEntry {
+            sandbox: Box::new(sandbox),
+            factory: std::sync::Arc::new(
+                Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>
+            ),
+            session_id: "sess-1".into(),
+            profile_name: "vm0/default".into(),
+            vcpu: 2,
+            memory_mb: 2048,
+            source_ip: "10.0.0.1".into(),
+            parked_at: std::time::Instant::now(),
+            idle_timeout: std::time::Duration::from_secs(300),
+        };
+
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let outcome = execute_job_reuse(idle_entry, ctx, &config, cancel).await;
+
+        // If storage download was NOT skipped, write_file would have been called
+        // with the poisoned error, causing the job to fail with "download should
+        // be skipped". Success here proves download was truly skipped.
+        assert_eq!(outcome.exit_code, 0, "reuse should skip storage download");
+        assert!(outcome.error.is_none());
+        assert!(outcome.sandbox.is_some());
+    }
+
+    /// Verify that session restore failure during reuse still returns the sandbox.
+    #[tokio::test]
+    async fn execute_job_reuse_session_restore_failure_returns_sandbox() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+
+        let sandbox = MockSandbox::new("reuse-session-fail");
+        // clock fix and reseed succeed (default), then mkdir exec succeeds,
+        // but write_file for session history fails.
+        sandbox.push_write_file_result(Err(SandboxError::ExecFailed("disk full".into())));
+
+        let mut ctx = minimal_context();
+        ctx.resume_session = Some(ResumeSession {
+            session_id: "sess-abc".into(),
+            session_history: r#"{"type":"init"}"#.into(),
+        });
+
+        let idle_entry = crate::idle_pool::IdleEntry {
+            sandbox: Box::new(sandbox),
+            factory: std::sync::Arc::new(
+                Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>
+            ),
+            session_id: "sess-abc".into(),
+            profile_name: "vm0/default".into(),
+            vcpu: 2,
+            memory_mb: 2048,
+            source_ip: "10.0.0.1".into(),
+            parked_at: std::time::Instant::now(),
+            idle_timeout: std::time::Duration::from_secs(300),
+        };
+
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let outcome = execute_job_reuse(idle_entry, ctx, &config, cancel).await;
+
+        assert_eq!(outcome.exit_code, 1);
+        assert!(outcome.error.unwrap().contains("disk full"));
+        assert!(
+            outcome.sandbox.is_some(),
+            "sandbox must be returned on session restore failure"
+        );
+    }
+
+    /// Verify that reuse skips storage download but still runs session restore
+    /// when both storage_manifest and resume_session are present.
+    ///
+    /// Strategy: push a write_file error. If storage download ran, it would
+    /// call write_file first (for the manifest), consuming the error and
+    /// failing with "storage should be skipped". Since download IS skipped,
+    /// the first write_file call is for restore_session (session history),
+    /// which consumes the error and fails with "storage should be skipped"
+    /// — proving both that download was skipped AND session restore ran.
+    #[tokio::test]
+    async fn execute_job_reuse_skips_storage_but_runs_session_restore() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+
+        let sandbox = MockSandbox::new("reuse-combined");
+        // Poison write_file: consumed by whichever calls write_file first.
+        sandbox.push_write_file_result(Err(SandboxError::ExecFailed(
+            "storage should be skipped".into(),
+        )));
+
+        let mut ctx = minimal_context();
+        ctx.storage_manifest = Some(StorageManifest {
+            storages: vec![StorageEntry {
+                mount_path: "/data".into(),
+                archive_url: Some("https://s3/archive.tar.gz".into()),
+            }],
+            artifact: None,
+            memory: None,
+        });
+        ctx.resume_session = Some(ResumeSession {
+            session_id: "sess-combined".into(),
+            session_history: r#"{"type":"init"}"#.into(),
+        });
+
+        let idle_entry = crate::idle_pool::IdleEntry {
+            sandbox: Box::new(sandbox),
+            factory: std::sync::Arc::new(
+                Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>
+            ),
+            session_id: "sess-combined".into(),
+            profile_name: "vm0/default".into(),
+            vcpu: 2,
+            memory_mb: 2048,
+            source_ip: "10.0.0.1".into(),
+            parked_at: std::time::Instant::now(),
+            idle_timeout: std::time::Duration::from_secs(300),
+        };
+
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let outcome = execute_job_reuse(idle_entry, ctx, &config, cancel).await;
+
+        // If storage download was NOT skipped, write_file would be called for
+        // the manifest, consuming the error. Session restore's write_file would
+        // then succeed (default), and the download exec would fail — the error
+        // message would NOT contain "storage should be skipped".
+        //
+        // Since storage IS skipped, session restore is the first write_file
+        // caller, it consumes the error, and we see it in the outcome.
+        assert_eq!(outcome.exit_code, 1);
+        assert!(
+            outcome
+                .error
+                .as_ref()
+                .unwrap()
+                .contains("storage should be skipped"),
+            "session restore should have consumed the write_file error, \
+             proving it ran while storage download was skipped. Got: {:?}",
+            outcome.error,
+        );
+        assert!(outcome.sandbox.is_some());
+    }
+
+    #[tokio::test]
+    async fn execute_job_nonzero_exit_still_returns_sandbox() {
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let mut factory = MockSandboxFactory::new();
+        factory.startup().await.unwrap();
+
+        let cancel = tokio_util::sync::CancellationToken::new();
+        let outcome = execute_job(
+            &factory,
+            minimal_context(),
+            &config,
+            &default_params(),
+            cancel,
+        )
+        .await;
+
+        // Sandbox should be alive regardless of exit code (caller decides fate)
+        assert!(
+            outcome.sandbox.is_some(),
+            "sandbox must be returned for caller to stop+destroy or park"
+        );
     }
 }

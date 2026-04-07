@@ -265,8 +265,9 @@ export const onboardingAddToSlack$ = command(
     const isAdmin = await get(zeroNeedsOnboarding$);
     signal.throwIfAborted();
     if (isAdmin) {
-      const slackData = get(slackOrgData$);
-      if (slackData?.isAdmin && slackData.installUrl) {
+      const slackData = await get(slackOrgData$);
+      signal.throwIfAborted();
+      if (slackData.isAdmin && slackData.installUrl) {
         const url = new URL(slackData.installUrl, window.location.origin);
         url.searchParams.set("_t", String(Date.now()));
         window.open(url.toString(), "_blank");

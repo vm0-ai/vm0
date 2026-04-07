@@ -1,3 +1,4 @@
+import { isFeatureEnabled, FeatureSwitchKey } from "@vm0/core";
 import { decryptSecretValue } from "../../../shared/crypto/secrets-encryption";
 import { env } from "../../../../env";
 import { createSlackClient, setThreadStatus } from "../../slack/client";
@@ -227,7 +228,12 @@ export async function handleOrgMention(
     if (!runId) {
       const errorText =
         response ?? "Sorry, an error occurred. Please try again.";
-      const logsUrl = buildAgentLogsUrl();
+      const logsUrl = isFeatureEnabled(FeatureSwitchKey.AuditLink, {
+        userId: connection.vm0UserId,
+        orgId,
+      })
+        ? buildAgentLogsUrl()
+        : undefined;
       await client.chat.postMessage({
         channel: context.channelId,
         thread_ts: threadTs,

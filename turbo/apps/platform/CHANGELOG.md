@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.196.1](https://github.com/vm0-ai/vm0/compare/app-v0.196.0...app-v0.196.1) (2026-04-07)
+
+
+### Bug Fixes
+
+* reserve scrollbar gutter in chat thread to prevent layout shift ([#8322](https://github.com/vm0-ai/vm0/issues/8322)) ([ea8b642](https://github.com/vm0-ai/vm0/commit/ea8b642c996a0783db1c3f81797b3901836775f2))
+
+
+### Refactoring
+
+* **platform:** replace fetch-slack-org imperative command with reactive computed ([#8332](https://github.com/vm0-ai/vm0/issues/8332)) ([575f5dd](https://github.com/vm0-ai/vm0/commit/575f5dd9276c8ca145b46f7caf7a1f144437e899))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.156.0
+
 ## [0.196.0](https://github.com/vm0-ai/vm0/compare/app-v0.195.0...app-v0.196.0) (2026-04-07)
 
 

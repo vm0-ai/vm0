@@ -164,7 +164,7 @@ describe("buildAgentResponseMessage", () => {
       return b.type === "markdown";
     }) as MarkdownBlock;
     expect(markdownBlock.text.length).toBeLessThanOrEqual(12000);
-    expect(markdownBlock.text).toContain("truncated");
+    expect(markdownBlock.text).toContain("Message too long to view in Slack.");
   });
 
   it("should not truncate content under 12000 characters", () => {

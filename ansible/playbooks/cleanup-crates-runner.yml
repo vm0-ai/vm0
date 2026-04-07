@@ -64,6 +64,10 @@
       command: systemctl stop vm0-runner-{{ job_ref }}-cancel.service
       ignore_errors: true
 
+    - name: Stop transient service keepalive
+      command: systemctl stop vm0-runner-{{ job_ref }}-keepalive.service
+      ignore_errors: true
+
     - name: Reload systemd daemon
       command: systemctl daemon-reload
       ignore_errors: true
@@ -80,7 +84,9 @@
         - "{{ base_dir }}/runners/{{ job_ref }}-balloon"
         - "{{ base_dir }}/runners/{{ job_ref }}-upgrade-a"
         - "{{ base_dir }}/runners/{{ job_ref }}-upgrade-b"
+        - "{{ base_dir }}/runners/{{ job_ref }}-keepalive"
         - "{{ base_dir }}/groups/vm0/cancel-{{ job_ref }}"
         - "{{ base_dir }}/groups/vm0/exec-{{ job_ref }}"
         - "{{ base_dir }}/groups/vm0/balloon-{{ job_ref }}"
         - "{{ base_dir }}/groups/vm0/upgrade-{{ job_ref }}"
+        - "{{ base_dir }}/groups/vm0/keepalive-{{ job_ref }}"

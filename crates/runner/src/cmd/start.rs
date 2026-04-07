@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use clap::Args;
-use sandbox::{RuntimeProvider, SandboxFactory, SandboxRuntime};
+use sandbox::{RuntimeProvider, Sandbox, SandboxFactory, SandboxRuntime};
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
@@ -17,6 +17,7 @@ use crate::error::{RunnerError, RunnerResult};
 use crate::executor::{self, ExecutorConfig};
 use crate::host;
 use crate::http::HttpClient;
+use crate::idle_pool::{IdleEntry, IdlePool, IdlePoolConfig, ParkResult};
 use crate::kmsg_log;
 use crate::lock;
 use crate::paths::{HomePaths, LogPaths, RunnerPaths, touch_mtime};
@@ -201,6 +202,9 @@ pub async fn run_start(
     let config::SandboxConfig {
         max_concurrent,
         concurrency_factor,
+        keep_alive,
+        keep_alive_timeout_secs,
+        keep_alive_max_idle,
     } = runner_config.sandbox;
     let host_cpus = host::cpu_count()?;
     let host_memory_mb = host::memory_mb()?;
@@ -220,6 +224,19 @@ pub async fn run_start(
         profiles = runner_config.profiles.len(),
         "resource budget initialized"
     );
+
+    // Idle sandbox pool for VM keep-alive across conversation turns.
+    let idle_pool = Arc::new(tokio::sync::Mutex::new(IdlePool::new(IdlePoolConfig {
+        enabled: keep_alive,
+        default_timeout: Duration::from_secs(keep_alive_timeout_secs),
+        max_idle: keep_alive_max_idle,
+    })));
+    if keep_alive {
+        info!(
+            keep_alive_timeout_secs,
+            keep_alive_max_idle, "VM keep-alive enabled"
+        );
+    }
 
     // Estimated capacity for status reporting.
     // Derived from the smallest profile to cover the worst case.
@@ -295,6 +312,7 @@ pub async fn run_start(
         runtime,
         home,
         budget,
+        idle_pool,
         status,
         mitm,
         mitm_crash_rx,
@@ -320,6 +338,7 @@ struct RunConfig {
     runtime: Box<dyn SandboxRuntime>,
     home: HomePaths,
     budget: Arc<ResourceBudget>,
+    idle_pool: SharedIdlePool,
     status: Arc<StatusTracker>,
     mitm: proxy::MitmProxy,
     mitm_crash_rx: tokio::sync::mpsc::Receiver<()>,
@@ -347,6 +366,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         mut runtime,
         home,
         budget,
+        idle_pool,
         status,
         mut mitm,
         mut mitm_crash_rx,
@@ -386,6 +406,10 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     }
 
     let mut jobs: JoinSet<Option<Uuid>> = JoinSet::new();
+    // Tracked destroy tasks — JoinSet ensures we can await all in-flight
+    // destroys at shutdown, preventing factory Arc leaks that cause
+    // "factory still referenced" warnings from Arc::try_unwrap.
+    let mut destroy_tasks: JoinSet<()> = JoinSet::new();
 
     status.write_initial().await;
     info!(
@@ -435,13 +459,28 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     });
 
     // -----------------------------------------------------------------------
+    // Idle pool cleanup interval (every 10 seconds)
+    // -----------------------------------------------------------------------
+    let mut idle_cleanup = tokio::time::interval(Duration::from_secs(10));
+    idle_cleanup.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+    // -----------------------------------------------------------------------
     // Main loop
     // -----------------------------------------------------------------------
     let mut current_mode = RunnerMode::Running;
+    let mut spawn_ctx = SpawnContext {
+        provider: Arc::clone(&provider),
+        exec_config: Arc::clone(&exec_config),
+        budget: Arc::clone(&budget),
+        idle_pool: Arc::clone(&idle_pool),
+        status: Arc::clone(&status),
+        mode: current_mode,
+    };
     loop {
         let mode = *mode_rx.borrow_and_update();
         if mode != current_mode {
             current_mode = mode;
+            spawn_ctx.mode = mode;
             status.set_mode(mode).await;
         }
         match mode {
@@ -452,12 +491,39 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         // Spawn background restart task when timer fires
         maybe_spawn_mitm_restart(&mut mitm, &mut mitm_crash_rx, &mut mitm_retry).await;
 
-        // If budget is exhausted for all profiles, wait for a job to finish
+        // If budget is exhausted for all profiles, try evicting an idle VM
+        // before waiting for a running job to finish.
+        //
+        // NOTE: evict_oldest is session-blind — it may destroy the very VM
+        // that the next job wants to reuse. A proper fix requires knowing
+        // session_id before claim, which is tracked for Phase 2.
         if !budget.can_afford(min_vcpu, min_memory_mb) {
+            if let Some(evicted) = idle_pool.lock().await.evict_oldest() {
+                info!(
+                    session_id = %evicted.session_id,
+                    profile = %evicted.profile_name,
+                    "evicting idle VM for resource pressure"
+                );
+                // Inline destroy so budget.release() happens synchronously
+                // before the `continue` re-checks can_afford(). Using
+                // tokio::spawn here would cause a cascade: the async release
+                // hasn't fired yet → can_afford still false → evict another →
+                // repeat until the entire pool is drained unnecessarily.
+                let vcpu = evicted.vcpu;
+                let memory_mb = evicted.memory_mb;
+                evicted.stop_and_destroy().await;
+                budget.release(vcpu, memory_mb);
+                continue; // retry budget check — budget is now actually freed
+            }
             tokio::select! {
                 _ = mode_rx.changed() => {}
                 result = jobs.join_next() => {
                     handle_job_result(result, &cancel_tokens).await;
+                }
+                Some(result) = destroy_tasks.join_next() => {
+                    if let Err(e) = result {
+                        warn!(error = %e, "destroy task panicked");
+                    }
                 }
                 _ = mitm_crash_rx.recv() => {
                     warn!("mitmproxy exited unexpectedly, scheduling restart");
@@ -516,7 +582,42 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 };
                 info!(run_id = %run_id, profile = %profile_name, "job claimed, spawning executor");
                 status.add_run(run_id).await;
+
+                // Check idle pool for a reusable VM (same session + same profile).
+                let reuse_entry = if let Some(session_id) = context.session_id() {
+                    let mut pool = idle_pool.lock().await;
+                    match pool.take(session_id) {
+                        Some(entry) if entry.profile_name == profile_name => {
+                            info!(
+                                run_id = %run_id,
+                                session_id,
+                                "reusing idle VM for session"
+                            );
+                            // Idle entry already holds budget — release the new reservation.
+                            budget.release(job_vcpu, job_memory);
+                            Some(entry)
+                        }
+                        Some(stale) => {
+                            // Profile mismatch — destroy the stale VM.
+                            info!(
+                                run_id = %run_id,
+                                session_id,
+                                old_profile = %stale.profile_name,
+                                new_profile = %profile_name,
+                                "idle VM profile mismatch, destroying"
+                            );
+                            let b = Arc::clone(&budget);
+                            destroy_tasks.spawn(destroy_idle_entry(stale, b));
+                            None
+                        }
+                        None => None,
+                    }
+                } else {
+                    None
+                };
+
                 let job_profile = JobProfile {
+                    profile_name: profile_name.clone(),
                     vcpu: job_vcpu,
                     memory_mb: job_memory,
                     use_snapshot: *use_snapshot,
@@ -524,8 +625,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     cancel: job_cancel,
                 };
                 spawn_job(
-                    context, job_profile, &provider, &exec_config,
-                    &budget, &mut jobs, &status,
+                    context, job_profile, reuse_entry, &spawn_ctx, &mut jobs,
                 );
             }
             // Mitmproxy crash detection
@@ -541,12 +641,51 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             () = sleep_until_retry(&mitm_retry.restart_at) => {}
             // Mode changes (signals)
             _ = mode_rx.changed() => {}
+            // Reap completed destroy tasks
+            Some(result) = destroy_tasks.join_next() => {
+                if let Err(e) = result {
+                    warn!(error = %e, "destroy task panicked");
+                }
+            }
+            // Idle pool cleanup: evict expired VMs and update status
+            _ = idle_cleanup.tick() => {
+                let mut pool = idle_pool.lock().await;
+                let expired = pool.evict_expired();
+                for entry in &expired {
+                    info!(
+                        profile = %entry.profile_name,
+                        "idle VM expired, destroying"
+                    );
+                }
+                // Update status with current idle pool state
+                let idle_count = pool.len();
+                let idle_sessions = pool.held_sessions();
+                drop(pool);
+                status.set_idle_info(idle_count, idle_sessions).await;
+                for entry in expired {
+                    let b = Arc::clone(&budget);
+                    destroy_tasks.spawn(destroy_idle_entry(entry, b));
+                }
+            }
         }
     }
 
     // -----------------------------------------------------------------------
-    // Shutdown — release discovery resources, then drain running jobs
+    // Shutdown — drain idle pool, release discovery resources, then drain running jobs
     // -----------------------------------------------------------------------
+
+    // Drain idle pool first — these VMs hold budget reservations.
+    let idle_entries = idle_pool.lock().await.drain();
+    if !idle_entries.is_empty() {
+        info!(count = idle_entries.len(), "draining idle VMs");
+        for entry in idle_entries {
+            let vcpu = entry.vcpu;
+            let memory_mb = entry.memory_mb;
+            entry.stop_and_destroy().await;
+            budget.release(vcpu, memory_mb);
+        }
+    }
+
     provider.shutdown().await;
 
     let remaining = jobs.len();
@@ -559,6 +698,11 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 result = jobs.join_next() => {
                     handle_job_result(result, &cancel_tokens).await;
                 }
+                Some(result) = destroy_tasks.join_next() => {
+                    if let Err(e) = result {
+                        warn!(error = %e, "destroy task panicked");
+                    }
+                }
                 _ = mitm_crash_rx.recv() => {
                     warn!("mitmproxy exited unexpectedly, scheduling restart");
                     mitm_retry.schedule();
@@ -568,6 +712,14 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 }
                 () = sleep_until_retry(&mitm_retry.restart_at) => {}
             }
+        }
+    }
+    // Wait for any in-flight destroy tasks (from cleanup tick, profile
+    // mismatch eviction, etc.) so their factory Arcs are dropped before
+    // shutdown_factories calls Arc::try_unwrap.
+    while let Some(result) = destroy_tasks.join_next().await {
+        if let Err(e) = result {
+            warn!(error = %e, "destroy task panicked during shutdown");
         }
     }
     if let Some(h) = mitm_retry.handle {
@@ -602,6 +754,7 @@ type SharedFactory = Arc<Box<dyn SandboxFactory>>;
 
 /// Per-job profile parameters resolved from the profile config.
 struct JobProfile {
+    profile_name: String,
     vcpu: u32,
     memory_mb: u32,
     use_snapshot: bool,
@@ -624,26 +777,41 @@ async fn shutdown_factories(
     runtime.shutdown().await;
 }
 
+type SharedIdlePool = Arc<tokio::sync::Mutex<IdlePool>>;
+
+/// Shared state passed to each spawned job task.
+struct SpawnContext {
+    provider: Arc<dyn JobProvider>,
+    exec_config: Arc<ExecutorConfig>,
+    budget: Arc<ResourceBudget>,
+    idle_pool: SharedIdlePool,
+    status: Arc<StatusTracker>,
+    mode: RunnerMode,
+}
+
 /// Spawn a job executor task.
 ///
 /// The provider has already claimed the job and the caller has reserved
 /// resources in the budget — this function spawns the executor, reports
 /// completion via the provider, and releases the budget when done.
 ///
-/// Returns the run_id via the JoinSet so the main loop can clean up
-/// the cancel token.
+/// If `reuse_entry` is `Some`, the job reuses an existing idle sandbox.
+/// Otherwise it creates a new one via the factory.
+///
+/// After execution, if keep-alive is enabled and the job succeeded,
+/// the sandbox is parked in the idle pool instead of being destroyed.
 fn spawn_job(
     context: ExecutionContext,
     job_profile: JobProfile,
-    provider: &Arc<dyn JobProvider>,
-    exec_config: &Arc<ExecutorConfig>,
-    budget: &Arc<ResourceBudget>,
+    reuse_entry: Option<IdleEntry>,
+    ctx: &SpawnContext,
     jobs: &mut JoinSet<Option<Uuid>>,
-    status: &Arc<StatusTracker>,
 ) {
     let run_id = context.run_id;
+    let session_id = context.session_id().map(String::from);
     let vcpu = job_profile.vcpu;
     let memory_mb = job_profile.memory_mb;
+    let profile_name = job_profile.profile_name;
     let factory = job_profile.factory;
     let job_cancel = job_profile.cancel;
     let params = executor::JobParams {
@@ -652,39 +820,122 @@ fn spawn_job(
         use_snapshot: job_profile.use_snapshot,
     };
 
-    let provider = Arc::clone(provider);
-    let exec_config = Arc::clone(exec_config);
-    let budget = Arc::clone(budget);
-    let status = Arc::clone(status);
+    let provider = Arc::clone(&ctx.provider);
+    let exec_config = Arc::clone(&ctx.exec_config);
+    let budget = Arc::clone(&ctx.budget);
+    let status = Arc::clone(&ctx.status);
+    let idle_pool = Arc::clone(&ctx.idle_pool);
+    let mode = ctx.mode;
+    let factory_for_cleanup = Arc::clone(&factory);
 
     jobs.spawn(async move {
         // Inner spawn isolates panics: if execute_job panics, the outer task
         // still reports completion and releases budget.
         let cancel = job_cancel.clone();
+
         let inner = tokio::spawn(async move {
-            executor::execute_job(&**factory, context, &exec_config, &params, cancel).await
+            if let Some(idle_entry) = reuse_entry {
+                executor::execute_job_reuse(idle_entry, context, &exec_config, cancel).await
+            } else {
+                executor::execute_job(&**factory, context, &exec_config, &params, cancel).await
+            }
         });
 
-        let (exit_code, err) = match inner.await {
-            Ok((code, err)) => {
-                if job_cancel.is_cancelled() {
-                    (code, Some("cancelled by user".to_string()))
+        let (exit_code, err, sandbox, source_ip) = match inner.await {
+            Ok(outcome) => {
+                let err = if job_cancel.is_cancelled() {
+                    Some("cancelled by user".to_string())
                 } else {
-                    (code, err)
-                }
+                    outcome.error
+                };
+                (outcome.exit_code, err, outcome.sandbox, outcome.source_ip)
             }
             Err(e) => {
                 error!(run_id = %run_id, error = %e, "executor task panicked");
-                (1, Some(format!("internal error: {e}")))
+                (1, Some(format!("internal error: {e}")), None, String::new())
             }
+        };
+
+        // Decide: park sandbox for keep-alive, or stop + destroy.
+        let parked = if let Some(sandbox) = sandbox {
+            let parkable_session =
+                if exit_code == 0 && !job_cancel.is_cancelled() && mode == RunnerMode::Running {
+                    session_id.as_deref()
+                } else {
+                    None
+                };
+
+            if let Some(session_id) = parkable_session {
+                let mut pool = idle_pool.lock().await;
+                let idle_timeout = pool.default_timeout();
+                let entry = IdleEntry {
+                    sandbox,
+                    factory: factory_for_cleanup,
+                    session_id: session_id.to_string(),
+                    profile_name,
+                    vcpu,
+                    memory_mb,
+                    source_ip,
+                    parked_at: std::time::Instant::now(),
+                    idle_timeout,
+                };
+                match pool.park(session_id.to_string(), entry) {
+                    ParkResult::Parked => {
+                        info!(run_id = %run_id, session_id, "VM parked for keep-alive");
+                        true
+                    }
+                    ParkResult::Evicted(evicted) => {
+                        info!(run_id = %run_id, session_id, "VM parked, evicting previous");
+                        drop(pool);
+                        let evict_vcpu = evicted.vcpu;
+                        let evict_mem = evicted.memory_mb;
+                        evicted.stop_and_destroy().await;
+                        budget.release(evict_vcpu, evict_mem);
+                        true
+                    }
+                    ParkResult::PoolFull(rejected) => {
+                        info!(run_id = %run_id, session_id, "idle pool full, destroying VM");
+                        drop(pool);
+                        rejected.stop_and_destroy().await;
+                        false
+                    }
+                }
+            } else {
+                // No parkable session — stop + destroy
+                stop_and_destroy_sandbox(sandbox, &**factory_for_cleanup).await;
+                false
+            }
+        } else {
+            false
         };
 
         // Structural guarantee: claim (in provider) is always paired with complete.
         provider.complete(run_id, exit_code, err.as_deref()).await;
         status.remove_run(run_id).await;
-        budget.release(vcpu, memory_mb);
+
+        // Release budget only if sandbox was NOT parked (parked VMs hold their budget).
+        if !parked {
+            budget.release(vcpu, memory_mb);
+        }
+
         Some(run_id)
     });
+}
+
+/// Destroy an idle sandbox entry and release its budget.
+async fn destroy_idle_entry(entry: IdleEntry, budget: Arc<ResourceBudget>) {
+    let vcpu = entry.vcpu;
+    let memory_mb = entry.memory_mb;
+    entry.stop_and_destroy().await;
+    budget.release(vcpu, memory_mb);
+}
+
+/// Stop a sandbox and destroy it via its factory.
+async fn stop_and_destroy_sandbox(mut sandbox: Box<dyn Sandbox>, factory: &dyn SandboxFactory) {
+    if let Err(e) = sandbox.stop().await {
+        warn!(error = %e, "sandbox stop failed");
+    }
+    factory.destroy(sandbox).await;
 }
 
 /// Handle a completed job from the JoinSet, cleaning up cancel tokens.

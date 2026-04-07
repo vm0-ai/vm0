@@ -1,21 +1,29 @@
 import { command, computed, state } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { delay } from "signal-timers";
-import { zeroIntegrationsSlackContract, type SlackOrgStatus } from "@vm0/core";
+import { zeroIntegrationsSlackContract } from "@vm0/core";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
-import { throwIfAbort } from "../utils.ts";
 
-const slackOrgState$ = state<SlackOrgStatus | null>(null);
+const internalReload$ = state(0);
 
-export const slackOrgData$ = computed((get) => {
-  return get(slackOrgState$);
+export const slackOrgData$ = computed(async (get) => {
+  get(internalReload$);
+  const client = get(zeroClient$)(zeroIntegrationsSlackContract);
+  const result = await accept(client.getStatus(), [200], { toast: false });
+  return result.body;
+});
+
+const reloadSlackOrg$ = command(({ set }) => {
+  set(internalReload$, (prev) => {
+    return prev + 1;
+  });
 });
 
 /** True when the org-scoped Slack installation has outdated bot scopes (admin-only). */
-export const slackOrgScopeMismatch$ = computed((get) => {
-  const data = get(slackOrgState$);
-  return data?.scopeMismatch === true;
+export const slackOrgScopeMismatch$ = computed(async (get) => {
+  const data = await get(slackOrgData$);
+  return data.scopeMismatch === true;
 });
 
 // ---------------------------------------------------------------------------
@@ -34,24 +42,13 @@ export const setShowUninstallDialog$ = command(({ set }, show: boolean) => {
   set(showUninstallDialogState$, show);
 });
 
-const fetchSlackOrg$ = command(async ({ get, set }, signal: AbortSignal) => {
-  const client = get(zeroClient$)(zeroIntegrationsSlackContract);
-  try {
-    const result = await accept(client.getStatus(), [200], { toast: false });
-    signal.throwIfAborted();
-    set(slackOrgState$, result.body);
-  } catch (error) {
-    throwIfAbort(error);
-  }
-});
-
 export const disconnectSlackOrg$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const client = get(zeroClient$)(zeroIntegrationsSlackContract);
     await accept(client.disconnect(), [200]);
     signal.throwIfAborted();
     toast.success("Disconnected from Slack");
-    await set(fetchSlackOrg$, signal);
+    set(reloadSlackOrg$);
   },
 );
 
@@ -61,7 +58,7 @@ export const uninstallSlackOrg$ = command(
     await accept(client.disconnect({ query: { action: "uninstall" } }), [200]);
     signal.throwIfAborted();
     toast.success("Slack workspace uninstalled");
-    await set(fetchSlackOrg$, signal);
+    set(reloadSlackOrg$);
   },
 );
 
@@ -79,36 +76,26 @@ export const setSlackPollIntervalMs$ = command(({ set }, ms: number) => {
 export const pollSlackConnection$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     // Already connected — nothing to poll.
-    const current = get(slackOrgState$);
-    if (current?.isConnected) {
+    const current = await get(slackOrgData$);
+    signal.throwIfAborted();
+    if (current.isConnected) {
       return;
     }
 
     while (!signal.aborted) {
       await delay(get(slackPollIntervalMs$), { signal });
-
-      const client = get(zeroClient$)(zeroIntegrationsSlackContract);
-      try {
-        const result = await accept(client.getStatus(), [200], {
-          toast: false,
-        });
-        signal.throwIfAborted();
-        set(slackOrgState$, result.body);
-
-        if (result.body.isConnected) {
-          toast.success("Slack connected successfully");
-          return;
-        }
-      } catch (error) {
-        throwIfAbort(error);
+      set(reloadSlackOrg$);
+      const result = await get(slackOrgData$);
+      signal.throwIfAborted();
+      if (result.isConnected) {
+        toast.success("Slack connected successfully");
+        return;
       }
     }
   },
 );
 
-export const initSlackOrg$ = command(async ({ set }, signal: AbortSignal) => {
-  await set(fetchSlackOrg$, signal);
-
+export const initSlackOrg$ = command((_ctx) => {
   const params = new URLSearchParams(window.location.search);
   if (params.get("updated") === "1") {
     toast.success("Permissions updated");

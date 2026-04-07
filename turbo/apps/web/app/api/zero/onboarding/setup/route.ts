@@ -85,11 +85,11 @@ const router = tsr.router(onboardingSetupContract, {
 
     if (member.role !== "admin") {
       return {
-        status: 401 as const,
+        status: 403 as const,
         body: {
           error: {
             message: "Only org admins can run onboarding setup",
-            code: "UNAUTHORIZED",
+            code: "FORBIDDEN",
           },
         },
       };

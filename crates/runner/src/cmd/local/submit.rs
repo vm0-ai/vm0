@@ -36,6 +36,9 @@ pub struct SubmitArgs {
     /// VM profile to use (e.g. "vm0/default")
     #[arg(long)]
     profile: Option<String>,
+    /// Session ID for keep-alive VM reuse across conversation turns
+    #[arg(long)]
+    session_id: Option<String>,
     /// Timeout in seconds waiting for a runner to complete the job
     #[arg(long, default_value_t = 300)]
     timeout: u64,
@@ -103,6 +106,7 @@ pub async fn run_submit(args: SubmitArgs) -> RunnerResult<ExitCode> {
         environment: None,
         user_timezone: detect_system_timezone(),
         profile: args.profile,
+        session_id: args.session_id,
     };
 
     let json = serde_json::to_vec(&request)
@@ -273,6 +277,7 @@ mod tests {
             working_dir: "/workspace".into(),
             cli_agent_type: "claude-code".into(),
             profile: Some("bad-name".into()),
+            session_id: None,
             timeout: 1,
         };
         let err = run_submit(args).await.unwrap_err();
@@ -290,6 +295,7 @@ mod tests {
             working_dir: "/workspace".into(),
             cli_agent_type: "claude-code".into(),
             profile: Some("vm0/default".into()),
+            session_id: None,
             timeout: 1,
         };
         // Should pass validation and fail later (HomePaths or timeout), not on profile.

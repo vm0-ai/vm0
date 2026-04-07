@@ -1,3 +1,4 @@
+import { isFeatureEnabled, FeatureSwitchKey } from "@vm0/core";
 import { decryptSecretValue } from "../../../shared/crypto/secrets-encryption";
 import { env } from "../../../../env";
 import {
@@ -223,7 +224,12 @@ export async function handleOrgDirectMessage(
     if (!runId) {
       const errorText =
         response ?? "Sorry, an error occurred. Please try again.";
-      const logsUrl = buildAgentLogsUrl();
+      const logsUrl = isFeatureEnabled(FeatureSwitchKey.AuditLink, {
+        userId: connection.vm0UserId,
+        orgId,
+      })
+        ? buildAgentLogsUrl()
+        : undefined;
       await postMessage(client, context.channelId, errorText, {
         threadTs,
         blocks: buildAgentResponseMessage(errorText, logsUrl),

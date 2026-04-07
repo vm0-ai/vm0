@@ -14,6 +14,20 @@ export const xeroFirewall = {
   },
   apis: [
     {
+      base: "https://api.xero.com",
+      auth: {
+        headers: {
+          Authorization: "Bearer ${{ secrets.XERO_TOKEN }}",
+        },
+      },
+      permissions: [
+        {
+          name: "connections",
+          rules: ["GET /Connections", "DELETE /Connections/{id}"],
+        },
+      ],
+    },
+    {
       base: "https://api.xero.com/api.xro/2.0",
       auth: {
         headers: {

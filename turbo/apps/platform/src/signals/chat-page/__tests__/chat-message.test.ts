@@ -17,6 +17,7 @@ import {
   zeroChatAttachments$,
   uploadZeroAttachment$,
   removeZeroAttachment$,
+  createNewChatThread$,
 } from "../chat-message.ts";
 import { currentChatThreadId$ } from "../../agent-chat.ts";
 
@@ -159,7 +160,7 @@ describe("zero-chat signals", () => {
         }),
       );
 
-      // Set up on an existing thread URL so chatThreadId$ is pre-populated
+      // Set up on an existing thread URL so currentChatThreadId$ is pre-populated
       await setupPage({
         context,
         path: "/chats/thread-existing",
@@ -503,6 +504,147 @@ describe("zero-chat signals", () => {
       // Second call skips because messages are already present
       await context.store.set(loadChatMessages$, context.signal);
       expect(loadCount).toBe(countAfterSetup);
+    });
+  });
+
+  describe("createNewChatThread$", () => {
+    it("should navigate to first thread when it has no title and matches agent", async () => {
+      server.use(
+        http.get("*/api/zero/chat-threads", () => {
+          return HttpResponse.json({
+            threads: [
+              {
+                id: "empty-thread-1",
+                title: null,
+                agentId: "c0000000-0000-4000-a000-000000000001",
+                createdAt: "2026-03-10T00:00:00Z",
+                updatedAt: "2026-03-10T00:00:00Z",
+              },
+              {
+                id: "other-thread",
+                title: null,
+                agentId: "c0000000-0000-4000-a000-000000000001",
+                createdAt: "2026-03-09T00:00:00Z",
+                updatedAt: "2026-03-09T00:00:00Z",
+              },
+            ],
+          });
+        }),
+      );
+
+      await setup();
+
+      await context.store.set(createNewChatThread$, null, context.signal);
+
+      // Should navigate to the first empty thread, not the second
+      expect(context.store.get(currentChatThreadId$)).toBe("empty-thread-1");
+    });
+
+    it("should create new thread when first thread has a title", async () => {
+      server.use(
+        http.get("*/api/zero/chat-threads", () => {
+          return HttpResponse.json({
+            threads: [
+              {
+                id: "titled-thread",
+                title: "Existing chat",
+                agentId: "c0000000-0000-4000-a000-000000000001",
+                createdAt: "2026-03-10T00:00:00Z",
+                updatedAt: "2026-03-10T00:00:00Z",
+              },
+            ],
+          });
+        }),
+        http.post("*/api/zero/chat-threads", () => {
+          return HttpResponse.json(
+            {
+              id: "new-thread-created",
+              title: null,
+              agentId: "c0000000-0000-4000-a000-000000000001",
+              createdAt: "2026-03-10T01:00:00Z",
+            },
+            { status: 201 },
+          );
+        }),
+      );
+
+      await setup();
+
+      await context.store.set(createNewChatThread$, null, context.signal);
+
+      expect(context.store.get(currentChatThreadId$)).toBe(
+        "new-thread-created",
+      );
+    });
+
+    it("should create new thread when thread list is empty", async () => {
+      server.use(
+        http.get("*/api/zero/chat-threads", () => {
+          return HttpResponse.json({ threads: [] });
+        }),
+        http.post("*/api/zero/chat-threads", () => {
+          return HttpResponse.json(
+            {
+              id: "new-thread-empty-list",
+              title: null,
+              agentId: "c0000000-0000-4000-a000-000000000001",
+              createdAt: "2026-03-10T01:00:00Z",
+            },
+            { status: 201 },
+          );
+        }),
+      );
+
+      await setup();
+
+      await context.store.set(createNewChatThread$, null, context.signal);
+
+      expect(context.store.get(currentChatThreadId$)).toBe(
+        "new-thread-empty-list",
+      );
+    });
+
+    it("should not navigate to second thread when first has a title", async () => {
+      server.use(
+        http.get("*/api/zero/chat-threads", () => {
+          return HttpResponse.json({
+            threads: [
+              {
+                id: "titled-thread",
+                title: "Has messages",
+                agentId: "c0000000-0000-4000-a000-000000000001",
+                createdAt: "2026-03-10T01:00:00Z",
+                updatedAt: "2026-03-10T01:00:00Z",
+              },
+              {
+                id: "empty-second-thread",
+                title: null,
+                agentId: "c0000000-0000-4000-a000-000000000001",
+                createdAt: "2026-03-10T00:00:00Z",
+                updatedAt: "2026-03-10T00:00:00Z",
+              },
+            ],
+          });
+        }),
+        http.post("*/api/zero/chat-threads", () => {
+          return HttpResponse.json(
+            {
+              id: "brand-new-thread",
+              title: null,
+              agentId: "c0000000-0000-4000-a000-000000000001",
+              createdAt: "2026-03-10T02:00:00Z",
+            },
+            { status: 201 },
+          );
+        }),
+      );
+
+      await setup();
+
+      await context.store.set(createNewChatThread$, null, context.signal);
+
+      // Should NOT navigate to empty-second-thread; should create brand new
+      expect(context.store.get(currentChatThreadId$)).toBe("brand-new-thread");
     });
   });
 

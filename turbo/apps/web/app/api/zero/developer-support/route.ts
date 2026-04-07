@@ -98,11 +98,11 @@ const router = tsr.router(zeroDeveloperSupportContract, {
     const { userId, orgId, runId } = authCtx;
     if (!runId || !orgId) {
       return {
-        status: 401 as const,
+        status: 403 as const,
         body: {
           error: {
             message: "This endpoint requires a zero token with runId and orgId",
-            code: "UNAUTHORIZED",
+            code: "FORBIDDEN",
           },
         },
       };

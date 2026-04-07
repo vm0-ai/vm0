@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.65.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.64.0...runner-rs-v0.65.0) (2026-04-07)
+
+
+### Features
+
+* **runner:** keep-alive sandbox across conversation turns ([#8314](https://github.com/vm0-ai/vm0/issues/8314)) ([867a830](https://github.com/vm0-ai/vm0/commit/867a83056cd893988780aed3d8d6d49836e12e29))
+
 ## [0.64.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.63.1...runner-rs-v0.64.0) (2026-04-07)
 
 

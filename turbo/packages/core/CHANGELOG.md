@@ -1,5 +1,17 @@
 # Changelog
 
+## [8.156.0](https://github.com/vm0-ai/vm0/compare/core-v8.155.1...core-v8.156.0) (2026-04-07)
+
+
+### Features
+
+* add audit link feature switch to control audit link in slack messages ([#8328](https://github.com/vm0-ai/vm0/issues/8328)) ([9551e35](https://github.com/vm0-ai/vm0/commit/9551e3517c607cc49d909eedba1c93092a5fac40))
+
+
+### Bug Fixes
+
+* restore staff org access for computer-use feature switch ([#8329](https://github.com/vm0-ai/vm0/issues/8329)) ([a959cbf](https://github.com/vm0-ai/vm0/commit/a959cbf972bbd0273586379dbbbb6c9468bbd5a9))
+
 ## [8.155.1](https://github.com/vm0-ai/vm0/compare/core-v8.155.0...core-v8.155.1) (2026-04-07)
 
 

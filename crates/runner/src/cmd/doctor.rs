@@ -269,6 +269,8 @@ struct StatusInfo {
     active_run_ids: Vec<String>,
     proxy_port: Option<u16>,
     dns_port: Option<u16>,
+    idle_vms: usize,
+    idle_sessions: Vec<String>,
 }
 
 struct InstalledService {
@@ -640,6 +642,10 @@ struct StatusFile {
     proxy_port: Option<u16>,
     #[serde(default)]
     dns_port: Option<u16>,
+    #[serde(default)]
+    idle_vms: usize,
+    #[serde(default)]
+    idle_sessions: Vec<String>,
 }
 
 /// Returns `true` for modes where proxy absence is expected (not a warning).
@@ -657,6 +663,8 @@ async fn read_status(base_dir: &Path) -> Option<StatusInfo> {
         active_run_ids: file.active_run_ids,
         proxy_port: file.proxy_port,
         dns_port: file.dns_port,
+        idle_vms: file.idle_vms,
+        idle_sessions: file.idle_sessions,
     })
 }
 
@@ -974,6 +982,16 @@ fn print_report(
             println!("    Jobs:    0 active");
         }
 
+        // Idle VMs (keep-alive)
+        if let Some(st) = &r.status
+            && st.idle_vms > 0
+        {
+            println!("    Idle:    {} VMs", st.idle_vms);
+            for session in &st.idle_sessions {
+                println!("      - session {session}");
+            }
+        }
+
         // Per-runner warnings
         if !r.warnings.is_empty() {
             for w in &r.warnings {
@@ -1090,6 +1108,8 @@ mod tests {
             active_run_ids: vec!["abc".into(), "def".into()],
             proxy_port: None,
             dns_port: None,
+            idle_vms: 0,
+            idle_sessions: vec![],
         };
         let fc = vec![
             process::FirecrackerProcessInfo {
@@ -1122,6 +1142,8 @@ mod tests {
             active_run_ids: vec!["abc".into()],
             proxy_port: None,
             dns_port: None,
+            idle_vms: 0,
+            idle_sessions: vec![],
         };
         let fc: Vec<process::FirecrackerProcessInfo> = vec![];
         let (jobs, warnings) = correlate_jobs(&status, Path::new("/data/r1"), &fc);
@@ -1138,6 +1160,8 @@ mod tests {
             active_run_ids: vec![],
             proxy_port: None,
             dns_port: None,
+            idle_vms: 0,
+            idle_sessions: vec![],
         };
         let fc = vec![process::FirecrackerProcessInfo {
             pid: 200,
@@ -1159,6 +1183,8 @@ mod tests {
             active_run_ids: vec!["abc".into()],
             proxy_port: None,
             dns_port: None,
+            idle_vms: 0,
+            idle_sessions: vec![],
         };
         // This firecracker belongs to a different runner (different base_dir)
         let fc = vec![process::FirecrackerProcessInfo {

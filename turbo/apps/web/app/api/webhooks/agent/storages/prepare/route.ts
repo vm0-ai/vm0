@@ -16,7 +16,6 @@ import {
 } from "../../../../../../src/db/schema/storage";
 import { eq, and } from "drizzle-orm";
 import { getSandboxAuthForRun } from "../../../../../../src/lib/auth/get-sandbox-auth";
-import { getOrgData } from "../../../../../../src/lib/zero/org/org-cache-service";
 import {
   generatePresignedPutUrl,
   downloadManifest,
@@ -97,9 +96,6 @@ const router = tsr.router(webhookStoragesPrepareContract, {
       };
     }
 
-    // Use the org from the run record (set at run creation time)
-    const resolvedOrg = await getOrgData(run.orgId);
-
     // Volumes use sentinel userId (org-level shared); artifacts/memory use real userId
     const storageUserId =
       storageType === "volume" ? VOLUME_ORG_USER_ID : userId;
@@ -109,10 +105,10 @@ const router = tsr.router(webhookStoragesPrepareContract, {
       .insert(storages)
       .values({
         userId: storageUserId,
-        orgId: resolvedOrg.orgId,
+        orgId: run.orgId,
         name: storageName,
         type: storageType,
-        s3Prefix: `${resolvedOrg.orgId}/${storageType}/${storageName}`,
+        s3Prefix: `${run.orgId}/${storageType}/${storageName}`,
         size: 0,
         fileCount: 0,
       })

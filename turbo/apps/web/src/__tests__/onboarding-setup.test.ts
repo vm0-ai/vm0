@@ -137,11 +137,11 @@ describe("POST /api/zero/onboarding/setup", () => {
     expect(response.status).toBe(401);
   });
 
-  it("should return 401 for non-admin members", async () => {
+  it("should return 403 for non-admin members", async () => {
     const { userId, orgId } = await context.setupUser();
     mockClerk({ userId, orgId, orgRole: "org:member" });
 
     const response = await postSetup({ displayName: "Zero" });
-    expect(response.status).toBe(401);
+    expect(response.status).toBe(403);
   });
 });

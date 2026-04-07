@@ -13,7 +13,6 @@ import {
 import { storageVersionLineage } from "../../../../../../src/db/schema/storage-version-lineage";
 import { eq, and } from "drizzle-orm";
 import { getSandboxAuthForRun } from "../../../../../../src/lib/auth/get-sandbox-auth";
-import { getOrgData } from "../../../../../../src/lib/zero/org/org-cache-service";
 import {
   s3ObjectExists,
   verifyS3FilesExist,
@@ -74,9 +73,6 @@ const router = tsr.router(webhookStoragesCommitContract, {
       };
     }
 
-    // Use the org from the run record (set at run creation time)
-    const runtimeOrg = await getOrgData(run.orgId);
-
     // Volumes use sentinel userId; artifacts/memory use real userId
     const storageUserId =
       storageType === "volume" ? VOLUME_ORG_USER_ID : userId;
@@ -87,7 +83,7 @@ const router = tsr.router(webhookStoragesCommitContract, {
       .from(storages)
       .where(
         and(
-          eq(storages.orgId, runtimeOrg.orgId),
+          eq(storages.orgId, run.orgId),
           eq(storages.userId, storageUserId),
           eq(storages.name, storageName),
           eq(storages.type, storageType),

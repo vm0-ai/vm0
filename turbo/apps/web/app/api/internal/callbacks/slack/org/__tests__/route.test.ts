@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 import {
   testContext,
@@ -16,6 +16,17 @@ import {
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import { computeHmacSignature } from "../../../../../../../src/lib/infra/callback/hmac";
 import { POST } from "../route";
+
+vi.mock("@vm0/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@vm0/core")>();
+  return {
+    ...actual,
+    isFeatureEnabled: vi.fn().mockReturnValue(false),
+  };
+});
+
+const { isFeatureEnabled } = await import("@vm0/core");
+const mockIsFeatureEnabled = isFeatureEnabled as ReturnType<typeof vi.fn>;
 
 const context = testContext();
 
@@ -62,6 +73,7 @@ describe("POST /api/internal/callbacks/slack/org", () => {
   beforeEach(async () => {
     context.setupMocks();
     user = await context.setupUser();
+    mockIsFeatureEnabled.mockReturnValue(false);
   });
 
   async function setupOrgSlack() {
@@ -369,5 +381,88 @@ describe("POST /api/internal/callbacks/slack/org", () => {
       setStatusMock.mock.calls.length - 1
     ]![0] as { status: string };
     expect(lastCall.status).toBe("");
+  });
+
+  it("omits audit link block when AuditLink switch is off", async () => {
+    mockIsFeatureEnabled.mockReturnValue(false);
+    const { workspaceId, connectionId } = await setupOrgSlack();
+    const { composeId } = await createTestCompose(uniqueId("agent"));
+    const { runId } = await createTestRunInDb(user.userId, composeId, {
+      prompt: "Test prompt",
+    });
+    await completeTestRun(user.userId, runId);
+
+    const channelId = uniqueId("C-ch");
+    const threadTs = uniqueId("ts");
+    const payload: OrgCallbackPayload = {
+      workspaceId,
+      channelId,
+      threadTs,
+      messageTs: threadTs,
+      connectionId,
+      agentId: composeId,
+    };
+
+    const { secret } = await createTestCallback({
+      runId,
+      url: "http://localhost/api/internal/callbacks/slack/org",
+      payload: { ...payload },
+    });
+
+    const request = createCallbackRequest(
+      { runId, status: "completed", payload },
+      secret,
+    );
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+
+    const { WebClient } = await import("@slack/web-api");
+    const mockClient = new WebClient();
+    const call = (mockClient.chat.postMessage as ReturnType<typeof vi.fn>).mock
+      .calls[0]![0] as { blocks: unknown[] };
+    const blocksStr = JSON.stringify(call.blocks);
+    expect(blocksStr).not.toContain("Audit");
+    expect(blocksStr).not.toContain("clipboard");
+  });
+
+  it("includes audit link block when AuditLink switch is on", async () => {
+    mockIsFeatureEnabled.mockReturnValue(true);
+    const { workspaceId, connectionId } = await setupOrgSlack();
+    const { composeId } = await createTestCompose(uniqueId("agent"));
+    const { runId } = await createTestRunInDb(user.userId, composeId, {
+      prompt: "Test prompt",
+    });
+    await completeTestRun(user.userId, runId);
+
+    const channelId = uniqueId("C-ch");
+    const threadTs = uniqueId("ts");
+    const payload: OrgCallbackPayload = {
+      workspaceId,
+      channelId,
+      threadTs,
+      messageTs: threadTs,
+      connectionId,
+      agentId: composeId,
+    };
+
+    const { secret } = await createTestCallback({
+      runId,
+      url: "http://localhost/api/internal/callbacks/slack/org",
+      payload: { ...payload },
+    });
+
+    const request = createCallbackRequest(
+      { runId, status: "completed", payload },
+      secret,
+    );
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+
+    const { WebClient } = await import("@slack/web-api");
+    const mockClient = new WebClient();
+    const call = (mockClient.chat.postMessage as ReturnType<typeof vi.fn>).mock
+      .calls[0]![0] as { blocks: unknown[] };
+    const blocksStr = JSON.stringify(call.blocks);
+    expect(blocksStr).toContain("Audit");
   });
 });

@@ -220,7 +220,7 @@ export function ZeroSidebar() {
   const setManagePinnedOpen = useSet(setManagePinnedDialogOpen$);
   // Feature gates
   const features = useLastResolved(featureSwitch$);
-  const slackScopeMismatch = useGet(slackOrgScopeMismatch$);
+  const slackScopeMismatch = useLastResolved(slackOrgScopeMismatch$) ?? false;
 
   const manageNav = MANAGE_NAV.filter((item) => {
     return (

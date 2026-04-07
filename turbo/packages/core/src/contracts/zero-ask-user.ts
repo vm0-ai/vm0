@@ -86,6 +86,7 @@ export const zeroAskUserAnswerContract = c.router({
     responses: {
       200: askUserAnswerResponseSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
       404: apiErrorSchema,
     },
     summary: "Poll for the user's answer to a pending question",

@@ -385,8 +385,7 @@ const MARKDOWN_BLOCK_MAX_LENGTH = 12000;
 function buildMarkdownMessage(content: string): (Block | KnownBlock)[] {
   // Markdown blocks have a cumulative 12,000 character limit per message.
   // If content exceeds that, truncate and indicate there is more.
-  const truncationSuffix =
-    "\n\n_(Response truncated. View the full output in audit logs.)_";
+  const truncationSuffix = "\n\n_(Message too long to view in Slack.)_";
   const truncated =
     content.length > MARKDOWN_BLOCK_MAX_LENGTH
       ? content.substring(

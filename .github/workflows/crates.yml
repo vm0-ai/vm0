@@ -1081,6 +1081,101 @@ jobs:
           echo "=== Upgrade test passed ==="
           REMOTE_SCRIPT
 
+  runner-keep-alive:
+    runs-on: ubuntu-latest
+    needs: [runner-build]
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
+      - name: Test VM keep-alive across conversation turns
+        env:
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+          HOST: ${{ needs.runner-build.outputs.host }}
+          JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
+          DEFAULT_ROOTFS_HASH: ${{ needs.runner-build.outputs.default-rootfs-hash }}
+          DEFAULT_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.default-snapshot-hash }}
+        run: |
+          REMOTE="${METAL_USER}@${HOST}"
+          # shellcheck disable=SC2088
+          BIN_DIR="/var/lib/vm0-runner/bin/${JOB_REF}"
+
+          echo "=== Generating config (keep-alive enabled) ==="
+          # shellcheck disable=SC2029
+          ssh "$REMOTE" "sudo ${BIN_DIR}/runner config \
+            --profile vm0/default \
+            --rootfs-hash ${DEFAULT_ROOTFS_HASH} \
+            --snapshot-hash ${DEFAULT_SNAPSHOT_HASH} \
+            --name ${JOB_REF}-keepalive \
+            --group vm0/keepalive-${JOB_REF} \
+            --runner-dirname ${JOB_REF}-keepalive \
+            --max-concurrent 2 \
+            --keep-alive \
+            --api-url https://not-a-real-server.test \
+            --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
+
+          echo "=== Running keep-alive test ==="
+          ssh "$REMOTE" bash -s -- "${BIN_DIR}" "${JOB_REF}" <<'REMOTE_SCRIPT'
+          BIN_DIR=$1; JOB_REF=$2
+          RUNNER_DIR="/var/lib/vm0-runner/runners/${JOB_REF}-keepalive"
+          SVC="${JOB_REF}-keepalive"
+          GROUP="vm0/keepalive-${JOB_REF}"
+          SESSION_ID="e2e-keepalive-test-session"
+
+          fail() { echo "FAIL: $1"; exit 1; }
+
+          cleanup() {
+            echo "--- Cleanup ---"
+            sudo "$BIN_DIR/runner" service stop --name "$SVC" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          # Start transient runner service with keep-alive
+          echo "--- Starting runner (keep-alive enabled) ---"
+          sudo "$BIN_DIR/runner" service start --name "$SVC" \
+            --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true
+
+          # Turn 1: submit job with session ID — creates a marker file in guest
+          echo "--- Turn 1: create marker file ---"
+          sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
+            --session-id "$SESSION_ID" \
+            --prompt 'touch /tmp/keepalive-marker && echo turn1-done' \
+            || fail "Turn 1 failed"
+
+          # Turn 2: submit job with same session ID — should reuse the VM.
+          # If VM was reused, the marker file from turn 1 still exists (exit 0).
+          # If a new VM was created, the file is missing and test exits non-zero.
+          echo "--- Turn 2: verify marker file persists (VM reused) ---"
+          sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
+            --session-id "$SESSION_ID" \
+            --prompt 'test -f /tmp/keepalive-marker' \
+            || fail "Turn 2: marker file not found — VM was not reused"
+          echo "PASS: Turn 2 completed (VM reused, filesystem persisted)"
+
+          # Turn 3: submit with a DIFFERENT session — should create a new VM.
+          # The marker file must NOT exist in the new VM (session isolation).
+          echo "--- Turn 3: different session creates new VM ---"
+          sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
+            --session-id "different-session" \
+            --prompt 'test ! -f /tmp/keepalive-marker' \
+            || fail "Turn 3: marker file found — session isolation broken"
+          echo "PASS: Turn 3 completed (new VM for different session)"
+
+          # Stop transient service (drains idle pool)
+          sudo "$BIN_DIR/runner" service stop --name "$SVC"
+          trap - EXIT
+
+          echo "=== Keep-alive test passed ==="
+          REMOTE_SCRIPT
+
   ci-gate-crates:
     runs-on: ubuntu-latest
     needs:
@@ -1093,6 +1188,7 @@ jobs:
       - runner-exec
       - runner-balloon
       - runner-upgrade-local
+      - runner-keep-alive
       - nbd-cow-test
     # Always run so the gate reports an explicit result (not "skipped").
     if: always()
@@ -1138,6 +1234,7 @@ jobs:
           check_result "runner-exec" "${{ needs.runner-exec.result }}" "true"
           check_result "runner-balloon" "${{ needs.runner-balloon.result }}" "true"
           check_result "runner-upgrade-local" "${{ needs.runner-upgrade-local.result }}" "true"
+          check_result "runner-keep-alive" "${{ needs.runner-keep-alive.result }}" "true"
           check_result "nbd-cow-test" "${{ needs.nbd-cow-test.result }}" "true"
 
           echo "::endgroup::"
@@ -1146,7 +1243,7 @@ jobs:
   runner-cleanup:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [runner-build, runner-benchmark, runner-exec, runner-cancel, runner-balloon, runner-upgrade-local]
+    needs: [runner-build, runner-benchmark, runner-exec, runner-cancel, runner-balloon, runner-upgrade-local, runner-keep-alive]
     if: ${{ always() && needs.runner-build.result != 'skipped' }}
     steps:
       - uses: actions/checkout@v6
