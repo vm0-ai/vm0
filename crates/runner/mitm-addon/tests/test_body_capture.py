@@ -132,6 +132,12 @@ class TestIsSensitiveHeader:
     def test_host_not_sensitive(self):
         assert _is_sensitive_header("Host") is False
 
+    def test_idempotency_key_not_sensitive(self):
+        assert _is_sensitive_header("X-Idempotency-Key") is False
+
+    def test_request_key_not_sensitive(self):
+        assert _is_sensitive_header("X-Request-Key") is False
+
     def test_x_secret_custom(self):
         assert _is_sensitive_header("X-Secret-Foo") is True
 

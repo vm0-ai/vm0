@@ -259,7 +259,16 @@ _TEXT_CONTENT_TYPES = (
 )
 
 # Header names containing any of these keywords (case-insensitive) are redacted.
-_SENSITIVE_HEADER_KEYWORDS = ("auth", "token", "secret", "key", "credential", "password", "cookie")
+_SENSITIVE_HEADER_KEYWORDS = (
+    "auth",
+    "token",
+    "secret",
+    "api-key",
+    "apikey",
+    "credential",
+    "password",
+    "cookie",
+)
 
 
 def _is_text_content(content_type: str) -> bool:

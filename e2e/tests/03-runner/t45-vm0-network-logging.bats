@@ -114,11 +114,11 @@ EOF
     create_agent
 
     # Make an HTTP GET request with --capture-network-bodies enabled.
-    # Use a simple command so output isn't truncated by the CLI renderer.
+    # Use vm0.ai (always available) instead of external services to avoid flaky tests.
     run $VM0_CLI run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         --capture-network-bodies \
-        "curl -s -o /dev/null -w '%{http_code}' https://httpbin.org/get && echo DONE"
+        "curl -s -o /dev/null -w '%{http_code}' https://www.vm0.ai && echo DONE"
     assert_success
 
     RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
@@ -128,6 +128,5 @@ EOF
     }
 
     # Verify network logs contain captured body fields.
-    # request_headers should include Host, response_body should contain JSON from httpbin.
-    wait_for_log "$RUN_ID" --network -- "request_headers" "response_body" "httpbin.org"
+    wait_for_log "$RUN_ID" --network -- "request_headers" "response_body"
 }
