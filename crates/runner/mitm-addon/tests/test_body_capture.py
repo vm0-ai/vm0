@@ -49,11 +49,11 @@ class TestEncodeBody:
         assert encoded == '{"key": "value"}'
         assert encoding == "utf-8"
 
-    def test_binary_content_type(self):
+    def test_binary_content_type_returns_none(self):
         body = b"\x89PNG\r\n"
         encoded, encoding = _encode_body(body, "image/png")
-        assert encoded == base64.b64encode(body).decode("ascii")
-        assert encoding == "base64"
+        assert encoded is None
+        assert encoding is None
 
     def test_invalid_utf8_falls_back_to_base64(self):
         body = b"\xff\xfe invalid utf8"
@@ -194,6 +194,21 @@ class TestAddCaptureFields:
         _add_capture_fields(flow, entry)
         assert "request_body" in entry  # request body still captured
         assert "response_body" not in entry  # response body skipped
+
+    def test_skips_binary_request_body(self):
+        flow = self._make_flow(request_body=b"\x89PNG\r\n", request_ct="image/png")
+        entry = {}
+        _add_capture_fields(flow, entry)
+        assert "request_body" not in entry
+        assert "request_headers" in entry  # headers still captured
+
+    def test_skips_binary_response_body(self):
+        flow = self._make_flow(
+            response_body=b"\x00\x01\x02", response_ct="application/octet-stream"
+        )
+        entry = {}
+        _add_capture_fields(flow, entry)
+        assert "response_body" not in entry
 
     def test_both_request_and_response(self):
         flow = self._make_flow(

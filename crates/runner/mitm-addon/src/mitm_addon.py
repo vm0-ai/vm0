@@ -271,9 +271,9 @@ def _is_text_content(content_type: str) -> bool:
 
 
 def _encode_body(content: bytes, content_type: str) -> tuple:
-    """Encode body content. Returns (encoded_string, encoding_type)."""
+    """Encode body content. Returns (encoded_string, encoding_type) or (None, None) for binary."""
     if not _is_text_content(content_type):
-        return base64.b64encode(content).decode("ascii"), "base64"
+        return None, None  # skip binary bodies
     try:
         return content.decode("utf-8"), "utf-8"
     except UnicodeDecodeError:
@@ -309,10 +309,11 @@ def _add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
         if truncated:
             body = body[:_MAX_BODY_SIZE]
         encoded, encoding = _encode_body(body, req_ct)
-        log_entry["request_body"] = encoded
-        log_entry["request_body_encoding"] = encoding
-        if truncated:
-            log_entry["request_body_truncated"] = True
+        if encoded is not None:
+            log_entry["request_body"] = encoded
+            log_entry["request_body_encoding"] = encoding
+            if truncated:
+                log_entry["request_body_truncated"] = True
 
     # Response body — only available when streaming is disabled
     if flow.response:
@@ -328,10 +329,11 @@ def _add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
         if truncated:
             body = body[:_MAX_BODY_SIZE]
         encoded, encoding = _encode_body(body, res_ct)
-        log_entry["response_body"] = encoded
-        log_entry["response_body_encoding"] = encoding
-        if truncated:
-            log_entry["response_body_truncated"] = True
+        if encoded is not None:
+            log_entry["response_body"] = encoded
+            log_entry["response_body_encoding"] = encoding
+            if truncated:
+                log_entry["response_body_truncated"] = True
 
 
 def response(flow: http.HTTPFlow) -> None:
