@@ -1146,7 +1146,8 @@ jobs:
           echo "Sync-skills response status: $HTTP_STATUS"
           cat /tmp/sync-skills-response.json || true
           if [ "$HTTP_STATUS" != "200" ]; then
-            echo "Warning: skill sync returned $HTTP_STATUS — onboarding may fail with 422"
+            echo "Error: skill sync returned $HTTP_STATUS — cannot proceed with browser tests"
+            exit 1
           fi
         env:
           VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
