@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.195.0](https://github.com/vm0-ai/vm0/compare/app-v0.194.0...app-v0.195.0) (2026-04-07)
+
+
+### Features
+
+* add resilient polling loop with fibonacci backoff for mobile background recovery ([#8295](https://github.com/vm0-ai/vm0/issues/8295)) ([d2f9dac](https://github.com/vm0-ai/vm0/commit/d2f9dac17041479a54e6d7ef3bb627f1103eca51))
+* **platform:** replace queue page with upsell side drawer ([#8242](https://github.com/vm0-ai/vm0/issues/8242)) ([b8a5039](https://github.com/vm0-ai/vm0/commit/b8a50391d3be510b0f30fa7e1d5a2ebceb08a233))
+
+
+### Bug Fixes
+
+* prevent enter key from sending message on mobile devices ([#8301](https://github.com/vm0-ai/vm0/issues/8301)) ([b501047](https://github.com/vm0-ai/vm0/commit/b501047260abb6bd06b232262761088330456eeb))
+
 ## [0.194.0](https://github.com/vm0-ai/vm0/compare/app-v0.193.2...app-v0.194.0) (2026-04-07)
 
 
