@@ -149,14 +149,21 @@ class TestIsSensitiveHeader:
 
 
 class TestRedactHeaders:
-    def test_redacts_sensitive_keeps_others(self):
+    def _make_headers(self, pairs):
+        """Create a mock that returns pairs only when called with multi=True."""
         headers = MagicMock()
-        headers.items.return_value = [
-            ("Content-Type", "application/json"),
-            ("Authorization", "Bearer sk-secret-123"),
-            ("Host", "api.example.com"),
-            ("Cookie", "session=abc"),
-        ]
+        headers.items.side_effect = lambda multi=False: iter(pairs) if multi else iter([])
+        return headers
+
+    def test_redacts_sensitive_keeps_others(self):
+        headers = self._make_headers(
+            [
+                ("Content-Type", "application/json"),
+                ("Authorization", "Bearer sk-secret-123"),
+                ("Host", "api.example.com"),
+                ("Cookie", "session=abc"),
+            ]
+        )
         result = _redact_headers(headers)
         assert result["Content-Type"] == "application/json"
         assert result["Authorization"] == "[REDACTED]"
@@ -176,10 +183,10 @@ class TestAddCaptureFields:
         flow.request.content = request_body
         flow.request.headers = MagicMock()
         flow.request.headers.get.return_value = request_ct
-        flow.request.headers.items.return_value = [
-            ("Content-Type", request_ct),
-            ("Host", "api.example.com"),
-        ]
+        req_pairs = [("Content-Type", request_ct), ("Host", "api.example.com")]
+        flow.request.headers.items.side_effect = lambda multi=False: (
+            iter(req_pairs) if multi else iter([])
+        )
         flow.response = MagicMock()
         flow.response.content = response_body
         flow.response.headers = MagicMock()
