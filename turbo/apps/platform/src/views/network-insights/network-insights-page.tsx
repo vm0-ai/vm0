@@ -32,6 +32,7 @@ import {
   type NetworkInsightsData,
 } from "../../signals/network-insights/network-insights-signals.ts";
 import { userPreferences$ } from "../../signals/zero-page/settings/user-preferences.ts";
+import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
 
 // ---------------------------------------------------------------------------
 // Date range filter
@@ -661,8 +662,19 @@ function CreditsCard({
 // Card: Services accessed
 // ---------------------------------------------------------------------------
 
-function capitalize(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1);
+function connectorLabel(type: string): string {
+  const config = CONNECTOR_TYPES[type as ConnectorType];
+  if (config) {
+    return config.label;
+  }
+  return type.charAt(0).toUpperCase() + type.slice(1);
+}
+
+function permissionLabel(p: { label: string; connectorType?: string }): string {
+  if (!p.connectorType || p.label === p.connectorType) {
+    return connectorLabel(p.label);
+  }
+  return `${p.label}(${connectorLabel(p.connectorType)})`;
 }
 
 function ServicesCard({
@@ -701,7 +713,7 @@ function ServicesCard({
         <p className="text-sm opacity-60 mt-2">
           Most used:{" "}
           <span className="font-semibold opacity-100">
-            {capitalize(top.name)}
+            {connectorLabel(top.domain)}
           </span>{" "}
           ({top.calls} calls)
         </p>
@@ -716,8 +728,8 @@ function ServicesCard({
               key={s.name}
               className={`flex items-center gap-3 transition-opacity duration-150 ${isActive ? "opacity-100" : "opacity-30"}`}
             >
-              <span className="text-sm font-medium w-20 truncate shrink-0 capitalize">
-                {s.name}
+              <span className="text-sm font-medium w-20 truncate shrink-0">
+                {connectorLabel(s.domain)}
               </span>
               <div className="flex-1 h-1.5 rounded-full bg-current/10 overflow-hidden">
                 <div
@@ -786,7 +798,7 @@ function PermissionsAllowedCard({
               key={p.label}
               className={`flex items-center justify-between gap-2 transition-opacity duration-150 ${isActive ? "opacity-100" : "opacity-30"}`}
             >
-              <span className="text-sm">{p.label}</span>
+              <span className="text-sm">{permissionLabel(p)}</span>
               <span className="text-xs opacity-60 tabular-nums shrink-0">
                 {p.allowed}
               </span>
@@ -844,7 +856,7 @@ function PermissionsBlockedCard({
               key={p.label}
               className={`flex items-center justify-between gap-2 transition-opacity duration-150 ${isActive ? "opacity-100" : "opacity-30"}`}
             >
-              <span className="text-sm font-medium">{p.label}</span>
+              <span className="text-sm font-medium">{permissionLabel(p)}</span>
               <span className="text-xs tabular-nums shrink-0 opacity-70">
                 {fullyBlocked
                   ? `${p.denied} rejected`

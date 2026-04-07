@@ -214,6 +214,7 @@ interface UserNetworkData {
     string,
     {
       label: string;
+      connectorType: string;
       allowed: number;
       denied: number;
       agentNames: Set<string>;
@@ -265,6 +266,7 @@ function aggregateNetworkDataPerUser(
         : getPermissionLabel(row.firewall_ref, row.firewall_permission);
       const perm = userData.permMap.get(permKey) ?? {
         label,
+        connectorType: row.firewall_ref,
         allowed: 0,
         denied: 0,
         agentNames: new Set<string>(),
@@ -310,6 +312,7 @@ interface InsightData {
   }[];
   permissions: {
     label: string;
+    connectorType: string;
     allowed: number;
     denied: number;
     agentNames: string[];
@@ -353,6 +356,7 @@ function buildUserInsight(
         .map((p) => {
           return {
             label: p.label,
+            connectorType: p.connectorType,
             allowed: p.allowed,
             denied: p.denied,
             agentNames: [...p.agentNames],

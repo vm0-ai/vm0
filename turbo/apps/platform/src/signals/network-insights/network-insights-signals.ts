@@ -23,6 +23,7 @@ export interface ServiceUsage {
 
 export interface PermissionEntry {
   label: string;
+  connectorType?: string;
   allowed: number;
   denied: number;
   /** Which agents triggered this permission */
