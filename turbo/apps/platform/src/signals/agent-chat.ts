@@ -1,21 +1,40 @@
-/**
- * Agent signals that depend on chat thread data (zero-chat.ts).
- *
- * Separated from agent.ts to avoid circular dependencies:
- *   agent.ts ← zero-chat.ts ← agent.ts
- */
 import { command, computed, state } from "ccstate";
-import { currentAgentId$, sidebarAgentId$ } from "./agent.ts";
-
 import {
+  zeroAgentsByIdContract,
   chatThreadByIdContract,
   chatThreadsContract,
   type SummaryEntry,
 } from "@vm0/core";
+import { defaultAgentId$ } from "./agent.ts";
 import { zeroClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
 import { pathParams$ } from "./route.ts";
 import { activeRoute$ } from "./active-route.ts";
+
+const internalChatAgentId$ = state<string | null>(null);
+
+export const currentChatAgentId$ = computed(
+  async (get): Promise<string | null> => {
+    return get(internalChatAgentId$) ?? (await get(defaultAgentId$));
+  },
+);
+
+export const setChatAgentId$ = command(({ set }, agentId: string | null) => {
+  set(internalChatAgentId$, agentId);
+});
+
+export const currentChatAgent$ = computed(async (get) => {
+  const agentId = await get(currentChatAgentId$);
+  if (!agentId) {
+    return null;
+  }
+
+  const client = get(zeroClient$)(zeroAgentsByIdContract);
+  const result = await accept(client.get({ params: { id: agentId } }), [200], {
+    toast: false,
+  });
+  return result.body;
+});
 
 export const currentChatThreadId$ = computed((get): string | null => {
   const params = get(pathParams$);
@@ -87,10 +106,6 @@ export const currentChatThread$ = computed(
   },
 );
 
-export const currentChatAgentId$ = computed(async (get) => {
-  return get(currentAgentId$) ?? (await get(currentChatThread$))?.agentId;
-});
-
 const internalReloadChatThreads$ = state(0);
 
 export const reloadChatThreads$ = command(({ set }) => {
@@ -101,7 +116,7 @@ export const reloadChatThreads$ = command(({ set }) => {
 
 export const chatThreads$ = computed(async (get) => {
   get(internalReloadChatThreads$);
-  const agentId = await get(sidebarAgentId$);
+  const agentId = await get(currentChatAgentId$);
   if (!agentId) {
     return [];
   }

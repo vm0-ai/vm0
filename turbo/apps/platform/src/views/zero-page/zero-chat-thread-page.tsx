@@ -33,15 +33,18 @@ import {
   lightboxUrl$ as attachmentLightboxUrl$,
   setLightboxUrl$ as setAttachmentLightboxUrl$,
 } from "../../signals/zero-page/zero-attachment-chips.ts";
+import { agentDisplayName$, subagents$ } from "../../signals/agent.ts";
 import {
-  agentDisplayName$,
-  sidebarAgentId$,
+  currentChatAgentId$,
+  currentChatAgent$,
+} from "../../signals/agent-chat.ts";
+import { resolveAvatarUrl } from "./avatar-utils.ts";
+import avatar1Img from "./assets/avatar_1.webp";
+import {
   pinnedAgentIds$,
   updatePinnedAgentIds$,
-  subagents$,
-  sidebarAgentAvatar$,
-} from "../../signals/agent.ts";
-import { currentChatAgentId$ } from "../../signals/agent-chat.ts";
+} from "../../signals/zero-page/zero-pinned-agents.ts";
+
 import {
   zeroChatMessages$,
   allFinished$,
@@ -150,7 +153,7 @@ function useChatAgentIdentity() {
         return a.id === currentChatAgentId;
       })
     : null;
-  const sidebarAgentIdLoadable = useLastLoadable(sidebarAgentId$);
+  const sidebarAgentIdLoadable = useLastLoadable(currentChatAgentId$);
   const sidebarAgentIdResolved =
     sidebarAgentIdLoadable.state === "hasData"
       ? sidebarAgentIdLoadable.data
@@ -161,7 +164,10 @@ function useChatAgentIdentity() {
   const displayName = selectedSubagent
     ? (selectedSubagent.displayName ?? selectedSubagent.id)
     : defaultDisplayName;
-  const avatarSrc = useLastResolved(sidebarAgentAvatar$) ?? null;
+  const sidebarAgent = useLastResolved(currentChatAgent$);
+  const avatarSrc = sidebarAgent
+    ? (resolveAvatarUrl(sidebarAgent.avatarUrl) ?? avatar1Img)
+    : null;
 
   return { currentChatAgentId, resolvedAgentId, displayName, avatarSrc };
 }

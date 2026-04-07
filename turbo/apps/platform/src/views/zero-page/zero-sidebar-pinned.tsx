@@ -27,14 +27,15 @@ import {
   setAgentCardCollapsed$,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
 import {
-  sidebarAgentId$,
   reloadAgents$,
   agentDisplayName$,
+  subagents$,
+} from "../../signals/agent.ts";
+import {
   pinnedAgentIds$,
   updatePinnedAgentIds$,
   pinnedAgents$,
-  subagents$,
-} from "../../signals/agent.ts";
+} from "../../signals/zero-page/zero-pinned-agents.ts";
 import { createNewChatThread$ } from "../../signals/chat-page/chat-message.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -45,8 +46,7 @@ import { ChatListDialog } from "./zero-sidebar-dialogs.tsx";
 export function PinnedAgentListSection() {
   const activeRoute = useGet(activeRoute$);
   const chatThreadId = useGet(currentChatThreadId$);
-  const sidebarAgentId = useLastResolved(sidebarAgentId$) ?? null;
-  const selectedAgentIdFromChat = useLastResolved(currentChatAgentId$);
+  const sidebarAgentId = useLastResolved(currentChatAgentId$) ?? null;
   const displayNameLoadable = useLastLoadable(agentDisplayName$);
   const displayName =
     displayNameLoadable.state === "hasData"
@@ -140,7 +140,7 @@ export function PinnedAgentListSection() {
                 isChatRoute(activeRoute) &&
                 !chatThreadId &&
                 sidebarAgentId === agent.id;
-              const isFromChat = selectedAgentIdFromChat === agent.id;
+              const isFromChat = sidebarAgentId === agent.id;
               return (
                 <div
                   key={agent.id}

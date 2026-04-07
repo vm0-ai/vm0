@@ -5,7 +5,8 @@ import { ZeroTeamDetailPage } from "../../views/team-page/zero-team-detail-page.
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { pathParams$ } from "../route.ts";
-import { agents$, setSidebarAgent$ } from "../agent.ts";
+import { agents$ } from "../agent.ts";
+import { setChatAgentId$ } from "../agent-chat.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import { reloadChatThreads$ } from "../chat-page/chat-message.ts";
 import { setActiveAgent$ } from "../zero-page/zero-job-detail.ts";
@@ -37,7 +38,7 @@ export const setupTeamDetailPage$ = command(
 
     // Sync sidebar: show this agent's chats when viewing their profile.
     if (agentId) {
-      set(setSidebarAgent$, agentId);
+      set(setChatAgentId$, agentId);
     }
 
     // Update title with agent display name

@@ -9,8 +9,11 @@ import {
   resetLocalMessages$,
   chatThreads$,
 } from "./chat-message.ts";
-import { setSidebarAgent$ } from "../agent.ts";
-import { currentChatAgentId$, currentChatThreadId$ } from "../agent-chat.ts";
+import {
+  setChatAgentId$,
+  currentChatAgentId$,
+  currentChatThreadId$,
+} from "../agent-chat.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import { loadInitialData$ } from "../zero-page/zero-page.ts";
 import { currentDraft$, ensureDraft$ } from "../zero-page/chat-draft.ts";
@@ -57,7 +60,7 @@ export const setupChatPage$ = command(
 
     const agentId = (await get(currentChatAgentId$)) ?? null;
     signal.throwIfAborted();
-    set(setSidebarAgent$, agentId);
+    set(setChatAgentId$, agentId);
 
     await set(loadChatMessages$, signal);
   },

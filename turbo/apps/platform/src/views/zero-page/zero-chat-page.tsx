@@ -18,14 +18,20 @@ import {
 } from "@vm0/ui";
 import {
   agentDisplayName$,
-  sidebarAgentId$,
   currentAgentId$,
   subagents$,
-  sidebarAgentAvatar$,
+} from "../../signals/agent.ts";
+import {
+  currentChatAgentId$,
+  currentChatAgent$,
+} from "../../signals/agent-chat.ts";
+import { resolveAvatarUrl } from "./avatar-utils.ts";
+import avatar1Img from "./assets/avatar_1.webp";
+import {
   pinnedAgentIds$,
   updatePinnedAgentIds$,
-} from "../../signals/agent.ts";
-import { currentChatAgentId$ } from "../../signals/agent-chat.ts";
+} from "../../signals/zero-page/zero-pinned-agents.ts";
+
 import { detach, Reason } from "../../signals/utils.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import {
@@ -192,13 +198,16 @@ export function ZeroChatPage() {
       })
     : null;
 
-  const sidebarAgentIdLoadable = useLastLoadable(sidebarAgentId$);
+  const sidebarAgentIdLoadable = useLastLoadable(currentChatAgentId$);
   const sidebarAgentIdResolved =
     sidebarAgentIdLoadable.state === "hasData"
       ? sidebarAgentIdLoadable.data
       : null;
   const resolvedAgentId = selectedSubagent?.id ?? sidebarAgentIdResolved;
-  const zeroAvatarSrc = useLastResolved(sidebarAgentAvatar$) ?? null;
+  const sidebarAgent = useLastResolved(currentChatAgent$);
+  const zeroAvatarSrc = sidebarAgent
+    ? (resolveAvatarUrl(sidebarAgent.avatarUrl) ?? avatar1Img)
+    : null;
 
   const agentDisplayNameLoadable = useLastLoadable(agentDisplayName$);
   const agentDisplayName =

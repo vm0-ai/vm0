@@ -4,7 +4,7 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { createPushStateMock } from "../../../__tests__/page-helper.ts";
-import { zeroChatAgentId$ } from "../zero-active-agent.ts";
+import { currentChatAgentId$ } from "../../agent-chat.ts";
 import { setRootSignal$ } from "../../root-signal.ts";
 import { initRoutes$ } from "../../route.ts";
 import { mockLocation } from "../../location.ts";
@@ -60,11 +60,11 @@ async function setupRoutes(pathname: string) {
   );
 }
 
-describe("zeroChatAgentId$", () => {
+describe("sidebarAgentId$", () => {
   it("should return null for / (no agent)", async () => {
     await setupRoutes("/");
 
-    const agentId = await context.store.get(zeroChatAgentId$);
+    const agentId = await context.store.get(currentChatAgentId$);
     expect(agentId).toBeNull();
   });
 
@@ -72,7 +72,7 @@ describe("zeroChatAgentId$", () => {
     mockOnboardingStatus("c0000000-0000-4000-a000-000000000001");
     await setupRoutes("/agents/sub-agent-id/chat");
 
-    const agentId = await context.store.get(zeroChatAgentId$);
+    const agentId = await context.store.get(currentChatAgentId$);
     expect(agentId).toBe("sub-agent-id");
   });
 
@@ -80,7 +80,7 @@ describe("zeroChatAgentId$", () => {
     mockOnboardingStatus("c0000000-0000-4000-a000-000000000001");
     await setupRoutes("/agents/c0000000-0000-4000-a000-000000000001/chat");
 
-    const agentId = await context.store.get(zeroChatAgentId$);
+    const agentId = await context.store.get(currentChatAgentId$);
     expect(agentId).toBeNull();
   });
 
@@ -89,7 +89,7 @@ describe("zeroChatAgentId$", () => {
     mockChatThread("thread-abc", "sub-agent-id");
     await setupRoutes("/chats/thread-abc");
 
-    const agentId = await context.store.get(zeroChatAgentId$);
+    const agentId = await context.store.get(currentChatAgentId$);
     expect(agentId).toBe("sub-agent-id");
   });
 
@@ -98,7 +98,7 @@ describe("zeroChatAgentId$", () => {
     mockChatThread("thread-abc", "c0000000-0000-4000-a000-000000000001");
     await setupRoutes("/chats/thread-abc");
 
-    const agentId = await context.store.get(zeroChatAgentId$);
+    const agentId = await context.store.get(currentChatAgentId$);
     expect(agentId).toBeNull();
   });
 });

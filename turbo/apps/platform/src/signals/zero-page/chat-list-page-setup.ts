@@ -8,7 +8,7 @@ import { searchParams$ } from "../route.ts";
 import { onboardGuard$ } from "./onboard-guard.ts";
 import { loadInitialData$ } from "./zero-page.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
-import { setSidebarAgent$ } from "../agent.ts";
+import { setChatAgentId$ } from "../agent-chat.ts";
 
 export const setupChatListPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -30,7 +30,7 @@ export const setupChatListPage$ = command(
     }
 
     if (agentId) {
-      set(setSidebarAgent$, agentId);
+      set(setChatAgentId$, agentId);
     }
   },
 );

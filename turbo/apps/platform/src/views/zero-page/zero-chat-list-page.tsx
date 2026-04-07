@@ -24,13 +24,14 @@ import {
   creatingNewSession$,
 } from "../../signals/chat-page/chat-message.ts";
 import { navigateToChat$ } from "../../signals/zero-page/zero-nav.ts";
-import { currentChatThreadId$ } from "../../signals/agent-chat.ts";
 import {
-  agentDisplayName$,
-  subagents$,
-  sidebarAgentId$,
-  sidebarAgentAvatar$,
-} from "../../signals/agent.ts";
+  currentChatThreadId$,
+  currentChatAgentId$,
+  currentChatAgent$,
+} from "../../signals/agent-chat.ts";
+import { resolveAvatarUrl } from "./avatar-utils.ts";
+import avatar1Img from "./assets/avatar_1.webp";
+import { agentDisplayName$, subagents$ } from "../../signals/agent.ts";
 import {
   pendingDeleteThreadId$,
   setPendingDeleteThreadId$,
@@ -55,7 +56,7 @@ export function ZeroChatListPage() {
         : "Failed to load chats"
       : null;
 
-  const currentChatAgentId = useLastResolved(sidebarAgentId$);
+  const currentChatAgentId = useLastResolved(currentChatAgentId$);
   const subagentsLoadable = useLastLoadable(subagents$);
   const subagents =
     subagentsLoadable.state === "hasData" ? subagentsLoadable.data : [];
@@ -73,7 +74,10 @@ export function ZeroChatListPage() {
   const searchTerm = useGet(chatListQuery$);
   const setSearchTerm = useSet(setChatListQuery$);
 
-  const avatarSrc = useLastResolved(sidebarAgentAvatar$) ?? null;
+  const sidebarAgent = useLastResolved(currentChatAgent$);
+  const avatarSrc = sidebarAgent
+    ? (resolveAvatarUrl(sidebarAgent.avatarUrl) ?? avatar1Img)
+    : null;
 
   // Filter sessions by current agent
   const subagentIds = new Set(

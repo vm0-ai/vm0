@@ -1,4 +1,10 @@
-import { useGet, useSet, useLastLoadable } from "ccstate-react";
+import {
+  useGet,
+  useSet,
+  useLastResolved,
+  useLoadable,
+  useLastLoadable,
+} from "ccstate-react";
 import {
   IconSearch,
   IconX,
@@ -28,7 +34,18 @@ import { detach, Reason } from "../../signals/utils.ts";
 import {
   chatThreads$,
   deleteChatThread$,
+  createNewChatThread$,
+  creatingNewSession$,
 } from "../../signals/chat-page/chat-message.ts";
+import {
+  currentChatAgent$,
+  currentChatAgentId$,
+  currentChatThreadId$,
+} from "../../signals/agent-chat.ts";
+import {
+  navigateToChat$,
+  setSidebarExpanded$,
+} from "../../signals/zero-page/zero-nav.ts";
 import {
   sidebarSearchOpen$,
   sidebarSearchTerm$,
@@ -39,7 +56,6 @@ import {
   sessionListCollapsed$,
   setSessionListCollapsed$,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
-import type { SubagentInfo } from "../../signals/agent.ts";
 import { Link } from "../router/link.tsx";
 
 function ChatThreadItem({
@@ -108,25 +124,28 @@ function ChatThreadItem({
   );
 }
 
-function RecentChatList({
-  loading,
-  error,
-  sessions,
-  searchTerm,
-  selectedRecentId,
-  onRecentSelect,
-}: {
-  loading: boolean;
-  error: string | null;
-  sessions: ChatThreadListItem[];
-  searchTerm: string;
-  selectedRecentId: string | null;
-  onRecentSelect?: (id: string) => void;
-}) {
+function ChatThreads() {
+  const currentChatThreadId = useGet(currentChatThreadId$);
+  const navigateToChat = useSet(navigateToChat$);
+  const setSidebarExpanded = useSet(setSidebarExpanded$);
   const pendingDeleteThreadId = useGet(pendingDeleteThreadId$);
   const setPendingDeleteThreadId = useSet(setPendingDeleteThreadId$);
-  const setDelete = useSet(deleteChatThread$);
+  const deleteChatThread = useSet(deleteChatThread$);
   const pageSignal = useGet(pageSignal$);
+
+  const chatThreads = useLastResolved(chatThreads$) ?? [];
+  const searchTerm = useGet(sidebarSearchTerm$);
+  const trimmedTerm = searchTerm.trim().toLowerCase();
+  const filteredChatThreads = trimmedTerm
+    ? chatThreads.filter((s) => {
+        return (s.title ?? "").toLowerCase().includes(trimmedTerm);
+      })
+    : chatThreads;
+
+  const onRecentSelect = (chatThreadId: string) => {
+    navigateToChat(chatThreadId);
+    setSidebarExpanded(false);
+  };
 
   function confirmDelete() {
     if (!pendingDeleteThreadId) {
@@ -134,40 +153,13 @@ function RecentChatList({
     }
     const threadId = pendingDeleteThreadId;
     setPendingDeleteThreadId(null);
-    detach(setDelete(threadId, pageSignal), Reason.DomCallback);
+    detach(deleteChatThread(threadId, pageSignal), Reason.DomCallback);
   }
 
-  if (loading && sessions.length === 0) {
-    return (
-      <>
-        {["w-3/4", "w-1/2", "w-2/3"].map((w) => {
-          return (
-            <div
-              key={w}
-              data-testid="sidebar-skeleton"
-              className="flex h-8 items-center rounded-lg p-2"
-            >
-              <Skeleton className={`h-4 ${w}`} />
-            </div>
-          );
-        })}
-      </>
-    );
-  }
-  if (error) {
-    return (
-      <p
-        data-testid="chat-threads-error"
-        className="px-2 py-2 text-xs text-destructive"
-      >
-        {error}
-      </p>
-    );
-  }
-  if (sessions.length === 0) {
+  if (filteredChatThreads.length === 0) {
     return (
       <p className="px-2 py-2 text-xs text-muted-foreground/70 leading-relaxed">
-        {searchTerm.trim()
+        {trimmedTerm
           ? "No chats match your search"
           : "Start a conversation and it'll show up here"}
       </p>
@@ -175,12 +167,12 @@ function RecentChatList({
   }
   return (
     <>
-      {sessions.map((session) => {
+      {filteredChatThreads.map((session) => {
         return (
           <ChatThreadItem
             key={session.id}
             session={session}
-            isSelected={selectedRecentId === session.id}
+            isSelected={currentChatThreadId === session.id}
             onSelect={onRecentSelect}
           />
         );
@@ -220,75 +212,30 @@ function RecentChatList({
   );
 }
 
-export function RecentChatSection({
-  currentChatAgentId,
-  displayName,
-  subagents,
-  selectedRecentId,
-  onRecentSelect,
-  onNewChat,
-  newChatDisabled,
-}: {
-  currentChatAgentId: string | null;
-  displayName: string;
-  subagents: SubagentInfo[];
-  selectedRecentId: string | null;
-  onRecentSelect?: (id: string) => void;
-  onNewChat?: (agentId: string | null) => void;
-  newChatDisabled?: boolean;
-}) {
-  const recentSessionsLoadable = useLastLoadable(chatThreads$);
-  const recentSessions =
-    recentSessionsLoadable.state === "hasData"
-      ? recentSessionsLoadable.data
-      : [];
-  const recentSessionsLoading = recentSessionsLoadable.state === "loading";
-  const recentSessionsError =
-    recentSessionsLoadable.state === "hasError"
-      ? recentSessionsLoadable.error instanceof Error
-        ? recentSessionsLoadable.error.message
-        : "Failed to load chats"
-      : null;
+export function ChatThreadsSection() {
+  const currentChatAgentId = useLastResolved(currentChatAgentId$) ?? null;
+
+  const agentDisplayName = useLastResolved(currentChatAgent$)?.displayName;
+  const creatingLoadable = useLoadable(creatingNewSession$);
+  const newChatDisabled = creatingLoadable.state === "loading";
+
+  const setExpanded = useSet(setSidebarExpanded$);
+  const createNewChat = useSet(createNewChatThread$);
+  const pageSignal = useGet(pageSignal$);
+
+  const onNewChat = () => {
+    detach(createNewChat(currentChatAgentId, pageSignal), Reason.DomCallback);
+    setExpanded(false);
+  };
+
+  const chatThreadsLoading = useLastLoadable(chatThreads$).state === "loading";
+
   const searchOpen = useGet(sidebarSearchOpen$);
   const setSearchOpen = useSet(setSidebarSearchOpen$);
   const searchTerm = useGet(sidebarSearchTerm$);
   const setSearchTerm = useSet(setSidebarSearchTerm$);
   const collapsed = useGet(sessionListCollapsed$);
   const setCollapsed = useSet(setSessionListCollapsed$);
-
-  // Filter sessions by current agent
-  const subagentIds = new Set(
-    subagents.map((a) => {
-      return a.id;
-    }),
-  );
-  const agentSessions = currentChatAgentId
-    ? recentSessions.filter((s) => {
-        return s.agentId === currentChatAgentId;
-      })
-    : recentSessions.filter((s) => {
-        return !subagentIds.has(s.agentId);
-      });
-
-  const matchedAgent = subagents.find((a) => {
-    return a.id === currentChatAgentId;
-  });
-  const agentLabel = currentChatAgentId
-    ? (matchedAgent?.displayName ?? matchedAgent?.id ?? displayName)
-    : displayName;
-
-  const trimmedTerm = searchTerm.trim().toLowerCase();
-  const filteredSessions = trimmedTerm
-    ? agentSessions.filter((s) => {
-        return (s.title ?? "").toLowerCase().includes(trimmedTerm);
-      })
-    : agentSessions;
-
-  const handleNewChat = onNewChat
-    ? () => {
-        onNewChat(currentChatAgentId ?? null);
-      }
-    : undefined;
 
   return (
     <div className="mt-4 flex flex-col">
@@ -312,7 +259,7 @@ export function RecentChatSection({
             onChange={(e) => {
               return setSearchTerm(e.target.value);
             }}
-            placeholder={`Search chat with ${agentLabel}`}
+            placeholder={`Search chat with ${agentDisplayName}`}
             autoFocus
             className="flex-1 min-w-0 bg-transparent text-sm leading-5 text-sidebar-foreground placeholder:text-sidebar-foreground/50 focus:outline-none"
           />
@@ -337,7 +284,7 @@ export function RecentChatSection({
           }}
         >
           <span className="flex flex-1 items-center gap-1 truncate text-[13px] font-medium leading-4 text-sidebar-foreground/50 group-hover:text-sidebar-foreground transition-colors">
-            Chats with {agentLabel}
+            Chats with {agentDisplayName}
             <span className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
               <IconChevronRight
                 size={12}
@@ -367,43 +314,50 @@ export function RecentChatSection({
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
-            {handleNewChat && (
-              <TooltipProvider delayDuration={200}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      onPointerDown={(e) => {
-                        e.stopPropagation();
-                        handleNewChat();
-                      }}
-                      disabled={newChatDisabled}
-                      className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors disabled:opacity-50 disabled:pointer-events-none"
-                      aria-label={`New chat with ${agentLabel}`}
-                    >
-                      <IconPlus size={15} stroke={2.5} />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">
-                    <p className="text-xs">New chat</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            )}
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onPointerDown={(e) => {
+                      e.stopPropagation();
+                      onNewChat();
+                    }}
+                    disabled={newChatDisabled}
+                    className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors disabled:opacity-50 disabled:pointer-events-none"
+                    aria-label={`New chat with ${agentDisplayName}`}
+                  >
+                    <IconPlus size={15} stroke={2.5} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  <p className="text-xs">New chat</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
         </div>
       )}
       {!collapsed && (
         <div className="mt-1">
           <div className="flex flex-col gap-1">
-            <RecentChatList
-              loading={recentSessionsLoading}
-              error={recentSessionsError}
-              sessions={filteredSessions}
-              searchTerm={searchTerm}
-              selectedRecentId={selectedRecentId}
-              onRecentSelect={onRecentSelect}
-            />
+            {chatThreadsLoading ? (
+              <>
+                {["w-3/4", "w-1/2", "w-2/3"].map((w) => {
+                  return (
+                    <div
+                      key={w}
+                      data-testid="sidebar-skeleton"
+                      className="flex h-8 items-center rounded-lg p-2"
+                    >
+                      <Skeleton className={`h-4 ${w}`} />
+                    </div>
+                  );
+                })}
+              </>
+            ) : (
+              <ChatThreads />
+            )}
           </div>
         </div>
       )}

@@ -9,7 +9,12 @@ import {
 import { IconMenu2, IconUserPlus } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/core";
 import { ZeroSidebar } from "./zero-sidebar.tsx";
-import { sidebarAgentAvatar$, sidebarAgentId$ } from "../../signals/agent.ts";
+import {
+  currentChatAgent$,
+  currentChatAgentId$,
+} from "../../signals/agent-chat.ts";
+import { resolveAvatarUrl } from "./avatar-utils.ts";
+import avatar1Img from "./assets/avatar_1.webp";
 import { QueueDrawer } from "../queue-page/queue-drawer.tsx";
 import {
   zeroShowAboutPage$,
@@ -38,7 +43,8 @@ import { detach, Reason } from "../../signals/utils.ts";
 import { OrgManageDialog } from "./components/org-manage/org-manage-dialog.tsx";
 
 function AgentAvatarInTopBar() {
-  const src = useLastResolved(sidebarAgentAvatar$) ?? null;
+  const agent = useLastResolved(currentChatAgent$);
+  const src = agent ? (resolveAvatarUrl(agent.avatarUrl) ?? avatar1Img) : null;
   if (!src) {
     return (
       <div className="h-6 w-6 shrink-0 rounded-full bg-muted" aria-hidden />
@@ -58,7 +64,7 @@ function AgentAvatarInTopBar() {
 function MobileTopBar() {
   const navigateTo = useSet(detachedNavigateTo$);
   const setExpanded = useSet(setSidebarExpanded$);
-  const agentId = useLastResolved(sidebarAgentId$);
+  const agentId = useLastResolved(currentChatAgentId$);
 
   const breadcrumbLoadable = useLastLoadable(mobileBreadcrumb$);
   const breadcrumb =

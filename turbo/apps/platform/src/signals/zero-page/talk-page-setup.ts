@@ -12,8 +12,8 @@ import {
   defaultAgentId$,
   agentDisplayName$,
   subagents$,
-  setSidebarAgent$,
 } from "../agent.ts";
+import { setChatAgentId$ } from "../agent-chat.ts";
 import { talkDraft$ } from "./chat-draft.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 
@@ -32,7 +32,7 @@ export const setupTalkPage$ = command(
     // highlight early so the UI responds without waiting for async data.
     const agentId = get(currentAgentId$);
     if (agentId) {
-      set(setSidebarAgent$, agentId);
+      set(setChatAgentId$, agentId);
     }
 
     await set(loadInitialData$, signal);

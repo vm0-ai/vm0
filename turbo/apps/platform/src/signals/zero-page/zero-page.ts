@@ -29,7 +29,7 @@ export const loadInitialData$ = command(
  *
  * - If agentId is found among subagents or matches default, no action needed.
  * - If agentId is unknown, redirects to default agent.
- * - Agent identity is now derived via zeroChatAgentId$ computed signal.
+ * - Agent identity is now derived via sidebarAgentId$ computed signal.
  *
  * Used by setupTalkPage$ to handle unknown agent redirects.
  */

@@ -14,10 +14,6 @@ import { zeroClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
 import { resolveAvatarUrl } from "../views/zero-page/avatar-utils.ts";
 import avatar1Img from "../views/zero-page/assets/avatar_1.webp";
-import {
-  pinnedAgentIds$,
-  updatePinnedAgentIds$,
-} from "./zero-page/zero-pinned-agents.ts";
 
 export const defaultAgentId$ = computed(async (get) => {
   const status = await get(zeroOnboardingStatus$);
@@ -48,17 +44,6 @@ export const currentAgentId$ = computed((get) => {
 // ---------------------------------------------------------------------------
 // Identity — sidebar agent (user-selected, falls back to default)
 // ---------------------------------------------------------------------------
-
-const internalSidebarAgentId$ = state<string | null>(null);
-
-/** The agent currently selected in the sidebar. Falls back to the default agent. */
-export const sidebarAgentId$ = computed(async (get): Promise<string | null> => {
-  return get(internalSidebarAgentId$) ?? (await get(defaultAgentId$));
-});
-
-export const setSidebarAgent$ = command(({ set }, agentId: string | null) => {
-  set(internalSidebarAgentId$, agentId);
-});
 
 // ---------------------------------------------------------------------------
 // Agent lists
@@ -100,51 +85,11 @@ export const agentDisplayName$ = computed(async (get) => {
   return metadata?.displayName || "Zero";
 });
 
-// ---------------------------------------------------------------------------
-// SubagentInfo — lightweight shape for sidebar/pinned UI
-// ---------------------------------------------------------------------------
-
 export interface SubagentInfo {
   id: string;
   displayName?: string | null;
 }
 
-/** Re-export pinned agent primitives. */
-export { pinnedAgentIds$, updatePinnedAgentIds$ };
-
-/** Pinned agent IDs resolved to SubagentInfo. */
-export const pinnedAgents$ = computed(async (get) => {
-  const ids = await get(pinnedAgentIds$);
-  const list = await get(agents$);
-  return ids
-    .map((id) => {
-      return list.find((a) => {
-        return a.id === id;
-      });
-    })
-    .filter((a) => {
-      return a !== undefined;
-    });
-});
-
-// ---------------------------------------------------------------------------
-// Avatar
-// ---------------------------------------------------------------------------
-
-/** Avatar for the current sidebar agent. */
-export const sidebarAgentAvatar$ = computed(async (get) => {
-  const agentId = await get(sidebarAgentId$);
-  if (!agentId) {
-    return null;
-  }
-  const client = get(zeroClient$)(zeroAgentsByIdContract);
-  const result = await accept(client.get({ params: { id: agentId } }), [200], {
-    toast: false,
-  });
-  return resolveAvatarUrl(result.body.avatarUrl) ?? avatar1Img;
-});
-
-/** Avatar for the default (lead) agent — used in pinned-agent dialogs. */
 export const leadAgentAvatar$ = computed(async (get) => {
   const agentId = await get(defaultAgentId$);
   if (!agentId) {

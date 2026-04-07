@@ -1,10 +1,10 @@
 import type { ReactNode } from "react";
 import {
-  useLoadable,
   useLastLoadable,
   useLastResolved,
   useGet,
   useSet,
+  useResolved,
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -36,23 +36,12 @@ import {
   setSidebarExpanded$,
   handleZeroNavSelect$,
   handleZeroAccountAction$,
-  navigateToChat$,
   type SidebarNavId,
 } from "../../signals/zero-page/zero-nav.ts";
 import { activeRoute$ } from "../../signals/active-route.ts";
-import { currentChatThreadId$ } from "../../signals/agent-chat.ts";
 import type { RouteKey } from "../../signals/route-paths.ts";
-import {
-  agentDisplayName$,
-  subagents$,
-  type SubagentInfo,
-  updatePinnedAgentIds$,
-  sidebarAgentId$,
-} from "../../signals/agent.ts";
-import {
-  createNewChatThread$,
-  creatingNewSession$,
-} from "../../signals/chat-page/chat-message.ts";
+import { agentDisplayName$, subagents$ } from "../../signals/agent.ts";
+import { updatePinnedAgentIds$ } from "../../signals/zero-page/zero-pinned-agents.ts";
 import {
   managePinnedDialogOpen$,
   setManagePinnedDialogOpen$,
@@ -70,10 +59,11 @@ import { BillingDialog } from "./billing-dialog.tsx";
 import { ManagePinnedAgentsDialog } from "./zero-sidebar-dialogs.tsx";
 
 import { AccountDropdown } from "./zero-sidebar-account.tsx";
-import { RecentChatSection } from "./zero-sidebar-chat-list.tsx";
+import { ChatThreadsSection } from "./sidebar-threads.tsx";
 import { PinnedAgentListSection } from "./zero-sidebar-pinned.tsx";
 import { OverlayScrollArea } from "./zero-sidebar-scroll.tsx";
 import { SidebarUpgradeCard } from "./zero-sidebar-upgrade.tsx";
+import { currentChatAgentId$ } from "../../signals/agent-chat.ts";
 
 // Re-export shared types/components for backward compatibility
 export { useAgentAvatar } from "./zero-sidebar-shared.tsx";
@@ -173,16 +163,8 @@ export function ZeroSidebar() {
     displayNameLoadable.state === "hasData" ? displayNameLoadable.data : null;
 
   const subagentsLoadable = useLastLoadable(subagents$);
-  const subagents: SubagentInfo[] =
-    subagentsLoadable.state === "hasData"
-      ? subagentsLoadable.data.map((a) => {
-          return {
-            id: a.id,
-            displayName: a.displayName,
-          };
-        })
-      : [];
-  const currentChatAgentId = useLastResolved(sidebarAgentId$) ?? null;
+  const subagents =
+    subagentsLoadable.state === "hasData" ? subagentsLoadable.data : [];
   const off = useGet(sidebarOff$);
   const toggleOff = useSet(toggleSidebarOff$);
   const expanded = useGet(sidebarExpanded$);
@@ -195,21 +177,8 @@ export function ZeroSidebar() {
     rawOnSelect(id);
     setExpanded(false);
   };
-  const navigateToChat = useSet(navigateToChat$);
-  const onRecentSelect = (chatThreadId: string) => {
-    navigateToChat(chatThreadId);
-    setExpanded(false);
-  };
-  const selectedRecentId = useGet(currentChatThreadId$);
   const onAccountAction = useSet(handleZeroAccountAction$);
-  const createNewChat = useSet(createNewChatThread$);
-  const creatingNewSessionLoadable = useLoadable(creatingNewSession$);
-  const creatingNewSession = creatingNewSessionLoadable.state === "loading";
   const pageSignal = useGet(pageSignal$);
-  const onNewChat = (agentId: string | null) => {
-    detach(createNewChat(agentId, pageSignal), Reason.DomCallback);
-    setExpanded(false);
-  };
   const displayName = displayNameRaw || "Zero";
   const [pinLoadable, savePinnedIds] = useLoadableSet(updatePinnedAgentIds$);
   const savingPinned = pinLoadable.state === "loading";
@@ -221,6 +190,7 @@ export function ZeroSidebar() {
   // Feature gates
   const features = useLastResolved(featureSwitch$);
   const slackScopeMismatch = useLastResolved(slackOrgScopeMismatch$) ?? false;
+  const currentChatAgentId = useResolved(currentChatAgentId$);
 
   const manageNav = MANAGE_NAV.filter((item) => {
     return (
@@ -309,7 +279,6 @@ export function ZeroSidebar() {
                             e.preventDefault();
                             if (id === "chat") {
                               onSelect("chat");
-                              onNewChat?.(null);
                             } else {
                               onSelect(id);
                             }
@@ -455,20 +424,8 @@ export function ZeroSidebar() {
                 : "none",
             }}
           >
-            {/* Chat section */}
             <PinnedAgentListSection />
-
-            {/* Recent chat sessions */}
-            <RecentChatSection
-              key={currentChatAgentId}
-              currentChatAgentId={currentChatAgentId}
-              displayName={displayName}
-              subagents={subagents}
-              selectedRecentId={selectedRecentId}
-              onRecentSelect={onRecentSelect}
-              onNewChat={onNewChat}
-              newChatDisabled={creatingNewSession}
-            />
+            <ChatThreadsSection key={currentChatAgentId} />
           </OverlayScrollArea>
         </nav>
 
