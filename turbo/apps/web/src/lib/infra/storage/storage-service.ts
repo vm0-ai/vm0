@@ -399,12 +399,15 @@ export async function prepareStorageManifest(
 
         return manifestStorage;
       } catch (error) {
-        // For optional volumes, silently skip if not found
+        // For optional volumes, skip if not found
         if (
           volume.optional &&
           error instanceof Error &&
           error.message.includes("not found")
         ) {
+          log.warn(
+            `Optional volume "${volume.vasStorageName}" not found, skipping`,
+          );
           return null;
         }
         // Re-throw for required volumes
