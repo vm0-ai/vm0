@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.198.0](https://github.com/vm0-ai/vm0/compare/app-v0.197.1...app-v0.198.0) (2026-04-07)
+
+
+### Features
+
+* add insights dashboard with cron pre-aggregation pipeline ([#8387](https://github.com/vm0-ai/vm0/issues/8387)) ([4ba9dbe](https://github.com/vm0-ai/vm0/commit/4ba9dbe12ca1a3102646d358076010981a06da07))
+
+
+### Bug Fixes
+
+* **a11y:** add sheet descriptions to queue drawer and firewall permissions sheet ([#8389](https://github.com/vm0-ai/vm0/issues/8389)) ([1462679](https://github.com/vm0-ai/vm0/commit/1462679e25e254a16218021b5ff3f1652a033eb4))
+
+
+### Refactoring
+
+* **platform:** add loading states to fire-and-forget mutations ([#8383](https://github.com/vm0-ai/vm0/issues/8383)) ([ec8497a](https://github.com/vm0-ai/vm0/commit/ec8497a2095ac41544c10dbb27cf2e44b78445b7))
+* **test:** centralize restore mocks and console.error override in vitest setup ([#8379](https://github.com/vm0-ai/vm0/issues/8379)) ([b60ab7e](https://github.com/vm0-ai/vm0/commit/b60ab7e30c763739f004d03c57247d7eb5b8e4c1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.157.0
+
 ## [0.197.1](https://github.com/vm0-ai/vm0/compare/app-v0.197.0...app-v0.197.1) (2026-04-07)
 
 

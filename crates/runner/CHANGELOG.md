@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.66.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.65.1...runner-rs-v0.66.0) (2026-04-07)
+
+
+### Features
+
+* **proxy:** add opt-in http body capture to mitmproxy addon ([#8349](https://github.com/vm0-ai/vm0/issues/8349)) ([95709fb](https://github.com/vm0-ai/vm0/commit/95709fb721befedd489025c39124b3663226d3f9))
+
 ## [0.65.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.65.0...runner-rs-v0.65.1) (2026-04-07)
 
 

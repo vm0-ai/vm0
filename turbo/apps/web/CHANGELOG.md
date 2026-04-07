@@ -1,5 +1,27 @@
 # Changelog
 
+## [12.200.0](https://github.com/vm0-ai/vm0/compare/web-v12.199.1...web-v12.200.0) (2026-04-07)
+
+
+### Features
+
+* add insights dashboard with cron pre-aggregation pipeline ([#8387](https://github.com/vm0-ai/vm0/issues/8387)) ([4ba9dbe](https://github.com/vm0-ai/vm0/commit/4ba9dbe12ca1a3102646d358076010981a06da07))
+* add user email and org name to developer-support email ([#8376](https://github.com/vm0-ai/vm0/issues/8376)) ([942e444](https://github.com/vm0-ai/vm0/commit/942e444bd7f740ce8e79bce4066f7c5f6357405c))
+* gate capture-network-bodies to internal accounts in production ([#8386](https://github.com/vm0-ai/vm0/issues/8386)) ([eb65214](https://github.com/vm0-ai/vm0/commit/eb65214bd174607de6414bb435f362d0cf0ec189))
+* **proxy:** add opt-in http body capture to mitmproxy addon ([#8349](https://github.com/vm0-ai/vm0/issues/8349)) ([95709fb](https://github.com/vm0-ai/vm0/commit/95709fb721befedd489025c39124b3663226d3f9))
+
+
+### Refactoring
+
+* restructure run record creation — zero owns transaction ([#8378](https://github.com/vm0-ai/vm0/issues/8378)) ([d75a349](https://github.com/vm0-ai/vm0/commit/d75a3490ed0e0eb1fbc89eac2b3afdb7bcb4e1a5)), closes [#8366](https://github.com/vm0-ai/vm0/issues/8366)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.157.0
+
 ## [12.199.1](https://github.com/vm0-ai/vm0/compare/web-v12.199.0...web-v12.199.1) (2026-04-07)
 
 

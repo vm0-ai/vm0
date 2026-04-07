@@ -1,5 +1,24 @@
 # Changelog
 
+## [9.105.0](https://github.com/vm0-ai/vm0/compare/cli-v9.104.1...cli-v9.105.0) (2026-04-07)
+
+
+### Features
+
+* **proxy:** add opt-in http body capture to mitmproxy addon ([#8349](https://github.com/vm0-ai/vm0/issues/8349)) ([95709fb](https://github.com/vm0-ai/vm0/commit/95709fb721befedd489025c39124b3663226d3f9))
+
+
+### Bug Fixes
+
+* **cli:** move coordinate system help to client subcommand ([#8385](https://github.com/vm0-ai/vm0/issues/8385)) ([73b148f](https://github.com/vm0-ai/vm0/commit/73b148f8d2732e5b62cbd5f9d17e985f16eff4a7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.157.0
+
 ## [9.104.1](https://github.com/vm0-ai/vm0/compare/cli-v9.104.0...cli-v9.104.1) (2026-04-07)
 
 
