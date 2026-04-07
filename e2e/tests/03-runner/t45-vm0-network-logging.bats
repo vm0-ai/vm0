@@ -110,13 +110,11 @@ EOF
     wait_for_log "$RUN_ID" --network -- "UDP" ":9999"
 }
 
-@test "t45-3: capture-network-bodies flag does not break http logging" {
+@test "t45-3: capture-network-bodies captures request headers and response body" {
     create_agent
 
-    # Run with --capture-network-bodies enabled and verify the run completes
-    # and HTTP traffic is still logged correctly. Body field rendering is
-    # tested separately (see #8358) — this test validates the flag doesn't
-    # break the streaming/logging pipeline.
+    # Run with --capture-network-bodies enabled. The CLI network log renderer
+    # displays request_headers and response_body when present.
     run $VM0_CLI run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         --capture-network-bodies \
@@ -129,6 +127,6 @@ EOF
         return 1
     }
 
-    # Verify HTTP request appears in network logs (proves flag didn't break logging)
-    wait_for_log "$RUN_ID" --network -- "vm0.ai"
+    # Verify network logs contain captured fields rendered by the CLI
+    wait_for_log "$RUN_ID" --network -- "request_headers:" "response_body:"
 }

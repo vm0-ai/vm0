@@ -138,7 +138,25 @@ function formatNetworkRequest(entry: NetworkLogEntry): string {
     ? ` ${chalk.red(entry.firewall_error)}`
     : "";
 
-  return `[${entry.timestamp}] ${method.padEnd(6)} ${statusColor(status)} ${latencyColor(latencyMs + "ms")} ${formatBytes(requestSize)}/${formatBytes(responseSize)} ${chalk.dim(url)}${firewall}${error}${formatAuthInfo(entry)}`;
+  let line = `[${entry.timestamp}] ${method.padEnd(6)} ${statusColor(status)} ${latencyColor(latencyMs + "ms")} ${formatBytes(requestSize)}/${formatBytes(responseSize)} ${chalk.dim(url)}${firewall}${error}${formatAuthInfo(entry)}`;
+
+  // Append captured body fields when present (--capture-network-bodies)
+  if (entry.request_headers) {
+    const hdrs = Object.entries(entry.request_headers)
+      .map(([k, v]) => `${k}: ${v}`)
+      .join(", ");
+    line += `\n  ${chalk.gray("request_headers:")} ${hdrs}`;
+  }
+  if (entry.request_body) {
+    const truncated = entry.request_body_truncated ? " (truncated)" : "";
+    line += `\n  ${chalk.gray("request_body:")} ${entry.request_body.slice(0, 200)}${entry.request_body.length > 200 ? "..." : ""}${truncated}`;
+  }
+  if (entry.response_body) {
+    const truncated = entry.response_body_truncated ? " (truncated)" : "";
+    line += `\n  ${chalk.gray("response_body:")} ${entry.response_body.slice(0, 200)}${entry.response_body.length > 200 ? "..." : ""}${truncated}`;
+  }
+
+  return line;
 }
 
 /**
