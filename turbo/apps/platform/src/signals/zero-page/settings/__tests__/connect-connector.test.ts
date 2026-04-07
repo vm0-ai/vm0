@@ -8,6 +8,7 @@ import {
   permissionDialogType$,
   pollingConnectorType$,
   submitApiToken$,
+  STANDALONE_POLLING_TIMEOUT_MS,
 } from "../connectors.ts";
 import { createDeferredPromise } from "../../../utils.ts";
 import type { ConnectorListResponse } from "@vm0/core";
@@ -198,44 +199,23 @@ describe("connectConnector$", () => {
     expect(context.store.get(permissionDialogType$)).toBe("github");
   });
 
-  it("does not throw when window.open returns null in standalone mode", async () => {
-    await setupPage({ context, path: "/", withoutRender: true });
-
-    mockMatchMedia(true);
-    vi.spyOn(window, "open").mockReturnValue(null);
-
-    server.use(
-      http.get("*/api/zero/connectors", () => {
-        return HttpResponse.json(makeGithubConnectorResponse());
-      }),
-    );
-
-    const result = await context.store.set(
-      connectConnector$,
-      "github",
-      context.signal,
-    );
-
-    expect(result).toBeTruthy();
-    expect(context.store.get(pollingConnectorType$)).toBeNull();
-  });
-
   it("exits polling after timeout in standalone mode", async () => {
     await setupPage({ context, path: "/", withoutRender: true });
 
     mockMatchMedia(true);
     vi.spyOn(window, "open").mockReturnValue(null);
 
-    // Mock Date.now to simulate timeout elapsed
-    const startTime = Date.now();
-    let callCount = 0;
+    // First Date.now() call sets startTime inside connectConnector$; all
+    // subsequent calls return a value past the timeout threshold so the
+    // very first polling iteration exits immediately.
+    const realNow = Date.now();
+    let firstCall = true;
     vi.spyOn(Date, "now").mockImplementation(() => {
-      callCount++;
-      // After 3 calls, simulate timeout exceeded (> 10 minutes)
-      if (callCount > 3) {
-        return startTime + 11 * 60 * 1000;
+      if (firstCall) {
+        firstCall = false;
+        return realNow;
       }
-      return startTime;
+      return realNow + STANDALONE_POLLING_TIMEOUT_MS + 1;
     });
 
     server.use(

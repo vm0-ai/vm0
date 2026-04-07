@@ -318,7 +318,7 @@ export function isStandaloneMode(): boolean {
 }
 
 /** Maximum polling duration in standalone mode (10 minutes). */
-const STANDALONE_POLLING_TIMEOUT_MS = 10 * 60 * 1000;
+export const STANDALONE_POLLING_TIMEOUT_MS = 10 * 60 * 1000;
 
 // ---------------------------------------------------------------------------
 // Connect command
