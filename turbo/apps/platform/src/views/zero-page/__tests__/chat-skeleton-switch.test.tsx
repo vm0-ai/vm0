@@ -64,6 +64,10 @@ describe("chat skeleton on switch", () => {
       expect(skeletons.length).toBeGreaterThan(0);
     });
 
+    // Scroll container should always reserve scrollbar gutter space to prevent layout shift
+    const scrollContainer = document.querySelector("[data-scroll-container]");
+    expect(scrollContainer?.className).toContain("[scrollbar-gutter:stable]");
+
     // Release deferred so thread-B content loads
     threadBDeferred.resolve();
 

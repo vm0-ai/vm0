@@ -278,7 +278,7 @@ export function ZeroChatThreadPage() {
       {/* Scrollable area — messages + sticky composer share the same scroll context */}
       <div
         data-scroll-container
-        className="flex-1 overflow-auto flex flex-col min-h-0"
+        className="flex-1 overflow-y-auto [scrollbar-gutter:stable] flex flex-col min-h-0"
       >
         <main className="flex-1 px-4 sm:px-6 py-4 items-center @container">
           <div
