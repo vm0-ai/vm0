@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.104.0](https://github.com/vm0-ai/vm0/compare/cli-v9.103.3...cli-v9.104.0) (2026-04-07)
+
+
+### Features
+
+* **firewall:** add slack notifications and doctor --reason pre-fill ([#8339](https://github.com/vm0-ai/vm0/issues/8339)) ([7819955](https://github.com/vm0-ai/vm0/commit/78199554e4a233b19e7f633e150abfb5691f0413))
+
 ## [9.103.3](https://github.com/vm0-ai/vm0/compare/cli-v9.103.2...cli-v9.103.3) (2026-04-07)
 
 

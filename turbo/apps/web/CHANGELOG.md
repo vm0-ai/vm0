@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.199.0](https://github.com/vm0-ai/vm0/compare/web-v12.198.1...web-v12.199.0) (2026-04-07)
+
+
+### Features
+
+* **firewall:** add slack notifications and doctor --reason pre-fill ([#8339](https://github.com/vm0-ai/vm0/issues/8339)) ([7819955](https://github.com/vm0-ai/vm0/commit/78199554e4a233b19e7f633e150abfb5691f0413))
+
 ## [12.198.1](https://github.com/vm0-ai/vm0/compare/web-v12.198.0...web-v12.198.1) (2026-04-07)
 
 
