@@ -845,7 +845,7 @@ function StaticAssistantMessage({
     if (!content) {
       return;
     }
-    detach(copyMessage(message.id, content), Reason.DomCallback);
+    detach(copyMessage(message.id, content, pageSignal), Reason.DomCallback);
   };
 
   const logButton = message.legacyRunId ? (
