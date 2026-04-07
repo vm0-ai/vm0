@@ -14,7 +14,6 @@ export interface AgentUsage {
 }
 
 export interface ServiceUsage {
-  name: string;
   domain: string;
   calls: number;
   /** Which agents used this service */

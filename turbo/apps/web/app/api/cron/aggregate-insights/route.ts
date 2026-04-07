@@ -308,7 +308,6 @@ interface InsightData {
   }[];
   topTask: { name: string; count: number } | null;
   services: {
-    name: string;
     domain: string;
     calls: number;
     agentNames: string[];
@@ -339,11 +338,7 @@ function buildUserInsight(
   const services = networkData
     ? [...networkData.serviceMap.entries()]
         .map(([connectorKey, svc]) => {
-          const config = isFirewallConnectorType(connectorKey)
-            ? getConnectorFirewall(connectorKey)
-            : null;
           return {
-            name: config?.name ?? connectorKey,
             domain: connectorKey,
             calls: svc.calls,
             agentNames: [...svc.agentNames],

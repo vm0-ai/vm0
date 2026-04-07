@@ -725,7 +725,7 @@ function ServicesCard({
           const pct = (s.calls / maxCalls) * 100;
           return (
             <div
-              key={s.name}
+              key={s.domain}
               className={`flex items-center gap-3 transition-opacity duration-150 ${isActive ? "opacity-100" : "opacity-30"}`}
             >
               <span className="text-sm font-medium w-20 truncate shrink-0">

@@ -12,7 +12,6 @@ const insightAgentSchema = z.object({
 });
 
 const insightServiceSchema = z.object({
-  name: z.string(),
   domain: z.string(),
   calls: z.number(),
   agentNames: z.array(z.string()),
