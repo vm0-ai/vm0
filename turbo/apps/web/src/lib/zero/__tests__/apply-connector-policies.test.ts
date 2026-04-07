@@ -21,16 +21,18 @@ function makeFirewall(
 }
 
 describe("applyConnectorPolicies", () => {
-  it("returns unrestricted when no policies are provided", () => {
+  it("includes all permissions when no policies are provided", () => {
+    const permissions = [
+      { name: "repo-read", rules: ["GET /repos/{owner}/{repo}"] },
+      { name: "repo-write", rules: ["PUT /repos/{owner}/{repo}"] },
+    ];
     const fw = makeFirewall({
       ref: "github",
       apis: [
         {
           base: "https://api.github.com",
           auth: { headers: { Authorization: "Bearer token" } },
-          permissions: [
-            { name: "repo-read", rules: ["GET /repos/{owner}/{repo}"] },
-          ],
+          permissions,
         },
       ],
     });
@@ -40,7 +42,7 @@ describe("applyConnectorPolicies", () => {
     expect(result).toHaveLength(1);
     const entry = result[0];
     expect(entry).toBeDefined();
-    expect(entry?.apis[0]?.permissions).toEqual([UNRESTRICTED_PERMISSION]);
+    expect(entry?.apis[0]?.permissions).toEqual(permissions);
   });
 
   it("filters permissions by policy when permissions are defined", () => {
