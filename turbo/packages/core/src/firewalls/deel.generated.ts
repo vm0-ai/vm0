@@ -681,16 +681,6 @@ export const deelFirewall = {
             "POST /rest/v2/workers/contracts/{contract_id}/signatures",
           ],
         },
-        {
-          name: "workers:read",
-          rules: [
-            "GET /rest/v2/immigration/workers/{worker_id}/required-documents",
-          ],
-        },
-        {
-          name: "workers:write",
-          rules: ["POST /rest/v2/immigration/workers/documents"],
-        },
       ],
     },
   ],

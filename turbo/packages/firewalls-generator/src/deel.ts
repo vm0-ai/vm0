@@ -24,16 +24,27 @@ import type { PermissionGroup } from "./codegen";
 // Deel split their API into multiple OpenAPI specs (previously a single combined spec).
 // We download all of them and merge paths (later spec wins on overlap).
 const SPEC_BASE = "https://developer.deel.com/openapi.json";
-const SPEC_IDS = [
-  "0530dee2-d1db-462f-b6aa-76fa1f605062", // Endpoints (cost centers, groups, etc.)
-  "ea8f371d-dd90-4611-8d0b-33faa99af701", // EOR Endpoints
-  "7cded735-55be-41ab-a152-836303c7e89d", // EOR Worker Endpoints
-  "6d751b61-9b4a-44c8-a238-bf1930577d01", // Endpoints (contracts, invoices, etc.)
-  "e04ff84e-accd-4a9c-ac29-1167e52bce8e", // Endpoints (payroll, timesheets, etc.)
-  "a29ba87a-80bf-4693-b9e6-f1b830125636", // Endpoints (people, tasks, etc.)
-  "f39a9b72-cead-4e7c-8a70-e113d6a66736", // Endpoints (immigration)
-  "4630c88e-b8d0-4f41-b9a9-aa509f85e47c", // Endpoints (main — largest, 300+ paths)
-];
+
+/**
+ * Discover available spec IDs dynamically from the Deel docs index page.
+ * The page lists all API specs as `?api=<uuid>` links.
+ */
+async function discoverSpecIds(): Promise<string[]> {
+  const res = await fetch(SPEC_BASE);
+  if (!res.ok) {
+    throw new Error(
+      `Failed to fetch Deel spec index: ${res.status} ${res.statusText}`,
+    );
+  }
+  const html = await res.text();
+  const ids = [
+    ...new Set([...html.matchAll(/\?api=([0-9a-f-]{36})/g)].map((m) => m[1]!)),
+  ];
+  if (ids.length === 0) {
+    throw new Error("No spec IDs found in Deel docs index page");
+  }
+  return ids;
+}
 
 const PLACEHOLDER_VALUE =
   "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafe";
@@ -213,9 +224,13 @@ function generateTypeScript(permissions: PermissionGroup[]): string {
 // ── Main ─────────────────────────────────────────────────────────────────
 
 export async function generate(): Promise<void> {
+  // Discover spec IDs dynamically (Deel rotates them periodically)
+  const specIds = await discoverSpecIds();
+  console.error(`  Discovered ${specIds.length} specs`);
+
   // Fetch all specs in parallel and merge paths
   const specs = await Promise.all(
-    SPEC_IDS.map(async (id) => {
+    specIds.map(async (id) => {
       const url = `${SPEC_BASE}?api=${id}`;
       const res = await fetchSpec(url, `Deel spec ${id.slice(0, 8)}`);
       const json: unknown = await res.json();
@@ -239,7 +254,7 @@ export async function generate(): Promise<void> {
   const spec = merged;
   const pathCount = Object.keys(spec.paths ?? {}).length;
   console.error(
-    `  ${pathCount} endpoints (merged from ${SPEC_IDS.length} specs)`,
+    `  ${pathCount} endpoints (merged from ${specIds.length} specs)`,
   );
 
   const { permissions, scopeless } = buildGroups(spec);
