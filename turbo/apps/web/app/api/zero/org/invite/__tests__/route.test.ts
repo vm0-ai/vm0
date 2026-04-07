@@ -161,12 +161,11 @@ describe("DELETE /api/zero/org/invite (revoke)", () => {
     expect(response.status).toBe(401);
   });
 
-  it("should return 404 when org not found", async () => {
+  it("should return 400 when no org in session", async () => {
     const userId = uniqueId("rev-nf");
     mockClerk({
       userId,
-      orgId: `org_mock_${userId}`,
-      orgRole: "org:admin",
+      orgId: null,
       clerkOrgs: [],
     });
 
@@ -178,6 +177,6 @@ describe("DELETE /api/zero/org/invite (revoke)", () => {
       }),
     );
 
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(400);
   });
 });

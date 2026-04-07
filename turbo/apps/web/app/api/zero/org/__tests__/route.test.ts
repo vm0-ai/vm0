@@ -44,12 +44,11 @@ describe("GET /api/zero/org", () => {
     expect(data.name).toBeDefined();
   });
 
-  it("should return 404 when org not found", async () => {
+  it("should return 404 when no org in session", async () => {
     const userId = uniqueId("zorg-nf");
     mockClerk({
       userId,
-      orgId: `org_mock_${userId}`,
-      orgRole: "org:admin",
+      orgId: null,
       clerkOrgs: [],
     });
 
