@@ -5,7 +5,7 @@ export function recordSandboxOperation(attrs: {
   actionType: string;
   durationMs: number;
   success: boolean;
-  runId?: string;
+  runId: string;
 }): void {
   ingestSandboxOpLog({
     source: "web",
@@ -21,7 +21,7 @@ export function recordSandboxInternalOperation(attrs: {
   sandboxType: string;
   durationMs: number;
   success: boolean;
-  runId?: string;
+  runId: string;
 }): void {
   ingestSandboxOpLog({
     source: "sandbox",
