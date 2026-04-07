@@ -4,23 +4,82 @@
  * Separated from agent.ts to avoid circular dependencies:
  *   agent.ts ← zero-chat.ts ← agent.ts
  */
-import { computed } from "ccstate";
+import { command, computed, state } from "ccstate";
 import {
   currentAgentId$,
   currentChatThreadId$,
-  sidebarSubagents$,
+  sidebarAgentId$,
+  subagents$,
 } from "./agent.ts";
-import { currentChatThread$, chatThreads$ } from "./zero-page/zero-chat.ts";
 import { zeroOnboardingStatus$ } from "./zero-page/zero-onboarding.ts";
+import {
+  chatThreadByIdContract,
+  chatThreadsContract,
+  type SummaryEntry,
+} from "@vm0/core";
+import { zeroClient$ } from "./api-client.ts";
+import { accept } from "../lib/accept.ts";
 
-/**
- * The currently active chat agent ID, derived from URL and thread data.
- * Returns null when chatting with the default agent (null = default semantic).
- *
- * - On /agents/:id/chat → from pathParams.id, normalized (default → null)
- * - On /chats/:id → from currentChatThread$.agentId, normalized
- * - Otherwise → null
- */
+const internalReloadCurrentThread$ = state(0);
+
+export const reloadCurrentChatThread$ = command(({ set }) => {
+  set(internalReloadCurrentThread$, (v) => {
+    return v + 1;
+  });
+});
+
+export interface ChatThread {
+  id: string;
+  agentId?: string;
+  title: string | null;
+  chatMessages: {
+    role: "user" | "assistant";
+    content: string;
+    runId?: string;
+    error?: string;
+    summaries?: SummaryEntry[];
+    createdAt: string;
+  }[];
+  latestSessionId: string | null;
+  unsavedRuns: {
+    runId: string;
+    status: string;
+    prompt: string;
+    error: string | null;
+    createdAt: string;
+  }[];
+  isLegacySession: boolean;
+}
+
+export const currentChatThread$ = computed(
+  async (get): Promise<ChatThread | null> => {
+    get(internalReloadCurrentThread$);
+    const threadId = get(currentChatThreadId$);
+    if (!threadId) {
+      return null;
+    }
+
+    const threadClient = get(zeroClient$)(chatThreadByIdContract);
+
+    const threadResult = await accept(
+      threadClient.get({ params: { id: threadId } }),
+      [200],
+      { toast: false },
+    );
+
+    const body = threadResult.body;
+    return {
+      id: threadId,
+      title: body.title ?? null,
+      agentId: body.agentId,
+      chatMessages: body.chatMessages ?? [],
+      latestSessionId: body.latestSessionId ?? null,
+      unsavedRuns: body.unsavedRuns ?? [],
+      isLegacySession: false,
+    };
+  },
+);
+
 export const activeChatAgentId$ = computed(async (get) => {
   const status = await get(zeroOnboardingStatus$);
   const defaultId = status.defaultAgentId;
@@ -39,11 +98,6 @@ export const activeChatAgentId$ = computed(async (get) => {
   return null;
 });
 
-/**
- * When the user selects a recent chat thread, resolves to the agent ID
- * that owns that thread (if it's a subagent), `null` if the thread
- * belongs to the default agent, or `undefined` if no thread is selected.
- */
 export const currentChatAgentId$ = computed(async (get) => {
   const chatThreadId = get(currentChatThreadId$);
   if (!chatThreadId) {
@@ -58,11 +112,44 @@ export const currentChatAgentId$ = computed(async (get) => {
     return undefined;
   }
 
-  const subs = await get(sidebarSubagents$);
+  const subs = await get(subagents$);
   const subIds = new Set(
     subs.map((a) => {
       return a.id;
     }),
   );
   return subIds.has(thread.agentId) ? thread.agentId : null;
+});
+
+const internalReloadChatThreads$ = state(0);
+
+export const reloadChatThreads$ = command(({ set }) => {
+  set(internalReloadChatThreads$, (n) => {
+    return n + 1;
+  });
+});
+
+export const chatThreads$ = computed(async (get) => {
+  get(internalReloadChatThreads$);
+  const agentId = await get(sidebarAgentId$);
+  if (!agentId) {
+    return [];
+  }
+
+  const client = get(zeroClient$)(chatThreadsContract);
+  const result = await accept(
+    client.list({ query: { agentId: agentId } }),
+    [200],
+    { toast: false },
+  );
+  const threads = result.body.threads;
+
+  const currentThread = await get(currentChatThread$);
+  return threads.map((t) => {
+    return {
+      ...t,
+      title:
+        t.id === currentThread?.id ? t.title || currentThread.title : t.title,
+    };
+  });
 });

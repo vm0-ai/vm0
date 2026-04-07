@@ -133,28 +133,20 @@ export interface SubagentInfo {
   displayName?: string | null;
 }
 
-/** Subagents mapped to SubagentInfo shape. */
-export const sidebarSubagents$ = computed(async (get) => {
-  const list = await get(subagents$);
-  return list.map((a): SubagentInfo => {
-    return { id: a.id, displayName: a.displayName };
-  });
-});
-
 /** Re-export pinned agent primitives. */
 export { pinnedAgentIds$, updatePinnedAgentIds$ };
 
 /** Pinned agent IDs resolved to SubagentInfo. */
 export const pinnedAgents$ = computed(async (get) => {
   const ids = await get(pinnedAgentIds$);
-  const list = await get(sidebarSubagents$);
+  const list = await get(subagents$);
   return ids
     .map((id) => {
       return list.find((a) => {
         return a.id === id;
       });
     })
-    .filter((a): a is SubagentInfo => {
+    .filter((a) => {
       return a !== undefined;
     });
 });

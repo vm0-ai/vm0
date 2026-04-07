@@ -18,17 +18,28 @@ import {
 } from "./polling.ts";
 import { zeroOnboardingStatus$ } from "./zero-onboarding.ts";
 import { navigateToChat$ } from "./zero-nav.ts";
-import { currentChatThreadId$, sidebarAgentId$ } from "../agent.ts";
+import { currentChatThreadId$ } from "../agent.ts";
 import {
   RUN_ERROR_GUIDANCE,
   chatMessagesContract,
   chatThreadsContract,
   chatThreadByIdContract,
-  zeroSessionsByIdContract,
-  type SummaryEntry,
 } from "@vm0/core";
 import { accept, ApiError } from "../../lib/accept.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
+import {
+  chatThreads$,
+  currentChatThread$,
+  reloadChatThreads$,
+  reloadCurrentChatThread$,
+  type ChatThread,
+} from "../agent-chat.ts";
+
+export {
+  chatThreads$,
+  currentChatThread$,
+  reloadChatThreads$,
+} from "../agent-chat.ts";
 
 export {
   zeroChatInput$,
@@ -397,39 +408,6 @@ function summarizeEvent(event: AgentEvent, skipText: boolean): string | null {
  */
 export const resetTalkSendSignal$ = resetSignal();
 
-const internalReloadChatThreads$ = state(0);
-
-export const reloadChatThreads$ = command(({ set }) => {
-  set(internalReloadChatThreads$, (n) => {
-    return n + 1;
-  });
-});
-
-export const chatThreads$ = computed(async (get) => {
-  get(internalReloadChatThreads$);
-  const agentId = await get(sidebarAgentId$);
-  if (!agentId) {
-    return [];
-  }
-
-  const client = get(zeroClient$)(chatThreadsContract);
-  const result = await accept(
-    client.list({ query: { agentId: agentId } }),
-    [200],
-    { toast: false },
-  );
-  const threads = result.body.threads;
-
-  const currentThread = await get(currentChatThread$);
-  return threads.map((t) => {
-    return {
-      ...t,
-      title:
-        t.id === currentThread?.id ? t.title || currentThread.title : t.title,
-    };
-  });
-});
-
 export const deleteChatThread$ = command(
   async ({ get, set }, threadId: string, signal: AbortSignal) => {
     const threadSnapshot = await get(chatThreads$);
@@ -456,34 +434,9 @@ export const deleteChatThread$ = command(
       }
     }
 
-    set(internalReloadChatThreads$, (n) => {
-      return n + 1;
-    });
+    set(reloadChatThreads$);
   },
 );
-
-interface ChatThread {
-  id: string;
-  agentId?: string;
-  title: string | null;
-  chatMessages: {
-    role: "user" | "assistant";
-    content: string;
-    runId?: string;
-    error?: string;
-    summaries?: SummaryEntry[];
-    createdAt: string;
-  }[];
-  latestSessionId: string | null;
-  unsavedRuns: {
-    runId: string;
-    status: string;
-    prompt: string;
-    error: string | null;
-    createdAt: string;
-  }[];
-  isLegacySession: boolean;
-}
 
 async function collectAllEvents(
   pages: Computed<Promise<PagedRunEvents>>[],
@@ -615,63 +568,6 @@ interface ChatSessionSnapshotData {
   lastActiveRunId: string | null;
 }
 
-const reloadCurrentThread$ = state(0);
-
-export const currentChatThread$ = computed(
-  async (get): Promise<ChatThread | null> => {
-    get(reloadCurrentThread$);
-    const threadId = get(currentChatThreadId$);
-    if (!threadId) {
-      return null;
-    }
-
-    const threadClient = get(zeroClient$)(chatThreadByIdContract);
-    try {
-      const threadResult = await accept(
-        threadClient.get({ params: { id: threadId } }),
-        [200],
-        { toast: false },
-      );
-      const body = threadResult.body;
-      return {
-        id: threadId,
-        title: body.title ?? null,
-        agentId: body.agentId,
-        chatMessages: body.chatMessages ?? [],
-        latestSessionId: body.latestSessionId ?? null,
-        unsavedRuns: body.unsavedRuns ?? [],
-        isLegacySession: false,
-      };
-    } catch (error) {
-      throwIfAbort(error);
-      // not a thread; try session lookup below
-    }
-
-    const sessionClient = get(zeroClient$)(zeroSessionsByIdContract);
-    try {
-      const sessionResult = await accept(
-        sessionClient.getById({ params: { id: threadId } }),
-        [200],
-        { toast: false },
-      );
-      const body = sessionResult.body;
-      return {
-        id: threadId,
-        title: null,
-        agentId: body.agentId,
-        chatMessages: body.chatMessages ?? [],
-        latestSessionId: threadId,
-        unsavedRuns: [],
-        isLegacySession: true,
-      };
-    } catch (error) {
-      throwIfAbort(error);
-      L.warn("Failed to load chat");
-      return null;
-    }
-  },
-);
-
 const currentChatMessages$ = computed(
   async (get): Promise<ZeroChatMessage[]> => {
     const messages = (await get(currentChatThread$))?.chatMessages ?? [];
@@ -765,12 +661,8 @@ export const loadSessionFromSnapshot$ = command(
     );
 
     if (assistantMessages.length === 0) {
-      set(internalReloadChatThreads$, (n) => {
-        return n + 1;
-      });
-      set(reloadCurrentThread$, (n) => {
-        return n + 1;
-      });
+      set(reloadChatThreads$);
+      set(reloadCurrentChatThread$);
       return;
     }
 
@@ -796,12 +688,8 @@ export const loadSessionFromSnapshot$ = command(
           get(fibDelays$),
         );
 
-        set(internalReloadChatThreads$, (x) => {
-          return x + 1;
-        });
-        set(reloadCurrentThread$, (n) => {
-          return n + 1;
-        });
+        set(reloadChatThreads$);
+        set(reloadCurrentChatThread$);
       }),
     );
     signal.throwIfAborted();
@@ -1034,12 +922,8 @@ export const sendExistingThreadMessage$ = command(
       signal,
     );
 
-    set(internalReloadChatThreads$, (n) => {
-      return n + 1;
-    });
-    set(reloadCurrentThread$, (n) => {
-      return n + 1;
-    });
+    set(reloadChatThreads$);
+    set(reloadCurrentChatThread$);
 
     const { assistantMessage } = createActiveRunMessage(runId, prompt);
     set(internalLocalMessages$, (prev) => {
@@ -1055,12 +939,8 @@ export const sendExistingThreadMessage$ = command(
       async (sig) => {
         const finished = await set(runLoop.checkFinished$, sig);
         if (!finished) {
-          set(internalReloadChatThreads$, (n) => {
-            return n + 1;
-          });
-          set(reloadCurrentThread$, (n) => {
-            return n + 1;
-          });
+          set(reloadChatThreads$);
+          set(reloadCurrentChatThread$);
         }
         return finished;
       },

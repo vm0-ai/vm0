@@ -30,7 +30,7 @@ import {
   pinnedAgentIds$,
   updatePinnedAgentIds$,
   pinnedAgents$,
-  sidebarSubagents$,
+  subagents$,
 } from "../../signals/agent.ts";
 import { currentChatAgentId$ } from "../../signals/agent-chat.ts";
 import { createNewChatThread$ } from "../../signals/zero-page/zero-chat.ts";
@@ -52,7 +52,7 @@ export function TalkToSection() {
       : "Zero";
   const pinnedAgentsList = useLastResolved(pinnedAgents$) ?? [];
   const pinnedIds = useLastResolved(pinnedAgentIds$) ?? [];
-  const subagents = useLastResolved(sidebarSubagents$) ?? [];
+  const subagents = useLastResolved(subagents$) ?? [];
 
   const chatListOpen = useGet(chatListOpen$);
   const setChatListOpenFn = useSet(setChatListOpen$);
