@@ -302,23 +302,26 @@ teardown_file() {
     # Wait for post-onboarding provisioning + navigation (up to 90s).
     # Detection is URL-based: once the browser navigates away from /onboarding
     # the backend setup is done and the frontend has navigated to /agents/:id/chat.
-    # This is a soft poll: we don't assert here, test 5 will verify.
+    local onboard_nav_done=false
     for _i in $(seq 1 90); do
       local current_url
       current_url=$(agent-browser get url 2>/dev/null || true)
       if [[ "$current_url" =~ /agents/ ]] && [[ ! "$current_url" =~ onboarding ]]; then
         echo "# Navigated to agents page after onboarding: $current_url" >&3
+        onboard_nav_done=true
         break
       fi
       sleep 1
     done
-    # Log current URL and page state for diagnostics when navigation is slow
-    local post_click_url
-    post_click_url=$(agent-browser get url 2>/dev/null || true)
-    echo "# URL after Continue in web poll: $post_click_url" >&3
-    local post_click_snap
-    post_click_snap=$(full_snapshot)
-    echo "# Page state after poll: ${post_click_snap:0:500}" >&3
+    if [[ "$onboard_nav_done" != "true" ]]; then
+      local diag_url
+      diag_url=$(agent-browser get url 2>/dev/null || true)
+      local diag_snap
+      diag_snap=$(full_snapshot)
+      echo "# DIAGNOSTIC - final URL: $diag_url" >&3
+      echo "# DIAGNOSTIC - page content: ${diag_snap:0:500}" >&3
+    fi
+    assert [ "$onboard_nav_done" = "true" ]
     step_screenshot "onboard-step4-done"
   fi
 
@@ -332,15 +335,9 @@ teardown_file() {
   # gives ample headroom; the skill-sync step before this job ensures skills
   # are cached so provisioning completes quickly after the click).
   local chat_loaded=false
-  local _poll_count=0
   for _i in $(seq 1 120); do
     local current_url
     current_url=$(agent-browser get url 2>/dev/null || true)
-    _poll_count=$((_poll_count + 1))
-    # Log URL every 10 seconds for diagnostics
-    if (( _poll_count % 10 == 0 )); then
-      echo "# Poll ${_poll_count}s - URL: $current_url" >&3
-    fi
     if [[ "$current_url" =~ /agents/.+/chat ]]; then
       echo "# Chat URL detected: $current_url" >&3
       chat_loaded=true

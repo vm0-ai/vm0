@@ -228,7 +228,7 @@ If tests timeout, investigate why:
 
 ### CLI E2E Timeout
 
-The `cli-e2e` jobs have a **maximum timeout** (5 minutes for serial, 8 minutes for browser and runner tests). If tests exceed this limit, GitHub Actions will **cancel** the job (not fail). **Cancelled status is NOT acceptable for merge** - treat it as a failure and investigate the cause.
+The `cli-e2e` jobs have a **maximum timeout** (5 minutes for serial, 16 minutes for browser tests, 8 minutes for runner tests). If tests exceed this limit, GitHub Actions will **cancel** the job (not fail). **Cancelled status is NOT acceptable for merge** - treat it as a failure and investigate the cause.
 
 ### Merge Requirements
 
