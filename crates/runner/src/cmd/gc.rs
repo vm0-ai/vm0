@@ -1682,4 +1682,67 @@ mod tests {
         assert_eq!(dirs.len(), 1);
         assert_eq!(dirs[0], PathBuf::from("/data/runner-01"));
     }
+
+    #[test]
+    fn discover_dead_runner_base_dirs_skips_whitespace_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let locks_dir = home.locks_dir();
+        std::fs::create_dir_all(&locks_dir).unwrap();
+
+        // Whitespace-only content should be treated as empty
+        std::fs::write(locks_dir.join("base-dir-ws-only.lock"), "  \n\t\n").unwrap();
+
+        let dirs = discover_dead_runner_base_dirs(&home);
+        assert!(dirs.is_empty());
+    }
+
+    #[tokio::test]
+    async fn gc_workspace_orphans_multiple_base_dirs() {
+        use std::fs::FileTimes;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let locks_dir = home.locks_dir();
+        std::fs::create_dir_all(&locks_dir).unwrap();
+
+        // Two distinct base_dirs, each with an old orphaned workspace
+        let base_dir_a = dir.path().join("runner-a");
+        let ws_a = base_dir_a.join("workspaces").join("run-aaa");
+        std::fs::create_dir_all(&ws_a).unwrap();
+        std::fs::write(ws_a.join("cow.img"), vec![0u8; 4096]).unwrap();
+
+        let base_dir_b = dir.path().join("runner-b");
+        let ws_b = base_dir_b.join("workspaces").join("run-bbb");
+        std::fs::create_dir_all(&ws_b).unwrap();
+        std::fs::write(ws_b.join("cow.img"), vec![0u8; 4096]).unwrap();
+
+        // Register both in separate lock files
+        std::fs::write(
+            locks_dir.join("base-dir-aaa.lock"),
+            base_dir_a.to_str().unwrap(),
+        )
+        .unwrap();
+        std::fs::write(
+            locks_dir.join("base-dir-bbb.lock"),
+            base_dir_b.to_str().unwrap(),
+        )
+        .unwrap();
+
+        // Age both workspaces past GC_MIN_AGE
+        let old_time = SystemTime::now() - Duration::from_secs(3600);
+        for ws in [&ws_a, &ws_b] {
+            std::fs::File::open(ws)
+                .unwrap()
+                .set_times(FileTimes::new().set_modified(old_time))
+                .unwrap();
+        }
+
+        let (cleaned, freed) = gc_workspace_orphans(&home, false).await.unwrap();
+
+        assert_eq!(cleaned, 2, "both orphans should be cleaned");
+        assert!(!ws_a.exists(), "workspace A should be deleted");
+        assert!(!ws_b.exists(), "workspace B should be deleted");
+        assert!(freed > 0 || cfg!(target_os = "macos"));
+    }
 }
