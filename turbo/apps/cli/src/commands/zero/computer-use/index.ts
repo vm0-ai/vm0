@@ -61,6 +61,23 @@ export const zeroComputerUseCommand = new Command()
   .addHelpText(
     "after",
     `
+Coordinate System:
+  All coordinate parameters use macOS logical coordinates (points), not physical
+  pixels. On Retina displays (scaleFactor: 2), a 2880×1800 physical screen has
+  logical dimensions of 1440×900. Use the "info" command to check your screen's
+  logical dimensions and scale factor.
+
+  The "screenshot" command returns an image at logical resolution. The "zoom"
+  command accepts a region in logical coordinates but returns an image at physical
+  resolution (logical size × scaleFactor), providing higher detail for precise
+  element location.
+
+  Recommended AI agent workflow:
+    1. screenshot          — get a screen overview at logical resolution
+    2. zoom --x --y ...    — zoom into a region of interest for pixel-level detail
+    3. Calculate the logical coordinates of the target element
+    4. Execute click/type operations using those logical coordinates
+
 Examples:
   Start the host daemon (on macOS):  zero computer-use host start
   Stop the host daemon:              zero computer-use host stop
