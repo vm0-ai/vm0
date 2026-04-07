@@ -75,11 +75,20 @@ const router = tsr.router(onboardingSetupContract, {
       }
     }
 
-    // Parallel: model provider + compose + org name update (all independent)
+    // Start org name update in parallel (don't await yet)
+    const orgNamePromise = body.workspaceName?.trim()
+      ? clerkClient().then((client) => {
+          return client.organizations.updateOrganization(org.orgId, {
+            name: body.workspaceName!.trim(),
+          });
+        })
+      : undefined;
+
+    // Parallel: model provider + compose (independent)
     const agentName = crypto.randomUUID();
     const content = buildComposeContent(agentName);
 
-    const parallelOps: Promise<unknown>[] = [
+    const [, composeResult] = await Promise.all([
       upsertOrgNoSecretModelProvider(org.orgId, "vm0", "claude-sonnet-4.6"),
       serverSideCompose({
         userId,
@@ -87,18 +96,10 @@ const router = tsr.router(onboardingSetupContract, {
         content,
         instructions: SEED_INSTRUCTIONS,
       }),
-    ];
+    ]);
 
-    if (body.workspaceName?.trim()) {
-      const name = body.workspaceName.trim();
-      parallelOps.push(
-        clerkClient().then((client) => {
-          return client.organizations.updateOrganization(org.orgId, { name });
-        }),
-      );
-    }
-
-    const [, composeResult] = await Promise.all(parallelOps);
+    // Await org name update (already running in parallel)
+    if (orgNamePromise) await orgNamePromise;
 
     if (!composeResult) {
       return {
