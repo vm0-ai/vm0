@@ -1,5 +1,6 @@
 import { useGet, useSet } from "ccstate-react";
 import { detach, Reason } from "../../../../signals/utils";
+import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import {
   copyStatus$,
   copyToClipboard$,
@@ -8,6 +9,7 @@ import {
 export function ClaudeCodeSetupPrompt() {
   const copyStatus = useGet(copyStatus$);
   const copyToClipboard = useSet(copyToClipboard$);
+  const pageSignal = useGet(pageSignal$);
 
   return (
     <p className="text-xs text-muted-foreground">
@@ -15,7 +17,10 @@ export function ClaudeCodeSetupPrompt() {
       <code
         className="cursor-pointer rounded border border-border bg-gray-50 px-1 py-0.5 font-mono hover:bg-gray-100 active:bg-gray-200"
         onClick={() => {
-          detach(copyToClipboard("claude setup-token"), Reason.DomCallback);
+          detach(
+            copyToClipboard("claude setup-token", pageSignal),
+            Reason.DomCallback,
+          );
         }}
         title="Click to copy"
       >
