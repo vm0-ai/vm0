@@ -3,6 +3,7 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
   SheetHeader,
   SheetTitle,
   SheetFooter,
@@ -260,7 +261,7 @@ export function FirewallPermissionsDrawer({
         return !open && onClose();
       }}
     >
-      <SheetContent side="right" aria-describedby={undefined}>
+      <SheetContent side="right">
         <SheetHeader>
           <div className="flex items-center gap-3">
             <ConnectorIcon type={connectorType} size={24} />
@@ -271,6 +272,10 @@ export function FirewallPermissionsDrawer({
               </span>
             </SheetTitle>
           </div>
+          <SheetDescription>
+            Configure which actions this agent is allowed to perform via this
+            connector.
+          </SheetDescription>
         </SheetHeader>
 
         {!config ? (

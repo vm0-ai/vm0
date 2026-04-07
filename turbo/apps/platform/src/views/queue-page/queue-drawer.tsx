@@ -1,6 +1,13 @@
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, Button } from "@vm0/ui";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  Button,
+} from "@vm0/ui";
 import { IconCrown } from "@tabler/icons-react";
 import {
   queueDrawerOpen$,
@@ -229,6 +236,9 @@ export function QueueDrawer() {
       >
         <SheetHeader className="shrink-0">
           <SheetTitle>Your agent is waiting in line</SheetTitle>
+          <SheetDescription>
+            View your position in the queue and upgrade to skip the wait.
+          </SheetDescription>
         </SheetHeader>
 
         <div className="flex-1 min-h-0 overflow-y-auto -mx-6 px-6 -mb-6 pb-6">
