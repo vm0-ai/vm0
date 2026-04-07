@@ -6,7 +6,7 @@ import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
-import { reloadChatThreads$ } from "../zero-page/zero-chat.ts";
+import { reloadChatThreads$ } from "../agent-chat.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 
 export const setupNetworkInsightsPage$ = command(
