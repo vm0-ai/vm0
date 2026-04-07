@@ -376,4 +376,92 @@ describe("firewall allow page - member request form", () => {
     const textarea = screen.getByRole("textbox");
     expect(textarea).toHaveValue("Need PR access for CI");
   });
+
+  it("fw-d-029: Reason textarea empty when URL has no reason param", async () => {
+    setupMemberContext();
+    mockFirewallRequests();
+
+    await setupPage({
+      context,
+      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read&action=deny`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("textbox")).toBeInTheDocument();
+    });
+
+    const textarea = screen.getByRole("textbox");
+    expect(textarea).toHaveValue("");
+  });
+
+  it("fw-d-030: Reason with special characters decoded from URL", async () => {
+    setupMemberContext();
+    mockFirewallRequests();
+
+    await setupPage({
+      context,
+      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read&action=deny&reason=Need+access+%26+permissions`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("textbox")).toBeInTheDocument();
+    });
+
+    const textarea = screen.getByRole("textbox");
+    expect(textarea).toHaveValue("Need access & permissions");
+  });
+
+  it("fw-d-031: Pre-filled reason can be edited before submission", async () => {
+    let requestBody: Record<string, unknown> | undefined;
+    server.use(
+      http.post("*/api/zero/firewall-access-requests", async ({ request }) => {
+        requestBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(
+          {
+            id: "d0000000-0000-4000-a000-000000000099",
+            agentId: AGENT_ID,
+            firewallRef: "github",
+            permission: "issues:read",
+            action: "deny",
+            method: null,
+            path: null,
+            reason: "Edited reason",
+            status: "pending",
+            requesterUserId: "user_abc",
+            requesterName: null,
+            resolvedBy: null,
+            resolvedAt: null,
+            createdAt: "2026-04-03T00:00:00Z",
+          },
+          { status: 201 },
+        );
+      }),
+    );
+    setupMemberContext();
+    mockFirewallRequests();
+
+    await setupPage({
+      context,
+      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read&action=deny&reason=Original+reason`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("textbox")).toBeInTheDocument();
+    });
+
+    const user = userEvent.setup();
+    const textarea = screen.getByRole("textbox");
+    await user.clear(textarea);
+    await user.type(textarea, "Edited reason");
+
+    await user.click(screen.getByText("Request approval"));
+
+    await waitFor(() => {
+      expect(requestBody).toBeDefined();
+    });
+
+    expect(requestBody).toMatchObject({
+      reason: "Edited reason",
+    });
+  });
 });

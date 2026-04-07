@@ -117,4 +117,60 @@ describe("zero doctor firewall-deny command", () => {
       );
     });
   });
+
+  describe("next-step command format", () => {
+    it("should include the exact firewall ref in the suggested command", async () => {
+      await firewallDenyCommand.parseAsync([
+        "node",
+        "cli",
+        "github",
+        "--method",
+        "GET",
+        "--path",
+        "/repos/owner/repo/pulls",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      // The suggested command should contain the ref, permission, --enable, and --reason placeholder
+      expect(logCalls).toMatch(
+        /zero doctor firewall-permissions-change github --permission \S+ --enable --reason/,
+      );
+    });
+
+    it("should not suggest firewall-permissions-change when no permission matches", async () => {
+      await firewallDenyCommand.parseAsync([
+        "node",
+        "cli",
+        "github",
+        "--method",
+        "PATCH",
+        "--path",
+        "/totally/unknown/endpoint",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).not.toContain("firewall-permissions-change");
+      expect(logCalls).not.toContain("--reason");
+    });
+
+    it("should not generate any platform URL", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-1");
+
+      await firewallDenyCommand.parseAsync([
+        "node",
+        "cli",
+        "github",
+        "--method",
+        "GET",
+        "--path",
+        "/repos/owner/repo/pulls",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).not.toContain("app.vm0.ai");
+      expect(logCalls).not.toContain("[Manage");
+      expect(logCalls).not.toContain("[Request");
+    });
+  });
 });
