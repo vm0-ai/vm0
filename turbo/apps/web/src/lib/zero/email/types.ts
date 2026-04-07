@@ -36,7 +36,9 @@ interface DeveloperSupportTemplate {
     description: string;
     reference: string;
     userId: string;
+    userEmail: string;
     orgId: string;
+    orgName: string;
     runId: string;
     downloadUrl: string;
     expiresAt: string;
