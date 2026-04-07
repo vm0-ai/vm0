@@ -1,5 +1,40 @@
 # Changelog
 
+## [9.103.1](https://github.com/vm0-ai/vm0/compare/cli-v9.103.0...cli-v9.103.1) (2026-04-07)
+
+
+### Refactoring
+
+* redesign firewall allow focused views as approval cards ([#7712](https://github.com/vm0-ai/vm0/issues/7712)) ([3a34350](https://github.com/vm0-ai/vm0/commit/3a3435054b8affe16ca1a0329d6ffaf1f28012ca))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.155.1
+
+## [9.103.0](https://github.com/vm0-ai/vm0/compare/cli-v9.102.10...cli-v9.103.0) (2026-04-07)
+
+
+### Features
+
+* add directed authorize page for missing user-connector flow ([#7893](https://github.com/vm0-ai/vm0/issues/7893)) ([e271f4c](https://github.com/vm0-ai/vm0/commit/e271f4c85bb5c6e92c50d68fea0eb1b023a1cfba))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.155.0
+
+## [9.102.10](https://github.com/vm0-ai/vm0/compare/cli-v9.102.9...cli-v9.102.10) (2026-04-07)
+
+
+### Bug Fixes
+
+* add validation error logging and client-side skill name checks ([#8109](https://github.com/vm0-ai/vm0/issues/8109)) ([#8283](https://github.com/vm0-ai/vm0/issues/8283)) ([51d259a](https://github.com/vm0-ai/vm0/commit/51d259a9de2d7e1f8932fb85fb6759b4e2085c07))
+
 ## [9.102.9](https://github.com/vm0-ai/vm0/compare/cli-v9.102.8...cli-v9.102.9) (2026-04-07)
 
 

@@ -122,7 +122,7 @@ describe("GET /api/zero/connectors/search", () => {
     expect(neon.authMethods).not.toContain("oauth");
   });
 
-  it("should show feature-flagged connector when orgId matches STAFF_ORG_ID_HASHES", async () => {
+  it("should hide feature-flagged connector when feature is disabled", async () => {
     mockClerk({
       userId: "random-non-staff-user",
       orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
@@ -131,12 +131,11 @@ describe("GET /api/zero/connectors/search", () => {
     expect(response.status).toBe(200);
     const data = await response.json();
 
-    // computer has a feature flag and is only visible to staff
-    // The orgId matches STAFF_ORG_ID_HASHES, so it should be visible
+    // computer has a feature flag (ComputerConnector) that is disabled
     const computer = data.connectors.find((c: { id: string }) => {
       return c.id === "computer";
     });
-    expect(computer).toBeDefined();
+    expect(computer).toBeUndefined();
   });
 
   it("should include connectors without feature flags", async () => {

@@ -5,9 +5,13 @@ import { pathParams$, searchParams$, updateSearchParams$ } from "../route.ts";
 import { createCursorPagination } from "../cursor-pagination.ts";
 import { zeroOnboardingStatus$ } from "../zero-page/zero-onboarding.ts";
 import { zeroClient$ } from "../api-client.ts";
-import { createRunLoop, pollInterval$ } from "../zero-page/polling.ts";
+import {
+  createRunLoop,
+  fibDelays$,
+  pollInterval$,
+  setLoop,
+} from "../zero-page/polling.ts";
 import { accept } from "../../lib/accept.ts";
-import { delay } from "signal-timers";
 
 // ---------------------------------------------------------------------------
 // Filters — URL-derived
@@ -246,13 +250,14 @@ export const setupActivityLogLoop$ = command(
 
     const run = createRunLoop(runId);
     set(internalActiveRunLoop$, run);
-    while (true) {
-      const finished = await set(run.checkFinished$, signal);
-      if (finished) {
-        break;
-      }
-      await delay(get(pollInterval$), { signal });
-    }
+    await setLoop(
+      (sig) => {
+        return set(run.checkFinished$, sig);
+      },
+      get(pollInterval$),
+      signal,
+      get(fibDelays$),
+    );
   },
 );
 

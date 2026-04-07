@@ -577,6 +577,7 @@ export function ZeroChatComposer({
               onChange={(e) => {
                 return onInputChange(e.target.value);
               }}
+              enterKeyHint="enter"
               onKeyDown={handleKeyDown}
               onCompositionStart={onCompositionStart}
               onCompositionEnd={onCompositionEnd}

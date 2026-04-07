@@ -34,6 +34,7 @@ function formatRequest(
     agentId: row.agentId,
     firewallRef: row.firewallRef,
     permission: row.permission,
+    action: row.action,
     method: row.method ?? null,
     path: row.path ?? null,
     reason: row.reason ?? null,
@@ -112,7 +113,7 @@ const createRouter = tsr.router(firewallAccessRequestsCreateContract, {
       };
     }
 
-    // Dedup: check for existing pending request with same (agent, ref, permission, requester)
+    // One request per (agent, ref, permission, action, requester) — reuse existing
     const [existing] = await globalThis.services.db
       .select()
       .from(firewallAccessRequests)
@@ -121,22 +122,28 @@ const createRouter = tsr.router(firewallAccessRequestsCreateContract, {
           eq(firewallAccessRequests.agentId, body.agentId),
           eq(firewallAccessRequests.firewallRef, body.firewallRef),
           eq(firewallAccessRequests.permission, body.permission),
+          eq(firewallAccessRequests.action, body.action),
           eq(firewallAccessRequests.requesterUserId, member.userId),
-          eq(firewallAccessRequests.status, "pending"),
         ),
       )
       .limit(1);
 
     if (existing) {
-      // Update reason instead of creating new
       const [updated] = await globalThis.services.db
         .update(firewallAccessRequests)
-        .set({ reason: body.reason ?? existing.reason })
+        .set({
+          reason: body.reason ?? existing.reason,
+          method: body.method ?? existing.method,
+          path: body.path ?? existing.path,
+          status: "pending",
+          resolvedBy: null,
+          resolvedAt: null,
+        })
         .where(eq(firewallAccessRequests.id, existing.id))
         .returning();
 
       log.info(
-        `Updated existing firewall access request: ${existing.id} for agent: ${body.agentId}`,
+        `Reused firewall access request: ${existing.id} (was ${existing.status}) for agent: ${body.agentId}`,
       );
 
       return {
@@ -145,7 +152,7 @@ const createRouter = tsr.router(firewallAccessRequestsCreateContract, {
       };
     }
 
-    // Create new request
+    // Create new request (first time for this combination)
     const [created] = await globalThis.services.db
       .insert(firewallAccessRequests)
       .values({
@@ -154,6 +161,7 @@ const createRouter = tsr.router(firewallAccessRequestsCreateContract, {
         requesterUserId: member.userId,
         firewallRef: body.firewallRef,
         permission: body.permission,
+        action: body.action,
         method: body.method,
         path: body.path,
         reason: body.reason,
@@ -183,13 +191,49 @@ const listRouter = tsr.router(firewallAccessRequestsListContract, {
 
     const { org, member } = await resolveOrg(authCtx);
 
-    const { agentId, status } = query;
+    const { agentId, requestId, status } = query;
+
+    if (!agentId && !requestId) {
+      return {
+        status: 400 as const,
+        body: {
+          error: {
+            message: "Either agentId or requestId is required",
+            code: "VALIDATION_ERROR",
+          },
+        },
+      };
+    }
+
+    // Fetch by requestId — return single-element array
+    if (requestId) {
+      const [row] = await globalThis.services.db
+        .select()
+        .from(firewallAccessRequests)
+        .where(
+          and(
+            eq(firewallAccessRequests.id, requestId),
+            eq(firewallAccessRequests.orgId, org.orgId),
+          ),
+        )
+        .limit(1);
+
+      if (!row) {
+        return { status: 200 as const, body: [] };
+      }
+
+      const nameMap = await resolveUserNames([row.requesterUserId]);
+      return {
+        status: 200 as const,
+        body: [formatRequest(row, nameMap)],
+      };
+    }
 
     // Look up agent owner
     const [agent] = await globalThis.services.db
       .select({ owner: zeroAgents.owner })
       .from(zeroAgents)
-      .where(and(eq(zeroAgents.orgId, org.orgId), eq(zeroAgents.id, agentId)))
+      .where(and(eq(zeroAgents.orgId, org.orgId), eq(zeroAgents.id, agentId!)))
       .limit(1);
 
     const isOwnerOrAdmin =
@@ -197,7 +241,7 @@ const listRouter = tsr.router(firewallAccessRequestsListContract, {
 
     // Build conditions
     const conditions = [
-      eq(firewallAccessRequests.agentId, agentId),
+      eq(firewallAccessRequests.agentId, agentId!),
       eq(firewallAccessRequests.orgId, org.orgId),
     ];
 
@@ -315,7 +359,7 @@ const resolveRouter = tsr.router(firewallAccessRequestsResolveContract, {
           ...currentPolicies,
           [existing.firewallRef]: {
             ...refPolicies,
-            [existing.permission]: "allow",
+            [existing.permission]: existing.action,
           },
         };
 

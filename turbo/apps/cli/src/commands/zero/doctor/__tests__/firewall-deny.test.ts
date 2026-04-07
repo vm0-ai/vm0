@@ -54,7 +54,7 @@ describe("zero doctor firewall-deny command", () => {
       );
       expect(logCalls).toContain('covered by the "');
       expect(logCalls).toMatch(
-        /\[Allow GitHub access\]\(https:\/\/app\.vm0\.ai\/agents\/agent-abc-123\/permissions\?/,
+        /\[Manage GitHub firewall\]\(https:\/\/app\.vm0\.ai\/agents\/agent-abc-123\/permissions\?/,
       );
       expect(logCalls).toContain("ref=github");
       expect(logCalls).toContain("permission=");
@@ -62,7 +62,7 @@ describe("zero doctor firewall-deny command", () => {
   });
 
   describe("known ref with no matching permission", () => {
-    it("should output URL without permission param for unmatched path", async () => {
+    it("should output no-permission message for unmatched path", async () => {
       vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
       vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
 
@@ -129,8 +129,8 @@ describe("zero doctor firewall-deny command", () => {
       expect(logCalls).toContain("AS THE USER's identity");
       expect(logCalls).toContain("zero slack message send");
       expect(logCalls).toContain("Only request user approval");
-      // Should still show the approval URL
-      expect(logCalls).toContain("[Allow Slack access]");
+      // Should still show the approval URL via outputPermissionChangeMessage
+      expect(logCalls).toContain("[Manage Slack firewall]");
     });
 
     it("should not output bot guidance for non-chat:write slack permissions", async () => {
@@ -216,8 +216,8 @@ describe("zero doctor firewall-deny command", () => {
     });
   });
 
-  describe("role-aware messaging", () => {
-    it("should output direct allow message for admin", async () => {
+  describe("role-aware messaging (delegates to outputPermissionChangeMessage)", () => {
+    it("should output direct enable message for admin", async () => {
       vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
@@ -238,9 +238,8 @@ describe("zero doctor firewall-deny command", () => {
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain(
-        "You can allow this permission directly: [Manage GitHub firewall]",
-      );
+      expect(logCalls).toContain("You can enable the");
+      expect(logCalls).toContain("[Manage GitHub firewall]");
     });
 
     it("should output request access message for member", async () => {
@@ -265,11 +264,11 @@ describe("zero doctor firewall-deny command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain(
-        "This change requires admin approval. Request access at: [Request GitHub access]",
+        "Permission changes require admin approval. Request access at: [Request GitHub access]",
       );
     });
 
-    it("should output direct allow message for member who is agent owner", async () => {
+    it("should output direct enable message for member who is agent owner", async () => {
       const payload = Buffer.from(
         JSON.stringify({
           userId: "owner-user-1",
@@ -312,9 +311,8 @@ describe("zero doctor firewall-deny command", () => {
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain(
-        "You can allow this permission directly: [Manage GitHub firewall]",
-      );
+      expect(logCalls).toContain("You can enable the");
+      expect(logCalls).toContain("[Manage GitHub firewall]");
     });
 
     it("should output fallback message when org API fails", async () => {
@@ -341,9 +339,8 @@ describe("zero doctor firewall-deny command", () => {
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain(
-        "Ask the user to allow it at: [Allow GitHub access]",
-      );
+      expect(logCalls).toContain("To enable the");
+      expect(logCalls).toContain("[Manage GitHub firewall]");
     });
   });
 

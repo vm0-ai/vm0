@@ -1,36 +1,21 @@
 import { command } from "ccstate";
-import { createElement } from "react";
-import { SidebarLayout } from "../../views/zero-page/sidebar-layout.tsx";
-import { QueuePage } from "../../views/queue-page/queue-page.tsx";
-import { updateDocumentTitle$ } from "../document-title.ts";
-import { updatePage$ } from "../react-router.ts";
 import { logger } from "../log.ts";
-
-import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
-import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
-import { reloadChatThreads$ } from "../zero-page/zero-chat.ts";
+import { detachedNavigateTo$ } from "../route.ts";
+import { openQueueDrawer$ } from "./queue-drawer-state.ts";
 import { startQueuePolling$ } from "./queue-signals.ts";
-import { hideAppSkeleton$ } from "../app-skeleton.ts";
 
 const L = logger("QueuePage");
 
-export const setupQueuePage$ = command(async ({ set }, signal: AbortSignal) => {
-  set(
-    updatePage$,
-    createElement(SidebarLayout, null, createElement(QueuePage)),
-  );
-  set(updateDocumentTitle$, "Queue");
-  await set(initZeroOnboarding$, signal);
-  signal.throwIfAborted();
-  await set(hideAppSkeleton$, signal);
+/**
+ * When navigating to /queues, redirect to home and open the queue drawer.
+ * Queue polling is started so the drawer has fresh data.
+ */
+export const setupQueuePage$ = command(({ set }, signal: AbortSignal) => {
+  // Open drawer and redirect to home
+  set(openQueueDrawer$);
+  set(detachedNavigateTo$, "/");
 
-  if (await set(onboardGuard$, signal)) {
-    return;
-  }
-
-  set(reloadChatThreads$);
-  // startQueuePolling$ is a long-running daemon loop — fire-and-forget so
-  // the setup completes and the page renders.
+  // Start polling so the drawer gets data
   set(startQueuePolling$, signal).catch((error: unknown) => {
     if (error instanceof Error && error.name === "AbortError") {
       return;

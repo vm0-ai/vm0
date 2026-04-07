@@ -3,7 +3,7 @@ import {
   createSafeErrorHandler,
   tsr,
 } from "../../../../../../src/lib/ts-rest-handler";
-import { zeroRunNetworkLogsContract } from "@vm0/core";
+import { zeroRunNetworkLogsContract, type AxiomNetworkEvent } from "@vm0/core";
 import { initServices } from "../../../../../../src/lib/init-services";
 import {
   requireAuth,
@@ -16,39 +16,6 @@ import {
   getDatasetName,
   DATASETS,
 } from "../../../../../../src/lib/shared/axiom";
-
-/**
- * Axiom network event (MITM proxy)
- * [NETWORK_LOG_FIELDS] — keep in sync with all network log schemas
- */
-interface AxiomNetworkEvent {
-  _time: string;
-  runId: string;
-  userId: string;
-  type?: string;
-  action?: "ALLOW" | "DENY";
-  host?: string;
-  port?: number;
-  method?: string;
-  url?: string;
-  status?: number;
-  latency_ms?: number;
-  request_size?: number;
-  response_size?: number;
-  firewall_base?: string;
-  firewall_name?: string;
-  firewall_ref?: string;
-  firewall_permission?: string;
-  firewall_rule_match?: string;
-  firewall_params?: Record<string, string>;
-  firewall_error?: string;
-  auth_resolved_secrets?: string[];
-  auth_refreshed_connectors?: string[];
-  auth_refreshed_secrets?: string[];
-  auth_cache_hit?: boolean;
-  auth_url_rewrite?: boolean;
-  error?: string;
-}
 
 const router = tsr.router(zeroRunNetworkLogsContract, {
   getNetworkLogs: async ({ params, query, headers }) => {

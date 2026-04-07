@@ -306,6 +306,21 @@ export const setPermissionDialogType$ = command(
 );
 
 // ---------------------------------------------------------------------------
+// Standalone mode detection
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns true when the app is running as an installed PWA (standalone display mode).
+ * In standalone mode, window.open() with popup features is blocked by iOS Safari.
+ */
+export function isStandaloneMode(): boolean {
+  return window.matchMedia("(display-mode: standalone)").matches;
+}
+
+/** Maximum polling duration in standalone mode (10 minutes). */
+export const STANDALONE_POLLING_TIMEOUT_MS = 10 * 60 * 1000;
+
+// ---------------------------------------------------------------------------
 // Connect command
 // ---------------------------------------------------------------------------
 
@@ -315,13 +330,18 @@ export const connectConnector$ = command(
 
     set(internalPollingType$, type);
 
+    const standalone = isStandaloneMode();
+
+    // In standalone (PWA) mode, omit popup features so iOS Safari opens the
+    // URL in the external browser instead of blocking it as a popup.
+    const popupFeatures = standalone ? undefined : "width=600,height=700";
     const authWindow = window.open(
       `${baseUrl}/api/zero/connectors/${type}/authorize`,
       "_blank",
-      "width=600,height=700",
+      popupFeatures,
     );
 
-    if (!authWindow) {
+    if (!authWindow && !standalone) {
       throw new Error("Failed to open authorization window");
     }
 
@@ -329,25 +349,58 @@ export const connectConnector$ = command(
     // The platform and OAuth callback page live on different origins
     // (app.* vs www.*), so BroadcastChannel cannot be used.
     let freshConnectors: ConnectorResponse[] = [];
-    while (true) {
-      await delay(2000, { signal });
+    const startTime = Date.now();
 
-      set(reloadConnectors$);
-      const { connectors: polled } = await get(connectors$);
-      signal.throwIfAborted();
-
-      if (
-        polled.some((c) => {
-          return c.type === type;
-        })
-      ) {
-        freshConnectors = polled;
-        break;
+    // In standalone mode, trigger an immediate poll when the user switches
+    // back to the PWA (after completing OAuth in external Safari).
+    let visibilityPollRequested = false;
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        visibilityPollRequested = true;
       }
+    };
+    if (standalone) {
+      document.addEventListener("visibilitychange", onVisibilityChange);
+    }
 
-      if (authWindow.closed) {
-        freshConnectors = polled;
-        break;
+    try {
+      while (true) {
+        if (!visibilityPollRequested) {
+          await delay(2000, { signal });
+        }
+        visibilityPollRequested = false;
+
+        set(reloadConnectors$);
+        const { connectors: polled } = await get(connectors$);
+        signal.throwIfAborted();
+
+        if (
+          polled.some((c) => {
+            return c.type === type;
+          })
+        ) {
+          freshConnectors = polled;
+          break;
+        }
+
+        // In non-standalone mode, exit when the popup window is closed.
+        if (authWindow?.closed) {
+          freshConnectors = polled;
+          break;
+        }
+
+        // In standalone mode, exit after timeout to avoid infinite polling.
+        if (
+          standalone &&
+          Date.now() - startTime >= STANDALONE_POLLING_TIMEOUT_MS
+        ) {
+          freshConnectors = polled;
+          break;
+        }
+      }
+    } finally {
+      if (standalone) {
+        document.removeEventListener("visibilitychange", onVisibilityChange);
       }
     }
 

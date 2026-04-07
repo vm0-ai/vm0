@@ -244,15 +244,28 @@ interface NgrokReservedDomainsPage {
 }
 
 /**
- * Find a reserved domain by name using CEL filter.
- * Matches the full domain name (e.g., "vm0-cu-abc123.ngrok-free.app").
+ * Known ngrok domain suffixes. The actual suffix depends on the account
+ * plan (paid vs free) and era (legacy vs current).
+ */
+const NGROK_DOMAIN_SUFFIXES = [
+  "ngrok.app",
+  "ngrok-free.app",
+  "ngrok-free.dev",
+  "ngrok.io",
+];
+
+/**
+ * Find a reserved domain by name using CEL `in` filter.
+ * Queries all known ngrok suffixes in a single API call.
  */
 async function findReservedDomainByName(
   apiKey: string,
   name: string,
 ): Promise<NgrokDomain | undefined> {
-  const domainName = `${name}.ngrok-free.app`;
-  const filterQuery = encodeURIComponent(`obj.domain == "${domainName}"`);
+  const candidates = NGROK_DOMAIN_SUFFIXES.map((suffix) => {
+    return `"${name}.${suffix}"`;
+  }).join(", ");
+  const filterQuery = encodeURIComponent(`obj.domain in [${candidates}]`);
   const response = await ngrokFetch(
     apiKey,
     `/reserved_domains?filter=${filterQuery}`,

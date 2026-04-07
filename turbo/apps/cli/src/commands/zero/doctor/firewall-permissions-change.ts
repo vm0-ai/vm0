@@ -20,6 +20,72 @@ function findPermissionInConfig(ref: string, permissionName: string): boolean {
   return false;
 }
 
+/**
+ * Core logic for outputting a firewall permission change message.
+ * Shared by both `firewall-permissions-change` and `firewall-deny` commands.
+ */
+export async function outputPermissionChangeMessage(
+  firewallRef: string,
+  permission: string,
+  action: "enable" | "disable",
+): Promise<void> {
+  const { label } =
+    CONNECTOR_TYPES[firewallRef as keyof typeof CONNECTOR_TYPES];
+
+  const platformOrigin = await getPlatformOrigin();
+  const agentId = process.env.ZERO_AGENT_ID;
+
+  const urlParams = new URLSearchParams({
+    ref: firewallRef,
+    permission,
+    action: action === "enable" ? "allow" : "deny",
+  });
+
+  const pagePath = agentId ? `/agents/${agentId}/permissions` : "/agents";
+  const url = `${platformOrigin}${pagePath}?${urlParams.toString()}`;
+
+  // Slack chat:write: strongly recommend bot-based messaging over user identity
+  if (
+    firewallRef === "slack" &&
+    permission === "chat:write" &&
+    action === "enable"
+  ) {
+    console.log("");
+    console.log(
+      "IMPORTANT: Granting chat:write allows sending messages AS THE USER's identity, not as a bot.",
+    );
+    console.log(
+      "Use `zero slack message send -c <channel> -t <text>` to send messages as the bot instead — this is the recommended approach for most use cases.",
+    );
+    console.log(
+      "Only request user approval below if acting as the user is specifically required.",
+    );
+    console.log("");
+  }
+
+  const role = agentId ? await resolveAgentRole(agentId) : "unknown";
+
+  if (role === "admin" || role === "owner") {
+    console.log(
+      `You can ${action} the "${permission}" permission directly: [Manage ${label} firewall](${url})`,
+    );
+  } else if (role === "member") {
+    if (action === "enable") {
+      console.log(
+        `Permission changes require admin approval. Request access at: [Request ${label} access](${url})`,
+      );
+    } else {
+      console.log(
+        `Permission changes require admin approval. Contact an org admin to disable this permission: [View ${label} firewall](${url})`,
+      );
+    }
+  } else {
+    console.log(
+      `To ${action} the "${permission}" permission on the ${label} firewall: [Manage ${label} firewall](${url})`,
+    );
+  }
+}
+
 export const firewallPermissionsChangeCommand = new Command()
   .name("firewall-permissions-change")
   .description("Request a firewall permission change (enable or disable)")
@@ -71,41 +137,12 @@ Notes:
           );
         }
 
-        const { label } = CONNECTOR_TYPES[firewallRef];
         const action = opts.enable ? "enable" : "disable";
-
-        const platformOrigin = await getPlatformOrigin();
-        const agentId = process.env.ZERO_AGENT_ID;
-
-        const urlParams = new URLSearchParams({
-          ref: firewallRef,
-          permission: opts.permission,
-        });
-
-        const pagePath = agentId ? `/agents/${agentId}/permissions` : "/agents";
-        const url = `${platformOrigin}${pagePath}?${urlParams.toString()}`;
-
-        const role = agentId ? await resolveAgentRole(agentId) : "unknown";
-
-        if (role === "admin" || role === "owner") {
-          console.log(
-            `You can ${action} the "${opts.permission}" permission directly: [Manage ${label} firewall](${url})`,
-          );
-        } else if (role === "member") {
-          if (action === "enable") {
-            console.log(
-              `Permission changes require admin approval. Request access at: [Request ${label} access](${url})`,
-            );
-          } else {
-            console.log(
-              `Permission changes require admin approval. Contact an org admin to disable this permission: [View ${label} firewall](${url})`,
-            );
-          }
-        } else {
-          console.log(
-            `To ${action} the "${opts.permission}" permission on the ${label} firewall: [Manage ${label} firewall](${url})`,
-          );
-        }
+        await outputPermissionChangeMessage(
+          firewallRef,
+          opts.permission,
+          action,
+        );
       },
     ),
   );

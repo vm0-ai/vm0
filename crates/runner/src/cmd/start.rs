@@ -100,7 +100,7 @@ pub async fn run_start(
         ))
     })?;
     let home = HomePaths::new()?;
-    let _base_dir_lock = lock::try_acquire(home.base_dir_lock(&base_dir_canonical))
+    let mut base_dir_lock = lock::try_acquire(home.base_dir_lock(&base_dir_canonical))
         .await
         .map_err(|e| {
             RunnerError::Config(format!(
@@ -108,6 +108,23 @@ pub async fn run_start(
                 runner_config.base_dir.display()
             ))
         })?;
+    // Write base_dir path into lock file so `runner gc` can discover workspace
+    // directories even after all processes for this runner have died.
+    {
+        use std::io::{Seek, Write};
+        if let Err(e) = base_dir_lock
+            .seek(std::io::SeekFrom::Start(0))
+            .and_then(|_| base_dir_lock.set_len(0))
+            .and_then(|_| {
+                base_dir_lock.write_all(base_dir_canonical.as_os_str().as_encoded_bytes())
+            })
+        {
+            tracing::warn!(
+                error = %e,
+                "failed to write base_dir into lock file — runner gc may not discover orphaned workspaces"
+            );
+        }
+    }
     // Shared locks on rootfs/snapshot per profile — allows `runner gc` to detect in-use resources.
     let mut _resource_locks = Vec::new();
     for profile in runner_config.profiles.values() {

@@ -1,5 +1,64 @@
 # Changelog
 
+## [0.196.0](https://github.com/vm0-ai/vm0/compare/app-v0.195.0...app-v0.196.0) (2026-04-07)
+
+
+### Features
+
+* render markdown tables as definition list on mobile ([#8292](https://github.com/vm0-ai/vm0/issues/8292)) ([ac2d3ad](https://github.com/vm0-ai/vm0/commit/ac2d3adafa9b246f357ba87f10416d91eae728f0))
+
+
+### Bug Fixes
+
+* handle oauth popup blocking in ios pwa standalone mode ([#8284](https://github.com/vm0-ai/vm0/issues/8284)) ([3ee86d8](https://github.com/vm0-ai/vm0/commit/3ee86d89ecacc019dffdc32f2ad97a8bf3cdc9bb))
+
+
+### Refactoring
+
+* redesign firewall allow focused views as approval cards ([#7712](https://github.com/vm0-ai/vm0/issues/7712)) ([3a34350](https://github.com/vm0-ai/vm0/commit/3a3435054b8affe16ca1a0329d6ffaf1f28012ca))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.155.1
+
+## [0.195.0](https://github.com/vm0-ai/vm0/compare/app-v0.194.0...app-v0.195.0) (2026-04-07)
+
+
+### Features
+
+* add resilient polling loop with fibonacci backoff for mobile background recovery ([#8295](https://github.com/vm0-ai/vm0/issues/8295)) ([d2f9dac](https://github.com/vm0-ai/vm0/commit/d2f9dac17041479a54e6d7ef3bb627f1103eca51))
+* **platform:** replace queue page with upsell side drawer ([#8242](https://github.com/vm0-ai/vm0/issues/8242)) ([b8a5039](https://github.com/vm0-ai/vm0/commit/b8a50391d3be510b0f30fa7e1d5a2ebceb08a233))
+
+
+### Bug Fixes
+
+* prevent enter key from sending message on mobile devices ([#8301](https://github.com/vm0-ai/vm0/issues/8301)) ([b501047](https://github.com/vm0-ai/vm0/commit/b501047260abb6bd06b232262761088330456eeb))
+
+## [0.194.0](https://github.com/vm0-ai/vm0/compare/app-v0.193.2...app-v0.194.0) (2026-04-07)
+
+
+### Features
+
+* add directed authorize page for missing user-connector flow ([#7893](https://github.com/vm0-ai/vm0/issues/7893)) ([e271f4c](https://github.com/vm0-ai/vm0/commit/e271f4c85bb5c6e92c50d68fea0eb1b023a1cfba))
+* **platform:** add lab page for feature switch management ([#8288](https://github.com/vm0-ai/vm0/issues/8288)) ([b87f833](https://github.com/vm0-ai/vm0/commit/b87f83385dffa46c4a5b60c736d32ed51cdd4bab))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.155.0
+
+## [0.193.2](https://github.com/vm0-ai/vm0/compare/app-v0.193.1...app-v0.193.2) (2026-04-07)
+
+
+### Bug Fixes
+
+* handle clipboard write rejection on mobile safari with fallback ([#8264](https://github.com/vm0-ai/vm0/issues/8264)) ([2d71cc6](https://github.com/vm0-ai/vm0/commit/2d71cc6834c40541de81d64e030792ea9431d557))
+
 ## [0.193.1](https://github.com/vm0-ai/vm0/compare/app-v0.193.0...app-v0.193.1) (2026-04-07)
 
 

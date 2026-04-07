@@ -18,6 +18,7 @@ import type { TsRestRequest } from "@ts-rest/serverless";
 import type { AppRouter } from "@ts-rest/core";
 import { flushLogs, logger } from "./shared/logger";
 import { ingestRequestLog, flushAxiom } from "./shared/axiom";
+import { isApiError } from "./shared/errors";
 
 // Re-export tsr and TsRestResponse for convenience
 export { tsr, TsRestResponse };
@@ -66,11 +67,17 @@ export function createSafeErrorHandler(
           validationError.pathParamsError ??
           validationError.bodyError ??
           validationError.queryError;
+        const sourceLabel = validationError.pathParamsError
+          ? "pathParams"
+          : validationError.bodyError
+            ? "body"
+            : "query";
         if (source) {
           const issue = source.issues[0];
           if (issue) {
             const path = issue.path.join(".");
             const message = path ? `${path}: ${issue.message}` : issue.message;
+            log.warn(`validation error (${sourceLabel}): ${message}`);
             return TsRestResponse.fromJson(
               { error: { message, code: "BAD_REQUEST" } },
               { status: 400 },
@@ -78,6 +85,15 @@ export function createSafeErrorHandler(
           }
         }
       }
+    }
+
+    // Application errors with explicit status codes (BadRequest, NotFound, etc.)
+    if (isApiError(err)) {
+      log.error(`${routeName} error:`, err);
+      return TsRestResponse.fromJson(
+        { error: { message: err.message, code: err.code } },
+        { status: err.statusCode },
+      );
     }
 
     // Non-validation errors: log full details server-side, return generic message

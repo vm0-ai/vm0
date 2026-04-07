@@ -36,6 +36,9 @@ export function useSendKeyHandler(onSend: () => void) {
     if (e.key !== "Enter") {
       return;
     }
+    if (window.matchMedia("(pointer: coarse)").matches) {
+      return;
+    }
     const shouldSend =
       mode === "enter"
         ? !e.shiftKey && !e.metaKey && !e.ctrlKey

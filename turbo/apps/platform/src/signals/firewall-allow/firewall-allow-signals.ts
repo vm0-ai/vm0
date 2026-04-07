@@ -6,13 +6,13 @@ import {
   zeroAgentFirewallPoliciesContract,
   zeroAgentsByIdContract,
   getConnectorFirewall,
-  getDefaultFirewallPolicies,
   isFirewallConnectorType,
   type FirewallPolicies,
   type FirewallPolicyValue,
 } from "@vm0/core";
+import { delay } from "signal-timers";
 import { zeroClient$ } from "../api-client.ts";
-import { pathParams$, searchParams$ } from "../route.ts";
+import { pathParams$, searchParams$, replaceSearchParams$ } from "../route.ts";
 import { accept } from "../../lib/accept.ts";
 
 // ---------------------------------------------------------------------------
@@ -39,6 +39,15 @@ export const firewallAllowMethod$ = computed((get) => {
 
 export const firewallAllowPath$ = computed((get) => {
   return get(searchParams$).get("path") ?? null;
+});
+
+export const firewallAllowAction$ = computed((get) => {
+  const action = get(searchParams$).get("action");
+  return action === "allow" || action === "deny" ? action : null;
+});
+
+export const firewallAllowRequestId$ = computed((get) => {
+  return get(searchParams$).get("request") ?? null;
 });
 
 // ---------------------------------------------------------------------------
@@ -94,25 +103,60 @@ export function extractPermissions(ref: string): FirewallPermission[] {
 
 const internalRequestsReload$ = state(0);
 
-export const firewallAccessRequests$ = computed(async (get) => {
+/** Fetch a specific request by ID (request mode) */
+export const firewallRequestById$ = computed(async (get) => {
+  get(internalRequestsReload$);
+  const requestId = get(firewallAllowRequestId$);
+  if (!requestId) {
+    return null;
+  }
+  const client = get(zeroClient$)(firewallAccessRequestsListContract);
+  const result = await accept(client.list({ query: { requestId } }), [200], {
+    toast: false,
+  });
+  return result.body[0] ?? null;
+});
+
+/** Find existing request for same agent+ref+permission (doctor mode, member redirect) */
+export const firewallExistingRequest$ = computed(async (get) => {
   get(internalRequestsReload$);
   const agentId = get(firewallAllowAgentId$);
   const ref = get(firewallAllowRef$);
-  if (!agentId || !ref) {
-    return [];
+  const permission = get(firewallAllowPermission$);
+  const requestId = get(firewallAllowRequestId$);
+  const action = get(firewallAllowAction$) ?? "allow";
+  // Only run in doctor mode (no requestId)
+  if (!agentId || !ref || !permission || requestId) {
+    return null;
   }
-
   const client = get(zeroClient$)(firewallAccessRequestsListContract);
-  const result = await accept(
-    client.list({ query: { agentId, status: "pending" } }),
-    [200],
-    { toast: false },
-  );
-
-  // Filter to only requests for this firewall ref
-  return result.body.filter((r) => {
-    return r.firewallRef === ref;
+  const result = await accept(client.list({ query: { agentId } }), [200], {
+    toast: false,
   });
+  // Find latest pending/rejected request for this ref+permission+action
+  const match = result.body
+    .filter((r) => {
+      return (
+        r.firewallRef === ref &&
+        r.permission === permission &&
+        r.action === action &&
+        (r.status === "pending" || r.status === "rejected")
+      );
+    })
+    .sort((a, b) => {
+      return b.createdAt.localeCompare(a.createdAt);
+    });
+  return match[0] ?? null;
+});
+
+// ---------------------------------------------------------------------------
+// URL: update request ID in URL
+// ---------------------------------------------------------------------------
+
+export const updateRequestIdInUrl$ = command(({ set }, requestId: string) => {
+  const params = new URLSearchParams();
+  params.set("request", requestId);
+  set(replaceSearchParams$, params);
 });
 
 // ---------------------------------------------------------------------------
@@ -159,7 +203,7 @@ const resolveAccessRequest$ = command(
 );
 
 // ---------------------------------------------------------------------------
-// Member: create access request
+// Member: create access request (returns request ID)
 // ---------------------------------------------------------------------------
 
 const createAccessRequest$ = command(
@@ -169,61 +213,38 @@ const createAccessRequest$ = command(
       agentId: string;
       firewallRef: string;
       permission: string;
+      action?: "allow" | "deny";
       method?: string;
       path?: string;
       reason?: string;
     },
     signal: AbortSignal,
-  ): Promise<void> => {
+  ): Promise<string> => {
     const client = get(zeroClient$)(firewallAccessRequestsCreateContract);
-    await accept(client.create({ body: params }), [201]);
+    const result = await accept(client.create({ body: params }), [201]);
     signal.throwIfAborted();
     set(internalRequestsReload$, (prev) => {
       return prev + 1;
     });
+    return result.body.id;
   },
 );
 
 // ---------------------------------------------------------------------------
-// UI state: AdminFocusedView
+// UI state: focused views
 // ---------------------------------------------------------------------------
 
 const internalAdminFocusedPolicyOverride$ = state<FirewallPolicyValue | null>(
   null,
 );
 
-export const adminFocusedPolicy$ = computed((get) => {
-  return get(internalAdminFocusedPolicyOverride$);
-});
-
-export const setAdminFocusedPolicy$ = command(
-  ({ set }, value: FirewallPolicyValue) => {
-    set(internalAdminFocusedPolicyOverride$, value);
-    set(internalAdminFocusedSaved$, false);
-  },
-);
-
-export const resetAdminFocusedState$ = command(({ set }) => {
-  set(internalAdminFocusedPolicyOverride$, null);
-  set(internalAdminFocusedSaved$, false);
-});
-
 const internalAdminFocusedSaved$ = state(false);
-
-export const adminFocusedSaved$ = computed((get) => {
-  return get(internalAdminFocusedSaved$);
-});
-
-const internalResolvingId$ = state<string | null>(null);
-
-export const resolvingId$ = computed((get) => {
-  return get(internalResolvingId$);
-});
 
 interface SaveAdminFocusedPolicyParams {
   agentId: string;
   ref: string;
   permissionName: string;
+  action: FirewallPolicyValue;
   agentFirewallPolicies: FirewallPolicies | null;
 }
 
@@ -233,16 +254,10 @@ export const saveAdminFocusedPolicy$ = command(
     params: SaveAdminFocusedPolicyParams,
     signal: AbortSignal,
   ): Promise<void> => {
-    const { agentId, ref, permissionName, agentFirewallPolicies } = params;
+    const { agentId, ref, permissionName, action, agentFirewallPolicies } =
+      params;
     const override = get(internalAdminFocusedPolicyOverride$);
-    const defaults = isFirewallConnectorType(ref)
-      ? getDefaultFirewallPolicies(ref)
-      : null;
-    const policy =
-      override ??
-      agentFirewallPolicies?.[ref]?.[permissionName] ??
-      defaults?.[permissionName] ??
-      "allow";
+    const policy = override ?? action;
     const fullPolicies: FirewallPolicies = {
       ...agentFirewallPolicies,
       [ref]: {
@@ -259,37 +274,39 @@ export const resolveAndUpdatePolicy$ = command(
   async (
     { set },
     requestId: string,
-    action: "approve" | "reject",
+    resolveAction: "approve" | "reject",
+    requestAction: "allow" | "deny",
     signal: AbortSignal,
   ): Promise<void> => {
-    set(internalResolvingId$, requestId);
-    try {
-      await set(resolveAccessRequest$, requestId, action, signal);
-      if (action === "approve") {
-        set(internalAdminFocusedPolicyOverride$, "allow");
-      }
-    } finally {
-      set(internalResolvingId$, null);
+    await set(resolveAccessRequest$, requestId, resolveAction, signal);
+    if (resolveAction === "approve") {
+      set(internalAdminFocusedPolicyOverride$, requestAction);
     }
   },
 );
 
-// ---------------------------------------------------------------------------
-// UI state: MemberFocusedView
-// ---------------------------------------------------------------------------
+const internalResendFormVisible$ = state(false);
 
-const internalShowForm$ = state(false);
-
-export const showForm$ = computed((get) => {
-  return get(internalShowForm$);
+export const resendFormVisible$ = computed((get) => {
+  return get(internalResendFormVisible$);
 });
 
-export const setShowForm$ = command(({ set }, value: boolean) => {
-  set(internalShowForm$, value);
-  if (!value) {
-    set(internalReason$, "");
-  }
+export const showResendForm$ = command(({ set }) => {
+  set(internalResendFormVisible$, true);
+  set(internalReason$, "");
 });
+
+export const resetFocusedState$ = command(({ set }) => {
+  set(internalAdminFocusedPolicyOverride$, null);
+  set(internalAdminFocusedSaved$, false);
+  set(internalReason$, "");
+  set(internalLinkCopied$, false);
+  set(internalResendFormVisible$, false);
+});
+
+// ---------------------------------------------------------------------------
+// UI state: member request form + copy link
+// ---------------------------------------------------------------------------
 
 const internalReason$ = state("");
 
@@ -301,9 +318,19 @@ export const setReason$ = command(({ set }, value: string) => {
   set(internalReason$, value);
 });
 
-export const resetMemberFocusedState$ = command(({ set }) => {
-  set(internalShowForm$, false);
-  set(internalReason$, "");
+const internalLinkCopied$ = state(false);
+
+export const linkCopied$ = computed((get) => {
+  return get(internalLinkCopied$);
+});
+
+export const copyLink$ = command(async ({ set }, signal: AbortSignal) => {
+  const url = globalThis.location.href;
+  await navigator.clipboard.writeText(url);
+  signal.throwIfAborted();
+  set(internalLinkCopied$, true);
+  await delay(2000, { signal });
+  set(internalLinkCopied$, false);
 });
 
 export const submitAccessRequest$ = command(
@@ -313,89 +340,15 @@ export const submitAccessRequest$ = command(
       agentId: string;
       firewallRef: string;
       permission: string;
+      action?: "allow" | "deny";
       method?: string;
       path?: string;
       reason?: string;
     },
     signal: AbortSignal,
   ): Promise<void> => {
-    await set(createAccessRequest$, params, signal);
-    set(internalShowForm$, false);
+    const requestId = await set(createAccessRequest$, params, signal);
     set(internalReason$, "");
-  },
-);
-
-// ---------------------------------------------------------------------------
-// UI state: AdminListView
-// ---------------------------------------------------------------------------
-
-const internalAdminListPolicyOverrides$ = state<
-  Record<string, FirewallPolicyValue>
->({});
-
-const internalAdminListInitKey$ = state("");
-
-export const adminListPolicies$ = computed((get) => {
-  return get(internalAdminListPolicyOverrides$);
-});
-
-export const syncAdminListPolicies$ = command(
-  (
-    { get, set },
-    permissions: FirewallPermission[],
-    ref: string,
-    agentFirewallPolicies: FirewallPolicies | null,
-  ) => {
-    const key = `${ref}:${JSON.stringify(agentFirewallPolicies?.[ref])}`;
-    if (get(internalAdminListInitKey$) === key) {
-      return;
-    }
-    set(internalAdminListInitKey$, key);
-    const defaults = isFirewallConnectorType(ref)
-      ? getDefaultFirewallPolicies(ref)
-      : null;
-    const result: Record<string, FirewallPolicyValue> = {};
-    for (const p of permissions) {
-      result[p.name] =
-        agentFirewallPolicies?.[ref]?.[p.name] ?? defaults?.[p.name] ?? "allow";
-    }
-    set(internalAdminListPolicyOverrides$, result);
-  },
-);
-
-export const setAdminListPolicy$ = command(
-  ({ set }, permissionName: string, value: FirewallPolicyValue) => {
-    set(internalAdminListPolicyOverrides$, (prev) => {
-      return { ...prev, [permissionName]: value };
-    });
-  },
-);
-
-export const setAdminListGroupPolicies$ = command(
-  ({ set }, permissionNames: string[], value: FirewallPolicyValue) => {
-    set(internalAdminListPolicyOverrides$, (prev) => {
-      const next = { ...prev };
-      for (const name of permissionNames) {
-        next[name] = value;
-      }
-      return next;
-    });
-  },
-);
-
-export const saveAdminListPolicies$ = command(
-  async (
-    { get, set },
-    agentId: string,
-    agentFirewallPolicies: FirewallPolicies | null,
-    ref: string,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const policies = get(internalAdminListPolicyOverrides$);
-    const fullPolicies: FirewallPolicies = {
-      ...agentFirewallPolicies,
-      [ref]: policies,
-    };
-    await set(saveFirewallPolicies$, agentId, fullPolicies, signal);
+    set(updateRequestIdInUrl$, requestId);
   },
 );

@@ -2,7 +2,7 @@
  * Display and conditional tests for firewall-allow-page.tsx.
  *
  * Covers agent ID resolution, firewall reference types, loading/error states,
- * and PolicyPill active/disabled states. Admin/member view branching and
+ * and admin/member confirmation card rendering. Admin/member view branching and
  * HTTP method/path display are already covered in firewall-allow-page.test.tsx.
  */
 import { describe, expect, it } from "vitest";
@@ -10,8 +10,10 @@ import { screen, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
-import { detach, Reason } from "../../../signals/utils.ts";
+import {
+  setupPage,
+  detachedSetupPage,
+} from "../../../__tests__/page-helper.ts";
 
 const context = testContext();
 
@@ -88,16 +90,24 @@ function setupMemberContext(agentOverrides: Partial<AgentResponse> = {}) {
   );
 }
 
+// NOTE: Tests that render the admin confirmation card (showing agent name,
+// connector label, etc.) must use `action=deny` in the URL so that the
+// effective policy ("allow" by default for github) doesn't match the
+// requested action. When they match the page shows the "Permissions updated"
+// result card instead of the confirmation card.
+
 describe("fw-d-001: agent ID renders from signal", () => {
   it("uses agentId from the URL path to load the correct agent", async () => {
     mockAgent(defaultAgent({ displayName: "Special Agent Smith" }));
     mockFirewallRequests();
     await setupPage({
       context,
-      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read`,
+      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read&action=deny`,
     });
     await waitFor(() => {
-      expect(screen.getByText(/Special Agent Smith/)).toBeInTheDocument();
+      expect(
+        screen.getAllByText(/Special Agent Smith/).length,
+      ).toBeGreaterThanOrEqual(1);
     });
   });
 });
@@ -108,10 +118,12 @@ describe("fw-d-005: agent display name renders", () => {
     mockFirewallRequests();
     await setupPage({
       context,
-      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read`,
+      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read&action=deny`,
     });
     await waitFor(() => {
-      expect(screen.getByText(/My Smart Bot/)).toBeInTheDocument();
+      expect(screen.getAllByText(/My Smart Bot/).length).toBeGreaterThanOrEqual(
+        1,
+      );
     });
   });
 
@@ -120,29 +132,32 @@ describe("fw-d-005: agent display name renders", () => {
     mockFirewallRequests();
     await setupPage({
       context,
-      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read`,
+      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read&action=deny`,
     });
     await waitFor(() => {
-      expect(screen.getByText(new RegExp(AGENT_ID))).toBeInTheDocument();
+      expect(
+        screen.getAllByText(new RegExp(AGENT_ID)).length,
+      ).toBeGreaterThanOrEqual(1);
     });
   });
 });
 
 describe("fw-d-006: connector label from CONNECTOR_TYPES renders", () => {
   it("resolves and displays the connector label for gmail", async () => {
+    mockAgent(defaultAgent());
     mockFirewallRequests();
     await setupPage({
       context,
-      path: `/agents/${AGENT_ID}/permissions?ref=gmail`,
+      path: `/agents/${AGENT_ID}/permissions?ref=gmail&permission=gmail&action=deny`,
     });
     await waitFor(() => {
-      expect(screen.getByText(/Gmail Firewall/)).toBeInTheDocument();
+      expect(screen.getAllByText(/Gmail/).length).toBeGreaterThanOrEqual(1);
     });
   });
 });
 
 describe("fw-d-007: loading state shows while agent loads", () => {
-  it("shows a loading state while the agent is being fetched", async () => {
+  it("shows a loading spinner while the agent is being fetched", async () => {
     let unblock!: () => void;
     server.use(
       http.get("*/api/zero/agents/:name", async ({ params }) => {
@@ -160,20 +175,21 @@ describe("fw-d-007: loading state shows while agent loads", () => {
     );
     mockFirewallRequests();
 
-    // Fire setupPage without awaiting — it blocks at get(firewallAllowAgent$) while
-    // the network response is delayed. The component renders and shows "Loading...".
-    const pagePromise = setupPage({
+    detachedSetupPage({
       context,
-      path: `/agents/${AGENT_ID}/permissions?ref=github`,
+      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read`,
     });
 
+    // The LoadingCard renders a spinner (animate-spin) — no text.
+    // Verify loading state by confirming the spinner is present and
+    // the final content ("Confirm" button) has not yet appeared.
     await waitFor(() => {
-      expect(screen.getByText("Loading...")).toBeInTheDocument();
+      const spinner = document.querySelector(".animate-spin");
+      expect(spinner).toBeInTheDocument();
     });
 
     // Release the blocked agent fetch and let the page setup complete.
     unblock();
-    await pagePromise;
   });
 });
 
@@ -195,15 +211,10 @@ describe("fw-d-008: error state shows when agent load fails", () => {
     );
     mockFirewallRequests();
 
-    // The page setup awaits get(firewallAllowAgent$) which rejects on 500.
-    // Use detach to silence the expected rejection; the component renders "Failed to load agent".
-    detach(
-      setupPage({
-        context,
-        path: `/agents/${AGENT_ID}/permissions?ref=github`,
-      }),
-      Reason.DomCallback,
-    );
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read`,
+    });
 
     await waitFor(() => {
       expect(screen.getByText("Failed to load agent")).toBeInTheDocument();
@@ -211,69 +222,16 @@ describe("fw-d-008: error state shows when agent load fails", () => {
   });
 });
 
-describe("fw-d-013: PolicyPill shows allow state with check icon", () => {
-  it("renders the Allow button as active when the policy is allow", async () => {
+describe("fw-d-009: member request form renders for non-owner", () => {
+  it("shows request form for member who does not own the agent", async () => {
+    setupMemberContext();
     mockFirewallRequests();
     await setupPage({
       context,
-      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read`,
+      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read&action=deny`,
     });
     await waitFor(() => {
-      expect(screen.getByText("issues:read")).toBeInTheDocument();
+      expect(screen.getByText(/requesting approval/)).toBeInTheDocument();
     });
-    const allowBtn = screen.getAllByRole("button").find((el) => {
-      return /Allow/.test(el.textContent ?? "");
-    });
-    expect(allowBtn).toBeDefined();
-    expect(allowBtn).toHaveAttribute("aria-pressed", "true");
-  });
-});
-
-describe("fw-d-014: PolicyPill shows deny state with ban icon", () => {
-  it("renders the Deny button as active when the policy is deny", async () => {
-    mockAgent(
-      defaultAgent({
-        firewallPolicies: { github: { "issues:read": "deny" } },
-      }),
-    );
-    mockFirewallRequests();
-    await setupPage({
-      context,
-      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read`,
-    });
-    await waitFor(() => {
-      expect(screen.getByText("issues:read")).toBeInTheDocument();
-    });
-    const denyBtn = screen.getAllByRole("button").find((el) => {
-      return /Deny/.test(el.textContent ?? "");
-    });
-    expect(denyBtn).toBeDefined();
-    expect(denyBtn).toHaveAttribute("aria-pressed", "true");
-  });
-});
-
-describe("fw-d-023: MemberFocusedView PolicyPill is read-only", () => {
-  it("renders PolicyPill buttons as disabled in MemberFocusedView", async () => {
-    setupMemberContext({
-      firewallPolicies: { github: { "issues:read": "deny" } },
-    });
-    mockFirewallRequests();
-    await setupPage({
-      context,
-      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read`,
-    });
-    await waitFor(() => {
-      expect(screen.getByText("issues:read")).toBeInTheDocument();
-    });
-    expect(
-      screen.getAllByRole("button").find((el) => {
-        return /Allow/.test(el.textContent ?? "");
-      }),
-    ).toBeDisabled();
-    expect(
-      screen.getAllByRole("button").find((el) => {
-        return /Deny/.test(el.textContent ?? "");
-      }),
-    ).toBeDisabled();
   });
 });

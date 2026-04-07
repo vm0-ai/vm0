@@ -145,6 +145,99 @@ describe("POST /api/zero/firewall-access-requests", () => {
     expect(second.reason).toBe("Updated reason");
   });
 
+  it("should create request with explicit action and return it in response", async () => {
+    const agent = await (await createAgent(testCliToken)).json();
+
+    const response = await createAccessRequest(
+      {
+        agentId: agent.agentId,
+        firewallRef: "github",
+        permission: "issues:read",
+        action: "deny",
+        reason: "Should not read issues",
+      },
+      testCliToken,
+    );
+
+    expect(response.status).toBe(201);
+    const data = await response.json();
+    expect(data.action).toBe("deny");
+    expect(data.permission).toBe("issues:read");
+  });
+
+  it("should treat different actions as separate requests for dedup", async () => {
+    const agent = await (await createAgent(testCliToken)).json();
+
+    const allow = await (
+      await createAccessRequest(
+        {
+          agentId: agent.agentId,
+          firewallRef: "github",
+          permission: "issues:read",
+          action: "allow",
+        },
+        testCliToken,
+      )
+    ).json();
+
+    const deny = await (
+      await createAccessRequest(
+        {
+          agentId: agent.agentId,
+          firewallRef: "github",
+          permission: "issues:read",
+          action: "deny",
+        },
+        testCliToken,
+      )
+    ).json();
+
+    expect(deny.id).not.toBe(allow.id);
+    expect(allow.action).toBe("allow");
+    expect(deny.action).toBe("deny");
+  });
+
+  it("should reuse rejected request and reset status to pending", async () => {
+    const agent = await (await createAgent(testCliToken)).json();
+
+    const created = await (
+      await createAccessRequest(
+        {
+          agentId: agent.agentId,
+          firewallRef: "github",
+          permission: "issues:read",
+          reason: "First try",
+        },
+        testCliToken,
+      )
+    ).json();
+
+    // Reject the request
+    await resolveAccessRequest(
+      { requestId: created.id, action: "reject" },
+      testCliToken,
+    );
+
+    // Resend with updated reason
+    const resent = await (
+      await createAccessRequest(
+        {
+          agentId: agent.agentId,
+          firewallRef: "github",
+          permission: "issues:read",
+          reason: "Second try",
+        },
+        testCliToken,
+      )
+    ).json();
+
+    expect(resent.id).toBe(created.id);
+    expect(resent.status).toBe("pending");
+    expect(resent.reason).toBe("Second try");
+    expect(resent.resolvedBy).toBeNull();
+    expect(resent.resolvedAt).toBeNull();
+  });
+
   it("should return 400 for unknown firewall ref", async () => {
     const agent = await (await createAgent(testCliToken)).json();
 
@@ -258,6 +351,54 @@ describe("GET /api/zero/firewall-access-requests", () => {
       agent.agentId,
       testCliToken,
       "approved",
+    );
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data).toHaveLength(0);
+  });
+
+  it("should fetch a single request by requestId", async () => {
+    const agent = await (await createAgent(testCliToken)).json();
+
+    const created = await (
+      await createAccessRequest(
+        {
+          agentId: agent.agentId,
+          firewallRef: "github",
+          permission: "issues:read",
+          reason: "Need access",
+        },
+        testCliToken,
+      )
+    ).json();
+
+    const response = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/firewall-access-requests?requestId=${created.id}`,
+        {
+          method: "GET",
+          headers: { Authorization: `Bearer ${testCliToken}` },
+        },
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data).toHaveLength(1);
+    expect(data[0].id).toBe(created.id);
+    expect(data[0].permission).toBe("issues:read");
+  });
+
+  it("should return empty array for nonexistent requestId", async () => {
+    const response = await GET(
+      createTestRequest(
+        `http://localhost:3000/api/zero/firewall-access-requests?requestId=00000000-0000-0000-0000-000000000000`,
+        {
+          method: "GET",
+          headers: { Authorization: `Bearer ${testCliToken}` },
+        },
+      ),
     );
 
     expect(response.status).toBe(200);
@@ -434,6 +575,47 @@ describe("PUT /api/zero/firewall-access-requests", () => {
     const agentData = await agentRes.json();
     expect(agentData.firewallPolicies).toStrictEqual({
       github: { "issues:read": "allow" },
+    });
+  });
+
+  it("should approve a deny request and set policy to deny", async () => {
+    const agent = await (await createAgent(testCliToken)).json();
+
+    const created = await (
+      await createAccessRequest(
+        {
+          agentId: agent.agentId,
+          firewallRef: "github",
+          permission: "issues:read",
+          action: "deny",
+        },
+        testCliToken,
+      )
+    ).json();
+
+    const response = await resolveAccessRequest(
+      { requestId: created.id, action: "approve" },
+      testCliToken,
+    );
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.status).toBe("approved");
+
+    // Verify agent firewall policies were set to "deny"
+    const { GET: getAgentById } = await import("../../agents/[id]/route");
+    const agentRes = await getAgentById(
+      createTestRequest(
+        `http://localhost:3000/api/zero/agents/${agent.agentId}`,
+        {
+          method: "GET",
+          headers: { Authorization: `Bearer ${testCliToken}` },
+        },
+      ),
+    );
+    const agentData = await agentRes.json();
+    expect(agentData.firewallPolicies).toStrictEqual({
+      github: { "issues:read": "deny" },
     });
   });
 

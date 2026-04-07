@@ -84,8 +84,9 @@ Notes:
       }
 
       if (!hasPermission) {
-        const path = agentId ? `/team/${agentId}` : "/team";
-        const url = `${platformUrl.origin}${path}?tab=authorization`;
+        const url = agentId
+          ? `${platformUrl.origin}/connectors/${connectorType}/authorize?agentId=${agentId}`
+          : `${platformUrl.origin}/connectors`;
         issues.push(
           `The ${label} connector is not authorized for this agent. Ask the user to enable it at: [Authorize ${label}](${url})`,
         );

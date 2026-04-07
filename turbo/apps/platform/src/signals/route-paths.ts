@@ -18,11 +18,13 @@ export const ROUTES = {
   ideas: "/ideas",
   connectors: "/connectors",
   directedConnect: "/connectors/:type/connect",
+  directedAuthorize: "/connectors/:type/authorize",
   settings: "/settings",
   settingsUsage: "/settings/usage",
   settingsSlack: "/settings/slack",
   onboarding: "/onboarding",
   signInToken: "/sign-in-token",
+  lab: "/_/lab",
   internalConnectorLogos: "/__internal-connector-logos",
 } as const;
 

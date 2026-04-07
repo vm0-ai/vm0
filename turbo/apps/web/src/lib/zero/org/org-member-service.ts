@@ -120,11 +120,7 @@ function mapClerkRole(clerkRole: string): OrgRole {
  * Get org members list.
  * Reads membership data directly from Clerk API.
  */
-export async function getOrgMembers(
-  userId: string,
-  orgId: string,
-  orgSlug: string,
-) {
+export async function getOrgMembers(userId: string, orgId: string) {
   const client = await clerkClient();
 
   // Parallel: org info + memberships + invitations
@@ -277,7 +273,7 @@ export async function getOrgMembers(
   }
 
   return {
-    slug: orgSlug,
+    slug: org.slug,
     role: callerRole,
     members,
     pendingInvitations,

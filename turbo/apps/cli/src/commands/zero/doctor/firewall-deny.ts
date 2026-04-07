@@ -6,8 +6,7 @@ import {
   CONNECTOR_TYPES,
 } from "@vm0/core";
 import { withErrorHandler } from "../../../lib/command";
-import { getPlatformOrigin } from "./platform-url";
-import { resolveAgentRole } from "./resolve-role";
+import { outputPermissionChangeMessage } from "./firewall-permissions-change";
 
 export const firewallDenyCommand = new Command()
   .name("firewall-deny")
@@ -50,62 +49,19 @@ Notes:
           config,
         );
 
-        const platformOrigin = await getPlatformOrigin();
-        const agentId = process.env.ZERO_AGENT_ID;
-
-        const urlParams = new URLSearchParams({
-          ref: firewallRef,
-          method: opts.method,
-          path: opts.path,
-        });
-
-        if (permissions.length > 0) {
-          urlParams.set("permission", permissions[0]!);
-        }
-
-        const pagePath = agentId ? `/agents/${agentId}/permissions` : "/agents";
-        const url = `${platformOrigin}${pagePath}?${urlParams.toString()}`;
-
         console.log(
           `The ${label} firewall blocked ${opts.method} ${opts.path}.`,
         );
 
-        if (permissions.length > 0) {
-          console.log(`This is covered by the "${permissions[0]}" permission.`);
-        } else {
+        if (permissions.length === 0) {
           console.log("No named permission was found covering this request.");
+          return;
         }
 
-        // Slack chat:write: strongly recommend bot-based messaging over user identity
-        if (firewallRef === "slack" && permissions[0] === "chat:write") {
-          console.log("");
-          console.log(
-            "IMPORTANT: Granting chat:write allows sending messages AS THE USER's identity, not as a bot.",
-          );
-          console.log(
-            "Use `zero slack message send -c <channel> -t <text>` to send messages as the bot instead — this is the recommended approach for most use cases.",
-          );
-          console.log(
-            "Only request user approval below if acting as the user is specifically required.",
-          );
-          console.log("");
-        }
+        const permission = permissions[0]!;
+        console.log(`This is covered by the "${permission}" permission.`);
 
-        const role = agentId ? await resolveAgentRole(agentId) : "unknown";
-
-        if (role === "admin" || role === "owner") {
-          console.log(
-            `You can allow this permission directly: [Manage ${label} firewall](${url})`,
-          );
-        } else if (role === "member") {
-          console.log(
-            `This change requires admin approval. Request access at: [Request ${label} access](${url})`,
-          );
-        } else {
-          console.log(
-            `Ask the user to allow it at: [Allow ${label} access](${url})`,
-          );
-        }
+        await outputPermissionChangeMessage(firewallRef, permission, "enable");
       },
     ),
   );

@@ -346,6 +346,61 @@ describe("zero doctor firewall-permissions-change command", () => {
     });
   });
 
+  describe("slack chat:write custom guidance", () => {
+    it("should output bot alternative guidance for slack chat:write enable", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+
+      await firewallPermissionsChangeCommand.parseAsync([
+        "node",
+        "cli",
+        "slack",
+        "--permission",
+        "chat:write",
+        "--enable",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("AS THE USER's identity");
+      expect(logCalls).toContain("zero slack message send");
+      expect(logCalls).toContain("Only request user approval");
+    });
+
+    it("should not output bot guidance for slack chat:write disable", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+
+      await firewallPermissionsChangeCommand.parseAsync([
+        "node",
+        "cli",
+        "slack",
+        "--permission",
+        "chat:write",
+        "--disable",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).not.toContain("AS THE USER's identity");
+    });
+
+    it("should not output bot guidance for non-chat:write slack permissions", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+
+      await firewallPermissionsChangeCommand.parseAsync([
+        "node",
+        "cli",
+        "slack",
+        "--permission",
+        "channels:read",
+        "--enable",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).not.toContain("AS THE USER's identity");
+    });
+  });
+
   describe("URL construction", () => {
     it("should transform www.vm0.ai to app.vm0.ai", async () => {
       vi.stubEnv("VM0_API_URL", "https://www.vm0.ai");
@@ -364,6 +419,40 @@ describe("zero doctor firewall-permissions-change command", () => {
       expect(logCalls).toContain(
         "https://app.vm0.ai/agents/agent-1/permissions?",
       );
+    });
+
+    it("should include action=allow param for --enable", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-1");
+
+      await firewallPermissionsChangeCommand.parseAsync([
+        "node",
+        "cli",
+        "github",
+        "--permission",
+        "contents:read",
+        "--enable",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("action=allow");
+    });
+
+    it("should include action=deny param for --disable", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-1");
+
+      await firewallPermissionsChangeCommand.parseAsync([
+        "node",
+        "cli",
+        "github",
+        "--permission",
+        "contents:read",
+        "--disable",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("action=deny");
     });
   });
 });

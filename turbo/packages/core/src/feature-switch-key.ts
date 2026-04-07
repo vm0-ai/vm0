@@ -44,4 +44,5 @@ export enum FeatureSwitchKey {
   ZeroDebug = "zeroDebug",
   ComputerUse = "computerUse",
   MobileChatListPage = "mobileChatListPage",
+  Lab = "lab",
 }

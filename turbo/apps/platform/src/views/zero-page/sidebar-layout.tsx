@@ -10,6 +10,7 @@ import { IconMenu2, IconUserPlus } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/core";
 import { ZeroSidebar } from "./zero-sidebar.tsx";
 import { sidebarAgentAvatar$, sidebarAgentId$ } from "../../signals/agent.ts";
+import { QueueDrawer } from "../queue-page/queue-drawer.tsx";
 import {
   zeroShowAboutPage$,
   setZeroShowAboutPage$,
@@ -166,6 +167,7 @@ function SidebarLayoutInner({ children }: { children: ReactNode }) {
   return (
     <div className="zero-app flex h-dvh w-full bg-background">
       <OrgManageDialogMount />
+      <QueueDrawer />
       <ZeroSidebar />
       <div
         data-sidebar-expanded={expanded || undefined}

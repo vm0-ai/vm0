@@ -50,7 +50,14 @@
     "apps/platform": {
       "entry": ["src/main.ts", "**/*.{test,spec}.ts?(x)"],
       "project": ["**/*.{ts,tsx}"],
-      "ignore": ["custom-eslint/**"],
+      "ignore": [
+        "custom-eslint/**",
+        "src/views/zero-page/zero-sidebar-account.tsx",
+        "src/views/zero-page/zero-sidebar-chat-list.tsx",
+        "src/views/zero-page/zero-sidebar-pinned.tsx",
+        "src/views/zero-page/zero-sidebar-scroll.tsx",
+        "src/views/zero-page/zero-sidebar-upgrade.tsx"
+      ],
       "ignoreDependencies": [
         "tailwindcss",
         "typescript-eslint",

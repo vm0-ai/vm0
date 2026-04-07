@@ -1,5 +1,64 @@
 # Changelog
 
+## [12.197.1](https://github.com/vm0-ai/vm0/compare/web-v12.197.0...web-v12.197.1) (2026-04-07)
+
+
+### Bug Fixes
+
+* use in-operator for ngrok domain lookup with known suffixes ([#8300](https://github.com/vm0-ai/vm0/issues/8300)) ([965e778](https://github.com/vm0-ai/vm0/commit/965e7782a885262e2167c1f21b7a4c57cbfa8fac))
+
+
+### Refactoring
+
+* extract shared axiom network event type from duplicate route definitions ([#8299](https://github.com/vm0-ai/vm0/issues/8299)) ([dc8a3c2](https://github.com/vm0-ai/vm0/commit/dc8a3c26d4b01c70f11f127be2bc9d2110c8a1e5)), closes [#7656](https://github.com/vm0-ai/vm0/issues/7656)
+* redesign firewall allow focused views as approval cards ([#7712](https://github.com/vm0-ai/vm0/issues/7712)) ([3a34350](https://github.com/vm0-ai/vm0/commit/3a3435054b8affe16ca1a0329d6ffaf1f28012ca))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.155.1
+
+## [12.197.0](https://github.com/vm0-ai/vm0/compare/web-v12.196.3...web-v12.197.0) (2026-04-07)
+
+
+### Features
+
+* **platform:** add lab page for feature switch management ([#8288](https://github.com/vm0-ai/vm0/issues/8288)) ([b87f833](https://github.com/vm0-ai/vm0/commit/b87f83385dffa46c4a5b60c736d32ed51cdd4bab))
+
+
+### Bug Fixes
+
+* **billing:** refresh stale billing period from stripe when cached date expires ([#8277](https://github.com/vm0-ai/vm0/issues/8277)) ([59f5580](https://github.com/vm0-ai/vm0/commit/59f5580177744a8307e24203e8e3be513caed52b))
+* restore org slug update in onboarding setup ([#8291](https://github.com/vm0-ai/vm0/issues/8291)) ([00bdfb3](https://github.com/vm0-ai/vm0/commit/00bdfb367bc5508e6b85a2c10c1352c94b0f58dd))
+
+
+### Refactoring
+
+* **zero:** unify pre-flight checks between zero-run-service and zero-run-queue-service ([#8294](https://github.com/vm0-ai/vm0/issues/8294)) ([cc3cc68](https://github.com/vm0-ai/vm0/commit/cc3cc6826c1ba9e87bd7189ca576cd20df81ed76)), closes [#8281](https://github.com/vm0-ai/vm0/issues/8281)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.155.0
+
+## [12.196.3](https://github.com/vm0-ai/vm0/compare/web-v12.196.2...web-v12.196.3) (2026-04-07)
+
+
+### Bug Fixes
+
+* add validation error logging and client-side skill name checks ([#8109](https://github.com/vm0-ai/vm0/issues/8109)) ([#8283](https://github.com/vm0-ai/vm0/issues/8283)) ([51d259a](https://github.com/vm0-ai/vm0/commit/51d259a9de2d7e1f8932fb85fb6759b4e2085c07))
+* **api:** return correct status codes for application errors ([#8279](https://github.com/vm0-ai/vm0/issues/8279)) ([1f5daf1](https://github.com/vm0-ai/vm0/commit/1f5daf1ba77266e5e715a7c8def979e797bdf73a))
+* use prefix match for ngrok domain lookup instead of hardcoded suffix ([#8285](https://github.com/vm0-ai/vm0/issues/8285)) ([417fd18](https://github.com/vm0-ai/vm0/commit/417fd18108679f667ef926051970c9ca5e7bcdcd)), closes [#8267](https://github.com/vm0-ai/vm0/issues/8267)
+
+
+### Performance Improvements
+
+* remove workspace name step and clerk calls from onboarding setup ([#8275](https://github.com/vm0-ai/vm0/issues/8275)) ([a0b2bcd](https://github.com/vm0-ai/vm0/commit/a0b2bcd9fb01f74e85251a0cc9041dd79327f884))
+
 ## [12.196.2](https://github.com/vm0-ai/vm0/compare/web-v12.196.1...web-v12.196.2) (2026-04-07)
 
 

@@ -11,7 +11,9 @@ import {
 } from "./chat-draft.ts";
 import {
   createRunLoop,
+  fibDelays$,
   pollInterval$,
+  setLoop,
   type PagedRunEvents,
 } from "./polling.ts";
 import { zeroOnboardingStatus$ } from "./zero-onboarding.ts";
@@ -27,7 +29,6 @@ import {
 } from "@vm0/core";
 import { accept, ApiError } from "../../lib/accept.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
-import { delay } from "signal-timers";
 
 export {
   zeroChatInput$,
@@ -775,20 +776,25 @@ export const loadSessionFromSnapshot$ = command(
 
     await Promise.all(
       assistantMessages.map(async (message) => {
-        if (!message.runLoop?.checkFinished$) {
+        const runLoop = message.runLoop;
+        if (!runLoop?.checkFinished$) {
           return;
         }
 
-        while (true) {
-          const finished = await set(message.runLoop.checkFinished$, signal);
-          if (finished) {
-            break;
-          }
-          await delay(get(pollInterval$), { signal });
-          set(reloadThinkingMessage$, (x) => {
-            return x + 1;
-          });
-        }
+        await setLoop(
+          async (sig) => {
+            const finished = await set(runLoop.checkFinished$, sig);
+            if (!finished) {
+              set(reloadThinkingMessage$, (x) => {
+                return x + 1;
+              });
+            }
+            return finished;
+          },
+          get(pollInterval$),
+          signal,
+          get(fibDelays$),
+        );
 
         set(internalReloadChatThreads$, (x) => {
           return x + 1;
@@ -1045,20 +1051,23 @@ export const sendExistingThreadMessage$ = command(
       return;
     }
 
-    while (true) {
-      const finished = await set(runLoop.checkFinished$, signal);
-      if (finished) {
-        break;
-      }
-
-      await delay(get(pollInterval$), { signal });
-      set(internalReloadChatThreads$, (n) => {
-        return n + 1;
-      });
-      set(reloadCurrentThread$, (n) => {
-        return n + 1;
-      });
-    }
+    await setLoop(
+      async (sig) => {
+        const finished = await set(runLoop.checkFinished$, sig);
+        if (!finished) {
+          set(internalReloadChatThreads$, (n) => {
+            return n + 1;
+          });
+          set(reloadCurrentThread$, (n) => {
+            return n + 1;
+          });
+        }
+        return finished;
+      },
+      get(pollInterval$),
+      signal,
+      get(fibDelays$),
+    );
   },
 );
 

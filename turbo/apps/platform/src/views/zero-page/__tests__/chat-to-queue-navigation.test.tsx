@@ -43,17 +43,8 @@ function mockQueueAPIs() {
   server.use(
     http.get("*/api/zero/runs/queue", () => {
       return HttpResponse.json({
-        concurrency: { tier: "free", limit: 2, active: 1, available: 1 },
-        runningTasks: [
-          {
-            runId: "run-1",
-            agentName: "queue-agent",
-            agentDisplayName: "Queue Agent",
-            userEmail: "me@test.com",
-            startedAt: new Date().toISOString(),
-            isOwner: true,
-          },
-        ],
+        concurrency: { tier: "free", limit: 1, active: 1, available: 0 },
+        runningTasks: [],
         queue: [],
         estimatedTimePerRun: null,
       });
@@ -62,7 +53,7 @@ function mockQueueAPIs() {
 }
 
 describe("chat to queue navigation", () => {
-  it("should initialize queue page when navigating from chat", async () => {
+  it("should open queue drawer when navigating from chat to /queues", async () => {
     mockChatThread();
     mockQueueAPIs();
 
@@ -73,14 +64,16 @@ describe("chat to queue navigation", () => {
       expect(screen.getByText("Hi there!")).toBeInTheDocument();
     });
 
-    // Navigate to /queue using navigateTo$ (same as Link component)
+    // Navigate to /queues — this opens the drawer and redirects to /
     act(() => {
       context.store.set(detachedNavigateTo$, "/queues");
     });
 
-    // The queue page should fully initialize and show queue data
+    // The queue drawer should open and show concurrency info
     await waitFor(() => {
-      expect(screen.getByText("Queue Agent")).toBeInTheDocument();
+      expect(
+        screen.getByRole("heading", { name: /waiting in line/ }),
+      ).toBeInTheDocument();
     });
   });
 });

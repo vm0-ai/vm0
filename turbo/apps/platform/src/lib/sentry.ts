@@ -47,6 +47,8 @@ export function initSentry(): void {
       "AbortError",
       // Browser extensions
       "ResizeObserver loop",
+      // Clerk SDK - session cleared by Mobile Safari ITP (third-party noise)
+      "Unable to authenticate the request",
     ],
   });
 }

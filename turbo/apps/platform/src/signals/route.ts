@@ -32,6 +32,16 @@ export const updateSearchParams$ = command(
   },
 );
 
+export const replaceSearchParams$ = command(
+  ({ set }, searchParams: URLSearchParams) => {
+    const str = searchParams.toString();
+    replaceState({}, "", `${pathname()}${str ? `?${str}` : ""}`);
+    set(reloadPathname$, (x) => {
+      return x + 1;
+    });
+  },
+);
+
 interface Route {
   path: string;
   setup: Command<Promise<void> | void, [AbortSignal]>;

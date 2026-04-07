@@ -2,6 +2,7 @@ import { command, computed, state } from "ccstate";
 import { detachedNavigateTo$ } from "../route.ts";
 import { ROUTES, type RouteKey } from "../route-paths.ts";
 import { localStorageSignals } from "../external/local-storage.ts";
+import { openQueueDrawer$ } from "../queue-page/queue-drawer-state.ts";
 
 /** Re-export activeRoute$ for consumers that used to import zeroActiveId$ */
 export { activeRoute$ } from "../active-route.ts";
@@ -88,7 +89,8 @@ export type SidebarNavId =
   | "works"
   | "settings"
   | "settingsUsage"
-  | "queues";
+  | "queues"
+  | "lab";
 
 /** Check if a route key corresponds to the chat section. */
 export function isChatRoute(key: RouteKey | null): boolean {
@@ -119,7 +121,9 @@ export const handleZeroNavSelect$ = command(({ set }, id: SidebarNavId) => {
   } else if (id === "settingsUsage") {
     set(detachedNavigateTo$, ROUTES.settingsUsage);
   } else if (id === "queues") {
-    set(detachedNavigateTo$, ROUTES.queues);
+    set(openQueueDrawer$);
+  } else if (id === "lab") {
+    set(detachedNavigateTo$, ROUTES.lab);
   }
   set(internalShowAboutPage$, false);
 });

@@ -124,17 +124,44 @@ describe("System Skill Resolution", () => {
     expect(manifest.storages[0]!.vasStorageName).toBe(storageName);
   });
 
-  it("should throw when skill not found in any org", async () => {
+  it("should skip skill volume when not found in any org", async () => {
     const { url } = uniqueSkillUrl();
 
-    await expect(
-      prepareStorageManifest(
-        skillAgentConfig(url),
-        {},
-        user.orgId,
-        user.orgId,
-        user.userId,
-      ),
-    ).rejects.toThrow("not found");
+    const manifest = await prepareStorageManifest(
+      skillAgentConfig(url),
+      {},
+      user.orgId,
+      user.orgId,
+      user.userId,
+    );
+
+    expect(manifest.storages).toHaveLength(0);
+  });
+
+  it("should resolve available skills and skip missing ones", async () => {
+    const found = uniqueSkillUrl();
+    const missing = uniqueSkillUrl();
+
+    // Only create storage for the first skill
+    await createTestVolumeForOrg(SYSTEM_ORG_ID, found.storageName);
+
+    const config: AgentVolumeConfig = {
+      agents: {
+        "test-agent": {
+          skills: [found.url, missing.url],
+        },
+      },
+    };
+
+    const manifest = await prepareStorageManifest(
+      config,
+      {},
+      user.orgId,
+      user.orgId,
+      user.userId,
+    );
+
+    expect(manifest.storages).toHaveLength(1);
+    expect(manifest.storages[0]!.vasStorageName).toBe(found.storageName);
   });
 });

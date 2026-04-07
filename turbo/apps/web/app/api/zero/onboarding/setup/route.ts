@@ -10,8 +10,8 @@ import {
   requireAuth,
   isAuthError,
 } from "../../../../../src/lib/auth/require-auth";
+import { clerkClient } from "@clerk/nextjs/server";
 import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
-import { updateOrg } from "../../../../../src/lib/zero/org/org-service";
 import { upsertOrgNoSecretModelProvider } from "../../../../../src/lib/zero/model-provider/model-provider-service";
 import { serverSideCompose } from "../../../../../src/lib/infra/compose/server-side-compose";
 import { buildComposeContent } from "../../../../../src/lib/zero/build-compose-content";
@@ -21,41 +21,48 @@ import { orgMetadata } from "../../../../../src/db/schema/org-metadata";
 import { orgMembersMetadata } from "../../../../../src/db/schema/org-members-metadata";
 import { userConnectors } from "../../../../../src/db/schema/user-connector";
 import { logger } from "../../../../../src/lib/shared/logger";
-import { isBadRequest } from "../../../../../src/lib/shared/errors";
 
 const log = logger("api:onboarding-setup");
 
 /**
- * Try to set org name/slug with retry on conflict.
- * Mirrors the slug-retry logic that was previously in the frontend.
+ * Generate a URL-safe slug from a workspace name.
  */
-async function tryUpdateOrgNameSlug(
-  orgId: string,
-  userId: string,
-  workspaceName: string,
-): Promise<void> {
-  const name = workspaceName.trim();
-  if (!name) return;
-
-  const baseSlug = name
+function nameToSlug(name: string): string {
+  return name
     .toLowerCase()
     .replace(/[^a-z0-9-]/g, "-")
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "")
     .slice(0, 64);
+}
 
+/**
+ * Update org name and slug via a single Clerk call.
+ * Retries once with a random suffix if the slug conflicts.
+ */
+async function updateOrgNameAndSlug(
+  orgId: string,
+  workspaceName: string,
+): Promise<void> {
+  const name = workspaceName.trim();
+  if (!name) return;
+
+  const client = await clerkClient();
+  const baseSlug = nameToSlug(name);
   const slugCandidates = [
     baseSlug,
     `${baseSlug.slice(0, 56)}-${Math.random().toString(36).slice(2, 8)}`,
-  ];
+  ].filter((s) => {
+    return s.length >= 3;
+  });
 
   for (const slug of slugCandidates) {
-    if (slug.length < 3) continue;
     try {
-      await updateOrg(orgId, userId, { name, slug, force: true });
+      await client.organizations.updateOrganization(orgId, { name, slug });
       return;
-    } catch (error) {
-      if (isBadRequest(error) && String(error).includes("already exists")) {
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      if (msg.includes("already exists") || msg.includes("slug")) {
         continue;
       }
       throw error;
@@ -63,7 +70,7 @@ async function tryUpdateOrgNameSlug(
   }
 
   // Both slug attempts conflicted — update name only
-  await updateOrg(orgId, userId, { name });
+  await client.organizations.updateOrganization(orgId, { name });
 }
 
 const router = tsr.router(onboardingSetupContract, {
@@ -117,27 +124,27 @@ const router = tsr.router(onboardingSetupContract, {
       }
     }
 
-    // Parallel group 1: org update + model provider (independent)
-    const parallelGroup1: Promise<unknown>[] = [
-      upsertOrgNoSecretModelProvider(org.orgId, "vm0", "claude-sonnet-4.6"),
-    ];
-    if (body.workspaceName) {
-      parallelGroup1.push(
-        tryUpdateOrgNameSlug(org.orgId, userId, body.workspaceName),
-      );
-    }
-    await Promise.all(parallelGroup1);
+    // Start org name + slug update in parallel (don't await yet)
+    const orgUpdatePromise = body.workspaceName?.trim()
+      ? updateOrgNameAndSlug(org.orgId, body.workspaceName)
+      : undefined;
 
-    // Create agent with real seed instructions in a single serverSideCompose call
+    // Parallel: model provider + compose (independent)
     const agentName = crypto.randomUUID();
     const content = buildComposeContent(agentName);
 
-    const composeResult = await serverSideCompose({
-      userId,
-      orgId: org.orgId,
-      content,
-      instructions: SEED_INSTRUCTIONS,
-    });
+    const [, composeResult] = await Promise.all([
+      upsertOrgNoSecretModelProvider(org.orgId, "vm0", "claude-sonnet-4.6"),
+      serverSideCompose({
+        userId,
+        orgId: org.orgId,
+        content,
+        instructions: SEED_INSTRUCTIONS,
+      }),
+    ]);
+
+    // Await org name + slug update (already running in parallel)
+    if (orgUpdatePromise) await orgUpdatePromise;
 
     if (!composeResult) {
       return {
