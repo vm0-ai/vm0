@@ -91,7 +91,60 @@ describe("zero doctor firewall-permissions-change command", () => {
   });
 
   describe("member role", () => {
-    it("should output request access message for member enable", async () => {
+    it("should output request access message for member enable with reason", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      server.use(
+        http.get("https://app.vm0.ai/api/zero/org", () => {
+          return HttpResponse.json(orgResponse("member"));
+        }),
+      );
+
+      await firewallPermissionsChangeCommand.parseAsync([
+        "node",
+        "cli",
+        "github",
+        "--permission",
+        "contents:read",
+        "--enable",
+        "--reason",
+        "Need repo access",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Permission changes require admin approval");
+      expect(logCalls).toContain("[Request GitHub access]");
+    });
+
+    it("should output contact admin message for member disable with reason", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      server.use(
+        http.get("https://app.vm0.ai/api/zero/org", () => {
+          return HttpResponse.json(orgResponse("member"));
+        }),
+      );
+
+      await firewallPermissionsChangeCommand.parseAsync([
+        "node",
+        "cli",
+        "github",
+        "--permission",
+        "contents:read",
+        "--disable",
+        "--reason",
+        "No longer needed",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Permission changes require admin approval");
+      expect(logCalls).toContain("Contact an org admin to disable");
+      expect(logCalls).toContain("[View GitHub firewall]");
+    });
+
+    it("should only output reason prompt without URL when member omits reason", async () => {
       vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");
       vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
@@ -111,33 +164,9 @@ describe("zero doctor firewall-permissions-change command", () => {
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("Permission changes require admin approval");
-      expect(logCalls).toContain("[Request GitHub access]");
-    });
-
-    it("should output contact admin message for member disable", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("VM0_TOKEN", "test-token");
-      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-      server.use(
-        http.get("https://app.vm0.ai/api/zero/org", () => {
-          return HttpResponse.json(orgResponse("member"));
-        }),
-      );
-
-      await firewallPermissionsChangeCommand.parseAsync([
-        "node",
-        "cli",
-        "github",
-        "--permission",
-        "contents:read",
-        "--disable",
-      ]);
-
-      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("Permission changes require admin approval");
-      expect(logCalls).toContain("Contact an org admin to disable");
-      expect(logCalls).toContain("[View GitHub firewall]");
+      expect(logCalls).toContain("IMPORTANT: Re-run with `--reason");
+      expect(logCalls).not.toContain("[Request GitHub access]");
+      expect(logCalls).not.toContain("app.vm0.ai");
     });
   });
 
@@ -526,24 +555,6 @@ describe("zero doctor firewall-permissions-change command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).not.toContain("reason=");
-    });
-
-    it("should prompt for reason when member omits --reason", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-      setupMemberRole();
-
-      await firewallPermissionsChangeCommand.parseAsync([
-        "node",
-        "cli",
-        "github",
-        "--permission",
-        "contents:read",
-        "--enable",
-      ]);
-
-      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("IMPORTANT: Re-run with `--reason");
     });
   });
 });

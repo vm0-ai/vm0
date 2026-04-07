@@ -81,18 +81,17 @@ async function outputPermissionChangeMessage(
       `You can ${action} the "${permission}" permission directly: [Manage ${label} firewall](${url})`,
     );
   } else if (role === "member") {
-    if (action === "enable") {
+    if (!reason) {
+      console.log(
+        `IMPORTANT: Re-run with \`--reason "one sentence why this is needed"\` so the admin can review your request faster.`,
+      );
+    } else if (action === "enable") {
       console.log(
         `Permission changes require admin approval. Request access at: [Request ${label} access](${url})`,
       );
     } else {
       console.log(
         `Permission changes require admin approval. Contact an org admin to disable this permission: [View ${label} firewall](${url})`,
-      );
-    }
-    if (!reason) {
-      console.log(
-        'IMPORTANT: Re-run with `--reason "one sentence why this is needed"` so the admin can review your request faster.',
       );
     }
   } else {
