@@ -19,7 +19,7 @@ import {
 } from "../../../__tests__/api-test-helpers";
 import { reloadEnv } from "../../../env";
 import { createZeroRun } from "../zero-run-service";
-import { isInsufficientCredits } from "../../shared/errors";
+import { isInsufficientCredits, isNotFound } from "../../shared/errors";
 import { startRun, type CreateRunParams } from "../../infra/run/run-service";
 import {
   drainOrgQueue,
@@ -123,12 +123,12 @@ describe("credit check (zero layer)", () => {
       expect(result.status).toBe("pending");
     });
 
-    it("should allow when org_metadata row is missing", async () => {
+    it("should reject when org_metadata row is missing", async () => {
       await deleteOrgRow(user.orgId);
 
-      const result = await createZeroRun(baseParams({ modelProvider: "vm0" }));
-
-      expect(result.status).toBe("pending");
+      await expect(
+        createZeroRun(baseParams({ modelProvider: "vm0" })),
+      ).rejects.toSatisfy(isNotFound);
     });
 
     it("should not enqueue a rejected VM0 run", async () => {
