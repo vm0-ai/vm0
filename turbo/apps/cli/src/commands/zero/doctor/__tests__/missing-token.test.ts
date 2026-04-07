@@ -99,7 +99,10 @@ describe("zero doctor missing-token command", () => {
       expect(logCalls).toContain("Sandbox env: not present");
       expect(logCalls).toContain("not connected");
       expect(logCalls).toContain(
-        "[Connect GitHub](https://app.vm0.ai/connectors/github/connect)",
+        "[Connect GitHub](https://app.vm0.ai/connectors/github/connect?agentId=agent-abc-123)",
+      );
+      expect(logCalls).toContain(
+        "run `zero doctor missing-token GH_TOKEN` again to re-diagnose",
       );
     });
   });
@@ -128,6 +131,9 @@ describe("zero doctor missing-token command", () => {
       expect(logCalls).toContain("not authorized");
       expect(logCalls).toContain(
         "[Authorize GitHub](https://app.vm0.ai/connectors/github/authorize?agentId=agent-abc-123)",
+      );
+      expect(logCalls).toContain(
+        "run `zero doctor missing-token GH_TOKEN` again to re-diagnose",
       );
     });
   });
@@ -162,6 +168,9 @@ describe("zero doctor missing-token command", () => {
         "[Reconnect GitHub](https://app.vm0.ai/connectors)",
       );
       expect(logCalls).not.toContain("not authorized");
+      expect(logCalls).toContain(
+        "run `zero doctor missing-token GH_TOKEN` again to re-diagnose",
+      );
     });
 
     it("should show both expired and not authorized when both issues exist", async () => {
@@ -194,6 +203,9 @@ describe("zero doctor missing-token command", () => {
       expect(logCalls).toContain(
         "[Authorize GitHub](https://app.vm0.ai/connectors/github/authorize?agentId=agent-abc-123)",
       );
+      expect(logCalls).toContain(
+        "run `zero doctor missing-token GH_TOKEN` again to re-diagnose",
+      );
     });
   });
 
@@ -223,6 +235,9 @@ describe("zero doctor missing-token command", () => {
       expect(logCalls).toContain(
         "[Check GitHub status](https://app.vm0.ai/connectors)",
       );
+      expect(logCalls).toContain(
+        "run `zero doctor missing-token GH_TOKEN` again to re-diagnose",
+      );
     });
   });
 
@@ -250,7 +265,7 @@ describe("zero doctor missing-token command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain(
-        "https://app.vm0.ai/connectors/github/connect",
+        "https://app.vm0.ai/connectors/github/connect?agentId=agent-1",
       );
     });
 
@@ -280,7 +295,7 @@ describe("zero doctor missing-token command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain(
-        "https://tunnel-yuma-vm0-app.vm7.ai/connectors/github/connect",
+        "https://tunnel-yuma-vm0-app.vm7.ai/connectors/github/connect?agentId=agent-1",
       );
     });
 
@@ -331,7 +346,7 @@ describe("zero doctor missing-token command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain(
-        "https://app.custom.example.com/connectors/github/connect",
+        "https://app.custom.example.com/connectors/github/connect?agentId=agent-1",
       );
     });
   });
@@ -357,7 +372,7 @@ describe("zero doctor missing-token command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("not connected");
-      expect(logCalls).toContain("/connectors/github/connect");
+      expect(logCalls).toContain("/connectors/github/connect?agentId=agent-1");
     });
   });
 

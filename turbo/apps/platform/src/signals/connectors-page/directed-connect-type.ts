@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import { pathParams$ } from "../route.ts";
+import { pathParams$, searchParams$ } from "../route.ts";
 
 /**
  * Connector type extracted from `/connectors/:type/connect` route params.
@@ -8,6 +8,14 @@ export const directedConnectType$ = computed((get): string | null => {
   const params = get(pathParams$);
   const type = params?.type;
   return typeof type === "string" ? type.toLowerCase() : null;
+});
+
+/**
+ * Agent ID extracted from `?agentId=` query parameter on the connect page.
+ * When present, the connect page will auto-authorize the agent after connecting.
+ */
+export const directedConnectAgentId$ = computed((get): string | null => {
+  return get(searchParams$).get("agentId");
 });
 
 const internalTokenDialogOpen$ = state(false);

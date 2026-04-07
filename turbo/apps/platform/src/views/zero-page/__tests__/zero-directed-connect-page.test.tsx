@@ -44,6 +44,19 @@ function mockConnectors(
   );
 }
 
+const AGENT_ID = "00000000-0000-0000-0000-000000000001";
+
+function mockUserConnectors(agentId: string, enabledTypes: string[] = []) {
+  server.use(
+    http.get(`*/api/zero/agents/${agentId}/user-connectors`, () => {
+      return HttpResponse.json({ enabledTypes });
+    }),
+    http.put(`*/api/zero/agents/${agentId}/user-connectors`, () => {
+      return HttpResponse.json({ enabledTypes });
+    }),
+  );
+}
+
 describe("directed connect page", () => {
   it("renders connect card for an oauth connector", async () => {
     await setupPage({ context, path: "/connectors/gmail/connect" });
@@ -277,5 +290,133 @@ describe("directed connect page", () => {
       expect(capturedBody?.name).toBe("AXIOM_TOKEN");
       expect(capturedBody?.value).toBe("test-token-value");
     });
+  });
+
+  it("auto-authorizes agent after API token connect when agentId is present", async () => {
+    const user = userEvent.setup();
+    mockUserConnectors(AGENT_ID);
+
+    let authorizeCalled = false;
+    server.use(
+      http.post("*/api/zero/secrets", () => {
+        return HttpResponse.json(
+          {
+            id: crypto.randomUUID(),
+            name: "AXIOM_TOKEN",
+            type: "user",
+            description: null,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+          { status: 201 },
+        );
+      }),
+      http.put(`*/api/zero/agents/${AGENT_ID}/user-connectors`, () => {
+        authorizeCalled = true;
+        return HttpResponse.json({ enabledTypes: ["axiom"] });
+      }),
+    );
+
+    await setupPage({
+      context,
+      path: `/connectors/axiom/connect?agentId=${AGENT_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByRole("button").find((el) => {
+          return el.textContent?.trim() === "Connect";
+        }),
+      ).toBeDefined();
+    });
+
+    const connectBtn = screen.getAllByRole("button").find((el) => {
+      return el.textContent?.trim() === "Connect";
+    });
+    expect(connectBtn).toBeDefined();
+    await user.click(connectBtn!);
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("xaat-...")).toBeInTheDocument();
+    });
+
+    await user.type(
+      screen.getByPlaceholderText("xaat-..."),
+      "test-token-value",
+    );
+    const saveBtn = screen.getAllByRole("button").find((el) => {
+      return el.textContent?.trim() === "Save";
+    });
+    expect(saveBtn).toBeDefined();
+    await user.click(saveBtn!);
+
+    await waitFor(() => {
+      expect(authorizeCalled).toBeTruthy();
+    });
+  });
+
+  it("does not call authorize after API token connect when agentId is absent", async () => {
+    const user = userEvent.setup();
+
+    let authorizeCalled = false;
+    server.use(
+      http.post("*/api/zero/secrets", () => {
+        return HttpResponse.json(
+          {
+            id: crypto.randomUUID(),
+            name: "AXIOM_TOKEN",
+            type: "user",
+            description: null,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+          { status: 201 },
+        );
+      }),
+      http.put(`*/api/zero/agents/*/user-connectors`, () => {
+        authorizeCalled = true;
+        return HttpResponse.json({ enabledTypes: [] });
+      }),
+    );
+
+    await setupPage({
+      context,
+      path: "/connectors/axiom/connect",
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByRole("button").find((el) => {
+          return el.textContent?.trim() === "Connect";
+        }),
+      ).toBeDefined();
+    });
+
+    const connectBtn = screen.getAllByRole("button").find((el) => {
+      return el.textContent?.trim() === "Connect";
+    });
+    expect(connectBtn).toBeDefined();
+    await user.click(connectBtn!);
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("xaat-...")).toBeInTheDocument();
+    });
+
+    await user.type(
+      screen.getByPlaceholderText("xaat-..."),
+      "test-token-value",
+    );
+    const saveBtn = screen.getAllByRole("button").find((el) => {
+      return el.textContent?.trim() === "Save";
+    });
+    expect(saveBtn).toBeDefined();
+    await user.click(saveBtn!);
+
+    // Wait for the token to be submitted
+    await waitFor(() => {
+      expect(screen.getByText("Axiom connected")).toBeInTheDocument();
+    });
+
+    expect(authorizeCalled).toBeFalsy();
   });
 });

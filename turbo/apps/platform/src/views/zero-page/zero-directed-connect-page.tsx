@@ -24,9 +24,11 @@ import {
 import { detach, Reason } from "../../signals/utils.ts";
 import {
   directedConnectType$,
+  directedConnectAgentId$,
   tokenDialogOpen$,
   setTokenDialogOpen$,
 } from "../../signals/connectors-page/directed-connect-type.ts";
+import { authorizeConnector$ } from "../../signals/connectors-page/directed-authorize-type.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { handleZeroAccountAction$ } from "../../signals/zero-page/zero-nav.ts";
 import {
@@ -215,10 +217,12 @@ function ApiTokenDialog({
   type,
   open,
   onOpenChange,
+  onConnected,
 }: {
   type: ConnectorType;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onConnected?: () => void;
 }) {
   const config = CONNECTOR_TYPES[type];
   return (
@@ -234,6 +238,7 @@ function ApiTokenDialog({
           type={type}
           onSuccess={() => {
             onOpenChange(false);
+            onConnected?.();
           }}
         />
       </DialogContent>
@@ -243,8 +248,10 @@ function ApiTokenDialog({
 
 function DirectedConnectCard() {
   const type = useGet(directedConnectType$);
+  const agentId = useGet(directedConnectAgentId$);
   const pollingType = useGet(pollingConnectorType$);
   const connect = useSet(connectConnector$);
+  const authorize = useSet(authorizeConnector$);
   const signal = useGet(pageSignal$);
   const justConnected = useGet(justConnectedTypes$);
   const allLoadable = useLastLoadable(allConnectorTypes$);
@@ -280,7 +287,17 @@ function DirectedConnectCard() {
 
   const handleConnect = () => {
     if (hasOAuth) {
-      detach(connect(connectorType, signal), Reason.DomCallback);
+      if (agentId) {
+        detach(
+          (async () => {
+            await connect(connectorType, signal);
+            await authorize(connectorType, agentId, signal);
+          })(),
+          Reason.DomCallback,
+        );
+      } else {
+        detach(connect(connectorType, signal), Reason.DomCallback);
+      }
     } else {
       setTokenDialogOpen(true);
     }
@@ -345,6 +362,16 @@ function DirectedConnectCard() {
         type={connectorType}
         open={tokenDialogOpen}
         onOpenChange={setTokenDialogOpen}
+        onConnected={
+          agentId
+            ? () => {
+                detach(
+                  authorize(connectorType, agentId, signal),
+                  Reason.DomCallback,
+                );
+              }
+            : undefined
+        }
       />
     </>
   );

@@ -65,11 +65,15 @@ Notes:
       const hasPermission =
         enabledTypes !== null && enabledTypes.includes(connectorType);
 
+      const rediagnoseHint = `Important: if ${tokenName} is still missing after the user takes action, run \`zero doctor missing-token ${tokenName}\` again to re-diagnose instead of assuming the status.`;
+
       if (!isConnected) {
         // Connector not connected — direct to the directed connect page
-        const url = `${platformUrl.origin}/connectors/${connectorType}/connect`;
+        const connectUrl = agentId
+          ? `${platformUrl.origin}/connectors/${connectorType}/connect?agentId=${agentId}`
+          : `${platformUrl.origin}/connectors/${connectorType}/connect`;
         console.log(
-          `The ${label} connector is not connected. Ask the user to connect it at: [Connect ${label}](${url})`,
+          `The ${label} connector is not connected. Ask the user to connect it at: [Connect ${label}](${connectUrl})\n${rediagnoseHint}`,
         );
         return;
       }
@@ -96,11 +100,12 @@ Notes:
         for (const issue of issues) {
           console.log(issue);
         }
+        console.log(rediagnoseHint);
       } else {
         // Both connected and authorized — something else is wrong
         const url = `${platformUrl.origin}/connectors`;
         console.log(
-          `The ${label} connector is connected and authorized, but the token is still missing. Ask VM0 developer to resolve this issue. Connector status: [Check ${label} status](${url})`,
+          `The ${label} connector is connected and authorized, but the token is still missing. Ask VM0 developer to resolve this issue. Connector status: [Check ${label} status](${url})\n${rediagnoseHint}`,
         );
       }
     }),
