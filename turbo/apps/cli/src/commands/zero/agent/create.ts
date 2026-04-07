@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import { readFileSync } from "node:fs";
 import chalk from "chalk";
+import { zeroAgentCustomSkillNameSchema } from "@vm0/core";
 import { createZeroAgent, updateZeroAgentInstructions } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
 
@@ -40,6 +41,17 @@ Examples:
               return s.trim();
             })
           : undefined;
+
+        if (customSkills) {
+          for (const name of customSkills) {
+            const result = zeroAgentCustomSkillNameSchema.safeParse(name);
+            if (!result.success) {
+              throw new Error(
+                `Invalid skill name "${name}": must be 2-64 characters, lowercase alphanumeric and hyphens only (e.g. my-skill)`,
+              );
+            }
+          }
+        }
 
         const agent = await createZeroAgent({
           displayName: options.displayName,
