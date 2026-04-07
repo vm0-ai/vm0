@@ -38,6 +38,42 @@ interface NgrokDomain {
 }
 
 /**
+ * Tag property for ngrok API errors so callers can match on status code
+ * without fragile string parsing.
+ */
+const NGROK_ERROR_TAG = Symbol("NgrokApiError");
+
+interface NgrokApiError extends Error {
+  [NGROK_ERROR_TAG]: true;
+  statusCode: number;
+}
+
+function createNgrokApiError(
+  statusCode: number,
+  path: string,
+  detail: string,
+): NgrokApiError {
+  const err = new Error(
+    `ngrok API error: ${statusCode} ${path}: ${detail}`,
+  ) as NgrokApiError;
+  err[NGROK_ERROR_TAG] = true;
+  err.statusCode = statusCode;
+  return err;
+}
+
+/**
+ * Check whether an error is an ngrok API error with a specific HTTP status code.
+ */
+function isNgrokError(error: unknown, statusCode: number): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    NGROK_ERROR_TAG in error &&
+    (error as NgrokApiError).statusCode === statusCode
+  );
+}
+
+/**
  * Make an authenticated request to the ngrok API.
  */
 async function ngrokFetch(
@@ -73,7 +109,7 @@ async function ngrokFetch(
       // body is not JSON — use raw text
     }
 
-    throw new Error(`ngrok API error: ${response.status} ${path}: ${detail}`);
+    throw createNgrokApiError(response.status, path, detail);
   }
 
   return response;
@@ -189,6 +225,8 @@ interface NgrokEndpointsPage {
 
 /**
  * Find a cloud endpoint by URL. Paginates through all results.
+ * Note: ngrok's /endpoints API does not support the filter parameter
+ * that /reserved_domains and /bot_users support, so pagination is required.
  */
 async function findEndpointByUrl(
   apiKey: string,
@@ -332,16 +370,6 @@ export async function deleteBotUser(
 }
 
 /**
- * Check whether an error is an ngrok API error with a specific HTTP status code.
- */
-function isNgrokError(error: unknown, statusCode: number): boolean {
-  return (
-    error instanceof Error &&
-    error.message.includes(`ngrok API error: ${statusCode}`)
-  );
-}
-
-/**
  * Safely delete an ngrok resource, ignoring 404 (already deleted).
  *
  * @param bestEffort - If true, log and swallow all errors (use in cleanup-on-failure paths
@@ -356,7 +384,7 @@ export async function safeDelete(
   try {
     await deleteFn();
   } catch (error) {
-    if (error instanceof Error && error.message.includes("404")) {
+    if (isNgrokError(error, 404)) {
       log.debug(`${resourceName} already deleted`, { id: resourceId });
     } else if (bestEffort) {
       log.warn(`Failed to clean up ${resourceName}`, {
