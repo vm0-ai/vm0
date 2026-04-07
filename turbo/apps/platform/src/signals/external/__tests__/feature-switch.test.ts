@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { testContext } from "../../__tests__/test-helpers";
 import { setupPage } from "../../../__tests__/page-helper";
-import { featureSwitch$ } from "../feature-switch";
-import { mockUser } from "../../../__tests__/mock-auth";
+import {
+  featureSwitch$,
+  syncFeatureSwitchToClerk$,
+  resetFeatureSwitchOverrides$,
+} from "../feature-switch";
+import { FeatureSwitchKey } from "@vm0/core";
 
 const context = testContext();
 
@@ -47,38 +51,21 @@ describe("feature switch", () => {
   });
 
   it("should apply Clerk unsafeMetadata overrides", async () => {
-    mockUser(
-      { id: "test-user-123", fullName: "Test User" },
-      { token: "test-token" },
-    );
-    // Set unsafeMetadata on the mocked user before setupPage
-    // We need to call mockUser first, then set unsafeMetadata
+    // Dummy is globally enabled (true). Override it to false via Clerk unsafeMetadata.
     await setupPage({ context, path: "/", withoutRender: true });
 
-    // Dummy is globally enabled (true). Override it to false via unsafeMetadata.
-    // Access the mocked clerk user and set unsafeMetadata
-    const clerk = await context.store.get((await import("../../auth")).clerk$);
-    if (clerk.user) {
-      (
-        clerk.user as unknown as { unsafeMetadata: Record<string, unknown> }
-      ).unsafeMetadata = {
-        featureSwitches: { dummy: false },
-      };
-    }
-
-    // Force re-evaluation
-    const { overrideFeatureSwitch$ } = await import("../feature-switch");
-    context.store.set(overrideFeatureSwitch$, {});
+    await context.store.set(
+      syncFeatureSwitchToClerk$,
+      { [FeatureSwitchKey.Dummy]: false },
+      context.signal,
+    );
 
     const result = await context.store.get(featureSwitch$);
     expect(result.dummy).toBeFalsy();
   });
 
   it("should prioritize localStorage over Clerk unsafeMetadata", async () => {
-    mockUser(
-      { id: "test-user-123", fullName: "Test User" },
-      { token: "test-token" },
-    );
+    // localStorage says dummy=true, Clerk says dummy=false — localStorage wins
     await setupPage({
       context,
       path: "/",
@@ -86,22 +73,53 @@ describe("feature switch", () => {
       withoutRender: true,
     });
 
-    // Set Clerk unsafeMetadata to false
-    const clerk = await context.store.get((await import("../../auth")).clerk$);
-    if (clerk.user) {
-      (
-        clerk.user as unknown as { unsafeMetadata: Record<string, unknown> }
-      ).unsafeMetadata = {
-        featureSwitches: { dummy: false },
-      };
-    }
+    await context.store.set(
+      syncFeatureSwitchToClerk$,
+      { [FeatureSwitchKey.Dummy]: false },
+      context.signal,
+    );
 
-    // Force re-evaluation
-    const { overrideFeatureSwitch$ } = await import("../feature-switch");
-    context.store.set(overrideFeatureSwitch$, {});
-
-    // localStorage says true, Clerk says false — localStorage wins
     const result = await context.store.get(featureSwitch$);
     expect(result.dummy).toBeTruthy();
+  });
+
+  it("should sync feature switch override to Clerk unsafeMetadata", async () => {
+    await setupPage({ context, path: "/", withoutRender: true });
+
+    await context.store.set(
+      syncFeatureSwitchToClerk$,
+      { [FeatureSwitchKey.Dummy]: false },
+      context.signal,
+    );
+
+    // After syncing, the Clerk layer should reflect the override
+    const result = await context.store.get(featureSwitch$);
+    expect(result.dummy).toBeFalsy();
+  });
+
+  it("should reset all feature switch overrides", async () => {
+    // Set localStorage and Clerk overrides, then reset both
+    await setupPage({
+      context,
+      path: "/",
+      featureSwitches: { dummy: false },
+      withoutRender: true,
+    });
+
+    await context.store.set(
+      syncFeatureSwitchToClerk$,
+      { [FeatureSwitchKey.Dummy]: false },
+      context.signal,
+    );
+
+    // Confirm override is active
+    const before = await context.store.get(featureSwitch$);
+    expect(before.dummy).toBeFalsy();
+
+    // Reset all overrides — dummy should return to its default (true)
+    await context.store.set(resetFeatureSwitchOverrides$, context.signal);
+
+    const after = await context.store.get(featureSwitch$);
+    expect(after.dummy).toBeTruthy();
   });
 });

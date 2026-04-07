@@ -1,4 +1,4 @@
-import { useLastResolved, useSet } from "ccstate-react";
+import { useGet, useLastResolved, useSet } from "ccstate-react";
 import { FeatureSwitchKey } from "@vm0/core";
 import { Switch, Button } from "@vm0/ui";
 import {
@@ -8,23 +8,33 @@ import {
   resetFeatureSwitchOverrides$,
 } from "../../signals/external/feature-switch.ts";
 import { detach, Reason } from "../../signals/utils.ts";
+import { pageSignal$ } from "../../signals/page-signal.ts";
 
 export function LabPage() {
   const features = useLastResolved(featureSwitch$);
   const overrideLocal = useSet(overrideFeatureSwitch$);
   const syncClerk = useSet(syncFeatureSwitchToClerk$);
   const reset = useSet(resetFeatureSwitchOverrides$);
+  const pageSignal = useGet(pageSignal$);
 
   const handleToggle = (key: FeatureSwitchKey, checked: boolean) => {
     const override = { [key]: checked } as Partial<
       Record<FeatureSwitchKey, boolean>
     >;
     overrideLocal(override);
-    detach(syncClerk(override), Reason.DomCallback, "syncFeatureSwitchToClerk");
+    detach(
+      syncClerk(override, pageSignal),
+      Reason.DomCallback,
+      "syncFeatureSwitchToClerk",
+    );
   };
 
   const handleReset = () => {
-    detach(reset(), Reason.DomCallback, "resetFeatureSwitchOverrides");
+    detach(
+      reset(pageSignal),
+      Reason.DomCallback,
+      "resetFeatureSwitchOverrides",
+    );
   };
 
   return (
