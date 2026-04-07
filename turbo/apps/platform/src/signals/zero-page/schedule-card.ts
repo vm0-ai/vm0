@@ -68,3 +68,6 @@ export const { get$: runningIds$, set$: setRunningIds$ } = cell<Set<string>>(
 
 export const { get$: pendingDeleteEntry$, set$: setPendingDeleteEntry$ } =
   cell<ScheduleEntry | null>(null);
+
+export const { get$: deletingSchedule$, set$: setDeletingSchedule$ } =
+  cell(false);
