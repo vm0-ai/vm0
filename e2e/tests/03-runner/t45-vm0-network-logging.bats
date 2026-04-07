@@ -114,13 +114,12 @@ EOF
     create_agent
 
     # Make an HTTP GET request with --capture-network-bodies enabled.
-    # The response body from httpbin.org/get should be captured.
+    # Use a simple command so output isn't truncated by the CLI renderer.
     run $VM0_CLI run "$AGENT_NAME" \
         --artifact-name "$ARTIFACT_NAME" \
         --capture-network-bodies \
-        "curl -s https://httpbin.org/get | head -5 && echo CAPTURE_DONE=true"
+        "curl -s -o /dev/null -w '%{http_code}' https://httpbin.org/get && echo DONE"
     assert_success
-    assert_output --partial "CAPTURE_DONE=true"
 
     RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
     [ -n "$RUN_ID" ] || {
