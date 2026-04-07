@@ -1,5 +1,25 @@
 # Changelog
 
+## [12.198.0](https://github.com/vm0-ai/vm0/compare/web-v12.197.1...web-v12.198.0) (2026-04-07)
+
+
+### Features
+
+* add audit link feature switch to control audit link in slack messages ([#8328](https://github.com/vm0-ai/vm0/issues/8328)) ([9551e35](https://github.com/vm0-ai/vm0/commit/9551e3517c607cc49d909eedba1c93092a5fac40))
+
+
+### Refactoring
+
+* remove unnecessary org data lookup from storages/commit webhook ([#8321](https://github.com/vm0-ai/vm0/issues/8321)) ([2d96f27](https://github.com/vm0-ai/vm0/commit/2d96f27d7c7dab67b8baf465ae3516b39434de28)), closes [#8313](https://github.com/vm0-ai/vm0/issues/8313)
+* remove unnecessary org data lookup from storages/prepare webhook ([#8319](https://github.com/vm0-ai/vm0/issues/8319)) ([0d4549c](https://github.com/vm0-ai/vm0/commit/0d4549c02dbf590355182365ecdc0ee8e449ae70)), closes [#8312](https://github.com/vm0-ai/vm0/issues/8312)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.156.0
+
 ## [12.197.1](https://github.com/vm0-ai/vm0/compare/web-v12.197.0...web-v12.197.1) (2026-04-07)
 
 
