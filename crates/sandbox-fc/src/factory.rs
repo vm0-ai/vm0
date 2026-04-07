@@ -509,15 +509,13 @@ impl SandboxFactory for FirecrackerFactory {
     }
 
     async fn shutdown(&mut self) {
-        // Drop the sender so no new leaked resources are accepted, then
-        // wait for the drain task to finish processing any queued items.
-        // This ensures resources queued during the final job drain are
-        // cleaned up before pool shutdown.
+        // Close the leak channel and abort the drain task.  Any in-flight
+        // leaked resources will be cleaned by `runner gc` on the next start.
+        // We abort (rather than await) so the task immediately releases its
+        // Arc refs to the pools — required for Arc::try_unwrap below.
         self.leak_tx.take();
         if let Some(h) = self.leak_cleanup_handle.take() {
-            // The drain loop exits when all senders are dropped (channel closed).
-            // Use a timeout to avoid blocking shutdown indefinitely.
-            let _ = tokio::time::timeout(std::time::Duration::from_secs(5), h).await;
+            h.abort();
         }
 
         // Clean up COW pool (delete pre-warmed COW files).
