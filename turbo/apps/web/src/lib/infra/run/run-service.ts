@@ -7,7 +7,8 @@ import {
   agentComposes,
 } from "../../../db/schema/agent-compose";
 import { agentRunCallbacks } from "../../../db/schema/agent-run-callback";
-import { notFound, badRequest } from "../../shared/errors";
+import { notFound, badRequest, forbidden } from "../../shared/errors";
+import { getCachedUser } from "../../auth/user-cache-service";
 
 import { logger } from "../../shared/logger";
 import type { AgentComposeYaml } from "../agent-compose/types";
@@ -455,6 +456,16 @@ export async function buildAndDispatchRun(opts: {
 export async function startRun(
   params: StartRunParams,
 ): Promise<CreateRunResult> {
+  // 0. Gate captureNetworkBodies to @vm0.ai accounts in production
+  if (params.captureNetworkBodies && env().VERCEL_ENV === "production") {
+    const { email } = await getCachedUser(params.userId);
+    if (!email.endsWith("@vm0.ai")) {
+      throw forbidden(
+        "captureNetworkBodies is restricted to internal accounts",
+      );
+    }
+  }
+
   // 1. Resolve compose version
   const resolved = await resolveStartRunCompose(params);
 
