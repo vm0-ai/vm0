@@ -133,6 +133,51 @@ describe("directed authorize page", () => {
     });
   });
 
+  it("shows authorized state when connector is already authorized for agent", async () => {
+    mockConnectorsConnected("gmail");
+    server.use(
+      http.get("*/api/zero/agents/:id/user-connectors", () => {
+        return HttpResponse.json({ enabledTypes: ["gmail"] });
+      }),
+    );
+
+    await setupPage({
+      context,
+      path: `/connectors/gmail/authorize?agentId=${AGENT_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Gmail authorized")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Authorized")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Authorize Zero" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows authorize button when connector is not yet authorized for agent", async () => {
+    mockConnectorsConnected("gmail");
+    server.use(
+      http.get("*/api/zero/agents/:id/user-connectors", () => {
+        return HttpResponse.json({ enabledTypes: [] });
+      }),
+    );
+
+    await setupPage({
+      context,
+      path: `/connectors/gmail/authorize?agentId=${AGENT_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Zero needs Gmail to proceed"),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.getByRole("button", { name: "Authorize Zero" }),
+    ).toBeInTheDocument();
+  });
+
   it("has a logo link that navigates to /connectors", async () => {
     mockConnectorsConnected("gmail");
 

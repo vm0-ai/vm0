@@ -12,6 +12,7 @@ import { detach, Reason } from "../../signals/utils.ts";
 import {
   directedAuthorizeType$,
   directedAuthorizeAgentId$,
+  agentEnabledTypes$,
   justAuthorizedTypes$,
   authorizeConnector$,
 } from "../../signals/connectors-page/directed-authorize-type.ts";
@@ -124,6 +125,7 @@ function DirectedAuthorizeCard() {
   const justConnected = useGet(justConnectedTypes$);
   const justAuthorized = useGet(justAuthorizedTypes$);
   const allLoadable = useLastLoadable(allConnectorTypes$);
+  const enabledLoadable = useLastLoadable(agentEnabledTypes$);
 
   if (!type || !(type in CONNECTOR_TYPES) || !agentId) {
     return null;
@@ -133,7 +135,8 @@ function DirectedAuthorizeCard() {
   const config = CONNECTOR_TYPES[connectorType];
   const isConnecting = pollingType === connectorType;
   const isLoading =
-    !justConnected.has(connectorType) && allLoadable.state === "loading";
+    (!justConnected.has(connectorType) && allLoadable.state === "loading") ||
+    enabledLoadable.state === "loading";
 
   const isConnected =
     justConnected.has(connectorType) ||
@@ -142,7 +145,10 @@ function DirectedAuthorizeCard() {
         return c.type === connectorType && c.connected;
       }));
 
-  const isAuthorized = justAuthorized.has(connectorType);
+  const isAuthorized =
+    justAuthorized.has(connectorType) ||
+    (enabledLoadable.state === "hasData" &&
+      enabledLoadable.data.includes(connectorType));
 
   const handleAuthorize = () => {
     if (isConnected) {

@@ -19,6 +19,21 @@ export const directedAuthorizeAgentId$ = computed((get): string | null => {
   return get(searchParams$).get("agentId");
 });
 
+/** Fetch enabled connector types for the agent from the API. */
+export const agentEnabledTypes$ = computed(async (get) => {
+  const agentId = get(directedAuthorizeAgentId$);
+  if (!agentId) {
+    return [];
+  }
+  const createClient = get(zeroClient$);
+  const client = createClient(zeroUserConnectorsContract);
+  const result = await client.get({ params: { id: agentId } });
+  if (result.status !== 200) {
+    return [];
+  }
+  return result.body.enabledTypes;
+});
+
 const internalAuthorized$ = state<Set<string>>(new Set());
 
 /** Whether the connector has just been authorized (optimistic). */
