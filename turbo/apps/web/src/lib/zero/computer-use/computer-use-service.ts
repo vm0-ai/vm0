@@ -52,7 +52,10 @@ export async function registerHost(
     throw new Error("NGROK_API_KEY is not configured");
   }
 
-  // Serialize concurrent register calls for the same user
+  // Serialize concurrent register calls for the same user.
+  // Note: this holds a DB connection for the duration of ngrok API calls (~1-5s).
+  // Acceptable while ComputerUse is staff-only (low concurrency). If opened to
+  // general users, refactor to two-phase: short lock transaction + external calls + update.
   return db.transaction(async (tx) => {
     await tx.execute(
       sql`SELECT pg_advisory_xact_lock(hashtext('cu_' || ${orgId} || ':' || ${userId}))`,
