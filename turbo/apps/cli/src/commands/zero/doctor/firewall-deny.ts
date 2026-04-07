@@ -6,7 +6,6 @@ import {
   CONNECTOR_TYPES,
 } from "@vm0/core";
 import { withErrorHandler } from "../../../lib/command";
-import { outputPermissionChangeMessage } from "./firewall-permissions-change";
 
 export const firewallDenyCommand = new Command()
   .name("firewall-deny")
@@ -23,12 +22,6 @@ export const firewallDenyCommand = new Command()
   .addOption(
     new Option("--path <path>", "The denied path").makeOptionMandatory(),
   )
-  .addOption(
-    new Option(
-      "--reason <text>",
-      "Brief reason why the permission is needed (max 500 chars)",
-    ),
-  )
   .addHelpText(
     "after",
     `
@@ -38,14 +31,11 @@ Examples:
 
 Notes:
   - Identifies which named permission covers a denied request
-  - Outputs a platform URL for the user to allow the permission`,
+  - Use firewall-permissions-change to request or enable the permission`,
   )
   .action(
     withErrorHandler(
-      async (
-        firewallRef: string,
-        opts: { method: string; path: string; reason?: string },
-      ) => {
+      async (firewallRef: string, opts: { method: string; path: string }) => {
         if (!isFirewallConnectorType(firewallRef)) {
           throw new Error(`Unknown firewall connector type: ${firewallRef}`);
         }
@@ -69,12 +59,8 @@ Notes:
 
         const permission = permissions[0]!;
         console.log(`This is covered by the "${permission}" permission.`);
-
-        await outputPermissionChangeMessage(
-          firewallRef,
-          permission,
-          "enable",
-          opts.reason,
+        console.log(
+          `To request this permission, run: zero doctor firewall-permissions-change ${firewallRef} --permission ${permission} --enable --reason "why this is needed"`,
         );
       },
     ),

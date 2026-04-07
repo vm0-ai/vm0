@@ -26,7 +26,7 @@ function findPermissionInConfig(ref: string, permissionName: string): boolean {
  */
 const REASON_MAX_LENGTH = 500;
 
-export async function outputPermissionChangeMessage(
+async function outputPermissionChangeMessage(
   firewallRef: string,
   permission: string,
   action: "enable" | "disable",
