@@ -7,7 +7,7 @@
  * - Real (internal): All signals, components, rendering
  */
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -18,10 +18,6 @@ import { setScopeReviewType$ } from "../../../signals/zero-page/settings/connect
 import type { ConnectorType } from "@vm0/core";
 
 const context = testContext();
-
-afterEach(() => {
-  vi.restoreAllMocks();
-});
 
 async function openScopeReviewModal(
   connectorType: ConnectorType,

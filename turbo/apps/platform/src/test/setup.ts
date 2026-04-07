@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import { server } from "../mocks/server.ts";
-import { afterAll, afterEach, beforeAll, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, beforeAll, vi } from "vitest";
 import { mockedClerk } from "../__tests__/mock-auth.ts";
 import { clearAllDetached } from "../signals/utils.ts";
 
@@ -26,7 +26,9 @@ beforeAll(() => {
   document.head.appendChild(style);
 
   server.listen({ onUnhandledRequest: "error" });
+});
 
+beforeEach(() => {
   // Override console.error to throw on unexpected errors.
   // - NotSupportedError / AbortError: expected happy-dom noise, silently ignored.
   // - "not wrapped in act(...)": unavoidable with our async bootstrap pattern

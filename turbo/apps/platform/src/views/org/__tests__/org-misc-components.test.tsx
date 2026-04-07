@@ -12,7 +12,7 @@
  * Internal: real signals, components, rendering
  */
 
-import { afterEach, describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -417,10 +417,6 @@ async function openSetupPrompt(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe("setup prompt - display (ORG-D-105)", () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
   it("displays 'claude setup-token' command in a code element", async () => {
     const user = userEvent.setup();
     await openSetupPrompt(user);
@@ -430,10 +426,6 @@ describe("setup prompt - display (ORG-D-105)", () => {
 });
 
 describe("setup prompt - interaction (ORG-I-106)", () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
   it("clicking the code element triggers the copied state", async () => {
     const user = userEvent.setup();
     vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);
@@ -447,10 +439,6 @@ describe("setup prompt - interaction (ORG-I-106)", () => {
 });
 
 describe("setup prompt - state (ORG-S-107)", () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
   it("text changes to 'copied!' after click", async () => {
     const user = userEvent.setup();
     vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);

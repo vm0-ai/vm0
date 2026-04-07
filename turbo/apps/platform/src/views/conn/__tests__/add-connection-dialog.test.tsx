@@ -7,7 +7,7 @@
  * - Real (internal): All signals, components, rendering
  */
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -19,10 +19,6 @@ import { setSelectedConnectorType$ } from "../../../signals/zero-page/settings/c
 import { mockConnectors } from "../../zero-page/__tests__/zero-connectors-page-test-helpers.ts";
 
 const context = testContext();
-
-afterEach(() => {
-  vi.restoreAllMocks();
-});
 
 async function openConnectModal(connectorType: ConnectorType) {
   await setupPage({ context, path: "/connectors" });

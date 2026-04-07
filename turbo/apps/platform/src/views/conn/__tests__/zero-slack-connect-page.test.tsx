@@ -21,7 +21,6 @@ import {
 const context = testContext();
 
 afterEach(() => {
-  vi.restoreAllMocks();
   resetMockSlackConnect();
   // Reset location after tests that trigger slack:// redirects via signal code
   // (e.g. ?status=connected param or successful connect button click)
