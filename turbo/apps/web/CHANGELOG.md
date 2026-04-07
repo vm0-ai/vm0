@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.196.2](https://github.com/vm0-ai/vm0/compare/web-v12.196.1...web-v12.196.2) (2026-04-07)
+
+
+### Refactoring
+
+* adopt ngrok find-or-update pattern for cloud endpoints and reserved domains ([#8269](https://github.com/vm0-ai/vm0/issues/8269)) ([1a2e5f5](https://github.com/vm0-ai/vm0/commit/1a2e5f563717a8df134a7593706b91cee3fbf08d)), closes [#8267](https://github.com/vm0-ai/vm0/issues/8267)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.154.1
+
 ## [12.196.1](https://github.com/vm0-ai/vm0/compare/web-v12.196.0...web-v12.196.1) (2026-04-07)
 
 

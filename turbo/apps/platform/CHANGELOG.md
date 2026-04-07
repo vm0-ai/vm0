@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.193.1](https://github.com/vm0-ai/vm0/compare/app-v0.193.0...app-v0.193.1) (2026-04-07)
+
+
+### Bug Fixes
+
+* handle 401 response in ts-rest api client ([#8265](https://github.com/vm0-ai/vm0/issues/8265)) ([a86dda2](https://github.com/vm0-ai/vm0/commit/a86dda24fe34e45ec7509511d2b616219e276676))
+* **onboarding:** prevent double-click and handle 409 conflict ([#8262](https://github.com/vm0-ai/vm0/issues/8262)) ([6613990](https://github.com/vm0-ai/vm0/commit/6613990bf91184c2aa051294acd6deae49f46b38))
+* preserve schedule timezone when saving instruction edits ([#8266](https://github.com/vm0-ai/vm0/issues/8266)) ([069a385](https://github.com/vm0-ai/vm0/commit/069a385102204dc3636783f6d0531ada8b63834e)), closes [#8160](https://github.com/vm0-ai/vm0/issues/8160)
+
+
+### Refactoring
+
+* split zero-sidebar.tsx into focused sub-components ([#8261](https://github.com/vm0-ai/vm0/issues/8261)) ([7207bfa](https://github.com/vm0-ai/vm0/commit/7207bfad16fe9814b801238ff419af2cfdf1d191)), closes [#7834](https://github.com/vm0-ai/vm0/issues/7834)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.154.1
+
 ## [0.193.0](https://github.com/vm0-ai/vm0/compare/app-v0.192.0...app-v0.193.0) (2026-04-07)
 
 
