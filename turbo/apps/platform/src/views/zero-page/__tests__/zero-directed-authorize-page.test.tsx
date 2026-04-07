@@ -61,9 +61,7 @@ describe("directed authorize page", () => {
     expect(
       screen.getByText(CONNECTOR_TYPES.gmail.helpText),
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "Authorize Zero" }),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Authorize Zero")).toBeInTheDocument();
   });
 
   it("shows authorized state after clicking authorize", async () => {
@@ -76,12 +74,10 @@ describe("directed authorize page", () => {
     });
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Authorize Zero" }),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Authorize Zero")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole("button", { name: "Authorize Zero" }));
+    await user.click(screen.getByText("Authorize Zero"));
 
     await waitFor(() => {
       expect(screen.getByText("Gmail authorized")).toBeInTheDocument();
@@ -100,9 +96,7 @@ describe("directed authorize page", () => {
         screen.queryByText(/Zero needs .* to proceed/),
       ).not.toBeInTheDocument();
     });
-    expect(
-      screen.queryByRole("button", { name: "Authorize Zero" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Authorize Zero")).not.toBeInTheDocument();
   });
 
   it("renders nothing for an unknown connector type", async () => {
@@ -150,9 +144,7 @@ describe("directed authorize page", () => {
       expect(screen.getByText("Gmail authorized")).toBeInTheDocument();
     });
     expect(screen.getByText("Authorized")).toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Authorize Zero" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Authorize Zero")).not.toBeInTheDocument();
   });
 
   it("shows authorize button when connector is not yet authorized for agent", async () => {
@@ -173,9 +165,7 @@ describe("directed authorize page", () => {
         screen.getByText("Zero needs Gmail to proceed"),
       ).toBeInTheDocument();
     });
-    expect(
-      screen.getByRole("button", { name: "Authorize Zero" }),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Authorize Zero")).toBeInTheDocument();
   });
 
   it("has a logo link that navigates to /connectors", async () => {

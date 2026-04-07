@@ -1,5 +1,6 @@
 import { command, computed, state } from "ccstate";
 import { zeroUserConnectorsContract, type ConnectorType } from "@vm0/core";
+import { accept } from "../../lib/accept.ts";
 import { pathParams$, searchParams$ } from "../route.ts";
 import { zeroClient$ } from "../api-client.ts";
 
@@ -27,10 +28,9 @@ export const agentEnabledTypes$ = computed(async (get) => {
   }
   const createClient = get(zeroClient$);
   const client = createClient(zeroUserConnectorsContract);
-  const result = await client.get({ params: { id: agentId } });
-  if (result.status !== 200) {
-    return [];
-  }
+  const result = await accept(client.get({ params: { id: agentId } }), [200], {
+    toast: false,
+  });
   return result.body.enabledTypes;
 });
 
@@ -53,27 +53,25 @@ export const authorizeConnector$ = command(
     const client = createClient(zeroUserConnectorsContract);
 
     // Get current enabled types for this agent
-    const current = await client.get({ params: { id: agentId } });
+    const current = await accept(
+      client.get({ params: { id: agentId } }),
+      [200],
+      { toast: false },
+    );
     signal.throwIfAborted();
 
-    const currentTypes =
-      current.status === 200 ? current.body.enabledTypes : [];
+    const currentTypes = current.body.enabledTypes;
 
     // Add the new type if not already present
     if (!currentTypes.includes(connectorType)) {
-      const result = await client.update({
-        params: { id: agentId },
-        body: { enabledTypes: [...currentTypes, connectorType] },
-      });
+      await accept(
+        client.update({
+          params: { id: agentId },
+          body: { enabledTypes: [...currentTypes, connectorType] },
+        }),
+        [200],
+      );
       signal.throwIfAborted();
-
-      if (result.status !== 200) {
-        const detail =
-          result.status === 400 || result.status === 404
-            ? result.body.error.message
-            : `status ${result.status}`;
-        throw new Error(`Authorization failed: ${detail}`);
-      }
     }
 
     // Optimistic update
