@@ -384,7 +384,7 @@ describe("POST /api/zero/developer-support", () => {
     expect((await step2.json()).reference).toBeDefined();
   });
 
-  it("returns 401 when no auth header is provided", async () => {
+  it("returns 403 when token lacks runId and orgId", async () => {
     const response = await POST(
       createTestRequest(URL, {
         method: "POST",
@@ -396,6 +396,6 @@ describe("POST /api/zero/developer-support", () => {
       }),
     );
 
-    expect(response.status).toBe(401);
+    expect(response.status).toBe(403);
   });
 });

@@ -28,6 +28,7 @@ export const zeroDeveloperSupportContract = c.router({
       200: z.union([consentCodeResponseSchema, submitResponseSchema]),
       400: apiErrorSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
     },
     summary:
       "Developer support: consent code generation or diagnostic submission",

@@ -24,9 +24,9 @@ const router = tsr.router(zeroAskUserAnswerContract, {
     const { runId } = authCtx;
     if (!runId) {
       return {
-        status: 401 as const,
+        status: 403 as const,
         body: {
-          error: { message: "No run context available", code: "UNAUTHORIZED" },
+          error: { message: "No run context available", code: "FORBIDDEN" },
         },
       };
     }
