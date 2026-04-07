@@ -34,7 +34,7 @@ function formatRequest(
     agentId: row.agentId,
     firewallRef: row.firewallRef,
     permission: row.permission,
-    action: row.action as "allow" | "deny",
+    action: row.action,
     method: row.method ?? null,
     path: row.path ?? null,
     reason: row.reason ?? null,
@@ -359,7 +359,7 @@ const resolveRouter = tsr.router(firewallAccessRequestsResolveContract, {
           ...currentPolicies,
           [existing.firewallRef]: {
             ...refPolicies,
-            [existing.permission]: existing.action as "allow" | "deny",
+            [existing.permission]: existing.action,
           },
         };
 

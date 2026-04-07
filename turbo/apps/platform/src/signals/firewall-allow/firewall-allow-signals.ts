@@ -6,7 +6,6 @@ import {
   zeroAgentFirewallPoliciesContract,
   zeroAgentsByIdContract,
   getConnectorFirewall,
-  getDefaultFirewallPolicies,
   isFirewallConnectorType,
   type FirewallPolicies,
   type FirewallPolicyValue,
