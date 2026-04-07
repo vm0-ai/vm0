@@ -105,25 +105,12 @@ export async function GET(request: Request) {
     userId,
   });
   if (!effectiveOrgId || effectiveOrgId !== installation.orgId) {
-    // Distinguish: is the user a member of the workspace's org at all?
-    let isMember = false;
-    try {
-      await resolveOrg(authCtx, installation.orgId);
-      isMember = true;
-    } catch {
-      // Not a member
-    }
-
-    const message = isMember
-      ? "Your active organization doesn't match this Slack workspace. Please switch to the correct organization in the platform sidebar before connecting."
-      : "You don't have access to the organization this Slack workspace belongs to. Contact the organization admin for an invite.";
-
     return NextResponse.redirect(
-      `${appUrl}/slack/connect?error=${encodeURIComponent(message)}`,
+      `${appUrl}/slack/connect?error=${encodeURIComponent("Your active organization doesn't match this Slack workspace. Please switch to the correct organization in the platform sidebar before connecting.")}`,
     );
   }
 
-  const { org, member } = await resolveOrg(authCtx, installation.orgId);
+  const { org, member } = await resolveOrg(authCtx);
 
   if (member.role === "admin") {
     await adminConnect({
