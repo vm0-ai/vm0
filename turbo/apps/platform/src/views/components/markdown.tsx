@@ -2,7 +2,7 @@ import MarkdownPreview, {
   type MarkdownPreviewProps,
 } from "@uiw/react-markdown-preview";
 import { useGet } from "ccstate-react";
-import type { ReactNode } from "react";
+import type { ComponentPropsWithoutRef } from "react";
 import { theme$ } from "../../signals/theme.ts";
 
 type RewriteArgs = Parameters<
@@ -175,7 +175,7 @@ const rehypeRewriteHandler = (() => {
  * Wraps a markdown table in an overflow-x-auto container so wide tables scroll
  * within their container instead of stretching the page on mobile.
  */
-function ResponsiveTable({ children }: { children?: ReactNode }) {
+function ResponsiveTable({ children }: ComponentPropsWithoutRef<"table">) {
   return (
     <div className="overflow-x-auto">
       <table>{children}</table>
@@ -197,9 +197,7 @@ export function Markdown({ className, style, ...rest }: MarkdownPreviewProps) {
       }}
       wrapperElement={{ "data-color-mode": theme }}
       rehypeRewrite={rehypeRewriteHandler}
-      components={
-        { table: ResponsiveTable } as MarkdownPreviewProps["components"]
-      }
+      components={{ table: ResponsiveTable }}
       {...rest}
     />
   );
