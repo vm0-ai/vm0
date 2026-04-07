@@ -206,8 +206,47 @@ export const runnersJobClaimContract = c.router({
   },
 });
 
+/**
+ * Runner heartbeat body — periodic state report from each runner
+ */
+export const heartbeatBodySchema = z.object({
+  runnerId: z.uuid(),
+  runnerName: z.string(),
+  group: runnerGroupSchema,
+  profiles: z.array(z.string()),
+  totalVcpu: z.number().int().nonnegative(),
+  totalMemoryMb: z.number().int().nonnegative(),
+  maxConcurrent: z.number().int().nonnegative(),
+  allocatedVcpu: z.number().int().nonnegative(),
+  allocatedMemoryMb: z.number().int().nonnegative(),
+  runningCount: z.number().int().nonnegative(),
+  heldSessions: z.array(z.string()),
+  mode: z.enum(["running", "draining"]),
+});
+
+/**
+ * Runners heartbeat contract - POST /api/runners/heartbeat
+ * Periodic state report from runners for capacity tracking and dispatch
+ */
+export const runnersHeartbeatContract = c.router({
+  heartbeat: {
+    method: "POST",
+    path: "/api/runners/heartbeat",
+    headers: authHeadersSchema,
+    body: heartbeatBodySchema,
+    responses: {
+      200: z.object({ ok: z.literal(true) }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Report runner heartbeat with capacity and state",
+  },
+});
+
 export type RunnersPollContract = typeof runnersPollContract;
 export type RunnersJobClaimContract = typeof runnersJobClaimContract;
+export type RunnersHeartbeatContract = typeof runnersHeartbeatContract;
 export type Job = z.infer<typeof jobSchema>;
 export type ExecutionContext = z.infer<typeof executionContextSchema>;
 export type StoredExecutionContext = z.infer<

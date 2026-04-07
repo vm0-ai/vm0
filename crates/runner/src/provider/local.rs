@@ -15,7 +15,7 @@ use tracing::{info, warn};
 use uuid::Uuid;
 
 use super::JobProvider;
-use crate::types::ExecutionContext;
+use crate::types::{ExecutionContext, HeartbeatState};
 
 /// Poll interval for discovering new job files.
 const POLL_INTERVAL: Duration = Duration::from_millis(100);
@@ -284,6 +284,8 @@ impl JobProvider for LocalProvider {
         // last discover() scan but before the job actually finished).
         let _ = std::fs::remove_file(self.group_dir.join(format!("{run_id}.cancel")));
     }
+
+    async fn heartbeat(&self, _state: &HeartbeatState) {}
 
     async fn shutdown(&self) {}
 }

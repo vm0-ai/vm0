@@ -176,6 +176,28 @@ impl ExecutionContext {
 }
 
 // ---------------------------------------------------------------------------
+// Heartbeat
+// ---------------------------------------------------------------------------
+
+/// Runner state snapshot sent to the server via heartbeat.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HeartbeatState {
+    pub runner_id: String,
+    pub runner_name: String,
+    pub group: String,
+    pub profiles: Vec<String>,
+    pub total_vcpu: u32,
+    pub total_memory_mb: u32,
+    pub max_concurrent: usize,
+    pub allocated_vcpu: u32,
+    pub allocated_memory_mb: u32,
+    pub running_count: usize,
+    pub held_sessions: Vec<String>,
+    pub mode: String,
+}
+
+// ---------------------------------------------------------------------------
 // Complete
 // ---------------------------------------------------------------------------
 
@@ -423,5 +445,34 @@ mod tests {
             "my-artifact"
         );
         assert!(manifest.memory.is_none());
+    }
+
+    #[test]
+    fn heartbeat_state_serializes_camel_case() {
+        let state = HeartbeatState {
+            runner_id: "550e8400-e29b-41d4-a716-446655440000".into(),
+            runner_name: "runner-1".into(),
+            group: "vm0/production".into(),
+            profiles: vec!["vm0/default".into()],
+            total_vcpu: 16,
+            total_memory_mb: 32768,
+            max_concurrent: 8,
+            allocated_vcpu: 6,
+            allocated_memory_mb: 6144,
+            running_count: 2,
+            held_sessions: vec!["session-abc".into()],
+            mode: "running".into(),
+        };
+        let json: serde_json::Value = serde_json::to_value(&state).unwrap();
+        assert_eq!(json["runnerId"], "550e8400-e29b-41d4-a716-446655440000");
+        assert_eq!(json["runnerName"], "runner-1");
+        assert_eq!(json["totalVcpu"], 16);
+        assert_eq!(json["totalMemoryMb"], 32768);
+        assert_eq!(json["maxConcurrent"], 8);
+        assert_eq!(json["allocatedVcpu"], 6);
+        assert_eq!(json["allocatedMemoryMb"], 6144);
+        assert_eq!(json["runningCount"], 2);
+        assert_eq!(json["heldSessions"], json!(["session-abc"]));
+        assert_eq!(json["mode"], "running");
     }
 }

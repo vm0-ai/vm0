@@ -13,7 +13,7 @@ pub(crate) use local::{JobRequest, JobResponse};
 
 use uuid::Uuid;
 
-use crate::types::ExecutionContext;
+use crate::types::{ExecutionContext, HeartbeatState};
 
 /// Abstraction over job lifecycle — discovery, claiming, and completion reporting.
 ///
@@ -50,6 +50,10 @@ pub trait JobProvider: Send + Sync {
     ///
     /// Implementations manage auth tokens and retry logic internally.
     async fn complete(&self, run_id: Uuid, exit_code: i32, error: Option<&str>);
+
+    /// Report runner state to the server. Fire-and-forget — failures are
+    /// logged but do not affect runner operation.
+    async fn heartbeat(&self, state: &HeartbeatState);
 
     /// Release discovery resources (subscriptions, background tasks).
     ///

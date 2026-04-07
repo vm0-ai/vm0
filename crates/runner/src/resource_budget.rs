@@ -132,6 +132,16 @@ impl ResourceBudget {
         self.max_concurrent
     }
 
+    /// Returns (allocated_vcpu, allocated_memory_mb, running_count) for heartbeat reporting.
+    pub fn allocated(&self) -> (u32, u32, usize) {
+        let state = self.lock();
+        (
+            state.running_vcpu,
+            state.running_memory_mb,
+            state.running_count,
+        )
+    }
+
     /// Lock the budget state, recovering from poison if a thread panicked.
     fn lock(&self) -> MutexGuard<'_, BudgetState> {
         match self.state.lock() {
@@ -292,5 +302,47 @@ mod tests {
         assert_eq!(state.running_vcpu, 4);
         assert_eq!(state.running_memory_mb, 4096);
         assert_eq!(state.running_count, 2);
+    }
+
+    #[test]
+    fn allocated_empty() {
+        let budget = ResourceBudget::new(16, 32768, 1.0, 8);
+        let (vcpu, mem, count) = budget.allocated();
+        assert_eq!(vcpu, 0);
+        assert_eq!(mem, 0);
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn allocated_partially_used() {
+        let budget = ResourceBudget::new(16, 32768, 1.0, 8);
+        budget.try_reserve(4, 8192);
+        budget.try_reserve(2, 4096);
+        let (vcpu, mem, count) = budget.allocated();
+        assert_eq!(vcpu, 6);
+        assert_eq!(mem, 12288);
+        assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn allocated_fully_used() {
+        let budget = ResourceBudget::new(4, 4096, 1.0, 2);
+        budget.try_reserve(2, 2048);
+        budget.try_reserve(2, 2048);
+        let (vcpu, mem, count) = budget.allocated();
+        assert_eq!(vcpu, 4);
+        assert_eq!(mem, 4096);
+        assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn allocated_overcommitted() {
+        // First-job bypass allows exceeding budget
+        let budget = ResourceBudget::new(1, 1024, 1.0, 0);
+        budget.try_reserve(2, 2048);
+        let (vcpu, mem, count) = budget.allocated();
+        assert_eq!(vcpu, 2);
+        assert_eq!(mem, 2048);
+        assert_eq!(count, 1);
     }
 }

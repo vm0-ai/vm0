@@ -12,6 +12,7 @@ import * as blobSchema from "./schema/blob";
 
 import * as sandboxTelemetrySchema from "./schema/sandbox-telemetry";
 import * as runnerSchema from "./schema/runner-job-queue";
+import * as runnerStateSchema from "./schema/runner-state";
 import * as agentRunQueueSchema from "./schema/agent-run-queue";
 import * as zeroAgentScheduleSchema from "./schema/zero-agent-schedule";
 import * as secretSchema from "./schema/secret";
@@ -67,6 +68,7 @@ export const schema = {
 
   ...sandboxTelemetrySchema,
   ...runnerSchema,
+  ...runnerStateSchema,
   ...agentRunQueueSchema,
   ...zeroAgentScheduleSchema,
   ...secretSchema,

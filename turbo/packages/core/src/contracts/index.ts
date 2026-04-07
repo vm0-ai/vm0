@@ -299,6 +299,8 @@ export {
 export {
   runnersPollContract,
   runnersJobClaimContract,
+  runnersHeartbeatContract,
+  heartbeatBodySchema,
   runnerGroupSchema,
   jobSchema,
   executionContextSchema,
@@ -310,6 +312,7 @@ export {
   resumeSessionSchema,
   type RunnersPollContract,
   type RunnersJobClaimContract,
+  type RunnersHeartbeatContract,
   type Job,
   type ExecutionContext,
   type StoredExecutionContext,

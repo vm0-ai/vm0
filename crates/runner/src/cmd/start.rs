@@ -27,7 +27,7 @@ use crate::proxy;
 use crate::resource_budget::ResourceBudget;
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
 use crate::status::{RunnerMode, StatusTracker};
-use crate::types::ExecutionContext;
+use crate::types::{ExecutionContext, HeartbeatState};
 
 /// Initial backoff before retrying mitmproxy after a crash.
 const MITM_BACKOFF_INITIAL: Duration = Duration::from_secs(1);
@@ -126,6 +126,11 @@ pub async fn run_start(
             );
         }
     }
+
+    // Load or generate a persistent runner identity (UUID).
+    let runner_id = load_or_generate_runner_id(&runner_config.base_dir).await?;
+    info!(runner_id = %runner_id, runner_name = %runner_config.name, "runner identity");
+
     // Shared locks on rootfs/snapshot per profile — allows `runner gc` to detect in-use resources.
     let mut _resource_locks = Vec::new();
     for profile in runner_config.profiles.values() {
@@ -306,6 +311,7 @@ pub async fn run_start(
     });
 
     let config = RunConfig {
+        id: runner_id,
         name,
         group: group_name,
         profiles: runner_config.profiles,
@@ -332,6 +338,7 @@ pub async fn run_start(
 }
 
 struct RunConfig {
+    id: String,
     name: String,
     group: String,
     profiles: std::collections::BTreeMap<String, ProfileConfig>,
@@ -360,6 +367,7 @@ type MitmRestartHandle = tokio::task::JoinHandle<RunnerResult<tokio::process::Ch
 
 async fn run(config: RunConfig) -> RunnerResult<()> {
     let RunConfig {
+        id: runner_id,
         name,
         group,
         profiles,
@@ -465,6 +473,12 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     idle_cleanup.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
     // -----------------------------------------------------------------------
+    // Heartbeat interval (every 10 seconds)
+    // -----------------------------------------------------------------------
+    let mut heartbeat_tick = tokio::time::interval(Duration::from_secs(10));
+    heartbeat_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+
+    // -----------------------------------------------------------------------
     // Main loop
     // -----------------------------------------------------------------------
     let mut current_mode = RunnerMode::Running;
@@ -533,6 +547,16 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     handle_mitm_restart_result(result, &mut mitm, &mut mitm_retry);
                 }
                 () = sleep_until_retry(&mitm_retry.restart_at) => {}
+                // Heartbeat must also run when budget is exhausted, otherwise
+                // the server thinks the runner is dead.
+                _ = heartbeat_tick.tick() => {
+                    let pool = idle_pool.lock().await;
+                    let state = collect_heartbeat_state(
+                        &runner_id, &name, &group, &profiles, &budget, &pool, current_mode,
+                    );
+                    drop(pool);
+                    provider.heartbeat(&state).await;
+                }
             }
             continue;
         }
@@ -667,6 +691,15 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     destroy_tasks.spawn(destroy_idle_entry(entry, b));
                 }
             }
+            // Heartbeat: report runner state to the server
+            _ = heartbeat_tick.tick() => {
+                let pool = idle_pool.lock().await;
+                let state = collect_heartbeat_state(
+                    &runner_id, &name, &group, &profiles, &budget, &pool, current_mode,
+                );
+                drop(pool);
+                provider.heartbeat(&state).await;
+            }
         }
     }
 
@@ -687,6 +720,23 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     }
 
     provider.shutdown().await;
+
+    // Send final heartbeat with draining state so the server stops routing
+    // jobs to this runner immediately, without waiting for TTL expiry.
+    {
+        let pool = idle_pool.lock().await;
+        let state = collect_heartbeat_state(
+            &runner_id,
+            &name,
+            &group,
+            &profiles,
+            &budget,
+            &pool,
+            RunnerMode::Draining,
+        );
+        drop(pool);
+        provider.heartbeat(&state).await;
+    }
 
     let remaining = jobs.len();
     if remaining > 0 {
@@ -1030,6 +1080,62 @@ fn handle_mitm_restart_result(
     }
 }
 
+/// Collect current runner state for heartbeat reporting.
+fn collect_heartbeat_state(
+    runner_id: &str,
+    name: &str,
+    group: &str,
+    profiles: &BTreeMap<String, ProfileConfig>,
+    budget: &ResourceBudget,
+    idle_pool: &crate::idle_pool::IdlePool,
+    mode: RunnerMode,
+) -> HeartbeatState {
+    let (allocated_vcpu, allocated_memory_mb, running_count) = budget.allocated();
+    HeartbeatState {
+        runner_id: runner_id.to_string(),
+        runner_name: name.to_string(),
+        group: group.to_string(),
+        profiles: profiles.keys().cloned().collect(),
+        total_vcpu: budget.effective_vcpu(),
+        total_memory_mb: budget.effective_memory_mb(),
+        max_concurrent: budget.max_concurrent(),
+        allocated_vcpu,
+        allocated_memory_mb,
+        running_count,
+        held_sessions: idle_pool.held_sessions(),
+        mode: match mode {
+            RunnerMode::Running => "running".to_string(),
+            RunnerMode::Draining | RunnerMode::Stopped => "draining".to_string(),
+        },
+    }
+}
+
+/// Load runner ID from `{base_dir}/runner_id`, or generate a new UUID and persist it.
+async fn load_or_generate_runner_id(base_dir: &std::path::Path) -> RunnerResult<String> {
+    let path = base_dir.join("runner_id");
+    match tokio::fs::read_to_string(&path).await {
+        Ok(contents) => {
+            let id = contents.trim().to_string();
+            Uuid::parse_str(&id).map_err(|e| {
+                RunnerError::Config(format!("invalid runner_id in {}: {e}", path.display()))
+            })?;
+            Ok(id)
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            let id = Uuid::new_v4().to_string();
+            tokio::fs::write(&path, &id).await.map_err(|e| {
+                RunnerError::Config(format!("write runner_id to {}: {e}", path.display()))
+            })?;
+            info!(runner_id = %id, "generated new runner ID");
+            Ok(id)
+        }
+        Err(e) => Err(RunnerError::Config(format!(
+            "read runner_id from {}: {e}",
+            path.display()
+        ))),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1129,5 +1235,59 @@ mod tests {
             retry.restart_at.is_none(),
             "circuit breaker should prevent further retries"
         );
+    }
+
+    #[tokio::test]
+    async fn runner_id_generate_and_persist() {
+        let dir = tempfile::tempdir().unwrap();
+        let id1 = load_or_generate_runner_id(dir.path()).await.unwrap();
+        assert!(Uuid::parse_str(&id1).is_ok());
+
+        // Second call reads the same ID
+        let id2 = load_or_generate_runner_id(dir.path()).await.unwrap();
+        assert_eq!(id1, id2);
+    }
+
+    #[tokio::test]
+    async fn runner_id_reads_existing() {
+        let dir = tempfile::tempdir().unwrap();
+        let expected = Uuid::new_v4().to_string();
+        tokio::fs::write(dir.path().join("runner_id"), &expected)
+            .await
+            .unwrap();
+        let id = load_or_generate_runner_id(dir.path()).await.unwrap();
+        assert_eq!(id, expected);
+    }
+
+    #[tokio::test]
+    async fn runner_id_rejects_invalid() {
+        let dir = tempfile::tempdir().unwrap();
+        tokio::fs::write(dir.path().join("runner_id"), "not-a-uuid")
+            .await
+            .unwrap();
+        let result = load_or_generate_runner_id(dir.path()).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn runner_id_trims_whitespace() {
+        let dir = tempfile::tempdir().unwrap();
+        let expected = Uuid::new_v4().to_string();
+        // Write with trailing newline (common with echo/editors)
+        tokio::fs::write(dir.path().join("runner_id"), format!("  {expected}\n"))
+            .await
+            .unwrap();
+        let id = load_or_generate_runner_id(dir.path()).await.unwrap();
+        assert_eq!(id, expected);
+    }
+
+    #[tokio::test]
+    async fn runner_id_rejects_empty_file() {
+        let dir = tempfile::tempdir().unwrap();
+        tokio::fs::write(dir.path().join("runner_id"), "")
+            .await
+            .unwrap();
+        let result = load_or_generate_runner_id(dir.path()).await;
+        assert!(result.is_err());
     }
 }

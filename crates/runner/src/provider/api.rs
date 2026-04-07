@@ -14,7 +14,7 @@ use super::JobProvider;
 use crate::error::{RunnerError, RunnerResult};
 use crate::http::HttpClient;
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
-use crate::types::{CompleteRequest, ExecutionContext, Job, PollResponse};
+use crate::types::{CompleteRequest, ExecutionContext, HeartbeatState, Job, PollResponse};
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -241,6 +241,12 @@ impl JobProvider for ApiProvider {
         }
     }
 
+    async fn heartbeat(&self, state: &HeartbeatState) {
+        if let Err(e) = self.api.heartbeat(state).await {
+            warn!(error = %e, "heartbeat failed");
+        }
+    }
+
     /// # Ordering requirement
     ///
     /// `discover()` holds the discovery Mutex for its entire loop.
@@ -458,6 +464,27 @@ impl ApiClient {
             .map_err(|e| RunnerError::Api(format!("poll decode: {e}")))?;
 
         Ok(poll.job)
+    }
+
+    /// Send a heartbeat with runner state. Uses a short timeout (3s) to
+    /// avoid blocking the main loop.
+    async fn heartbeat(&self, state: &HeartbeatState) -> RunnerResult<()> {
+        let resp = self
+            .http
+            .request(reqeast::Method::POST, "/api/runners/heartbeat", &self.token)
+            .timeout(Duration::from_secs(3))
+            .json(state)
+            .send()
+            .await
+            .map_err(|e| RunnerError::Api(format!("heartbeat: {e}")))?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            let body = resp.text().await.unwrap_or_default();
+            return Err(RunnerError::Api(format!("heartbeat {status}: {body}")));
+        }
+
+        Ok(())
     }
 
     /// Claim a job for execution. Returns [`RunnerError::AlreadyClaimed`] on
