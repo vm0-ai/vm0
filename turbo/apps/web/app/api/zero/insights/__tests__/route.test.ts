@@ -14,6 +14,13 @@ import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 
 const context = testContext();
 
+/** Return an ISO date string N days ago from today. */
+function daysAgo(n: number): string {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() - n);
+  return d.toISOString().slice(0, 10);
+}
+
 function defaultInsightData(overrides?: Record<string, unknown>) {
   return {
     agents: [
@@ -78,7 +85,13 @@ describe("GET /api/zero/insights", () => {
   });
 
   it("should return insights with correct structure", async () => {
-    await seedInsightsDaily(user.orgId, "2026-04-03", defaultInsightData());
+    const yesterday = daysAgo(1);
+    await seedInsightsDaily(
+      user.orgId,
+      yesterday,
+      defaultInsightData(),
+      user.userId,
+    );
 
     const request = createTestRequest(
       "http://localhost:3000/api/zero/insights",
@@ -88,7 +101,7 @@ describe("GET /api/zero/insights", () => {
 
     expect(response.status).toBe(200);
     expect(data.days).toHaveLength(1);
-    expect(data.days[0].date).toBe("2026-04-03");
+    expect(data.days[0].date).toBe(yesterday);
     expect(data.days[0].agents).toHaveLength(1);
     expect(data.days[0].agents[0].agentName).toBe("Test Agent");
     expect(data.days[0].creditsUsed).toBe(100);
@@ -97,10 +110,15 @@ describe("GET /api/zero/insights", () => {
   });
 
   it("should aggregate totals across multiple days", async () => {
-    await seedInsightsDaily(user.orgId, "2026-04-03", defaultInsightData());
     await seedInsightsDaily(
       user.orgId,
-      "2026-04-02",
+      daysAgo(1),
+      defaultInsightData(),
+      user.userId,
+    );
+    await seedInsightsDaily(
+      user.orgId,
+      daysAgo(2),
       defaultInsightData({
         agents: [
           {
@@ -112,6 +130,7 @@ describe("GET /api/zero/insights", () => {
         ],
         creditsUsed: 200,
       }),
+      user.userId,
     );
 
     const request = createTestRequest(
@@ -127,20 +146,28 @@ describe("GET /api/zero/insights", () => {
   });
 
   it("should respect days query parameter", async () => {
-    await seedInsightsDaily(user.orgId, "2026-04-03", defaultInsightData());
     await seedInsightsDaily(
       user.orgId,
-      "2026-04-02",
-      defaultInsightData({ creditsUsed: 50 }),
+      daysAgo(1),
+      defaultInsightData(),
+      user.userId,
     );
     await seedInsightsDaily(
       user.orgId,
-      "2026-04-01",
+      daysAgo(2),
+      defaultInsightData({ creditsUsed: 50 }),
+      user.userId,
+    );
+    await seedInsightsDaily(
+      user.orgId,
+      daysAgo(5),
       defaultInsightData({ creditsUsed: 75 }),
+      user.userId,
     );
 
+    // days=3 covers daysAgo(1) and daysAgo(2) but not daysAgo(5)
     const request = createTestRequest(
-      "http://localhost:3000/api/zero/insights?days=2",
+      "http://localhost:3000/api/zero/insights?days=3",
     );
     const response = await GET(request);
     const data = await response.json();
@@ -150,7 +177,12 @@ describe("GET /api/zero/insights", () => {
   });
 
   it("should clamp days parameter between 1 and 90", async () => {
-    await seedInsightsDaily(user.orgId, "2026-04-03", defaultInsightData());
+    await seedInsightsDaily(
+      user.orgId,
+      daysAgo(0),
+      defaultInsightData(),
+      user.userId,
+    );
 
     // days=0 should clamp to 1
     const request1 = createTestRequest(
@@ -172,8 +204,27 @@ describe("GET /api/zero/insights", () => {
   it("should not return insights from other orgs", async () => {
     await seedInsightsDaily(
       uniqueId("org_other"),
-      "2026-04-03",
+      daysAgo(1),
       defaultInsightData(),
+      user.userId,
+    );
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/insights",
+    );
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.days).toEqual([]);
+  });
+
+  it("should not return insights from other users", async () => {
+    await seedInsightsDaily(
+      user.orgId,
+      daysAgo(1),
+      defaultInsightData(),
+      "user_other",
     );
 
     const request = createTestRequest(
@@ -187,9 +238,27 @@ describe("GET /api/zero/insights", () => {
   });
 
   it("should order days by date descending", async () => {
-    await seedInsightsDaily(user.orgId, "2026-04-01", defaultInsightData());
-    await seedInsightsDaily(user.orgId, "2026-04-03", defaultInsightData());
-    await seedInsightsDaily(user.orgId, "2026-04-02", defaultInsightData());
+    const day1 = daysAgo(3);
+    const day2 = daysAgo(1);
+    const day3 = daysAgo(2);
+    await seedInsightsDaily(
+      user.orgId,
+      day1,
+      defaultInsightData(),
+      user.userId,
+    );
+    await seedInsightsDaily(
+      user.orgId,
+      day2,
+      defaultInsightData(),
+      user.userId,
+    );
+    await seedInsightsDaily(
+      user.orgId,
+      day3,
+      defaultInsightData(),
+      user.userId,
+    );
 
     const request = createTestRequest(
       "http://localhost:3000/api/zero/insights",
@@ -199,8 +268,8 @@ describe("GET /api/zero/insights", () => {
 
     expect(response.status).toBe(200);
     expect(data.days).toHaveLength(3);
-    expect(data.days[0].date).toBe("2026-04-03");
-    expect(data.days[1].date).toBe("2026-04-02");
-    expect(data.days[2].date).toBe("2026-04-01");
+    expect(data.days[0].date).toBe(day2);
+    expect(data.days[1].date).toBe(day3);
+    expect(data.days[2].date).toBe(day1);
   });
 });

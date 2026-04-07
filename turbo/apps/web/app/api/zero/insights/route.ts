@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { desc, eq } from "drizzle-orm";
+import { sql, desc, eq, and, gte } from "drizzle-orm";
 import { initServices } from "../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";
@@ -10,7 +10,7 @@ import { insightsDaily } from "../../../../src/db/schema/insights-daily";
  *
  * Returns pre-aggregated daily insights for the authenticated org.
  * Query params:
- *   - days: number of days to return (default 30, max 90)
+ *   - days: number of days to look back from today (default 30, max 90)
  */
 export async function GET(request: Request) {
   initServices();
@@ -30,12 +30,22 @@ export async function GET(request: Request) {
   const daysParam = url.searchParams.get("days");
   const days = Math.min(Math.max(parseInt(daysParam ?? "30", 10) || 30, 1), 90);
 
+  const cutoff = new Date();
+  cutoff.setUTCHours(0, 0, 0, 0);
+  cutoff.setUTCDate(cutoff.getUTCDate() - days);
+  const cutoffIso = cutoff.toISOString().split("T")[0]!;
+
   const rows = await globalThis.services.db
     .select({ date: insightsDaily.date, data: insightsDaily.data })
     .from(insightsDaily)
-    .where(eq(insightsDaily.orgId, org.orgId))
-    .orderBy(desc(insightsDaily.date))
-    .limit(days);
+    .where(
+      and(
+        eq(insightsDaily.orgId, org.orgId),
+        eq(insightsDaily.userId, authCtx.userId),
+        gte(insightsDaily.date, sql`${cutoffIso}::date`),
+      ),
+    )
+    .orderBy(desc(insightsDaily.date));
 
   interface DayData {
     agents?: Array<{ runs?: number }>;

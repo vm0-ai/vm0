@@ -8,6 +8,7 @@ import { agentComposeVersions } from "../../../../src/db/schema/agent-compose";
 import { zeroAgents } from "../../../../src/db/schema/zero-agent";
 import { creditUsage } from "../../../../src/db/schema/credit-usage";
 import { orgMetadata } from "../../../../src/db/schema/org-metadata";
+import { orgMembersMetadata } from "../../../../src/db/schema/org-members-metadata";
 import { userCache } from "../../../../src/db/schema/user-cache";
 import { insightsDaily } from "../../../../src/db/schema/insights-daily";
 import {
@@ -38,6 +39,76 @@ interface AxiomNetworkRow {
   firewall_ref: string;
   firewall_permission: string;
   action: string;
+}
+
+// ---------------------------------------------------------------------------
+// Timezone helpers
+// ---------------------------------------------------------------------------
+
+/** Resolve per-user timezones from org_members_metadata. */
+async function resolveUserTimezones(
+  orgUserPairs: Array<{ orgId: string; userId: string }>,
+): Promise<Map<string, string>> {
+  if (orgUserPairs.length === 0) return new Map();
+
+  const db = globalThis.services.db;
+  const userIds = [...new Set(orgUserPairs.map((p) => p.userId))];
+
+  const rows = await db
+    .select({
+      orgId: orgMembersMetadata.orgId,
+      userId: orgMembersMetadata.userId,
+      timezone: orgMembersMetadata.timezone,
+    })
+    .from(orgMembersMetadata)
+    .where(
+      and(
+        inArray(orgMembersMetadata.userId, userIds),
+        isNotNull(orgMembersMetadata.timezone),
+      ),
+    );
+
+  // key: `orgId:userId` → timezone
+  const tzMap = new Map<string, string>();
+  for (const row of rows) {
+    if (row.timezone) {
+      tzMap.set(`${row.orgId}:${row.userId}`, row.timezone);
+    }
+  }
+
+  return tzMap;
+}
+
+function getLocalDayStartUtc(timezone: string, now: Date): Date {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+  const localMidnight = new Date(`${parts}T00:00:00`);
+  const utcStr = localMidnight.toLocaleString("en-US", { timeZone: "UTC" });
+  const tzStr = localMidnight.toLocaleString("en-US", { timeZone: timezone });
+  const utcDate = new Date(utcStr);
+  const tzDate = new Date(tzStr);
+  const offsetMs = utcDate.getTime() - tzDate.getTime();
+  return new Date(localMidnight.getTime() + offsetMs);
+}
+
+/** Get "today" window in a given timezone: from local midnight to now. */
+function getLocalToday(
+  timezone: string,
+  now: Date,
+): { targetDate: string; dayStart: Date; dayEnd: Date } {
+  const dayStart = getLocalDayStartUtc(timezone, now);
+  const dayEnd = now;
+  const targetDate = new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+  return { targetDate, dayStart, dayEnd };
 }
 
 // ---------------------------------------------------------------------------
@@ -83,7 +154,6 @@ async function resolveUserNames(
 
   const db = globalThis.services.db;
 
-  // Check user_cache first
   const cachedUsers = await db
     .select({ userId: userCache.userId, email: userCache.email })
     .from(userCache)
@@ -91,12 +161,10 @@ async function resolveUserNames(
 
   const nameMap = new Map(
     cachedUsers.map((u) => {
-      // Use the local part of the email as display name
       return [u.userId, u.email.split("@")[0] ?? u.email];
     }),
   );
 
-  // Fetch missing from Clerk
   const missingIds = userIds.filter((id) => {
     return !nameMap.has(id);
   });
@@ -117,7 +185,6 @@ async function resolveUserNames(
         user.firstName ?? user.username ?? email.split("@")[0] ?? "unknown";
       nameMap.set(user.id, name);
 
-      // Upsert into user_cache
       await db
         .insert(userCache)
         .values({ userId: user.id, email, cachedAt: now })
@@ -132,10 +199,10 @@ async function resolveUserNames(
 }
 
 // ---------------------------------------------------------------------------
-// Network data aggregation
+// Network data aggregation (per-user)
 // ---------------------------------------------------------------------------
 
-interface OrgNetworkData {
+interface UserNetworkData {
   serviceMap: Map<string, { calls: number; agentNames: Set<string> }>;
   permMap: Map<
     string,
@@ -148,42 +215,50 @@ interface OrgNetworkData {
   >;
 }
 
-function aggregateNetworkData(
+function aggregateNetworkDataPerUser(
   networkRows: AxiomNetworkRow[],
-  runIdToAgent: Map<string, { orgId: string; agentName: string }>,
-): Map<string, OrgNetworkData> {
-  const orgNetworkMap = new Map<string, OrgNetworkData>();
+  runIdToInfo: Map<
+    string,
+    { orgId: string; userId: string; agentName: string }
+  >,
+): Map<string, UserNetworkData> {
+  const userNetworkMap = new Map<string, UserNetworkData>();
 
   for (const row of networkRows) {
-    const agentInfo = runIdToAgent.get(row.runId);
-    if (!agentInfo) continue;
+    if (!isFirewallConnectorType(row.firewall_ref)) continue;
 
-    const { orgId, agentName } = agentInfo;
+    const info = runIdToInfo.get(row.runId);
+    if (!info) continue;
 
-    if (!orgNetworkMap.has(orgId)) {
-      orgNetworkMap.set(orgId, {
+    const key = `${info.orgId}:${info.userId}`;
+
+    if (!userNetworkMap.has(key)) {
+      userNetworkMap.set(key, {
         serviceMap: new Map(),
         permMap: new Map(),
       });
     }
-    const orgData = orgNetworkMap.get(orgId)!;
+    const userData = userNetworkMap.get(key)!;
 
-    // Service aggregation
-    if (row.host) {
-      const svc = orgData.serviceMap.get(row.host) ?? {
-        calls: 0,
-        agentNames: new Set<string>(),
-      };
-      svc.calls++;
-      svc.agentNames.add(agentName);
-      orgData.serviceMap.set(row.host, svc);
-    }
+    const connectorKey = row.firewall_ref;
+    const svc = userData.serviceMap.get(connectorKey) ?? {
+      calls: 0,
+      agentNames: new Set<string>(),
+    };
+    svc.calls++;
+    svc.agentNames.add(info.agentName);
+    userData.serviceMap.set(connectorKey, svc);
 
-    // Permission aggregation
     if (row.firewall_permission) {
-      const permKey = `${row.firewall_ref}:${row.firewall_permission}`;
-      const perm = orgData.permMap.get(permKey) ?? {
-        label: getPermissionLabel(row.firewall_ref, row.firewall_permission),
+      const isUnrestricted = row.firewall_permission === "unrestricted";
+      const permKey = isUnrestricted
+        ? row.firewall_ref
+        : `${row.firewall_ref}:${row.firewall_permission}`;
+      const label = isUnrestricted
+        ? row.firewall_ref
+        : getPermissionLabel(row.firewall_ref, row.firewall_permission);
+      const perm = userData.permMap.get(permKey) ?? {
+        label,
         allowed: 0,
         denied: 0,
         agentNames: new Set<string>(),
@@ -193,41 +268,39 @@ function aggregateNetworkData(
       } else if (row.action === "DENY") {
         perm.denied++;
       }
-      perm.agentNames.add(agentName);
-      orgData.permMap.set(permKey, perm);
+      perm.agentNames.add(info.agentName);
+      userData.permMap.set(permKey, perm);
     }
   }
 
-  return orgNetworkMap;
+  return userNetworkMap;
 }
 
 // ---------------------------------------------------------------------------
-// Per-org insight assembly
+// Per-user insight assembly
 // ---------------------------------------------------------------------------
 
-function buildOrgInsight(
-  orgId: string,
-  orgAgentMap: Map<string, AgentInfo[]>,
-  orgMemberMap: Map<string, Array<{ name: string; credits: number }>>,
-  orgBalanceMap: Map<string, number>,
-  orgNetworkMap: Map<string, OrgNetworkData>,
+function buildUserInsight(
+  networkData: UserNetworkData | undefined,
+  agents: AgentInfo[],
+  orgCreditsUsed: number,
+  orgCreditBalance: number,
+  orgTeamUsage: Array<{
+    name: string;
+    credits: number;
+    agentNames: string[];
+    agentCredits: Record<string, number>;
+  }>,
 ): Record<string, unknown> {
-  const agents = orgAgentMap.get(orgId) ?? [];
-  const creditsUsed = agents.reduce((sum, a) => {
-    return sum + a.credits;
-  }, 0);
-  const teamUsage = (orgMemberMap.get(orgId) ?? []).sort((a, b) => {
-    return b.credits - a.credits;
-  });
-
-  const networkData = orgNetworkMap.get(orgId);
-
   const services = networkData
     ? [...networkData.serviceMap.entries()]
-        .map(([host, svc]) => {
+        .map(([connectorKey, svc]) => {
+          const config = isFirewallConnectorType(connectorKey)
+            ? getConnectorFirewall(connectorKey)
+            : null;
           return {
-            name: host,
-            domain: host,
+            name: config?.name ?? connectorKey,
+            domain: connectorKey,
             calls: svc.calls,
             agentNames: [...svc.agentNames],
           };
@@ -266,9 +339,9 @@ function buildOrgInsight(
         credits: a.credits,
       };
     }),
-    creditsUsed,
-    creditBalance: orgBalanceMap.get(orgId) ?? 0,
-    teamUsage,
+    creditsUsed: orgCreditsUsed,
+    creditBalance: orgCreditBalance,
+    teamUsage: orgTeamUsage,
     topTask,
     services,
     permissions,
@@ -282,7 +355,6 @@ function buildOrgInsight(
 export async function GET(request: Request): Promise<Response> {
   initServices();
 
-  // Verify cron secret
   const authHeader = request.headers.get("authorization");
   const cronSecret = env().CRON_SECRET;
 
@@ -293,227 +365,403 @@ export async function GET(request: Request): Promise<Response> {
     );
   }
 
-  const now = new Date();
-  const yesterday = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 1),
-  );
-  const today = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
-  );
-  const targetDate = yesterday.toISOString().split("T")[0]!;
-
   const db = globalThis.services.db;
+  const now = new Date();
 
-  // ── Step 1: Agent runs + credits per org ──────────────────────────────
+  // ── Step 1: Find (org, user) pairs with new completed runs ─────────────
+  // 25h lookback covers "today" in all timezones (UTC-12 to UTC+14)
 
-  const agentRows = await db
+  const lookbackStart = new Date(now.getTime() - 25 * 3600_000);
+
+  const activeUsers = await db
     .select({
       orgId: agentRuns.orgId,
-      agentId: zeroAgents.id,
-      agentName:
-        sql<string>`COALESCE(${zeroAgents.displayName}, ${zeroAgents.name})`.as(
-          "agent_name",
-        ),
-      runCount: sql<number>`COUNT(DISTINCT ${agentRuns.id})::int`.as(
-        "run_count",
+      userId: agentRuns.userId,
+      lastCompleted: sql<Date>`MAX(${agentRuns.completedAt})`.as(
+        "last_completed",
       ),
-      credits:
-        sql<number>`COALESCE(SUM(${creditUsage.creditsCharged}), 0)::bigint`.as(
-          "credits",
-        ),
     })
     .from(agentRuns)
-    .innerJoin(
-      agentComposeVersions,
-      eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
-    )
-    .innerJoin(zeroAgents, eq(agentComposeVersions.composeId, zeroAgents.id))
-    .leftJoin(
-      creditUsage,
-      and(
-        eq(creditUsage.runId, agentRuns.id),
-        eq(creditUsage.status, "processed"),
-      ),
-    )
     .where(
       and(
-        gte(agentRuns.createdAt, yesterday),
-        lt(agentRuns.createdAt, today),
+        gte(agentRuns.completedAt, lookbackStart),
         isNotNull(agentRuns.completedAt),
       ),
     )
-    .groupBy(
-      agentRuns.orgId,
-      zeroAgents.id,
-      zeroAgents.displayName,
-      zeroAgents.name,
-    );
+    .groupBy(agentRuns.orgId, agentRuns.userId);
 
-  const orgAgentMap = new Map<string, AgentInfo[]>();
-  for (const row of agentRows) {
-    const list = orgAgentMap.get(row.orgId) ?? [];
-    list.push({
-      agentId: row.agentId,
-      agentName: row.agentName,
-      runs: row.runCount,
-      credits: Number(row.credits),
-    });
-    orgAgentMap.set(row.orgId, list);
+  if (activeUsers.length === 0) {
+    log.info("No users with new runs, skipping aggregation");
+    return NextResponse.json({ users: 0, skipped: true });
   }
 
-  // ── Step 2: runId → agent mapping for Axiom cross-reference ───────────
+  // ── Step 1b: Filter out users whose last run is older than last aggregation
 
-  const runAgentRows = await db
+  const activeOrgIds = [...new Set(activeUsers.map((u) => u.orgId))];
+  const activeUserIds = [...new Set(activeUsers.map((u) => u.userId))];
+
+  const lastAggRows = await db
     .select({
-      runId: agentRuns.id,
-      orgId: agentRuns.orgId,
-      agentName:
-        sql<string>`COALESCE(${zeroAgents.displayName}, ${zeroAgents.name})`.as(
-          "agent_name",
-        ),
+      orgId: insightsDaily.orgId,
+      userId: insightsDaily.userId,
+      lastUpdated: sql<Date>`MAX(${insightsDaily.updatedAt})`.as(
+        "last_updated",
+      ),
     })
-    .from(agentRuns)
-    .innerJoin(
-      agentComposeVersions,
-      eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
-    )
-    .innerJoin(zeroAgents, eq(agentComposeVersions.composeId, zeroAgents.id))
-    .where(
-      and(gte(agentRuns.createdAt, yesterday), lt(agentRuns.createdAt, today)),
-    );
-
-  const runIdToAgent = new Map<string, { orgId: string; agentName: string }>();
-  for (const row of runAgentRows) {
-    runIdToAgent.set(row.runId, {
-      orgId: row.orgId,
-      agentName: row.agentName,
-    });
-  }
-
-  // ── Step 3: Member credits per org ────────────────────────────────────
-
-  const memberRows = await db
-    .select({
-      orgId: creditUsage.orgId,
-      userId: creditUsage.userId,
-      credits:
-        sql<number>`COALESCE(SUM(${creditUsage.creditsCharged}), 0)::bigint`.as(
-          "credits",
-        ),
-    })
-    .from(creditUsage)
+    .from(insightsDaily)
     .where(
       and(
-        eq(creditUsage.status, "processed"),
-        gte(creditUsage.createdAt, yesterday),
-        lt(creditUsage.createdAt, today),
+        inArray(insightsDaily.orgId, activeOrgIds),
+        inArray(insightsDaily.userId, activeUserIds),
       ),
     )
-    .groupBy(creditUsage.orgId, creditUsage.userId);
+    .groupBy(insightsDaily.orgId, insightsDaily.userId);
 
-  const allUserIds = [
-    ...new Set(
-      memberRows.map((r) => {
-        return r.userId;
-      }),
-    ),
-  ];
-  const userNameMap = await resolveUserNames(allUserIds);
-
-  const orgMemberMap = new Map<
-    string,
-    Array<{ name: string; credits: number }>
-  >();
-  for (const row of memberRows) {
-    const list = orgMemberMap.get(row.orgId) ?? [];
-    list.push({
-      name: userNameMap.get(row.userId) ?? row.userId,
-      credits: Number(row.credits),
-    });
-    orgMemberMap.set(row.orgId, list);
-  }
-
-  // ── Step 4: Credit balances ───────────────────────────────────────────
-
-  const allOrgIds = [
-    ...new Set([...orgAgentMap.keys(), ...orgMemberMap.keys()]),
-  ];
-
-  const balanceRows =
-    allOrgIds.length > 0
-      ? await db
-          .select({ orgId: orgMetadata.orgId, credits: orgMetadata.credits })
-          .from(orgMetadata)
-          .where(inArray(orgMetadata.orgId, allOrgIds))
-      : [];
-
-  const orgBalanceMap = new Map(
-    balanceRows.map((r) => {
-      return [r.orgId, Number(r.credits)];
-    }),
+  const lastAggMap = new Map(
+    lastAggRows.map((r) => [`${r.orgId}:${r.userId}`, r.lastUpdated]),
   );
 
-  // ── Step 5: Axiom network logs ────────────────────────────────────────
+  const usersToAggregate = activeUsers.filter((u) => {
+    const lastAgg = lastAggMap.get(`${u.orgId}:${u.userId}`);
+    if (!lastAgg) return true;
+    return u.lastCompleted > lastAgg;
+  });
 
-  const dataset = getDatasetName(DATASETS.SANDBOX_TELEMETRY_NETWORK);
-  const startIso = yesterday.toISOString();
-  const endIso = today.toISOString();
+  if (usersToAggregate.length === 0) {
+    log.info("All active users are up to date");
+    return NextResponse.json({ users: 0, skipped: true });
+  }
 
-  const apl = `['${dataset}']
+  // ── Step 2: Resolve per-user timezones ─────────────────────────────────
+
+  const userTzMap = await resolveUserTimezones(usersToAggregate);
+
+  // Group users by their "yesterday" time window
+  interface WindowGroup {
+    dayStart: Date;
+    dayEnd: Date;
+    targetDate: string;
+    users: Array<{ orgId: string; userId: string }>;
+  }
+  const windowGroups = new Map<string, WindowGroup>();
+
+  for (const { orgId, userId } of usersToAggregate) {
+    const tz = userTzMap.get(`${orgId}:${userId}`) ?? "UTC";
+    const { targetDate, dayStart, dayEnd } = getLocalToday(tz, now);
+    const windowKey = `${dayStart.toISOString()}|${dayEnd.toISOString()}`;
+
+    const group = windowGroups.get(windowKey) ?? {
+      dayStart,
+      dayEnd,
+      targetDate,
+      users: [],
+    };
+    group.users.push({ orgId, userId });
+    windowGroups.set(windowKey, group);
+  }
+
+  // ── Step 3: Process each time window ───────────────────────────────────
+
+  let upserted = 0;
+  let totalNetworkRows = 0;
+
+  for (const group of windowGroups.values()) {
+    const { dayStart, dayEnd, targetDate, users } = group;
+    const orgIds = [...new Set(users.map((u) => u.orgId))];
+    const userIds = [...new Set(users.map((u) => u.userId))];
+
+    // ── Agent runs per user ────────────────────────────────────────────
+
+    const agentRows = await db
+      .select({
+        orgId: agentRuns.orgId,
+        userId: agentRuns.userId,
+        agentId: zeroAgents.id,
+        agentName:
+          sql<string>`COALESCE(${zeroAgents.displayName}, ${zeroAgents.name})`.as(
+            "agent_name",
+          ),
+        runCount: sql<number>`COUNT(DISTINCT ${agentRuns.id})::int`.as(
+          "run_count",
+        ),
+        credits:
+          sql<number>`COALESCE(SUM(${creditUsage.creditsCharged}), 0)::bigint`.as(
+            "credits",
+          ),
+      })
+      .from(agentRuns)
+      .innerJoin(
+        agentComposeVersions,
+        eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
+      )
+      .innerJoin(zeroAgents, eq(agentComposeVersions.composeId, zeroAgents.id))
+      .leftJoin(
+        creditUsage,
+        and(
+          eq(creditUsage.runId, agentRuns.id),
+          eq(creditUsage.status, "processed"),
+        ),
+      )
+      .where(
+        and(
+          inArray(agentRuns.orgId, orgIds),
+          inArray(agentRuns.userId, userIds),
+          gte(agentRuns.createdAt, dayStart),
+          lt(agentRuns.createdAt, dayEnd),
+          isNotNull(agentRuns.completedAt),
+        ),
+      )
+      .groupBy(
+        agentRuns.orgId,
+        agentRuns.userId,
+        zeroAgents.id,
+        zeroAgents.displayName,
+        zeroAgents.name,
+      );
+
+    // key: `orgId:userId`
+    const userAgentMap = new Map<string, AgentInfo[]>();
+    for (const row of agentRows) {
+      const key = `${row.orgId}:${row.userId}`;
+      const list = userAgentMap.get(key) ?? [];
+      list.push({
+        agentId: row.agentId,
+        agentName: row.agentName,
+        runs: row.runCount,
+        credits: Number(row.credits),
+      });
+      userAgentMap.set(key, list);
+    }
+
+    // ── runId → user mapping for Axiom cross-reference ─────────────────
+
+    const runAgentRows = await db
+      .select({
+        runId: agentRuns.id,
+        orgId: agentRuns.orgId,
+        userId: agentRuns.userId,
+        agentName:
+          sql<string>`COALESCE(${zeroAgents.displayName}, ${zeroAgents.name})`.as(
+            "agent_name",
+          ),
+      })
+      .from(agentRuns)
+      .innerJoin(
+        agentComposeVersions,
+        eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
+      )
+      .innerJoin(zeroAgents, eq(agentComposeVersions.composeId, zeroAgents.id))
+      .where(
+        and(
+          inArray(agentRuns.orgId, orgIds),
+          inArray(agentRuns.userId, userIds),
+          gte(agentRuns.createdAt, dayStart),
+          lt(agentRuns.createdAt, dayEnd),
+        ),
+      );
+
+    const runIdToInfo = new Map<
+      string,
+      { orgId: string; userId: string; agentName: string }
+    >();
+    for (const row of runAgentRows) {
+      runIdToInfo.set(row.runId, {
+        orgId: row.orgId,
+        userId: row.userId,
+        agentName: row.agentName,
+      });
+    }
+
+    // ── Org-wide credits with agent breakdown ────────────────────────────
+
+    const memberRows = await db
+      .select({
+        orgId: creditUsage.orgId,
+        userId: creditUsage.userId,
+        agentName:
+          sql<string>`COALESCE(${zeroAgents.displayName}, ${zeroAgents.name})`.as(
+            "agent_name",
+          ),
+        credits:
+          sql<number>`COALESCE(SUM(${creditUsage.creditsCharged}), 0)::bigint`.as(
+            "credits",
+          ),
+      })
+      .from(creditUsage)
+      .innerJoin(agentRuns, eq(creditUsage.runId, agentRuns.id))
+      .innerJoin(
+        agentComposeVersions,
+        eq(agentRuns.agentComposeVersionId, agentComposeVersions.id),
+      )
+      .innerJoin(zeroAgents, eq(agentComposeVersions.composeId, zeroAgents.id))
+      .where(
+        and(
+          inArray(creditUsage.orgId, orgIds),
+          eq(creditUsage.status, "processed"),
+          gte(creditUsage.createdAt, dayStart),
+          lt(creditUsage.createdAt, dayEnd),
+        ),
+      )
+      .groupBy(
+        creditUsage.orgId,
+        creditUsage.userId,
+        zeroAgents.displayName,
+        zeroAgents.name,
+      );
+
+    const allCreditUserIds = [...new Set(memberRows.map((r) => r.userId))];
+    const userNameMap = await resolveUserNames(allCreditUserIds);
+
+    // Aggregate per member: total credits + set of agent names
+    const orgCreditsMap = new Map<
+      string,
+      {
+        creditsUsed: number;
+        teamUsage: Array<{
+          name: string;
+          credits: number;
+          agentNames: string[];
+          agentCredits: Record<string, number>;
+        }>;
+      }
+    >();
+
+    // Intermediate: orgId → userId → { credits, agentNames, agentCredits }
+    const memberAgg = new Map<
+      string,
+      Map<
+        string,
+        {
+          credits: number;
+          agentNames: Set<string>;
+          agentCredits: Map<string, number>;
+        }
+      >
+    >();
+
+    for (const row of memberRows) {
+      if (!memberAgg.has(row.orgId)) {
+        memberAgg.set(row.orgId, new Map());
+      }
+      const orgMembers = memberAgg.get(row.orgId)!;
+      const existing = orgMembers.get(row.userId) ?? {
+        credits: 0,
+        agentNames: new Set<string>(),
+        agentCredits: new Map<string, number>(),
+      };
+      const amt = Number(row.credits);
+      existing.credits += amt;
+      existing.agentNames.add(row.agentName);
+      existing.agentCredits.set(
+        row.agentName,
+        (existing.agentCredits.get(row.agentName) ?? 0) + amt,
+      );
+      orgMembers.set(row.userId, existing);
+    }
+
+    for (const [orgId, members] of memberAgg) {
+      let creditsUsed = 0;
+      const teamUsage: Array<{
+        name: string;
+        credits: number;
+        agentNames: string[];
+        agentCredits: Record<string, number>;
+      }> = [];
+      for (const [userId, data] of members) {
+        creditsUsed += data.credits;
+        teamUsage.push({
+          name: userNameMap.get(userId) ?? userId,
+          credits: data.credits,
+          agentNames: [...data.agentNames],
+          agentCredits: Object.fromEntries(data.agentCredits),
+        });
+      }
+      teamUsage.sort((a, b) => b.credits - a.credits);
+      orgCreditsMap.set(orgId, { creditsUsed, teamUsage });
+    }
+
+    // ── Credit balances ────────────────────────────────────────────────
+
+    const balanceRows =
+      orgIds.length > 0
+        ? await db
+            .select({ orgId: orgMetadata.orgId, credits: orgMetadata.credits })
+            .from(orgMetadata)
+            .where(inArray(orgMetadata.orgId, orgIds))
+        : [];
+
+    const orgBalanceMap = new Map(
+      balanceRows.map((r) => [r.orgId, Number(r.credits)]),
+    );
+
+    // ── Axiom network logs ─────────────────────────────────────────────
+
+    const dataset = getDatasetName(DATASETS.SANDBOX_TELEMETRY_NETWORK);
+    const startIso = dayStart.toISOString();
+    const endIso = dayEnd.toISOString();
+
+    const apl = `['${dataset}']
 | where _time >= datetime("${startIso}") and _time < datetime("${endIso}")
 | where isnotnull(firewall_ref) and firewall_ref != ""
 | project runId, host, firewall_ref, firewall_permission, action
 | limit 100000`;
 
-  let networkRows: AxiomNetworkRow[] = [];
-  try {
-    networkRows = await queryAxiom<AxiomNetworkRow>(apl);
-  } catch (error) {
-    log.error("Failed to query Axiom for network logs", {
-      error: error instanceof Error ? error.message : String(error),
-    });
-  }
+    let networkRows: AxiomNetworkRow[] = [];
+    try {
+      networkRows = await queryAxiom<AxiomNetworkRow>(apl);
+    } catch (error) {
+      log.error("Failed to query Axiom for network logs", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    totalNetworkRows += networkRows.length;
 
-  // ── Step 6: Aggregate network data + upsert per org ──────────────────
-
-  const orgNetworkMap = aggregateNetworkData(networkRows, runIdToAgent);
-
-  const activeOrgIds = new Set([
-    ...orgAgentMap.keys(),
-    ...orgMemberMap.keys(),
-    ...orgNetworkMap.keys(),
-  ]);
-
-  let upserted = 0;
-
-  for (const orgId of activeOrgIds) {
-    const data = buildOrgInsight(
-      orgId,
-      orgAgentMap,
-      orgMemberMap,
-      orgBalanceMap,
-      orgNetworkMap,
+    const userNetworkMap = aggregateNetworkDataPerUser(
+      networkRows,
+      runIdToInfo,
     );
 
-    await db
-      .insert(insightsDaily)
-      .values({ orgId, date: targetDate, data })
-      .onConflictDoUpdate({
-        target: [insightsDaily.orgId, insightsDaily.date],
-        set: { data, updatedAt: new Date() },
-      });
+    // ── Upsert per user ────────────────────────────────────────────────
 
-    upserted++;
+    for (const { orgId, userId } of users) {
+      const key = `${orgId}:${userId}`;
+      const agents = userAgentMap.get(key) ?? [];
+      const orgCredits = orgCreditsMap.get(orgId);
+      const networkData = userNetworkMap.get(key);
+
+      const data = buildUserInsight(
+        networkData,
+        agents,
+        orgCredits?.creditsUsed ?? 0,
+        orgBalanceMap.get(orgId) ?? 0,
+        orgCredits?.teamUsage ?? [],
+      );
+
+      await db
+        .insert(insightsDaily)
+        .values({ orgId, userId, date: targetDate, data })
+        .onConflictDoUpdate({
+          target: [
+            insightsDaily.orgId,
+            insightsDaily.userId,
+            insightsDaily.date,
+          ],
+          set: { data, updatedAt: new Date() },
+        });
+
+      upserted++;
+    }
   }
 
-  log.info(`Aggregated insights for ${targetDate}`, {
-    orgs: upserted,
-    networkRows: networkRows.length,
+  log.info("Aggregated insights", {
+    users: upserted,
+    windows: windowGroups.size,
+    networkRows: totalNetworkRows,
   });
 
   return NextResponse.json({
-    date: targetDate,
-    orgs: upserted,
-    networkRows: networkRows.length,
+    users: upserted,
+    windows: windowGroups.size,
+    networkRows: totalNetworkRows,
   });
 }

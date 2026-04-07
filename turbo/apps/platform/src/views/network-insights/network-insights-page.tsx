@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import {
   IconNetwork,
@@ -18,11 +19,8 @@ import {
 } from "@vm0/ui";
 import {
   networkInsightsData$,
-  insightsRange$,
   insightsDateRange$,
   setInsightsDateRange$,
-  insightsHoveredAgent$,
-  setInsightsHoveredAgent$,
   insightsCalendarOpen$,
   setInsightsCalendarOpen$,
   insightsCalendarYear$,
@@ -32,7 +30,7 @@ import {
   type DayInsight,
   type NetworkInsightsData,
 } from "../../signals/network-insights/network-insights-signals.ts";
-import type { InsightsRangeResponse } from "@vm0/core";
+import { userPreferences$ } from "../../signals/zero-page/settings/user-preferences.ts";
 
 // ---------------------------------------------------------------------------
 // Date range filter
@@ -40,6 +38,30 @@ import type { InsightsRangeResponse } from "@vm0/core";
 
 /** A preset range or a specific ISO date string like "2026-04-03". */
 type DateRange = "last7" | "last28" | "last30" | (string & {});
+
+/** Get yesterday's date string (YYYY-MM-DD) in the given IANA timezone. */
+function yesterdayIso(tz: string): string {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
+}
+
+/** Get a date string N days ago (YYYY-MM-DD) in the given IANA timezone. */
+function daysAgoIso(n: number, tz: string): string {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
+}
 
 function dateRangeLabel(range: DateRange): string {
   switch (range) {
@@ -75,26 +97,22 @@ function formatDateShort(iso: string): string {
 }
 
 /** Filter days that fall within the selected range or match a specific date. */
-function filterDays(days: DayInsight[], range: DateRange): DayInsight[] {
+function filterDays(
+  days: DayInsight[],
+  range: DateRange,
+  tz: string,
+): DayInsight[] {
   if (range !== "last7" && range !== "last28" && range !== "last30") {
     return days.filter((d) => {
       return d.date === range;
     });
   }
 
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  const cutoff = new Date(now);
-  if (range === "last7") {
-    cutoff.setDate(cutoff.getDate() - 7);
-  } else if (range === "last28") {
-    cutoff.setDate(cutoff.getDate() - 28);
-  } else {
-    cutoff.setDate(cutoff.getDate() - 30);
-  }
+  const n = range === "last7" ? 7 : range === "last28" ? 28 : 30;
+  const cutoff = daysAgoIso(n, tz);
 
   return days.filter((d) => {
-    return new Date(d.date + "T00:00:00") >= cutoff;
+    return d.date >= cutoff;
   });
 }
 
@@ -273,38 +291,20 @@ function isPreset(v: DateRange): v is "last7" | "last28" | "last30" {
   return v === "last7" || v === "last28" || v === "last30";
 }
 
-/** How many days the data range spans (0 when no data). */
-function rangeSpanDays(range: InsightsRangeResponse): number {
-  if (!range.minDate) {
-    return 0;
-  }
-  const min = new Date(range.minDate + "T00:00:00");
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  return Math.ceil((now.getTime() - min.getTime()) / 86_400_000) + 1;
-}
-
-const PRESETS = [
-  { key: "last7" as const, minSpan: 2 },
-  { key: "last28" as const, minSpan: 8 },
-  { key: "last30" as const, minSpan: 8 },
-] as const;
+const PRESETS = ["last7", "last28", "last30"] as const;
 
 function DateRangeFilter({
   value,
   onChange,
   availableDates,
-  range,
+  timezone,
 }: {
   value: DateRange;
   onChange: (v: DateRange) => void;
   availableDates: string[];
-  range: InsightsRangeResponse;
+  timezone: string;
 }) {
-  const span = rangeSpanDays(range);
-  const visiblePresets = PRESETS.filter((p) => {
-    return span >= p.minSpan;
-  });
+  const yesterday = yesterdayIso(timezone);
 
   return (
     <DropdownMenu>
@@ -322,54 +322,38 @@ function DateRangeFilter({
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48">
-        {availableDates[0] && (
+        {availableDates.includes(yesterday) && (
           <DropdownMenuItem
             onClick={() => {
-              onChange(availableDates[0]);
+              onChange(yesterday);
             }}
             className={
-              !isPreset(value) && value === availableDates[0]
-                ? "font-semibold"
-                : ""
+              !isPreset(value) && value === yesterday ? "font-semibold" : ""
             }
-          >
-            Today
-          </DropdownMenuItem>
-        )}
-        {availableDates[1] && (
-          <DropdownMenuItem
-            onClick={() => {
-              onChange(availableDates[1]);
-            }}
-            className={value === availableDates[1] ? "font-semibold" : ""}
           >
             Yesterday
           </DropdownMenuItem>
         )}
-        {visiblePresets.length > 0 && <DropdownMenuSeparator />}
-        {visiblePresets.map((preset) => {
+        {availableDates.includes(yesterday) && <DropdownMenuSeparator />}
+        {PRESETS.map((preset) => {
           return (
             <DropdownMenuItem
-              key={preset.key}
+              key={preset}
               onClick={() => {
-                onChange(preset.key);
+                onChange(preset);
               }}
-              className={value === preset.key ? "font-semibold" : ""}
+              className={value === preset ? "font-semibold" : ""}
             >
-              {dateRangeLabel(preset.key)}
+              {dateRangeLabel(preset)}
             </DropdownMenuItem>
           );
         })}
-        {span >= 2 && (
-          <>
-            <DropdownMenuSeparator />
-            <CustomRangePicker
-              value={value}
-              onChange={onChange}
-              availableDates={availableDates}
-            />
-          </>
-        )}
+        <DropdownMenuSeparator />
+        <CustomRangePicker
+          value={value}
+          onChange={onChange}
+          availableDates={availableDates}
+        />
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -610,51 +594,58 @@ function CreditsCard({
           : "consumed today"}
       </p>
 
-      {!hoveredAgent && (
-        <>
-          <div className="flex items-center justify-between mt-4">
-            <span className="text-sm opacity-60">Balance</span>
-            <span className="text-sm font-semibold tabular-nums">
-              {day.creditBalance.toLocaleString()}
-            </span>
-          </div>
+      <div>
+        <div className="flex items-center justify-between mt-4">
+          <span className="text-sm opacity-60">Balance</span>
+          <span className="text-sm font-semibold tabular-nums">
+            {day.creditBalance.toLocaleString()}
+          </span>
+        </div>
 
-          {sorted.length > 0 && (
-            <div className="mt-4">
-              <p
-                className="text-xs font-semibold uppercase tracking-widest mb-3"
-                style={{ color: accent }}
-              >
-                Team
-              </p>
-              <div className="flex flex-col gap-2">
-                {sorted.map((m) => {
-                  const pct = (m.credits / maxCredits) * 100;
-                  return (
-                    <div key={m.name} className="flex items-center gap-3">
-                      <span className="text-sm w-20 truncate shrink-0">
-                        {m.name}
-                      </span>
-                      <div className="flex-1 h-1.5 rounded-full bg-current/10 overflow-hidden">
-                        <div
-                          className="h-full rounded-full"
-                          style={{
-                            width: `${pct}%`,
-                            backgroundColor: accent,
-                          }}
-                        />
-                      </div>
-                      <span className="text-xs opacity-60 w-10 text-right shrink-0 tabular-nums">
-                        {m.credits}
-                      </span>
+        {sorted.length > 0 && (
+          <div className="mt-4">
+            <p
+              className="text-xs font-semibold uppercase tracking-widest mb-3"
+              style={{ color: accent }}
+            >
+              Team
+            </p>
+            <div className="flex flex-col gap-2">
+              {sorted.map((m) => {
+                const isActive =
+                  hoveredAgent === null || m.agentNames?.includes(hoveredAgent);
+                const memberCredits =
+                  hoveredAgent && m.agentCredits?.[hoveredAgent] != null
+                    ? m.agentCredits[hoveredAgent]
+                    : m.credits;
+                const pct = (memberCredits / maxCredits) * 100;
+                return (
+                  <div
+                    key={m.name}
+                    className={`flex items-center gap-3 transition-opacity duration-150 ${isActive ? "opacity-100" : "opacity-30"}`}
+                  >
+                    <span className="text-sm w-20 truncate shrink-0">
+                      {m.name}
+                    </span>
+                    <div className="flex-1 h-1.5 rounded-full bg-current/10 overflow-hidden">
+                      <div
+                        className="h-full rounded-full"
+                        style={{
+                          width: `${pct}%`,
+                          backgroundColor: accent,
+                        }}
+                      />
                     </div>
-                  );
-                })}
-              </div>
+                    <span className="text-xs opacity-60 w-10 text-right shrink-0 tabular-nums">
+                      {memberCredits}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
-          )}
-        </>
-      )}
+          </div>
+        )}
+      </div>
     </Card>
   );
 }
@@ -663,40 +654,13 @@ function CreditsCard({
 // Card: Top task
 // ---------------------------------------------------------------------------
 
-function TopTaskCard({
-  day,
-  colorIndex,
-}: {
-  day: DayInsight;
-  colorIndex: number;
-}) {
-  if (!day.topTask) {
-    return null;
-  }
-  const { accent } = getCardPalette(colorIndex);
-  return (
-    <Card>
-      <p
-        className="text-xs font-semibold uppercase tracking-widest mb-3"
-        style={{ color: accent }}
-      >
-        Top task
-      </p>
-      <p className="text-xl font-bold leading-snug">{day.topTask.name}</p>
-      <p className="text-sm opacity-60 mt-2">
-        called{" "}
-        <span className="font-semibold tabular-nums" style={{ color: accent }}>
-          {day.topTask.count}
-        </span>{" "}
-        times
-      </p>
-    </Card>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Card: Services accessed
 // ---------------------------------------------------------------------------
+
+function capitalize(s: string): string {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
 
 function ServicesCard({
   day,
@@ -707,18 +671,13 @@ function ServicesCard({
   colorIndex: number;
   hoveredAgent: string | null;
 }) {
-  const filtered = hoveredAgent
-    ? day.services.filter((s) => {
-        return s.agentNames.includes(hoveredAgent);
-      })
-    : day.services;
   const maxCalls = Math.max(
     1,
-    ...filtered.map((s) => {
+    ...day.services.map((s) => {
       return s.calls;
     }),
   );
-  const sorted = [...filtered].sort((a, b) => {
+  const sorted = [...day.services].sort((a, b) => {
     return b.calls - a.calls;
   });
   const top = sorted[0];
@@ -733,21 +692,28 @@ function ServicesCard({
         Services
       </p>
       <p className="text-5xl font-black leading-none tabular-nums font-serif">
-        {filtered.length}
+        {day.services.length}
       </p>
       {top && (
         <p className="text-sm opacity-60 mt-2">
           Most used:{" "}
-          <span className="font-semibold opacity-100">{top.name}</span> (
-          {top.calls} calls)
+          <span className="font-semibold opacity-100">
+            {capitalize(top.name)}
+          </span>{" "}
+          ({top.calls} calls)
         </p>
       )}
       <div className="flex flex-col gap-2.5 mt-4">
         {sorted.map((s) => {
+          const isActive =
+            hoveredAgent === null || s.agentNames.includes(hoveredAgent);
           const pct = (s.calls / maxCalls) * 100;
           return (
-            <div key={s.name} className="flex items-center gap-3">
-              <span className="text-sm font-medium w-20 truncate shrink-0">
+            <div
+              key={s.name}
+              className={`flex items-center gap-3 transition-opacity duration-150 ${isActive ? "opacity-100" : "opacity-30"}`}
+            >
+              <span className="text-sm font-medium w-20 truncate shrink-0 capitalize">
                 {s.name}
               </span>
               <div className="flex-1 h-1.5 rounded-full bg-current/10 overflow-hidden">
@@ -780,14 +746,9 @@ function PermissionsAllowedCard({
   colorIndex: number;
   hoveredAgent: string | null;
 }) {
-  const base = day.permissions.filter((p) => {
+  const allowed = day.permissions.filter((p) => {
     return p.allowed > 0;
   });
-  const allowed = hoveredAgent
-    ? base.filter((p) => {
-        return p.agentNames.includes(hoveredAgent);
-      })
-    : base;
 
   if (allowed.length === 0) {
     return null;
@@ -815,10 +776,12 @@ function PermissionsAllowedCard({
       </p>
       <div className="flex flex-col gap-2 mt-4">
         {allowed.map((p) => {
+          const isActive =
+            hoveredAgent === null || p.agentNames.includes(hoveredAgent);
           return (
             <div
               key={p.label}
-              className="flex items-center justify-between gap-2"
+              className={`flex items-center justify-between gap-2 transition-opacity duration-150 ${isActive ? "opacity-100" : "opacity-30"}`}
             >
               <span className="text-sm">{p.label}</span>
               <span className="text-xs opacity-60 tabular-nums shrink-0">
@@ -839,14 +802,9 @@ function PermissionsBlockedCard({
   day: DayInsight;
   hoveredAgent: string | null;
 }) {
-  const base = day.permissions.filter((p) => {
+  const blocked = day.permissions.filter((p) => {
     return p.denied > 0;
   });
-  const blocked = hoveredAgent
-    ? base.filter((p) => {
-        return p.agentNames.includes(hoveredAgent);
-      })
-    : base;
 
   if (blocked.length === 0) {
     return null;
@@ -875,11 +833,13 @@ function PermissionsBlockedCard({
       </p>
       <div className="flex flex-col gap-2 mt-4">
         {blocked.map((p) => {
+          const isActive =
+            hoveredAgent === null || p.agentNames.includes(hoveredAgent);
           const fullyBlocked = p.allowed === 0;
           return (
             <div
               key={p.label}
-              className="flex items-center justify-between gap-2"
+              className={`flex items-center justify-between gap-2 transition-opacity duration-150 ${isActive ? "opacity-100" : "opacity-30"}`}
             >
               <span className="text-sm font-medium">{p.label}</span>
               <span className="text-xs tabular-nums shrink-0 opacity-70">
@@ -925,19 +885,10 @@ function formatDate(iso: string): string {
 // ---------------------------------------------------------------------------
 
 function DaySection({ day }: { day: DayInsight }) {
-  const hoveredAgentState = useGet(insightsHoveredAgent$);
-  const setHoveredAgent = useSet(setInsightsHoveredAgent$);
-
-  // Only show hover highlight if the hovered agent belongs to this day
-  const hoveredAgent =
-    hoveredAgentState?.date === day.date ? hoveredAgentState.name : null;
+  const [hoveredAgent, setHoveredAgent] = useState<string | null>(null);
 
   const handleHoverAgent = (name: string | null) => {
-    if (name !== null) {
-      setHoveredAgent({ date: day.date, name });
-    } else {
-      setHoveredAgent(null);
-    }
+    setHoveredAgent(name);
   };
 
   return (
@@ -954,8 +905,7 @@ function DaySection({ day }: { day: DayInsight }) {
           hoveredAgent={hoveredAgent}
           onHoverAgent={handleHoverAgent}
         />
-        <TopTaskCard day={day} colorIndex={2} />
-        <ServicesCard day={day} colorIndex={3} hoveredAgent={hoveredAgent} />
+        <ServicesCard day={day} colorIndex={2} hoveredAgent={hoveredAgent} />
         <PermissionsAllowedCard
           day={day}
           colorIndex={5}
@@ -971,16 +921,15 @@ function DaySection({ day }: { day: DayInsight }) {
 // Main content
 // ---------------------------------------------------------------------------
 
-function InsightsContent({
-  data,
-  insightsRange,
-}: {
-  data: NetworkInsightsData;
-  insightsRange: InsightsRangeResponse;
-}) {
+function InsightsContent({ data }: { data: NetworkInsightsData }) {
   const dateRange = useGet(insightsDateRange$);
   const setRange = useSet(setInsightsDateRange$);
-  const filtered = filterDays(data.days, dateRange);
+  const prefsLoadable = useLastLoadable(userPreferences$);
+  const timezone =
+    prefsLoadable.state === "hasData" && prefsLoadable.data?.timezone
+      ? prefsLoadable.data.timezone
+      : Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const filtered = filterDays(data.days, dateRange, timezone);
 
   return (
     <div className="h-full overflow-auto">
@@ -1001,7 +950,7 @@ function InsightsContent({
               availableDates={data.days.map((d) => {
                 return d.date;
               })}
-              range={insightsRange}
+              timezone={timezone}
             />
           )}
         </div>
@@ -1060,14 +1009,8 @@ function InsightsSkeleton() {
 
 export function NetworkInsightsPage() {
   const dataLoadable = useLastLoadable(networkInsightsData$);
-  const rangeLoadable = useLastLoadable(insightsRange$);
 
-  if (
-    dataLoadable.state === "loading" ||
-    dataLoadable.state === "hasError" ||
-    rangeLoadable.state === "loading" ||
-    rangeLoadable.state === "hasError"
-  ) {
+  if (dataLoadable.state === "loading" || dataLoadable.state === "hasError") {
     return (
       <div className="h-full overflow-auto">
         <InsightsSkeleton />
@@ -1076,8 +1019,7 @@ export function NetworkInsightsPage() {
   }
 
   const data = dataLoadable.data;
-  const range = rangeLoadable.data;
-  if (!data || !range) {
+  if (!data) {
     return (
       <div className="h-full flex items-center justify-center text-muted-foreground">
         <p className="text-sm">Could not load network activity.</p>
@@ -1085,5 +1027,5 @@ export function NetworkInsightsPage() {
     );
   }
 
-  return <InsightsContent data={data} insightsRange={range} />;
+  return <InsightsContent data={data} />;
 }

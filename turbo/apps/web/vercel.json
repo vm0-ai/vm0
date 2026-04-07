@@ -17,7 +17,7 @@
     },
     {
       "path": "/api/cron/aggregate-insights",
-      "schedule": "10 0 * * *"
+      "schedule": "10 * * * *"
     },
     {
       "path": "/api/cron/telegram-cleanup",

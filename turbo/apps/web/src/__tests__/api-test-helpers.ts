@@ -2122,13 +2122,14 @@ export async function seedInsightsDaily(
   orgId: string,
   date: string,
   data: Record<string, unknown>,
+  userId?: string,
 ): Promise<void> {
   const { insightsDaily } = await import("../db/schema/insights-daily");
   await globalThis.services.db
     .insert(insightsDaily)
-    .values({ orgId, date, data })
+    .values({ orgId, userId: userId ?? null, date, data })
     .onConflictDoUpdate({
-      target: [insightsDaily.orgId, insightsDaily.date],
+      target: [insightsDaily.orgId, insightsDaily.userId, insightsDaily.date],
       set: { data, updatedAt: new Date() },
     });
 }
