@@ -4,11 +4,9 @@
  */
 
 export {
-  validateAgentSession,
   startRun,
   createRunRecord,
   buildAndDispatchRun,
-  resolveStartRunCompose,
   loadCompose,
   markRunFailed,
   registerCallbacks,

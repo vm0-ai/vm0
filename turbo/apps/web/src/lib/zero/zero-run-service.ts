@@ -11,7 +11,6 @@ import {
 import {
   createRunRecord,
   buildAndDispatchRun,
-  resolveStartRunCompose,
   loadCompose,
   markRunFailed,
   registerCallbacks,
@@ -19,6 +18,7 @@ import {
   type CreateRunParams,
   type CreateRunRecordResult,
 } from "../infra/run";
+import { resolveStartRunCompose } from "./zero-run-validation";
 import {
   enqueueRun,
   drainOrgQueue,

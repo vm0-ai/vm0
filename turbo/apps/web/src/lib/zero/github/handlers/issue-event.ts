@@ -4,7 +4,7 @@ import { githubInstallations } from "../../../../db/schema/github-installation";
 import { githubUserLinks } from "../../../../db/schema/github-user-link";
 import { githubIssueSessions } from "../../../../db/schema/github-issue-session";
 import { agentComposes } from "../../../../db/schema/agent-compose";
-import { validateAgentSession } from "../../../infra/run";
+import { validateAgentSession } from "../../zero-run-validation";
 import { createZeroRun } from "../../zero-run-service";
 import { buildIntegrationContext } from "../../integration-context";
 import { resolveAgentId } from "../../zero-compose-service";

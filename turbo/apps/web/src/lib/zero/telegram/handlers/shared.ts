@@ -6,7 +6,7 @@ import { agentComposes } from "../../../../db/schema/agent-compose";
 import { getAppUrl } from "../../url";
 import { resolveAgentId } from "../../zero-compose-service";
 import { resolveOrgOrNull } from "../../org/resolve-org";
-import { validateAgentSession } from "../../../infra/run";
+import { validateAgentSession } from "../../zero-run-validation";
 import { ensureStorageExists } from "../../../infra/storage/storage-service";
 import {
   sendMessage,
