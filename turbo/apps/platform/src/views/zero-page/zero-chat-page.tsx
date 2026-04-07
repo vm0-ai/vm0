@@ -214,7 +214,7 @@ export function ZeroChatPage() {
   );
   const agentDisplayName =
     agentDisplayNameLoadable.state === "hasData"
-      ? agentDisplayNameLoadable.data
+      ? (agentDisplayNameLoadable.data ?? "Zero")
       : "Zero";
   const chatAgentName = selectedSubagent
     ? (selectedSubagent.displayName ?? selectedSubagent.id)

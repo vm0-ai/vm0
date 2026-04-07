@@ -160,7 +160,7 @@ const chatBreadcrumb$ = computed(async (get): Promise<MobileBreadcrumb> => {
   }
 
   return {
-    section: displayName,
+    section: displayName ?? "Zero",
     sectionPath: CHAT_PATH,
     avatarAgentId: defaultId ?? undefined,
   };

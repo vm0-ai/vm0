@@ -259,7 +259,9 @@ function SlackCard({ displayName }: { displayName: string }) {
 export function ZeroWorksPage() {
   const displayNameLoadable = useLoadable(currentChatAgentDisplayName$);
   const displayName =
-    displayNameLoadable.state === "hasData" ? displayNameLoadable.data : "Zero";
+    displayNameLoadable.state === "hasData"
+      ? (displayNameLoadable.data ?? "Zero")
+      : "Zero";
 
   return (
     <div className="flex flex-1 flex-col min-h-0">

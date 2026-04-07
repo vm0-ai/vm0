@@ -11,7 +11,6 @@ import {
   setManagePinnedDialogOpen$,
   setDraftPinnedIds$,
 } from "../../../signals/zero-page/zero-sidebar-state.ts";
-import { createDeferredPromise } from "../../../signals/utils.ts";
 
 const context = testContext();
 

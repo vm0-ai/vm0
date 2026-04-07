@@ -67,53 +67,6 @@ function mockAPIs({
   );
 }
 
-function mockAPIsWithSubagents() {
-  server.use(
-    http.get("*/api/zero/team", () => {
-      return HttpResponse.json([
-        {
-          id: "c0000000-0000-4000-a000-000000000001",
-          displayName: null,
-          description: null,
-          sound: null,
-          avatarUrl: null,
-          headVersionId: "version_1",
-          updatedAt: "2024-01-01T00:00:00Z",
-        },
-        {
-          id: "sub-agent-id",
-          displayName: "Research Agent",
-          description: "Finds information",
-          sound: null,
-          avatarUrl: null,
-          headVersionId: "version_2",
-          updatedAt: "2024-01-02T00:00:00Z",
-        },
-      ]);
-    }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({
-        threads: [
-          {
-            id: "thread-main",
-            title: "Main agent chat",
-            agentId: "c0000000-0000-4000-a000-000000000001",
-            createdAt: "2026-03-10T00:00:00Z",
-            updatedAt: "2026-03-10T00:00:00Z",
-          },
-          {
-            id: "thread-sub",
-            title: "Sub agent chat",
-            agentId: "sub-agent-id",
-            createdAt: "2026-03-09T00:00:00Z",
-            updatedAt: "2026-03-09T00:00:00Z",
-          },
-        ],
-      });
-    }),
-  );
-}
-
 describe("zero sidebar", () => {
   it("should render org switcher with current org name", async () => {
     await setupPage({
