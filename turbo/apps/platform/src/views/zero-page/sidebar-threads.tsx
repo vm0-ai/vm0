@@ -80,7 +80,7 @@ function ChatThreadItem({
       <Link
         pathname="/chats/:id"
         options={{ pathParams: { id: session.id } }}
-        onPointerDown={(e) => {
+        onClick={(e) => {
           if (e.metaKey || e.ctrlKey || e.shiftKey) {
             return;
           }
@@ -103,7 +103,7 @@ function ChatThreadItem({
             <TooltipTrigger asChild>
               <button
                 type="button"
-                onPointerDown={handleDeleteClick}
+                onClick={handleDeleteClick}
                 className={`flex h-6 w-6 cursor-pointer items-center justify-center rounded-md invisible group-hover:visible transition-opacity duration-150 ${
                   isSelected
                     ? "text-slate-500 hover:text-slate-900 hover:bg-slate-300"
@@ -196,13 +196,13 @@ function ChatThreads() {
           <DialogFooter>
             <Button
               variant="outline"
-              onPointerDown={() => {
+              onClick={() => {
                 setPendingDeleteThreadId(null);
               }}
             >
               Cancel
             </Button>
-            <Button variant="destructive" onPointerDown={confirmDelete}>
+            <Button variant="destructive" onClick={confirmDelete}>
               Delete
             </Button>
           </DialogFooter>
@@ -234,14 +234,7 @@ function ChatThreadsTitle() {
   const collapsed = useGet(sessionListCollapsed$);
 
   return searchOpen ? (
-    <div
-      className="shrink-0 flex h-8 items-center gap-2 rounded-lg bg-sidebar-accent/60 pl-2 pr-2 zero-border"
-      onBlur={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget)) {
-          setSearchOpen(false);
-        }
-      }}
-    >
+    <div className="shrink-0 flex h-8 items-center gap-2 rounded-lg bg-sidebar-accent/60 pl-2 pr-2 zero-border">
       <IconSearch
         size={15}
         stroke={2.5}
@@ -260,7 +253,8 @@ function ChatThreadsTitle() {
       <div className="flex h-8 w-8 shrink-0 items-center justify-center">
         <button
           type="button"
-          onPointerDown={() => {
+          onClick={(e) => {
+            e.preventDefault();
             setSearchOpen(false);
           }}
           className="shrink-0 flex items-center justify-center h-5 w-5 rounded text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
@@ -273,7 +267,7 @@ function ChatThreadsTitle() {
   ) : (
     <div
       className="zero-nav-recent-label group flex h-8 shrink-0 cursor-pointer items-center justify-between rounded-lg pl-2 pr-0 hover:bg-sidebar-accent/50 transition-colors"
-      onPointerDown={() => {
+      onClick={() => {
         return setCollapsed(!collapsed);
       }}
     >
@@ -293,7 +287,8 @@ function ChatThreadsTitle() {
             <TooltipTrigger asChild>
               <button
                 type="button"
-                onPointerDown={(e) => {
+                onClick={(e) => {
+                  e.preventDefault();
                   e.stopPropagation();
                   setSearchOpen(true);
                 }}
@@ -313,7 +308,7 @@ function ChatThreadsTitle() {
             <TooltipTrigger asChild>
               <button
                 type="button"
-                onPointerDown={(e) => {
+                onClick={(e) => {
                   e.stopPropagation();
                   onNewChat();
                 }}

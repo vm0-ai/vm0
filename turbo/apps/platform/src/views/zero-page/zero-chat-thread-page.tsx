@@ -244,7 +244,7 @@ function ChatThreadHeader() {
                 <TooltipTrigger asChild>
                   <button
                     type="button"
-                    onPointerDown={handlePin}
+                    onClick={handlePin}
                     className="absolute -top-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full zero-border bg-background text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground hover:shadow-md cursor-pointer"
                     aria-label="Pin to sidebar"
                   >
@@ -508,7 +508,7 @@ function UserMessage({ message }: { message: UserChatMessage }) {
                     <button
                       key={a.url}
                       type="button"
-                      onPointerDown={() => {
+                      onClick={() => {
                         return setLightboxUrl(a.url);
                       }}
                       className="group relative rounded-lg overflow-hidden border border-foreground/10 hover:border-foreground/25 transition-colors"
@@ -714,7 +714,7 @@ function CollapsibleTimeline({
     <div className="mb-6">
       <button
         type="button"
-        onPointerDown={() => {
+        onClick={() => {
           return toggleExpanded(messageId);
         }}
         className="flex items-center justify-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors duration-150"
@@ -883,7 +883,7 @@ function StaticAssistantMessage({
               <TooltipTrigger asChild>
                 <button
                   type="button"
-                  onPointerDown={handleCopy}
+                  onClick={handleCopy}
                   className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
                   aria-label="Copy message"
                 >
@@ -944,7 +944,7 @@ function StaticAssistantMessage({
                   <button
                     type="button"
                     className="inline-flex items-center gap-1 text-amber-500 underline underline-offset-2 hover:text-amber-400"
-                    onPointerDown={() => {
+                    onClick={() => {
                       setTab("providers");
                       setOrgManageOpen(true, pageSignal).catch(() => {
                         return undefined;

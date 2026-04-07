@@ -86,7 +86,7 @@ export function PinnedAgentListSection() {
       <div
         className="group flex h-8 cursor-pointer items-center justify-between rounded-lg pl-2 pr-0 hover:bg-sidebar-accent/50 transition-colors"
         data-testid="pinned-section-header"
-        onPointerDown={() => {
+        onClick={() => {
           return setCollapsed(!collapsed);
         }}
       >
@@ -105,7 +105,7 @@ export function PinnedAgentListSection() {
             <TooltipTrigger asChild>
               <button
                 type="button"
-                onPointerDown={(e) => {
+                onClick={(e) => {
                   e.stopPropagation();
                   setChatListOpenFn(true);
                   reloadAgents();
@@ -176,8 +176,7 @@ export function PinnedAgentListSection() {
                           <TooltipTrigger asChild>
                             <button
                               type="button"
-                              onPointerDown={(e) => {
-                                e.preventDefault();
+                              onClick={(e) => {
                                 e.stopPropagation();
                                 onPinnedIdsChange(
                                   pinnedIds.filter((id) => {

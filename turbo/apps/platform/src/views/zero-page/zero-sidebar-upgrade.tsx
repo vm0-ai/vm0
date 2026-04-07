@@ -54,7 +54,7 @@ export function SidebarUpgradeCard() {
   return (
     <button
       type="button"
-      onPointerDown={handleClick}
+      onClick={handleClick}
       className="flex w-full items-center gap-3 rounded-lg p-2.5 text-left transition-colors hover:bg-muted/30 zero-card shadow-[0_1px_2px_hsl(220_12%_20%/0.04),0_4px_12px_hsl(220_12%_20%/0.03)]"
     >
       <div className="min-w-0 flex-1">

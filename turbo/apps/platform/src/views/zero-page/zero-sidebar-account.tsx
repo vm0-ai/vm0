@@ -212,7 +212,7 @@ export function AccountDropdown({
         {!hidePreferences && (
           <>
             <DropdownMenuItem
-              onPointerDown={() => {
+              onClick={() => {
                 return handleAccountAction("preferences");
               }}
               className="gap-3 px-3 py-2.5 rounded-lg"
@@ -249,7 +249,7 @@ export function AccountDropdown({
                 return (
                   <DropdownMenuItem
                     key={account.sessionId}
-                    onPointerDown={() => {
+                    onClick={() => {
                       return handleSwitchSession(account.sessionId);
                     }}
                     className="gap-3 px-3 py-2.5 rounded-lg"
@@ -272,7 +272,7 @@ export function AccountDropdown({
               })}
               <DropdownMenuSeparator />
               <DropdownMenuItem
-                onPointerDown={handleAddAccount}
+                onClick={handleAddAccount}
                 className="gap-3 px-3 py-2.5 rounded-lg"
               >
                 <IconPlus
@@ -286,7 +286,7 @@ export function AccountDropdown({
           </DropdownMenuSub>
         ) : (
           <DropdownMenuItem
-            onPointerDown={handleAddAccount}
+            onClick={handleAddAccount}
             className="gap-3 px-3 py-2.5 rounded-lg"
           >
             <IconPlus
@@ -298,7 +298,7 @@ export function AccountDropdown({
           </DropdownMenuItem>
         )}
         <DropdownMenuItem
-          onPointerDown={() => {
+          onClick={() => {
             return handleAccountAction("manage");
           }}
           className="gap-3 px-3 py-2.5 rounded-lg"
@@ -308,7 +308,7 @@ export function AccountDropdown({
         </DropdownMenuItem>
         {showExportData && (
           <DropdownMenuItem
-            onPointerDown={() => {
+            onClick={() => {
               return window.open(`${apiBase}/export`, "_blank");
             }}
             className="gap-3 px-3 py-2.5 rounded-lg"
@@ -323,7 +323,7 @@ export function AccountDropdown({
         )}
         <DropdownMenuSeparator />
         <DropdownMenuItem
-          onPointerDown={() => {
+          onClick={() => {
             return handleAccountAction("signout");
           }}
           className="gap-3 px-3 py-2.5 rounded-lg"
