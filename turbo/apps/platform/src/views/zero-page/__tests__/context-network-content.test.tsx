@@ -100,7 +100,7 @@ function setupMocks(options: {
   contextResponse?: RunContextResponse | null;
   networkResponse?: {
     networkLogs: NetworkLogEntry[];
-    hasMore: boolean;
+    hasMore?: boolean;
   } | null;
 }) {
   server.use(
@@ -443,22 +443,6 @@ describe("networkContent", () => {
 
     // TCP entry renders host:port
     expect(screen.getByText("db.internal:5432")).toBeInTheDocument();
-  });
-
-  it("should render truncation indicator when hasMore is true (ACT-N-002)", async () => {
-    setupMocks({
-      contextResponse: null,
-      networkResponse: {
-        networkLogs: [makeNetworkEntry()],
-        hasMore: true,
-      },
-    });
-
-    await setupAndNavigateToTab("Network");
-
-    await waitFor(() => {
-      expect(screen.getByText(/truncated/i)).toBeInTheDocument();
-    });
   });
 
   it("should render formatted time, size, and latency (ACT-N-003)", async () => {

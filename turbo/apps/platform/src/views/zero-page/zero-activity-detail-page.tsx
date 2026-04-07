@@ -58,7 +58,11 @@ import {
 import { GroupedMessageCard } from "./components/log-views/grouped-message-card.tsx";
 import { StatusDot } from "./components/log-views/status-dot.tsx";
 import { zeroActivityContext$ } from "../../signals/activity-page/activity-context-signals.ts";
-import { zeroActivityNetworkLogs$ } from "../../signals/activity-page/activity-network-signals.ts";
+import {
+  zeroActivityNetworkLogs$,
+  loadNetworkLogsNextPage$,
+} from "../../signals/activity-page/activity-network-signals.ts";
+import { detach, Reason } from "../../signals/utils.ts";
 import { ContextContent } from "./components/context-content.tsx";
 import { NetworkContent } from "./components/network-content.tsx";
 import { Markdown } from "../components/markdown.tsx";
@@ -469,6 +473,8 @@ function ActivityContextTab() {
 
 function ActivityNetworkTab() {
   const logsLoadable = useLastLoadable(zeroActivityNetworkLogs$);
+  const loadNextPage = useSet(loadNetworkLogsNextPage$);
+  const pageSignal = useGet(pageSignal$);
 
   if (logsLoadable.state === "loading" || logsLoadable.state === "hasError") {
     return (
@@ -499,8 +505,17 @@ function ActivityNetworkTab() {
     );
   }
 
+  const handleLoadMore = () => {
+    detach(loadNextPage(pageSignal), Reason.DomCallback);
+  };
+
   return (
-    <NetworkContent networkLogs={data.networkLogs} hasMore={data.hasMore} />
+    <NetworkContent
+      networkLogs={data.networkLogs}
+      hasMore={data.hasMore}
+      loading={data.loading}
+      onLoadMore={handleLoadMore}
+    />
   );
 }
 

@@ -367,18 +367,16 @@ function NetworkLogRow({
 export function NetworkContent({
   networkLogs,
   hasMore,
+  loading,
+  onLoadMore,
 }: {
   networkLogs: NetworkLogEntry[];
   hasMore?: boolean;
+  loading?: boolean;
+  onLoadMore?: () => void;
 }) {
   return (
     <div className="pb-8">
-      {hasMore && (
-        <p className="text-xs text-muted-foreground mb-3">
-          Showing first {networkLogs.length} entries. Some entries may be
-          truncated.
-        </p>
-      )}
       <Table>
         <TableHeader>
           <TableRow>
@@ -398,6 +396,21 @@ export function NetworkContent({
           })}
         </TableBody>
       </Table>
+      {hasMore && onLoadMore && (
+        <div className="flex justify-center py-4">
+          {loading ? (
+            <div className="h-6 w-6 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
+          ) : (
+            <button
+              type="button"
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+              onClick={onLoadMore}
+            >
+              Load more
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }

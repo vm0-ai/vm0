@@ -3,6 +3,7 @@ import { zeroRunContextContract, zeroRunNetworkLogsContract } from "@vm0/core";
 import { zeroClient$ } from "../api-client.ts";
 import { logger } from "../log.ts";
 import { accept } from "../../lib/accept.ts";
+import { fetchAllNetworkLogs } from "./activity-network-signals.ts";
 
 const L = logger("ActivityDownload");
 
@@ -31,16 +32,7 @@ export const fetchDownloadExtra$ = command(
       ).then((r) => {
         return r.body;
       }),
-      accept(
-        get(zeroClient$)(zeroRunNetworkLogsContract).getNetworkLogs({
-          params: { id: runId },
-          query: { limit: 500, order: "asc" },
-        }),
-        [200],
-        { toast: false },
-      ).then((r) => {
-        return r.body;
-      }),
+      fetchAllNetworkLogs(get(zeroClient$)(zeroRunNetworkLogsContract), runId),
     ]);
 
     if (contextResult.status === "fulfilled" && contextResult.value) {
@@ -50,7 +42,7 @@ export const fetchDownloadExtra$ = command(
     }
 
     if (networkResult.status === "fulfilled" && networkResult.value) {
-      extra.networkLogs = networkResult.value.networkLogs;
+      extra.networkLogs = networkResult.value;
     } else if (networkResult.status === "rejected") {
       L.debug("Failed to fetch network for download", networkResult.reason);
     }
