@@ -50,14 +50,18 @@ pub async fn run_gc(args: GcArgs) -> RunnerResult<()> {
     )
     .await?;
 
+    // Workspace GC must run BEFORE orphaned lock cleanup: it reads base_dir
+    // paths from lock files to discover workspaces from dead runners. If
+    // gc_orphaned_locks runs first, it deletes those lock files and the
+    // dead runner's workspaces become undiscoverable.
+    let nbd_orphans = gc_nbd_orphans(args.dry_run).await?;
+    let (workspace_orphans, workspace_freed) = gc_workspace_orphans(&home, args.dry_run).await?;
+
     let locks_removed = gc_orphaned_locks(&home, args.dry_run).await?;
     let (job_logs_removed, job_logs_freed) = gc_job_logs(&home, args.dry_run).await?;
     let versions_removed = gc_versions(&home, args.dry_run).await?;
 
     let debootstrap_freed = gc_debootstrap(&home, args.keep_latest, args.dry_run).await?;
-
-    let nbd_orphans = gc_nbd_orphans(args.dry_run).await?;
-    let (workspace_orphans, workspace_freed) = gc_workspace_orphans(&home, args.dry_run).await?;
 
     let total =
         rootfs_freed + snapshot_freed + job_logs_freed + debootstrap_freed + workspace_freed;
