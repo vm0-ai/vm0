@@ -1617,6 +1617,7 @@ jobs:
               --group vm0/development-${JOB_REF} \
               --runner-dirname ${JOB_REF} \
               --concurrency-factor 2.0 \
+              --keep-alive \
               --api-url ${PREVIEW_URL} \
               --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
 
