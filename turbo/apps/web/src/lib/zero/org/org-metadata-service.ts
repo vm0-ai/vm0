@@ -1,11 +1,12 @@
 import { eq } from "drizzle-orm";
 import { orgMetadata } from "../../../db/schema/org-metadata";
+import { notFound } from "../../shared/errors";
 import { logger } from "../../shared/logger";
 import { getStripe } from "../stripe";
 
 const log = logger("service:org-metadata");
 
-interface OrgMetadata {
+export interface OrgMetadata {
   orgId: string;
   tier: string;
   credits: number;
@@ -39,10 +40,13 @@ export async function getOrgMetadata(orgId: string): Promise<OrgMetadata> {
     .from(orgMetadata)
     .where(eq(orgMetadata.orgId, orgId))
     .limit(1);
+  if (!row) {
+    throw notFound(`Organization ${orgId} not found`);
+  }
   return {
     orgId,
-    tier: row?.tier ?? "free",
-    credits: row?.credits ?? 0,
+    tier: row.tier,
+    credits: row.credits,
   };
 }
 

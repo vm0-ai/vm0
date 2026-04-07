@@ -78,16 +78,12 @@ describe("getOrgMetadata", () => {
     expect(client.organizations.getOrganization).not.toHaveBeenCalled();
   });
 
-  it("returns free tier with zero credits when no row exists", async () => {
+  it("throws notFound when no row exists", async () => {
     const orgId = uniqueId("org-nonexistent");
 
-    const result = await getOrgMetadata(orgId);
-
-    expect(result).toEqual({
-      orgId,
-      tier: "free",
-      credits: 0,
-    });
+    await expect(getOrgMetadata(orgId)).rejects.toThrow(
+      `Organization ${orgId} not found`,
+    );
 
     // Clerk API should NOT have been called
     const client = await clerkClient();

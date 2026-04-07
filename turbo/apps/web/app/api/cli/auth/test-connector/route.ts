@@ -9,7 +9,8 @@ import {
   DEFAULT_TEST_EMAIL,
 } from "../../../../../src/lib/auth/test-user";
 import { orgMembersCache } from "../../../../../src/db/schema/org-members-cache";
-import { getOrgDataOrNull } from "../../../../../src/lib/zero/org/resolve-org";
+import { getOrgMetadata } from "../../../../../src/lib/zero/org/org-metadata-service";
+import { isNotFound } from "../../../../../src/lib/shared/errors";
 import { env } from "../../../../../src/env";
 
 const bodySchema = z.object({
@@ -91,7 +92,14 @@ export async function POST(request: Request) {
     .orderBy(desc(orgMembersCache.cachedAt))
     .limit(1);
 
-  const org = cached ? await getOrgDataOrNull(cached.orgId) : null;
+  let org: { orgId: string; tier: string } | null = null;
+  if (cached) {
+    try {
+      org = await getOrgMetadata(cached.orgId);
+    } catch (error) {
+      if (!isNotFound(error)) throw error;
+    }
+  }
   if (!org) {
     return NextResponse.json(
       { error: "Test user has no org — run test-token first" },

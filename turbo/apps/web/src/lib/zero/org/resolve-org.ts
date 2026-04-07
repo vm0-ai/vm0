@@ -5,52 +5,11 @@ import {
   isNotFound,
 } from "../../shared/errors";
 import { getOrgMetadata } from "./org-metadata-service";
+import type { OrgMetadata } from "./org-metadata-service";
 import { verifyMembershipCached } from "../../auth/org-membership-cache";
 import type { AuthContext } from "../../auth/get-auth-context";
 
 import type { OrgRole } from "@vm0/core";
-
-/**
- * Returns true when the error represents a "resource not found" condition
- * that should be treated as null rather than re-thrown.
- *
- * Covers:
- * - Our own NotFoundError (from errors.ts)
- * - Clerk API 404 responses (ClerkAPIResponseError with status 404)
- * - Missing-slug guard ("has no slug")
- */
-function isOrgNotFoundError(error: unknown): boolean {
-  if (isNotFound(error)) return true;
-  if (error instanceof Error) {
-    // Clerk API 404 responses (ClerkAPIResponseError with numeric status)
-    const statusHolder = error as { status?: unknown };
-    if (statusHolder.status === 404) return true;
-    // Clerk SDK org-not-found rejections: "Organization <id> not found"
-    // Also covers missing-slug guard: "Clerk organization <id> has no slug"
-    if (/organization\b.*\b(not found|has no slug)/i.test(error.message)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-/**
- * Wrapper around getOrgMetadata that returns null instead of throwing when the
- * org cannot be resolved.
- *
- * Only swallows not-found errors (our NotFoundError, Clerk API 404,
- * missing slug). Unexpected errors (DB failures, timeouts) propagate.
- */
-export async function getOrgDataOrNull(
-  orgId: string,
-): Promise<{ orgId: string; tier: string } | null> {
-  try {
-    return await getOrgMetadata(orgId);
-  } catch (error) {
-    if (isOrgNotFoundError(error)) return null;
-    throw error;
-  }
-}
 
 /**
  * Lightweight org type based on org_metadata data.
@@ -121,7 +80,14 @@ export async function resolveOrg(
     );
   }
 
-  const orgMeta = await getOrgMetadata(orgId);
+  let orgMeta: OrgMetadata;
+  try {
+    orgMeta = await getOrgMetadata(orgId);
+  } catch (error) {
+    if (!isNotFound(error)) throw error;
+    // Brand-new org: JWT proves existence, org_metadata row not yet created
+    orgMeta = { orgId, tier: "free", credits: 0 };
+  }
   const resolved: ResolvedOrg = { orgId: orgMeta.orgId, tier: orgMeta.tier };
   const member = await verifyMembership(resolved, authCtx);
   return { org: resolved, member };

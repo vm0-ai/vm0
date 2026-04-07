@@ -186,6 +186,16 @@ describe("resolveOrg", () => {
     expect(result2.org.tier).toBe("team");
   });
 
+  it("returns free tier defaults for brand-new org without org_metadata row", async () => {
+    const userId = uniqueId("test-user");
+    const orgId = uniqueId("brand-new-org");
+
+    const result = await resolveOrg(authCtx({ userId, orgId }));
+
+    expect(result.org.orgId).toBe(orgId);
+    expect(result.org.tier).toBe("free");
+  });
+
   it("returns member with correct role", async () => {
     const userId = uniqueId("test-user");
     const slug = uniqueId("org");
