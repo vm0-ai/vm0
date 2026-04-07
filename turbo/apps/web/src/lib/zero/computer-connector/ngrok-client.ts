@@ -262,9 +262,9 @@ async function findReservedDomainByName(
   apiKey: string,
   name: string,
 ): Promise<NgrokDomain | undefined> {
-  const candidates = NGROK_DOMAIN_SUFFIXES.map(
-    (suffix) => `"${name}.${suffix}"`,
-  ).join(", ");
+  const candidates = NGROK_DOMAIN_SUFFIXES.map((suffix) => {
+    return `"${name}.${suffix}"`;
+  }).join(", ");
   const filterQuery = encodeURIComponent(`obj.domain in [${candidates}]`);
   const response = await ngrokFetch(
     apiKey,
