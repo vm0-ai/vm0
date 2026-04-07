@@ -14,8 +14,8 @@ vi.mock("../screencapture", () => {
   return {
     captureScreenshot: vi.fn().mockResolvedValue({
       image: "dGVzdC1pbWFnZQ==",
-      width: 1920,
-      height: 1080,
+      width: 960,
+      height: 540,
       scaleFactor: 2,
       format: "jpg",
     }),
@@ -23,12 +23,12 @@ vi.mock("../screencapture", () => {
       image: "em9vbS1pbWFnZQ==",
       width: 400,
       height: 300,
-      scaleFactor: 1,
+      scaleFactor: 2,
       format: "jpg",
     }),
     getScreenInfo: vi.fn().mockResolvedValue({
-      width: 1920,
-      height: 1080,
+      width: 960,
+      height: 540,
       scaleFactor: 2,
     }),
   };
@@ -189,8 +189,8 @@ describe("desktop-server", () => {
       const data = await res.json();
       expect(data).toEqual({
         image: "dGVzdC1pbWFnZQ==",
-        width: 1920,
-        height: 1080,
+        width: 960,
+        height: 540,
         scaleFactor: 2,
         format: "jpg",
       });
@@ -208,8 +208,8 @@ describe("desktop-server", () => {
 
       const data = await res.json();
       expect(data).toEqual({
-        width: 1920,
-        height: 1080,
+        width: 960,
+        height: 540,
         scaleFactor: 2,
       });
       expect(getScreenInfo).toHaveBeenCalledOnce();
@@ -246,7 +246,7 @@ describe("desktop-server", () => {
         image: "em9vbS1pbWFnZQ==",
         width: 400,
         height: 300,
-        scaleFactor: 1,
+        scaleFactor: 2,
         format: "jpg",
       });
       expect(captureRegionScreenshot).toHaveBeenCalledWith({
@@ -350,7 +350,7 @@ describe("desktop-server", () => {
       const { server, port } = await setup();
       testServer = server;
 
-      // Screen is 1920x1080 with scaleFactor 2, so max is 960x540 points
+      // Screen returns logical dimensions 960x540 directly
       const res = await fetch(`http://127.0.0.1:${port}/mouse`, {
         method: "POST",
         headers: {

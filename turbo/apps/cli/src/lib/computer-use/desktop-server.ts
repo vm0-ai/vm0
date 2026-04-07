@@ -185,12 +185,10 @@ async function handleMouseRequest(
     }
 
     const info = await getScreenInfo();
-    const maxX = Math.floor(info.width / info.scaleFactor);
-    const maxY = Math.floor(info.height / info.scaleFactor);
-    if (x < 0 || x >= maxX || y < 0 || y >= maxY) {
+    if (x < 0 || x >= info.width || y < 0 || y >= info.height) {
       res.writeHead(400, { "Content-Type": "text/plain" });
       res.end(
-        `Coordinates out of bounds. Screen size: ${maxX}x${maxY} (points)`,
+        `Coordinates out of bounds. Screen size: ${info.width}x${info.height} (points)`,
       );
       return;
     }
