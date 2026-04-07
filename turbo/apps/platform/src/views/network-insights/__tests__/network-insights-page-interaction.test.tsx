@@ -20,16 +20,26 @@ function daysAgoIso(n: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+// Pre-compute at package scope to satisfy ccstate/computed-const-args-package-scope
+const day1Ago = daysAgoIso(1);
+const day2Ago = daysAgoIso(2);
+const day20Ago = daysAgoIso(20);
+const day25Ago = daysAgoIso(25);
+
 function mockInsightsAPI(days: Record<string, unknown>[] = []) {
   server.use(
     http.get("*/api/zero/insights", () => {
-      const totalCredits = days.reduce(
-        (s, d) => s + ((d.creditsUsed as number) ?? 0),
-        0,
-      );
+      const totalCredits = days.reduce((s, d) => {
+        return s + ((d.creditsUsed as number) ?? 0);
+      }, 0);
       const totalRuns = days.reduce((s, d) => {
         const agents = (d.agents as { runs: number }[]) ?? [];
-        return s + agents.reduce((rs, a) => rs + (a.runs ?? 0), 0);
+        return (
+          s +
+          agents.reduce((rs, a) => {
+            return rs + (a.runs ?? 0);
+          }, 0)
+        );
       }, 0);
       return HttpResponse.json({ days, totalCredits, totalRuns });
     }),
@@ -116,7 +126,7 @@ describe("network insights page - empty state", () => {
 
 describe("network insights page - data rendering", () => {
   it("should render the Insights heading", async () => {
-    mockInsightsAPI([sampleDay(daysAgoIso(1))]);
+    mockInsightsAPI([sampleDay(day1Ago)]);
 
     await setupPage({ context, path: "/insights" });
 
@@ -126,7 +136,7 @@ describe("network insights page - data rendering", () => {
   });
 
   it("should display agent names from the data", async () => {
-    mockInsightsAPI([sampleDay(daysAgoIso(1))]);
+    mockInsightsAPI([sampleDay(day1Ago)]);
 
     await setupPage({ context, path: "/insights" });
 
@@ -137,7 +147,7 @@ describe("network insights page - data rendering", () => {
   });
 
   it("should display credit amount", async () => {
-    mockInsightsAPI([sampleDay(daysAgoIso(1))]);
+    mockInsightsAPI([sampleDay(day1Ago)]);
 
     await setupPage({ context, path: "/insights" });
 
@@ -147,7 +157,7 @@ describe("network insights page - data rendering", () => {
   });
 
   it("should display most-used service name", async () => {
-    mockInsightsAPI([sampleDay(daysAgoIso(1))]);
+    mockInsightsAPI([sampleDay(day1Ago)]);
 
     await setupPage({ context, path: "/insights" });
 
@@ -158,7 +168,7 @@ describe("network insights page - data rendering", () => {
   });
 
   it("should display blocked permissions card when denied > 0", async () => {
-    mockInsightsAPI([sampleDay(daysAgoIso(1))]);
+    mockInsightsAPI([sampleDay(day1Ago)]);
 
     await setupPage({ context, path: "/insights" });
 
@@ -169,7 +179,7 @@ describe("network insights page - data rendering", () => {
 
   it("should not display blocked card when no denials", async () => {
     mockInsightsAPI([
-      sampleDay(daysAgoIso(1), {
+      sampleDay(day1Ago, {
         permissions: [
           {
             label: "chat:write",
@@ -190,7 +200,7 @@ describe("network insights page - data rendering", () => {
   });
 
   it("should show Yesterday header for yesterday's data", async () => {
-    mockInsightsAPI([sampleDay(daysAgoIso(1))]);
+    mockInsightsAPI([sampleDay(day1Ago)]);
 
     await setupPage({ context, path: "/insights" });
 
@@ -201,8 +211,8 @@ describe("network insights page - data rendering", () => {
 
   it("should render multiple days", async () => {
     mockInsightsAPI([
-      sampleDay(daysAgoIso(1)),
-      sampleDay(daysAgoIso(2), {
+      sampleDay(day1Ago),
+      sampleDay(day2Ago, {
         agents: [
           { agentName: "Gamma Bot", agentId: "a-3", runs: 1, credits: 10 },
         ],
@@ -224,7 +234,7 @@ describe("network insights page - data rendering", () => {
 
 describe("network insights page - date range filter", () => {
   it("should show date range dropdown when data exists", async () => {
-    mockInsightsAPI([sampleDay(daysAgoIso(1))]);
+    mockInsightsAPI([sampleDay(day1Ago)]);
 
     await setupPage({ context, path: "/insights" });
 
@@ -248,7 +258,7 @@ describe("network insights page - date range filter", () => {
 
   it("should show no-activity message when filter excludes all days", async () => {
     // Only data from 20 days ago, but default range is "last7"
-    mockInsightsAPI([sampleDay(daysAgoIso(20))]);
+    mockInsightsAPI([sampleDay(day20Ago)]);
 
     await setupPage({ context, path: "/insights" });
 
@@ -262,8 +272,8 @@ describe("network insights page - date range filter", () => {
   it("should switch to Last 30 Days range", async () => {
     const user = userEvent.setup();
     mockInsightsAPI([
-      sampleDay(daysAgoIso(1)),
-      sampleDay(daysAgoIso(25), {
+      sampleDay(day1Ago),
+      sampleDay(day25Ago, {
         agents: [
           { agentName: "OldBot", agentId: "a-old", runs: 1, credits: 5 },
         ],
@@ -298,7 +308,7 @@ describe("network insights page - date range filter", () => {
 describe("network insights page - summary card", () => {
   it("should show blocked summary when denials exist", async () => {
     mockInsightsAPI([
-      sampleDay(daysAgoIso(1), {
+      sampleDay(day1Ago, {
         permissions: [
           {
             label: "chat:write",
@@ -319,7 +329,7 @@ describe("network insights page - summary card", () => {
 
   it("should show busy day summary for high run count", async () => {
     mockInsightsAPI([
-      sampleDay(daysAgoIso(1), {
+      sampleDay(day1Ago, {
         agents: [
           { agentName: "A1", agentId: "a-1", runs: 5, credits: 50 },
           { agentName: "A2", agentId: "a-2", runs: 5, credits: 50 },
@@ -342,7 +352,7 @@ describe("network insights page - summary card", () => {
 
 describe("network insights page - credits card", () => {
   it("should display team member names", async () => {
-    mockInsightsAPI([sampleDay(daysAgoIso(1))]);
+    mockInsightsAPI([sampleDay(day1Ago)]);
 
     await setupPage({ context, path: "/insights" });
 
@@ -353,7 +363,7 @@ describe("network insights page - credits card", () => {
   });
 
   it("should display credit balance", async () => {
-    mockInsightsAPI([sampleDay(daysAgoIso(1))]);
+    mockInsightsAPI([sampleDay(day1Ago)]);
 
     await setupPage({ context, path: "/insights" });
 

@@ -104,6 +104,19 @@ export const setInsightsCalendarMonth$ = command(({ set }, month: number) => {
   set(internalCalendarMonth$, month);
 });
 
+/** Hovered agent name in the insights page (for highlighting). */
+const internalHoveredAgent$ = state<string | null>(null);
+
+export const insightsHoveredAgent$ = computed((get) => {
+  return get(internalHoveredAgent$);
+});
+
+export const setInsightsHoveredAgent$ = command(
+  ({ set }, agent: string | null) => {
+    set(internalHoveredAgent$, agent);
+  },
+);
+
 // ---------------------------------------------------------------------------
 // Data fetching
 // ---------------------------------------------------------------------------

@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import {
   IconNetwork,
@@ -27,6 +26,8 @@ import {
   setInsightsCalendarYear$,
   insightsCalendarMonth$,
   setInsightsCalendarMonth$,
+  insightsHoveredAgent$,
+  setInsightsHoveredAgent$,
   type DayInsight,
   type NetworkInsightsData,
 } from "../../signals/network-insights/network-insights-signals.ts";
@@ -615,7 +616,9 @@ function CreditsCard({
                 const isActive =
                   hoveredAgent === null || m.agentNames?.includes(hoveredAgent);
                 const memberCredits =
-                  hoveredAgent && m.agentCredits?.[hoveredAgent] != null
+                  hoveredAgent &&
+                  m.agentCredits?.[hoveredAgent] !== null &&
+                  m.agentCredits?.[hoveredAgent] !== undefined
                     ? m.agentCredits[hoveredAgent]
                     : m.credits;
                 const pct = (memberCredits / maxCredits) * 100;
@@ -885,7 +888,8 @@ function formatDate(iso: string): string {
 // ---------------------------------------------------------------------------
 
 function DaySection({ day }: { day: DayInsight }) {
-  const [hoveredAgent, setHoveredAgent] = useState<string | null>(null);
+  const hoveredAgent = useGet(insightsHoveredAgent$);
+  const setHoveredAgent = useSet(setInsightsHoveredAgent$);
 
   const handleHoverAgent = (name: string | null) => {
     setHoveredAgent(name);
@@ -928,7 +932,7 @@ function InsightsContent({ data }: { data: NetworkInsightsData }) {
   const timezone =
     prefsLoadable.state === "hasData" && prefsLoadable.data?.timezone
       ? prefsLoadable.data.timezone
-      : Intl.DateTimeFormat().resolvedOptions().timeZone;
+      : new Intl.DateTimeFormat().resolvedOptions().timeZone;
   const filtered = filterDays(data.days, dateRange, timezone);
 
   return (
