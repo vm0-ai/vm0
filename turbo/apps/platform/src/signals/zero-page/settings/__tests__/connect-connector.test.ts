@@ -199,6 +199,59 @@ describe("connectConnector$", () => {
     expect(context.store.get(permissionDialogType$)).toBe("github");
   });
 
+  it("registers and calls visibilitychange listener in standalone mode", async () => {
+    await setupPage({ context, path: "/", withoutRender: true });
+
+    mockMatchMedia(true);
+    vi.spyOn(window, "open").mockReturnValue(null);
+
+    // Capture the visibilitychange listener registered by connectConnector$.
+    const capturedListeners: EventListener[] = [];
+    vi.spyOn(document, "addEventListener").mockImplementation(
+      (type: string, listener: EventListenerOrEventListenerObject) => {
+        if (type === "visibilitychange") {
+          capturedListeners.push(listener as EventListener);
+        }
+      },
+    );
+    vi.spyOn(document, "removeEventListener").mockImplementation(() => {
+      return undefined;
+    });
+
+    // First poll returns empty; second returns the connector (after the
+    // visibilitychange listener is invoked to set visibilityPollRequested).
+    const firstPollDeferred = createDeferredPromise<void>(context.signal);
+    let pollCount = 0;
+    server.use(
+      http.get("*/api/zero/connectors", () => {
+        pollCount++;
+        if (pollCount === 1) {
+          firstPollDeferred.resolve();
+          return HttpResponse.json(makeEmptyConnectorResponse());
+        }
+        return HttpResponse.json(makeGithubConnectorResponse());
+      }),
+    );
+
+    const connectPromise = context.store.set(
+      connectConnector$,
+      "github",
+      context.signal,
+    );
+
+    // Wait for the listener to be registered and first poll to complete,
+    // then invoke it directly to simulate the user returning from Safari.
+    await firstPollDeferred.promise;
+    expect(capturedListeners).toHaveLength(1);
+    capturedListeners[0]?.(new Event("visibilitychange"));
+
+    const result = await connectPromise;
+
+    expect(result).toBeTruthy();
+    expect(context.store.get(pollingConnectorType$)).toBeNull();
+    expect(context.store.get(permissionDialogType$)).toBe("github");
+  });
+
   it("exits polling after timeout in standalone mode", async () => {
     await setupPage({ context, path: "/", withoutRender: true });
 
