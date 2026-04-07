@@ -72,13 +72,11 @@ function sampleDay(date: string, overrides?: Record<string, unknown>) {
     topTask: { name: "chat:write", count: 15 },
     services: [
       {
-        name: "Slack",
         domain: "slack",
         calls: 10,
         agentNames: ["Alpha Bot"],
       },
       {
-        name: "GitHub",
         domain: "github",
         calls: 5,
         agentNames: ["Beta Bot"],
@@ -87,12 +85,14 @@ function sampleDay(date: string, overrides?: Record<string, unknown>) {
     permissions: [
       {
         label: "chat:write",
+        connectorType: "slack",
         allowed: 8,
         denied: 2,
         agentNames: ["Alpha Bot"],
       },
       {
-        label: "contents:read",
+        label: "github",
+        connectorType: "github",
         allowed: 5,
         denied: 0,
         agentNames: ["Beta Bot"],
@@ -156,7 +156,7 @@ describe("network insights page - data rendering", () => {
     });
   });
 
-  it("should display most-used service name", async () => {
+  it("should display most-used service with proper connector label", async () => {
     mockInsightsAPI([sampleDay(day1Ago)]);
 
     await setupPage({ context, path: "/insights" });
@@ -164,7 +164,19 @@ describe("network insights page - data rendering", () => {
     await waitFor(() => {
       expect(screen.getByText(/Most used:/)).toBeInTheDocument();
     });
+    // "slack" domain should render as "Slack" via CONNECTOR_TYPES label
     expect(screen.getAllByText("Slack").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("should display connector label from CONNECTOR_TYPES for services", async () => {
+    mockInsightsAPI([sampleDay(day1Ago)]);
+
+    await setupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      // "github" domain should render as "GitHub" via CONNECTOR_TYPES label
+      expect(screen.getAllByText("GitHub").length).toBeGreaterThanOrEqual(1);
+    });
   });
 
   it("should display blocked permissions card when denied > 0", async () => {
@@ -175,6 +187,33 @@ describe("network insights page - data rendering", () => {
     await waitFor(() => {
       expect(screen.getByText("Blocked")).toBeInTheDocument();
     });
+  });
+
+  it("should show ConnectorName(description) for permissions with description", async () => {
+    mockInsightsAPI([sampleDay(day1Ago)]);
+
+    await setupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      // "chat:write" with connectorType "slack" → "Slack(chat:write)"
+      // Appears in both allowed and blocked cards
+      expect(
+        screen.getAllByText("Slack(chat:write)").length,
+      ).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  it("should show plain connector label when permission label equals connectorType", async () => {
+    mockInsightsAPI([sampleDay(day1Ago)]);
+
+    await setupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      // label "github" === connectorType "github" → just "GitHub"
+      expect(screen.getByText("Allowed")).toBeInTheDocument();
+    });
+    // The permission "github" / connectorType "github" should render as "GitHub"
+    expect(screen.getAllByText("GitHub").length).toBeGreaterThanOrEqual(1);
   });
 
   it("should not display blocked card when no denials", async () => {
