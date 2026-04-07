@@ -628,12 +628,13 @@ async fn gc_nbd_orphans(dry_run: bool) -> RunnerResult<u32> {
     Ok(cleaned)
 }
 
-/// Read base_dir paths from lock files written by `runner start`.
+/// Read base_dir paths from lock files written by `runner start`, returning
+/// only those whose runner is dead (lock not held).
 ///
-/// Returns all known base_dirs, regardless of whether the owning runner is
-/// still alive. Callers combine this with process discovery to build the
-/// complete picture.
-fn discover_registered_base_dirs(home: &HomePaths) -> Vec<PathBuf> {
+/// Live runners manage their own workspaces via the factory — GC must not
+/// touch them because CowPool pre-warmed slots would be indistinguishable
+/// from orphaned workspaces.
+fn discover_dead_runner_base_dirs(home: &HomePaths) -> Vec<PathBuf> {
     let locks_dir = home.locks_dir();
     let entries = match std::fs::read_dir(&locks_dir) {
         Ok(rd) => rd,
@@ -645,6 +646,10 @@ fn discover_registered_base_dirs(home: &HomePaths) -> Vec<PathBuf> {
         let name = entry.file_name();
         let Some(name) = name.to_str() else { continue };
         if !name.starts_with("base-dir-") || !name.ends_with(".lock") {
+            continue;
+        }
+        // Only include base_dirs from dead runners (lock not held).
+        if !matches!(probe_lock(&entry.path()), LockProbe::Free(_)) {
             continue;
         }
         let Ok(content) = std::fs::read_to_string(entry.path()) else {
@@ -659,19 +664,22 @@ fn discover_registered_base_dirs(home: &HomePaths) -> Vec<PathBuf> {
     base_dirs
 }
 
-/// Remove workspace directories not owned by any running Firecracker process.
+/// Remove workspace directories from dead runners.
 ///
-/// Discovery has two sources:
-/// 1. Live Firecracker processes — extract base_dir from `/proc/{pid}/cwd`
-/// 2. Lock files — read base_dir path written by `runner start`
+/// Only scans base_dirs whose runner lock is NOT held (dead runners). Live
+/// runners manage their own workspaces via the factory — touching them would
+/// risk deleting CowPool pre-warmed slots that are indistinguishable from
+/// orphaned workspaces.
 ///
-/// A workspace is orphaned if no Firecracker process has its CWD pointing to
-/// it. Recently-created workspaces (< [`GC_MIN_AGE`]) are skipped to avoid
-/// racing with sandbox creation and CowPool pre-warming.
+/// Even for dead runners, workspaces owned by still-running orphaned
+/// Firecracker processes are protected via process discovery. Recently-created
+/// workspaces (< [`GC_MIN_AGE`]) are also skipped as a safety margin.
 async fn gc_workspace_orphans(home: &HomePaths, dry_run: bool) -> RunnerResult<(u32, u64)> {
     use std::collections::HashSet;
 
-    // 1. Discover active workspaces from running Firecracker processes.
+    // 1. Discover active workspaces from any running Firecracker process.
+    //    This protects orphaned FCs whose parent runner already died but
+    //    whose VM is still running.
     let discovered = crate::process::discover_all().await;
     let active: HashSet<PathBuf> = discovered
         .firecrackers
@@ -683,20 +691,11 @@ async fn gc_workspace_orphans(home: &HomePaths, dry_run: bool) -> RunnerResult<(
         })
         .collect();
 
-    // Also collect base_dirs from live processes.
-    let mut base_dirs: HashSet<PathBuf> = discovered
-        .firecrackers
-        .iter()
-        .filter_map(|fc| fc.base_dir.clone())
-        .collect();
-
-    // 2. Add base_dirs from lock file registration (covers dead runners).
-    for bd in discover_registered_base_dirs(home) {
-        base_dirs.insert(bd);
-    }
+    // 2. Only scan base_dirs from dead runners (lock not held).
+    let base_dirs = discover_dead_runner_base_dirs(home);
 
     if base_dirs.is_empty() {
-        tracing::debug!("workspace gc: no base_dirs discovered");
+        tracing::debug!("workspace gc: no dead-runner base_dirs discovered");
         return Ok((0, 0));
     }
 
@@ -1397,7 +1396,7 @@ mod tests {
     // -----------------------------------------------------------------------
 
     #[test]
-    fn discover_registered_base_dirs_reads_lock_files() {
+    fn discover_dead_runner_base_dirs_reads_lock_files() {
         let dir = tempfile::tempdir().unwrap();
         let home = test_home(dir.path());
         let locks_dir = home.locks_dir();
@@ -1406,14 +1405,14 @@ mod tests {
         std::fs::write(locks_dir.join("base-dir-abc123.lock"), "/data/runner-01").unwrap();
         std::fs::write(locks_dir.join("base-dir-def456.lock"), "/data/runner-02").unwrap();
 
-        let dirs = discover_registered_base_dirs(&home);
+        let dirs = discover_dead_runner_base_dirs(&home);
         assert_eq!(dirs.len(), 2);
         assert!(dirs.contains(&PathBuf::from("/data/runner-01")));
         assert!(dirs.contains(&PathBuf::from("/data/runner-02")));
     }
 
     #[test]
-    fn discover_registered_base_dirs_skips_empty_and_non_matching() {
+    fn discover_dead_runner_base_dirs_skips_empty_and_non_matching() {
         let dir = tempfile::tempdir().unwrap();
         let home = test_home(dir.path());
         let locks_dir = home.locks_dir();
@@ -1424,17 +1423,42 @@ mod tests {
         // Non-base-dir lock file
         std::fs::write(locks_dir.join("rootfs-abc.lock"), "/some/path").unwrap();
 
-        let dirs = discover_registered_base_dirs(&home);
+        let dirs = discover_dead_runner_base_dirs(&home);
         assert!(dirs.is_empty());
     }
 
     #[test]
-    fn discover_registered_base_dirs_missing_dir() {
+    fn discover_dead_runner_base_dirs_missing_dir() {
         let dir = tempfile::tempdir().unwrap();
         let home = test_home(dir.path());
         // locks dir does not exist
-        let dirs = discover_registered_base_dirs(&home);
+        let dirs = discover_dead_runner_base_dirs(&home);
         assert!(dirs.is_empty());
+    }
+
+    #[test]
+    fn discover_dead_runner_base_dirs_skips_held_locks() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let locks_dir = home.locks_dir();
+        std::fs::create_dir_all(&locks_dir).unwrap();
+
+        // Lock file with content, held by us (simulating a live runner).
+        let lock_path = locks_dir.join("base-dir-live.lock");
+        std::fs::write(&lock_path, "/data/live-runner").unwrap();
+        let file = std::fs::File::options()
+            .read(true)
+            .write(true)
+            .open(&lock_path)
+            .unwrap();
+        let _held = Flock::lock(file, FlockArg::LockExclusive).unwrap();
+
+        // Lock file with content, NOT held (simulating a dead runner).
+        std::fs::write(locks_dir.join("base-dir-dead.lock"), "/data/dead-runner").unwrap();
+
+        let dirs = discover_dead_runner_base_dirs(&home);
+        assert_eq!(dirs.len(), 1);
+        assert_eq!(dirs[0], PathBuf::from("/data/dead-runner"));
     }
 
     #[tokio::test]
