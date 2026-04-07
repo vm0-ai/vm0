@@ -472,7 +472,6 @@ mod tests {
             r#"{"hooks":{}}"#,
             "do something",
         );
-        let joined = args.join(" ");
         for expected in [
             "--resume",
             "sess-abc",
@@ -487,7 +486,7 @@ mod tests {
             "--settings",
             r#"{"hooks":{}}"#,
         ] {
-            assert!(joined.contains(expected), "missing: {expected}");
+            assert!(args.iter().any(|a| a == expected), "missing: {expected}");
         }
         assert_prompt_with_separator(&args, "do something");
     }
