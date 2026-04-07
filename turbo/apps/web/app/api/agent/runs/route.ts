@@ -15,16 +15,34 @@ import {
   agentComposeVersions,
 } from "../../../../src/db/schema/agent-compose";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
-import { and, eq, inArray, desc, gte, lte } from "drizzle-orm";
-import { startRun, type RunDispatchError } from "../../../../src/lib/infra/run";
+import { and, eq, inArray, desc, gte, lte, sql } from "drizzle-orm";
+import {
+  loadCompose,
+  insertRunRecord,
+  buildAndDispatchRun,
+  markRunFailed,
+  type RunDispatchError,
+} from "../../../../src/lib/infra/run";
 import {
   requireAuth,
   isAuthError,
 } from "../../../../src/lib/auth/require-auth";
 import { logger } from "../../../../src/lib/shared/logger";
-import { isApiError } from "../../../../src/lib/shared/errors";
+import {
+  isApiError,
+  notFound,
+  badRequest,
+} from "../../../../src/lib/shared/errors";
 import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";
 import { resolveCliRunContext } from "../../../../src/lib/zero/build-zero-context";
+import { resolveStartRunCompose } from "../../../../src/lib/zero/zero-run-validation";
+import {
+  authorizeCompose,
+  validateComposeRequirements,
+  checkRunConcurrencyLimit,
+} from "../../../../src/lib/zero/zero-run-policy";
+import { generateSandboxToken } from "../../../../src/lib/auth/sandbox-token";
+import { buildInfraExecutionContext } from "../../../../src/lib/infra/run/context/build-context";
 
 const log = logger("api:runs");
 
@@ -218,7 +236,7 @@ const router = tsr.router(runsMainContract, {
     );
 
     // Resolve zero-layer data (vars, secrets, connectors, firewalls, timezone)
-    // before calling startRun(), which uses pure infra buildInfraExecutionContext.
+    // before building the execution context.
     try {
       const resolved = await resolveCliRunContext({
         orgId: org.orgId,
@@ -239,59 +257,139 @@ const router = tsr.router(runsMainContract, {
 
       const orgTier = orgTierSchema.parse(org.tier);
 
-      const result = await startRun({
+      // 1. Resolve compose version
+      const composeMeta = await resolveStartRunCompose({
         userId,
-        prompt: body.prompt,
-        appendSystemPrompt: body.appendSystemPrompt,
-        disallowedTools: body.disallowedTools,
-        tools: body.tools,
-        settings: body.settings,
         composeId: body.agentComposeId,
         agentComposeVersionId:
           resolved.agentComposeVersionId ?? body.agentComposeVersionId,
         checkpointId: body.checkpointId,
         sessionId: body.sessionId,
-        conversationId: body.conversationId,
-        vars: resolved.vars ?? body.vars,
-        secrets: resolved.secrets ?? body.secrets,
-        environment: resolved.environment,
-        secretConnectorMap: resolved.secretConnectorMap,
-        firewalls: resolved.firewalls,
-        userTimezone: resolved.userTimezone,
-        artifactName: resolved.artifactName ?? body.artifactName,
-        artifactVersion: resolved.artifactVersion ?? body.artifactVersion,
-        memoryName: resolved.memoryName ?? body.memoryName,
-        volumeVersions: resolved.volumeVersions ?? body.volumeVersions,
-        resumeSession: resolved.resumeSession,
-        resumeArtifact: resolved.resumeArtifact,
-        debugNoMockClaude: body.debugNoMockClaude,
-        captureNetworkBodies: body.captureNetworkBodies,
-        firewallPolicies: body.firewallPolicies,
-        callerOrgId: org.orgId,
-        orgTier,
-        resolveSourceDuration: resolved.timings.resolveSource,
-        resolveSecretsDuration: resolved.timings.resolveSecrets,
       });
 
-      log.debug(
-        `Run ${result.runId} dispatched successfully (status: ${result.status})`,
-      );
+      // 2. Cross-org check: ensure compose belongs to caller's org
+      if (composeMeta.orgId !== org.orgId) {
+        throw notFound("Resource not found");
+      }
 
-      return {
-        status: 201 as const,
-        body: {
-          runId: result.runId,
-          status: result.status as
-            | "queued"
-            | "pending"
-            | "running"
-            | "completed"
-            | "failed"
-            | "timeout",
-          sandboxId: result.sandboxId,
-          createdAt: result.createdAt.toISOString(),
-        },
-      };
+      // 3. Load compose and authorize
+      const apiStartTime = Date.now();
+      const { composeContent, compose } = await loadCompose(
+        composeMeta.agentComposeVersionId,
+        composeMeta.composeId,
+      );
+      authorizeCompose(userId, org.orgId, compose);
+      const authorizeTime = Date.now();
+
+      // 4. Validate compose requirements (new runs only)
+      if (!body.checkpointId && !body.sessionId) {
+        await validateComposeRequirements(composeContent);
+      }
+
+      // 5. Validate mutual exclusivity
+      if (body.checkpointId && body.sessionId) {
+        throw badRequest(
+          "Cannot specify both checkpointId and sessionId. Use checkpointId to resume from a checkpoint, or sessionId to continue a session.",
+        );
+      }
+
+      // 6. Concurrency check + INSERT (transaction with advisory lock)
+      const run = await globalThis.services.db.transaction(async (tx) => {
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock(hashtext(${org.orgId}))`,
+        );
+        await checkRunConcurrencyLimit(org.orgId, orgTier, tx);
+        return insertRunRecord(tx, {
+          userId,
+          orgId: org.orgId,
+          agentComposeVersionId: composeMeta.agentComposeVersionId,
+          prompt: body.prompt,
+          appendSystemPrompt: body.appendSystemPrompt,
+          vars: resolved.vars ?? body.vars,
+          secrets: resolved.secrets ?? body.secrets,
+          resumedFromCheckpointId: body.checkpointId,
+          sessionId: body.sessionId,
+        });
+      });
+      const transactionTime = Date.now();
+
+      // 7. Generate sandbox token
+      const sandboxToken = await generateSandboxToken(userId, run.id);
+      const tokenTime = Date.now();
+
+      try {
+        // 8. Build execution context (pure infra — all business data pre-resolved)
+        const { context } = buildInfraExecutionContext({
+          runId: run.id,
+          userId,
+          orgId: org.orgId,
+          agentComposeVersionId: composeMeta.agentComposeVersionId,
+          agentCompose: composeContent,
+          prompt: body.prompt,
+          sandboxToken,
+          appendSystemPrompt: body.appendSystemPrompt,
+          vars: resolved.vars ?? body.vars,
+          secrets: resolved.secrets ?? body.secrets,
+          secretConnectorMap: resolved.secretConnectorMap,
+          artifactName: resolved.artifactName ?? body.artifactName,
+          artifactVersion: resolved.artifactVersion ?? body.artifactVersion,
+          memoryName: resolved.memoryName ?? body.memoryName,
+          volumeVersions: resolved.volumeVersions ?? body.volumeVersions,
+          environment: resolved.environment,
+          userTimezone: resolved.userTimezone,
+          firewalls: resolved.firewalls,
+          disallowedTools: body.disallowedTools,
+          tools: body.tools,
+          settings: body.settings,
+          resumeSession: resolved.resumeSession,
+          resumeArtifact: resolved.resumeArtifact,
+          agentName: composeMeta.agentName,
+          resumedFromCheckpointId: body.checkpointId,
+          continuedFromSessionId: body.sessionId,
+          debugNoMockClaude: body.debugNoMockClaude,
+          captureNetworkBodies: body.captureNetworkBodies,
+        });
+
+        // 9. Dispatch
+        const dispatchResult = await buildAndDispatchRun({
+          runId: run.id,
+          context,
+          timings: {
+            apiStart: apiStartTime,
+            authorize: authorizeTime,
+            transaction: transactionTime,
+            token: tokenTime,
+            resolveSourceDuration: resolved.timings.resolveSource,
+            resolveSecretsDuration: resolved.timings.resolveSecrets,
+          },
+        });
+
+        log.debug(
+          `Run ${run.id} dispatched successfully (status: ${dispatchResult.status})`,
+        );
+
+        return {
+          status: 201 as const,
+          body: {
+            runId: run.id,
+            status: dispatchResult.status as
+              | "queued"
+              | "pending"
+              | "running"
+              | "completed"
+              | "failed"
+              | "timeout",
+            sandboxId: dispatchResult.sandboxId,
+            createdAt: run.createdAt.toISOString(),
+          },
+        };
+      } catch (error) {
+        // Post-INSERT failure: mark run as failed so client can track it.
+        // buildAndDispatchRun may have already called markRunFailed — the
+        // second call is a safe no-op (transitionRunStatus guards on status).
+        await markRunFailed(run.id, error);
+        throw error;
+      }
     } catch (error) {
       const errorResponse = handleCreateRunError(error);
       if (errorResponse) {

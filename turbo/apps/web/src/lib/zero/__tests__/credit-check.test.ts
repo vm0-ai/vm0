@@ -6,6 +6,7 @@ import {
 } from "../../../__tests__/test-helpers";
 import {
   createTestCompose,
+  createTestRunInDb,
   getTestZeroAgentId,
   findTestRunsByUserAndPrompt,
   findTestRunRecord,
@@ -20,7 +21,7 @@ import {
 import { reloadEnv } from "../../../env";
 import { createZeroRun } from "../zero-run-service";
 import { isInsufficientCredits, isNotFound } from "../../shared/errors";
-import { startRun, type CreateRunParams } from "../../infra/run/run-service";
+import type { CreateRunParams } from "../../infra/run/run-service";
 import {
   drainOrgQueue,
   enqueueRun,
@@ -213,12 +214,14 @@ describe("credit check (zero layer)", () => {
 
 describe("credit check (infra queue path)", () => {
   let user: UserContext;
+  let composeId: string;
   let versionId: string;
 
   beforeEach(async () => {
     context.setupMocks();
     user = await context.setupUser();
     const compose = await createTestCompose(uniqueId("agent"));
+    composeId = compose.composeId;
     versionId = compose.versionId;
   });
 
@@ -240,12 +243,7 @@ describe("credit check (infra queue path)", () => {
       reloadEnv();
 
       // Create a running run + a queued VM0 run
-      await startRun({
-        userId: user.userId,
-        agentComposeVersionId: versionId,
-        prompt: "Running",
-        orgTier: "free",
-      });
+      await createTestRunInDb(user.userId, composeId, { prompt: "Running" });
       const queued = await enqueueRun(
         queueBaseParams({ prompt: "Queued VM0", modelProvider: "vm0" }),
       );
@@ -275,12 +273,7 @@ describe("credit check (infra queue path)", () => {
       reloadEnv();
 
       // Create a running run + a queued non-VM0 run
-      await startRun({
-        userId: user.userId,
-        agentComposeVersionId: versionId,
-        prompt: "Running",
-        orgTier: "free",
-      });
+      await createTestRunInDb(user.userId, composeId, { prompt: "Running" });
       const queued = await enqueueRun(
         queueBaseParams({
           prompt: "Queued Anthropic",
@@ -308,12 +301,7 @@ describe("credit check (infra queue path)", () => {
       reloadEnv();
 
       // Create a running run
-      await startRun({
-        userId: user.userId,
-        agentComposeVersionId: versionId,
-        prompt: "Running",
-        orgTier: "free",
-      });
+      await createTestRunInDb(user.userId, composeId, { prompt: "Running" });
 
       // Enqueue two runs: first VM0, then non-VM0
       const vm0Run = await enqueueRun(
@@ -362,12 +350,7 @@ describe("credit check (infra queue path)", () => {
       });
 
       // Create a running run + a queued VM0 run
-      await startRun({
-        userId: user.userId,
-        agentComposeVersionId: versionId,
-        prompt: "Running",
-        orgTier: "free",
-      });
+      await createTestRunInDb(user.userId, composeId, { prompt: "Running" });
       const queued = await enqueueRun(
         queueBaseParams({
           prompt: "Queued VM0 member cap",
@@ -401,12 +384,7 @@ describe("credit check (infra queue path)", () => {
       });
 
       // Create a running run + a queued non-VM0 run
-      await startRun({
-        userId: user.userId,
-        agentComposeVersionId: versionId,
-        prompt: "Running",
-        orgTier: "free",
-      });
+      await createTestRunInDb(user.userId, composeId, { prompt: "Running" });
       const queued = await enqueueRun(
         queueBaseParams({
           prompt: "Queued Anthropic member cap",
@@ -452,11 +430,8 @@ describe("model provider check (queue dispatch path)", () => {
     // No org-level model provider configured — checkModelProviderConfigured will throw
 
     // Create a running run to force the next one into the queue
-    await startRun({
-      userId: user.userId,
-      agentComposeVersionId: compose.versionId,
+    await createTestRunInDb(user.userId, compose.composeId, {
       prompt: "Running",
-      orgTier: "free",
     });
 
     // Enqueue a zero run (no explicit modelProvider)

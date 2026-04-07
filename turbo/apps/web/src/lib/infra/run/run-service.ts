@@ -1,4 +1,4 @@
-import { eq, and, or, sql } from "drizzle-orm";
+import { eq, and, or } from "drizzle-orm";
 import { env } from "../../../env";
 import { agentRuns } from "../../../db/schema/agent-run";
 import { transitionRunStatus, dispatchTerminalSideEffects } from "./run-status";
@@ -7,8 +7,7 @@ import {
   agentComposes,
 } from "../../../db/schema/agent-compose";
 import { agentRunCallbacks } from "../../../db/schema/agent-run-callback";
-import { notFound, badRequest, forbidden } from "../../shared/errors";
-import { getCachedUser } from "../../auth/user-cache-service";
+import { notFound } from "../../shared/errors";
 
 import { logger } from "../../shared/logger";
 import type { Database } from "../../../types/global";
@@ -16,10 +15,7 @@ import type { AgentComposeYaml } from "../agent-compose/types";
 import { prepareForExecution } from "./context/execution-preparer";
 import { executeRunnerJob } from "./executors/runner-executor";
 import type { ExecutorResult, PreparedContext } from "./executors/types";
-import { generateSandboxToken } from "../../auth/sandbox-token";
-import type { ExecutionContext, DispatchTimings, ResumeSession } from "./types";
-import type { ArtifactSnapshot } from "../checkpoint/types";
-import { buildInfraExecutionContext } from "./context/build-context";
+import type { ExecutionContext, DispatchTimings } from "./types";
 import { recordSandboxOperation } from "../metrics";
 
 import { encryptSecretValue } from "../../shared/crypto/secrets-encryption";
@@ -27,19 +23,11 @@ import {
   type OrgTier,
   type RunStatus,
   type GetRunResponse,
-  type Firewalls,
   type FirewallPolicies,
   type ConnectorType,
 } from "@vm0/core";
 import { publishCancelNotification } from "../realtime/client";
 import type { CancelRunResult } from "../../zero/zero-run-cancel";
-
-import {
-  checkRunConcurrencyLimit,
-  authorizeCompose,
-  validateComposeRequirements,
-} from "../../zero/zero-run-policy";
-import { resolveStartRunCompose } from "../../zero/zero-run-validation";
 
 const log = logger("service:run");
 
@@ -132,66 +120,6 @@ export interface CreateRunParams {
     composeContent: AgentComposeYaml;
     compose: { id: string; userId: string; orgId: string };
   };
-}
-
-/**
- * High-level run params — callers provide a compose identifier and startRun()
- * resolves version + org internally.
- *
- * Compose resolution modes (mutually exclusive):
- * - composeId: new run from compose (resolves headVersionId)
- * - agentComposeVersionId: new run from pinned version (SDK/CLI)
- * - checkpointId: resume from checkpoint (resolves version from checkpoint)
- * - sessionId: continue session (resolves version from session's compose)
- */
-export interface StartRunParams {
-  userId: string;
-  prompt: string;
-
-  // --- Compose resolution (mutually exclusive) ---
-  composeId?: string;
-  agentComposeVersionId?: string;
-  checkpointId?: string;
-  sessionId?: string;
-
-  // --- Caller-validated org (optional, for API routes with org membership) ---
-  // When provided, startRun() verifies the compose belongs to this org
-  // and uses it for authorization. When omitted, org is auto-resolved
-  // from the compose (used by integration callers that verify access upstream).
-  callerOrgId?: string;
-
-  // --- Optional params (forwarded to createRun) ---
-  appendSystemPrompt?: string;
-  disallowedTools?: string[];
-  tools?: string[];
-  settings?: string;
-  conversationId?: string;
-  vars?: Record<string, string>;
-  secrets?: Record<string, string>;
-  artifactName?: string;
-  artifactVersion?: string;
-  memoryName?: string;
-  volumeVersions?: Record<string, string>;
-  callbacks?: Array<{ url: string; secret: string; payload: unknown }>;
-  debugNoMockClaude?: boolean;
-  captureNetworkBodies?: boolean;
-  firewallPolicies?: FirewallPolicies;
-  allowedConnectorTypes?: ConnectorType[];
-
-  // --- Pre-resolved context data (from resolveCliRunContext or caller) ---
-  environment?: Record<string, string>;
-  secretConnectorMap?: Record<string, string>;
-  userTimezone?: string;
-  firewalls?: Firewalls;
-  resumeSession?: ResumeSession;
-  resumeArtifact?: ArtifactSnapshot;
-
-  // --- Pre-resolved org tier (callers resolve via getOrgData + orgTierSchema) ---
-  orgTier: OrgTier;
-
-  // --- Pre-resolved timing data (passed through to dispatch timings) ---
-  resolveSourceDuration?: number;
-  resolveSecretsDuration?: number;
 }
 
 export interface CreateRunResult {
@@ -342,7 +270,7 @@ export async function markRunFailed(
 
 /**
  * Shared dispatch pipeline for steps 6-10 of the run creation flow.
- * Used by startRun (new runs) and dispatchQueuedZeroRun (dequeued runs).
+ * Used by the CLI API route (new runs) and dispatchQueuedZeroRun (dequeued runs).
  */
 export async function buildAndDispatchRun(opts: {
   runId: string;
@@ -442,146 +370,6 @@ export async function buildAndDispatchRun(opts: {
 }
 
 /**
- * High-level run entry point — the single public API for CLI run creation.
- *
- * Resolves compose version + org context, creates a run record, builds an
- * infra execution context, and dispatches. Uses infra primitives directly
- * (no zero layer dependency). Callers only need a compose identifier
- * (composeId, versionId, checkpointId, or sessionId).
- *
- * @throws NotFoundError - compose/version/checkpoint/session not found
- * @throws BadRequestError - compose has no versions, or missing identifier
- * @throws ForbiddenError - user cannot access compose
- * @throws Error - dispatch failure
- */
-export async function startRun(
-  params: StartRunParams,
-): Promise<CreateRunResult> {
-  // 0. Gate captureNetworkBodies to @vm0.ai accounts in production
-  if (params.captureNetworkBodies && env().VERCEL_ENV === "production") {
-    const { email } = await getCachedUser(params.userId);
-    if (!email.endsWith("@vm0.ai")) {
-      throw forbidden(
-        "captureNetworkBodies is restricted to internal accounts",
-      );
-    }
-  }
-
-  // 1. Resolve compose version
-  const resolved = await resolveStartRunCompose(params);
-
-  // 2. Cross-org check: if caller provides a validated orgId, ensure
-  //    the compose belongs to that org. This prevents users from accessing
-  //    composes in orgs they don't belong to (used by API routes).
-  if (params.callerOrgId && resolved.orgId !== params.callerOrgId) {
-    throw notFound("Resource not found");
-  }
-
-  // 3. Resolve org context (use callerOrgId for authorization when available)
-  const authOrgId = params.callerOrgId ?? resolved.orgId;
-
-  // 4. Create run record — ConcurrentRunLimitError propagates to API route (returns 429)
-  const record = await createRunRecord({
-    userId: params.userId,
-    agentComposeVersionId: resolved.agentComposeVersionId,
-    prompt: params.prompt,
-    appendSystemPrompt: params.appendSystemPrompt,
-    disallowedTools: params.disallowedTools,
-    tools: params.tools,
-    settings: params.settings,
-    composeId: resolved.composeId,
-    checkpointId: params.checkpointId,
-    sessionId: params.sessionId,
-    conversationId: params.conversationId,
-    vars: params.vars,
-    secrets: params.secrets,
-    artifactName: params.artifactName,
-    artifactVersion: params.artifactVersion,
-    memoryName: params.memoryName,
-    volumeVersions: params.volumeVersions,
-    callbacks: params.callbacks,
-    resumedFromCheckpointId: params.checkpointId,
-    agentName: resolved.agentName,
-    debugNoMockClaude: params.debugNoMockClaude,
-    captureNetworkBodies: params.captureNetworkBodies,
-    firewallPolicies: params.firewallPolicies,
-    allowedConnectorTypes: params.allowedConnectorTypes,
-    orgId: authOrgId,
-    orgTier: params.orgTier,
-  });
-
-  // 5. Generate sandbox token
-  const sandboxToken = await generateSandboxToken(params.userId, record.run.id);
-  const tokenTime = Date.now();
-
-  try {
-    // 6. Register callbacks early so they persist even if context building fails
-    if (params.callbacks && params.callbacks.length > 0) {
-      await registerCallbacks(record.run.id, params.callbacks);
-    }
-
-    // 7. Build execution context (pure infra — all business data pre-resolved by caller)
-    const { context } = buildInfraExecutionContext({
-      runId: record.run.id,
-      userId: params.userId,
-      orgId: authOrgId,
-      agentComposeVersionId: resolved.agentComposeVersionId,
-      agentCompose: record.composeContent,
-      prompt: params.prompt,
-      sandboxToken,
-      appendSystemPrompt: params.appendSystemPrompt,
-      vars: params.vars,
-      secrets: params.secrets,
-      secretConnectorMap: params.secretConnectorMap,
-      artifactName: params.artifactName,
-      artifactVersion: params.artifactVersion,
-      memoryName: params.memoryName,
-      volumeVersions: params.volumeVersions,
-      environment: params.environment,
-      userTimezone: params.userTimezone,
-      firewalls: params.firewalls,
-      disallowedTools: params.disallowedTools,
-      tools: params.tools,
-      settings: params.settings,
-      resumeSession: params.resumeSession,
-      resumeArtifact: params.resumeArtifact,
-      agentName: resolved.agentName,
-      resumedFromCheckpointId: params.checkpointId,
-      continuedFromSessionId: params.sessionId,
-      debugNoMockClaude: params.debugNoMockClaude,
-      captureNetworkBodies: params.captureNetworkBodies,
-    });
-
-    // 8. Dispatch
-    const result = await buildAndDispatchRun({
-      runId: record.run.id,
-      context,
-      timings: {
-        apiStart: record.apiStartTime,
-        authorize: record.authorizeTime,
-        transaction: record.transactionTime,
-        token: tokenTime,
-        resolveSourceDuration: params.resolveSourceDuration,
-        resolveSecretsDuration: params.resolveSecretsDuration,
-      },
-    });
-
-    return {
-      runId: record.run.id,
-      status: result.status,
-      sandboxId: result.sandboxId,
-      createdAt: record.run.createdAt,
-    };
-  } catch (error) {
-    // Mark run as failed when context building or dispatch fails.
-    // buildAndDispatchRun may have already called markRunFailed — the
-    // second call is a safe no-op (transitionRunStatus guards on status).
-    await markRunFailed(record.run.id, error);
-    throw error;
-  }
-}
-
-/**
  * Result of createRunRecord — contains the run record and all metadata
  * needed by buildAndDispatchRun to complete the dispatch pipeline.
  */
@@ -641,73 +429,6 @@ export async function insertRunRecord(
   }
 
   return newRun;
-}
-
-/**
- * Create a run record without dispatching.
- *
- * Handles steps 1-5 of the run creation pipeline:
- * 1. Load compose version content + compose metadata
- * 2. Permission check (canAccessCompose)
- * 3. Validate template vars and image access
- * 4. Validate mutual exclusivity (checkpointId vs sessionId)
- * 5. Acquire per-org advisory lock, check concurrent run limit, INSERT agentRuns (atomic transaction)
- *
- * Returns the run record and compose content needed by buildAndDispatchRun().
- * Does NOT handle the enqueueRun() fallback — callers decide how to handle
- * ConcurrentRunLimitError.
- *
- * Used by startRun() for the legacy CLI path.
- *
- * @throws ForbiddenError - user cannot access compose
- * @throws BadRequestError - validation failure (missing vars, mutual exclusivity)
- * @throws NotFoundError - compose version not found
- * @throws ConcurrentRunLimitError - org has reached concurrent run limit
- */
-async function createRunRecord(
-  params: CreateRunParams,
-): Promise<CreateRunRecordResult> {
-  const apiStartTime = Date.now();
-
-  // Steps 1-2: Load compose and authorize
-  const { composeContent, compose } =
-    params.preloadedCompose ??
-    (await loadCompose(params.agentComposeVersionId, params.composeId));
-  authorizeCompose(params.userId, params.orgId, compose);
-  const authorizeTime = Date.now();
-
-  // Step 3: Validate template vars and image access (for new runs only)
-  if (!params.checkpointId && !params.sessionId) {
-    await validateComposeRequirements(composeContent);
-  }
-
-  // Step 4: Validate mutual exclusivity
-  if (params.checkpointId && params.sessionId) {
-    throw badRequest(
-      "Cannot specify both checkpointId and sessionId. Use checkpointId to resume from a checkpoint, or sessionId to continue a session.",
-    );
-  }
-
-  const orgId = params.orgId;
-
-  // Step 5: Concurrency check + INSERT in a transaction with advisory lock
-  const run = await globalThis.services.db.transaction(async (tx) => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${orgId}))`);
-    await checkRunConcurrencyLimit(orgId, params.orgTier ?? "free", tx);
-    return insertRunRecord(tx, params);
-  });
-
-  const transactionTime = Date.now();
-  log.debug(`Created run ${run.id} for user ${params.userId}`);
-
-  return {
-    run: { id: run.id, createdAt: run.createdAt },
-    composeContent,
-    orgId,
-    apiStartTime,
-    authorizeTime,
-    transactionTime,
-  };
 }
 
 /**

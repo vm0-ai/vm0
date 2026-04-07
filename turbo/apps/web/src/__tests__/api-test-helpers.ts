@@ -878,6 +878,140 @@ export async function createTestRun(
 }
 
 /**
+ * Test helper that mirrors the CLI API route pipeline (resolve → authorize →
+ * validate → concurrency check → insert → token → context → dispatch).
+ *
+ * Used by tests that need fine-grained control over run creation params
+ * (e.g., version pinning, concurrency testing) without going through HTTP.
+ */
+export interface CliRunParams {
+  userId: string;
+  agentComposeVersionId: string;
+  prompt: string;
+  orgTier: import("@vm0/core").OrgTier;
+  appendSystemPrompt?: string;
+  vars?: Record<string, string>;
+  secrets?: Record<string, string>;
+  checkpointId?: string;
+  sessionId?: string;
+  conversationId?: string;
+  callbacks?: Array<{ url: string; secret: string; payload: unknown }>;
+  memoryName?: string;
+  artifactName?: string;
+  artifactVersion?: string;
+  volumeVersions?: Record<string, string>;
+  debugNoMockClaude?: boolean;
+  captureNetworkBodies?: boolean;
+}
+
+export async function createCliRun(
+  params: CliRunParams,
+): Promise<import("../lib/infra/run/run-service").CreateRunResult> {
+  const { resolveStartRunCompose } =
+    await import("../lib/zero/zero-run-validation");
+  const {
+    authorizeCompose,
+    validateComposeRequirements,
+    checkRunConcurrencyLimit,
+  } = await import("../lib/zero/zero-run-policy");
+  const { generateSandboxToken: genToken } =
+    await import("../lib/auth/sandbox-token");
+  const { buildInfraExecutionContext } =
+    await import("../lib/infra/run/context/build-context");
+  const {
+    loadCompose,
+    insertRunRecord,
+    buildAndDispatchRun,
+    markRunFailed,
+    registerCallbacks,
+  } = await import("../lib/infra/run/run-service");
+
+  const composeMeta = await resolveStartRunCompose(params);
+
+  const apiStartTime = Date.now();
+  const { composeContent, compose } = await loadCompose(
+    composeMeta.agentComposeVersionId,
+    composeMeta.composeId,
+  );
+  authorizeCompose(params.userId, compose.orgId, compose);
+  const authorizeTime = Date.now();
+
+  if (!params.checkpointId && !params.sessionId) {
+    await validateComposeRequirements(composeContent);
+  }
+
+  const orgId = compose.orgId;
+  const run = await globalThis.services.db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${orgId}))`);
+    await checkRunConcurrencyLimit(orgId, params.orgTier, tx);
+    return insertRunRecord(tx, {
+      userId: params.userId,
+      orgId,
+      agentComposeVersionId: composeMeta.agentComposeVersionId,
+      prompt: params.prompt,
+      appendSystemPrompt: params.appendSystemPrompt,
+      vars: params.vars,
+      secrets: params.secrets,
+      resumedFromCheckpointId: params.checkpointId,
+      sessionId: params.sessionId,
+    });
+  });
+  const transactionTime = Date.now();
+
+  const sandboxToken = await genToken(params.userId, run.id);
+  const tokenTime = Date.now();
+
+  try {
+    if (params.callbacks && params.callbacks.length > 0) {
+      await registerCallbacks(run.id, params.callbacks);
+    }
+
+    const { context } = buildInfraExecutionContext({
+      runId: run.id,
+      userId: params.userId,
+      orgId,
+      agentComposeVersionId: composeMeta.agentComposeVersionId,
+      agentCompose: composeContent,
+      prompt: params.prompt,
+      sandboxToken,
+      appendSystemPrompt: params.appendSystemPrompt,
+      vars: params.vars,
+      secrets: params.secrets,
+      artifactName: params.artifactName,
+      artifactVersion: params.artifactVersion,
+      memoryName: params.memoryName,
+      volumeVersions: params.volumeVersions,
+      agentName: composeMeta.agentName,
+      resumedFromCheckpointId: params.checkpointId,
+      continuedFromSessionId: params.sessionId,
+      debugNoMockClaude: params.debugNoMockClaude,
+      captureNetworkBodies: params.captureNetworkBodies,
+    });
+
+    const result = await buildAndDispatchRun({
+      runId: run.id,
+      context,
+      timings: {
+        apiStart: apiStartTime,
+        authorize: authorizeTime,
+        transaction: transactionTime,
+        token: tokenTime,
+      },
+    });
+
+    return {
+      runId: run.id,
+      status: result.status,
+      sandboxId: result.sandboxId,
+      createdAt: run.createdAt,
+    };
+  } catch (error) {
+    await markRunFailed(run.id, error);
+    throw error;
+  }
+}
+
+/**
  * Get test run details via internal API route handler.
  *
  * @param runId - The run ID to fetch

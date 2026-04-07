@@ -6,6 +6,7 @@ import {
 } from "../../../__tests__/test-helpers";
 import {
   createTestCompose,
+  createTestRunInDb,
   findTestRunRecord,
   findTestQueueEntry,
   markRunningRunsAsCompleted,
@@ -14,7 +15,7 @@ import {
   updateOrgTier,
 } from "../../../__tests__/api-test-helpers";
 import { reloadEnv } from "../../../env";
-import { startRun, type CreateRunParams } from "../../infra/run/run-service";
+import type { CreateRunParams } from "../../infra/run/run-service";
 import {
   enqueueRun,
   drainOrgQueue,
@@ -27,12 +28,14 @@ const context = testContext();
 
 describe("run-queue-service", () => {
   let user: UserContext;
+  let composeId: string;
   let versionId: string;
 
   beforeEach(async () => {
     context.setupMocks();
     user = await context.setupUser();
     const compose = await createTestCompose(uniqueId("agent"));
+    composeId = compose.composeId;
     versionId = compose.versionId;
   });
 
@@ -95,12 +98,7 @@ describe("run-queue-service", () => {
       reloadEnv();
 
       // Create a running run and a queued run
-      await startRun({
-        userId: user.userId,
-        agentComposeVersionId: versionId,
-        prompt: "Running",
-        orgTier: "free",
-      });
+      await createTestRunInDb(user.userId, composeId, { prompt: "Running" });
       const queued = await enqueueRun(baseParams({ prompt: "Queued" }));
       expect(queued.status).toBe("queued");
 
@@ -124,12 +122,7 @@ describe("run-queue-service", () => {
       reloadEnv();
 
       // Alice creates a run → pending
-      await startRun({
-        userId: user.userId,
-        agentComposeVersionId: versionId,
-        prompt: "Alice run",
-        orgTier: "free",
-      });
+      await createTestRunInDb(user.userId, composeId, { prompt: "Alice run" });
 
       // Bob is a different user in the same org
       const bob = await context.setupUser({ prefix: "test-bob" });
@@ -169,12 +162,7 @@ describe("run-queue-service", () => {
       reloadEnv();
 
       // Create a running run and a queued run
-      await startRun({
-        userId: user.userId,
-        agentComposeVersionId: versionId,
-        prompt: "Running",
-        orgTier: "free",
-      });
+      await createTestRunInDb(user.userId, composeId, { prompt: "Running" });
       const queued = await enqueueRun(baseParams({ prompt: "Queued" }));
       expect(queued.status).toBe("queued");
 
@@ -249,12 +237,7 @@ describe("run-queue-service", () => {
       await updateOrgTier(user.orgId, "pro");
 
       // Create 1 running run — fills free limit but not pro limit
-      await startRun({
-        userId: user.userId,
-        agentComposeVersionId: versionId,
-        prompt: "Running",
-        orgTier: "free",
-      });
+      await createTestRunInDb(user.userId, composeId, { prompt: "Running" });
       const queued = await enqueueRun(baseParams({ prompt: "Queued" }));
 
       // With pro tier (limit=2), drain should succeed despite 1 active run
@@ -338,13 +321,9 @@ describe("run-queue-service", () => {
       reloadEnv();
 
       // user1 creates a run first (before changing Clerk mock)
-      const run1 = await startRun({
-        userId: user.userId,
-        agentComposeVersionId: versionId,
+      await createTestRunInDb(user.userId, composeId, {
         prompt: "User1 running",
-        orgTier: "free",
       });
-      expect(run1.status).toBe("pending");
 
       // Create second user sharing user1's org
       const user2 = await context.setupUser({ prefix: "test-user-2" });
@@ -376,11 +355,8 @@ describe("run-queue-service", () => {
       reloadEnv();
 
       // user1 creates a run first (before changing Clerk mock)
-      await startRun({
-        userId: user.userId,
-        agentComposeVersionId: versionId,
+      await createTestRunInDb(user.userId, composeId, {
         prompt: "User1 running",
-        orgTier: "free",
       });
 
       // Create second user sharing user1's org

@@ -11,6 +11,8 @@ import {
   createTestRequest,
   createTestSandboxToken,
   createTestRun,
+  createCliRun,
+  type CliRunParams,
   insertStalePendingRun,
   findTestRunRecord,
   findTestRunCallbacks,
@@ -21,11 +23,7 @@ import {
 import { POST as checkpointWebhook } from "../../../../../app/api/webhooks/agent/checkpoints/route";
 import type { AgentComposeYaml } from "../../agent-compose/types";
 import { reloadEnv } from "../../../../env";
-import {
-  startRun,
-  type StartRunParams,
-  type CreateRunResult,
-} from "../run-service";
+import type { CreateRunResult } from "../run-service";
 import {
   isForbidden,
   isBadRequest,
@@ -37,7 +35,7 @@ import { mockClerk } from "../../../../__tests__/clerk-mock";
 
 const context = testContext();
 
-describe("startRun()", () => {
+describe("createCliRun()", () => {
   let user: UserContext;
   let composeId: string;
   let versionId: string;
@@ -50,7 +48,7 @@ describe("startRun()", () => {
     versionId = compose.versionId;
   });
 
-  function baseParams(overrides?: Partial<StartRunParams>): StartRunParams {
+  function baseParams(overrides?: Partial<CliRunParams>): CliRunParams {
     return {
       userId: user.userId,
       agentComposeVersionId: versionId,
@@ -62,7 +60,7 @@ describe("startRun()", () => {
 
   describe("Happy Path", () => {
     it("should create and dispatch a run successfully", async () => {
-      const result: CreateRunResult = await startRun(baseParams());
+      const result: CreateRunResult = await createCliRun(baseParams());
 
       expect(result.runId).toBeDefined();
       expect(result.status).toBe("pending");
@@ -79,7 +77,7 @@ describe("startRun()", () => {
     });
 
     it("should store appendSystemPrompt when provided", async () => {
-      const result = await startRun(
+      const result = await createCliRun(
         baseParams({ appendSystemPrompt: "Your name is Aria." }),
       );
 
@@ -89,7 +87,7 @@ describe("startRun()", () => {
     });
 
     it("should default appendSystemPrompt to null when not provided", async () => {
-      const result = await startRun(baseParams());
+      const result = await createCliRun(baseParams());
 
       const run = await findTestRunRecord(result.runId);
 
@@ -100,7 +98,7 @@ describe("startRun()", () => {
       vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/production");
       reloadEnv();
 
-      const result = await startRun(
+      const result = await createCliRun(
         baseParams({ appendSystemPrompt: "Your name is Aria." }),
       );
 
@@ -112,7 +110,7 @@ describe("startRun()", () => {
     });
 
     it("should always set lastHeartbeatAt", async () => {
-      const result = await startRun(baseParams());
+      const result = await createCliRun(baseParams());
 
       const run = await findTestRunRecord(result.runId);
 
@@ -120,7 +118,7 @@ describe("startRun()", () => {
     });
 
     it("should refresh lastHeartbeatAt during pipeline", async () => {
-      const result = await startRun(baseParams());
+      const result = await createCliRun(baseParams());
 
       const run = await findTestRunRecord(result.runId);
 
@@ -134,7 +132,7 @@ describe("startRun()", () => {
 
     it("should store vars when provided", async () => {
       const vars = { MY_VAR: "value1", OTHER_VAR: "value2" };
-      const result = await startRun(baseParams({ vars }));
+      const result = await createCliRun(baseParams({ vars }));
 
       const run = await findTestRunRecord(result.runId);
 
@@ -143,7 +141,7 @@ describe("startRun()", () => {
 
     it("should store secretNames when secrets provided", async () => {
       const secrets = { API_KEY: "sk-123", DB_PASS: "pw" };
-      const result = await startRun(baseParams({ secrets }));
+      const result = await createCliRun(baseParams({ secrets }));
 
       const run = await findTestRunRecord(result.runId);
 
@@ -154,21 +152,21 @@ describe("startRun()", () => {
   describe("Concurrent Run Limit", () => {
     it("should reject when free tier limit reached", async () => {
       // Free tier (default) allows only 1 concurrent run
-      await startRun(baseParams({ prompt: "First run" }));
+      await createCliRun(baseParams({ prompt: "First run" }));
 
       // Second run should be rejected with concurrent run limit error
       await expect(
-        startRun(baseParams({ prompt: "Second run" })),
+        createCliRun(baseParams({ prompt: "Second run" })),
       ).rejects.toSatisfy(isConcurrentRunLimit);
     });
 
     it("should allow 2 concurrent runs for pro tier", async () => {
       await updateOrgTier(user.orgId, "pro");
 
-      const run1 = await startRun(
+      const run1 = await createCliRun(
         baseParams({ prompt: "Pro run 1", orgTier: "pro" }),
       );
-      const run2 = await startRun(
+      const run2 = await createCliRun(
         baseParams({ prompt: "Pro run 2", orgTier: "pro" }),
       );
 
@@ -179,11 +177,11 @@ describe("startRun()", () => {
     it("should reject 3rd concurrent run for pro tier", async () => {
       await updateOrgTier(user.orgId, "pro");
 
-      await startRun(baseParams({ prompt: "Pro run 1", orgTier: "pro" }));
-      await startRun(baseParams({ prompt: "Pro run 2", orgTier: "pro" }));
+      await createCliRun(baseParams({ prompt: "Pro run 1", orgTier: "pro" }));
+      await createCliRun(baseParams({ prompt: "Pro run 2", orgTier: "pro" }));
 
       await expect(
-        startRun(baseParams({ prompt: "Pro run 3", orgTier: "pro" })),
+        createCliRun(baseParams({ prompt: "Pro run 3", orgTier: "pro" })),
       ).rejects.toSatisfy(isConcurrentRunLimit);
     });
 
@@ -191,13 +189,13 @@ describe("startRun()", () => {
       await updateOrgTier(user.orgId, "team");
 
       // Create 3 concurrent runs to verify team tier allows more than pro tier (which allows 2)
-      const run1 = await startRun(
+      const run1 = await createCliRun(
         baseParams({ prompt: "Team run 1", orgTier: "team" }),
       );
-      const run2 = await startRun(
+      const run2 = await createCliRun(
         baseParams({ prompt: "Team run 2", orgTier: "team" }),
       );
-      const run3 = await startRun(
+      const run3 = await createCliRun(
         baseParams({ prompt: "Team run 3", orgTier: "team" }),
       );
 
@@ -210,8 +208,8 @@ describe("startRun()", () => {
       vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "0");
       reloadEnv();
 
-      const run1 = await startRun(baseParams({ prompt: "Run 1" }));
-      const run2 = await startRun(baseParams({ prompt: "Run 2" }));
+      const run1 = await createCliRun(baseParams({ prompt: "Run 1" }));
+      const run2 = await createCliRun(baseParams({ prompt: "Run 2" }));
 
       expect(run1.status).toBe("pending");
       expect(run2.status).toBe("pending");
@@ -221,15 +219,15 @@ describe("startRun()", () => {
       // Free tier limit is 1; stale pending run should not count
       await insertStalePendingRun(user.userId, versionId);
 
-      const result = await startRun(baseParams());
+      const result = await createCliRun(baseParams());
       expect(result.status).toBe("pending");
     });
 
     it("should reject second run when concurrency limit reached", async () => {
       // Free tier limit is 1 — advisory lock should serialize them
       const results = await Promise.allSettled([
-        startRun(baseParams({ prompt: "Concurrent A" })),
-        startRun(baseParams({ prompt: "Concurrent B" })),
+        createCliRun(baseParams({ prompt: "Concurrent A" })),
+        createCliRun(baseParams({ prompt: "Concurrent B" })),
       ]);
 
       // One should succeed, one should be rejected
@@ -245,14 +243,14 @@ describe("startRun()", () => {
 
     it("should enforce limit per-org, not per-user", async () => {
       // Create a run in the default org (fills its free-tier slot)
-      await startRun(baseParams({ prompt: "Org 1 run" }));
+      await createCliRun(baseParams({ prompt: "Org 1 run" }));
 
       // Create a second user with a different org
       const otherUser = await context.setupUser({ prefix: "org-user" });
       const otherCompose = await createTestCompose(uniqueId("other-agent"));
 
       // Run in the other org should succeed (separate org, separate limit)
-      const result = await startRun({
+      const result = await createCliRun({
         userId: otherUser.userId,
         agentComposeVersionId: otherCompose.versionId,
         prompt: "Org 2 run",
@@ -265,7 +263,7 @@ describe("startRun()", () => {
   describe("Validation", () => {
     it("should reject mutually exclusive checkpointId and sessionId", async () => {
       await expect(
-        startRun(
+        createCliRun(
           baseParams({
             checkpointId: "some-checkpoint",
             sessionId: "some-session",
@@ -285,7 +283,7 @@ describe("startRun()", () => {
         },
       ];
 
-      const result = await startRun(baseParams({ callbacks }));
+      const result = await createCliRun(baseParams({ callbacks }));
 
       // Verify callback record in DB
       const callbackRecords = await findTestRunCallbacks(result.runId);
@@ -303,7 +301,7 @@ describe("startRun()", () => {
   describe("Memory", () => {
     it("should auto-create memory storage on first run", async () => {
       const memoryName = uniqueId("new-mem");
-      const result = await startRun(baseParams({ memoryName }));
+      const result = await createCliRun(baseParams({ memoryName }));
 
       expect(result.runId).toBeDefined();
       expect(result.status).toBe("pending");
@@ -316,10 +314,10 @@ describe("startRun()", () => {
 
       const memoryName = uniqueId("existing-mem");
       // First run creates the memory
-      await startRun(baseParams({ memoryName }));
+      await createCliRun(baseParams({ memoryName }));
 
       // Second run should also succeed (idempotent)
-      const result = await startRun(
+      const result = await createCliRun(
         baseParams({ memoryName, prompt: "second run" }),
       );
       expect(result.runId).toBeDefined();
@@ -327,7 +325,9 @@ describe("startRun()", () => {
     });
 
     it("should accept memoryName and dispatch successfully", async () => {
-      const result = await startRun(baseParams({ memoryName: "my-memory" }));
+      const result = await createCliRun(
+        baseParams({ memoryName: "my-memory" }),
+      );
 
       expect(result.runId).toBeDefined();
       expect(result.status).toBe("pending");
@@ -370,7 +370,7 @@ describe("startRun()", () => {
       };
 
       // Step 2: Continue from session WITHOUT specifying memoryName
-      const continueResult = await startRun(
+      const continueResult = await createCliRun(
         baseParams({
           sessionId: agentSessionId,
           prompt: "Continue prompt",
@@ -385,7 +385,7 @@ describe("startRun()", () => {
   describe("Auto-Create Artifact", () => {
     it("should succeed when artifact does not exist (auto-create)", async () => {
       const artifactName = uniqueId("new-art");
-      const result = await startRun(baseParams({ artifactName }));
+      const result = await createCliRun(baseParams({ artifactName }));
 
       expect(result.runId).toBeDefined();
       expect(result.status).toBe("pending");
@@ -395,7 +395,7 @@ describe("startRun()", () => {
       const artifactName = uniqueId("existing-art");
       await createTestArtifact(artifactName);
 
-      const result = await startRun(baseParams({ artifactName }));
+      const result = await createCliRun(baseParams({ artifactName }));
 
       expect(result.runId).toBeDefined();
       expect(result.status).toBe("pending");
@@ -462,7 +462,7 @@ describe("startRun()", () => {
         ["mydata:/data"],
       );
 
-      const result = await startRun(
+      const result = await createCliRun(
         baseParams({ agentComposeVersionId: compose.versionId }),
       );
 
@@ -484,7 +484,7 @@ describe("startRun()", () => {
       );
 
       // Should succeed - optional volume is silently skipped
-      const result = await startRun(
+      const result = await createCliRun(
         baseParams({ agentComposeVersionId: compose.versionId }),
       );
 
@@ -507,7 +507,7 @@ describe("startRun()", () => {
 
       // Should fail - required volume doesn't exist
       await expect(
-        startRun(baseParams({ agentComposeVersionId: compose.versionId })),
+        createCliRun(baseParams({ agentComposeVersionId: compose.versionId })),
       ).rejects.toThrow(/not found/);
     });
 
@@ -530,7 +530,7 @@ describe("startRun()", () => {
       // Simulate checkpoint resume scenario:
       // volumeVersions is provided but does NOT include the optional volume
       // (meaning it was skipped at checkpoint time)
-      const result = await startRun(
+      const result = await createCliRun(
         baseParams({
           agentComposeVersionId: compose.versionId,
           // Empty volumeVersions means no volumes were mounted at checkpoint
@@ -563,7 +563,7 @@ describe("startRun()", () => {
 
       // Session/Continue scenario: volumeVersions is NOT provided (undefined)
       // This means we should use current config and mount if volume exists
-      const result = await startRun(
+      const result = await createCliRun(
         baseParams({
           agentComposeVersionId: compose.versionId,
           // No volumeVersions - use latest state
@@ -597,7 +597,7 @@ describe("startRun()", () => {
       );
 
       // Should succeed - required volume exists, optional is skipped
-      const result = await startRun(
+      const result = await createCliRun(
         baseParams({ agentComposeVersionId: compose.versionId }),
       );
 
@@ -612,7 +612,7 @@ describe("startRun()", () => {
 
       mockClerk({ userId: user.userId, email: "user@example.com" });
 
-      const result = await startRun(baseParams());
+      const result = await createCliRun(baseParams());
 
       expect(result.status).toBe("pending");
     });
@@ -621,7 +621,7 @@ describe("startRun()", () => {
       // RUNNER_DEFAULT_GROUP is not set by default in test env
       mockClerk({ userId: user.userId, email: "team@vm0.ai" });
 
-      const result = await startRun(baseParams());
+      const result = await createCliRun(baseParams());
 
       expect(result.status).toBe("pending");
     });
@@ -634,7 +634,7 @@ describe("startRun()", () => {
 
       let caughtError: unknown;
       try {
-        await startRun(baseParams());
+        await createCliRun(baseParams());
       } catch (error: unknown) {
         caughtError = error;
       }
@@ -663,7 +663,7 @@ describe("startRun()", () => {
         overrides: { experimental_profile: "vm0/default" },
       });
 
-      const result = await startRun(
+      const result = await createCliRun(
         baseParams({ agentComposeVersionId: compose.versionId }),
       );
 
@@ -677,7 +677,7 @@ describe("startRun()", () => {
       vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/production");
       reloadEnv();
 
-      const result = await startRun(baseParams());
+      const result = await createCliRun(baseParams());
 
       const job = await findTestRunnerJobEntry(result.runId);
       expect(job).toBeDefined();
@@ -695,8 +695,8 @@ describe("startRun()", () => {
         uniqueId("browser-agent"),
         { overrides: { experimental_profile: "vm0/default" } },
       );
-      await startRun(baseParams({ prompt: "default job" }));
-      await startRun(
+      await createCliRun(baseParams({ prompt: "default job" }));
+      await createCliRun(
         baseParams({
           prompt: "browser job",
           agentComposeVersionId: browserCompose.versionId,
@@ -746,14 +746,14 @@ describe("startRun()", () => {
       });
 
       await expect(
-        startRun(baseParams({ agentComposeVersionId: compose.versionId })),
+        createCliRun(baseParams({ agentComposeVersionId: compose.versionId })),
       ).rejects.toSatisfy(isBadRequest);
     });
   });
 
   describe("Org Resolution for Storage", () => {
     it("should use compose org for artifact/memory storage", async () => {
-      const result = await startRun(
+      const result = await createCliRun(
         baseParams({
           artifactName: "artifact",
           memoryName: "memory",

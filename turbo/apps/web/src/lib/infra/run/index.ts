@@ -4,7 +4,6 @@
  */
 
 export {
-  startRun,
   insertRunRecord,
   buildAndDispatchRun,
   loadCompose,
