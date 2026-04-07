@@ -8,6 +8,7 @@ import { zeroRuns } from "../../../../../../src/db/schema/zero-run";
 import { zeroAgentSchedules } from "../../../../../../src/db/schema/zero-agent-schedule";
 import {
   isSlackPlatformError,
+  openDMChannel,
   postMessage,
 } from "../../../../../../src/lib/zero/slack/client";
 import {
@@ -80,6 +81,29 @@ const router = tsr.router(integrationsSlackMessageContract, {
     if (scheduleLabel)
       footerParts.push(`Triggered by schedule "${scheduleLabel}"`);
 
+    // Resolve target channel: DM via user ID or direct channel ID
+    let targetChannel: string;
+    if (body.user) {
+      try {
+        targetChannel = await openDMChannel(slackCtx.client, body.user);
+      } catch (error) {
+        if (isSlackPlatformError(error)) {
+          return {
+            status: 404 as const,
+            body: {
+              error: {
+                message: `Cannot open DM: ${error.data.error}`,
+                code: "NOT_FOUND",
+              },
+            },
+          };
+        }
+        throw error;
+      }
+    } else {
+      targetChannel = body.channel!;
+    }
+
     let finalBlocks = body.blocks as (Block | KnownBlock)[] | undefined;
     if (footerParts.length > 0) {
       const footerBlocks = buildFooterBlocks(footerParts.join(" · "));
@@ -100,7 +124,7 @@ const router = tsr.router(integrationsSlackMessageContract, {
     try {
       const result = await postMessage(
         slackCtx.client,
-        body.channel,
+        targetChannel,
         body.text ?? "",
         {
           threadTs: body.threadTs,

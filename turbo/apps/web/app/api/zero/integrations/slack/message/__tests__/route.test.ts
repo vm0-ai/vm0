@@ -179,6 +179,81 @@ describe("POST /api/zero/integrations/slack/message", () => {
     expect(data.error.message).toContain("channel_not_found");
   });
 
+  it("sends DM via user field using conversations.open", async () => {
+    mockClerk({ userId: null });
+    await insertOrgMembersCacheEntry({
+      orgId: user.orgId,
+      userId: user.userId,
+      role: "admin",
+    });
+    const token = await generateZeroToken(user.userId, "run-1", user.orgId);
+    await createTestSlackOrgInstallation({ orgId: user.orgId });
+
+    const request = createTestRequest(URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ user: "U0A8V9X98QJ", text: "Hello DM!" }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+
+    const data = await response.json();
+    expect(data.ok).toBe(true);
+
+    // Verify conversations.open was called with the user ID
+    const mockClient = vi.mocked(new WebClient(""));
+    expect(mockClient.conversations.open).toHaveBeenCalledWith({
+      users: "U0A8V9X98QJ",
+    });
+
+    // Verify postMessage was called with the resolved DM channel
+    expect(mockClient.chat.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: "D-mock-dm",
+        text: "Hello DM!",
+      }),
+    );
+  });
+
+  it("returns 404 when conversations.open fails with user_not_found", async () => {
+    mockClerk({ userId: null });
+    await insertOrgMembersCacheEntry({
+      orgId: user.orgId,
+      userId: user.userId,
+      role: "admin",
+    });
+    const token = await generateZeroToken(user.userId, "run-1", user.orgId);
+    await createTestSlackOrgInstallation({ orgId: user.orgId });
+
+    // Mock conversations.open to fail
+    const mockClient = vi.mocked(new WebClient(""));
+    vi.mocked(mockClient.conversations.open).mockRejectedValueOnce(
+      Object.assign(new Error("user_not_found"), {
+        data: { ok: false, error: "user_not_found" },
+      }),
+    );
+
+    const request = createTestRequest(URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ user: "U-invalid", text: "hello" }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(404);
+
+    const data = await response.json();
+    expect(data.error.code).toBe("NOT_FOUND");
+    expect(data.error.message).toContain("user_not_found");
+  });
+
   it("appends 'Sent via' footer when agent is resolvable from run", async () => {
     const agentName = uniqueId("agent");
     const { composeId } = await createTestCompose(agentName);

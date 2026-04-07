@@ -56,6 +56,38 @@ describe("zero slack message send command", () => {
       expect(logCalls).toContain("ts: 1234567890.123456");
     });
 
+    it("should send a DM with --user flag", async () => {
+      let capturedBody: Record<string, unknown> | undefined;
+
+      server.use(
+        http.post(SLACK_MESSAGE_URL, async ({ request }) => {
+          capturedBody = (await request.json()) as Record<string, unknown>;
+          return HttpResponse.json(
+            { ok: true, ts: "1234567890.123456", channel: "D-dm-channel" },
+            { status: 200 },
+          );
+        }),
+      );
+
+      await sendCommand.parseAsync([
+        "node",
+        "cli",
+        "--user",
+        "U0A8V9X98QJ",
+        "--text",
+        "Hello DM!",
+      ]);
+
+      expect(capturedBody).toMatchObject({
+        user: "U0A8V9X98QJ",
+        text: "Hello DM!",
+      });
+      expect(capturedBody).not.toHaveProperty("channel");
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Message sent");
+    });
+
     it("should send a message with --text and --thread", async () => {
       let capturedBody: Record<string, unknown> | undefined;
 
@@ -121,6 +153,35 @@ describe("zero slack message send command", () => {
   });
 
   describe("validation errors", () => {
+    it("should error when both --channel and --user are provided", async () => {
+      await expect(async () => {
+        await sendCommand.parseAsync([
+          "node",
+          "cli",
+          "--channel",
+          "C1234567",
+          "--user",
+          "U0A8V9X98QJ",
+          "--text",
+          "hello",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("--channel and --user are mutually exclusive"),
+      );
+    });
+
+    it("should error when neither --channel nor --user is provided", async () => {
+      await expect(async () => {
+        await sendCommand.parseAsync(["node", "cli", "--text", "hello"]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Either --channel or --user must be provided"),
+      );
+    });
+
     it("should error when neither --text nor --blocks is provided", async () => {
       await expect(async () => {
         await sendCommand.parseAsync(["node", "cli", "--channel", "C1234567"]);

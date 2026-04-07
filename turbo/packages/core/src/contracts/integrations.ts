@@ -11,12 +11,20 @@ const c = initContract();
  * Sends a Slack message via the org's installed bot token.
  * Requires `slack:write` capability (via ZERO_TOKEN).
  */
-const sendSlackMessageBodySchema = z.object({
-  channel: z.string().min(1, "Channel ID is required"),
-  text: z.string().optional(),
-  threadTs: z.string().optional(),
-  blocks: z.array(z.object({ type: z.string() }).passthrough()).optional(),
-});
+const sendSlackMessageBodySchema = z
+  .object({
+    channel: z.string().min(1, "Channel ID is required").optional(),
+    user: z.string().min(1, "User ID is required").optional(),
+    text: z.string().optional(),
+    threadTs: z.string().optional(),
+    blocks: z.array(z.object({ type: z.string() }).passthrough()).optional(),
+  })
+  .refine(
+    (data) => {
+      return Boolean(data.channel) !== Boolean(data.user);
+    },
+    { message: "Exactly one of 'channel' or 'user' must be provided" },
+  );
 
 export type SendSlackMessageBody = z.infer<typeof sendSlackMessageBodySchema>;
 
