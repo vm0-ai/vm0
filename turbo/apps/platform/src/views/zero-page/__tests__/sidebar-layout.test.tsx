@@ -14,6 +14,7 @@ import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
+import { FeatureSwitchKey } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
@@ -136,11 +137,36 @@ describe("sidebar layout - invite button hidden for non-admins (SIDEBAR-D-049)",
   });
 });
 
-describe("sidebar layout - menu toggle navigates to chat list (SIDEBAR-D-050)", () => {
-  it("navigates to the chat list page when the menu toggle button is clicked", async () => {
+describe("sidebar layout - menu toggle expands sidebar when flag is off (SIDEBAR-D-050)", () => {
+  it("expands the sidebar overlay when the menu toggle button is clicked and MobileChatListPage flag is off", async () => {
     const user = userEvent.setup();
     mockBaseAPIs();
-    await setupPage({ context, path: "/" });
+    await setupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.MobileChatListPage]: false },
+    });
+
+    const menuButton = screen.getByLabelText("Open menu");
+    await user.click(menuButton);
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Sidebar overlay"),
+      ).toBeInTheDocument();
+    });
+  });
+});
+
+describe("sidebar layout - menu toggle navigates to chat list when flag is on (SIDEBAR-D-050b)", () => {
+  it("navigates to the chat list page when the menu toggle button is clicked and MobileChatListPage flag is on", async () => {
+    const user = userEvent.setup();
+    mockBaseAPIs();
+    await setupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.MobileChatListPage]: true },
+    });
 
     const menuButton = screen.getByLabelText("Open menu");
     await user.click(menuButton);
@@ -149,7 +175,6 @@ describe("sidebar layout - menu toggle navigates to chat list (SIDEBAR-D-050)", 
       expect(pathname()).toBe("/chats");
     });
 
-    // Wait for the chat list page to fully render after navigation
     await waitFor(() => {
       expect(
         screen.getByRole("heading", { name: /Chats with/ }),
@@ -241,7 +266,7 @@ describe("sidebar layout - invite button opens member dialog (SIDEBAR-D-052)", (
 });
 
 describe("sidebar layout - menu toggle passes agent ID to chat list (SIDEBAR-D-053)", () => {
-  it("navigates to /chats with agentId query param when a chat agent is active", async () => {
+  it("navigates to /chats with agentId query param when a chat agent is active and MobileChatListPage flag is on", async () => {
     const user = userEvent.setup();
     server.use(
       http.get("*/api/zero/team", () => {
@@ -261,7 +286,11 @@ describe("sidebar layout - menu toggle passes agent ID to chat list (SIDEBAR-D-0
         return HttpResponse.json({ threads: [] });
       }),
     );
-    await setupPage({ context, path: "/" });
+    await setupPage({
+      context,
+      path: "/",
+      featureSwitches: { [FeatureSwitchKey.MobileChatListPage]: true },
+    });
 
     const menuButton = screen.getByLabelText("Open menu");
     await user.click(menuButton);

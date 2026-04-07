@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
-import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
+import { useGet, useSet, useLoadable, useLastLoadable, useLastResolved } from "ccstate-react";
 import { IconMenu2, IconUserPlus } from "@tabler/icons-react";
+import { FeatureSwitchKey } from "@vm0/core";
 import { ZeroSidebar } from "./zero-sidebar.tsx";
 import { useAgentAvatar } from "./zero-sidebar-shared.tsx";
 import {
@@ -12,6 +13,7 @@ import {
   isChatRoute,
 } from "../../signals/zero-page/zero-nav.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { defaultAgentId$ } from "../../signals/zero-page/zero-agent-name.ts";
 import { activeRoute$ } from "../../signals/active-route.ts";
 import { mobileBreadcrumb$ } from "../../signals/zero-page/zero-mobile-breadcrumb.ts";
@@ -50,6 +52,7 @@ function AgentAvatarInTopBar({ agentId }: { agentId: string }) {
 
 function MobileTopBar() {
   const navigateTo = useSet(detachedNavigateTo$);
+  const setExpanded = useSet(setSidebarExpanded$);
   const currentAgentId = useGet(sidebarChatAgentId$);
   const defaultAgentIdLoadable = useLastLoadable(defaultAgentId$);
   const defaultAgent =
@@ -67,17 +70,24 @@ function MobileTopBar() {
   const setSubPage = useSet(setBillingSubPage$);
   const openManage = useSet(setOrgManageDialogOpen$);
   const pageSignal = useGet(pageSignal$);
+  const features = useLastResolved(featureSwitch$);
+  const mobileChatListEnabled =
+    features?.[FeatureSwitchKey.MobileChatListPage] ?? false;
 
   const showInvite = isChatRoute(activeId) && isAdmin;
 
   const handleMenuClick = () => {
-    const agentId = currentAgentId ?? defaultAgent;
-    if (agentId) {
-      navigateTo("/chats", {
-        searchParams: new URLSearchParams({ agentId }),
-      });
+    if (mobileChatListEnabled) {
+      const agentId = currentAgentId ?? defaultAgent;
+      if (agentId) {
+        navigateTo("/chats", {
+          searchParams: new URLSearchParams({ agentId }),
+        });
+      } else {
+        navigateTo("/chats");
+      }
     } else {
-      navigateTo("/chats");
+      setExpanded(true);
     }
   };
 
