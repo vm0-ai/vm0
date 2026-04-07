@@ -5,6 +5,7 @@ import { verifyCallback } from "../../../../../../src/lib/infra/callback";
 import { decryptSecretValue } from "../../../../../../src/lib/shared/crypto/secrets-encryption";
 import { slackOrgInstallations } from "../../../../../../src/db/schema/slack-org-installation";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
+import { isFeatureEnabled, FeatureSwitchKey } from "@vm0/core";
 import { findNewSessionId } from "../../../../../../src/lib/infra/session/find-new-session";
 import {
   createSlackClient,
@@ -177,6 +178,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const allOutputs = await extractAllRunOutputs(runId, error);
 
+  const [runContext] = await globalThis.services.db
+    .select({ userId: agentRuns.userId, orgId: agentRuns.orgId })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, runId))
+    .limit(1);
+
+  const auditLinkEnabled = isFeatureEnabled(FeatureSwitchKey.AuditLink, {
+    userId: runContext?.userId,
+    orgId: runContext?.orgId,
+  });
+
   // Resolve session
   await saveOrgThreadSession(payload, runId, status);
 
@@ -187,7 +199,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (!responseText) continue;
 
     const isLast = i === allOutputs.length - 1;
-    const logsUrl = isLast ? buildLogsUrl(runId) : undefined;
+    const logsUrl =
+      isLast && auditLinkEnabled ? buildLogsUrl(runId) : undefined;
 
     await postMessage(client, payload.channelId, responseText, {
       threadTs: payload.threadTs,
