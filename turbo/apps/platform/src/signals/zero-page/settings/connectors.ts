@@ -334,16 +334,12 @@ export const connectConnector$ = command(
 
     // In standalone (PWA) mode, omit popup features so iOS Safari opens the
     // URL in the external browser instead of blocking it as a popup.
-    const authWindow = standalone
-      ? window.open(
-          `${baseUrl}/api/zero/connectors/${type}/authorize`,
-          "_blank",
-        )
-      : window.open(
-          `${baseUrl}/api/zero/connectors/${type}/authorize`,
-          "_blank",
-          "width=600,height=700",
-        );
+    const popupFeatures = standalone ? undefined : "width=600,height=700";
+    const authWindow = window.open(
+      `${baseUrl}/api/zero/connectors/${type}/authorize`,
+      "_blank",
+      popupFeatures,
+    );
 
     if (!authWindow && !standalone) {
       throw new Error("Failed to open authorization window");
