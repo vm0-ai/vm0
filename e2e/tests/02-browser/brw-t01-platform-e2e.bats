@@ -299,13 +299,13 @@ teardown_file() {
     echo "# Step 4: Choosing 'Continue in web'..." >&3
     step_screenshot "onboard-step4"
     agent-browser find text "Continue in web" click
-    # Wait for post-onboarding provisioning + navigation (up to 250s).
+    # Wait for post-onboarding provisioning + navigation (up to 200s).
     # Detection is URL-based: once the browser leaves /onboarding the backend
     # setup is done and the frontend has navigated to /agents/:id/chat.
     # This is a soft poll: we don't assert here, test 5 will verify.
-    # BATS_TEST_TIMEOUT=300s for this job, steps 1-3 take ~20s, screenshots ~5s,
-    # leaving ~275s for this poll.
-    for _i in $(seq 1 250); do
+    # BATS_TEST_TIMEOUT=300s; steps 1-3 take ~20s and screenshots ~10s,
+    # leaving ~270s budget — 200 iterations keeps us well within that limit.
+    for _i in $(seq 1 200); do
       local current_url
       current_url=$(agent-browser get url 2>/dev/null || true)
       if [[ "$current_url" =~ /agents/ ]] && [[ ! "$current_url" =~ onboarding ]]; then
