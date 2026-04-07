@@ -1,5 +1,20 @@
 # Changelog
 
+## [12.199.1](https://github.com/vm0-ai/vm0/compare/web-v12.199.0...web-v12.199.1) (2026-04-07)
+
+
+### Bug Fixes
+
+* **billing:** address pr review issues in stale billing period fix ([#8297](https://github.com/vm0-ai/vm0/issues/8297)) ([73a6ecf](https://github.com/vm0-ai/vm0/commit/73a6ecf60c1c1fa17edf78a9ce3a6f57b698728e))
+* **firewall:** include all permissions when no policies are configured ([#8352](https://github.com/vm0-ai/vm0/issues/8352)) ([abfbd17](https://github.com/vm0-ai/vm0/commit/abfbd17a958c9abecea2996434543eed25722394))
+
+
+### Refactoring
+
+* extract concurrency control and business policy from infra to zero ([#8373](https://github.com/vm0-ai/vm0/issues/8373)) ([4a1a77d](https://github.com/vm0-ai/vm0/commit/4a1a77dc78ba80cd50895ca643679c0df50fe83a)), closes [#8363](https://github.com/vm0-ai/vm0/issues/8363)
+* move cancel-run from infra to zero layer ([#8365](https://github.com/vm0-ai/vm0/issues/8365)) ([#8371](https://github.com/vm0-ai/vm0/issues/8371)) ([4a8a118](https://github.com/vm0-ai/vm0/commit/4a8a1180d9c8fa73ce6bcb4541c17f6ef4e6599a))
+* remove 3-step existence check from resolve-org ([#8348](https://github.com/vm0-ai/vm0/issues/8348)) ([60a196c](https://github.com/vm0-ai/vm0/commit/60a196cc3c095d1365584d821923685498c60faf))
+
 ## [12.199.0](https://github.com/vm0-ai/vm0/compare/web-v12.198.1...web-v12.199.0) (2026-04-07)
 
 

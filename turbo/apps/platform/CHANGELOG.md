@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.197.1](https://github.com/vm0-ai/vm0/compare/app-v0.197.0...app-v0.197.1) (2026-04-07)
+
+
+### Bug Fixes
+
+* align skeleton avatar with text placeholder in chat thread ([#8377](https://github.com/vm0-ai/vm0/issues/8377)) ([3790dce](https://github.com/vm0-ai/vm0/commit/3790dceab5f0c828234941324d24fd9cebb24a5c)), closes [#7520](https://github.com/vm0-ai/vm0/issues/7520)
+* dismiss app skeleton on directed authorize page ([#8372](https://github.com/vm0-ai/vm0/issues/8372)) ([f1bd83d](https://github.com/vm0-ai/vm0/commit/f1bd83db4ff96ddf6ed271aaa6d3792a34026342))
+* **platform:** center loading spinner in toggle switch ([#8353](https://github.com/vm0-ai/vm0/issues/8353)) ([e3d39a1](https://github.com/vm0-ai/vm0/commit/e3d39a1c2a6cf0a2f74c7610539767bd60ed76e6))
+* **platform:** rename disapprove change button to deny change ([#8369](https://github.com/vm0-ai/vm0/issues/8369)) ([0b828f6](https://github.com/vm0-ai/vm0/commit/0b828f69e6ee6e3dab26c447929a056d8c2061b9))
+
 ## [0.197.0](https://github.com/vm0-ai/vm0/compare/app-v0.196.2...app-v0.197.0) (2026-04-07)
 
 

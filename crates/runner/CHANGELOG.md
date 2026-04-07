@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.65.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.65.0...runner-rs-v0.65.1) (2026-04-07)
+
+
+### Bug Fixes
+
+* **runner:** clean up stale guest log files on keep-alive vm reuse ([#8308](https://github.com/vm0-ai/vm0/issues/8308)) ([#8333](https://github.com/vm0-ai/vm0/issues/8333)) ([775f09b](https://github.com/vm0-ai/vm0/commit/775f09b0577fe17d1cbc39e58ba93d45277be60a))
+
 ## [0.65.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.64.0...runner-rs-v0.65.0) (2026-04-07)
 
 

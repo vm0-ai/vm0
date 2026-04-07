@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.22.2](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.22.1...sandbox-fc-v0.22.2) (2026-04-07)
+
+
+### Bug Fixes
+
+* **sandbox:** recover leaked resources when sandbox is dropped without destroy ([#8347](https://github.com/vm0-ai/vm0/issues/8347)) ([581d2e8](https://github.com/vm0-ai/vm0/commit/581d2e8dff40e2c379d2dff3b78822861da728e4))
+
 ## [0.22.1](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.22.0...sandbox-fc-v0.22.1) (2026-04-06)
 
 ## [0.22.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.21.2...sandbox-fc-v0.22.0) (2026-04-03)
