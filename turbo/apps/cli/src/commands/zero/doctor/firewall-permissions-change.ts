@@ -37,6 +37,7 @@ export async function outputPermissionChangeMessage(
 
   const platformOrigin = await getPlatformOrigin();
   const agentId = process.env.ZERO_AGENT_ID;
+  const role = agentId ? await resolveAgentRole(agentId) : "unknown";
 
   const urlParams = new URLSearchParams({
     ref: firewallRef,
@@ -44,7 +45,8 @@ export async function outputPermissionChangeMessage(
     action: action === "enable" ? "allow" : "deny",
   });
 
-  if (reason) {
+  // Only include reason for member role (admin/owner can change directly)
+  if (role === "member" && reason) {
     const truncated =
       reason.length > REASON_MAX_LENGTH
         ? reason.slice(0, REASON_MAX_LENGTH)
@@ -74,8 +76,6 @@ export async function outputPermissionChangeMessage(
     console.log("");
   }
 
-  const role = agentId ? await resolveAgentRole(agentId) : "unknown";
-
   if (role === "admin" || role === "owner") {
     console.log(
       `You can ${action} the "${permission}" permission directly: [Manage ${label} firewall](${url})`,
@@ -88,6 +88,11 @@ export async function outputPermissionChangeMessage(
     } else {
       console.log(
         `Permission changes require admin approval. Contact an org admin to disable this permission: [View ${label} firewall](${url})`,
+      );
+    }
+    if (!reason) {
+      console.log(
+        'IMPORTANT: Re-run with `--reason "one sentence why this is needed"` so the admin can review your request faster.',
       );
     }
   } else {

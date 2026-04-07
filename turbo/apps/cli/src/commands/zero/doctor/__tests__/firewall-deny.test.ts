@@ -384,9 +384,19 @@ describe("zero doctor firewall-deny command", () => {
   });
 
   describe("--reason option", () => {
-    it("should include reason in URL when provided", async () => {
+    function setupMemberRole() {
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      server.use(
+        http.get("https://app.vm0.ai/api/zero/org", () => {
+          return HttpResponse.json(orgResponse("member"));
+        }),
+      );
+    }
+
+    it("should include reason in URL for member role", async () => {
       vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
       vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      setupMemberRole();
 
       await firewallDenyCommand.parseAsync([
         "node",
@@ -407,6 +417,7 @@ describe("zero doctor firewall-deny command", () => {
     it("should truncate reason at 500 characters", async () => {
       vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
       vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      setupMemberRole();
 
       const longReason = "a".repeat(600);
       await firewallDenyCommand.parseAsync([
@@ -424,13 +435,33 @@ describe("zero doctor firewall-deny command", () => {
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       const match = logCalls.match(/reason=([^&\s)]+)/);
       expect(match).toBeTruthy();
-      // URLSearchParams encodes "a".repeat(500) as-is (no encoding needed for 'a')
       expect(match![1]).toBe("a".repeat(500));
     });
 
-    it("should not include reason param when --reason is omitted", async () => {
+    it("should not include reason in URL for admin role", async () => {
       vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
       vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+
+      await firewallDenyCommand.parseAsync([
+        "node",
+        "cli",
+        "github",
+        "--method",
+        "GET",
+        "--path",
+        "/repos/owner/repo/pulls",
+        "--reason",
+        "Some reason",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).not.toContain("reason=");
+    });
+
+    it("should prompt for reason when member omits --reason", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      setupMemberRole();
 
       await firewallDenyCommand.parseAsync([
         "node",
@@ -443,7 +474,7 @@ describe("zero doctor firewall-deny command", () => {
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).not.toContain("reason=");
+      expect(logCalls).toContain("IMPORTANT: Re-run with `--reason");
     });
   });
 });

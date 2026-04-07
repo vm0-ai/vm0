@@ -457,9 +457,19 @@ describe("zero doctor firewall-permissions-change command", () => {
   });
 
   describe("--reason option", () => {
-    it("should include reason in URL when provided", async () => {
+    function setupMemberRole() {
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      server.use(
+        http.get("https://app.vm0.ai/api/zero/org", () => {
+          return HttpResponse.json(orgResponse("member"));
+        }),
+      );
+    }
+
+    it("should include reason in URL for member role", async () => {
       vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
       vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      setupMemberRole();
 
       await firewallPermissionsChangeCommand.parseAsync([
         "node",
@@ -479,6 +489,7 @@ describe("zero doctor firewall-permissions-change command", () => {
     it("should truncate reason at 500 characters", async () => {
       vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
       vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      setupMemberRole();
 
       const longReason = "b".repeat(600);
       await firewallPermissionsChangeCommand.parseAsync([
@@ -496,6 +507,43 @@ describe("zero doctor firewall-permissions-change command", () => {
       const match = logCalls.match(/reason=([^&\s)]+)/);
       expect(match).toBeTruthy();
       expect(match![1]).toBe("b".repeat(500));
+    });
+
+    it("should not include reason in URL for admin role", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+
+      await firewallPermissionsChangeCommand.parseAsync([
+        "node",
+        "cli",
+        "github",
+        "--permission",
+        "contents:read",
+        "--enable",
+        "--reason",
+        "Some reason",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).not.toContain("reason=");
+    });
+
+    it("should prompt for reason when member omits --reason", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      setupMemberRole();
+
+      await firewallPermissionsChangeCommand.parseAsync([
+        "node",
+        "cli",
+        "github",
+        "--permission",
+        "contents:read",
+        "--enable",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("IMPORTANT: Re-run with `--reason");
     });
   });
 });
