@@ -32,6 +32,7 @@ import {
   isApiError,
   notFound,
   badRequest,
+  forbidden,
 } from "../../../../src/lib/shared/errors";
 import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";
 import { resolveCliRunContext } from "../../../../src/lib/zero/build-zero-context";
@@ -43,6 +44,8 @@ import {
 } from "../../../../src/lib/zero/zero-run-policy";
 import { generateSandboxToken } from "../../../../src/lib/auth/sandbox-token";
 import { buildInfraExecutionContext } from "../../../../src/lib/infra/run/context/build-context";
+import { getCachedUser } from "../../../../src/lib/auth/user-cache-service";
+import { env } from "../../../../src/env";
 
 const log = logger("api:runs");
 
@@ -238,6 +241,16 @@ const router = tsr.router(runsMainContract, {
     // Resolve zero-layer data (vars, secrets, connectors, firewalls, timezone)
     // before building the execution context.
     try {
+      // Gate captureNetworkBodies to @vm0.ai accounts in production
+      if (body.captureNetworkBodies && env().VERCEL_ENV === "production") {
+        const { email } = await getCachedUser(userId);
+        if (!email.endsWith("@vm0.ai")) {
+          throw forbidden(
+            "captureNetworkBodies is restricted to internal accounts",
+          );
+        }
+      }
+
       const resolved = await resolveCliRunContext({
         orgId: org.orgId,
         userId,
