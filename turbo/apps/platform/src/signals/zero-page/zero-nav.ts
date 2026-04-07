@@ -121,6 +121,7 @@ export type SidebarNavId =
   | "connectors"
   | "schedules"
   | "activities"
+  | "insights"
   | "works"
   | "settings"
   | "settingsUsage"
@@ -149,6 +150,8 @@ export const handleZeroNavSelect$ = command(({ set }, id: SidebarNavId) => {
     set(detachedNavigateTo$, ROUTES.schedules);
   } else if (id === "activities") {
     set(detachedNavigateTo$, ROUTES.activities);
+  } else if (id === "insights") {
+    set(detachedNavigateTo$, ROUTES.insights);
   } else if (id === "works") {
     set(detachedNavigateTo$, ROUTES.works);
   } else if (id === "settings") {
