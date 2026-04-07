@@ -10,6 +10,7 @@ from mitm_addon import (
     _is_sensitive_header,
     _is_text_content,
     _redact_headers,
+    _truncate_bytes_utf8_safe,
 )
 
 
@@ -60,6 +61,50 @@ class TestEncodeBody:
         encoded, encoding = _encode_body(body, "text/plain")
         assert encoding == "base64"
         assert base64.b64decode(encoded) == body
+
+
+class TestTruncateBytesUtf8Safe:
+    def test_no_truncation_needed(self):
+        data = b"hello"
+        assert _truncate_bytes_utf8_safe(data, 10) == b"hello"
+
+    def test_ascii_truncation(self):
+        data = b"hello world"
+        assert _truncate_bytes_utf8_safe(data, 5) == b"hello"
+
+    def test_truncation_mid_2byte_char(self):
+        # "é" = \xc3\xa9 (2 bytes). Put it at the cut boundary.
+        data = b"aaa\xc3\xa9bbb"  # 3 + 2 + 3 = 8 bytes
+        # Cut at 4 bytes: b"aaa\xc3" — \xc3 is a 2-byte start, incomplete
+        result = _truncate_bytes_utf8_safe(data, 4)
+        assert result == b"aaa"
+
+    def test_truncation_mid_3byte_char(self):
+        # "€" = \xe2\x82\xac (3 bytes)
+        data = b"ab\xe2\x82\xac"  # 2 + 3 = 5 bytes
+        # Cut at 3: b"ab\xe2" — \xe2 is a 3-byte start, incomplete
+        result = _truncate_bytes_utf8_safe(data, 3)
+        assert result == b"ab"
+        # Cut at 4: b"ab\xe2\x82" — continuation byte at end
+        result = _truncate_bytes_utf8_safe(data, 4)
+        assert result == b"ab"
+
+    def test_truncation_mid_4byte_char(self):
+        # "𝄞" (musical symbol) = \xf0\x9d\x84\x9e (4 bytes)
+        data = b"a\xf0\x9d\x84\x9e"  # 1 + 4 = 5 bytes
+        # Cut at 3: b"a\xf0\x9d" — incomplete 4-byte sequence
+        result = _truncate_bytes_utf8_safe(data, 3)
+        assert result == b"a"
+
+    def test_truncation_at_char_boundary(self):
+        # "é" = \xc3\xa9. Cut right after it.
+        data = b"aaa\xc3\xa9bbb"
+        result = _truncate_bytes_utf8_safe(data, 5)
+        assert result == b"aaa\xc3\xa9"
+
+    def test_exact_size(self):
+        data = b"hello"
+        assert _truncate_bytes_utf8_safe(data, 5) == b"hello"
 
 
 class TestIsSensitiveHeader:
@@ -237,6 +282,17 @@ class TestAddCaptureFields:
         assert result["Set-Cookie"] == "[REDACTED]"
         assert result["Host"] == "example.com"
         assert len(result) == 2
+
+    def test_truncation_preserves_utf8_boundary(self):
+        # Body is _MAX_BODY_SIZE + a 3-byte char "€" (\xe2\x82\xac)
+        body = b"x" * _MAX_BODY_SIZE + "\u20ac".encode("utf-8")
+        flow = self._make_flow(request_body=body, request_ct="text/plain")
+        entry = {}
+        _add_capture_fields(flow, entry)
+        assert entry["request_body_truncated"] is True
+        # Should be valid UTF-8 (truncated at char boundary, not mid-char)
+        assert entry["request_body_encoding"] == "utf-8"
+        assert len(entry["request_body"]) == _MAX_BODY_SIZE  # all ASCII before the €
 
     def test_text_request_with_binary_response(self):
         flow = self._make_flow(

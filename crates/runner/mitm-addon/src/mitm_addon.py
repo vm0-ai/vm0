@@ -270,6 +270,40 @@ def _is_text_content(content_type: str) -> bool:
     return any(ct.startswith(prefix) for prefix in _TEXT_CONTENT_TYPES)
 
 
+def _truncate_bytes_utf8_safe(data: bytes, max_size: int) -> bytes:
+    """Truncate bytes at a UTF-8 character boundary.
+
+    After slicing at *max_size*, checks whether the last character is
+    complete.  If not, removes the incomplete trailing bytes (at most 4).
+    """
+    if len(data) <= max_size:
+        return data
+    t = data[:max_size]
+    # Find the start of the last character by scanning backwards
+    # past continuation bytes (10xxxxxx = 0x80..0xBF).
+    i = len(t)
+    while i > 0 and (t[i - 1] & 0xC0) == 0x80:
+        i -= 1
+    if i == 0:
+        return t  # all continuation bytes — shouldn't happen in valid UTF-8
+    lead = t[i - 1]
+    # Determine the expected sequence length from the lead byte.
+    if lead < 0x80:
+        expected = 1
+    elif lead < 0xE0:
+        expected = 2
+    elif lead < 0xF0:
+        expected = 3
+    else:
+        expected = 4
+    # If the sequence starting at (i-1) has fewer bytes than expected,
+    # it was cut — remove the incomplete sequence.
+    actual = len(t) - (i - 1)
+    if actual < expected:
+        return t[: i - 1]
+    return t
+
+
 def _encode_body(content: bytes, content_type: str) -> tuple:
     """Encode body content. Returns (encoded_string, encoding_type) or (None, None) for binary."""
     if not _is_text_content(content_type):
@@ -313,7 +347,7 @@ def _add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
         body = flow.request.content
         truncated = len(body) > _MAX_BODY_SIZE
         if truncated:
-            body = body[:_MAX_BODY_SIZE]
+            body = _truncate_bytes_utf8_safe(body, _MAX_BODY_SIZE)
         encoded, encoding = _encode_body(body, req_ct)
         if encoded is not None:
             log_entry["request_body"] = encoded
@@ -333,7 +367,7 @@ def _add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
         res_ct = flow.response.headers.get("content-type", "")
         truncated = len(body) > _MAX_BODY_SIZE
         if truncated:
-            body = body[:_MAX_BODY_SIZE]
+            body = _truncate_bytes_utf8_safe(body, _MAX_BODY_SIZE)
         encoded, encoding = _encode_body(body, res_ct)
         if encoded is not None:
             log_entry["response_body"] = encoded
