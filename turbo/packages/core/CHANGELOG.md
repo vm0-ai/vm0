@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.155.0](https://github.com/vm0-ai/vm0/compare/core-v8.154.1...core-v8.155.0) (2026-04-07)
+
+
+### Features
+
+* **platform:** add lab page for feature switch management ([#8288](https://github.com/vm0-ai/vm0/issues/8288)) ([b87f833](https://github.com/vm0-ai/vm0/commit/b87f83385dffa46c4a5b60c736d32ed51cdd4bab))
+
 ## [8.154.1](https://github.com/vm0-ai/vm0/compare/core-v8.154.0...core-v8.154.1) (2026-04-07)
 
 

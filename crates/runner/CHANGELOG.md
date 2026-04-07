@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.64.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.63.1...runner-rs-v0.64.0) (2026-04-07)
+
+
+### Features
+
+* **gc:** add orphaned workspace cleanup to runner gc ([#8272](https://github.com/vm0-ai/vm0/issues/8272)) ([5614af3](https://github.com/vm0-ai/vm0/commit/5614af3febcd7a49a0f84aa8023c9a56046346bd))
+
 ## [0.63.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.63.0...runner-rs-v0.63.1) (2026-04-06)
 
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.103.0](https://github.com/vm0-ai/vm0/compare/cli-v9.102.10...cli-v9.103.0) (2026-04-07)
+
+
+### Features
+
+* add directed authorize page for missing user-connector flow ([#7893](https://github.com/vm0-ai/vm0/issues/7893)) ([e271f4c](https://github.com/vm0-ai/vm0/commit/e271f4c85bb5c6e92c50d68fea0eb1b023a1cfba))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.155.0
+
 ## [9.102.10](https://github.com/vm0-ai/vm0/compare/cli-v9.102.9...cli-v9.102.10) (2026-04-07)
 
 

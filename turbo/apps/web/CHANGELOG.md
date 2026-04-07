@@ -1,5 +1,30 @@
 # Changelog
 
+## [12.197.0](https://github.com/vm0-ai/vm0/compare/web-v12.196.3...web-v12.197.0) (2026-04-07)
+
+
+### Features
+
+* **platform:** add lab page for feature switch management ([#8288](https://github.com/vm0-ai/vm0/issues/8288)) ([b87f833](https://github.com/vm0-ai/vm0/commit/b87f83385dffa46c4a5b60c736d32ed51cdd4bab))
+
+
+### Bug Fixes
+
+* **billing:** refresh stale billing period from stripe when cached date expires ([#8277](https://github.com/vm0-ai/vm0/issues/8277)) ([59f5580](https://github.com/vm0-ai/vm0/commit/59f5580177744a8307e24203e8e3be513caed52b))
+* restore org slug update in onboarding setup ([#8291](https://github.com/vm0-ai/vm0/issues/8291)) ([00bdfb3](https://github.com/vm0-ai/vm0/commit/00bdfb367bc5508e6b85a2c10c1352c94b0f58dd))
+
+
+### Refactoring
+
+* **zero:** unify pre-flight checks between zero-run-service and zero-run-queue-service ([#8294](https://github.com/vm0-ai/vm0/issues/8294)) ([cc3cc68](https://github.com/vm0-ai/vm0/commit/cc3cc6826c1ba9e87bd7189ca576cd20df81ed76)), closes [#8281](https://github.com/vm0-ai/vm0/issues/8281)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.155.0
+
 ## [12.196.3](https://github.com/vm0-ai/vm0/compare/web-v12.196.2...web-v12.196.3) (2026-04-07)
 
 
