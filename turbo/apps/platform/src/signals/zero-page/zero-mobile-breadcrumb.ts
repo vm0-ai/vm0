@@ -3,13 +3,8 @@ import type { RoutePath } from "../../types/route.ts";
 import { ROUTES } from "../route-paths.ts";
 import { pathParams$ } from "../route.ts";
 import { activeRoute$ } from "../active-route.ts";
-import {
-  currentChatThreadId$,
-  agents$,
-  agentDisplayName$,
-  defaultAgentId$,
-} from "../agent.ts";
-import { activeChatAgentId$ } from "../agent-chat.ts";
+import { agents$, agentDisplayName$, defaultAgentId$ } from "../agent.ts";
+import { currentChatAgentId$, currentChatThreadId$ } from "../agent-chat.ts";
 import { allOrgScheduleEntries$ } from "./zero-schedule.ts";
 import { zeroActivityDetail$ } from "../../signals/activity-page/activity-signals.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
@@ -146,7 +141,7 @@ const chatBreadcrumb$ = computed(async (get): Promise<MobileBreadcrumb> => {
   const urlAgentId = getStringParam(params, "id");
 
   if (threadId !== null || urlAgentId !== null) {
-    const subagentId = await get(activeChatAgentId$);
+    const subagentId = await get(currentChatAgentId$);
     if (subagentId) {
       const agentsList = await get(agents$);
       const subagent = agentsList.find((a) => {

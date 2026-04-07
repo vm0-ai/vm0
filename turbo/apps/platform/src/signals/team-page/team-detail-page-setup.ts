@@ -7,7 +7,7 @@ import { updatePage$ } from "../react-router.ts";
 import { pathParams$ } from "../route.ts";
 import { agents$, setSidebarAgent$ } from "../agent.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
-import { reloadChatThreads$ } from "../zero-page/zero-chat.ts";
+import { reloadChatThreads$ } from "../chat-page/chat-message.ts";
 import { setActiveAgent$ } from "../zero-page/zero-job-detail.ts";
 import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
 import { initSlackOrg$ } from "../zero-page/zero-slack.ts";

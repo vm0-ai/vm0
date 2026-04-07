@@ -41,7 +41,7 @@ import {
   subagents$,
   sidebarAgentAvatar$,
 } from "../../signals/agent.ts";
-import { activeChatAgentId$ } from "../../signals/agent-chat.ts";
+import { currentChatAgentId$ } from "../../signals/agent-chat.ts";
 import {
   zeroChatMessages$,
   allFinished$,
@@ -54,7 +54,7 @@ import {
   type AssistantChatMessage,
   cancelActiveRun$,
   thinkingMessage$,
-} from "../../signals/zero-page/zero-chat.ts";
+} from "../../signals/chat-page/chat-message.ts";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
 import { Link } from "../router/link.tsx";
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
@@ -139,7 +139,7 @@ function AvatarOrPlaceholder({
 // ---------------------------------------------------------------------------
 
 function useChatAgentIdentity() {
-  const chatAgentLoadable = useLastLoadable(activeChatAgentId$);
+  const chatAgentLoadable = useLastLoadable(currentChatAgentId$);
   const currentChatAgentId =
     chatAgentLoadable.state === "hasData" ? chatAgentLoadable.data : null;
   const subagentsLoadable = useLastLoadable(subagents$);
@@ -181,7 +181,8 @@ function ChatThreadHeader() {
     pinnedLoadable.state === "hasData" ? pinnedLoadable.data : [];
   const savePinnedIds = useSet(updatePinnedAgentIds$);
   const showPinPill =
-    currentChatAgentId !== null && !pinnedIds.includes(currentChatAgentId);
+    typeof currentChatAgentId === "string" &&
+    !pinnedIds.includes(currentChatAgentId);
   const handlePin = () => {
     if (currentChatAgentId) {
       detach(

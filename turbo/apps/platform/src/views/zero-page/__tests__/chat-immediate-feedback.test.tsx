@@ -9,7 +9,7 @@ import {
   zeroChatMessages$,
   allFinished$,
   sendExistingThreadMessage$,
-} from "../../../signals/zero-page/zero-chat.ts";
+} from "../../../signals/chat-page/chat-message.ts";
 import {
   mockChatLifecycle,
   sendMessageInUI,
@@ -75,7 +75,7 @@ describe("chat immediate feedback after sending", () => {
     expect(placeholder).toBeDefined();
     expect(placeholder!.role).toBe("assistant");
     const assistantMsg =
-      placeholder as import("../../../signals/zero-page/zero-chat.ts").AssistantChatMessage;
+      placeholder as import("../../../signals/chat-page/chat-message.ts").AssistantChatMessage;
     expect(assistantMsg.runLoop).toBeDefined();
     // The finished$ promise should be pending (never-resolving).
     // We verify this by racing it against an immediately-resolved value.

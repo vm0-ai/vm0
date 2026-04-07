@@ -6,7 +6,7 @@ import {
   uploadZeroAttachment$,
   zeroDragOver$,
   setZeroDragOver$,
-} from "../../signals/zero-page/zero-chat.ts";
+} from "../../signals/chat-page/chat-message.ts";
 
 interface FileUploadHandlers {
   dragOver: boolean;

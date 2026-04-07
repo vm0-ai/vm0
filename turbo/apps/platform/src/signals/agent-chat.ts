@@ -5,13 +5,8 @@
  *   agent.ts ← zero-chat.ts ← agent.ts
  */
 import { command, computed, state } from "ccstate";
-import {
-  currentAgentId$,
-  currentChatThreadId$,
-  sidebarAgentId$,
-  subagents$,
-} from "./agent.ts";
-import { zeroOnboardingStatus$ } from "./zero-page/zero-onboarding.ts";
+import { currentAgentId$, sidebarAgentId$ } from "./agent.ts";
+
 import {
   chatThreadByIdContract,
   chatThreadsContract,
@@ -19,6 +14,18 @@ import {
 } from "@vm0/core";
 import { zeroClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
+import { pathParams$ } from "./route.ts";
+import { activeRoute$ } from "./active-route.ts";
+
+export const currentChatThreadId$ = computed((get): string | null => {
+  const params = get(pathParams$);
+  const id = params?.id;
+  const route = get(activeRoute$);
+  if (route !== "chat") {
+    return null;
+  }
+  return typeof id === "string" ? id : null;
+});
 
 const internalReloadCurrentThread$ = state(0);
 
@@ -80,45 +87,8 @@ export const currentChatThread$ = computed(
   },
 );
 
-export const activeChatAgentId$ = computed(async (get) => {
-  const status = await get(zeroOnboardingStatus$);
-  const defaultId = status.defaultAgentId;
-
-  const agentId = get(currentAgentId$);
-  if (agentId !== null) {
-    return agentId === defaultId ? null : agentId;
-  }
-
-  const thread = await get(currentChatThread$);
-  const threadAgentId = thread?.agentId ?? null;
-  if (threadAgentId !== null) {
-    return threadAgentId === defaultId ? null : threadAgentId;
-  }
-
-  return null;
-});
-
 export const currentChatAgentId$ = computed(async (get) => {
-  const chatThreadId = get(currentChatThreadId$);
-  if (!chatThreadId) {
-    return undefined;
-  }
-
-  const threads = await get(chatThreads$);
-  const thread = threads.find((s) => {
-    return s.id === chatThreadId;
-  });
-  if (!thread) {
-    return undefined;
-  }
-
-  const subs = await get(subagents$);
-  const subIds = new Set(
-    subs.map((a) => {
-      return a.id;
-    }),
-  );
-  return subIds.has(thread.agentId) ? thread.agentId : null;
+  return get(currentAgentId$) ?? (await get(currentChatThread$))?.agentId;
 });
 
 const internalReloadChatThreads$ = state(0);

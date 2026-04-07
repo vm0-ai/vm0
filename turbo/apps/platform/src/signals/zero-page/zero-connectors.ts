@@ -3,7 +3,7 @@ import { zeroAgentsByIdContract, zeroUserConnectorsContract } from "@vm0/core";
 import { reloadOnboardingStatus$ } from "./zero-onboarding.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { currentAgentId$, defaultAgentId$ } from "../agent.ts";
-import { currentChatThread$ } from "./zero-chat.ts";
+import { currentChatThread$ } from "../chat-page/chat-message.ts";
 import { accept } from "../../lib/accept.ts";
 
 // ---------------------------------------------------------------------------

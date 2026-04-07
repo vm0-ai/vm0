@@ -1,7 +1,7 @@
 import type { MouseEvent } from "react";
 import { useGet, useSet, useLoadable } from "ccstate-react";
 import { IconFile, IconPhoto, IconLoader2, IconX } from "@tabler/icons-react";
-import type { ZeroChatAttachment } from "../../signals/zero-page/zero-chat.ts";
+import type { ZeroChatAttachment } from "../../signals/chat-page/chat-message.ts";
 import {
   lightboxUrl$,
   setLightboxUrl$,

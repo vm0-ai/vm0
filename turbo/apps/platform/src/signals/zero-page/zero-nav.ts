@@ -4,23 +4,6 @@ import { ROUTES, type RouteKey } from "../route-paths.ts";
 import { localStorageSignals } from "../external/local-storage.ts";
 import { openQueueDrawer$ } from "../queue-page/queue-drawer-state.ts";
 
-/** Re-export activeRoute$ for consumers that used to import zeroActiveId$ */
-export { activeRoute$ } from "../active-route.ts";
-
-/**
- * Re-export from centralized agent signals for backward compatibility.
- * Prefer importing `currentChatThreadId$` from `../agent.ts`.
- */
-export { currentChatThreadId$ as chatThreadId$ } from "../agent.ts";
-
-/**
- * Navigate to a specific chat session — `/chats/:id`.
- *
- * Always performs a full route navigation so that `loadRoute$` fires and
- * the correct page setup runs (e.g. when navigating from /agents).
- * `loadInitialData$` guards heavy work behind `initialDataLoaded$`, so
- * re-entry from an already-loaded zero page is cheap.
- */
 export const navigateToChat$ = command(({ set }, chatThreadId: string) => {
   set(detachedNavigateTo$, "/chats/:id", {
     pathParams: { id: chatThreadId },
@@ -29,19 +12,13 @@ export const navigateToChat$ = command(({ set }, chatThreadId: string) => {
 
 const internalShowAboutPage$ = state(false);
 
-/** Whether the About VM0 page is shown. */
 export const zeroShowAboutPage$ = computed((get) => {
   return get(internalShowAboutPage$);
 });
 
-/** Show or hide the About VM0 page. */
 export const setZeroShowAboutPage$ = command(({ set }, show: boolean) => {
   set(internalShowAboutPage$, show);
 });
-
-// ---------------------------------------------------------------------------
-// Sidebar visibility — two independent states, no JS viewport detection
-// ---------------------------------------------------------------------------
 
 const {
   get$: sidebarOffRaw$,
@@ -49,12 +26,10 @@ const {
   clear$: clearSidebarOff$,
 } = localStorageSignals("sidebarOff");
 
-/** Whether the user has turned off the sidebar on desktop. Persisted. */
 export const sidebarOff$ = computed((get) => {
   return get(sidebarOffRaw$) !== null;
 });
 
-/** Toggle sidebar off/on for desktop. Persisted in localStorage. */
 export const toggleSidebarOff$ = command(({ get, set }) => {
   if (get(sidebarOffRaw$) !== null) {
     set(clearSidebarOff$);
@@ -65,21 +40,14 @@ export const toggleSidebarOff$ = command(({ get, set }) => {
 
 const internalSidebarExpanded$ = state(false);
 
-/** Whether the mobile sidebar overlay is expanded. In-memory only. */
 export const sidebarExpanded$ = computed((get) => {
   return get(internalSidebarExpanded$);
 });
 
-/** Set mobile sidebar expanded state. */
 export const setSidebarExpanded$ = command(({ set }, expanded: boolean) => {
   set(internalSidebarExpanded$, expanded);
 });
 
-// ---------------------------------------------------------------------------
-// Shell commands — nav select, account action, send from demo
-// ---------------------------------------------------------------------------
-
-/** Nav item identifiers used by the sidebar. */
 export type SidebarNavId =
   | "chat"
   | "agents"
@@ -92,7 +60,6 @@ export type SidebarNavId =
   | "queues"
   | "lab";
 
-/** Check if a route key corresponds to the chat section. */
 export function isChatRoute(key: RouteKey | null): boolean {
   return (
     key === "home" ||
@@ -102,7 +69,6 @@ export function isChatRoute(key: RouteKey | null): boolean {
   );
 }
 
-/** Handle nav tab selection: navigate to tab and close about page. */
 export const handleZeroNavSelect$ = command(({ set }, id: SidebarNavId) => {
   if (id === "chat") {
     set(detachedNavigateTo$, "/");
@@ -130,7 +96,6 @@ export const handleZeroNavSelect$ = command(({ set }, id: SidebarNavId) => {
 
 export type ZeroAccountAction = "preferences" | "manage" | "signout";
 
-/** Handle account menu action. */
 export const handleZeroAccountAction$ = command(
   ({ set }, action: ZeroAccountAction) => {
     if (action === "signout" || action === "manage") {

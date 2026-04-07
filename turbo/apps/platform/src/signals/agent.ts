@@ -19,11 +19,6 @@ import {
   updatePinnedAgentIds$,
 } from "./zero-page/zero-pinned-agents.ts";
 
-// ---------------------------------------------------------------------------
-// Default agent identity — prefer sidebarAgentId$ or currentAgentId$ when
-// possible. Only use defaultAgentId$ when you genuinely need the org default.
-// ---------------------------------------------------------------------------
-
 export const defaultAgentId$ = computed(async (get) => {
   const status = await get(zeroOnboardingStatus$);
   return status.defaultAgentId;
@@ -34,11 +29,6 @@ export const defaultAgentMetadata$ = computed(async (get) => {
   return status.defaultAgentMetadata ?? null;
 });
 
-// ---------------------------------------------------------------------------
-// Identity — from URL
-// ---------------------------------------------------------------------------
-
-/** Agent ID extracted from `/agents/:id` routes. */
 export const currentAgentId$ = computed((get) => {
   const route = get(activeRoute$);
   if (
@@ -52,20 +42,6 @@ export const currentAgentId$ = computed((get) => {
 
   const params = get(pathParams$);
   const id = params?.id;
-  return typeof id === "string" ? id : null;
-});
-
-/**
- * Chat thread ID extracted from `/chats/:id`.
- * Returns null when not on a chat thread route.
- */
-export const currentChatThreadId$ = computed((get): string | null => {
-  const params = get(pathParams$);
-  const id = params?.id;
-  const route = get(activeRoute$);
-  if (route !== "chat") {
-    return null;
-  }
   return typeof id === "string" ? id : null;
 });
 

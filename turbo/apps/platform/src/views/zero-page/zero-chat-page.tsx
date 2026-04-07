@@ -25,7 +25,7 @@ import {
   pinnedAgentIds$,
   updatePinnedAgentIds$,
 } from "../../signals/agent.ts";
-import { activeChatAgentId$ } from "../../signals/agent-chat.ts";
+import { currentChatAgentId$ } from "../../signals/agent-chat.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import {
@@ -47,7 +47,7 @@ import {
   resetTalkSendSignal$,
   sendNewThreadMessage$,
   startNewZeroSession$,
-} from "../../signals/zero-page/zero-chat.ts";
+} from "../../signals/chat-page/chat-message.ts";
 
 function getTagline(
   agentName: string,
@@ -180,7 +180,7 @@ function InviteButton({ pageSignal }: { pageSignal: AbortSignal }) {
 
 export function ZeroChatPage() {
   // Agent resolution (moved from ZeroTalkPage)
-  const chatAgentLoadable = useLastLoadable(activeChatAgentId$);
+  const chatAgentLoadable = useLastLoadable(currentChatAgentId$);
   const currentChatAgentId =
     chatAgentLoadable.state === "hasData" ? chatAgentLoadable.data : null;
   const subagentsLoadable = useLastLoadable(subagents$);
@@ -246,7 +246,8 @@ export function ZeroChatPage() {
   const savePinnedIds = useSet(updatePinnedAgentIds$);
   const pageSignal = useGet(pageSignal$);
   const showPinPill =
-    currentChatAgentId !== null && !pinnedIds.includes(currentChatAgentId);
+    typeof currentChatAgentId === "string" &&
+    !pinnedIds.includes(currentChatAgentId);
   const handlePin = () => {
     if (currentChatAgentId) {
       detach(

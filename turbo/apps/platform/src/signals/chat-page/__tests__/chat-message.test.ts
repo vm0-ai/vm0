@@ -13,12 +13,12 @@ import {
   clearZeroChatInput$,
   startNewZeroSession$,
   sendExistingThreadMessage$,
-  loadSessionFromSnapshot$,
+  loadChatMessages$,
   zeroChatAttachments$,
   uploadZeroAttachment$,
   removeZeroAttachment$,
-} from "../zero-chat.ts";
-import { chatThreadId$ } from "../zero-nav.ts";
+} from "../chat-message.ts";
+import { currentChatThreadId$ } from "../../agent-chat.ts";
 
 const context = testContext();
 
@@ -409,7 +409,7 @@ describe("zero-chat signals", () => {
       await expect(context.store.get(zeroChatMessages$)).resolves.toHaveLength(
         0,
       );
-      expect(context.store.get(chatThreadId$)).toBeNull();
+      expect(context.store.get(currentChatThreadId$)).toBeNull();
       await expect(context.store.get(allFinished$)).resolves.toBeTruthy();
       expect(context.store.get(zeroChatInput$)).toBe("");
     });
@@ -445,7 +445,7 @@ describe("zero-chat signals", () => {
         withoutRender: true,
       });
 
-      expect(context.store.get(chatThreadId$)).toBe("url-thread");
+      expect(context.store.get(currentChatThreadId$)).toBe("url-thread");
       const messages = await context.store.get(zeroChatMessages$);
       expect(messages).toHaveLength(1);
       expect(messages[0]?.role).toBe("user");
@@ -461,7 +461,7 @@ describe("zero-chat signals", () => {
         withoutRender: true,
       });
 
-      expect(context.store.get(chatThreadId$)).toBeNull();
+      expect(context.store.get(currentChatThreadId$)).toBeNull();
     });
 
     it("should skip load when messages are already present", async () => {
@@ -501,7 +501,7 @@ describe("zero-chat signals", () => {
       const countAfterSetup = loadCount;
 
       // Second call skips because messages are already present
-      await context.store.set(loadSessionFromSnapshot$, context.signal);
+      await context.store.set(loadChatMessages$, context.signal);
       expect(loadCount).toBe(countAfterSetup);
     });
   });

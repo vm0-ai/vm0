@@ -35,7 +35,7 @@ import {
   removeZeroAttachment$,
   composerFileInput$,
   setComposerFileInput$,
-} from "../../signals/zero-page/zero-chat.ts";
+} from "../../signals/chat-page/chat-message.ts";
 import { AttachmentChips } from "./zero-attachment-chips.tsx";
 import { useFileUploadHandlers } from "./use-file-upload-handlers.ts";
 import { useSendKeyHandler } from "./zero-send-key.ts";

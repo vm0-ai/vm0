@@ -28,7 +28,7 @@ import { detach, Reason } from "../../signals/utils.ts";
 import {
   chatThreads$,
   deleteChatThread$,
-} from "../../signals/zero-page/zero-chat.ts";
+} from "../../signals/chat-page/chat-message.ts";
 import {
   sidebarSearchOpen$,
   sidebarSearchTerm$,

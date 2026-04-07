@@ -30,8 +30,6 @@ import {
 import slackIcon from "./components/settings/icons/slack.svg";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
-  activeRoute$,
-  chatThreadId$,
   sidebarOff$,
   toggleSidebarOff$,
   sidebarExpanded$,
@@ -41,6 +39,8 @@ import {
   navigateToChat$,
   type SidebarNavId,
 } from "../../signals/zero-page/zero-nav.ts";
+import { activeRoute$ } from "../../signals/active-route.ts";
+import { currentChatThreadId$ } from "../../signals/agent-chat.ts";
 import type { RouteKey } from "../../signals/route-paths.ts";
 import {
   agentDisplayName$,
@@ -52,7 +52,7 @@ import {
 import {
   createNewChatThread$,
   creatingNewSession$,
-} from "../../signals/zero-page/zero-chat.ts";
+} from "../../signals/chat-page/chat-message.ts";
 import {
   managePinnedDialogOpen$,
   setManagePinnedDialogOpen$,
@@ -200,7 +200,7 @@ export function ZeroSidebar() {
     navigateToChat(chatThreadId);
     setExpanded(false);
   };
-  const selectedRecentId = useGet(chatThreadId$);
+  const selectedRecentId = useGet(currentChatThreadId$);
   const onAccountAction = useSet(handleZeroAccountAction$);
   const createNewChat = useSet(createNewChatThread$);
   const creatingNewSessionLoadable = useLoadable(creatingNewSession$);

@@ -1,6 +1,6 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import { resetSignal, createDeferredPromise } from "../utils.ts";
-import { currentChatThreadId$ } from "../agent.ts";
+import { currentChatThreadId$ } from "../agent-chat.ts";
 import { fetch$ } from "../fetch.ts";
 
 // ---------------------------------------------------------------------------

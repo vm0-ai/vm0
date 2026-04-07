@@ -5,7 +5,7 @@ import { ZeroScheduleDetailPage } from "../../views/zero-page/zero-schedule-deta
 import { updatePage$ } from "../react-router.ts";
 import { pathParams$ } from "../route.ts";
 import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
-import { reloadChatThreads$ } from "../zero-page/zero-chat.ts";
+import { reloadChatThreads$ } from "../chat-page/chat-message.ts";
 import { fetchAllOrgSchedules$ } from "../zero-page/zero-schedule.ts";
 import { fetchSlackChannels$ } from "../zero-page/slack-channels.ts";
 import {

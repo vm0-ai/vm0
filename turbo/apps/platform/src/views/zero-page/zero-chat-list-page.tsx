@@ -22,11 +22,9 @@ import {
   deleteChatThread$,
   createNewChatThread$,
   creatingNewSession$,
-} from "../../signals/zero-page/zero-chat.ts";
-import {
-  navigateToChat$,
-  chatThreadId$,
-} from "../../signals/zero-page/zero-nav.ts";
+} from "../../signals/chat-page/chat-message.ts";
+import { navigateToChat$ } from "../../signals/zero-page/zero-nav.ts";
+import { currentChatThreadId$ } from "../../signals/agent-chat.ts";
 import {
   agentDisplayName$,
   subagents$,
@@ -65,7 +63,7 @@ export function ZeroChatListPage() {
   const displayNameStr =
     displayName.state === "hasData" ? (displayName.data ?? "Zero") : "Zero";
 
-  const selectedRecentId = useGet(chatThreadId$);
+  const selectedRecentId = useGet(currentChatThreadId$);
   const navigateToChat = useSet(navigateToChat$);
   const createNewChat = useSet(createNewChatThread$);
   const creatingLoadable = useLoadable(creatingNewSession$);

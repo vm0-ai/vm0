@@ -12,11 +12,14 @@ import {
   TooltipTrigger,
 } from "@vm0/ui";
 import {
-  activeRoute$,
-  chatThreadId$,
   isChatRoute,
   setSidebarExpanded$,
 } from "../../signals/zero-page/zero-nav.ts";
+import { activeRoute$ } from "../../signals/active-route.ts";
+import {
+  currentChatThreadId$,
+  currentChatAgentId$,
+} from "../../signals/agent-chat.ts";
 import {
   chatListOpen$,
   setChatListOpen$,
@@ -32,8 +35,7 @@ import {
   pinnedAgents$,
   subagents$,
 } from "../../signals/agent.ts";
-import { currentChatAgentId$ } from "../../signals/agent-chat.ts";
-import { createNewChatThread$ } from "../../signals/zero-page/zero-chat.ts";
+import { createNewChatThread$ } from "../../signals/chat-page/chat-message.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
@@ -42,7 +44,7 @@ import { ChatListDialog } from "./zero-sidebar-dialogs.tsx";
 
 export function TalkToSection() {
   const activeRoute = useGet(activeRoute$);
-  const chatThreadId = useGet(chatThreadId$);
+  const chatThreadId = useGet(currentChatThreadId$);
   const sidebarAgentId = useLastResolved(sidebarAgentId$) ?? null;
   const selectedAgentIdFromChat = useLastResolved(currentChatAgentId$);
   const displayNameLoadable = useLastLoadable(agentDisplayName$);

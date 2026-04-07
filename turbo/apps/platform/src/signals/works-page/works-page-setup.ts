@@ -8,7 +8,7 @@ import { logger } from "../log.ts";
 
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
-import { reloadChatThreads$ } from "../zero-page/zero-chat.ts";
+import { reloadChatThreads$ } from "../chat-page/chat-message.ts";
 import {
   initSlackOrg$,
   pollSlackConnection$,

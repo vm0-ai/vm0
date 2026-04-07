@@ -4,7 +4,6 @@ import { mockLocation } from "../../location.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { createPushStateMock } from "../../../__tests__/page-helper.ts";
 import {
-  chatThreadId$,
   zeroShowAboutPage$,
   setZeroShowAboutPage$,
   sidebarOff$,
@@ -14,6 +13,7 @@ import {
   handleZeroNavSelect$,
   handleZeroAccountAction$,
 } from "../zero-nav.ts";
+import { currentChatThreadId$ } from "../../agent-chat.ts";
 import { activeRoute$ } from "../../active-route.ts";
 import { setRootSignal$ } from "../../root-signal.ts";
 import { initRoutes$ } from "../../route.ts";
@@ -105,17 +105,17 @@ describe("zero-nav", () => {
 
     it("should return null for /", async () => {
       await setupRoutes("/");
-      expect(context.store.get(chatThreadId$)).toBeNull();
+      expect(context.store.get(currentChatThreadId$)).toBeNull();
     });
 
     it("should return null for /agents/:id/chat", async () => {
       await setupRoutes("/agents/my-agent/chat");
-      expect(context.store.get(chatThreadId$)).toBeNull();
+      expect(context.store.get(currentChatThreadId$)).toBeNull();
     });
 
     it("should extract thread ID from /chats/:id", async () => {
       await setupRoutes("/chats/thread-abc-123");
-      expect(context.store.get(chatThreadId$)).toBe("thread-abc-123");
+      expect(context.store.get(currentChatThreadId$)).toBe("thread-abc-123");
     });
   });
 
