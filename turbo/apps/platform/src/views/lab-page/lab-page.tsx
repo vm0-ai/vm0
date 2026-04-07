@@ -1,4 +1,5 @@
 import { useGet, useLastResolved, useSet } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import { FeatureSwitchKey } from "@vm0/core";
 import { Switch, Button } from "@vm0/ui";
 import {
@@ -14,7 +15,8 @@ export function LabPage() {
   const features = useLastResolved(featureSwitch$);
   const overrideLocal = useSet(overrideFeatureSwitch$);
   const syncClerk = useSet(syncFeatureSwitchToClerk$);
-  const reset = useSet(resetFeatureSwitchOverrides$);
+  const [resetLoadable, reset] = useLoadableSet(resetFeatureSwitchOverrides$);
+  const resetting = resetLoadable.state === "loading";
   const pageSignal = useGet(pageSignal$);
 
   const handleToggle = (key: FeatureSwitchKey, checked: boolean) => {
@@ -49,8 +51,13 @@ export function LabPage() {
               Toggle experimental features on or off.
             </p>
           </div>
-          <Button variant="outline" size="sm" onPointerDown={handleReset}>
-            Reset all
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={resetting}
+            onPointerDown={handleReset}
+          >
+            {resetting ? "Resetting…" : "Reset all"}
           </Button>
         </div>
       </header>

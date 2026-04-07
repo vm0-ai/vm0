@@ -22,6 +22,12 @@ import {
   userInvitations$,
   refreshUserInvitations$,
 } from "../../signals/user-invitations.ts";
+import {
+  creatingOrg$,
+  setCreatingOrg$,
+  acceptingInvitationId$,
+  setAcceptingInvitationId$,
+} from "../../signals/select-org/org-switcher-ui.ts";
 
 function OrgAvatar({
   name,
@@ -76,17 +82,29 @@ export function ZeroOrgSwitcher() {
     return m.organization && m.organization.id !== currentOrgId;
   });
 
+  const creatingOrg = useGet(creatingOrg$);
+  const setCreatingOrg = useSet(setCreatingOrg$);
+  const acceptingInvitationId = useGet(acceptingInvitationId$);
+  const setAcceptingInvitationId = useSet(setAcceptingInvitationId$);
+
   const handleSwitchOrg = (orgId: string) => {
     detach(clerk?.setActive({ organization: orgId }), Reason.DomCallback);
   };
 
   const handleAcceptInvitation = (invitation: {
+    id: string;
     accept: () => Promise<unknown>;
   }) => {
+    setAcceptingInvitationId(invitation.id);
     detach(
-      invitation.accept().then(() => {
-        refreshInvitations();
-      }),
+      invitation
+        .accept()
+        .then(() => {
+          refreshInvitations();
+        })
+        .finally(() => {
+          setAcceptingInvitationId(null);
+        }),
       Reason.DomCallback,
     );
   };
@@ -99,11 +117,17 @@ export function ZeroOrgSwitcher() {
     if (!clerk) {
       return;
     }
+    setCreatingOrg(true);
     const slug = `workspace-${crypto.randomUUID().slice(0, 8)}`;
     detach(
-      clerk.createOrganization({ name: slug, slug }).then((org) => {
-        return clerk.setActive({ organization: org.id });
-      }),
+      clerk
+        .createOrganization({ name: slug, slug })
+        .then((org) => {
+          return clerk.setActive({ organization: org.id });
+        })
+        .finally(() => {
+          setCreatingOrg(false);
+        }),
       Reason.DomCallback,
     );
   };
@@ -211,13 +235,16 @@ export function ZeroOrgSwitcher() {
                     </span>
                     <button
                       type="button"
+                      disabled={acceptingInvitationId === invitation.id}
                       onClick={() => {
                         handleAcceptInvitation(invitation);
                       }}
-                      className="shrink-0 flex items-center gap-1 px-2 h-7 rounded-md text-xs font-medium text-muted-foreground border border-border hover:text-foreground hover:bg-accent transition-colors"
+                      className="shrink-0 flex items-center gap-1 px-2 h-7 rounded-md text-xs font-medium text-muted-foreground border border-border hover:text-foreground hover:bg-accent transition-colors disabled:opacity-50 disabled:pointer-events-none"
                     >
                       <IconMail size={13} />
-                      Join
+                      {acceptingInvitationId === invitation.id
+                        ? "Joining…"
+                        : "Join"}
                     </button>
                   </div>
                 );
@@ -229,7 +256,7 @@ export function ZeroOrgSwitcher() {
           <DropdownMenuSeparator />
           <DropdownMenuItem
             onClick={handleCreateOrg}
-            disabled={!isClerkReady}
+            disabled={!isClerkReady || creatingOrg}
             className="gap-3 px-3 py-2.5 rounded-lg"
           >
             <IconPlus
@@ -237,7 +264,7 @@ export function ZeroOrgSwitcher() {
               stroke={1.5}
               className="shrink-0 text-muted-foreground"
             />
-            <span>Create workspace</span>
+            <span>{creatingOrg ? "Creating…" : "Create workspace"}</span>
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

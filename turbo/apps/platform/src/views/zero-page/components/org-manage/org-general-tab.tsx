@@ -272,7 +272,7 @@ function ProfileSection({
                   className="h-full w-full object-cover"
                 />
               ) : (
-                <div className="h-full w-full bg-muted/50" />
+                <div className="h-full w-full bg-muted/50 animate-pulse" />
               )}
               {isAdmin && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity">
