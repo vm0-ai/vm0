@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
@@ -657,8 +658,12 @@ fn discover_dead_runner_base_dirs(home: &HomePaths) -> Vec<PathBuf> {
         let LockProbe::Free(lock_guard) = probe_lock(&entry.path()) else {
             continue;
         };
-        let Ok(content) = std::fs::read_to_string(entry.path()) else {
-            continue;
+        let content = match std::fs::read_to_string(entry.path()) {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::debug!("workspace gc: cannot read {}: {e}", entry.path().display());
+                continue;
+            }
         };
         // lock_guard dropped after read — new runner can now start, but its
         // CowPool slots will have mtime=now and be age-gated.
@@ -683,8 +688,6 @@ fn discover_dead_runner_base_dirs(home: &HomePaths) -> Vec<PathBuf> {
 /// Firecracker processes are protected via process discovery. Recently-created
 /// workspaces (< [`GC_MIN_AGE`]) are also skipped as a safety margin.
 async fn gc_workspace_orphans(home: &HomePaths, dry_run: bool) -> RunnerResult<(u32, u64)> {
-    use std::collections::HashSet;
-
     // 1. Discover active workspaces from any running Firecracker process.
     //    This protects orphaned FCs whose parent runner already died but
     //    whose VM is still running.
