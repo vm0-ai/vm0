@@ -299,7 +299,17 @@ teardown_file() {
     echo "# Step 4: Choosing 'Continue in web'..." >&3
     step_screenshot "onboard-step4"
     agent-browser find text "Continue in web" click
-    agent-browser wait 8000
+    # Wait for post-onboarding provisioning + navigation (up to 90s)
+    # This is a soft poll: we don't assert here, test 5 will verify.
+    for _i in $(seq 1 90); do
+      local onboard_snap
+      onboard_snap=$(full_snapshot)
+      if contains "$onboard_snap" "Ask me to automate workflows\|Ideas.*use cases\|Browse use cases"; then
+        echo "# Chat page detected after onboarding!" >&3
+        break
+      fi
+      sleep 1
+    done
     step_screenshot "onboard-step4-done"
   fi
 
@@ -307,11 +317,10 @@ teardown_file() {
 }
 
 @test "verify chat page is displayed" {
-  skip "Temporarily disabled — post-onboarding agent provisioning is too slow for this timeout (tracked: github.com/vm0-ai/vm0)"
   echo "# Verifying chat page..." >&3
 
   local chat_loaded=false
-  for _i in $(seq 1 30); do
+  for _i in $(seq 1 60); do
     local snap
     snap=$(full_snapshot)
     if contains "$snap" "Ask me to automate workflows"; then
@@ -342,7 +351,6 @@ teardown_file() {
 # ===========================================================================
 
 @test "navigate to team page and verify zero agent" {
-  skip "Temporarily disabled — post-onboarding agent provisioning is too slow for this timeout (tracked: github.com/vm0-ai/vm0)"
   echo "# Navigating to /team page..." >&3
   navigate_to_app_page "/team"
   step_screenshot "team-page-initial"
@@ -362,7 +370,6 @@ teardown_file() {
 }
 
 @test "create new agent via dialog" {
-  skip "Temporarily disabled — post-onboarding agent provisioning is too slow for this timeout (tracked: github.com/vm0-ai/vm0)"
   echo "# Clicking New agent..." >&3
   agent-browser find role button click --name "New agent"
   agent-browser wait 1000
@@ -397,7 +404,6 @@ teardown_file() {
 }
 
 @test "verify new agent appears on team page" {
-  skip "Temporarily disabled — post-onboarding agent provisioning is too slow for this timeout (tracked: github.com/vm0-ai/vm0)"
   echo "# Verifying agent appears on team page..." >&3
   wait_for_text "$AGENT_NAME" 20
   step_screenshot "agent-visible"
@@ -420,7 +426,6 @@ teardown_file() {
 # ===========================================================================
 
 @test "navigate to schedule page and open creation dialog" {
-  skip "Temporarily disabled — post-onboarding agent provisioning is too slow for this timeout (tracked: github.com/vm0-ai/vm0)"
   echo "# Navigating to schedule page..." >&3
   agent-browser open "${APP_URL}/schedule" --ignore-https-errors
   agent-browser wait 3000
@@ -449,7 +454,6 @@ teardown_file() {
 }
 
 @test "fill and submit schedule creation form" {
-  skip "Temporarily disabled — post-onboarding agent provisioning is too slow for this timeout (tracked: github.com/vm0-ai/vm0)"
   # Fill the prompt textarea
   echo "# Filling schedule prompt: $SCHEDULE_PROMPT" >&3
   agent-browser find label "Prompt" fill "$SCHEDULE_PROMPT"
@@ -470,7 +474,6 @@ teardown_file() {
 }
 
 @test "verify schedule list page still loads after creation" {
-  skip "Temporarily disabled — post-onboarding agent provisioning is too slow for this timeout (tracked: github.com/vm0-ai/vm0)"
   # After form submission, verify the schedule list page is still functional.
   echo "# Verifying schedule list page loads..." >&3
   agent-browser open "${APP_URL}/schedule" --ignore-https-errors
