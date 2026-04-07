@@ -21,6 +21,11 @@ pub(crate) const DESTROY_RETRIES: u32 = 5;
 /// Delay between COW device destroy retries.
 pub(crate) const DESTROY_RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(500);
 
+/// Channel capacity for leaked sandbox resource cleanup.
+/// 32 is generous — the channel only receives messages when an executor task
+/// panics after sandbox creation, which is an exceptional path.
+const LEAK_CHANNEL_CAPACITY: usize = 32;
+
 /// Resources that require async cleanup when a sandbox is dropped without
 /// going through `factory.destroy()` (e.g. executor task panic).
 ///
@@ -302,7 +307,7 @@ impl SandboxFactory for FirecrackerFactory {
 
         // Spawn background task to clean up resources leaked by sandbox Drop
         // impls that fire without going through factory.destroy().
-        let (leak_tx, leak_rx) = tokio::sync::mpsc::channel(32);
+        let (leak_tx, leak_rx) = tokio::sync::mpsc::channel(LEAK_CHANNEL_CAPACITY);
         self.leak_tx = Some(leak_tx);
         self.leak_cleanup_handle = Some(tokio::spawn(Self::drain_leaked_resources(
             leak_rx,
