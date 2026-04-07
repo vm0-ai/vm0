@@ -48,20 +48,24 @@ export async function GET(request: Request) {
     .orderBy(desc(insightsDaily.date));
 
   interface DayData {
-    agents?: Array<{ runs?: number }>;
+    agents?: { runs?: number }[];
     creditsUsed?: number;
+    [key: string]: unknown;
   }
 
   const daysData = rows.map((row) => {
-    return { date: row.date, ...(row.data as Record<string, unknown>) };
+    const data = row.data as DayData;
+    return { date: row.date, ...data };
   });
 
   const totalCredits = rows.reduce((sum, row) => {
-    return sum + ((row.data as DayData).creditsUsed ?? 0);
+    const data = row.data as DayData;
+    return sum + (data.creditsUsed ?? 0);
   }, 0);
 
   const totalRuns = rows.reduce((sum, row) => {
-    const agents = (row.data as DayData).agents ?? [];
+    const data = row.data as DayData;
+    const agents = data.agents ?? [];
     return (
       sum +
       agents.reduce((s, a) => {

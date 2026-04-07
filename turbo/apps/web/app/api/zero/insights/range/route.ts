@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { sql, eq } from "drizzle-orm";
+import { sql, eq, and } from "drizzle-orm";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
@@ -32,7 +32,12 @@ export async function GET(request: Request) {
       totalDays: sql<number>`COUNT(*)::int`.as("total_days"),
     })
     .from(insightsDaily)
-    .where(eq(insightsDaily.orgId, org.orgId));
+    .where(
+      and(
+        eq(insightsDaily.orgId, org.orgId),
+        eq(insightsDaily.userId, authCtx.userId),
+      ),
+    );
 
   if (!row || row.totalDays === 0) {
     return NextResponse.json({ minDate: null, maxDate: null, totalDays: 0 });

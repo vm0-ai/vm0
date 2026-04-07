@@ -60,6 +60,7 @@ import { userCache } from "../db/schema/user-cache";
 import { creditUsage } from "../db/schema/credit-usage";
 import { sandboxTelemetry } from "../db/schema/sandbox-telemetry";
 import { creditPricing } from "../db/schema/credit-pricing";
+import { insightsDaily } from "../db/schema/insights-daily";
 import { users } from "../db/schema/user";
 import { and, eq, like, or, sql } from "drizzle-orm";
 import { generateCallbackSecret } from "../lib/infra/callback/hmac";
@@ -2066,12 +2067,19 @@ export async function findUsageDaily(
 export async function findInsightsDaily(
   orgId: string,
   date: string,
+  userId?: string,
 ): Promise<{ data: Record<string, unknown> } | undefined> {
-  const { insightsDaily } = await import("../db/schema/insights-daily");
+  const conditions = [
+    eq(insightsDaily.orgId, orgId),
+    eq(insightsDaily.date, date),
+  ];
+  if (userId) {
+    conditions.push(eq(insightsDaily.userId, userId));
+  }
   const [row] = await globalThis.services.db
     .select({ data: insightsDaily.data })
     .from(insightsDaily)
-    .where(and(eq(insightsDaily.orgId, orgId), eq(insightsDaily.date, date)));
+    .where(and(...conditions));
   return row as { data: Record<string, unknown> } | undefined;
 }
 
@@ -2124,10 +2132,9 @@ export async function seedInsightsDaily(
   data: Record<string, unknown>,
   userId?: string,
 ): Promise<void> {
-  const { insightsDaily } = await import("../db/schema/insights-daily");
   await globalThis.services.db
     .insert(insightsDaily)
-    .values({ orgId, userId: userId ?? null, date, data })
+    .values({ orgId, userId: userId ?? "user_test_default", date, data })
     .onConflictDoUpdate({
       target: [insightsDaily.orgId, insightsDaily.userId, insightsDaily.date],
       set: { data, updatedAt: new Date() },

@@ -280,6 +280,37 @@ function aggregateNetworkDataPerUser(
 // Per-user insight assembly
 // ---------------------------------------------------------------------------
 
+interface InsightData {
+  agents: {
+    agentName: string;
+    agentId: string;
+    runs: number;
+    credits: number;
+  }[];
+  creditsUsed: number;
+  creditBalance: number;
+  teamUsage: {
+    name: string;
+    credits: number;
+    agentNames: string[];
+    agentCredits: Record<string, number>;
+  }[];
+  topTask: { name: string; count: number } | null;
+  services: {
+    name: string;
+    domain: string;
+    calls: number;
+    agentNames: string[];
+  }[];
+  permissions: {
+    label: string;
+    allowed: number;
+    denied: number;
+    agentNames: string[];
+  }[];
+  axiomDegraded?: boolean;
+}
+
 function buildUserInsight(
   networkData: UserNetworkData | undefined,
   agents: AgentInfo[],
@@ -291,7 +322,8 @@ function buildUserInsight(
     agentNames: string[];
     agentCredits: Record<string, number>;
   }>,
-): Record<string, unknown> {
+  axiomDegraded?: boolean,
+): InsightData {
   const services = networkData
     ? [...networkData.serviceMap.entries()]
         .map(([connectorKey, svc]) => {
@@ -345,6 +377,7 @@ function buildUserInsight(
     topTask,
     services,
     permissions,
+    ...(axiomDegraded ? { axiomDegraded: true } : {}),
   };
 }
 
@@ -707,9 +740,11 @@ export async function GET(request: Request): Promise<Response> {
 | limit 100000`;
 
     let networkRows: AxiomNetworkRow[] = [];
+    let axiomDegraded = false;
     try {
       networkRows = await queryAxiom<AxiomNetworkRow>(apl);
     } catch (error) {
+      axiomDegraded = true;
       log.error("Failed to query Axiom for network logs", {
         error: error instanceof Error ? error.message : String(error),
       });
@@ -735,6 +770,7 @@ export async function GET(request: Request): Promise<Response> {
         orgCredits?.creditsUsed ?? 0,
         orgBalanceMap.get(orgId) ?? 0,
         orgCredits?.teamUsage ?? [],
+        axiomDegraded,
       );
 
       await db

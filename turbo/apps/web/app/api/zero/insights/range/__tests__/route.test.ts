@@ -71,7 +71,12 @@ describe("GET /api/zero/insights/range", () => {
 
   it("should return correct range for a single day", async () => {
     const date = daysAgo(1);
-    await seedInsightsDaily(user.orgId, date, defaultInsightData());
+    await seedInsightsDaily(
+      user.orgId,
+      date,
+      defaultInsightData(),
+      user.userId,
+    );
 
     const request = createTestRequest(
       "http://localhost:3000/api/zero/insights/range",
@@ -89,9 +94,24 @@ describe("GET /api/zero/insights/range", () => {
     const day1 = daysAgo(5);
     const day2 = daysAgo(3);
     const day3 = daysAgo(1);
-    await seedInsightsDaily(user.orgId, day1, defaultInsightData());
-    await seedInsightsDaily(user.orgId, day2, defaultInsightData());
-    await seedInsightsDaily(user.orgId, day3, defaultInsightData());
+    await seedInsightsDaily(
+      user.orgId,
+      day1,
+      defaultInsightData(),
+      user.userId,
+    );
+    await seedInsightsDaily(
+      user.orgId,
+      day2,
+      defaultInsightData(),
+      user.userId,
+    );
+    await seedInsightsDaily(
+      user.orgId,
+      day3,
+      defaultInsightData(),
+      user.userId,
+    );
 
     const request = createTestRequest(
       "http://localhost:3000/api/zero/insights/range",
@@ -107,7 +127,32 @@ describe("GET /api/zero/insights/range", () => {
 
   it("should not include insights from other orgs", async () => {
     const otherOrg = uniqueId("org_other");
-    await seedInsightsDaily(otherOrg, daysAgo(1), defaultInsightData());
+    await seedInsightsDaily(
+      otherOrg,
+      daysAgo(1),
+      defaultInsightData(),
+      user.userId,
+    );
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/insights/range",
+    );
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.minDate).toBeNull();
+    expect(data.maxDate).toBeNull();
+    expect(data.totalDays).toBe(0);
+  });
+
+  it("should not include insights from other users", async () => {
+    await seedInsightsDaily(
+      user.orgId,
+      daysAgo(1),
+      defaultInsightData(),
+      "user_other",
+    );
 
     const request = createTestRequest(
       "http://localhost:3000/api/zero/insights/range",

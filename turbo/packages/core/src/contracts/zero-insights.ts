@@ -33,6 +33,8 @@ const insightTopTaskSchema = z.object({
 const insightMemberCreditsSchema = z.object({
   name: z.string(),
   credits: z.number(),
+  agentNames: z.array(z.string()).optional(),
+  agentCredits: z.record(z.string(), z.number()).optional(),
 });
 
 const dayInsightSchema = z.object({

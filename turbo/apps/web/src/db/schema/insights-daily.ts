@@ -25,7 +25,7 @@ export const insightsDaily = pgTable(
   {
     id: uuid("id").defaultRandom().primaryKey(),
     orgId: text("org_id").notNull(),
-    userId: text("user_id"),
+    userId: text("user_id").notNull(),
     date: date("date").notNull(),
     data: jsonb("data").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),

@@ -27,13 +27,25 @@ function cronRequest(secret?: string) {
   });
 }
 
-function yesterdayDate(): { date: Date; dateStr: string } {
+/**
+ * Returns a recent timestamp within today's UTC window.
+ * The cron aggregates runs from today's local-day start to now,
+ * so test runs must fall within this window.
+ */
+function recentDate(): { date: Date; dateStr: string } {
   const now = new Date();
-  const date = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 1),
-  );
-  date.setUTCHours(10, 0, 0, 0);
-  return { date, dateStr: date.toISOString().split("T")[0]! };
+  const date = new Date(now.getTime() - 60_000); // 1 minute ago
+  return { date, dateStr: todayDateStr() };
+}
+
+/** The cron stores insights under today's date (the current local date). */
+function todayDateStr(): string {
+  const now = new Date();
+  return new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+  )
+    .toISOString()
+    .split("T")[0]!;
 }
 
 describe("GET /api/cron/aggregate-insights", () => {
@@ -76,15 +88,14 @@ describe("GET /api/cron/aggregate-insights", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.date).toBe(yesterdayDate().dateStr);
 
     // This org had no runs, so no insights row should exist
-    const row = await findInsightsDaily(orgId, yesterdayDate().dateStr);
+    const row = await findInsightsDaily(orgId, todayDateStr(), userId);
     expect(row).toBeUndefined();
   });
 
   it("should aggregate previous day agent runs", async () => {
-    const { date, dateStr } = yesterdayDate();
+    const { date, dateStr } = recentDate();
 
     await createCompletedTestRun({
       composeVersionId,
@@ -107,7 +118,7 @@ describe("GET /api/cron/aggregate-insights", () => {
     const response = await GET(cronRequest("test-cron-secret"));
     expect(response.status).toBe(200);
 
-    const row = await findInsightsDaily(orgId, dateStr);
+    const row = await findInsightsDaily(orgId, todayDateStr(), userId);
     expect(row).toBeDefined();
 
     const data = row!.data;
@@ -121,7 +132,7 @@ describe("GET /api/cron/aggregate-insights", () => {
   });
 
   it("should aggregate credit usage per member", async () => {
-    const { date, dateStr } = yesterdayDate();
+    const { date, dateStr } = recentDate();
 
     const runId = await createCompletedTestRun({
       composeVersionId,
@@ -144,7 +155,7 @@ describe("GET /api/cron/aggregate-insights", () => {
     const response = await GET(cronRequest("test-cron-secret"));
     expect(response.status).toBe(200);
 
-    const row = await findInsightsDaily(orgId, dateStr);
+    const row = await findInsightsDaily(orgId, todayDateStr(), userId);
     expect(row).toBeDefined();
 
     const data = row!.data;
@@ -159,7 +170,7 @@ describe("GET /api/cron/aggregate-insights", () => {
   });
 
   it("should include credit balance from org metadata", async () => {
-    const { date, dateStr } = yesterdayDate();
+    const { date, dateStr } = recentDate();
 
     await createCompletedTestRun({
       composeVersionId,
@@ -172,14 +183,14 @@ describe("GET /api/cron/aggregate-insights", () => {
     const response = await GET(cronRequest("test-cron-secret"));
     expect(response.status).toBe(200);
 
-    const row = await findInsightsDaily(orgId, dateStr);
+    const row = await findInsightsDaily(orgId, todayDateStr(), userId);
     expect(row).toBeDefined();
     // ensureOrgRow inserts with default 10000 credits
     expect(row!.data.creditBalance).toBe(10000);
   });
 
   it("should include Axiom network data when available", async () => {
-    const { date, dateStr } = yesterdayDate();
+    const { date, dateStr } = recentDate();
 
     const runId = await createCompletedTestRun({
       composeVersionId,
@@ -220,7 +231,7 @@ describe("GET /api/cron/aggregate-insights", () => {
     const response = await GET(cronRequest("test-cron-secret"));
     expect(response.status).toBe(200);
 
-    const row = await findInsightsDaily(orgId, dateStr);
+    const row = await findInsightsDaily(orgId, todayDateStr(), userId);
     expect(row).toBeDefined();
 
     const data = row!.data;
@@ -231,13 +242,13 @@ describe("GET /api/cron/aggregate-insights", () => {
     expect(services).toHaveLength(2);
 
     const slackService = services.find((s) => {
-      return s.domain === "api.slack.com";
+      return s.domain === "slack";
     });
     expect(slackService).toBeDefined();
     expect(slackService!.calls).toBe(2);
 
     const linearService = services.find((s) => {
-      return s.domain === "api.linear.app";
+      return s.domain === "linear";
     });
     expect(linearService).toBeDefined();
     expect(linearService!.calls).toBe(1);
@@ -259,7 +270,7 @@ describe("GET /api/cron/aggregate-insights", () => {
   });
 
   it("should continue without network data when Axiom fails", async () => {
-    const { date, dateStr } = yesterdayDate();
+    const { date, dateStr } = recentDate();
 
     await createCompletedTestRun({
       composeVersionId,
@@ -276,7 +287,7 @@ describe("GET /api/cron/aggregate-insights", () => {
     const response = await GET(cronRequest("test-cron-secret"));
     expect(response.status).toBe(200);
 
-    const row = await findInsightsDaily(orgId, dateStr);
+    const row = await findInsightsDaily(orgId, todayDateStr(), userId);
     expect(row).toBeDefined();
 
     // Agent data should still be present even without Axiom
@@ -290,7 +301,7 @@ describe("GET /api/cron/aggregate-insights", () => {
   });
 
   it("should be idempotent on rerun", async () => {
-    const { date, dateStr } = yesterdayDate();
+    const { date, dateStr } = recentDate();
 
     await createCompletedTestRun({
       composeVersionId,
@@ -307,7 +318,7 @@ describe("GET /api/cron/aggregate-insights", () => {
     const response = await GET(cronRequest("test-cron-secret"));
     expect(response.status).toBe(200);
 
-    const row = await findInsightsDaily(orgId, dateStr);
+    const row = await findInsightsDaily(orgId, todayDateStr(), userId);
     const agents = row!.data.agents as Array<{ runs: number }>;
     expect(agents).toHaveLength(1);
     expect(agents[0]!.runs).toBe(1);
