@@ -17,7 +17,7 @@ import {
   findOrCreateBotUser,
   createCredential,
   deleteCredential,
-  createCloudEndpoint,
+  ensureCloudEndpoint,
   deleteCloudEndpoint,
   findOrCreateReservedDomain,
   deleteReservedDomain,
@@ -124,7 +124,7 @@ export async function createComputerConnector(
     });
 
     const endpointUrl = `https://*.${domain}`;
-    const cloudEndpoint = await createCloudEndpoint(
+    const cloudEndpoint = await ensureCloudEndpoint(
       apiKey,
       endpointUrl,
       trafficPolicy,

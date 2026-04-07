@@ -30,6 +30,11 @@ interface NgrokEndpoint {
   url: string;
 }
 
+interface NgrokEndpointsPage {
+  endpoints: NgrokEndpoint[];
+  next_page_uri: string | null;
+}
+
 interface NgrokDomain {
   id: string;
   domain: string;
@@ -155,18 +160,40 @@ export async function deleteCredential(
 }
 
 /**
- * Create a Cloud Endpoint with a traffic policy.
+ * Ensure a Cloud Endpoint exists with the given traffic policy.
+ *
+ * Uses CEL filter to find an existing endpoint by URL, then PATCH-updates
+ * the traffic policy if found. Creates a new endpoint if none exists.
+ * This is idempotent — safe to call when orphaned endpoints may exist.
  */
-export async function createCloudEndpoint(
+export async function ensureCloudEndpoint(
   apiKey: string,
   url: string,
   trafficPolicy: string,
 ): Promise<NgrokEndpoint> {
-  const response = await ngrokFetch(apiKey, "/endpoints", {
+  const filterQuery = encodeURIComponent(`obj.url == "${url}"`);
+  const response = await ngrokFetch(apiKey, `/endpoints?filter=${filterQuery}`);
+  const page = (await response.json()) as NgrokEndpointsPage;
+  const existing = page.endpoints[0];
+
+  if (existing) {
+    log.debug("Found existing cloud endpoint, updating traffic policy", {
+      id: existing.id,
+      url,
+    });
+    const updated = await ngrokFetch(apiKey, `/endpoints/${existing.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ traffic_policy: trafficPolicy }),
+    });
+    return (await updated.json()) as NgrokEndpoint;
+  }
+
+  log.debug("Creating new cloud endpoint", { url });
+  const created = await ngrokFetch(apiKey, "/endpoints", {
     method: "POST",
     body: JSON.stringify({ url, type: "cloud", traffic_policy: trafficPolicy }),
   });
-  return (await response.json()) as NgrokEndpoint;
+  return (await created.json()) as NgrokEndpoint;
 }
 
 /**
@@ -217,29 +244,21 @@ interface NgrokReservedDomainsPage {
 }
 
 /**
- * Find a reserved domain by name. Paginates through all results.
+ * Find a reserved domain by name using CEL filter.
+ * Matches the full domain name (e.g., "vm0-cu-abc123.ngrok-free.app").
  */
 async function findReservedDomainByName(
   apiKey: string,
   name: string,
 ): Promise<NgrokDomain | undefined> {
-  let nextPageUri: string | null = "/reserved_domains";
-
-  while (nextPageUri) {
-    const response = await ngrokFetch(apiKey, nextPageUri);
-    const page = (await response.json()) as NgrokReservedDomainsPage;
-
-    const found = page.reserved_domains.find((d) => {
-      return d.domain.startsWith(`${name}.`);
-    });
-    if (found) {
-      return found;
-    }
-
-    nextPageUri = page.next_page_uri;
-  }
-
-  return undefined;
+  const domainName = `${name}.ngrok-free.app`;
+  const filterQuery = encodeURIComponent(`obj.domain == "${domainName}"`);
+  const response = await ngrokFetch(
+    apiKey,
+    `/reserved_domains?filter=${filterQuery}`,
+  );
+  const page = (await response.json()) as NgrokReservedDomainsPage;
+  return page.reserved_domains[0];
 }
 
 /**
