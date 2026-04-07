@@ -160,9 +160,40 @@ export async function deleteCredential(
 }
 
 /**
+ * Find an existing cloud endpoint by URL.
+ *
+ * The CEL filter `obj.url == "..."` does not reliably match wildcard URLs
+ * (e.g., `https://*.domain`), so we paginate through all endpoints and
+ * match client-side. Cloud endpoint counts are small (one per user), so
+ * this is not a scalability concern.
+ */
+async function findEndpointByUrl(
+  apiKey: string,
+  url: string,
+): Promise<NgrokEndpoint | undefined> {
+  let nextPageUri: string | null = "/endpoints";
+
+  while (nextPageUri) {
+    const response = await ngrokFetch(apiKey, nextPageUri);
+    const page = (await response.json()) as NgrokEndpointsPage;
+
+    const found = page.endpoints.find((ep) => {
+      return ep.url === url;
+    });
+    if (found) {
+      return found;
+    }
+
+    nextPageUri = page.next_page_uri;
+  }
+
+  return undefined;
+}
+
+/**
  * Ensure a Cloud Endpoint exists with the given traffic policy.
  *
- * Uses CEL filter to find an existing endpoint by URL, then PATCH-updates
+ * Finds an existing endpoint by URL (client-side match), then PATCH-updates
  * the traffic policy if found. Creates a new endpoint if none exists.
  * This is idempotent — safe to call when orphaned endpoints may exist.
  */
@@ -171,10 +202,7 @@ export async function ensureCloudEndpoint(
   url: string,
   trafficPolicy: string,
 ): Promise<NgrokEndpoint> {
-  const filterQuery = encodeURIComponent(`obj.url == "${url}"`);
-  const response = await ngrokFetch(apiKey, `/endpoints?filter=${filterQuery}`);
-  const page = (await response.json()) as NgrokEndpointsPage;
-  const existing = page.endpoints[0];
+  const existing = await findEndpointByUrl(apiKey, url);
 
   if (existing) {
     log.debug("Found existing cloud endpoint, updating traffic policy", {
