@@ -14,6 +14,7 @@ import {
 } from "@ts-rest/core";
 import { clerk$ } from "./auth.ts";
 import { apiBase$ } from "./fetch.ts";
+import { detach, Reason } from "./utils.ts";
 
 /**
  * Type alias for the factory function returned by `get(zeroClient$)`.
@@ -66,7 +67,13 @@ export const zeroClient$ = computed((get) => {
           ? { ...args.headers, Authorization: `Bearer ${token}` }
           : args.headers;
 
-        return tsRestFetchApi({ ...args, headers });
+        const response = await tsRestFetchApi({ ...args, headers });
+
+        if (response.status === 401) {
+          detach(clerk.redirectToSignIn(), Reason.DomCallback);
+        }
+
+        return response;
       },
     });
   };
