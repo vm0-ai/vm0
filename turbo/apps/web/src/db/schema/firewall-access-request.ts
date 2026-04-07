@@ -28,6 +28,7 @@ export const firewallAccessRequests = pgTable(
     requesterUserId: text("requester_user_id").notNull(),
     firewallRef: varchar("firewall_ref", { length: 64 }).notNull(),
     permission: varchar("permission", { length: 128 }).notNull(),
+    action: varchar("action", { length: 10 }).notNull().default("allow"),
     method: varchar("method", { length: 10 }),
     path: text("path"),
     reason: text("reason"),

@@ -6,7 +6,6 @@ import {
   IconCheck,
   IconBan,
   IconLink,
-  IconShieldLock,
   IconAlertTriangle,
   IconLoader2,
   IconX,
@@ -15,9 +14,7 @@ import {
   isFirewallConnectorType,
   CONNECTOR_TYPES,
   getDefaultFirewallPolicies,
-  groupPermissionsByCategory,
   type FirewallPolicies,
-  type FirewallPolicyValue,
 } from "@vm0/core";
 import { user$ } from "../../signals/auth.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
@@ -28,23 +25,20 @@ import {
   firewallAllowMethod$,
   firewallAllowPath$,
   firewallAllowAgent$,
-  firewallLatestRequest$,
-  extractPermissions,
   firewallAllowAction$,
+  firewallAllowRequestId$,
+  firewallRequestById$,
+  firewallExistingRequest$,
+  resendFormVisible$,
+  showResendForm$,
+  extractPermissions,
   saveAdminFocusedPolicy$,
   resolveAndUpdatePolicy$,
-  resolvedAction$,
-  showForm$,
-  setShowForm$,
   linkCopied$,
   copyLink$,
   reason$,
   setReason$,
   submitAccessRequest$,
-  adminListPolicies$,
-  setAdminListPolicy$,
-  setAdminListGroupPolicies$,
-  saveAdminListPolicies$,
 } from "../../signals/firewall-allow/firewall-allow-signals.ts";
 import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
 import { resolveAvatarUrl } from "../zero-page/avatar-utils.ts";
@@ -102,7 +96,7 @@ function VM0Logo() {
 }
 
 // ---------------------------------------------------------------------------
-// Shared card components for focused views
+// Shared card components
 // ---------------------------------------------------------------------------
 
 function AgentPill({
@@ -183,259 +177,142 @@ function ConnectorPermissionCard({
   );
 }
 
-// ---------------------------------------------------------------------------
-// PolicyPill (used in list views and admin policy management)
-// ---------------------------------------------------------------------------
-
-const POLICY_OPTIONS = [
-  { value: "allow" as const, label: "Allow" },
-  { value: "deny" as const, label: "Deny" },
-] as const;
-
-function PolicyPill({
-  policy,
-  onChange,
-  disabled,
-}: {
-  policy: FirewallPolicyValue;
-  onChange?: (p: FirewallPolicyValue) => void;
-  disabled?: boolean;
-}) {
+function LoadingCard() {
   return (
-    <span className="inline-flex shrink-0 rounded-md overflow-hidden text-xs font-medium zero-border">
-      {POLICY_OPTIONS.map((opt, idx) => {
-        return (
+    <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
+      <div className="pointer-events-auto flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-10 rounded-[20px] border border-border bg-background px-6 py-12">
+        <VM0Logo />
+        <IconLoader2 size={20} className="animate-spin text-muted-foreground" />
+      </div>
+    </div>
+  );
+}
+
+function PermissionsUpdatedCard() {
+  return (
+    <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
+      <div className="pointer-events-auto flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-10 rounded-[20px] border border-border bg-background px-[50px] py-12">
+        <VM0Logo />
+        <div className="flex flex-col items-center gap-4">
+          <IconCheck size={40} className="text-green-600 opacity-70" />
+          <p className="text-center text-lg font-medium leading-7 text-foreground">
+            Permissions updated
+          </p>
+          <p className="text-center text-sm text-muted-foreground">
+            Agent permissions have been updated
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PermissionsDeniedCard({ onResend }: { onResend?: () => void }) {
+  return (
+    <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
+      <div className="pointer-events-auto flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-10 rounded-[20px] border border-border bg-background px-[50px] py-12">
+        <VM0Logo />
+        <div className="flex flex-col items-center gap-4">
+          <IconBan size={40} className="text-destructive opacity-70" />
+          <p className="text-center text-lg font-medium leading-7 text-foreground">
+            Permissions denied
+          </p>
+          <p className="text-center text-sm text-muted-foreground">
+            Agent permissions have been denied
+          </p>
+        </div>
+        {onResend && (
           <button
-            key={opt.value}
             type="button"
-            disabled={disabled}
-            aria-pressed={policy === opt.value}
-            style={
-              idx > 0
-                ? { borderLeft: "0.7px solid hsl(var(--gray-400))" }
-                : undefined
-            }
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              onChange?.(opt.value);
-            }}
-            className={`flex items-center gap-1 px-2.5 py-1.5 transition-colors ${
-              policy === opt.value
-                ? "bg-muted text-foreground"
-                : disabled
-                  ? "text-muted-foreground/50"
-                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-            } ${disabled ? "cursor-default" : "cursor-pointer"}`}
+            onClick={onResend}
+            className="h-9 w-full rounded-[10px] bg-[#ED4E01] hover:bg-[#d44500] text-white font-medium text-sm transition-colors"
           >
-            {opt.value === "allow" && <IconCheck size={12} stroke={2.5} />}
-            {opt.value === "deny" && <IconBan size={12} stroke={2.5} />}
-            {opt.label}
+            Resend request
           </button>
-        );
-      })}
-    </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CopyLinkCard() {
+  const pageSignal = useGet(pageSignal$);
+  const copied = useGet(linkCopied$);
+  const [, doCopyLink] = useLoadableSet(copyLink$);
+
+  const handleCopyLink = () => {
+    detach(doCopyLink(pageSignal), Reason.DomCallback);
+  };
+
+  return (
+    <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
+      <div className="pointer-events-auto flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-10 rounded-[20px] border border-border bg-background px-[50px] py-12">
+        <VM0Logo />
+        <div className="flex flex-col items-center gap-4">
+          <IconCheck size={40} className="text-green-600 opacity-70" />
+          <p className="text-center text-lg font-medium leading-7 text-foreground">
+            Permission change requested successfully
+          </p>
+          <p className="text-center text-sm text-muted-foreground">
+            The agent owner has been notified. If they don&apos;t receive the
+            notification, copy and share the link below.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={handleCopyLink}
+          className="inline-flex h-9 w-full items-center justify-center gap-2.5 rounded-[10px] border border-border bg-background text-sm font-medium text-foreground transition-colors hover:bg-muted/50"
+        >
+          {copied ? (
+            <>
+              <IconCheck size={16} />
+              Copied
+            </>
+          ) : (
+            <>
+              <IconLink size={16} />
+              Copy link
+            </>
+          )}
+        </button>
+      </div>
+    </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Focused single-permission admin view (owner/admin)
+// Request mode (?request=<id>)
 // ---------------------------------------------------------------------------
 
-function AdminFocusedView({
-  agentId,
-  ref,
+function AdminApprovalCard({
+  userName,
+  requesterName,
+  requesterUserId,
+  agentDisplayName,
+  agentAvatarUrl,
+  connectorRef,
   permission,
   action,
-  agent,
-  userName,
+  reason,
+  onApprove,
+  onReject,
+  resolving,
 }: {
-  agentId: string;
-  ref: string;
+  userName: string;
+  requesterName: string | null;
+  requesterUserId: string;
+  agentDisplayName: string;
+  agentAvatarUrl: string | null;
+  connectorRef: string;
   permission: { name: string; description?: string };
   action: "allow" | "deny";
-  agent: {
-    firewallPolicies: FirewallPolicies | null;
-    displayName: string | null;
-    avatarUrl: string | null;
-  };
-  userName: string;
+  reason: string | null;
+  onApprove: () => void;
+  onReject: () => void;
+  resolving: boolean;
 }) {
-  const pageSignal = useGet(pageSignal$);
-  const latestLoadable = useLastLoadable(firewallLatestRequest$);
-  const [saveLoadable, savePolicies] = useLoadableSet(saveAdminFocusedPolicy$);
-  const [resolveLoadable, resolveRequest] = useLoadableSet(
-    resolveAndUpdatePolicy$,
-  );
-  const lastResolvedAction = useGet(resolvedAction$);
+  const displayRequester = requesterName ?? requesterUserId;
 
-  const saving = saveLoadable.state === "loading";
-  const resolving = resolveLoadable.state === "loading";
-  const requestsLoading = latestLoadable.state === "loading";
-  const latestRequest =
-    latestLoadable.state === "hasData" ? latestLoadable.data : null;
-  const agentDisplayName = agent.displayName ?? agentId;
-
-  const handleApprove = (requestId: string) => {
-    detach(
-      resolveRequest(requestId, "approve", pageSignal),
-      Reason.DomCallback,
-    );
-  };
-
-  const handleReject = (requestId: string) => {
-    detach(resolveRequest(requestId, "reject", pageSignal), Reason.DomCallback);
-  };
-
-  const handleSave = () => {
-    detach(
-      savePolicies(
-        {
-          agentId,
-          ref,
-          permissionName: permission.name,
-          agentFirewallPolicies: agent.firewallPolicies,
-        },
-        pageSignal,
-      ),
-      Reason.DomCallback,
-    );
-  };
-
-  const resolved = resolveLoadable.state === "hasData";
-  const saved = saveLoadable.state === "hasData";
-  const isDenied =
-    (resolved && lastResolvedAction === "reject") ||
-    latestRequest?.status === "rejected";
-  const isApproved =
-    (resolved && lastResolvedAction === "approve") ||
-    saved ||
-    latestRequest?.status === "approved";
-
-  if (requestsLoading) {
-    return (
-      <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
-        <div className="pointer-events-auto flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-10 rounded-[20px] border border-border bg-background px-6 py-12">
-          <VM0Logo />
-          <IconLoader2
-            size={20}
-            className="animate-spin text-muted-foreground"
-          />
-        </div>
-      </div>
-    );
-  }
-
-  if (isDenied) {
-    return (
-      <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
-        <div className="pointer-events-auto flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-10 rounded-[20px] border border-border bg-background px-[50px] py-12">
-          <VM0Logo />
-          <div className="flex flex-col items-center gap-4">
-            <IconBan size={40} className="text-destructive opacity-70" />
-            <p className="text-center text-lg font-medium leading-7 text-foreground">
-              Permissions denied
-            </p>
-            <p className="text-center text-sm text-muted-foreground">
-              Agent permissions have been denied
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (isApproved) {
-    return (
-      <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
-        <div className="pointer-events-auto flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-10 rounded-[20px] border border-border bg-background px-[50px] py-12">
-          <VM0Logo />
-          <div className="flex flex-col items-center gap-4">
-            <IconCheck size={40} className="text-green-600 opacity-70" />
-            <p className="text-center text-lg font-medium leading-7 text-foreground">
-              Permissions updated
-            </p>
-            <p className="text-center text-sm text-muted-foreground">
-              Agent permissions have been updated
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // With pending request — approval card
-  if (latestRequest?.status === "pending") {
-    const requesterName =
-      latestRequest.requesterName ?? latestRequest.requesterUserId;
-
-    return (
-      <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
-        <div className="pointer-events-auto flex flex-col items-center gap-10 rounded-[20px] border border-border bg-background px-6 py-12">
-          <VM0Logo />
-
-          <div className="flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-4 px-[26px]">
-            <p className="text-center text-lg font-medium leading-7 text-foreground">
-              {`Hey ${userName}, ${requesterName} is requesting approval to update ${agentDisplayName}'s permissions.`}
-            </p>
-
-            <AgentPill
-              avatarUrl={agent.avatarUrl}
-              displayName={agentDisplayName}
-            />
-
-            <div className="w-full flex flex-col gap-3">
-              <p className="text-sm font-medium text-foreground">
-                Would like to
-              </p>
-              <ConnectorPermissionCard
-                connectorRef={ref}
-                permission={permission}
-              />
-            </div>
-
-            <div className="w-full flex flex-col gap-3">
-              <p className="text-sm font-medium text-foreground">
-                Reasons for request
-              </p>
-              <textarea
-                readOnly
-                value={latestRequest.reason ?? ""}
-                className="text-sm w-full h-[100px] rounded-lg border border-input bg-muted/30 px-3 py-2 text-foreground resize-y"
-              />
-            </div>
-          </div>
-
-          <div className="flex w-[500px] max-w-[calc(100vw-96px)] gap-3 px-[26px]">
-            <Button
-              variant="outline"
-              className="flex-1 rounded-lg"
-              onClick={() => {
-                return handleReject(latestRequest.id);
-              }}
-              disabled={resolving}
-            >
-              <IconX size={16} />
-              Disapprove change
-            </Button>
-            <Button
-              variant="outline"
-              className="flex-1 rounded-lg"
-              onClick={() => {
-                return handleApprove(latestRequest.id);
-              }}
-              disabled={resolving}
-            >
-              <IconCheck size={16} />
-              Approve change
-            </Button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // No request — confirm action from URL
   return (
     <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
       <div className="pointer-events-auto flex flex-col items-center gap-10 rounded-[20px] border border-border bg-background px-6 py-12">
@@ -443,80 +320,86 @@ function AdminFocusedView({
 
         <div className="flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-4 px-[26px]">
           <p className="text-center text-lg font-medium leading-7 text-foreground">
-            {`Hey ${userName}, you are going to change ${agentDisplayName}'s permissions.`}
+            {`Hey ${userName}, ${displayRequester} is requesting approval to update ${agentDisplayName}'s permissions.`}
           </p>
 
           <AgentPill
-            avatarUrl={agent.avatarUrl}
+            avatarUrl={agentAvatarUrl}
             displayName={agentDisplayName}
           />
 
           <div className="w-full flex flex-col gap-3">
             <p className="text-sm font-medium text-foreground">Would like to</p>
             <ConnectorPermissionCard
-              connectorRef={ref}
+              connectorRef={connectorRef}
               permission={permission}
               action={action}
             />
           </div>
+
+          <div className="w-full flex flex-col gap-3">
+            <p className="text-sm font-medium text-foreground">
+              Reasons for request
+            </p>
+            <div className="text-sm w-full min-h-[100px] rounded-lg border border-border bg-muted/30 px-3 py-2 text-foreground whitespace-pre-wrap">
+              {reason || ""}
+            </div>
+          </div>
         </div>
 
-        <div className="w-[500px] max-w-[calc(100vw-96px)] px-[26px]">
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving}
-            className="h-9 w-full rounded-[10px] bg-[#ED4E01] hover:bg-[#d44500] text-white font-medium text-sm transition-colors disabled:opacity-50"
+        <div className="flex w-[500px] max-w-[calc(100vw-96px)] gap-3 px-[26px]">
+          <Button
+            variant="outline"
+            className="flex-1 rounded-lg"
+            onClick={onReject}
+            disabled={resolving}
           >
-            {saving ? "Saving..." : "Confirm"}
-          </button>
+            <IconX size={16} />
+            Disapprove change
+          </Button>
+          <Button
+            variant="outline"
+            className="flex-1 rounded-lg"
+            onClick={onApprove}
+            disabled={resolving}
+          >
+            <IconCheck size={16} />
+            Approve change
+          </Button>
         </div>
       </div>
     </div>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Focused single-permission member view
-// ---------------------------------------------------------------------------
-
-function MemberFocusedView({
+function ResendFormCard({
   agentId,
   ref,
   permission,
-  method,
-  path,
-  agent,
+  action,
+  request,
+  agentDisplayName,
+  agentAvatarUrl,
   userName,
 }: {
   agentId: string;
   ref: string;
   permission: { name: string; description?: string };
-  method: string | null;
-  path: string | null;
-  agent: {
-    firewallPolicies: FirewallPolicies | null;
-    displayName: string | null;
-    avatarUrl: string | null;
-  };
+  action: "allow" | "deny";
+  request: { method: string | null; path: string | null };
+  agentDisplayName: string;
+  agentAvatarUrl: string | null;
   userName: string;
 }) {
   const pageSignal = useGet(pageSignal$);
-  const latestLoadable = useLastLoadable(firewallLatestRequest$);
-  const resending = useGet(showForm$);
-  const setResending = useSet(setShowForm$);
-  const copied = useGet(linkCopied$);
-  const [, doCopyLink] = useLoadableSet(copyLink$);
+  const [submitLoadable, submitRequest] = useLoadableSet(submitAccessRequest$);
   const reason = useGet(reason$);
   const setReasonValue = useSet(setReason$);
-  const [submitLoadable, submitRequest] = useLoadableSet(submitAccessRequest$);
-
-  const requestsLoading = latestLoadable.state === "loading";
-  const latestRequest =
-    latestLoadable.state === "hasData" ? latestLoadable.data : null;
-  const agentDisplayName = agent.displayName ?? agentId;
   const submitting = submitLoadable.state === "loading";
-  const justSubmitted = submitLoadable.state === "hasData";
+
+  if (submitting || submitLoadable.state === "hasData") {
+    return <LoadingCard />;
+  }
 
   const handleSubmit = () => {
     detach(
@@ -525,8 +408,9 @@ function MemberFocusedView({
           agentId,
           firewallRef: ref,
           permission: permission.name,
-          method: method ?? undefined,
-          path: path ?? undefined,
+          action,
+          method: request.method ?? undefined,
+          path: request.path ?? undefined,
           reason: reason || undefined,
         },
         pageSignal,
@@ -535,112 +419,6 @@ function MemberFocusedView({
     );
   };
 
-  if (requestsLoading) {
-    return (
-      <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
-        <div className="pointer-events-auto flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-10 rounded-[20px] border border-border bg-background px-6 py-12">
-          <VM0Logo />
-          <IconLoader2
-            size={20}
-            className="animate-spin text-muted-foreground"
-          />
-        </div>
-      </div>
-    );
-  }
-
-  // Rejected — show denied card with resend button (all non-admins can resend)
-  if (latestRequest?.status === "rejected" && !resending && !justSubmitted) {
-    return (
-      <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
-        <div className="pointer-events-auto flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-10 rounded-[20px] border border-border bg-background px-[50px] py-12">
-          <VM0Logo />
-          <div className="flex flex-col items-center gap-4">
-            <IconBan size={40} className="text-destructive opacity-70" />
-            <p className="text-center text-lg font-medium leading-7 text-foreground">
-              Permissions denied
-            </p>
-            <p className="text-center text-sm text-muted-foreground">
-              Agent permissions have been denied
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              return setResending(true);
-            }}
-            className="h-9 w-full rounded-[10px] bg-[#ED4E01] hover:bg-[#d44500] text-white font-medium text-sm transition-colors disabled:opacity-50"
-          >
-            Resend request
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // Approved — success card
-  if (latestRequest?.status === "approved") {
-    return (
-      <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
-        <div className="pointer-events-auto flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-10 rounded-[20px] border border-border bg-background px-[50px] py-12">
-          <VM0Logo />
-          <div className="flex flex-col items-center gap-4">
-            <IconCheck size={40} className="text-green-600 opacity-70" />
-            <p className="text-center text-lg font-medium leading-7 text-foreground">
-              Permissions updated
-            </p>
-            <p className="text-center text-sm text-muted-foreground">
-              Agent permissions have been updated
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Pending or just submitted — copy link card
-  if ((latestRequest?.status === "pending" || justSubmitted) && !resending) {
-    const handleCopyLink = () => {
-      detach(doCopyLink(pageSignal), Reason.DomCallback);
-    };
-
-    return (
-      <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
-        <div className="pointer-events-auto flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-10 rounded-[20px] border border-border bg-background px-[50px] py-12">
-          <VM0Logo />
-          <div className="flex flex-col items-center gap-4">
-            <IconCheck size={40} className="text-green-600 opacity-70" />
-            <p className="text-center text-lg font-medium leading-7 text-foreground">
-              Permission change requested successfully
-            </p>
-            <p className="text-center text-sm text-muted-foreground">
-              The agent owner has been notified. If they don&apos;t receive the
-              notification, copy and share the link below.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={handleCopyLink}
-            className="inline-flex h-9 w-full items-center justify-center gap-2.5 rounded-[10px] border border-border bg-background text-sm font-medium text-foreground transition-colors hover:bg-muted/50"
-          >
-            {copied ? (
-              <>
-                <IconCheck size={16} />
-                Copied
-              </>
-            ) : (
-              <>
-                <IconLink size={16} />
-                Copy link
-              </>
-            )}
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // No request, resending, or just submitted — show request form
   return (
     <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
       <div className="pointer-events-auto flex flex-col items-center gap-10 rounded-[20px] border border-border bg-background px-6 py-12">
@@ -652,7 +430,7 @@ function MemberFocusedView({
           </p>
 
           <AgentPill
-            avatarUrl={agent.avatarUrl}
+            avatarUrl={agentAvatarUrl}
             displayName={agentDisplayName}
           />
 
@@ -661,6 +439,7 @@ function MemberFocusedView({
             <ConnectorPermissionCard
               connectorRef={ref}
               permission={permission}
+              action={action}
             />
           </div>
 
@@ -694,251 +473,346 @@ function MemberFocusedView({
   );
 }
 
-// ---------------------------------------------------------------------------
-// List views (fallback when no specific permission in URL)
-// ---------------------------------------------------------------------------
-
-function PermissionRow({
-  perm,
-  policy,
-  onChange,
-  disabled,
-  indented,
+function RequestStatusView({
+  request,
+  canManageFirewall,
+  agent,
+  userName,
+  agentDisplayName,
 }: {
-  perm: { name: string; description?: string };
-  policy: FirewallPolicyValue;
-  onChange?: (p: FirewallPolicyValue) => void;
-  disabled?: boolean;
-  indented?: boolean;
+  request: {
+    id: string;
+    agentId: string;
+    firewallRef: string;
+    permission: string;
+    action: "allow" | "deny";
+    method: string | null;
+    path: string | null;
+    reason: string | null;
+    status: "pending" | "approved" | "rejected";
+    requesterName: string | null;
+    requesterUserId: string;
+  };
+  canManageFirewall: boolean;
+  agent: { avatarUrl: string | null };
+  userName: string;
+  agentDisplayName: string;
 }) {
+  const pageSignal = useGet(pageSignal$);
+  const [resolveLoadable, resolveRequest] = useLoadableSet(
+    resolveAndUpdatePolicy$,
+  );
+  const showResendFormValue = useGet(resendFormVisible$);
+  const doShowResendForm = useSet(showResendForm$);
+
+  const ref = request.firewallRef;
+  const permission = findPermission(ref, request.permission) ?? {
+    name: request.permission,
+  };
+
+  if (request.status === "approved") {
+    return <PermissionsUpdatedCard />;
+  }
+
+  // Rejected — member: resend form or denied card
+  if (request.status === "rejected" && !canManageFirewall) {
+    if (showResendFormValue) {
+      return (
+        <ResendFormCard
+          agentId={request.agentId}
+          ref={ref}
+          permission={permission}
+          action={request.action}
+          request={request}
+          agentDisplayName={agentDisplayName}
+          agentAvatarUrl={agent.avatarUrl}
+          userName={userName}
+        />
+      );
+    }
+    return <PermissionsDeniedCard onResend={doShowResendForm} />;
+  }
+
+  if (request.status === "rejected") {
+    return <PermissionsDeniedCard />;
+  }
+
+  if (canManageFirewall) {
+    return (
+      <AdminApprovalCard
+        userName={userName}
+        requesterName={request.requesterName}
+        requesterUserId={request.requesterUserId}
+        agentDisplayName={agentDisplayName}
+        agentAvatarUrl={agent.avatarUrl}
+        connectorRef={ref}
+        permission={permission}
+        action={request.action}
+        reason={request.reason}
+        onApprove={() => {
+          detach(
+            resolveRequest(request.id, "approve", request.action, pageSignal),
+            Reason.DomCallback,
+          );
+        }}
+        onReject={() => {
+          detach(
+            resolveRequest(request.id, "reject", request.action, pageSignal),
+            Reason.DomCallback,
+          );
+        }}
+        resolving={resolveLoadable.state === "loading"}
+      />
+    );
+  }
+
+  return <CopyLinkCard />;
+}
+
+function RequestModeView() {
+  const agentId = useGet(firewallAllowAgentId$);
+  const agentLoadable = useLastLoadable(firewallAllowAgent$);
+  const userLoadable = useLastLoadable(user$);
+  const adminLoadable = useLoadable(isOrgAdmin$);
+  const requestLoadable = useLastLoadable(firewallRequestById$);
+
+  if (
+    agentLoadable.state === "loading" ||
+    userLoadable.state === "loading" ||
+    adminLoadable.state === "loading" ||
+    requestLoadable.state === "loading"
+  ) {
+    return <LoadingCard />;
+  }
+
+  if (agentLoadable.state === "hasError") {
+    return <ErrorMessage message="Failed to load agent" />;
+  }
+
+  const agent = agentLoadable.data;
+  if (!agent) {
+    return <ErrorMessage message="Agent not found" />;
+  }
+
+  const request =
+    requestLoadable.state === "hasData" ? requestLoadable.data : null;
+  if (!request) {
+    return <ErrorMessage message="Access request not found" />;
+  }
+
+  const currentUser =
+    userLoadable.state === "hasData" ? userLoadable.data : undefined;
+  const isAdmin = adminLoadable.state === "hasData" && adminLoadable.data;
+  const canManageFirewall = currentUser?.id === agent.ownerId || isAdmin;
+
   return (
-    <div
-      className={`flex items-center gap-2.5 px-3 py-2 ${disabled ? "" : "hover:bg-muted/50"} transition-colors ${indented ? "pl-6" : ""}`}
-    >
-      <div className="min-w-0 flex-1">
-        <code className="text-xs font-medium text-foreground truncate block">
-          {perm.name}
-        </code>
-        {perm.description && (
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            {perm.description}
-          </p>
-        )}
-      </div>
-      <PolicyPill policy={policy} onChange={onChange} disabled={disabled} />
-    </div>
+    <RequestStatusView
+      request={request}
+      canManageFirewall={canManageFirewall}
+      agent={agent}
+      userName={resolveUserName(currentUser)}
+      agentDisplayName={agent.displayName ?? agentId ?? ""}
+    />
   );
 }
 
-function CategoryHeader({
-  category,
-  count,
-  onSetAll,
-}: {
-  category: string;
-  count: number;
-  onSetAll?: (p: FirewallPolicyValue) => void;
-}) {
-  return (
-    <div className="flex items-center justify-between px-3 py-2 bg-muted/30">
-      <span className="text-xs font-medium text-foreground">
-        {category} ({count})
-      </span>
-      {onSetAll && (
-        <span className="inline-flex shrink-0 rounded-md overflow-hidden text-xs font-medium zero-border">
-          {POLICY_OPTIONS.map((opt, idx) => {
-            return (
-              <button
-                key={opt.value}
-                type="button"
-                style={
-                  idx > 0
-                    ? { borderLeft: "0.7px solid hsl(var(--gray-400))" }
-                    : undefined
-                }
-                onClick={() => {
-                  return onSetAll(opt.value);
-                }}
-                className="flex items-center gap-1 px-2.5 py-1.5 transition-colors text-muted-foreground hover:text-foreground hover:bg-muted/50"
-              >
-                {opt.value === "allow" && <IconCheck size={12} stroke={2.5} />}
-                {opt.value === "deny" && <IconBan size={12} stroke={2.5} />}
-                {opt.label}
-              </button>
-            );
-          })}
-        </span>
-      )}
-    </div>
-  );
-}
+// ---------------------------------------------------------------------------
+// Doctor mode (no ?request param)
+// ---------------------------------------------------------------------------
 
-function AdminListView({
+function DoctorModeView({
   agentId,
   ref,
+  permission,
+  action,
+  method,
+  path,
+  canManageFirewall,
   agent,
+  userName,
 }: {
   agentId: string;
   ref: string;
+  permission: { name: string; description?: string };
+  action: "allow" | "deny";
+  method: string | null;
+  path: string | null;
+  canManageFirewall: boolean;
   agent: {
     firewallPolicies: FirewallPolicies | null;
     displayName: string | null;
+    avatarUrl: string | null;
   };
+  userName: string;
 }) {
-  const permissions = extractPermissions(ref);
-  const groups = groupPermissionsByCategory(permissions, ref);
   const pageSignal = useGet(pageSignal$);
-  const policies = useGet(adminListPolicies$);
-  const setPolicy = useSet(setAdminListPolicy$);
-  const setGroupPolicies = useSet(setAdminListGroupPolicies$);
-  const [saveLoadable, savePolicies] = useLoadableSet(saveAdminListPolicies$);
+  const [saveLoadable, savePolicies] = useLoadableSet(saveAdminFocusedPolicy$);
+  const [submitLoadable, submitRequest] = useLoadableSet(submitAccessRequest$);
+  const reason = useGet(reason$);
+  const setReasonValue = useSet(setReason$);
 
   const saving = saveLoadable.state === "loading";
+  const submitting = submitLoadable.state === "loading";
+  const agentDisplayName = agent.displayName ?? agentId;
 
-  const handleSave = () => {
+  // Check effective policy
+  const defaults = isFirewallConnectorType(ref)
+    ? getDefaultFirewallPolicies(ref)
+    : null;
+  const effectivePolicy =
+    agent.firewallPolicies?.[ref]?.[permission.name] ??
+    defaults?.[permission.name] ??
+    "allow";
+
+  // Policy already matches — show result
+  if (effectivePolicy === action) {
+    return action === "allow" ? (
+      <PermissionsUpdatedCard />
+    ) : (
+      <PermissionsDeniedCard />
+    );
+  }
+
+  // Policy doesn't match — admin: confirm card
+  if (canManageFirewall) {
+    const handleSave = () => {
+      detach(
+        savePolicies(
+          {
+            agentId,
+            ref,
+            permissionName: permission.name,
+            action,
+            agentFirewallPolicies: agent.firewallPolicies,
+          },
+          pageSignal,
+        ),
+        Reason.DomCallback,
+      );
+    };
+
+    if (saveLoadable.state === "hasData") {
+      return action === "allow" ? (
+        <PermissionsUpdatedCard />
+      ) : (
+        <PermissionsDeniedCard />
+      );
+    }
+
+    return (
+      <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
+        <div className="pointer-events-auto flex flex-col items-center gap-10 rounded-[20px] border border-border bg-background px-6 py-12">
+          <VM0Logo />
+
+          <div className="flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-4 px-[26px]">
+            <p className="text-center text-lg font-medium leading-7 text-foreground">
+              {`Hey ${userName}, you are going to change ${agentDisplayName}'s permissions.`}
+            </p>
+
+            <AgentPill
+              avatarUrl={agent.avatarUrl}
+              displayName={agentDisplayName}
+            />
+
+            <div className="w-full flex flex-col gap-3">
+              <p className="text-sm font-medium text-foreground">
+                Would like to
+              </p>
+              <ConnectorPermissionCard
+                connectorRef={ref}
+                permission={permission}
+                action={action}
+              />
+            </div>
+          </div>
+
+          <div className="w-[500px] max-w-[calc(100vw-96px)] px-[26px]">
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={saving}
+              className="h-9 w-full rounded-[10px] bg-[#ED4E01] hover:bg-[#d44500] text-white font-medium text-sm transition-colors disabled:opacity-50"
+            >
+              {saving ? "Saving..." : "Confirm"}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Policy doesn't match — member: request form
+  if (submitting || submitLoadable.state === "hasData") {
+    return <LoadingCard />;
+  }
+
+  const handleSubmit = () => {
     detach(
-      savePolicies(agentId, agent.firewallPolicies, ref, pageSignal),
+      submitRequest(
+        {
+          agentId,
+          firewallRef: ref,
+          permission: permission.name,
+          action,
+          method: method ?? undefined,
+          path: path ?? undefined,
+          reason: reason || undefined,
+        },
+        pageSignal,
+      ),
       Reason.DomCallback,
     );
   };
 
-  const handleSetGroupAll = (
-    groupPerms: { name: string }[],
-    policy: FirewallPolicyValue,
-  ) => {
-    setGroupPolicies(
-      groupPerms.map((p) => {
-        return p.name;
-      }),
-      policy,
-    );
-  };
-
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-medium text-foreground">Permissions</h2>
-        <Button size="sm" onClick={handleSave} disabled={saving}>
-          {saving ? "Saving..." : "Save"}
-        </Button>
-      </div>
+    <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
+      <div className="pointer-events-auto flex flex-col items-center gap-10 rounded-[20px] border border-border bg-background px-6 py-12">
+        <VM0Logo />
 
-      <div className="zero-border rounded-lg overflow-hidden">
-        {groups
-          ? groups.map((group, groupIdx) => {
-              return (
-                <div key={group.category}>
-                  {groupIdx > 0 && (
-                    <div className="border-t border-border/40" />
-                  )}
-                  <CategoryHeader
-                    category={group.category}
-                    count={group.permissions.length}
-                    onSetAll={(p) => {
-                      return handleSetGroupAll(group.permissions, p);
-                    }}
-                  />
-                  {group.permissions.map((perm, idx) => {
-                    return (
-                      <div key={perm.name}>
-                        {idx > 0 && (
-                          <div className="border-t border-border/40" />
-                        )}
-                        <PermissionRow
-                          perm={perm}
-                          policy={policies[perm.name] ?? "allow"}
-                          onChange={(p) => {
-                            return setPolicy(perm.name, p);
-                          }}
-                          indented
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            })
-          : permissions.map((perm, idx) => {
-              return (
-                <div key={perm.name}>
-                  {idx > 0 && <div className="border-t border-border/40" />}
-                  <PermissionRow
-                    perm={perm}
-                    policy={policies[perm.name] ?? "allow"}
-                    onChange={(p) => {
-                      return setPolicy(perm.name, p);
-                    }}
-                  />
-                </div>
-              );
-            })}
-      </div>
-    </div>
-  );
-}
+        <div className="flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-4 px-[26px]">
+          <p className="text-center text-lg font-medium leading-7 text-foreground">
+            {`Hey ${userName}, you're requesting approval to update ${agentDisplayName}'s permissions.`}
+          </p>
 
-function MemberListView({
-  ref,
-  agent,
-}: {
-  ref: string;
-  agent: { firewallPolicies: FirewallPolicies | null };
-}) {
-  const permissions = extractPermissions(ref);
-  const groups = groupPermissionsByCategory(permissions, ref);
-  const defaults = isFirewallConnectorType(ref)
-    ? getDefaultFirewallPolicies(ref)
-    : null;
+          <AgentPill
+            avatarUrl={agent.avatarUrl}
+            displayName={agentDisplayName}
+          />
 
-  return (
-    <div className="flex flex-col gap-4">
-      <h2 className="text-sm font-medium text-foreground">Permissions</h2>
-      <div className="zero-border rounded-lg overflow-hidden">
-        {groups
-          ? groups.map((group, groupIdx) => {
-              return (
-                <div key={group.category}>
-                  {groupIdx > 0 && (
-                    <div className="border-t border-border/40" />
-                  )}
-                  <CategoryHeader
-                    category={group.category}
-                    count={group.permissions.length}
-                  />
-                  {group.permissions.map((perm, idx) => {
-                    const currentPolicy =
-                      agent.firewallPolicies?.[ref]?.[perm.name] ??
-                      defaults?.[perm.name] ??
-                      "allow";
-                    return (
-                      <div key={perm.name}>
-                        {idx > 0 && (
-                          <div className="border-t border-border/40" />
-                        )}
-                        <PermissionRow
-                          perm={perm}
-                          policy={currentPolicy}
-                          disabled
-                          indented
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
-              );
-            })
-          : permissions.map((perm, idx) => {
-              const currentPolicy =
-                agent.firewallPolicies?.[ref]?.[perm.name] ??
-                defaults?.[perm.name] ??
-                "allow";
-              return (
-                <div key={perm.name}>
-                  {idx > 0 && <div className="border-t border-border/40" />}
-                  <PermissionRow perm={perm} policy={currentPolicy} disabled />
-                </div>
-              );
-            })}
+          <div className="w-full flex flex-col gap-3">
+            <p className="text-sm font-medium text-foreground">Would like to</p>
+            <ConnectorPermissionCard
+              connectorRef={ref}
+              permission={permission}
+              action={action}
+            />
+          </div>
+
+          <div className="w-full flex flex-col gap-3">
+            <p className="text-sm font-medium text-foreground">
+              Reasons for request
+            </p>
+            <textarea
+              placeholder="I need this permission to run the task with this agent as part of a required compliance project."
+              value={reason}
+              onChange={(e) => {
+                return setReasonValue(e.target.value);
+              }}
+              className="text-sm w-full h-[100px] rounded-lg border border-input bg-background px-3 py-2 placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-y"
+            />
+          </div>
+        </div>
+
+        <div className="w-[500px] max-w-[calc(100vw-96px)] px-[26px]">
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={submitting}
+            className="h-9 w-full rounded-[10px] bg-[#ED4E01] hover:bg-[#d44500] text-white font-medium text-sm transition-colors disabled:opacity-50"
+          >
+            {submitting ? "Submitting..." : "Request approval"}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -994,74 +868,36 @@ function findPermission(
 }
 
 // ---------------------------------------------------------------------------
-// List Layout
-// ---------------------------------------------------------------------------
-
-function FirewallAllowListLayout({
-  agentId,
-  ref,
-  connectorLabel,
-  agentDisplayName,
-  canManageFirewall,
-  agent,
-}: {
-  agentId: string;
-  ref: string;
-  connectorLabel: string;
-  agentDisplayName: string;
-  canManageFirewall: boolean;
-  agent: {
-    firewallPolicies: FirewallPolicies | null;
-    displayName: string | null;
-  };
-}) {
-  return (
-    <div className="flex flex-1 flex-col min-h-0">
-      <header className="px-6 pt-5 pb-3">
-        <div className="flex items-center gap-2.5">
-          {isFirewallConnectorType(ref) && (
-            <ConnectorIcon type={ref} size={22} />
-          )}
-          <h1 className="text-sm font-semibold text-foreground flex items-center gap-1.5">
-            <IconShieldLock size={15} />
-            {connectorLabel} Firewall
-          </h1>
-          <span className="text-xs text-muted-foreground">
-            &middot; {agentDisplayName}
-          </span>
-        </div>
-      </header>
-
-      <main className="flex-1 overflow-auto px-6 pb-6">
-        {canManageFirewall ? (
-          <AdminListView agentId={agentId} ref={ref} agent={agent} />
-        ) : (
-          <MemberListView ref={ref} agent={agent} />
-        )}
-      </main>
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Main Page
 // ---------------------------------------------------------------------------
 
 export function FirewallAllowPage() {
   const agentId = useGet(firewallAllowAgentId$);
   const ref = useGet(firewallAllowRef$);
-  const highlightPermission = useGet(firewallAllowPermission$);
+  const permission = useGet(firewallAllowPermission$);
   const method = useGet(firewallAllowMethod$);
   const path = useGet(firewallAllowPath$);
   const action = useGet(firewallAllowAction$);
+  const requestId = useGet(firewallAllowRequestId$);
 
   const agentLoadable = useLastLoadable(firewallAllowAgent$);
   const userLoadable = useLastLoadable(user$);
   const adminLoadable = useLoadable(isOrgAdmin$);
+  const existingRequestLoadable = useLoadable(firewallExistingRequest$);
 
-  if (!agentId || !ref) {
+  if (!agentId) {
+    return <ErrorMessage message="Missing agent ID in URL parameters" />;
+  }
+
+  // Request mode: URL is ?request=<id>, self-contained view
+  if (requestId) {
+    return <RequestModeView />;
+  }
+
+  // Doctor mode: needs ref + permission
+  if (!ref || !permission) {
     return (
-      <ErrorMessage message="Missing agent ID or firewall ref in URL parameters" />
+      <ErrorMessage message="Missing firewall ref or permission in URL parameters" />
     );
   }
 
@@ -1069,18 +905,12 @@ export function FirewallAllowPage() {
     return <ErrorMessage message={`Unknown firewall: ${ref}`} />;
   }
 
-  if (agentLoadable.state === "loading" || userLoadable.state === "loading") {
-    return (
-      <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
-        <div className="pointer-events-auto flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-10 rounded-[20px] border border-border bg-background px-6 py-12">
-          <VM0Logo />
-          <IconLoader2
-            size={20}
-            className="animate-spin text-muted-foreground"
-          />
-        </div>
-      </div>
-    );
+  if (
+    agentLoadable.state === "loading" ||
+    userLoadable.state === "loading" ||
+    adminLoadable.state === "loading"
+  ) {
+    return <LoadingCard />;
   }
 
   if (agentLoadable.state === "hasError") {
@@ -1089,53 +919,37 @@ export function FirewallAllowPage() {
 
   const agent = agentLoadable.data;
   if (!agent) {
-    return (
-      <StatusMessage>
-        <p className="text-sm">Agent not found</p>
-      </StatusMessage>
-    );
+    return <ErrorMessage message="Agent not found" />;
   }
 
   const currentUser =
     userLoadable.state === "hasData" ? userLoadable.data : undefined;
   const isAdmin = adminLoadable.state === "hasData" && adminLoadable.data;
   const canManageFirewall = currentUser?.id === agent.ownerId || isAdmin;
-  const connectorLabel = CONNECTOR_TYPES[ref].label;
-  const agentDisplayName = agent.displayName ?? agentId;
   const userName = resolveUserName(currentUser);
-  const focusedPermission = findPermission(ref, highlightPermission);
+  const focusedPermission = findPermission(ref, permission);
 
-  if (focusedPermission) {
-    return canManageFirewall ? (
-      <AdminFocusedView
-        agentId={agentId}
-        ref={ref}
-        permission={focusedPermission}
-        action={action ?? "allow"}
-        agent={agent}
-        userName={userName}
-      />
-    ) : (
-      <MemberFocusedView
-        agentId={agentId}
-        ref={ref}
-        permission={focusedPermission}
-        method={method}
-        path={path}
-        agent={agent}
-        userName={userName}
-      />
-    );
+  if (!focusedPermission) {
+    return <ErrorMessage message={`Unknown permission: ${permission}`} />;
+  }
+
+  // Member doctor mode: wait for existing-request check so page-setup
+  // can redirect to request mode before we render anything.
+  if (!canManageFirewall && existingRequestLoadable.state === "loading") {
+    return <LoadingCard />;
   }
 
   return (
-    <FirewallAllowListLayout
+    <DoctorModeView
       agentId={agentId}
       ref={ref}
-      connectorLabel={connectorLabel}
-      agentDisplayName={agentDisplayName}
+      permission={focusedPermission}
+      action={action ?? "allow"}
+      method={method}
+      path={path}
       canManageFirewall={canManageFirewall}
       agent={agent}
+      userName={userName}
     />
   );
 }

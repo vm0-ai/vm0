@@ -419,11 +419,14 @@ export const firewallAccessRequestStatusSchema = z.enum([
 /**
  * Firewall access request response schema
  */
+const firewallAccessRequestActionSchema = z.enum(["allow", "deny"]);
+
 export const firewallAccessRequestResponseSchema = z.object({
   id: z.string().uuid(),
   agentId: z.string().uuid(),
   firewallRef: z.string(),
   permission: z.string(),
+  action: firewallAccessRequestActionSchema,
   method: z.string().nullable(),
   path: z.string().nullable(),
   reason: z.string().nullable(),
@@ -442,6 +445,7 @@ export const createFirewallAccessRequestSchema = z.object({
   agentId: z.string().uuid(),
   firewallRef: z.string(),
   permission: z.string(),
+  action: firewallAccessRequestActionSchema.optional().default("allow"),
   method: z.string().optional(),
   path: z.string().optional(),
   reason: z.string().optional(),
@@ -479,7 +483,8 @@ export const firewallAccessRequestsCreateContract = c.router({
  * Contract for GET /api/zero/firewall-access-requests (list)
  */
 const firewallAccessRequestsListQuerySchema = z.object({
-  agentId: z.string(),
+  agentId: z.string().optional(),
+  requestId: z.string().optional(),
   status: z.string().optional(),
 });
 

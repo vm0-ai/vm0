@@ -7,13 +7,15 @@ import { updatePage$ } from "../react-router.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
 import { reloadChatThreads$ } from "../zero-page/zero-chat.ts";
+import { isOrgAdmin$ } from "../org.ts";
 import {
-  resetAdminFocusedState$,
-  resetMemberFocusedState$,
+  resetFocusedState$,
   firewallAllowAgent$,
   firewallAllowRef$,
-  extractPermissions,
-  syncAdminListPolicies$,
+  firewallAllowPermission$,
+  firewallAllowRequestId$,
+  firewallExistingRequest$,
+  updateRequestIdInUrl$,
 } from "./firewall-allow-signals.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 
@@ -28,8 +30,7 @@ export const setupFirewallAllowPage$ = command(
       ),
     );
     set(updateDocumentTitle$, "Firewall Permissions");
-    set(resetAdminFocusedState$);
-    set(resetMemberFocusedState$);
+    set(resetFocusedState$);
 
     await set(initZeroOnboarding$, signal);
     signal.throwIfAborted();
@@ -44,9 +45,20 @@ export const setupFirewallAllowPage$ = command(
     const agent = await get(firewallAllowAgent$);
     signal.throwIfAborted();
     const ref = get(firewallAllowRef$);
-    if (agent && ref) {
-      const permissions = extractPermissions(ref);
-      set(syncAdminListPolicies$, permissions, ref, agent.firewallPolicies);
+
+    // Auto-redirect: member in doctor mode with existing request → request mode
+    const requestId = get(firewallAllowRequestId$);
+    const permission = get(firewallAllowPermission$);
+    if (!requestId && permission && agent && ref) {
+      const isAdmin = await get(isOrgAdmin$);
+      signal.throwIfAborted();
+      if (!isAdmin) {
+        const existing = await get(firewallExistingRequest$);
+        signal.throwIfAborted();
+        if (existing) {
+          set(updateRequestIdInUrl$, existing.id);
+        }
+      }
     }
   },
 );
