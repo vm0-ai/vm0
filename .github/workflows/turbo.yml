@@ -1136,6 +1136,22 @@ jobs:
           node-version: 22
       - name: Install E2E dependencies
         run: npm install -g agent-browser@0.22.0
+      - name: Sync skills cache
+        run: |
+          echo "Triggering skill sync for PR preview environment..."
+          HTTP_STATUS=$(curl -s -o /tmp/sync-skills-response.json -w "%{http_code}" \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            -H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET" \
+            "$VM0_API_URL/api/cron/sync-skills")
+          echo "Sync-skills response status: $HTTP_STATUS"
+          cat /tmp/sync-skills-response.json || true
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "Warning: skill sync returned $HTTP_STATUS — onboarding may fail with 422"
+          fi
+        env:
+          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
       - name: Run browser E2E tests
         run: |
           BATS_TEST_TIMEOUT=300 ./e2e/test/libs/bats/bin/bats -T ./e2e/tests/02-browser/*.bats

@@ -299,13 +299,11 @@ teardown_file() {
     echo "# Step 4: Choosing 'Continue in web'..." >&3
     step_screenshot "onboard-step4"
     agent-browser find text "Continue in web" click
-    # Wait for post-onboarding provisioning + navigation (up to 200s).
-    # Detection is URL-based: once the browser leaves /onboarding the backend
-    # setup is done and the frontend has navigated to /agents/:id/chat.
+    # Wait for post-onboarding provisioning + navigation (up to 90s).
+    # Detection is URL-based: once the browser navigates away from /onboarding
+    # the backend setup is done and the frontend has navigated to /agents/:id/chat.
     # This is a soft poll: we don't assert here, test 5 will verify.
-    # BATS_TEST_TIMEOUT=300s; steps 1-3 take ~20s and screenshots ~10s,
-    # leaving ~270s budget — 200 iterations keeps us well within that limit.
-    for _i in $(seq 1 200); do
+    for _i in $(seq 1 90); do
       local current_url
       current_url=$(agent-browser get url 2>/dev/null || true)
       if [[ "$current_url" =~ /agents/ ]] && [[ ! "$current_url" =~ onboarding ]]; then
@@ -323,13 +321,11 @@ teardown_file() {
 @test "verify chat page is displayed" {
   echo "# Verifying chat page..." >&3
 
-  # Poll for up to 250s using URL-based detection (BATS_TEST_TIMEOUT=300s
-  # gives ~50s headroom for screenshots/setup overhead).
-  # Provisioning in fresh PR environments can take 3+ minutes from clicking
-  # "Continue in web" in test 4, so this budget covers cases where test 4's
-  # soft poll ended before provisioning completed.
+  # Poll for up to 120s using URL-based detection (BATS_TEST_TIMEOUT=300s
+  # gives ample headroom; the skill-sync step before this job ensures skills
+  # are cached so provisioning completes quickly after the click).
   local chat_loaded=false
-  for _i in $(seq 1 250); do
+  for _i in $(seq 1 120); do
     local current_url
     current_url=$(agent-browser get url 2>/dev/null || true)
     if [[ "$current_url" =~ /agents/.+/chat ]]; then
