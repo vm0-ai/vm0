@@ -1,5 +1,24 @@
 # Changelog
 
+## [12.198.1](https://github.com/vm0-ai/vm0/compare/web-v12.198.0...web-v12.198.1) (2026-04-07)
+
+
+### Bug Fixes
+
+* use 403 instead of 401 for authorization errors ([#8335](https://github.com/vm0-ai/vm0/issues/8335)) ([fc09ed3](https://github.com/vm0-ai/vm0/commit/fc09ed3a32f50e350fe271568942dc28632baadf))
+
+
+### Refactoring
+
+* remove cross-org resolve-org calls from slack connect routes ([#8344](https://github.com/vm0-ai/vm0/issues/8344)) ([5a6762c](https://github.com/vm0-ai/vm0/commit/5a6762c8eeae9d22089bf12573d7506b0e167e6d)), closes [#8341](https://github.com/vm0-ai/vm0/issues/8341)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.156.1
+
 ## [12.198.0](https://github.com/vm0-ai/vm0/compare/web-v12.197.1...web-v12.198.0) (2026-04-07)
 
 

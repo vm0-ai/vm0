@@ -1,5 +1,13 @@
 # Changelog
 
+## [8.156.1](https://github.com/vm0-ai/vm0/compare/core-v8.156.0...core-v8.156.1) (2026-04-07)
+
+
+### Bug Fixes
+
+* **firewall:** include xero connections endpoint in firewall config ([#8340](https://github.com/vm0-ai/vm0/issues/8340)) ([db6d7f6](https://github.com/vm0-ai/vm0/commit/db6d7f68a5049ec79de5e6633601ebac13030cda))
+* use 403 instead of 401 for authorization errors ([#8335](https://github.com/vm0-ai/vm0/issues/8335)) ([fc09ed3](https://github.com/vm0-ai/vm0/commit/fc09ed3a32f50e350fe271568942dc28632baadf))
+
 ## [8.156.0](https://github.com/vm0-ai/vm0/compare/core-v8.155.1...core-v8.156.0) (2026-04-07)
 
 
