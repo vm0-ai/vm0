@@ -299,11 +299,13 @@ teardown_file() {
     echo "# Step 4: Choosing 'Continue in web'..." >&3
     step_screenshot "onboard-step4"
     agent-browser find text "Continue in web" click
-    # Wait for post-onboarding provisioning + navigation (up to 120s).
+    # Wait for post-onboarding provisioning + navigation (up to 250s).
     # Detection is URL-based: once the browser leaves /onboarding the backend
     # setup is done and the frontend has navigated to /agents/:id/chat.
     # This is a soft poll: we don't assert here, test 5 will verify.
-    for _i in $(seq 1 120); do
+    # BATS_TEST_TIMEOUT=300s for this job, steps 1-3 take ~20s, screenshots ~5s,
+    # leaving ~275s for this poll.
+    for _i in $(seq 1 250); do
       local current_url
       current_url=$(agent-browser get url 2>/dev/null || true)
       if [[ "$current_url" =~ /agents/ ]] && [[ ! "$current_url" =~ onboarding ]]; then
@@ -321,20 +323,17 @@ teardown_file() {
 @test "verify chat page is displayed" {
   echo "# Verifying chat page..." >&3
 
+  # Poll for up to 250s using URL-based detection (BATS_TEST_TIMEOUT=300s
+  # gives ~50s headroom for screenshots/setup overhead).
+  # Provisioning in fresh PR environments can take 3+ minutes from clicking
+  # "Continue in web" in test 4, so this budget covers cases where test 4's
+  # soft poll ended before provisioning completed.
   local chat_loaded=false
-  for _i in $(seq 1 60); do
+  for _i in $(seq 1 250); do
     local current_url
     current_url=$(agent-browser get url 2>/dev/null || true)
-    # Primary: URL-based detection — chat page is /agents/:id/chat
     if [[ "$current_url" =~ /agents/.+/chat ]]; then
       echo "# Chat URL detected: $current_url" >&3
-      chat_loaded=true
-      break
-    fi
-    # Secondary: text-based detection for any agent chat landing page
-    local snap
-    snap=$(full_snapshot)
-    if contains "$snap" "Ask me to automate workflows\|Ideas.*use cases\|Browse use cases"; then
       chat_loaded=true
       break
     fi
