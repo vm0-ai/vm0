@@ -47,10 +47,10 @@ import {
   setSidebarExpanded$,
 } from "../../signals/zero-page/zero-nav.ts";
 import {
-  sidebarSearchOpen$,
+  threadSearchOpen$,
   sidebarSearchTerm$,
-  setSidebarSearchOpen$,
-  setSidebarSearchTerm$,
+  setThreadSearchOpen$,
+  setThreadSearchTerm$,
   pendingDeleteThreadId$,
   setPendingDeleteThreadId$,
   sessionListCollapsed$,
@@ -212,155 +212,166 @@ function ChatThreads() {
   );
 }
 
-export function ChatThreadsSection() {
+function ChatThreadsTitle() {
   const currentChatAgentId = useLastResolved(currentChatAgentId$) ?? null;
-
-  const agentDisplayName = useLastResolved(currentChatAgent$)?.displayName;
   const creatingLoadable = useLoadable(creatingNewSession$);
-  const newChatDisabled = creatingLoadable.state === "loading";
-
   const setExpanded = useSet(setSidebarExpanded$);
   const createNewChat = useSet(createNewChatThread$);
   const pageSignal = useGet(pageSignal$);
 
+  const agentDisplayName = useLastResolved(currentChatAgent$)?.displayName;
+  const newChatDisabled = creatingLoadable.state === "loading";
   const onNewChat = () => {
     detach(createNewChat(currentChatAgentId, pageSignal), Reason.DomCallback);
     setExpanded(false);
   };
 
+  const searchOpen = useGet(threadSearchOpen$);
+  const setSearchOpen = useSet(setThreadSearchOpen$);
+  const searchTerm = useGet(sidebarSearchTerm$);
+  const setSearchTerm = useSet(setThreadSearchTerm$);
+  const setCollapsed = useSet(setSessionListCollapsed$);
+  const collapsed = useGet(sessionListCollapsed$);
+
+  return searchOpen ? (
+    <div
+      className="shrink-0 flex h-8 items-center gap-2 rounded-lg bg-sidebar-accent/60 pl-2 pr-2 zero-border"
+      onBlur={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget)) {
+          setSearchOpen(false);
+        }
+      }}
+    >
+      <IconSearch
+        size={15}
+        stroke={2.5}
+        className="shrink-0 text-sidebar-foreground/50"
+      />
+      <input
+        type="text"
+        value={searchTerm}
+        onChange={(e) => {
+          return setSearchTerm(e.target.value);
+        }}
+        placeholder={`Search chat with ${agentDisplayName}`}
+        autoFocus
+        className="flex-1 min-w-0 bg-transparent text-sm leading-5 text-sidebar-foreground placeholder:text-sidebar-foreground/50 focus:outline-none"
+      />
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center">
+        <button
+          type="button"
+          onPointerDown={() => {
+            setSearchOpen(false);
+          }}
+          className="shrink-0 flex items-center justify-center h-5 w-5 rounded text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+          aria-label="Close search"
+        >
+          <IconX size={12} stroke={2} />
+        </button>
+      </div>
+    </div>
+  ) : (
+    <div
+      className="zero-nav-recent-label group flex h-8 shrink-0 cursor-pointer items-center justify-between rounded-lg pl-2 pr-0 hover:bg-sidebar-accent/50 transition-colors"
+      onPointerDown={() => {
+        return setCollapsed(!collapsed);
+      }}
+    >
+      <span className="flex flex-1 items-center gap-1 truncate text-[13px] font-medium leading-4 text-sidebar-foreground/50 group-hover:text-sidebar-foreground transition-colors">
+        Chats with {agentDisplayName}
+        <span className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+          <IconChevronRight
+            size={12}
+            stroke={2}
+            className={collapsed ? "" : "rotate-90"}
+          />
+        </span>
+      </span>
+      <div className="flex items-center gap-0.5">
+        <TooltipProvider delayDuration={200}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  setSearchOpen(true);
+                }}
+                className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+                aria-label="Search chats"
+              >
+                <IconSearch size={15} stroke={2.5} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              <p className="text-xs">Search chats</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+        <TooltipProvider delayDuration={200}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  onNewChat();
+                }}
+                disabled={newChatDisabled}
+                className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors disabled:opacity-50 disabled:pointer-events-none"
+                aria-label={`New chat with ${agentDisplayName}`}
+              >
+                <IconPlus size={15} stroke={2.5} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              <p className="text-xs">New chat</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </div>
+    </div>
+  );
+}
+
+function ChatThreadsSkeleton() {
+  return (
+    <>
+      {["w-3/4", "w-1/2", "w-2/3"].map((w) => {
+        return (
+          <div
+            key={w}
+            data-testid="sidebar-skeleton"
+            className="flex h-8 items-center rounded-lg p-2"
+          >
+            <Skeleton className={`h-4 ${w}`} />
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
+function ChatThreadsContent() {
   const chatThreadsLoading = useLastLoadable(chatThreads$).state === "loading";
 
-  const searchOpen = useGet(sidebarSearchOpen$);
-  const setSearchOpen = useSet(setSidebarSearchOpen$);
-  const searchTerm = useGet(sidebarSearchTerm$);
-  const setSearchTerm = useSet(setSidebarSearchTerm$);
   const collapsed = useGet(sessionListCollapsed$);
-  const setCollapsed = useSet(setSessionListCollapsed$);
 
   return (
+    !collapsed && (
+      <div className="mt-1">
+        <div className="flex flex-col gap-1">
+          {chatThreadsLoading ? <ChatThreadsSkeleton /> : <ChatThreads />}
+        </div>
+      </div>
+    )
+  );
+}
+export function ChatThreadsSection() {
+  return (
     <div className="mt-4 flex flex-col">
-      {searchOpen ? (
-        <div
-          className="shrink-0 flex h-8 items-center gap-2 rounded-lg bg-sidebar-accent/60 pl-2 pr-2 zero-border"
-          onBlur={(e) => {
-            if (!e.currentTarget.contains(e.relatedTarget)) {
-              setSearchOpen(false);
-            }
-          }}
-        >
-          <IconSearch
-            size={15}
-            stroke={2.5}
-            className="shrink-0 text-sidebar-foreground/50"
-          />
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => {
-              return setSearchTerm(e.target.value);
-            }}
-            placeholder={`Search chat with ${agentDisplayName}`}
-            autoFocus
-            className="flex-1 min-w-0 bg-transparent text-sm leading-5 text-sidebar-foreground placeholder:text-sidebar-foreground/50 focus:outline-none"
-          />
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center">
-            <button
-              type="button"
-              onPointerDown={() => {
-                setSearchOpen(false);
-              }}
-              className="shrink-0 flex items-center justify-center h-5 w-5 rounded text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
-              aria-label="Close search"
-            >
-              <IconX size={12} stroke={2} />
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div
-          className="zero-nav-recent-label group flex h-8 shrink-0 cursor-pointer items-center justify-between rounded-lg pl-2 pr-0 hover:bg-sidebar-accent/50 transition-colors"
-          onPointerDown={() => {
-            return setCollapsed(!collapsed);
-          }}
-        >
-          <span className="flex flex-1 items-center gap-1 truncate text-[13px] font-medium leading-4 text-sidebar-foreground/50 group-hover:text-sidebar-foreground transition-colors">
-            Chats with {agentDisplayName}
-            <span className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-              <IconChevronRight
-                size={12}
-                stroke={2}
-                className={collapsed ? "" : "rotate-90"}
-              />
-            </span>
-          </span>
-          <div className="flex items-center gap-0.5">
-            <TooltipProvider delayDuration={200}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    onPointerDown={(e) => {
-                      e.stopPropagation();
-                      setSearchOpen(true);
-                    }}
-                    className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
-                    aria-label="Search chats"
-                  >
-                    <IconSearch size={15} stroke={2.5} />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  <p className="text-xs">Search chats</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-            <TooltipProvider delayDuration={200}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    onPointerDown={(e) => {
-                      e.stopPropagation();
-                      onNewChat();
-                    }}
-                    disabled={newChatDisabled}
-                    className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors disabled:opacity-50 disabled:pointer-events-none"
-                    aria-label={`New chat with ${agentDisplayName}`}
-                  >
-                    <IconPlus size={15} stroke={2.5} />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  <p className="text-xs">New chat</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          </div>
-        </div>
-      )}
-      {!collapsed && (
-        <div className="mt-1">
-          <div className="flex flex-col gap-1">
-            {chatThreadsLoading ? (
-              <>
-                {["w-3/4", "w-1/2", "w-2/3"].map((w) => {
-                  return (
-                    <div
-                      key={w}
-                      data-testid="sidebar-skeleton"
-                      className="flex h-8 items-center rounded-lg p-2"
-                    >
-                      <Skeleton className={`h-4 ${w}`} />
-                    </div>
-                  );
-                })}
-              </>
-            ) : (
-              <ChatThreads />
-            )}
-          </div>
-        </div>
-      )}
+      <ChatThreadsTitle />
+      <ChatThreadsContent />
     </div>
   );
 }

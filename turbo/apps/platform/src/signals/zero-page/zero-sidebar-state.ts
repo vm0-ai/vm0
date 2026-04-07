@@ -3,25 +3,25 @@ import { command, computed, state } from "ccstate";
 // ---------------------------------------------------------------------------
 // Sidebar search state
 // ---------------------------------------------------------------------------
-const internalSearchOpen$ = state(false);
-export const sidebarSearchOpen$ = computed((get) => {
-  return get(internalSearchOpen$);
+const internalThreadSearchOpen$ = state(false);
+export const threadSearchOpen$ = computed((get) => {
+  return get(internalThreadSearchOpen$);
 });
 
-const internalSearchTerm$ = state("");
+const internalThreadSearchTerm$ = state("");
 export const sidebarSearchTerm$ = computed((get) => {
-  return get(internalSearchTerm$);
+  return get(internalThreadSearchTerm$);
 });
 
-export const setSidebarSearchOpen$ = command(({ set }, open: boolean) => {
-  set(internalSearchOpen$, open);
+export const setThreadSearchOpen$ = command(({ set }, open: boolean) => {
+  set(internalThreadSearchOpen$, open);
   if (!open) {
-    set(internalSearchTerm$, "");
+    set(internalThreadSearchTerm$, "");
   }
 });
 
-export const setSidebarSearchTerm$ = command(({ set }, term: string) => {
-  set(internalSearchTerm$, term);
+export const setThreadSearchTerm$ = command(({ set }, term: string) => {
+  set(internalThreadSearchTerm$, term);
 });
 
 // ---------------------------------------------------------------------------
