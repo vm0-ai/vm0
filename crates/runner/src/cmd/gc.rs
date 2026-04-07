@@ -1570,4 +1570,116 @@ mod tests {
         assert_eq!(cleaned, 0);
         assert_eq!(freed, 0);
     }
+
+    #[tokio::test]
+    async fn gc_workspace_orphans_skips_non_directory_entries() {
+        use std::fs::FileTimes;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let locks_dir = home.locks_dir();
+        std::fs::create_dir_all(&locks_dir).unwrap();
+
+        let base_dir = dir.path().join("runner-data");
+        let workspaces_dir = base_dir.join("workspaces");
+        std::fs::create_dir_all(&workspaces_dir).unwrap();
+
+        // Regular file in workspaces/ — must NOT be deleted
+        let stray_file = workspaces_dir.join(".gitkeep");
+        std::fs::write(&stray_file, "").unwrap();
+        let old_time = SystemTime::now() - Duration::from_secs(3600);
+        std::fs::File::open(&stray_file)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(old_time))
+            .unwrap();
+
+        std::fs::write(
+            locks_dir.join("base-dir-test.lock"),
+            base_dir.to_str().unwrap(),
+        )
+        .unwrap();
+
+        let (cleaned, _) = gc_workspace_orphans(&home, false).await.unwrap();
+        assert_eq!(cleaned, 0);
+        assert!(stray_file.exists(), "non-directory entries must be skipped");
+    }
+
+    #[tokio::test]
+    async fn gc_workspace_orphans_base_dir_without_workspaces_subdir() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let locks_dir = home.locks_dir();
+        std::fs::create_dir_all(&locks_dir).unwrap();
+
+        // base_dir exists but has no workspaces/ subdirectory
+        let base_dir = dir.path().join("runner-data");
+        std::fs::create_dir_all(&base_dir).unwrap();
+
+        std::fs::write(
+            locks_dir.join("base-dir-test.lock"),
+            base_dir.to_str().unwrap(),
+        )
+        .unwrap();
+
+        let (cleaned, freed) = gc_workspace_orphans(&home, false).await.unwrap();
+        assert_eq!(cleaned, 0);
+        assert_eq!(freed, 0);
+    }
+
+    #[tokio::test]
+    async fn gc_workspace_orphans_mixed_old_and_recent() {
+        use std::fs::FileTimes;
+
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let locks_dir = home.locks_dir();
+        std::fs::create_dir_all(&locks_dir).unwrap();
+
+        let base_dir = dir.path().join("runner-data");
+        let workspaces_dir = base_dir.join("workspaces");
+
+        // Old workspace — should be deleted
+        let old_ws = workspaces_dir.join("run-old");
+        std::fs::create_dir_all(&old_ws).unwrap();
+        std::fs::write(old_ws.join("cow.img"), vec![0u8; 4096]).unwrap();
+        let old_time = SystemTime::now() - Duration::from_secs(3600);
+        std::fs::File::open(&old_ws)
+            .unwrap()
+            .set_times(FileTimes::new().set_modified(old_time))
+            .unwrap();
+
+        // Recent workspace — should be kept
+        let new_ws = workspaces_dir.join("run-new");
+        std::fs::create_dir_all(&new_ws).unwrap();
+        std::fs::write(new_ws.join("cow.img"), b"data").unwrap();
+        // mtime = now (default)
+
+        std::fs::write(
+            locks_dir.join("base-dir-test.lock"),
+            base_dir.to_str().unwrap(),
+        )
+        .unwrap();
+
+        let (cleaned, freed) = gc_workspace_orphans(&home, false).await.unwrap();
+
+        assert_eq!(cleaned, 1, "only old workspace should be cleaned");
+        assert!(!old_ws.exists(), "old workspace should be deleted");
+        assert!(new_ws.exists(), "recent workspace should be kept");
+        assert!(freed > 0 || cfg!(target_os = "macos"));
+    }
+
+    #[test]
+    fn discover_dead_runner_base_dirs_trims_whitespace() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let locks_dir = home.locks_dir();
+        std::fs::create_dir_all(&locks_dir).unwrap();
+
+        // Content with trailing newline (e.g., written by shell tools)
+        std::fs::write(locks_dir.join("base-dir-ws.lock"), "/data/runner-01\n").unwrap();
+
+        let dirs = discover_dead_runner_base_dirs(&home);
+        assert_eq!(dirs.len(), 1);
+        assert_eq!(dirs[0], PathBuf::from("/data/runner-01"));
+    }
 }
