@@ -267,11 +267,11 @@ function CustomRangePicker({
 // Date range dropdown
 // ---------------------------------------------------------------------------
 
-const PRESETS = ["last7", "last28", "last30"] as const;
-
 function isPreset(v: DateRange): v is "last7" | "last28" | "last30" {
   return v === "last7" || v === "last28" || v === "last30";
 }
+
+const PRESETS = ["last7", "last28", "last30"] as const;
 
 function DateRangeFilter({
   value,
@@ -298,18 +298,20 @@ function DateRangeFilter({
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48">
-        <DropdownMenuItem
-          onClick={() => {
-            onChange(availableDates[0] ?? "last7");
-          }}
-          className={
-            !isPreset(value) && value === availableDates[0]
-              ? "font-semibold"
-              : ""
-          }
-        >
-          Today
-        </DropdownMenuItem>
+        {availableDates[0] && (
+          <DropdownMenuItem
+            onClick={() => {
+              onChange(availableDates[0]);
+            }}
+            className={
+              !isPreset(value) && value === availableDates[0]
+                ? "font-semibold"
+                : ""
+            }
+          >
+            Today
+          </DropdownMenuItem>
+        )}
         {availableDates[1] && (
           <DropdownMenuItem
             onClick={() => {
@@ -942,9 +944,9 @@ function DaySection({ day }: { day: DayInsight }) {
 // ---------------------------------------------------------------------------
 
 function InsightsContent({ data }: { data: NetworkInsightsData }) {
-  const range = useGet(insightsDateRange$);
+  const dateRange = useGet(insightsDateRange$);
   const setRange = useSet(setInsightsDateRange$);
-  const filtered = filterDays(data.days, range);
+  const filtered = filterDays(data.days, dateRange);
 
   return (
     <div className="h-full overflow-auto">
@@ -959,7 +961,7 @@ function InsightsContent({ data }: { data: NetworkInsightsData }) {
             </p>
           </div>
           <DateRangeFilter
-            value={range}
+            value={dateRange}
             onChange={setRange}
             availableDates={data.days.map((d) => {
               return d.date;
@@ -1020,9 +1022,9 @@ function InsightsSkeleton() {
 // ---------------------------------------------------------------------------
 
 export function NetworkInsightsPage() {
-  const loadable = useLastLoadable(networkInsightsData$);
+  const dataLoadable = useLastLoadable(networkInsightsData$);
 
-  if (loadable.state === "loading" || loadable.state === "hasError") {
+  if (dataLoadable.state === "loading" || dataLoadable.state === "hasError") {
     return (
       <div className="h-full overflow-auto">
         <InsightsSkeleton />
@@ -1030,7 +1032,7 @@ export function NetworkInsightsPage() {
     );
   }
 
-  const data = loadable.data;
+  const data = dataLoadable.data;
   if (!data) {
     return (
       <div className="h-full flex items-center justify-center text-muted-foreground">

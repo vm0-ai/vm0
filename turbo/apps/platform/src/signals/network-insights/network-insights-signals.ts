@@ -1,5 +1,6 @@
 import { command, computed, state } from "ccstate";
-import { fetch$ } from "../fetch.ts";
+import { zeroInsightsContract } from "@vm0/core";
+import { zeroClient$ } from "../api-client.ts";
 
 // ---------------------------------------------------------------------------
 // Data model
@@ -121,14 +122,41 @@ export const setInsightsCalendarMonth$ = command(({ set }, month: number) => {
 // Data fetching
 // ---------------------------------------------------------------------------
 
+/** Map the UI date-range value to the number of days to fetch from the API. */
+function dateRangeToDays(range: string): number {
+  switch (range) {
+    case "last7": {
+      return 7;
+    }
+    case "last28": {
+      return 28;
+    }
+    case "last30": {
+      return 30;
+    }
+    default: {
+      // Custom ISO date — compute days from today, with a minimum of 1
+      const selected = new Date(range + "T00:00:00");
+      const now = new Date();
+      now.setHours(0, 0, 0, 0);
+      const diffDays = Math.ceil(
+        (now.getTime() - selected.getTime()) / 86_400_000,
+      );
+      return Math.max(diffDays + 1, 1);
+    }
+  }
+}
+
+/** Fetch insights data scoped to the selected date range. */
 export const networkInsightsData$ = computed(
   async (get): Promise<NetworkInsightsData> => {
-    const fetchFn = await get(fetch$);
-    const response = await fetchFn("/api/zero/insights?days=30");
-    if (!response.ok) {
-      throw new Error(`Failed to fetch insights: ${response.status}`);
+    const range = get(insightsDateRange$);
+    const days = dateRangeToDays(range);
+    const client = get(zeroClient$)(zeroInsightsContract);
+    const result = await client.get({ query: { days } });
+    if (result.status !== 200) {
+      throw new Error(`Failed to fetch insights: ${result.status}`);
     }
-    const data = (await response.json()) as NetworkInsightsData;
-    return data;
+    return result.body as NetworkInsightsData;
   },
 );

@@ -755,3 +755,12 @@ export {
   type ZeroComputerUseUnregisterContract,
   type ZeroComputerUseHostContract,
 } from "./zero-computer-use";
+export {
+  zeroInsightsContract,
+  zeroInsightsRangeContract,
+  type ZeroInsightsContract,
+  type ZeroInsightsRangeContract,
+  type InsightsResponse,
+  type InsightsRangeResponse,
+  type DayInsight,
+} from "./zero-insights";
