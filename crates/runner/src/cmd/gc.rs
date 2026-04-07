@@ -707,7 +707,7 @@ async fn gc_workspace_orphans(home: &HomePaths, dry_run: bool) -> RunnerResult<(
             Ok(rd) => rd,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
             Err(e) => {
-                tracing::debug!(
+                warn!(
                     "workspace gc: cannot read {}: {e}",
                     workspaces_dir.display()
                 );

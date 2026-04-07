@@ -112,9 +112,18 @@ pub async fn run_start(
     // directories even after all processes for this runner have died.
     {
         use std::io::{Seek, Write};
-        let _ = _base_dir_lock.seek(std::io::SeekFrom::Start(0));
-        let _ = _base_dir_lock.set_len(0);
-        let _ = _base_dir_lock.write_all(base_dir_canonical.as_os_str().as_encoded_bytes());
+        if let Err(e) = _base_dir_lock
+            .seek(std::io::SeekFrom::Start(0))
+            .and_then(|_| _base_dir_lock.set_len(0))
+            .and_then(|_| {
+                _base_dir_lock.write_all(base_dir_canonical.as_os_str().as_encoded_bytes())
+            })
+        {
+            tracing::warn!(
+                error = %e,
+                "failed to write base_dir into lock file — runner gc may not discover orphaned workspaces"
+            );
+        }
     }
     // Shared locks on rootfs/snapshot per profile — allows `runner gc` to detect in-use resources.
     let mut _resource_locks = Vec::new();
