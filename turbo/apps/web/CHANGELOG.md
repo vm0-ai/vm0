@@ -1,5 +1,32 @@
 # Changelog
 
+## [12.201.0](https://github.com/vm0-ai/vm0/compare/web-v12.200.0...web-v12.201.0) (2026-04-07)
+
+
+### Features
+
+* add --user flag to zero slack message send for direct messages ([#8397](https://github.com/vm0-ai/vm0/issues/8397)) ([3792b80](https://github.com/vm0-ai/vm0/commit/3792b8035969edbe24db33ddf059829b7b9f7d9a)), closes [#8394](https://github.com/vm0-ai/vm0/issues/8394)
+* **platform:** use proper connector labels in network insights page ([#8395](https://github.com/vm0-ai/vm0/issues/8395)) ([0c057c7](https://github.com/vm0-ai/vm0/commit/0c057c70fabf31c8643a7b3b2d55deb5dad8abe7))
+* **runner:** add runner state reporting via heartbeat ([#8367](https://github.com/vm0-ai/vm0/issues/8367)) ([#8380](https://github.com/vm0-ai/vm0/issues/8380)) ([2dea967](https://github.com/vm0-ai/vm0/commit/2dea96701d28d963e74816908517519d1b55c939))
+
+
+### Bug Fixes
+
+* use pagination instead of cel filter for cloud endpoint lookup ([#8392](https://github.com/vm0-ai/vm0/issues/8392)) ([30d4d14](https://github.com/vm0-ai/vm0/commit/30d4d14d29f3f3a594afd42a6d8e5217f24b22e1))
+
+
+### Refactoring
+
+* move cli run business logic from infra to api route ([#8393](https://github.com/vm0-ai/vm0/issues/8393)) ([139abb3](https://github.com/vm0-ai/vm0/commit/139abb3b519c8013b9dca07fb17766a607ff5025))
+* throw not-found for missing org metadata rows ([#8390](https://github.com/vm0-ai/vm0/issues/8390)) ([b70247c](https://github.com/vm0-ai/vm0/commit/b70247c622859133bc10635c2d3fff8673e730b3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.158.0
+
 ## [12.200.0](https://github.com/vm0-ai/vm0/compare/web-v12.199.1...web-v12.200.0) (2026-04-07)
 
 

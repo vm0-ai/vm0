@@ -1,5 +1,14 @@
 # Changelog
 
+## [8.158.0](https://github.com/vm0-ai/vm0/compare/core-v8.157.0...core-v8.158.0) (2026-04-07)
+
+
+### Features
+
+* add --user flag to zero slack message send for direct messages ([#8397](https://github.com/vm0-ai/vm0/issues/8397)) ([3792b80](https://github.com/vm0-ai/vm0/commit/3792b8035969edbe24db33ddf059829b7b9f7d9a)), closes [#8394](https://github.com/vm0-ai/vm0/issues/8394)
+* **platform:** use proper connector labels in network insights page ([#8395](https://github.com/vm0-ai/vm0/issues/8395)) ([0c057c7](https://github.com/vm0-ai/vm0/commit/0c057c70fabf31c8643a7b3b2d55deb5dad8abe7))
+* **runner:** add runner state reporting via heartbeat ([#8367](https://github.com/vm0-ai/vm0/issues/8367)) ([#8380](https://github.com/vm0-ai/vm0/issues/8380)) ([2dea967](https://github.com/vm0-ai/vm0/commit/2dea96701d28d963e74816908517519d1b55c939))
+
 ## [8.157.0](https://github.com/vm0-ai/vm0/compare/core-v8.156.1...core-v8.157.0) (2026-04-07)
 
 

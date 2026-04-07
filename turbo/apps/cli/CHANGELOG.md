@@ -1,5 +1,25 @@
 # Changelog
 
+## [9.106.0](https://github.com/vm0-ai/vm0/compare/cli-v9.105.0...cli-v9.106.0) (2026-04-07)
+
+
+### Features
+
+* add --user flag to zero slack message send for direct messages ([#8397](https://github.com/vm0-ai/vm0/issues/8397)) ([3792b80](https://github.com/vm0-ai/vm0/commit/3792b8035969edbe24db33ddf059829b7b9f7d9a)), closes [#8394](https://github.com/vm0-ai/vm0/issues/8394)
+* **doctor:** include agent id in missing-token connect url and auto-authorize after connect ([#8399](https://github.com/vm0-ai/vm0/issues/8399)) ([99e7710](https://github.com/vm0-ai/vm0/commit/99e7710a1b05eb8f37a73e8cc520cbc4bcd0797a)), closes [#8396](https://github.com/vm0-ai/vm0/issues/8396)
+
+
+### Bug Fixes
+
+* **cli:** bundle pure-js dependencies to eliminate module resolution failures ([#8401](https://github.com/vm0-ai/vm0/issues/8401)) ([c781769](https://github.com/vm0-ai/vm0/commit/c78176935501d372c65e55c7626b2167172351fa))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.158.0
+
 ## [9.105.0](https://github.com/vm0-ai/vm0/compare/cli-v9.104.1...cli-v9.105.0) (2026-04-07)
 
 

@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.199.0](https://github.com/vm0-ai/vm0/compare/app-v0.198.0...app-v0.199.0) (2026-04-07)
+
+
+### Features
+
+* **doctor:** include agent id in missing-token connect url and auto-authorize after connect ([#8399](https://github.com/vm0-ai/vm0/issues/8399)) ([99e7710](https://github.com/vm0-ai/vm0/commit/99e7710a1b05eb8f37a73e8cc520cbc4bcd0797a)), closes [#8396](https://github.com/vm0-ai/vm0/issues/8396)
+* **platform:** use proper connector labels in network insights page ([#8395](https://github.com/vm0-ai/vm0/issues/8395)) ([0c057c7](https://github.com/vm0-ai/vm0/commit/0c057c70fabf31c8643a7b3b2d55deb5dad8abe7))
+
+
+### Bug Fixes
+
+* **platform:** use onclick instead of onpointerdown in sidebar ([#8403](https://github.com/vm0-ai/vm0/issues/8403)) ([11fac5a](https://github.com/vm0-ai/vm0/commit/11fac5a2a9680edac814b0bb79023120b3c9e13c))
+
+
+### Refactoring
+
+* consolidate agent signals and make sidebar zero-prop ([#8324](https://github.com/vm0-ai/vm0/issues/8324)) ([3b32aab](https://github.com/vm0-ai/vm0/commit/3b32aab6ea8e67ecdbd11a2dcb7a11a06c3b383f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.158.0
+
 ## [0.198.0](https://github.com/vm0-ai/vm0/compare/app-v0.197.1...app-v0.198.0) (2026-04-07)
 
 

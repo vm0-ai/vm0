@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.67.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.66.0...runner-rs-v0.67.0) (2026-04-07)
+
+
+### Features
+
+* **runner:** add runner state reporting via heartbeat ([#8367](https://github.com/vm0-ai/vm0/issues/8367)) ([#8380](https://github.com/vm0-ai/vm0/issues/8380)) ([2dea967](https://github.com/vm0-ai/vm0/commit/2dea96701d28d963e74816908517519d1b55c939))
+
 ## [0.66.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.65.1...runner-rs-v0.66.0) (2026-04-07)
 
 
