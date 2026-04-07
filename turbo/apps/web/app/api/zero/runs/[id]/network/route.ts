@@ -57,6 +57,7 @@ ${sinceFilter}
     const records = hasMore ? events.slice(0, limit) : events;
 
     const networkLogs = records.map((e) => {
+      // [NETWORK_LOG_FIELDS] — keep in sync with all network log schemas
       return {
         timestamp: e._time,
         type: e.type,
@@ -82,6 +83,14 @@ ${sinceFilter}
         auth_cache_hit: e.auth_cache_hit,
         auth_url_rewrite: e.auth_url_rewrite,
         error: e.error,
+        // Capture-only fields (opt-in via captureNetworkBodies)
+        request_headers: e.request_headers,
+        request_body: e.request_body,
+        request_body_encoding: e.request_body_encoding,
+        request_body_truncated: e.request_body_truncated,
+        response_body: e.response_body,
+        response_body_encoding: e.response_body_encoding,
+        response_body_truncated: e.response_body_truncated,
       };
     });
 

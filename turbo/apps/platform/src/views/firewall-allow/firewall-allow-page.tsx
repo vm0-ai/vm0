@@ -355,7 +355,7 @@ function AdminApprovalCard({
             disabled={resolving}
           >
             <IconX size={16} />
-            Disapprove change
+            Deny change
           </Button>
           <Button
             variant="outline"

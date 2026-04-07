@@ -1,5 +1,68 @@
 # Changelog
 
+## [12.200.0](https://github.com/vm0-ai/vm0/compare/web-v12.199.1...web-v12.200.0) (2026-04-07)
+
+
+### Features
+
+* add insights dashboard with cron pre-aggregation pipeline ([#8387](https://github.com/vm0-ai/vm0/issues/8387)) ([4ba9dbe](https://github.com/vm0-ai/vm0/commit/4ba9dbe12ca1a3102646d358076010981a06da07))
+* add user email and org name to developer-support email ([#8376](https://github.com/vm0-ai/vm0/issues/8376)) ([942e444](https://github.com/vm0-ai/vm0/commit/942e444bd7f740ce8e79bce4066f7c5f6357405c))
+* gate capture-network-bodies to internal accounts in production ([#8386](https://github.com/vm0-ai/vm0/issues/8386)) ([eb65214](https://github.com/vm0-ai/vm0/commit/eb65214bd174607de6414bb435f362d0cf0ec189))
+* **proxy:** add opt-in http body capture to mitmproxy addon ([#8349](https://github.com/vm0-ai/vm0/issues/8349)) ([95709fb](https://github.com/vm0-ai/vm0/commit/95709fb721befedd489025c39124b3663226d3f9))
+
+
+### Refactoring
+
+* restructure run record creation — zero owns transaction ([#8378](https://github.com/vm0-ai/vm0/issues/8378)) ([d75a349](https://github.com/vm0-ai/vm0/commit/d75a3490ed0e0eb1fbc89eac2b3afdb7bcb4e1a5)), closes [#8366](https://github.com/vm0-ai/vm0/issues/8366)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.157.0
+
+## [12.199.1](https://github.com/vm0-ai/vm0/compare/web-v12.199.0...web-v12.199.1) (2026-04-07)
+
+
+### Bug Fixes
+
+* **billing:** address pr review issues in stale billing period fix ([#8297](https://github.com/vm0-ai/vm0/issues/8297)) ([73a6ecf](https://github.com/vm0-ai/vm0/commit/73a6ecf60c1c1fa17edf78a9ce3a6f57b698728e))
+* **firewall:** include all permissions when no policies are configured ([#8352](https://github.com/vm0-ai/vm0/issues/8352)) ([abfbd17](https://github.com/vm0-ai/vm0/commit/abfbd17a958c9abecea2996434543eed25722394))
+
+
+### Refactoring
+
+* extract concurrency control and business policy from infra to zero ([#8373](https://github.com/vm0-ai/vm0/issues/8373)) ([4a1a77d](https://github.com/vm0-ai/vm0/commit/4a1a77dc78ba80cd50895ca643679c0df50fe83a)), closes [#8363](https://github.com/vm0-ai/vm0/issues/8363)
+* move cancel-run from infra to zero layer ([#8365](https://github.com/vm0-ai/vm0/issues/8365)) ([#8371](https://github.com/vm0-ai/vm0/issues/8371)) ([4a8a118](https://github.com/vm0-ai/vm0/commit/4a8a1180d9c8fa73ce6bcb4541c17f6ef4e6599a))
+* remove 3-step existence check from resolve-org ([#8348](https://github.com/vm0-ai/vm0/issues/8348)) ([60a196c](https://github.com/vm0-ai/vm0/commit/60a196cc3c095d1365584d821923685498c60faf))
+
+## [12.199.0](https://github.com/vm0-ai/vm0/compare/web-v12.198.1...web-v12.199.0) (2026-04-07)
+
+
+### Features
+
+* **firewall:** add slack notifications and doctor --reason pre-fill ([#8339](https://github.com/vm0-ai/vm0/issues/8339)) ([7819955](https://github.com/vm0-ai/vm0/commit/78199554e4a233b19e7f633e150abfb5691f0413))
+
+## [12.198.1](https://github.com/vm0-ai/vm0/compare/web-v12.198.0...web-v12.198.1) (2026-04-07)
+
+
+### Bug Fixes
+
+* use 403 instead of 401 for authorization errors ([#8335](https://github.com/vm0-ai/vm0/issues/8335)) ([fc09ed3](https://github.com/vm0-ai/vm0/commit/fc09ed3a32f50e350fe271568942dc28632baadf))
+
+
+### Refactoring
+
+* remove cross-org resolve-org calls from slack connect routes ([#8344](https://github.com/vm0-ai/vm0/issues/8344)) ([5a6762c](https://github.com/vm0-ai/vm0/commit/5a6762c8eeae9d22089bf12573d7506b0e167e6d)), closes [#8341](https://github.com/vm0-ai/vm0/issues/8341)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.156.1
+
 ## [12.198.0](https://github.com/vm0-ai/vm0/compare/web-v12.197.1...web-v12.198.0) (2026-04-07)
 
 

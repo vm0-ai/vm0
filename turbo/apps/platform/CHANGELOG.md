@@ -1,5 +1,56 @@
 # Changelog
 
+## [0.198.0](https://github.com/vm0-ai/vm0/compare/app-v0.197.1...app-v0.198.0) (2026-04-07)
+
+
+### Features
+
+* add insights dashboard with cron pre-aggregation pipeline ([#8387](https://github.com/vm0-ai/vm0/issues/8387)) ([4ba9dbe](https://github.com/vm0-ai/vm0/commit/4ba9dbe12ca1a3102646d358076010981a06da07))
+
+
+### Bug Fixes
+
+* **a11y:** add sheet descriptions to queue drawer and firewall permissions sheet ([#8389](https://github.com/vm0-ai/vm0/issues/8389)) ([1462679](https://github.com/vm0-ai/vm0/commit/1462679e25e254a16218021b5ff3f1652a033eb4))
+
+
+### Refactoring
+
+* **platform:** add loading states to fire-and-forget mutations ([#8383](https://github.com/vm0-ai/vm0/issues/8383)) ([ec8497a](https://github.com/vm0-ai/vm0/commit/ec8497a2095ac41544c10dbb27cf2e44b78445b7))
+* **test:** centralize restore mocks and console.error override in vitest setup ([#8379](https://github.com/vm0-ai/vm0/issues/8379)) ([b60ab7e](https://github.com/vm0-ai/vm0/commit/b60ab7e30c763739f004d03c57247d7eb5b8e4c1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.157.0
+
+## [0.197.1](https://github.com/vm0-ai/vm0/compare/app-v0.197.0...app-v0.197.1) (2026-04-07)
+
+
+### Bug Fixes
+
+* align skeleton avatar with text placeholder in chat thread ([#8377](https://github.com/vm0-ai/vm0/issues/8377)) ([3790dce](https://github.com/vm0-ai/vm0/commit/3790dceab5f0c828234941324d24fd9cebb24a5c)), closes [#7520](https://github.com/vm0-ai/vm0/issues/7520)
+* dismiss app skeleton on directed authorize page ([#8372](https://github.com/vm0-ai/vm0/issues/8372)) ([f1bd83d](https://github.com/vm0-ai/vm0/commit/f1bd83db4ff96ddf6ed271aaa6d3792a34026342))
+* **platform:** center loading spinner in toggle switch ([#8353](https://github.com/vm0-ai/vm0/issues/8353)) ([e3d39a1](https://github.com/vm0-ai/vm0/commit/e3d39a1c2a6cf0a2f74c7610539767bd60ed76e6))
+* **platform:** rename disapprove change button to deny change ([#8369](https://github.com/vm0-ai/vm0/issues/8369)) ([0b828f6](https://github.com/vm0-ai/vm0/commit/0b828f69e6ee6e3dab26c447929a056d8c2061b9))
+
+## [0.197.0](https://github.com/vm0-ai/vm0/compare/app-v0.196.2...app-v0.197.0) (2026-04-07)
+
+
+### Features
+
+* **firewall:** add slack notifications and doctor --reason pre-fill ([#8339](https://github.com/vm0-ai/vm0/issues/8339)) ([7819955](https://github.com/vm0-ai/vm0/commit/78199554e4a233b19e7f633e150abfb5691f0413))
+
+## [0.196.2](https://github.com/vm0-ai/vm0/compare/app-v0.196.1...app-v0.196.2) (2026-04-07)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.156.1
+
 ## [0.196.1](https://github.com/vm0-ai/vm0/compare/app-v0.196.0...app-v0.196.1) (2026-04-07)
 
 

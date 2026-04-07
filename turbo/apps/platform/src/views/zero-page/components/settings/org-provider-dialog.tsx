@@ -59,6 +59,9 @@ export function OrgProviderDialog() {
             <DialogTitle className="font-normal leading-7">
               Workspace Model Provider
             </DialogTitle>
+            <DialogDescription>
+              Configure your workspace model provider settings.
+            </DialogDescription>
           </DialogHeader>
         </DialogContent>
       </Dialog>

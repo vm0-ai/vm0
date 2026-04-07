@@ -6,7 +6,7 @@
  * Real (internal): signals, components, rendering
  */
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -21,7 +21,6 @@ import {
 const context = testContext();
 
 afterEach(() => {
-  vi.restoreAllMocks();
   resetMockSlackConnect();
   // Reset location after tests that trigger slack:// redirects via signal code
   // (e.g. ?status=connected param or successful connect button click)

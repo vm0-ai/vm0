@@ -585,4 +585,50 @@ describe("loading switch component", () => {
       ).toBeInTheDocument();
     });
   });
+
+  it("switch toggle round-trips: disable then re-enable (INFRA-D-028)", async () => {
+    let enabled = true;
+    server.use(
+      http.get("*/api/zero/schedules", () => {
+        return HttpResponse.json({
+          schedules: [createMockSchedule({ enabled })],
+        });
+      }),
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
+      http.post("*/api/zero/schedules/*/disable", () => {
+        enabled = false;
+        return HttpResponse.json(createMockSchedule({ enabled: false }));
+      }),
+      http.post("*/api/zero/schedules/*/enable", () => {
+        enabled = true;
+        return HttpResponse.json(createMockSchedule({ enabled: true }));
+      }),
+    );
+
+    await setupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
+
+    const user = userEvent.setup();
+
+    // Disable
+    const disableSwitch = await waitFor(() => {
+      return screen.getByRole("switch", { name: "Disable this schedule" });
+    });
+    await user.click(disableSwitch);
+
+    // Wait for it to settle as disabled
+    const enableSwitch = await waitFor(() => {
+      return screen.getByRole("switch", { name: "Enable this schedule" });
+    });
+
+    // Re-enable
+    await user.click(enableSwitch);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("switch", { name: "Disable this schedule" }),
+      ).toBeInTheDocument();
+    });
+  });
 });

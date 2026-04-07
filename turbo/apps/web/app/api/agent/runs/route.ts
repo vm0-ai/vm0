@@ -265,6 +265,7 @@ const router = tsr.router(runsMainContract, {
         resumeSession: resolved.resumeSession,
         resumeArtifact: resolved.resumeArtifact,
         debugNoMockClaude: body.debugNoMockClaude,
+        captureNetworkBodies: body.captureNetworkBodies,
         firewallPolicies: body.firewallPolicies,
         callerOrgId: org.orgId,
         orgTier,

@@ -50,6 +50,10 @@ export const firewallAllowRequestId$ = computed((get) => {
   return get(searchParams$).get("request") ?? null;
 });
 
+export const firewallAllowReason$ = computed((get) => {
+  return get(searchParams$).get("reason") ?? null;
+});
+
 // ---------------------------------------------------------------------------
 // Agent data
 // ---------------------------------------------------------------------------

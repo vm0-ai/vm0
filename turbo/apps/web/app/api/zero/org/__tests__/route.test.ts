@@ -44,12 +44,11 @@ describe("GET /api/zero/org", () => {
     expect(data.name).toBeDefined();
   });
 
-  it("should return 404 when org not found", async () => {
+  it("should return 404 when no org in session", async () => {
     const userId = uniqueId("zorg-nf");
     mockClerk({
       userId,
-      orgId: `org_mock_${userId}`,
-      orgRole: "org:admin",
+      orgId: null,
       clerkOrgs: [],
     });
 
@@ -137,12 +136,11 @@ describe("PUT /api/zero/org", () => {
     expect(response.status).toBe(401);
   });
 
-  it("should return 404 when org not found", async () => {
+  it("should return 400 when no org in session", async () => {
     const userId = uniqueId("zorg-upd-nf");
     mockClerk({
       userId,
-      orgId: `org_mock_${userId}`,
-      orgRole: "org:admin",
+      orgId: null,
       clerkOrgs: [],
     });
 
@@ -153,7 +151,7 @@ describe("PUT /api/zero/org", () => {
         body: JSON.stringify({ name: "Test" }),
       }),
     );
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(400);
   });
 
   it("should reject zero token for PUT", async () => {

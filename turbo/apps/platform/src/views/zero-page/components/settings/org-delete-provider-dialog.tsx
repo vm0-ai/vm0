@@ -2,6 +2,7 @@ import { useGet, useSet, useLoadable } from "ccstate-react";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -42,12 +43,12 @@ export function OrgDeleteProviderDialog() {
             Are you sure you want to delete this workspace model provider?
           </DialogTitle>
         </DialogHeader>
-        <p className="text-sm text-secondary-foreground">
+        <DialogDescription>
           This will remove the workspace provider and its settings, including
           keys and tokens. If it&apos;s the default provider, VM0 will switch to
           another one and all members&apos; agents may be affected. You can
           always add it back later and set it up again.
-        </p>
+        </DialogDescription>
         <DialogFooter>
           <Button
             variant="outline"

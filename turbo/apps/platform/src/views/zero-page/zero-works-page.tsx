@@ -1,4 +1,5 @@
 import { useGet, useSet, useLoadable } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   IconAlertTriangle,
@@ -46,6 +47,7 @@ function SlackCardActions({
   connectUrl,
   onDisconnect,
   onUninstall,
+  disconnecting,
 }: {
   isConnected: boolean;
   isInstalled: boolean;
@@ -54,6 +56,7 @@ function SlackCardActions({
   connectUrl: string | null | undefined;
   onDisconnect: () => void;
   onUninstall: () => void;
+  disconnecting: boolean;
 }) {
   return (
     <>
@@ -110,10 +113,11 @@ function SlackCardActions({
               <button
                 type="button"
                 aria-label="Disconnect"
-                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left hover:bg-accent hover:text-accent-foreground transition-colors"
+                disabled={disconnecting}
+                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left hover:bg-accent hover:text-accent-foreground transition-colors disabled:opacity-50 disabled:pointer-events-none"
                 onClick={onDisconnect}
               >
-                Disconnect
+                {disconnecting ? "Disconnecting…" : "Disconnect"}
               </button>
             )}
             {isAdmin && (
@@ -137,8 +141,10 @@ function SlackCard({ displayName }: { displayName: string }) {
   const slackDataLoadable = useLoadable(slackOrgData$);
   const slackData =
     slackDataLoadable.state === "hasData" ? slackDataLoadable.data : null;
-  const disconnect = useSet(disconnectSlackOrg$);
-  const uninstall = useSet(uninstallSlackOrg$);
+  const [disconnectLoadable, disconnect] = useLoadableSet(disconnectSlackOrg$);
+  const disconnecting = disconnectLoadable.state === "loading";
+  const [uninstallLoadable, uninstall] = useLoadableSet(uninstallSlackOrg$);
+  const uninstalling = uninstallLoadable.state === "loading";
   const pageSignal = useGet(pageSignal$);
 
   const showUninstallDialog = useGet(showUninstallDialog$);
@@ -171,6 +177,7 @@ function SlackCard({ displayName }: { displayName: string }) {
             isAdmin={isAdmin}
             installUrl={slackData?.installUrl}
             connectUrl={slackData?.connectUrl}
+            disconnecting={disconnecting}
             onDisconnect={() => {
               return detach(disconnect(pageSignal), Reason.DomCallback);
             }}
@@ -200,7 +207,14 @@ function SlackCard({ displayName }: { displayName: string }) {
         )}
       </div>
 
-      <Dialog open={showUninstallDialog} onOpenChange={setShowUninstallDialog}>
+      <Dialog
+        open={showUninstallDialog}
+        onOpenChange={(v) => {
+          if (!uninstalling) {
+            setShowUninstallDialog(v);
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Uninstall Slack integration?</DialogTitle>
@@ -214,6 +228,7 @@ function SlackCard({ displayName }: { displayName: string }) {
           <DialogFooter>
             <Button
               variant="outline"
+              disabled={uninstalling}
               onClick={() => {
                 return setShowUninstallDialog(false);
               }}
@@ -222,12 +237,17 @@ function SlackCard({ displayName }: { displayName: string }) {
             </Button>
             <Button
               variant="destructive"
+              disabled={uninstalling}
               onClick={() => {
-                setShowUninstallDialog(false);
-                detach(uninstall(pageSignal), Reason.DomCallback);
+                detach(
+                  uninstall(pageSignal).then(() => {
+                    setShowUninstallDialog(false);
+                  }),
+                  Reason.DomCallback,
+                );
               }}
             >
-              Uninstall
+              {uninstalling ? "Uninstalling…" : "Uninstall"}
             </Button>
           </DialogFooter>
         </DialogContent>

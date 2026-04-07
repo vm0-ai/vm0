@@ -27,6 +27,7 @@ interface BuildInfraContextParams {
   settings?: string;
   agentName?: string;
   debugNoMockClaude?: boolean;
+  captureNetworkBodies?: boolean;
   continuedFromSessionId?: string;
   resumedFromCheckpointId?: string;
   resumeSession?: ResumeSession;
@@ -84,6 +85,7 @@ export function buildInfraExecutionContext(
     resumedFromCheckpointId: params.resumedFromCheckpointId,
     continuedFromSessionId: params.continuedFromSessionId,
     debugNoMockClaude: params.debugNoMockClaude,
+    captureNetworkBodies: params.captureNetworkBodies,
     apiStartTime: Date.now(),
   };
 

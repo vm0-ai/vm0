@@ -109,3 +109,24 @@ EOF
     # UDP entries render as: [timestamp] UDP   <size> 8.8.8.8:9999
     wait_for_log "$RUN_ID" --network -- "UDP" ":9999"
 }
+
+@test "t45-3: capture-network-bodies captures request headers and response body" {
+    create_agent
+
+    # Run with --capture-network-bodies enabled. The CLI network log renderer
+    # displays request_headers and response_body when present.
+    run $VM0_CLI run "$AGENT_NAME" \
+        --artifact-name "$ARTIFACT_NAME" \
+        --capture-network-bodies \
+        "curl -s -o /dev/null -w '%{http_code}' https://www.vm0.ai"
+    assert_success
+
+    RUN_ID=$(echo "$output" | grep -oP 'Run ID:\s+\K[a-f0-9-]{36}' | head -1)
+    [ -n "$RUN_ID" ] || {
+        echo "# Failed to extract Run ID"
+        return 1
+    }
+
+    # Verify network logs contain captured fields rendered by the CLI
+    wait_for_log "$RUN_ID" --network -- "request_headers:" "response_body:"
+}

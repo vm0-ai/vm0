@@ -16,6 +16,8 @@ import {
   setRunningIds$,
   pendingDeleteEntry$,
   setPendingDeleteEntry$,
+  deletingSchedule$,
+  setDeletingSchedule$,
 } from "../../signals/zero-page/schedule-card.ts";
 import { IconPlus, IconList, IconLayoutGrid } from "@tabler/icons-react";
 import {
@@ -286,6 +288,8 @@ export function ZeroScheduleCard({
 
   const pendingDelete = useGet(pendingDeleteEntry$);
   const setPendingDelete = useSet(setPendingDeleteEntry$);
+  const deleting = useGet(deletingSchedule$);
+  const setDeleting = useSet(setDeletingSchedule$);
 
   const openEditSchedule = (entry: ScheduleEntry) => {
     detach(setEditingScheduleId(entry.id, signal), Reason.DomCallback);
@@ -345,8 +349,17 @@ export function ZeroScheduleCard({
     if (!entry?.name || !onDelete) {
       return;
     }
-    setPendingDelete(null);
-    detach(onDelete(entry.name), Reason.DomCallback);
+    setDeleting(true);
+    detach(
+      onDelete(entry.name)
+        .then(() => {
+          setPendingDelete(null);
+        })
+        .finally(() => {
+          setDeleting(false);
+        }),
+      Reason.DomCallback,
+    );
   };
 
   const handleCreateSave = (values: ScheduleFormValues) => {
@@ -569,7 +582,7 @@ export function ZeroScheduleCard({
         <Dialog
           open={pendingDelete !== null}
           onOpenChange={(open) => {
-            if (!open) {
+            if (!open && !deleting) {
               setPendingDelete(null);
             }
           }}
@@ -588,14 +601,19 @@ export function ZeroScheduleCard({
             <DialogFooter>
               <Button
                 variant="outline"
+                disabled={deleting}
                 onClick={() => {
                   return setPendingDelete(null);
                 }}
               >
                 Cancel
               </Button>
-              <Button variant="destructive" onClick={confirmDelete}>
-                Delete
+              <Button
+                variant="destructive"
+                disabled={deleting}
+                onClick={confirmDelete}
+              >
+                {deleting ? "Deleting…" : "Delete"}
               </Button>
             </DialogFooter>
           </DialogContent>

@@ -6,7 +6,6 @@ import {
   CONNECTOR_TYPES,
 } from "@vm0/core";
 import { withErrorHandler } from "../../../lib/command";
-import { outputPermissionChangeMessage } from "./firewall-permissions-change";
 
 export const firewallDenyCommand = new Command()
   .name("firewall-deny")
@@ -32,7 +31,7 @@ Examples:
 
 Notes:
   - Identifies which named permission covers a denied request
-  - Outputs a platform URL for the user to allow the permission`,
+  - Use firewall-permissions-change to request or enable the permission`,
   )
   .action(
     withErrorHandler(
@@ -60,8 +59,9 @@ Notes:
 
         const permission = permissions[0]!;
         console.log(`This is covered by the "${permission}" permission.`);
-
-        await outputPermissionChangeMessage(firewallRef, permission, "enable");
+        console.log(
+          `To request this permission, run: zero doctor firewall-permissions-change ${firewallRef} --permission ${permission} --enable --reason "why this is needed"`,
+        );
       },
     ),
   );

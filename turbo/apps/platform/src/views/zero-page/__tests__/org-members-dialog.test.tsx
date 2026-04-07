@@ -255,6 +255,58 @@ describe("org members - invite dialog role selector", () => {
   });
 });
 
+describe("org members - role change loading state", () => {
+  it("should disable action menu while role change API is pending", async () => {
+    const user = userEvent.setup();
+    let resolveRoleChange: (() => void) | null = null;
+
+    mockMembersAPI([adminMember, regularMember]);
+    server.use(
+      http.patch("*/api/zero/org/members", () => {
+        return new Promise<Response>((resolve) => {
+          resolveRoleChange = () => {
+            return resolve(
+              HttpResponse.json({ message: "Role updated" }, { status: 200 }),
+            );
+          };
+        });
+      }),
+    );
+
+    await renderMembersTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("member@example.com")).toBeInTheDocument();
+    });
+
+    // Open the action menu for the regular member
+    const actionButton = screen.getByLabelText(
+      "Actions for member@example.com",
+    );
+    await user.click(actionButton);
+
+    await waitFor(() => {
+      expect(screen.getByText("Make admin")).toBeInTheDocument();
+    });
+    await user.click(screen.getByText("Make admin"));
+
+    // The action button should be disabled while the role change is pending
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Actions for member@example.com"),
+      ).toBeDisabled();
+    });
+
+    resolveRoleChange!();
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Actions for member@example.com"),
+      ).toBeEnabled();
+    });
+  });
+});
+
 describe("org members - sole admin self-demote protection", () => {
   it("should not show self-demote menu when user is the only admin", async () => {
     mockMembersAPI([adminMember, regularMember]);

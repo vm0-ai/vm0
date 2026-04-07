@@ -451,7 +451,8 @@ export function ZeroSchedulePage() {
   const isInitialLoading = !loaded;
 
   const toggleEnabled = useSet(toggleOrgScheduleEnabled$);
-  const deleteSchedule = useSet(deleteOrgSchedule$);
+  const [deleteLoadable, deleteSchedule] = useLoadableSet(deleteOrgSchedule$);
+  const deleting = deleteLoadable.state === "loading";
   const runScheduleNow = useSet(runScheduleNow$);
   const pageSignal = useGet(pageSignal$);
   const navigate = useSet(detachedNavigateTo$);
@@ -575,9 +576,13 @@ export function ZeroSchedulePage() {
     if (entry?.name === undefined) {
       return;
     }
-    setPendingDelete(null);
     detach(
-      deleteSchedule({ name: entry.name, agentId: entry.agentId }, pageSignal),
+      deleteSchedule(
+        { name: entry.name, agentId: entry.agentId },
+        pageSignal,
+      ).then(() => {
+        setPendingDelete(null);
+      }),
       Reason.DomCallback,
     );
   };
@@ -696,7 +701,7 @@ export function ZeroSchedulePage() {
       <Dialog
         open={pendingDelete !== null}
         onOpenChange={(open) => {
-          if (!open) {
+          if (!open && !deleting) {
             setPendingDelete(null);
           }
         }}
@@ -715,14 +720,19 @@ export function ZeroSchedulePage() {
           <DialogFooter>
             <Button
               variant="outline"
+              disabled={deleting}
               onClick={() => {
                 return setPendingDelete(null);
               }}
             >
               Cancel
             </Button>
-            <Button variant="destructive" onClick={confirmDelete}>
-              Delete
+            <Button
+              variant="destructive"
+              disabled={deleting}
+              onClick={confirmDelete}
+            >
+              {deleting ? "Deleting…" : "Delete"}
             </Button>
           </DialogFooter>
         </DialogContent>

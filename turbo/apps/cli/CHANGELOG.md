@@ -1,5 +1,53 @@
 # Changelog
 
+## [9.105.0](https://github.com/vm0-ai/vm0/compare/cli-v9.104.1...cli-v9.105.0) (2026-04-07)
+
+
+### Features
+
+* **proxy:** add opt-in http body capture to mitmproxy addon ([#8349](https://github.com/vm0-ai/vm0/issues/8349)) ([95709fb](https://github.com/vm0-ai/vm0/commit/95709fb721befedd489025c39124b3663226d3f9))
+
+
+### Bug Fixes
+
+* **cli:** move coordinate system help to client subcommand ([#8385](https://github.com/vm0-ai/vm0/issues/8385)) ([73b148f](https://github.com/vm0-ai/vm0/commit/73b148f8d2732e5b62cbd5f9d17e985f16eff4a7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.157.0
+
+## [9.104.1](https://github.com/vm0-ai/vm0/compare/cli-v9.104.0...cli-v9.104.1) (2026-04-07)
+
+
+### Bug Fixes
+
+* **cli:** return logical-resolution screenshots and fix scale factor detection ([#8359](https://github.com/vm0-ai/vm0/issues/8359)) ([b6d8daa](https://github.com/vm0-ai/vm0/commit/b6d8daafd2fff9dc5a60b95420ebc0efe6b5d1ce)), closes [#8355](https://github.com/vm0-ai/vm0/issues/8355)
+* **cli:** use cliclick `t:` for regular characters in key combos ([#8362](https://github.com/vm0-ai/vm0/issues/8362)) ([e93a9da](https://github.com/vm0-ai/vm0/commit/e93a9dab2894ed749f4bd69c9ae7581a1084e06f)), closes [#8360](https://github.com/vm0-ai/vm0/issues/8360)
+
+
+### Documentation
+
+* **cli:** add coordinate system explanation to computer-use --help ([#8357](https://github.com/vm0-ai/vm0/issues/8357)) ([0325290](https://github.com/vm0-ai/vm0/commit/0325290eba6264fa104cac6c4b9050662f0aa851)), closes [#8356](https://github.com/vm0-ai/vm0/issues/8356)
+
+## [9.104.0](https://github.com/vm0-ai/vm0/compare/cli-v9.103.3...cli-v9.104.0) (2026-04-07)
+
+
+### Features
+
+* **firewall:** add slack notifications and doctor --reason pre-fill ([#8339](https://github.com/vm0-ai/vm0/issues/8339)) ([7819955](https://github.com/vm0-ai/vm0/commit/78199554e4a233b19e7f633e150abfb5691f0413))
+
+## [9.103.3](https://github.com/vm0-ai/vm0/compare/cli-v9.103.2...cli-v9.103.3) (2026-04-07)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.156.1
+
 ## [9.103.2](https://github.com/vm0-ai/vm0/compare/cli-v9.103.1...cli-v9.103.2) (2026-04-07)
 
 

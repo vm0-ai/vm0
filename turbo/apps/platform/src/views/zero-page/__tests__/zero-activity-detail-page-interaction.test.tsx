@@ -1,4 +1,4 @@
-import { afterEach, assert, describe, expect, it, vi } from "vitest";
+import { assert, describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -90,10 +90,6 @@ function setupBaseMocks() {
 }
 
 describe("zeroActivityDetailPageInteraction", () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
   it("should filter steps when searching (ACT-D-028)", async () => {
     setupBaseMocks();
     const user = userEvent.setup();

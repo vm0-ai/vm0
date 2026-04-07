@@ -26,6 +26,8 @@ import {
 } from "../../../../src/lib/infra/s3/s3-client";
 import { enqueueEmail } from "../../../../src/lib/zero/email/outbox-service";
 import { buildFromAddress } from "../../../../src/lib/zero/email/handlers/shared";
+import { getCachedUser } from "../../../../src/lib/auth/user-cache-service";
+import { getOrgIdentity } from "../../../../src/lib/auth/org-cache";
 import { env } from "../../../../src/env";
 import { logger } from "../../../../src/lib/shared/logger";
 
@@ -332,6 +334,24 @@ const router = tsr.router(zeroDeveloperSupportContract, {
       Date.now() + DOWNLOAD_EXPIRY_SECONDS * 1000,
     ).toISOString();
 
+    // Resolve human-readable user/org info for the email (fall back to IDs)
+    const [userEmail, orgName] = await Promise.all([
+      getCachedUser(userId)
+        .then((u) => {
+          return u.email;
+        })
+        .catch(() => {
+          return userId;
+        }),
+      getOrgIdentity(orgId)
+        .then((o) => {
+          return o.name;
+        })
+        .catch(() => {
+          return orgId;
+        }),
+    ]);
+
     // Send email notification
     await enqueueEmail({
       from: buildFromAddress("vm0"),
@@ -344,7 +364,9 @@ const router = tsr.router(zeroDeveloperSupportContract, {
           description: body.description,
           reference,
           userId,
+          userEmail,
           orgId,
+          orgName,
           runId,
           downloadUrl,
           expiresAt,

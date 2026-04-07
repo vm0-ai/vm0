@@ -62,7 +62,8 @@ export const UNRESTRICTED_PERMISSION = {
  *
  * For each connector firewall:
  * - If the ref has explicit policies, only "allow" permissions are included.
- * - If the ref has no policies (or firewallPolicies is null), an "unrestricted"
+ * - If the ref has no policies, all defined permissions are included as-is
+ *   (treated as all-allow). If no permissions are defined, an "unrestricted"
  *   permission is added to allow all endpoints through the proxy.
  * - If all permissions are denied, the entry is excluded entirely.
  */
@@ -75,18 +76,27 @@ export function applyConnectorPolicies(
   for (const fw of connectorFirewalls) {
     const refPolicies = policies?.[fw.ref];
 
-    // If no policies or the firewall defines no permissions on any api,
-    // treat all apis as unrestricted (no granular permission control).
+    // If the firewall defines no permissions on any api, treat as
+    // unrestricted (no granular permission control).
     const hasPermissions = fw.apis.some((api) => {
       return api.permissions && api.permissions.length > 0;
     });
 
     const apis = fw.apis.map((api) => {
-      if (!refPolicies || !hasPermissions) {
+      if (!hasPermissions) {
         return {
           base: api.base,
           auth: api.auth,
           permissions: [UNRESTRICTED_PERMISSION],
+        };
+      }
+
+      if (!refPolicies) {
+        // No policies configured — include all defined permissions.
+        return {
+          base: api.base,
+          auth: api.auth,
+          permissions: api.permissions ?? [],
         };
       }
 

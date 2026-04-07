@@ -227,6 +227,7 @@ interface SandboxOpLogEntry {
   op_type: string;
   sandbox_type: string;
   duration_ms: number;
+  run_id: string;
 }
 
 /**

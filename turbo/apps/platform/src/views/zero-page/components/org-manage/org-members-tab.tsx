@@ -491,7 +491,8 @@ function MemberActions({ member }: { member: OrgMember }) {
   const setRemoveTarget = useSet(setRemoveMemberDialogTarget$);
   const open = removeTarget === member.email;
   const [loadable, doRemove] = useLoadableSet(removeMember$);
-  const [, doChangeRole] = useLoadableSet(changeRole$);
+  const [changeRoleLoadable, doChangeRole] = useLoadableSet(changeRole$);
+  const changingRole = changeRoleLoadable.state === "loading";
   const removing = loadable.state === "loading";
   const pageSignal = useGet(pageSignal$);
 
@@ -512,7 +513,8 @@ function MemberActions({ member }: { member: OrgMember }) {
         <DropdownMenuTrigger asChild>
           <button
             aria-label={`Actions for ${member.email}`}
-            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/50 transition-colors"
+            disabled={changingRole}
+            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-muted/50 transition-colors disabled:opacity-50 disabled:pointer-events-none"
           >
             <IconDots size={15} stroke={1.5} />
           </button>

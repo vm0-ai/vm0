@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../mocks/server.ts";
 import { testContext } from "../../../__tests__/test-helpers.ts";
@@ -68,10 +68,6 @@ function mockMatchMedia(standalone: boolean) {
 }
 
 describe("connectConnector$", () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
   it("detects connector via API polling while popup is open", async () => {
     await setupPage({ context, path: "/", withoutRender: true });
 

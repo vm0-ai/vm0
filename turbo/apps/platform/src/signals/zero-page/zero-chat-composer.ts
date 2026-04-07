@@ -57,3 +57,15 @@ export const popoverSearch$ = computed((get) => {
 export const setPopoverSearch$ = command(({ set }, value: string) => {
   set(internalPopoverSearch$, value);
 });
+
+// -- Connector popover sort order snapshot ----------------------------------
+
+const internalPopoverSortOrder$ = state<string[] | null>(null);
+export const popoverSortOrder$ = computed((get) => {
+  return get(internalPopoverSortOrder$);
+});
+export const setPopoverSortOrder$ = command(
+  ({ set }, order: string[] | null) => {
+    set(internalPopoverSortOrder$, order);
+  },
+);

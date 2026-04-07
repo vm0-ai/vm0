@@ -37,6 +37,7 @@ import { setupSignInTokenPage$ } from "./sign-in-token-setup.ts";
 import { setupFirewallAllowPage$ } from "./firewall-allow/firewall-allow-page-setup.ts";
 import { setupChatListPage$ } from "./zero-page/chat-list-page-setup.ts";
 import { setupLabPage$ } from "./lab-page/lab-page-setup.ts";
+import { setupNetworkInsightsPage$ } from "./network-insights/network-insights-page-setup.ts";
 
 /**
  * Catch-all fallback — redirects unknown paths to /.
@@ -80,6 +81,10 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.chatList,
     setup: setupAuthPageWrapper(setupChatListPage$),
+  },
+  {
+    path: ROUTES.insights,
+    setup: setupAuthPageWrapper(setupNetworkInsightsPage$),
   },
   {
     path: ROUTES.chat,

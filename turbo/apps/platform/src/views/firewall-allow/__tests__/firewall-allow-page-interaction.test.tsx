@@ -11,7 +11,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { setupPage, fill } from "../../../__tests__/page-helper.ts";
 
 const context = testContext();
 
@@ -244,7 +244,7 @@ describe("firewall allow page - admin request mode", () => {
     });
   });
 
-  it("fw-d-022: Disapprove change button rejects pending request", async () => {
+  it("fw-d-022: Deny change button rejects pending request", async () => {
     let requestStatus = "pending";
     server.use(
       http.put("*/api/zero/firewall-access-requests", () => {
@@ -270,11 +270,11 @@ describe("firewall allow page - admin request mode", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Disapprove change")).toBeInTheDocument();
+      expect(screen.getByText("Deny change")).toBeInTheDocument();
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByText("Disapprove change"));
+    await user.click(screen.getByText("Deny change"));
 
     await waitFor(() => {
       expect(screen.getByText("Permissions denied")).toBeInTheDocument();
@@ -357,6 +357,110 @@ describe("firewall allow page - member request form", () => {
       firewallRef: "github",
       permission: "issues:read",
       action: "deny",
+    });
+  });
+
+  it("fw-d-028: Reason textarea pre-filled from URL param", async () => {
+    setupMemberContext();
+    mockFirewallRequests();
+
+    await setupPage({
+      context,
+      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read&action=deny&reason=Need+PR+access+for+CI`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("textbox")).toBeInTheDocument();
+    });
+
+    const textarea = screen.getByRole("textbox");
+    expect(textarea).toHaveValue("Need PR access for CI");
+  });
+
+  it("fw-d-029: Reason textarea empty when URL has no reason param", async () => {
+    setupMemberContext();
+    mockFirewallRequests();
+
+    await setupPage({
+      context,
+      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read&action=deny`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("textbox")).toBeInTheDocument();
+    });
+
+    const textarea = screen.getByRole("textbox");
+    expect(textarea).toHaveValue("");
+  });
+
+  it("fw-d-030: Reason with special characters decoded from URL", async () => {
+    setupMemberContext();
+    mockFirewallRequests();
+
+    await setupPage({
+      context,
+      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read&action=deny&reason=Need+access+%26+permissions`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("textbox")).toBeInTheDocument();
+    });
+
+    const textarea = screen.getByRole("textbox");
+    expect(textarea).toHaveValue("Need access & permissions");
+  });
+
+  it("fw-d-031: Pre-filled reason can be edited before submission", async () => {
+    let requestBody: Record<string, unknown> | undefined;
+    server.use(
+      http.post("*/api/zero/firewall-access-requests", async ({ request }) => {
+        requestBody = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(
+          {
+            id: "d0000000-0000-4000-a000-000000000099",
+            agentId: AGENT_ID,
+            firewallRef: "github",
+            permission: "issues:read",
+            action: "deny",
+            method: null,
+            path: null,
+            reason: "Edited reason",
+            status: "pending",
+            requesterUserId: "user_abc",
+            requesterName: null,
+            resolvedBy: null,
+            resolvedAt: null,
+            createdAt: "2026-04-03T00:00:00Z",
+          },
+          { status: 201 },
+        );
+      }),
+    );
+    setupMemberContext();
+    mockFirewallRequests();
+
+    await setupPage({
+      context,
+      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read&action=deny&reason=Original+reason`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("textbox")).toBeInTheDocument();
+    });
+
+    const user = userEvent.setup();
+    const textarea = screen.getByRole("textbox");
+    await fill(textarea, "Edited reason");
+
+    await user.click(screen.getByText("Request approval"));
+
+    await waitFor(() => {
+      expect(requestBody).toBeDefined();
+    });
+
+    expect(requestBody).toMatchObject({
+      reason: "Edited reason",
     });
   });
 });

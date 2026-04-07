@@ -60,6 +60,7 @@ import { userCache } from "../db/schema/user-cache";
 import { creditUsage } from "../db/schema/credit-usage";
 import { sandboxTelemetry } from "../db/schema/sandbox-telemetry";
 import { creditPricing } from "../db/schema/credit-pricing";
+import { insightsDaily } from "../db/schema/insights-daily";
 import { users } from "../db/schema/user";
 import { and, eq, like, or, sql } from "drizzle-orm";
 import { generateCallbackSecret } from "../lib/infra/callback/hmac";
@@ -2058,6 +2059,86 @@ export async function findUsageDaily(
       ),
     );
   return row;
+}
+
+/**
+ * Look up an insights_daily record for verification in tests.
+ */
+export async function findInsightsDaily(
+  orgId: string,
+  date: string,
+  userId?: string,
+): Promise<{ data: Record<string, unknown> } | undefined> {
+  const conditions = [
+    eq(insightsDaily.orgId, orgId),
+    eq(insightsDaily.date, date),
+  ];
+  if (userId) {
+    conditions.push(eq(insightsDaily.userId, userId));
+  }
+  const [row] = await globalThis.services.db
+    .select({ data: insightsDaily.data })
+    .from(insightsDaily)
+    .where(and(...conditions));
+  return row as { data: Record<string, unknown> } | undefined;
+}
+
+/**
+ * Seed a credit_usage record for testing insights aggregation.
+ */
+export async function seedCreditUsageRecord(options: {
+  runId: string;
+  orgId: string;
+  userId: string;
+  creditsCharged: number;
+  createdAt: Date;
+}): Promise<void> {
+  await globalThis.services.db.insert(creditUsage).values({
+    runId: options.runId,
+    orgId: options.orgId,
+    userId: options.userId,
+    model: "claude-sonnet-4-20250514",
+    modelProvider: "anthropic",
+    inputTokens: 100,
+    outputTokens: 50,
+    creditsCharged: options.creditsCharged,
+    status: "processed",
+    createdAt: options.createdAt,
+  });
+}
+
+/**
+ * Seed or update a user_cache entry for testing.
+ */
+export async function seedUserCacheEntry(
+  userId: string,
+  email: string,
+): Promise<void> {
+  await globalThis.services.db
+    .insert(userCache)
+    .values({ userId, email, cachedAt: new Date() })
+    .onConflictDoUpdate({
+      target: userCache.userId,
+      set: { email, cachedAt: new Date() },
+    });
+}
+
+/**
+ * Seed an insights_daily record for testing the insights API.
+ */
+export async function seedInsightsDaily(
+  orgId: string,
+  date: string,
+  data: Record<string, unknown>,
+  userId?: string,
+): Promise<void> {
+  await globalThis.services.db
+    .insert(insightsDaily)
+    .values({ orgId, userId: userId ?? "user_test_default", date, data })
+    .onConflictDoUpdate({
+      target: [insightsDaily.orgId, insightsDaily.userId, insightsDaily.date],
+      set: { data, updatedAt: new Date() },
+    });
 }
 
 /**

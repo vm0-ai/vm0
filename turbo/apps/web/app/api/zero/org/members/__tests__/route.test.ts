@@ -93,18 +93,17 @@ describe("GET /api/zero/org/members", () => {
     expect(response.status).toBe(401);
   });
 
-  it("should return 404 when org not found", async () => {
+  it("should return 400 when no org in session", async () => {
     const userId = uniqueId("mem-nf");
     mockClerk({
       userId,
-      orgId: `org_mock_${userId}`,
-      orgRole: "org:admin",
+      orgId: null,
       clerkOrgs: [],
     });
 
     const response = await GET(createTestRequest(membersUrl()));
 
-    expect(response.status).toBe(404);
+    expect(response.status).toBe(400);
   });
 
   it("should not expose pendingInvitations or membershipRequests to non-admin members", async () => {

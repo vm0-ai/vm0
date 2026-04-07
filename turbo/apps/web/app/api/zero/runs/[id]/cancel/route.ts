@@ -10,10 +10,8 @@ import {
   isAuthError,
 } from "../../../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../../../src/lib/zero/org/resolve-org";
-import {
-  cancelRun,
-  dispatchCancelSideEffects,
-} from "../../../../../../src/lib/infra/run/run-service";
+import { cancelRun } from "../../../../../../src/lib/zero/zero-run-cancel";
+import { dispatchCancelSideEffects } from "../../../../../../src/lib/infra/run/run-service";
 import {
   dispatchQueuedZeroRun,
   drainOrgQueue,

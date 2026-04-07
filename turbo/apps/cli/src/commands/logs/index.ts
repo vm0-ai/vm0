@@ -138,7 +138,47 @@ function formatNetworkRequest(entry: NetworkLogEntry): string {
     ? ` ${chalk.red(entry.firewall_error)}`
     : "";
 
-  return `[${entry.timestamp}] ${method.padEnd(6)} ${statusColor(status)} ${latencyColor(latencyMs + "ms")} ${formatBytes(requestSize)}/${formatBytes(responseSize)} ${chalk.dim(url)}${firewall}${error}${formatAuthInfo(entry)}`;
+  let line = `[${entry.timestamp}] ${method.padEnd(6)} ${statusColor(status)} ${latencyColor(latencyMs + "ms")} ${formatBytes(requestSize)}/${formatBytes(responseSize)} ${chalk.dim(url)}${firewall}${error}${formatAuthInfo(entry)}`;
+
+  line += formatCaptureFields(entry);
+
+  return line;
+}
+
+/**
+ * Maximum characters of body content shown in CLI log output.
+ */
+const BODY_PREVIEW_LENGTH = 200;
+
+/**
+ * Format captured body fields (request headers, request body, response body)
+ * when present from --capture-network-bodies runs.
+ */
+function formatCaptureFields(entry: NetworkLogEntry): string {
+  let result = "";
+  if (entry.request_headers) {
+    const hdrs = Object.entries(entry.request_headers)
+      .map(([k, v]) => {
+        return `${k}: ${v}`;
+      })
+      .join(", ");
+    result += `\n  ${chalk.gray("request_headers:")} ${hdrs}`;
+  }
+  if (entry.request_body) {
+    const truncated = entry.request_body_truncated ? " (truncated)" : "";
+    const preview = entry.request_body.slice(0, BODY_PREVIEW_LENGTH);
+    const ellipsis =
+      entry.request_body.length > BODY_PREVIEW_LENGTH ? "..." : "";
+    result += `\n  ${chalk.gray("request_body:")} ${preview}${ellipsis}${truncated}`;
+  }
+  if (entry.response_body) {
+    const truncated = entry.response_body_truncated ? " (truncated)" : "";
+    const preview = entry.response_body.slice(0, BODY_PREVIEW_LENGTH);
+    const ellipsis =
+      entry.response_body.length > BODY_PREVIEW_LENGTH ? "..." : "";
+    result += `\n  ${chalk.gray("response_body:")} ${preview}${ellipsis}${truncated}`;
+  }
+  return result;
 }
 
 /**

@@ -193,21 +193,14 @@ export async function POST(request: Request) {
 
   // Already bound — verify org match
   if (installation.orgId !== org.orgId) {
-    // Check if user is a member of the workspace's org but has the wrong active org
-    let isMemberOfTargetOrg = false;
-    try {
-      await resolveOrg(authCtx, installation.orgId);
-      isMemberOfTargetOrg = true;
-    } catch {
-      // Not a member
-    }
-
-    const message = isMemberOfTargetOrg
-      ? "Your active organization doesn't match this Slack workspace. Please switch to the correct organization in the platform sidebar before connecting."
-      : "You don't have access to the organization this Slack workspace belongs to. Contact the organization admin for an invite.";
-
     return NextResponse.json(
-      { error: { message, code: "FORBIDDEN" } },
+      {
+        error: {
+          message:
+            "Your active organization doesn't match this Slack workspace. Please switch to the correct organization in the platform sidebar before connecting.",
+          code: "FORBIDDEN",
+        },
+      },
       { status: 403 },
     );
   }

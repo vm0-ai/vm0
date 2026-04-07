@@ -4,11 +4,15 @@ import { ZeroDirectedAuthorizePage } from "../../views/zero-page/zero-directed-a
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { pathParams$ } from "../route.ts";
+import { hideAppSkeleton$ } from "../app-skeleton.ts";
 
-export const setupDirectedAuthorizePage$ = command(({ get, set }) => {
-  const params = get(pathParams$);
-  const type = typeof params?.type === "string" ? params.type : "";
+export const setupDirectedAuthorizePage$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const params = get(pathParams$);
+    const type = typeof params?.type === "string" ? params.type : "";
 
-  set(updatePage$, createElement(ZeroDirectedAuthorizePage));
-  set(updateDocumentTitle$, `Authorize ${type}`);
-});
+    set(updatePage$, createElement(ZeroDirectedAuthorizePage));
+    set(updateDocumentTitle$, `Authorize ${type}`);
+    await set(hideAppSkeleton$, signal);
+  },
+);

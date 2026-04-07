@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -164,10 +164,6 @@ describe("zero chat thread page - timeline expansion button", () => {
 
 // CHAT-I-052: Copy message button writes message content to clipboard
 describe("zero chat thread page - copy message button", () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
   it("clicking copy button writes message content to clipboard (CHAT-I-052)", async () => {
     const user = userEvent.setup();
     vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue(undefined);

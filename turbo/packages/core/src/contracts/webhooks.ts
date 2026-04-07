@@ -287,9 +287,6 @@ const sandboxOperationSchema = z.object({
   error: z.string().optional(),
 });
 
-// Network log schema — uses the shared definition from runs.ts.
-// [NETWORK_LOG_FIELDS]
-
 /**
  * Webhook telemetry contract for /api/webhooks/agent/telemetry
  */

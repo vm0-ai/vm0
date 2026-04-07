@@ -13,7 +13,9 @@ interface DeveloperSupportEmailProps {
   description: string;
   reference: string;
   userId: string;
+  userEmail: string;
   orgId: string;
+  orgName: string;
   runId: string;
   downloadUrl: string;
   expiresAt: string;
@@ -24,7 +26,9 @@ export function DeveloperSupportEmail({
   description,
   reference,
   userId,
+  userEmail,
   orgId,
+  orgName,
   runId,
   downloadUrl,
   expiresAt,
@@ -41,8 +45,12 @@ export function DeveloperSupportEmail({
           <Text style={textStyle}>{description}</Text>
           <Hr style={hrStyle} />
           <Text style={labelStyle}>Context</Text>
-          <Text style={metaStyle}>User ID: {userId}</Text>
-          <Text style={metaStyle}>Org ID: {orgId}</Text>
+          <Text style={metaStyle}>
+            User: {userEmail} ({userId})
+          </Text>
+          <Text style={metaStyle}>
+            Org: {orgName} ({orgId})
+          </Text>
           <Text style={metaStyle}>Run ID: {runId}</Text>
           <Hr style={hrStyle} />
           <Text style={textStyle}>

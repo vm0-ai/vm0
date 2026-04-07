@@ -21,6 +21,10 @@ import { firewallAccessRequests } from "../../../../src/db/schema/firewall-acces
 import { eq, and } from "drizzle-orm";
 import { clerkClient } from "@clerk/nextjs/server";
 import { requireAgentPermission } from "../../../../src/lib/zero/require-agent-permission";
+import {
+  notifyOwnerOfRequest,
+  notifyRequesterOfResolution,
+} from "../../../../src/lib/zero/firewall-notification-service";
 import { logger } from "../../../../src/lib/shared/logger";
 
 const log = logger("api:zero:firewall-access-requests");
@@ -94,7 +98,11 @@ const createRouter = tsr.router(firewallAccessRequestsCreateContract, {
 
     // Verify agent belongs to org
     const [agent] = await globalThis.services.db
-      .select({ id: zeroAgents.id })
+      .select({
+        id: zeroAgents.id,
+        owner: zeroAgents.owner,
+        displayName: zeroAgents.displayName,
+      })
       .from(zeroAgents)
       .where(
         and(eq(zeroAgents.orgId, org.orgId), eq(zeroAgents.id, body.agentId)),
@@ -146,6 +154,20 @@ const createRouter = tsr.router(firewallAccessRequestsCreateContract, {
         `Reused firewall access request: ${existing.id} (was ${existing.status}) for agent: ${body.agentId}`,
       );
 
+      const requesterNames = await resolveUserNames([member.userId]);
+      notifyOwnerOfRequest({
+        orgId: org.orgId,
+        ownerUserId: agent.owner,
+        agentId: body.agentId,
+        requestId: existing.id,
+        agentDisplayName: agent.displayName ?? body.agentId,
+        requesterName: requesterNames.get(member.userId) ?? member.userId,
+        permission: body.permission,
+        firewallRef: body.firewallRef,
+        action: body.action,
+        reason: body.reason,
+      }).catch(() => {});
+
       return {
         status: 201 as const,
         body: formatRequest(updated!),
@@ -171,6 +193,20 @@ const createRouter = tsr.router(firewallAccessRequestsCreateContract, {
     log.info(
       `Created firewall access request: ${created!.id} for agent: ${body.agentId}`,
     );
+
+    const requesterNames = await resolveUserNames([member.userId]);
+    notifyOwnerOfRequest({
+      orgId: org.orgId,
+      ownerUserId: agent.owner,
+      agentId: body.agentId,
+      requestId: created!.id,
+      agentDisplayName: agent.displayName ?? body.agentId,
+      requesterName: requesterNames.get(member.userId) ?? member.userId,
+      permission: body.permission,
+      firewallRef: body.firewallRef,
+      action: body.action,
+      reason: body.reason,
+    }).catch(() => {});
 
     return {
       status: 201 as const,
@@ -288,11 +324,12 @@ const resolveRouter = tsr.router(firewallAccessRequestsResolveContract, {
 
     const { org, member } = await resolveOrg(authCtx);
 
-    // Find the request and agent owner in a single query
+    // Find the request and agent info in a single query
     const [row] = await globalThis.services.db
       .select({
         request: firewallAccessRequests,
         agentOwner: zeroAgents.owner,
+        agentDisplayName: zeroAgents.displayName,
       })
       .from(firewallAccessRequests)
       .innerJoin(zeroAgents, eq(firewallAccessRequests.agentId, zeroAgents.id))
@@ -384,6 +421,18 @@ const resolveRouter = tsr.router(firewallAccessRequestsResolveContract, {
     log.info(
       `Resolved firewall access request: ${body.requestId} as ${newStatus}`,
     );
+
+    notifyRequesterOfResolution({
+      orgId: org.orgId,
+      requestId: body.requestId,
+      agentId: existing.agentId,
+      agentDisplayName: row.agentDisplayName ?? existing.agentId,
+      requesterUserId: existing.requesterUserId,
+      permission: existing.permission,
+      firewallRef: existing.firewallRef,
+      action: existing.action,
+      resolution: body.action,
+    }).catch(() => {});
 
     return {
       status: 200 as const,

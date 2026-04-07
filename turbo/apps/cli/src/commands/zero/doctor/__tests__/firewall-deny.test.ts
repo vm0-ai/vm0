@@ -3,19 +3,15 @@
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
- * - Mock (external): Web API via MSW (org endpoint for role detection)
  * - Real (internal): All CLI code, firewall configs from @vm0/core
+ *
+ * firewall-deny is a pure diagnostic command — it identifies which permission
+ * covers a denied request and tells the agent to run firewall-permissions-change.
+ * It does NOT resolve roles or generate platform URLs.
  */
 
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { http, HttpResponse } from "msw";
-import { server } from "../../../../mocks/server";
 import { firewallDenyCommand } from "../firewall-deny";
-
-/** Minimal org response for MSW handlers */
-function orgResponse(role: "admin" | "member") {
-  return { id: "org-1", slug: "test-org", name: "Test Org", role };
-}
 
 describe("zero doctor firewall-deny command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
@@ -34,10 +30,7 @@ describe("zero doctor firewall-deny command", () => {
   });
 
   describe("known ref with matching permission", () => {
-    it("should output permission name and URL for a matching request", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-
+    it("should output permission name and next-step command", async () => {
       await firewallDenyCommand.parseAsync([
         "node",
         "cli",
@@ -53,19 +46,15 @@ describe("zero doctor firewall-deny command", () => {
         "GitHub firewall blocked GET /repos/owner/repo/pulls",
       );
       expect(logCalls).toContain('covered by the "');
-      expect(logCalls).toMatch(
-        /\[Manage GitHub firewall\]\(https:\/\/app\.vm0\.ai\/agents\/agent-abc-123\/permissions\?/,
+      expect(logCalls).toContain(
+        "zero doctor firewall-permissions-change github --permission",
       );
-      expect(logCalls).toContain("ref=github");
-      expect(logCalls).toContain("permission=");
+      expect(logCalls).toContain("--enable --reason");
     });
   });
 
   describe("known ref with no matching permission", () => {
-    it("should output no-permission message for unmatched path", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-
+    it("should output no-permission message", async () => {
       await firewallDenyCommand.parseAsync([
         "node",
         "cli",
@@ -79,7 +68,7 @@ describe("zero doctor firewall-deny command", () => {
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("GitHub firewall blocked DELETE");
       expect(logCalls).toContain("No named permission was found");
-      expect(logCalls).not.toContain("permission=");
+      expect(logCalls).not.toContain("firewall-permissions-change");
     });
   });
 
@@ -106,11 +95,8 @@ describe("zero doctor firewall-deny command", () => {
     });
   });
 
-  describe("slack chat:write custom guidance", () => {
-    it("should output bot alternative guidance for slack chat:write", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-
+  describe("slack matching", () => {
+    it("should identify chat:write for POST /chat.postMessage", async () => {
       await firewallDenyCommand.parseAsync([
         "node",
         "cli",
@@ -126,37 +112,14 @@ describe("zero doctor firewall-deny command", () => {
         "Slack firewall blocked POST /chat.postMessage",
       );
       expect(logCalls).toContain('covered by the "chat:write"');
-      expect(logCalls).toContain("AS THE USER's identity");
-      expect(logCalls).toContain("zero slack message send");
-      expect(logCalls).toContain("Only request user approval");
-      // Should still show the approval URL via outputPermissionChangeMessage
-      expect(logCalls).toContain("[Manage Slack firewall]");
+      expect(logCalls).toContain(
+        "zero doctor firewall-permissions-change slack --permission chat:write --enable",
+      );
     });
+  });
 
-    it("should not output bot guidance for non-chat:write slack permissions", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-
-      await firewallDenyCommand.parseAsync([
-        "node",
-        "cli",
-        "slack",
-        "--method",
-        "GET",
-        "--path",
-        "/conversations.list",
-      ]);
-
-      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("Slack firewall blocked");
-      expect(logCalls).not.toContain("AS THE USER's identity");
-      expect(logCalls).not.toContain("zero slack message send");
-    });
-
-    it("should not output bot guidance for non-slack connectors", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-
+  describe("next-step command format", () => {
+    it("should include the exact firewall ref in the suggested command", async () => {
       await firewallDenyCommand.parseAsync([
         "node",
         "cli",
@@ -168,15 +131,30 @@ describe("zero doctor firewall-deny command", () => {
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("GitHub firewall blocked");
-      expect(logCalls).not.toContain("AS THE USER's identity");
-      expect(logCalls).not.toContain("zero slack message send");
+      // The suggested command should contain the ref, permission, --enable, and --reason placeholder
+      expect(logCalls).toMatch(
+        /zero doctor firewall-permissions-change github --permission \S+ --enable --reason/,
+      );
     });
-  });
 
-  describe("URL transformation", () => {
-    it("should transform www.vm0.ai to app.vm0.ai", async () => {
-      vi.stubEnv("VM0_API_URL", "https://www.vm0.ai");
+    it("should not suggest firewall-permissions-change when no permission matches", async () => {
+      await firewallDenyCommand.parseAsync([
+        "node",
+        "cli",
+        "github",
+        "--method",
+        "PATCH",
+        "--path",
+        "/totally/unknown/endpoint",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).not.toContain("firewall-permissions-change");
+      expect(logCalls).not.toContain("--reason");
+    });
+
+    it("should not generate any platform URL", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
       vi.stubEnv("ZERO_AGENT_ID", "agent-1");
 
       await firewallDenyCommand.parseAsync([
@@ -190,196 +168,9 @@ describe("zero doctor firewall-deny command", () => {
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain(
-        "https://app.vm0.ai/agents/agent-1/permissions?",
-      );
-    });
-
-    it("should transform tunnel -www suffix to -app", async () => {
-      vi.stubEnv("VM0_API_URL", "https://tunnel-yuma-vm0-www.vm7.ai");
-      vi.stubEnv("ZERO_AGENT_ID", "agent-1");
-
-      await firewallDenyCommand.parseAsync([
-        "node",
-        "cli",
-        "github",
-        "--method",
-        "GET",
-        "--path",
-        "/repos/owner/repo/pulls",
-      ]);
-
-      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain(
-        "https://tunnel-yuma-vm0-app.vm7.ai/agents/agent-1/permissions?",
-      );
-    });
-  });
-
-  describe("role-aware messaging (delegates to outputPermissionChangeMessage)", () => {
-    it("should output direct enable message for admin", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("VM0_TOKEN", "test-token");
-      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-      server.use(
-        http.get("https://app.vm0.ai/api/zero/org", () => {
-          return HttpResponse.json(orgResponse("admin"));
-        }),
-      );
-
-      await firewallDenyCommand.parseAsync([
-        "node",
-        "cli",
-        "github",
-        "--method",
-        "GET",
-        "--path",
-        "/repos/owner/repo/pulls",
-      ]);
-
-      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("You can enable the");
-      expect(logCalls).toContain("[Manage GitHub firewall]");
-    });
-
-    it("should output request access message for member", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("VM0_TOKEN", "test-token");
-      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-      server.use(
-        http.get("https://app.vm0.ai/api/zero/org", () => {
-          return HttpResponse.json(orgResponse("member"));
-        }),
-      );
-
-      await firewallDenyCommand.parseAsync([
-        "node",
-        "cli",
-        "github",
-        "--method",
-        "GET",
-        "--path",
-        "/repos/owner/repo/pulls",
-      ]);
-
-      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain(
-        "Permission changes require admin approval. Request access at: [Request GitHub access]",
-      );
-    });
-
-    it("should output direct enable message for member who is agent owner", async () => {
-      const payload = Buffer.from(
-        JSON.stringify({
-          userId: "owner-user-1",
-          orgId: "org-1",
-          scope: "cli",
-          tokenId: "t1",
-        }),
-      ).toString("base64url");
-      const fakeToken = `vm0_pat_header.${payload}.sig`;
-
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("VM0_TOKEN", fakeToken);
-      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-      server.use(
-        http.get("https://app.vm0.ai/api/zero/org", () => {
-          return HttpResponse.json(orgResponse("member"));
-        }),
-        http.get("https://app.vm0.ai/api/zero/agents/:id", () => {
-          return HttpResponse.json({
-            agentId: "agent-abc-123",
-            ownerId: "owner-user-1",
-            description: null,
-            displayName: null,
-            sound: null,
-            avatarUrl: null,
-            firewallPolicies: null,
-            customSkills: [],
-          });
-        }),
-      );
-
-      await firewallDenyCommand.parseAsync([
-        "node",
-        "cli",
-        "github",
-        "--method",
-        "GET",
-        "--path",
-        "/repos/owner/repo/pulls",
-      ]);
-
-      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("You can enable the");
-      expect(logCalls).toContain("[Manage GitHub firewall]");
-    });
-
-    it("should output fallback message when org API fails", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("VM0_TOKEN", "test-token");
-      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
-      server.use(
-        http.get("https://app.vm0.ai/api/zero/org", () => {
-          return HttpResponse.json(
-            { error: { message: "Internal error", code: "INTERNAL" } },
-            { status: 500 },
-          );
-        }),
-      );
-
-      await firewallDenyCommand.parseAsync([
-        "node",
-        "cli",
-        "github",
-        "--method",
-        "GET",
-        "--path",
-        "/repos/owner/repo/pulls",
-      ]);
-
-      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("To enable the");
-      expect(logCalls).toContain("[Manage GitHub firewall]");
-    });
-  });
-
-  describe("ZERO_AGENT_ID presence/absence", () => {
-    it("should use /agents/:id/permissions when ZERO_AGENT_ID is set", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("ZERO_AGENT_ID", "my-agent-id");
-
-      await firewallDenyCommand.parseAsync([
-        "node",
-        "cli",
-        "github",
-        "--method",
-        "GET",
-        "--path",
-        "/repos/owner/repo/pulls",
-      ]);
-
-      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("/agents/my-agent-id/permissions?");
-    });
-
-    it("should use /agents when ZERO_AGENT_ID is not set", async () => {
-      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
-      vi.stubEnv("ZERO_AGENT_ID", "");
-
-      await firewallDenyCommand.parseAsync([
-        "node",
-        "cli",
-        "github",
-        "--method",
-        "GET",
-        "--path",
-        "/repos/owner/repo/pulls",
-      ]);
-
-      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("/agents?");
-      expect(logCalls).not.toContain("/agents/permissions");
+      expect(logCalls).not.toContain("app.vm0.ai");
+      expect(logCalls).not.toContain("[Manage");
+      expect(logCalls).not.toContain("[Request");
     });
   });
 });

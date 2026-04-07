@@ -103,6 +103,9 @@ export interface ExecutionContext {
   // Debug flag to force real Claude in mock environments (internal use only)
   debugNoMockClaude?: boolean;
 
+  // Capture HTTP request headers, request bodies, and response bodies in network logs
+  captureNetworkBodies?: boolean;
+
   // API start time for E2E timing metrics
   apiStartTime?: number;
 }

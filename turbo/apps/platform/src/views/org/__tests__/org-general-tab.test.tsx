@@ -1,4 +1,4 @@
-import { afterEach, describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -53,10 +53,6 @@ async function openGeneralTab() {
 }
 
 describe("org general tab - display", () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
   // ORG-D-008
   it("logo preview image is displayed", async () => {
     mockAPIs({ slug: "my-org" });
@@ -166,10 +162,6 @@ describe("org general tab - display", () => {
 });
 
 describe("org general tab - interaction", () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
   // ORG-I-015
   it("name input field is editable", async () => {
     mockAPIs({ name: "Old Name" });
@@ -283,11 +275,6 @@ describe("org general tab - interaction", () => {
 });
 
 describe("org general tab - validation", () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  // ORG-V-021
   it("delete workspace requires typing exact slug", async () => {
     const user = userEvent.setup();
     mockAPIs({ slug: "my-workspace" });

@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use async_trait::async_trait;
 use sandbox::{Sandbox, SandboxConfig, SandboxError, SandboxFactory};
 use sha2::{Digest, Sha256};
@@ -6,6 +8,10 @@ use tracing::{info, warn};
 use nbd_cow::NbdCowDevice;
 
 use crate::config::FirecrackerConfig;
+use crate::network::{GUEST_NETWORK, NetnsPool, NetnsPoolConfig, PooledNetns, generate_boot_args};
+use crate::paths::{FactoryPaths, RuntimePaths, SandboxPaths, SockPaths};
+use crate::prerequisites;
+use crate::sandbox::FirecrackerSandbox;
 
 /// Maximum attempts to destroy a COW device after killing Firecracker.
 /// After kill_process_group + child.wait(), the kernel may still be
@@ -14,10 +20,24 @@ pub(crate) const DESTROY_RETRIES: u32 = 5;
 
 /// Delay between COW device destroy retries.
 pub(crate) const DESTROY_RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(500);
-use crate::network::{GUEST_NETWORK, NetnsPool, NetnsPoolConfig, generate_boot_args};
-use crate::paths::{FactoryPaths, RuntimePaths, SandboxPaths, SockPaths};
-use crate::prerequisites;
-use crate::sandbox::FirecrackerSandbox;
+
+/// Channel capacity for leaked sandbox resource cleanup.
+/// 32 is generous — the channel only receives messages when an executor task
+/// panics after sandbox creation, which is an exceptional path.
+const LEAK_CHANNEL_CAPACITY: usize = 32;
+
+/// Resources that require async cleanup when a sandbox is dropped without
+/// going through `factory.destroy()` (e.g. executor task panic).
+///
+/// The `FirecrackerSandbox::Drop` impl sends these to a cleanup channel
+/// owned by the factory, which drains them asynchronously.
+pub(crate) struct LeakedResources {
+    pub(crate) sandbox_id: String,
+    pub(crate) device_index: u32,
+    pub(crate) network: PooledNetns,
+    pub(crate) sock_dir: PathBuf,
+    pub(crate) workspace: PathBuf,
+}
 
 /// Shell command executed during snapshot creation to pre-warm guest state.
 /// Changing this invalidates all cached snapshots (included in [`config_hash`]).
@@ -127,6 +147,11 @@ pub struct FirecrackerFactory {
     /// Pre-warming pool for COW files.
     cow_pool: Option<tokio::sync::Mutex<crate::cow_pool::CowPool>>,
     started: bool,
+    /// Channel for receiving leaked sandbox resources from `Drop` impls.
+    /// Created during `startup()`, cloned into each sandbox at `create()`.
+    leak_tx: Option<tokio::sync::mpsc::Sender<LeakedResources>>,
+    /// Background task that drains `leak_tx` and releases pool resources.
+    leak_cleanup_handle: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl FirecrackerFactory {
@@ -166,6 +191,8 @@ impl FirecrackerFactory {
             base_image_size: 0,
             cow_pool: None,
             started: false,
+            leak_tx: None,
+            leak_cleanup_handle: None,
         })
     }
 
@@ -186,6 +213,36 @@ impl FirecrackerFactory {
     #[allow(clippy::expect_used)]
     fn cow_pool(&self) -> &tokio::sync::Mutex<crate::cow_pool::CowPool> {
         self.cow_pool.as_ref().expect("factory not started")
+    }
+
+    /// Background task that receives leaked sandbox resources from `Drop`
+    /// impls and releases them asynchronously (pool indices, namespaces, dirs).
+    async fn drain_leaked_resources(
+        mut rx: tokio::sync::mpsc::Receiver<LeakedResources>,
+        device_pool: std::sync::Arc<tokio::sync::Mutex<nbd_cow::pool::DevicePool>>,
+        netns_pool: std::sync::Arc<tokio::sync::Mutex<NetnsPool>>,
+    ) {
+        while let Some(leaked) = rx.recv().await {
+            warn!(
+                id = %leaked.sandbox_id,
+                device_index = leaked.device_index,
+                "cleaning up leaked sandbox resources"
+            );
+            device_pool.lock().await.release(leaked.device_index);
+            {
+                let mut pool = netns_pool.lock().await;
+                if let Err(e) = pool.release(leaked.network).await {
+                    warn!(id = %leaked.sandbox_id, error = %e, "failed to release leaked netns");
+                }
+            }
+            if let Err(e) = tokio::fs::remove_dir_all(&leaked.sock_dir).await {
+                warn!(id = %leaked.sandbox_id, error = %e, "failed to delete leaked sock dir");
+            }
+            if let Err(e) = tokio::fs::remove_dir_all(&leaked.workspace).await {
+                warn!(id = %leaked.sandbox_id, error = %e, "failed to delete leaked workspace");
+            }
+            info!(id = %leaked.sandbox_id, "leaked sandbox resources cleaned up");
+        }
     }
 }
 
@@ -247,6 +304,16 @@ impl SandboxFactory for FirecrackerFactory {
         let mut cow_pool = crate::cow_pool::CowPool::new(cow_pool_config);
         cow_pool.warmup().await;
         self.cow_pool = Some(tokio::sync::Mutex::new(cow_pool));
+
+        // Spawn background task to clean up resources leaked by sandbox Drop
+        // impls that fire without going through factory.destroy().
+        let (leak_tx, leak_rx) = tokio::sync::mpsc::channel(LEAK_CHANNEL_CAPACITY);
+        self.leak_tx = Some(leak_tx);
+        self.leak_cleanup_handle = Some(tokio::spawn(Self::drain_leaked_resources(
+            leak_rx,
+            std::sync::Arc::clone(&self.device_pool),
+            self.netns_pool().clone(),
+        )));
 
         self.started = true;
 
@@ -359,6 +426,7 @@ impl SandboxFactory for FirecrackerFactory {
             sock_paths,
             network,
             cow_device,
+            self.leak_tx.clone(),
         );
 
         Ok(Box::new(sandbox))
@@ -373,6 +441,9 @@ impl SandboxFactory for FirecrackerFactory {
                 return;
             }
         };
+
+        // Mark as destroyed so Drop doesn't send to leak cleanup channel.
+        sandbox.destroyed = true;
 
         // Ensure the sandbox is killed before releasing pool resources.
         // After kill(), `sandbox.process` is `None`, so the Drop impl's
@@ -442,6 +513,15 @@ impl SandboxFactory for FirecrackerFactory {
     }
 
     async fn shutdown(&mut self) {
+        // Close the leak channel and abort the drain task.  Any in-flight
+        // leaked resources will be cleaned by `runner gc` on the next start.
+        // We abort (rather than await) so the task immediately releases its
+        // Arc refs to the pools — required for Arc::try_unwrap below.
+        self.leak_tx.take();
+        if let Some(h) = self.leak_cleanup_handle.take() {
+            h.abort();
+        }
+
         // Clean up COW pool (delete pre-warmed COW files).
         if let Some(pool_mutex) = self.cow_pool.take() {
             let mut pool = pool_mutex.into_inner();
@@ -511,5 +591,74 @@ mod tests {
         let trait_hash = sandbox::SnapshotProvider::config_hash(&provider);
         let direct_hash = config_hash();
         assert_eq!(trait_hash, direct_hash);
+    }
+
+    fn test_network() -> PooledNetns {
+        PooledNetns {
+            name: "test-ns".into(),
+            host_device: "test-ve".into(),
+            peer_ip: "10.200.0.2".into(),
+        }
+    }
+
+    #[tokio::test]
+    async fn leaked_resources_channel_receives_on_send() {
+        let (tx, mut rx) = tokio::sync::mpsc::channel(4);
+
+        tx.send(LeakedResources {
+            sandbox_id: "test-sandbox".into(),
+            device_index: 42,
+            network: test_network(),
+            sock_dir: PathBuf::from("/tmp/nonexistent-sock"),
+            workspace: PathBuf::from("/tmp/nonexistent-ws"),
+        })
+        .await
+        .unwrap();
+
+        let leaked = rx.recv().await.unwrap();
+        assert_eq!(leaked.sandbox_id, "test-sandbox");
+        assert_eq!(leaked.device_index, 42);
+    }
+
+    #[test]
+    fn leaked_resources_try_send_does_not_panic_on_closed_channel() {
+        let (tx, rx) = tokio::sync::mpsc::channel::<LeakedResources>(1);
+        drop(rx);
+
+        let resources = LeakedResources {
+            sandbox_id: "test".into(),
+            device_index: 0,
+            network: test_network(),
+            sock_dir: PathBuf::from("/nonexistent"),
+            workspace: PathBuf::from("/nonexistent"),
+        };
+
+        // Should not panic — just returns Err.
+        assert!(tx.try_send(resources).is_err());
+    }
+
+    #[test]
+    fn leaked_resources_try_send_does_not_panic_on_full_channel() {
+        let (tx, _rx) = tokio::sync::mpsc::channel::<LeakedResources>(1);
+
+        // Fill the channel.
+        tx.try_send(LeakedResources {
+            sandbox_id: "first".into(),
+            device_index: 0,
+            network: test_network(),
+            sock_dir: PathBuf::from("/nonexistent"),
+            workspace: PathBuf::from("/nonexistent"),
+        })
+        .unwrap();
+
+        // Second send should fail gracefully.
+        let result = tx.try_send(LeakedResources {
+            sandbox_id: "second".into(),
+            device_index: 1,
+            network: test_network(),
+            sock_dir: PathBuf::from("/nonexistent"),
+            workspace: PathBuf::from("/nonexistent"),
+        });
+        assert!(result.is_err());
     }
 }

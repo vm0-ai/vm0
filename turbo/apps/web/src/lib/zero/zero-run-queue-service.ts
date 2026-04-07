@@ -28,10 +28,12 @@ import {
   PENDING_RUN_TTL_MS,
   getEffectiveConcurrencyLimit,
   checkRunConcurrencyLimit,
-  buildAndDispatchRun,
-  loadCompose,
   authorizeCompose,
   validateComposeRequirements,
+} from "./zero-run-policy";
+import {
+  buildAndDispatchRun,
+  loadCompose,
   registerCallbacks,
   markRunFailed,
 } from "../infra/run/run-service";

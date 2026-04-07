@@ -1,5 +1,21 @@
 # Changelog
 
+## [8.157.0](https://github.com/vm0-ai/vm0/compare/core-v8.156.1...core-v8.157.0) (2026-04-07)
+
+
+### Features
+
+* add insights dashboard with cron pre-aggregation pipeline ([#8387](https://github.com/vm0-ai/vm0/issues/8387)) ([4ba9dbe](https://github.com/vm0-ai/vm0/commit/4ba9dbe12ca1a3102646d358076010981a06da07))
+* **proxy:** add opt-in http body capture to mitmproxy addon ([#8349](https://github.com/vm0-ai/vm0/issues/8349)) ([95709fb](https://github.com/vm0-ai/vm0/commit/95709fb721befedd489025c39124b3663226d3f9))
+
+## [8.156.1](https://github.com/vm0-ai/vm0/compare/core-v8.156.0...core-v8.156.1) (2026-04-07)
+
+
+### Bug Fixes
+
+* **firewall:** include xero connections endpoint in firewall config ([#8340](https://github.com/vm0-ai/vm0/issues/8340)) ([db6d7f6](https://github.com/vm0-ai/vm0/commit/db6d7f68a5049ec79de5e6633601ebac13030cda))
+* use 403 instead of 401 for authorization errors ([#8335](https://github.com/vm0-ai/vm0/issues/8335)) ([fc09ed3](https://github.com/vm0-ai/vm0/commit/fc09ed3a32f50e350fe271568942dc28632baadf))
+
 ## [8.156.0](https://github.com/vm0-ai/vm0/compare/core-v8.155.1...core-v8.156.0) (2026-04-07)
 
 

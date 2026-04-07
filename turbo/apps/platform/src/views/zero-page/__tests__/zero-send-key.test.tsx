@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
+import { describe, expect, it, beforeEach, vi } from "vitest";
 // eslint-disable-next-line ccstate/prefer-user-event -- fireEvent needed for compositionStart/End which have no userEvent equivalent; confirmed by ethan@vm0.ai
 import { screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -168,10 +168,6 @@ describe("send-key behavior — mobile (pointer: coarse)", () => {
         },
       } as MediaQueryList;
     });
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
   });
 
   it("should not send when Enter is pressed on a touch device (enter mode)", async () => {

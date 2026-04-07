@@ -69,11 +69,12 @@ export async function getOrgBillingPeriod(
 
   let periodEnd = orgRow?.currentPeriodEnd ?? null;
 
-  if ((!periodEnd || periodEnd < new Date()) && orgRow?.stripeSubscriptionId) {
+  const now = new Date();
+  if ((!periodEnd || periodEnd < now) && orgRow?.stripeSubscriptionId) {
     // Has subscription but period is missing or expired — fetch from Stripe.
     // In Stripe v2025 API, current_period_end was removed from Subscription.
     // Use the latest_invoice.period_end instead.
-    if (periodEnd && periodEnd < new Date()) {
+    if (periodEnd && periodEnd < now) {
       log.warn("currentPeriodEnd is stale, refreshing from Stripe", {
         orgId,
         currentPeriodEnd: periodEnd,

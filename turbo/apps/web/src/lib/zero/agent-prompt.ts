@@ -74,7 +74,7 @@ function buildAgentToolsPrompt(): string {
     "- Ask the user a question: `zero ask-user question --help`.",
     "- Slack messaging and file uploads: `zero slack --help`. Your replies are automatically sent to the originating thread — only use these commands for different channels/threads. Never use SLACK_TOKEN directly — it's a user OAuth token.",
     "- Diagnose missing tokens or expired connectors: `zero doctor missing-token --help`.",
-    "- Troubleshoot firewall denials and permission changes: `zero doctor firewall-deny --help` and `zero doctor firewall-permissions-change --help`.",
+    "- Troubleshoot firewall denials: `zero doctor firewall-deny --help` to identify which permission covers a blocked request, then `zero doctor firewall-permissions-change --help` to request the change. Always provide a brief `--reason` explaining why the permission is needed (keep it under one sentence).",
     "- Inspect yourself: `zero whoami` for identity and permissions, `zero agent view $ZERO_AGENT_ID --instructions` for your current settings.",
     "- Update your own configuration: `zero agent edit --help`.",
     "- Manage custom skills: `zero skill --help`.",

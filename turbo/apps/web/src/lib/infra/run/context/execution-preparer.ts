@@ -257,5 +257,6 @@ function buildPreparedContext(
 
     // Debug flag
     debugNoMockClaude: context.debugNoMockClaude || false,
+    captureNetworkBodies: context.captureNetworkBodies || false,
   };
 }

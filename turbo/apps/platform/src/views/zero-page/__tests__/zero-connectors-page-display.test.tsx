@@ -7,7 +7,7 @@
  * - Real (internal): All signals, components, rendering
  */
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http } from "msw";
@@ -17,10 +17,6 @@ import { setupPage } from "../../../__tests__/page-helper.ts";
 import { mockConnectors } from "./zero-connectors-page-test-helpers.ts";
 
 const context = testContext();
-
-afterEach(() => {
-  vi.restoreAllMocks();
-});
 
 describe("connectors page - count display", () => {
   it("connected connectors count is displayed (CONN-D-001)", async () => {

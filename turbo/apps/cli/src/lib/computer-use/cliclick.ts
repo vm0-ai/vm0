@@ -173,6 +173,14 @@ function parseKeyCombo(keys: string): {
 }
 
 /**
+ * Build the cliclick command to press or type a key.
+ * Special keys (return, tab, arrow-up, etc.) use `kp:`, regular characters use `t:`.
+ */
+function keyAction(key: string): string {
+  return VALID_SPECIAL_KEYS.has(key) ? `kp:${key}` : `t:${key}`;
+}
+
+/**
  * Press a key combination using cliclick.
  * Accepts combo strings like "cmd+c", "ctrl+shift+s", or single keys like "return".
  */
@@ -180,7 +188,7 @@ export async function pressKey(keys: string): Promise<void> {
   const { modifiers, mainKey } = parseKeyCombo(keys);
 
   if (modifiers.length === 0) {
-    await execFileAsync("cliclick", [`kp:${mainKey}`]);
+    await execFileAsync("cliclick", [keyAction(mainKey)]);
     return;
   }
 
@@ -188,7 +196,7 @@ export async function pressKey(keys: string): Promise<void> {
   for (const mod of modifiers) {
     args.push(`kd:${mod}`);
   }
-  args.push(`kp:${mainKey}`);
+  args.push(keyAction(mainKey));
   for (let i = modifiers.length - 1; i >= 0; i--) {
     args.push(`ku:${modifiers[i]}`);
   }

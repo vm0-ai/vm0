@@ -23,5 +23,6 @@ export default defineConfig({
     globals: true,
     environment: "happy-dom",
     setupFiles: ["./src/test/setup.ts"],
+    restoreMocks: true,
   },
 });
