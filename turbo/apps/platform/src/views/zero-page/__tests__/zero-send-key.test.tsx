@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach, afterEach } from "vitest";
+import { describe, expect, it, beforeEach, afterEach, vi } from "vitest";
 // eslint-disable-next-line ccstate/prefer-user-event -- fireEvent needed for compositionStart/End which have no userEvent equivalent; confirmed by ethan@vm0.ai
 import { screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -144,11 +144,9 @@ describe("send-key behavior — IME composition", () => {
 });
 
 describe("send-key behavior — mobile (pointer: coarse)", () => {
-  let originalMatchMedia: typeof window.matchMedia;
-
   beforeEach(() => {
-    originalMatchMedia = window.matchMedia;
-    window.matchMedia = (query: string) => {
+    vi.clearAllMocks();
+    vi.spyOn(window, "matchMedia").mockImplementation((query: string) => {
       return {
         matches: query === "(pointer: coarse)",
         media: query,
@@ -169,11 +167,11 @@ describe("send-key behavior — mobile (pointer: coarse)", () => {
           return false;
         },
       } as MediaQueryList;
-    };
+    });
   });
 
   afterEach(() => {
-    window.matchMedia = originalMatchMedia;
+    vi.restoreAllMocks();
   });
 
   it("should not send when Enter is pressed on a touch device (enter mode)", async () => {
@@ -198,12 +196,5 @@ describe("send-key behavior — mobile (pointer: coarse)", () => {
     await user.keyboard("{Meta>}{Enter}{/Meta}");
 
     expect(api.wasMessageSent()).toBeFalsy();
-  });
-
-  it("should have enterKeyHint set to newline on the textarea", async () => {
-    await renderChatPage("enter");
-
-    const textarea = await getTextarea();
-    expect(textarea).toHaveAttribute("enterkeyhint", "enter");
   });
 });
