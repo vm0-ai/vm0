@@ -71,7 +71,7 @@ import { ManagePinnedAgentsDialog } from "./zero-sidebar-dialogs.tsx";
 
 import { AccountDropdown } from "./zero-sidebar-account.tsx";
 import { RecentChatSection } from "./zero-sidebar-chat-list.tsx";
-import { TalkToSection } from "./zero-sidebar-pinned.tsx";
+import { PinnedAgentListSection } from "./zero-sidebar-pinned.tsx";
 import { OverlayScrollArea } from "./zero-sidebar-scroll.tsx";
 import { SidebarUpgradeCard } from "./zero-sidebar-upgrade.tsx";
 
@@ -456,7 +456,7 @@ export function ZeroSidebar() {
             }}
           >
             {/* Chat section */}
-            <TalkToSection />
+            <PinnedAgentListSection />
 
             {/* Recent chat sessions */}
             <RecentChatSection

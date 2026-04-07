@@ -3,6 +3,7 @@ import { zeroUserPreferencesContract } from "@vm0/core";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { clerk$ } from "../auth.ts";
+import { defaultAgentId$ } from "../agent.ts";
 
 const reloadPinned$ = state(0);
 
@@ -25,12 +26,13 @@ const serverPinnedIds$ = computed(async (get) => {
 /**
  * Effective pinned agent IDs — optimistic value if set, otherwise server value.
  */
-export const pinnedAgentIds$ = computed((get) => {
+export const pinnedAgentIds$ = computed(async (get) => {
+  const defaultAgentId = await get(defaultAgentId$);
   const optimistic = get(optimisticPinnedIds$);
   if (optimistic !== null) {
-    return optimistic;
+    return [defaultAgentId, ...optimistic];
   }
-  return get(serverPinnedIds$);
+  return [defaultAgentId, ...(await get(serverPinnedIds$))];
 });
 
 /**

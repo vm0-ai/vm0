@@ -115,7 +115,7 @@ export { pinnedAgentIds$, updatePinnedAgentIds$ };
 /** Pinned agent IDs resolved to SubagentInfo. */
 export const pinnedAgents$ = computed(async (get) => {
   const ids = await get(pinnedAgentIds$);
-  const list = await get(subagents$);
+  const list = await get(agents$);
   return ids
     .map((id) => {
       return list.find((a) => {

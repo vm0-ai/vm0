@@ -241,8 +241,11 @@ export function ZeroChatPage() {
 
   // Pin pill (currentChatAgentId is resolved above)
   const pinnedLoadable = useLastLoadable(pinnedAgentIds$);
-  const pinnedIds =
-    pinnedLoadable.state === "hasData" ? pinnedLoadable.data : [];
+  const pinnedIds = (
+    pinnedLoadable.state === "hasData" ? pinnedLoadable.data : []
+  ).filter((id): id is string => {
+    return id !== null;
+  });
   const savePinnedIds = useSet(updatePinnedAgentIds$);
   const pageSignal = useGet(pageSignal$);
   const showPinPill =
