@@ -146,12 +146,12 @@ describe("getOrgBillingPeriod", () => {
 
     const result = await getOrgBillingPeriod(orgId);
 
-    expect(result).not.toBeNull();
-    expect(result!.end).toEqual(new Date("2026-05-01T00:00:00Z"));
+    if (!result) throw new Error("expected result to be non-null");
+    expect(result.end).toEqual(new Date("2026-05-01T00:00:00Z"));
 
     // Start should be 1 month before end
     const expectedStart = new Date("2026-04-01T00:00:00Z");
-    expect(result!.start).toEqual(expectedStart);
+    expect(result.start).toEqual(expectedStart);
 
     // Verify Stripe was called with the correct subscription ID
     expect(stripeMocks.subscriptionsRetrieve).toHaveBeenCalledWith(subId);
@@ -209,7 +209,7 @@ describe("getOrgBillingPeriod", () => {
     });
 
     const newPeriodEndUnix = Math.floor(
-      new Date("2026-04-01T00:00:00Z").getTime() / 1000,
+      new Date("2099-04-01T00:00:00Z").getTime() / 1000,
     );
 
     stripeMocks.subscriptionsRetrieve.mockResolvedValueOnce({
@@ -222,7 +222,7 @@ describe("getOrgBillingPeriod", () => {
     const result = await getOrgBillingPeriod(orgId);
 
     if (!result) throw new Error("expected result to be non-null");
-    expect(result.end).toEqual(new Date("2026-04-01T00:00:00Z"));
+    expect(result.end).toEqual(new Date("2099-04-01T00:00:00Z"));
     expect(stripeMocks.subscriptionsRetrieve).toHaveBeenCalledWith(subId);
     expect(stripeMocks.invoicesRetrieve).toHaveBeenCalledWith("inv_fresh123");
   });
@@ -248,5 +248,45 @@ describe("getOrgBillingPeriod", () => {
     expect(result.end).toEqual(futurePeriodEnd);
     // Stripe should NOT have been called — we used the cached value
     expect(stripeMocks.subscriptionsRetrieve).not.toHaveBeenCalled();
+  });
+
+  it("caches Stripe result so a second call does not hit Stripe again", async () => {
+    const userId = uniqueId("test-user");
+    const slug = uniqueId("org");
+    mockClerk({ userId });
+    const { id: orgId } = await createTestOrg(slug);
+
+    const subId = uniqueId("sub");
+
+    // Start with no cached period — triggers Stripe fallback on first call
+    await updateOrgStripeFields(orgId, {
+      stripeSubscriptionId: subId,
+      stripeCustomerId: uniqueId("cus"),
+      subscriptionStatus: "active",
+      currentPeriodEnd: null,
+    });
+
+    const periodEndUnix = Math.floor(
+      new Date("2099-05-01T00:00:00Z").getTime() / 1000,
+    );
+
+    stripeMocks.subscriptionsRetrieve.mockResolvedValueOnce({
+      latest_invoice: "inv_cache_test",
+    });
+    stripeMocks.invoicesRetrieve.mockResolvedValueOnce({
+      period_end: periodEndUnix,
+    });
+
+    // First call — fetches from Stripe and writes back to DB
+    const firstResult = await getOrgBillingPeriod(orgId);
+    if (!firstResult) throw new Error("expected firstResult to be non-null");
+    expect(firstResult.end).toEqual(new Date("2099-05-01T00:00:00Z"));
+    expect(stripeMocks.subscriptionsRetrieve).toHaveBeenCalledTimes(1);
+
+    // Second call — should use the cached DB value, not hit Stripe
+    const secondResult = await getOrgBillingPeriod(orgId);
+    if (!secondResult) throw new Error("expected secondResult to be non-null");
+    expect(secondResult.end).toEqual(new Date("2099-05-01T00:00:00Z"));
+    expect(stripeMocks.subscriptionsRetrieve).toHaveBeenCalledTimes(1);
   });
 });
