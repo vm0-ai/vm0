@@ -1,5 +1,6 @@
 /**
- * Tests for the /connectors/:type/connect page (ZeroDirectedConnectPage).
+ * Tests for the /connectors/:type/connect and /connectors/:type/authorize
+ * pages (ZeroDirectedConnectPage).
  *
  * Entry point: setupPage({ path: "/connectors/:type/connect" })
  * Mock (external): connectors API via MSW
@@ -49,6 +50,17 @@ function mockConnectors(
 }
 
 describe("directed connect page", () => {
+  it("renders connect card via /authorize route", async () => {
+    await setupPage({ context, path: "/connectors/github/authorize" });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Zero needs GitHub to proceed"),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByText("Connect")).toBeInTheDocument();
+  });
+
   it("renders connect card for an oauth connector", async () => {
     await setupPage({ context, path: "/connectors/gmail/connect" });
 
