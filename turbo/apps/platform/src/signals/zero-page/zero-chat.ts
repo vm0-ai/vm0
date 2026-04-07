@@ -846,14 +846,15 @@ const internalCreateNewChatSession$ = command(
       return;
     }
 
-    // A2: If an empty thread already exists in the list, navigate to it
+    // A2: If the first thread in the list is empty, navigate to it
     const threads = await get(chatThreads$);
-    const emptyThread = threads.find((t) => {
-      return t.title === null && t.agentId === resolvedComposeId;
-    });
-    if (emptyThread) {
+    const firstThread = threads[0];
+    if (
+      firstThread?.title === null &&
+      firstThread.agentId === resolvedComposeId
+    ) {
       set(startNewZeroSession$);
-      set(navigateToChat$, emptyThread.id);
+      set(navigateToChat$, firstThread.id);
       return;
     }
 
