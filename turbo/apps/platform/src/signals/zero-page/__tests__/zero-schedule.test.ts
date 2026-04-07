@@ -1022,6 +1022,48 @@ describe("org schedule signals", () => {
       expect(captured.body?.prompt).toBe("Org-wide daily task");
       expect(captured.body?.cronExpression).toBe("0 8 * * *");
     });
+
+    it("should preserve non-UTC timezone in POST body", async () => {
+      const captured: { body: Record<string, unknown> | null } = {
+        body: null,
+      };
+
+      server.use(
+        http.post(
+          "http://localhost:3000/api/zero/schedules",
+          async ({ request }) => {
+            captured.body = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json({
+              ...mockDeployResponse(),
+            });
+          },
+        ),
+        http.get("http://localhost:3000/api/zero/schedules", () => {
+          return HttpResponse.json({ schedules: [] });
+        }),
+      );
+
+      await setup();
+      await context.store.set(
+        saveOrgSchedule$,
+        {
+          prompt: "Instruction edit save",
+          freq: "every_weekday",
+          date: "2030-01-01",
+          hour: 9,
+          minute: 0,
+          timezone: "Asia/Shanghai",
+          intervalSeconds: 0,
+          agentId: "e0000000-0000-4000-a000-000000000010",
+          editName: "existing-schedule",
+        },
+        context.signal,
+      );
+
+      expect(captured.body).not.toBeNull();
+      expect(captured.body?.timezone).toBe("Asia/Shanghai");
+      expect(captured.body?.name).toBe("existing-schedule");
+    });
   });
 
   describe("toggleOrgScheduleEnabled$", () => {

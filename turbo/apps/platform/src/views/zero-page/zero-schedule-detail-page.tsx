@@ -1030,7 +1030,7 @@ export function ZeroScheduleDetailPage() {
           date: parsed.date,
           hour: parsed.hour,
           minute: parsed.minute,
-          timezone: parsed.timezone,
+          timezone: entry.timezone ?? parsed.timezone,
           intervalSeconds: parsed.loopMinutes * 60,
           editName: entry.name,
           agentId: entry.agentId,
