@@ -98,6 +98,8 @@ export async function POST(request: Request) {
       org = await getOrgMetadata(cached.orgId);
     } catch (error) {
       if (!isNotFound(error)) throw error;
+      // org_members_cache entry exists but org_metadata row doesn't yet — use defaults
+      org = { orgId: cached.orgId, tier: "free" };
     }
   }
   if (!org) {
