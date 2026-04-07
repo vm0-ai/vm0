@@ -60,25 +60,6 @@ function mockTeamAPI(
   );
 }
 
-function mockTeamAPIError() {
-  server.use(
-    http.get("*/api/zero/team", () => {
-      return HttpResponse.json(
-        {
-          error: {
-            message: "Internal server error",
-            code: "INTERNAL_SERVER_ERROR",
-          },
-        },
-        { status: 500 },
-      );
-    }),
-    http.get("*/api/zero/chat-threads", () => {
-      return HttpResponse.json({ threads: [] });
-    }),
-  );
-}
-
 async function renderTeamPage() {
   await setupPage({ context, path: "/agents" });
 }
