@@ -111,11 +111,9 @@ export const firewallRequestById$ = computed(async (get) => {
     return null;
   }
   const client = get(zeroClient$)(firewallAccessRequestsListContract);
-  const result = await accept(
-    client.list({ query: { requestId } }),
-    [200],
-    { toast: false },
-  );
+  const result = await accept(client.list({ query: { requestId } }), [200], {
+    toast: false,
+  });
   return result.body[0] ?? null;
 });
 
@@ -132,11 +130,9 @@ export const firewallExistingRequest$ = computed(async (get) => {
     return null;
   }
   const client = get(zeroClient$)(firewallAccessRequestsListContract);
-  const result = await accept(
-    client.list({ query: { agentId } }),
-    [200],
-    { toast: false },
-  );
+  const result = await accept(client.list({ query: { agentId } }), [200], {
+    toast: false,
+  });
   // Find latest pending/rejected request for this ref+permission+action
   const match = result.body
     .filter((r) => {
