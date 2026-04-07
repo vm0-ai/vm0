@@ -62,7 +62,7 @@
       "yaml": ">=2.8.3",
       "smol-toml": ">=1.6.1",
       "@opentelemetry/instrumentation": ">=0.213.0",
-      "vite": ">=8.0.5"
+      "fumadocs-mdx>vite": ">=8.0.5"
     }
   },
   "packageManager": "pnpm@10.15.0",
