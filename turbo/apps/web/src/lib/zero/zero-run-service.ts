@@ -50,6 +50,7 @@ import type { CallbackPayload } from "../infra/callback/callback-payloads";
 import { zeroAgents } from "../../db/schema/zero-agent";
 import { zeroRuns } from "../../db/schema/zero-run";
 import { userConnectors } from "../../db/schema/user-connector";
+import { consumeCaptureNetworkBodies } from "./user/user-preferences-service";
 import { logger } from "../shared/logger";
 
 const log = logger("service:zero-run");
@@ -354,6 +355,15 @@ export async function createZeroRunRecord(
       preloadedCompose.composeContent,
     ),
   ]);
+
+  // 3b. Check if user has capture-network-bodies quota remaining
+  const captureNetworkBodies = await consumeCaptureNetworkBodies(
+    resolved.orgId,
+    params.userId,
+  );
+  if (captureNetworkBodies) {
+    runParams.captureNetworkBodies = true;
+  }
 
   // 4. Advisory lock + concurrency check + INSERT (zero owns the transaction)
   let run;

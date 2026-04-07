@@ -49,6 +49,7 @@ function mockSendMode(mode: "enter" | "cmd-enter") {
         timezone: null,
         pinnedAgentIds: [],
         sendMode: mode,
+        captureNetworkBodiesRemaining: 0,
       });
     }),
   );

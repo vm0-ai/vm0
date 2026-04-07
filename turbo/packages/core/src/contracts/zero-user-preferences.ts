@@ -14,6 +14,7 @@ export const userPreferencesResponseSchema = z.object({
   timezone: z.string().nullable(),
   pinnedAgentIds: z.array(z.string()),
   sendMode: sendModeSchema,
+  captureNetworkBodiesRemaining: z.number().int().min(0),
 });
 
 export type UserPreferencesResponse = z.infer<
@@ -25,13 +26,15 @@ export const updateUserPreferencesRequestSchema = z
     timezone: z.string().min(1).optional(),
     pinnedAgentIds: z.array(z.string()).optional(),
     sendMode: sendModeSchema.optional(),
+    captureNetworkBodiesRemaining: z.number().int().min(0).optional(),
   })
   .refine(
     (data) => {
       return (
         data.timezone !== undefined ||
         data.pinnedAgentIds !== undefined ||
-        data.sendMode !== undefined
+        data.sendMode !== undefined ||
+        data.captureNetworkBodiesRemaining !== undefined
       );
     },
     {

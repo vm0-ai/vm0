@@ -33,6 +33,7 @@ const router = tsr.router(zeroUserPreferencesContract, {
         timezone: prefs.timezone,
         pinnedAgentIds: prefs.pinnedAgentIds,
         sendMode: prefs.sendMode,
+        captureNetworkBodiesRemaining: prefs.captureNetworkBodiesRemaining,
       },
     };
   },
@@ -50,6 +51,7 @@ const router = tsr.router(zeroUserPreferencesContract, {
         timezone: body.timezone,
         pinnedAgentIds: body.pinnedAgentIds,
         sendMode: body.sendMode,
+        captureNetworkBodiesRemaining: body.captureNetworkBodiesRemaining,
       });
 
       return {
@@ -58,6 +60,7 @@ const router = tsr.router(zeroUserPreferencesContract, {
           timezone: prefs.timezone,
           pinnedAgentIds: prefs.pinnedAgentIds,
           sendMode: prefs.sendMode,
+          captureNetworkBodiesRemaining: prefs.captureNetworkBodiesRemaining,
         },
       };
     } catch (error) {

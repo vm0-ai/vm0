@@ -1,4 +1,4 @@
-import { eq, and } from "drizzle-orm";
+import { eq, and, gt, sql } from "drizzle-orm";
 import { orgMembersMetadata } from "../../../db/schema/org-members-metadata";
 import { badRequest } from "../../shared/errors";
 import { logger } from "../../shared/logger";
@@ -24,6 +24,7 @@ interface UserPreferences {
   timezone: string | null;
   pinnedAgentIds: string[];
   sendMode: SendMode;
+  captureNetworkBodiesRemaining: number;
 }
 
 function parseSendMode(value: unknown): SendMode {
@@ -43,6 +44,7 @@ const DEFAULTS: UserPreferences = {
   timezone: null,
   pinnedAgentIds: [],
   sendMode: "enter",
+  captureNetworkBodiesRemaining: 0,
 };
 
 /**
@@ -71,6 +73,7 @@ export async function getUserPreferences(
       timezone: row.timezone,
       pinnedAgentIds: toStringArray(row.pinnedAgentIds),
       sendMode: parseSendMode(row.sendMode),
+      captureNetworkBodiesRemaining: row.captureNetworkBodiesRemaining ?? 0,
     };
   }
 
@@ -87,6 +90,7 @@ export async function updateUserPreferences(
     timezone?: string;
     pinnedAgentIds?: string[];
     sendMode?: SendMode;
+    captureNetworkBodiesRemaining?: number;
   },
 ): Promise<UserPreferences> {
   if (prefs.timezone !== undefined) {
@@ -105,6 +109,10 @@ export async function updateUserPreferences(
         ? prefs.pinnedAgentIds
         : existing.pinnedAgentIds,
     sendMode: prefs.sendMode !== undefined ? prefs.sendMode : existing.sendMode,
+    captureNetworkBodiesRemaining:
+      prefs.captureNetworkBodiesRemaining !== undefined
+        ? prefs.captureNetworkBodiesRemaining
+        : existing.captureNetworkBodiesRemaining,
   };
 
   const now = new Date();
@@ -116,6 +124,7 @@ export async function updateUserPreferences(
       timezone: merged.timezone,
       pinnedAgentIds: merged.pinnedAgentIds,
       sendMode: merged.sendMode,
+      captureNetworkBodiesRemaining: merged.captureNetworkBodiesRemaining,
       createdAt: now,
       updatedAt: now,
     })
@@ -127,6 +136,9 @@ export async function updateUserPreferences(
           pinnedAgentIds: prefs.pinnedAgentIds,
         }),
         ...(prefs.sendMode !== undefined && { sendMode: prefs.sendMode }),
+        ...(prefs.captureNetworkBodiesRemaining !== undefined && {
+          captureNetworkBodiesRemaining: prefs.captureNetworkBodiesRemaining,
+        }),
         updatedAt: now,
       },
     });
@@ -156,4 +168,32 @@ export async function setTimezoneIfNotSet(
   if (existingTimezone === null) {
     await updateUserPreferences(orgId, userId, { timezone });
   }
+}
+
+/**
+ * Atomically check and decrement captureNetworkBodiesRemaining.
+ * Returns true if a capture quota was consumed (remaining was > 0).
+ */
+export async function consumeCaptureNetworkBodies(
+  orgId: string,
+  userId: string,
+): Promise<boolean> {
+  const db = globalThis.services.db;
+
+  const result = await db
+    .update(orgMembersMetadata)
+    .set({
+      captureNetworkBodiesRemaining: sql`${orgMembersMetadata.captureNetworkBodiesRemaining} - 1`,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(orgMembersMetadata.orgId, orgId),
+        eq(orgMembersMetadata.userId, userId),
+        gt(orgMembersMetadata.captureNetworkBodiesRemaining, 0),
+      ),
+    )
+    .returning({ remaining: orgMembersMetadata.captureNetworkBodiesRemaining });
+
+  return result.length > 0;
 }

@@ -1,4 +1,4 @@
-import { useGet, useSet, useLoadable } from "ccstate-react";
+import { useGet, useSet, useLoadable, useLastResolved } from "ccstate-react";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   IconSun,
@@ -7,9 +7,13 @@ import {
   IconPalette,
   IconKeyboard,
   IconLoader2,
+  IconBug,
 } from "@tabler/icons-react";
 import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
+import { Switch } from "@vm0/ui/components/ui/switch";
 import { cn } from "@vm0/ui";
+import { FeatureSwitchKey, type SendMode } from "@vm0/core";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { TimezoneSettings } from "./components/settings/timezone-settings.tsx";
 import {
   themePreference$,
@@ -18,12 +22,14 @@ import {
 } from "../../signals/theme.ts";
 import { sendMode$ } from "../../signals/send-mode.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import type { SendMode } from "@vm0/core";
 import {
   preferencesTab$,
   setPreferencesTab$,
   sendModeSaving$,
   updateSendMode$,
+  captureNetworkBodiesRemaining$,
+  captureSaving$,
+  updateCaptureNetworkBodies$,
 } from "../../signals/zero-page/settings/preferences-page.ts";
 
 function AppearanceSettings() {
@@ -165,7 +171,58 @@ function SendModeSettings() {
   );
 }
 
+const CAPTURE_RUN_COUNT = 3;
+
+function CaptureNetworkBodiesSettings() {
+  const remainingLoadable = useLoadable(captureNetworkBodiesRemaining$);
+  const remaining =
+    remainingLoadable.state === "hasData" ? remainingLoadable.data : 0;
+  const saving = useGet(captureSaving$);
+  const updateCapture = useSet(updateCaptureNetworkBodies$);
+  const pageSignal = useGet(pageSignal$);
+  const enabled = remaining > 0;
+
+  const handleToggle = (checked: boolean) => {
+    detach(
+      updateCapture(checked ? CAPTURE_RUN_COUNT : 0, pageSignal),
+      Reason.DomCallback,
+    );
+  };
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="text-sm text-muted-foreground">
+        Capture HTTP request headers and bodies in network logs for debugging.
+      </p>
+      <div className="flex items-center gap-4 bg-card p-4 rounded-xl zero-border">
+        <div className="shrink-0">
+          <div className="flex h-7 w-7 items-center justify-center">
+            <IconBug size={22} stroke={1.5} className="text-muted-foreground" />
+          </div>
+        </div>
+        <div className="flex flex-1 flex-col gap-1 min-w-0">
+          <div className="text-sm font-medium text-foreground">
+            Capture network bodies
+          </div>
+          <div className="text-sm text-muted-foreground">
+            {enabled
+              ? `Enabled for the next ${remaining} run${remaining === 1 ? "" : "s"}`
+              : "Disabled"}
+          </div>
+        </div>
+        <Switch
+          checked={enabled}
+          onCheckedChange={handleToggle}
+          disabled={saving}
+        />
+      </div>
+    </div>
+  );
+}
+
 export function ZeroPreferencesPage() {
+  const features = useLastResolved(featureSwitch$);
+  const showDebug = features?.[FeatureSwitchKey.ZeroDebug] ?? false;
   const tab = useGet(preferencesTab$);
   const setTab = useSet(setPreferencesTab$);
 
@@ -203,6 +260,14 @@ export function ZeroPreferencesPage() {
               >
                 Time Zone
               </TabsTrigger>
+              {showDebug && (
+                <TabsTrigger
+                  value="debug"
+                  className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
+                >
+                  Debug
+                </TabsTrigger>
+              )}
             </TabsList>
 
             <div className="mt-4">
@@ -213,6 +278,11 @@ export function ZeroPreferencesPage() {
                 </div>
               )}
               {tab === "timezone" && <TimezoneSettings />}
+              {tab === "debug" && showDebug && (
+                <div className="flex flex-col gap-6">
+                  <CaptureNetworkBodiesSettings />
+                </div>
+              )}
             </div>
           </Tabs>
         </div>

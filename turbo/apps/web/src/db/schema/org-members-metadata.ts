@@ -3,6 +3,7 @@ import {
   text,
   boolean,
   bigint,
+  integer,
   timestamp,
   primaryKey,
   jsonb,
@@ -23,6 +24,9 @@ export const orgMembersMetadata = pgTable(
     onboardingDone: boolean("onboarding_done").notNull().default(false),
     creditCap: bigint("credit_cap", { mode: "number" }),
     creditEnabled: boolean("credit_enabled").notNull().default(true),
+    captureNetworkBodiesRemaining: integer(
+      "capture_network_bodies_remaining",
+    ).default(0),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

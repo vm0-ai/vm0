@@ -1,7 +1,7 @@
 import { command, computed, state } from "ccstate";
 import type { SendMode } from "@vm0/core";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import { updateUserPreference$ } from "./user-preferences.ts";
+import { updateUserPreference$, userPreferences$ } from "./user-preferences.ts";
 import { sendMode$ } from "../../send-mode.ts";
 import { throwIfAbort } from "../../utils.ts";
 
@@ -50,6 +50,39 @@ export const updateSendMode$ = command(
       throwIfAbort(error);
       set(internalSendModeSaving$, null);
       toast.error("Failed to save send mode preference");
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Capture network bodies
+// ---------------------------------------------------------------------------
+
+export const captureNetworkBodiesRemaining$ = computed(async (get) => {
+  const prefs = await get(userPreferences$);
+  return prefs.captureNetworkBodiesRemaining;
+});
+
+const internalCaptureSaving$ = state(false);
+
+export const captureSaving$ = computed((get) => {
+  return get(internalCaptureSaving$);
+});
+
+export const updateCaptureNetworkBodies$ = command(
+  async ({ set }, remaining: number, signal: AbortSignal) => {
+    set(internalCaptureSaving$, true);
+    try {
+      await set(
+        updateUserPreference$,
+        { captureNetworkBodiesRemaining: remaining },
+        signal,
+      );
+    } catch (error) {
+      throwIfAbort(error);
+      toast.error("Failed to save capture preference");
+    } finally {
+      set(internalCaptureSaving$, false);
     }
   },
 );

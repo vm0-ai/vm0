@@ -14,10 +14,16 @@ import type { UserPreferencesResponse } from "@vm0/core";
 
 const context = testContext();
 
-function mockPreferencesAPI(prefs: UserPreferencesResponse) {
+function mockPreferencesAPI(
+  prefs: Omit<UserPreferencesResponse, "captureNetworkBodiesRemaining">,
+) {
+  const full: UserPreferencesResponse = {
+    captureNetworkBodiesRemaining: 0,
+    ...prefs,
+  };
   server.use(
     http.get("*/api/zero/user-preferences", () => {
-      return HttpResponse.json(prefs);
+      return HttpResponse.json(full);
     }),
   );
 }

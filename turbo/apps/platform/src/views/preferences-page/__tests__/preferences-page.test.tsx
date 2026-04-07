@@ -16,6 +16,7 @@ function createMockPreferences(
     timezone: "UTC",
     pinnedAgentIds: [],
     sendMode: "enter",
+    captureNetworkBodiesRemaining: 0,
     ...overrides,
   };
 }

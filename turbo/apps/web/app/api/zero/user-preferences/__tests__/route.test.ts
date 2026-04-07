@@ -3,6 +3,11 @@ import { GET, POST } from "../route";
 import { createTestRequest } from "../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
+import {
+  consumeCaptureNetworkBodies,
+  getUserPreferences,
+  updateUserPreferences,
+} from "../../../../../src/lib/zero/user/user-preferences-service";
 
 vi.mock("@axiomhq/logging");
 
@@ -394,5 +399,127 @@ describe("POST /api/zero/user-preferences", () => {
 
     expect(response.status).toBe(200);
     expect(data.sendMode).toBe("cmd-enter");
+  });
+
+  it("should return default captureNetworkBodiesRemaining as 0", async () => {
+    const user = await context.setupUser();
+    mockClerk({ userId: user.userId, orgId: user.orgId });
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/user-preferences",
+    );
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.captureNetworkBodiesRemaining).toBe(0);
+  });
+
+  it("should set and get captureNetworkBodiesRemaining", async () => {
+    const user = await context.setupUser();
+    mockClerk({ userId: user.userId, orgId: user.orgId });
+
+    const postRequest = createTestRequest(
+      "http://localhost:3000/api/zero/user-preferences",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ captureNetworkBodiesRemaining: 3 }),
+      },
+    );
+    const postResponse = await POST(postRequest);
+    const postData = await postResponse.json();
+
+    expect(postResponse.status).toBe(200);
+    expect(postData.captureNetworkBodiesRemaining).toBe(3);
+
+    const getRequest = createTestRequest(
+      "http://localhost:3000/api/zero/user-preferences",
+    );
+    const getResponse = await GET(getRequest);
+    const getData = await getResponse.json();
+
+    expect(getData.captureNetworkBodiesRemaining).toBe(3);
+  });
+
+  it("should not affect other preferences when updating captureNetworkBodiesRemaining", async () => {
+    const user = await context.setupUser();
+    mockClerk({ userId: user.userId, orgId: user.orgId });
+
+    // Set timezone first
+    const setupReq = createTestRequest(
+      "http://localhost:3000/api/zero/user-preferences",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ timezone: "Asia/Tokyo" }),
+      },
+    );
+    await POST(setupReq);
+
+    // Update only captureNetworkBodiesRemaining
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/user-preferences",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ captureNetworkBodiesRemaining: 5 }),
+      },
+    );
+    const response = await POST(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(data.captureNetworkBodiesRemaining).toBe(5);
+    expect(data.timezone).toBe("Asia/Tokyo");
+  });
+});
+
+describe("consumeCaptureNetworkBodies", () => {
+  beforeEach(() => {
+    context.setupMocks();
+  });
+
+  it("should return false when remaining is 0", async () => {
+    const user = await context.setupUser();
+
+    const consumed = await consumeCaptureNetworkBodies(user.orgId, user.userId);
+    expect(consumed).toBe(false);
+  });
+
+  it("should decrement and return true when remaining > 0", async () => {
+    const user = await context.setupUser();
+
+    await updateUserPreferences(user.orgId, user.userId, {
+      captureNetworkBodiesRemaining: 3,
+    });
+
+    const consumed = await consumeCaptureNetworkBodies(user.orgId, user.userId);
+    expect(consumed).toBe(true);
+
+    const prefs = await getUserPreferences(user.orgId, user.userId);
+    expect(prefs.captureNetworkBodiesRemaining).toBe(2);
+  });
+
+  it("should decrement to zero and stop", async () => {
+    const user = await context.setupUser();
+
+    await updateUserPreferences(user.orgId, user.userId, {
+      captureNetworkBodiesRemaining: 1,
+    });
+
+    const first = await consumeCaptureNetworkBodies(user.orgId, user.userId);
+    expect(first).toBe(true);
+
+    const second = await consumeCaptureNetworkBodies(user.orgId, user.userId);
+    expect(second).toBe(false);
+  });
+
+  it("should return false for user with no preferences row", async () => {
+    const consumed = await consumeCaptureNetworkBodies(
+      "org_nonexistent",
+      "user_nonexistent",
+    );
+    expect(consumed).toBe(false);
   });
 });

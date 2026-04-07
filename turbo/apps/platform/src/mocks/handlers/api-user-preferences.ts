@@ -11,6 +11,7 @@ let mockPreferences: UserPreferencesResponse = {
   timezone: null,
   pinnedAgentIds: [],
   sendMode: "enter",
+  captureNetworkBodiesRemaining: 0,
 };
 
 export function resetMockUserPreferences(): void {
@@ -18,6 +19,7 @@ export function resetMockUserPreferences(): void {
     timezone: null,
     pinnedAgentIds: [],
     sendMode: "enter",
+    captureNetworkBodiesRemaining: 0,
   };
 }
 
@@ -45,6 +47,10 @@ export const apiUserPreferencesHandlers = [
     }
     if (body.sendMode !== undefined) {
       mockPreferences.sendMode = body.sendMode;
+    }
+    if (body.captureNetworkBodiesRemaining !== undefined) {
+      mockPreferences.captureNetworkBodiesRemaining =
+        body.captureNetworkBodiesRemaining;
     }
 
     return HttpResponse.json(mockPreferences);
