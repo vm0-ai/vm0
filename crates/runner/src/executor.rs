@@ -105,7 +105,6 @@ pub async fn execute_job_reuse(
     idle_entry: IdleEntry,
     context: ExecutionContext,
     config: &ExecutorConfig,
-    params: &JobParams,
     cancel: CancellationToken,
 ) -> ExecuteOutcome {
     let run_id = context.run_id;
@@ -125,7 +124,6 @@ pub async fn execute_job_reuse(
         &source_ip,
         &context,
         config,
-        params,
         &mut telemetry,
         cancel,
     )
@@ -230,7 +228,6 @@ async fn execute_reused_sandbox(
     source_ip: &str,
     context: &ExecutionContext,
     config: &ExecutorConfig,
-    _params: &JobParams,
     telemetry: &mut JobTelemetry,
     cancel: CancellationToken,
 ) -> ExecuteOutcome {
@@ -2219,14 +2216,7 @@ mod tests {
 
         // Reuse the sandbox for a second turn
         let cancel = tokio_util::sync::CancellationToken::new();
-        let reuse_outcome = execute_job_reuse(
-            idle_entry,
-            minimal_context(),
-            &config,
-            &default_params(),
-            cancel,
-        )
-        .await;
+        let reuse_outcome = execute_job_reuse(idle_entry, minimal_context(), &config, cancel).await;
         assert_eq!(reuse_outcome.exit_code, 0);
         assert!(reuse_outcome.error.is_none());
         assert!(reuse_outcome.sandbox.is_some());
@@ -2278,8 +2268,7 @@ mod tests {
         });
 
         let cancel = tokio_util::sync::CancellationToken::new();
-        let reuse_outcome =
-            execute_job_reuse(idle_entry, ctx2, &config, &default_params(), cancel).await;
+        let reuse_outcome = execute_job_reuse(idle_entry, ctx2, &config, cancel).await;
         assert_eq!(reuse_outcome.exit_code, 0);
         assert!(reuse_outcome.sandbox.is_some());
     }
@@ -2338,14 +2327,8 @@ mod tests {
 
         // Execute reuse
         let cancel = tokio_util::sync::CancellationToken::new();
-        let reuse_outcome = execute_job_reuse(
-            reuse_entry,
-            minimal_context(),
-            &config,
-            &default_params(),
-            cancel,
-        )
-        .await;
+        let reuse_outcome =
+            execute_job_reuse(reuse_entry, minimal_context(), &config, cancel).await;
         assert_eq!(reuse_outcome.exit_code, 0);
         assert!(reuse_outcome.sandbox.is_some());
     }
@@ -2374,7 +2357,7 @@ mod tests {
             parked_at: std::time::Instant::now(),
             idle_timeout: std::time::Duration::from_secs(300),
         };
-        pool.park("session-1".into(), entry);
+        let _ = pool.park("session-1".into(), entry);
 
         // Take and verify profile
         let taken = pool.take("session-1").expect("should find");
@@ -2409,14 +2392,7 @@ mod tests {
         };
 
         let cancel = tokio_util::sync::CancellationToken::new();
-        let outcome = execute_job_reuse(
-            idle_entry,
-            minimal_context(),
-            &config,
-            &default_params(),
-            cancel,
-        )
-        .await;
+        let outcome = execute_job_reuse(idle_entry, minimal_context(), &config, cancel).await;
 
         assert_eq!(outcome.exit_code, 1);
         assert!(outcome.error.unwrap().contains("vsock broken"));
@@ -2456,14 +2432,7 @@ mod tests {
         };
 
         let cancel = tokio_util::sync::CancellationToken::new();
-        let outcome = execute_job_reuse(
-            idle_entry,
-            minimal_context(),
-            &config,
-            &default_params(),
-            cancel,
-        )
-        .await;
+        let outcome = execute_job_reuse(idle_entry, minimal_context(), &config, cancel).await;
 
         assert_eq!(outcome.exit_code, 1);
         assert!(outcome.error.unwrap().contains("reseed timeout"));
@@ -2513,7 +2482,7 @@ mod tests {
         };
 
         let cancel = tokio_util::sync::CancellationToken::new();
-        let outcome = execute_job_reuse(idle_entry, ctx, &config, &default_params(), cancel).await;
+        let outcome = execute_job_reuse(idle_entry, ctx, &config, cancel).await;
 
         // If storage download was NOT skipped, write_file would have been called
         // with the poisoned error, causing the job to fail with "download should
@@ -2555,7 +2524,7 @@ mod tests {
         };
 
         let cancel = tokio_util::sync::CancellationToken::new();
-        let outcome = execute_job_reuse(idle_entry, ctx, &config, &default_params(), cancel).await;
+        let outcome = execute_job_reuse(idle_entry, ctx, &config, cancel).await;
 
         assert_eq!(outcome.exit_code, 1);
         assert!(outcome.error.unwrap().contains("disk full"));
@@ -2614,7 +2583,7 @@ mod tests {
         };
 
         let cancel = tokio_util::sync::CancellationToken::new();
-        let outcome = execute_job_reuse(idle_entry, ctx, &config, &default_params(), cancel).await;
+        let outcome = execute_job_reuse(idle_entry, ctx, &config, cancel).await;
 
         // If storage download was NOT skipped, write_file would be called for
         // the manifest, consuming the error. Session restore's write_file would

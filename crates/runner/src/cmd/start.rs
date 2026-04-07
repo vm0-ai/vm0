@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use clap::Args;
-use sandbox::{RuntimeProvider, SandboxFactory, SandboxRuntime};
+use sandbox::{RuntimeProvider, Sandbox, SandboxFactory, SandboxRuntime};
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 use tracing::{error, info, warn};
@@ -468,10 +468,19 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // Main loop
     // -----------------------------------------------------------------------
     let mut current_mode = RunnerMode::Running;
+    let mut spawn_ctx = SpawnContext {
+        provider: Arc::clone(&provider),
+        exec_config: Arc::clone(&exec_config),
+        budget: Arc::clone(&budget),
+        idle_pool: Arc::clone(&idle_pool),
+        status: Arc::clone(&status),
+        mode: current_mode,
+    };
     loop {
         let mode = *mode_rx.borrow_and_update();
         if mode != current_mode {
             current_mode = mode;
+            spawn_ctx.mode = mode;
             status.set_mode(mode).await;
         }
         match mode {
@@ -502,11 +511,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 // repeat until the entire pool is drained unnecessarily.
                 let vcpu = evicted.vcpu;
                 let memory_mb = evicted.memory_mb;
-                let mut sandbox = evicted.sandbox;
-                if let Err(e) = sandbox.stop().await {
-                    warn!(error = %e, "failed to stop idle sandbox during eviction");
-                }
-                evicted.factory.destroy(sandbox).await;
+                evicted.stop_and_destroy().await;
                 budget.release(vcpu, memory_mb);
                 continue; // retry budget check — budget is now actually freed
             }
@@ -620,9 +625,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     cancel: job_cancel,
                 };
                 spawn_job(
-                    context, job_profile, reuse_entry, &provider, &exec_config,
-                    &budget, &idle_pool, &mut jobs, &status,
-                    current_mode,
+                    context, job_profile, reuse_entry, &spawn_ctx, &mut jobs,
                 );
             }
             // Mitmproxy crash detection
@@ -678,11 +681,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         for entry in idle_entries {
             let vcpu = entry.vcpu;
             let memory_mb = entry.memory_mb;
-            let mut sandbox = entry.sandbox;
-            if let Err(e) = sandbox.stop().await {
-                warn!(error = %e, "failed to stop idle sandbox");
-            }
-            entry.factory.destroy(sandbox).await;
+            entry.stop_and_destroy().await;
             budget.release(vcpu, memory_mb);
         }
     }
@@ -780,6 +779,16 @@ async fn shutdown_factories(
 
 type SharedIdlePool = Arc<tokio::sync::Mutex<IdlePool>>;
 
+/// Shared state passed to each spawned job task.
+struct SpawnContext {
+    provider: Arc<dyn JobProvider>,
+    exec_config: Arc<ExecutorConfig>,
+    budget: Arc<ResourceBudget>,
+    idle_pool: SharedIdlePool,
+    status: Arc<StatusTracker>,
+    mode: RunnerMode,
+}
+
 /// Spawn a job executor task.
 ///
 /// The provider has already claimed the job and the caller has reserved
@@ -791,18 +800,12 @@ type SharedIdlePool = Arc<tokio::sync::Mutex<IdlePool>>;
 ///
 /// After execution, if keep-alive is enabled and the job succeeded,
 /// the sandbox is parked in the idle pool instead of being destroyed.
-#[allow(clippy::too_many_arguments)]
 fn spawn_job(
     context: ExecutionContext,
     job_profile: JobProfile,
     reuse_entry: Option<IdleEntry>,
-    provider: &Arc<dyn JobProvider>,
-    exec_config: &Arc<ExecutorConfig>,
-    budget: &Arc<ResourceBudget>,
-    idle_pool: &SharedIdlePool,
+    ctx: &SpawnContext,
     jobs: &mut JoinSet<Option<Uuid>>,
-    status: &Arc<StatusTracker>,
-    mode: RunnerMode,
 ) {
     let run_id = context.run_id;
     let session_id = context.session_id().map(String::from);
@@ -817,11 +820,12 @@ fn spawn_job(
         use_snapshot: job_profile.use_snapshot,
     };
 
-    let provider = Arc::clone(provider);
-    let exec_config = Arc::clone(exec_config);
-    let budget = Arc::clone(budget);
-    let status = Arc::clone(status);
-    let idle_pool = Arc::clone(idle_pool);
+    let provider = Arc::clone(&ctx.provider);
+    let exec_config = Arc::clone(&ctx.exec_config);
+    let budget = Arc::clone(&ctx.budget);
+    let status = Arc::clone(&ctx.status);
+    let idle_pool = Arc::clone(&ctx.idle_pool);
+    let mode = ctx.mode;
     let factory_for_cleanup = Arc::clone(&factory);
 
     jobs.spawn(async move {
@@ -831,8 +835,7 @@ fn spawn_job(
 
         let inner = tokio::spawn(async move {
             if let Some(idle_entry) = reuse_entry {
-                executor::execute_job_reuse(idle_entry, context, &exec_config, &params, cancel)
-                    .await
+                executor::execute_job_reuse(idle_entry, context, &exec_config, cancel).await
             } else {
                 executor::execute_job(&**factory, context, &exec_config, &params, cancel).await
             }
@@ -863,73 +866,43 @@ fn spawn_job(
                 };
 
             if let Some(session_id) = parkable_session {
-                // Single lock: check enabled, get timeout, and park.
                 let mut pool = idle_pool.lock().await;
-                if !pool.is_enabled() {
-                    drop(pool);
-                    let mut sb = sandbox;
-                    if let Err(e) = sb.stop().await {
-                        warn!(run_id = %run_id, error = %e, "sandbox stop failed");
+                let idle_timeout = pool.default_timeout();
+                let entry = IdleEntry {
+                    sandbox,
+                    factory: factory_for_cleanup,
+                    session_id: session_id.to_string(),
+                    profile_name,
+                    vcpu,
+                    memory_mb,
+                    source_ip,
+                    parked_at: std::time::Instant::now(),
+                    idle_timeout,
+                };
+                match pool.park(session_id.to_string(), entry) {
+                    ParkResult::Parked => {
+                        info!(run_id = %run_id, session_id, "VM parked for keep-alive");
+                        true
                     }
-                    factory_for_cleanup.destroy(sb).await;
-                    false
-                } else {
-                    let idle_timeout = pool.default_timeout();
-                    let entry = IdleEntry {
-                        sandbox,
-                        factory: factory_for_cleanup,
-                        session_id: session_id.to_string(),
-                        profile_name,
-                        vcpu,
-                        memory_mb,
-                        source_ip,
-                        parked_at: std::time::Instant::now(),
-                        idle_timeout,
-                    };
-                    match pool.park(session_id.to_string(), entry) {
-                        ParkResult::Parked => {
-                            info!(run_id = %run_id, session_id, "VM parked for keep-alive");
-                            true
-                        }
-                        ParkResult::Evicted(evicted) => {
-                            info!(run_id = %run_id, session_id, "VM parked, evicting previous");
-                            drop(pool);
-                            // Inline destroy: this code runs inside a tokio task
-                            // (jobs.spawn), so awaiting here does not block the
-                            // main loop. Inline ensures the factory Arc is dropped
-                            // before shutdown_factories runs.
-                            let evict_vcpu = evicted.vcpu;
-                            let evict_mem = evicted.memory_mb;
-                            let mut sb = evicted.sandbox;
-                            if let Err(e) = sb.stop().await {
-                                warn!(run_id = %run_id, error = %e, "evicted sandbox stop failed");
-                            }
-                            evicted.factory.destroy(sb).await;
-                            budget.release(evict_vcpu, evict_mem);
-                            true
-                        }
-                        ParkResult::PoolFull(rejected) => {
-                            info!(run_id = %run_id, session_id, "idle pool full, destroying VM");
-                            drop(pool);
-                            // Inline stop+destroy — budget will be released
-                            // by the `!parked` path below, not by destroy_idle_entry,
-                            // to avoid double-releasing the same budget.
-                            let mut sb = rejected.sandbox;
-                            if let Err(e) = sb.stop().await {
-                                warn!(run_id = %run_id, error = %e, "sandbox stop failed");
-                            }
-                            rejected.factory.destroy(sb).await;
-                            false
-                        }
+                    ParkResult::Evicted(evicted) => {
+                        info!(run_id = %run_id, session_id, "VM parked, evicting previous");
+                        drop(pool);
+                        let evict_vcpu = evicted.vcpu;
+                        let evict_mem = evicted.memory_mb;
+                        evicted.stop_and_destroy().await;
+                        budget.release(evict_vcpu, evict_mem);
+                        true
+                    }
+                    ParkResult::PoolFull(rejected) => {
+                        info!(run_id = %run_id, session_id, "idle pool full, destroying VM");
+                        drop(pool);
+                        rejected.stop_and_destroy().await;
+                        false
                     }
                 }
             } else {
                 // No parkable session — stop + destroy
-                let mut sb = sandbox;
-                if let Err(e) = sb.stop().await {
-                    warn!(run_id = %run_id, error = %e, "sandbox stop failed");
-                }
-                factory_for_cleanup.destroy(sb).await;
+                stop_and_destroy_sandbox(sandbox, &**factory_for_cleanup).await;
                 false
             }
         } else {
@@ -953,12 +926,16 @@ fn spawn_job(
 async fn destroy_idle_entry(entry: IdleEntry, budget: Arc<ResourceBudget>) {
     let vcpu = entry.vcpu;
     let memory_mb = entry.memory_mb;
-    let mut sandbox = entry.sandbox;
-    if let Err(e) = sandbox.stop().await {
-        warn!(error = %e, "failed to stop idle sandbox");
-    }
-    entry.factory.destroy(sandbox).await;
+    entry.stop_and_destroy().await;
     budget.release(vcpu, memory_mb);
+}
+
+/// Stop a sandbox and destroy it via its factory.
+async fn stop_and_destroy_sandbox(mut sandbox: Box<dyn Sandbox>, factory: &dyn SandboxFactory) {
+    if let Err(e) = sandbox.stop().await {
+        warn!(error = %e, "sandbox stop failed");
+    }
+    factory.destroy(sandbox).await;
 }
 
 /// Handle a completed job from the JoinSet, cleaning up cancel tokens.

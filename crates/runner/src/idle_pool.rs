@@ -41,6 +41,17 @@ pub struct IdleEntry {
     pub idle_timeout: Duration,
 }
 
+impl IdleEntry {
+    /// Stop the sandbox and destroy it via its factory.
+    pub async fn stop_and_destroy(self) {
+        let mut sandbox = self.sandbox;
+        if let Err(e) = sandbox.stop().await {
+            tracing::warn!(error = %e, "failed to stop idle sandbox");
+        }
+        self.factory.destroy(sandbox).await;
+    }
+}
+
 /// Pool of idle sandboxes keyed by session ID.
 ///
 /// After a job completes successfully, its sandbox can be parked here
@@ -62,9 +73,11 @@ impl IdlePool {
     /// Park a sandbox in the pool. Returns the previously parked entry
     /// for this session if one existed (caller must destroy it).
     ///
-    /// If the pool is at capacity (`max_idle`), returns `PoolFull(entry)`
-    /// so the caller can destroy the entry that couldn't be parked.
+    /// Returns `PoolFull(entry)` if the pool is disabled or at capacity.
     pub fn park(&mut self, session_id: String, entry: IdleEntry) -> ParkResult {
+        if !self.config.enabled {
+            return ParkResult::PoolFull(entry);
+        }
         if self.config.max_idle > 0 && self.entries.len() >= self.config.max_idle {
             // At capacity and this session has no existing entry to replace.
             if !self.entries.contains_key(&session_id) {
@@ -121,6 +134,7 @@ impl IdlePool {
     }
 
     /// Whether keep-alive is enabled.
+    #[cfg(test)]
     pub fn is_enabled(&self) -> bool {
         self.config.enabled
     }
@@ -141,12 +155,13 @@ impl IdlePool {
 }
 
 /// Result of a `park` operation.
+#[must_use]
 pub enum ParkResult {
     /// Successfully parked; no previous entry for this session.
     Parked,
     /// Successfully parked; the returned entry was evicted (same session).
     Evicted(IdleEntry),
-    /// Pool is at max capacity; the entry could not be parked.
+    /// Pool is at max capacity or disabled; the entry could not be parked.
     PoolFull(IdleEntry),
 }
 
@@ -224,7 +239,7 @@ mod tests {
     fn park_same_session_evicts_previous() {
         let mut pool = IdlePool::new(pool_config(0));
 
-        pool.park("session-1".into(), make_entry(2, 2048));
+        let _ = pool.park("session-1".into(), make_entry(2, 2048));
         let result = pool.park("session-1".into(), make_entry(4, 4096));
 
         match result {
@@ -244,8 +259,8 @@ mod tests {
     fn park_respects_max_idle() {
         let mut pool = IdlePool::new(pool_config(2));
 
-        pool.park("s1".into(), make_entry(2, 2048));
-        pool.park("s2".into(), make_entry(2, 2048));
+        let _ = pool.park("s1".into(), make_entry(2, 2048));
+        let _ = pool.park("s2".into(), make_entry(2, 2048));
 
         // Third session should fail
         let result = pool.park("s3".into(), make_entry(2, 2048));
@@ -264,7 +279,7 @@ mod tests {
         let now = Instant::now();
 
         // Entry expired 10s ago
-        pool.park(
+        let _ = pool.park(
             "expired".into(),
             make_entry_with_park_time(
                 2,
@@ -274,7 +289,7 @@ mod tests {
             ),
         );
         // Entry still fresh
-        pool.park(
+        let _ = pool.park(
             "fresh".into(),
             make_entry_with_park_time(2, 2048, now, Duration::from_secs(300)),
         );
@@ -290,7 +305,7 @@ mod tests {
         let mut pool = IdlePool::new(pool_config(0));
         let now = Instant::now();
 
-        pool.park(
+        let _ = pool.park(
             "old".into(),
             make_entry_with_park_time(
                 2,
@@ -299,7 +314,7 @@ mod tests {
                 Duration::from_secs(300),
             ),
         );
-        pool.park(
+        let _ = pool.park(
             "new".into(),
             make_entry_with_park_time(4, 4096, now, Duration::from_secs(300)),
         );
@@ -319,8 +334,8 @@ mod tests {
     #[test]
     fn held_sessions() {
         let mut pool = IdlePool::new(pool_config(0));
-        pool.park("s1".into(), make_entry(2, 2048));
-        pool.park("s2".into(), make_entry(2, 2048));
+        let _ = pool.park("s1".into(), make_entry(2, 2048));
+        let _ = pool.park("s2".into(), make_entry(2, 2048));
 
         let mut sessions = pool.held_sessions();
         sessions.sort();
@@ -330,8 +345,8 @@ mod tests {
     #[test]
     fn drain() {
         let mut pool = IdlePool::new(pool_config(0));
-        pool.park("s1".into(), make_entry(2, 2048));
-        pool.park("s2".into(), make_entry(4, 4096));
+        let _ = pool.park("s1".into(), make_entry(2, 2048));
+        let _ = pool.park("s2".into(), make_entry(4, 4096));
 
         let drained = pool.drain();
         assert_eq!(drained.len(), 2);
@@ -347,26 +362,31 @@ mod tests {
     }
 
     #[test]
-    fn park_after_drain_still_inserts() {
-        // drain() disables the pool, but park() itself does not check enabled —
-        // the caller (spawn_job) is responsible for checking is_enabled() first.
-        // This test documents the current behaviour.
+    fn disabled_pool_rejects_park() {
+        let mut pool = IdlePool::new(IdlePoolConfig::default());
+        let result = pool.park("s1".into(), make_entry(2, 2048));
+        assert!(matches!(result, ParkResult::PoolFull(_)));
+        assert_eq!(pool.len(), 0);
+    }
+
+    #[test]
+    fn park_after_drain_rejected() {
+        // drain() disables the pool — subsequent park() calls are rejected.
         let mut pool = IdlePool::new(pool_config(0));
-        pool.park("s1".into(), make_entry(2, 2048));
+        let _ = pool.park("s1".into(), make_entry(2, 2048));
         pool.drain();
         assert!(!pool.is_enabled());
 
-        // park still succeeds at the data-structure level
         let result = pool.park("s2".into(), make_entry(4, 4096));
-        assert!(matches!(result, ParkResult::Parked));
-        assert_eq!(pool.len(), 1);
+        assert!(matches!(result, ParkResult::PoolFull(_)));
+        assert_eq!(pool.len(), 0);
     }
 
     #[test]
     fn evict_expired_none_expired() {
         let mut pool = IdlePool::new(pool_config(0));
         let now = Instant::now();
-        pool.park(
+        let _ = pool.park(
             "fresh".into(),
             make_entry_with_park_time(2, 2048, now, Duration::from_secs(300)),
         );
@@ -388,7 +408,7 @@ mod tests {
         let mut pool = IdlePool::new(pool_config(0));
         let now = Instant::now();
 
-        pool.park(
+        let _ = pool.park(
             "s1".into(),
             make_entry_with_park_time(
                 2,
@@ -397,7 +417,7 @@ mod tests {
                 Duration::from_secs(300),
             ),
         );
-        pool.park(
+        let _ = pool.park(
             "s2".into(),
             make_entry_with_park_time(
                 4,
@@ -419,7 +439,7 @@ mod tests {
         let now = Instant::now();
 
         // Short timeout (60s), parked 70s ago → expired
-        pool.park(
+        let _ = pool.park(
             "short".into(),
             make_entry_with_park_time(
                 2,
@@ -429,7 +449,7 @@ mod tests {
             ),
         );
         // Long timeout (300s), parked 70s ago → NOT expired
-        pool.park(
+        let _ = pool.park(
             "long".into(),
             make_entry_with_park_time(
                 4,
