@@ -82,10 +82,20 @@ export function createSafeErrorHandler(
     }
 
     // Application errors with explicit status codes (BadRequest, NotFound, etc.)
+    // Only expose err.message for 4xx (client errors are safe to surface);
+    // 5xx messages could leak internals (CWE-209).
     if (isApiError(err)) {
       log.error(`${routeName} error:`, err);
+      const clientSafe = err.statusCode >= 400 && err.statusCode < 500;
       return TsRestResponse.fromJson(
-        { error: { message: err.message, code: err.code } },
+        {
+          error: {
+            message: clientSafe
+              ? err.message
+              : "An internal error occurred. Please try again later.",
+            code: err.code,
+          },
+        },
         { status: err.statusCode },
       );
     }
