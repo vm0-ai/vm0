@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const agentmailFirewall: FirewallConfig = {
+export const agentmailFirewall = {
   name: "agentmail",
   description: "AgentMail API",
   placeholders: {
@@ -23,4 +23,4 @@ export const agentmailFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

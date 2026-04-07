@@ -23,7 +23,7 @@ function generateTypeScript(): string {
     "",
     'import type { FirewallConfig } from "../contracts/firewalls";',
     "",
-    "export const gitlabFirewall: FirewallConfig = {",
+    "export const gitlabFirewall = {",
     '  name: "gitlab",',
     '  description: "GitLab API",',
     "  placeholders: {",
@@ -40,7 +40,7 @@ function generateTypeScript(): string {
     "      permissions: [],",
     "    },",
     "  ],",
-    "};",
+    "} as const satisfies FirewallConfig;",
     "",
   ];
 

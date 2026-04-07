@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const instantlyFirewall: FirewallConfig = {
+export const instantlyFirewall = {
   name: "instantly",
   description: "Instantly API",
   placeholders: {
@@ -23,4 +23,4 @@ export const instantlyFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

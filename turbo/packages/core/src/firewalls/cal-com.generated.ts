@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const calComFirewall: FirewallConfig = {
+export const calComFirewall = {
   name: "cal-com",
   description: "Cal.com API",
   placeholders: {
@@ -23,4 +23,4 @@ export const calComFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

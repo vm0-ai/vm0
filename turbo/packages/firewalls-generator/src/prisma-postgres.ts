@@ -15,7 +15,7 @@ function generateTypeScript(): string {
     "",
     'import type { FirewallConfig } from "../contracts/firewalls";',
     "",
-    "export const prismaPostgresFirewall: FirewallConfig = {",
+    "export const prismaPostgresFirewall = {",
     '  name: "prisma-postgres",',
     '  description: "Prisma Postgres Management API",',
     "  placeholders: {",
@@ -32,7 +32,7 @@ function generateTypeScript(): string {
     "      permissions: [],",
     "    },",
     "  ],",
-    "};",
+    "} as const satisfies FirewallConfig;",
     "",
   ];
   return lines.join("\n");

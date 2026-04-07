@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const canvaFirewall: FirewallConfig = {
+export const canvaFirewall = {
   name: "canva",
   description: "Canva Connect API",
   placeholders: {
@@ -23,4 +23,4 @@ export const canvaFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const perplexityFirewall: FirewallConfig = {
+export const perplexityFirewall = {
   name: "perplexity",
   description: "Perplexity API",
   placeholders: {
@@ -23,4 +23,4 @@ export const perplexityFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

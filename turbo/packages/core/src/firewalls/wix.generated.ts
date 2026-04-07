@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const wixFirewall: FirewallConfig = {
+export const wixFirewall = {
   name: "wix",
   description: "Wix REST API",
   placeholders: {
@@ -23,4 +23,4 @@ export const wixFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

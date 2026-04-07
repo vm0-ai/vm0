@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const jotformFirewall: FirewallConfig = {
+export const jotformFirewall = {
   name: "jotform",
   description: "Jotform API",
   placeholders: {
@@ -42,4 +42,4 @@ export const jotformFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

@@ -45,7 +45,7 @@ function generateTypeScript(): string {
     "",
     'import type { FirewallConfig } from "../contracts/firewalls";',
     "",
-    "export const makeFirewall: FirewallConfig = {",
+    "export const makeFirewall = {",
     '  name: "make",',
     '  description: "Make (formerly Integromat) Automation API",',
     "  placeholders: {",
@@ -54,7 +54,7 @@ function generateTypeScript(): string {
     "  apis: [",
     apiEntries + ",",
     "  ],",
-    "};",
+    "} as const satisfies FirewallConfig;",
     "",
   ];
 

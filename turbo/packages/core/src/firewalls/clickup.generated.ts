@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const clickupFirewall: FirewallConfig = {
+export const clickupFirewall = {
   name: "clickup",
   description: "ClickUp API",
   placeholders: {
@@ -23,4 +23,4 @@ export const clickupFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

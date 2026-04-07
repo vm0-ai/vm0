@@ -25,7 +25,7 @@ function generateTypeScript(): string {
     "",
     'import type { FirewallConfig } from "../contracts/firewalls";',
     "",
-    "export const imgurFirewall: FirewallConfig = {",
+    "export const imgurFirewall = {",
     '  name: "imgur",',
     '  description: "Imgur API",',
     "  placeholders: {",
@@ -42,7 +42,7 @@ function generateTypeScript(): string {
     "      permissions: [],",
     "    },",
     "  ],",
-    "};",
+    "} as const satisfies FirewallConfig;",
     "",
   ];
 

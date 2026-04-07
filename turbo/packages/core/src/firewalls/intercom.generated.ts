@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const intercomFirewall: FirewallConfig = {
+export const intercomFirewall = {
   name: "intercom",
   description: "Intercom API",
   placeholders: {
@@ -24,4 +24,4 @@ export const intercomFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

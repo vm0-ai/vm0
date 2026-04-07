@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const todoistFirewall: FirewallConfig = {
+export const todoistFirewall = {
   name: "todoist",
   description: "Todoist API",
   placeholders: {
@@ -23,4 +23,4 @@ export const todoistFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

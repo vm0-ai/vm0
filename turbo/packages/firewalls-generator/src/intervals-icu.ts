@@ -15,7 +15,7 @@ function generateTypeScript(): string {
     "",
     'import type { FirewallConfig } from "../contracts/firewalls";',
     "",
-    "export const intervalsIcuFirewall: FirewallConfig = {",
+    "export const intervalsIcuFirewall = {",
     '  name: "intervals-icu",',
     '  description: "Intervals.icu Training API",',
     "  placeholders: {",
@@ -32,7 +32,7 @@ function generateTypeScript(): string {
     "      permissions: [],",
     "    },",
     "  ],",
-    "};",
+    "} as const satisfies FirewallConfig;",
     "",
   ];
   return lines.join("\n");

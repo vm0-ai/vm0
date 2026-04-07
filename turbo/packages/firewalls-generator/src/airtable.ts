@@ -24,7 +24,7 @@ function generateTypeScript(): string {
     "",
     'import type { FirewallConfig } from "../contracts/firewalls";',
     "",
-    "export const airtableFirewall: FirewallConfig = {",
+    "export const airtableFirewall = {",
     '  name: "airtable",',
     '  description: "Airtable API",',
     "  placeholders: {",
@@ -41,7 +41,7 @@ function generateTypeScript(): string {
     "      permissions: [],",
     "    },",
     "  ],",
-    "};",
+    "} as const satisfies FirewallConfig;",
     "",
   ];
 

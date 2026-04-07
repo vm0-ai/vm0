@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const tavilyFirewall: FirewallConfig = {
+export const tavilyFirewall = {
   name: "tavily",
   description: "Tavily API",
   placeholders: {
@@ -23,4 +23,4 @@ export const tavilyFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

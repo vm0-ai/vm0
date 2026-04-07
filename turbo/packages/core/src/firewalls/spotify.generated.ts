@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const spotifyFirewall: FirewallConfig = {
+export const spotifyFirewall = {
   name: "spotify",
   description: "Spotify Web API",
   placeholders: {
@@ -23,4 +23,4 @@ export const spotifyFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

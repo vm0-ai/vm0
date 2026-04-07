@@ -24,7 +24,7 @@ function generateTypeScript(): string {
     "",
     'import type { FirewallConfig } from "../contracts/firewalls";',
     "",
-    "export const braveSearchFirewall: FirewallConfig = {",
+    "export const braveSearchFirewall = {",
     '  name: "brave-search",',
     '  description: "Brave Search API",',
     "  placeholders: {",
@@ -41,7 +41,7 @@ function generateTypeScript(): string {
     "      permissions: [],",
     "    },",
     "  ],",
-    "};",
+    "} as const satisfies FirewallConfig;",
     "",
   ];
   return lines.join("\n");

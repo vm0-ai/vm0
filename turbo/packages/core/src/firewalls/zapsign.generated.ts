@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const zapsignFirewall: FirewallConfig = {
+export const zapsignFirewall = {
   name: "zapsign",
   description: "ZapSign API",
   placeholders: {
@@ -23,4 +23,4 @@ export const zapsignFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const braveSearchFirewall: FirewallConfig = {
+export const braveSearchFirewall = {
   name: "brave-search",
   description: "Brave Search API",
   placeholders: {
@@ -23,4 +23,4 @@ export const braveSearchFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

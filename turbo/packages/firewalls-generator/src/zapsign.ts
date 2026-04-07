@@ -23,7 +23,7 @@ function generateTypeScript(): string {
     "",
     'import type { FirewallConfig } from "../contracts/firewalls";',
     "",
-    "export const zapsignFirewall: FirewallConfig = {",
+    "export const zapsignFirewall = {",
     '  name: "zapsign",',
     '  description: "ZapSign API",',
     "  placeholders: {",
@@ -40,7 +40,7 @@ function generateTypeScript(): string {
     "      permissions: [],",
     "    },",
     "  ],",
-    "};",
+    "} as const satisfies FirewallConfig;",
     "",
   ];
 

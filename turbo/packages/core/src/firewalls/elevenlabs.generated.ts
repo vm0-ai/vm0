@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const elevenlabsFirewall: FirewallConfig = {
+export const elevenlabsFirewall = {
   name: "elevenlabs",
   description: "ElevenLabs API",
   placeholders: {
@@ -23,4 +23,4 @@ export const elevenlabsFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

@@ -14,7 +14,7 @@ function generateTypeScript(): string {
     "",
     'import type { FirewallConfig } from "../contracts/firewalls";',
     "",
-    "export const outlookMailFirewall: FirewallConfig = {",
+    "export const outlookMailFirewall = {",
     '  name: "outlook-mail",',
     '  description: "Microsoft Graph API (Outlook Mail)",',
     "  placeholders: {",
@@ -31,7 +31,7 @@ function generateTypeScript(): string {
     "      permissions: [],",
     "    },",
     "  ],",
-    "};",
+    "} as const satisfies FirewallConfig;",
     "",
   ];
   return lines.join("\n");

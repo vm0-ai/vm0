@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const productlaneFirewall: FirewallConfig = {
+export const productlaneFirewall = {
   name: "productlane",
   description: "Productlane API",
   placeholders: {
@@ -23,4 +23,4 @@ export const productlaneFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

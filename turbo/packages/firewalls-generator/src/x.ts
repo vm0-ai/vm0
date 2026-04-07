@@ -143,7 +143,7 @@ function generateTypeScript(permissions: PermissionGroup[]): string {
     "",
     'import type { FirewallConfig } from "../contracts/firewalls";',
     "",
-    "export const xFirewall: FirewallConfig = {",
+    "export const xFirewall = {",
     '  name: "x",',
     '  description: "X (Twitter) API",',
     "  placeholders: {",

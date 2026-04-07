@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const garminConnectFirewall: FirewallConfig = {
+export const garminConnectFirewall = {
   name: "garmin-connect",
   description: "Garmin Connect API",
   placeholders: {
@@ -24,4 +24,4 @@ export const garminConnectFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

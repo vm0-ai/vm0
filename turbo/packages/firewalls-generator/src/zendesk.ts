@@ -24,7 +24,7 @@ function generateTypeScript(): string {
     "",
     'import type { FirewallConfig } from "../contracts/firewalls";',
     "",
-    "export const zendeskFirewall: FirewallConfig = {",
+    "export const zendeskFirewall = {",
     '  name: "zendesk",',
     '  description: "Zendesk Support API",',
     "  placeholders: {",
@@ -41,7 +41,7 @@ function generateTypeScript(): string {
     "      permissions: [],",
     "    },",
     "  ],",
-    "};",
+    "} as const satisfies FirewallConfig;",
     "",
   ];
 

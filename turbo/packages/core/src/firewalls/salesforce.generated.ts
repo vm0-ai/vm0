@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const salesforceFirewall: FirewallConfig = {
+export const salesforceFirewall = {
   name: "salesforce",
   description: "Salesforce REST API",
   placeholders: {
@@ -24,4 +24,4 @@ export const salesforceFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

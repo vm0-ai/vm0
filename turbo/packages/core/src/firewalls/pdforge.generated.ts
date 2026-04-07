@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const pdforgeFirewall: FirewallConfig = {
+export const pdforgeFirewall = {
   name: "pdforge",
   description: "PDForge PDF Generation API",
   placeholders: {
@@ -23,4 +23,4 @@ export const pdforgeFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

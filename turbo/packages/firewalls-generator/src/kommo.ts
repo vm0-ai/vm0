@@ -24,7 +24,7 @@ function generateTypeScript(): string {
     "",
     'import type { FirewallConfig } from "../contracts/firewalls";',
     "",
-    "export const kommoFirewall: FirewallConfig = {",
+    "export const kommoFirewall = {",
     '  name: "kommo",',
     '  description: "Kommo CRM API",',
     "  placeholders: {",
@@ -41,7 +41,7 @@ function generateTypeScript(): string {
     "      permissions: [],",
     "    },",
     "  ],",
-    "};",
+    "} as const satisfies FirewallConfig;",
     "",
   ];
 

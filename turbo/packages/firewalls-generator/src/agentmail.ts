@@ -22,7 +22,7 @@ function generateTypeScript(): string {
     "",
     'import type { FirewallConfig } from "../contracts/firewalls";',
     "",
-    "export const agentmailFirewall: FirewallConfig = {",
+    "export const agentmailFirewall = {",
     '  name: "agentmail",',
     '  description: "AgentMail API",',
     "  placeholders: {",
@@ -39,7 +39,7 @@ function generateTypeScript(): string {
     "      permissions: [],",
     "    },",
     "  ],",
-    "};",
+    "} as const satisfies FirewallConfig;",
     "",
   ];
 

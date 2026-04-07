@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const huggingFaceFirewall: FirewallConfig = {
+export const huggingFaceFirewall = {
   name: "hugging-face",
   description: "Hugging Face API",
   placeholders: {
@@ -41,4 +41,4 @@ export const huggingFaceFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

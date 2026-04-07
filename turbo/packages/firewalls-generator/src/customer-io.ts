@@ -26,7 +26,7 @@ function generateTypeScript(): string {
     "",
     'import type { FirewallConfig } from "../contracts/firewalls";',
     "",
-    "export const customerIoFirewall: FirewallConfig = {",
+    "export const customerIoFirewall = {",
     '  name: "customer-io",',
     '  description: "Customer.io API",',
     "  placeholders: {",
@@ -43,7 +43,7 @@ function generateTypeScript(): string {
     "      permissions: [],",
     "    },",
     "  ],",
-    "};",
+    "} as const satisfies FirewallConfig;",
     "",
   ];
 

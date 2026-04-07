@@ -26,7 +26,7 @@ function generateTypeScript(): string {
     "",
     'import type { FirewallConfig } from "../contracts/firewalls";',
     "",
-    "export const qdrantFirewall: FirewallConfig = {",
+    "export const qdrantFirewall = {",
     '  name: "qdrant",',
     '  description: "Qdrant Vector Database API",',
     "  placeholders: {",
@@ -43,7 +43,7 @@ function generateTypeScript(): string {
     "      permissions: [],",
     "    },",
     "  ],",
-    "};",
+    "} as const satisfies FirewallConfig;",
     "",
   ];
 

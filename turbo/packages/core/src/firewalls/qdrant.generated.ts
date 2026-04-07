@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const qdrantFirewall: FirewallConfig = {
+export const qdrantFirewall = {
   name: "qdrant",
   description: "Qdrant Vector Database API",
   placeholders: {
@@ -23,4 +23,4 @@ export const qdrantFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

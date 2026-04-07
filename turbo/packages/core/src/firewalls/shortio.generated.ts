@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const shortioFirewall: FirewallConfig = {
+export const shortioFirewall = {
   name: "shortio",
   description: "Short.io API",
   placeholders: {
@@ -23,4 +23,4 @@ export const shortioFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

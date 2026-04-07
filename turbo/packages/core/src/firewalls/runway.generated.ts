@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const runwayFirewall: FirewallConfig = {
+export const runwayFirewall = {
   name: "runway",
   description: "Runway API",
   placeholders: {
@@ -23,4 +23,4 @@ export const runwayFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

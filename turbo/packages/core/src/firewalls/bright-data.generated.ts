@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const brightDataFirewall: FirewallConfig = {
+export const brightDataFirewall = {
   name: "bright-data",
   description: "Bright Data API",
   placeholders: {
@@ -24,4 +24,4 @@ export const brightDataFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

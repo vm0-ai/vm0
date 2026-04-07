@@ -23,7 +23,7 @@ function generateTypeScript(): string {
     "",
     'import type { FirewallConfig } from "../contracts/firewalls";',
     "",
-    "export const zeptomailFirewall: FirewallConfig = {",
+    "export const zeptomailFirewall = {",
     '  name: "zeptomail",',
     '  description: "ZeptoMail API",',
     "  placeholders: {",
@@ -40,7 +40,7 @@ function generateTypeScript(): string {
     "      permissions: [],",
     "    },",
     "  ],",
-    "};",
+    "} as const satisfies FirewallConfig;",
     "",
   ];
 

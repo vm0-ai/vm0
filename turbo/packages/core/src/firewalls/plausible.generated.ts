@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const plausibleFirewall: FirewallConfig = {
+export const plausibleFirewall = {
   name: "plausible",
   description: "Plausible Analytics API",
   placeholders: {
@@ -23,4 +23,4 @@ export const plausibleFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

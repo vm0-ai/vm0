@@ -25,7 +25,7 @@ function generateTypeScript(): string {
     "",
     'import type { FirewallConfig } from "../contracts/firewalls";',
     "",
-    "export const brevoFirewall: FirewallConfig = {",
+    "export const brevoFirewall = {",
     '  name: "brevo",',
     '  description: "Brevo API",',
     "  placeholders: {",
@@ -42,7 +42,7 @@ function generateTypeScript(): string {
     "      permissions: [],",
     "    },",
     "  ],",
-    "};",
+    "} as const satisfies FirewallConfig;",
     "",
   ];
 

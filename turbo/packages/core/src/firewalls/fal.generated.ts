@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const falFirewall: FirewallConfig = {
+export const falFirewall = {
   name: "fal",
   description: "fal.ai API",
   placeholders: {
@@ -41,4 +41,4 @@ export const falFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

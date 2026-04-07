@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const ahrefsFirewall: FirewallConfig = {
+export const ahrefsFirewall = {
   name: "ahrefs",
   description: "Ahrefs API",
   placeholders: {
@@ -23,4 +23,4 @@ export const ahrefsFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

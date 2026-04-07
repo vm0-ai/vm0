@@ -23,7 +23,7 @@ function generateTypeScript(): string {
     "",
     'import type { FirewallConfig } from "../contracts/firewalls";',
     "",
-    "export const difyFirewall: FirewallConfig = {",
+    "export const difyFirewall = {",
     '  name: "dify",',
     '  description: "Dify API",',
     "  placeholders: {",
@@ -40,7 +40,7 @@ function generateTypeScript(): string {
     "      permissions: [],",
     "    },",
     "  ],",
-    "};",
+    "} as const satisfies FirewallConfig;",
     "",
   ];
 

@@ -8,7 +8,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const atlassianFirewall: FirewallConfig = {
+export const atlassianFirewall = {
   name: "atlassian",
   description: "Atlassian (Jira + Confluence) API",
   placeholders: {

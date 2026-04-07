@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const serpapiFirewall: FirewallConfig = {
+export const serpapiFirewall = {
   name: "serpapi",
   description: "SerpApi",
   placeholders: {
@@ -23,4 +23,4 @@ export const serpapiFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

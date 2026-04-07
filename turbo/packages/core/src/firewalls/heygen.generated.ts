@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const heygenFirewall: FirewallConfig = {
+export const heygenFirewall = {
   name: "heygen",
   description: "HeyGen API",
   placeholders: {
@@ -23,4 +23,4 @@ export const heygenFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

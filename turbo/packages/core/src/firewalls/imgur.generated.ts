@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const imgurFirewall: FirewallConfig = {
+export const imgurFirewall = {
   name: "imgur",
   description: "Imgur API",
   placeholders: {
@@ -23,4 +23,4 @@ export const imgurFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

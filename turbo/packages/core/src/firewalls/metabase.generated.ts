@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const metabaseFirewall: FirewallConfig = {
+export const metabaseFirewall = {
   name: "metabase",
   description: "Metabase API",
   placeholders: {
@@ -23,4 +23,4 @@ export const metabaseFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

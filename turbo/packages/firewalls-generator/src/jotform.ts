@@ -44,7 +44,7 @@ function generateTypeScript(): string {
     "",
     'import type { FirewallConfig } from "../contracts/firewalls";',
     "",
-    "export const jotformFirewall: FirewallConfig = {",
+    "export const jotformFirewall = {",
     '  name: "jotform",',
     '  description: "Jotform API",',
     "  placeholders: {",
@@ -53,7 +53,7 @@ function generateTypeScript(): string {
     "  apis: [",
     apiEntries.join(",\n"),
     "  ],",
-    "};",
+    "} as const satisfies FirewallConfig;",
     "",
   ];
 

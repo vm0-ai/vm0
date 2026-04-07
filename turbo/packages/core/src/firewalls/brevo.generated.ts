@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const brevoFirewall: FirewallConfig = {
+export const brevoFirewall = {
   name: "brevo",
   description: "Brevo API",
   placeholders: {
@@ -24,4 +24,4 @@ export const brevoFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

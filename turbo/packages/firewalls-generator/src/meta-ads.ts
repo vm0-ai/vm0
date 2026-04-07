@@ -15,7 +15,7 @@ function generateTypeScript(): string {
     "",
     'import type { FirewallConfig } from "../contracts/firewalls";',
     "",
-    "export const metaAdsFirewall: FirewallConfig = {",
+    "export const metaAdsFirewall = {",
     '  name: "meta-ads",',
     '  description: "Meta Ads (Facebook Graph) API",',
     "  placeholders: {",
@@ -32,7 +32,7 @@ function generateTypeScript(): string {
     "      permissions: [],",
     "    },",
     "  ],",
-    "};",
+    "} as const satisfies FirewallConfig;",
     "",
   ];
   return lines.join("\n");

@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const intervalsIcuFirewall: FirewallConfig = {
+export const intervalsIcuFirewall = {
   name: "intervals-icu",
   description: "Intervals.icu Training API",
   placeholders: {
@@ -24,4 +24,4 @@ export const intervalsIcuFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

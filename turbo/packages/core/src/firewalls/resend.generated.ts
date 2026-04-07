@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const resendFirewall: FirewallConfig = {
+export const resendFirewall = {
   name: "resend",
   description: "Resend API",
   placeholders: {
@@ -23,4 +23,4 @@ export const resendFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

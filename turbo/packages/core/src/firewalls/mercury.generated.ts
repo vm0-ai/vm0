@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const mercuryFirewall: FirewallConfig = {
+export const mercuryFirewall = {
   name: "mercury",
   description: "Mercury API",
   placeholders: {
@@ -23,4 +23,4 @@ export const mercuryFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

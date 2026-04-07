@@ -42,7 +42,7 @@ function generateTypeScript(): string {
     "",
     'import type { FirewallConfig } from "../contracts/firewalls";',
     "",
-    "export const wrikeFirewall: FirewallConfig = {",
+    "export const wrikeFirewall = {",
     '  name: "wrike",',
     '  description: "Wrike Project Management API",',
     "  placeholders: {",
@@ -51,7 +51,7 @@ function generateTypeScript(): string {
     "  apis: [",
     apiEntries + ",",
     "  ],",
-    "};",
+    "} as const satisfies FirewallConfig;",
     "",
   ];
 

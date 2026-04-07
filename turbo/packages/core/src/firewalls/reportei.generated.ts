@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const reporteiFirewall: FirewallConfig = {
+export const reporteiFirewall = {
   name: "reportei",
   description: "Reportei API",
   placeholders: {
@@ -23,4 +23,4 @@ export const reporteiFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

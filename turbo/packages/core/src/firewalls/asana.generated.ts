@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const asanaFirewall: FirewallConfig = {
+export const asanaFirewall = {
   name: "asana",
   description: "Asana API",
   placeholders: {
@@ -23,4 +23,4 @@ export const asanaFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

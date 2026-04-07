@@ -24,7 +24,7 @@ function generateTypeScript(): string {
     "",
     'import type { FirewallConfig } from "../contracts/firewalls";',
     "",
-    "export const perplexityFirewall: FirewallConfig = {",
+    "export const perplexityFirewall = {",
     '  name: "perplexity",',
     '  description: "Perplexity API",',
     "  placeholders: {",
@@ -41,7 +41,7 @@ function generateTypeScript(): string {
     "      permissions: [],",
     "    },",
     "  ],",
-    "};",
+    "} as const satisfies FirewallConfig;",
     "",
   ];
   return lines.join("\n");

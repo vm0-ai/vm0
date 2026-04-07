@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const docusignFirewall: FirewallConfig = {
+export const docusignFirewall = {
   name: "docusign",
   description: "DocuSign eSignature REST API",
   placeholders: {
@@ -87,4 +87,4 @@ export const docusignFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const scrapeninjaFirewall: FirewallConfig = {
+export const scrapeninjaFirewall = {
   name: "scrapeninja",
   description: "ScrapeNinja Web Scraping API",
   placeholders: {
@@ -23,4 +23,4 @@ export const scrapeninjaFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

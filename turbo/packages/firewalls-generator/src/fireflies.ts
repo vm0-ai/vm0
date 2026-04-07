@@ -23,7 +23,7 @@ function generateTypeScript(): string {
     "",
     'import type { FirewallConfig } from "../contracts/firewalls";',
     "",
-    "export const firefliesFirewall: FirewallConfig = {",
+    "export const firefliesFirewall = {",
     '  name: "fireflies",',
     '  description: "Fireflies.ai API",',
     "  placeholders: {",
@@ -40,7 +40,7 @@ function generateTypeScript(): string {
     "      permissions: [],",
     "    },",
     "  ],",
-    "};",
+    "} as const satisfies FirewallConfig;",
     "",
   ];
 

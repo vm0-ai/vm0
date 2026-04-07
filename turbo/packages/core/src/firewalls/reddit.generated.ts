@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const redditFirewall: FirewallConfig = {
+export const redditFirewall = {
   name: "reddit",
   description: "Reddit API",
   placeholders: {
@@ -24,4 +24,4 @@ export const redditFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

@@ -25,7 +25,7 @@ function generateTypeScript(): string {
     "",
     'import type { FirewallConfig } from "../contracts/firewalls";',
     "",
-    "export const clickupFirewall: FirewallConfig = {",
+    "export const clickupFirewall = {",
     '  name: "clickup",',
     '  description: "ClickUp API",',
     "  placeholders: {",
@@ -42,7 +42,7 @@ function generateTypeScript(): string {
     "      permissions: [],",
     "    },",
     "  ],",
-    "};",
+    "} as const satisfies FirewallConfig;",
     "",
   ];
 

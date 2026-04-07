@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const chatwootFirewall: FirewallConfig = {
+export const chatwootFirewall = {
   name: "chatwoot",
   description: "Chatwoot API",
   placeholders: {
@@ -23,4 +23,4 @@ export const chatwootFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

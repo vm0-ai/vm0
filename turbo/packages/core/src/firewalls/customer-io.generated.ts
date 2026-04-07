@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const customerIoFirewall: FirewallConfig = {
+export const customerIoFirewall = {
   name: "customer-io",
   description: "Customer.io API",
   placeholders: {
@@ -24,4 +24,4 @@ export const customerIoFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

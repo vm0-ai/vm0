@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const jiraFirewall: FirewallConfig = {
+export const jiraFirewall = {
   name: "jira",
   description: "Jira REST API (API token auth)",
   placeholders: {
@@ -24,4 +24,4 @@ export const jiraFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

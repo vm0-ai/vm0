@@ -26,7 +26,7 @@ function generateTypeScript(): string {
     "",
     'import type { FirewallConfig } from "../contracts/firewalls";',
     "",
-    "export const metabaseFirewall: FirewallConfig = {",
+    "export const metabaseFirewall = {",
     '  name: "metabase",',
     '  description: "Metabase API",',
     "  placeholders: {",
@@ -43,7 +43,7 @@ function generateTypeScript(): string {
     "      permissions: [],",
     "    },",
     "  ],",
-    "};",
+    "} as const satisfies FirewallConfig;",
     "",
   ];
 

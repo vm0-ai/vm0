@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const zeptomailFirewall: FirewallConfig = {
+export const zeptomailFirewall = {
   name: "zeptomail",
   description: "ZeptoMail API",
   placeholders: {
@@ -23,4 +23,4 @@ export const zeptomailFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

@@ -24,7 +24,7 @@ function generateTypeScript(): string {
     "",
     'import type { FirewallConfig } from "../contracts/firewalls";',
     "",
-    "export const posthogFirewall: FirewallConfig = {",
+    "export const posthogFirewall = {",
     '  name: "posthog",',
     '  description: "PostHog API",',
     "  placeholders: {",
@@ -50,7 +50,7 @@ function generateTypeScript(): string {
     "      permissions: [],",
     "    },",
     "  ],",
-    "};",
+    "} as const satisfies FirewallConfig;",
     "",
   ];
 

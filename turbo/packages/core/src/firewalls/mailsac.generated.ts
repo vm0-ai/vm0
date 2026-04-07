@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const mailsacFirewall: FirewallConfig = {
+export const mailsacFirewall = {
   name: "mailsac",
   description: "Mailsac Email API",
   placeholders: {
@@ -23,4 +23,4 @@ export const mailsacFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

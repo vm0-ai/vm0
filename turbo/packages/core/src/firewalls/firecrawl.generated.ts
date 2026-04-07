@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const firecrawlFirewall: FirewallConfig = {
+export const firecrawlFirewall = {
   name: "firecrawl",
   description: "Firecrawl API",
   placeholders: {
@@ -23,4 +23,4 @@ export const firecrawlFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

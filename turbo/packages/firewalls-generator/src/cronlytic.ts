@@ -16,7 +16,7 @@ function generateTypeScript(): string {
     "",
     'import type { FirewallConfig } from "../contracts/firewalls";',
     "",
-    "export const cronlyticFirewall: FirewallConfig = {",
+    "export const cronlyticFirewall = {",
     '  name: "cronlytic",',
     '  description: "Cronlytic API",',
     "  placeholders: {",
@@ -35,7 +35,7 @@ function generateTypeScript(): string {
     "      permissions: [],",
     "    },",
     "  ],",
-    "};",
+    "} as const satisfies FirewallConfig;",
     "",
   ];
   return lines.join("\n");

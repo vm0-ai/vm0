@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const discordFirewall: FirewallConfig = {
+export const discordFirewall = {
   name: "discord",
   description: "Discord API",
   placeholders: {
@@ -24,4 +24,4 @@ export const discordFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

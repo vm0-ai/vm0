@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const pdfcoFirewall: FirewallConfig = {
+export const pdfcoFirewall = {
   name: "pdfco",
   description: "PDF.co API",
   placeholders: {
@@ -23,4 +23,4 @@ export const pdfcoFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

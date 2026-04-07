@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const stripeFirewall: FirewallConfig = {
+export const stripeFirewall = {
   name: "stripe",
   description: "Stripe API",
   placeholders: {
@@ -23,4 +23,4 @@ export const stripeFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

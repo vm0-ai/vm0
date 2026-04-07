@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const kommoFirewall: FirewallConfig = {
+export const kommoFirewall = {
   name: "kommo",
   description: "Kommo CRM API",
   placeholders: {
@@ -23,4 +23,4 @@ export const kommoFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

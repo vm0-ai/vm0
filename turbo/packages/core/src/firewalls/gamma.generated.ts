@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const gammaFirewall: FirewallConfig = {
+export const gammaFirewall = {
   name: "gamma",
   description: "Gamma API",
   placeholders: {
@@ -23,4 +23,4 @@ export const gammaFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

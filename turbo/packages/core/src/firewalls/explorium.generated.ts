@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const exploriumFirewall: FirewallConfig = {
+export const exploriumFirewall = {
   name: "explorium",
   description: "Explorium API",
   placeholders: {
@@ -23,4 +23,4 @@ export const exploriumFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

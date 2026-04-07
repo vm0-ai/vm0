@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const streakFirewall: FirewallConfig = {
+export const streakFirewall = {
   name: "streak",
   description: "Streak CRM API",
   placeholders: {
@@ -23,4 +23,4 @@ export const streakFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

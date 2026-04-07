@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const jamFirewall: FirewallConfig = {
+export const jamFirewall = {
   name: "jam",
   description: "Jam API",
   placeholders: {
@@ -23,4 +23,4 @@ export const jamFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

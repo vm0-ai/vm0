@@ -26,7 +26,7 @@ function generateTypeScript(): string {
     "",
     'import type { FirewallConfig } from "../contracts/firewalls";',
     "",
-    "export const mondayFirewall: FirewallConfig = {",
+    "export const mondayFirewall = {",
     '  name: "monday",',
     '  description: "Monday.com API",',
     "  placeholders: {",
@@ -43,7 +43,7 @@ function generateTypeScript(): string {
     "      permissions: [],",
     "    },",
     "  ],",
-    "};",
+    "} as const satisfies FirewallConfig;",
     "",
   ];
 

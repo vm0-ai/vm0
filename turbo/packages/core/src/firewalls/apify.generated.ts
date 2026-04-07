@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const apifyFirewall: FirewallConfig = {
+export const apifyFirewall = {
   name: "apify",
   description: "Apify API",
   placeholders: {
@@ -23,4 +23,4 @@ export const apifyFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

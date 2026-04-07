@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const webflowFirewall: FirewallConfig = {
+export const webflowFirewall = {
   name: "webflow",
   description: "Webflow API",
   placeholders: {
@@ -24,4 +24,4 @@ export const webflowFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

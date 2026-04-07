@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const mailchimpFirewall: FirewallConfig = {
+export const mailchimpFirewall = {
   name: "mailchimp",
   description: "Mailchimp Marketing API",
   placeholders: {
@@ -32,4 +32,4 @@ export const mailchimpFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

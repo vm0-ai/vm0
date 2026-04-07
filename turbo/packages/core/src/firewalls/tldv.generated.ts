@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const tldvFirewall: FirewallConfig = {
+export const tldvFirewall = {
   name: "tldv",
   description: "tl;dv API",
   placeholders: {
@@ -23,4 +23,4 @@ export const tldvFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

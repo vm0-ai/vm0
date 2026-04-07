@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const airtableFirewall: FirewallConfig = {
+export const airtableFirewall = {
   name: "airtable",
   description: "Airtable API",
   placeholders: {
@@ -24,4 +24,4 @@ export const airtableFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

@@ -26,7 +26,7 @@ function generateTypeScript(): string {
     "",
     'import type { FirewallConfig } from "../contracts/firewalls";',
     "",
-    "export const minimaxFirewall: FirewallConfig = {",
+    "export const minimaxFirewall = {",
     '  name: "minimax",',
     '  description: "MiniMax API",',
     "  placeholders: {",
@@ -43,7 +43,7 @@ function generateTypeScript(): string {
     "      permissions: [],",
     "    },",
     "  ],",
-    "};",
+    "} as const satisfies FirewallConfig;",
     "",
   ];
 

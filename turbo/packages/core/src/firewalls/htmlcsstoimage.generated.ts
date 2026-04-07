@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const htmlcsstoimageFirewall: FirewallConfig = {
+export const htmlcsstoimageFirewall = {
   name: "htmlcsstoimage",
   description: "HTML/CSS to Image API",
   placeholders: {
@@ -24,4 +24,4 @@ export const htmlcsstoimageFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

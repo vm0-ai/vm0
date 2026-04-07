@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const firefliesFirewall: FirewallConfig = {
+export const firefliesFirewall = {
   name: "fireflies",
   description: "Fireflies.ai API",
   placeholders: {
@@ -23,4 +23,4 @@ export const firefliesFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

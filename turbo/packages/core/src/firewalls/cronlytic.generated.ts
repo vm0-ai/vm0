@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const cronlyticFirewall: FirewallConfig = {
+export const cronlyticFirewall = {
   name: "cronlytic",
   description: "Cronlytic API",
   placeholders: {
@@ -27,4 +27,4 @@ export const cronlyticFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

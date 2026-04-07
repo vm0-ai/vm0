@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const makeFirewall: FirewallConfig = {
+export const makeFirewall = {
   name: "make",
   description: "Make (formerly Integromat) Automation API",
   placeholders: {
@@ -68,4 +68,4 @@ export const makeFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

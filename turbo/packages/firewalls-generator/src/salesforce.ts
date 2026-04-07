@@ -29,7 +29,7 @@ function generateTypeScript(): string {
     "",
     'import type { FirewallConfig } from "../contracts/firewalls";',
     "",
-    "export const salesforceFirewall: FirewallConfig = {",
+    "export const salesforceFirewall = {",
     '  name: "salesforce",',
     '  description: "Salesforce REST API",',
     "  placeholders: {",
@@ -46,7 +46,7 @@ function generateTypeScript(): string {
     "      permissions: [],",
     "    },",
     "  ],",
-    "};",
+    "} as const satisfies FirewallConfig;",
     "",
   ];
 

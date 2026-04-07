@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const closeFirewall: FirewallConfig = {
+export const closeFirewall = {
   name: "close",
   description: "Close CRM API",
   placeholders: {
@@ -23,4 +23,4 @@ export const closeFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

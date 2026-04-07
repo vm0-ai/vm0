@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const cloudflareFirewall: FirewallConfig = {
+export const cloudflareFirewall = {
   name: "cloudflare",
   description: "Cloudflare API",
   placeholders: {
@@ -23,4 +23,4 @@ export const cloudflareFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

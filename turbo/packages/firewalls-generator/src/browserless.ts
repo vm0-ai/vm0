@@ -39,7 +39,7 @@ function generateTypeScript(): string {
     "",
     'import type { FirewallConfig } from "../contracts/firewalls";',
     "",
-    "export const browserlessFirewall: FirewallConfig = {",
+    "export const browserlessFirewall = {",
     '  name: "browserless",',
     '  description: "Browserless API",',
     "  placeholders: {",
@@ -48,7 +48,7 @@ function generateTypeScript(): string {
     "  apis: [",
     apiEntries.join(",\n"),
     "  ],",
-    "};",
+    "} as const satisfies FirewallConfig;",
     "",
   ];
 

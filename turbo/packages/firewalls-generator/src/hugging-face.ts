@@ -25,7 +25,7 @@ function generateTypeScript(): string {
     "",
     'import type { FirewallConfig } from "../contracts/firewalls";',
     "",
-    "export const huggingFaceFirewall: FirewallConfig = {",
+    "export const huggingFaceFirewall = {",
     '  name: "hugging-face",',
     '  description: "Hugging Face API",',
     "  placeholders: {",
@@ -60,7 +60,7 @@ function generateTypeScript(): string {
     "      permissions: [],",
     "    },",
     "  ],",
-    "};",
+    "} as const satisfies FirewallConfig;",
     "",
   ];
 

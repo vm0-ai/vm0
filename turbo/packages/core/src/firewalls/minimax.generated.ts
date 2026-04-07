@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const minimaxFirewall: FirewallConfig = {
+export const minimaxFirewall = {
   name: "minimax",
   description: "MiniMax API",
   placeholders: {
@@ -24,4 +24,4 @@ export const minimaxFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

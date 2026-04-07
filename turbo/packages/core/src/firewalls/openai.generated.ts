@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const openaiFirewall: FirewallConfig = {
+export const openaiFirewall = {
   name: "openai",
   description: "OpenAI API",
   placeholders: {
@@ -24,4 +24,4 @@ export const openaiFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

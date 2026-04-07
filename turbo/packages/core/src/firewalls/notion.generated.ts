@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const notionFirewall: FirewallConfig = {
+export const notionFirewall = {
   name: "notion",
   description: "Notion API",
   placeholders: {

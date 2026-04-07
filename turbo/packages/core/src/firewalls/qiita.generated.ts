@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const qiitaFirewall: FirewallConfig = {
+export const qiitaFirewall = {
   name: "qiita",
   description: "Qiita API",
   placeholders: {
@@ -23,4 +23,4 @@ export const qiitaFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

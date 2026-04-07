@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const prismaPostgresFirewall: FirewallConfig = {
+export const prismaPostgresFirewall = {
   name: "prisma-postgres",
   description: "Prisma Postgres Management API",
   placeholders: {
@@ -24,4 +24,4 @@ export const prismaPostgresFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

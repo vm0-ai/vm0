@@ -23,7 +23,7 @@ function generateTypeScript(): string {
     "",
     'import type { FirewallConfig } from "../contracts/firewalls";',
     "",
-    "export const mailchimpFirewall: FirewallConfig = {",
+    "export const mailchimpFirewall = {",
     '  name: "mailchimp",',
     '  description: "Mailchimp Marketing API",',
     "  placeholders: {",
@@ -49,7 +49,7 @@ function generateTypeScript(): string {
     "      permissions: [],",
     "    },",
     "  ],",
-    "};",
+    "} as const satisfies FirewallConfig;",
     "",
   ];
 

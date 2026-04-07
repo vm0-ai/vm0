@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const metaAdsFirewall: FirewallConfig = {
+export const metaAdsFirewall = {
   name: "meta-ads",
   description: "Meta Ads (Facebook Graph) API",
   placeholders: {
@@ -23,4 +23,4 @@ export const metaAdsFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

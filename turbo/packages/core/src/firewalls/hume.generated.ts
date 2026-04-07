@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const humeFirewall: FirewallConfig = {
+export const humeFirewall = {
   name: "hume",
   description: "Hume AI API",
   placeholders: {
@@ -24,4 +24,4 @@ export const humeFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

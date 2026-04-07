@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const posthogFirewall: FirewallConfig = {
+export const posthogFirewall = {
   name: "posthog",
   description: "PostHog API",
   placeholders: {
@@ -32,4 +32,4 @@ export const posthogFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

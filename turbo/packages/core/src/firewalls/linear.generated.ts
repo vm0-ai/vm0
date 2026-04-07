@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const linearFirewall: FirewallConfig = {
+export const linearFirewall = {
   name: "linear",
   description: "Linear API",
   placeholders: {
@@ -23,4 +23,4 @@ export const linearFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

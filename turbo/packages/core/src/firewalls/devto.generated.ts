@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const devtoFirewall: FirewallConfig = {
+export const devtoFirewall = {
   name: "devto",
   description: "DEV.to API",
   placeholders: {
@@ -23,4 +23,4 @@ export const devtoFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

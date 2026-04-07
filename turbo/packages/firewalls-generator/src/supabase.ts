@@ -19,7 +19,7 @@ function generateTypeScript(): string {
     "",
     'import type { FirewallConfig } from "../contracts/firewalls";',
     "",
-    "export const supabaseFirewall: FirewallConfig = {",
+    "export const supabaseFirewall = {",
     '  name: "supabase",',
     '  description: "Supabase Management API",',
     "  placeholders: {",
@@ -36,7 +36,7 @@ function generateTypeScript(): string {
     "      permissions: [],",
     "    },",
     "  ],",
-    "};",
+    "} as const satisfies FirewallConfig;",
     "",
   ];
   return lines.join("\n");

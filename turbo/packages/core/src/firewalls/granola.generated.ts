@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const granolaFirewall: FirewallConfig = {
+export const granolaFirewall = {
   name: "granola",
   description: "Granola API",
   placeholders: {
@@ -23,4 +23,4 @@ export const granolaFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

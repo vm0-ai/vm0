@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const zapierFirewall: FirewallConfig = {
+export const zapierFirewall = {
   name: "zapier",
   description: "Zapier NLA API",
   placeholders: {
@@ -23,4 +23,4 @@ export const zapierFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

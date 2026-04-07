@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const pushinatorFirewall: FirewallConfig = {
+export const pushinatorFirewall = {
   name: "pushinator",
   description: "Pushinator API",
   placeholders: {
@@ -23,4 +23,4 @@ export const pushinatorFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

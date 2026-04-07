@@ -53,7 +53,7 @@ function generateTypeScript(): string {
     "",
     'import type { FirewallConfig } from "../contracts/firewalls";',
     "",
-    "export const docusignFirewall: FirewallConfig = {",
+    "export const docusignFirewall = {",
     '  name: "docusign",',
     '  description: "DocuSign eSignature REST API",',
     "  placeholders: {",
@@ -62,7 +62,7 @@ function generateTypeScript(): string {
     "  apis: [",
     apiEntries + ",",
     "  ],",
-    "};",
+    "} as const satisfies FirewallConfig;",
     "",
   ];
 

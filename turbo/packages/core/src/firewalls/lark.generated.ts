@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const larkFirewall: FirewallConfig = {
+export const larkFirewall = {
   name: "lark",
   description: "Lark Open Platform API",
   placeholders: {
@@ -32,4 +32,4 @@ export const larkFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

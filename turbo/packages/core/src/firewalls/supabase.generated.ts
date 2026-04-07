@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const supabaseFirewall: FirewallConfig = {
+export const supabaseFirewall = {
   name: "supabase",
   description: "Supabase Management API",
   placeholders: {
@@ -23,4 +23,4 @@ export const supabaseFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

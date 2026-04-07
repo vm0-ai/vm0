@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const loopsFirewall: FirewallConfig = {
+export const loopsFirewall = {
   name: "loops",
   description: "Loops API",
   placeholders: {
@@ -23,4 +23,4 @@ export const loopsFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

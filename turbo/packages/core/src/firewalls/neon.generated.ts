@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const neonFirewall: FirewallConfig = {
+export const neonFirewall = {
   name: "neon",
   description: "Neon API",
   placeholders: {
@@ -23,4 +23,4 @@ export const neonFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

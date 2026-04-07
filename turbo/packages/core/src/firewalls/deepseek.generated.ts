@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const deepseekFirewall: FirewallConfig = {
+export const deepseekFirewall = {
   name: "deepseek",
   description: "DeepSeek API",
   placeholders: {
@@ -23,4 +23,4 @@ export const deepseekFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

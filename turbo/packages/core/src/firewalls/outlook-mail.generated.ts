@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const outlookMailFirewall: FirewallConfig = {
+export const outlookMailFirewall = {
   name: "outlook-mail",
   description: "Microsoft Graph API (Outlook Mail)",
   placeholders: {
@@ -23,4 +23,4 @@ export const outlookMailFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

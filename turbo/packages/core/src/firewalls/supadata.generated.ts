@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const supadataFirewall: FirewallConfig = {
+export const supadataFirewall = {
   name: "supadata",
   description: "Supadata API",
   placeholders: {
@@ -23,4 +23,4 @@ export const supadataFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;

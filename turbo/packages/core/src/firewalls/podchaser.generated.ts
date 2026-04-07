@@ -6,7 +6,7 @@
 
 import type { FirewallConfig } from "../contracts/firewalls";
 
-export const podchaserFirewall: FirewallConfig = {
+export const podchaserFirewall = {
   name: "podchaser",
   description: "Podchaser Podcast API",
   placeholders: {
@@ -23,4 +23,4 @@ export const podchaserFirewall: FirewallConfig = {
       permissions: [],
     },
   ],
-};
+} as const satisfies FirewallConfig;
