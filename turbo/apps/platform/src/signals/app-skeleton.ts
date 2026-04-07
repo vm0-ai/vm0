@@ -15,7 +15,7 @@ export const showAppSkeleton$ = command(({ set }) => {
 
 export const hideAppSkeleton$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    await Promise.all([
+    await Promise.allSettled([
       (async () => {
         const currentChatAgent = await get(currentChatAgent$);
         signal.throwIfAborted();

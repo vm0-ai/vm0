@@ -37,14 +37,18 @@ export const pinnedAgentIds$ = computed(async (get) => {
       ...optimistic.filter((id) => {
         return id !== defaultAgentId;
       }),
-    ].filter((a) => a !== null);
+    ].filter((a) => {
+      return a !== null;
+    });
   }
   return [
     defaultAgentId,
     ...(await get(serverPinnedIds$)).filter((id) => {
       return id !== defaultAgentId;
     }),
-  ].filter((a) => a !== null);
+  ].filter((a) => {
+    return a !== null;
+  });
 });
 
 /**
