@@ -328,11 +328,13 @@ describe("GET /api/cron/aggregate-insights", () => {
     expect(githubDeny!.denied).toBe(2);
     expect(githubDeny!.connectorType).toBe("github");
 
-    // The ALLOW with a specific permission should be separate
+    // The ALLOW with a specific permission should be a separate entry
     const repoRead = permissions.find((p) => {
-      return p.label.includes("repo-read") || p.label.includes("github");
+      return p.label.includes("repo-read");
     });
     expect(repoRead).toBeDefined();
+    expect(repoRead!.allowed).toBe(1);
+    expect(repoRead!.connectorType).toBe("github");
   });
 
   it("should continue without network data when Axiom fails", async () => {
