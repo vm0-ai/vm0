@@ -24,10 +24,13 @@ function findPermissionInConfig(ref: string, permissionName: string): boolean {
  * Core logic for outputting a firewall permission change message.
  * Shared by both `firewall-permissions-change` and `firewall-deny` commands.
  */
+const REASON_MAX_LENGTH = 500;
+
 export async function outputPermissionChangeMessage(
   firewallRef: string,
   permission: string,
   action: "enable" | "disable",
+  reason?: string,
 ): Promise<void> {
   const { label } =
     CONNECTOR_TYPES[firewallRef as keyof typeof CONNECTOR_TYPES];
@@ -40,6 +43,14 @@ export async function outputPermissionChangeMessage(
     permission,
     action: action === "enable" ? "allow" : "deny",
   });
+
+  if (reason) {
+    const truncated =
+      reason.length > REASON_MAX_LENGTH
+        ? reason.slice(0, REASON_MAX_LENGTH)
+        : reason;
+    urlParams.set("reason", truncated);
+  }
 
   const pagePath = agentId ? `/agents/${agentId}/permissions` : "/agents";
   const url = `${platformOrigin}${pagePath}?${urlParams.toString()}`;
@@ -106,6 +117,12 @@ export const firewallPermissionsChangeCommand = new Command()
       "enable",
     ),
   )
+  .addOption(
+    new Option(
+      "--reason <text>",
+      "Brief reason why the permission is needed (max 500 chars)",
+    ),
+  )
   .addHelpText(
     "after",
     `
@@ -121,7 +138,12 @@ Notes:
     withErrorHandler(
       async (
         firewallRef: string,
-        opts: { permission: string; enable?: boolean; disable?: boolean },
+        opts: {
+          permission: string;
+          enable?: boolean;
+          disable?: boolean;
+          reason?: string;
+        },
       ) => {
         if (!opts.enable && !opts.disable) {
           throw new Error("Either --enable or --disable is required");
@@ -142,6 +164,7 @@ Notes:
           firewallRef,
           opts.permission,
           action,
+          opts.reason,
         );
       },
     ),

@@ -359,4 +359,21 @@ describe("firewall allow page - member request form", () => {
       action: "deny",
     });
   });
+
+  it("fw-d-028: Reason textarea pre-filled from URL param", async () => {
+    setupMemberContext();
+    mockFirewallRequests();
+
+    await setupPage({
+      context,
+      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read&action=deny&reason=Need+PR+access+for+CI`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("textbox")).toBeInTheDocument();
+    });
+
+    const textarea = screen.getByRole("textbox");
+    expect(textarea).toHaveValue("Need PR access for CI");
+  });
 });

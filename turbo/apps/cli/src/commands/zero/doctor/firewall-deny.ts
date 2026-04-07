@@ -23,6 +23,12 @@ export const firewallDenyCommand = new Command()
   .addOption(
     new Option("--path <path>", "The denied path").makeOptionMandatory(),
   )
+  .addOption(
+    new Option(
+      "--reason <text>",
+      "Brief reason why the permission is needed (max 500 chars)",
+    ),
+  )
   .addHelpText(
     "after",
     `
@@ -36,7 +42,10 @@ Notes:
   )
   .action(
     withErrorHandler(
-      async (firewallRef: string, opts: { method: string; path: string }) => {
+      async (
+        firewallRef: string,
+        opts: { method: string; path: string; reason?: string },
+      ) => {
         if (!isFirewallConnectorType(firewallRef)) {
           throw new Error(`Unknown firewall connector type: ${firewallRef}`);
         }
@@ -61,7 +70,12 @@ Notes:
         const permission = permissions[0]!;
         console.log(`This is covered by the "${permission}" permission.`);
 
-        await outputPermissionChangeMessage(firewallRef, permission, "enable");
+        await outputPermissionChangeMessage(
+          firewallRef,
+          permission,
+          "enable",
+          opts.reason,
+        );
       },
     ),
   );

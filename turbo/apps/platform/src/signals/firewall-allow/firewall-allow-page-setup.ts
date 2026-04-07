@@ -14,8 +14,10 @@ import {
   firewallAllowRef$,
   firewallAllowPermission$,
   firewallAllowRequestId$,
+  firewallAllowReason$,
   firewallExistingRequest$,
   updateRequestIdInUrl$,
+  setReason$,
 } from "./firewall-allow-signals.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 
@@ -45,6 +47,12 @@ export const setupFirewallAllowPage$ = command(
     const agent = await get(firewallAllowAgent$);
     signal.throwIfAborted();
     const ref = get(firewallAllowRef$);
+
+    // Pre-fill reason from URL parameter (set by zero doctor --reason)
+    const urlReason = get(firewallAllowReason$);
+    if (urlReason) {
+      set(setReason$, urlReason);
+    }
 
     // Auto-redirect: member in doctor mode with existing request → request mode
     const requestId = get(firewallAllowRequestId$);

@@ -382,4 +382,68 @@ describe("zero doctor firewall-deny command", () => {
       expect(logCalls).not.toContain("/agents/permissions");
     });
   });
+
+  describe("--reason option", () => {
+    it("should include reason in URL when provided", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+
+      await firewallDenyCommand.parseAsync([
+        "node",
+        "cli",
+        "github",
+        "--method",
+        "GET",
+        "--path",
+        "/repos/owner/repo/pulls",
+        "--reason",
+        "Need PR access for CI pipeline",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("reason=Need+PR+access+for+CI+pipeline");
+    });
+
+    it("should truncate reason at 500 characters", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+
+      const longReason = "a".repeat(600);
+      await firewallDenyCommand.parseAsync([
+        "node",
+        "cli",
+        "github",
+        "--method",
+        "GET",
+        "--path",
+        "/repos/owner/repo/pulls",
+        "--reason",
+        longReason,
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      const match = logCalls.match(/reason=([^&\s)]+)/);
+      expect(match).toBeTruthy();
+      // URLSearchParams encodes "a".repeat(500) as-is (no encoding needed for 'a')
+      expect(match![1]).toBe("a".repeat(500));
+    });
+
+    it("should not include reason param when --reason is omitted", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+
+      await firewallDenyCommand.parseAsync([
+        "node",
+        "cli",
+        "github",
+        "--method",
+        "GET",
+        "--path",
+        "/repos/owner/repo/pulls",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).not.toContain("reason=");
+    });
+  });
 });

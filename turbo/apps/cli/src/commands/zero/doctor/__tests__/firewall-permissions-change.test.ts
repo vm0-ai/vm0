@@ -455,4 +455,47 @@ describe("zero doctor firewall-permissions-change command", () => {
       expect(logCalls).toContain("action=deny");
     });
   });
+
+  describe("--reason option", () => {
+    it("should include reason in URL when provided", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+
+      await firewallPermissionsChangeCommand.parseAsync([
+        "node",
+        "cli",
+        "github",
+        "--permission",
+        "contents:read",
+        "--enable",
+        "--reason",
+        "Need to read repo contents",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("reason=Need+to+read+repo+contents");
+    });
+
+    it("should truncate reason at 500 characters", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+
+      const longReason = "b".repeat(600);
+      await firewallPermissionsChangeCommand.parseAsync([
+        "node",
+        "cli",
+        "github",
+        "--permission",
+        "contents:read",
+        "--enable",
+        "--reason",
+        longReason,
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      const match = logCalls.match(/reason=([^&\s)]+)/);
+      expect(match).toBeTruthy();
+      expect(match![1]).toBe("b".repeat(500));
+    });
+  });
 });
