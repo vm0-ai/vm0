@@ -299,13 +299,15 @@ teardown_file() {
     echo "# Step 4: Choosing 'Continue in web'..." >&3
     step_screenshot "onboard-step4"
     agent-browser find text "Continue in web" click
-    # Wait for post-onboarding provisioning + navigation (up to 90s)
+    # Wait for post-onboarding provisioning + navigation (up to 120s).
+    # Detection is URL-based: once the browser leaves /onboarding the backend
+    # setup is done and the frontend has navigated to /agents/:id/chat.
     # This is a soft poll: we don't assert here, test 5 will verify.
-    for _i in $(seq 1 90); do
-      local onboard_snap
-      onboard_snap=$(full_snapshot)
-      if contains "$onboard_snap" "Ask me to automate workflows\|Ideas.*use cases\|Browse use cases"; then
-        echo "# Chat page detected after onboarding!" >&3
+    for _i in $(seq 1 120); do
+      local current_url
+      current_url=$(agent-browser get url 2>/dev/null || true)
+      if [[ "$current_url" =~ /agents/ ]] && [[ ! "$current_url" =~ onboarding ]]; then
+        echo "# Navigated to agents page after onboarding: $current_url" >&3
         break
       fi
       sleep 1
@@ -321,13 +323,18 @@ teardown_file() {
 
   local chat_loaded=false
   for _i in $(seq 1 60); do
-    local snap
-    snap=$(full_snapshot)
-    if contains "$snap" "Ask me to automate workflows"; then
+    local current_url
+    current_url=$(agent-browser get url 2>/dev/null || true)
+    # Primary: URL-based detection — chat page is /agents/:id/chat
+    if [[ "$current_url" =~ /agents/.+/chat ]]; then
+      echo "# Chat URL detected: $current_url" >&3
       chat_loaded=true
       break
     fi
-    if contains "$snap" "Ideas.*use cases\|Browse use cases"; then
+    # Secondary: text-based detection for any agent chat landing page
+    local snap
+    snap=$(full_snapshot)
+    if contains "$snap" "Ask me to automate workflows\|Ideas.*use cases\|Browse use cases"; then
       chat_loaded=true
       break
     fi
