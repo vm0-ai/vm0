@@ -71,28 +71,25 @@ export function isChatRoute(key: RouteKey | null): boolean {
 }
 
 export const handleZeroNavSelect$ = command(({ set }, id: SidebarNavId) => {
-  if (id === "chat") {
-    set(detachedNavigateTo$, "/");
-  } else if (id === "agents") {
-    set(detachedNavigateTo$, ROUTES.agents);
-  } else if (id === "connectors") {
-    set(detachedNavigateTo$, ROUTES.connectors);
-  } else if (id === "schedules") {
-    set(detachedNavigateTo$, ROUTES.schedules);
-  } else if (id === "activities") {
-    set(detachedNavigateTo$, ROUTES.activities);
-  } else if (id === "insights") {
-    set(detachedNavigateTo$, ROUTES.insights);
-  } else if (id === "works") {
-    set(detachedNavigateTo$, ROUTES.works);
-  } else if (id === "settings") {
-    set(detachedNavigateTo$, ROUTES.settings);
-  } else if (id === "settingsUsage") {
-    set(detachedNavigateTo$, ROUTES.settingsUsage);
-  } else if (id === "queues") {
+  if (id === "queues") {
     set(openQueueDrawer$);
-  } else if (id === "lab") {
-    set(detachedNavigateTo$, ROUTES.lab);
+  } else {
+    const navRoutes = {
+      chat: ROUTES.home,
+      agents: ROUTES.agents,
+      connectors: ROUTES.connectors,
+      schedules: ROUTES.schedules,
+      activities: ROUTES.activities,
+      insights: ROUTES.insights,
+      works: ROUTES.works,
+      settings: ROUTES.settings,
+      settingsUsage: ROUTES.settingsUsage,
+      lab: ROUTES.lab,
+    } satisfies Record<
+      Exclude<SidebarNavId, "queues">,
+      (typeof ROUTES)[keyof typeof ROUTES]
+    >;
+    set(detachedNavigateTo$, navRoutes[id]);
   }
   set(internalShowAboutPage$, false);
 });
