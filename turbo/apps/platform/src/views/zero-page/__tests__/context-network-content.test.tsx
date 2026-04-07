@@ -100,7 +100,7 @@ function setupMocks(options: {
   contextResponse?: RunContextResponse | null;
   networkResponse?: {
     networkLogs: NetworkLogEntry[];
-    hasMore?: boolean;
+    hasMore: boolean;
   } | null;
 }) {
   server.use(

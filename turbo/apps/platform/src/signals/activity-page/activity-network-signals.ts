@@ -166,13 +166,17 @@ export const loadNetworkLogsNextPage$ = command(
       const { logs, hasMore } = await fetchPage(client, runId, pg.since);
 
       const lastEntry = logs.length > 0 ? logs[logs.length - 1] : undefined;
-      set(pagination$, {
-        ...pg,
-        logs: [...pg.logs, ...logs],
-        hasMore,
-        since: lastEntry ? new Date(lastEntry.timestamp).getTime() : pg.since,
-        pageCount: pg.pageCount + 1,
-        loading: false,
+      set(pagination$, (current) => {
+        return {
+          ...current,
+          logs: [...current.logs, ...logs],
+          hasMore,
+          since: lastEntry
+            ? new Date(lastEntry.timestamp).getTime()
+            : current.since,
+          pageCount: current.pageCount + 1,
+          loading: false,
+        };
       });
     } finally {
       set(pagination$, (current) => {
