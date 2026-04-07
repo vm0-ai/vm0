@@ -63,6 +63,22 @@ import { creditPricing } from "../db/schema/credit-pricing";
 import { insightsDaily } from "../db/schema/insights-daily";
 import { users } from "../db/schema/user";
 import { and, eq, like, or, sql } from "drizzle-orm";
+import type { OrgTier } from "@vm0/core";
+import { resolveStartRunCompose } from "../lib/zero/zero-run-validation";
+import {
+  authorizeCompose,
+  validateComposeRequirements,
+  checkRunConcurrencyLimit,
+} from "../lib/zero/zero-run-policy";
+import { buildInfraExecutionContext } from "../lib/infra/run/context/build-context";
+import {
+  loadCompose,
+  insertRunRecord,
+  buildAndDispatchRun,
+  markRunFailed,
+  registerCallbacks,
+  type CreateRunResult,
+} from "../lib/infra/run/run-service";
 import { generateCallbackSecret } from "../lib/infra/callback/hmac";
 import { initServices } from "../lib/init-services";
 import { encryptSecretsMap } from "../lib/shared/crypto/secrets-encryption";
@@ -888,7 +904,7 @@ export interface CliRunParams {
   userId: string;
   agentComposeVersionId: string;
   prompt: string;
-  orgTier: import("@vm0/core").OrgTier;
+  orgTier: OrgTier;
   appendSystemPrompt?: string;
   vars?: Record<string, string>;
   secrets?: Record<string, string>;
@@ -906,26 +922,7 @@ export interface CliRunParams {
 
 export async function createCliRun(
   params: CliRunParams,
-): Promise<import("../lib/infra/run/run-service").CreateRunResult> {
-  const { resolveStartRunCompose } =
-    await import("../lib/zero/zero-run-validation");
-  const {
-    authorizeCompose,
-    validateComposeRequirements,
-    checkRunConcurrencyLimit,
-  } = await import("../lib/zero/zero-run-policy");
-  const { generateSandboxToken: genToken } =
-    await import("../lib/auth/sandbox-token");
-  const { buildInfraExecutionContext } =
-    await import("../lib/infra/run/context/build-context");
-  const {
-    loadCompose,
-    insertRunRecord,
-    buildAndDispatchRun,
-    markRunFailed,
-    registerCallbacks,
-  } = await import("../lib/infra/run/run-service");
-
+): Promise<CreateRunResult> {
   const composeMeta = await resolveStartRunCompose(params);
 
   const apiStartTime = Date.now();
@@ -958,7 +955,7 @@ export async function createCliRun(
   });
   const transactionTime = Date.now();
 
-  const sandboxToken = await genToken(params.userId, run.id);
+  const sandboxToken = await generateSandboxToken(params.userId, run.id);
   const tokenTime = Date.now();
 
   try {
