@@ -140,23 +140,38 @@ function formatNetworkRequest(entry: NetworkLogEntry): string {
 
   let line = `[${entry.timestamp}] ${method.padEnd(6)} ${statusColor(status)} ${latencyColor(latencyMs + "ms")} ${formatBytes(requestSize)}/${formatBytes(responseSize)} ${chalk.dim(url)}${firewall}${error}${formatAuthInfo(entry)}`;
 
-  // Append captured body fields when present (--capture-network-bodies)
+  line += formatCaptureFields(entry);
+
+  return line;
+}
+
+/**
+ * Format captured body fields (request headers, request body, response body)
+ * when present from --capture-network-bodies runs.
+ */
+function formatCaptureFields(entry: NetworkLogEntry): string {
+  let result = "";
   if (entry.request_headers) {
     const hdrs = Object.entries(entry.request_headers)
-      .map(([k, v]) => `${k}: ${v}`)
+      .map(([k, v]) => {
+        return `${k}: ${v}`;
+      })
       .join(", ");
-    line += `\n  ${chalk.gray("request_headers:")} ${hdrs}`;
+    result += `\n  ${chalk.gray("request_headers:")} ${hdrs}`;
   }
   if (entry.request_body) {
     const truncated = entry.request_body_truncated ? " (truncated)" : "";
-    line += `\n  ${chalk.gray("request_body:")} ${entry.request_body.slice(0, 200)}${entry.request_body.length > 200 ? "..." : ""}${truncated}`;
+    const preview = entry.request_body.slice(0, 200);
+    const ellipsis = entry.request_body.length > 200 ? "..." : "";
+    result += `\n  ${chalk.gray("request_body:")} ${preview}${ellipsis}${truncated}`;
   }
   if (entry.response_body) {
     const truncated = entry.response_body_truncated ? " (truncated)" : "";
-    line += `\n  ${chalk.gray("response_body:")} ${entry.response_body.slice(0, 200)}${entry.response_body.length > 200 ? "..." : ""}${truncated}`;
+    const preview = entry.response_body.slice(0, 200);
+    const ellipsis = entry.response_body.length > 200 ? "..." : "";
+    result += `\n  ${chalk.gray("response_body:")} ${preview}${ellipsis}${truncated}`;
   }
-
-  return line;
+  return result;
 }
 
 /**
