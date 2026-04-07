@@ -238,8 +238,26 @@ describe("POST /api/zero/computer-use/register", () => {
     await setupOrg(userId);
     const ngrokCalls = setupNgrokMocks();
 
-    // Override GET /endpoints to return an orphaned endpoint
+    // Override reserved domain lookup to return "orphan.ngrok-free.app" so the
+    // endpoint URL built by the service (`https://*.orphan.ngrok-free.app`)
+    // matches the orphaned endpoint below.
     server.use(
+      http.get("https://api.ngrok.com/reserved_domains", ({ request }) => {
+        const url = new URL(request.url);
+        const filter = url.searchParams.get("filter");
+        ngrokCalls.filterReservedDomains.push(filter ?? "");
+        return HttpResponse.json({
+          reserved_domains: [
+            {
+              id: "rd_orphan_123",
+              domain: "orphan.ngrok-free.app",
+              region: "us",
+              cname_target: null,
+            },
+          ],
+          next_page_uri: null,
+        });
+      }),
       http.get("https://api.ngrok.com/endpoints", ({ request }) => {
         const url = new URL(request.url);
         const filter = url.searchParams.get("filter");
