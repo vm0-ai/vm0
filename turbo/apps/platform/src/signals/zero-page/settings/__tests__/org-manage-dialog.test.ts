@@ -12,7 +12,7 @@ import {
   checkSettingsParam$,
   orgManageDialogOpen$,
 } from "../org-manage-dialog.ts";
-import { activeTab$, inviteMember$ } from "../org-manage-tabs-state.ts";
+import { orgManageTab$, inviteMember$ } from "../org-manage-tabs-state.ts";
 import { searchParams$ } from "../../../route.ts";
 
 const context = testContext();
@@ -37,7 +37,7 @@ describe("checkSettingsParam$", () => {
     await store.set(checkSettingsParam$, signal);
 
     expect(store.get(orgManageDialogOpen$)).toBeTruthy();
-    expect(store.get(activeTab$)).toBe("providers");
+    expect(store.get(orgManageTab$)).toBe("providers");
     // The param should be stripped from the URL
     expect(store.get(searchParams$).has("settings")).toBeFalsy();
   });
@@ -51,7 +51,7 @@ describe("checkSettingsParam$", () => {
     await store.set(checkSettingsParam$, signal);
 
     expect(store.get(orgManageDialogOpen$)).toBeTruthy();
-    expect(store.get(activeTab$)).toBe("billing");
+    expect(store.get(orgManageTab$)).toBe("billing");
   });
 
   it("should open dialog on usage tab when ?settings=usage is present", async () => {
@@ -63,7 +63,7 @@ describe("checkSettingsParam$", () => {
     await store.set(checkSettingsParam$, signal);
 
     expect(store.get(orgManageDialogOpen$)).toBeTruthy();
-    expect(store.get(activeTab$)).toBe("usage");
+    expect(store.get(orgManageTab$)).toBe("usage");
   });
 
   it("should map legacy ?settings=credits to usage tab", async () => {
@@ -75,7 +75,7 @@ describe("checkSettingsParam$", () => {
     await store.set(checkSettingsParam$, signal);
 
     expect(store.get(orgManageDialogOpen$)).toBeTruthy();
-    expect(store.get(activeTab$)).toBe("usage");
+    expect(store.get(orgManageTab$)).toBe("usage");
   });
 
   it("should not open dialog when no settings param is present", async () => {
@@ -119,7 +119,7 @@ describe("checkSettingsParam$", () => {
     await store.set(checkSettingsParam$, signal);
 
     expect(store.get(orgManageDialogOpen$)).toBeTruthy();
-    expect(store.get(activeTab$)).toBe("general");
+    expect(store.get(orgManageTab$)).toBe("general");
   });
 
   it("should preserve other search params when stripping settings", async () => {

@@ -32,11 +32,11 @@ export type OrgManageTab =
 
 const internalActiveTab$ = state<OrgManageTab>("general");
 
-export const activeTab$ = computed((get) => {
+export const orgManageTab$ = computed((get) => {
   return get(internalActiveTab$);
 });
 
-export const setActiveTab$ = command(({ set }, tab: OrgManageTab) => {
+export const setActiveOrgManageTab$ = command(({ set }, tab: OrgManageTab) => {
   set(internalActiveTab$, tab);
 });
 

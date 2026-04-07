@@ -31,7 +31,7 @@ import { ZeroAboutPage } from "./zero-about-page.tsx";
 import { Link } from "../router/link.tsx";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import {
-  setActiveTab$,
+  setActiveOrgManageTab$,
   setBillingSubPage$,
 } from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
 import {
@@ -73,7 +73,7 @@ function MobileTopBar() {
   const activeId = useGet(activeRoute$);
   const isAdminLoadable = useLoadable(isOrgAdmin$);
   const isAdmin = isAdminLoadable.state === "hasData" && isAdminLoadable.data;
-  const setTab = useSet(setActiveTab$);
+  const setTab = useSet(setActiveOrgManageTab$);
   const setSubPage = useSet(setBillingSubPage$);
   const openManage = useSet(setOrgManageDialogOpen$);
   const pageSignal = useGet(pageSignal$);

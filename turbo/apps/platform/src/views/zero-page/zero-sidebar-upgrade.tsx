@@ -5,7 +5,7 @@ import { billingStatusAsync$ } from "../../signals/zero-page/billing.ts";
 import planProImg from "./components/org-manage/assets/plan-pro.webp";
 import planTeamImg from "./components/org-manage/assets/plan-team.webp";
 import {
-  setActiveTab$,
+  setActiveOrgManageTab$,
   setBillingSubPage$,
 } from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
@@ -29,7 +29,7 @@ export function SidebarUpgradeCard() {
   const isAdminLoadable = useLoadable(isOrgAdmin$);
   const isAdmin =
     isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
-  const setTab = useSet(setActiveTab$);
+  const setTab = useSet(setActiveOrgManageTab$);
   const setSubPage = useSet(setBillingSubPage$);
   const openManage = useSet(setOrgManageDialogOpen$);
 

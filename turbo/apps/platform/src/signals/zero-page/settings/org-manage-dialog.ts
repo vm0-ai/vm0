@@ -4,7 +4,7 @@ import { reloadBillingStatus$ } from "../billing.ts";
 import { isOrgAdmin$ } from "../../org.ts";
 import {
   initProfileName$,
-  setActiveTab$,
+  setActiveOrgManageTab$,
   type OrgManageTab,
 } from "./org-manage-tabs-state.ts";
 
@@ -59,7 +59,7 @@ export const checkSettingsParam$ = command(
       signal.throwIfAborted();
       const resolvedTab =
         !isAdmin && ADMIN_ONLY_TABS.has(tab) ? "general" : tab;
-      set(setActiveTab$, resolvedTab);
+      set(setActiveOrgManageTab$, resolvedTab);
       await set(setOrgManageDialogOpen$, true, signal);
     }
 

@@ -28,6 +28,7 @@ import {
 import { RUN_ERROR_GUIDANCE } from "@vm0/core";
 import { Markdown } from "../components/markdown.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
+import { openQueueDrawer$ } from "../../signals/queue-page/queue-drawer-state.ts";
 import { FileAttachmentChip, ImageLightbox } from "./zero-attachment-chips.tsx";
 import {
   lightboxUrl$ as attachmentLightboxUrl$,
@@ -62,7 +63,7 @@ import {
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
 import { Link } from "../router/link.tsx";
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
-import { setActiveTab$ } from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
+import { setActiveOrgManageTab$ } from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
 import {
   timelineExpandedIds$,
   toggleTimelineExpanded$,
@@ -593,6 +594,7 @@ function RunActivityLineView({
   queuePosition: number;
   thinkingMsg: string;
 }) {
+  const openDrawer = useSet(openQueueDrawer$);
   if (isQueued) {
     return (
       <div className="flex items-center gap-2 min-w-0">
@@ -602,12 +604,13 @@ function RunActivityLineView({
         />
         <p className="text-muted-foreground text-xs truncate">
           {queueLabel(queuePosition)}{" "}
-          <Link
-            pathname="/queues"
+          <button
+            type="button"
+            onClick={openDrawer}
             className="underline hover:text-foreground transition-colors"
           >
             View queue
-          </Link>
+          </button>
         </p>
       </div>
     );
@@ -832,7 +835,7 @@ function StaticAssistantMessage({
 }) {
   const { avatarSrc } = useChatAgentIdentity();
   const setOrgManageOpen = useSet(setOrgManageDialogOpen$);
-  const setTab = useSet(setActiveTab$);
+  const setTab = useSet(setActiveOrgManageTab$);
   const pageSignal = useGet(pageSignal$);
   const content = useLastResolved(message.result$) ?? "";
   const avatar = (

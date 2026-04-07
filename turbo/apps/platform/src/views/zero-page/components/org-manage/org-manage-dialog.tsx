@@ -31,8 +31,8 @@ import { OrgUsageTab } from "./org-usage-tab.tsx";
 import { OrgInvoicesTab } from "./org-invoices-tab.tsx";
 import { isOrgAdmin$ } from "../../../../signals/org.ts";
 import {
-  activeTab$,
-  setActiveTab$,
+  orgManageTab$,
+  setActiveOrgManageTab$,
   billingSubPage$,
   type OrgManageTab,
 } from "../../../../signals/zero-page/settings/org-manage-tabs-state.ts";
@@ -148,8 +148,8 @@ function TabContent({ tab }: { tab: OrgManageTab }) {
 }
 
 export function OrgManageDialog({ open, onOpenChange }: OrgManageDialogProps) {
-  const activeTab = useGet(activeTab$);
-  const setActiveTab = useSet(setActiveTab$);
+  const activeTab = useGet(orgManageTab$);
+  const setActiveTab = useSet(setActiveOrgManageTab$);
 
   const isAdminLoadable = useLoadable(isOrgAdmin$);
   const isAdmin =
