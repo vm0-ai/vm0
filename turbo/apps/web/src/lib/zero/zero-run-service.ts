@@ -70,14 +70,17 @@ interface ZeroRunParams {
 /**
  * Pre-flight check: ensure the org has sufficient credits for VM0 runs.
  * Skips for non-VM0 provider runs. Queries orgMetadata + orgMembersMetadata.
+ *
+ * Accepts an optional `db` parameter so callers running inside a transaction
+ * (e.g. dequeueNextAtomic with pg_advisory_xact_lock) can pass the transaction
+ * object and keep all reads within the same isolation boundary.
  */
-async function checkOrgCredits(
+export async function checkOrgCredits(
   orgId: string,
   userId: string,
   modelProvider: string | null | undefined,
+  db: typeof globalThis.services.db = globalThis.services.db,
 ): Promise<void> {
-  const db = globalThis.services.db;
-
   // Explicit non-VM0 provider — skip check entirely
   if (modelProvider && modelProvider !== "vm0") {
     return;
@@ -150,7 +153,7 @@ async function checkOrgCredits(
  * Skips when compose has explicit env vars, an explicit modelProvider param
  * is provided, or the framework doesn't use model providers.
  */
-async function checkModelProviderConfigured(
+export async function checkModelProviderConfigured(
   orgId: string,
   modelProvider: string | null | undefined,
   composeContent: AgentComposeYaml,

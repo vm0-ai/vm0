@@ -21,7 +21,6 @@ import {
 } from "../../db/schema/agent-compose";
 import { zeroAgents } from "../../db/schema/zero-agent";
 import { orgMetadata } from "../../db/schema/org-metadata";
-import { modelProviders } from "../../db/schema/model-provider";
 import { env } from "../../env";
 import { getCachedUser } from "../auth/user-cache-service";
 import { transitionRunStatus } from "../infra/run/run-status";
@@ -47,8 +46,11 @@ import {
   encryptSecretsMap,
   decryptSecretsMap,
 } from "../shared/crypto/secrets-encryption";
-import { isConcurrentRunLimit, insufficientCredits } from "../shared/errors";
-import { ORG_SENTINEL_USER_ID } from "./org/org-sentinel";
+import { isConcurrentRunLimit, isInsufficientCredits } from "../shared/errors";
+import {
+  checkOrgCredits,
+  checkModelProviderConfigured,
+} from "./zero-run-service";
 import { logger } from "../shared/logger";
 import type { OrgTier, QueueResponse, TriggerSource } from "@vm0/core";
 
@@ -230,15 +232,15 @@ async function dequeueNextAtomic(
       // Serialize all queue operations for this org
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${orgId}))`);
 
-      // Look up org tier and credits from org table (source of truth).
+      // Look up org tier from org table (source of truth).
       // Falls back to "free" (most conservative limit) if row is missing.
+      // Credits are checked by checkOrgCredits() within this transaction.
       const [orgRow] = await tx
-        .select({ tier: orgMetadata.tier, credits: orgMetadata.credits })
+        .select({ tier: orgMetadata.tier })
         .from(orgMetadata)
         .where(eq(orgMetadata.orgId, orgId))
         .limit(1);
       const orgTier = parseOrgTier(orgRow?.tier);
-      const orgCredits = orgRow?.credits ?? null;
 
       // Check concurrency FIRST — don't dequeue if no slot available
       await checkRunConcurrencyLimit(orgId, orgTier, tx);
@@ -249,10 +251,11 @@ async function dequeueNextAtomic(
       // LEFT JOIN zeroRuns to read modelProvider for credit check.
       const rows = await tx.execute<{
         run_id: string;
+        user_id: string;
         encrypted_params: string | null;
         model_provider: string | null;
       }>(
-        sql`SELECT q.run_id, q.encrypted_params, zr.model_provider
+        sql`SELECT q.run_id, q.user_id, q.encrypted_params, zr.model_provider
          FROM agent_run_queue q
          JOIN agent_runs r ON r.id = q.run_id
          LEFT JOIN zero_runs zr ON zr.id = r.id
@@ -266,19 +269,16 @@ async function dequeueNextAtomic(
           .delete(agentRunQueue)
           .where(eq(agentRunQueue.runId, row.run_id));
 
-        // Check credits for VM0 provider runs
-        if (orgCredits !== null && orgCredits <= 0) {
-          const isVm0 = await resolveIsVm0Provider(
-            row.model_provider,
-            orgId,
-            tx,
-          );
-          if (isVm0) {
+        // Unified pre-flight credit check (org-level + per-member cap)
+        try {
+          await checkOrgCredits(orgId, row.user_id, row.model_provider, tx);
+        } catch (error) {
+          if (isInsufficientCredits(error)) {
             await transitionRunStatus(
               row.run_id,
               {
                 status: "failed",
-                error: insufficientCredits().message,
+                error: error.message,
                 completedAt: new Date(),
               },
               ["queued"],
@@ -287,6 +287,7 @@ async function dequeueNextAtomic(
             log.debug(`Run ${row.run_id} failed credit check, skipping`);
             continue;
           }
+          throw error;
         }
 
         // Update run status — fails silently if run was already cancelled/failed
@@ -320,33 +321,6 @@ async function dequeueNextAtomic(
     }
     throw error;
   }
-}
-
-/**
- * Resolve whether the effective model provider is VM0.
- * Queries the model_providers table within the provided transaction
- * to maintain advisory lock guarantees.
- */
-async function resolveIsVm0Provider(
-  modelProvider: string | null,
-  orgId: string,
-  db: typeof globalThis.services.db,
-): Promise<boolean> {
-  if (modelProvider === "vm0") return true;
-  if (modelProvider && modelProvider !== "vm0") return false;
-  // null → check org default within the transaction
-  const [defaultProvider] = await db
-    .select({ type: modelProviders.type })
-    .from(modelProviders)
-    .where(
-      and(
-        eq(modelProviders.orgId, orgId),
-        eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
-        eq(modelProviders.isDefault, true),
-      ),
-    )
-    .limit(1);
-  return defaultProvider?.type === "vm0";
 }
 
 /**
@@ -487,6 +461,15 @@ export async function dispatchQueuedZeroRun(
     );
     authorizeCompose(params.userId, params.orgId, compose);
     const authorizeTime = Date.now();
+
+    // Pre-flight: ensure model provider is still configured (may have been
+    // removed after enqueue). Throws noModelProvider() on failure — caught by
+    // drainOrgQueue() which marks the run as failed.
+    await checkModelProviderConfigured(
+      params.orgId,
+      params.modelProvider,
+      composeContent,
+    );
 
     // Validate compose requirements for new runs only
     if (!params.checkpointId && !params.sessionId) {

@@ -346,5 +346,139 @@ describe("credit check (infra queue path)", () => {
       const nonVm0 = await findTestRunRecord(nonVm0Run.runId);
       expect(nonVm0!.status).toBe("pending");
     });
+
+    it("should fail queued VM0 run when member creditEnabled is false at drain time", async () => {
+      vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
+      reloadEnv();
+
+      // Org has plenty of credits but member cap is exhausted
+      await setOrgCredits(user.orgId, 10000);
+      await insertOrgDefaultModelProvider(user.orgId, "vm0");
+      await insertOrgMembersEntry({
+        orgId: user.orgId,
+        userId: user.userId,
+        creditCap: 100,
+        creditEnabled: false,
+      });
+
+      // Create a running run + a queued VM0 run
+      await startRun({
+        userId: user.userId,
+        agentComposeVersionId: versionId,
+        prompt: "Running",
+        orgTier: "free",
+      });
+      const queued = await enqueueRun(
+        queueBaseParams({
+          prompt: "Queued VM0 member cap",
+          modelProvider: "vm0",
+        }),
+      );
+      await insertTestZeroRun(queued.runId, { modelProvider: "vm0" });
+
+      // Mark running run as completed to free slot
+      await markRunningRunsAsCompleted(user.userId);
+
+      // Drain queue
+      await drainOrgQueue(user.orgId, dispatchQueuedZeroRun);
+
+      // Queued run should be marked as failed due to member credit cap
+      const run = await findTestRunRecord(queued.runId);
+      expect(run!.status).toBe("failed");
+      expect(run!.error).toContain("Insufficient credits");
+    });
+
+    it("should dequeue non-VM0 run when member creditEnabled is false", async () => {
+      vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
+      reloadEnv();
+
+      await setOrgCredits(user.orgId, 10000);
+      await insertOrgMembersEntry({
+        orgId: user.orgId,
+        userId: user.userId,
+        creditCap: 100,
+        creditEnabled: false,
+      });
+
+      // Create a running run + a queued non-VM0 run
+      await startRun({
+        userId: user.userId,
+        agentComposeVersionId: versionId,
+        prompt: "Running",
+        orgTier: "free",
+      });
+      const queued = await enqueueRun(
+        queueBaseParams({
+          prompt: "Queued Anthropic member cap",
+          modelProvider: "anthropic",
+        }),
+      );
+      await insertTestZeroRun(queued.runId, { modelProvider: "anthropic" });
+
+      // Mark running run as completed
+      await markRunningRunsAsCompleted(user.userId);
+
+      // Drain queue
+      await drainOrgQueue(user.orgId, dispatchQueuedZeroRun);
+
+      // Non-VM0 run should be dequeued despite member cap
+      const run = await findTestRunRecord(queued.runId);
+      expect(run!.status).toBe("pending");
+    });
+  });
+});
+
+describe("model provider check (queue dispatch path)", () => {
+  let user: UserContext;
+
+  beforeEach(async () => {
+    context.setupMocks();
+    user = await context.setupUser();
+    vi.stubEnv("RUNNER_DEFAULT_GROUP", "vm0/production");
+    reloadEnv();
+  });
+
+  it("should fail queued zero run when no model provider configured at dispatch time", async () => {
+    vi.stubEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
+    reloadEnv();
+
+    // Create compose WITHOUT default ANTHROPIC_API_KEY so model provider check applies
+    const agentName = uniqueId("agent");
+    const compose = await createTestCompose(agentName, {
+      skipDefaultApiKey: true,
+    });
+    const agentId = await getTestZeroAgentId(user.orgId, agentName);
+
+    // No org-level model provider configured — checkModelProviderConfigured will throw
+
+    // Create a running run to force the next one into the queue
+    await startRun({
+      userId: user.userId,
+      agentComposeVersionId: compose.versionId,
+      prompt: "Running",
+      orgTier: "free",
+    });
+
+    // Enqueue a zero run (no explicit modelProvider)
+    const queued = await enqueueRun({
+      userId: user.userId,
+      agentComposeVersionId: compose.versionId,
+      prompt: "Queued no provider",
+      orgId: user.orgId,
+      vars: { ZERO_AGENT_ID: agentId },
+      agentName,
+    });
+    await insertTestZeroRun(queued.runId);
+
+    // Mark running run as completed
+    await markRunningRunsAsCompleted(user.userId);
+
+    // Drain queue — dispatchQueuedZeroRun should fail with noModelProvider
+    await drainOrgQueue(user.orgId, dispatchQueuedZeroRun);
+
+    // Run should be marked as failed with model provider error
+    const run = await findTestRunRecord(queued.runId);
+    expect(run!.status).toBe("failed");
+    expect(run!.error).toContain("No model provider configured");
   });
 });
