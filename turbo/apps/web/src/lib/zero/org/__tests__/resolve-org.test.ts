@@ -70,31 +70,6 @@ describe("resolveOrg", () => {
     expect(result.org.orgId).toBe(orgId);
   });
 
-  it("explicit orgId parameter takes precedence over session", async () => {
-    const userId = uniqueId("test-user");
-    const slug = uniqueId("org");
-
-    // Set up Clerk org BEFORE creating org
-    mockClerk({ userId, clerkOrgs: testOrgs(slug) });
-    const { id: orgId } = await createTestOrg(slug);
-
-    // Mock session with a different orgId (should NOT be used).
-    // Include created org in clerkOrgs so cross-org membership check passes.
-    mockClerk({
-      userId,
-      orgId: "org_session_different",
-      clerkOrgs: [{ id: orgId, slug, name: slug }],
-    });
-
-    // Pass explicit orgId matching the org
-    const result = await resolveOrg(
-      authCtx({ userId, orgId: "org_session_different" }),
-      orgId,
-    );
-
-    expect(result.org.orgId).toBe(orgId);
-  });
-
   it("throws 400 when no explicit org context available", async () => {
     const userId = uniqueId("test-user");
 
@@ -109,22 +84,6 @@ describe("resolveOrg", () => {
     await expect(resolveOrg(authCtx({ userId }))).rejects.toThrow(
       "Explicit org context required",
     );
-  });
-
-  it("throws when orgId has no matching org", async () => {
-    const userId = uniqueId("test-user");
-
-    // Mock session with an orgId that doesn't exist in org_metadata
-    mockClerk({
-      userId,
-      orgId: "org_nonexistent_xyz",
-      clerkOrgs: [],
-    });
-
-    // Should throw NotFoundError because org doesn't exist in org_metadata
-    await expect(
-      resolveOrg(authCtx({ userId, orgId: "org_nonexistent_xyz" })),
-    ).rejects.toThrow("not found");
   });
 
   it("resolves correct org when user has multiple orgs", async () => {
@@ -245,56 +204,5 @@ describe("resolveOrg", () => {
 
     expect(result.member.role).toBe("admin");
     expect(result.member.userId).toBe(userId);
-  });
-
-  it("throws when user is not a member of a cross-org", async () => {
-    const userId = uniqueId("test-user");
-    const otherUserId = uniqueId("other-user");
-    const slug = uniqueId("org");
-
-    // Set up Clerk org BEFORE creating org
-    mockClerk({ userId, clerkOrgs: testOrgs(slug) });
-    const { id: orgId } = await createTestOrg(slug);
-
-    // Mock as different user whose session org differs from the target org.
-    // This forces the cache-backed membership check (not JWT fast path).
-    mockClerk({
-      userId: otherUserId,
-      orgId: "org_other_session",
-      clerkOrgs: [],
-    });
-
-    // Throws because the other user is not a member (cross-org path checks membership)
-    await expect(
-      resolveOrg(
-        authCtx({ userId: otherUserId, orgId: "org_other_session" }),
-        orgId,
-      ),
-    ).rejects.toThrow();
-  });
-
-  it("explicit orgId resolves org", async () => {
-    const userId = uniqueId("test-user");
-    const slug = uniqueId("org");
-
-    // Set up Clerk org BEFORE creating org
-    mockClerk({ userId, clerkOrgs: testOrgs(slug) });
-    const { id: orgId } = await createTestOrg(slug);
-
-    // Mock session — orgId is different from the explicit orgId.
-    // Include created org in clerkOrgs so cross-org membership check passes.
-    mockClerk({
-      userId,
-      orgId: "org_session_different",
-      clerkOrgs: [{ id: orgId, slug, name: slug }],
-    });
-
-    // Pass orgId directly
-    const result = await resolveOrg(
-      authCtx({ userId, orgId: "org_session_different" }),
-      orgId,
-    );
-
-    expect(result.org.orgId).toBe(orgId);
   });
 });

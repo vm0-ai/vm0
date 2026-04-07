@@ -1,15 +1,10 @@
-import { eq } from "drizzle-orm";
 import {
   forbidden,
-  notFound,
   badRequest,
   isBadRequest,
   isNotFound,
 } from "../../shared/errors";
-import { getOrgData } from "./org-cache-service";
 import { getOrgMetadata } from "./org-metadata-service";
-import { orgMetadata } from "../../../db/schema/org-metadata";
-import { orgCache } from "../../../db/schema/org-cache";
 import { verifyMembershipCached } from "../../auth/org-membership-cache";
 import type { AuthContext } from "../../auth/get-auth-context";
 
@@ -109,60 +104,27 @@ async function verifyMembership(
 }
 
 /**
- * Resolve org from request context using org_cache + org table.
+ * Resolve org from request context using org_metadata table.
  *
- * Requires explicit org context — either an explicit orgId or an
- * AuthContext with active org. Does NOT guess the user's org from
- * cache or Clerk API.
- *
+ * Requires explicit org context from AuthContext (active org in session).
  * Tier is always read from the org table (source of truth).
  *
  * @throws BadRequestError when no explicit org context is available
  */
 export async function resolveOrg(
   authCtx: AuthContext,
-  orgId?: string | null,
 ): Promise<{ org: ResolvedOrg; member: ResolvedMember }> {
-  const effectiveOrgId = orgId ?? authCtx.orgId ?? null;
-  if (effectiveOrgId) {
-    // Verify org is known to the system.
-    // Check org_metadata first (platform-owned), then org_cache (Clerk-validated).
-    // getOrgMetadata returns defaults for missing rows, so we need an explicit check.
-    const db = globalThis.services.db;
-    const [metaRow] = await db
-      .select({ orgId: orgMetadata.orgId })
-      .from(orgMetadata)
-      .where(eq(orgMetadata.orgId, effectiveOrgId))
-      .limit(1);
-    if (!metaRow) {
-      const [cacheRow] = await db
-        .select({ orgId: orgCache.orgId })
-        .from(orgCache)
-        .where(eq(orgCache.orgId, effectiveOrgId))
-        .limit(1);
-      if (!cacheRow) {
-        // Cold start: org not in our DB yet (e.g. new signup).
-        // Fall back to Clerk API to validate and populate org_cache.
-        try {
-          await getOrgData(effectiveOrgId);
-        } catch (error) {
-          if (isOrgNotFoundError(error)) {
-            throw notFound(`Organization ${effectiveOrgId} not found`);
-          }
-          throw error;
-        }
-      }
-    }
-
-    const orgMeta = await getOrgMetadata(effectiveOrgId);
-    const resolved: ResolvedOrg = { orgId: orgMeta.orgId, tier: orgMeta.tier };
-    const member = await verifyMembership(resolved, authCtx);
-    return { org: resolved, member };
+  const orgId = authCtx.orgId ?? null;
+  if (!orgId) {
+    throw badRequest(
+      "Explicit org context required — ensure active org in session",
+    );
   }
 
-  throw badRequest(
-    "Explicit org context required — ensure active org in session",
-  );
+  const orgMeta = await getOrgMetadata(orgId);
+  const resolved: ResolvedOrg = { orgId: orgMeta.orgId, tier: orgMeta.tier };
+  const member = await verifyMembership(resolved, authCtx);
+  return { org: resolved, member };
 }
 
 /**
