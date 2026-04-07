@@ -244,7 +244,7 @@ describe("firewall allow page - admin request mode", () => {
     });
   });
 
-  it("fw-d-022: Disapprove change button rejects pending request", async () => {
+  it("fw-d-022: Deny change button rejects pending request", async () => {
     let requestStatus = "pending";
     server.use(
       http.put("*/api/zero/firewall-access-requests", () => {
@@ -270,11 +270,11 @@ describe("firewall allow page - admin request mode", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Disapprove change")).toBeInTheDocument();
+      expect(screen.getByText("Deny change")).toBeInTheDocument();
     });
 
     const user = userEvent.setup();
-    await user.click(screen.getByText("Disapprove change"));
+    await user.click(screen.getByText("Deny change"));
 
     await waitFor(() => {
       expect(screen.getByText("Permissions denied")).toBeInTheDocument();

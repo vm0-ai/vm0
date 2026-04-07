@@ -231,7 +231,7 @@ describe("firewall allow page", () => {
 
     expect(screen.getByText(/Need to read issues/)).toBeInTheDocument();
     expect(screen.getByText("Approve change")).toBeInTheDocument();
-    expect(screen.getByText("Disapprove change")).toBeInTheDocument();
+    expect(screen.getByText("Deny change")).toBeInTheDocument();
   });
 
   // ---------------------------------------------------------------------------
