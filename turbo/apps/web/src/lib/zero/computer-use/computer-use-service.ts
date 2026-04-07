@@ -5,7 +5,7 @@
  * for computer-use remote desktop sessions.
  */
 import { createHash, randomUUID } from "crypto";
-import { eq, and, gt } from "drizzle-orm";
+import { eq, and, gt, sql } from "drizzle-orm";
 import { computerUseHosts } from "../../../db/schema/computer-use-host";
 import { notFound } from "../../shared/errors";
 import { logger } from "../../shared/logger";
@@ -13,9 +13,9 @@ import {
   findOrCreateBotUser,
   createCredential,
   deleteCredential,
-  createCloudEndpoint,
   deleteCloudEndpoint,
   findOrCreateReservedDomain,
+  findOrCreateCloudEndpoint,
   deleteReservedDomain,
   deleteBotUser,
   safeDelete,
@@ -52,211 +52,221 @@ export async function registerHost(
     throw new Error("NGROK_API_KEY is not configured");
   }
 
-  // If existing host found, partially clean up (keep domain and bot user)
-  const [existing] = await db
-    .select()
-    .from(computerUseHosts)
-    .where(
-      and(
-        eq(computerUseHosts.orgId, orgId),
-        eq(computerUseHosts.userId, userId),
-      ),
-    )
-    .limit(1);
-
-  let reusableDomain: { domain: string; id: string } | null = null;
-
-  if (existing) {
-    log.debug("Cleaning up existing host registration", { orgId, userId });
-
-    // Delete credential and endpoint (need new token + routing), keep domain
-    if (existing.ngrokCredentialId) {
-      await safeDelete(
-        () => {
-          return deleteCredential(apiKey, existing.ngrokCredentialId!);
-        },
-        "Credential",
-        existing.ngrokCredentialId,
-      );
-    }
-    if (existing.ngrokEndpointId) {
-      await safeDelete(
-        () => {
-          return deleteCloudEndpoint(apiKey, existing.ngrokEndpointId!);
-        },
-        "Cloud endpoint",
-        existing.ngrokEndpointId,
-      );
-    }
-
-    // Preserve domain for reuse (same user = same deterministic slug)
-    if (existing.ngrokDomainId && existing.domain) {
-      reusableDomain = { domain: existing.domain, id: existing.ngrokDomainId };
-    }
-
-    await db
-      .delete(computerUseHosts)
-      .where(eq(computerUseHosts.id, existing.id));
-  }
-
-  // Generate a DNS-safe slug from orgId+userId hash (hex chars only)
-  const slug = createHash("sha256")
-    .update(`${orgId}:${userId}`)
-    .digest("hex")
-    .substring(0, 12);
-  const subdomainName = `vm0-cu-${slug}`;
-  const endpointPrefix = `vm0-cu-${slug}`;
-  const botUserName = `vm0-cu-${slug}`;
-
-  // Provision ngrok resources — clean up on partial failure
-  let botUserId: string | undefined;
-  let credentialId: string | undefined;
-  let domainId: string | undefined;
-  let endpointId: string | undefined;
-
-  try {
-    const botUser = await findOrCreateBotUser(apiKey, botUserName);
-    botUserId = botUser.id;
-
-    const credential = await createCredential(apiKey, botUser.id, [
-      `bind:*.${endpointPrefix}.internal`,
-    ]);
-    credentialId = credential.id;
-
-    // Reuse existing domain or create new one
-    let domain: string;
-    if (reusableDomain) {
-      domain = reusableDomain.domain;
-      domainId = reusableDomain.id;
-      log.debug("Reusing existing reserved domain", { domain, domainId });
-    } else {
-      const reservedDomain = await findOrCreateReservedDomain(
-        apiKey,
-        subdomainName,
-        "us",
-      );
-      domain = reservedDomain.domain;
-      domainId = reservedDomain.id;
-    }
-
-    const bridgeToken = randomUUID();
-
-    // Traffic policy: verify bridge token and forward to internal endpoint
-    const trafficPolicy = JSON.stringify({
-      on_http_request: [
-        {
-          expressions: [
-            `!('x-vm0-token' in req.headers) || req.headers['x-vm0-token'][0] != '${bridgeToken}'`,
-          ],
-          actions: [{ type: "deny", config: { status_code: 403 } }],
-        },
-        {
-          actions: [
-            {
-              type: "forward-internal",
-              config: {
-                url: `https://$\{conn.server_name.split('.${domain}')[0]}.${endpointPrefix}.internal`,
-                on_error: "continue",
-              },
-            },
-            {
-              type: "custom-response",
-              config: { status_code: 502, body: "Host offline" },
-            },
-          ],
-        },
-      ],
-    });
-
-    const endpointUrl = `https://*.${domain}`;
-    const cloudEndpoint = await createCloudEndpoint(
-      apiKey,
-      endpointUrl,
-      trafficPolicy,
+  // Serialize concurrent register calls for the same user
+  return db.transaction(async (tx) => {
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtext('cu_' || ${orgId} || ':' || ${userId}))`,
     );
-    endpointId = cloudEndpoint.id;
 
-    // Create host row
-    const [hostRow] = await db
-      .insert(computerUseHosts)
-      .values({
-        orgId,
-        userId,
+    // If existing host found, partially clean up (keep domain and bot user)
+    const [existing] = await tx
+      .select()
+      .from(computerUseHosts)
+      .where(
+        and(
+          eq(computerUseHosts.orgId, orgId),
+          eq(computerUseHosts.userId, userId),
+        ),
+      )
+      .limit(1);
+
+    let reusableDomain: { domain: string; id: string } | null = null;
+
+    if (existing) {
+      log.debug("Cleaning up existing host registration", { orgId, userId });
+
+      // Delete credential and endpoint (need new token + routing), keep domain
+      if (existing.ngrokCredentialId) {
+        await safeDelete(
+          () => {
+            return deleteCredential(apiKey, existing.ngrokCredentialId!);
+          },
+          "Credential",
+          existing.ngrokCredentialId,
+        );
+      }
+      if (existing.ngrokEndpointId) {
+        await safeDelete(
+          () => {
+            return deleteCloudEndpoint(apiKey, existing.ngrokEndpointId!);
+          },
+          "Cloud endpoint",
+          existing.ngrokEndpointId,
+        );
+      }
+
+      // Preserve domain for reuse (same user = same deterministic slug)
+      if (existing.ngrokDomainId && existing.domain) {
+        reusableDomain = {
+          domain: existing.domain,
+          id: existing.ngrokDomainId,
+        };
+      }
+
+      await tx
+        .delete(computerUseHosts)
+        .where(eq(computerUseHosts.id, existing.id));
+    }
+
+    // Generate a DNS-safe slug from orgId+userId hash (hex chars only)
+    const slug = createHash("sha256")
+      .update(`${orgId}:${userId}`)
+      .digest("hex")
+      .substring(0, 12);
+    const subdomainName = `vm0-cu-${slug}`;
+    const endpointPrefix = `vm0-cu-${slug}`;
+    const botUserName = `vm0-cu-${slug}`;
+
+    // Provision ngrok resources — clean up on partial failure
+    let botUserId: string | undefined;
+    let credentialId: string | undefined;
+    let domainId: string | undefined;
+    let endpointId: string | undefined;
+
+    try {
+      const botUser = await findOrCreateBotUser(apiKey, botUserName);
+      botUserId = botUser.id;
+
+      const credential = await createCredential(apiKey, botUser.id, [
+        `bind:*.${endpointPrefix}.internal`,
+      ]);
+      credentialId = credential.id;
+
+      // Reuse existing domain or create new one
+      let domain: string;
+      if (reusableDomain) {
+        domain = reusableDomain.domain;
+        domainId = reusableDomain.id;
+        log.debug("Reusing existing reserved domain", { domain, domainId });
+      } else {
+        const reservedDomain = await findOrCreateReservedDomain(
+          apiKey,
+          subdomainName,
+          "us",
+        );
+        domain = reservedDomain.domain;
+        domainId = reservedDomain.id;
+      }
+
+      const bridgeToken = randomUUID();
+
+      // Traffic policy: verify bridge token and forward to internal endpoint
+      const trafficPolicy = JSON.stringify({
+        on_http_request: [
+          {
+            expressions: [
+              `!('x-vm0-token' in req.headers) || req.headers['x-vm0-token'][0] != '${bridgeToken}'`,
+            ],
+            actions: [{ type: "deny", config: { status_code: 403 } }],
+          },
+          {
+            actions: [
+              {
+                type: "forward-internal",
+                config: {
+                  url: `https://$\{conn.server_name.split('.${domain}')[0]}.${endpointPrefix}.internal`,
+                  on_error: "continue",
+                },
+              },
+              {
+                type: "custom-response",
+                config: { status_code: 502, body: "Host offline" },
+              },
+            ],
+          },
+        ],
+      });
+
+      const endpointUrl = `https://*.${domain}`;
+      const cloudEndpoint = await findOrCreateCloudEndpoint(
+        apiKey,
+        endpointUrl,
+        trafficPolicy,
+      );
+      endpointId = cloudEndpoint.id;
+
+      // Create host row
+      const [hostRow] = await tx
+        .insert(computerUseHosts)
+        .values({
+          orgId,
+          userId,
+          domain,
+          token: bridgeToken,
+          ngrokBotUserId: botUserId,
+          ngrokCredentialId: credentialId,
+          ngrokEndpointId: cloudEndpoint.id,
+          ngrokDomainId: domainId,
+          expiresAt: new Date(Date.now() + HOST_TTL_MS),
+        })
+        .returning();
+
+      if (!hostRow) {
+        throw new Error("Failed to create computer-use host");
+      }
+
+      log.debug("Computer-use host registered", {
+        hostId: hostRow.id,
+        botUserId,
+        domain,
+      });
+
+      return {
+        id: hostRow.id,
         domain,
         token: bridgeToken,
-        ngrokBotUserId: botUserId,
-        ngrokCredentialId: credentialId,
-        ngrokEndpointId: cloudEndpoint.id,
-        ngrokDomainId: domainId,
-        expiresAt: new Date(Date.now() + HOST_TTL_MS),
-      })
-      .returning();
-
-    if (!hostRow) {
-      throw new Error("Failed to create computer-use host");
+        ngrokToken: credential.token,
+        endpointPrefix,
+      };
+    } catch (error) {
+      log.error("Failed to register host, cleaning up", { orgId, userId });
+      const eid = endpointId;
+      const cid = credentialId;
+      const did = domainId;
+      const bid = botUserId;
+      if (eid) {
+        await safeDelete(
+          () => {
+            return deleteCloudEndpoint(apiKey, eid);
+          },
+          "Cloud endpoint",
+          eid,
+          true,
+        );
+      }
+      if (cid) {
+        await safeDelete(
+          () => {
+            return deleteCredential(apiKey, cid);
+          },
+          "Credential",
+          cid,
+          true,
+        );
+      }
+      if (did && !reusableDomain) {
+        await safeDelete(
+          () => {
+            return deleteReservedDomain(apiKey, did);
+          },
+          "Reserved domain",
+          did,
+          true,
+        );
+      }
+      if (bid) {
+        await safeDelete(
+          () => {
+            return deleteBotUser(apiKey, bid);
+          },
+          "Bot user",
+          bid,
+          true,
+        );
+      }
+      throw error;
     }
-
-    log.debug("Computer-use host registered", {
-      hostId: hostRow.id,
-      botUserId,
-      domain,
-    });
-
-    return {
-      id: hostRow.id,
-      domain,
-      token: bridgeToken,
-      ngrokToken: credential.token,
-      endpointPrefix,
-    };
-  } catch (error) {
-    log.error("Failed to register host, cleaning up", { orgId, userId });
-    const eid = endpointId;
-    const cid = credentialId;
-    const did = domainId;
-    const bid = botUserId;
-    if (eid) {
-      await safeDelete(
-        () => {
-          return deleteCloudEndpoint(apiKey, eid);
-        },
-        "Cloud endpoint",
-        eid,
-        true,
-      );
-    }
-    if (cid) {
-      await safeDelete(
-        () => {
-          return deleteCredential(apiKey, cid);
-        },
-        "Credential",
-        cid,
-        true,
-      );
-    }
-    if (did && !reusableDomain) {
-      await safeDelete(
-        () => {
-          return deleteReservedDomain(apiKey, did);
-        },
-        "Reserved domain",
-        did,
-        true,
-      );
-    }
-    if (bid) {
-      await safeDelete(
-        () => {
-          return deleteBotUser(apiKey, bid);
-        },
-        "Bot user",
-        bid,
-        true,
-      );
-    }
-    throw error;
-  }
+  });
 }
 
 /**

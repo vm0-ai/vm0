@@ -59,9 +59,21 @@ async function ngrokFetch(
   if (!response.ok) {
     const body = await response.text();
     log.error(`ngrok API error: ${response.status} ${path}`, { body });
-    throw new Error(
-      `ngrok API error: ${response.status} ${response.statusText}`,
-    );
+
+    // Parse structured ngrok error for a more useful message
+    let detail = body;
+    try {
+      const parsed = JSON.parse(body) as { msg?: string; error_code?: string };
+      if (parsed.msg) {
+        detail = parsed.error_code
+          ? `${parsed.error_code}: ${parsed.msg}`
+          : parsed.msg;
+      }
+    } catch {
+      // body is not JSON — use raw text
+    }
+
+    throw new Error(`ngrok API error: ${response.status} ${path}: ${detail}`);
   }
 
   return response;
@@ -82,47 +94,36 @@ async function createBotUser(
 }
 
 /**
- * Find a Bot User by name. Paginates through all results.
- * Returns undefined if not found.
+ * Find a Bot User by name using ngrok's filter API.
  */
 async function findBotUserByName(
   apiKey: string,
   name: string,
 ): Promise<NgrokBotUser | undefined> {
-  let nextPageUri: string | null = "/bot_users";
-
-  while (nextPageUri) {
-    const response = await ngrokFetch(apiKey, nextPageUri);
-    const page = (await response.json()) as NgrokBotUsersPage;
-
-    const found = page.bot_users.find((u) => {
-      return u.name === name;
-    });
-    if (found) {
-      return found;
-    }
-
-    nextPageUri = page.next_page_uri;
-  }
-
-  return undefined;
+  const filter = encodeURIComponent(`obj.name == '${name}'`);
+  const response = await ngrokFetch(apiKey, `/bot_users?filter=${filter}`);
+  const page = (await response.json()) as NgrokBotUsersPage;
+  return page.bot_users[0];
 }
 
 /**
- * Find an existing Bot User by name, or create a new one.
+ * Create a Bot User, or return the existing one if it already exists.
+ * Uses optimistic create: tries POST first, falls back to lookup on 400.
  */
 export async function findOrCreateBotUser(
   apiKey: string,
   name: string,
 ): Promise<NgrokBotUser> {
-  const existing = await findBotUserByName(apiKey, name);
-  if (existing) {
-    log.debug("Found existing ngrok bot user", { id: existing.id, name });
-    return existing;
+  try {
+    log.debug("Creating new ngrok bot user", { name });
+    return await createBotUser(apiKey, name);
+  } catch (error) {
+    if (!isNgrokError(error, 400)) throw error;
+    log.debug("Bot user creation returned 400, looking up existing", { name });
+    const existing = await findBotUserByName(apiKey, name);
+    if (existing) return existing;
+    throw error;
   }
-
-  log.debug("Creating new ngrok bot user", { name });
-  return createBotUser(apiKey, name);
 }
 
 /**
@@ -181,6 +182,57 @@ export async function deleteCloudEndpoint(
   });
 }
 
+interface NgrokEndpointsPage {
+  endpoints: NgrokEndpoint[];
+  next_page_uri: string | null;
+}
+
+/**
+ * Find a cloud endpoint by URL. Paginates through all results.
+ */
+async function findEndpointByUrl(
+  apiKey: string,
+  url: string,
+): Promise<NgrokEndpoint | undefined> {
+  let nextPageUri: string | null = "/endpoints";
+
+  while (nextPageUri) {
+    const response = await ngrokFetch(apiKey, nextPageUri);
+    const page = (await response.json()) as NgrokEndpointsPage;
+    const found = page.endpoints.find((e) => {
+      return e.url === url;
+    });
+    if (found) return found;
+    nextPageUri = page.next_page_uri;
+  }
+
+  return undefined;
+}
+
+/**
+ * Create a cloud endpoint, recovering from orphan duplicates.
+ * If creation fails with 400 (URL already in use), finds and deletes the
+ * orphan endpoint, then retries.
+ */
+export async function findOrCreateCloudEndpoint(
+  apiKey: string,
+  url: string,
+  trafficPolicy: string,
+): Promise<NgrokEndpoint> {
+  try {
+    return await createCloudEndpoint(apiKey, url, trafficPolicy);
+  } catch (error) {
+    if (!isNgrokError(error, 400)) throw error;
+    log.warn("Cloud endpoint creation returned 400, cleaning up orphan", {
+      url,
+    });
+    const existing = await findEndpointByUrl(apiKey, url);
+    if (!existing) throw error;
+    await deleteCloudEndpoint(apiKey, existing.id);
+    return createCloudEndpoint(apiKey, url, trafficPolicy);
+  }
+}
+
 /**
  * Create a reserved domain with ngrok-assigned subdomain.
  * ngrok will automatically assign a subdomain like "abc123.ngrok-free.app"
@@ -217,50 +269,42 @@ interface NgrokReservedDomainsPage {
 }
 
 /**
- * Find a reserved domain by name. Paginates through all results.
+ * Find a reserved domain by name using ngrok's filter API.
  */
 async function findReservedDomainByName(
   apiKey: string,
   name: string,
 ): Promise<NgrokDomain | undefined> {
-  let nextPageUri: string | null = "/reserved_domains";
-
-  while (nextPageUri) {
-    const response = await ngrokFetch(apiKey, nextPageUri);
-    const page = (await response.json()) as NgrokReservedDomainsPage;
-
-    const found = page.reserved_domains.find((d) => {
-      return d.domain.startsWith(`${name}.`);
-    });
-    if (found) {
-      return found;
-    }
-
-    nextPageUri = page.next_page_uri;
-  }
-
-  return undefined;
+  const filter = encodeURIComponent(`obj.domain.startsWith('${name}.')`);
+  const response = await ngrokFetch(
+    apiKey,
+    `/reserved_domains?filter=${filter}`,
+  );
+  const page = (await response.json()) as NgrokReservedDomainsPage;
+  return page.reserved_domains[0];
 }
 
 /**
- * Find an existing reserved domain by name, or create a new one.
+ * Create a reserved domain, or return the existing one if it already exists.
+ * Uses optimistic create: tries POST first, falls back to lookup on 400.
  */
 export async function findOrCreateReservedDomain(
   apiKey: string,
   name: string,
   region: string = "us",
 ): Promise<NgrokDomain> {
-  const existing = await findReservedDomainByName(apiKey, name);
-  if (existing) {
-    log.debug("Found existing reserved domain", {
-      id: existing.id,
-      domain: existing.domain,
+  try {
+    log.debug("Creating new reserved domain", { name });
+    return await createReservedDomain(apiKey, name, region);
+  } catch (error) {
+    if (!isNgrokError(error, 400)) throw error;
+    log.debug("Reserved domain creation returned 400, looking up existing", {
+      name,
     });
-    return existing;
+    const existing = await findReservedDomainByName(apiKey, name);
+    if (existing) return existing;
+    throw error;
   }
-
-  log.debug("Creating new reserved domain", { name });
-  return createReservedDomain(apiKey, name, region);
 }
 
 /**
@@ -285,6 +329,16 @@ export async function deleteBotUser(
   await ngrokFetch(apiKey, `/bot_users/${botUserId}`, {
     method: "DELETE",
   });
+}
+
+/**
+ * Check whether an error is an ngrok API error with a specific HTTP status code.
+ */
+function isNgrokError(error: unknown, statusCode: number): boolean {
+  return (
+    error instanceof Error &&
+    error.message.includes(`ngrok API error: ${statusCode}`)
+  );
 }
 
 /**

@@ -211,6 +211,120 @@ describe("POST /api/zero/computer-use/register", () => {
     expect(ngrokCalls.deleteReservedDomain).toEqual(["rd_test_cu_abc"]);
   });
 
+  it("should recover when reserved domain already exists (400)", async () => {
+    const userId = uniqueId("zcu-dup-dom");
+    await setupOrg(userId);
+    const ngrokCalls = setupNgrokMocks();
+
+    let domainCreateAttempt = 0;
+    // Override: first POST /reserved_domains returns 400 (duplicate),
+    // then GET with filter returns the existing domain
+    server.use(
+      http.post(
+        "https://api.ngrok.com/reserved_domains",
+        async ({ request }) => {
+          domainCreateAttempt++;
+          const body = (await request.json()) as {
+            name: string;
+            region: string;
+          };
+          if (domainCreateAttempt === 1) {
+            return HttpResponse.json(
+              {
+                error_code: "ERR_NGROK_400",
+                msg: "domain already reserved",
+                status_code: 400,
+              },
+              { status: 400 },
+            );
+          }
+          ngrokCalls.createReservedDomain.push(body.name);
+          return HttpResponse.json({
+            id: "rd_test_cu_existing",
+            domain: `${body.name}.ngrok-free.app`,
+            region: body.region,
+            cname_target: null,
+          });
+        },
+      ),
+      http.get("https://api.ngrok.com/reserved_domains", ({ request }) => {
+        const url = new URL(request.url);
+        const filter = url.searchParams.get("filter");
+        if (filter) {
+          // Return existing domain when filter is used (fallback lookup)
+          return HttpResponse.json({
+            reserved_domains: [
+              {
+                id: "rd_test_cu_existing",
+                domain: "vm0-cu-existing.ngrok-free.app",
+                region: "us",
+                cname_target: null,
+              },
+            ],
+            next_page_uri: null,
+          });
+        }
+        ngrokCalls.listReservedDomains++;
+        return HttpResponse.json({
+          reserved_domains: [],
+          next_page_uri: null,
+        });
+      }),
+    );
+
+    const response = await POST(createPostRequest());
+    expect(response.status).toBe(200);
+
+    const data = await response.json();
+    expect(data.domain).toBeDefined();
+  });
+
+  it("should recover from orphan endpoint (400 on /endpoints)", async () => {
+    const userId = uniqueId("zcu-orphan-ep");
+    await setupOrg(userId);
+    const ngrokCalls = setupNgrokMocks();
+
+    let endpointCreateAttempt = 0;
+    let capturedEndpointUrl = "";
+    // Override: first POST /endpoints returns 400 (duplicate URL),
+    // GET /endpoints returns the orphan with matching URL, DELETE succeeds, retry POST succeeds
+    server.use(
+      http.post("https://api.ngrok.com/endpoints", async ({ request }) => {
+        endpointCreateAttempt++;
+        const body = (await request.json()) as { url: string };
+        capturedEndpointUrl = body.url;
+        if (endpointCreateAttempt === 1) {
+          return HttpResponse.json(
+            {
+              error_code: "ERR_NGROK_334",
+              msg: "endpoint URL already online",
+              status_code: 400,
+            },
+            { status: 400 },
+          );
+        }
+        ngrokCalls.createEndpoint.push(body.url);
+        return HttpResponse.json({
+          id: "ep_test_cu_new",
+          url: body.url,
+        });
+      }),
+      http.get("https://api.ngrok.com/endpoints", () => {
+        // Return an orphan endpoint matching the URL being created
+        return HttpResponse.json({
+          endpoints: [{ id: "ep_test_cu_orphan", url: capturedEndpointUrl }],
+          next_page_uri: null,
+        });
+      }),
+    );
+
+    const response = await POST(createPostRequest());
+    expect(response.status).toBe(200);
+
+    // Verify orphan was deleted before retry
+    expect(ngrokCalls.deleteEndpoint).toContain("ep_test_cu_orphan");
+  });
+
   it("should return 200 on re-registration (idempotent)", async () => {
     const userId = uniqueId("zcu-dup");
     await setupOrg(userId);
