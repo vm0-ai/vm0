@@ -10,7 +10,7 @@
  * Each spec has its own base URL (e.g. api.xro/2.0, assets.xro/1.0),
  * so we generate one `apis` entry per unique base URL.
  *
- * Endpoints without scopes are tracked in SCOPELESS_ENDPOINTS — unknown
+ * Endpoints without scopes are tracked in INCLUDED_SCOPELESS — unknown
  * scopeless endpoints cause a build error.
  */
 
@@ -81,6 +81,25 @@ interface ParsedSpec {
   paths: Record<string, Record<string, XeroOperation>>;
 }
 
+function addRule(
+  groups: Map<string, Map<string, Set<string>>>,
+  scope: string,
+  baseUrl: string,
+  rule: string,
+): void {
+  let baseMap = groups.get(scope);
+  if (!baseMap) {
+    baseMap = new Map();
+    groups.set(scope, baseMap);
+  }
+  let ruleSet = baseMap.get(baseUrl);
+  if (!ruleSet) {
+    ruleSet = new Set();
+    baseMap.set(baseUrl, ruleSet);
+  }
+  ruleSet.add(rule);
+}
+
 function buildGroups(specs: ParsedSpec[]): {
   /** Map: baseUrl -> permission groups */
   hostGroups: Map<string, PermissionGroup[]>;
@@ -113,18 +132,7 @@ function buildGroups(specs: ParsedSpec[]): {
         if (scopes.length === 0) {
           const permName = INCLUDED_SCOPELESS.get(rule);
           if (permName) {
-            // Scopeless-but-needed: add under its named permission group
-            let baseMap = groups.get(permName);
-            if (!baseMap) {
-              baseMap = new Map();
-              groups.set(permName, baseMap);
-            }
-            let ruleSet = baseMap.get(spec.baseUrl);
-            if (!ruleSet) {
-              ruleSet = new Set();
-              baseMap.set(spec.baseUrl, ruleSet);
-            }
-            ruleSet.add(rule);
+            addRule(groups, permName, spec.baseUrl, rule);
           } else {
             unknownScopeless.push(`${rule} (${spec.baseUrl})`);
           }
@@ -135,17 +143,7 @@ function buildGroups(specs: ParsedSpec[]): {
         // and read-only scopes for read endpoints (OR semantics), so the
         // rule must appear in both groups.
         for (const scope of scopes) {
-          let baseMap = groups.get(scope);
-          if (!baseMap) {
-            baseMap = new Map();
-            groups.set(scope, baseMap);
-          }
-          let ruleSet = baseMap.get(spec.baseUrl);
-          if (!ruleSet) {
-            ruleSet = new Set();
-            baseMap.set(spec.baseUrl, ruleSet);
-          }
-          ruleSet.add(rule);
+          addRule(groups, scope, spec.baseUrl, rule);
         }
       }
     }
@@ -273,14 +271,14 @@ export async function generate(): Promise<void> {
 
   if (scopeless.length > 0) {
     console.error(
-      `\n  ${scopeless.length} endpoints without scopes (add to SCOPELESS_ENDPOINTS):`,
+      `\n  ${scopeless.length} endpoints without scopes (add to INCLUDED_SCOPELESS):`,
     );
     for (const ep of scopeless.sort()) {
       console.error(`    "${ep}",`);
     }
     throw new Error(
       `${scopeless.length} unknown scopeless endpoints found.\n` +
-        "Add them to SCOPELESS_ENDPOINTS in xero.ts to fix this error.",
+        "Add them to INCLUDED_SCOPELESS in xero.ts to fix this error.",
     );
   }
 
