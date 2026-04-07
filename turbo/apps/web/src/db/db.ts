@@ -50,6 +50,7 @@ import * as storageVersionLineageSchema from "./schema/storage-version-lineage";
 import * as vm0ApiKeySchema from "./schema/vm0-api-key";
 import * as zeroSkillSchema from "./schema/zero-skill";
 import * as computerUseHostSchema from "./schema/computer-use-host";
+import * as insightsDailySchema from "./schema/insights-daily";
 
 export const schema = {
   ...userSchema,
@@ -104,4 +105,5 @@ export const schema = {
   ...vm0ApiKeySchema,
   ...zeroSkillSchema,
   ...computerUseHostSchema,
+  ...insightsDailySchema,
 };
