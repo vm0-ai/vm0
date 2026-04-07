@@ -11,6 +11,9 @@ import { accept } from "../../lib/accept.ts";
 import { throwIfAbort } from "../utils.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 import { delay } from "signal-timers";
+import { logger } from "../log.ts";
+
+const L = logger("Polling");
 
 const AGENT_EVENTS_PAGE_LIMIT = 30;
 
@@ -51,6 +54,10 @@ export async function setLoop(
       throwIfAbort(error);
       const backoff =
         fibDelays[Math.min(fibIndex, fibDelays.length - 1)] ?? 60_000;
+      L.warn(
+        `setLoop: transient error (attempt ${fibIndex + 1}), retrying in ${backoff}ms`,
+        error,
+      );
       fibIndex++;
       await delay(backoff, { signal });
     }
@@ -220,11 +227,11 @@ export function createRunLoop(runId: string) {
   });
 
   const checkFinished$ = command(async ({ set, get }, signal: AbortSignal) => {
+    set(reloadRunStatus$);
     let status = (await get(runDetail$)).status;
     signal.throwIfAborted();
 
     if (status === "pending") {
-      set(reloadRunStatus$);
       set(reloadQueuePosition$);
       status = (await get(runDetail$)).status;
       signal.throwIfAborted();

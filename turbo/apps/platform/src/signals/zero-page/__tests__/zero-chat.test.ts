@@ -179,6 +179,96 @@ describe("zero-chat signals", () => {
       expect(threadReloadCount).toBeGreaterThan(1);
     });
 
+    it("should recover from transient network errors and complete polling via fibonacci backoff", async () => {
+      let logsCallCount = 0;
+
+      server.use(
+        http.get("*/api/zero/chat-threads", () => {
+          return HttpResponse.json({ threads: [] });
+        }),
+        http.get("*/api/zero/chat-threads/:id", () => {
+          return HttpResponse.json({
+            id: "thread-error-recovery",
+            title: null,
+            agentId: "c0000000-0000-4000-a000-000000000001",
+            chatMessages: [],
+            latestSessionId: "session-error-recovery",
+            unsavedRuns: [],
+            createdAt: "2026-03-10T00:00:00Z",
+            updatedAt: "2026-03-10T00:00:00Z",
+          });
+        }),
+        http.post("*/api/zero/chat/messages", () => {
+          return HttpResponse.json(
+            {
+              runId: "run-error-recovery",
+              threadId: "thread-error-recovery",
+              status: "running",
+              createdAt: "2026-03-10T00:00:00Z",
+            },
+            { status: 201 },
+          );
+        }),
+        http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
+          return HttpResponse.json({
+            events: [],
+            hasMore: false,
+            framework: "claude-code",
+          });
+        }),
+        http.get("*/api/zero/logs/:runId", () => {
+          logsCallCount++;
+          // First call simulates a transient network error (500)
+          if (logsCallCount === 1) {
+            return HttpResponse.json(
+              { error: "Internal Server Error" },
+              { status: 500 },
+            );
+          }
+          // Subsequent calls succeed with a completed run
+          return HttpResponse.json({
+            id: "a0000000-0000-4000-a000-000000000097",
+            sessionId: "session-error-recovery",
+            agentId: "zero",
+            displayName: null,
+            framework: "claude-code",
+            modelProvider: null,
+            selectedModel: null,
+            triggerSource: "web",
+            triggerAgentName: null,
+            scheduleId: null,
+            status: "completed",
+            prompt: "test",
+            appendSystemPrompt: null,
+            error: null,
+            createdAt: "2026-03-10T00:00:00Z",
+            startedAt: "2026-03-10T00:00:01Z",
+            completedAt: "2026-03-10T00:00:02Z",
+            artifact: { name: null, version: null },
+          });
+        }),
+      );
+
+      await setupPage({
+        context,
+        path: "/chats/thread-error-recovery",
+        withoutRender: true,
+      });
+
+      await context.store.set(
+        sendExistingThreadMessage$,
+        "Hello",
+        context.signal,
+      );
+
+      // Despite the first poll returning 500, setLoop retried via fibonacci backoff
+      // and polling eventually completed
+      await expect(context.store.get(allFinished$)).resolves.toBeTruthy();
+
+      // The logs endpoint was called more than once: first call failed, subsequent succeeded
+      expect(logsCallCount).toBeGreaterThan(1);
+    });
+
     it("should not duplicate messages after run completes and server persists them", async () => {
       const RUN_ID = "a0000000-0000-4000-a000-000000000099";
       let threadLoadCount = 0;
