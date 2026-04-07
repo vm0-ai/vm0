@@ -728,7 +728,6 @@ export type NetworkLogsResponse = z.infer<typeof networkLogsResponseSchema>;
  * Axiom raw network event — the shape returned by `queryAxiom` for MITM logs.
  * Uses `_time` (Axiom's timestamp field) instead of `timestamp`, and includes
  * `runId`/`userId` used for Axiom filtering.
- * [NETWORK_LOG_FIELDS]
  */
 export type AxiomNetworkEvent = Omit<NetworkLogEntry, "timestamp"> & {
   _time: string;
