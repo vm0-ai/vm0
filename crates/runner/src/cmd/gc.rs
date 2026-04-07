@@ -649,12 +649,17 @@ fn discover_dead_runner_base_dirs(home: &HomePaths) -> Vec<PathBuf> {
             continue;
         }
         // Only include base_dirs from dead runners (lock not held).
-        if !matches!(probe_lock(&entry.path()), LockProbe::Free(_)) {
+        // Hold the lock while reading the file to prevent a new runner from
+        // starting and overwriting the content between the probe and the read.
+        let LockProbe::Free(_lock) = probe_lock(&entry.path()) else {
             continue;
-        }
+        };
         let Ok(content) = std::fs::read_to_string(entry.path()) else {
             continue;
         };
+        // _lock dropped after read — new runner can now start, but its
+        // CowPool slots will have mtime=now and be age-gated.
+        drop(_lock);
         let path = content.trim();
         if path.is_empty() {
             continue; // pre-upgrade lock file without base_dir
