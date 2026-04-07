@@ -256,14 +256,17 @@ function aggregateNetworkDataPerUser(
     svc.agentNames.add(info.agentName);
     userData.serviceMap.set(connectorKey, svc);
 
-    if (row.firewall_permission) {
+    if (row.firewall_permission || row.action === "DENY") {
+      const hasPerm = !!row.firewall_permission;
       const isUnrestricted = row.firewall_permission === "unrestricted";
-      const permKey = isUnrestricted
-        ? row.firewall_ref
-        : `${row.firewall_ref}:${row.firewall_permission}`;
-      const label = isUnrestricted
-        ? row.firewall_ref
-        : getPermissionLabel(row.firewall_ref, row.firewall_permission);
+      const permKey =
+        !hasPerm || isUnrestricted
+          ? row.firewall_ref
+          : `${row.firewall_ref}:${row.firewall_permission}`;
+      const label =
+        !hasPerm || isUnrestricted
+          ? row.firewall_ref
+          : getPermissionLabel(row.firewall_ref, row.firewall_permission);
       const perm = userData.permMap.get(permKey) ?? {
         label,
         connectorType: row.firewall_ref,

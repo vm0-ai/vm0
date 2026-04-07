@@ -269,6 +269,72 @@ describe("GET /api/cron/aggregate-insights", () => {
     expect(slackPerm!.denied).toBe(1);
   });
 
+  it("should record denied requests with empty firewall_permission", async () => {
+    const { date } = recentDate();
+
+    const runId = await createCompletedTestRun({
+      composeVersionId,
+      userId,
+      createdAt: date,
+      startedAt: date,
+      completedAt: new Date(date.getTime() + 5000),
+    });
+
+    context.mocks.axiom.queryAxiom.mockResolvedValue([
+      {
+        _time: date.toISOString(),
+        runId,
+        host: "api.github.com",
+        firewall_ref: "github",
+        firewall_permission: "",
+        action: "DENY",
+      },
+      {
+        _time: date.toISOString(),
+        runId,
+        host: "api.github.com",
+        firewall_ref: "github",
+        firewall_permission: "",
+        action: "DENY",
+      },
+      {
+        _time: date.toISOString(),
+        runId,
+        host: "api.github.com",
+        firewall_ref: "github",
+        firewall_permission: "repo-read",
+        action: "ALLOW",
+      },
+    ]);
+
+    const response = await GET(cronRequest("test-cron-secret"));
+    expect(response.status).toBe(200);
+
+    const row = await findInsightsDaily(orgId, todayDateStr(), userId);
+    expect(row).toBeDefined();
+
+    const permissions = row!.data.permissions as Array<{
+      label: string;
+      connectorType: string;
+      allowed: number;
+      denied: number;
+    }>;
+
+    // Empty-permission DENY rows should be recorded under the connector key
+    const githubDeny = permissions.find((p) => {
+      return p.label === "github" && p.denied > 0;
+    });
+    expect(githubDeny).toBeDefined();
+    expect(githubDeny!.denied).toBe(2);
+    expect(githubDeny!.connectorType).toBe("github");
+
+    // The ALLOW with a specific permission should be separate
+    const repoRead = permissions.find((p) => {
+      return p.label.includes("repo-read") || p.label.includes("github");
+    });
+    expect(repoRead).toBeDefined();
+  });
+
   it("should continue without network data when Axiom fails", async () => {
     const { date, dateStr } = recentDate();
 
