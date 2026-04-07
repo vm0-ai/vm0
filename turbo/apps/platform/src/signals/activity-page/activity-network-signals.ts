@@ -77,23 +77,24 @@ const firstPage$ = computed(async (get) => {
   return await fetchPage(client, runId);
 });
 
-/** Extra logs appended via "Load more". */
-const extraLogs$ = state<NetworkLogEntry[]>([]);
+interface PaginationState {
+  runId: string | null;
+  logs: NetworkLogEntry[];
+  hasMore: boolean;
+  since: number | undefined;
+  pageCount: number;
+  loading: boolean;
+}
 
-/** Whether the last fetched page indicated more data. */
-const extraHasMore$ = state<boolean | null>(null);
-
-/** Cursor for the next page. */
-const nextSince$ = state<number | undefined>(undefined);
-
-/** Pages loaded so far (1 = first page only). */
-const pageCount$ = state(0);
-
-/** Whether a "load more" request is in flight. */
-const loadingMore$ = state(false);
-
-/** The runId that extra state belongs to (for stale detection). */
-const extraRunId$ = state<string | null>(null);
+/** Extra-pages pagination state, managed by loadNetworkLogsNextPage$. */
+const pagination$ = state<PaginationState>({
+  runId: null,
+  logs: [],
+  hasMore: false,
+  since: undefined,
+  pageCount: 0,
+  loading: false,
+});
 
 /**
  * Combined signal for the UI. Merges auto-loaded first page with
@@ -110,17 +111,16 @@ export const zeroActivityNetworkLogs$ = computed(async (get) => {
   }
 
   const runId = get(currentRunId$);
-  const extraRunMatch = get(extraRunId$) === runId;
-  const extra = extraRunMatch ? get(extraLogs$) : [];
+  const pg = get(pagination$);
+  const extraRunMatch = pg.runId === runId;
+  const extra = extraRunMatch ? pg.logs : [];
   const hasMore =
-    extraRunMatch && get(extraHasMore$) !== null
-      ? get(extraHasMore$)
-      : first.hasMore;
-  const loading = get(loadingMore$);
+    extraRunMatch && pg.pageCount > 0 ? pg.hasMore : first.hasMore;
+  const loading = pg.loading;
 
   return {
     networkLogs: [...first.logs, ...extra],
-    hasMore: hasMore ?? false,
+    hasMore,
     loading,
   };
 });
@@ -135,45 +135,49 @@ export const loadNetworkLogsNextPage$ = command(
       return;
     }
 
-    // Initialise extra state on first "load more" for this run
-    if (get(extraRunId$) !== runId) {
+    let pg = get(pagination$);
+
+    // Initialise pagination state on first "load more" for this run
+    if (pg.runId !== runId) {
       const first = await get(firstPage$);
       if (!first || !first.hasMore || first.logs.length === 0) {
         return;
       }
-      set(extraRunId$, runId);
-      set(extraLogs$, []);
-      set(extraHasMore$, first.hasMore);
-      set(pageCount$, 1);
       const lastEntry = first.logs[first.logs.length - 1];
-      set(nextSince$, new Date(lastEntry.timestamp).getTime());
+      pg = {
+        runId,
+        logs: [],
+        hasMore: first.hasMore,
+        since: new Date(lastEntry.timestamp).getTime(),
+        pageCount: 1,
+        loading: false,
+      };
+      set(pagination$, pg);
     }
 
-    if (get(extraHasMore$) === false || get(loadingMore$)) {
+    if (!pg.hasMore || pg.loading || pg.pageCount >= MAX_PAGES) {
       return;
     }
 
-    if (get(pageCount$) >= MAX_PAGES) {
-      return;
-    }
-
-    set(loadingMore$, true);
+    set(pagination$, { ...pg, loading: true });
 
     try {
-      const since = get(nextSince$);
       const client = get(zeroClient$)(zeroRunNetworkLogsContract);
-      const { logs, hasMore } = await fetchPage(client, runId, since);
+      const { logs, hasMore } = await fetchPage(client, runId, pg.since);
 
-      set(extraLogs$, [...get(extraLogs$), ...logs]);
-      set(extraHasMore$, hasMore);
-      set(pageCount$, get(pageCount$) + 1);
-
-      if (logs.length > 0) {
-        const lastEntry = logs[logs.length - 1];
-        set(nextSince$, new Date(lastEntry.timestamp).getTime());
-      }
+      const lastEntry = logs.length > 0 ? logs[logs.length - 1] : undefined;
+      set(pagination$, {
+        ...pg,
+        logs: [...pg.logs, ...logs],
+        hasMore,
+        since: lastEntry ? new Date(lastEntry.timestamp).getTime() : pg.since,
+        pageCount: pg.pageCount + 1,
+        loading: false,
+      });
     } finally {
-      set(loadingMore$, false);
+      set(pagination$, (current) => {
+        return current.loading ? { ...current, loading: false } : current;
+      });
     }
   },
 );

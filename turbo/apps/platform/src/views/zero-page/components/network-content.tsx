@@ -1,3 +1,4 @@
+import { IconLoader2 } from "@tabler/icons-react";
 import { useGet, useSet } from "ccstate-react";
 import {
   Table,
@@ -399,7 +400,7 @@ export function NetworkContent({
       {hasMore && onLoadMore && (
         <div className="flex justify-center py-4">
           {loading ? (
-            <div className="h-6 w-6 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
+            <IconLoader2 className="h-5 w-5 animate-spin text-muted-foreground" />
           ) : (
             <button
               type="button"

@@ -581,4 +581,93 @@ describe("networkContent", () => {
       expect(screen.queryByText("Timestamp")).not.toBeInTheDocument();
     });
   });
+
+  it("should show Load more button and append next page on click (ACT-N-007)", async () => {
+    let requestCount = 0;
+    server.use(
+      http.get("*/api/zero/logs/:id", ({ params }) => {
+        if (params["id"] === LOG_ID) {
+          return HttpResponse.json(makeLogDetail());
+        }
+        return HttpResponse.json(
+          { error: { message: "Not found", code: "NOT_FOUND" } },
+          { status: 404 },
+        );
+      }),
+      http.get("*/api/zero/runs/:runId/telemetry/agent", () => {
+        return HttpResponse.json(makeEventsResponse());
+      }),
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
+      http.get("*/api/zero/runs/:id/network", () => {
+        requestCount++;
+        if (requestCount === 1) {
+          return HttpResponse.json({
+            networkLogs: [
+              makeNetworkEntry({
+                url: "https://page1.example.com",
+                timestamp: "2026-03-10T14:56:05Z",
+              }),
+            ],
+            hasMore: true,
+          });
+        }
+        return HttpResponse.json({
+          networkLogs: [
+            makeNetworkEntry({
+              url: "https://page2.example.com",
+              timestamp: "2026-03-10T14:56:06Z",
+            }),
+          ],
+          hasMore: false,
+        });
+      }),
+    );
+
+    const user = await setupAndNavigateToTab("Network");
+
+    // First page renders
+    await waitFor(() => {
+      expect(screen.getByText("https://page1.example.com")).toBeInTheDocument();
+    });
+
+    // "Load more" button visible
+    const loadMoreButton = screen.getByText("Load more");
+    expect(loadMoreButton).toBeInTheDocument();
+
+    // Click to load next page
+    await user.click(loadMoreButton);
+
+    // Second page appended
+    await waitFor(() => {
+      expect(screen.getByText("https://page2.example.com")).toBeInTheDocument();
+    });
+
+    // First page still visible
+    expect(screen.getByText("https://page1.example.com")).toBeInTheDocument();
+
+    // "Load more" gone since hasMore is false
+    expect(screen.queryByText("Load more")).not.toBeInTheDocument();
+  });
+
+  it("should not show Load more button when hasMore is false (ACT-N-008)", async () => {
+    setupMocks({
+      contextResponse: null,
+      networkResponse: {
+        networkLogs: [makeNetworkEntry()],
+        hasMore: false,
+      },
+    });
+
+    await setupAndNavigateToTab("Network");
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("https://api.example.com/data"),
+      ).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText("Load more")).not.toBeInTheDocument();
+  });
 });
