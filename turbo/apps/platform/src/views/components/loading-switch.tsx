@@ -37,8 +37,8 @@ export function LoadingSwitch({
           size={10}
           stroke={2.5}
           className={cn(
-            "absolute top-1/2 -translate-y-1/2 animate-spin text-muted-foreground/70",
-            checked ? "left-1" : "right-1",
+            "absolute top-1/2 -translate-x-1/2 -translate-y-1/2 animate-spin text-muted-foreground/70",
+            checked ? "left-1/4" : "left-3/4",
           )}
         />
       )}
