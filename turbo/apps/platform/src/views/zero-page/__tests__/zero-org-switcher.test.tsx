@@ -454,6 +454,113 @@ describe("zero org switcher - create workspace item starts creation flow (SIDEBA
   });
 });
 
+describe("zero org switcher - create workspace shows Creating… loading state (SIDEBAR-D-065)", () => {
+  it("shows Creating… and disabled state when reopening dropdown during workspace creation", async () => {
+    let resolveCreate: ((org: { id: string }) => void) | null = null;
+    mockedClerk.createOrganization.mockImplementation(() => {
+      return new Promise((resolve) => {
+        resolveCreate = resolve;
+      });
+    });
+
+    mockAPIs();
+    await setupPage({
+      context,
+      path: "/",
+      org: {
+        activeOrg: { id: "org_1", name: "Current Org" },
+        memberships: [{ id: "org_1" }],
+      },
+    });
+
+    const user = userEvent.setup();
+
+    await waitFor(() => {
+      expect(screen.getByText("Current Org")).toBeInTheDocument();
+    });
+    await user.click(screen.getByText("Current Org"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Create workspace")).toBeInTheDocument();
+    });
+    await user.click(screen.getByText("Create workspace"));
+
+    // Dropdown closed on click — reopen to see loading state
+    await waitFor(() => {
+      expect(screen.queryByText("Create workspace")).not.toBeInTheDocument();
+    });
+    await user.click(screen.getByText("Current Org"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Creating…")).toBeInTheDocument();
+    });
+
+    // Resolve and clean up
+    mockedClerk.setActive.mockResolvedValue(undefined);
+    resolveCreate!({ id: "org_new" });
+  });
+});
+
+describe("zero org switcher - join invitation shows Joining… loading state (SIDEBAR-D-066)", () => {
+  it("shows Joining… text while invitation acceptance is pending", async () => {
+    let resolveAccept: (() => void) | null = null;
+
+    mockAPIs();
+    await setupPage({
+      context,
+      path: "/",
+      org: {
+        activeOrg: { id: "org_1", name: "Current Org" },
+        memberships: [{ id: "org_1" }],
+        pendingInvitations: [
+          {
+            id: "inv_1",
+            publicOrganizationData: {
+              id: "org_invited",
+              name: "Invited Org",
+              imageUrl: "",
+            },
+            accept: () => {
+              return new Promise<Record<string, never>>((resolve) => {
+                resolveAccept = () => {
+                  mockOrganization({
+                    activeOrg: { id: "org_1", name: "Current Org" },
+                    memberships: [{ id: "org_1" }],
+                    pendingInvitations: [],
+                  });
+                  return resolve({});
+                };
+              });
+            },
+          },
+        ],
+      },
+    });
+
+    const user = userEvent.setup();
+
+    await waitFor(() => {
+      expect(screen.getByText("Current Org")).toBeInTheDocument();
+    });
+    await user.click(screen.getByText("Current Org"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Join")).toBeInTheDocument();
+    });
+    await user.click(screen.getByText("Join"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Joining…")).toBeInTheDocument();
+    });
+
+    resolveAccept!();
+
+    await waitFor(() => {
+      expect(screen.queryByText("Joining…")).not.toBeInTheDocument();
+    });
+  });
+});
+
 describe("zero org switcher - pending invitations badge hidden when none (SIDEBAR-D-064)", () => {
   it("should not show red dot when there are no pending invitations", async () => {
     mockAPIs();

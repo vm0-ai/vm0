@@ -222,6 +222,95 @@ describe("works page - more options dropdown", () => {
   });
 });
 
+describe("works page - disconnect loading state", () => {
+  it("shows Disconnecting… while disconnect API is pending", async () => {
+    const user = userEvent.setup();
+    let resolveDisconnect: (() => void) | null = null;
+
+    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
+    server.use(
+      http.delete("*/api/zero/integrations/slack", () => {
+        return new Promise<Response>((resolve) => {
+          resolveDisconnect = () => {
+            return resolve(HttpResponse.json({ ok: true }));
+          };
+        });
+      }),
+    );
+
+    await renderWorksPage();
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("More options")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByLabelText("More options"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Disconnect")).toBeInTheDocument();
+    });
+    await user.click(screen.getByText("Disconnect"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Disconnecting…")).toBeInTheDocument();
+    });
+
+    resolveDisconnect!();
+
+    await waitFor(() => {
+      expect(screen.queryByText("Disconnecting…")).not.toBeInTheDocument();
+    });
+  });
+});
+
+describe("works page - uninstall loading state", () => {
+  it("shows Uninstalling… and disables buttons while uninstall API is pending", async () => {
+    const user = userEvent.setup();
+    let resolveUninstall: (() => void) | null = null;
+
+    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
+    server.use(
+      http.delete("*/api/zero/integrations/slack", () => {
+        return new Promise<Response>((resolve) => {
+          resolveUninstall = () => {
+            return resolve(HttpResponse.json({ ok: true }));
+          };
+        });
+      }),
+    );
+
+    await renderWorksPage();
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("More options")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByLabelText("More options"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Uninstall")).toBeInTheDocument();
+    });
+    await user.click(screen.getByText("Uninstall"));
+
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByText("Uninstall"));
+
+    // Dialog stays open with loading text and disabled buttons
+    await waitFor(() => {
+      expect(within(dialog).getByText("Uninstalling…")).toBeInTheDocument();
+    });
+    expect(within(dialog).getByText("Cancel")).toBeDisabled();
+    expect(within(dialog).getByText("Uninstalling…")).toBeDisabled();
+
+    resolveUninstall!();
+
+    // Dialog closes after completion
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+});
+
 describe("works page - update permissions interaction", () => {
   it("clicking Update Permissions opens the reinstall OAuth URL in a new tab (CONN-I-065)", async () => {
     const user = userEvent.setup();

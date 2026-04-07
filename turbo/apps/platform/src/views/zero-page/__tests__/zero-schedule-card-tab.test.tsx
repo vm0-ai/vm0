@@ -315,6 +315,52 @@ describe("zero-schedule-card - delete", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows Deleting… and disables buttons while delete API is pending (SCHED-D-046)", async () => {
+    const user = userEvent.setup();
+    let resolveDelete: (() => void) | null = null;
+    mockBaseAPIs([defaultSchedule()]);
+    server.use(
+      http.delete("*/api/zero/schedules/:name", () => {
+        return new Promise<Response>((resolve) => {
+          resolveDelete = () => {
+            return resolve(new HttpResponse(null, { status: 204 }));
+          };
+        });
+      }),
+    );
+
+    await navigateToScheduleTab();
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByText("Summarize yesterday's threads")[0],
+      ).toBeInTheDocument();
+    });
+
+    await openMenuAndClick(user, "Every weekday at 9:00 AM", "Delete");
+
+    await waitFor(() => {
+      expect(screen.getByText("Delete schedule?")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByText("Delete"));
+
+    // Dialog stays open with loading state
+    await waitFor(() => {
+      expect(screen.getByText("Deleting…")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Delete schedule?")).toBeInTheDocument();
+    expect(screen.getByText("Cancel")).toBeDisabled();
+    expect(screen.getByText("Deleting…")).toBeDisabled();
+
+    resolveDelete!();
+
+    // Dialog closes after completion
+    await waitFor(() => {
+      expect(screen.queryByText("Delete schedule?")).not.toBeInTheDocument();
+    });
+  });
+
   it("calls delete API when delete is confirmed (SCHED-D-042)", async () => {
     const user = userEvent.setup();
     let deletedName: string | null = null;
