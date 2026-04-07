@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.196.3](https://github.com/vm0-ai/vm0/compare/web-v12.196.2...web-v12.196.3) (2026-04-07)
+
+
+### Bug Fixes
+
+* add validation error logging and client-side skill name checks ([#8109](https://github.com/vm0-ai/vm0/issues/8109)) ([#8283](https://github.com/vm0-ai/vm0/issues/8283)) ([51d259a](https://github.com/vm0-ai/vm0/commit/51d259a9de2d7e1f8932fb85fb6759b4e2085c07))
+* **api:** return correct status codes for application errors ([#8279](https://github.com/vm0-ai/vm0/issues/8279)) ([1f5daf1](https://github.com/vm0-ai/vm0/commit/1f5daf1ba77266e5e715a7c8def979e797bdf73a))
+* use prefix match for ngrok domain lookup instead of hardcoded suffix ([#8285](https://github.com/vm0-ai/vm0/issues/8285)) ([417fd18](https://github.com/vm0-ai/vm0/commit/417fd18108679f667ef926051970c9ca5e7bcdcd)), closes [#8267](https://github.com/vm0-ai/vm0/issues/8267)
+
+
+### Performance Improvements
+
+* remove workspace name step and clerk calls from onboarding setup ([#8275](https://github.com/vm0-ai/vm0/issues/8275)) ([a0b2bcd](https://github.com/vm0-ai/vm0/commit/a0b2bcd9fb01f74e85251a0cc9041dd79327f884))
+
 ## [12.196.2](https://github.com/vm0-ai/vm0/compare/web-v12.196.1...web-v12.196.2) (2026-04-07)
 
 

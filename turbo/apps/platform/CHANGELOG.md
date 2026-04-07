@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.193.2](https://github.com/vm0-ai/vm0/compare/app-v0.193.1...app-v0.193.2) (2026-04-07)
+
+
+### Bug Fixes
+
+* handle clipboard write rejection on mobile safari with fallback ([#8264](https://github.com/vm0-ai/vm0/issues/8264)) ([2d71cc6](https://github.com/vm0-ai/vm0/commit/2d71cc6834c40541de81d64e030792ea9431d557))
+
 ## [0.193.1](https://github.com/vm0-ai/vm0/compare/app-v0.193.0...app-v0.193.1) (2026-04-07)
 
 
