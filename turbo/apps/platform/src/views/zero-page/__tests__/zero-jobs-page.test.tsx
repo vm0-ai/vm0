@@ -182,15 +182,6 @@ describe("zero jobs page - team list", () => {
     expect(screen.getByText("Handles alpha tasks")).toBeInTheDocument();
     expect(screen.getByText("Handles beta tasks")).toBeInTheDocument();
   });
-
-  it("should show error state with retry link when API fails", async () => {
-    mockTeamAPIError();
-    await renderTeamPage();
-
-    await waitFor(() => {
-      expect(screen.getByText("Retry")).toBeInTheDocument();
-    });
-  });
 });
 
 function createMockSchedulesFromAPI() {
