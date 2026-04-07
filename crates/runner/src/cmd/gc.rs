@@ -635,9 +635,8 @@ async fn gc_nbd_orphans(dry_run: bool) -> RunnerResult<u32> {
 /// Live runners manage their own workspaces via the factory — GC must not
 /// touch them because CowPool pre-warmed slots would be indistinguishable
 /// from orphaned workspaces.
-fn discover_dead_runner_base_dirs(home: &HomePaths) -> Vec<PathBuf> {
-    let locks_dir = home.locks_dir();
-    let entries = match std::fs::read_dir(&locks_dir) {
+fn discover_dead_runner_base_dirs(locks_dir: &Path) -> Vec<PathBuf> {
+    let entries = match std::fs::read_dir(locks_dir) {
         Ok(rd) => rd,
         Err(e) => {
             tracing::debug!("workspace gc: cannot read {}: {e}", locks_dir.display());
@@ -703,7 +702,12 @@ async fn gc_workspace_orphans(home: &HomePaths, dry_run: bool) -> RunnerResult<(
         .collect();
 
     // 2. Only scan base_dirs from dead runners (lock not held).
-    let base_dirs = discover_dead_runner_base_dirs(home);
+    //    Runs on a blocking thread because probe_lock uses flock(2) and
+    //    std::fs::read_to_string — both synchronous.
+    let locks_dir = home.locks_dir();
+    let base_dirs = tokio::task::spawn_blocking(move || discover_dead_runner_base_dirs(&locks_dir))
+        .await
+        .map_err(|e| RunnerError::Internal(format!("discover base_dirs task failed: {e}")))?;
 
     if base_dirs.is_empty() {
         tracing::debug!("workspace gc: no dead-runner base_dirs discovered");
@@ -1416,7 +1420,7 @@ mod tests {
         std::fs::write(locks_dir.join("base-dir-abc123.lock"), "/data/runner-01").unwrap();
         std::fs::write(locks_dir.join("base-dir-def456.lock"), "/data/runner-02").unwrap();
 
-        let dirs = discover_dead_runner_base_dirs(&home);
+        let dirs = discover_dead_runner_base_dirs(&home.locks_dir());
         assert_eq!(dirs.len(), 2);
         assert!(dirs.contains(&PathBuf::from("/data/runner-01")));
         assert!(dirs.contains(&PathBuf::from("/data/runner-02")));
@@ -1434,7 +1438,7 @@ mod tests {
         // Non-base-dir lock file
         std::fs::write(locks_dir.join("rootfs-abc.lock"), "/some/path").unwrap();
 
-        let dirs = discover_dead_runner_base_dirs(&home);
+        let dirs = discover_dead_runner_base_dirs(&home.locks_dir());
         assert!(dirs.is_empty());
     }
 
@@ -1443,7 +1447,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let home = test_home(dir.path());
         // locks dir does not exist
-        let dirs = discover_dead_runner_base_dirs(&home);
+        let dirs = discover_dead_runner_base_dirs(&home.locks_dir());
         assert!(dirs.is_empty());
     }
 
@@ -1467,7 +1471,7 @@ mod tests {
         // Lock file with content, NOT held (simulating a dead runner).
         std::fs::write(locks_dir.join("base-dir-dead.lock"), "/data/dead-runner").unwrap();
 
-        let dirs = discover_dead_runner_base_dirs(&home);
+        let dirs = discover_dead_runner_base_dirs(&home.locks_dir());
         assert_eq!(dirs.len(), 1);
         assert_eq!(dirs[0], PathBuf::from("/data/dead-runner"));
     }
@@ -1684,7 +1688,7 @@ mod tests {
         // Content with trailing newline (e.g., written by shell tools)
         std::fs::write(locks_dir.join("base-dir-ws.lock"), "/data/runner-01\n").unwrap();
 
-        let dirs = discover_dead_runner_base_dirs(&home);
+        let dirs = discover_dead_runner_base_dirs(&home.locks_dir());
         assert_eq!(dirs.len(), 1);
         assert_eq!(dirs[0], PathBuf::from("/data/runner-01"));
     }
@@ -1699,7 +1703,7 @@ mod tests {
         // Whitespace-only content should be treated as empty
         std::fs::write(locks_dir.join("base-dir-ws-only.lock"), "  \n\t\n").unwrap();
 
-        let dirs = discover_dead_runner_base_dirs(&home);
+        let dirs = discover_dead_runner_base_dirs(&home.locks_dir());
         assert!(dirs.is_empty());
     }
 
