@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.196.0](https://github.com/vm0-ai/vm0/compare/app-v0.195.0...app-v0.196.0) (2026-04-07)
+
+
+### Features
+
+* render markdown tables as definition list on mobile ([#8292](https://github.com/vm0-ai/vm0/issues/8292)) ([ac2d3ad](https://github.com/vm0-ai/vm0/commit/ac2d3adafa9b246f357ba87f10416d91eae728f0))
+
+
+### Bug Fixes
+
+* handle oauth popup blocking in ios pwa standalone mode ([#8284](https://github.com/vm0-ai/vm0/issues/8284)) ([3ee86d8](https://github.com/vm0-ai/vm0/commit/3ee86d89ecacc019dffdc32f2ad97a8bf3cdc9bb))
+
+
+### Refactoring
+
+* redesign firewall allow focused views as approval cards ([#7712](https://github.com/vm0-ai/vm0/issues/7712)) ([3a34350](https://github.com/vm0-ai/vm0/commit/3a3435054b8affe16ca1a0329d6ffaf1f28012ca))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.155.1
+
 ## [0.195.0](https://github.com/vm0-ai/vm0/compare/app-v0.194.0...app-v0.195.0) (2026-04-07)
 
 

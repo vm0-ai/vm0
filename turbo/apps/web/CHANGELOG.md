@@ -1,5 +1,25 @@
 # Changelog
 
+## [12.197.1](https://github.com/vm0-ai/vm0/compare/web-v12.197.0...web-v12.197.1) (2026-04-07)
+
+
+### Bug Fixes
+
+* use in-operator for ngrok domain lookup with known suffixes ([#8300](https://github.com/vm0-ai/vm0/issues/8300)) ([965e778](https://github.com/vm0-ai/vm0/commit/965e7782a885262e2167c1f21b7a4c57cbfa8fac))
+
+
+### Refactoring
+
+* extract shared axiom network event type from duplicate route definitions ([#8299](https://github.com/vm0-ai/vm0/issues/8299)) ([dc8a3c2](https://github.com/vm0-ai/vm0/commit/dc8a3c26d4b01c70f11f127be2bc9d2110c8a1e5)), closes [#7656](https://github.com/vm0-ai/vm0/issues/7656)
+* redesign firewall allow focused views as approval cards ([#7712](https://github.com/vm0-ai/vm0/issues/7712)) ([3a34350](https://github.com/vm0-ai/vm0/commit/3a3435054b8affe16ca1a0329d6ffaf1f28012ca))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.155.1
+
 ## [12.197.0](https://github.com/vm0-ai/vm0/compare/web-v12.196.3...web-v12.197.0) (2026-04-07)
 
 

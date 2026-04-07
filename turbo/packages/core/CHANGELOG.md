@@ -1,5 +1,13 @@
 # Changelog
 
+## [8.155.1](https://github.com/vm0-ai/vm0/compare/core-v8.155.0...core-v8.155.1) (2026-04-07)
+
+
+### Refactoring
+
+* extract shared axiom network event type from duplicate route definitions ([#8299](https://github.com/vm0-ai/vm0/issues/8299)) ([dc8a3c2](https://github.com/vm0-ai/vm0/commit/dc8a3c26d4b01c70f11f127be2bc9d2110c8a1e5)), closes [#7656](https://github.com/vm0-ai/vm0/issues/7656)
+* redesign firewall allow focused views as approval cards ([#7712](https://github.com/vm0-ai/vm0/issues/7712)) ([3a34350](https://github.com/vm0-ai/vm0/commit/3a3435054b8affe16ca1a0329d6ffaf1f28012ca))
+
 ## [8.155.0](https://github.com/vm0-ai/vm0/compare/core-v8.154.1...core-v8.155.0) (2026-04-07)
 
 

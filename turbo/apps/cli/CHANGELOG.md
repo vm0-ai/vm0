@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.103.1](https://github.com/vm0-ai/vm0/compare/cli-v9.103.0...cli-v9.103.1) (2026-04-07)
+
+
+### Refactoring
+
+* redesign firewall allow focused views as approval cards ([#7712](https://github.com/vm0-ai/vm0/issues/7712)) ([3a34350](https://github.com/vm0-ai/vm0/commit/3a3435054b8affe16ca1a0329d6ffaf1f28012ca))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.155.1
+
 ## [9.103.0](https://github.com/vm0-ai/vm0/compare/cli-v9.102.10...cli-v9.103.0) (2026-04-07)
 
 
