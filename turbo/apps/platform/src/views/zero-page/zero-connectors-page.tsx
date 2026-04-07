@@ -21,6 +21,7 @@ import {
   setScopeReviewType$,
   permissionDialogType$,
   setPermissionDialogType$,
+  isStandaloneMode,
   type ConnectorTypeWithStatus,
 } from "../../signals/zero-page/settings/connectors.ts";
 import { deleteConnector$ } from "../../signals/external/connectors.ts";
@@ -53,8 +54,7 @@ function GlobalConnectorCard({
 }) {
   const status = (() => {
     if (isPolling) {
-      const standaloneHint = window.matchMedia("(display-mode: standalone)")
-        .matches
+      const standaloneHint = isStandaloneMode()
         ? " Switch back here after completing sign-in."
         : "";
       return (

@@ -20,6 +20,7 @@ import {
   tokenFormValuesFor$,
   setTokenFormSubmitting$,
   selectedConnectorType$,
+  isStandaloneMode,
   type ConnectorTypeWithStatus,
 } from "../../../../signals/zero-page/settings/connectors.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
@@ -177,8 +178,7 @@ function ConnectModalContent({
 
   // While OAuth is in progress, only show connecting state
   if (isPolling) {
-    const standaloneHint = window.matchMedia("(display-mode: standalone)")
-      .matches
+    const standaloneHint = isStandaloneMode()
       ? " Switch back here after completing sign-in."
       : "";
     return (

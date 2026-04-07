@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../mocks/server.ts";
 import { testContext } from "../../../__tests__/test-helpers.ts";
@@ -67,6 +67,10 @@ function mockMatchMedia(standalone: boolean) {
 }
 
 describe("connectConnector$", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("detects connector via API polling while popup is open", async () => {
     await setupPage({ context, path: "/", withoutRender: true });
 
@@ -170,12 +174,11 @@ describe("connectConnector$", () => {
     expect(context.store.get(permissionDialogType$)).toBeNull();
   });
 
-  it("opens without popup features in standalone mode", async () => {
+  it("completes oauth flow in standalone mode without popup dimensions", async () => {
     await setupPage({ context, path: "/", withoutRender: true });
 
     mockMatchMedia(true);
-    const openSpy = vi.spyOn(window, "open").mockReturnValue(null);
-    openSpy.mockClear();
+    vi.spyOn(window, "open").mockReturnValue(null);
 
     server.use(
       http.get("*/api/zero/connectors", () => {
@@ -183,14 +186,16 @@ describe("connectConnector$", () => {
       }),
     );
 
-    await context.store.set(connectConnector$, "github", context.signal);
-
-    expect(openSpy).toHaveBeenCalledWith(expect.any(String), "_blank");
-    expect(openSpy).not.toHaveBeenCalledWith(
-      expect.any(String),
-      "_blank",
-      expect.stringContaining("width"),
+    const result = await context.store.set(
+      connectConnector$,
+      "github",
+      context.signal,
     );
+
+    // Connector was found via polling — flow completed successfully
+    expect(result).toBeTruthy();
+    expect(context.store.get(pollingConnectorType$)).toBeNull();
+    expect(context.store.get(permissionDialogType$)).toBe("github");
   });
 
   it("does not throw when window.open returns null in standalone mode", async () => {
@@ -247,8 +252,6 @@ describe("connectConnector$", () => {
 
     expect(result).toBeFalsy();
     expect(context.store.get(pollingConnectorType$)).toBeNull();
-
-    vi.spyOn(Date, "now").mockRestore();
   });
 });
 

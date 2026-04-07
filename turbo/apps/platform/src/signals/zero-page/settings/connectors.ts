@@ -313,7 +313,7 @@ export const setPermissionDialogType$ = command(
  * Returns true when the app is running as an installed PWA (standalone display mode).
  * In standalone mode, window.open() with popup features is blocked by iOS Safari.
  */
-function isStandaloneMode(): boolean {
+export function isStandaloneMode(): boolean {
   return window.matchMedia("(display-mode: standalone)").matches;
 }
 
