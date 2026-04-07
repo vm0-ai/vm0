@@ -2,6 +2,7 @@ import MarkdownPreview, {
   type MarkdownPreviewProps,
 } from "@uiw/react-markdown-preview";
 import { useGet } from "ccstate-react";
+import React from "react";
 import { theme$ } from "../../signals/theme.ts";
 
 type RewriteArgs = Parameters<
@@ -170,6 +171,86 @@ const rehypeRewriteHandler = (() => {
   };
 })();
 
+/** Extract headers and row cells from table React children, preserving rich content. */
+function extractTableSections(children: React.ReactNode): {
+  headers: React.ReactNode[];
+  rows: React.ReactNode[][];
+} {
+  const headers: React.ReactNode[] = [];
+  const rows: React.ReactNode[][] = [];
+
+  React.Children.forEach(children, (section) => {
+    if (!React.isValidElement(section)) return;
+    const el = section as React.ReactElement<{ children?: React.ReactNode }>;
+
+    if (el.type === "thead") {
+      React.Children.forEach(el.props.children, (row) => {
+        if (!React.isValidElement(row)) return;
+        const rowEl = row as React.ReactElement<{
+          children?: React.ReactNode;
+        }>;
+        React.Children.forEach(rowEl.props.children, (th) => {
+          if (!React.isValidElement(th)) return;
+          headers.push(
+            (th as React.ReactElement<{ children?: React.ReactNode }>).props
+              .children,
+          );
+        });
+      });
+    } else if (el.type === "tbody") {
+      React.Children.forEach(el.props.children, (row) => {
+        if (!React.isValidElement(row)) return;
+        const rowEl = row as React.ReactElement<{
+          children?: React.ReactNode;
+        }>;
+        const cells: React.ReactNode[] = [];
+        React.Children.forEach(rowEl.props.children, (td) => {
+          if (!React.isValidElement(td)) return;
+          cells.push(
+            (td as React.ReactElement<{ children?: React.ReactNode }>).props
+              .children,
+          );
+        });
+        rows.push(cells);
+      });
+    }
+  });
+
+  return { headers, rows };
+}
+
+/**
+ * Renders a markdown table as a standard scrollable table on ≥md screens and
+ * as a definition list on mobile, controlled by Tailwind responsive classes.
+ */
+function ResponsiveTable({ children }: { children?: React.ReactNode }) {
+  const { headers, rows } = extractTableSections(children);
+
+  return (
+    <>
+      {/* Desktop: scrollable table wrapper prevents page-level horizontal scroll */}
+      <div className="hidden overflow-x-auto md:block">
+        <table>{children}</table>
+      </div>
+      {/* Mobile: definition-list layout */}
+      <dl className="divide-border divide-y text-sm md:hidden">
+        {rows.map((row, rowIdx) => (
+          <div key={rowIdx} className="space-y-2 py-3">
+            {row.map((cell, colIdx) => (
+              <div key={colIdx} className="grid grid-cols-2 gap-x-3">
+                <dt className="text-muted-foreground truncate font-semibold">
+                  {headers[colIdx]}
+                </dt>
+                <dd className="text-foreground">{cell}</dd>
+              </div>
+            ))}
+          </div>
+        ))}
+      </dl>
+    </>
+  );
+}
+
 export function Markdown({ className, style, ...rest }: MarkdownPreviewProps) {
   const theme = useGet(theme$);
   return (
@@ -184,6 +265,9 @@ export function Markdown({ className, style, ...rest }: MarkdownPreviewProps) {
       }}
       wrapperElement={{ "data-color-mode": theme }}
       rehypeRewrite={rehypeRewriteHandler}
+      components={
+        { table: ResponsiveTable } as MarkdownPreviewProps["components"]
+      }
       {...rest}
     />
   );
