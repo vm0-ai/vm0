@@ -159,7 +159,7 @@ export const completeZeroOnboarding$ = command(
             selectedConnectors.length > 0 ? selectedConnectors : undefined,
         },
       }),
-      [200],
+      [200, 409],
     );
     signal.throwIfAborted();
 

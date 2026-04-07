@@ -1,4 +1,4 @@
-import { command, computed } from "ccstate";
+import { command, computed, state } from "ccstate";
 import {
   zeroNeedsOnboarding$,
   zeroNeedsMemberOnboarding$,
@@ -231,15 +231,25 @@ export const onboardingDisplayName$ = computed(async (get) => {
   return await get(agentDisplayName$);
 });
 
+const onboardingSubmitting$ = state(false);
+
 const completeOnboarding$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    set(reloadBillingStatus$);
+    if (get(onboardingSubmitting$)) {
+      return undefined;
+    }
+    set(onboardingSubmitting$, true);
+    try {
+      set(reloadBillingStatus$);
 
-    const isAdmin = await get(zeroNeedsOnboarding$);
-    signal.throwIfAborted();
-    return isAdmin
-      ? await set(completeZeroOnboarding$, signal)
-      : await set(completeMemberOnboarding$, signal);
+      const isAdmin = await get(zeroNeedsOnboarding$);
+      signal.throwIfAborted();
+      return isAdmin
+        ? await set(completeZeroOnboarding$, signal)
+        : await set(completeMemberOnboarding$, signal);
+    } finally {
+      set(onboardingSubmitting$, false);
+    }
   },
 );
 
