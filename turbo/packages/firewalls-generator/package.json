@@ -88,6 +88,7 @@
     "generate:pdfco": "tsx src/index.ts pdfco",
     "generate:pdforge": "tsx src/index.ts pdforge",
     "generate:perplexity": "tsx src/index.ts perplexity",
+    "generate:pika": "tsx src/index.ts pika",
     "generate:plausible": "tsx src/index.ts plausible",
     "generate:podchaser": "tsx src/index.ts podchaser",
     "generate:posthog": "tsx src/index.ts posthog",
