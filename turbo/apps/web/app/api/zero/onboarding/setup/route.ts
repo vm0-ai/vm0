@@ -24,6 +24,55 @@ import { logger } from "../../../../../src/lib/shared/logger";
 
 const log = logger("api:onboarding-setup");
 
+/**
+ * Generate a URL-safe slug from a workspace name.
+ */
+function nameToSlug(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 64);
+}
+
+/**
+ * Update org name and slug via a single Clerk call.
+ * Retries once with a random suffix if the slug conflicts.
+ */
+async function updateOrgNameAndSlug(
+  orgId: string,
+  workspaceName: string,
+): Promise<void> {
+  const name = workspaceName.trim();
+  if (!name) return;
+
+  const client = await clerkClient();
+  const baseSlug = nameToSlug(name);
+  const slugCandidates = [
+    baseSlug,
+    `${baseSlug.slice(0, 56)}-${Math.random().toString(36).slice(2, 8)}`,
+  ].filter((s) => {
+    return s.length >= 3;
+  });
+
+  for (const slug of slugCandidates) {
+    try {
+      await client.organizations.updateOrganization(orgId, { name, slug });
+      return;
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      if (msg.includes("already exists") || msg.includes("slug")) {
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  // Both slug attempts conflicted — update name only
+  await client.organizations.updateOrganization(orgId, { name });
+}
+
 const router = tsr.router(onboardingSetupContract, {
   setup: async ({ body, headers }) => {
     initServices();
@@ -75,13 +124,9 @@ const router = tsr.router(onboardingSetupContract, {
       }
     }
 
-    // Start org name update in parallel (don't await yet)
-    const orgNamePromise = body.workspaceName?.trim()
-      ? clerkClient().then((client) => {
-          return client.organizations.updateOrganization(org.orgId, {
-            name: body.workspaceName!.trim(),
-          });
-        })
+    // Start org name + slug update in parallel (don't await yet)
+    const orgUpdatePromise = body.workspaceName?.trim()
+      ? updateOrgNameAndSlug(org.orgId, body.workspaceName)
       : undefined;
 
     // Parallel: model provider + compose (independent)
@@ -98,8 +143,8 @@ const router = tsr.router(onboardingSetupContract, {
       }),
     ]);
 
-    // Await org name update (already running in parallel)
-    if (orgNamePromise) await orgNamePromise;
+    // Await org name + slug update (already running in parallel)
+    if (orgUpdatePromise) await orgUpdatePromise;
 
     if (!composeResult) {
       return {
