@@ -464,6 +464,7 @@ describe("POST /api/webhooks/agent/telemetry", () => {
         sandboxType: "runner",
         durationMs: 1500,
         success: true,
+        runId,
       });
     });
   });
