@@ -1,5 +1,9 @@
 import { command, computed, state } from "ccstate";
-import { zeroInsightsContract } from "@vm0/core";
+import {
+  zeroInsightsContract,
+  zeroInsightsRangeContract,
+  type InsightsRangeResponse,
+} from "@vm0/core";
 import { zeroClient$ } from "../api-client.ts";
 
 // ---------------------------------------------------------------------------
@@ -61,8 +65,15 @@ export interface NetworkInsightsData {
 // UI state signals
 // ---------------------------------------------------------------------------
 
+/** Yesterday's date as default selection. */
+function yesterdayIso(): string {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
 /** Page-level date range filter */
-const internalDateRange$ = state<string>("last30");
+const internalDateRange$ = state<string>(yesterdayIso());
 
 export const insightsDateRange$ = computed((get) => {
   return get(internalDateRange$);
@@ -121,6 +132,18 @@ export const setInsightsCalendarMonth$ = command(({ set }, month: number) => {
 // ---------------------------------------------------------------------------
 // Data fetching
 // ---------------------------------------------------------------------------
+
+/** Available date range for the org's insights data. */
+export const insightsRange$ = computed(
+  async (get): Promise<InsightsRangeResponse> => {
+    const client = get(zeroClient$)(zeroInsightsRangeContract);
+    const result = await client.get();
+    if (result.status !== 200) {
+      throw new Error(`Failed to fetch insights range: ${result.status}`);
+    }
+    return result.body;
+  },
+);
 
 /** Map the UI date-range value to the number of days to fetch from the API. */
 function dateRangeToDays(range: string): number {

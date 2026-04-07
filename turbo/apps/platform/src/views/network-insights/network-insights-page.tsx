@@ -18,6 +18,7 @@ import {
 } from "@vm0/ui";
 import {
   networkInsightsData$,
+  insightsRange$,
   insightsDateRange$,
   setInsightsDateRange$,
   insightsHoveredAgent$,
@@ -31,6 +32,7 @@ import {
   type DayInsight,
   type NetworkInsightsData,
 } from "../../signals/network-insights/network-insights-signals.ts";
+import type { InsightsRangeResponse } from "@vm0/core";
 
 // ---------------------------------------------------------------------------
 // Date range filter
@@ -271,17 +273,39 @@ function isPreset(v: DateRange): v is "last7" | "last28" | "last30" {
   return v === "last7" || v === "last28" || v === "last30";
 }
 
-const PRESETS = ["last7", "last28", "last30"] as const;
+/** How many days the data range spans (0 when no data). */
+function rangeSpanDays(range: InsightsRangeResponse): number {
+  if (!range.minDate) {
+    return 0;
+  }
+  const min = new Date(range.minDate + "T00:00:00");
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  return Math.ceil((now.getTime() - min.getTime()) / 86_400_000) + 1;
+}
+
+const PRESETS = [
+  { key: "last7" as const, minSpan: 2 },
+  { key: "last28" as const, minSpan: 8 },
+  { key: "last30" as const, minSpan: 8 },
+] as const;
 
 function DateRangeFilter({
   value,
   onChange,
   availableDates,
+  range,
 }: {
   value: DateRange;
   onChange: (v: DateRange) => void;
   availableDates: string[];
+  range: InsightsRangeResponse;
 }) {
+  const span = rangeSpanDays(range);
+  const visiblePresets = PRESETS.filter((p) => {
+    return span >= p.minSpan;
+  });
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -322,26 +346,30 @@ function DateRangeFilter({
             Yesterday
           </DropdownMenuItem>
         )}
-        <DropdownMenuSeparator />
-        {PRESETS.map((preset) => {
+        {visiblePresets.length > 0 && <DropdownMenuSeparator />}
+        {visiblePresets.map((preset) => {
           return (
             <DropdownMenuItem
-              key={preset}
+              key={preset.key}
               onClick={() => {
-                onChange(preset);
+                onChange(preset.key);
               }}
-              className={value === preset ? "font-semibold" : ""}
+              className={value === preset.key ? "font-semibold" : ""}
             >
-              {dateRangeLabel(preset)}
+              {dateRangeLabel(preset.key)}
             </DropdownMenuItem>
           );
         })}
-        <DropdownMenuSeparator />
-        <CustomRangePicker
-          value={value}
-          onChange={onChange}
-          availableDates={availableDates}
-        />
+        {span >= 2 && (
+          <>
+            <DropdownMenuSeparator />
+            <CustomRangePicker
+              value={value}
+              onChange={onChange}
+              availableDates={availableDates}
+            />
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -943,7 +971,13 @@ function DaySection({ day }: { day: DayInsight }) {
 // Main content
 // ---------------------------------------------------------------------------
 
-function InsightsContent({ data }: { data: NetworkInsightsData }) {
+function InsightsContent({
+  data,
+  insightsRange,
+}: {
+  data: NetworkInsightsData;
+  insightsRange: InsightsRangeResponse;
+}) {
   const dateRange = useGet(insightsDateRange$);
   const setRange = useSet(setInsightsDateRange$);
   const filtered = filterDays(data.days, dateRange);
@@ -960,13 +994,16 @@ function InsightsContent({ data }: { data: NetworkInsightsData }) {
               spot anything unusual.
             </p>
           </div>
-          <DateRangeFilter
-            value={dateRange}
-            onChange={setRange}
-            availableDates={data.days.map((d) => {
-              return d.date;
-            })}
-          />
+          {data.days.length > 0 && (
+            <DateRangeFilter
+              value={dateRange}
+              onChange={setRange}
+              availableDates={data.days.map((d) => {
+                return d.date;
+              })}
+              range={insightsRange}
+            />
+          )}
         </div>
 
         {filtered.length === 0 ? (
@@ -1023,8 +1060,14 @@ function InsightsSkeleton() {
 
 export function NetworkInsightsPage() {
   const dataLoadable = useLastLoadable(networkInsightsData$);
+  const rangeLoadable = useLastLoadable(insightsRange$);
 
-  if (dataLoadable.state === "loading" || dataLoadable.state === "hasError") {
+  if (
+    dataLoadable.state === "loading" ||
+    dataLoadable.state === "hasError" ||
+    rangeLoadable.state === "loading" ||
+    rangeLoadable.state === "hasError"
+  ) {
     return (
       <div className="h-full overflow-auto">
         <InsightsSkeleton />
@@ -1033,7 +1076,8 @@ export function NetworkInsightsPage() {
   }
 
   const data = dataLoadable.data;
-  if (!data) {
+  const range = rangeLoadable.data;
+  if (!data || !range) {
     return (
       <div className="h-full flex items-center justify-center text-muted-foreground">
         <p className="text-sm">Could not load network activity.</p>
@@ -1041,5 +1085,5 @@ export function NetworkInsightsPage() {
     );
   }
 
-  return <InsightsContent data={data} />;
+  return <InsightsContent data={data} insightsRange={range} />;
 }
