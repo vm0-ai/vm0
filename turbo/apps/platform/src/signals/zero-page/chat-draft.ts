@@ -1,6 +1,6 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import { resetSignal, createDeferredPromise } from "../utils.ts";
-import { chatThreadId$ } from "./zero-nav.ts";
+import { currentChatThreadId$ } from "../agent.ts";
 import { fetch$ } from "../fetch.ts";
 
 // ---------------------------------------------------------------------------
@@ -202,7 +202,7 @@ export const ensureDraft$ = command(
  * or the thread's draft from the map (null if `ensureDraft$` hasn't been called yet).
  */
 export const currentDraft$ = computed((get) => {
-  const threadId = get(chatThreadId$);
+  const threadId = get(currentChatThreadId$);
   if (!threadId) {
     return get(talkDraft$);
   }

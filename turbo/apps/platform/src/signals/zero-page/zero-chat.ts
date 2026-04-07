@@ -15,11 +15,8 @@ import {
   type PagedRunEvents,
 } from "./polling.ts";
 import { zeroOnboardingStatus$ } from "./zero-onboarding.ts";
-import {
-  navigateToChat$,
-  chatThreadId$,
-  sidebarChatAgentId$,
-} from "./zero-nav.ts";
+import { navigateToChat$ } from "./zero-nav.ts";
+import { currentChatThreadId$, sidebarAgentId$ } from "../agent.ts";
 import {
   RUN_ERROR_GUIDANCE,
   chatMessagesContract,
@@ -409,15 +406,14 @@ export const reloadChatThreads$ = command(({ set }) => {
 
 export const chatThreads$ = computed(async (get) => {
   get(internalReloadChatThreads$);
-  const sidebarAgentId = get(sidebarChatAgentId$);
-  const composeId =
-    sidebarAgentId ?? (await get(zeroOnboardingStatus$)).defaultAgentId;
-  if (!composeId) {
+  const agentId = await get(sidebarAgentId$);
+  if (!agentId) {
     return [];
   }
+
   const client = get(zeroClient$)(chatThreadsContract);
   const result = await accept(
-    client.list({ query: { agentId: composeId } }),
+    client.list({ query: { agentId: agentId } }),
     [200],
     { toast: false },
   );
@@ -444,7 +440,7 @@ export const deleteChatThread$ = command(
 
     toast.success("Chat deleted");
 
-    if (get(chatThreadId$) === threadId) {
+    if (get(currentChatThreadId$) === threadId) {
       const idx = threadSnapshot.findIndex((t) => {
         return t.id === threadId;
       });
@@ -623,7 +619,7 @@ const reloadCurrentThread$ = state(0);
 export const currentChatThread$ = computed(
   async (get): Promise<ChatThread | null> => {
     get(reloadCurrentThread$);
-    const threadId = get(chatThreadId$);
+    const threadId = get(currentChatThreadId$);
     if (!threadId) {
       return null;
     }
@@ -1009,7 +1005,7 @@ export const sendNewThreadMessage$ = command(
 
 export const sendExistingThreadMessage$ = command(
   async ({ get, set }, prompt: string, signal: AbortSignal) => {
-    const threadId = get(chatThreadId$);
+    const threadId = get(currentChatThreadId$);
     const thread = await get(currentChatThread$);
     signal.throwIfAborted();
     const agentId = thread?.agentId;

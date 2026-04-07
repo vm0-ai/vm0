@@ -35,7 +35,7 @@ import {
 import { Skeleton } from "@vm0/ui/components/ui/skeleton";
 import { Link } from "../router/link.tsx";
 import { detachedNavigateTo$, pathParams$ } from "../../signals/route.ts";
-import { agents$ } from "../../signals/zero-page/agents-list.ts";
+import { agents$ } from "../../signals/agent.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
   allOrgScheduleEntries$,

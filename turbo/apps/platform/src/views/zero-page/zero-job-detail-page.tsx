@@ -74,7 +74,7 @@ import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { useAgentAvatar } from "./zero-sidebar.tsx";
 import { resolveAvatarUrl } from "./avatar-utils.ts";
-import { agents$ } from "../../signals/zero-page/agents-list.ts";
+import { agents$ } from "../../signals/agent.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { user$ } from "../../signals/auth.ts";
 import { ZeroNoPermissionIllustration } from "./components/zero-no-permission-illustration.tsx";

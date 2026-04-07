@@ -5,10 +5,10 @@ import { ZeroChatListPage } from "../../views/zero-page/zero-chat-list-page.tsx"
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { searchParams$ } from "../route.ts";
-import { setSidebarChatAgent$ } from "./zero-nav.ts";
 import { onboardGuard$ } from "./onboard-guard.ts";
 import { loadInitialData$ } from "./zero-page.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
+import { setSidebarAgent$ } from "../agent.ts";
 
 export const setupChatListPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -30,7 +30,7 @@ export const setupChatListPage$ = command(
     }
 
     if (agentId) {
-      set(setSidebarChatAgent$, agentId);
+      set(setSidebarAgent$, agentId);
     }
   },
 );

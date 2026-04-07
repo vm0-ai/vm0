@@ -1,5 +1,11 @@
 import { Component } from "react";
-import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
+import {
+  useGet,
+  useSet,
+  useLoadable,
+  useLastLoadable,
+  useLastResolved,
+} from "ccstate-react";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { user$ } from "../../signals/auth.ts";
 import { IconArrowUpRight, IconPin, IconUserPlus } from "@tabler/icons-react";
@@ -12,15 +18,14 @@ import {
 } from "@vm0/ui";
 import {
   agentDisplayName$,
-  defaultAgentId$,
-} from "../../signals/zero-page/zero-agent-name.ts";
-import { currentAgentId$ } from "../../signals/zero-page/agent.ts";
-import { zeroChatAgentId$ } from "../../signals/zero-page/zero-active-agent.ts";
-import { zeroSubagents$ } from "../../signals/zero-page/zero-agents.ts";
-import {
+  sidebarAgentId$,
+  currentAgentId$,
+  subagents$,
+  sidebarAgentAvatar$,
   pinnedAgentIds$,
   updatePinnedAgentIds$,
-} from "../../signals/zero-page/zero-pinned-agents.ts";
+} from "../../signals/agent.ts";
+import { activeChatAgentId$ } from "../../signals/agent-chat.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import {
@@ -38,7 +43,6 @@ import {
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { Link } from "../router/link.tsx";
-import { useAgentAvatar } from "./zero-sidebar.tsx";
 import {
   resetTalkSendSignal$,
   sendNewThreadMessage$,
@@ -176,10 +180,10 @@ function InviteButton({ pageSignal }: { pageSignal: AbortSignal }) {
 
 export function ZeroChatPage() {
   // Agent resolution (moved from ZeroTalkPage)
-  const chatAgentLoadable = useLastLoadable(zeroChatAgentId$);
+  const chatAgentLoadable = useLastLoadable(activeChatAgentId$);
   const currentChatAgentId =
     chatAgentLoadable.state === "hasData" ? chatAgentLoadable.data : null;
-  const subagentsLoadable = useLastLoadable(zeroSubagents$);
+  const subagentsLoadable = useLastLoadable(subagents$);
   const subagents =
     subagentsLoadable.state === "hasData" ? subagentsLoadable.data : [];
   const selectedSubagent = currentChatAgentId
@@ -188,13 +192,13 @@ export function ZeroChatPage() {
       })
     : null;
 
-  const defaultAgentIdLoadable = useLastLoadable(defaultAgentId$);
-  const defaultRawName =
-    defaultAgentIdLoadable.state === "hasData"
-      ? defaultAgentIdLoadable.data
+  const sidebarAgentIdLoadable = useLastLoadable(sidebarAgentId$);
+  const sidebarAgentIdResolved =
+    sidebarAgentIdLoadable.state === "hasData"
+      ? sidebarAgentIdLoadable.data
       : null;
-  const resolvedAgentId = selectedSubagent?.id ?? defaultRawName;
-  const zeroAvatarSrc = useAgentAvatar(resolvedAgentId ?? "");
+  const resolvedAgentId = selectedSubagent?.id ?? sidebarAgentIdResolved;
+  const zeroAvatarSrc = useLastResolved(sidebarAgentAvatar$) ?? null;
 
   const agentDisplayNameLoadable = useLastLoadable(agentDisplayName$);
   const agentDisplayName =

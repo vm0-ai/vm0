@@ -9,18 +9,16 @@ import {
 import { IconMenu2, IconUserPlus } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/core";
 import { ZeroSidebar } from "./zero-sidebar.tsx";
-import { useAgentAvatar } from "./zero-sidebar-shared.tsx";
+import { sidebarAgentAvatar$, sidebarAgentId$ } from "../../signals/agent.ts";
 import {
   zeroShowAboutPage$,
   setZeroShowAboutPage$,
   sidebarExpanded$,
   setSidebarExpanded$,
-  sidebarChatAgentId$,
   isChatRoute,
 } from "../../signals/zero-page/zero-nav.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
-import { defaultAgentId$ } from "../../signals/zero-page/zero-agent-name.ts";
 import { activeRoute$ } from "../../signals/active-route.ts";
 import { mobileBreadcrumb$ } from "../../signals/zero-page/zero-mobile-breadcrumb.ts";
 import { ZeroAboutPage } from "./zero-about-page.tsx";
@@ -38,8 +36,8 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { OrgManageDialog } from "./components/org-manage/org-manage-dialog.tsx";
 
-function AgentAvatarInTopBar({ agentId }: { agentId: string }) {
-  const src = useAgentAvatar(agentId);
+function AgentAvatarInTopBar() {
+  const src = useLastResolved(sidebarAgentAvatar$) ?? null;
   if (!src) {
     return (
       <div className="h-6 w-6 shrink-0 rounded-full bg-muted" aria-hidden />
@@ -59,12 +57,8 @@ function AgentAvatarInTopBar({ agentId }: { agentId: string }) {
 function MobileTopBar() {
   const navigateTo = useSet(detachedNavigateTo$);
   const setExpanded = useSet(setSidebarExpanded$);
-  const currentAgentId = useGet(sidebarChatAgentId$);
-  const defaultAgentIdLoadable = useLastLoadable(defaultAgentId$);
-  const defaultAgent =
-    defaultAgentIdLoadable.state === "hasData"
-      ? defaultAgentIdLoadable.data
-      : null;
+  const agentId = useLastResolved(sidebarAgentId$);
+
   const breadcrumbLoadable = useLastLoadable(mobileBreadcrumb$);
   const breadcrumb =
     breadcrumbLoadable.state === "hasData" ? breadcrumbLoadable.data : null;
@@ -84,7 +78,6 @@ function MobileTopBar() {
 
   const handleMenuClick = () => {
     if (mobileChatListEnabled) {
-      const agentId = currentAgentId ?? defaultAgent;
       if (agentId) {
         navigateTo("/chats", {
           searchParams: new URLSearchParams({ agentId }),
@@ -109,9 +102,7 @@ function MobileTopBar() {
       </button>
       {breadcrumb && (
         <div className="flex-1 min-w-0 flex items-center gap-2 min-w-0">
-          {breadcrumb.avatarAgentId && (
-            <AgentAvatarInTopBar agentId={breadcrumb.avatarAgentId} />
-          )}
+          {breadcrumb.avatarAgentId && <AgentAvatarInTopBar />}
           <div className="flex items-baseline gap-1 min-w-0 flex-1">
             <div className="text-sm font-medium text-foreground flex items-center gap-1 shrink-0">
               <Link

@@ -1,7 +1,7 @@
 import { command } from "ccstate";
 import { detachedNavigateTo$, searchParams$ } from "../route.ts";
 import { checkSettingsParam$ } from "./settings/org-manage-dialog.ts";
-import { defaultAgentId$ } from "./zero-agent-name.ts";
+import { defaultAgentId$ } from "../agent.ts";
 import { onboardGuard$ } from "./onboard-guard.ts";
 import { loadInitialData$ } from "./zero-page.ts";
 

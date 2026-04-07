@@ -1,6 +1,6 @@
 import { useLoadable } from "ccstate-react";
 import { Button } from "@vm0/ui";
-import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
+import { agentDisplayName$ } from "../../signals/agent.ts";
 
 interface ZeroAboutPageProps {
   onBack?: () => void;

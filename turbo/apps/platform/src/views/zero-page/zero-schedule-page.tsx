@@ -30,7 +30,7 @@ import {
 } from "./schedule-dialog.tsx";
 import { ScheduleCalendarView } from "./schedule-calendar-view.tsx";
 import { ScheduleListView } from "./schedule-list-view.tsx";
-import { agents$ } from "../../signals/zero-page/agents-list.ts";
+import { agents$ } from "../../signals/agent.ts";
 import {
   COMMON_TIMEZONES,
   getTimezoneLabel,

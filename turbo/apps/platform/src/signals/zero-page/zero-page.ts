@@ -1,7 +1,6 @@
 import { command, state } from "ccstate";
 import { detachedNavigateTo$ } from "../route.ts";
-import { defaultAgentId$ } from "./zero-agent-name.ts";
-import { zeroSubagents$ } from "./zero-agents.ts";
+import { defaultAgentId$, subagents$ } from "../agent.ts";
 import { initZeroOnboarding$ } from "./zero-onboarding.ts";
 import { initSlackOrg$ } from "./zero-slack.ts";
 
@@ -41,7 +40,7 @@ export const resolveAgentById$ = command(
       return;
     }
 
-    const subagents = await get(zeroSubagents$);
+    const subagents = await get(subagents$);
     signal.throwIfAborted();
     const rawDefaultName = await get(defaultAgentId$);
     signal.throwIfAborted();

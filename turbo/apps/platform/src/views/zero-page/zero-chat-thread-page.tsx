@@ -35,13 +35,13 @@ import {
 } from "../../signals/zero-page/zero-attachment-chips.ts";
 import {
   agentDisplayName$,
-  defaultAgentId$,
-} from "../../signals/zero-page/zero-agent-name.ts";
-import { zeroChatAgentId$ } from "../../signals/zero-page/zero-active-agent.ts";
-import {
+  sidebarAgentId$,
   pinnedAgentIds$,
   updatePinnedAgentIds$,
-} from "../../signals/zero-page/zero-pinned-agents.ts";
+  subagents$,
+  sidebarAgentAvatar$,
+} from "../../signals/agent.ts";
+import { activeChatAgentId$ } from "../../signals/agent-chat.ts";
 import {
   zeroChatMessages$,
   allFinished$,
@@ -65,8 +65,6 @@ import {
   copiedMessageIdValue$,
   copyMessageContent$,
 } from "../../signals/zero-page/zero-session-chat-ui.ts";
-import { useAgentAvatar } from "./zero-sidebar-shared.tsx";
-import { zeroSubagents$ } from "../../signals/zero-page/zero-agents.ts";
 function scrollToLatestMessage() {
   const scrollEl = document.querySelector<HTMLElement>(
     "[data-scroll-container]",
@@ -141,10 +139,10 @@ function AvatarOrPlaceholder({
 // ---------------------------------------------------------------------------
 
 function useChatAgentIdentity() {
-  const chatAgentLoadable = useLastLoadable(zeroChatAgentId$);
+  const chatAgentLoadable = useLastLoadable(activeChatAgentId$);
   const currentChatAgentId =
     chatAgentLoadable.state === "hasData" ? chatAgentLoadable.data : null;
-  const subagentsLoadable = useLastLoadable(zeroSubagents$);
+  const subagentsLoadable = useLastLoadable(subagents$);
   const subagents =
     subagentsLoadable.state === "hasData" ? subagentsLoadable.data : [];
   const selectedSubagent = currentChatAgentId
@@ -152,18 +150,18 @@ function useChatAgentIdentity() {
         return a.id === currentChatAgentId;
       })
     : null;
-  const defaultAgentIdLoadable = useLastLoadable(defaultAgentId$);
-  const defaultRawName =
-    defaultAgentIdLoadable.state === "hasData"
-      ? defaultAgentIdLoadable.data
+  const sidebarAgentIdLoadable = useLastLoadable(sidebarAgentId$);
+  const sidebarAgentIdResolved =
+    sidebarAgentIdLoadable.state === "hasData"
+      ? sidebarAgentIdLoadable.data
       : null;
-  const resolvedAgentId = selectedSubagent?.id ?? defaultRawName;
+  const resolvedAgentId = selectedSubagent?.id ?? sidebarAgentIdResolved;
 
   const defaultDisplayName = useResolved(agentDisplayName$) ?? "Zero";
   const displayName = selectedSubagent
     ? (selectedSubagent.displayName ?? selectedSubagent.id)
     : defaultDisplayName;
-  const avatarSrc = useAgentAvatar(resolvedAgentId ?? "");
+  const avatarSrc = useLastResolved(sidebarAgentAvatar$) ?? null;
 
   return { currentChatAgentId, resolvedAgentId, displayName, avatarSrc };
 }

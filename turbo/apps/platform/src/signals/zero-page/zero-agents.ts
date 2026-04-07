@@ -1,21 +1,7 @@
-import { command, computed } from "ccstate";
-import { agents$, reloadAgents$ } from "./agents-list.ts";
-import { zeroOnboardingStatus$ } from "./zero-onboarding.ts";
+import { command } from "ccstate";
+import { reloadAgents$ } from "../agent.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { createZeroAgent } from "./create-zero-agent.ts";
-
-/**
- * Non-default agents for display in the Zero team page.
- * Filters out the default agent from the full agents list.
- */
-export const zeroSubagents$ = computed(async (get) => {
-  const agents = await get(agents$);
-  const status = await get(zeroOnboardingStatus$);
-  const defaultId = status.defaultAgentId;
-  return agents.filter((a) => {
-    return a.id !== defaultId;
-  });
-});
 
 /**
  * Create a sub-agent by composing via the zero agents API.

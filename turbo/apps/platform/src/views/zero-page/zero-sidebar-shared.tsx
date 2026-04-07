@@ -1,5 +1,5 @@
 import { useLastResolved } from "ccstate-react";
-import { agents$ } from "../../signals/zero-page/agents-list.ts";
+import { agents$ } from "../../signals/agent.ts";
 import { resolveAvatarUrl } from "./avatar-utils.ts";
 import avatar1Img from "./assets/avatar_1.webp";
 
@@ -36,9 +36,4 @@ export function AgentAvatarImg({
     return <div className={`${className} bg-muted`} aria-hidden />;
   }
   return <img src={src} alt={alt} className={className} />;
-}
-
-export interface SubagentInfo {
-  id: string;
-  displayName?: string | null;
 }

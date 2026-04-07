@@ -1,26 +1,16 @@
 import { command, computed, state } from "ccstate";
-import { detachedNavigateTo$, pathParams$ } from "../route.ts";
+import { detachedNavigateTo$ } from "../route.ts";
 import { ROUTES, type RouteKey } from "../route-paths.ts";
-import { activeRoute$ } from "../active-route.ts";
 import { localStorageSignals } from "../external/local-storage.ts";
 
 /** Re-export activeRoute$ for consumers that used to import zeroActiveId$ */
 export { activeRoute$ } from "../active-route.ts";
 
 /**
- * Chat thread ID extracted from `/chats/:id`.
- * Returns null when on `/`, or `/agents/:id/chat`.
+ * Re-export from centralized agent signals for backward compatibility.
+ * Prefer importing `currentChatThreadId$` from `../agent.ts`.
  */
-export const chatThreadId$ = computed((get): string | null => {
-  const params = get(pathParams$);
-  const id = params?.id;
-  const route = get(activeRoute$);
-  // Only return the id when we're on the chat route
-  if (route !== "chat") {
-    return null;
-  }
-  return typeof id === "string" ? id : null;
-});
+export { currentChatThreadId$ as chatThreadId$ } from "../agent.ts";
 
 /**
  * Navigate to a specific chat session — `/chats/:id`.
@@ -35,31 +25,6 @@ export const navigateToChat$ = command(({ set }, chatThreadId: string) => {
     pathParams: { id: chatThreadId },
   });
 });
-
-// ---------------------------------------------------------------------------
-// Shell UI state — sidebar chat agent, about page, sidebar collapse
-// ---------------------------------------------------------------------------
-
-/**
- * In-memory state tracking which agent the sidebar displays.
- * Written by page setup commands when entering /agents/:id/chat or /chats/:id.
- * Persists across navigations to non-chat pages (e.g. /activities) so the sidebar
- * "remembers" the last visited agent.
- * Null means default agent.
- */
-const internalSidebarChatAgentId$ = state<string | null>(null);
-
-/** Currently displayed sidebar chat agent ID. Null = default agent. */
-export const sidebarChatAgentId$ = computed((get): string | null => {
-  return get(internalSidebarChatAgentId$);
-});
-
-/** Set the sidebar chat agent ID. Called by page setup commands. */
-export const setSidebarChatAgent$ = command(
-  ({ set }, agentId: string | null) => {
-    set(internalSidebarChatAgentId$, agentId);
-  },
-);
 
 const internalShowAboutPage$ = state(false);
 

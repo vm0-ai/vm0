@@ -9,17 +9,16 @@ import {
   resetLocalMessages$,
   chatThreads$,
 } from "./zero-chat.ts";
-import { chatThreadId$, setSidebarChatAgent$ } from "./zero-nav.ts";
+import { currentChatThreadId$, setSidebarAgent$ } from "../agent.ts";
+import { activeChatAgentId$ } from "../agent-chat.ts";
 import { onboardGuard$ } from "./onboard-guard.ts";
 import { loadInitialData$ } from "./zero-page.ts";
-
-import { zeroChatAgentId$ } from "./zero-active-agent.ts";
 import { currentDraft$, ensureDraft$ } from "./chat-draft.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 
 export const setupChatSessionPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const threadId = get(chatThreadId$);
+    const threadId = get(currentChatThreadId$);
     set(
       updatePage$,
       createElement(
@@ -46,7 +45,7 @@ export const setupChatSessionPage$ = command(
     }
 
     // Update title with session name
-    const sessionId = get(chatThreadId$);
+    const sessionId = get(currentChatThreadId$);
     if (sessionId) {
       const sessions = await get(chatThreads$);
       signal.throwIfAborted();
@@ -58,9 +57,9 @@ export const setupChatSessionPage$ = command(
     }
 
     // Sync sidebar agent from thread data so it persists on non-chat pages.
-    const chatAgentId = await get(zeroChatAgentId$);
+    const chatAgentId = await get(activeChatAgentId$);
     signal.throwIfAborted();
-    set(setSidebarChatAgent$, chatAgentId);
+    set(setSidebarAgent$, chatAgentId);
 
     await set(loadSessionFromSnapshot$, signal);
   },

@@ -8,7 +8,7 @@ import { Card, CardContent, cn, Input } from "@vm0/ui";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { getCategories } from "./zero-ideation-data.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
-import { currentAgentId$ } from "../../signals/zero-page/agent.ts";
+import { currentAgentId$ } from "../../signals/agent.ts";
 import {
   ideationActiveTab$,
   setIdeationActiveTab$,

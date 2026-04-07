@@ -6,7 +6,7 @@ import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { onboardGuard$ } from "./onboard-guard.ts";
 import { loadInitialData$, resolveAgentById$ } from "./zero-page.ts";
-import { currentAgentId$ } from "./agent.ts";
+import { currentAgentId$ } from "../agent.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 
 export const setupIdeationPage$ = command(

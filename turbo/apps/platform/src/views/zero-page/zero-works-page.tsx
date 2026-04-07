@@ -20,7 +20,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@vm0/ui/components/ui/dialog";
-import { agentDisplayName$ } from "../../signals/zero-page/zero-agent-name.ts";
+import { agentDisplayName$ } from "../../signals/agent.ts";
 import {
   slackOrgData$,
   disconnectSlackOrg$,

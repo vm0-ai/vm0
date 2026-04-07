@@ -22,14 +22,12 @@ import {
   TabsList,
   TabsTrigger,
 } from "@vm0/ui";
+import { createSubagent$ } from "../../signals/zero-page/zero-agents.ts";
 import {
-  zeroSubagents$,
-  createSubagent$,
-} from "../../signals/zero-page/zero-agents.ts";
-import {
+  subagents$,
   agentDisplayName$,
   defaultAgentId$,
-} from "../../signals/zero-page/zero-agent-name.ts";
+} from "../../signals/agent.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
@@ -59,8 +57,8 @@ export function ZeroJobsPage() {
   const rawNameLoadable = useLoadable(defaultAgentId$);
   const rawAgentName =
     rawNameLoadable.state === "hasData" ? rawNameLoadable.data : null;
-  const agentsLoadable = useLoadable(zeroSubagents$);
-  const agents = useLastResolved(zeroSubagents$);
+  const agentsLoadable = useLoadable(subagents$);
+  const agents = useLastResolved(subagents$);
   const loading = agentsLoadable.state === "loading";
   const error =
     agentsLoadable.state === "hasError"

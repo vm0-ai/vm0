@@ -10,7 +10,7 @@ import {
 } from "@vm0/ui/components/ui/dialog";
 import { Button } from "@vm0/ui/components/ui/button";
 import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
-import { agents$ } from "../../../../signals/zero-page/agents-list.ts";
+import { agents$ } from "../../../../signals/agent.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { resolveAvatarUrl } from "../../avatar-utils.ts";
 import { ZERO_AVATARS } from "../../zero-avatars.ts";

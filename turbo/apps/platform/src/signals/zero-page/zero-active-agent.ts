@@ -1,37 +1,5 @@
-import { computed } from "ccstate";
-import { currentAgentId$ } from "./agent.ts";
-import { defaultAgentId$ } from "./zero-agent-name.ts";
-import { currentChatThread$ } from "./zero-chat.ts";
-
 /**
- * Agent ID of the current chat thread.
- * Returns null when not on a /chats/:id route or thread has no agent.
+ * Re-exports from the centralized agent-chat signals.
+ * Kept for backward compatibility — prefer importing from `../agent-chat.ts`.
  */
-const chatThreadAgentId$ = computed(async (get) => {
-  const thread = await get(currentChatThread$);
-  return thread?.agentId ?? null;
-});
-
-/**
- * The currently active chat agent ID, derived from URL and thread data.
- * Returns null when chatting with the default agent (null = default semantic).
- *
- * - On /agents/:id/chat → from pathParams.id, normalized (default → null)
- * - On /chats/:id → from currentChatThread$.agentId, normalized
- * - Otherwise → null
- */
-export const zeroChatAgentId$ = computed(async (get) => {
-  const agentId = get(currentAgentId$);
-  if (agentId !== null) {
-    const defaultId = await get(defaultAgentId$);
-    return agentId === defaultId ? null : agentId;
-  }
-
-  const threadAgentId = await get(chatThreadAgentId$);
-  if (threadAgentId !== null) {
-    const defaultId = await get(defaultAgentId$);
-    return threadAgentId === defaultId ? null : threadAgentId;
-  }
-
-  return null;
-});
+export { activeChatAgentId$ as zeroChatAgentId$ } from "../agent-chat.ts";

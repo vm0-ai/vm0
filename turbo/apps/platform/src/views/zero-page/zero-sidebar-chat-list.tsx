@@ -39,7 +39,7 @@ import {
   sessionListCollapsed$,
   setSessionListCollapsed$,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
-import type { SubagentInfo } from "./zero-sidebar-shared.tsx";
+import type { SubagentInfo } from "../../signals/agent.ts";
 import { Link } from "../router/link.tsx";
 
 function ChatThreadItem({
