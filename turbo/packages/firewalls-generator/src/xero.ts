@@ -59,13 +59,19 @@ interface XeroSpec {
 }
 
 // ── Scopeless endpoints ──────────────────────────────────────────────────
-// Endpoints without OAuth scopes that are intentionally denied.
-// Unknown scopeless endpoints cause a build error.
+// Endpoints without OAuth2 scopes that should still be included in the
+// firewall config. Map key = "METHOD /path", value = permission group name.
+// The proxy needs these registered so it can inject the Bearer token.
+//
+// Unknown scopeless endpoints cause a build error — add them here or
+// investigate why they lack scopes.
 
-const SCOPELESS_ENDPOINTS = new Set<string>([
-  // Identity endpoints use different auth (BasicAuth / openid scopes)
-  "GET /Connections",
-  "DELETE /Connections/{id}",
+const INCLUDED_SCOPELESS = new Map<string, string>([
+  // Identity endpoints use openid scopes (not OAuth2) but still need
+  // Bearer token auth. Required to retrieve tenant IDs before any
+  // accounting API call.
+  ["GET /Connections", "connections"],
+  ["DELETE /Connections/{id}", "connections"],
 ]);
 
 // ── Grouping ─────────────────────────────────────────────────────────────
@@ -105,7 +111,21 @@ function buildGroups(specs: ParsedSpec[]): {
         }
 
         if (scopes.length === 0) {
-          if (!SCOPELESS_ENDPOINTS.has(rule)) {
+          const permName = INCLUDED_SCOPELESS.get(rule);
+          if (permName) {
+            // Scopeless-but-needed: add under its named permission group
+            let baseMap = groups.get(permName);
+            if (!baseMap) {
+              baseMap = new Map();
+              groups.set(permName, baseMap);
+            }
+            let ruleSet = baseMap.get(spec.baseUrl);
+            if (!ruleSet) {
+              ruleSet = new Set();
+              baseMap.set(spec.baseUrl, ruleSet);
+            }
+            ruleSet.add(rule);
+          } else {
             unknownScopeless.push(`${rule} (${spec.baseUrl})`);
           }
           continue;
