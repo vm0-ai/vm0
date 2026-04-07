@@ -8,7 +8,10 @@ use tracing::{info, warn};
 use nbd_cow::NbdCowDevice;
 
 use crate::config::FirecrackerConfig;
-use crate::network::PooledNetns;
+use crate::network::{GUEST_NETWORK, NetnsPool, NetnsPoolConfig, PooledNetns, generate_boot_args};
+use crate::paths::{FactoryPaths, RuntimePaths, SandboxPaths, SockPaths};
+use crate::prerequisites;
+use crate::sandbox::FirecrackerSandbox;
 
 /// Maximum attempts to destroy a COW device after killing Firecracker.
 /// After kill_process_group + child.wait(), the kernel may still be
@@ -17,7 +20,6 @@ pub(crate) const DESTROY_RETRIES: u32 = 5;
 
 /// Delay between COW device destroy retries.
 pub(crate) const DESTROY_RETRY_DELAY: std::time::Duration = std::time::Duration::from_millis(500);
-use crate::network::{GUEST_NETWORK, NetnsPool, NetnsPoolConfig, generate_boot_args};
 
 /// Resources that require async cleanup when a sandbox is dropped without
 /// going through `factory.destroy()` (e.g. executor task panic).
@@ -25,15 +27,12 @@ use crate::network::{GUEST_NETWORK, NetnsPool, NetnsPoolConfig, generate_boot_ar
 /// The `FirecrackerSandbox::Drop` impl sends these to a cleanup channel
 /// owned by the factory, which drains them asynchronously.
 pub(crate) struct LeakedResources {
-    pub sandbox_id: String,
-    pub device_index: u32,
-    pub network: PooledNetns,
-    pub sock_dir: PathBuf,
-    pub workspace: PathBuf,
+    pub(crate) sandbox_id: String,
+    pub(crate) device_index: u32,
+    pub(crate) network: PooledNetns,
+    pub(crate) sock_dir: PathBuf,
+    pub(crate) workspace: PathBuf,
 }
-use crate::paths::{FactoryPaths, RuntimePaths, SandboxPaths, SockPaths};
-use crate::prerequisites;
-use crate::sandbox::FirecrackerSandbox;
 
 /// Shell command executed during snapshot creation to pre-warm guest state.
 /// Changing this invalidates all cached snapshots (included in [`config_hash`]).
