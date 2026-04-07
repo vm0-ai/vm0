@@ -70,37 +70,10 @@ importers:
       '@sentry/node':
         specifier: ^10.38.0
         version: 10.46.0
+    devDependencies:
       '@ts-rest/core':
         specifier: 3.53.0-rc.1
         version: 3.53.0-rc.1(@types/node@24.3.0)
-      '@vm0/core':
-        specifier: workspace:*
-        version: link:../../packages/core
-      chalk:
-        specifier: ^5.6.2
-        version: 5.6.2
-      commander:
-        specifier: ^14.0.0
-        version: 14.0.3
-      dotenv:
-        specifier: ^17.2.1
-        version: 17.3.1
-      prompts:
-        specifier: ^2.4.2
-        version: 2.4.2
-      tar:
-        specifier: '>=7.5.7'
-        version: 7.5.13
-      undici:
-        specifier: ^6.24.0
-        version: 6.24.1
-      yaml:
-        specifier: '>=2.8.3'
-        version: 2.8.3
-      zod:
-        specifier: ^4.3.6
-        version: 4.3.6
-    devDependencies:
       '@types/node':
         specifier: ^24.3.0
         version: 24.3.0
@@ -110,12 +83,24 @@ importers:
       '@types/tar':
         specifier: ^6.1.13
         version: 6.1.13
+      '@vm0/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@vm0/eslint-config':
         specifier: workspace:*
         version: link:../../packages/eslint-config
       '@vm0/typescript-config':
         specifier: workspace:*
         version: link:../../packages/typescript-config
+      chalk:
+        specifier: ^5.6.2
+        version: 5.6.2
+      commander:
+        specifier: ^14.0.0
+        version: 14.0.3
+      dotenv:
+        specifier: ^17.2.1
+        version: 17.3.1
       eslint:
         specifier: ^9.34.0
         version: 9.39.4(jiti@2.6.1)
@@ -128,15 +113,30 @@ importers:
       oxlint:
         specifier: ^1.57.0
         version: 1.57.0
+      prompts:
+        specifier: ^2.4.2
+        version: 2.4.2
+      tar:
+        specifier: '>=7.5.7'
+        version: 7.5.13
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(@swc/core@1.15.21(@swc/helpers@0.5.20))(jiti@2.6.1)(postcss@8.5.8)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)
       typescript:
         specifier: 5.9.3
         version: 5.9.3
+      undici:
+        specifier: ^6.24.0
+        version: 6.24.1
       vitest:
         specifier: ^4.1.2
         version: 4.1.2(@opentelemetry/api@1.9.1)(@types/node@24.3.0)(@vitest/ui@4.1.2)(happy-dom@20.8.9)(jiti@2.6.1)(lightningcss@1.32.0)(msw@2.12.14(@types/node@24.3.0)(typescript@5.9.3))(tsx@4.21.0)(yaml@2.8.3)
+      yaml:
+        specifier: '>=2.8.3'
+        version: 2.8.3
+      zod:
+        specifier: ^4.3.6
+        version: 4.3.6
 
   apps/docs:
     dependencies:
@@ -8834,7 +8834,7 @@ packages:
     peerDependencies:
       '@types/node': ^20.19.0 || >=22.12.0
       '@vitejs/devtools': ^0.1.0
-      esbuild: ^0.27.0
+      esbuild: ^0.27.0 || ^0.28.0
       jiti: '>=1.21.0'
       less: ^4.0.0
       sass: ^1.70.0

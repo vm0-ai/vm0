@@ -18,10 +18,16 @@ export default defineConfig({
   clean: true,
   shims: true,
   banner: {
-    js: "#!/usr/bin/env node",
+    js: [
+      "#!/usr/bin/env node",
+      // Provide CJS require() for bundled CommonJS packages that call
+      // require("events"), require("fs"), etc. at runtime.
+      'import { createRequire as __createRequire } from "node:module";',
+      "const require = __createRequire(import.meta.url);",
+    ].join("\n"),
   },
-  // Bundle workspace packages
-  noExternal: [/@vm0\/.*/],
+  // Only keep native/loader-hook packages external; everything else is bundled
+  external: ["@sentry/node", "@ngrok/ngrok"],
   // Inject version and default Sentry DSN from package.json/env at build time
   define: {
     __CLI_VERSION__: JSON.stringify(pkg.version),
