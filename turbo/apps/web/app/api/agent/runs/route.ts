@@ -50,6 +50,21 @@ import { env } from "../../../../src/env";
 const log = logger("api:runs");
 
 /**
+ * Gate captureNetworkBodies to @vm0.ai accounts in production.
+ * Throws ForbiddenError for non-internal accounts.
+ */
+async function enforceCaptureNetworkBodiesGate(
+  userId: string,
+  captureNetworkBodies: boolean | undefined,
+): Promise<void> {
+  if (!captureNetworkBodies || env().VERCEL_ENV !== "production") return;
+  const { email } = await getCachedUser(userId);
+  if (!email.endsWith("@vm0.ai")) {
+    throw forbidden("captureNetworkBodies is restricted to internal accounts");
+  }
+}
+
+/**
  * Translate createRun() errors into API response format.
  *
  * Uses the generic isApiError() check so that new error types
@@ -241,15 +256,7 @@ const router = tsr.router(runsMainContract, {
     // Resolve zero-layer data (vars, secrets, connectors, firewalls, timezone)
     // before building the execution context.
     try {
-      // Gate captureNetworkBodies to @vm0.ai accounts in production
-      if (body.captureNetworkBodies && env().VERCEL_ENV === "production") {
-        const { email } = await getCachedUser(userId);
-        if (!email.endsWith("@vm0.ai")) {
-          throw forbidden(
-            "captureNetworkBodies is restricted to internal accounts",
-          );
-        }
-      }
+      await enforceCaptureNetworkBodiesGate(userId, body.captureNetworkBodies);
 
       const resolved = await resolveCliRunContext({
         orgId: org.orgId,
