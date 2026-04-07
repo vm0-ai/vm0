@@ -29,7 +29,8 @@ import {
 import { detach, Reason } from "../../signals/utils.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import {
-  setActiveTab$,
+  orgManageTab$,
+  setActiveOrgManageTab$,
   setBillingSubPage$,
 } from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
@@ -146,7 +147,7 @@ function InviteButton({ pageSignal }: { pageSignal: AbortSignal }) {
   const isAdminLoadable = useLoadable(isOrgAdmin$);
   const isAdmin =
     isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
-  const setTab = useSet(setActiveTab$);
+  const setTab = useSet(setActiveOrgManageTab$);
   const setSubPage = useSet(setBillingSubPage$);
   const openManage = useSet(setOrgManageDialogOpen$);
   const handleInvite = () => {

@@ -13,6 +13,7 @@ import {
 } from "../agent-chat.ts";
 import { talkDraft$ } from "./chat-draft.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
+import { reloadTagline$ } from "./zero-chat-page.ts";
 
 export const setupAgentChatPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -21,6 +22,7 @@ export const setupAgentChatPage$ = command(
       createElement(SidebarLayout, null, createElement(AgentChatPage)),
     );
     set(updateDocumentTitle$, "Chat");
+    set(reloadTagline$);
 
     // Reset the talk draft on entrance
     set(get(talkDraft$).clear$);
