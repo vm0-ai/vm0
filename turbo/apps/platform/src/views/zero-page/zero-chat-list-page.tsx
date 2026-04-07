@@ -28,13 +28,11 @@ import {
   currentChatThreadId$,
   currentChatAgentId$,
   currentChatAgent$,
+  currentChatAgentDisplayName$,
 } from "../../signals/agent-chat.ts";
 import { resolveAvatarUrl } from "./avatar-utils.ts";
 import avatar1Img from "./assets/avatar_1.webp";
-import {
-  currentChatAgentDisplayName$,
-  subagents$,
-} from "../../signals/agent.ts";
+import { subagents$ } from "../../signals/agent.ts";
 import {
   pendingDeleteThreadId$,
   setPendingDeleteThreadId$,

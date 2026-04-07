@@ -1,6 +1,5 @@
 import { command, computed, state } from "ccstate";
 import {
-  zeroAgentsByIdContract,
   chatThreadByIdContract,
   chatThreadsContract,
   type SummaryEntry,
@@ -30,6 +29,10 @@ export const currentChatAgent$ = computed(async (get) => {
   }
 
   return get(agentById(agentId));
+});
+
+export const currentChatAgentDisplayName$ = computed(async (get) => {
+  return (await get(currentChatAgent$))?.displayName;
 });
 
 export const currentChatThreadId$ = computed((get): string | null => {

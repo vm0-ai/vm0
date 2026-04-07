@@ -41,10 +41,11 @@ import {
 } from "../../signals/zero-page/zero-nav.ts";
 import { activeRoute$ } from "../../signals/active-route.ts";
 import type { RouteKey } from "../../signals/route-paths.ts";
+import { subagents$ } from "../../signals/agent.ts";
 import {
   currentChatAgentDisplayName$,
-  subagents$,
-} from "../../signals/agent.ts";
+  currentChatAgentId$,
+} from "../../signals/agent-chat.ts";
 import { updatePinnedAgentIds$ } from "../../signals/zero-page/zero-pinned-agents.ts";
 import {
   managePinnedDialogOpen$,
@@ -67,7 +68,6 @@ import { ChatThreadsSection } from "./sidebar-threads.tsx";
 import { PinnedAgentListSection } from "./zero-sidebar-pinned.tsx";
 import { OverlayScrollArea } from "./zero-sidebar-scroll.tsx";
 import { SidebarUpgradeCard } from "./zero-sidebar-upgrade.tsx";
-import { currentChatAgentId$ } from "../../signals/agent-chat.ts";
 
 // Re-export shared types/components for backward compatibility
 export { useAgentAvatar } from "./zero-sidebar-shared.tsx";

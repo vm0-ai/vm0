@@ -21,7 +21,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@vm0/ui/components/ui/dialog";
-import { currentChatAgentDisplayName$ } from "../../signals/agent.ts";
+import { currentChatAgentDisplayName$ } from "../../signals/agent-chat.ts";
 import {
   slackOrgData$,
   disconnectSlackOrg$,

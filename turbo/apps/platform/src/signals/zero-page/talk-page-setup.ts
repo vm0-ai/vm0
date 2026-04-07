@@ -7,13 +7,11 @@ import { updatePage$ } from "../react-router.ts";
 import { searchParams$, updateSearchParams$ } from "../route.ts";
 import { onboardGuard$ } from "./onboard-guard.ts";
 import { loadInitialData$, resolveAgentById$ } from "./zero-page.ts";
+import { currentAgentId$, defaultAgentId$, subagents$ } from "../agent.ts";
 import {
-  currentAgentId$,
-  defaultAgentId$,
+  setChatAgentId$,
   currentChatAgentDisplayName$,
-  subagents$,
-} from "../agent.ts";
-import { setChatAgentId$ } from "../agent-chat.ts";
+} from "../agent-chat.ts";
 import { talkDraft$ } from "./chat-draft.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 

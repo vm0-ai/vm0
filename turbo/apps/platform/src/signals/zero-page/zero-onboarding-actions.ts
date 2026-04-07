@@ -11,7 +11,7 @@ import {
   completeZeroOnboarding$,
   completeMemberOnboarding$,
 } from "./zero-onboarding.ts";
-import { currentChatAgentDisplayName$ } from "../agent.ts";
+import { currentChatAgentDisplayName$ } from "../agent-chat.ts";
 import { allConnectorTypes$ } from "./settings/connectors.ts";
 import { detachedNavigateTo$ } from "../route.ts";
 import { slackOrgData$ } from "./zero-slack.ts";

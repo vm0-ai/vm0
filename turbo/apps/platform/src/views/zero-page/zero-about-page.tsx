@@ -1,6 +1,6 @@
 import { useLoadable } from "ccstate-react";
 import { Button } from "@vm0/ui";
-import { currentChatAgentDisplayName$ } from "../../signals/agent.ts";
+import { currentChatAgentDisplayName$ } from "../../signals/agent-chat.ts";
 
 interface ZeroAboutPageProps {
   onBack?: () => void;

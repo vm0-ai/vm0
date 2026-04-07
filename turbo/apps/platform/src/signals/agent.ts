@@ -14,7 +14,6 @@ import { zeroClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
 import { resolveAvatarUrl } from "../views/zero-page/avatar-utils.ts";
 import avatar1Img from "../views/zero-page/assets/avatar_1.webp";
-import { currentChatAgent$ } from "./agent-chat.ts";
 
 export const defaultAgentId$ = computed(async (get) => {
   const status = await get(zeroOnboardingStatus$);
@@ -82,8 +81,12 @@ export const sortedAgents$ = computed(async (get) => {
   const agents = await get(agents$);
   const defaultId = await get(defaultAgentId$);
   return [
-    ...agents.filter((a) => a.id === defaultId),
-    ...agents.filter((a) => a.id !== defaultId),
+    ...agents.filter((a) => {
+      return a.id === defaultId;
+    }),
+    ...agents.filter((a) => {
+      return a.id !== defaultId;
+    }),
   ];
 });
 
@@ -106,10 +109,6 @@ export const subagents$ = computed(async (get) => {
 // ---------------------------------------------------------------------------
 // Metadata
 // ---------------------------------------------------------------------------
-
-export const currentChatAgentDisplayName$ = computed(async (get) => {
-  return (await get(currentChatAgent$))?.displayName;
-});
 
 export interface SubagentInfo {
   id: string;

@@ -19,6 +19,7 @@ import { activeRoute$ } from "../../signals/active-route.ts";
 import {
   currentChatThreadId$,
   currentChatAgentId$,
+  currentChatAgentDisplayName$,
 } from "../../signals/agent-chat.ts";
 import {
   chatListOpen$,
@@ -28,7 +29,6 @@ import {
 } from "../../signals/zero-page/zero-sidebar-state.ts";
 import {
   reloadAgents$,
-  currentChatAgentDisplayName$,
   subagents$,
   defaultAgentId$,
 } from "../../signals/agent.ts";

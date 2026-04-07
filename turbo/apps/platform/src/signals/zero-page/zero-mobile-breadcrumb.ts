@@ -3,12 +3,12 @@ import type { RoutePath } from "../../types/route.ts";
 import { ROUTES } from "../route-paths.ts";
 import { pathParams$ } from "../route.ts";
 import { activeRoute$ } from "../active-route.ts";
+import { agents$, defaultAgentId$ } from "../agent.ts";
 import {
-  agents$,
+  currentChatAgentId$,
+  currentChatThreadId$,
   currentChatAgentDisplayName$,
-  defaultAgentId$,
-} from "../agent.ts";
-import { currentChatAgentId$, currentChatThreadId$ } from "../agent-chat.ts";
+} from "../agent-chat.ts";
 import { allOrgScheduleEntries$ } from "./zero-schedule.ts";
 import { zeroActivityDetail$ } from "../../signals/activity-page/activity-signals.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";

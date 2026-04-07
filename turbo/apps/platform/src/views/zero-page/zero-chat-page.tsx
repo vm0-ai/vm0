@@ -16,14 +16,11 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@vm0/ui";
-import {
-  currentChatAgentDisplayName$,
-  currentAgentId$,
-  subagents$,
-} from "../../signals/agent.ts";
+import { currentAgentId$, subagents$ } from "../../signals/agent.ts";
 import {
   currentChatAgentId$,
   currentChatAgent$,
+  currentChatAgentDisplayName$,
 } from "../../signals/agent-chat.ts";
 import { resolveAvatarUrl } from "./avatar-utils.ts";
 import avatar1Img from "./assets/avatar_1.webp";

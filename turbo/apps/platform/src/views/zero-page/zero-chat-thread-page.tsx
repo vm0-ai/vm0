@@ -33,13 +33,11 @@ import {
   lightboxUrl$ as attachmentLightboxUrl$,
   setLightboxUrl$ as setAttachmentLightboxUrl$,
 } from "../../signals/zero-page/zero-attachment-chips.ts";
-import {
-  currentChatAgentDisplayName$,
-  subagents$,
-} from "../../signals/agent.ts";
+import { subagents$ } from "../../signals/agent.ts";
 import {
   currentChatAgentId$,
   currentChatAgent$,
+  currentChatAgentDisplayName$,
 } from "../../signals/agent-chat.ts";
 import { resolveAvatarUrl } from "./avatar-utils.ts";
 import avatar1Img from "./assets/avatar_1.webp";

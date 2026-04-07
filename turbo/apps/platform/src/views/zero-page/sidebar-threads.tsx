@@ -40,8 +40,8 @@ import {
 import {
   currentChatAgentId$,
   currentChatThreadId$,
+  currentChatAgentDisplayName$,
 } from "../../signals/agent-chat.ts";
-import { currentChatAgentDisplayName$ } from "../../signals/agent.ts";
 import {
   navigateToChat$,
   setSidebarExpanded$,
