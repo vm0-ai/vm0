@@ -2061,6 +2061,79 @@ export async function findUsageDaily(
 }
 
 /**
+ * Look up an insights_daily record for verification in tests.
+ */
+export async function findInsightsDaily(
+  orgId: string,
+  date: string,
+): Promise<{ data: Record<string, unknown> } | undefined> {
+  const { insightsDaily } = await import("../db/schema/insights-daily");
+  const [row] = await globalThis.services.db
+    .select({ data: insightsDaily.data })
+    .from(insightsDaily)
+    .where(and(eq(insightsDaily.orgId, orgId), eq(insightsDaily.date, date)));
+  return row as { data: Record<string, unknown> } | undefined;
+}
+
+/**
+ * Seed a credit_usage record for testing insights aggregation.
+ */
+export async function seedCreditUsageRecord(options: {
+  runId: string;
+  orgId: string;
+  userId: string;
+  creditsCharged: number;
+  createdAt: Date;
+}): Promise<void> {
+  await globalThis.services.db.insert(creditUsage).values({
+    runId: options.runId,
+    orgId: options.orgId,
+    userId: options.userId,
+    model: "claude-sonnet-4-20250514",
+    modelProvider: "anthropic",
+    inputTokens: 100,
+    outputTokens: 50,
+    creditsCharged: options.creditsCharged,
+    status: "processed",
+    createdAt: options.createdAt,
+  });
+}
+
+/**
+ * Seed or update a user_cache entry for testing.
+ */
+export async function seedUserCacheEntry(
+  userId: string,
+  email: string,
+): Promise<void> {
+  await globalThis.services.db
+    .insert(userCache)
+    .values({ userId, email, cachedAt: new Date() })
+    .onConflictDoUpdate({
+      target: userCache.userId,
+      set: { email, cachedAt: new Date() },
+    });
+}
+
+/**
+ * Seed an insights_daily record for testing the insights API.
+ */
+export async function seedInsightsDaily(
+  orgId: string,
+  date: string,
+  data: Record<string, unknown>,
+): Promise<void> {
+  const { insightsDaily } = await import("../db/schema/insights-daily");
+  await globalThis.services.db
+    .insert(insightsDaily)
+    .values({ orgId, date, data })
+    .onConflictDoUpdate({
+      target: [insightsDaily.orgId, insightsDaily.date],
+      set: { data, updatedAt: new Date() },
+    });
+}
+
+/**
  * Find a storage volume by clerk org and name.
  * Volumes use the sentinel VOLUME_ORG_USER_ID for org-level sharing.
  * Returns the storage id and name, or undefined if not found.
