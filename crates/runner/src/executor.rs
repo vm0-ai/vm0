@@ -275,8 +275,12 @@ async fn execute_reused_sandbox(
     )
     .await;
 
-    // Post-job cleanup
+    // Post-job cleanup (copy logs to host, unregister proxy, upload network logs)
     post_job_cleanup(sandbox.as_ref(), config, context, source_ip).await;
+
+    // Clean up guest log files from this turn — they've been copied to the host
+    // and would otherwise accumulate across turns on the reused VM.
+    clean_stale_guest_logs(sandbox.as_ref()).await;
 
     let (exit_code, error) = match result {
         Ok((code, err)) => (code, err),
@@ -356,7 +360,10 @@ async fn run_in_sandbox(
     cancel: CancellationToken,
 ) -> RunnerResult<(i32, Option<String>)> {
     // System log file — all guest process output goes here for telemetry upload.
-    let log_file = format!("/tmp/vm0-system-{}.log", context.run_id);
+    let log_file = format!(
+        "{GUEST_SYSTEM_LOG_PREFIX}{}{GUEST_SYSTEM_LOG_SUFFIX}",
+        context.run_id
+    );
 
     // 1. Fix guest clock after snapshot restore (must happen before HTTPS calls)
     if use_snapshot {
@@ -662,6 +669,36 @@ async fn drain_stdout_to_file(
     }
 }
 
+/// Guest log file path prefixes. Each turn creates files named
+/// `{PREFIX}{run_id}{SUFFIX}` under `/tmp`. Used by both `copy_guest_logs`
+/// (to read) and `clean_stale_guest_logs` (to remove).
+const GUEST_SYSTEM_LOG_PREFIX: &str = "/tmp/vm0-system-";
+const GUEST_SYSTEM_LOG_SUFFIX: &str = ".log";
+const GUEST_METRICS_LOG_PREFIX: &str = "/tmp/vm0-metrics-";
+const GUEST_METRICS_LOG_SUFFIX: &str = ".jsonl";
+
+/// Remove stale guest log files from previous turns (best-effort).
+///
+/// On a reused VM, each turn leaves guest log files behind. These are
+/// already copied to the host by `post_job_cleanup`, so the guest copies
+/// are just waste.
+async fn clean_stale_guest_logs(sandbox: &dyn Sandbox) {
+    let cmd = format!(
+        "rm -f {GUEST_SYSTEM_LOG_PREFIX}*{GUEST_SYSTEM_LOG_SUFFIX} {GUEST_METRICS_LOG_PREFIX}*{GUEST_METRICS_LOG_SUFFIX}"
+    );
+    if let Err(e) = sandbox
+        .exec(&ExecRequest {
+            cmd: &cmd,
+            timeout: DEFAULT_EXEC_TIMEOUT,
+            env: &[],
+            sudo: false,
+        })
+        .await
+    {
+        warn!(error = %e, "failed to clean stale guest logs");
+    }
+}
+
 /// Copy guest log files to host (best-effort, post-job).
 ///
 /// The system log is also streamed to the host in real-time via vsock stdout
@@ -672,11 +709,11 @@ async fn copy_guest_logs(sandbox: &dyn Sandbox, context: &ExecutionContext, log_
     let run_id = context.run_id;
     let files = [
         (
-            format!("/tmp/vm0-system-{run_id}.log"),
+            format!("{GUEST_SYSTEM_LOG_PREFIX}{run_id}{GUEST_SYSTEM_LOG_SUFFIX}"),
             log_paths.system_log(run_id),
         ),
         (
-            format!("/tmp/vm0-metrics-{run_id}.jsonl"),
+            format!("{GUEST_METRICS_LOG_PREFIX}{run_id}{GUEST_METRICS_LOG_SUFFIX}"),
             log_paths.metrics_log(run_id),
         ),
     ];
@@ -1902,6 +1939,32 @@ mod tests {
 
         assert!(!log_paths.system_log(ctx.run_id).exists());
         assert!(!log_paths.metrics_log(ctx.run_id).exists());
+    }
+
+    // -----------------------------------------------------------------------
+    // clean_stale_guest_logs tests
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn clean_stale_guest_logs_succeeds() {
+        let sandbox = MockSandbox::new("test");
+        sandbox.push_exec_result(Ok(ExecResult {
+            exit_code: 0,
+            stdout: Vec::new(),
+            stderr: Vec::new(),
+        }));
+
+        clean_stale_guest_logs(&sandbox).await;
+        // No panic, exec result consumed — cleanup ran successfully.
+    }
+
+    #[tokio::test]
+    async fn clean_stale_guest_logs_tolerates_exec_failure() {
+        let sandbox = MockSandbox::new("test");
+        sandbox.push_exec_result(Err(SandboxError::ExecFailed("vsock down".into())));
+
+        // Should not panic
+        clean_stale_guest_logs(&sandbox).await;
     }
 
     // -----------------------------------------------------------------------
