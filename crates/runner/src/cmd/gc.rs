@@ -638,7 +638,10 @@ fn discover_dead_runner_base_dirs(home: &HomePaths) -> Vec<PathBuf> {
     let locks_dir = home.locks_dir();
     let entries = match std::fs::read_dir(&locks_dir) {
         Ok(rd) => rd,
-        Err(_) => return Vec::new(),
+        Err(e) => {
+            tracing::debug!("workspace gc: cannot read {}: {e}", locks_dir.display());
+            return Vec::new();
+        }
     };
 
     let mut base_dirs = Vec::new();
@@ -651,15 +654,15 @@ fn discover_dead_runner_base_dirs(home: &HomePaths) -> Vec<PathBuf> {
         // Only include base_dirs from dead runners (lock not held).
         // Hold the lock while reading the file to prevent a new runner from
         // starting and overwriting the content between the probe and the read.
-        let LockProbe::Free(_lock) = probe_lock(&entry.path()) else {
+        let LockProbe::Free(lock_guard) = probe_lock(&entry.path()) else {
             continue;
         };
         let Ok(content) = std::fs::read_to_string(entry.path()) else {
             continue;
         };
-        // _lock dropped after read — new runner can now start, but its
+        // lock_guard dropped after read — new runner can now start, but its
         // CowPool slots will have mtime=now and be age-gated.
-        drop(_lock);
+        drop(lock_guard);
         let path = content.trim();
         if path.is_empty() {
             continue; // pre-upgrade lock file without base_dir

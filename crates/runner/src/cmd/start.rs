@@ -100,7 +100,7 @@ pub async fn run_start(
         ))
     })?;
     let home = HomePaths::new()?;
-    let mut _base_dir_lock = lock::try_acquire(home.base_dir_lock(&base_dir_canonical))
+    let mut base_dir_lock = lock::try_acquire(home.base_dir_lock(&base_dir_canonical))
         .await
         .map_err(|e| {
             RunnerError::Config(format!(
@@ -112,11 +112,11 @@ pub async fn run_start(
     // directories even after all processes for this runner have died.
     {
         use std::io::{Seek, Write};
-        if let Err(e) = _base_dir_lock
+        if let Err(e) = base_dir_lock
             .seek(std::io::SeekFrom::Start(0))
-            .and_then(|_| _base_dir_lock.set_len(0))
+            .and_then(|_| base_dir_lock.set_len(0))
             .and_then(|_| {
-                _base_dir_lock.write_all(base_dir_canonical.as_os_str().as_encoded_bytes())
+                base_dir_lock.write_all(base_dir_canonical.as_os_str().as_encoded_bytes())
             })
         {
             tracing::warn!(
