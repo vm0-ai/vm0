@@ -225,8 +225,11 @@ impl FirecrackerFactory {
                 "cleaning up leaked sandbox resources"
             );
             device_pool.lock().await.release(leaked.device_index);
-            if let Err(e) = netns_pool.lock().await.release(leaked.network).await {
-                warn!(id = %leaked.sandbox_id, error = %e, "failed to release leaked netns");
+            {
+                let mut pool = netns_pool.lock().await;
+                if let Err(e) = pool.release(leaked.network).await {
+                    warn!(id = %leaked.sandbox_id, error = %e, "failed to release leaked netns");
+                }
             }
             if let Err(e) = tokio::fs::remove_dir_all(&leaked.sock_dir).await {
                 warn!(id = %leaked.sandbox_id, error = %e, "failed to delete leaked sock dir");
@@ -506,10 +509,15 @@ impl SandboxFactory for FirecrackerFactory {
     }
 
     async fn shutdown(&mut self) {
-        // Stop accepting leaked resources and abort the cleanup task.
+        // Drop the sender so no new leaked resources are accepted, then
+        // wait for the drain task to finish processing any queued items.
+        // This ensures resources queued during the final job drain are
+        // cleaned up before pool shutdown.
         self.leak_tx.take();
         if let Some(h) = self.leak_cleanup_handle.take() {
-            h.abort();
+            // The drain loop exits when all senders are dropped (channel closed).
+            // Use a timeout to avoid blocking shutdown indefinitely.
+            let _ = tokio::time::timeout(std::time::Duration::from_secs(5), h).await;
         }
 
         // Clean up COW pool (delete pre-warmed COW files).
