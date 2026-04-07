@@ -17,16 +17,9 @@ import {
 import { computeHmacSignature } from "../../../../../../../src/lib/infra/callback/hmac";
 import { POST } from "../route";
 
-vi.mock("@vm0/core", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@vm0/core")>();
-  return {
-    ...actual,
-    isFeatureEnabled: vi.fn().mockReturnValue(false),
-  };
-});
-
-const { isFeatureEnabled } = await import("@vm0/core");
-const mockIsFeatureEnabled = isFeatureEnabled as ReturnType<typeof vi.fn>;
+// The staff org ID whose FNV-1a hash (afce210e) is listed in STAFF_ORG_ID_HASHES,
+// enabling the AuditLink feature switch for that org.
+const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 
 const context = testContext();
 
@@ -73,7 +66,6 @@ describe("POST /api/internal/callbacks/slack/org", () => {
   beforeEach(async () => {
     context.setupMocks();
     user = await context.setupUser();
-    mockIsFeatureEnabled.mockReturnValue(false);
   });
 
   async function setupOrgSlack() {
@@ -384,9 +376,9 @@ describe("POST /api/internal/callbacks/slack/org", () => {
   });
 
   it("omits audit link block when AuditLink switch is off", async () => {
-    mockIsFeatureEnabled.mockReturnValue(false);
     const { workspaceId, connectionId } = await setupOrgSlack();
     const { composeId } = await createTestCompose(uniqueId("agent"));
+    // Use a non-staff orgId so the AuditLink feature switch is disabled
     const { runId } = await createTestRunInDb(user.userId, composeId, {
       prompt: "Test prompt",
     });
@@ -426,11 +418,12 @@ describe("POST /api/internal/callbacks/slack/org", () => {
   });
 
   it("includes audit link block when AuditLink switch is on", async () => {
-    mockIsFeatureEnabled.mockReturnValue(true);
     const { workspaceId, connectionId } = await setupOrgSlack();
     const { composeId } = await createTestCompose(uniqueId("agent"));
+    // Use the staff orgId whose hash is in STAFF_ORG_ID_HASHES, enabling AuditLink
     const { runId } = await createTestRunInDb(user.userId, composeId, {
       prompt: "Test prompt",
+      orgId: STAFF_ORG_ID,
     });
     await completeTestRun(user.userId, runId);
 
