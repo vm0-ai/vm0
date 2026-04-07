@@ -674,7 +674,7 @@ function permissionLabel(p: { label: string; connectorType?: string }): string {
   if (!p.connectorType || p.label === p.connectorType) {
     return connectorLabel(p.label);
   }
-  return `${p.label}(${connectorLabel(p.connectorType)})`;
+  return `${connectorLabel(p.connectorType)}(${p.label})`;
 }
 
 function ServicesCard({
