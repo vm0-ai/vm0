@@ -38,6 +38,7 @@ export async function executeRunnerJob(
       actionType: "api_to_executor",
       durationMs: Date.now() - context.apiStartTime,
       success: true,
+      runId: context.runId,
     });
   }
 

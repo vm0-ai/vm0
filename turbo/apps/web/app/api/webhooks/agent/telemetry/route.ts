@@ -127,6 +127,7 @@ const router = tsr.router(webhookTelemetryContract, {
           sandboxType: "runner",
           durationMs: op.duration_ms,
           success: op.success,
+          runId: body.runId,
         });
       }
     }

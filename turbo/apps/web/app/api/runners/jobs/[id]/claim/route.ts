@@ -147,6 +147,7 @@ const router = tsr.router(runnersJobClaimContract, {
         actionType: "api_to_claim",
         durationMs: now.getTime() - storedContext.apiStartTime,
         success: true,
+        runId,
       });
     }
 

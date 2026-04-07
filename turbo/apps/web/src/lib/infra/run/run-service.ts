@@ -650,6 +650,7 @@ export async function buildAndDispatchRun(opts: {
         actionType: step.op,
         durationMs: step.ms,
         success: true,
+        runId,
       });
     }
 
