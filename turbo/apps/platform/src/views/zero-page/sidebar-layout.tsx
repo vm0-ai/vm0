@@ -1,5 +1,11 @@
 import type { ReactNode } from "react";
-import { useGet, useSet, useLoadable, useLastLoadable, useLastResolved } from "ccstate-react";
+import {
+  useGet,
+  useSet,
+  useLoadable,
+  useLastLoadable,
+  useLastResolved,
+} from "ccstate-react";
 import { IconMenu2, IconUserPlus } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/core";
 import { ZeroSidebar } from "./zero-sidebar.tsx";

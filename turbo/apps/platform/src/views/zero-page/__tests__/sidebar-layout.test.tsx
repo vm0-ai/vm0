@@ -151,9 +151,7 @@ describe("sidebar layout - menu toggle expands sidebar when flag is off (SIDEBAR
     await user.click(menuButton);
 
     await waitFor(() => {
-      expect(
-        screen.getByLabelText("Sidebar overlay"),
-      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Sidebar overlay")).toBeInTheDocument();
     });
   });
 });
