@@ -221,8 +221,8 @@ describe("getOrgBillingPeriod", () => {
 
     const result = await getOrgBillingPeriod(orgId);
 
-    expect(result).not.toBeNull();
-    expect(result!.end).toEqual(new Date("2026-04-01T00:00:00Z"));
+    if (!result) throw new Error("expected result to be non-null");
+    expect(result.end).toEqual(new Date("2026-04-01T00:00:00Z"));
     expect(stripeMocks.subscriptionsRetrieve).toHaveBeenCalledWith(subId);
     expect(stripeMocks.invoicesRetrieve).toHaveBeenCalledWith("inv_fresh123");
   });
@@ -244,8 +244,8 @@ describe("getOrgBillingPeriod", () => {
 
     const result = await getOrgBillingPeriod(orgId);
 
-    expect(result).not.toBeNull();
-    expect(result!.end).toEqual(futurePeriodEnd);
+    if (!result) throw new Error("expected result to be non-null");
+    expect(result.end).toEqual(futurePeriodEnd);
     // Stripe should NOT have been called — we used the cached value
     expect(stripeMocks.subscriptionsRetrieve).not.toHaveBeenCalled();
   });
