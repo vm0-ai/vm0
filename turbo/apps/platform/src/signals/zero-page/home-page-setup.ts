@@ -3,12 +3,9 @@ import { detachedNavigateTo$, searchParams$ } from "../route.ts";
 import { checkSettingsParam$ } from "./settings/org-manage-dialog.ts";
 import { defaultAgentId$ } from "../agent.ts";
 import { onboardGuard$ } from "./onboard-guard.ts";
-import { loadInitialData$ } from "./zero-page.ts";
 
 export const setupHomePage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    await set(loadInitialData$, signal);
-
     if (await set(onboardGuard$, signal)) {
       return;
     }

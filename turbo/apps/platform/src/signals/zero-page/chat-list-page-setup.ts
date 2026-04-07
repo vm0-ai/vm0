@@ -6,7 +6,6 @@ import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { searchParams$ } from "../route.ts";
 import { onboardGuard$ } from "./onboard-guard.ts";
-import { loadInitialData$ } from "./zero-page.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { setChatAgentId$ } from "../agent-chat.ts";
 
@@ -21,8 +20,6 @@ export const setupChatListPage$ = command(
     );
     set(updateDocumentTitle$, "Chats");
 
-    await set(loadInitialData$, signal);
-    signal.throwIfAborted();
     await set(hideAppSkeleton$, signal);
 
     if (await set(onboardGuard$, signal)) {

@@ -9,6 +9,7 @@ import { zeroClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
 import { pathParams$ } from "./route.ts";
 import { activeRoute$ } from "./active-route.ts";
+import { resolveAvatarUrl } from "../views/zero-page/avatar-utils.ts";
 
 const internalChatAgentId$ = state<string | null>(null);
 
@@ -33,6 +34,11 @@ export const currentChatAgent$ = computed(async (get) => {
 
 export const currentChatAgentDisplayName$ = computed(async (get) => {
   return (await get(currentChatAgent$))?.displayName;
+});
+
+export const currentChatAgentAvatarUrl$ = computed(async (get) => {
+  const agent = await get(currentChatAgent$);
+  return agent ? resolveAvatarUrl(agent.avatarUrl) : null;
 });
 
 export const currentChatThreadId$ = computed((get): string | null => {

@@ -7,7 +7,6 @@ import { updatePage$ } from "../react-router.ts";
 import { logger } from "../log.ts";
 
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
-import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
 import { reloadChatThreads$ } from "../chat-page/chat-message.ts";
 import {
   initSlackOrg$,
@@ -24,8 +23,6 @@ export const setupWorksPage$ = command(async ({ set }, signal: AbortSignal) => {
   );
   set(updateDocumentTitle$, "Works");
   set(initSlackOrg$);
-  await set(initZeroOnboarding$, signal);
-  signal.throwIfAborted();
   await set(hideAppSkeleton$, signal);
   // pollSlackConnection$ is a long-running daemon loop — fire-and-forget so
   // the setup completes and the page renders.

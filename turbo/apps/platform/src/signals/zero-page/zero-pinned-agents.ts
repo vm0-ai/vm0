@@ -4,7 +4,7 @@ import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { clerk$ } from "../auth.ts";
 import { zeroOnboardingStatus$ } from "./zero-onboarding.ts";
-import { agents$ } from "../agent.ts";
+import { agents$, defaultAgentId$ } from "../agent.ts";
 
 const reloadPinned$ = state(0);
 
@@ -37,14 +37,14 @@ export const pinnedAgentIds$ = computed(async (get) => {
       ...optimistic.filter((id) => {
         return id !== defaultAgentId;
       }),
-    ];
+    ].filter((a) => a !== null);
   }
   return [
     defaultAgentId,
     ...(await get(serverPinnedIds$)).filter((id) => {
       return id !== defaultAgentId;
     }),
-  ];
+  ].filter((a) => a !== null);
 });
 
 /**
@@ -66,17 +66,31 @@ export const pinnedAgents$ = computed(async (get) => {
 });
 
 export const updatePinnedAgentIds$ = command(
-  async ({ get, set }, ids: string[], _signal: AbortSignal) => {
-    // Optimistic update — UI reflects the change immediately
+  async ({ get, set }, ids: string[], signal: AbortSignal) => {
+    const defaultAgentId = await get(defaultAgentId$);
+    signal.throwIfAborted();
+    ids = ids.filter((id) => {
+      return id !== defaultAgentId;
+    });
+
     set(optimisticPinnedIds$, ids);
     try {
       const createClient = get(zeroClient$);
       const client = createClient(zeroUserPreferencesContract);
-      await accept(client.update({ body: { pinnedAgentIds: ids } }), [200]);
+      await accept(
+        client.update({
+          body: { pinnedAgentIds: ids },
+          fetchOptions: { signal },
+        }),
+        [200],
+      );
+      signal.throwIfAborted();
 
-      // Force JWT refresh so updated membership metadata is available immediately
       const clerk = await get(clerk$);
+      signal.throwIfAborted();
+
       await clerk.session?.getToken({ skipCache: true });
+      signal.throwIfAborted();
 
       set(reloadPinned$, (x) => {
         return x + 1;

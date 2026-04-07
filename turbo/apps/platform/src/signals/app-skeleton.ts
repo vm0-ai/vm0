@@ -1,5 +1,7 @@
 import { command, computed, state } from "ccstate";
-import { delay } from "signal-timers";
+import { currentChatAgent$ } from "./agent-chat";
+import { resolveAvatarUrl } from "../views/zero-page/avatar-utils";
+import { pinnedAgents$ } from "./zero-page/zero-pinned-agents";
 
 const internalVisible$ = state(true);
 
@@ -12,8 +14,23 @@ export const showAppSkeleton$ = command(({ set }) => {
 });
 
 export const hideAppSkeleton$ = command(
-  async ({ set }, signal: AbortSignal) => {
-    await delay(0, { signal });
+  async ({ get, set }, signal: AbortSignal) => {
+    await Promise.all([
+      (async () => {
+        const currentChatAgent = await get(currentChatAgent$);
+        signal.throwIfAborted();
+        if (currentChatAgent) {
+          const src = resolveAvatarUrl(currentChatAgent.avatarUrl);
+          if (src) {
+            await fetch(src, {
+              signal,
+            });
+          }
+        }
+      })(),
+      get(pinnedAgents$),
+    ]);
+    signal.throwIfAborted();
     set(internalVisible$, false);
   },
 );

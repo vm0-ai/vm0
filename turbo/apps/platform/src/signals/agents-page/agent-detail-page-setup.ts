@@ -10,7 +10,6 @@ import { setChatAgentId$ } from "../agent-chat.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import { reloadChatThreads$ } from "../chat-page/chat-message.ts";
 import { setActiveAgent$ } from "../zero-page/zero-job-detail.ts";
-import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
 import { initSlackOrg$ } from "../zero-page/zero-slack.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 
@@ -25,10 +24,9 @@ export const setupAgentDetailPage$ = command(
     const agentId = params?.id ?? null;
     set(updateDocumentTitle$, "Team");
     set(initSlackOrg$);
-    await Promise.all([
-      set(initZeroOnboarding$, signal),
-      agentId ? set(setActiveAgent$, agentId) : undefined,
-    ]);
+    if (agentId) {
+      await set(setActiveAgent$, agentId);
+    }
     signal.throwIfAborted();
     await set(hideAppSkeleton$, signal);
 

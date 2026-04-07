@@ -3,8 +3,8 @@ import {
   useGet,
   useSet,
   useLoadable,
-  useLastLoadable,
   useLastResolved,
+  useResolved,
 } from "ccstate-react";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { user$ } from "../../signals/auth.ts";
@@ -16,14 +16,11 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@vm0/ui";
-import { currentAgentId$, subagents$ } from "../../signals/agent.ts";
 import {
   currentChatAgentId$,
-  currentChatAgent$,
   currentChatAgentDisplayName$,
+  currentChatAgentAvatarUrl$,
 } from "../../signals/agent-chat.ts";
-import { resolveAvatarUrl } from "./avatar-utils.ts";
-import avatar1Img from "./assets/avatar_1.webp";
 import {
   pinnedAgentIds$,
   updatePinnedAgentIds$,
@@ -32,7 +29,7 @@ import {
 import { detach, Reason } from "../../signals/utils.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import {
-  setActiveOrgManageTab$,
+  setActiveTab$,
   setBillingSubPage$,
 } from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
@@ -54,7 +51,7 @@ import {
 
 function getTagline(
   agentName: string,
-  userName: string | undefined,
+  userName: string | null,
   index: number,
 ): string {
   const taglines = userName
@@ -145,19 +142,11 @@ class TypewriterText extends Component<
   }
 }
 
-function useUserFirstName(): string | undefined {
-  const loadable = useLoadable(user$);
-  if (loadable.state !== "hasData") {
-    return undefined;
-  }
-  return loadable.data?.firstName ?? undefined;
-}
-
 function InviteButton({ pageSignal }: { pageSignal: AbortSignal }) {
   const isAdminLoadable = useLoadable(isOrgAdmin$);
   const isAdmin =
     isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
-  const setTab = useSet(setActiveOrgManageTab$);
+  const setTab = useSet(setActiveTab$);
   const setSubPage = useSet(setBillingSubPage$);
   const openManage = useSet(setOrgManageDialogOpen$);
   const handleInvite = () => {
@@ -181,90 +170,50 @@ function InviteButton({ pageSignal }: { pageSignal: AbortSignal }) {
   );
 }
 
-export function ZeroChatPage() {
-  // Agent resolution (moved from ZeroTalkPage)
-  const chatAgentLoadable = useLastLoadable(currentChatAgentId$);
-  const currentChatAgentId =
-    chatAgentLoadable.state === "hasData" ? chatAgentLoadable.data : null;
-  const subagentsLoadable = useLastLoadable(subagents$);
-  const subagents =
-    subagentsLoadable.state === "hasData" ? subagentsLoadable.data : [];
-  const selectedSubagent = currentChatAgentId
-    ? subagents.find((a) => {
-        return a.id === currentChatAgentId;
-      })
-    : null;
+export function AgentChatPage() {
+  const currentChatAgentId = useResolved(currentChatAgentId$);
+  const currentChatAgentAvatar = useResolved(currentChatAgentAvatarUrl$);
+  const currentChatAgentDisplayName = useResolved(currentChatAgentDisplayName$);
 
-  const sidebarAgentIdLoadable = useLastLoadable(currentChatAgentId$);
-  const sidebarAgentIdResolved =
-    sidebarAgentIdLoadable.state === "hasData"
-      ? sidebarAgentIdLoadable.data
-      : null;
-  const resolvedAgentId = selectedSubagent?.id ?? sidebarAgentIdResolved;
-  const sidebarAgent = useLastResolved(currentChatAgent$);
-  const zeroAvatarSrc = sidebarAgent
-    ? (resolveAvatarUrl(sidebarAgent.avatarUrl) ?? avatar1Img)
-    : null;
-
-  const agentDisplayNameLoadable = useLastLoadable(
-    currentChatAgentDisplayName$,
-  );
-  const agentDisplayName =
-    agentDisplayNameLoadable.state === "hasData"
-      ? (agentDisplayNameLoadable.data ?? "Zero")
-      : "Zero";
-  const chatAgentName = selectedSubagent
-    ? (selectedSubagent.displayName ?? selectedSubagent.id)
-    : agentDisplayName;
-
-  // Send logic (moved from ZeroTalkPage)
   const sendNewThread = useSet(sendNewThreadMessage$);
   const startNewSession = useSet(startNewZeroSession$);
   const resetTalkSendSignal = useSet(resetTalkSendSignal$);
 
   const handleSendMessage = (message: string) => {
-    if (!resolvedAgentId) {
+    if (!currentChatAgentId) {
       return;
     }
     startNewSession();
     const talkSignal = resetTalkSendSignal();
     detach(
-      sendNewThread(resolvedAgentId, message, talkSignal),
+      sendNewThread(currentChatAgentId, message, talkSignal),
       Reason.DomCallback,
     );
   };
 
-  const displayName = chatAgentName;
-  const userName = useUserFirstName();
+  const userFirstName = useLastResolved(user$)?.firstName ?? null;
 
   const input = useGet(chatPageInput$);
   const setInput = useSet(setChatPageInput$);
   const taglineIndex = useGet(chatPageTaglineIndex$);
-  const tagline = getTagline(displayName, userName, taglineIndex);
+  const tagline = currentChatAgentDisplayName
+    ? getTagline(currentChatAgentDisplayName, userFirstName, taglineIndex)
+    : "";
+
   const suggestedPrompts = useGet(suggestedPrompts$);
   const navigate = useSet(detachedNavigateTo$);
 
-  // Agent ID from URL for ideas navigation
-  const talkAgentId = useGet(currentAgentId$);
-
-  // Pin pill (currentChatAgentId is resolved above)
-  const pinnedLoadable = useLastLoadable(pinnedAgentIds$);
-  const pinnedIds = (
-    pinnedLoadable.state === "hasData" ? pinnedLoadable.data : []
-  ).filter((id): id is string => {
-    return id !== null;
-  });
+  const pinnedIds = useLastResolved(pinnedAgentIds$) ?? [];
   const savePinnedIds = useSet(updatePinnedAgentIds$);
   const pageSignal = useGet(pageSignal$);
+
   const showPinPill =
-    typeof currentChatAgentId === "string" &&
-    !pinnedIds.includes(currentChatAgentId);
+    currentChatAgentId && !pinnedIds.includes(currentChatAgentId);
+
   const handlePin = () => {
     if (currentChatAgentId) {
-      detach(
-        savePinnedIds([...pinnedIds, currentChatAgentId], pageSignal),
-        Reason.DomCallback,
-      );
+      const newPinnedIds = [...pinnedIds, currentChatAgentId];
+      detach(savePinnedIds(newPinnedIds, pageSignal), Reason.DomCallback);
     }
   };
 
@@ -273,9 +222,6 @@ export function ZeroChatPage() {
     handleSendMessage(text);
   };
 
-  const avatarAgentId = resolvedAgentId ?? undefined;
-
-  // Landing page: full content (title, triggers, composer, actions, prompts)
   return (
     <div className="relative flex flex-1 flex-col min-h-0">
       <header className="hidden md:block shrink-0 bg-transparent px-4 sm:px-6 pt-4 pb-2">
@@ -288,19 +234,19 @@ export function ZeroChatPage() {
         <div className="mx-auto w-full max-w-[900px] flex flex-col items-stretch gap-6 pt-8 pb-12 sm:pt-[15vh] sm:pb-[10vh]">
           <div className="flex items-center gap-4 w-full">
             <div className="relative shrink-0">
-              {avatarAgentId ? (
+              {currentChatAgentId ? (
                 <TooltipProvider delayDuration={200}>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Link
                         pathname="/agents/:id"
-                        options={{ pathParams: { id: avatarAgentId } }}
+                        options={{ pathParams: { id: currentChatAgentId } }}
                         aria-label="View agent profile"
                         className="h-14 w-14 shrink-0 sm:h-16 sm:w-16 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-accent cursor-pointer"
                       >
-                        {zeroAvatarSrc ? (
+                        {currentChatAgentAvatar ? (
                           <img
-                            src={zeroAvatarSrc}
+                            src={currentChatAgentAvatar}
                             alt=""
                             role="presentation"
                             className="h-14 w-14 rounded-full object-cover object-top sm:h-16 sm:w-16"
@@ -320,9 +266,9 @@ export function ZeroChatPage() {
                 </TooltipProvider>
               ) : (
                 <div className="h-14 w-14 shrink-0 sm:h-16 sm:w-16 flex items-center justify-center overflow-hidden rounded-xl">
-                  {zeroAvatarSrc ? (
+                  {currentChatAgentAvatar ? (
                     <img
-                      src={zeroAvatarSrc}
+                      src={currentChatAgentAvatar}
                       alt=""
                       role="presentation"
                       className="h-14 w-14 rounded-full object-cover object-top sm:h-16 sm:w-16"
@@ -372,7 +318,7 @@ export function ZeroChatPage() {
             input={input}
             onInputChange={setInput}
             onSend={handleSend}
-            displayName={displayName}
+            displayName={currentChatAgentDisplayName ?? ""}
           />
 
           {/* Suggested prompts */}
@@ -421,9 +367,9 @@ export function ZeroChatPage() {
               type="button"
               className="zero-card cursor-pointer p-4 text-left flex flex-col relative group hover:bg-muted/30 transition-colors"
               onClick={() => {
-                if (talkAgentId) {
+                if (currentChatAgentId) {
                   navigate("/agents/:id/ideas", {
-                    pathParams: { id: talkAgentId },
+                    pathParams: { id: currentChatAgentId },
                   });
                 }
               }}

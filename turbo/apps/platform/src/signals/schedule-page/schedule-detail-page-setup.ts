@@ -4,7 +4,6 @@ import { SidebarLayout } from "../../views/zero-page/sidebar-layout.tsx";
 import { ZeroScheduleDetailPage } from "../../views/zero-page/zero-schedule-detail-page.tsx";
 import { updatePage$ } from "../react-router.ts";
 import { pathParams$ } from "../route.ts";
-import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
 import { reloadChatThreads$ } from "../chat-page/chat-message.ts";
 import { fetchAllOrgSchedules$ } from "../zero-page/zero-schedule.ts";
 import { fetchSlackChannels$ } from "../zero-page/slack-channels.ts";
@@ -34,7 +33,6 @@ export const setupScheduleDetailPage$ = command(
 
     await Promise.all([
       set(fetchAllOrgSchedules$, signal),
-      set(initZeroOnboarding$, signal),
       set(fetchSlackChannels$, signal),
     ]);
     signal.throwIfAborted();

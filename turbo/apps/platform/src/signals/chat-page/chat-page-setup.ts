@@ -15,7 +15,6 @@ import {
   currentChatThreadId$,
 } from "../agent-chat.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
-import { loadInitialData$ } from "../zero-page/zero-page.ts";
 import { currentDraft$, ensureDraft$ } from "../zero-page/chat-draft.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 
@@ -36,8 +35,6 @@ export const setupChatPage$ = command(
     );
     set(updateDocumentTitle$, "Chat");
 
-    await set(loadInitialData$, signal);
-    signal.throwIfAborted();
     await set(hideAppSkeleton$, signal);
 
     if (await set(onboardGuard$, signal)) {

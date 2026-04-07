@@ -23,7 +23,7 @@ import { setupWorksPage$ } from "./works-page/works-page-setup.ts";
 import { setupPreferencesPage$ } from "./preferences-page/preferences-page-setup.ts";
 import { setupSchedulePage$ } from "./schedule-page/schedule-page-setup.ts";
 import { setupScheduleDetailPage$ } from "./schedule-page/schedule-detail-page-setup.ts";
-import { setupTalkPage$ } from "./zero-page/talk-page-setup.ts";
+import { setupAgentChatPage$ } from "./zero-page/agent-chat-page-setup.ts";
 import { setupHomePage$ } from "./zero-page/home-page-setup.ts";
 import { setupUsagePage$ } from "./usage-page/usage-page-setup.ts";
 import { setupChatPage$ } from "./chat-page/chat-page-setup.ts";
@@ -38,6 +38,7 @@ import { setupFirewallAllowPage$ } from "./firewall-allow/firewall-allow-page-se
 import { setupChatListPage$ } from "./zero-page/chat-list-page-setup.ts";
 import { setupLabPage$ } from "./lab-page/lab-page-setup.ts";
 import { setupNetworkInsightsPage$ } from "./network-insights/network-insights-page-setup.ts";
+import { initSlackOrg$ } from "./zero-page/zero-slack.ts";
 
 /**
  * Catch-all fallback — redirects unknown paths to /.
@@ -112,7 +113,7 @@ const ROUTE_CONFIG = [
   },
   {
     path: ROUTES.agentChat,
-    setup: setupAuthPageWrapper(setupTalkPage$),
+    setup: setupAuthPageWrapper(setupAgentChatPage$),
   },
   {
     path: ROUTES.agentPermissions,
@@ -239,5 +240,7 @@ export const bootstrap$ = command(
       set(setupRoutes$, signal),
     ]);
     signal.throwIfAborted();
+
+    set(initSlackOrg$);
   },
 );

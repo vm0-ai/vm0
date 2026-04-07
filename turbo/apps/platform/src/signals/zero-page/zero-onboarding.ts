@@ -185,14 +185,3 @@ export const completeZeroOnboarding$ = command(
     return agentId;
   },
 );
-
-/**
- * Initialize onboarding status by eagerly loading it.
- * Called on page setup so onboarding data is ready before onboardGuard$ checks it.
- */
-export const initZeroOnboarding$ = command(
-  async ({ get }, signal: AbortSignal) => {
-    await get(zeroOnboardingStatus$);
-    signal.throwIfAborted();
-  },
-);

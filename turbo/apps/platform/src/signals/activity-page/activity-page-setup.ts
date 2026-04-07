@@ -5,7 +5,6 @@ import { ZeroActivityPage } from "../../views/zero-page/zero-activity-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
-import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
 import { reloadChatThreads$ } from "../chat-page/chat-message.ts";
 import { initZeroActivity$, refreshZeroActivity$ } from "./activity-signals.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
@@ -18,10 +17,7 @@ export const setupActivityPage$ = command(
     );
     set(updateDocumentTitle$, "Activity");
     set(refreshZeroActivity$);
-    await Promise.all([
-      set(initZeroOnboarding$, signal),
-      set(initZeroActivity$, signal),
-    ]);
+    await set(initZeroActivity$, signal);
     signal.throwIfAborted();
     await set(hideAppSkeleton$, signal);
 

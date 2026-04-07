@@ -5,7 +5,6 @@ import { ZeroActivityDetailPage } from "../../views/zero-page/zero-activity-deta
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
-import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
 import { reloadChatThreads$ } from "../chat-page/chat-message.ts";
 import { setupActivityLogLoop$ } from "./activity-signals.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
@@ -18,7 +17,6 @@ export const setupActivityDetailPage$ = command(
     );
     set(updateDocumentTitle$, "Activity");
 
-    await set(initZeroOnboarding$, signal);
     await set(hideAppSkeleton$, signal);
     if (await set(onboardGuard$, signal)) {
       return;

@@ -5,7 +5,6 @@ import { NetworkInsightsPage } from "../../views/network-insights/network-insigh
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
-import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
 import { reloadChatThreads$ } from "../agent-chat.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 
@@ -16,8 +15,6 @@ export const setupNetworkInsightsPage$ = command(
       createElement(SidebarLayout, null, createElement(NetworkInsightsPage)),
     );
     set(updateDocumentTitle$, "Insights");
-    await set(initZeroOnboarding$, signal);
-    signal.throwIfAborted();
     await set(hideAppSkeleton$, signal);
 
     if (await set(onboardGuard$, signal)) {
