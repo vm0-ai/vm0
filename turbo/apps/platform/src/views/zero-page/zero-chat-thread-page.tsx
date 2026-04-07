@@ -387,7 +387,7 @@ function ChatSkeleton() {
       </div>
       {/* Assistant bubble skeleton */}
       <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
-        <Skeleton className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 rounded-xl" />
+        <Skeleton className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 shrink-0 @[900px]:mt-0.5 rounded-xl" />
         <div className="flex flex-col gap-2">
           <Skeleton className="h-4 w-[90%] rounded-lg" />
           <Skeleton className="h-4 w-[75%] rounded-lg" />
@@ -400,7 +400,7 @@ function ChatSkeleton() {
       </div>
       {/* Assistant bubble skeleton */}
       <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
-        <Skeleton className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 rounded-xl" />
+        <Skeleton className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 shrink-0 @[900px]:mt-0.5 rounded-xl" />
         <div className="flex flex-col gap-2">
           <Skeleton className="h-4 w-[85%] rounded-lg" />
           <Skeleton className="h-4 w-[60%] rounded-lg" />
