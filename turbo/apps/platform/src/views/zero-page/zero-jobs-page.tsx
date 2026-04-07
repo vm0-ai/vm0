@@ -14,6 +14,7 @@ import {
   CardContent,
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   Button,
@@ -448,9 +449,9 @@ function CreateTeammateDialogContent({
         <DialogTitle className="text-base font-semibold">
           Create a new agent
         </DialogTitle>
-        <p className="text-sm text-muted-foreground">
+        <DialogDescription className="text-sm text-muted-foreground">
           Name your agent to get started.
-        </p>
+        </DialogDescription>
       </DialogHeader>
 
       <div className="py-2">

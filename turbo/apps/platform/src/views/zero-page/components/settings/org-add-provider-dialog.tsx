@@ -3,6 +3,7 @@ import { IconPlus } from "@tabler/icons-react";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@vm0/ui/components/ui/dialog";
@@ -86,6 +87,9 @@ export function OrgAddProviderDialog({
       <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col overflow-hidden pr-0 pb-0">
         <DialogHeader>
           <DialogTitle>Add workspace model provider</DialogTitle>
+          <DialogDescription>
+            Select a model provider to add to your workspace.
+          </DialogDescription>
         </DialogHeader>
         <div className="flex-1 min-h-0 overflow-y-auto">
           <div className="pt-4 pb-6 pr-6">

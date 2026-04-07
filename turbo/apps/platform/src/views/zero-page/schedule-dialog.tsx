@@ -13,6 +13,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -613,6 +614,11 @@ function ScheduleFormDialogInner({
 
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>
+            {mode === "edit"
+              ? "Update the schedule settings and save your changes."
+              : "Configure when and how often this agent should run."}
+          </DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col gap-4">

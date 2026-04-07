@@ -30,6 +30,7 @@ import {
   TooltipTrigger,
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   Input,
@@ -204,9 +205,9 @@ export function ManagePinnedAgentsDialog({
               />
             )}
           </div>
-          <p className="text-sm text-muted-foreground mt-1">
+          <DialogDescription className="text-sm text-muted-foreground mt-1">
             Reorder or add agents to your sidebar.
-          </p>
+          </DialogDescription>
         </DialogHeader>
 
         <div className="px-5 pb-1">
@@ -447,9 +448,9 @@ export function ChatListDialog({
       <DialogContent className="zero-app sm:max-w-xl w-[calc(100vw-2rem)] p-0 gap-0">
         <DialogHeader className="px-5 pt-5 pb-3">
           <DialogTitle className="text-base font-semibold">Talk to</DialogTitle>
-          <p className="text-sm text-muted-foreground mt-1">
+          <DialogDescription className="text-sm text-muted-foreground mt-1">
             Pick an agent to start a conversation.
-          </p>
+          </DialogDescription>
         </DialogHeader>
 
         {/* Search */}
