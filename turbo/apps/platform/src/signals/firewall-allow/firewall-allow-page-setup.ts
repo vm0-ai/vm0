@@ -41,7 +41,10 @@ export const setupFirewallAllowPage$ = command(
 
     set(reloadChatThreads$);
 
-    const agent = await get(firewallAllowAgent$);
+    // Agent load failure is handled by the component via useLastLoadable — setup continues
+    const agent = await get(firewallAllowAgent$).catch(() => {
+      return null;
+    });
     signal.throwIfAborted();
     const ref = get(firewallAllowRef$);
 
