@@ -77,6 +77,7 @@ ${sinceFilter}
     const records = hasMore ? events.slice(0, limit) : events;
 
     const networkLogs = records.map((e) => {
+      // [NETWORK_LOG_FIELDS] — keep in sync with all network log schemas
       return {
         timestamp: e._time,
         type: e.type,
