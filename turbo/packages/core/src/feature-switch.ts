@@ -197,6 +197,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.ComputerUse]: {
     maintainer: "ethan@vm0.ai",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.MobileChatListPage]: {
     maintainer: "ethan@vm0.ai",
