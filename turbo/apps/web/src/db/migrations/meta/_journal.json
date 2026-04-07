@@ -1576,6 +1576,13 @@
       "when": 1775542137244,
       "tag": "0224_flimsy_magik",
       "breakpoints": true
+    },
+    {
+      "idx": 225,
+      "version": "7",
+      "when": 1775556036812,
+      "tag": "0225_worthless_supreme_intelligence",
+      "breakpoints": true
     }
   ]
 }
