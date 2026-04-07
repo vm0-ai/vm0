@@ -10,6 +10,7 @@ import {
   requireAuth,
   isAuthError,
 } from "../../../../../src/lib/auth/require-auth";
+import { clerkClient } from "@clerk/nextjs/server";
 import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
 import { upsertOrgNoSecretModelProvider } from "../../../../../src/lib/zero/model-provider/model-provider-service";
 import { serverSideCompose } from "../../../../../src/lib/infra/compose/server-side-compose";
@@ -74,11 +75,11 @@ const router = tsr.router(onboardingSetupContract, {
       }
     }
 
-    // Parallel: model provider + compose (independent)
+    // Parallel: model provider + compose + org name update (all independent)
     const agentName = crypto.randomUUID();
     const content = buildComposeContent(agentName);
 
-    const [, composeResult] = await Promise.all([
+    const parallelOps: Promise<unknown>[] = [
       upsertOrgNoSecretModelProvider(org.orgId, "vm0", "claude-sonnet-4.6"),
       serverSideCompose({
         userId,
@@ -86,7 +87,18 @@ const router = tsr.router(onboardingSetupContract, {
         content,
         instructions: SEED_INSTRUCTIONS,
       }),
-    ]);
+    ];
+
+    if (body.workspaceName?.trim()) {
+      const name = body.workspaceName.trim();
+      parallelOps.push(
+        clerkClient().then((client) => {
+          return client.organizations.updateOrganization(org.orgId, { name });
+        }),
+      );
+    }
+
+    const [, composeResult] = await Promise.all(parallelOps);
 
     if (!composeResult) {
       return {

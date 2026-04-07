@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { fill, setupPage } from "../../../__tests__/page-helper.ts";
 
 const context = testContext();
 
@@ -28,14 +28,14 @@ async function renderOnboardingPage() {
   await setupPage({ context, path: "/" });
 }
 
-describe("zero onboarding - step 1: choose tools", () => {
-  it("should render connector selection step when onboarding is needed", async () => {
+describe("zero onboarding - step 1: workspace name", () => {
+  it("should render workspace name step when onboarding is needed", async () => {
     mockOnboardingNeeded();
     await renderOnboardingPage();
 
     await waitFor(() => {
       expect(
-        screen.getByTestId("onboarding-step-select-connectors"),
+        screen.getByTestId("onboarding-step-workspace-name"),
       ).toBeInTheDocument();
     });
   });
@@ -49,7 +49,7 @@ describe("zero onboarding - step 1: choose tools", () => {
     });
   });
 
-  it("should advance to connect step when Next is clicked", async () => {
+  it("should advance to connector selection when Next is clicked", async () => {
     const user = userEvent.setup();
     mockOnboardingNeeded();
     await renderOnboardingPage();
@@ -58,33 +58,40 @@ describe("zero onboarding - step 1: choose tools", () => {
       expect(screen.getByText("Next")).toBeInTheDocument();
     });
 
+    // Fill in workspace name so Next is enabled
+    const input = screen.getByPlaceholderText("e.g. Acme Corp");
+    await fill(input, "Test Workspace");
+
     await user.click(screen.getByText("Next"));
 
-    await waitFor(() => {
-      expect(screen.getByTestId("onboarding-step-connect")).toBeInTheDocument();
-    });
-  });
-});
-
-describe("zero onboarding - step 2: connect apps", () => {
-  it("should show connect step with search and connector cards", async () => {
-    const user = userEvent.setup();
-    mockOnboardingNeeded();
-    await renderOnboardingPage();
-
-    // Step 1: select a connector
     await waitFor(() => {
       expect(
         screen.getByTestId("onboarding-step-select-connectors"),
       ).toBeInTheDocument();
     });
+  });
+});
 
-    await user.click(screen.getByTestId("connector-card-github"));
+describe("zero onboarding - step 2: choose tools", () => {
+  it("should show connector selection with search", async () => {
+    const user = userEvent.setup();
+    mockOnboardingNeeded();
+    await renderOnboardingPage();
+
+    // Step 1 -> fill name -> Next
+    await waitFor(() => {
+      expect(screen.getByText("Next")).toBeInTheDocument();
+    });
+
+    const input = screen.getByPlaceholderText("e.g. Acme Corp");
+    await fill(input, "Test Workspace");
     await user.click(screen.getByText("Next"));
 
-    // Should reach step 2 (connect apps)
+    // Should reach step 2 (choose tools) — search input is the structural anchor
     await waitFor(() => {
-      expect(screen.getByTestId("onboarding-step-connect")).toBeInTheDocument();
+      expect(
+        screen.getByPlaceholderText("Search connectors..."),
+      ).toBeInTheDocument();
     });
   });
 });
@@ -97,7 +104,7 @@ describe("zero onboarding - does not render when not needed", () => {
     // Wait for page to load and verify onboarding is NOT shown
     await waitFor(() => {
       expect(
-        screen.queryByTestId("onboarding-step-select-connectors"),
+        screen.queryByTestId("onboarding-step-workspace-name"),
       ).not.toBeInTheDocument();
     });
   });
@@ -128,7 +135,7 @@ describe("member welcome - step navigation", () => {
     mockMemberOnboardingNeeded();
     await renderOnboardingPage();
 
-    // Member with no defaultAgentSkills goes straight to step 3 (where-to-work)
+    // Member with no defaultAgentSkills goes straight to step 4 (where-to-work)
     await waitFor(() => {
       expect(
         screen.getByTestId("onboarding-step-where-to-work"),
@@ -140,7 +147,7 @@ describe("member welcome - step navigation", () => {
     mockMemberOnboardingNeeded();
     await renderOnboardingPage();
 
-    // Member lands directly on step 3
+    // Member lands directly on step 4
     await waitFor(() => {
       expect(
         screen.getByTestId("onboarding-step-where-to-work"),
@@ -164,13 +171,28 @@ describe("onboarding step indicator renders (AGENT-D-056)", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByTestId("onboarding-step-select-connectors"),
+        screen.getByTestId("onboarding-step-workspace-name"),
       ).toBeInTheDocument();
     });
 
-    // Admin flow has 3 visible steps, rendered as 3 bar segments
+    // Admin flow has 4 visible steps, rendered as 4 bar segments
     const segments = screen.getAllByTestId("progress-step");
-    expect(segments).toHaveLength(3);
+    expect(segments).toHaveLength(4);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// AGENT-D-069: Workspace name input accepts text
+// ---------------------------------------------------------------------------
+
+describe("workspace name input accepts text (AGENT-D-069)", () => {
+  it("workspace name input updates with typed text", async () => {
+    mockOnboardingNeeded();
+    await renderOnboardingPage();
+
+    const input = await screen.findByPlaceholderText("e.g. Acme Corp");
+    await fill(input, "Acme Corp");
+    expect(input).toHaveValue("Acme Corp");
   });
 });
 
@@ -179,9 +201,14 @@ describe("onboarding step indicator renders (AGENT-D-056)", () => {
 // ---------------------------------------------------------------------------
 
 describe("step-specific content renders (AGENT-D-057)", () => {
-  it("renders connector step content as step 1", async () => {
+  it("renders connector step content after navigating to step 2", async () => {
+    const user = userEvent.setup();
     mockOnboardingNeeded();
     await renderOnboardingPage();
+
+    const input = await screen.findByPlaceholderText("e.g. Acme Corp");
+    await fill(input, "Acme");
+    await user.click(screen.getByText("Next"));
 
     await waitFor(() => {
       expect(
@@ -193,10 +220,14 @@ describe("step-specific content renders (AGENT-D-057)", () => {
     });
   });
 
-  it("renders connect step content after navigating to step 2", async () => {
+  it("renders connect step content after navigating to step 3", async () => {
     const user = userEvent.setup();
     mockOnboardingNeeded();
     await renderOnboardingPage();
+
+    const input = await screen.findByPlaceholderText("e.g. Acme Corp");
+    await fill(input, "Acme");
+    await user.click(screen.getByText("Next"));
 
     await waitFor(() => {
       expect(
@@ -216,9 +247,14 @@ describe("step-specific content renders (AGENT-D-057)", () => {
 // ---------------------------------------------------------------------------
 
 describe("connector selection display renders (AGENT-D-058)", () => {
-  it("displays available connectors as selectable items in step 1", async () => {
+  it("displays available connectors as selectable items in step 2", async () => {
+    const user = userEvent.setup();
     mockOnboardingNeeded();
     await renderOnboardingPage();
+
+    const input = await screen.findByPlaceholderText("e.g. Acme Corp");
+    await fill(input, "Acme");
+    await user.click(screen.getByText("Next"));
 
     await waitFor(() => {
       expect(
@@ -241,6 +277,10 @@ describe("selected connectors display renders (AGENT-D-060)", () => {
     const user = userEvent.setup();
     mockOnboardingNeeded();
     await renderOnboardingPage();
+
+    const input = await screen.findByPlaceholderText("e.g. Acme Corp");
+    await fill(input, "Acme");
+    await user.click(screen.getByText("Next"));
 
     await waitFor(() => {
       expect(
@@ -267,6 +307,10 @@ describe("connector selection buttons toggle (AGENT-D-064)", () => {
     const user = userEvent.setup();
     mockOnboardingNeeded();
     await renderOnboardingPage();
+
+    const input = await screen.findByPlaceholderText("e.g. Acme Corp");
+    await fill(input, "Acme");
+    await user.click(screen.getByText("Next"));
 
     await waitFor(() => {
       expect(
@@ -300,6 +344,10 @@ describe("connector search input filters list (AGENT-D-065)", () => {
     mockOnboardingNeeded();
     await renderOnboardingPage();
 
+    const input = await screen.findByPlaceholderText("e.g. Acme Corp");
+    await fill(input, "Acme");
+    await user.click(screen.getByText("Next"));
+
     await waitFor(() => {
       expect(
         screen.getByTestId("onboarding-step-select-connectors"),
@@ -320,10 +368,14 @@ describe("connector search input filters list (AGENT-D-065)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// AGENT-D-066: Connect button in step 2
+// AGENT-D-066: Connect button in step 3
 // ---------------------------------------------------------------------------
 
-async function navigateToStep2(user: ReturnType<typeof userEvent.setup>) {
+async function navigateToStep3(user: ReturnType<typeof userEvent.setup>) {
+  const input = await screen.findByPlaceholderText("e.g. Acme Corp");
+  await fill(input, "Acme");
+  await user.click(screen.getByText("Next"));
+
   await waitFor(() => {
     expect(
       screen.getByTestId("onboarding-step-select-connectors"),
@@ -333,7 +385,7 @@ async function navigateToStep2(user: ReturnType<typeof userEvent.setup>) {
   // Select GitHub connector
   await user.click(screen.getByTestId("connector-card-github"));
 
-  // Advance to step 2
+  // Advance to step 3
   await user.click(screen.getByText("Next"));
 
   await waitFor(() => {
@@ -341,13 +393,13 @@ async function navigateToStep2(user: ReturnType<typeof userEvent.setup>) {
   });
 }
 
-describe("connect button is present in step 2 (AGENT-D-066)", () => {
-  it("connect button is rendered for selected connectors in step 2", async () => {
+describe("connect button is present in step 3 (AGENT-D-066)", () => {
+  it("connect button is rendered for selected connectors in step 3", async () => {
     const user = userEvent.setup();
     mockOnboardingNeeded();
     await renderOnboardingPage();
 
-    await navigateToStep2(user);
+    await navigateToStep3(user);
 
     expect(screen.getByText("Connect")).toBeInTheDocument();
   });
@@ -358,10 +410,14 @@ describe("connect button is present in step 2 (AGENT-D-066)", () => {
 // ---------------------------------------------------------------------------
 
 describe("connector polling status shows (AGENT-D-059)", () => {
-  it("shows no connectors message when step 2 is reached without selections", async () => {
+  it("shows no connectors message when step 3 is reached without selections", async () => {
     const user = userEvent.setup();
     mockOnboardingNeeded();
     await renderOnboardingPage();
+
+    const input = await screen.findByPlaceholderText("e.g. Acme Corp");
+    await fill(input, "Acme");
+    await user.click(screen.getByText("Next"));
 
     await waitFor(() => {
       expect(
@@ -369,7 +425,7 @@ describe("connector polling status shows (AGENT-D-059)", () => {
       ).toBeInTheDocument();
     });
 
-    // Skip selection and go directly to step 2
+    // Skip selection and go directly to step 3
     await user.click(screen.getByText("Next"));
 
     await waitFor(() => {
@@ -392,15 +448,14 @@ describe("back button returns to previous step (AGENT-D-068)", () => {
     await renderOnboardingPage();
 
     // Navigate to step 2
+    const input = await screen.findByPlaceholderText("e.g. Acme Corp");
+    await fill(input, "Acme");
+    await user.click(screen.getByText("Next"));
+
     await waitFor(() => {
       expect(
         screen.getByTestId("onboarding-step-select-connectors"),
       ).toBeInTheDocument();
-    });
-    await user.click(screen.getByText("Next"));
-
-    await waitFor(() => {
-      expect(screen.getByTestId("onboarding-step-connect")).toBeInTheDocument();
     });
 
     // Click Back
@@ -408,7 +463,7 @@ describe("back button returns to previous step (AGENT-D-068)", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByTestId("onboarding-step-select-connectors"),
+        screen.getByTestId("onboarding-step-workspace-name"),
       ).toBeInTheDocument();
     });
   });
@@ -419,7 +474,7 @@ describe("back button returns to previous step (AGENT-D-068)", () => {
 // ---------------------------------------------------------------------------
 
 describe("slack/web integration setup cards render (AGENT-D-061)", () => {
-  it("slack and web cards are displayed in step 3 for member", async () => {
+  it("slack and web cards are displayed in step 4 for member", async () => {
     mockMemberOnboardingNeeded();
     await renderOnboardingPage();
 
