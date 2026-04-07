@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.193.0](https://github.com/vm0-ai/vm0/compare/app-v0.192.0...app-v0.193.0) (2026-04-07)
+
+
+### Features
+
+* **chat:** gate mobile chat list page navigation behind feature switch ([#8251](https://github.com/vm0-ai/vm0/issues/8251)) ([5ad7565](https://github.com/vm0-ai/vm0/commit/5ad756579cf7a54784681357f85096b0920be198))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.154.0
+
 ## [0.192.0](https://github.com/vm0-ai/vm0/compare/app-v0.191.4...app-v0.192.0) (2026-04-06)
 
 
