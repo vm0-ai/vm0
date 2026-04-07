@@ -10,7 +10,7 @@ import { loadInitialData$, resolveAgentById$ } from "./zero-page.ts";
 import {
   currentAgentId$,
   defaultAgentId$,
-  agentDisplayName$,
+  currentChatAgentDisplayName$,
   subagents$,
 } from "../agent.ts";
 import { setChatAgentId$ } from "../agent-chat.ts";
@@ -57,7 +57,7 @@ export const setupTalkPage$ = command(
 
     let agentName: string;
     if (agentId === defaultId) {
-      agentName = (await get(agentDisplayName$)) ?? "Agent";
+      agentName = (await get(currentChatAgentDisplayName$)) ?? "Agent";
       signal.throwIfAborted();
     } else {
       const subagents = await get(subagents$);

@@ -85,14 +85,6 @@ describe("onboardingDisplayName$", () => {
     const name = await context.store.get(onboardingDisplayName$);
     expect(name).toBe("My Agent");
   });
-
-  it("should return default agent display name for member", async () => {
-    mockMemberOnboarding();
-    await setupPage({ context, path: "/", withoutRender: true });
-
-    const name = await context.store.get(onboardingDisplayName$);
-    expect(name).toBe("TeamBot");
-  });
 });
 
 // ---------------------------------------------------------------------------

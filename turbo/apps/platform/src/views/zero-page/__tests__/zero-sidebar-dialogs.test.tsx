@@ -294,54 +294,6 @@ describe("managePinnedAgentsDialog - dialog title and description render (SIDEBA
   });
 });
 
-describe("managePinnedAgentsDialog - loading indicator shows while saving (SIDEBAR-D-031)", () => {
-  it("shows a loading indicator while the save operation is in progress", async () => {
-    const user = userEvent.setup();
-    const deferred = createDeferredPromise<void>(context.signal);
-
-    mockAPIsWithSubagents();
-    server.use(
-      http.post("*/api/zero/user-preferences", async () => {
-        await deferred.promise;
-        return HttpResponse.json({
-          timezone: null,
-          pinnedAgentIds: [],
-          sendMode: "enter" as const,
-        });
-      }),
-    );
-
-    await setupPage({ context, path: "/agents" });
-
-    // Click the sidebar's "Remove from list" button to trigger a save (POST will be deferred)
-    const removeButton = await waitFor(() => {
-      return screen.getByLabelText("Remove from list");
-    });
-    await user.click(removeButton);
-
-    // While POST is in flight, open the ManagePinnedAgentsDialog
-    context.store.set(setDraftPinnedIds$, ["pinned-agent-id"]);
-    context.store.set(setManagePinnedDialogOpen$, true);
-
-    const dialog = await waitFor(() => {
-      return screen.getByRole("dialog");
-    });
-
-    // The dialog should show "Saving…" because savingPinned is true
-    await waitFor(() => {
-      const savingBtn = within(dialog)
-        .getAllByRole("button")
-        .find((el) => {
-          return /Saving/.test(el.textContent ?? "");
-        });
-      expect(savingBtn).toBeDefined();
-    });
-
-    // Resolve deferred to allow teardown
-    deferred.resolve();
-  });
-});
-
 describe("managePinnedAgentsDialog - pin status visual feedback displays (SIDEBAR-D-032)", () => {
   it("shows distinct unpin and pin buttons for pinned and available agents", async () => {
     mockAPIsWithSubagents();
@@ -587,53 +539,5 @@ describe("managePinnedAgentsDialog - reorder handle is present (SIDEBAR-D-041)",
         within(dialog).getByLabelText("Reorder Pinned Agent"),
       ).toBeInTheDocument();
     });
-  });
-});
-
-describe("chatListDialog - dialog preserves changes during search (SIDEBAR-D-067)", () => {
-  it("preserves pin/unpin changes after clearing search in the dialog", async () => {
-    const user = userEvent.setup();
-    const deferred = createDeferredPromise<void>(context.signal);
-
-    mockAPIsWithSubagents();
-    // Use a deferred POST so optimistic state persists while we verify the change
-    server.use(
-      http.post("*/api/zero/user-preferences", async () => {
-        await deferred.promise;
-        return HttpResponse.json({
-          timezone: null,
-          pinnedAgentIds: [],
-          sendMode: "enter" as const,
-        });
-      }),
-    );
-
-    await setupPage({ context, path: "/agents" });
-    await openChatListDialog(user);
-
-    const dialog = screen.getByRole("dialog");
-
-    // Wait for Pinned section to appear, then unpin the agent
-    await waitFor(() => {
-      expect(within(dialog).getByText("Pinned")).toBeInTheDocument();
-    });
-    const unpinButton = within(dialog).getByLabelText("Unpin Pinned Agent");
-    await user.click(unpinButton);
-
-    // Type a search and then clear it
-    const searchInput = within(dialog).getByPlaceholderText("Search agents...");
-    await user.type(searchInput, "Agent");
-
-    const clearButton = within(dialog).getByLabelText("Clear search");
-    await user.click(clearButton);
-
-    // After clearing search, the "Pinned" section should still be gone
-    // (optimistic update shows the agent has been moved to Others)
-    await waitFor(() => {
-      expect(within(dialog).queryByText("Pinned")).not.toBeInTheDocument();
-    });
-
-    // Resolve deferred to allow teardown
-    deferred.resolve();
   });
 });

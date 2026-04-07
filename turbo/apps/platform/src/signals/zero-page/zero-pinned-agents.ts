@@ -32,9 +32,19 @@ export const pinnedAgentIds$ = computed(async (get) => {
   const defaultAgentId = status.defaultAgentId;
   const optimistic = get(optimisticPinnedIds$);
   if (optimistic !== null) {
-    return [defaultAgentId, ...optimistic];
+    return [
+      defaultAgentId,
+      ...optimistic.filter((id) => {
+        return id !== defaultAgentId;
+      }),
+    ];
   }
-  return [defaultAgentId, ...(await get(serverPinnedIds$))];
+  return [
+    defaultAgentId,
+    ...(await get(serverPinnedIds$)).filter((id) => {
+      return id !== defaultAgentId;
+    }),
+  ];
 });
 
 /**

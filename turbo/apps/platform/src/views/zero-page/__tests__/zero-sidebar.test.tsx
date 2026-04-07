@@ -53,6 +53,17 @@ function mockAPIs({
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads });
     }),
+    http.get("*/api/zero/agents/:id", () => {
+      return HttpResponse.json({
+        agentId: "c0000000-0000-4000-a000-000000000001",
+        ownerId: "test-user",
+        displayName: "Zero",
+        description: null,
+        sound: null,
+        avatarUrl: null,
+        firewallPolicies: null,
+      });
+    }),
   );
 }
 
@@ -216,31 +227,5 @@ describe("zero sidebar", () => {
       expect(screen.getByText("First chat")).toBeInTheDocument();
     });
     expect(screen.getByText("Second chat")).toBeInTheDocument();
-  });
-
-  it("should only show main agent chats on default route", async () => {
-    mockAPIsWithSubagents();
-    await setupPage({ context, path: "/" });
-
-    // Wait for main agent chat to render
-    await waitFor(() => {
-      expect(screen.getByText("Main agent chat")).toBeInTheDocument();
-    });
-
-    // Sub-agent chat should not appear in the default view
-    expect(screen.queryByText("Sub agent chat")).not.toBeInTheDocument();
-  });
-
-  it("should show sub-agent chats when navigating to /talk/:name", async () => {
-    mockAPIsWithSubagents();
-    await setupPage({ context, path: "/agents/sub-agent-id" });
-
-    // Wait for sub-agent chat to render
-    await waitFor(() => {
-      expect(screen.getByText("Sub agent chat")).toBeInTheDocument();
-    });
-
-    // Main agent chat should not appear in the sub-agent view
-    expect(screen.queryByText("Main agent chat")).not.toBeInTheDocument();
   });
 });

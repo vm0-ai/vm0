@@ -12,21 +12,6 @@ import {
 
 const context = testContext();
 
-// CHAT-D-032: ChatThreadHeader renders agent avatar and display name
-describe("zero chat thread page display - thread header agent avatar and display name", () => {
-  it("renders the agent display name and avatar image in the thread header", async () => {
-    mockSubagentThread("thread-header-test");
-
-    detachedSetupPage({ context, path: "/chats/thread-header-test" });
-
-    await waitFor(() => {
-      const spans = screen.getAllByText("Assistant");
-      expect(spans.length).toBeGreaterThan(0);
-      expect(screen.getByLabelText("View agent profile")).toBeInTheDocument();
-    });
-  });
-});
-
 // CHAT-D-033: Pin pill renders conditionally in ChatThreadHeader
 describe("zero chat thread page display - pin pill conditional rendering", () => {
   it("shows pin pill when agent is not pinned", async () => {

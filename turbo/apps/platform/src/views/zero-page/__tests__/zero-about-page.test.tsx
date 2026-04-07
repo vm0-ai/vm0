@@ -59,6 +59,17 @@ describe("zero about page", () => {
           defaultAgentSkills: [],
         });
       }),
+      http.get("*/api/zero/agents/:id", () => {
+        return HttpResponse.json({
+          agentId: "c0000000-0000-4000-a000-000000000001",
+          ownerId: "test-user",
+          displayName: "MyAgent",
+          description: null,
+          sound: null,
+          avatarUrl: null,
+          firewallPolicies: null,
+        });
+      }),
     );
     await setupPage({ context, path: "/" });
     context.store.set(setZeroShowAboutPage$, true);

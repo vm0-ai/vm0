@@ -49,6 +49,44 @@ export function mockSubagentThread(threadId: string) {
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
     }),
+    http.get("*/api/zero/agents/:id", ({ params }) => {
+      const agents: Record<
+        string,
+        {
+          agentId: string;
+          displayName: string | null;
+          ownerId: string;
+          description: null;
+          sound: null;
+          avatarUrl: string | null;
+          firewallPolicies: null;
+        }
+      > = {
+        [DEFAULT_AGENT_ID]: {
+          agentId: DEFAULT_AGENT_ID,
+          ownerId: "test-user",
+          displayName: null,
+          description: null,
+          sound: null,
+          avatarUrl: null,
+          firewallPolicies: null,
+        },
+        [SUB_AGENT_ID]: {
+          agentId: SUB_AGENT_ID,
+          ownerId: "test-user",
+          displayName: "Assistant",
+          description: null,
+          sound: null,
+          avatarUrl: "https://example.com/avatar.png",
+          firewallPolicies: null,
+        },
+      };
+      const agent = agents[params.id as string];
+      if (!agent) {
+        return HttpResponse.json({ error: "Not found" }, { status: 404 });
+      }
+      return HttpResponse.json(agent);
+    }),
   );
 }
 

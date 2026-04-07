@@ -24,16 +24,19 @@ import {
 } from "@vm0/ui";
 import { createSubagent$ } from "../../signals/zero-page/zero-agents.ts";
 import {
-  subagents$,
-  agentDisplayName$,
   defaultAgentId$,
+  defaultAgentName$,
+  sortedAgents$,
 } from "../../signals/agent.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
-import { useAgentAvatar } from "./zero-sidebar.tsx";
-import { ZERO_AVATARS } from "./zero-avatars.ts";
-import { AVATAR_PRESET_PREFIX, resolveAvatarUrl } from "./avatar-utils.ts";
+import { useAgentAvatar } from "../zero-page/zero-sidebar.tsx";
+import { ZERO_AVATARS } from "../zero-page/zero-avatars.ts";
+import {
+  AVATAR_PRESET_PREFIX,
+  resolveAvatarUrl,
+} from "../zero-page/avatar-utils.ts";
 import { fetch$ } from "../../signals/fetch.ts";
 import {
   jobsDialogOpen$,
@@ -50,22 +53,7 @@ import {
   setJobsViewMode$,
 } from "../../signals/zero-page/zero-jobs-page.ts";
 
-export function ZeroJobsPage() {
-  const displayNameLoadable = useLoadable(agentDisplayName$);
-  const displayName =
-    displayNameLoadable.state === "hasData" ? displayNameLoadable.data : "Zero";
-  const rawNameLoadable = useLoadable(defaultAgentId$);
-  const rawAgentName =
-    rawNameLoadable.state === "hasData" ? rawNameLoadable.data : null;
-  const agentsLoadable = useLoadable(subagents$);
-  const agents = useLastResolved(subagents$);
-  const loading = agentsLoadable.state === "loading";
-  const error =
-    agentsLoadable.state === "hasError"
-      ? agentsLoadable.error instanceof Error
-        ? agentsLoadable.error.message
-        : "Unknown error"
-      : null;
+export function AgentsPage() {
   const dialogOpen = useGet(jobsDialogOpen$);
   const setDialogOpen = useSet(setJobsDialogOpen$);
   const newName = useGet(jobsNewName$);
@@ -76,6 +64,7 @@ export function ZeroJobsPage() {
   const pageSignal = useGet(pageSignal$);
   const viewMode = useGet(jobsViewMode$);
   const setViewMode = useSet(setJobsViewMode$);
+  const defaultAgentName = useLastResolved(defaultAgentName$);
 
   const handleCreateTeammate = (avatarUrl: string) => {
     const trimmed = newName.trim();
@@ -110,24 +99,23 @@ export function ZeroJobsPage() {
               Agents
             </h1>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              {displayName} and sub-agents working together to run tailored
+              {defaultAgentName} and sub-agents working together to run tailored
               workflows for you and your team.
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            {!loading && !error && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="zero-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
-                onClick={() => {
-                  return setDialogOpen(true);
-                }}
-              >
-                <IconPlus size={14} stroke={2} />
-                New agent
-              </Button>
-            )}
+            <Button
+              variant="outline"
+              size="sm"
+              className="zero-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
+              onClick={() => {
+                return setDialogOpen(true);
+              }}
+            >
+              <IconPlus size={14} stroke={2} />
+              New agent
+            </Button>
+
             <Tabs
               value={viewMode}
               onValueChange={(v) => {
@@ -158,35 +146,7 @@ export function ZeroJobsPage() {
 
       <main className="flex-1 overflow-auto px-4 sm:px-6 pt-3 pb-8">
         <div className="mx-auto max-w-[900px] flex flex-col gap-4">
-          {error && (
-            <Card className="zero-card">
-              <CardContent className="px-6 py-6 text-center space-y-3">
-                <p className="text-sm text-destructive">{error}</p>
-                <Link
-                  pathname="/"
-                  className="zero-btn-morandi inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium no-underline text-inherit hover:bg-accent"
-                >
-                  Retry
-                </Link>
-              </CardContent>
-            </Card>
-          )}
-
-          {viewMode === "grid" ? (
-            <AgentGridView
-              rawAgentName={rawAgentName}
-              displayName={displayName}
-              loading={loading}
-              agents={agents}
-            />
-          ) : (
-            <AgentListView
-              rawAgentName={rawAgentName}
-              displayName={displayName}
-              loading={loading}
-              agents={agents}
-            />
-          )}
+          {viewMode === "grid" ? <AgentGridView /> : <AgentListView />}
         </div>
       </main>
 
@@ -202,39 +162,14 @@ export function ZeroJobsPage() {
   );
 }
 
-type AgentViewProps = {
-  rawAgentName: string | null;
-  displayName: string;
-  loading: boolean;
-  agents:
-    | {
-        id: string;
-        displayName?: string | null;
-        description?: string | null;
-      }[]
-    | undefined;
-};
+function AgentGridView() {
+  const agentsLoadable = useLoadable(sortedAgents$);
+  const loading = agentsLoadable.state === "loading";
+  const agents =
+    agentsLoadable.state === "hasData" ? agentsLoadable.data : null;
 
-function AgentGridView({
-  rawAgentName,
-  displayName,
-  loading,
-  agents,
-}: AgentViewProps) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-      {rawAgentName ? (
-        <Link
-          pathname="/agents/:id"
-          options={{ pathParams: { id: rawAgentName } }}
-          className="block no-underline text-inherit"
-        >
-          <AgentCard agent={{ id: rawAgentName, displayName }} lead />
-        </Link>
-      ) : (
-        <AgentCard agent={{ id: "", displayName }} lead />
-      )}
-
       {loading &&
         (!agents || agents.length === 0) &&
         [1, 2, 3].map((i) => {
@@ -268,34 +203,14 @@ function AgentGridView({
   );
 }
 
-function AgentListView({
-  rawAgentName,
-  displayName,
-  loading,
-  agents,
-}: AgentViewProps) {
+function AgentListView() {
+  const agentsLoadable = useLoadable(sortedAgents$);
+  const loading = agentsLoadable.state === "loading";
+  const agents =
+    agentsLoadable.state === "hasData" ? agentsLoadable.data : null;
+
   return (
     <div className="zero-card overflow-hidden">
-      {rawAgentName ? (
-        <Link
-          pathname="/agents/:id"
-          options={{ pathParams: { id: rawAgentName } }}
-          className="block no-underline text-inherit"
-        >
-          <AgentListRow
-            agent={{ id: rawAgentName, displayName }}
-            lead
-            isLast={!agents || agents.length === 0}
-          />
-        </Link>
-      ) : (
-        <AgentListRow
-          agent={{ id: "", displayName }}
-          lead
-          isLast={!agents || agents.length === 0}
-        />
-      )}
-
       {loading &&
         (!agents || agents.length === 0) &&
         [1, 2, 3].map((i, _, arr) => {
@@ -504,14 +419,16 @@ type AgentProps = {
     displayName?: string | null;
     description?: string | null;
   };
-  lead?: boolean;
 };
 
-function AgentCard({ agent, lead }: AgentProps) {
+function AgentCard({ agent }: AgentProps) {
+  const defaultAgentId = useLastResolved(defaultAgentId$);
+  const lead = agent.id === defaultAgentId;
   const avatarSrc = useAgentAvatar(agent.id);
   const displayName = agent.displayName ?? agent.id;
-  const description =
-    agent.description || (lead ? "Your core agent" : "Sub-agent");
+  const description = defaultAgentId
+    ? agent.description || (lead ? "Your core agent" : "Sub-agent")
+    : "";
   return (
     <Card className="zero-card cursor-pointer flex flex-col hover:bg-muted/30 transition-colors h-full">
       <CardContent className="px-5 py-4 flex items-center gap-3">
@@ -540,15 +457,16 @@ function AgentCard({ agent, lead }: AgentProps) {
   );
 }
 
-function AgentListRow({
-  agent,
-  lead,
-  isLast,
-}: AgentProps & { isLast?: boolean }) {
+function AgentListRow({ agent, isLast }: AgentProps & { isLast?: boolean }) {
+  const defaultAgentId = useLastResolved(defaultAgentId$);
+  const lead = agent.id === defaultAgentId;
+
   const avatarSrc = useAgentAvatar(agent.id);
   const displayName = agent.displayName ?? agent.id;
-  const description =
-    agent.description || (lead ? "Your core agent" : "Sub-agent");
+  const description = defaultAgentId
+    ? agent.description || (lead ? "Your core agent" : "Sub-agent")
+    : "";
+
   return (
     <>
       <div className="flex items-center gap-3 px-5 py-4 w-full text-left transition-colors hover:bg-muted/30 cursor-pointer">

@@ -14,15 +14,34 @@ import { zeroClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
 import { resolveAvatarUrl } from "../views/zero-page/avatar-utils.ts";
 import avatar1Img from "../views/zero-page/assets/avatar_1.webp";
+import { currentChatAgent$ } from "./agent-chat.ts";
 
 export const defaultAgentId$ = computed(async (get) => {
   const status = await get(zeroOnboardingStatus$);
   return status.defaultAgentId;
 });
 
-export const defaultAgentMetadata$ = computed(async (get) => {
-  const status = await get(zeroOnboardingStatus$);
-  return status.defaultAgentMetadata ?? null;
+export function agentById(id: string) {
+  return computed(async (get) => {
+    const client = get(zeroClient$)(zeroAgentsByIdContract);
+    const result = await accept(client.get({ params: { id } }), [200], {
+      toast: false,
+    });
+    return result.body;
+  });
+}
+
+const defaultAgent$ = computed(async (get) => {
+  const defaultId = await get(defaultAgentId$);
+  if (!defaultId) {
+    return null;
+  }
+  return get(agentById(defaultId));
+});
+
+export const defaultAgentName$ = computed(async (get) => {
+  const defaultAgent = await get(defaultAgent$);
+  return defaultAgent?.displayName ?? "Zero";
 });
 
 export const currentAgentId$ = computed((get) => {
@@ -54,9 +73,18 @@ const internalReloadAgents$ = state(0);
 /** All agents in the user's org (from /api/zero/team). */
 export const agents$ = computed(async (get) => {
   get(internalReloadAgents$);
-  const teamClient = get(zeroClient$)(zeroTeamContract);
-  const result = await accept(teamClient.list(), [200]);
+  const zeroClient = get(zeroClient$)(zeroTeamContract);
+  const result = await accept(zeroClient.list(), [200]);
   return result.body;
+});
+
+export const sortedAgents$ = computed(async (get) => {
+  const agents = await get(agents$);
+  const defaultId = await get(defaultAgentId$);
+  return [
+    ...agents.filter((a) => a.id === defaultId),
+    ...agents.filter((a) => a.id !== defaultId),
+  ];
 });
 
 /** Bump to refetch the agents list. */
@@ -79,10 +107,8 @@ export const subagents$ = computed(async (get) => {
 // Metadata
 // ---------------------------------------------------------------------------
 
-/** Display name of the default (lead) agent. */
-export const agentDisplayName$ = computed(async (get) => {
-  const metadata = await get(defaultAgentMetadata$);
-  return metadata?.displayName || "Zero";
+export const currentChatAgentDisplayName$ = computed(async (get) => {
+  return (await get(currentChatAgent$))?.displayName;
 });
 
 export interface SubagentInfo {

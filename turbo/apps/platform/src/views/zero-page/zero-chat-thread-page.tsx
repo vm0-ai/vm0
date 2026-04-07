@@ -33,7 +33,10 @@ import {
   lightboxUrl$ as attachmentLightboxUrl$,
   setLightboxUrl$ as setAttachmentLightboxUrl$,
 } from "../../signals/zero-page/zero-attachment-chips.ts";
-import { agentDisplayName$, subagents$ } from "../../signals/agent.ts";
+import {
+  currentChatAgentDisplayName$,
+  subagents$,
+} from "../../signals/agent.ts";
 import {
   currentChatAgentId$,
   currentChatAgent$,
@@ -160,7 +163,8 @@ function useChatAgentIdentity() {
       : null;
   const resolvedAgentId = selectedSubagent?.id ?? sidebarAgentIdResolved;
 
-  const defaultDisplayName = useResolved(agentDisplayName$) ?? "Zero";
+  const defaultDisplayName =
+    useResolved(currentChatAgentDisplayName$) ?? "Zero";
   const displayName = selectedSubagent
     ? (selectedSubagent.displayName ?? selectedSubagent.id)
     : defaultDisplayName;

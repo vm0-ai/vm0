@@ -28,8 +28,9 @@ import {
 } from "../../signals/zero-page/zero-sidebar-state.ts";
 import {
   reloadAgents$,
-  agentDisplayName$,
+  currentChatAgentDisplayName$,
   subagents$,
+  defaultAgentId$,
 } from "../../signals/agent.ts";
 import {
   pinnedAgentIds$,
@@ -47,7 +48,7 @@ export function PinnedAgentListSection() {
   const activeRoute = useGet(activeRoute$);
   const chatThreadId = useGet(currentChatThreadId$);
   const sidebarAgentId = useLastResolved(currentChatAgentId$) ?? null;
-  const displayNameLoadable = useLastLoadable(agentDisplayName$);
+  const displayNameLoadable = useLastLoadable(currentChatAgentDisplayName$);
   const displayName =
     displayNameLoadable.state === "hasData"
       ? (displayNameLoadable.data ?? "Zero")
@@ -78,6 +79,7 @@ export function PinnedAgentListSection() {
     detach(createNewChat(agentId, pageSignal), Reason.DomCallback);
     setExpanded(false);
   };
+  const defaultAgentId = useLastResolved(defaultAgentId$);
 
   return (
     <div className="shrink-0">
@@ -167,37 +169,39 @@ export function PinnedAgentListSection() {
                       {agent.displayName ?? agent.id}
                     </span>
                   </Link>
-                  <div className="absolute right-0 top-0 flex h-8 w-8 items-center justify-center">
-                    <TooltipProvider delayDuration={200}>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <button
-                            type="button"
-                            onPointerDown={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              onPinnedIdsChange(
-                                pinnedIds.filter((id) => {
-                                  return id !== agent.id;
-                                }),
-                              );
-                            }}
-                            className={`flex h-6 w-6 cursor-pointer items-center justify-center rounded-md invisible group-hover:visible transition-opacity duration-150 ${
-                              isPrimarySelected
-                                ? "text-slate-500 hover:text-slate-900 hover:bg-slate-300"
-                                : "text-sidebar-foreground/80 hover:text-foreground hover:bg-sidebar-foreground/10"
-                            }`}
-                            aria-label="Remove from list"
-                          >
-                            <IconX size={12} stroke={2} />
-                          </button>
-                        </TooltipTrigger>
-                        <TooltipContent side="right">
-                          <p className="text-xs">Remove from list</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
-                  </div>
+                  {agent.id !== defaultAgentId && (
+                    <div className="absolute right-0 top-0 flex h-8 w-8 items-center justify-center">
+                      <TooltipProvider delayDuration={200}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              type="button"
+                              onPointerDown={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                onPinnedIdsChange(
+                                  pinnedIds.filter((id) => {
+                                    return id !== agent.id;
+                                  }),
+                                );
+                              }}
+                              className={`flex h-6 w-6 cursor-pointer items-center justify-center rounded-md invisible group-hover:visible transition-opacity duration-150 ${
+                                isPrimarySelected
+                                  ? "text-slate-500 hover:text-slate-900 hover:bg-slate-300"
+                                  : "text-sidebar-foreground/80 hover:text-foreground hover:bg-sidebar-foreground/10"
+                              }`}
+                              aria-label="Remove from list"
+                            >
+                              <IconX size={12} stroke={2} />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="right">
+                            <p className="text-xs">Remove from list</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
+                  )}
                 </div>
               );
             })}

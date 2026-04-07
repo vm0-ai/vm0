@@ -17,7 +17,7 @@ import {
   TooltipTrigger,
 } from "@vm0/ui";
 import {
-  agentDisplayName$,
+  currentChatAgentDisplayName$,
   currentAgentId$,
   subagents$,
 } from "../../signals/agent.ts";
@@ -209,7 +209,9 @@ export function ZeroChatPage() {
     ? (resolveAvatarUrl(sidebarAgent.avatarUrl) ?? avatar1Img)
     : null;
 
-  const agentDisplayNameLoadable = useLastLoadable(agentDisplayName$);
+  const agentDisplayNameLoadable = useLastLoadable(
+    currentChatAgentDisplayName$,
+  );
   const agentDisplayName =
     agentDisplayNameLoadable.state === "hasData"
       ? agentDisplayNameLoadable.data

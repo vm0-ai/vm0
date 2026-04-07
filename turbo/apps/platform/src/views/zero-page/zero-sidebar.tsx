@@ -40,7 +40,10 @@ import {
 } from "../../signals/zero-page/zero-nav.ts";
 import { activeRoute$ } from "../../signals/active-route.ts";
 import type { RouteKey } from "../../signals/route-paths.ts";
-import { agentDisplayName$, subagents$ } from "../../signals/agent.ts";
+import {
+  currentChatAgentDisplayName$,
+  subagents$,
+} from "../../signals/agent.ts";
 import { updatePinnedAgentIds$ } from "../../signals/zero-page/zero-pinned-agents.ts";
 import {
   managePinnedDialogOpen$,
@@ -158,7 +161,7 @@ export function ZeroSidebar() {
 
   // Read all data from signals directly
   const activeId = useGet(activeRoute$);
-  const displayNameLoadable = useLastLoadable(agentDisplayName$);
+  const displayNameLoadable = useLastLoadable(currentChatAgentDisplayName$);
   const displayNameRaw =
     displayNameLoadable.state === "hasData" ? displayNameLoadable.data : null;
 

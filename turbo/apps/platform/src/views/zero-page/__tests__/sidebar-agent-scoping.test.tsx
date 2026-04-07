@@ -35,7 +35,7 @@ function mockTwoAgents() {
       return HttpResponse.json([
         {
           id: "mock-compose-id",
-          displayName: null,
+          displayName: "Zero",
           description: null,
           sound: null,
           avatarUrl: null,
@@ -62,6 +62,53 @@ function mockTwoAgents() {
         },
       ]);
     }),
+    http.get("*/api/zero/agents/:id", ({ params }) => {
+      const agents: Record<
+        string,
+        {
+          agentId: string;
+          displayName: string;
+          ownerId: string;
+          description: null;
+          sound: null;
+          avatarUrl: null;
+          firewallPolicies: null;
+        }
+      > = {
+        "mock-compose-id": {
+          agentId: "mock-compose-id",
+          ownerId: "test-user",
+          displayName: "Zero",
+          description: null,
+          sound: null,
+          avatarUrl: null,
+          firewallPolicies: null,
+        },
+        "agent-alpha": {
+          agentId: "agent-alpha",
+          ownerId: "test-user",
+          displayName: "Alpha Bot",
+          description: null,
+          sound: null,
+          avatarUrl: null,
+          firewallPolicies: null,
+        },
+        "agent-beta": {
+          agentId: "agent-beta",
+          ownerId: "test-user",
+          displayName: "Beta Bot",
+          description: null,
+          sound: null,
+          avatarUrl: null,
+          firewallPolicies: null,
+        },
+      };
+      const agent = agents[params.id as string];
+      if (!agent) {
+        return HttpResponse.json({ error: "Not found" }, { status: 404 });
+      }
+      return HttpResponse.json(agent);
+    }),
     http.get("*/api/zero/chat-threads", ({ request }) => {
       const url = new URL(request.url);
       const agentId = url.searchParams.get("agentId");
@@ -69,7 +116,7 @@ function mockTwoAgents() {
         ? allThreads.filter((t) => {
             return t.agentId === agentId;
           })
-        : allThreads;
+        : [];
       return HttpResponse.json({ threads: filtered });
     }),
   );

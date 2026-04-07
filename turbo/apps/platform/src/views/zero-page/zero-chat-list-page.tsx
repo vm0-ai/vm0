@@ -31,7 +31,10 @@ import {
 } from "../../signals/agent-chat.ts";
 import { resolveAvatarUrl } from "./avatar-utils.ts";
 import avatar1Img from "./assets/avatar_1.webp";
-import { agentDisplayName$, subagents$ } from "../../signals/agent.ts";
+import {
+  currentChatAgentDisplayName$,
+  subagents$,
+} from "../../signals/agent.ts";
 import {
   pendingDeleteThreadId$,
   setPendingDeleteThreadId$,
@@ -60,7 +63,7 @@ export function ZeroChatListPage() {
   const subagentsLoadable = useLastLoadable(subagents$);
   const subagents =
     subagentsLoadable.state === "hasData" ? subagentsLoadable.data : [];
-  const displayName = useLastLoadable(agentDisplayName$);
+  const displayName = useLastLoadable(currentChatAgentDisplayName$);
   const displayNameStr =
     displayName.state === "hasData" ? (displayName.data ?? "Zero") : "Zero";
 

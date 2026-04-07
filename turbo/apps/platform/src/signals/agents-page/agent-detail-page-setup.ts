@@ -14,7 +14,7 @@ import { initZeroOnboarding$ } from "../zero-page/zero-onboarding.ts";
 import { initSlackOrg$ } from "../zero-page/zero-slack.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 
-export const setupTeamDetailPage$ = command(
+export const setupAgentDetailPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     set(
       updatePage$,

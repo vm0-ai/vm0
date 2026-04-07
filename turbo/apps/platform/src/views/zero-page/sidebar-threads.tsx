@@ -38,10 +38,10 @@ import {
   creatingNewSession$,
 } from "../../signals/chat-page/chat-message.ts";
 import {
-  currentChatAgent$,
   currentChatAgentId$,
   currentChatThreadId$,
 } from "../../signals/agent-chat.ts";
+import { currentChatAgentDisplayName$ } from "../../signals/agent.ts";
 import {
   navigateToChat$,
   setSidebarExpanded$,
@@ -219,7 +219,7 @@ function ChatThreadsTitle() {
   const createNewChat = useSet(createNewChatThread$);
   const pageSignal = useGet(pageSignal$);
 
-  const agentDisplayName = useLastResolved(currentChatAgent$)?.displayName;
+  const agentDisplayName = useLastResolved(currentChatAgentDisplayName$);
   const newChatDisabled = creatingLoadable.state === "loading";
   const onNewChat = () => {
     detach(createNewChat(currentChatAgentId, pageSignal), Reason.DomCallback);

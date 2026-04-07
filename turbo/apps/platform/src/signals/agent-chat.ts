@@ -5,7 +5,7 @@ import {
   chatThreadsContract,
   type SummaryEntry,
 } from "@vm0/core";
-import { defaultAgentId$ } from "./agent.ts";
+import { agentById, defaultAgentId$ } from "./agent.ts";
 import { zeroClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
 import { pathParams$ } from "./route.ts";
@@ -29,11 +29,7 @@ export const currentChatAgent$ = computed(async (get) => {
     return null;
   }
 
-  const client = get(zeroClient$)(zeroAgentsByIdContract);
-  const result = await accept(client.get({ params: { id: agentId } }), [200], {
-    toast: false,
-  });
-  return result.body;
+  return get(agentById(agentId));
 });
 
 export const currentChatThreadId$ = computed((get): string | null => {

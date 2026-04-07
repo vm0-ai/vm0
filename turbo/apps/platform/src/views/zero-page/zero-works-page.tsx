@@ -20,7 +20,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@vm0/ui/components/ui/dialog";
-import { agentDisplayName$ } from "../../signals/agent.ts";
+import { currentChatAgentDisplayName$ } from "../../signals/agent.ts";
 import {
   slackOrgData$,
   disconnectSlackOrg$,
@@ -237,7 +237,7 @@ function SlackCard({ displayName }: { displayName: string }) {
 }
 
 export function ZeroWorksPage() {
-  const displayNameLoadable = useLoadable(agentDisplayName$);
+  const displayNameLoadable = useLoadable(currentChatAgentDisplayName$);
   const displayName =
     displayNameLoadable.state === "hasData" ? displayNameLoadable.data : "Zero";
 

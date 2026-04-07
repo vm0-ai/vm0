@@ -48,6 +48,44 @@ function mockTwoAgents() {
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads: [] });
     }),
+    http.get("*/api/zero/agents/:id", ({ params }) => {
+      const agents: Record<
+        string,
+        {
+          agentId: string;
+          displayName: string;
+          ownerId: string;
+          description: null;
+          sound: null;
+          avatarUrl: null;
+          firewallPolicies: null;
+        }
+      > = {
+        "agent-foo-id": {
+          agentId: "agent-foo-id",
+          ownerId: "test-user",
+          displayName: "foo",
+          description: null,
+          sound: null,
+          avatarUrl: null,
+          firewallPolicies: null,
+        },
+        "agent-bar-id": {
+          agentId: "agent-bar-id",
+          ownerId: "test-user",
+          displayName: "bar",
+          description: null,
+          sound: null,
+          avatarUrl: null,
+          firewallPolicies: null,
+        },
+      };
+      const agent = agents[params.id as string];
+      if (!agent) {
+        return HttpResponse.json({ error: "Not found" }, { status: 404 });
+      }
+      return HttpResponse.json(agent);
+    }),
   );
 }
 

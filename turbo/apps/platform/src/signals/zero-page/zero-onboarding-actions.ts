@@ -11,7 +11,7 @@ import {
   completeZeroOnboarding$,
   completeMemberOnboarding$,
 } from "./zero-onboarding.ts";
-import { agentDisplayName$ } from "../agent.ts";
+import { currentChatAgentDisplayName$ } from "../agent.ts";
 import { allConnectorTypes$ } from "./settings/connectors.ts";
 import { detachedNavigateTo$ } from "../route.ts";
 import { slackOrgData$ } from "./zero-slack.ts";
@@ -228,7 +228,7 @@ export const onboardingDisplayName$ = computed(async (get) => {
   if (isAdmin) {
     return get(zeroAgentName$);
   }
-  return await get(agentDisplayName$);
+  return await get(currentChatAgentDisplayName$);
 });
 
 const onboardingSubmitting$ = state(false);

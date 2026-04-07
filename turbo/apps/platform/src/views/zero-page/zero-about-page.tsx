@@ -1,13 +1,13 @@
 import { useLoadable } from "ccstate-react";
 import { Button } from "@vm0/ui";
-import { agentDisplayName$ } from "../../signals/agent.ts";
+import { currentChatAgentDisplayName$ } from "../../signals/agent.ts";
 
 interface ZeroAboutPageProps {
   onBack?: () => void;
 }
 
 export function ZeroAboutPage({ onBack }: ZeroAboutPageProps) {
-  const displayNameLoadable = useLoadable(agentDisplayName$);
+  const displayNameLoadable = useLoadable(currentChatAgentDisplayName$);
   const displayName =
     displayNameLoadable.state === "hasData" ? displayNameLoadable.data : "Zero";
   return (

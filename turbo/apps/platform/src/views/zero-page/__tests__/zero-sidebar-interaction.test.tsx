@@ -98,6 +98,47 @@ function mockBaseAPIs(options?: {
     http.get("*/api/zero/chat-threads", () => {
       return HttpResponse.json({ threads });
     }),
+    http.get("*/api/zero/agents/:id", ({ params }) => {
+      const agents: Record<
+        string,
+        {
+          agentId: string;
+          displayName: string | null;
+          ownerId: string;
+          description: string | null;
+          sound: null;
+          avatarUrl: null;
+          headVersionId: string;
+          firewallPolicies: null;
+        }
+      > = {
+        [DEFAULT_AGENT_ID]: {
+          agentId: DEFAULT_AGENT_ID,
+          ownerId: "test-user",
+          displayName: "Zero",
+          description: null,
+          sound: null,
+          avatarUrl: null,
+          headVersionId: "version_1",
+          firewallPolicies: null,
+        },
+        [PINNED_AGENT_ID]: {
+          agentId: PINNED_AGENT_ID,
+          ownerId: "test-user",
+          displayName: "Research Agent",
+          description: "A pinned sub-agent",
+          sound: null,
+          avatarUrl: null,
+          headVersionId: "version_2",
+          firewallPolicies: null,
+        },
+      };
+      const agent = agents[params.id as string];
+      if (!agent) {
+        return HttpResponse.json({ error: "Not found" }, { status: 404 });
+      }
+      return HttpResponse.json(agent);
+    }),
   );
 }
 
@@ -399,11 +440,9 @@ describe("zero sidebar - agent action menu opens (SIDEBAR-D-066)", () => {
       expect(screen.getByText("Research Agent")).toBeInTheDocument();
     });
 
-    const agentCard = screen.getByTestId("pinned-agent-card");
-    await user.hover(agentCard);
-
     // The "Remove from list" button is revealed via CSS on hover
     const removeButton = screen.getByLabelText("Remove from list");
+    await user.hover(removeButton);
     expect(removeButton).toBeVisible();
   });
 });

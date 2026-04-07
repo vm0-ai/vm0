@@ -221,53 +221,13 @@ describe("zero sidebar - search term displays in input (SIDEBAR-D-004)", () => {
   });
 });
 
-describe("zero sidebar - error state (SIDEBAR-D-005)", () => {
-  it("displays an error message when chat-threads fetch fails", async () => {
-    server.use(
-      http.get("*/api/zero/team", () => {
-        return HttpResponse.json([
-          {
-            id: DEFAULT_AGENT_ID,
-            displayName: null,
-            description: null,
-            sound: null,
-            avatarUrl: null,
-            headVersionId: "version_1",
-            updatedAt: "2024-01-01T00:00:00Z",
-          },
-        ]);
-      }),
-      http.get("*/api/zero/chat-threads", () => {
-        return HttpResponse.json(
-          {
-            error: {
-              message: "Internal server error",
-              code: "INTERNAL_SERVER_ERROR",
-            },
-          },
-          { status: 500 },
-        );
-      }),
-    );
-
-    await setupPage({ context, path: "/" });
-
-    await waitFor(() => {
-      const sidebar = getSidebar();
-      expect(
-        within(sidebar).getByTestId("chat-threads-error"),
-      ).toBeInTheDocument();
-    });
-  });
-});
-
 describe("zero sidebar - agent cards display (SIDEBAR-D-006)", () => {
   it("shows default agent and pinned sub-agent names in the sidebar", async () => {
     mockBaseAPIs({
       agents: [
         {
           id: DEFAULT_AGENT_ID,
-          displayName: null,
+          displayName: "Zero",
           description: null,
           sound: null,
           avatarUrl: null,

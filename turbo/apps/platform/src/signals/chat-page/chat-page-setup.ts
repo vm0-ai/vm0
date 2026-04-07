@@ -11,7 +11,7 @@ import {
 } from "./chat-message.ts";
 import {
   setChatAgentId$,
-  currentChatAgentId$,
+  currentChatThread$,
   currentChatThreadId$,
 } from "../agent-chat.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
@@ -58,9 +58,9 @@ export const setupChatPage$ = command(
     const sessionTitle = session?.title ?? "New chat";
     set(updateDocumentTitle$, sessionTitle);
 
-    const agentId = (await get(currentChatAgentId$)) ?? null;
+    const thread = await get(currentChatThread$);
     signal.throwIfAborted();
-    set(setChatAgentId$, agentId);
+    set(setChatAgentId$, thread?.agentId ?? null);
 
     await set(loadChatMessages$, signal);
   },

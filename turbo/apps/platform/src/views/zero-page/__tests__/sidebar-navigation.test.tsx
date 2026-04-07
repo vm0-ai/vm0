@@ -33,7 +33,7 @@ function mockSubagentAPIs() {
       return HttpResponse.json([
         {
           id: "c0000000-0000-4000-a000-000000000001",
-          displayName: null,
+          displayName: "Zero",
           description: null,
           sound: null,
           avatarUrl: null,
@@ -76,6 +76,44 @@ function mockSubagentAPIs() {
         createdAt: "2026-03-10T00:00:00Z",
         updatedAt: "2026-03-10T00:00:01Z",
       });
+    }),
+    http.get("*/api/zero/agents/:id", ({ params }) => {
+      const agents: Record<
+        string,
+        {
+          agentId: string;
+          displayName: string;
+          ownerId: string;
+          description: null;
+          sound: null;
+          avatarUrl: null;
+          firewallPolicies: null;
+        }
+      > = {
+        "c0000000-0000-4000-a000-000000000001": {
+          agentId: "c0000000-0000-4000-a000-000000000001",
+          ownerId: "test-user",
+          displayName: "Zero",
+          description: null,
+          sound: null,
+          avatarUrl: null,
+          firewallPolicies: null,
+        },
+        "subagent-compose-id": {
+          agentId: "subagent-compose-id",
+          ownerId: "test-user",
+          displayName: "Helper Bot",
+          description: null,
+          sound: null,
+          avatarUrl: null,
+          firewallPolicies: null,
+        },
+      };
+      const agent = agents[params.id as string];
+      if (!agent) {
+        return HttpResponse.json({ error: "Not found" }, { status: 404 });
+      }
+      return HttpResponse.json(agent);
     }),
     http.post("*/api/zero/chat-threads", async ({ request }) => {
       const body = (await request.json()) as {

@@ -3,7 +3,11 @@ import type { RoutePath } from "../../types/route.ts";
 import { ROUTES } from "../route-paths.ts";
 import { pathParams$ } from "../route.ts";
 import { activeRoute$ } from "../active-route.ts";
-import { agents$, agentDisplayName$, defaultAgentId$ } from "../agent.ts";
+import {
+  agents$,
+  currentChatAgentDisplayName$,
+  defaultAgentId$,
+} from "../agent.ts";
 import { currentChatAgentId$, currentChatThreadId$ } from "../agent-chat.ts";
 import { allOrgScheduleEntries$ } from "./zero-schedule.ts";
 import { zeroActivityDetail$ } from "../../signals/activity-page/activity-signals.ts";
@@ -135,7 +139,7 @@ const scheduleBreadcrumb$ = computed((get): MobileBreadcrumb => {
 
 const chatBreadcrumb$ = computed(async (get): Promise<MobileBreadcrumb> => {
   const params = get(pathParams$) as Params;
-  const displayName = await get(agentDisplayName$);
+  const displayName = await get(currentChatAgentDisplayName$);
   const defaultId = await get(defaultAgentId$);
   const threadId = get(currentChatThreadId$);
   const urlAgentId = getStringParam(params, "id");
