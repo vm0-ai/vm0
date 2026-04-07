@@ -473,6 +473,9 @@ function JobPermissionsTab({
   const addedSet = new Set(addedConnectors);
 
   const handleToggle = (type: string, checked: boolean) => {
+    if (savingType !== null) {
+      return;
+    }
     const modify = checked
       ? addConnector(type, pageSignal)
       : removeConnector(type, pageSignal);

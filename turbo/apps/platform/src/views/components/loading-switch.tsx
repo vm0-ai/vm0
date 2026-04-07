@@ -22,7 +22,10 @@ export function LoadingSwitch({
 }: LoadingSwitchProps) {
   return (
     <div
-      className={cn("relative shrink-0", size === "sm" ? "h-4 w-7" : "h-5 w-9")}
+      className={cn(
+        "relative shrink-0 flex items-center",
+        size === "sm" ? "h-4 w-7" : "h-5 w-9",
+      )}
     >
       <Switch
         checked={checked}

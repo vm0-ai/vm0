@@ -70,6 +70,8 @@ import {
   setAddDialogSearch$,
   popoverSearch$,
   setPopoverSearch$,
+  popoverSortOrder$,
+  setPopoverSortOrder$,
 } from "../../signals/zero-page/zero-chat-composer.ts";
 
 // ---------------------------------------------------------------------------
@@ -260,10 +262,21 @@ function ConnectorsPopoverButton({
 }) {
   const search = useGet(popoverSearch$);
   const setSearch = useSet(setPopoverSearch$);
+  const sortOrder = useGet(popoverSortOrder$);
+  const setSortOrder = useSet(setPopoverSortOrder$);
   const showSearch = agentConnectors.length > 20;
-  const sorted = [...agentConnectors].sort((a, b) => {
-    return Number(b.added) - Number(a.added);
-  });
+
+  // Use snapshot order if available, otherwise sort by added status
+  const sorted = sortOrder
+    ? [...agentConnectors].sort((a, b) => {
+        const ai = sortOrder.indexOf(a.type);
+        const bi = sortOrder.indexOf(b.type);
+        return (ai === -1 ? Infinity : ai) - (bi === -1 ? Infinity : bi);
+      })
+    : [...agentConnectors].sort((a, b) => {
+        return Number(b.added) - Number(a.added);
+      });
+
   const visibleConnectors =
     showSearch && search.trim()
       ? sorted.filter((c) => {
@@ -271,8 +284,25 @@ function ConnectorsPopoverButton({
         })
       : sorted.slice(0, 20);
 
+  const handleOpenChange = (open: boolean) => {
+    if (open) {
+      // Snapshot the sort order when popover opens
+      const freshSort = [...agentConnectors]
+        .sort((a, b) => {
+          return Number(b.added) - Number(a.added);
+        })
+        .map((c) => {
+          return c.type;
+        });
+      setSortOrder(freshSort);
+    } else {
+      setSortOrder(null);
+      setSearch("");
+    }
+  };
+
   return (
-    <Popover>
+    <Popover onOpenChange={handleOpenChange}>
       <TooltipProvider delayDuration={300}>
         <Tooltip>
           <PopoverTrigger asChild>
