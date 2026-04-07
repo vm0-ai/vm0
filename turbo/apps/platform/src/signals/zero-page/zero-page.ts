@@ -20,8 +20,7 @@ export const loadInitialData$ = command(
     }
     await set(initZeroOnboarding$, signal);
     signal.throwIfAborted();
-    await set(initSlackOrg$, signal);
-    signal.throwIfAborted();
+    set(initSlackOrg$);
     set(initialDataLoaded$, true);
   },
 );

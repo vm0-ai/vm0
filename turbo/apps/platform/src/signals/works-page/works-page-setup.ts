@@ -23,10 +23,8 @@ export const setupWorksPage$ = command(async ({ set }, signal: AbortSignal) => {
     createElement(SidebarLayout, null, createElement(ZeroWorksPage)),
   );
   set(updateDocumentTitle$, "Works");
-  await Promise.all([
-    set(initZeroOnboarding$, signal),
-    set(initSlackOrg$, signal),
-  ]);
+  set(initSlackOrg$);
+  await set(initZeroOnboarding$, signal);
   signal.throwIfAborted();
   await set(hideAppSkeleton$, signal);
   // pollSlackConnection$ is a long-running daemon loop — fire-and-forget so

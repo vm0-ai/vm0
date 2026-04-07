@@ -234,7 +234,7 @@ export function ZeroSidebar() {
   const setManagePinnedOpen = useSet(setManagePinnedDialogOpen$);
   // Feature gates
   const features = useLastResolved(featureSwitch$);
-  const slackScopeMismatch = useGet(slackOrgScopeMismatch$);
+  const slackScopeMismatch = useLastResolved(slackOrgScopeMismatch$) ?? false;
 
   // Compute selectedAgentIdFromChat for grey highlight
   const subagentIds = new Set(

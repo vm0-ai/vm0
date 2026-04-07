@@ -24,9 +24,9 @@ export const setupTeamDetailPage$ = command(
     const params = get(pathParams$) as { id?: string } | undefined;
     const agentId = params?.id ?? null;
     set(updateDocumentTitle$, "Team");
+    set(initSlackOrg$);
     await Promise.all([
       set(initZeroOnboarding$, signal),
-      set(initSlackOrg$, signal),
       agentId ? set(setActiveAgent$, agentId) : undefined,
     ]);
     signal.throwIfAborted();
