@@ -5,7 +5,6 @@ import {
   zeroOnboardingStep$,
   zeroOnboardingStatus$,
   zeroAgentName$,
-  zeroWorkspaceName$,
   zeroSelectedConnectors$,
   setZeroStep$,
   completeZeroOnboarding$,
@@ -29,7 +28,7 @@ export const onboardingIsAdmin$ = zeroNeedsOnboarding$;
 // Step resolution (moved from TSX)
 // ---------------------------------------------------------------------------
 
-const ADMIN_STEPS = ["1", "2", "3", "4"] as const;
+const ADMIN_STEPS = ["1", "2", "3"] as const;
 
 /** Connector types the member should see, derived from default agent skills. */
 const onboardingMemberConnectors$ = computed(async (get) => {
@@ -74,8 +73,8 @@ export const onboardingEffectiveStep$ = computed(async (get) => {
   }
   const memberConnectors = await get(onboardingMemberConnectors$);
   const hasMemberConnectors = memberConnectors.length > 0;
-  if (step === "1" || step === "2" || (step === "3" && !hasMemberConnectors)) {
-    return hasMemberConnectors ? "3" : "4";
+  if (step === "1" || (step === "2" && !hasMemberConnectors)) {
+    return hasMemberConnectors ? "2" : "3";
   }
   return step;
 });
@@ -88,7 +87,7 @@ export const onboardingVisibleSteps$ = computed(async (get) => {
   }
   const memberConnectors = await get(onboardingMemberConnectors$);
   return (
-    memberConnectors.length > 0 ? ["3", "4"] : ["4"]
+    memberConnectors.length > 0 ? ["2", "3"] : ["3"]
   ) as readonly string[];
 });
 
@@ -106,18 +105,15 @@ export const onboardingCurrentStepIndex$ = computed(async (get) => {
 export const onboardingStepKey$ = computed(async (get) => {
   const step = await get(onboardingEffectiveStep$);
   switch (step) {
-    case "1": {
-      return "workspace";
-    }
-    case "2":
-    case "3": {
+    case "1":
+    case "2": {
       return "connectors";
     }
-    case "4": {
+    case "3": {
       return "where";
     }
     default: {
-      return "workspace";
+      return "connectors";
     }
   }
 });
@@ -134,12 +130,9 @@ export const onboardingShowBack$ = computed(async (get) => {
       return false;
     }
     case "2": {
-      return true;
-    }
-    case "3": {
       return isAdmin;
     }
-    case "4": {
+    case "3": {
       if (isAdmin) {
         return true;
       }
@@ -154,15 +147,7 @@ export const onboardingShowBack$ = computed(async (get) => {
 
 export const onboardingShowNext$ = computed(async (get) => {
   const step = await get(onboardingEffectiveStep$);
-  return step !== "4" && step !== undefined;
-});
-
-export const onboardingNextDisabled$ = computed(async (get) => {
-  const step = await get(onboardingEffectiveStep$);
-  if (step === "1") {
-    return !get(zeroWorkspaceName$).trim();
-  }
-  return false;
+  return step !== "3" && step !== undefined;
 });
 
 export const onboardingStepBack$ = command(
@@ -175,10 +160,6 @@ export const onboardingStepBack$ = command(
       }
       case "3": {
         set(setZeroStep$, "2");
-        break;
-      }
-      case "4": {
-        set(setZeroStep$, "3");
         break;
       }
     }
@@ -195,10 +176,6 @@ export const onboardingStepNext$ = command(
       }
       case "2": {
         set(setZeroStep$, "3");
-        break;
-      }
-      case "3": {
-        set(setZeroStep$, "4");
         break;
       }
     }

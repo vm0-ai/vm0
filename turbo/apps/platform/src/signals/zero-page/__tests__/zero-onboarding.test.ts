@@ -6,7 +6,6 @@ import { setupPage } from "../../../__tests__/page-helper.ts";
 import {
   completeZeroOnboarding$,
   setZeroAgentName$,
-  setZeroWorkspaceName$,
   toggleZeroConnector$,
 } from "../zero-onboarding.ts";
 
@@ -14,7 +13,6 @@ const context = testContext();
 
 interface SetupPayload {
   displayName?: string;
-  workspaceName?: string;
   sound?: string;
   avatarUrl?: string;
   selectedConnectors?: string[];
@@ -69,42 +67,6 @@ describe("completeZeroOnboarding$", () => {
 
     expect(capturedPayload).toBeTruthy();
     expect(capturedPayload!.selectedConnectors).toStrictEqual(["slack"]);
-  });
-
-  it("should send workspaceName when user sets workspace name", async () => {
-    let capturedPayload: SetupPayload | null = null;
-
-    server.use(
-      setupHandler((payload) => {
-        capturedPayload = payload;
-      }),
-    );
-
-    await setupPage({ context, path: "/", withoutRender: true });
-
-    context.store.set(setZeroWorkspaceName$, "My Workspace");
-
-    await context.store.set(completeZeroOnboarding$, context.signal);
-
-    expect(capturedPayload).toBeTruthy();
-    expect(capturedPayload!.workspaceName).toBe("My Workspace");
-  });
-
-  it("should not send workspaceName when empty", async () => {
-    let capturedPayload: SetupPayload | null = null;
-
-    server.use(
-      setupHandler((payload) => {
-        capturedPayload = payload;
-      }),
-    );
-
-    await setupPage({ context, path: "/", withoutRender: true });
-
-    await context.store.set(completeZeroOnboarding$, context.signal);
-
-    expect(capturedPayload).toBeTruthy();
-    expect(capturedPayload!.workspaceName).toBeUndefined();
   });
 
   it("should not send selectedConnectors when none selected", async () => {

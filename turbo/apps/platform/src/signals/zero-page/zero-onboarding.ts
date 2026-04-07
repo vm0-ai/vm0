@@ -49,7 +49,7 @@ export const completeMemberOnboarding$ = command(
   },
 );
 
-type ZeroOnboardingStep = "1" | "2" | "3" | "4" | "done";
+type ZeroOnboardingStep = "1" | "2" | "3" | "done";
 
 const userStep$ = state<ZeroOnboardingStep | null>(null);
 
@@ -58,11 +58,10 @@ const initialOnboardingStep$ = computed(async (get) => {
   if (!status.needsOnboarding) {
     return "done" as const;
   }
-  return (status.hasDefaultAgent ? "3" : "1") as ZeroOnboardingStep;
+  return (status.hasDefaultAgent ? "2" : "1") as ZeroOnboardingStep;
 });
 
 const internalAgentName$ = state("Zero");
-const internalWorkspaceName$ = state("");
 
 const internalSelectedConnectors$ = state<string[]>([]);
 
@@ -76,10 +75,6 @@ export const zeroOnboardingStep$ = computed(async (get) => {
 
 export const zeroAgentName$ = computed((get) => {
   return get(internalAgentName$);
-});
-
-export const zeroWorkspaceName$ = computed((get) => {
-  return get(internalWorkspaceName$);
 });
 
 export const zeroSelectedConnectors$ = computed((get) => {
@@ -96,10 +91,6 @@ export const setZeroStep$ = command(({ set }, step: ZeroOnboardingStep) => {
 
 export const setZeroAgentName$ = command(({ set }, name: string) => {
   set(internalAgentName$, name);
-});
-
-export const setZeroWorkspaceName$ = command(({ set }, name: string) => {
-  set(internalWorkspaceName$, name);
 });
 
 const internalConnectorSearch$ = state("");
@@ -143,7 +134,6 @@ export const resetOnboardingStep$ = command(({ set }) => {
 export const completeZeroOnboarding$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const displayName = get(internalAgentName$);
-    const workspaceName = get(internalWorkspaceName$);
     const selectedConnectors = get(internalSelectedConnectors$);
     const createClient = get(zeroClient$);
 
@@ -152,7 +142,6 @@ export const completeZeroOnboarding$ = command(
       setupClient.setup({
         body: {
           displayName,
-          workspaceName: workspaceName.trim() || undefined,
           sound: "professional",
           avatarUrl: "preset:0",
           selectedConnectors:

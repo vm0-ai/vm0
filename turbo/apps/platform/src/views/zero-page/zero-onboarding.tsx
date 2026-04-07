@@ -13,8 +13,6 @@ import { Button, Input } from "@vm0/ui";
 import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
-  zeroWorkspaceName$,
-  setZeroWorkspaceName$,
   zeroSelectedConnectors$,
   toggleZeroConnector$,
   connectorSearch$,
@@ -31,7 +29,6 @@ import {
   onboardingStepKey$,
   onboardingShowBack$,
   onboardingShowNext$,
-  onboardingNextDisabled$,
   onboardingStepBack$,
   onboardingStepNext$,
   onboardingIsAdmin$,
@@ -425,79 +422,6 @@ function WhereToWorkContent() {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Chat preview for workspace step
-// ---------------------------------------------------------------------------
-
-function ChatPreview() {
-  return (
-    <div className="w-full max-w-[360px] flex flex-col items-center">
-      {/* Header */}
-      <img
-        src={zeroAnimatedSrc}
-        alt=""
-        role="presentation"
-        className="h-24 w-24 object-contain mb-5"
-      />
-      <h3 className="text-lg font-semibold text-foreground text-center leading-snug">
-        AI that works alongside your team
-      </h3>
-      <p className="text-sm text-muted-foreground text-center leading-relaxed mt-2 mb-6 max-w-[300px]">
-        Zero lives in your workspace, works across your tools, and helps
-        everyone stay aligned.
-      </p>
-
-      {/* Mock chat — offset down */}
-      <div className="mt-10" />
-      <div className="zero-app w-full flex flex-col gap-5">
-        {/* User message */}
-        <div className="flex flex-col items-end pl-10">
-          <div className="zero-chat-bubble-user rounded-xl text-[13px] leading-relaxed">
-            <div className="px-4 py-3">
-              Draft a Q2 brief and share it with the team
-            </div>
-          </div>
-        </div>
-
-        {/* Zero reply */}
-        <div className="flex items-start gap-2.5 pr-10">
-          <img
-            src={zeroAvatarImg}
-            alt=""
-            className="h-6 w-6 shrink-0 object-contain mt-0.5"
-          />
-          <div className="text-[13px] text-foreground leading-relaxed">
-            Created in Notion and shared in #product. Sarah and James tagged for
-            review.
-          </div>
-        </div>
-
-        {/* User follow-up */}
-        <div className="flex flex-col items-end pl-10">
-          <div className="zero-chat-bubble-user rounded-xl text-[13px] leading-relaxed">
-            <div className="px-4 py-3">
-              Keep it updated weekly and notify the team
-            </div>
-          </div>
-        </div>
-
-        {/* Zero reply */}
-        <div className="flex items-start gap-2.5 pr-10">
-          <img
-            src={zeroAvatarImg}
-            alt=""
-            className="h-6 w-6 shrink-0 object-contain mt-0.5"
-          />
-          <div className="text-[13px] text-foreground leading-relaxed">
-            Done! I&apos;ll update every Friday and post a summary to #product.
-            🔄
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // Step-specific illustration hints for the right panel
 type StepIllustration = {
   title: string;
@@ -654,12 +578,11 @@ function OrbitIllustration() {
 
 function OnboardingPageLayout({ children }: { children: React.ReactNode }) {
   const onAccountAction = useSet(handleZeroAccountAction$);
-  const stepKey = useLastResolved(onboardingStepKey$) ?? "workspace";
+  const stepKey = useLastResolved(onboardingStepKey$) ?? "connectors";
   const currentStep = useLastResolved(onboardingCurrentStepIndex$) ?? 0;
   const visibleSteps = useLastResolved(onboardingVisibleSteps$) ?? [];
   const showBack = useLastResolved(onboardingShowBack$) ?? false;
   const showNext = useLastResolved(onboardingShowNext$) ?? false;
-  const nextDisabled = useLastResolved(onboardingNextDisabled$) ?? false;
   const stepBack = useSet(onboardingStepBack$);
   const stepNext = useSet(onboardingStepNext$);
   const pageSignal = useGet(pageSignal$);
@@ -667,7 +590,6 @@ function OnboardingPageLayout({ children }: { children: React.ReactNode }) {
     useLastResolved(onboardingEffectiveConnectors$) ?? [];
   const illustration = getStepIllustration(stepKey);
   const showOrbit = stepKey === "connectors";
-  const showChat = stepKey === "workspace";
 
   return (
     <div className="zero-app flex h-dvh bg-muted/30 relative">
@@ -716,11 +638,9 @@ function OnboardingPageLayout({ children }: { children: React.ReactNode }) {
       </div>
 
       {/* Left panel — brand / illustration */}
-      <div
-        className={`hidden lg:flex w-2/5 shrink-0 flex-col items-center p-10 relative overflow-hidden ${showChat ? "pt-[8%]" : "justify-center"}`}
-      >
-        {/* Decorative circles (non-orbit, non-chat steps) */}
-        {!showOrbit && !showChat && (
+      <div className="hidden lg:flex w-2/5 shrink-0 flex-col items-center p-10 relative overflow-hidden justify-center">
+        {/* Decorative circles (non-orbit steps) */}
+        {!showOrbit && (
           <div className="absolute inset-0 pointer-events-none" aria-hidden>
             <div className="absolute top-[15%] left-[10%] h-48 w-48 rounded-full border border-border/20" />
             <div className="absolute top-[25%] left-[20%] h-64 w-64 rounded-full border border-border/15" />
@@ -730,9 +650,7 @@ function OnboardingPageLayout({ children }: { children: React.ReactNode }) {
         )}
 
         <div className="relative z-10 flex flex-col items-center">
-          {showChat ? (
-            <ChatPreview />
-          ) : showOrbit ? (
+          {showOrbit ? (
             <>
               <OrbitIllustration />
               <p className="text-sm text-muted-foreground text-center leading-relaxed mt-6 max-w-[300px]">
@@ -823,7 +741,6 @@ function OnboardingPageLayout({ children }: { children: React.ReactNode }) {
                     detach(stepNext(pageSignal), Reason.DomCallback);
                   }}
                   className="rounded-lg min-w-[100px]"
-                  disabled={nextDisabled}
                 >
                   Next
                 </Button>
@@ -837,55 +754,6 @@ function OnboardingPageLayout({ children }: { children: React.ReactNode }) {
 }
 
 // ---------------------------------------------------------------------------
-// Workspace step content (step 1)
-// ---------------------------------------------------------------------------
-
-function WorkspaceStepContent() {
-  const workspaceName = useGet(zeroWorkspaceName$);
-  const setWorkspaceName = useSet(setZeroWorkspaceName$);
-  const stepNext = useSet(onboardingStepNext$);
-  const pageSignal = useGet(pageSignal$);
-
-  return (
-    <>
-      <h2
-        data-testid="onboarding-step-workspace-name"
-        className="text-2xl font-semibold tracking-tight"
-      >
-        Name your workspace
-      </h2>
-      <p className="text-sm text-muted-foreground leading-relaxed mt-2 mb-8">
-        This is where your team will collaborate with Zero and other AI agents.
-      </p>
-      <div className="w-full">
-        <label
-          htmlFor="workspace-name"
-          className="block text-sm font-medium text-foreground mb-2"
-        >
-          Workspace name
-        </label>
-        <Input
-          id="workspace-name"
-          type="text"
-          placeholder="e.g. Acme Corp"
-          value={workspaceName}
-          onChange={(e) => {
-            return setWorkspaceName(e.target.value);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && workspaceName.trim()) {
-              detach(stepNext(pageSignal), Reason.DomCallback);
-            }
-          }}
-          className="h-10 rounded-lg"
-          autoFocus
-        />
-      </div>
-    </>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // Step content router
 // ---------------------------------------------------------------------------
 
@@ -895,15 +763,12 @@ function OnboardingStepContent() {
 
   switch (effectiveStep) {
     case "1": {
-      return isAdmin ? <WorkspaceStepContent /> : null;
-    }
-    case "2": {
       return isAdmin ? <SelectConnectorsContent /> : null;
     }
-    case "3": {
+    case "2": {
       return <ConnectStepContent />;
     }
-    case "4": {
+    case "3": {
       return <WhereToWorkContent />;
     }
     default: {

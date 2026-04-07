@@ -64,7 +64,6 @@ export const onboardingSetupContract = c.router({
     headers: authHeadersSchema,
     body: z.object({
       displayName: z.string(),
-      workspaceName: z.string().optional(),
       sound: z.string().optional(),
       avatarUrl: z.string().optional(),
       selectedConnectors: z.array(z.string()).optional(),
