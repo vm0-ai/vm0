@@ -1,5 +1,22 @@
 # Changelog
 
+## [8.159.0](https://github.com/vm0-ai/vm0/compare/core-v8.158.0...core-v8.159.0) (2026-04-07)
+
+
+### Features
+
+* add per-user capture-network-bodies quota in preferences ([#8402](https://github.com/vm0-ai/vm0/issues/8402)) ([7029364](https://github.com/vm0-ai/vm0/commit/70293646c5aa630f3f4d8b2217bcc93043bcf3ea))
+
+
+### Bug Fixes
+
+* **firewalls:** add pika firewall generator and second base url ([#8412](https://github.com/vm0-ai/vm0/issues/8412)) ([ac530dc](https://github.com/vm0-ai/vm0/commit/ac530dcd43435cdffef5a5050c521cdc06932478))
+
+
+### Refactoring
+
+* **firewalls:** use as const satisfies for all firewall configs ([#8413](https://github.com/vm0-ai/vm0/issues/8413)) ([0483adc](https://github.com/vm0-ai/vm0/commit/0483adcdae1f4df22a30b83ec18f9614b450d5d2))
+
 ## [8.158.0](https://github.com/vm0-ai/vm0/compare/core-v8.157.0...core-v8.158.0) (2026-04-07)
 
 

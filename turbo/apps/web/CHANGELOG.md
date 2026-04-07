@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.202.0](https://github.com/vm0-ai/vm0/compare/web-v12.201.0...web-v12.202.0) (2026-04-07)
+
+
+### Features
+
+* add per-user capture-network-bodies quota in preferences ([#8402](https://github.com/vm0-ai/vm0/issues/8402)) ([7029364](https://github.com/vm0-ai/vm0/commit/70293646c5aa630f3f4d8b2217bcc93043bcf3ea))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.159.0
+
 ## [12.201.0](https://github.com/vm0-ai/vm0/compare/web-v12.200.0...web-v12.201.0) (2026-04-07)
 
 

@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.200.0](https://github.com/vm0-ai/vm0/compare/app-v0.199.0...app-v0.200.0) (2026-04-07)
+
+
+### Features
+
+* add per-user capture-network-bodies quota in preferences ([#8402](https://github.com/vm0-ai/vm0/issues/8402)) ([7029364](https://github.com/vm0-ai/vm0/commit/70293646c5aa630f3f4d8b2217bcc93043bcf3ea))
+* **platform:** paginate network logs with incremental loading ([#8405](https://github.com/vm0-ai/vm0/issues/8405)) ([9c91025](https://github.com/vm0-ai/vm0/commit/9c9102584970a9923f9e0f9402fc32b8ed444780))
+
+
+### Refactoring
+
+* **platform:** remove eager onboarding init and prefetch agent avatar ([#8409](https://github.com/vm0-ai/vm0/issues/8409)) ([badae48](https://github.com/vm0-ai/vm0/commit/badae48a219d71fca30ad75629fcb352561955cd))
+* **platform:** replace if-else chain with route map in nav select ([#8407](https://github.com/vm0-ai/vm0/issues/8407)) ([1bc4123](https://github.com/vm0-ai/vm0/commit/1bc412319e84b9d41d402ab16ba5e940d752ab8d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.159.0
+
 ## [0.199.0](https://github.com/vm0-ai/vm0/compare/app-v0.198.0...app-v0.199.0) (2026-04-07)
 
 
