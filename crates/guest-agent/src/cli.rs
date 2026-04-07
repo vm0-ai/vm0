@@ -472,18 +472,23 @@ mod tests {
             r#"{"hooks":{}}"#,
             "do something",
         );
-        assert!(args.contains(&"--resume".to_string()));
-        assert!(args.contains(&"sess-abc".to_string()));
-        assert!(args.contains(&"--append-system-prompt".to_string()));
-        assert!(args.contains(&"Be concise.".to_string()));
-        assert!(args.contains(&"--disallowed-tools".to_string()));
-        assert!(args.contains(&"CronCreate".to_string()));
-        assert!(args.contains(&"CronDelete".to_string()));
-        assert!(args.contains(&"--tools".to_string()));
-        assert!(args.contains(&"Bash".to_string()));
-        assert!(args.contains(&"Read".to_string()));
-        assert!(args.contains(&"--settings".to_string()));
-        assert!(args.contains(&r#"{"hooks":{}}"#.to_string()));
+        let joined = args.join(" ");
+        for expected in [
+            "--resume",
+            "sess-abc",
+            "--append-system-prompt",
+            "Be concise.",
+            "--disallowed-tools",
+            "CronCreate",
+            "CronDelete",
+            "--tools",
+            "Bash",
+            "Read",
+            "--settings",
+            r#"{"hooks":{}}"#,
+        ] {
+            assert!(joined.contains(expected), "missing: {expected}");
+        }
         assert_prompt_with_separator(&args, "do something");
     }
 

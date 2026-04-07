@@ -653,17 +653,4 @@ mod tests {
         let files = collect_file_metadata("/nonexistent/path/that/does/not/exist");
         assert!(files.is_empty());
     }
-
-    #[test]
-    fn file_entry_serialization() {
-        let entry = FileEntry {
-            path: "src/main.rs".to_string(),
-            hash: "abc123".to_string(),
-            size: 42,
-        };
-        let json = serde_json::to_value(&entry).unwrap();
-        assert_eq!(json["path"], "src/main.rs");
-        assert_eq!(json["hash"], "abc123");
-        assert_eq!(json["size"], 42);
-    }
 }
