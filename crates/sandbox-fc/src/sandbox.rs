@@ -94,6 +94,11 @@ pub struct FirecrackerSandbox {
     control_server: Option<tokio::task::JoinHandle<()>>,
     /// Balloon memory reclaim controller.
     balloon_controller: Option<tokio::task::JoinHandle<()>>,
+    /// Sender for leaked resource cleanup. When Drop fires without prior
+    /// `factory.destroy()`, pool resources are sent here for async cleanup.
+    leak_tx: Option<tokio::sync::mpsc::Sender<crate::factory::LeakedResources>>,
+    /// Set to `true` by `factory.destroy()` to suppress Drop-based leak recovery.
+    pub(crate) destroyed: bool,
 }
 
 impl FirecrackerSandbox {
@@ -104,6 +109,7 @@ impl FirecrackerSandbox {
         sock_paths: SockPaths,
         network: PooledNetns,
         cow_device: NbdCowDevice,
+        leak_tx: Option<tokio::sync::mpsc::Sender<crate::factory::LeakedResources>>,
     ) -> Self {
         let id = config.id.to_string();
         Self {
@@ -121,6 +127,8 @@ impl FirecrackerSandbox {
             crash_notify: Arc::new(Notify::new()),
             control_server: None,
             balloon_controller: None,
+            leak_tx,
+            destroyed: false,
         }
     }
 
@@ -396,6 +404,28 @@ impl Drop for FirecrackerSandbox {
         }
         // Dropping `self.process` (Option<Child>) will trigger kill_on_drop as
         // a secondary safety net.
+
+        // If factory.destroy() was not called, send pool resources to the
+        // async cleanup channel so they can be released without blocking.
+        // NbdCowDevice::Drop handles the kernel-level NBD disconnect; this
+        // covers the pool index, network namespace, and directories.
+        if !self.destroyed
+            && let Some(tx) = self.leak_tx.take()
+        {
+            let resources = crate::factory::LeakedResources {
+                sandbox_id: self.id.clone(),
+                device_index: self.cow_device.device_index(),
+                network: self.network.clone(),
+                sock_dir: self.sock_paths.dir().to_owned(),
+                workspace: self.sandbox_paths.workspace().to_owned(),
+            };
+            if tx.try_send(resources).is_err() {
+                tracing::warn!(
+                    id = %self.id,
+                    "leak cleanup channel full or closed — resources will require runner gc"
+                );
+            }
+        }
     }
 }
 
