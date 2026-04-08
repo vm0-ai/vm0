@@ -36,7 +36,7 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
  *
  * This is fire-and-forget — callers should NOT await it.
  */
-export async function ensurePushSubscription(): Promise<void> {
+export function ensurePushSubscription(): void {
   if (appStore.get(subscribing$)) {
     return;
   }
@@ -45,62 +45,66 @@ export async function ensurePushSubscription(): Promise<void> {
     return;
   }
   appStore.set(subscribing$, true);
-  // eslint-disable-next-line no-restricted-syntax -- finally block needed to reset subscribing$ state flag regardless of outcome
-  try {
-    const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY as
-      | string
-      | undefined;
-    if (!vapidPublicKey) {
-      return;
-    }
-
-    // Only prompt if user hasn't decided yet
-    if (Notification.permission === "default") {
-      const result = await Notification.requestPermission();
-      if (result !== "granted") {
-        return;
-      }
-    }
-
-    if (Notification.permission !== "granted") {
-      return;
-    }
-
-    // Check if already subscribed
-    const existingSub = await registration.pushManager.getSubscription();
-    if (existingSub) {
-      return;
-    }
-
-    // Subscribe with VAPID key
-    const subscription = await registration.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(vapidPublicKey)
-        .buffer as ArrayBuffer,
-    });
-
-    // Send subscription to backend
-    const clerk = await appStore.get(clerk$);
-    const token = await clerk.session?.getToken();
-    const apiBase = appStore.get(apiBase$);
-
-    await fetch(`${apiBase}/api/zero/push-subscriptions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify({
-        endpoint: subscription.endpoint,
-        keys: {
-          p256dh: arrayBufferToBase64(subscription.getKey("p256dh")),
-          auth: arrayBufferToBase64(subscription.getKey("auth")),
-        },
-      }),
-    });
-  } finally {
+  function resetFlag() {
     appStore.set(subscribing$, false);
   }
+  doSubscribe(registration).then(resetFlag).catch(resetFlag);
+}
+
+async function doSubscribe(
+  registration: ServiceWorkerRegistration,
+): Promise<void> {
+  const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY as
+    | string
+    | undefined;
+  if (!vapidPublicKey) {
+    return;
+  }
+
+  // Only prompt if user hasn't decided yet
+  if (Notification.permission === "default") {
+    const result = await Notification.requestPermission();
+    if (result !== "granted") {
+      return;
+    }
+  }
+
+  if (Notification.permission !== "granted") {
+    return;
+  }
+
+  // Check if already subscribed
+  const existingSub = await registration.pushManager.getSubscription();
+  if (existingSub) {
+    return;
+  }
+
+  // Subscribe with VAPID key
+  const subscription = await registration.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: urlBase64ToUint8Array(vapidPublicKey)
+      .buffer as ArrayBuffer,
+  });
+
+  // Send subscription to backend
+  const clerk = await appStore.get(clerk$);
+  const token = await clerk.session?.getToken();
+  const apiBase = appStore.get(apiBase$);
+
+  await fetch(`${apiBase}/api/zero/push-subscriptions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({
+      endpoint: subscription.endpoint,
+      keys: {
+        p256dh: arrayBufferToBase64(subscription.getKey("p256dh")),
+        auth: arrayBufferToBase64(subscription.getKey("auth")),
+      },
+    }),
+  });
 }
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array {

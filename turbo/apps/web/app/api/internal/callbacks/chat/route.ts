@@ -119,7 +119,7 @@ async function handleCompleted(
     log.warn("Failed to generate chat title", { err });
   }
 
-  // Send push notification (best-effort — sendUserPushNotifications never throws)
+  // Send push notification (best-effort)
   let summary: string | null = null;
   try {
     summary = resultText
@@ -159,7 +159,7 @@ async function handleFailed(
     await updateThreadSessionId(threadId, sessionId);
   }
 
-  // Send push notification (best-effort — sendUserPushNotifications never throws)
+  // Send push notification (best-effort)
   await sendUserPushNotifications(userId, {
     title: prompt.slice(0, 60),
     body: `Task failed: ${errorMessage.slice(0, 80)}`,
