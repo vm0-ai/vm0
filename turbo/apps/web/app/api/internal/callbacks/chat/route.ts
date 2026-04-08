@@ -131,7 +131,7 @@ async function handleCompleted(
   await sendUserPushNotifications(userId, {
     title: prompt.slice(0, 60),
     body: summary ?? "Your task is complete",
-    url: `/chat/${threadId}`,
+    url: `/chats/${threadId}`,
   });
 }
 
@@ -163,7 +163,7 @@ async function handleFailed(
   await sendUserPushNotifications(userId, {
     title: prompt.slice(0, 60),
     body: `Task failed: ${errorMessage.slice(0, 80)}`,
-    url: `/chat/${threadId}`,
+    url: `/chats/${threadId}`,
   });
 }
 

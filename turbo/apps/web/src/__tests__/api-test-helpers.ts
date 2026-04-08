@@ -5264,3 +5264,39 @@ export async function deleteAllTestRunnerState(): Promise<void> {
   initServices();
   await globalThis.services.db.delete(runnerState);
 }
+
+/**
+ * Register a push subscription for the current authenticated user via the
+ * POST /api/zero/push-subscriptions route. The user must already be
+ * authenticated via mockClerk() before calling this function.
+ */
+export async function createTestPushSubscription(
+  endpoint?: string,
+): Promise<{ endpoint: string }> {
+  const { POST: registerRoute } =
+    await import("../../app/api/zero/push-subscriptions/route");
+  const ep = endpoint ?? `https://fcm.googleapis.com/fcm/send/${randomUUID()}`;
+
+  const response = await registerRoute(
+    createTestRequest("http://localhost:3000/api/zero/push-subscriptions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        endpoint: ep,
+        keys: {
+          p256dh:
+            "BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlUls0VJXg7A8u-Ts1XbjhazAkj7I99e8p8REfXRI",
+          auth: "tBHItJI5svbpC7hYyKw",
+        },
+      }),
+    }),
+  );
+
+  if (response.status !== 201) {
+    throw new Error(
+      `Failed to register push subscription: status ${response.status}`,
+    );
+  }
+
+  return { endpoint: ep };
+}

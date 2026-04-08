@@ -32,8 +32,11 @@ self.addEventListener("notificationclick", (event) => {
     clients
       .matchAll({ type: "window", includeUncontrolled: true })
       .then((windowClients) => {
+        // Reuse an existing same-origin tab: postMessage lets the SPA
+        // router navigate without a full page reload.
         for (const client of windowClients) {
-          if (new URL(client.url).pathname === url && "focus" in client) {
+          if ("focus" in client) {
+            client.postMessage({ type: "NOTIFICATION_CLICK", url });
             return client.focus();
           }
         }
