@@ -370,7 +370,7 @@ export async function buildAndDispatchRun(opts: {
 }
 
 /**
- * Result of createRunRecord — contains the run record and all metadata
+ * Run record result — contains the run record and all metadata
  * needed by buildAndDispatchRun to complete the dispatch pipeline.
  */
 export interface CreateRunRecordResult {

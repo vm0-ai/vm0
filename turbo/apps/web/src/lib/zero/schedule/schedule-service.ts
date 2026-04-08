@@ -856,7 +856,7 @@ export async function executeSchedule(
     });
   }
 
-  // Delegate run creation, validation, and dispatch to startRun()
+  // Delegate run creation, validation, and dispatch to createZeroRun()
   let runId: string;
   try {
     const result = await createZeroRun({

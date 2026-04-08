@@ -285,7 +285,7 @@ interface ResolveCliRunContextParams {
 
 /**
  * Pre-resolved context data for CLI runs.
- * Returned by resolveCliRunContext() for the CLI route to pass to startRun().
+ * Returned by resolveCliRunContext() for the CLI route to use inline.
  */
 interface ResolvedCliContext {
   // Session/checkpoint resolution
@@ -323,7 +323,7 @@ interface ResolvedCliContext {
  * This is the CLI counterpart to buildZeroExecutionContext — it performs the
  * same resolution (vars, secrets, connectors, firewalls, timezone, model
  * provider) but returns pre-resolved data instead of a built ExecutionContext.
- * The CLI route calls this before startRun(), which then uses the pure
+ * The CLI route calls this to get resolved context, then directly uses
  * buildInfraExecutionContext to assemble the context.
  */
 export async function resolveCliRunContext(
