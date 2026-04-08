@@ -62,10 +62,15 @@ export async function deleteUserByEmail(email: string): Promise<void> {
   for (const user of users) {
     const userEmail = user.email_addresses[0]?.email_address;
     if (userEmail === email) {
-      await fetch(`${CLERK_API_BASE}/users/${user.id}`, {
+      const deleteResponse = await fetch(`${CLERK_API_BASE}/users/${user.id}`, {
         method: "DELETE",
         headers: getClerkHeaders(),
       });
+      if (!deleteResponse.ok) {
+        throw new Error(
+          `Failed to delete Clerk user ${user.id}: ${deleteResponse.status}`
+        );
+      }
       return;
     }
   }

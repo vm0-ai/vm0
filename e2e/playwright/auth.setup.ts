@@ -1,4 +1,4 @@
-import { clerk, clerkSetup } from "@clerk/testing/playwright";
+import { clerk } from "@clerk/testing/playwright";
 import { expect, test as setup } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -8,15 +8,15 @@ const CREDENTIALS_PATH = path.join(__dirname, ".clerk", "credentials.json");
 const STORAGE_STATE = path.join(__dirname, ".clerk", "user.json");
 
 setup("authenticate and complete onboarding", async ({ page }) => {
-  await clerkSetup();
-
   const raw = await readFile(CREDENTIALS_PATH, "utf-8");
   const { email, password } = JSON.parse(raw) as {
     email: string;
     password: string;
   };
 
-  const appUrl = deriveAppUrl(process.env.VM0_API_URL ?? "");
+  const apiUrl = process.env.VM0_API_URL;
+  if (!apiUrl) throw new Error("VM0_API_URL environment variable is required");
+  const appUrl = deriveAppUrl(apiUrl);
 
   await page.goto(appUrl);
 
