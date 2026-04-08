@@ -4109,18 +4109,6 @@
           "notNull": true,
           "default": false
         },
-        "otp_hash": {
-          "name": "otp_hash",
-          "type": "varchar(128)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "otp_expires_at": {
-          "name": "otp_expires_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp",

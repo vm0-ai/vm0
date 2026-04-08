@@ -204,7 +204,7 @@ export async function checkModelProviderConfigured(
  * Result of createZeroRunRecord() — contains everything needed by dispatchZeroRun().
  * When the run is enqueued (concurrency limit), dispatch fields are undefined.
  */
-export interface ZeroRunRecordResult {
+interface ZeroRunRecordResult {
   runId: string;
   status: RunStatus;
   createdAt: Date;

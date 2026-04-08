@@ -22,8 +22,6 @@ export const phoneUserLinks = pgTable(
     orgId: text("org_id").notNull(),
     vm0UserId: text("vm0_user_id").notNull(),
     verified: boolean("verified").notNull().default(false),
-    otpHash: varchar("otp_hash", { length: 128 }),
-    otpExpiresAt: timestamp("otp_expires_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

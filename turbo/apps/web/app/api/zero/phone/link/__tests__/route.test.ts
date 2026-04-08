@@ -1,6 +1,9 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { POST, DELETE } from "../route";
-import { createTestRequest } from "../../../../../../src/__tests__/api-test-helpers";
+import {
+  createTestRequest,
+  createTestOrg,
+} from "../../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 
@@ -50,9 +53,10 @@ describe("POST /api/zero/phone/link", () => {
     expect(data.error).toContain("not available");
   });
 
-  it("should reject invalid phone number format", async () => {
-    // Even though org check will fail first (non-vm0), test validates the schema check
-    // by using a request that would fail validation
+  it("should reject invalid phone number format for vm0 org", async () => {
+    // Set up user with vm0 org slug so the org check passes
+    await createTestOrg("vm0");
+
     const request = createTestRequest(
       "http://localhost:3000/api/zero/phone/link",
       {
@@ -63,8 +67,27 @@ describe("POST /api/zero/phone/link", () => {
     );
     const response = await POST(request);
 
-    // Will be 403 because org check happens first (not vm0 org)
-    expect(response.status).toBe(403);
+    expect(response.status).toBe(400);
+    const data = await response.json();
+    expect(data.error).toContain("E.164");
+  });
+
+  it("should save phone number for vm0 org user and return success", async () => {
+    await createTestOrg("vm0");
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/phone/link",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phoneNumber: "+14155551234" }),
+      },
+    );
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.success).toBe(true);
   });
 });
 

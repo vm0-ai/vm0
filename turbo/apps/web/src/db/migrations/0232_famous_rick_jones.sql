@@ -14,8 +14,6 @@ CREATE TABLE "phone_user_links" (
 	"org_id" text NOT NULL,
 	"vm0_user_id" text NOT NULL,
 	"verified" boolean DEFAULT false NOT NULL,
-	"otp_hash" varchar(128),
-	"otp_expires_at" timestamp,
 	"created_at" timestamp DEFAULT now() NOT NULL,
 	"updated_at" timestamp DEFAULT now() NOT NULL
 );

@@ -61,8 +61,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       set: {
         vm0UserId: authCtx.userId,
         verified: true,
-        otpHash: null,
-        otpExpiresAt: null,
         updatedAt: new Date(),
       },
     });

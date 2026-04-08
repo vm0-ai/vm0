@@ -1,26 +1,33 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { POST } from "../route";
+import { testContext } from "../../../../../../src/__tests__/test-helpers";
+import {
+  createPhoneOrg,
+  linkPhoneNumber,
+} from "../../../../../../src/lib/zero/phone/__tests__/helpers";
+import * as zeroRunModule from "../../../../../../src/lib/zero/zero-run-service";
 
 vi.mock("@clerk/nextjs/server");
 vi.mock("@aws-sdk/client-s3");
 vi.mock("@aws-sdk/s3-request-presigner");
 vi.mock("@axiomhq/js");
 
-// Mock next/server after() to capture callbacks
-vi.mock("next/server", async () => {
-  const actual =
-    await vi.importActual<typeof import("next/server")>("next/server");
+// Mock next/server after() to capture callbacks for flushing
+const afterPromises: Promise<unknown>[] = [];
+vi.mock("next/server", async (importOriginal) => {
+  const original = await importOriginal<typeof import("next/server")>();
   return {
-    ...actual,
+    ...original,
     after: (promise: Promise<unknown>) => {
-      globalThis.nextAfterCallbacks.push(() => {
-        return promise;
-      });
+      afterPromises.push(promise);
     },
   };
 });
 
-import { testContext } from "../../../../../../src/__tests__/test-helpers";
+async function flushAfterCallbacks() {
+  await Promise.all(afterPromises);
+  afterPromises.length = 0;
+}
 
 const context = testContext();
 
@@ -34,6 +41,7 @@ function createWebhookRequest(body: Record<string, unknown>): Request {
 
 describe("POST /api/zero/phone/webhook", () => {
   beforeEach(async () => {
+    afterPromises.length = 0;
     context.setupMocks();
   });
 
@@ -81,7 +89,7 @@ describe("POST /api/zero/phone/webhook", () => {
     expect(response.status).toBe(200);
   });
 
-  it("should accept well-formed call_ended events", async () => {
+  it("should accept well-formed call_ended events and dispatch after() callback", async () => {
     const request = createWebhookRequest({
       event: "call_ended",
       channel: "voice",
@@ -103,6 +111,10 @@ describe("POST /api/zero/phone/webhook", () => {
     const response = await POST(request);
 
     expect(response.status).toBe(200);
+    // after() callback was registered
+    expect(afterPromises.length).toBe(1);
+    // Handler runs without throwing (org not found — returns early gracefully)
+    await flushAfterCallbacks();
   });
 
   it("should handle agent.call_ended event type", async () => {
@@ -121,5 +133,48 @@ describe("POST /api/zero/phone/webhook", () => {
     const response = await POST(request);
 
     expect(response.status).toBe(200);
+    expect(afterPromises.length).toBe(1);
+    await flushAfterCallbacks();
+  });
+
+  it("should dispatch run when org and linked user are found", async () => {
+    const TEST_FROM_NUMBER = "+14155557890";
+
+    // Set up org in DB with agentphoneAgentId and default agent, then link user phone
+    const user = await context.setupUser();
+    const { agentphoneAgentId } = await createPhoneOrg(user.orgId);
+    await linkPhoneNumber(TEST_FROM_NUMBER, user.userId, user.orgId);
+
+    // Mock createZeroRun to avoid full runner dispatch in test
+    vi.spyOn(zeroRunModule, "createZeroRun").mockResolvedValue({
+      runId: "mock-run-id",
+      status: "running",
+      createdAt: new Date(),
+    });
+
+    const request = createWebhookRequest({
+      event: "agent.call_ended",
+      channel: "voice",
+      agentId: agentphoneAgentId,
+      data: {
+        conversationId: "conv_test",
+        from: TEST_FROM_NUMBER,
+        to: "+18001234567",
+        direction: "inbound",
+        durationSeconds: 60,
+        transcript: [{ role: "user", content: "Hello" }],
+        summary: "Brief test call.",
+      },
+    });
+
+    const response = await POST(request);
+
+    expect(response.status).toBe(200);
+    expect(afterPromises.length).toBe(1);
+    await flushAfterCallbacks();
+
+    // Verify createZeroRun was called — meaning handleCallEnded resolved the org,
+    // found the linked user, and dispatched a run
+    expect(zeroRunModule.createZeroRun).toHaveBeenCalledOnce();
   });
 });
