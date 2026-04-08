@@ -82,22 +82,26 @@ export const hideAppSkeleton$ = command(
     // Both operations are best-effort cache warm-ups executed before the
     // skeleton hides. A missing agent avatar or a failed pinned-agents fetch
     // must not prevent the skeleton from hiding — so all non-abort errors are
-    // intentionally swallowed here.
+    // intentionally swallowed here. A 3s timeout ensures we never block
+    // indefinitely even if the underlying requests hang.
     try {
-      await Promise.all([
-        (async () => {
-          const currentChatAgent = await get(currentChatAgent$);
-          signal.throwIfAborted();
-          if (!currentChatAgent) {
-            return;
-          }
-          const src = resolveAvatarUrl(currentChatAgent.avatarUrl);
-          if (!src) {
-            return;
-          }
-          await fetch(src, { signal });
-        })(),
-        get(pinnedAgents$),
+      await Promise.race([
+        Promise.all([
+          (async () => {
+            const currentChatAgent = await get(currentChatAgent$);
+            signal.throwIfAborted();
+            if (!currentChatAgent) {
+              return;
+            }
+            const src = resolveAvatarUrl(currentChatAgent.avatarUrl);
+            if (!src) {
+              return;
+            }
+            await fetch(src, { signal });
+          })(),
+          get(pinnedAgents$),
+        ]),
+        delay(3000, { signal }),
       ]);
       signal.throwIfAborted();
     } catch (error) {
