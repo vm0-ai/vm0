@@ -29,7 +29,7 @@ function usd(amount: number): number {
 
 const MODEL_PRICING: (typeof creditPricing.$inferInsert)[] = [
   {
-    model: "claude-sonnet-4.6",
+    model: "claude-sonnet-4-6",
     modelProvider: "vm0",
     inputTokenPrice: usd(3),
     outputTokenPrice: usd(15),
@@ -37,7 +37,7 @@ const MODEL_PRICING: (typeof creditPricing.$inferInsert)[] = [
     cacheCreationTokenPrice: usd(3.75),
   },
   {
-    model: "claude-opus-4.6",
+    model: "claude-opus-4-6",
     modelProvider: "vm0",
     inputTokenPrice: usd(15),
     outputTokenPrice: usd(75),

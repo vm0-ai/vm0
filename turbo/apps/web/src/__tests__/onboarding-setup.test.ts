@@ -117,7 +117,7 @@ describe("POST /api/zero/onboarding/setup", () => {
       return p.type === "vm0";
     });
     expect(vm0Provider).toBeDefined();
-    expect(vm0Provider.selectedModel).toBe("claude-sonnet-4.6");
+    expect(vm0Provider.selectedModel).toBe("claude-sonnet-4-6");
   });
 
   it("should work with minimal payload (displayName only)", async () => {

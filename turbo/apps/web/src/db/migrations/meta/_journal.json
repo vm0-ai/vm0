@@ -1611,6 +1611,13 @@
       "when": 1775624054065,
       "tag": "0229_rename_firewall_to_permission",
       "breakpoints": true
+    },
+    {
+      "idx": 230,
+      "version": "7",
+      "when": 1775900000001,
+      "tag": "0230_fix_model_id_format",
+      "breakpoints": true
     }
   ]
 }

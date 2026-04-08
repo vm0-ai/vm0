@@ -163,7 +163,7 @@ const router = tsr.router(onboardingSetupContract, {
     const content = buildComposeContent(agentName);
 
     const [, composeResult] = await Promise.all([
-      upsertOrgNoSecretModelProvider(org.orgId, "vm0", "claude-sonnet-4.6"),
+      upsertOrgNoSecretModelProvider(org.orgId, "vm0", "claude-sonnet-4-6"),
       serverSideCompose({
         userId,
         orgId: org.orgId,
