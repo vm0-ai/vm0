@@ -1,31 +1,18 @@
-import { clerkSetup } from "@clerk/testing/playwright";
-import { mkdir, writeFile } from "node:fs/promises";
-import path from "node:path";
 import {
+  createOrganization,
   createUser,
   deleteStaleTestUsers,
-  generatePassword,
   generateTestEmail,
 } from "./lib/clerk-api";
 
-const CREDENTIALS_PATH = path.join(
-  __dirname,
-  ".clerk",
-  "credentials.json"
-);
-
 export default async function globalSetup(): Promise<void> {
-  await clerkSetup();
-
   const email = generateTestEmail();
-  const password = generatePassword();
+  console.log("[globalSetup] email:", email);
 
   await deleteStaleTestUsers();
-  await createUser(email, password);
+  const userId = await createUser(email);
+  const orgId = await createOrganization("E2E Test Org", userId);
+  console.log("[globalSetup] userId:", userId, "orgId:", orgId);
 
-  await mkdir(path.dirname(CREDENTIALS_PATH), { recursive: true });
-  await writeFile(
-    CREDENTIALS_PATH,
-    JSON.stringify({ email, password }, null, 2)
-  );
+  process.env.E2E_CLERK_USER_EMAIL = email;
 }

@@ -1,11 +1,12 @@
+import dotenv from "dotenv";
 import { defineConfig, devices } from "@playwright/test";
 import path from "node:path";
+
+dotenv.config({ path: path.join(__dirname, "../.env.local") });
 
 if (!process.env.VM0_API_URL) {
   throw new Error("VM0_API_URL environment variable is required");
 }
-
-export const STORAGE_STATE = path.join(__dirname, ".clerk", "user.json");
 
 export function deriveAppUrl(webUrl: string): string {
   // Handle preview URLs like https://pr-8510-www.vm6.ai -> https://pr-8510-app.vm6.ai
@@ -14,30 +15,14 @@ export function deriveAppUrl(webUrl: string): string {
 }
 
 export default defineConfig({
-  testDir: ".",
+  testDir: "./tests",
   globalSetup: "./global-setup",
   globalTeardown: "./global-teardown",
+  timeout: 120_000,
   use: {
     baseURL: process.env.VM0_API_URL,
     ignoreHTTPSErrors: true,
     trace: "on-first-retry",
+    ...devices["Desktop Chrome"],
   },
-  projects: [
-    {
-      name: "setup",
-      testMatch: /auth\.setup\.ts/,
-      use: {
-        ...devices["Desktop Chrome"],
-      },
-    },
-    {
-      name: "features",
-      testMatch: /.*\.spec\.ts/,
-      use: {
-        ...devices["Desktop Chrome"],
-        storageState: STORAGE_STATE,
-      },
-      dependencies: ["setup"],
-    },
-  ],
 });

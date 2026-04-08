@@ -1,4 +1,4 @@
-import { randomBytes, randomInt } from "node:crypto";
+import { randomBytes } from "node:crypto";
 
 const CLERK_API_BASE = "https://api.clerk.com/v1";
 
@@ -19,25 +19,13 @@ export function generateTestEmail(): string {
   return `${jobRef}+clerk_test@e2e-browser-${randHex}.ai`;
 }
 
-export function generatePassword(): string {
-  const chars =
-    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  const rand = Array.from({ length: 16 }, () =>
-    chars[randomInt(chars.length)]
-  ).join("");
-  return `${rand}!Aa1`;
-}
-
-export async function createUser(
-  email: string,
-  password: string
-): Promise<string> {
+export async function createUser(email: string): Promise<string> {
   const response = await fetch(`${CLERK_API_BASE}/users`, {
     method: "POST",
     headers: getClerkHeaders(),
     body: JSON.stringify({
       email_address: [email],
-      password,
+      skip_password_requirement: true,
     }),
   });
   const data = (await response.json()) as { id?: string; errors?: unknown[] };
@@ -47,12 +35,30 @@ export async function createUser(
   return data.id;
 }
 
+export async function createOrganization(
+  name: string,
+  createdByUserId: string,
+): Promise<string> {
+  const response = await fetch(`${CLERK_API_BASE}/organizations`, {
+    method: "POST",
+    headers: getClerkHeaders(),
+    body: JSON.stringify({ name, created_by: createdByUserId }),
+  });
+  const data = (await response.json()) as { id?: string; errors?: unknown[] };
+  if (!response.ok || !data.id) {
+    throw new Error(
+      `Failed to create Clerk organization: ${JSON.stringify(data)}`,
+    );
+  }
+  return data.id;
+}
+
 export async function deleteStaleTestUsers(): Promise<void> {
   const jobRef = process.env.JOB_REF ?? "local";
   const prefix = `${jobRef}+clerk_test@e2e-browser-`;
   const searchResponse = await fetch(
     `${CLERK_API_BASE}/users?query=${encodeURIComponent(`${jobRef}+clerk_test`)}&limit=100`,
-    { headers: getClerkHeaders() }
+    { headers: getClerkHeaders() },
   );
   const users = (await searchResponse.json()) as Array<{
     id: string;
@@ -64,11 +70,11 @@ export async function deleteStaleTestUsers(): Promise<void> {
     if (userEmail?.startsWith(prefix)) {
       const deleteResponse = await fetch(
         `${CLERK_API_BASE}/users/${user.id}`,
-        { method: "DELETE", headers: getClerkHeaders() }
+        { method: "DELETE", headers: getClerkHeaders() },
       );
       if (!deleteResponse.ok) {
         console.warn(
-          `Failed to delete stale user ${user.id} (${userEmail}): ${deleteResponse.status}`
+          `Failed to delete stale user ${user.id} (${userEmail}): ${deleteResponse.status}`,
         );
       }
     }
@@ -78,7 +84,7 @@ export async function deleteStaleTestUsers(): Promise<void> {
 export async function deleteUserByEmail(email: string): Promise<void> {
   const searchResponse = await fetch(
     `${CLERK_API_BASE}/users?query=${encodeURIComponent(email)}&limit=10`,
-    { headers: getClerkHeaders() }
+    { headers: getClerkHeaders() },
   );
   const users = (await searchResponse.json()) as Array<{
     id: string;
@@ -94,7 +100,7 @@ export async function deleteUserByEmail(email: string): Promise<void> {
       });
       if (!deleteResponse.ok) {
         throw new Error(
-          `Failed to delete Clerk user ${user.id}: ${deleteResponse.status}`
+          `Failed to delete Clerk user ${user.id}: ${deleteResponse.status}`,
         );
       }
       return;
