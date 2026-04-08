@@ -1,5 +1,4 @@
 import { command } from "ccstate";
-import { throwIfAbort } from "../utils.ts";
 import { createElement } from "react";
 import { MinimalSidebarLayout } from "../../views/zero-page/zero-directed-connect-page.tsx";
 import { PermissionAllowPage } from "../../views/permission-allow/permission-allow-page.tsx";
@@ -10,7 +9,7 @@ import { reloadChatThreads$ } from "../chat-page/chat-message.ts";
 import { isOrgAdmin$ } from "../org.ts";
 import {
   resetFocusedState$,
-  permissionAllowAgent$,
+  permissionAllowAgentId$,
   permissionAllowRef$,
   permissionAllowPermission$,
   permissionAllowRequestId$,
@@ -42,18 +41,6 @@ export const setupPermissionAllowPage$ = command(
 
     set(reloadChatThreads$);
 
-    // Agent load errors are displayed by the component via useLastLoadable —
-    // only re-throw abort errors; other failures render an error state in-page.
-    let agent;
-    try {
-      agent = await get(permissionAllowAgent$);
-    } catch (error) {
-      throwIfAbort(error);
-      return;
-    }
-    signal.throwIfAborted();
-    const ref = get(permissionAllowRef$);
-
     // Pre-fill reason from URL parameter (set by zero doctor --reason)
     const urlReason = get(permissionAllowReason$);
     if (urlReason) {
@@ -61,9 +48,11 @@ export const setupPermissionAllowPage$ = command(
     }
 
     // Auto-redirect: member in doctor mode with existing request → request mode
+    const agentId = get(permissionAllowAgentId$);
+    const ref = get(permissionAllowRef$);
     const requestId = get(permissionAllowRequestId$);
     const permission = get(permissionAllowPermission$);
-    if (!requestId && permission && agent && ref) {
+    if (!requestId && permission && agentId && ref) {
       const isAdmin = await get(isOrgAdmin$);
       signal.throwIfAborted();
       if (!isAdmin) {

@@ -78,7 +78,7 @@ function makePendingRequest(overrides?: Record<string, unknown>) {
   };
 }
 
-describe("firewall allow page", () => {
+describe("permission allow page", () => {
   it("shows error when ref query param is missing", async () => {
     await setupPage({
       context,
