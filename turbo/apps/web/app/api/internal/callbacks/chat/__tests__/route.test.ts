@@ -12,6 +12,8 @@ import {
   createTestRequest,
   getTestZeroAgentId,
   createTestAgentSession,
+  createTestPushSubscription,
+  getPushSubscriptionsByEndpoint,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { computeHmacSignature } from "../../../../../../src/lib/infra/callback/hmac";
 import { reloadEnv } from "../../../../../../src/env";
@@ -20,6 +22,20 @@ import { POST as createThreadHandler } from "../../../../zero/chat-threads/route
 import { POST } from "../route";
 import { http } from "../../../../../../src/__tests__/msw";
 import { server } from "../../../../../../src/mocks/server";
+import webpush, { WebPushError } from "web-push";
+
+vi.mock("web-push", async (importActual) => {
+  const actual = await importActual<{ WebPushError: typeof WebPushError }>();
+  return {
+    ...actual,
+    default: {
+      sendNotification: vi.fn(),
+      setVapidDetails: vi.fn(),
+    },
+    sendNotification: vi.fn(),
+    setVapidDetails: vi.fn(),
+  };
+});
 
 const context = testContext();
 
@@ -565,7 +581,7 @@ describe("POST /api/internal/callbacks/chat", () => {
       );
 
       expect(response.status).toBe(200);
-      expect(openRouterMock).toHaveBeenCalledTimes(1);
+      expect(openRouterMock).toHaveBeenCalled();
 
       const title = await getThreadTitle(threadId);
       expect(title).toBe("Debugging Node.js Apps");
@@ -649,6 +665,182 @@ describe("POST /api/internal/callbacks/chat", () => {
       // Thread title should remain as initial value
       const title = await getThreadTitle(threadId);
       expect(title).toBe("Test thread");
+    });
+  });
+
+  describe("Push Notifications", () => {
+    const mockSendNotification = vi.mocked(webpush.sendNotification);
+
+    function enableVapid() {
+      vi.stubEnv("VAPID_PUBLIC_KEY", "test-vapid-public-key");
+      vi.stubEnv("VAPID_PRIVATE_KEY", "test-vapid-private-key");
+      reloadEnv();
+    }
+
+    it("should send push notification on completed run", async () => {
+      const { threadId, runId, secret } = await setupRunAndThread();
+      await createTestPushSubscription();
+
+      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
+        {
+          eventType: "result",
+          eventData: { result: "Files created successfully." },
+        },
+      ]);
+
+      enableVapid();
+
+      const response = await POST(
+        createCallbackRequest(
+          {
+            runId,
+            status: "completed",
+            payload: { threadId, agentId },
+          },
+          secret,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      expect(mockSendNotification).toHaveBeenCalledTimes(1);
+
+      // Verify the notification payload
+      const payload = JSON.parse(
+        mockSendNotification.mock.calls[0]![1] as string,
+      );
+      expect(payload.title).toBe("test prompt");
+      expect(payload.url).toBe(`/chats/${threadId}`);
+    });
+
+    it("should send push notification on failed run", async () => {
+      const { threadId, runId, secret } = await setupRunAndThread({
+        status: "failed",
+      });
+      await createTestPushSubscription();
+
+      enableVapid();
+
+      const response = await POST(
+        createCallbackRequest(
+          {
+            runId,
+            status: "failed",
+            error: "Agent crashed",
+            payload: { threadId, agentId },
+          },
+          secret,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      expect(mockSendNotification).toHaveBeenCalledTimes(1);
+
+      const payload = JSON.parse(
+        mockSendNotification.mock.calls[0]![1] as string,
+      );
+      expect(payload.title).toBe("test prompt");
+      expect(payload.body).toContain("Agent crashed");
+      expect(payload.url).toBe(`/chats/${threadId}`);
+    });
+
+    it("should not send push notification when VAPID keys are not set", async () => {
+      const { threadId, runId, secret } = await setupRunAndThread();
+      await createTestPushSubscription();
+
+      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([]);
+
+      // VAPID keys not set — push notifications should be a no-op
+      const response = await POST(
+        createCallbackRequest(
+          {
+            runId,
+            status: "completed",
+            payload: { threadId, agentId },
+          },
+          secret,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      expect(mockSendNotification).not.toHaveBeenCalled();
+    });
+
+    it("should not send push notification when user has no subscriptions", async () => {
+      const { threadId, runId, secret } = await setupRunAndThread();
+      // No push subscriptions registered
+
+      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([]);
+
+      enableVapid();
+
+      const response = await POST(
+        createCallbackRequest(
+          {
+            runId,
+            status: "completed",
+            payload: { threadId, agentId },
+          },
+          secret,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      expect(mockSendNotification).not.toHaveBeenCalled();
+    });
+
+    it("should send to multiple subscriptions", async () => {
+      const { threadId, runId, secret } = await setupRunAndThread();
+      await createTestPushSubscription();
+      await createTestPushSubscription();
+
+      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([]);
+
+      enableVapid();
+
+      const response = await POST(
+        createCallbackRequest(
+          {
+            runId,
+            status: "completed",
+            payload: { threadId, agentId },
+          },
+          secret,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+      expect(mockSendNotification).toHaveBeenCalledTimes(2);
+    });
+
+    it("should delete stale subscription on 410 Gone response", async () => {
+      const { threadId, runId, secret } = await setupRunAndThread();
+      const { endpoint } = await createTestPushSubscription();
+
+      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([]);
+
+      enableVapid();
+
+      // Mock sendNotification to throw a 410 Gone WebPushError
+      mockSendNotification.mockRejectedValueOnce(
+        new WebPushError("Gone", 410, {}, "", endpoint),
+      );
+
+      const response = await POST(
+        createCallbackRequest(
+          {
+            runId,
+            status: "completed",
+            payload: { threadId, agentId },
+          },
+          secret,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+
+      // Stale subscription should be removed from the DB
+      const remaining = await getPushSubscriptionsByEndpoint(endpoint);
+      expect(remaining).toHaveLength(0);
     });
   });
 });

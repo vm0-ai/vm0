@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import type { ScheduleResponse } from "@vm0/core";
@@ -273,7 +273,9 @@ describe("zero-schedule-card - save error", () => {
     await user.click(screen.getByText("Create"));
 
     await waitFor(() => {
-      expect(screen.getByText(/Schedule limit reached/)).toBeInTheDocument();
+      expect(
+        within(screen.getByRole("dialog")).getByText(/Schedule limit reached/),
+      ).toBeInTheDocument();
     });
   });
 });

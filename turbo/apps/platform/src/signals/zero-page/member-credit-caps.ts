@@ -29,7 +29,6 @@ const memberCreditCaps$ = computed(async (get) => {
       const result = await accept(
         client.get({ query: { userId: member.userId } }),
         [200],
-        { toast: false },
       );
       return {
         userId: member.userId,

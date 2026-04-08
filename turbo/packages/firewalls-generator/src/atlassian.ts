@@ -1,55 +1,17 @@
 /**
- * Generate Atlassian (Jira + Confluence) firewall config from official OpenAPI specs.
+ * Generate Atlassian (Jira + Confluence) firewall config.
  *
- * Data sources:
- *   - https://developer.atlassian.com/cloud/jira/platform/swagger-v3.v3.json
- *   - https://developer.atlassian.com/cloud/confluence/swagger.v3.json (v1)
- *   - https://developer.atlassian.com/cloud/confluence/openapi-v2.v3.json (v2)
- *
- * Permission groups are derived from OAuth 2.0 (3LO) scopes annotated
- * on each endpoint in the spec's security requirements.
- * Endpoints without OAuth2 security are skipped.
+ * Permissions are intentionally omitted — fine-grained OAuth scope rules
+ * (64 scopes, 971 rules, 90 KB) are not needed at the firewall level.
+ * Token scopes enforce access server-side.
  */
 
-import {
-  ALL_METHODS,
-  OPENAPI_PATH_KEYS,
-  fetchSpec,
-  logStats,
-  renderPermissions,
-  sortRules,
-  writeOutput,
-} from "./codegen";
-import type { OpenApiOperation, OpenApiSpec, PermissionGroup } from "./codegen";
+import { writeOutput } from "./codegen";
 
-interface SpecSource {
-  url: string;
-  label: string;
-  oauthSchemeKey: string;
-  pathPrefix: string;
-}
-
-const SPECS: SpecSource[] = [
-  {
-    url: "https://developer.atlassian.com/cloud/jira/platform/swagger-v3.v3.json",
-    label: "Jira",
-    oauthSchemeKey: "OAuth2",
-    pathPrefix: "/ex/jira/{cloudId}",
-  },
-  {
-    url: "https://developer.atlassian.com/cloud/confluence/swagger.v3.json",
-    label: "Confluence v1",
-    oauthSchemeKey: "oAuthDefinitions",
-    pathPrefix: "/ex/confluence/{cloudId}",
-  },
-  {
-    url: "https://developer.atlassian.com/cloud/confluence/openapi-v2.v3.json",
-    label: "Confluence v2",
-    oauthSchemeKey: "oAuthDefinitions",
-    // v2 spec paths have no /wiki prefix — the proxy prepends
-    // /ex/confluence/{cloudId}/wiki/api/v2 at runtime.
-    pathPrefix: "/ex/confluence/{cloudId}/wiki/api/v2",
-  },
+const SPEC_URLS = [
+  "https://developer.atlassian.com/cloud/jira/platform/swagger-v3.v3.json",
+  "https://developer.atlassian.com/cloud/confluence/swagger.v3.json",
+  "https://developer.atlassian.com/cloud/confluence/openapi-v2.v3.json",
 ];
 
 // Atlassian API token placeholder.
@@ -57,99 +19,11 @@ const SPECS: SpecSource[] = [
 const PLACEHOLDER_VALUE =
   "ATATT3xCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocal00Cof";
 
-// ── Grouping ─────────────────────────────────────────────────────────────
-
-function buildGroupsFromSpec(
-  spec: OpenApiSpec,
-  source: SpecSource,
-): { groups: Map<string, Set<string>>; scopeDescs: Record<string, string> } {
-  const groups = new Map<string, Set<string>>();
-  if (!spec.paths) {
-    throw new Error(`${source.label} OpenAPI spec has no 'paths'`);
-  }
-
-  for (const [apiPath, methods] of Object.entries(spec.paths)) {
-    for (const [methodLower, op] of Object.entries(methods)) {
-      if (typeof op !== "object" || op === null) continue;
-      if (!ALL_METHODS.has(methodLower)) {
-        if (OPENAPI_PATH_KEYS.has(methodLower) || methodLower.startsWith("x-"))
-          continue;
-        throw new Error(`Unexpected key '${methodLower}' on ${apiPath}`);
-      }
-
-      const operation: OpenApiOperation = op;
-      const security = operation.security ?? [];
-      let oauthScopes: string[] | null = null;
-      for (const s of security) {
-        if (source.oauthSchemeKey in s) {
-          oauthScopes = s[source.oauthSchemeKey] ?? [];
-          break;
-        }
-      }
-
-      if (!oauthScopes || oauthScopes.length === 0) continue;
-
-      const rule = `${methodLower.toUpperCase()} ${source.pathPrefix}${apiPath}`;
-      for (const scope of oauthScopes) {
-        let ruleSet = groups.get(scope);
-        if (!ruleSet) {
-          ruleSet = new Set();
-          groups.set(scope, ruleSet);
-        }
-        ruleSet.add(rule);
-      }
-    }
-  }
-
-  const scopeDescs =
-    spec.components?.securitySchemes?.[source.oauthSchemeKey]?.flows
-      ?.authorizationCode?.scopes ?? {};
-
-  return { groups, scopeDescs };
-}
-
-function mergeGroups(
-  allGroups: {
-    groups: Map<string, Set<string>>;
-    scopeDescs: Record<string, string>;
-  }[],
-): PermissionGroup[] {
-  const merged = new Map<string, Set<string>>();
-  const mergedDescs: Record<string, string> = {};
-
-  for (const { groups, scopeDescs } of allGroups) {
-    for (const [scope, rules] of groups) {
-      let existing = merged.get(scope);
-      if (!existing) {
-        existing = new Set();
-        merged.set(scope, existing);
-      }
-      for (const rule of rules) {
-        existing.add(rule);
-      }
-      if (!mergedDescs[scope] && scopeDescs[scope]) {
-        mergedDescs[scope] = scopeDescs[scope];
-      }
-    }
-  }
-
-  return [...merged.entries()]
-    .filter(([, ruleSet]) => ruleSet.size > 0)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([name, ruleSet]) => ({
-      name,
-      description: mergedDescs[name] ?? "",
-      rules: sortRules([...ruleSet]),
-    }));
-}
-
-// ── TypeScript generation ────────────────────────────────────────────────
-
-function generateTypeScript(permissions: PermissionGroup[]): string {
-  const lines: string[] = [
+export async function generate(): Promise<void> {
+  const ts = [
     "// Auto-generated from Atlassian (Jira + Confluence) official OpenAPI specs.",
     "// Sources:",
-    ...SPECS.map((s) => `//   - ${s.url}`),
+    ...SPEC_URLS.map((u) => `//   - ${u}`),
     "// Regenerate: cd turbo && pnpm -F @vm0/firewalls-generator generate:atlassian",
     "//",
     "// DO NOT EDIT THIS FILE MANUALLY.",
@@ -170,37 +44,12 @@ function generateTypeScript(permissions: PermissionGroup[]): string {
     '          Authorization: "Bearer ${{ secrets.ATLASSIAN_TOKEN }}",',
     "        },",
     "      },",
-    "      permissions: [",
-  ];
+    "      permissions: [],",
+    "    },",
+    "  ],",
+    "} as const satisfies FirewallConfig;",
+    "",
+  ].join("\n");
 
-  lines.push(...renderPermissions(permissions));
-
-  lines.push("      ],");
-  lines.push("    },");
-  lines.push("  ],");
-  lines.push("} as const satisfies FirewallConfig;");
-  lines.push("");
-
-  return lines.join("\n");
-}
-
-// ── Main ─────────────────────────────────────────────────────────────────
-
-export async function generate(): Promise<void> {
-  const allGroups = [];
-
-  for (const source of SPECS) {
-    const res = await fetchSpec(source.url, `${source.label} OpenAPI spec`);
-    const spec = (await res.json()) as OpenApiSpec;
-    console.error(
-      `  ${source.label} spec version: ${spec.info?.version ?? "unknown"}`,
-    );
-    allGroups.push(buildGroupsFromSpec(spec, source));
-  }
-
-  const permissions = mergeGroups(allGroups);
-  const ts = generateTypeScript(permissions);
-
-  logStats(permissions);
   writeOutput("atlassian", ts, import.meta.dirname);
 }

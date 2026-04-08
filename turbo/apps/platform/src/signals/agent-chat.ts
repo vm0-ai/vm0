@@ -2,10 +2,9 @@ import { command, computed, state } from "ccstate";
 import {
   chatThreadByIdContract,
   chatThreadsContract,
-  zeroAgentsByIdContract,
   type SummaryEntry,
 } from "@vm0/core";
-import { defaultAgentId$ } from "./agent.ts";
+import { agentById, defaultAgentId$ } from "./agent.ts";
 import { zeroClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
 import { pathParams$ } from "./route.ts";
@@ -30,13 +29,7 @@ export const currentChatAgent$ = computed(async (get) => {
     return null;
   }
 
-  const client = get(zeroClient$)(zeroAgentsByIdContract);
-  const result = await accept(
-    client.get({ params: { id: agentId } }),
-    [200, 404],
-    { toast: false },
-  );
-  return result.status === 200 ? result.body : null;
+  return await get(agentById(agentId));
 });
 
 export const currentChatAgentDisplayName$ = computed(async (get) => {
@@ -102,7 +95,6 @@ export const currentChatThread$ = computed(
     const threadResult = await accept(
       threadClient.get({ params: { id: threadId } }),
       [200],
-      { toast: false },
     );
 
     const body = threadResult.body;
@@ -137,7 +129,6 @@ export const chatThreads$ = computed(async (get) => {
   const result = await accept(
     client.list({ query: { agentId: agentId } }),
     [200],
-    { toast: false },
   );
   const threads = result.body.threads;
 

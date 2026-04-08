@@ -119,8 +119,6 @@ export const leadAgentAvatar$ = computed(async (get) => {
     return null;
   }
   const client = get(zeroClient$)(zeroAgentsByIdContract);
-  const result = await accept(client.get({ params: { id: agentId } }), [200], {
-    toast: false,
-  });
+  const result = await accept(client.get({ params: { id: agentId } }), [200]);
   return resolveAvatarUrl(result.body.avatarUrl) ?? avatar1Img;
 });

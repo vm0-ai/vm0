@@ -31,7 +31,6 @@ async function fetchPage(
       },
     }),
     [200],
-    { toast: false },
   );
   return { logs: result.body.networkLogs, hasMore: result.body.hasMore };
 }

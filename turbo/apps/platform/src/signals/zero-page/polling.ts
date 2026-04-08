@@ -111,7 +111,6 @@ async function fetchEvents(
       },
     }),
     [200],
-    { toast: false },
   );
   return { events: result.body.events, hasMore: result.body.hasMore };
 }
@@ -136,7 +135,6 @@ function createRunDetail(runId: string) {
         params: { id: runId },
       }),
       [200],
-      { toast: false },
     );
     return result;
   });
@@ -274,7 +272,6 @@ export function createRunLoop(runId: string) {
         fetchOptions: { signal },
       }),
       [200],
-      { toast: false },
     );
   });
 

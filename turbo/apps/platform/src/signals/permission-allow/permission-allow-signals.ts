@@ -111,9 +111,7 @@ export const permissionRequestById$ = computed(async (get) => {
     return null;
   }
   const client = get(zeroClient$)(permissionAccessRequestsListContract);
-  const result = await accept(client.list({ query: { requestId } }), [200], {
-    toast: false,
-  });
+  const result = await accept(client.list({ query: { requestId } }), [200]);
   return result.body[0] ?? null;
 });
 
@@ -130,9 +128,7 @@ export const permissionExistingRequest$ = computed(async (get) => {
     return null;
   }
   const client = get(zeroClient$)(permissionAccessRequestsListContract);
-  const result = await accept(client.list({ query: { agentId } }), [200], {
-    toast: false,
-  });
+  const result = await accept(client.list({ query: { agentId } }), [200]);
   // Find latest pending/rejected request for this ref+permission+action
   // Note: the API contract uses `firewallRef` (DB/external name); internally
   // this layer refers to it as `permissionRef` (user-facing name).

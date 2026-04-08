@@ -25,7 +25,10 @@ interface OpenRouterResponse {
  * Returns null if OPENROUTER_API_KEY is not configured.
  * Throws on HTTP errors or empty responses — callers handle errors.
  */
-async function generateText(messages: ChatMessage[]): Promise<string | null> {
+async function generateText(
+  messages: ChatMessage[],
+  maxTokens = 30,
+): Promise<string | null> {
   const { OPENROUTER_API_KEY } = env();
 
   if (!OPENROUTER_API_KEY) {
@@ -41,7 +44,7 @@ async function generateText(messages: ChatMessage[]): Promise<string | null> {
     body: JSON.stringify({
       model: MODEL,
       messages,
-      max_tokens: 30,
+      max_tokens: maxTokens,
       temperature: 0.3,
     }),
   });
@@ -127,6 +130,31 @@ export async function generateChatTitle(
       content: `${context}Current message: ${currentPrompt}`,
     },
   ]);
+}
+
+/**
+ * Generate a short notification summary for a completed chat run.
+ *
+ * Returns null if the lightweight model is unavailable.
+ */
+export async function generateChatNotificationSummary(
+  prompt: string,
+  resultText: string,
+): Promise<string | null> {
+  return generateText(
+    [
+      {
+        role: "system",
+        content:
+          "Summarize this AI assistant's response in one sentence (max 100 chars). Return only the summary as plain text. Do not use any markdown syntax.",
+      },
+      {
+        role: "user",
+        content: `User asked: ${prompt.slice(0, 200)}\n\nAssistant responded: ${resultText.slice(0, 500)}`,
+      },
+    ],
+    60,
+  );
 }
 
 /**

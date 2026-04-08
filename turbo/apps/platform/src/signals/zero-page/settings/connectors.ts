@@ -165,11 +165,7 @@ export const scopeDiff$ = computed(async (get) => {
   }
   const createClient = get(zeroClient$);
   const client = createClient(zeroConnectorScopeDiffContract);
-  const result = await accept(
-    client.getScopeDiff({ params: { type } }),
-    [200],
-    { toast: false },
-  );
+  const result = await accept(client.getScopeDiff({ params: { type } }), [200]);
   return result.body;
 });
 
