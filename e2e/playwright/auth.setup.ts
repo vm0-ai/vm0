@@ -29,6 +29,9 @@ setup("authenticate and complete onboarding", async ({ page }) => {
     },
   });
 
+  // Navigate to app URL after sign-in (Clerk may redirect to www domain)
+  await page.goto(appUrl);
+
   // Complete onboarding if present
   await completeOnboarding(page);
 
