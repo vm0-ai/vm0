@@ -287,6 +287,7 @@ class TestAddCaptureFields:
         assert "request_body" in entry  # request body still captured
         assert "response_headers" in entry  # headers captured before body access
         assert "response_body" not in entry  # response body skipped
+        assert entry["response_body_encoding"] == "binary"  # marked as binary
 
     def test_binary_request_body_marks_encoding(self):
         flow = self._make_flow(request_body=b"\x89PNG\r\n", request_ct="image/png")

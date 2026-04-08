@@ -377,7 +377,8 @@ def _add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
             if not body:
                 return
         except Exception:
-            # ZlibError or other decompression failure — skip body
+            # ZlibError or other decompression failure — mark as binary
+            log_entry["response_body_encoding"] = "binary"
             return
         res_ct = flow.response.headers.get("content-type", "")
         truncated = len(body) > _MAX_BODY_SIZE
