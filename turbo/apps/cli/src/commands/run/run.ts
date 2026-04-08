@@ -198,7 +198,7 @@ export const mainRunCommand = new Command()
           disallowedTools: options.disallowedTools,
           tools: options.tools,
           settings: options.settings,
-          firewallPolicies: parseFirewallPolicies(options.firewallPolicies),
+          permissionPolicies: parseFirewallPolicies(options.firewallPolicies),
           captureNetworkBodies: options.captureNetworkBodies || undefined,
           debugNoMockClaude: options.debugNoMockClaude || undefined,
         });

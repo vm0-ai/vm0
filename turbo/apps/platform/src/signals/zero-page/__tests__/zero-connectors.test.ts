@@ -112,7 +112,7 @@ describe("zero connectors — agent switch", () => {
           displayName: "Agent A",
           sound: null,
           avatarUrl: null,
-          firewallPolicies: null,
+          permissionPolicies: null,
         });
       }),
       http.get("*/api/zero/agents/agent-b", () => {
@@ -124,7 +124,7 @@ describe("zero connectors — agent switch", () => {
           displayName: "Agent B",
           sound: null,
           avatarUrl: null,
-          firewallPolicies: null,
+          permissionPolicies: null,
         });
       }),
       http.get("*/api/zero/agents/:id/user-connectors", ({ params }) => {

@@ -28,8 +28,8 @@ import {
 } from "./context/resolve-secrets";
 import {
   filterSecretConnectorMap,
-  mergeFirewalls,
-} from "./context/resolve-firewalls";
+  mergePermissions,
+} from "./context/resolve-permissions";
 import {
   resolveSource,
   loadAgentComposeForNewRun,
@@ -45,7 +45,7 @@ export {
   filterSecretConnectorMap,
   applyConnectorPolicies,
   UNRESTRICTED_PERMISSION,
-} from "./context/resolve-firewalls";
+} from "./context/resolve-permissions";
 
 const log = logger("zero:build-context");
 
@@ -91,8 +91,8 @@ interface BuildZeroContextParams {
   modelProvider?: string;
   // API start time for E2E timing metrics
   apiStartTime?: number;
-  // Per-permission firewall policies from zero agent configuration.
-  firewallPolicies?: FirewallPolicies;
+  // Per-permission policies from zero agent configuration.
+  permissionPolicies?: FirewallPolicies;
   // Caller-resolved org context for secret/variable/storage resolution.
   orgId: string;
   // Connector types the user has permitted for this agent run. When set, only
@@ -274,7 +274,7 @@ interface ResolveCliRunContextParams {
   vars?: Record<string, string>;
   secrets?: Record<string, string>;
   modelProvider?: string;
-  firewallPolicies?: FirewallPolicies;
+  permissionPolicies?: FirewallPolicies;
   allowedConnectorTypes?: ConnectorType[];
   // Artifact/memory
   artifactName?: string;
@@ -454,10 +454,10 @@ export async function resolveCliRunContext(
   checkProviderCompatibility(originalModelProvider, resolvedModelProvider);
 
   // Build firewall manifest
-  const firewalls = mergeFirewalls(
+  const firewalls = mergePermissions(
     modelProviderFirewall,
     connectorFirewalls,
-    params.firewallPolicies,
+    params.permissionPolicies,
     mergedVars,
   );
 
@@ -616,10 +616,10 @@ export async function buildZeroExecutionContext(
   checkProviderCompatibility(originalModelProvider, resolvedModelProvider);
 
   // Build firewall manifest (base + auth entries for the runner).
-  const firewalls = mergeFirewalls(
+  const firewalls = mergePermissions(
     modelProviderFirewall,
     connectorFirewalls,
-    params.firewallPolicies,
+    params.permissionPolicies,
     mergedVars,
   );
 

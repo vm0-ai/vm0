@@ -133,7 +133,7 @@ export const resumeCommand = new Command()
           disallowedTools: options.disallowedTools || allOpts.disallowedTools,
           tools: options.tools || allOpts.tools,
           settings: options.settings || allOpts.settings,
-          firewallPolicies: parseFirewallPolicies(
+          permissionPolicies: parseFirewallPolicies(
             options.firewallPolicies || allOpts.firewallPolicies,
           ),
           debugNoMockClaude:

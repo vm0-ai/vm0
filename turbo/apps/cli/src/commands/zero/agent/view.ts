@@ -134,7 +134,7 @@ Examples:
         console.log(`Agent ID:     ${agent.agentId}`);
 
         const resolvedPolicies = resolveFirewallPolicies(
-          agent.firewallPolicies,
+          agent.permissionPolicies,
           connectorTypes,
         );
 

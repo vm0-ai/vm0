@@ -77,7 +77,7 @@ async function renderTeamPage(
         displayName: null,
         sound: null,
         avatarUrl: null,
-        firewallPolicies: null,
+        permissionPolicies: null,
       });
     }),
     http.get("*/api/zero/agents/compose-1/user-connectors", () => {
@@ -189,7 +189,7 @@ async function renderTeamPageAsMember(
         displayName: null,
         sound: null,
         avatarUrl: null,
-        firewallPolicies: null,
+        permissionPolicies: null,
       });
     }),
     http.get("*/api/zero/agents/compose-1/user-connectors", () => {

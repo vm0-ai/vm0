@@ -58,7 +58,7 @@ function mockTwoAgents() {
           description: null;
           sound: null;
           avatarUrl: null;
-          firewallPolicies: null;
+          permissionPolicies: null;
         }
       > = {
         "agent-foo-id": {
@@ -68,7 +68,7 @@ function mockTwoAgents() {
           description: null,
           sound: null,
           avatarUrl: null,
-          firewallPolicies: null,
+          permissionPolicies: null,
         },
         "agent-bar-id": {
           agentId: "agent-bar-id",
@@ -77,7 +77,7 @@ function mockTwoAgents() {
           description: null,
           sound: null,
           avatarUrl: null,
-          firewallPolicies: null,
+          permissionPolicies: null,
         },
       };
       const agent = agents[params.id as string];

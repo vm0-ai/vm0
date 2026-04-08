@@ -1,9 +1,9 @@
 import { command, computed, state } from "ccstate";
 import {
-  firewallAccessRequestsCreateContract as permissionAccessRequestsCreateContract,
-  firewallAccessRequestsListContract as permissionAccessRequestsListContract,
-  firewallAccessRequestsResolveContract as permissionAccessRequestsResolveContract,
-  zeroAgentFirewallPoliciesContract as zeroAgentPermissionPoliciesContract,
+  permissionAccessRequestsCreateContract,
+  permissionAccessRequestsListContract,
+  permissionAccessRequestsResolveContract,
+  zeroAgentPermissionPoliciesContract,
   getConnectorFirewall as getConnectorPermission,
   isFirewallConnectorType as isPermissionConnectorType,
   type FirewallPolicies as PermissionPolicies,
@@ -137,7 +137,7 @@ export const permissionExistingRequest$ = computed(async (get) => {
   const match = result.body
     .filter((r) => {
       return (
-        r.firewallRef === ref &&
+        r.connectorRef === ref &&
         r.permission === permission &&
         r.action === action &&
         (r.status === "pending" || r.status === "rejected")
@@ -223,7 +223,7 @@ const createAccessRequest$ = command(
     const client = get(zeroClient$)(permissionAccessRequestsCreateContract);
     const { permissionRef, ...rest } = params;
     const result = await accept(
-      client.create({ body: { ...rest, firewallRef: permissionRef } }),
+      client.create({ body: { ...rest, connectorRef: permissionRef } }),
       [201],
     );
     signal.throwIfAborted();

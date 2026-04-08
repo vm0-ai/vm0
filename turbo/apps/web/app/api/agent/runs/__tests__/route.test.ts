@@ -106,7 +106,7 @@ describe("POST /api/agent/runs - Internal Runs API", () => {
       expect(run.appendSystemPrompt).toBe("Custom instructions");
     });
 
-    // Note: firewallPolicies → firewalls conversion requires connector resolution
+    // Note: permissionPolicies → firewalls conversion requires connector resolution
     // which is a zero-layer concern. Tested via POST /api/zero/runs route.
   });
 

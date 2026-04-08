@@ -9,6 +9,6 @@ import { zeroJobDetail$ } from "./detail.ts";
 export const zeroJobFirewallPolicies$ = computed(
   async (get): Promise<FirewallPolicies | null> => {
     const detail = await get(zeroJobDetail$);
-    return detail?.firewallPolicies ?? null;
+    return detail?.permissionPolicies ?? null;
   },
 );

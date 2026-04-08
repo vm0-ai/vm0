@@ -26,7 +26,7 @@ interface AgentResponse {
   displayName: string | null;
   sound: string | null;
   avatarUrl: string | null;
-  firewallPolicies: Record<string, Record<string, string>> | null;
+  permissionPolicies: Record<string, Record<string, string>> | null;
   customSkills: unknown[];
 }
 
@@ -38,7 +38,7 @@ function defaultAgent(overrides: Partial<AgentResponse> = {}): AgentResponse {
     displayName: null,
     sound: null,
     avatarUrl: null,
-    firewallPolicies: null,
+    permissionPolicies: null,
     customSkills: [],
     ...overrides,
   };
@@ -60,7 +60,7 @@ function mockAgent(agent: AgentResponse) {
 
 function mockFirewallRequests(requests: unknown[] = []) {
   server.use(
-    http.get("*/api/zero/firewall-access-requests", () => {
+    http.get("*/api/zero/permission-access-requests", () => {
       return HttpResponse.json(requests);
     }),
   );

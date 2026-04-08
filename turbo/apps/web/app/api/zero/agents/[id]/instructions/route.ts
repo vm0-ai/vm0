@@ -93,7 +93,7 @@ async function updateInstructions(
       displayName: agent?.displayName ?? null,
       sound: agent?.sound ?? null,
       avatarUrl: agent?.avatarUrl ?? null,
-      firewallPolicies: agent?.firewallPolicies ?? null,
+      permissionPolicies: agent?.permissionPolicies ?? null,
       customSkills: agent?.customSkills ?? [],
     },
   };

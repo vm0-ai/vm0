@@ -59,7 +59,7 @@ export function mockSubagentThread(threadId: string) {
           description: null;
           sound: null;
           avatarUrl: string | null;
-          firewallPolicies: null;
+          permissionPolicies: null;
         }
       > = {
         [DEFAULT_AGENT_ID]: {
@@ -69,7 +69,7 @@ export function mockSubagentThread(threadId: string) {
           description: null,
           sound: null,
           avatarUrl: null,
-          firewallPolicies: null,
+          permissionPolicies: null,
         },
         [SUB_AGENT_ID]: {
           agentId: SUB_AGENT_ID,
@@ -78,7 +78,7 @@ export function mockSubagentThread(threadId: string) {
           description: null,
           sound: null,
           avatarUrl: "https://example.com/avatar.png",
-          firewallPolicies: null,
+          permissionPolicies: null,
         },
       };
       const agent = agents[params.id as string];
