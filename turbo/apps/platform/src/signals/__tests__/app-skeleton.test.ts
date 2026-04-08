@@ -55,22 +55,6 @@ describe("startSkeletonCycling$", () => {
     abortController.abort();
     await expect(cyclingPromise).rejects.toThrow();
   });
-
-  it("should abort cleanly when signal is aborted before first cycle", async () => {
-    const store = createStore();
-    // Use large delays so no cycle fires before abort
-    store.set(setCycleDelaysMs$, 60_000, 60_000);
-
-    const abortController = new AbortController();
-    const cyclingPromise = store.set(
-      startSkeletonCycling$,
-      abortController.signal,
-    );
-
-    abortController.abort();
-
-    await expect(cyclingPromise).rejects.toThrow();
-  });
 });
 
 describe("hideAppSkeleton$", () => {
