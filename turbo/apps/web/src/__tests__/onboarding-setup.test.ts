@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { POST } from "../../app/api/zero/onboarding/setup/route";
 import { GET as getOnboardingStatus } from "../../app/api/zero/onboarding/status/route";
 import { GET as listAgents } from "../../app/api/zero/agents/route";
@@ -7,6 +7,7 @@ import { GET as listModelProviders } from "../../app/api/zero/model-providers/ro
 import { createTestRequest, getOrgDefaultAgent } from "./api-test-helpers";
 import { testContext } from "./test-helpers";
 import { mockClerk } from "./clerk-mock";
+import { clerkClient } from "@clerk/nextjs/server";
 
 const context = testContext();
 
@@ -143,5 +144,117 @@ describe("POST /api/zero/onboarding/setup", () => {
 
     const response = await postSetup({ displayName: "Zero" });
     expect(response.status).toBe(403);
+  });
+
+  it("should retry with suffixed slug on Clerk slug conflict", async () => {
+    const { userId, orgId } = await context.setupUser();
+    mockClerk({ userId, orgId, orgRole: "org:admin" });
+
+    const client = await clerkClient();
+    let callCount = 0;
+    const slugConflictMock = vi.fn(
+      (_orgId: string, data: { slug?: string }) => {
+        callCount++;
+        if (data.slug && callCount === 1) {
+          const err = Object.assign(new Error("Unprocessable Entity"), {
+            status: 422,
+            errors: [
+              {
+                code: "form_identifier_exists",
+                message: "That slug is already in use",
+                meta: { paramName: "slug" },
+              },
+            ],
+          });
+          return Promise.reject(err);
+        }
+        return Promise.resolve({});
+      },
+    );
+    client.organizations.updateOrganization =
+      slugConflictMock as unknown as typeof client.organizations.updateOrganization;
+
+    const response = await postSetup({
+      displayName: "Zero",
+      workspaceName: "My Workspace",
+    });
+    expect(response.status).toBe(200);
+    expect(slugConflictMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("should update name only for non-Latin workspace names", async () => {
+    const { userId, orgId } = await context.setupUser();
+    mockClerk({ userId, orgId, orgRole: "org:admin" });
+
+    const client = await clerkClient();
+    const updateOrg = vi.mocked(client.organizations.updateOrganization);
+
+    const response = await postSetup({
+      displayName: "Zero",
+      workspaceName: "我的工作区",
+    });
+    expect(response.status).toBe(200);
+
+    // Should be called once with name only (no slug)
+    expect(updateOrg).toHaveBeenCalledTimes(1);
+    expect(updateOrg).toHaveBeenCalledWith(expect.any(String), {
+      name: "我的工作区",
+    });
+  });
+
+  it("should fall back to name-only update when all slug candidates conflict", async () => {
+    const { userId, orgId } = await context.setupUser();
+    mockClerk({ userId, orgId, orgRole: "org:admin" });
+
+    const client = await clerkClient();
+    const allConflictMock = vi.fn((_orgId: string, data: { slug?: string }) => {
+      if (data.slug) {
+        const err = Object.assign(new Error("Unprocessable Entity"), {
+          status: 422,
+          errors: [
+            {
+              code: "form_identifier_exists",
+              message: "That slug is already in use",
+              meta: { paramName: "slug" },
+            },
+          ],
+        });
+        return Promise.reject(err);
+      }
+      return Promise.resolve({});
+    });
+    client.organizations.updateOrganization =
+      allConflictMock as unknown as typeof client.organizations.updateOrganization;
+
+    const response = await postSetup({
+      displayName: "Zero",
+      workspaceName: "My Workspace",
+    });
+    expect(response.status).toBe(200);
+
+    // 2 slug attempts + 1 name-only fallback = 3 calls
+    expect(allConflictMock).toHaveBeenCalledTimes(3);
+    const lastCall = allConflictMock.mock.calls[2];
+    expect(lastCall![1]).toEqual({ name: "My Workspace" });
+  });
+
+  it("should update name and slug for valid Latin workspace names", async () => {
+    const { userId, orgId } = await context.setupUser();
+    mockClerk({ userId, orgId, orgRole: "org:admin" });
+
+    const client = await clerkClient();
+    const updateOrg = vi.mocked(client.organizations.updateOrganization);
+
+    const response = await postSetup({
+      displayName: "Zero",
+      workspaceName: "My Workspace",
+    });
+    expect(response.status).toBe(200);
+
+    expect(updateOrg).toHaveBeenCalledTimes(1);
+    expect(updateOrg).toHaveBeenCalledWith(expect.any(String), {
+      name: "My Workspace",
+      slug: "my-workspace",
+    });
   });
 });

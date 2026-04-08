@@ -37,6 +37,36 @@ function nameToSlug(name: string): string {
 }
 
 /**
+ * Check whether a Clerk API error indicates a slug conflict.
+ *
+ * ClerkAPIResponseError stores the HTTP statusText in `error.message`
+ * (e.g. "Unprocessable Entity"), while the actual error details live in
+ * the `error.errors` array.  We inspect that array for slug-specific
+ * codes / metadata so the retry logic works correctly.
+ */
+function isClerkSlugConflict(error: unknown): boolean {
+  if (error === null || typeof error !== "object" || !("errors" in error)) {
+    return false;
+  }
+  const { errors } = error as {
+    errors: Array<{
+      code?: string;
+      message?: string;
+      meta?: { paramName?: string };
+    }>;
+  };
+  if (!Array.isArray(errors)) return false;
+  return errors.some((e) => {
+    return (
+      e.code === "form_identifier_exists" ||
+      e.meta?.paramName === "slug" ||
+      (e.message &&
+        (e.message.includes("already exists") || e.message.includes("slug")))
+    );
+  });
+}
+
+/**
  * Update org name and slug via a single Clerk call.
  * Retries once with a random suffix if the slug conflicts.
  */
@@ -49,6 +79,13 @@ async function updateOrgNameAndSlug(
 
   const client = await clerkClient();
   const baseSlug = nameToSlug(name);
+
+  // Non-Latin names produce empty slugs — update name only, let Clerk keep existing slug
+  if (!baseSlug) {
+    await client.organizations.updateOrganization(orgId, { name });
+    return;
+  }
+
   const slugCandidates = [
     baseSlug,
     `${baseSlug.slice(0, 56)}-${Math.random().toString(36).slice(2, 8)}`,
@@ -61,10 +98,7 @@ async function updateOrgNameAndSlug(
       await client.organizations.updateOrganization(orgId, { name, slug });
       return;
     } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : String(error);
-      if (msg.includes("already exists") || msg.includes("slug")) {
-        continue;
-      }
+      if (isClerkSlugConflict(error)) continue;
       throw error;
     }
   }
@@ -124,12 +158,7 @@ const router = tsr.router(onboardingSetupContract, {
       }
     }
 
-    // Start org name + slug update in parallel (don't await yet)
-    const orgUpdatePromise = body.workspaceName?.trim()
-      ? updateOrgNameAndSlug(org.orgId, body.workspaceName)
-      : undefined;
-
-    // Parallel: model provider + compose (independent)
+    // Parallel: model provider + compose + org name/slug update
     const agentName = crypto.randomUUID();
     const content = buildComposeContent(agentName);
 
@@ -141,10 +170,10 @@ const router = tsr.router(onboardingSetupContract, {
         content,
         instructions: SEED_INSTRUCTIONS,
       }),
+      body.workspaceName?.trim()
+        ? updateOrgNameAndSlug(org.orgId, body.workspaceName)
+        : Promise.resolve(),
     ]);
-
-    // Await org name + slug update (already running in parallel)
-    if (orgUpdatePromise) await orgUpdatePromise;
 
     if (!composeResult) {
       return {
