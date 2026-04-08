@@ -75,6 +75,7 @@
         --runner-dirname {{ runner_name }}
         --api-url {{ api_url }}
         --token vm0_official_{{ official_runner_secret }}
+        --keep-alive
 
     - name: Install and start runner service
       command: >
