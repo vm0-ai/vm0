@@ -6,11 +6,11 @@ import {
   findOrgMembersCacheEntry,
 } from "../../../__tests__/api-test-helpers";
 import { mockClerk } from "../../../__tests__/clerk-mock";
-import { verifyMembershipCached } from "../org-membership-cache";
+import { getMemberRole } from "../org-membership-cache";
 
 const context = testContext();
 
-describe("verifyMembershipCached", () => {
+describe("getMemberRole", () => {
   beforeEach(() => {
     context.setupMocks();
   });
@@ -22,7 +22,7 @@ describe("verifyMembershipCached", () => {
     const foreignOrgId = "org_foreign_no_membership";
     await insertOrgCacheEntry({ orgId: foreignOrgId, slug: "foreign-org" });
 
-    const result = await verifyMembershipCached(foreignOrgId, userId);
+    const result = await getMemberRole(foreignOrgId, userId);
     expect(result).toBeNull();
   });
 
@@ -30,7 +30,7 @@ describe("verifyMembershipCached", () => {
     const { userId, orgId } = await context.setupUser();
 
     // No cache entry exists — should call Clerk API
-    const result = await verifyMembershipCached(orgId, userId);
+    const result = await getMemberRole(orgId, userId);
 
     expect(result).not.toBeNull();
     expect(result!.role).toBe("admin");
@@ -45,7 +45,7 @@ describe("verifyMembershipCached", () => {
     // Mock Clerk to return a different role — if cache is used, we should get "member"
     mockClerk({ userId });
 
-    const result = await verifyMembershipCached(orgId, userId);
+    const result = await getMemberRole(orgId, userId);
     expect(result).not.toBeNull();
     expect(result!.role).toBe("member"); // From cache, not Clerk
   });
@@ -63,7 +63,7 @@ describe("verifyMembershipCached", () => {
     });
 
     // Clerk returns admin role — should override stale cache
-    const result = await verifyMembershipCached(orgId, userId);
+    const result = await getMemberRole(orgId, userId);
     expect(result).not.toBeNull();
     expect(result!.role).toBe("admin"); // From Clerk, not stale cache
   });
@@ -83,8 +83,8 @@ describe("verifyMembershipCached", () => {
       cachedAt: staleTime,
     });
 
-    // verifyMembershipCached should check Clerk, find no membership, return null
-    const result = await verifyMembershipCached(foreignOrgId, userId);
+    // getMemberRole should check Clerk, find no membership, return null
+    const result = await getMemberRole(foreignOrgId, userId);
     expect(result).toBeNull();
 
     // Wait for fire-and-forget cache delete to complete

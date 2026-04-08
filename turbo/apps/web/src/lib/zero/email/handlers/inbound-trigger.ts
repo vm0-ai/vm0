@@ -15,7 +15,7 @@ import { buildIntegrationContext } from "../../integration-context";
 import { generateCallbackSecret, getApiUrl } from "../../../infra/callback";
 import { getUserIdByEmail } from "../../../auth/get-user-id-by-email";
 import { getOrgIdBySlug } from "../../../auth/org-cache";
-import { verifyMembershipCached } from "../../../auth/org-membership-cache";
+import { getMemberRole } from "../../../auth/org-membership-cache";
 import { logger } from "../../../shared/logger";
 
 const log = logger("email:inbound-trigger");
@@ -82,7 +82,7 @@ async function resolveTrigger(
   }
 
   // 4. Verify org membership
-  const membership = await verifyMembershipCached(orgId, userId);
+  const membership = await getMemberRole(orgId, userId);
   if (!membership) {
     log.debug("User is not a member of org", { userId, orgId });
     return {
