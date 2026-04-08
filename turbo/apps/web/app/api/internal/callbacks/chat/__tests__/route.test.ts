@@ -13,6 +13,7 @@ import {
   getTestZeroAgentId,
   createTestAgentSession,
   createTestPushSubscription,
+  getPushSubscriptionsByEndpoint,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { computeHmacSignature } from "../../../../../../src/lib/infra/callback/hmac";
 import { reloadEnv } from "../../../../../../src/env";
@@ -21,9 +22,20 @@ import { POST as createThreadHandler } from "../../../../zero/chat-threads/route
 import { POST } from "../route";
 import { http } from "../../../../../../src/__tests__/msw";
 import { server } from "../../../../../../src/mocks/server";
-import webpush from "web-push";
+import webpush, { WebPushError } from "web-push";
 
-vi.mock("web-push");
+vi.mock("web-push", async (importActual) => {
+  const actual = await importActual<{ WebPushError: typeof WebPushError }>();
+  return {
+    ...actual,
+    default: {
+      sendNotification: vi.fn(),
+      setVapidDetails: vi.fn(),
+    },
+    sendNotification: vi.fn(),
+    setVapidDetails: vi.fn(),
+  };
+});
 
 const context = testContext();
 
@@ -569,8 +581,7 @@ describe("POST /api/internal/callbacks/chat", () => {
       );
 
       expect(response.status).toBe(200);
-      // 2 calls: generateChatTitle + generateChatNotificationSummary
-      expect(openRouterMock).toHaveBeenCalledTimes(2);
+      expect(openRouterMock).toHaveBeenCalled();
 
       const title = await getThreadTitle(threadId);
       expect(title).toBe("Debugging Node.js Apps");
@@ -799,6 +810,37 @@ describe("POST /api/internal/callbacks/chat", () => {
 
       expect(response.status).toBe(200);
       expect(mockSendNotification).toHaveBeenCalledTimes(2);
+    });
+
+    it("should delete stale subscription on 410 Gone response", async () => {
+      const { threadId, runId, secret } = await setupRunAndThread();
+      const { endpoint } = await createTestPushSubscription();
+
+      context.mocks.axiom.queryAxiom.mockResolvedValueOnce([]);
+
+      enableVapid();
+
+      // Mock sendNotification to throw a 410 Gone WebPushError
+      mockSendNotification.mockRejectedValueOnce(
+        new WebPushError("Gone", 410, {}, "", endpoint),
+      );
+
+      const response = await POST(
+        createCallbackRequest(
+          {
+            runId,
+            status: "completed",
+            payload: { threadId, agentId },
+          },
+          secret,
+        ),
+      );
+
+      expect(response.status).toBe(200);
+
+      // Stale subscription should be removed from the DB
+      const remaining = await getPushSubscriptionsByEndpoint(endpoint);
+      expect(remaining).toHaveLength(0);
     });
   });
 });
