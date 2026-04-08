@@ -818,9 +818,7 @@ function AssistantErrorContent({ error }: { error: string }) {
             className="inline-flex items-center gap-1 text-amber-500 underline underline-offset-2 hover:text-amber-400"
             onClick={() => {
               setTab("providers");
-              setOrgManageOpen(true, pageSignal).catch(() => {
-                return undefined;
-              });
+              detach(setOrgManageOpen(true, pageSignal), Reason.DomCallback);
             }}
           >
             Set one up in Workspace Settings
