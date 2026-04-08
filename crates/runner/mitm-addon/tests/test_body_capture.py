@@ -279,10 +279,12 @@ class TestAddCaptureFields:
         assert "response_headers" in entry  # headers captured despite empty body
 
     def test_response_decompression_error_skips_body(self):
+        import zlib
+
         flow = self._make_flow(request_body=b"ok")
         # Simulate ZlibError when accessing response content
         type(flow.response).content = property(
-            lambda self: (_ for _ in ()).throw(Exception("ZlibError"))
+            lambda self: (_ for _ in ()).throw(zlib.error("decompression failed"))
         )
         entry = {}
         _add_capture_fields(flow, entry)

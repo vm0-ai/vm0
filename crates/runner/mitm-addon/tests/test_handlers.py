@@ -502,7 +502,7 @@ class TestResponseHandler:
         }
 
         # Simulate tracked start time
-        mitm_addon._request_start_times[flow.id] = __import__("time").time() - 0.1
+        mitm_addon._request_start_times[flow.id] = time.time() - 0.1
 
         with patch.object(mitm_addon.ctx, "log", MagicMock(), create=True):
             mitm_addon.response(flow)
@@ -537,7 +537,7 @@ class TestResponseHandler:
         flow.response.status_code = 200
         flow.response.headers = {"content-length": "999"}  # should be ignored
 
-        mitm_addon._request_start_times[flow.id] = __import__("time").time()
+        mitm_addon._request_start_times[flow.id] = time.time()
 
         with patch.object(mitm_addon.ctx, "log", MagicMock(), create=True):
             mitm_addon.response(flow)
@@ -563,7 +563,7 @@ class TestResponseHandler:
         flow.response.status_code = 200
         flow.response.headers = {"content-length": "50000"}
 
-        mitm_addon._request_start_times[flow.id] = __import__("time").time()
+        mitm_addon._request_start_times[flow.id] = time.time()
 
         with patch.object(mitm_addon.ctx, "log", MagicMock(), create=True):
             mitm_addon.response(flow)

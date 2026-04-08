@@ -316,7 +316,7 @@ def _decompress_body(data: bytes, headers, max_output: int = _STREAM_BUFFER_LIMI
             obj = zstandard.ZstdDecompressor().decompressobj()
             result = obj.decompress(data)
             return result[:max_output] if result else data
-    except (zlib.error, brotli.error, zstandard.ZstdError, Exception) as exc:
+    except (zlib.error, brotli.error, zstandard.ZstdError) as exc:
         try:
             ctx.log.debug(f"Decompression failed ({encoding}): {exc}")
         except AttributeError:
@@ -432,7 +432,8 @@ def _add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
         else:
             try:
                 body = flow.response.content
-            except Exception:
+            except (zlib.error, ValueError):
+                # ZlibError (decompression failure) or ValueError from mitmproxy
                 log_entry["response_body_encoding"] = "binary"
                 return
         if not body:
