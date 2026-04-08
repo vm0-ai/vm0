@@ -510,7 +510,7 @@ function SyncedToolsMockup() {
   return (
     <div
       ref={ref}
-      className="flex flex-1 items-center justify-center overflow-hidden bg-[#39A2A3] p-8"
+      className="flex flex-1 items-center justify-center overflow-hidden bg-[#39A2A3] p-2 sm:p-8"
     >
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
@@ -526,9 +526,7 @@ function SyncedToolsMockup() {
 function SyncedToolsCard() {
   return (
     <div className="overflow-hidden rounded-[20px] bg-white">
-      <div className="flex flex-col md:flex-row-reverse">
-        {/* Right illustration */}
-        <SyncedToolsMockup />
+      <div className="flex flex-col md:flex-row">
         {/* Left text content */}
         <div className="flex w-full flex-col justify-between gap-4 p-10 md:w-[421px] md:shrink-0">
           <div className="flex flex-col gap-4">
@@ -550,6 +548,8 @@ function SyncedToolsCard() {
             </span>
           </div>
         </div>
+        {/* Right illustration */}
+        <SyncedToolsMockup />
       </div>
     </div>
   );
@@ -641,7 +641,7 @@ function TeammateCard() {
           output.
         </p>
       </div>
-      <div className="bg-[#d58341] px-8 pb-0 pt-6 sm:px-10">
+      <div className="bg-[#d58341] px-2 pb-0 pt-3 sm:px-6 sm:pt-6">
         <AppMockupCarousel />
       </div>
     </div>
@@ -926,11 +926,11 @@ const SHIELD_NODES = (() => {
       }
     }
   }
-  return { nodes, lines };
+  return { nodes, lines, cx, cy };
 })();
 
 function CubeShieldIllustration() {
-  const { nodes, lines } = SHIELD_NODES;
+  const { nodes, lines, cx, cy } = SHIELD_NODES;
 
   return (
     <svg
@@ -1665,11 +1665,11 @@ export default function LandingPage() {
         {/* ===== CTA SECTION ===== */}
         <section className="px-5 pb-10 pt-2 sm:px-6 sm:pb-12 md:pb-16">
           <div className="mx-auto max-w-[1152px]">
-            <div className="flex flex-col items-center gap-6 rounded-[20px] bg-white px-6 py-8 text-center sm:flex-row sm:items-center sm:justify-between sm:gap-8 sm:px-10 sm:text-left">
+            <div className="flex flex-col items-start gap-6 rounded-[20px] bg-white px-6 py-8 sm:flex-row sm:items-center sm:justify-between sm:gap-8 sm:px-10">
               <div className="flex flex-col gap-2">
-                <h2 className="landing-heading text-[22px] font-semibold leading-[1.3] tracking-[-0.5px] text-[hsl(var(--foreground))] sm:text-[26px]">
+                <h3 className="landing-heading text-[22px] font-medium leading-[1.3] tracking-[-0.5px] text-[hsl(var(--foreground))] sm:text-[26px]">
                   People lead. Agents deliver. Together, they ship.
-                </h2>
+                </h3>
                 <p className="text-base leading-6 text-[hsl(var(--muted-foreground))]">
                   When humans and AI agents work as one team, your output
                   multiplies.
