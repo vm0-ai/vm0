@@ -12,7 +12,7 @@ import {
   extractVarNames,
   extractSecretNames,
   loadValues,
-  parseFirewallPolicies,
+  parsePermissionPolicies,
   parseIdentifier,
   pollEvents,
   showNextSteps,
@@ -83,8 +83,8 @@ export const mainRunCommand = new Command()
     "Settings JSON to pass to Claude CLI (e.g., hooks, permissions)",
   )
   .option(
-    "--firewall-policies <json>",
-    'Firewall policies JSON (e.g., \'{"github": {"actions:read": "allow"}}\')',
+    "--permission-policies <json>",
+    'Permission policies JSON (e.g., \'{"github": {"actions:read": "allow"}}\')',
   )
   .option("--verbose", "Show full tool inputs and outputs")
   .option(
@@ -111,7 +111,7 @@ export const mainRunCommand = new Command()
           disallowedTools?: string[];
           tools?: string[];
           settings?: string;
-          firewallPolicies?: string;
+          permissionPolicies?: string;
           verbose?: boolean;
           captureNetworkBodies?: boolean;
           debugNoMockClaude?: boolean;
@@ -198,7 +198,9 @@ export const mainRunCommand = new Command()
           disallowedTools: options.disallowedTools,
           tools: options.tools,
           settings: options.settings,
-          firewallPolicies: parseFirewallPolicies(options.firewallPolicies),
+          permissionPolicies: parsePermissionPolicies(
+            options.permissionPolicies,
+          ),
           captureNetworkBodies: options.captureNetworkBodies || undefined,
           debugNoMockClaude: options.debugNoMockClaude || undefined,
         });

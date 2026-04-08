@@ -31,23 +31,23 @@ export function filterSecretConnectorMap(
 }
 
 /**
- * Merge model provider and connector firewalls into a single manifest.
- * Compose content no longer stores firewalls — all firewalls are runtime-injected.
+ * Merge model provider and connector permissions into a single manifest.
+ * Compose content no longer stores firewalls — all configs are runtime-injected.
  */
-export function mergeFirewalls(
+export function mergePermissions(
   modelProviderFirewall: Firewalls[number] | null | undefined,
   connectorFirewalls: ExpandedFirewallConfig[],
-  firewallPolicies?: FirewallPolicies,
+  permissionPolicies?: FirewallPolicies,
   vars?: Record<string, string>,
 ): Firewalls | undefined {
-  const autoFirewalls = modelProviderFirewall ? [modelProviderFirewall] : [];
-  const policyFirewalls = applyConnectorPolicies(
+  const autoConfigs = modelProviderFirewall ? [modelProviderFirewall] : [];
+  const policyConfigs = applyConnectorPolicies(
     connectorFirewalls,
-    firewallPolicies,
+    permissionPolicies,
   );
-  const allFirewalls = [...autoFirewalls, ...policyFirewalls];
-  if (allFirewalls.length === 0) return undefined;
-  return resolveFirewallBaseUrlVars(allFirewalls, vars);
+  const allConfigs = [...autoConfigs, ...policyConfigs];
+  if (allConfigs.length === 0) return undefined;
+  return resolveFirewallBaseUrlVars(allConfigs, vars);
 }
 
 /** Unrestricted permission — allows all endpoints through the proxy. */

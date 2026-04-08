@@ -41,6 +41,7 @@ export const setupPermissionAllowPage$ = command(
 
     set(reloadChatThreads$);
 
+
     // Pre-fill reason from URL parameter (set by zero doctor --reason)
     const urlReason = get(permissionAllowReason$);
     if (urlReason) {

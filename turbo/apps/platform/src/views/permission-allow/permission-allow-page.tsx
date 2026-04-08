@@ -11,10 +11,10 @@ import {
   IconX,
 } from "@tabler/icons-react";
 import {
-  isFirewallConnectorType as isPermissionConnectorType,
+  isPermissionConnectorType,
   CONNECTOR_TYPES,
-  getDefaultFirewallPolicies as getDefaultPermissionPolicies,
-  type FirewallPolicies as PermissionPolicies,
+  getDefaultPermissionPolicies,
+  type PermissionPolicies,
 } from "@vm0/core";
 import { user$ } from "../../signals/auth.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
@@ -406,7 +406,7 @@ function ResendFormCard({
       submitRequest(
         {
           agentId,
-          permissionRef: ref,
+          connectorRef: ref,
           permission: permission.name,
           action,
           method: request.method ?? undefined,
@@ -475,7 +475,7 @@ function ResendFormCard({
 
 function RequestStatusView({
   request,
-  canManagePermission,
+  canManagePermissions,
   agent,
   userName,
   agentDisplayName,
@@ -483,7 +483,7 @@ function RequestStatusView({
   request: {
     id: string;
     agentId: string;
-    firewallRef: string;
+    connectorRef: string;
     permission: string;
     action: "allow" | "deny";
     method: string | null;
@@ -493,7 +493,7 @@ function RequestStatusView({
     requesterName: string | null;
     requesterUserId: string;
   };
-  canManagePermission: boolean;
+  canManagePermissions: boolean;
   agent: { avatarUrl: string | null };
   userName: string;
   agentDisplayName: string;
@@ -505,7 +505,7 @@ function RequestStatusView({
   const showResendFormValue = useGet(resendFormVisible$);
   const doShowResendForm = useSet(showResendForm$);
 
-  const ref = request.firewallRef;
+  const ref = request.connectorRef;
   const permission = findPermission(ref, request.permission) ?? {
     name: request.permission,
   };
@@ -515,7 +515,7 @@ function RequestStatusView({
   }
 
   // Rejected — member: resend form or denied card
-  if (request.status === "rejected" && !canManagePermission) {
+  if (request.status === "rejected" && !canManagePermissions) {
     if (showResendFormValue) {
       return (
         <ResendFormCard
@@ -537,7 +537,7 @@ function RequestStatusView({
     return <PermissionsDeniedCard />;
   }
 
-  if (canManagePermission) {
+  if (canManagePermissions) {
     return (
       <AdminApprovalCard
         userName={userName}
@@ -603,12 +603,12 @@ function RequestModeView() {
   const currentUser =
     userLoadable.state === "hasData" ? userLoadable.data : undefined;
   const isAdmin = adminLoadable.state === "hasData" && adminLoadable.data;
-  const canManagePermission = currentUser?.id === agent.ownerId || isAdmin;
+  const canManagePermissions = currentUser?.id === agent.ownerId || isAdmin;
 
   return (
     <RequestStatusView
       request={request}
-      canManagePermission={canManagePermission}
+      canManagePermissions={canManagePermissions}
       agent={agent}
       userName={resolveUserName(currentUser)}
       agentDisplayName={agent.displayName ?? agentId ?? ""}
@@ -627,7 +627,7 @@ function DoctorModeView({
   action,
   method,
   path,
-  canManagePermission,
+  canManagePermissions,
   agent,
   userName,
 }: {
@@ -637,7 +637,7 @@ function DoctorModeView({
   action: "allow" | "deny";
   method: string | null;
   path: string | null;
-  canManagePermission: boolean;
+  canManagePermissions: boolean;
   agent: {
     permissionPolicies: PermissionPolicies | null;
     displayName: string | null;
@@ -674,7 +674,7 @@ function DoctorModeView({
   }
 
   // Policy doesn't match — admin: confirm card
-  if (canManagePermission) {
+  if (canManagePermissions) {
     const handleSave = () => {
       detach(
         savePolicies(
@@ -751,7 +751,7 @@ function DoctorModeView({
       submitRequest(
         {
           agentId,
-          permissionRef: ref,
+          connectorRef: ref,
           permission: permission.name,
           action,
           method: method ?? undefined,
@@ -923,7 +923,7 @@ export function PermissionAllowPage() {
   const currentUser =
     userLoadable.state === "hasData" ? userLoadable.data : undefined;
   const isAdmin = adminLoadable.state === "hasData" && adminLoadable.data;
-  const canManagePermission = currentUser?.id === agent.ownerId || isAdmin;
+  const canManagePermissions = currentUser?.id === agent.ownerId || isAdmin;
   const userName = resolveUserName(currentUser);
   const focusedPermission = findPermission(ref, permission);
 
@@ -933,7 +933,7 @@ export function PermissionAllowPage() {
 
   // Member doctor mode: wait for existing-request check so page-setup
   // can redirect to request mode before we render anything.
-  if (!canManagePermission && existingRequestLoadable.state === "loading") {
+  if (!canManagePermissions && existingRequestLoadable.state === "loading") {
     return <LoadingCard />;
   }
 
@@ -945,9 +945,9 @@ export function PermissionAllowPage() {
       action={action ?? "allow"}
       method={method}
       path={path}
-      canManagePermission={canManagePermission}
+      canManagePermissions={canManagePermissions}
       agent={{
-        permissionPolicies: agent.firewallPolicies,
+        permissionPolicies: agent.permissionPolicies,
         displayName: agent.displayName,
         avatarUrl: agent.avatarUrl,
       }}

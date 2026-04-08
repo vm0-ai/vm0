@@ -1,13 +1,13 @@
 import { command, computed, state } from "ccstate";
 import {
-  firewallAccessRequestsCreateContract as permissionAccessRequestsCreateContract,
-  firewallAccessRequestsListContract as permissionAccessRequestsListContract,
-  firewallAccessRequestsResolveContract as permissionAccessRequestsResolveContract,
-  zeroAgentFirewallPoliciesContract as zeroAgentPermissionPoliciesContract,
-  getConnectorFirewall as getConnectorPermission,
-  isFirewallConnectorType as isPermissionConnectorType,
-  type FirewallPolicies as PermissionPolicies,
-  type FirewallPolicyValue as PermissionPolicyValue,
+  permissionAccessRequestsCreateContract,
+  permissionAccessRequestsListContract,
+  permissionAccessRequestsResolveContract,
+  zeroAgentPermissionPoliciesContract,
+  getConnectorPermission,
+  isPermissionConnectorType,
+  type PermissionPolicies,
+  type PermissionPolicyValue,
 } from "@vm0/core";
 import { delay } from "signal-timers";
 import { zeroClient$ } from "../api-client.ts";
@@ -70,7 +70,7 @@ export const permissionAllowAgent$ = computed((get) => {
 });
 
 // ---------------------------------------------------------------------------
-// Permissions list (derived from firewall config)
+// Permissions list (derived from connector config)
 // ---------------------------------------------------------------------------
 
 interface Permission {
@@ -137,7 +137,7 @@ export const permissionExistingRequest$ = computed(async (get) => {
   const match = result.body
     .filter((r) => {
       return (
-        r.firewallRef === ref &&
+        r.connectorRef === ref &&
         r.permission === permission &&
         r.action === action &&
         (r.status === "pending" || r.status === "rejected")
@@ -160,7 +160,7 @@ export const updateRequestIdInUrl$ = command(({ set }, requestId: string) => {
 });
 
 // ---------------------------------------------------------------------------
-// Admin: save firewall policies
+// Admin: save permission policies
 // ---------------------------------------------------------------------------
 
 const savePermissionPolicies$ = command(
@@ -211,7 +211,7 @@ const createAccessRequest$ = command(
     { get, set },
     params: {
       agentId: string;
-      permissionRef: string;
+      connectorRef: string;
       permission: string;
       action?: "allow" | "deny";
       method?: string;
@@ -221,11 +221,7 @@ const createAccessRequest$ = command(
     signal: AbortSignal,
   ): Promise<string> => {
     const client = get(zeroClient$)(permissionAccessRequestsCreateContract);
-    const { permissionRef, ...rest } = params;
-    const result = await accept(
-      client.create({ body: { ...rest, firewallRef: permissionRef } }),
-      [201],
-    );
+    const result = await accept(client.create({ body: params }), [201]);
     signal.throwIfAborted();
     set(internalRequestsReload$, (prev) => {
       return prev + 1;
@@ -342,7 +338,7 @@ export const submitAccessRequest$ = command(
     { set },
     params: {
       agentId: string;
-      permissionRef: string;
+      connectorRef: string;
       permission: string;
       action?: "allow" | "deny";
       method?: string;

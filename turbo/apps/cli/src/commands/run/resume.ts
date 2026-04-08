@@ -5,7 +5,7 @@ import {
   collectVolumeVersions,
   isUUID,
   loadValues,
-  parseFirewallPolicies,
+  parsePermissionPolicies,
   pollEvents,
   showNextSteps,
   renderRunCreated,
@@ -56,8 +56,8 @@ export const resumeCommand = new Command()
     "Settings JSON to pass to Claude CLI (e.g., hooks, permissions)",
   )
   .option(
-    "--firewall-policies <json>",
-    'Firewall policies JSON (e.g., \'{"github": {"actions:read": "allow"}}\')',
+    "--permission-policies <json>",
+    'Permission policies JSON (e.g., \'{"github": {"actions:read": "allow"}}\')',
   )
   .option("--verbose", "Show full tool inputs and outputs")
   .addOption(new Option("--debug-no-mock-claude").hideHelp())
@@ -74,7 +74,7 @@ export const resumeCommand = new Command()
           disallowedTools?: string[];
           tools?: string[];
           settings?: string;
-          firewallPolicies?: string;
+          permissionPolicies?: string;
           verbose?: boolean;
           debugNoMockClaude?: boolean;
         },
@@ -91,7 +91,7 @@ export const resumeCommand = new Command()
           disallowedTools?: string[];
           tools?: string[];
           settings?: string;
-          firewallPolicies?: string;
+          permissionPolicies?: string;
           verbose?: boolean;
           debugNoMockClaude?: boolean;
         };
@@ -133,8 +133,8 @@ export const resumeCommand = new Command()
           disallowedTools: options.disallowedTools || allOpts.disallowedTools,
           tools: options.tools || allOpts.tools,
           settings: options.settings || allOpts.settings,
-          firewallPolicies: parseFirewallPolicies(
-            options.firewallPolicies || allOpts.firewallPolicies,
+          permissionPolicies: parsePermissionPolicies(
+            options.permissionPolicies || allOpts.permissionPolicies,
           ),
           debugNoMockClaude:
             options.debugNoMockClaude || allOpts.debugNoMockClaude || undefined,

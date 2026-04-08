@@ -57,7 +57,7 @@ function mockAPIs(instructionsContent: string | null = null) {
         sound: null,
         avatarUrl: null,
         connectors: [],
-        firewallPolicies: null,
+        permissionPolicies: null,
         customSkills: [],
       });
     }),
@@ -122,7 +122,7 @@ describe("zero instructions tab - display", () => {
           sound: null,
           avatarUrl: null,
           connectors: [],
-          firewallPolicies: null,
+          permissionPolicies: null,
           customSkills: [],
         });
       }),
@@ -217,7 +217,7 @@ describe("zero instructions tab - display", () => {
           displayName: "My Agent",
           sound: null,
           avatarUrl: null,
-          firewallPolicies: null,
+          permissionPolicies: null,
           customSkills: [],
         });
       }),

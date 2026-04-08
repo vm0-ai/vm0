@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { POST } from "../../agents/route";
 import { GET } from "../../agents/[id]/route";
-import { PUT as putFirewallPolicies } from "../route";
+import { PUT as putPermissionPolicies } from "../route";
 import {
   createTestRequest,
   createTestCliToken,
@@ -43,8 +43,8 @@ function putPolicies(
   body: Record<string, unknown>,
   token: string,
 ) {
-  return putFirewallPolicies(
-    createTestRequest("http://localhost:3000/api/zero/firewall-policies", {
+  return putPermissionPolicies(
+    createTestRequest("http://localhost:3000/api/zero/permission-policies", {
       method: "PUT",
       headers: {
         "Content-Type": "application/json",
@@ -55,7 +55,7 @@ function putPolicies(
   );
 }
 
-describe("PUT /api/zero/firewall-policies", () => {
+describe("PUT /api/zero/permission-policies", () => {
   beforeEach(async () => {
     context.setupMocks();
     const user = await context.setupUser();
@@ -71,7 +71,7 @@ describe("PUT /api/zero/firewall-policies", () => {
     });
   });
 
-  it("should persist firewall policies for an agent", async () => {
+  it("should persist permission policies for an agent", async () => {
     const createRes = await postAgent({}, testCliToken);
     expect(createRes.status).toBe(201);
     const created = await createRes.json();
@@ -88,7 +88,7 @@ describe("PUT /api/zero/firewall-policies", () => {
 
     expect(response.status).toBe(200);
     const data = await response.json();
-    expect(data.firewallPolicies).toStrictEqual(policies);
+    expect(data.permissionPolicies).toStrictEqual(policies);
     expect(data.agentId).toBe(created.agentId);
   });
 
@@ -105,7 +105,7 @@ describe("PUT /api/zero/firewall-policies", () => {
     const getRes = await getAgent(created.agentId, testCliToken);
     expect(getRes.status).toBe(200);
     const fetched = await getRes.json();
-    expect(fetched.firewallPolicies).toStrictEqual(policies);
+    expect(fetched.permissionPolicies).toStrictEqual(policies);
   });
 
   it("should overwrite previous policies", async () => {
@@ -123,10 +123,10 @@ describe("PUT /api/zero/firewall-policies", () => {
 
     expect(response.status).toBe(200);
     const data = await response.json();
-    expect(data.firewallPolicies).toStrictEqual(second);
+    expect(data.permissionPolicies).toStrictEqual(second);
   });
 
-  it("should allow org admin to update another user's firewall policies", async () => {
+  it("should allow org admin to update another user's permission policies", async () => {
     const created = await (await postAgent({}, testCliToken)).json();
 
     // Create another admin user who is NOT the agent owner
@@ -152,7 +152,7 @@ describe("PUT /api/zero/firewall-policies", () => {
 
     expect(response.status).toBe(200);
     const data = await response.json();
-    expect(data.firewallPolicies).toStrictEqual(policies);
+    expect(data.permissionPolicies).toStrictEqual(policies);
   });
 
   it("should return 403 for non-owner member", async () => {
@@ -203,22 +203,22 @@ describe("PUT /api/zero/firewall-policies", () => {
 
     expect(response.status).toBe(200);
     const data = await response.json();
-    expect(data.firewallPolicies).toStrictEqual(policies);
+    expect(data.permissionPolicies).toStrictEqual(policies);
   });
 
-  it("should return 400 for unknown firewall ref", async () => {
+  it("should return 400 for unknown connector ref", async () => {
     const created = await (await postAgent({}, testCliToken)).json();
 
     const response = await putPolicies(
       created.agentId,
-      { policies: { "nonexistent-firewall": { "perm:read": "allow" } } },
+      { policies: { "nonexistent-connector": { "perm:read": "allow" } } },
       testCliToken,
     );
 
     expect(response.status).toBe(400);
     const data = await response.json();
     expect(data.error.code).toBe("VALIDATION_ERROR");
-    expect(data.error.message).toContain("nonexistent-firewall");
+    expect(data.error.message).toContain("nonexistent-connector");
   });
 
   it("should return 400 for unknown permission name", async () => {
@@ -271,14 +271,14 @@ describe("PUT /api/zero/firewall-policies", () => {
 
     expect(response.status).toBe(200);
     const data = await response.json();
-    expect(data.firewallPolicies).toStrictEqual({});
+    expect(data.permissionPolicies).toStrictEqual({});
   });
 
-  it("should return firewallPolicies as null for new agents", async () => {
+  it("should return permissionPolicies as null for new agents", async () => {
     const createRes = await postAgent({}, testCliToken);
     expect(createRes.status).toBe(201);
     const data = await createRes.json();
-    expect(data.firewallPolicies).toBeNull();
+    expect(data.permissionPolicies).toBeNull();
   });
 
   it("should return full agent response shape", async () => {
@@ -298,7 +298,7 @@ describe("PUT /api/zero/firewall-policies", () => {
       description: expect.toBeOneOf([null, expect.any(String)]),
       displayName: expect.toBeOneOf([null, expect.any(String)]),
       sound: expect.toBeOneOf([null, expect.any(String)]),
-      firewallPolicies: policies,
+      permissionPolicies: policies,
     });
   });
 
@@ -315,7 +315,7 @@ describe("PUT /api/zero/firewall-policies", () => {
     const get1 = await getAgent(agent1.agentId, testCliToken);
     const get2 = await getAgent(agent2.agentId, testCliToken);
 
-    expect((await get1.json()).firewallPolicies).toStrictEqual(policies1);
-    expect((await get2.json()).firewallPolicies).toStrictEqual(policies2);
+    expect((await get1.json()).permissionPolicies).toStrictEqual(policies1);
+    expect((await get2.json()).permissionPolicies).toStrictEqual(policies2);
   });
 });

@@ -124,7 +124,7 @@ async function showSandboxInfo(showPermissions: boolean): Promise<void> {
         enabledResult.status === "fulfilled";
       if (permissionDataAvailable) {
         resolvedPolicies = resolveFirewallPolicies(
-          agentResult.value.firewallPolicies,
+          agentResult.value.permissionPolicies,
           enabledResult.value,
         );
       }

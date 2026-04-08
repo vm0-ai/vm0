@@ -172,7 +172,7 @@ describe("create agent dialog - avatar", () => {
             sound: null,
             avatarUrl: capturedPayload.avatarUrl ?? null,
             connectors: [],
-            firewallPolicies: null,
+            permissionPolicies: null,
           },
           { status: 201 },
         );
@@ -187,7 +187,7 @@ describe("create agent dialog - avatar", () => {
           sound: null,
           avatarUrl: null,
           connectors: [],
-          firewallPolicies: null,
+          permissionPolicies: null,
         });
       }),
     );
@@ -230,7 +230,7 @@ describe("create agent dialog - avatar", () => {
             sound: null,
             avatarUrl: capturedPayload.avatarUrl ?? null,
             connectors: [],
-            firewallPolicies: null,
+            permissionPolicies: null,
           },
           { status: 201 },
         );
@@ -245,7 +245,7 @@ describe("create agent dialog - avatar", () => {
           sound: null,
           avatarUrl: null,
           connectors: [],
-          firewallPolicies: null,
+          permissionPolicies: null,
         });
       }),
     );
@@ -296,7 +296,7 @@ describe("create agent dialog - avatar", () => {
             sound: null,
             avatarUrl: capturedPayload.avatarUrl ?? null,
             connectors: [],
-            firewallPolicies: null,
+            permissionPolicies: null,
           },
           { status: 201 },
         );
@@ -311,7 +311,7 @@ describe("create agent dialog - avatar", () => {
           sound: null,
           avatarUrl: null,
           connectors: [],
-          firewallPolicies: null,
+          permissionPolicies: null,
         });
       }),
     );

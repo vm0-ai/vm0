@@ -63,7 +63,7 @@ import {
   saveZeroJobConnectors$,
   zeroJobActiveTab$,
   setZeroJobActiveTab$,
-  zeroJobFirewallPolicies$,
+  zeroJobPermissionPolicies$,
   reloadJobDetail$,
 } from "../../signals/zero-page/zero-job-detail.ts";
 import type { AgentDetail } from "../../signals/zero-page/agent-types.ts";
@@ -79,19 +79,19 @@ import { isOrgAdmin$ } from "../../signals/org.ts";
 import { user$ } from "../../signals/auth.ts";
 import { ZeroNoPermissionIllustration } from "./components/zero-no-permission-illustration.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
-import { FirewallPermissionsDrawer } from "./components/settings/firewall-permissions-dialog.tsx";
+import { PermissionsDrawer } from "./components/settings/permissions-dialog.tsx";
 import {
-  hasFirewallPermissions,
-  saveFirewallPolicies$,
-} from "../../signals/zero-page/settings/firewalls.ts";
+  hasConnectorPermissions,
+  savePermissionPolicies$,
+} from "../../signals/zero-page/settings/permissions.ts";
 import {
   allConnectorTypes$,
   type ConnectorTypeWithStatus,
 } from "../../signals/zero-page/settings/connectors.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import {
-  permFirewallType$,
-  setPermFirewallType$,
+  permConnectorType$,
+  setPermConnectorType$,
   permSearch$,
   setPermSearch$,
   permSearchActive$,
@@ -439,11 +439,12 @@ function JobPermissionsTab({
   const removeConnector = useSet(removeZeroJobConnector$);
   const saveConnectors = useSet(saveZeroJobConnectors$);
   const pageSignal = useGet(pageSignal$);
-  const firewallPolicies = useLastResolved(zeroJobFirewallPolicies$) ?? null;
+  const permissionPolicies =
+    useLastResolved(zeroJobPermissionPolicies$) ?? null;
   const reloadDetail = useSet(reloadJobDetail$);
-  const saveFirewallPol = useSet(saveFirewallPolicies$);
-  const firewallType = useGet(permFirewallType$);
-  const setFirewallType = useSet(setPermFirewallType$);
+  const savePermPol = useSet(savePermissionPolicies$);
+  const connectorType = useGet(permConnectorType$);
+  const setConnectorType = useSet(setPermConnectorType$);
   const search = useGet(permSearch$);
   const setSearch = useSet(setPermSearch$);
   const searchActive = useGet(permSearchActive$);
@@ -613,9 +614,9 @@ function JobPermissionsTab({
                       return handleToggle(c.type, checked);
                     }}
                     loading={savingType === c.type}
-                    showManage={hasFirewallPermissions(c.type)}
+                    showManage={hasConnectorPermissions(c.type)}
                     onManage={() => {
-                      return setFirewallType(c.type);
+                      return setConnectorType(c.type);
                     }}
                     isLast={i === filteredConnectors.length - 1}
                   />
@@ -628,25 +629,21 @@ function JobPermissionsTab({
             )}
           </div>
 
-          {firewallType && (
-            <FirewallPermissionsDrawer
-              connectorType={firewallType}
+          {connectorType && (
+            <PermissionsDrawer
+              connectorType={connectorType}
               displayName={displayName}
-              initialPolicies={firewallPolicies ?? {}}
+              initialPolicies={permissionPolicies ?? {}}
               readOnly={!isOwner}
               onApply={async (policies) => {
-                const saved = await saveFirewallPol(
-                  agentId,
-                  policies,
-                  pageSignal,
-                );
+                const saved = await savePermPol(agentId, policies, pageSignal);
                 if (saved !== undefined) {
                   reloadDetail();
                 }
                 toast.success("Permissions updated");
               }}
               onClose={() => {
-                return setFirewallType(null);
+                return setConnectorType(null);
               }}
             />
           )}

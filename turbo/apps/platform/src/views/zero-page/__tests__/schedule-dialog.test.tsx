@@ -122,7 +122,7 @@ function mockEditModeAPIs() {
         sound: null,
         avatarUrl: null,
         connectors: [],
-        firewallPolicies: null,
+        permissionPolicies: null,
       });
     }),
     http.get("*/api/zero/agents/my-agent/instructions", () => {
