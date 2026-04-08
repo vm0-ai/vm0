@@ -218,12 +218,12 @@ class FirewallBlock(NamedTuple):
     path: str
 
 
-def parse_graphql_rule(rest: str) -> tuple[str, str | None, str | None] | None:
-    """Parse a rule's path+suffix into (path, type_filter, op_filter).
+def parse_graphql_rule(rest: str) -> tuple[str, str | None, str | None, str | None] | None:
+    """Parse a rule's path+suffix into (path, type_filter, op_filter, field_filter).
 
     If the rule contains the ``GraphQL`` keyword, returns the path portion
-    and optional ``type:`` / ``operationName:`` filters.  Returns None when
-    the ``GraphQL`` keyword is absent (plain REST rule).
+    and optional ``type:`` / ``operationName:`` / ``field:`` filters.
+    Returns None when the ``GraphQL`` keyword is absent (plain REST rule).
     """
     gql_idx = rest.find(" GraphQL")
     if gql_idx == -1:
@@ -234,22 +234,134 @@ def parse_graphql_rule(rest: str) -> tuple[str, str | None, str | None] | None:
 
     type_filter: str | None = None
     op_filter: str | None = None
+    field_filter: str | None = None
 
     for part in suffix_parts[1:]:  # skip "GraphQL" itself
         if part.startswith("type:"):
             type_filter = part[5:]
         elif part.startswith("operationName:"):
             op_filter = part[14:]
+        elif part.startswith("field:"):
+            field_filter = part[6:]
 
-    return path, type_filter, op_filter
+    return path, type_filter, op_filter, field_filter
+
+
+def _extract_top_level_fields(query_str: str) -> list[str]:
+    """Extract top-level selection field names from a GraphQL query string.
+
+    Parses just enough to find the operation body's opening brace and then
+    extracts identifiers at depth 1.  Handles aliases (``alias: fieldName``)
+    by returning the field name, not the alias.
+    """
+    s = query_str.lstrip()
+    if not s:
+        return []
+
+    i = 0
+
+    # Skip operation keyword (query/mutation/subscription)
+    if s[0].isalpha():
+        while i < len(s) and s[i].isalpha():
+            i += 1
+        # Skip optional operation name
+        while i < len(s) and s[i].isspace():
+            i += 1
+        if i < len(s) and (s[i].isalpha() or s[i] == "_"):
+            while i < len(s) and (s[i].isalnum() or s[i] == "_"):
+                i += 1
+            while i < len(s) and s[i].isspace():
+                i += 1
+        # Skip optional variable definitions: ($var: Type, ...)
+        if i < len(s) and s[i] == "(":
+            depth = 1
+            i += 1
+            while i < len(s) and depth > 0:
+                if s[i] == "(":
+                    depth += 1
+                elif s[i] == ")":
+                    depth -= 1
+                i += 1
+            while i < len(s) and s[i].isspace():
+                i += 1
+
+    # Skip optional directives (@skip, @include, etc.) before opening brace
+    while i < len(s) and s[i] == "@":
+        while i < len(s) and not s[i].isspace() and s[i] != "{":
+            i += 1
+        # Directive might have arguments
+        if i < len(s) and s[i] == "(":
+            depth = 1
+            i += 1
+            while i < len(s) and depth > 0:
+                if s[i] == "(":
+                    depth += 1
+                elif s[i] == ")":
+                    depth -= 1
+                i += 1
+        while i < len(s) and s[i].isspace():
+            i += 1
+
+    # Find opening brace of selection set
+    if i >= len(s) or s[i] != "{":
+        return []
+    i += 1  # skip '{'
+
+    fields: list[str] = []
+    depth = 1
+
+    while i < len(s) and depth > 0:
+        c = s[i]
+        if c == "{":
+            depth += 1
+            i += 1
+        elif c == "}":
+            depth -= 1
+            i += 1
+        elif depth == 1 and (c.isalpha() or c == "_"):
+            # Read identifier
+            j = i
+            while j < len(s) and (s[j].isalnum() or s[j] == "_"):
+                j += 1
+            ident = s[i:j]
+            i = j
+            # Skip whitespace
+            while i < len(s) and s[i].isspace():
+                i += 1
+            # Check if this is an alias (followed by ':')
+            if i < len(s) and s[i] == ":":
+                i += 1  # skip ':'
+                while i < len(s) and s[i].isspace():
+                    i += 1
+                # Read the actual field name
+                j = i
+                while j < len(s) and (s[j].isalnum() or s[j] == "_"):
+                    j += 1
+                if j > i:
+                    fields.append(s[i:j])
+                i = j
+            else:
+                fields.append(ident)
+        else:
+            i += 1
+
+    return fields
+
+
+def _match_wildcard(value: str, pattern: str) -> bool:
+    """Match a value against a pattern with optional trailing wildcard."""
+    if pattern.endswith("*"):
+        return value.startswith(pattern[:-1])
+    return value == pattern
 
 
 def match_graphql_body(
     body: bytes | None,
     type_filter: str | None,
     op_filter: str | None,
+    field_filter: str | None = None,
 ) -> bool:
-    """Match a GraphQL request body against type and operationName filters.
+    """Match a GraphQL request body against type, operationName, and field filters.
 
     Fail-closed: returns False if the body cannot be parsed or required
     fields are missing.
@@ -265,13 +377,18 @@ def match_graphql_body(
     if not isinstance(data, dict):
         return False
 
+    query_str: str | None = None
+    needs_query = type_filter is not None or field_filter is not None
+    if needs_query:
+        query_str = data.get("query")
+        if not isinstance(query_str, str):
+            return False
+
     # Extract operation type from the query string.
     # GraphQL allows compact forms like `mutation{`, `query($id: ID!)`,
     # so we extract only leading alpha characters as the keyword.
     if type_filter is not None:
-        query_str = data.get("query")
-        if not isinstance(query_str, str):
-            return False
+        assert query_str is not None
         stripped = query_str.lstrip()
         if not stripped:
             return False
@@ -288,11 +405,16 @@ def match_graphql_body(
         op_name = data.get("operationName")
         if not isinstance(op_name, str) or not op_name:
             return False
-        if op_filter.endswith("*"):
-            prefix = op_filter[:-1]
-            if not op_name.startswith(prefix):
-                return False
-        elif op_name != op_filter:
+        if not _match_wildcard(op_name, op_filter):
+            return False
+
+    # Match field name
+    if field_filter is not None:
+        assert query_str is not None
+        fields = _extract_top_level_fields(query_str)
+        if not fields:
+            return False
+        if not any(_match_wildcard(f, field_filter) for f in fields):
             return False
 
     return True
@@ -366,16 +488,22 @@ def match_firewall_request(
                     # Check for GraphQL suffix
                     gql = parse_graphql_rule(rest)
                     if gql is not None:
-                        rule_pattern, type_filter, op_filter = gql
+                        rule_pattern, type_filter, op_filter, field_filter = gql
                     else:
                         rule_pattern = rest
-                        type_filter, op_filter = None, None
+                        type_filter, op_filter, field_filter = None, None, None
 
                     params = match_path(rel_path, rule_pattern)
                     if params is not None:
                         # If GraphQL rule, also check body
-                        has_gql_filter = type_filter is not None or op_filter is not None
-                        if has_gql_filter and not match_graphql_body(body, type_filter, op_filter):
+                        has_gql_filter = (
+                            type_filter is not None
+                            or op_filter is not None
+                            or field_filter is not None
+                        )
+                        if has_gql_filter and not match_graphql_body(
+                            body, type_filter, op_filter, field_filter
+                        ):
                             continue
                         # Merge base params with rule params
                         all_params = {**base_params, **params}

@@ -463,6 +463,48 @@ describe("validateRule", () => {
       return validateRule("POST noslash GraphQL type:query", "p", "fw");
     }).toThrow("path must start with");
   });
+
+  it("should accept GraphQL field: modifier", () => {
+    expect(() => {
+      return validateRule(
+        "POST /graphql GraphQL type:mutation field:createIssue",
+        "p",
+        "fw",
+      );
+    }).not.toThrow();
+  });
+
+  it("should accept GraphQL field wildcard", () => {
+    expect(() => {
+      return validateRule(
+        "POST /graphql GraphQL type:mutation field:create*",
+        "p",
+        "fw",
+      );
+    }).not.toThrow();
+  });
+
+  it("should accept GraphQL field-only modifier", () => {
+    expect(() => {
+      return validateRule("POST /graphql GraphQL field:createIssue", "p", "fw");
+    }).not.toThrow();
+  });
+
+  it("should reject empty GraphQL field name", () => {
+    expect(() => {
+      return validateRule("POST /graphql GraphQL field:", "p", "fw");
+    }).toThrow("empty GraphQL field name");
+  });
+
+  it("should reject invalid GraphQL field pattern", () => {
+    expect(() => {
+      return validateRule(
+        "POST /graphql GraphQL field:create-issue",
+        "p",
+        "fw",
+      );
+    }).toThrow("invalid GraphQL field pattern");
+  });
 });
 
 describe("validateBaseUrl", () => {
