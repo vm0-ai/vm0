@@ -28,7 +28,6 @@ export const fetchDownloadExtra$ = command(
           params: { id: runId },
         }),
         [200],
-        { toast: false },
       ).then((r) => {
         return r.body;
       }),

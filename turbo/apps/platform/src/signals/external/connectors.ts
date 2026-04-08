@@ -21,7 +21,7 @@ export const connectors$ = computed(async (get) => {
   get(internalReloadConnectors$);
   const createClient = get(zeroClient$);
   const client = createClient(zeroConnectorsMainContract);
-  const result = await accept(client.list(), [200], { toast: false });
+  const result = await accept(client.list(), [200]);
   return result.body as ConnectorListResponse;
 });
 

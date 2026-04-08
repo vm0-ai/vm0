@@ -1,5 +1,24 @@
 # Changelog
 
+## [12.205.0](https://github.com/vm0-ai/vm0/compare/web-v12.204.1...web-v12.205.0) (2026-04-08)
+
+
+### Features
+
+* add voice-chat db schema and migration ([#8542](https://github.com/vm0-ai/vm0/issues/8542)) ([016f427](https://github.com/vm0-ai/vm0/commit/016f42747c7e4a5adaad1ae251691e55c7cf40ea))
+* add web push notifications for pwa on chat completion ([#8501](https://github.com/vm0-ai/vm0/issues/8501)) ([a89b898](https://github.com/vm0-ai/vm0/commit/a89b89890c6b6ff66cc761fca39bc6195f8485bb))
+* **core:** add voice-chat types and feature flag ([#8529](https://github.com/vm0-ai/vm0/issues/8529)) ([#8539](https://github.com/vm0-ai/vm0/issues/8539)) ([ee7ee22](https://github.com/vm0-ai/vm0/commit/ee7ee222ae733f47f7cb323d871f2a9577adc41c))
+* **voice-chat:** add webrtc frontend with live transcript and context panels ([#8556](https://github.com/vm0-ai/vm0/issues/8556)) ([ded50f2](https://github.com/vm0-ai/vm0/commit/ded50f20faf57860f14a8aee6a11a2dbb0cb4d3d))
+* **web:** add voice-chat shared context api ([#8531](https://github.com/vm0-ai/vm0/issues/8531)) ([#8551](https://github.com/vm0-ai/vm0/issues/8551)) ([9459f53](https://github.com/vm0-ai/vm0/commit/9459f5323d8dfb78d6bee09d114b3d63c9dd3d82))
+* **web:** add voice-chat token endpoint and cleanup cron ([#8553](https://github.com/vm0-ai/vm0/issues/8553)) ([b97cca3](https://github.com/vm0-ai/vm0/commit/b97cca37554bed8f68806cf0fbcb4d5f393aa4d0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.162.0
+
 ## [12.204.1](https://github.com/vm0-ai/vm0/compare/web-v12.204.0...web-v12.204.1) (2026-04-08)
 
 

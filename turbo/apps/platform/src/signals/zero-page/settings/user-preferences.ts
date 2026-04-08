@@ -21,7 +21,7 @@ export const userPreferences$ = computed(async (get) => {
   get(internalReloadPreferences$);
   const createClient = get(zeroClient$);
   const client = createClient(zeroUserPreferencesContract);
-  const result = await accept(client.get(), [200], { toast: false });
+  const result = await accept(client.get(), [200]);
   return result.body;
 });
 

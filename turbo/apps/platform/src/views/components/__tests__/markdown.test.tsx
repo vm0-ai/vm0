@@ -92,3 +92,37 @@ describe("chat-d-065: theme signal applied to markdown rendering", () => {
     });
   });
 });
+
+describe("chat-d-066: markdown links open in new tab", () => {
+  it("should render links with target=_blank and rel=noopener noreferrer", async () => {
+    server.use(
+      http.get("*/api/zero/chat-threads/:id", () => {
+        return HttpResponse.json({
+          id: "thread-link",
+          ...THREAD_BASE,
+          chatMessages: [
+            {
+              role: "assistant",
+              content: "[example](https://example.com)",
+              createdAt: "2026-01-01T00:00:00Z",
+            },
+          ],
+        });
+      }),
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
+    );
+
+    await setupPage({ context, path: "/chats/thread-link" });
+
+    await waitFor(() => {
+      const link = screen.getAllByRole("link").find((el) => {
+        return /example/.test(el.textContent ?? "");
+      });
+      expect(link).toHaveAttribute("href", "https://example.com");
+      expect(link).toHaveAttribute("target", "_blank");
+      expect(link).toHaveAttribute("rel", "noopener noreferrer");
+    });
+  });
+});

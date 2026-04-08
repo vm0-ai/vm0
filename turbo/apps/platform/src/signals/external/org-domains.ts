@@ -22,7 +22,7 @@ const domainsResponse$ = computed(async (get) => {
   const client = createClient(zeroOrgDomainsContract);
   // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove — use accept() error propagation
   try {
-    const result = await accept(client.list(), [200], { toast: false });
+    const result = await accept(client.list(), [200]);
     return result.body;
   } catch (error) {
     throwIfAbort(error);

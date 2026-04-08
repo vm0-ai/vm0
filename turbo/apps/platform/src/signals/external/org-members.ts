@@ -25,7 +25,7 @@ const orgMembersResponse$ = computed(async (get) => {
   const client = createClient(zeroOrgMembersContract);
   // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove — use accept() error propagation
   try {
-    const result = await accept(client.members(), [200], { toast: false });
+    const result = await accept(client.members(), [200]);
     return result.body;
   } catch (error) {
     throwIfAbort(error);

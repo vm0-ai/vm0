@@ -39,18 +39,10 @@ export const clerk$ = computed(async () => {
 
   const webOrigin = resolveWebOrigin();
   const clerkInstance = new Clerk(publishableKey);
-  // When running on an "app" subdomain (e.g. app.vm7.ai or pr-N-app.vm6.ai),
-  // this is a Clerk satellite application whose primary domain is the "www"
-  // subdomain.  Without isSatellite + domain, Clerk JS won't process the
-  // __clerk_db_jwt handoff token and authentication will loop back to sign-in.
-  const isSatellite = /(-app\.|^app\.)/.test(location.hostname);
   await clerkInstance.load({
     signInUrl: `${webOrigin}/sign-in`,
     signUpUrl: `${webOrigin}/sign-up`,
     afterSignOutUrl: `${webOrigin}/sign-in`,
-    ...(isSatellite && webOrigin
-      ? { isSatellite: true, domain: webOrigin }
-      : {}),
   });
   return clerkInstance;
 });

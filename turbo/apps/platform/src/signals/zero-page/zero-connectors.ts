@@ -32,9 +32,7 @@ const zeroAgent$ = computed(async (get) => {
   }
 
   const client = get(zeroClient$)(zeroAgentsByIdContract);
-  const result = await accept(client.get({ params: { id: agentId } }), [200], {
-    toast: false,
-  });
+  const result = await accept(client.get({ params: { id: agentId } }), [200]);
   return result.body;
 });
 
@@ -52,7 +50,6 @@ const seededConnectors$ = computed(async (get) => {
   const result = await accept(
     client.get({ params: { id: agent.agentId } }),
     [200],
-    { toast: false },
   );
   return result.body.enabledTypes;
 });

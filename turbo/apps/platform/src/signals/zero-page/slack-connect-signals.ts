@@ -51,18 +51,10 @@ export const initSlackConnectPage$ = command(
     if (!initialStatus && !initialError && workspaceId) {
       set(internalStatus$, "checking");
       const client = get(zeroClient$)(zeroSlackConnectContract);
-      // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove — use accept() error propagation
-      try {
-        const result = await accept(client.getStatus(), [200], {
-          toast: false,
-        });
-        if (result.body.isConnected) {
-          set(internalStatus$, "success");
-          return;
-        }
-      } catch (error) {
-        throwIfAbort(error);
-        // silently fall through to idle
+      const result = await accept(client.getStatus(), [200]);
+      if (result.body.isConnected) {
+        set(internalStatus$, "success");
+        return;
       }
       set(internalStatus$, "idle");
     }
@@ -99,7 +91,6 @@ export const connectSlackAccount$ = command(
           },
         }),
         [200],
-        { toast: false },
       );
       set(internalStatus$, "success");
       window.location.href = "slack://open";

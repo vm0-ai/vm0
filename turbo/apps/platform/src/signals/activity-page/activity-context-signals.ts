@@ -18,7 +18,6 @@ export const zeroActivityContext$ = computed(async (get) => {
   const result = await accept(
     client.getContext({ params: { id: runId } }),
     [200],
-    { toast: false },
   );
   return result.body;
 });

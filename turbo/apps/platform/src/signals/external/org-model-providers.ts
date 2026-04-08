@@ -22,7 +22,7 @@ export const orgModelProviders$ = computed(async (get) => {
   get(internalReloadOrgModelProviders$);
   const createClient = get(zeroClient$);
   const client = createClient(zeroModelProvidersMainContract);
-  const result = await accept(client.list(), [200], { toast: false });
+  const result = await accept(client.list(), [200]);
   return result.body;
 });
 

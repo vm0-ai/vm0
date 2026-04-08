@@ -1,5 +1,15 @@
 # Changelog
 
+## [8.162.0](https://github.com/vm0-ai/vm0/compare/core-v8.161.1...core-v8.162.0) (2026-04-08)
+
+
+### Features
+
+* add web push notifications for pwa on chat completion ([#8501](https://github.com/vm0-ai/vm0/issues/8501)) ([a89b898](https://github.com/vm0-ai/vm0/commit/a89b89890c6b6ff66cc761fca39bc6195f8485bb))
+* **cli:** add voice-chat context commands for worker sandbox ([#8548](https://github.com/vm0-ai/vm0/issues/8548)) ([cee3e98](https://github.com/vm0-ai/vm0/commit/cee3e98143a8711569a24334d6047e341e6181c2))
+* **core:** add voice-chat types and feature flag ([#8529](https://github.com/vm0-ai/vm0/issues/8529)) ([#8539](https://github.com/vm0-ai/vm0/issues/8539)) ([ee7ee22](https://github.com/vm0-ai/vm0/commit/ee7ee222ae733f47f7cb323d871f2a9577adc41c))
+* **firewall:** add graphql field path parser with nested selection support ([#8520](https://github.com/vm0-ai/vm0/issues/8520)) ([7665bee](https://github.com/vm0-ai/vm0/commit/7665bee9864a351c1298e42066a2fe7019c0bcec))
+
 ## [8.161.1](https://github.com/vm0-ai/vm0/compare/core-v8.161.0...core-v8.161.1) (2026-04-08)
 
 
