@@ -1,7 +1,11 @@
 import { defineConfig, devices } from "@playwright/test";
 import path from "node:path";
 
-const STORAGE_STATE = path.join(__dirname, ".clerk", "user.json");
+if (!process.env.VM0_API_URL) {
+  throw new Error("VM0_API_URL environment variable is required");
+}
+
+export const STORAGE_STATE = path.join(__dirname, ".clerk", "user.json");
 
 export default defineConfig({
   testDir: ".",

@@ -2,10 +2,9 @@ import { clerk } from "@clerk/testing/playwright";
 import { expect, test as setup } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { STORAGE_STATE } from "./playwright.config";
 
 const CREDENTIALS_PATH = path.join(__dirname, ".clerk", "credentials.json");
-
-const STORAGE_STATE = path.join(__dirname, ".clerk", "user.json");
 
 setup("authenticate and complete onboarding", async ({ page }) => {
   const raw = await readFile(CREDENTIALS_PATH, "utf-8");
@@ -55,26 +54,26 @@ async function completeOnboarding(
 
   // Step 1: Name your workspace
   const workspaceInput = page.getByPlaceholder("e.g. Acme Corp");
-  if (await workspaceInput.isVisible({ timeout: 5_000 }).catch(() => false)) {
+  if (await workspaceInput.isVisible({ timeout: 5_000 })) {
     await workspaceInput.fill("E2E Test Workspace");
     await page.getByRole("button", { name: "Next" }).click();
   }
 
   // Step 2: Choose your tools — skip
   const chooseTools = page.getByTestId("onboarding-step-select-connectors");
-  if (await chooseTools.isVisible({ timeout: 5_000 }).catch(() => false)) {
+  if (await chooseTools.isVisible({ timeout: 5_000 })) {
     await page.getByRole("button", { name: "Next" }).click();
   }
 
   // Step 3: Connect your apps — skip
   const connectApps = page.getByText("Connect your apps");
-  if (await connectApps.isVisible({ timeout: 5_000 }).catch(() => false)) {
+  if (await connectApps.isVisible({ timeout: 5_000 })) {
     await page.getByRole("button", { name: "Next" }).click();
   }
 
   // Step 4: Where to work — continue in web
   const continueWeb = page.getByRole("button", { name: "Continue in web" });
-  if (await continueWeb.isVisible({ timeout: 5_000 }).catch(() => false)) {
+  if (await continueWeb.isVisible({ timeout: 5_000 })) {
     await continueWeb.click();
   }
 }
