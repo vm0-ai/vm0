@@ -59,8 +59,11 @@ import {
   type AssistantChatMessage,
   cancelActiveRun$,
   thinkingMessage$,
+  zeroChatAttachments$,
 } from "../../signals/chat-page/chat-message.ts";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
+import { useAutoScroll } from "./use-auto-scroll.ts";
+import { setChatScrollContainer$ } from "../../signals/chat-page/chat-auto-scroll.ts";
 import { Link } from "../router/link.tsx";
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
 import { setActiveOrgManageTab$ } from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
@@ -70,60 +73,6 @@ import {
   copiedMessageIdValue$,
   copyMessageContent$,
 } from "../../signals/zero-page/zero-session-chat-ui.ts";
-function scrollToLatestMessage() {
-  const scrollEl = document.querySelector<HTMLElement>(
-    "[data-scroll-container]",
-  );
-  const container = document.querySelector<HTMLElement>(
-    "[data-message-container]",
-  );
-  if (!scrollEl || !container) {
-    return;
-  }
-
-  const children = container.children;
-  if (children.length === 0) {
-    return;
-  }
-
-  let lastUser: HTMLElement | null = null;
-  let lastAssistant: HTMLElement | null = null;
-  for (let i = children.length - 1; i >= 0; i--) {
-    const child = children[i] as HTMLElement;
-    const role = child.dataset.role;
-    if (!lastAssistant && role === "assistant") {
-      lastAssistant = child;
-    }
-    if (!lastUser && role === "user") {
-      lastUser = child;
-    }
-    if (lastUser && lastAssistant) {
-      break;
-    }
-  }
-
-  if (!lastUser) {
-    return;
-  }
-
-  const visibleHeight = scrollEl.clientHeight;
-  const userTop = lastUser.offsetTop - container.offsetTop;
-
-  if (lastAssistant && lastAssistant.offsetTop > lastUser.offsetTop) {
-    const assistantBottom =
-      lastAssistant.offsetTop -
-      container.offsetTop +
-      lastAssistant.offsetHeight;
-    if (assistantBottom - userTop <= visibleHeight) {
-      scrollEl.scrollTop = userTop;
-    } else {
-      scrollEl.scrollTop = assistantBottom - visibleHeight;
-    }
-  } else {
-    scrollEl.scrollTop = userTop;
-  }
-}
-
 function AvatarOrPlaceholder({
   src,
   className,
@@ -281,6 +230,7 @@ export function ZeroChatThreadPage() {
         : "Failed to load chat"
       : null;
   const messagesLoading = messagesLoadable.state === "loading";
+  const setScrollContainer = useSet(setChatScrollContainer$);
 
   return (
     <div className="flex flex-1 flex-col min-h-0 bg-transparent">
@@ -288,28 +238,13 @@ export function ZeroChatThreadPage() {
 
       {/* Scrollable area — messages + sticky composer share the same scroll context */}
       <div
+        ref={setScrollContainer}
         data-scroll-container
         className="flex-1 overflow-y-auto [scrollbar-gutter:stable] flex flex-col min-h-0"
       >
         <main className="flex-1 px-4 sm:px-6 py-4 items-center @container">
           <div
             data-message-container
-            ref={(node) => {
-              if (!node) {
-                return;
-              }
-              const observer = new MutationObserver(() => {
-                scrollToLatestMessage();
-              });
-              observer.observe(node, {
-                childList: true,
-                subtree: true,
-                characterData: true,
-              });
-              return () => {
-                observer.disconnect();
-              };
-            }}
             className="w-full max-w-[900px] mx-auto flex flex-1 flex-col gap-6 pb-4 overflow-visible"
           >
             {sessionError && (
@@ -358,6 +293,9 @@ function ChatThreadComposer({ hasMessages }: { hasMessages: boolean }) {
   const send = useSet(sendExistingThreadMessage$);
   const cancelRun = useSet(cancelActiveRun$);
   const pageSignal = useGet(pageSignal$);
+  const attachments = useGet(zeroChatAttachments$);
+
+  useAutoScroll(attachments.length);
 
   const handleSend = (text: string) => {
     clearInput();
@@ -365,7 +303,10 @@ function ChatThreadComposer({ hasMessages }: { hasMessages: boolean }) {
   };
 
   return (
-    <footer className="relative sticky bottom-0 z-10 shrink-0 px-4 sm:px-6 pt-3 pb-8 bg-[hsl(var(--background))]">
+    <footer
+      data-chat-composer
+      className="relative sticky bottom-0 z-10 shrink-0 px-4 sm:px-6 pt-3 pb-8 bg-[hsl(var(--background))]"
+    >
       <div className="pointer-events-none absolute inset-x-0 -top-5 h-5 bg-gradient-to-t from-[hsl(var(--background))] to-transparent" />
       <div className="mx-auto max-w-[900px]">
         <ZeroChatComposer
@@ -838,6 +779,9 @@ function StaticAssistantMessage({
   const setTab = useSet(setActiveOrgManageTab$);
   const pageSignal = useGet(pageSignal$);
   const content = useLastResolved(message.result$) ?? "";
+
+  useAutoScroll(content);
+
   const avatar = (
     <div className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 shrink-0 @[900px]:mt-0.5 overflow-hidden rounded-xl">
       <AvatarOrPlaceholder
