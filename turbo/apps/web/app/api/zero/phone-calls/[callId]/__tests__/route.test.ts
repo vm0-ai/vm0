@@ -50,7 +50,7 @@ describe("GET /api/zero/phone-calls/[callId]", () => {
 
   it("should return 404 when call does not belong to org agent", async () => {
     const user = await context.setupUser();
-    const { agentphoneAgentId } = await createPhoneOrg(user.orgId);
+    await createPhoneOrg(user.orgId);
 
     // Return a call with a different agent ID
     server.use(
@@ -74,9 +74,6 @@ describe("GET /api/zero/phone-calls/[callId]", () => {
     });
 
     expect(response.status).toBe(404);
-
-    // Suppress unused variable warning
-    void agentphoneAgentId;
   });
 
   it("should return call detail and transcript when call belongs to org agent", async () => {

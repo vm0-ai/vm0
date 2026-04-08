@@ -63,10 +63,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const apiUrl = env().VM0_API_URL;
   if (!apiUrl) {
-    return NextResponse.json(
-      { error: "Platform API URL not configured" },
-      { status: 500 },
-    );
+    throw new Error("VM0_API_URL is required for phone setup");
   }
 
   // Resolve default agent's display name for the receptionist persona
