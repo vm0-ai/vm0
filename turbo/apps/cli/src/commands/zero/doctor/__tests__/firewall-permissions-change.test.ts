@@ -47,20 +47,20 @@ describe("zero doctor firewall-permissions-change command", () => {
       await firewallPermissionsChangeCommand.parseAsync([
         "node",
         "cli",
-        "github",
+        "slack",
         "--permission",
-        "contents:read",
+        "channels:read",
         "--enable",
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain(
-        'You can enable the "contents:read" permission directly',
+        'You can enable the "channels:read" permission directly',
       );
-      expect(logCalls).toContain("[Manage GitHub firewall]");
+      expect(logCalls).toContain("[Manage Slack firewall]");
       expect(logCalls).toContain("/agents/agent-abc-123/permissions?");
-      expect(logCalls).toContain("ref=github");
-      expect(logCalls).toContain("permission=contents%3Aread");
+      expect(logCalls).toContain("ref=slack");
+      expect(logCalls).toContain("permission=channels%3Aread");
     });
 
     it("should output direct disable message for admin", async () => {
@@ -76,17 +76,17 @@ describe("zero doctor firewall-permissions-change command", () => {
       await firewallPermissionsChangeCommand.parseAsync([
         "node",
         "cli",
-        "github",
+        "slack",
         "--permission",
-        "contents:read",
+        "channels:read",
         "--disable",
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain(
-        'You can disable the "contents:read" permission directly',
+        'You can disable the "channels:read" permission directly',
       );
-      expect(logCalls).toContain("[Manage GitHub firewall]");
+      expect(logCalls).toContain("[Manage Slack firewall]");
     });
   });
 
@@ -104,9 +104,9 @@ describe("zero doctor firewall-permissions-change command", () => {
       await firewallPermissionsChangeCommand.parseAsync([
         "node",
         "cli",
-        "github",
+        "slack",
         "--permission",
-        "contents:read",
+        "channels:read",
         "--enable",
         "--reason",
         "Need repo access",
@@ -114,7 +114,7 @@ describe("zero doctor firewall-permissions-change command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Permission changes require admin approval");
-      expect(logCalls).toContain("[Request GitHub access]");
+      expect(logCalls).toContain("[Request Slack access]");
     });
 
     it("should output contact admin message for member disable with reason", async () => {
@@ -130,9 +130,9 @@ describe("zero doctor firewall-permissions-change command", () => {
       await firewallPermissionsChangeCommand.parseAsync([
         "node",
         "cli",
-        "github",
+        "slack",
         "--permission",
-        "contents:read",
+        "channels:read",
         "--disable",
         "--reason",
         "No longer needed",
@@ -141,7 +141,7 @@ describe("zero doctor firewall-permissions-change command", () => {
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Permission changes require admin approval");
       expect(logCalls).toContain("Contact an org admin to disable");
-      expect(logCalls).toContain("[View GitHub firewall]");
+      expect(logCalls).toContain("[View Slack firewall]");
     });
 
     it("should only output reason prompt without URL when member omits reason", async () => {
@@ -157,15 +157,15 @@ describe("zero doctor firewall-permissions-change command", () => {
       await firewallPermissionsChangeCommand.parseAsync([
         "node",
         "cli",
-        "github",
+        "slack",
         "--permission",
-        "contents:read",
+        "channels:read",
         "--enable",
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("IMPORTANT: Re-run with `--reason");
-      expect(logCalls).not.toContain("[Request GitHub access]");
+      expect(logCalls).not.toContain("[Request Slack access]");
       expect(logCalls).not.toContain("app.vm0.ai");
     });
   });
@@ -206,17 +206,17 @@ describe("zero doctor firewall-permissions-change command", () => {
       await firewallPermissionsChangeCommand.parseAsync([
         "node",
         "cli",
-        "github",
+        "slack",
         "--permission",
-        "contents:read",
+        "channels:read",
         "--enable",
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain(
-        'You can enable the "contents:read" permission directly',
+        'You can enable the "channels:read" permission directly',
       );
-      expect(logCalls).toContain("[Manage GitHub firewall]");
+      expect(logCalls).toContain("[Manage Slack firewall]");
     });
 
     it("should output direct disable message for member who is agent owner", async () => {
@@ -254,17 +254,17 @@ describe("zero doctor firewall-permissions-change command", () => {
       await firewallPermissionsChangeCommand.parseAsync([
         "node",
         "cli",
-        "github",
+        "slack",
         "--permission",
-        "contents:read",
+        "channels:read",
         "--disable",
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain(
-        'You can disable the "contents:read" permission directly',
+        'You can disable the "channels:read" permission directly',
       );
-      expect(logCalls).toContain("[Manage GitHub firewall]");
+      expect(logCalls).toContain("[Manage Slack firewall]");
     });
   });
 
@@ -276,15 +276,15 @@ describe("zero doctor firewall-permissions-change command", () => {
       await firewallPermissionsChangeCommand.parseAsync([
         "node",
         "cli",
-        "github",
+        "slack",
         "--permission",
-        "contents:read",
+        "channels:read",
         "--enable",
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain('To enable the "contents:read" permission');
-      expect(logCalls).toContain("[Manage GitHub firewall]");
+      expect(logCalls).toContain('To enable the "channels:read" permission');
+      expect(logCalls).toContain("[Manage Slack firewall]");
       expect(logCalls).toContain("/agents?");
       expect(logCalls).not.toContain("/agents/permissions");
     });
@@ -307,15 +307,15 @@ describe("zero doctor firewall-permissions-change command", () => {
       await firewallPermissionsChangeCommand.parseAsync([
         "node",
         "cli",
-        "github",
+        "slack",
         "--permission",
-        "contents:read",
+        "channels:read",
         "--enable",
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain('To enable the "contents:read" permission');
-      expect(logCalls).toContain("[Manage GitHub firewall]");
+      expect(logCalls).toContain('To enable the "channels:read" permission');
+      expect(logCalls).toContain("[Manage Slack firewall]");
     });
   });
 
@@ -344,7 +344,7 @@ describe("zero doctor firewall-permissions-change command", () => {
         await firewallPermissionsChangeCommand.parseAsync([
           "node",
           "cli",
-          "github",
+          "slack",
           "--permission",
           "nonexistent:perm",
           "--enable",
@@ -353,7 +353,7 @@ describe("zero doctor firewall-permissions-change command", () => {
 
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining(
-          'Unknown permission "nonexistent:perm" for github firewall',
+          'Unknown permission "nonexistent:perm" for slack firewall',
         ),
       );
     });
@@ -363,9 +363,9 @@ describe("zero doctor firewall-permissions-change command", () => {
         await firewallPermissionsChangeCommand.parseAsync([
           "node",
           "cli",
-          "github",
+          "slack",
           "--permission",
-          "contents:read",
+          "channels:read",
         ]);
       }).rejects.toThrow("process.exit called");
 
@@ -438,9 +438,9 @@ describe("zero doctor firewall-permissions-change command", () => {
       await firewallPermissionsChangeCommand.parseAsync([
         "node",
         "cli",
-        "github",
+        "slack",
         "--permission",
-        "contents:read",
+        "channels:read",
         "--enable",
       ]);
 
@@ -457,9 +457,9 @@ describe("zero doctor firewall-permissions-change command", () => {
       await firewallPermissionsChangeCommand.parseAsync([
         "node",
         "cli",
-        "github",
+        "slack",
         "--permission",
-        "contents:read",
+        "channels:read",
         "--enable",
       ]);
 
@@ -474,9 +474,9 @@ describe("zero doctor firewall-permissions-change command", () => {
       await firewallPermissionsChangeCommand.parseAsync([
         "node",
         "cli",
-        "github",
+        "slack",
         "--permission",
-        "contents:read",
+        "channels:read",
         "--disable",
       ]);
 
@@ -503,16 +503,16 @@ describe("zero doctor firewall-permissions-change command", () => {
       await firewallPermissionsChangeCommand.parseAsync([
         "node",
         "cli",
-        "github",
+        "slack",
         "--permission",
-        "contents:read",
+        "channels:read",
         "--enable",
         "--reason",
-        "Need to read repo contents",
+        "Need to read channel list",
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("reason=Need+to+read+repo+contents");
+      expect(logCalls).toContain("reason=Need+to+read+channel+list");
     });
 
     it("should truncate reason at 500 characters", async () => {
@@ -524,9 +524,9 @@ describe("zero doctor firewall-permissions-change command", () => {
       await firewallPermissionsChangeCommand.parseAsync([
         "node",
         "cli",
-        "github",
+        "slack",
         "--permission",
-        "contents:read",
+        "channels:read",
         "--enable",
         "--reason",
         longReason,
@@ -547,9 +547,9 @@ describe("zero doctor firewall-permissions-change command", () => {
       await firewallPermissionsChangeCommand.parseAsync([
         "node",
         "cli",
-        "github",
+        "slack",
         "--permission",
-        "contents:read",
+        "channels:read",
         "--enable",
         "--reason",
         exactReason,
@@ -574,9 +574,9 @@ describe("zero doctor firewall-permissions-change command", () => {
       await firewallPermissionsChangeCommand.parseAsync([
         "node",
         "cli",
-        "github",
+        "slack",
         "--permission",
-        "contents:read",
+        "channels:read",
         "--enable",
         "--reason",
         "Some reason",
@@ -584,7 +584,7 @@ describe("zero doctor firewall-permissions-change command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).not.toContain("reason=");
-      expect(logCalls).toContain("[Manage GitHub firewall]");
+      expect(logCalls).toContain("[Manage Slack firewall]");
     });
 
     it("should not show IMPORTANT prompt for admin even without reason", async () => {
@@ -600,15 +600,15 @@ describe("zero doctor firewall-permissions-change command", () => {
       await firewallPermissionsChangeCommand.parseAsync([
         "node",
         "cli",
-        "github",
+        "slack",
         "--permission",
-        "contents:read",
+        "channels:read",
         "--enable",
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).not.toContain("IMPORTANT");
-      expect(logCalls).toContain("[Manage GitHub firewall]");
+      expect(logCalls).toContain("[Manage Slack firewall]");
     });
 
     it("should not show IMPORTANT prompt for owner even without reason", async () => {
@@ -646,15 +646,15 @@ describe("zero doctor firewall-permissions-change command", () => {
       await firewallPermissionsChangeCommand.parseAsync([
         "node",
         "cli",
-        "github",
+        "slack",
         "--permission",
-        "contents:read",
+        "channels:read",
         "--enable",
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).not.toContain("IMPORTANT");
-      expect(logCalls).toContain("[Manage GitHub firewall]");
+      expect(logCalls).toContain("[Manage Slack firewall]");
     });
 
     it("should show reason prompt for member disable without reason", async () => {
@@ -665,15 +665,15 @@ describe("zero doctor firewall-permissions-change command", () => {
       await firewallPermissionsChangeCommand.parseAsync([
         "node",
         "cli",
-        "github",
+        "slack",
         "--permission",
-        "contents:read",
+        "channels:read",
         "--disable",
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("IMPORTANT: Re-run with `--reason");
-      expect(logCalls).not.toContain("[View GitHub firewall]");
+      expect(logCalls).not.toContain("[View Slack firewall]");
       expect(logCalls).not.toContain("app.vm0.ai");
     });
 
@@ -685,9 +685,9 @@ describe("zero doctor firewall-permissions-change command", () => {
       await firewallPermissionsChangeCommand.parseAsync([
         "node",
         "cli",
-        "github",
+        "slack",
         "--permission",
-        "contents:read",
+        "channels:read",
         "--disable",
         "--reason",
         "No longer needed",
@@ -695,7 +695,7 @@ describe("zero doctor firewall-permissions-change command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("reason=No+longer+needed");
-      expect(logCalls).toContain("[View GitHub firewall]");
+      expect(logCalls).toContain("[View Slack firewall]");
     });
   });
 });

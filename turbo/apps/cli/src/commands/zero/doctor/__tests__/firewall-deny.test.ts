@@ -34,20 +34,20 @@ describe("zero doctor firewall-deny command", () => {
       await firewallDenyCommand.parseAsync([
         "node",
         "cli",
-        "github",
+        "slack",
         "--method",
         "GET",
         "--path",
-        "/repos/owner/repo/pulls",
+        "/conversations.list",
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain(
-        "GitHub firewall blocked GET /repos/owner/repo/pulls",
+        "Slack firewall blocked GET /conversations.list",
       );
       expect(logCalls).toContain('covered by the "');
       expect(logCalls).toContain(
-        "zero doctor firewall-permissions-change github --permission",
+        "zero doctor firewall-permissions-change slack --permission",
       );
       expect(logCalls).toContain("--enable --reason");
     });
@@ -58,7 +58,7 @@ describe("zero doctor firewall-deny command", () => {
       await firewallDenyCommand.parseAsync([
         "node",
         "cli",
-        "github",
+        "slack",
         "--method",
         "DELETE",
         "--path",
@@ -66,7 +66,7 @@ describe("zero doctor firewall-deny command", () => {
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("GitHub firewall blocked DELETE");
+      expect(logCalls).toContain("Slack firewall blocked DELETE");
       expect(logCalls).toContain("No named permission was found");
       expect(logCalls).not.toContain("firewall-permissions-change");
     });
@@ -123,17 +123,17 @@ describe("zero doctor firewall-deny command", () => {
       await firewallDenyCommand.parseAsync([
         "node",
         "cli",
-        "github",
+        "slack",
         "--method",
         "GET",
         "--path",
-        "/repos/owner/repo/pulls",
+        "/conversations.list",
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       // The suggested command should contain the ref, permission, --enable, and --reason placeholder
       expect(logCalls).toMatch(
-        /zero doctor firewall-permissions-change github --permission \S+ --enable --reason/,
+        /zero doctor firewall-permissions-change slack --permission \S+ --enable --reason/,
       );
     });
 
@@ -141,7 +141,7 @@ describe("zero doctor firewall-deny command", () => {
       await firewallDenyCommand.parseAsync([
         "node",
         "cli",
-        "github",
+        "slack",
         "--method",
         "PATCH",
         "--path",
@@ -160,11 +160,11 @@ describe("zero doctor firewall-deny command", () => {
       await firewallDenyCommand.parseAsync([
         "node",
         "cli",
-        "github",
+        "slack",
         "--method",
         "GET",
         "--path",
-        "/repos/owner/repo/pulls",
+        "/conversations.list",
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
