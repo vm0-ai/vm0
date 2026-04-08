@@ -1,6 +1,7 @@
-import { useGet, useSet } from "ccstate-react";
+import { useGet, useSet, useLastResolved } from "ccstate-react";
 import { Button, Input } from "@vm0/ui";
 import { IconPhone, IconCheck, IconTrash } from "@tabler/icons-react";
+import { defaultAgentName$ } from "../../signals/agent.ts";
 import {
   phoneStatus$,
   phoneLoading$,
@@ -24,6 +25,7 @@ export function PhonePage() {
   const setupLoading = useGet(phoneSetupLoading$);
   const phoneInput = useGet(phoneInput$);
   const pageSignal = useGet(pageSignal$);
+  const agentName = useLastResolved(defaultAgentName$) ?? "Zero";
 
   const setPhoneInput = useSet(setPhoneInput$);
   const saveLink = useSet(savePhoneLink$);
@@ -43,13 +45,13 @@ export function PhonePage() {
       <div>
         <h1 className="text-2xl font-semibold">Phone</h1>
         <p className="text-muted-foreground mt-1">
-          Call Zero via phone. Link your number to get started.
+          Call {agentName} via phone. Link your number to get started.
         </p>
       </div>
 
       {/* Zero's Phone Number */}
       <section className="space-y-2">
-        <h2 className="text-lg font-medium">Zero&apos;s Phone Number</h2>
+        <h2 className="text-lg font-medium">{agentName}&apos;s Phone Number</h2>
         {status?.orgPhone ? (
           <div className="flex items-center gap-2">
             <IconPhone size={18} />
