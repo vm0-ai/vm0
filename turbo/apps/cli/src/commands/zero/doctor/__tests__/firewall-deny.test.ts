@@ -118,6 +118,24 @@ describe("zero doctor firewall-deny command", () => {
     });
   });
 
+  describe("overlapping permissions", () => {
+    it("should pick the most specific (narrowest) permission for gmail send", async () => {
+      await firewallDenyCommand.parseAsync([
+        "node",
+        "cli",
+        "gmail",
+        "--method",
+        "POST",
+        "--path",
+        "/v1/users/me/messages/send",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain('covered by the "gmail.send"');
+      expect(logCalls).toContain("--permission gmail.send --enable");
+    });
+  });
+
   describe("next-step command format", () => {
     it("should include the exact firewall ref in the suggested command", async () => {
       await firewallDenyCommand.parseAsync([

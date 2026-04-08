@@ -57,7 +57,25 @@ Notes:
           return;
         }
 
-        const permission = permissions[0]!;
+        // Count total rules per permission name across all APIs
+        const ruleCount = new Map<string, number>();
+        for (const api of config.apis) {
+          if (!api.permissions) continue;
+          for (const perm of api.permissions) {
+            ruleCount.set(
+              perm.name,
+              (ruleCount.get(perm.name) ?? 0) + perm.rules.length,
+            );
+          }
+        }
+
+        // Pick the permission with the fewest rules (most specific)
+        const permission = permissions.reduce((narrowest, current) => {
+          return (ruleCount.get(current) ?? Infinity) <
+            (ruleCount.get(narrowest) ?? Infinity)
+            ? current
+            : narrowest;
+        });
         console.log(`This is covered by the "${permission}" permission.`);
         console.log(
           `To request this permission, run: zero doctor firewall-permissions-change ${firewallRef} --permission ${permission} --enable --reason "why this is needed"`,
