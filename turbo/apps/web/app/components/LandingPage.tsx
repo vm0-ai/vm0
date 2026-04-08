@@ -35,7 +35,9 @@ function useScrollReveal() {
         }
       });
     }
-    return () => observerRef.current?.disconnect();
+    return () => {
+      return observerRef.current?.disconnect();
+    };
   }, []);
 
   return ref;
@@ -331,7 +333,9 @@ function useInView(threshold = 0.3) {
       { threshold },
     );
     observer.observe(el);
-    return () => observer.disconnect();
+    return () => {
+      return observer.disconnect();
+    };
   }, [threshold]);
   return ref;
 }
@@ -352,7 +356,9 @@ function SlackMockup() {
       { threshold: 0.3 },
     );
     observer.observe(el);
-    return () => observer.disconnect();
+    return () => {
+      return observer.disconnect();
+    };
   }, []);
 
   return (
@@ -418,7 +424,9 @@ function SyncedToolsIllustration() {
       { threshold: 0.3 },
     );
     observer.observe(el);
-    return () => observer.disconnect();
+    return () => {
+      return observer.disconnect();
+    };
   }, []);
 
   return (
@@ -494,7 +502,9 @@ function SyncedToolsMockup() {
       { threshold: 0.3 },
     );
     observer.observe(el);
-    return () => observer.disconnect();
+    return () => {
+      return observer.disconnect();
+    };
   }, []);
 
   return (
@@ -562,36 +572,44 @@ function AppMockupCarousel() {
   return (
     <div ref={ref} className="relative w-full overflow-hidden rounded-t-xl">
       {/* Full images — instant switch, no animation */}
-      {WEB_UI_SLIDES.map((src, i) => (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          key={src}
-          alt=""
-          src={src}
-          className={`webui-pop w-full select-none ${i === active ? "relative" : "absolute inset-0 opacity-0"}`}
-          draggable={false}
-        />
-      ))}
+      {WEB_UI_SLIDES.map((src, i) => {
+        return (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            key={src}
+            alt=""
+            src={src}
+            className={`webui-pop w-full select-none ${i === active ? "relative" : "absolute inset-0 opacity-0"}`}
+            draggable={false}
+          />
+        );
+      })}
       {/* Clickable hotspots over sidebar chat items */}
       <div className="absolute inset-0 z-20">
         <button
           type="button"
           aria-label="Daily Report"
-          onClick={() => setActive(0)}
+          onClick={() => {
+            return setActive(0);
+          }}
           className="absolute cursor-pointer"
           style={{ left: "1%", top: "49%", width: "19%", height: "5%" }}
         />
         <button
           type="button"
           aria-label="Email Leads"
-          onClick={() => setActive(1)}
+          onClick={() => {
+            return setActive(1);
+          }}
           className="absolute cursor-pointer"
           style={{ left: "1%", top: "54%", width: "19%", height: "5%" }}
         />
         <button
           type="button"
           aria-label="Sentry Report"
-          onClick={() => setActive(2)}
+          onClick={() => {
+            return setActive(2);
+          }}
           className="absolute cursor-pointer"
           style={{ left: "1%", top: "59%", width: "19%", height: "5%" }}
         />
@@ -820,18 +838,16 @@ function ScheduleMockupArea() {
   );
 }
 
-function CubeShieldIllustration() {
+// Pre-compute shield illustration nodes at module level to avoid render-time mutation
+const SHIELD_NODES = (() => {
   const cx = 200;
   const cy = 160;
   const colors = ["#45A7A8", "#7587BA", "#E0B376", "#E26C9E", "#E0BB3C"];
-
   let seed = 42;
   const rand = () => {
-    seed = (seed * 16807 + 0) % 2147483647;
+    seed = (seed * 16807) % 2147483647;
     return (seed - 1) / 2147483646;
   };
-
-  // Generate nodes on elliptical shell with drift offsets
   const nodes: {
     x: number;
     y: number;
@@ -856,14 +872,13 @@ function CubeShieldIllustration() {
     const opacity = 0.3 + rand() * 0.5;
     const delay = rand() * 5;
     const color = colors[Math.floor(rand() * colors.length)] ?? "#45A7A8";
-    // Random drift offsets for organic movement
     const dx1 = (rand() - 0.5) * 16;
     const dy1 = (rand() - 0.5) * 12;
     const dx2 = (rand() - 0.5) * 20;
     const dy2 = (rand() - 0.5) * 14;
     const dx3 = (rand() - 0.5) * 16;
     const dy3 = (rand() - 0.5) * 12;
-    const dur = 6 + rand() * 8; // 6-14s per cycle
+    const dur = 6 + rand() * 8;
     nodes.push({
       x,
       y,
@@ -880,8 +895,6 @@ function CubeShieldIllustration() {
       dur,
     });
   }
-
-  // Connect nearby nodes with lines (distance < threshold)
   const lines: {
     x1: number;
     y1: number;
@@ -913,6 +926,11 @@ function CubeShieldIllustration() {
       }
     }
   }
+  return { nodes, lines };
+})();
+
+function CubeShieldIllustration() {
+  const { nodes, lines } = SHIELD_NODES;
 
   return (
     <svg
@@ -972,52 +990,58 @@ function CubeShieldIllustration() {
       </defs>
       {/* Back particles — behind cube (upper half, farther away) */}
       {lines
-        .filter((_, i) => i % 2 === 0)
-        .map((l, i) => (
-          <line
-            key={`lb${i}`}
-            x1={l.x1}
-            y1={l.y1}
-            x2={l.x2}
-            y2={l.y2}
-            stroke={l.color}
-            strokeWidth="0.5"
-            className="ln"
-            style={
-              {
-                "--base-o": l.opacity,
-                animationDelay: `${l.delay}s`,
-              } as React.CSSProperties
-            }
-          />
-        ))}
+        .filter((_, i) => {
+          return i % 2 === 0;
+        })
+        .map((l, i) => {
+          return (
+            <line
+              key={`lb${i}`}
+              x1={l.x1}
+              y1={l.y1}
+              x2={l.x2}
+              y2={l.y2}
+              stroke={l.color}
+              strokeWidth="0.5"
+              className="ln"
+              style={
+                {
+                  "--base-o": l.opacity,
+                  animationDelay: `${l.delay}s`,
+                } as React.CSSProperties
+              }
+            />
+          );
+        })}
       {nodes
-        .filter(
-          (p) => p.y < cy || Math.sqrt((p.x - cx) ** 2 + (p.y - cy) ** 2) > 100,
-        )
-        .map((p, i) => (
-          <circle
-            key={`nb${i}`}
-            cx={p.x}
-            cy={p.y}
-            r={p.r}
-            fill={p.color}
-            className="sp"
-            style={
-              {
-                "--base-o": p.opacity,
-                "--dx1": `${p.dx1}px`,
-                "--dy1": `${p.dy1}px`,
-                "--dx2": `${p.dx2}px`,
-                "--dy2": `${p.dy2}px`,
-                "--dx3": `${p.dx3}px`,
-                "--dy3": `${p.dy3}px`,
-                "--dur": `${p.dur}s`,
-                animationDelay: `${p.delay}s`,
-              } as React.CSSProperties
-            }
-          />
-        ))}
+        .filter((p) => {
+          return p.y < cy || Math.sqrt((p.x - cx) ** 2 + (p.y - cy) ** 2) > 100;
+        })
+        .map((p, i) => {
+          return (
+            <circle
+              key={`nb${i}`}
+              cx={p.x}
+              cy={p.y}
+              r={p.r}
+              fill={p.color}
+              className="sp"
+              style={
+                {
+                  "--base-o": p.opacity,
+                  "--dx1": `${p.dx1}px`,
+                  "--dy1": `${p.dy1}px`,
+                  "--dx2": `${p.dx2}px`,
+                  "--dy2": `${p.dy2}px`,
+                  "--dx3": `${p.dx3}px`,
+                  "--dy3": `${p.dy3}px`,
+                  "--dur": `${p.dur}s`,
+                  animationDelay: `${p.delay}s`,
+                } as React.CSSProperties
+              }
+            />
+          );
+        })}
       {/* Cube — translucent glass with depth */}
       <g transform="translate(140,90)">
         {/* Left face */}
@@ -1163,53 +1187,60 @@ function CubeShieldIllustration() {
       </g>
       {/* Front particles — in front of cube (lower half, closer) */}
       {lines
-        .filter((_, i) => i % 2 === 1)
-        .map((l, i) => (
-          <line
-            key={`lf${i}`}
-            x1={l.x1}
-            y1={l.y1}
-            x2={l.x2}
-            y2={l.y2}
-            stroke={l.color}
-            strokeWidth="0.5"
-            className="ln"
-            style={
-              {
-                "--base-o": l.opacity,
-                animationDelay: `${l.delay}s`,
-              } as React.CSSProperties
-            }
-          />
-        ))}
+        .filter((_, i) => {
+          return i % 2 === 1;
+        })
+        .map((l, i) => {
+          return (
+            <line
+              key={`lf${i}`}
+              x1={l.x1}
+              y1={l.y1}
+              x2={l.x2}
+              y2={l.y2}
+              stroke={l.color}
+              strokeWidth="0.5"
+              className="ln"
+              style={
+                {
+                  "--base-o": l.opacity,
+                  animationDelay: `${l.delay}s`,
+                } as React.CSSProperties
+              }
+            />
+          );
+        })}
       {nodes
-        .filter(
-          (p) =>
-            p.y >= cy && Math.sqrt((p.x - cx) ** 2 + (p.y - cy) ** 2) <= 100,
-        )
-        .map((p, i) => (
-          <circle
-            key={`nf${i}`}
-            cx={p.x}
-            cy={p.y}
-            r={p.r}
-            fill={p.color}
-            className="sp"
-            style={
-              {
-                "--base-o": p.opacity,
-                "--dx1": `${p.dx1}px`,
-                "--dy1": `${p.dy1}px`,
-                "--dx2": `${p.dx2}px`,
-                "--dy2": `${p.dy2}px`,
-                "--dx3": `${p.dx3}px`,
-                "--dy3": `${p.dy3}px`,
-                "--dur": `${p.dur}s`,
-                animationDelay: `${p.delay}s`,
-              } as React.CSSProperties
-            }
-          />
-        ))}
+        .filter((p) => {
+          return (
+            p.y >= cy && Math.sqrt((p.x - cx) ** 2 + (p.y - cy) ** 2) <= 100
+          );
+        })
+        .map((p, i) => {
+          return (
+            <circle
+              key={`nf${i}`}
+              cx={p.x}
+              cy={p.y}
+              r={p.r}
+              fill={p.color}
+              className="sp"
+              style={
+                {
+                  "--base-o": p.opacity,
+                  "--dx1": `${p.dx1}px`,
+                  "--dy1": `${p.dy1}px`,
+                  "--dx2": `${p.dx2}px`,
+                  "--dy2": `${p.dy2}px`,
+                  "--dx3": `${p.dx3}px`,
+                  "--dy3": `${p.dy3}px`,
+                  "--dur": `${p.dur}s`,
+                  animationDelay: `${p.delay}s`,
+                } as React.CSSProperties
+              }
+            />
+          );
+        })}
     </svg>
   );
 }
@@ -1285,7 +1316,7 @@ export default function LandingPage() {
           <div className="relative z-10 mx-auto flex w-full max-w-[1060px] flex-col items-center gap-[50px] pb-10 pt-[140px]">
             <div className="flex w-full flex-col items-center gap-8">
               {/* Banner pill — hidden for now */}
-              <a
+              <NextLink
                 href="/blog"
                 className="hidden items-center gap-2 rounded-lg border border-[hsl(var(--gray-200))] bg-white px-3 py-1.5 text-sm text-[hsl(var(--foreground))] transition-colors hover:border-[hsl(var(--gray-400))] hover:bg-white"
               >
@@ -1311,7 +1342,7 @@ export default function LandingPage() {
                     strokeLinejoin="round"
                   />
                 </svg>
-              </a>
+              </NextLink>
 
               {/* Interactive avatar customizer */}
               <AvatarCustomizer />
@@ -1384,42 +1415,44 @@ export default function LandingPage() {
                 <div className="marquee-track">
                   <div className="marquee-scroll flex gap-3.5">
                     {[...CONNECTORS_ROW1, ...CONNECTORS_ROW1].map(
-                      (connector, i) => (
-                        <div
-                          key={`${connector.name}-${i}`}
-                          className="connector-card flex shrink-0 items-center gap-3.5 rounded-[22.4px] border border-[hsl(var(--gray-200))] bg-white p-3.5"
-                        >
-                          {connector.darkIcon ? (
-                            <>
+                      (connector, i) => {
+                        return (
+                          <div
+                            key={`${connector.name}-${i}`}
+                            className="connector-card flex shrink-0 items-center gap-3.5 rounded-[22.4px] border border-[hsl(var(--gray-200))] bg-white p-3.5"
+                          >
+                            {connector.darkIcon ? (
+                              <>
+                                <Image
+                                  src={connector.icon}
+                                  alt={connector.name}
+                                  width={34}
+                                  height={34}
+                                  className="h-[34px] w-[34px] shrink-0 light-only"
+                                />
+                                <Image
+                                  src={connector.darkIcon}
+                                  alt={connector.name}
+                                  width={34}
+                                  height={34}
+                                  className="h-[34px] w-[34px] shrink-0 dark-only"
+                                />
+                              </>
+                            ) : (
                               <Image
                                 src={connector.icon}
                                 alt={connector.name}
                                 width={34}
                                 height={34}
-                                className="h-[34px] w-[34px] shrink-0 light-only"
+                                className={`h-[34px] w-[34px] shrink-0${connector.dark ? " landing-icon-invert" : ""}`}
                               />
-                              <Image
-                                src={connector.darkIcon}
-                                alt={connector.name}
-                                width={34}
-                                height={34}
-                                className="h-[34px] w-[34px] shrink-0 dark-only"
-                              />
-                            </>
-                          ) : (
-                            <Image
-                              src={connector.icon}
-                              alt={connector.name}
-                              width={34}
-                              height={34}
-                              className={`h-[34px] w-[34px] shrink-0${connector.dark ? " landing-icon-invert" : ""}`}
-                            />
-                          )}
-                          <span className="whitespace-nowrap text-[19.6px] font-medium leading-7 text-[hsl(var(--foreground))]">
-                            {connector.name}
-                          </span>
-                        </div>
-                      ),
+                            )}
+                            <span className="whitespace-nowrap text-[19.6px] font-medium leading-7 text-[hsl(var(--foreground))]">
+                              {connector.name}
+                            </span>
+                          </div>
+                        );
+                      },
                     )}
                   </div>
                 </div>
@@ -1427,42 +1460,44 @@ export default function LandingPage() {
                 <div className="marquee-track">
                   <div className="marquee-scroll marquee-reverse flex gap-3.5">
                     {[...CONNECTORS_ROW2, ...CONNECTORS_ROW2].map(
-                      (connector, i) => (
-                        <div
-                          key={`${connector.name}-${i}`}
-                          className="connector-card flex shrink-0 items-center gap-3.5 rounded-[22.4px] border border-[hsl(var(--gray-200))] bg-white p-3.5"
-                        >
-                          {connector.darkIcon ? (
-                            <>
+                      (connector, i) => {
+                        return (
+                          <div
+                            key={`${connector.name}-${i}`}
+                            className="connector-card flex shrink-0 items-center gap-3.5 rounded-[22.4px] border border-[hsl(var(--gray-200))] bg-white p-3.5"
+                          >
+                            {connector.darkIcon ? (
+                              <>
+                                <Image
+                                  src={connector.icon}
+                                  alt={connector.name}
+                                  width={34}
+                                  height={34}
+                                  className="h-[34px] w-[34px] shrink-0 light-only"
+                                />
+                                <Image
+                                  src={connector.darkIcon}
+                                  alt={connector.name}
+                                  width={34}
+                                  height={34}
+                                  className="h-[34px] w-[34px] shrink-0 dark-only"
+                                />
+                              </>
+                            ) : (
                               <Image
                                 src={connector.icon}
                                 alt={connector.name}
                                 width={34}
                                 height={34}
-                                className="h-[34px] w-[34px] shrink-0 light-only"
+                                className={`h-[34px] w-[34px] shrink-0${connector.dark ? " landing-icon-invert" : ""}`}
                               />
-                              <Image
-                                src={connector.darkIcon}
-                                alt={connector.name}
-                                width={34}
-                                height={34}
-                                className="h-[34px] w-[34px] shrink-0 dark-only"
-                              />
-                            </>
-                          ) : (
-                            <Image
-                              src={connector.icon}
-                              alt={connector.name}
-                              width={34}
-                              height={34}
-                              className={`h-[34px] w-[34px] shrink-0${connector.dark ? " landing-icon-invert" : ""}`}
-                            />
-                          )}
-                          <span className="whitespace-nowrap text-[19.6px] font-medium leading-7 text-[hsl(var(--foreground))]">
-                            {connector.name}
-                          </span>
-                        </div>
-                      ),
+                            )}
+                            <span className="whitespace-nowrap text-[19.6px] font-medium leading-7 text-[hsl(var(--foreground))]">
+                              {connector.name}
+                            </span>
+                          </div>
+                        );
+                      },
                     )}
                   </div>
                 </div>
@@ -1605,22 +1640,24 @@ export default function LandingPage() {
                   description:
                     'When you say "my PRs" or "assign to me," Zero queries GitHub/Slack/Linear to figure out who you are, no assumptions, no hardcoded names.',
                 },
-              ].map((item) => (
-                <div key={item.title} className="flex flex-col gap-2">
-                  <div className="flex items-center gap-2">
-                    <div className="flex size-[30px] items-center justify-center overflow-hidden rounded-full">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img alt="" src={item.icon} className="size-[22px]" />
+              ].map((item) => {
+                return (
+                  <div key={item.title} className="flex flex-col gap-2">
+                    <div className="flex items-center gap-2">
+                      <div className="flex size-[30px] items-center justify-center overflow-hidden rounded-full">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img alt="" src={item.icon} className="size-[22px]" />
+                      </div>
+                      <h3 className="text-base font-bold leading-6 text-[hsl(var(--foreground))]">
+                        {item.title}
+                      </h3>
                     </div>
-                    <h3 className="text-base font-bold leading-6 text-[hsl(var(--foreground))]">
-                      {item.title}
-                    </h3>
+                    <p className="text-base leading-6 text-[hsl(var(--muted-foreground))]">
+                      {item.description}
+                    </p>
                   </div>
-                  <p className="text-base leading-6 text-[hsl(var(--muted-foreground))]">
-                    {item.description}
-                  </p>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </section>

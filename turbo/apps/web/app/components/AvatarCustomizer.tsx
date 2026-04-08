@@ -194,24 +194,26 @@ function Sparkles({ active }: { active: boolean }) {
 
   return (
     <div className="pointer-events-none absolute inset-0 z-10">
-      {particles.map((p, i) => (
-        <div
-          key={i}
-          className="absolute rounded-full"
-          style={{
-            width: p.size,
-            height: p.size,
-            backgroundColor: p.color,
-            left: "50%",
-            top: "10%",
-            animation: `firework 0.6s ease-out forwards`,
-            animationDelay: `${p.delay}s`,
-            transform: "translate(-50%, -50%) scale(1)",
-            ["--fx" as string]: `${p.x}px`,
-            ["--fy" as string]: `${p.y}px`,
-          }}
-        />
-      ))}
+      {particles.map((p, i) => {
+        return (
+          <div
+            key={i}
+            className="absolute rounded-full"
+            style={{
+              width: p.size,
+              height: p.size,
+              backgroundColor: p.color,
+              left: "50%",
+              top: "10%",
+              animation: `firework 0.6s ease-out forwards`,
+              animationDelay: `${p.delay}s`,
+              transform: "translate(-50%, -50%) scale(1)",
+              ["--fx" as string]: `${p.x}px`,
+              ["--fy" as string]: `${p.y}px`,
+            }}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -225,7 +227,9 @@ export default function AvatarCustomizer() {
   // Tooltip hint that disappears after first interaction
 
   const current = editing !== null ? chars[editing] : null;
-  const stepIdx = STEPS.findIndex((s) => s.key === step);
+  const stepIdx = STEPS.findIndex((s) => {
+    return s.key === step;
+  });
 
   const toggle = useCallback(
     (i: number) => {
@@ -252,7 +256,9 @@ export default function AvatarCustomizer() {
       const timer = setTimeout(() => {
         setJustPicked(null);
         setShowSparkles(false);
-        const idx = STEPS.findIndex((s) => s.key === field);
+        const idx = STEPS.findIndex((s) => {
+          return s.key === field;
+        });
         const nextIdx = idx + 1;
         if (nextIdx < STEPS.length) {
           setStep(STEPS[nextIdx]!.key);
@@ -260,7 +266,9 @@ export default function AvatarCustomizer() {
           setEditing(null);
         }
       }, 350);
-      return () => clearTimeout(timer);
+      return () => {
+        return clearTimeout(timer);
+      };
     },
     [editing],
   );
@@ -286,7 +294,9 @@ export default function AvatarCustomizer() {
             style={{
               animation: `optionAppear 0.2s ease-out ${i * 0.05}s both`,
             }}
-            onClick={() => select("intensity", val)}
+            onClick={() => {
+              return select("intensity", val);
+            }}
           >
             <AvatarPreview config={preview} size={56} />
             <span className="text-[10px] text-[#525b68]">
@@ -307,7 +317,9 @@ export default function AvatarCustomizer() {
           type="button"
           className={`rounded-full transition-all hover:scale-110 ${isPicked ? "scale-110 ring-2 ring-[#ed4e01] ring-offset-2" : ""}`}
           style={{ animation: `optionAppear 0.2s ease-out ${i * 0.05}s both` }}
-          onClick={() => select(step, val)}
+          onClick={() => {
+            return select(step, val);
+          }}
         >
           <AvatarPreview config={preview as AvatarConfig} size={56} />
         </button>
@@ -338,22 +350,28 @@ export default function AvatarCustomizer() {
         }
       `}</style>
 
-      {chars.map((c, i) => (
-        <IdleAvatar
-          key={i}
-          config={c}
-          size={i === 2 ? 132 : 54}
-          index={i}
-          onClick={() => toggle(i)}
-          isEditing={editing === i}
-        />
-      ))}
+      {chars.map((c, i) => {
+        return (
+          <IdleAvatar
+            key={i}
+            config={c}
+            size={i === 2 ? 132 : 54}
+            index={i}
+            onClick={() => {
+              return toggle(i);
+            }}
+            isEditing={editing === i}
+          />
+        );
+      })}
 
       {editing !== null && current && (
         <>
           <div
             className="fixed inset-0 z-20"
-            onClick={() => setEditing(null)}
+            onClick={() => {
+              return setEditing(null);
+            }}
           />
           <div
             className="absolute left-1/2 top-full z-30 mt-3 -translate-x-1/2 flex flex-col items-center gap-4 rounded-2xl border border-[hsl(var(--gray-200))]/50 bg-white/95 px-5 py-4 shadow-lg backdrop-blur-sm"
@@ -369,18 +387,20 @@ export default function AvatarCustomizer() {
 
             {/* Step progress */}
             <div className="flex items-center gap-1">
-              {STEPS.map((s, i) => (
-                <div
-                  key={s.key}
-                  className={`h-1.5 rounded-full transition-all duration-300 ${
-                    i === stepIdx
-                      ? "w-5 bg-[#ed4e01]"
-                      : i < stepIdx
-                        ? "w-1.5 bg-[#ed4e01]/40"
-                        : "w-1.5 bg-[hsl(var(--gray-300))]"
-                  }`}
-                />
-              ))}
+              {STEPS.map((s, i) => {
+                return (
+                  <div
+                    key={s.key}
+                    className={`h-1.5 rounded-full transition-all duration-300 ${
+                      i === stepIdx
+                        ? "w-5 bg-[#ed4e01]"
+                        : i < stepIdx
+                          ? "w-1.5 bg-[#ed4e01]/40"
+                          : "w-1.5 bg-[hsl(var(--gray-300))]"
+                    }`}
+                  />
+                );
+              })}
             </div>
 
             {/* Step label */}
