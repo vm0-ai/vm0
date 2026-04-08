@@ -140,9 +140,9 @@ export const requestOrgPhoneSetup$ = command(
       signal.throwIfAborted();
       const token = await clerk.session?.getToken();
       signal.throwIfAborted();
-      const headers: Record<string, string> = {
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      };
+      const headers: Record<string, string> = token
+        ? { Authorization: `Bearer ${token}` }
+        : {};
       const res = await globalThis.fetch(`${base}/api/zero/phone/setup`, {
         method: "POST",
         headers,
