@@ -4,7 +4,6 @@ import base64
 from unittest.mock import MagicMock
 
 from mitm_addon import (
-    _MAX_BODY_SIZE,
     _STREAM_BUFFER_LIMIT,
     _add_capture_fields,
     _encode_body,
@@ -250,20 +249,20 @@ class TestAddCaptureFields:
         assert "response_headers" not in entry
 
     def test_truncates_large_request_body(self):
-        body = b"x" * (_MAX_BODY_SIZE + 1000)
+        body = b"x" * (_STREAM_BUFFER_LIMIT + 1000)
         flow = self._make_flow(request_body=body, request_ct="text/plain")
         entry = {}
         _add_capture_fields(flow, entry)
         assert entry["request_body_truncated"] is True
-        assert len(entry["request_body"]) == _MAX_BODY_SIZE
+        assert len(entry["request_body"]) == _STREAM_BUFFER_LIMIT
 
     def test_truncates_large_response_body(self):
-        body = b"y" * (_MAX_BODY_SIZE + 1000)
+        body = b"y" * (_STREAM_BUFFER_LIMIT + 1000)
         flow = self._make_flow(response_body=body, response_ct="text/plain")
         entry = {}
         _add_capture_fields(flow, entry)
         assert entry["response_body_truncated"] is True
-        assert len(entry["response_body"]) == _MAX_BODY_SIZE
+        assert len(entry["response_body"]) == _STREAM_BUFFER_LIMIT
 
     def test_no_body_fields_when_empty(self):
         flow = self._make_flow(request_body=None, response_body=None)
@@ -311,20 +310,20 @@ class TestAddCaptureFields:
         assert entry["response_body_encoding"] == "binary"
 
     def test_request_body_exactly_at_limit_not_truncated(self):
-        body = b"x" * _MAX_BODY_SIZE
+        body = b"x" * _STREAM_BUFFER_LIMIT
         flow = self._make_flow(request_body=body, request_ct="text/plain")
         entry = {}
         _add_capture_fields(flow, entry)
         assert "request_body_truncated" not in entry
-        assert len(entry["request_body"]) == _MAX_BODY_SIZE
+        assert len(entry["request_body"]) == _STREAM_BUFFER_LIMIT
 
     def test_response_body_exactly_at_limit_not_truncated(self):
-        body = b"y" * _MAX_BODY_SIZE
+        body = b"y" * _STREAM_BUFFER_LIMIT
         flow = self._make_flow(response_body=body, response_ct="text/plain")
         entry = {}
         _add_capture_fields(flow, entry)
         assert "response_body_truncated" not in entry
-        assert len(entry["response_body"]) == _MAX_BODY_SIZE
+        assert len(entry["response_body"]) == _STREAM_BUFFER_LIMIT
 
     def test_duplicate_headers_keeps_first(self):
         headers = MagicMock()
@@ -339,15 +338,15 @@ class TestAddCaptureFields:
         assert len(result) == 2
 
     def test_truncation_preserves_utf8_boundary(self):
-        # Body is _MAX_BODY_SIZE + a 3-byte char "€" (\xe2\x82\xac)
-        body = b"x" * _MAX_BODY_SIZE + "\u20ac".encode("utf-8")
+        # Body is _STREAM_BUFFER_LIMIT + a 3-byte char "€" (\xe2\x82\xac)
+        body = b"x" * _STREAM_BUFFER_LIMIT + "\u20ac".encode("utf-8")
         flow = self._make_flow(request_body=body, request_ct="text/plain")
         entry = {}
         _add_capture_fields(flow, entry)
         assert entry["request_body_truncated"] is True
         # Should be valid UTF-8 (truncated at char boundary, not mid-char)
         assert entry["request_body_encoding"] == "utf-8"
-        assert len(entry["request_body"]) == _MAX_BODY_SIZE  # all ASCII before the €
+        assert len(entry["request_body"]) == _STREAM_BUFFER_LIMIT  # all ASCII before the €
 
     def test_text_request_with_binary_response(self):
         flow = self._make_flow(

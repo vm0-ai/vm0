@@ -261,7 +261,6 @@ def responseheaders(flow: http.HTTPFlow) -> None:
 # Body capture helpers (opt-in per run via captureNetworkBodies registry flag)
 # ---------------------------------------------------------------------------
 
-_MAX_BODY_SIZE = _STREAM_BUFFER_LIMIT
 
 _TEXT_CONTENT_TYPES = (
     "text/",
@@ -285,7 +284,9 @@ _SENSITIVE_HEADER_KEYWORDS = (
 )
 
 
-def _decompress_body(data: bytes, headers, max_output: int = _STREAM_BUFFER_LIMIT) -> bytes:
+def _decompress_body(
+    data: bytes, headers: http.Headers, max_output: int = _STREAM_BUFFER_LIMIT
+) -> bytes:
     """Decompress response body based on Content-Encoding header.
 
     The stream callback receives raw wire bytes.  When the server uses
@@ -407,9 +408,9 @@ def _add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
     if flow.request.content:
         req_ct = flow.request.headers.get("content-type", "")
         body = flow.request.content
-        truncated = len(body) > _MAX_BODY_SIZE
+        truncated = len(body) > _STREAM_BUFFER_LIMIT
         if truncated:
-            body = _truncate_bytes_utf8_safe(body, _MAX_BODY_SIZE)
+            body = _truncate_bytes_utf8_safe(body, _STREAM_BUFFER_LIMIT)
         encoded, encoding = _encode_body(body, req_ct)
         if encoded is not None:
             log_entry["request_body"] = encoded
@@ -441,10 +442,10 @@ def _add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
         stream_state = flow.metadata.get("stream_buffer_state")
         res_ct = flow.response.headers.get("content-type", "")
         # stream_buffer may already be truncated at _STREAM_BUFFER_LIMIT;
-        # apply the capture-specific _MAX_BODY_SIZE limit as well.
-        truncated = (stream_state and stream_state["truncated"]) or len(body) > _MAX_BODY_SIZE
+        # apply the capture-specific _STREAM_BUFFER_LIMIT limit as well.
+        truncated = (stream_state and stream_state["truncated"]) or len(body) > _STREAM_BUFFER_LIMIT
         if truncated:
-            body = _truncate_bytes_utf8_safe(body, _MAX_BODY_SIZE)
+            body = _truncate_bytes_utf8_safe(body, _STREAM_BUFFER_LIMIT)
         encoded, encoding = _encode_body(body, res_ct)
         if encoded is not None:
             log_entry["response_body"] = encoded
