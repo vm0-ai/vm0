@@ -1,20 +1,22 @@
 /**
  * Generate Zapier firewall config.
  *
- * Data source: https://nla.zapier.com/docs/authentication/
+ * Data source: https://actions.zapier.com/docs/guides/getting-started/intro
  *
- * Zapier NLA (Natural Language Actions) enables AI-powered workflow automation.
+ * Zapier AI Actions enables AI-powered workflow automation.
+ * The legacy NLA API (nla.zapier.com) is deprecated; the current
+ * endpoint is actions.zapier.com with x-api-key authentication.
  */
 
 import { writeOutput } from "./codegen";
 
-const DOCS_URL = "https://nla.zapier.com/docs/authentication/";
-// Token format not publicly documented; using generic alphanumeric placeholder
-const PLACEHOLDER_VALUE = "CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLo";
+const DOCS_URL = "https://actions.zapier.com/docs/guides/getting-started/intro";
+// Zapier API keys use "sk-ak-" prefix followed by alphanumeric characters.
+const PLACEHOLDER_VALUE = "sk-ak-CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLo";
 
 function generateTypeScript(): string {
   const lines: string[] = [
-    "// Auto-generated from Zapier NLA API docs.",
+    "// Auto-generated from Zapier AI Actions API docs.",
     `// Source: ${DOCS_URL}`,
     "// Regenerate: cd turbo && pnpm -F @vm0/firewalls-generator generate:zapier",
     "//",
@@ -24,16 +26,16 @@ function generateTypeScript(): string {
     "",
     "export const zapierFirewall = {",
     '  name: "zapier",',
-    '  description: "Zapier NLA API",',
+    '  description: "Zapier AI Actions API",',
     "  placeholders: {",
     `    ZAPIER_TOKEN: "${PLACEHOLDER_VALUE}",`,
     "  },",
     "  apis: [",
     "    {",
-    '      base: "https://nla.zapier.com",',
+    '      base: "https://actions.zapier.com",',
     "      auth: {",
     "        headers: {",
-    '          Authorization: "Bearer ${{ secrets.ZAPIER_TOKEN }}",',
+    '          "x-api-key": "${{ secrets.ZAPIER_TOKEN }}",',
     "        },",
     "      },",
     "      permissions: [],",
