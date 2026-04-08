@@ -78,10 +78,16 @@ export async function handleCallEnded(event: CallEndedEvent): Promise<void> {
     return;
   }
 
+  // Skip run dispatch if no transcript — avoids creating valueless runs
+  if (!event.transcript) {
+    log.warn("No transcript in call_ended event, skipping run dispatch", {
+      callId,
+    });
+    return;
+  }
+
   // Use transcript from webhook payload (no API call needed)
-  const transcriptText = event.transcript
-    ? formatTranscript(event.transcript)
-    : "[Transcript unavailable]";
+  const transcriptText = formatTranscript(event.transcript);
 
   const summaryText = event.summary
     ? `\n\nReceptionist summary: ${event.summary}`

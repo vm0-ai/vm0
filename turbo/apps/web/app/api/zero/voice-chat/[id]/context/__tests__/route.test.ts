@@ -154,7 +154,7 @@ describe("GET /api/zero/voice-chat/[id]/context", () => {
       }),
       paramsFor(session.id),
     );
-    const secondRes = await POST(
+    await POST(
       createTestRequest(contextUrl(session.id), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
