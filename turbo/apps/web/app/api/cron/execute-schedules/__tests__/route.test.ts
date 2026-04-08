@@ -313,7 +313,8 @@ describe("GET /api/cron/execute-schedules", () => {
       const after = await getTestSchedule(testComposeId, "cron-stays-enabled");
       expect(after.enabled).toBe(true);
       expect(after.lastRunAt).not.toBeNull();
-      expect(after.nextRunAt).not.toBeNull();
+      // nextRunAt is null after execution — cron callback sets it on completion
+      expect(after.nextRunAt).toBeNull();
     });
   });
 
@@ -456,14 +457,14 @@ describe("GET /api/cron/execute-schedules", () => {
       context.mocks.date.setSystemTime(new Date("2025-01-15T09:01:00Z"));
       await GET(authenticatedCronRequest());
 
-      // 5. Verify schedule advanced to next day (no retry state)
+      // 5. Verify schedule state after execution (no retry state)
+      //    nextRunAt is null — cron callback sets it on completion
       const schedule = await getTestSchedule(
         testComposeId,
         "queue-advance-test",
       );
       expect(schedule.retryStartedAt).toBeNull();
-      const nextRunAt = new Date(schedule.nextRunAt!);
-      expect(nextRunAt.toISOString()).toBe("2025-01-16T09:00:00.000Z");
+      expect(schedule.nextRunAt).toBeNull();
     });
 
     it("should disable one-time schedule after queued run", async () => {
