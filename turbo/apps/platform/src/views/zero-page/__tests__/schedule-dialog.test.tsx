@@ -203,7 +203,7 @@ describe("schedule dialog - save error (SCHED-D-047)", () => {
     await fill(promptInput, "My task");
     await user.click(screen.getByText("Create"));
     await waitFor(() => {
-      expect(screen.getByText(/HTTP 500/i)).toBeInTheDocument();
+      expect(screen.getAllByText(/HTTP 500/i)[0]).toBeInTheDocument();
     });
   });
 });
