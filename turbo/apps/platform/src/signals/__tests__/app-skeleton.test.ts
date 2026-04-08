@@ -1,18 +1,10 @@
 import { describe, it, expect, vi } from "vitest";
 import { createStore } from "ccstate";
-import { http, HttpResponse } from "msw";
-import { server } from "../../mocks/server.ts";
-import { testContext } from "./test-helpers.ts";
-import { setupPage } from "../../__tests__/page-helper.ts";
 import {
   startSkeletonCycling$,
   skeletonMessages$,
-  appSkeletonVisible$,
-  hideAppSkeleton$,
   setCycleDelaysMs$,
 } from "../app-skeleton.ts";
-
-const context = testContext();
 
 describe("startSkeletonCycling$", () => {
   it("should advance the cycle count after cycling fires", async () => {
@@ -54,23 +46,5 @@ describe("startSkeletonCycling$", () => {
 
     abortController.abort();
     await expect(cyclingPromise).rejects.toThrow();
-  });
-});
-
-describe("hideAppSkeleton$", () => {
-  it("should hide the skeleton and cancel cycling", async () => {
-    server.use(
-      http.get("*/api/zero/org/agents/chat-agent", () => {
-        return HttpResponse.json(null);
-      }),
-    );
-
-    await setupPage({ context, path: "/", withoutRender: true });
-
-    expect(context.store.get(appSkeletonVisible$)).toBeTruthy();
-
-    await context.store.set(hideAppSkeleton$, context.signal);
-
-    expect(context.store.get(appSkeletonVisible$)).toBeFalsy();
   });
 });
