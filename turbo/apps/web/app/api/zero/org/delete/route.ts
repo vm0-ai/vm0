@@ -11,7 +11,7 @@ import {
 } from "../../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
 import { deleteOrg } from "../../../../../src/lib/zero/org/org-member-service";
-import { getOrgData } from "../../../../../src/lib/zero/org/org-cache-service";
+import { getOrgNameAndSlug } from "../../../../../src/lib/auth/org-cache";
 import {
   isBadRequest,
   isForbidden,
@@ -27,7 +27,7 @@ const router = tsr.router(zeroOrgDeleteContract, {
 
     try {
       const { org, member } = await resolveOrg(authCtx);
-      const orgData = await getOrgData(org.orgId);
+      const orgData = await getOrgNameAndSlug(org.orgId);
 
       // Verify the slug matches as a safety check
       if (body.slug !== orgData.slug) {

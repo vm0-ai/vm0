@@ -60,7 +60,7 @@ describe("/api/cli/auth/test-token", () => {
         },
       ],
     });
-    // Mock getOrganization for cache-miss fallback path (getOrgData)
+    // Mock getOrganization for cache-miss fallback path (getOrgNameAndSlug)
     mockGetOrganization.mockResolvedValue({
       id: "org_test_token",
       slug: "test-token-org",

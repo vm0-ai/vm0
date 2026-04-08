@@ -41,7 +41,7 @@ describe("POST /api/cli/auth/org", () => {
 
   it("should return 200 with new JWT when switching to valid org", async () => {
     // setupUser already creates org_cache for the default org.
-    // Insert membership cache so verifyMembershipCached succeeds without Clerk call.
+    // Insert membership cache so getMemberRole succeeds without Clerk call.
     await insertOrgMembersCacheEntry({
       orgId: user.orgId,
       userId: user.userId,

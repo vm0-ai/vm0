@@ -40,13 +40,13 @@ export {
 } from "./schedule.ts";
 export type { ZeroJobScheduleSaveParams } from "./schedule.ts";
 
-export { zeroJobFirewallPolicies$ } from "./firewall.ts";
+export { zeroJobPermissionPolicies$ } from "./permissions.ts";
 
 export { deleteZeroJobAgent$ } from "./delete.ts";
 
 // ---------------------------------------------------------------------------
 // Set active agent — sets the agent name and resets draft states.
-// All async data (detail, instructions, schedule, connectors, firewall) will
+// All async data (detail, instructions, schedule, connectors, permissions) will
 // re-evaluate reactively through the async computed dependency chain.
 // ---------------------------------------------------------------------------
 

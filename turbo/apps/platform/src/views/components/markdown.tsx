@@ -197,7 +197,16 @@ export function Markdown({ className, style, ...rest }: MarkdownPreviewProps) {
       }}
       wrapperElement={{ "data-color-mode": theme }}
       rehypeRewrite={rehypeRewriteHandler}
-      components={{ table: ResponsiveTable }}
+      components={{
+        table: ResponsiveTable,
+        a: ({ children, ...props }) => {
+          return (
+            <a {...props} target="_blank" rel="noopener noreferrer">
+              {children}
+            </a>
+          );
+        },
+      }}
       {...rest}
     />
   );

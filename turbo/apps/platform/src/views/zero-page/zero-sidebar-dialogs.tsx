@@ -1,4 +1,5 @@
 import { useGet, useSet, useLastResolved } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import {
   IconSearch,
   IconX,
@@ -43,16 +44,24 @@ import {
   setDraftPinnedIds$,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
 import { leadAgentAvatar$, type SubagentInfo } from "../../signals/agent.ts";
+import {
+  pinnedAgentIds$,
+  updatePinnedAgentIds$,
+} from "../../signals/zero-page/zero-pinned-agents.ts";
+import { pageSignal$ } from "../../signals/page-signal.ts";
+import { detach, Reason } from "../../signals/utils.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 
 function SortablePinnedAgent({
   agent,
   onUnpin,
   onChat,
+  disabled,
 }: {
   agent: SubagentInfo;
   onUnpin: () => void;
   onChat?: () => void;
+  disabled?: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition } =
     useSortable({ id: agent.id });
@@ -97,8 +106,9 @@ function SortablePinnedAgent({
       <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100">
         <button
           type="button"
-          className="shrink-0 flex h-8 w-8 items-center justify-center rounded-lg cursor-grab active:cursor-grabbing touch-none text-muted-foreground transition-colors hover:bg-muted-foreground/12 hover:text-foreground dark:hover:bg-muted-foreground/18"
+          className="shrink-0 flex h-8 w-8 items-center justify-center rounded-lg cursor-grab active:cursor-grabbing touch-none text-muted-foreground transition-colors hover:bg-muted-foreground/12 hover:text-foreground dark:hover:bg-muted-foreground/18 disabled:cursor-not-allowed disabled:opacity-50"
           aria-label={`Reorder ${agent.displayName ?? agent.id}`}
+          disabled={disabled}
           {...attributes}
           {...listeners}
         >
@@ -106,9 +116,10 @@ function SortablePinnedAgent({
         </button>
         <button
           type="button"
-          className="shrink-0 flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted-foreground/12 hover:text-foreground dark:hover:bg-muted-foreground/18"
+          className="shrink-0 flex h-8 w-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted-foreground/12 hover:text-foreground dark:hover:bg-muted-foreground/18 disabled:cursor-not-allowed disabled:opacity-50"
           onClick={onUnpin}
           aria-label={`Unpin ${agent.displayName ?? agent.id}`}
+          disabled={disabled}
         >
           <IconX size={16} stroke={2} />
         </button>
@@ -346,26 +357,26 @@ export function ManagePinnedAgentsDialog({
   );
 }
 
-export function ChatListDialog({
+export function AgentListDialog({
   open,
   onOpenChange,
   displayName,
   subagents,
-  pinnedIds,
-  onPinnedIdsChange,
   onNewChat,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   displayName: string;
   subagents: SubagentInfo[];
-  pinnedIds: string[];
-  onPinnedIdsChange: (ids: string[]) => void;
   onNewChat?: (agentId: string | null) => void;
 }) {
   const zeroAvatarSrc = useLastResolved(leadAgentAvatar$) ?? null;
   const query = useGet(chatListQuery$);
   const setQuery = useSet(setChatListQuery$);
+  const pinnedIds = useLastResolved(pinnedAgentIds$) ?? [];
+  const pageSignal = useGet(pageSignal$);
+  const [pinLoadable, savePinnedIds] = useLoadableSet(updatePinnedAgentIds$);
+  const saving = pinLoadable.state === "loading";
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -409,15 +420,12 @@ export function ChatListDialog({
     !trimmedQuery || displayName.toLowerCase().includes(trimmedQuery);
 
   const togglePin = (agentId: string) => {
-    if (pinnedIds.includes(agentId)) {
-      onPinnedIdsChange(
-        pinnedIds.filter((id) => {
+    const next = pinnedIds.includes(agentId)
+      ? pinnedIds.filter((id) => {
           return id !== agentId;
-        }),
-      );
-    } else {
-      onPinnedIdsChange([...pinnedIds, agentId]);
-    }
+        })
+      : [...pinnedIds, agentId];
+    detach(savePinnedIds(next, pageSignal), Reason.DomCallback);
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
@@ -433,7 +441,7 @@ export function ChatListDialog({
     const next = [...pinnedIds];
     next.splice(oldIndex, 1);
     next.splice(newIndex, 0, pinnedIds[oldIndex]!);
-    onPinnedIdsChange(next);
+    detach(savePinnedIds(next, pageSignal), Reason.DomCallback);
   };
 
   const handleChat = (agentId: string | null) => {
@@ -551,6 +559,7 @@ export function ChatListDialog({
                           onChat={() => {
                             return handleChat(agent.id);
                           }}
+                          disabled={saving}
                         />
                       );
                     })}
@@ -594,11 +603,12 @@ export function ChatListDialog({
                           <TooltipTrigger asChild>
                             <button
                               type="button"
-                              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-all duration-150 group-hover:opacity-100 group-focus-within:opacity-100 hover:bg-muted-foreground/12 hover:text-foreground dark:hover:bg-muted-foreground/18"
+                              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-all duration-150 group-hover:opacity-100 group-focus-within:opacity-100 hover:bg-muted-foreground/12 hover:text-foreground dark:hover:bg-muted-foreground/18 disabled:cursor-not-allowed disabled:opacity-50"
                               onClick={() => {
                                 return togglePin(agent.id);
                               }}
                               aria-label="Pin to sidebar"
+                              disabled={saving}
                             >
                               <IconPin size={16} stroke={2} />
                             </button>

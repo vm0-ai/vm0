@@ -18,6 +18,9 @@ import type {
 
 const log = logger("service:schedule");
 
+// Auto-disable after this many consecutive pre-run failures
+const MAX_CONSECUTIVE_FAILURES = 3;
+
 /**
  * Schedule data for API responses
  */
@@ -767,6 +770,47 @@ export async function executeDueSchedules(): Promise<{
       executed++;
     } catch (error) {
       log.error(`Failed to execute schedule ${schedule.name}:`, error);
+
+      // Pre-run failure: increment consecutive failures and schedule next attempt
+      // (mirrors callback failure handling from #8430)
+      const now = new Date();
+      const newFailureCount = schedule.consecutiveFailures + 1;
+      const shouldDisable = newFailureCount >= MAX_CONSECUTIVE_FAILURES;
+
+      let nextRunAt: Date | null = null;
+      if (!shouldDisable) {
+        if (schedule.triggerType === "cron" && schedule.cronExpression) {
+          nextRunAt = calculateNextRun(
+            schedule.cronExpression,
+            schedule.timezone,
+          );
+        } else if (
+          schedule.triggerType === "loop" &&
+          schedule.intervalSeconds
+        ) {
+          nextRunAt = new Date(now.getTime() + schedule.intervalSeconds * 1000);
+        }
+        // "once" triggers: CAS claim already set enabled=false, no recovery needed
+      }
+
+      await globalThis.services.db
+        .update(zeroAgentSchedules)
+        .set({
+          consecutiveFailures: newFailureCount,
+          ...(shouldDisable && { enabled: false }),
+          nextRunAt,
+          updatedAt: now,
+        })
+        .where(eq(zeroAgentSchedules.id, schedule.id));
+
+      if (shouldDisable) {
+        log.warn("Schedule auto-disabled after consecutive pre-run failures", {
+          scheduleId: schedule.id,
+          scheduleName: schedule.name,
+          consecutiveFailures: newFailureCount,
+        });
+      }
+
       skipped++;
     }
   }

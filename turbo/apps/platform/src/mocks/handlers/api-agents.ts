@@ -88,7 +88,7 @@ export const apiAgentsHandlers = [
       displayName: null,
       sound: null,
       avatarUrl: null,
-      firewallPolicies: null,
+      permissionPolicies: null,
     });
   }),
 

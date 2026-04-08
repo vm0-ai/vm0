@@ -20,28 +20,28 @@ import {
   type FirewallPolicies,
 } from "@vm0/core";
 import { ConnectorIcon } from "./connector-icons.tsx";
-import type { PermissionPolicy } from "../../../../signals/zero-page/settings/firewalls.ts";
+import type { PermissionPolicy } from "../../../../signals/zero-page/settings/permissions.ts";
 import {
-  firewallAllPolicies$,
-  initFirewallPolicies$,
-  setFirewallPolicy$,
-  setFirewallAllPolicies$,
-  firewallScrolled$,
-  setFirewallScrolled$,
-  firewallExpandedGroups$,
-  toggleFirewallGroup$,
-  applyFirewallPolicies$,
-} from "../../../../signals/zero-page/settings/firewall-dialog.ts";
+  permissionAllPolicies$,
+  initPermissionPolicies$,
+  setPermissionPolicy$,
+  setPermissionAllPolicies$,
+  permissionScrolled$,
+  setPermissionScrolled$,
+  permissionExpandedGroups$,
+  togglePermissionGroup$,
+  applyPermissionPolicies$,
+} from "../../../../signals/zero-page/settings/permissions-dialog.ts";
 import { IconCheck, IconBan, IconChevronRight } from "@tabler/icons-react";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 
-interface FirewallPermission {
+interface ConnectorPermission {
   name: string;
   description?: string;
 }
 
-interface FirewallPermissionsDrawerProps {
+interface PermissionsDrawerProps {
   connectorType: ConnectorType;
   displayName: string;
   initialPolicies: FirewallPolicies;
@@ -50,8 +50,8 @@ interface FirewallPermissionsDrawerProps {
   onClose: () => void;
 }
 
-function extractPermissions(config: FirewallConfig): FirewallPermission[] {
-  const seen = new Map<string, FirewallPermission>();
+function extractPermissions(config: FirewallConfig): ConnectorPermission[] {
+  const seen = new Map<string, ConnectorPermission>();
   for (const api of config.apis) {
     if (!api.permissions) {
       continue;
@@ -68,7 +68,7 @@ function extractPermissions(config: FirewallConfig): FirewallPermission[] {
   return [...seen.values()];
 }
 
-function sortPermissions(perms: FirewallPermission[]): FirewallPermission[] {
+function sortPermissions(perms: ConnectorPermission[]): ConnectorPermission[] {
   return [...perms].sort((a, b) => {
     const [aBase, aSuffix] = splitPermName(a.name);
     const [bBase, bSuffix] = splitPermName(b.name);
@@ -104,7 +104,7 @@ const POLICY_OPTIONS = [
 ] as const;
 
 function getGroupPolicy(
-  perms: FirewallPermission[],
+  perms: ConnectorPermission[],
   policies: Record<string, PermissionPolicy>,
 ): PermissionPolicy | "mixed" {
   if (perms.length === 0) {
@@ -165,14 +165,14 @@ function PolicyPill({
   );
 }
 
-export function FirewallPermissionsDrawer({
+export function PermissionsDrawer({
   connectorType,
   displayName,
   initialPolicies,
   readOnly,
   onApply,
   onClose,
-}: FirewallPermissionsDrawerProps) {
+}: PermissionsDrawerProps) {
   const ref = connectorType;
 
   const config = isFirewallConnectorType(ref)
@@ -199,16 +199,16 @@ export function FirewallPermissionsDrawer({
     }
     return result;
   };
-  useSet(initFirewallPolicies$)(buildInitialPolicies());
+  useSet(initPermissionPolicies$)(buildInitialPolicies());
 
-  const allPolicies = useGet(firewallAllPolicies$);
-  const scrolled = useGet(firewallScrolled$);
-  const setScrolled = useSet(setFirewallScrolled$);
-  const expandedGroups = useGet(firewallExpandedGroups$);
-  const toggleGroup = useSet(toggleFirewallGroup$);
-  const setPolicyFn = useSet(setFirewallPolicy$);
-  const setAllPoliciesFn = useSet(setFirewallAllPolicies$);
-  const [applyLoadable, applyFn] = useLoadableSet(applyFirewallPolicies$);
+  const allPolicies = useGet(permissionAllPolicies$);
+  const scrolled = useGet(permissionScrolled$);
+  const setScrolled = useSet(setPermissionScrolled$);
+  const expandedGroups = useGet(permissionExpandedGroups$);
+  const toggleGroup = useSet(togglePermissionGroup$);
+  const setPolicyFn = useSet(setPermissionPolicy$);
+  const setAllPoliciesFn = useSet(setPermissionAllPolicies$);
+  const [applyLoadable, applyFn] = useLoadableSet(applyPermissionPolicies$);
   const saving = applyLoadable.state === "loading";
   const pageSignal = useGet(pageSignal$);
 
@@ -238,7 +238,7 @@ export function FirewallPermissionsDrawer({
   };
 
   const handleSetGroupAll = (
-    groupPerms: FirewallPermission[],
+    groupPerms: ConnectorPermission[],
     policy: PermissionPolicy,
   ) => {
     const next = { ...policies };
@@ -281,7 +281,7 @@ export function FirewallPermissionsDrawer({
         {!config ? (
           <div className="flex flex-1 items-center justify-center">
             <p className="text-sm text-destructive">
-              No firewall config found for {ref}
+              No permission config found for {ref}
             </p>
           </div>
         ) : (

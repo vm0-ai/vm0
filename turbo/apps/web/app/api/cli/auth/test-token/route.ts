@@ -6,7 +6,7 @@ import { initServices } from "../../../../../src/lib/init-services";
 import { cliTokens } from "../../../../../src/db/schema/cli-tokens";
 import { orgCache } from "../../../../../src/db/schema/org-cache";
 import { orgMembersCache } from "../../../../../src/db/schema/org-members-cache";
-import { getOrgData } from "../../../../../src/lib/zero/org/org-cache-service";
+import { getOrgNameAndSlug } from "../../../../../src/lib/auth/org-cache";
 import { generateCliToken } from "../../../../../src/lib/auth/sandbox-token";
 import {
   resolveTestUserId,
@@ -76,7 +76,7 @@ async function ensureTestOrg(userId: string): Promise<{ orgId: string }> {
       log.info(
         `org ${orgId} not in org_cache, populating from Clerk for user ${userId}`,
       );
-      await getOrgData(orgId);
+      await getOrgNameAndSlug(orgId);
     }
 
     const role = membership.role === "org:admin" ? "admin" : "member";

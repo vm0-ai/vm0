@@ -17,7 +17,7 @@ import {
 
 interface ConnectorPermissionInfo {
   type: string;
-  hasFirewall: boolean;
+  hasPermissions: boolean;
   permissions: Array<{ name: string; description?: string }>;
   policies: Record<string, FirewallPolicyValue> | null;
   allowed: number;
@@ -31,7 +31,7 @@ function getConnectorPermissionInfo(
   if (!isFirewallConnectorType(type)) {
     return {
       type,
-      hasFirewall: false,
+      hasPermissions: false,
       permissions: [],
       policies: null,
       allowed: 0,
@@ -51,7 +51,7 @@ function getConnectorPermissionInfo(
       }).length
     : 0;
 
-  return { type, hasFirewall: true, permissions, policies, allowed, total };
+  return { type, hasPermissions: true, permissions, policies, allowed, total };
 }
 
 function formatConnectorIdentity(
@@ -69,7 +69,7 @@ function formatConnectorSummary(
 ): string {
   const id = formatConnectorIdentity(identity);
   const idStr = id ? ` ${id}` : "";
-  if (!info.hasFirewall) return `${info.type}${idStr}`;
+  if (!info.hasPermissions) return `${info.type}${idStr}`;
   if (!info.policies) return `${info.type}${idStr} (full access)`;
   return `${info.type}${idStr} (${info.allowed}/${info.total} allowed)`;
 }
@@ -134,7 +134,7 @@ Examples:
         console.log(`Agent ID:     ${agent.agentId}`);
 
         const resolvedPolicies = resolveFirewallPolicies(
-          agent.firewallPolicies,
+          agent.permissionPolicies,
           connectorTypes,
         );
 
@@ -163,7 +163,7 @@ Examples:
             const identity = formatDetailIdentity(identityMap.get(info.type));
             console.log(`  ${info.type.padEnd(14)}${identity}`);
 
-            if (!info.hasFirewall) continue;
+            if (!info.hasPermissions) continue;
 
             if (!info.policies) {
               console.log(

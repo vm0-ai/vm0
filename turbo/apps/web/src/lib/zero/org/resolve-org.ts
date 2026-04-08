@@ -6,7 +6,7 @@ import {
 } from "../../shared/errors";
 import { getOrgMetadata } from "./org-metadata-service";
 import type { OrgMetadata } from "./org-metadata-service";
-import { verifyMembershipCached } from "../../auth/org-membership-cache";
+import { getMemberRole } from "../../auth/org-membership-cache";
 import type { AuthContext } from "../../auth/get-auth-context";
 
 import type { OrgRole } from "@vm0/core";
@@ -55,7 +55,7 @@ async function verifyMembership(
   }
 
   // Cache-backed path: check org_members_cache, fall back to Clerk API
-  const result = await verifyMembershipCached(resolved.orgId, authCtx.userId);
+  const result = await getMemberRole(resolved.orgId, authCtx.userId);
   if (!result) {
     throw forbidden("You are not a member of this organization");
   }

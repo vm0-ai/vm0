@@ -9,11 +9,11 @@ import {
   getOrgCacheEntry,
   ensureOrgRow,
 } from "../../../__tests__/api-test-helpers";
-import { getOrgIdentity, getOrgIdentityBySlug } from "../org-cache";
+import { getOrgNameAndSlug, getOrgIdBySlug } from "../org-cache";
 
 const context = testContext();
 
-describe("getOrgIdentity", () => {
+describe("getOrgNameAndSlug", () => {
   beforeEach(() => {
     context.setupMocks();
   });
@@ -31,7 +31,7 @@ describe("getOrgIdentity", () => {
     // Delete pre-populated orgCache to test cache-miss behavior
     await deleteOrgCacheEntry(orgId);
 
-    const result = await getOrgIdentity(orgId);
+    const result = await getOrgNameAndSlug(orgId);
 
     expect(result).toEqual({
       orgId,
@@ -64,7 +64,7 @@ describe("getOrgIdentity", () => {
       slug: "cached-slug",
     });
 
-    const result = await getOrgIdentity(orgId);
+    const result = await getOrgNameAndSlug(orgId);
 
     expect(result).toEqual({
       orgId,
@@ -95,7 +95,7 @@ describe("getOrgIdentity", () => {
       cachedAt: twoMinutesAgo,
     });
 
-    const result = await getOrgIdentity(orgId);
+    const result = await getOrgNameAndSlug(orgId);
 
     // Should have fresh data from Clerk mock
     expect(result.slug).toBe(slug);
@@ -134,13 +134,13 @@ describe("getOrgIdentity", () => {
       ReturnType<typeof client.organizations.getOrganization>
     >);
 
-    await expect(getOrgIdentity(orgId)).rejects.toThrow(
+    await expect(getOrgNameAndSlug(orgId)).rejects.toThrow(
       `Clerk organization ${orgId} has no slug`,
     );
   });
 });
 
-describe("getOrgIdentityBySlug", () => {
+describe("getOrgIdBySlug", () => {
   beforeEach(() => {
     context.setupMocks();
   });
@@ -154,13 +154,9 @@ describe("getOrgIdentityBySlug", () => {
       clerkOrgs: [{ id: orgId, slug, name: slug }],
     });
 
-    const result = await getOrgIdentityBySlug(slug);
+    const result = await getOrgIdBySlug(slug);
 
-    expect(result).toEqual({
-      orgId,
-      slug,
-      name: slug,
-    });
+    expect(result).toBe(orgId);
 
     // Verify cache row was created
     const cached = await getOrgCacheEntry(orgId);
@@ -174,7 +170,7 @@ describe("getOrgIdentityBySlug", () => {
     });
   });
 
-  it("returns cached data without Clerk call when fresh", async () => {
+  it("returns cached orgId without Clerk call when fresh", async () => {
     const userId = uniqueId("test-user");
     const slug = uniqueId("org");
     const orgId = `org_mock_${slug}`;
@@ -187,9 +183,9 @@ describe("getOrgIdentityBySlug", () => {
     await insertOrgCacheEntry({ orgId, slug });
     await ensureOrgRow(orgId);
 
-    const result = await getOrgIdentityBySlug(slug);
+    const result = await getOrgIdBySlug(slug);
 
-    expect(result).toEqual({ orgId, slug, name: slug });
+    expect(result).toBe(orgId);
 
     // Clerk API should NOT have been called
     const client = await clerkClient();
@@ -200,7 +196,7 @@ describe("getOrgIdentityBySlug", () => {
     const userId = uniqueId("test-user");
     mockClerk({ userId });
 
-    const result = await getOrgIdentityBySlug("nonexistent-slug");
+    const result = await getOrgIdBySlug("nonexistent-slug");
 
     expect(result).toBeNull();
   });
@@ -222,10 +218,9 @@ describe("getOrgIdentityBySlug", () => {
       cachedAt: twoMinutesAgo,
     });
 
-    const result = await getOrgIdentityBySlug(slug);
+    const result = await getOrgIdBySlug(slug);
 
-    expect(result).not.toBeNull();
-    expect(result!.orgId).toBe(orgId);
+    expect(result).toBe(orgId);
 
     // Verify Clerk API was called with slug param
     const client = await clerkClient();

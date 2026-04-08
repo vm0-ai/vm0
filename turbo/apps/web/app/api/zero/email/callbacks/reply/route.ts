@@ -15,7 +15,7 @@ import {
   buildUnsubscribeUrl,
   buildUnsubscribeHeaders,
 } from "../../../../../../src/lib/zero/email/handlers/shared";
-import { getOrgData } from "../../../../../../src/lib/zero/org/org-cache-service";
+import { getOrgNameAndSlug } from "../../../../../../src/lib/auth/org-cache";
 import type { EmailReplyCallbackPayload } from "../../../../../../src/lib/infra/callback/callback-payloads";
 import { logger } from "../../../../../../src/lib/shared/logger";
 
@@ -137,7 +137,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   // Resolve org slug for from address
   const orgId = session.orgId ?? agent.orgId;
-  const org = await getOrgData(orgId);
+  const org = await getOrgNameAndSlug(orgId);
 
   // Get user email
   const userEmail = await getUserEmail(session.userId);

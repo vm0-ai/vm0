@@ -9,7 +9,7 @@ import {
   verifyZeroToken,
   verifyCliToken,
 } from "./sandbox-token";
-import { verifyMembershipCached } from "./org-membership-cache";
+import { getMemberRole } from "./org-membership-cache";
 import { logger } from "../shared/logger";
 
 const log = logger("auth:user");
@@ -52,7 +52,7 @@ export async function getAuthContext(
         const resolved = await resolveCliTokenFromDb(cliAuth);
         if (!resolved) return null;
         if (resolved.orgId) {
-          const membership = await verifyMembershipCached(
+          const membership = await getMemberRole(
             resolved.orgId,
             resolved.userId,
           );
@@ -80,7 +80,7 @@ export async function getAuthContext(
         if (!resolved) return null;
         // Resolve org role so downstream admin checks work correctly
         if (resolved.orgId) {
-          const membership = await verifyMembershipCached(
+          const membership = await getMemberRole(
             resolved.orgId,
             resolved.userId,
           );
@@ -129,10 +129,7 @@ async function authenticateSandboxToken(
   if (zeroAuth) {
     const result = resolveZeroAuth(zeroAuth, options);
     if (result && result.orgId) {
-      const membership = await verifyMembershipCached(
-        result.orgId,
-        result.userId,
-      );
+      const membership = await getMemberRole(result.orgId, result.userId);
       if (!membership) {
         // User no longer a member — omit orgId (same pattern as CLI JWT path)
         return { userId: result.userId, runId: result.runId };

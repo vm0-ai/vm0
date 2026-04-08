@@ -166,9 +166,9 @@ class TestRedactHeaders:
         )
         result = _redact_headers(headers)
         assert result["Content-Type"] == "application/json"
-        assert result["Authorization"] == "[REDACTED]"
+        assert result["Authorization"] == "***"
         assert result["Host"] == "api.example.com"
-        assert result["Cookie"] == "[REDACTED]"
+        assert result["Cookie"] == "***"
 
 
 class TestAddCaptureFields:
@@ -191,6 +191,10 @@ class TestAddCaptureFields:
         flow.response.content = response_body
         flow.response.headers = MagicMock()
         flow.response.headers.get.return_value = response_ct
+        res_pairs = [("Content-Type", response_ct), ("X-Request-Id", "req-123")]
+        flow.response.headers.items.side_effect = lambda multi=False: (
+            iter(res_pairs) if multi else iter([])
+        )
         return flow
 
     def test_captures_request_body(self):
@@ -216,6 +220,33 @@ class TestAddCaptureFields:
         assert entry["request_headers"]["Content-Type"] == "application/json"
         assert entry["request_headers"]["Host"] == "api.example.com"
 
+    def test_captures_response_headers(self):
+        flow = self._make_flow()
+        entry = {}
+        _add_capture_fields(flow, entry)
+        assert "response_headers" in entry
+        assert entry["response_headers"]["Content-Type"] == "application/json"
+        assert entry["response_headers"]["X-Request-Id"] == "req-123"
+
+    def test_response_headers_redacts_sensitive(self):
+        flow = self._make_flow()
+        flow.response.headers.items.side_effect = lambda multi=False: (
+            iter([("Set-Cookie", "session=abc"), ("Content-Type", "text/html")])
+            if multi
+            else iter([])
+        )
+        entry = {}
+        _add_capture_fields(flow, entry)
+        assert entry["response_headers"]["Set-Cookie"] == "***"
+        assert entry["response_headers"]["Content-Type"] == "text/html"
+
+    def test_no_response_headers_when_no_response(self):
+        flow = self._make_flow()
+        flow.response = None
+        entry = {}
+        _add_capture_fields(flow, entry)
+        assert "response_headers" not in entry
+
     def test_truncates_large_request_body(self):
         body = b"x" * (_MAX_BODY_SIZE + 1000)
         flow = self._make_flow(request_body=body, request_ct="text/plain")
@@ -239,8 +270,11 @@ class TestAddCaptureFields:
         entry = {}
         _add_capture_fields(flow, entry)
         assert "request_body" not in entry
+        assert "request_body_encoding" not in entry  # no body = no encoding
         assert "response_body" not in entry
+        assert "response_body_encoding" not in entry  # no body = no encoding
         assert "request_headers" in entry  # headers always captured
+        assert "response_headers" in entry  # headers captured despite empty body
 
     def test_response_decompression_error_skips_body(self):
         flow = self._make_flow(request_body=b"ok")
@@ -251,22 +285,26 @@ class TestAddCaptureFields:
         entry = {}
         _add_capture_fields(flow, entry)
         assert "request_body" in entry  # request body still captured
+        assert "response_headers" in entry  # headers captured before body access
         assert "response_body" not in entry  # response body skipped
+        assert entry["response_body_encoding"] == "binary"  # marked as binary
 
-    def test_skips_binary_request_body(self):
+    def test_binary_request_body_marks_encoding(self):
         flow = self._make_flow(request_body=b"\x89PNG\r\n", request_ct="image/png")
         entry = {}
         _add_capture_fields(flow, entry)
         assert "request_body" not in entry
+        assert entry["request_body_encoding"] == "binary"
         assert "request_headers" in entry  # headers still captured
 
-    def test_skips_binary_response_body(self):
+    def test_binary_response_body_marks_encoding(self):
         flow = self._make_flow(
             response_body=b"\x00\x01\x02", response_ct="application/octet-stream"
         )
         entry = {}
         _add_capture_fields(flow, entry)
         assert "response_body" not in entry
+        assert entry["response_body_encoding"] == "binary"
 
     def test_request_body_exactly_at_limit_not_truncated(self):
         body = b"x" * _MAX_BODY_SIZE
@@ -292,7 +330,7 @@ class TestAddCaptureFields:
             ("Host", "example.com"),
         ]
         result = _redact_headers(headers)
-        assert result["Set-Cookie"] == "[REDACTED]"
+        assert result["Set-Cookie"] == "***"
         assert result["Host"] == "example.com"
         assert len(result) == 2
 
@@ -318,6 +356,23 @@ class TestAddCaptureFields:
         _add_capture_fields(flow, entry)
         assert entry["request_body"] == '{"q": "test"}'
         assert "response_body" not in entry
+        assert entry["response_body_encoding"] == "binary"
+
+    def test_both_bodies_binary(self):
+        flow = self._make_flow(
+            request_body=b"\x89PNG",
+            response_body=b"\x1f\x8b\x08",
+            request_ct="image/png",
+            response_ct="application/gzip",
+        )
+        entry = {}
+        _add_capture_fields(flow, entry)
+        assert "request_body" not in entry
+        assert entry["request_body_encoding"] == "binary"
+        assert "response_body" not in entry
+        assert entry["response_body_encoding"] == "binary"
+        assert "request_headers" in entry
+        assert "response_headers" in entry
 
     def test_both_request_and_response(self):
         flow = self._make_flow(

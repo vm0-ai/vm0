@@ -13,6 +13,7 @@ import {
   clearZeroChatInput$,
   startNewZeroSession$,
   sendExistingThreadMessage$,
+  sendNewThreadMessage$,
   loadChatMessages$,
   zeroChatAttachments$,
   uploadZeroAttachment$,
@@ -412,7 +413,36 @@ describe("zero-chat signals", () => {
       );
       expect(context.store.get(currentChatThreadId$)).toBeNull();
       await expect(context.store.get(allFinished$)).resolves.toBeTruthy();
-      expect(context.store.get(zeroChatInput$)).toBe("");
+    });
+
+    it("should preserve attachments so they can be sent with the message", async () => {
+      server.use(
+        http.get("*/api/zero/chat-threads", () => {
+          return HttpResponse.json({ threads: [] });
+        }),
+        http.post("*/api/zero/uploads", () => {
+          return HttpResponse.json({
+            id: "upload-1",
+            filename: "test.png",
+            contentType: "image/png",
+            size: 1024,
+            url: "https://example.com/test.png",
+          });
+        }),
+      );
+      await setup();
+
+      await context.store.set(
+        uploadZeroAttachment$,
+        new File(["content"], "test.png", { type: "image/png" }),
+        context.signal,
+      );
+      expect(context.store.get(zeroChatAttachments$)).toHaveLength(1);
+
+      // Starting a new session must not clear the attachments
+      context.store.set(startNewZeroSession$);
+
+      expect(context.store.get(zeroChatAttachments$)).toHaveLength(1);
     });
   });
 
@@ -735,6 +765,76 @@ describe("zero-chat signals", () => {
 
       context.store.set(removeZeroAttachment$, attachments[0]!);
 
+      expect(context.store.get(zeroChatAttachments$)).toHaveLength(0);
+    });
+
+    it("should include talk page attachments in the sent message", async () => {
+      let capturedBody: unknown = null;
+
+      server.use(
+        http.get("*/api/zero/chat-threads", () => {
+          return HttpResponse.json({ threads: [] });
+        }),
+        http.post("*/api/zero/uploads", () => {
+          return HttpResponse.json({
+            id: "upload-att-1",
+            filename: "report.pdf",
+            contentType: "application/pdf",
+            size: 2048,
+            url: "https://example.com/report.pdf",
+          });
+        }),
+        http.post("*/api/zero/chat-threads", () => {
+          return HttpResponse.json(
+            {
+              id: "thread-attach-1",
+              title: null,
+              agentId: "c0000000-0000-4000-a000-000000000001",
+              createdAt: "2026-03-10T00:00:00Z",
+            },
+            { status: 201 },
+          );
+        }),
+        http.post("*/api/zero/chat/messages", async ({ request }) => {
+          capturedBody = await request.json();
+          return HttpResponse.json(
+            {
+              runId: "run-attach-1",
+              threadId: "thread-attach-1",
+              status: "pending",
+              createdAt: "2026-03-10T00:00:00Z",
+            },
+            { status: 201 },
+          );
+        }),
+      );
+
+      await setup();
+
+      await context.store.set(
+        uploadZeroAttachment$,
+        new File(["content"], "report.pdf", { type: "application/pdf" }),
+        context.signal,
+      );
+      expect(context.store.get(zeroChatAttachments$)).toHaveLength(1);
+
+      // Simulate handleSendMessage: startNewSession then sendNewThread
+      context.store.set(startNewZeroSession$);
+      await context.store.set(
+        sendNewThreadMessage$,
+        "c0000000-0000-4000-a000-000000000001",
+        "Check this file",
+        context.signal,
+      );
+
+      // The sent prompt should include the attachment
+      expect(capturedBody).toBeDefined();
+      expect(JSON.stringify(capturedBody)).toContain(
+        "https://example.com/report.pdf",
+      );
+      expect(JSON.stringify(capturedBody)).toContain("report.pdf");
+
+      // Attachments should be cleared after the send
       expect(context.store.get(zeroChatAttachments$)).toHaveLength(0);
     });
 

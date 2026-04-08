@@ -119,7 +119,11 @@ export function OrgProviderDialog() {
           {shape === "oauth" && (
             <OAuthFields
               secret={formValues.secret}
+              selectedModel={formValues.selectedModel}
+              useDefaultModel={formValues.useDefaultModel}
               onSecretChange={setSecret}
+              onModelChange={setModel}
+              onUseDefaultModelChange={setUseDefaultModel}
               error={errors["secret"]}
               isLoading={isLoading}
             />

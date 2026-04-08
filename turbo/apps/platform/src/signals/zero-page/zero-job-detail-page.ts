@@ -5,13 +5,13 @@ import type { ConnectorType } from "@vm0/core";
 // JobPermissionsTab UI state
 // ---------------------------------------------------------------------------
 
-const internalFirewallType$ = state<ConnectorType | null>(null);
-export const permFirewallType$ = computed((get) => {
-  return get(internalFirewallType$);
+const internalConnectorType$ = state<ConnectorType | null>(null);
+export const permConnectorType$ = computed((get) => {
+  return get(internalConnectorType$);
 });
-export const setPermFirewallType$ = command(
+export const setPermConnectorType$ = command(
   ({ set }, type: ConnectorType | null) => {
-    set(internalFirewallType$, type);
+    set(internalConnectorType$, type);
   },
 );
 

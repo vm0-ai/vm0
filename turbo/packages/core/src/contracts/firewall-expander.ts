@@ -22,7 +22,7 @@ const VALID_RULE_METHODS = new Set([
 
 const VALID_GRAPHQL_TYPES = new Set(["query", "mutation", "subscription"]);
 
-const GRAPHQL_OP_NAME_RE = /^[a-zA-Z_][a-zA-Z0-9_]*\*?$/;
+const GRAPHQL_IDENTIFIER_RE = /^[a-zA-Z_][a-zA-Z0-9_]*\*?$/;
 
 function validateGraphQLModifiers(
   modifiers: string[],
@@ -32,7 +32,7 @@ function validateGraphQLModifiers(
 ): void {
   if (modifiers.length === 0) {
     throw new Error(
-      `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": GraphQL keyword requires at least one modifier (type: or operationName:)`,
+      `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": GraphQL keyword requires at least one modifier (type:, operationName:, or field:)`,
     );
   }
   for (const part of modifiers) {
@@ -50,9 +50,21 @@ function validateGraphQLModifiers(
           `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": empty GraphQL operationName`,
         );
       }
-      if (val !== "*" && !GRAPHQL_OP_NAME_RE.test(val)) {
+      if (val !== "*" && !GRAPHQL_IDENTIFIER_RE.test(val)) {
         throw new Error(
           `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": invalid GraphQL operationName pattern "${val}"`,
+        );
+      }
+    } else if (part.startsWith("field:")) {
+      const val = part.slice(6);
+      if (!val) {
+        throw new Error(
+          `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": empty GraphQL field name`,
+        );
+      }
+      if (val !== "*" && !GRAPHQL_IDENTIFIER_RE.test(val)) {
+        throw new Error(
+          `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": invalid GraphQL field pattern "${val}"`,
         );
       }
     } else {

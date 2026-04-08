@@ -1,5 +1,55 @@
 # Changelog
 
+## [0.202.0](https://github.com/vm0-ai/vm0/compare/app-v0.201.0...app-v0.202.0) (2026-04-08)
+
+
+### Features
+
+* **model-providers:** add model selection for anthropic-api-key and claude-code-oauth-token ([#8491](https://github.com/vm0-ai/vm0/issues/8491)) ([ad96e27](https://github.com/vm0-ai/vm0/commit/ad96e27561f8bcdb69bf8d3268e4d168d98b9662))
+* **platform:** capture response headers and mark binary bodies in network logs ([#8481](https://github.com/vm0-ai/vm0/issues/8481)) ([6a778f8](https://github.com/vm0-ai/vm0/commit/6a778f8ebbd88e2bd95a4d79a5e4ed1e4c3f4f26))
+
+
+### Bug Fixes
+
+* **slack:** skip channel context fetch for dm conversations ([#8475](https://github.com/vm0-ai/vm0/issues/8475)) ([07a3321](https://github.com/vm0-ai/vm0/commit/07a33216d0a47047b341a0784324cb71b596a7f4))
+* **ui:** remove optimistic pin state to eliminate agent list dialog button blink ([#8469](https://github.com/vm0-ai/vm0/issues/8469)) ([07b9035](https://github.com/vm0-ai/vm0/commit/07b903507c60e53f94015bec34df25465841873c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.161.0
+
+## [0.201.0](https://github.com/vm0-ai/vm0/compare/app-v0.200.0...app-v0.201.0) (2026-04-08)
+
+
+### Features
+
+* display last updated timestamp and refetch insights on navigation ([#8443](https://github.com/vm0-ai/vm0/issues/8443)) ([11e5743](https://github.com/vm0-ai/vm0/commit/11e5743855d534c60ccbc7470e73f47f8cc9797b))
+* **platform:** display captured request headers and bodies in network logs ([#8438](https://github.com/vm0-ai/vm0/issues/8438)) ([121befe](https://github.com/vm0-ai/vm0/commit/121befef4bb9eef59653aa97aeac20c7c6dbef28))
+* refetch insights data when navigating to insights page ([#8433](https://github.com/vm0-ai/vm0/issues/8433)) ([ee0c5e7](https://github.com/vm0-ai/vm0/commit/ee0c5e73d2153f50c9d5bde17fb31f7afb30b693))
+
+
+### Bug Fixes
+
+* **firewalls:** default-deny gmail send and split compose to draft-only ([#8450](https://github.com/vm0-ai/vm0/issues/8450)) ([cc62cbf](https://github.com/vm0-ai/vm0/commit/cc62cbfb5db47c1d8b0e49465bad68a03f572d52))
+* **platform:** auto-scroll chat to bottom on page entry ([#8458](https://github.com/vm0-ai/vm0/issues/8458)) ([a8e9406](https://github.com/vm0-ai/vm0/commit/a8e9406b0939173690c88a2d60c3f8e50522fed3)), closes [#8337](https://github.com/vm0-ai/vm0/issues/8337)
+* remove premature talk draft clear that dropped attachments on send ([#8466](https://github.com/vm0-ai/vm0/issues/8466)) ([a124b35](https://github.com/vm0-ai/vm0/commit/a124b356e6caec637e70169b4082d9cf9d160bc5)), closes [#8462](https://github.com/vm0-ai/vm0/issues/8462)
+
+
+### Refactoring
+
+* **firewalls:** remove fine-grained permissions from github firewall ([#8432](https://github.com/vm0-ai/vm0/issues/8432)) ([2471dfd](https://github.com/vm0-ai/vm0/commit/2471dfdd2da6bf4407f5d0a5e565d334f750cfe9))
+* **platform:** remove onboarding init, rename firewall to permission ([#8417](https://github.com/vm0-ai/vm0/issues/8417)) ([43432ea](https://github.com/vm0-ai/vm0/commit/43432ea2309f61bdac69a8673c3cf20fc3936f42))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.160.0
+
 ## [0.200.0](https://github.com/vm0-ai/vm0/compare/app-v0.199.0...app-v0.200.0) (2026-04-07)
 
 

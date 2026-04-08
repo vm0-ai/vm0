@@ -6,6 +6,7 @@ import {
   useLastResolved,
   useResolved,
 } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { user$ } from "../../signals/auth.ts";
 import { IconArrowUpRight, IconPin, IconUserPlus } from "@tabler/icons-react";
@@ -24,6 +25,7 @@ import {
 import {
   pinnedAgentIds$,
   updatePinnedAgentIds$,
+  currentChatAgentPinned$,
 } from "../../signals/zero-page/zero-pinned-agents.ts";
 
 import { detach, Reason } from "../../signals/utils.ts";
@@ -209,11 +211,11 @@ export function AgentChatPage() {
   const navigate = useSet(detachedNavigateTo$);
 
   const pinnedIds = useLastResolved(pinnedAgentIds$) ?? [];
-  const savePinnedIds = useSet(updatePinnedAgentIds$);
+  const pinnedStatus = useLastResolved(currentChatAgentPinned$);
+  const showPinPill = pinnedStatus === false;
+  const [pinLoadable, savePinnedIds] = useLoadableSet(updatePinnedAgentIds$);
+  const pinSaving = pinLoadable.state === "loading";
   const pageSignal = useGet(pageSignal$);
-
-  const showPinPill =
-    currentChatAgentId && !pinnedIds.includes(currentChatAgentId);
 
   const handlePin = () => {
     if (currentChatAgentId) {
@@ -293,7 +295,8 @@ export function AgentChatPage() {
                       <button
                         type="button"
                         onClick={handlePin}
-                        className="absolute -top-0.5 -right-0.5 flex h-6 w-6 items-center justify-center rounded-full zero-border bg-background text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground hover:shadow-md cursor-pointer"
+                        disabled={pinSaving}
+                        className="absolute -top-0.5 -right-0.5 flex h-6 w-6 items-center justify-center rounded-full zero-border bg-background text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground hover:shadow-md cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
                         aria-label="Pin to sidebar"
                       >
                         <IconPin size={12} stroke={2} />

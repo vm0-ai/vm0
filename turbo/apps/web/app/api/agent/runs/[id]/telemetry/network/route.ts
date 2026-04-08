@@ -108,6 +108,7 @@ ${sinceFilter}
         request_body: e.request_body,
         request_body_encoding: e.request_body_encoding,
         request_body_truncated: e.request_body_truncated,
+        response_headers: e.response_headers,
         response_body: e.response_body,
         response_body_encoding: e.response_body_encoding,
         response_body_truncated: e.response_body_truncated,

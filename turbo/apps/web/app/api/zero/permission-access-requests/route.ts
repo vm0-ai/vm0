@@ -4,9 +4,9 @@ import {
   tsr,
 } from "../../../../src/lib/ts-rest-handler";
 import {
-  firewallAccessRequestsCreateContract,
-  firewallAccessRequestsListContract,
-  firewallAccessRequestsResolveContract,
+  permissionAccessRequestsCreateContract,
+  permissionAccessRequestsListContract,
+  permissionAccessRequestsResolveContract,
   isFirewallConnectorType,
   type FirewallPolicies,
 } from "@vm0/core";
@@ -17,26 +17,26 @@ import {
 } from "../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";
 import { zeroAgents } from "../../../../src/db/schema/zero-agent";
-import { firewallAccessRequests } from "../../../../src/db/schema/firewall-access-request";
+import { permissionAccessRequests } from "../../../../src/db/schema/permission-access-request";
 import { eq, and } from "drizzle-orm";
 import { clerkClient } from "@clerk/nextjs/server";
 import { requireAgentPermission } from "../../../../src/lib/zero/require-agent-permission";
 import {
   notifyOwnerOfRequest,
   notifyRequesterOfResolution,
-} from "../../../../src/lib/zero/firewall-notification-service";
+} from "../../../../src/lib/zero/permission-notification-service";
 import { logger } from "../../../../src/lib/shared/logger";
 
-const log = logger("api:zero:firewall-access-requests");
+const log = logger("api:zero:permission-access-requests");
 
 function formatRequest(
-  row: typeof firewallAccessRequests.$inferSelect,
+  row: typeof permissionAccessRequests.$inferSelect,
   nameMap?: Map<string, string>,
 ) {
   return {
     id: row.id,
     agentId: row.agentId,
-    firewallRef: row.firewallRef,
+    connectorRef: row.connectorRef,
     permission: row.permission,
     action: row.action,
     method: row.method ?? null,
@@ -72,7 +72,7 @@ async function resolveUserNames(
 }
 
 // --- POST: Create Request ---
-const createRouter = tsr.router(firewallAccessRequestsCreateContract, {
+const createRouter = tsr.router(permissionAccessRequestsCreateContract, {
   create: async ({ body, headers }) => {
     initServices();
 
@@ -83,13 +83,13 @@ const createRouter = tsr.router(firewallAccessRequestsCreateContract, {
 
     const { org, member } = await resolveOrg(authCtx);
 
-    // Validate firewall ref
-    if (!isFirewallConnectorType(body.firewallRef)) {
+    // Validate connector ref
+    if (!isFirewallConnectorType(body.connectorRef)) {
       return {
         status: 400 as const,
         body: {
           error: {
-            message: `Unknown firewall ref: ${body.firewallRef}`,
+            message: `Unknown connector ref: ${body.connectorRef}`,
             code: "VALIDATION_ERROR",
           },
         },
@@ -124,21 +124,21 @@ const createRouter = tsr.router(firewallAccessRequestsCreateContract, {
     // One request per (agent, ref, permission, action, requester) — reuse existing
     const [existing] = await globalThis.services.db
       .select()
-      .from(firewallAccessRequests)
+      .from(permissionAccessRequests)
       .where(
         and(
-          eq(firewallAccessRequests.agentId, body.agentId),
-          eq(firewallAccessRequests.firewallRef, body.firewallRef),
-          eq(firewallAccessRequests.permission, body.permission),
-          eq(firewallAccessRequests.action, body.action),
-          eq(firewallAccessRequests.requesterUserId, member.userId),
+          eq(permissionAccessRequests.agentId, body.agentId),
+          eq(permissionAccessRequests.connectorRef, body.connectorRef),
+          eq(permissionAccessRequests.permission, body.permission),
+          eq(permissionAccessRequests.action, body.action),
+          eq(permissionAccessRequests.requesterUserId, member.userId),
         ),
       )
       .limit(1);
 
     if (existing) {
       const [updated] = await globalThis.services.db
-        .update(firewallAccessRequests)
+        .update(permissionAccessRequests)
         .set({
           reason: body.reason ?? existing.reason,
           method: body.method ?? existing.method,
@@ -147,11 +147,11 @@ const createRouter = tsr.router(firewallAccessRequestsCreateContract, {
           resolvedBy: null,
           resolvedAt: null,
         })
-        .where(eq(firewallAccessRequests.id, existing.id))
+        .where(eq(permissionAccessRequests.id, existing.id))
         .returning();
 
       log.info(
-        `Reused firewall access request: ${existing.id} (was ${existing.status}) for agent: ${body.agentId}`,
+        `Reused permission access request: ${existing.id} (was ${existing.status}) for agent: ${body.agentId}`,
       );
 
       const requesterNames = await resolveUserNames([member.userId]);
@@ -163,7 +163,7 @@ const createRouter = tsr.router(firewallAccessRequestsCreateContract, {
         agentDisplayName: agent.displayName ?? body.agentId,
         requesterName: requesterNames.get(member.userId) ?? member.userId,
         permission: body.permission,
-        firewallRef: body.firewallRef,
+        connectorRef: body.connectorRef,
         action: body.action,
         reason: body.reason,
       }).catch(() => {});
@@ -176,12 +176,12 @@ const createRouter = tsr.router(firewallAccessRequestsCreateContract, {
 
     // Create new request (first time for this combination)
     const [created] = await globalThis.services.db
-      .insert(firewallAccessRequests)
+      .insert(permissionAccessRequests)
       .values({
         orgId: org.orgId,
         agentId: body.agentId,
         requesterUserId: member.userId,
-        firewallRef: body.firewallRef,
+        connectorRef: body.connectorRef,
         permission: body.permission,
         action: body.action,
         method: body.method,
@@ -191,7 +191,7 @@ const createRouter = tsr.router(firewallAccessRequestsCreateContract, {
       .returning();
 
     log.info(
-      `Created firewall access request: ${created!.id} for agent: ${body.agentId}`,
+      `Created permission access request: ${created!.id} for agent: ${body.agentId}`,
     );
 
     const requesterNames = await resolveUserNames([member.userId]);
@@ -203,7 +203,7 @@ const createRouter = tsr.router(firewallAccessRequestsCreateContract, {
       agentDisplayName: agent.displayName ?? body.agentId,
       requesterName: requesterNames.get(member.userId) ?? member.userId,
       permission: body.permission,
-      firewallRef: body.firewallRef,
+      connectorRef: body.connectorRef,
       action: body.action,
       reason: body.reason,
     }).catch(() => {});
@@ -216,7 +216,7 @@ const createRouter = tsr.router(firewallAccessRequestsCreateContract, {
 });
 
 // --- GET: List Requests ---
-const listRouter = tsr.router(firewallAccessRequestsListContract, {
+const listRouter = tsr.router(permissionAccessRequestsListContract, {
   list: async ({ headers, query }) => {
     initServices();
 
@@ -245,11 +245,11 @@ const listRouter = tsr.router(firewallAccessRequestsListContract, {
     if (requestId) {
       const [row] = await globalThis.services.db
         .select()
-        .from(firewallAccessRequests)
+        .from(permissionAccessRequests)
         .where(
           and(
-            eq(firewallAccessRequests.id, requestId),
-            eq(firewallAccessRequests.orgId, org.orgId),
+            eq(permissionAccessRequests.id, requestId),
+            eq(permissionAccessRequests.orgId, org.orgId),
           ),
         )
         .limit(1);
@@ -277,24 +277,24 @@ const listRouter = tsr.router(firewallAccessRequestsListContract, {
 
     // Build conditions
     const conditions = [
-      eq(firewallAccessRequests.agentId, agentId!),
-      eq(firewallAccessRequests.orgId, org.orgId),
+      eq(permissionAccessRequests.agentId, agentId!),
+      eq(permissionAccessRequests.orgId, org.orgId),
     ];
 
     // Agent owner and org admin see all requests, others see only own
     if (!isOwnerOrAdmin) {
       conditions.push(
-        eq(firewallAccessRequests.requesterUserId, member.userId),
+        eq(permissionAccessRequests.requesterUserId, member.userId),
       );
     }
 
     if (status) {
-      conditions.push(eq(firewallAccessRequests.status, status));
+      conditions.push(eq(permissionAccessRequests.status, status));
     }
 
     const rows = await globalThis.services.db
       .select()
-      .from(firewallAccessRequests)
+      .from(permissionAccessRequests)
       .where(and(...conditions));
 
     const nameMap = await resolveUserNames(
@@ -313,7 +313,7 @@ const listRouter = tsr.router(firewallAccessRequestsListContract, {
 });
 
 // --- PUT: Resolve Request ---
-const resolveRouter = tsr.router(firewallAccessRequestsResolveContract, {
+const resolveRouter = tsr.router(permissionAccessRequestsResolveContract, {
   resolve: async ({ body, headers }) => {
     initServices();
 
@@ -327,16 +327,19 @@ const resolveRouter = tsr.router(firewallAccessRequestsResolveContract, {
     // Find the request and agent info in a single query
     const [row] = await globalThis.services.db
       .select({
-        request: firewallAccessRequests,
+        request: permissionAccessRequests,
         agentOwner: zeroAgents.owner,
         agentDisplayName: zeroAgents.displayName,
       })
-      .from(firewallAccessRequests)
-      .innerJoin(zeroAgents, eq(firewallAccessRequests.agentId, zeroAgents.id))
+      .from(permissionAccessRequests)
+      .innerJoin(
+        zeroAgents,
+        eq(permissionAccessRequests.agentId, zeroAgents.id),
+      )
       .where(
         and(
-          eq(firewallAccessRequests.id, body.requestId),
-          eq(firewallAccessRequests.orgId, org.orgId),
+          eq(permissionAccessRequests.id, body.requestId),
+          eq(permissionAccessRequests.orgId, org.orgId),
         ),
       )
       .limit(1);
@@ -359,7 +362,7 @@ const resolveRouter = tsr.router(firewallAccessRequestsResolveContract, {
     const forbidden = requireAgentPermission(
       row.agentOwner,
       member,
-      "resolve firewall access requests",
+      "resolve permission access requests",
     );
     if (forbidden) return forbidden;
 
@@ -381,20 +384,20 @@ const resolveRouter = tsr.router(firewallAccessRequestsResolveContract, {
     const db = globalThis.services.db;
 
     const [updated] = await db.transaction(async (tx) => {
-      // On approve: also update the agent's firewallPolicies
+      // On approve: also update the agent's permissionPolicies
       if (body.action === "approve") {
         const [agent] = await tx
-          .select({ firewallPolicies: zeroAgents.firewallPolicies })
+          .select({ permissionPolicies: zeroAgents.permissionPolicies })
           .from(zeroAgents)
           .where(eq(zeroAgents.id, existing.agentId))
           .limit(1);
 
         const currentPolicies =
-          (agent?.firewallPolicies as FirewallPolicies | null) ?? {};
-        const refPolicies = currentPolicies[existing.firewallRef] ?? {};
+          (agent?.permissionPolicies as FirewallPolicies | null) ?? {};
+        const refPolicies = currentPolicies[existing.connectorRef] ?? {};
         const updatedPolicies: FirewallPolicies = {
           ...currentPolicies,
-          [existing.firewallRef]: {
+          [existing.connectorRef]: {
             ...refPolicies,
             [existing.permission]: existing.action,
           },
@@ -402,24 +405,24 @@ const resolveRouter = tsr.router(firewallAccessRequestsResolveContract, {
 
         await tx
           .update(zeroAgents)
-          .set({ firewallPolicies: updatedPolicies, updatedAt: now })
+          .set({ permissionPolicies: updatedPolicies, updatedAt: now })
           .where(eq(zeroAgents.id, existing.agentId));
       }
 
       // Update request status
       return tx
-        .update(firewallAccessRequests)
+        .update(permissionAccessRequests)
         .set({
           status: newStatus,
           resolvedBy: member.userId,
           resolvedAt: now,
         })
-        .where(eq(firewallAccessRequests.id, body.requestId))
+        .where(eq(permissionAccessRequests.id, body.requestId))
         .returning();
     });
 
     log.info(
-      `Resolved firewall access request: ${body.requestId} as ${newStatus}`,
+      `Resolved permission access request: ${body.requestId} as ${newStatus}`,
     );
 
     notifyRequesterOfResolution({
@@ -429,7 +432,7 @@ const resolveRouter = tsr.router(firewallAccessRequestsResolveContract, {
       agentDisplayName: row.agentDisplayName ?? existing.agentId,
       requesterUserId: existing.requesterUserId,
       permission: existing.permission,
-      firewallRef: existing.firewallRef,
+      connectorRef: existing.connectorRef,
       action: existing.action,
       resolution: body.action,
     }).catch(() => {});
@@ -442,21 +445,21 @@ const resolveRouter = tsr.router(firewallAccessRequestsResolveContract, {
 });
 
 const postHandler = createHandler(
-  firewallAccessRequestsCreateContract,
+  permissionAccessRequestsCreateContract,
   createRouter,
-  { errorHandler: createSafeErrorHandler("zero:firewall-access-requests") },
+  { errorHandler: createSafeErrorHandler("zero:permission-access-requests") },
 );
 
 const getHandler = createHandler(
-  firewallAccessRequestsListContract,
+  permissionAccessRequestsListContract,
   listRouter,
-  { errorHandler: createSafeErrorHandler("zero:firewall-access-requests") },
+  { errorHandler: createSafeErrorHandler("zero:permission-access-requests") },
 );
 
 const putHandler = createHandler(
-  firewallAccessRequestsResolveContract,
+  permissionAccessRequestsResolveContract,
   resolveRouter,
-  { errorHandler: createSafeErrorHandler("zero:firewall-access-requests") },
+  { errorHandler: createSafeErrorHandler("zero:permission-access-requests") },
 );
 
 export { postHandler as POST, getHandler as GET, putHandler as PUT };

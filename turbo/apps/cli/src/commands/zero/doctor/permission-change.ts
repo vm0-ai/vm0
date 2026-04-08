@@ -21,26 +21,26 @@ function findPermissionInConfig(ref: string, permissionName: string): boolean {
 }
 
 /**
- * Core logic for outputting a firewall permission change message.
- * Shared by both `firewall-permissions-change` and `firewall-deny` commands.
+ * Core logic for outputting a permission change message.
+ * Shared by both `permission-change` and `permission-deny` commands.
  */
 const REASON_MAX_LENGTH = 500;
 
 async function outputPermissionChangeMessage(
-  firewallRef: string,
+  connectorRef: string,
   permission: string,
   action: "enable" | "disable",
   reason?: string,
 ): Promise<void> {
   const { label } =
-    CONNECTOR_TYPES[firewallRef as keyof typeof CONNECTOR_TYPES];
+    CONNECTOR_TYPES[connectorRef as keyof typeof CONNECTOR_TYPES];
 
   const platformOrigin = await getPlatformOrigin();
   const agentId = process.env.ZERO_AGENT_ID;
   const role = agentId ? await resolveAgentRole(agentId) : "unknown";
 
   const urlParams = new URLSearchParams({
-    ref: firewallRef,
+    ref: connectorRef,
     permission,
     action: action === "enable" ? "allow" : "deny",
   });
@@ -59,7 +59,7 @@ async function outputPermissionChangeMessage(
 
   // Slack chat:write: strongly recommend bot-based messaging over user identity
   if (
-    firewallRef === "slack" &&
+    connectorRef === "slack" &&
     permission === "chat:write" &&
     action === "enable"
   ) {
@@ -78,7 +78,7 @@ async function outputPermissionChangeMessage(
 
   // Gmail gmail.send: strongly recommend draft-based workflow over direct send
   if (
-    firewallRef === "gmail" &&
+    connectorRef === "gmail" &&
     permission === "gmail.send" &&
     action === "enable"
   ) {
@@ -97,7 +97,7 @@ async function outputPermissionChangeMessage(
 
   if (role === "admin" || role === "owner") {
     console.log(
-      `You can ${action} the "${permission}" permission directly: [Manage ${label} firewall](${url})`,
+      `You can ${action} the "${permission}" permission directly: [Manage ${label} permissions](${url})`,
     );
   } else if (role === "member") {
     if (!reason) {
@@ -110,20 +110,20 @@ async function outputPermissionChangeMessage(
       );
     } else {
       console.log(
-        `Permission changes require admin approval. Contact an org admin to disable this permission: [View ${label} firewall](${url})`,
+        `Permission changes require admin approval. Contact an org admin to disable this permission: [View ${label} permissions](${url})`,
       );
     }
   } else {
     console.log(
-      `To ${action} the "${permission}" permission on the ${label} firewall: [Manage ${label} firewall](${url})`,
+      `To ${action} the "${permission}" permission for ${label}: [Manage ${label} permissions](${url})`,
     );
   }
 }
 
-export const firewallPermissionsChangeCommand = new Command()
-  .name("firewall-permissions-change")
-  .description("Request a firewall permission change (enable or disable)")
-  .argument("<firewall-ref>", "The firewall connector type (e.g. github)")
+export const permissionChangeCommand = new Command()
+  .name("permission-change")
+  .description("Request a permission change (enable or disable)")
+  .argument("<connector-ref>", "The connector type (e.g. github)")
   .addOption(
     new Option(
       "--permission <name>",
@@ -150,8 +150,8 @@ export const firewallPermissionsChangeCommand = new Command()
     "after",
     `
 Examples:
-  zero doctor firewall-permissions-change github --permission contents:read --enable
-  zero doctor firewall-permissions-change slack --permission chat:write --disable
+  zero doctor permission-change github --permission contents:read --enable
+  zero doctor permission-change slack --permission chat:write --disable
 
 Notes:
   - Outputs a platform URL for the user to adjust the permission
@@ -160,7 +160,7 @@ Notes:
   .action(
     withErrorHandler(
       async (
-        firewallRef: string,
+        connectorRef: string,
         opts: {
           permission: string;
           enable?: boolean;
@@ -172,19 +172,19 @@ Notes:
           throw new Error("Either --enable or --disable is required");
         }
 
-        if (!isFirewallConnectorType(firewallRef)) {
-          throw new Error(`Unknown firewall connector type: ${firewallRef}`);
+        if (!isFirewallConnectorType(connectorRef)) {
+          throw new Error(`Unknown connector type: ${connectorRef}`);
         }
 
-        if (!findPermissionInConfig(firewallRef, opts.permission)) {
+        if (!findPermissionInConfig(connectorRef, opts.permission)) {
           throw new Error(
-            `Unknown permission "${opts.permission}" for ${firewallRef} firewall`,
+            `Unknown permission "${opts.permission}" for ${connectorRef}`,
           );
         }
 
         const action = opts.enable ? "enable" : "disable";
         await outputPermissionChangeMessage(
-          firewallRef,
+          connectorRef,
           opts.permission,
           action,
           opts.reason,

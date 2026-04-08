@@ -26,7 +26,7 @@ interface AgentResponse {
   displayName: string | null;
   sound: string | null;
   avatarUrl: string | null;
-  firewallPolicies: Record<string, Record<string, string>> | null;
+  permissionPolicies: Record<string, Record<string, string>> | null;
   customSkills: unknown[];
 }
 
@@ -38,7 +38,7 @@ function defaultAgent(overrides: Partial<AgentResponse> = {}): AgentResponse {
     displayName: null,
     sound: null,
     avatarUrl: null,
-    firewallPolicies: null,
+    permissionPolicies: null,
     customSkills: [],
     ...overrides,
   };
@@ -58,9 +58,9 @@ function mockAgent(agent: AgentResponse) {
   );
 }
 
-function mockFirewallRequests(requests: unknown[] = []) {
+function mockPermissionRequests(requests: unknown[] = []) {
   server.use(
-    http.get("*/api/zero/firewall-access-requests", () => {
+    http.get("*/api/zero/permission-access-requests", () => {
       return HttpResponse.json(requests);
     }),
   );
@@ -98,7 +98,7 @@ function setupMemberContext(agentOverrides: Partial<AgentResponse> = {}) {
 describe("fw-d-001: agent ID renders from signal", () => {
   it("uses agentId from the URL path to load the correct agent", async () => {
     mockAgent(defaultAgent({ displayName: "Special Agent Smith" }));
-    mockFirewallRequests();
+    mockPermissionRequests();
     await setupPage({
       context,
       path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=channels:read&action=deny`,
@@ -114,7 +114,7 @@ describe("fw-d-001: agent ID renders from signal", () => {
 describe("fw-d-005: agent display name renders", () => {
   it("shows the agent displayName when set", async () => {
     mockAgent(defaultAgent({ displayName: "My Smart Bot" }));
-    mockFirewallRequests();
+    mockPermissionRequests();
     await setupPage({
       context,
       path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=channels:read&action=deny`,
@@ -128,7 +128,7 @@ describe("fw-d-005: agent display name renders", () => {
 
   it("falls back to agentId when displayName is null", async () => {
     mockAgent(defaultAgent({ displayName: null }));
-    mockFirewallRequests();
+    mockPermissionRequests();
     await setupPage({
       context,
       path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=channels:read&action=deny`,
@@ -144,7 +144,7 @@ describe("fw-d-005: agent display name renders", () => {
 describe("fw-d-006: connector label from CONNECTOR_TYPES renders", () => {
   it("resolves and displays the connector label for gmail", async () => {
     mockAgent(defaultAgent());
-    mockFirewallRequests();
+    mockPermissionRequests();
     await setupPage({
       context,
       path: `/agents/${AGENT_ID}/permissions?ref=gmail&permission=gmail&action=allow`,
@@ -172,7 +172,7 @@ describe("fw-d-007: loading state shows while agent loads", () => {
         return HttpResponse.json(defaultAgent());
       }),
     );
-    mockFirewallRequests();
+    mockPermissionRequests();
 
     detachedSetupPage({
       context,
@@ -208,7 +208,7 @@ describe("fw-d-008: error state shows when agent load fails", () => {
         );
       }),
     );
-    mockFirewallRequests();
+    mockPermissionRequests();
 
     detachedSetupPage({
       context,
@@ -224,7 +224,7 @@ describe("fw-d-008: error state shows when agent load fails", () => {
 describe("fw-d-009: member request form renders for non-owner", () => {
   it("shows request form for member who does not own the agent", async () => {
     setupMemberContext();
-    mockFirewallRequests();
+    mockPermissionRequests();
     await setupPage({
       context,
       path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=channels:read&action=deny`,

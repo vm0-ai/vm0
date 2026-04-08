@@ -493,7 +493,7 @@ describe("zero whoami command", () => {
             displayName: null,
             sound: null,
             avatarUrl: null,
-            firewallPolicies: {
+            permissionPolicies: {
               slack: {
                 "channels:read": "allow",
                 "chat:write": "deny",
@@ -582,7 +582,7 @@ describe("zero whoami command", () => {
             displayName: null,
             sound: null,
             avatarUrl: null,
-            firewallPolicies: null,
+            permissionPolicies: null,
             customSkills: [],
           });
         }),
@@ -730,7 +730,7 @@ describe("zero whoami command", () => {
             displayName: null,
             sound: null,
             avatarUrl: null,
-            firewallPolicies: {
+            permissionPolicies: {
               slack: { "channels:read": "allow" },
             },
             customSkills: [],

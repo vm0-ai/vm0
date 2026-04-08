@@ -7,7 +7,7 @@ import { runnersPollContract, createErrorResponse } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import { agentRuns } from "../../../../src/db/schema/agent-run";
 import { runnerJobQueue } from "../../../../src/db/schema/runner-job-queue";
-import { eq, and, isNull, inArray, type SQL } from "drizzle-orm";
+import { eq, and, isNull, inArray, sql, type SQL } from "drizzle-orm";
 import { getRunnerAuth } from "../../../../src/lib/auth/runner-auth";
 import { logger } from "../../../../src/lib/shared/logger";
 import { isOfficialRunnerGroup } from "../../../../src/lib/infra/run/runner-group";
@@ -23,7 +23,7 @@ const router = tsr.router(runnersPollContract, {
       return createErrorResponse("UNAUTHORIZED", "Authentication required");
     }
 
-    const { group, profiles } = body;
+    const { group, profiles, heldSessions } = body;
 
     // Build query conditions based on auth type
     let whereConditions: SQL<unknown>[];
@@ -62,6 +62,20 @@ const router = tsr.router(runnersPollContract, {
       whereConditions.push(inArray(runnerJobQueue.profile, profiles));
     }
 
+    // Build ORDER BY: session affinity matches first, then FIFO
+    const orderClauses =
+      heldSessions && heldSessions.length > 0
+        ? [
+            sql`CASE WHEN ${runnerJobQueue.sessionId} IN (${sql.join(
+              heldSessions.map((s) => {
+                return sql`${s}`;
+              }),
+              sql`, `,
+            )}) THEN 0 ELSE 1 END`,
+            runnerJobQueue.createdAt,
+          ]
+        : [runnerJobQueue.createdAt];
+
     // Query runner_job_queue for unclaimed jobs
     const [pendingJob] = await globalThis.services.db
       .select({
@@ -76,6 +90,7 @@ const router = tsr.router(runnersPollContract, {
       .from(runnerJobQueue)
       .innerJoin(agentRuns, eq(runnerJobQueue.runId, agentRuns.id))
       .where(and(...whereConditions))
+      .orderBy(...orderClauses)
       .limit(1);
 
     if (pendingJob) {

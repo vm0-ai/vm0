@@ -1,20 +1,20 @@
 import { command, computed, state } from "ccstate";
-import type { PermissionPolicy } from "./firewalls.ts";
+import type { PermissionPolicy } from "./permissions.ts";
 
 // ---------------------------------------------------------------------------
-// Firewall permissions dialog form state
+// Permissions dialog form state
 // ---------------------------------------------------------------------------
 
 const internalAllPolicies$ = state<
   Record<string, Record<string, PermissionPolicy>>
 >({});
-export const firewallAllPolicies$ = computed((get) => {
+export const permissionAllPolicies$ = computed((get) => {
   return get(internalAllPolicies$);
 });
 
 const internalInitialized$ = state(false);
 
-export const initFirewallPolicies$ = command(
+export const initPermissionPolicies$ = command(
   (
     { get, set },
     policies: Record<string, Record<string, PermissionPolicy>>,
@@ -27,7 +27,7 @@ export const initFirewallPolicies$ = command(
   },
 );
 
-export const setFirewallPolicy$ = command(
+export const setPermissionPolicy$ = command(
   ({ get, set }, ref: string, name: string, policy: PermissionPolicy) => {
     const all = get(internalAllPolicies$);
     const current = all[ref] ?? {};
@@ -38,7 +38,7 @@ export const setFirewallPolicy$ = command(
   },
 );
 
-export const setFirewallAllPolicies$ = command(
+export const setPermissionAllPolicies$ = command(
   ({ get, set }, ref: string, policies: Record<string, PermissionPolicy>) => {
     const all = get(internalAllPolicies$);
     set(internalAllPolicies$, { ...all, [ref]: policies });
@@ -50,10 +50,10 @@ export const setFirewallAllPolicies$ = command(
 // ---------------------------------------------------------------------------
 
 const internalScrolled$ = state(false);
-export const firewallScrolled$ = computed((get) => {
+export const permissionScrolled$ = computed((get) => {
   return get(internalScrolled$);
 });
-export const setFirewallScrolled$ = command(({ set }, value: boolean) => {
+export const setPermissionScrolled$ = command(({ set }, value: boolean) => {
   set(internalScrolled$, value);
 });
 
@@ -62,10 +62,10 @@ export const setFirewallScrolled$ = command(({ set }, value: boolean) => {
 // ---------------------------------------------------------------------------
 
 const internalExpandedGroups$ = state<Set<string>>(new Set());
-export const firewallExpandedGroups$ = computed((get) => {
+export const permissionExpandedGroups$ = computed((get) => {
   return get(internalExpandedGroups$);
 });
-export const toggleFirewallGroup$ = command(
+export const togglePermissionGroup$ = command(
   ({ get, set }, category: string) => {
     const prev = get(internalExpandedGroups$);
     const next = new Set(prev);
@@ -82,7 +82,7 @@ export const toggleFirewallGroup$ = command(
 // Apply (save) command
 // ---------------------------------------------------------------------------
 
-export const applyFirewallPolicies$ = command(
+export const applyPermissionPolicies$ = command(
   async (
     { get },
     onApply: (

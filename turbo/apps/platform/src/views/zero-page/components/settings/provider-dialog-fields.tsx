@@ -27,32 +27,49 @@ import { ClaudeCodeSetupPrompt } from "./setup-prompt.tsx";
 
 export function OAuthFields({
   secret,
+  selectedModel,
+  useDefaultModel,
   onSecretChange,
+  onModelChange,
+  onUseDefaultModelChange,
   error,
   isLoading,
 }: {
   secret: string;
+  selectedModel: string;
+  useDefaultModel: boolean;
   onSecretChange: (value: string) => void;
+  onModelChange: (value: string) => void;
+  onUseDefaultModelChange: (value: boolean) => void;
   error?: string;
   isLoading: boolean;
 }) {
   return (
-    <div className="flex flex-col gap-2">
-      <label className="text-sm font-medium text-foreground">
-        Claude OAuth token
-      </label>
-      <Input
-        value={secret}
-        placeholder="sk-ant-XXXXXXX"
-        onChange={(e) => {
-          return onSecretChange(e.target.value);
-        }}
-        readOnly={isLoading}
-        className={error ? "border-destructive" : ""}
+    <>
+      <div className="flex flex-col gap-2">
+        <label className="text-sm font-medium text-foreground">
+          Claude OAuth token
+        </label>
+        <Input
+          value={secret}
+          placeholder="sk-ant-XXXXXXX"
+          onChange={(e) => {
+            return onSecretChange(e.target.value);
+          }}
+          readOnly={isLoading}
+          className={error ? "border-destructive" : ""}
+        />
+        {error && <p className="text-xs text-destructive">{error}</p>}
+        <ClaudeCodeSetupPrompt />
+      </div>
+      <ModelSelector
+        providerType="claude-code-oauth-token"
+        selectedModel={selectedModel}
+        useDefaultModel={useDefaultModel}
+        onModelChange={onModelChange}
+        onUseDefaultModelChange={onUseDefaultModelChange}
       />
-      {error && <p className="text-xs text-destructive">{error}</p>}
-      <ClaudeCodeSetupPrompt />
-    </div>
+    </>
   );
 }
 

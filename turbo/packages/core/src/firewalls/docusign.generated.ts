@@ -86,5 +86,23 @@ export const docusignFirewall = {
       },
       permissions: [],
     },
+    {
+      base: "https://account.docusign.com",
+      auth: {
+        headers: {
+          Authorization: "Bearer ${{ secrets.DOCUSIGN_TOKEN }}",
+        },
+      },
+      permissions: [],
+    },
+    {
+      base: "https://account-d.docusign.com",
+      auth: {
+        headers: {
+          Authorization: "Bearer ${{ secrets.DOCUSIGN_TOKEN }}",
+        },
+      },
+      permissions: [],
+    },
   ],
 } as const satisfies FirewallConfig;

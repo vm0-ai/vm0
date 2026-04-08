@@ -1,5 +1,42 @@
 # Changelog
 
+## [8.161.0](https://github.com/vm0-ai/vm0/compare/core-v8.160.0...core-v8.161.0) (2026-04-08)
+
+
+### Features
+
+* **firewalls:** add confluence v2 api to atlassian firewall ([#8478](https://github.com/vm0-ai/vm0/issues/8478)) ([716ce8e](https://github.com/vm0-ai/vm0/commit/716ce8e03bf7c4a345685733b494d5c33852eded))
+* **firewalls:** add graphql field modifier for rule matching ([#8476](https://github.com/vm0-ai/vm0/issues/8476)) ([82b2049](https://github.com/vm0-ai/vm0/commit/82b20493e48325cbc75ecc431a74e8254096e46a))
+* **model-providers:** add model selection for anthropic-api-key and claude-code-oauth-token ([#8491](https://github.com/vm0-ai/vm0/issues/8491)) ([ad96e27](https://github.com/vm0-ai/vm0/commit/ad96e27561f8bcdb69bf8d3268e4d168d98b9662))
+* **platform:** capture response headers and mark binary bodies in network logs ([#8481](https://github.com/vm0-ai/vm0/issues/8481)) ([6a778f8](https://github.com/vm0-ai/vm0/commit/6a778f8ebbd88e2bd95a4d79a5e4ed1e4c3f4f26))
+* **runner:** add smart dispatch with session affinity and targeted ably push ([#8474](https://github.com/vm0-ai/vm0/issues/8474)) ([65dbe3a](https://github.com/vm0-ai/vm0/commit/65dbe3af2795aa2730a3df28e84e3572fc8a46cc)), closes [#8368](https://github.com/vm0-ai/vm0/issues/8368)
+
+
+### Bug Fixes
+
+* **firewalls:** correct sentry base url to avoid /api duplication ([#8492](https://github.com/vm0-ai/vm0/issues/8492)) ([2f6446d](https://github.com/vm0-ai/vm0/commit/2f6446d0c516de5a2e02e3f37d5ced0a9d01ce64))
+
+## [8.160.0](https://github.com/vm0-ai/vm0/compare/core-v8.159.0...core-v8.160.0) (2026-04-08)
+
+
+### Features
+
+* display last updated timestamp and refetch insights on navigation ([#8443](https://github.com/vm0-ai/vm0/issues/8443)) ([11e5743](https://github.com/vm0-ai/vm0/commit/11e5743855d534c60ccbc7470e73f47f8cc9797b))
+
+
+### Bug Fixes
+
+* **checkpoint:** use presigned url for session history upload ([#8445](https://github.com/vm0-ai/vm0/issues/8445)) ([4a019bb](https://github.com/vm0-ai/vm0/commit/4a019bb53dc2323e2981f74d02e78f4eaf2e185c))
+* **firewalls:** add docusign oauth endpoints to firewall config ([#8468](https://github.com/vm0-ai/vm0/issues/8468)) ([fbac6c0](https://github.com/vm0-ai/vm0/commit/fbac6c0d6e1f146b607853f26828fe27f39e7509))
+* **firewalls:** default-deny gmail send and split compose to draft-only ([#8450](https://github.com/vm0-ai/vm0/issues/8450)) ([cc62cbf](https://github.com/vm0-ai/vm0/commit/cc62cbfb5db47c1d8b0e49465bad68a03f572d52))
+* **firewalls:** fix doppler placeholder and add infisical base urls ([#8422](https://github.com/vm0-ai/vm0/issues/8422)) ([3898b4b](https://github.com/vm0-ai/vm0/commit/3898b4bf03151ee256186752a670becf93b89636))
+* **firewalls:** update zapier firewall to actions.zapier.com ([#8470](https://github.com/vm0-ai/vm0/issues/8470)) ([171587c](https://github.com/vm0-ai/vm0/commit/171587c74975c460c879828a34f46bef28446690))
+
+
+### Refactoring
+
+* **firewalls:** remove fine-grained permissions from github firewall ([#8432](https://github.com/vm0-ai/vm0/issues/8432)) ([2471dfd](https://github.com/vm0-ai/vm0/commit/2471dfdd2da6bf4407f5d0a5e565d334f750cfe9))
+
 ## [8.159.0](https://github.com/vm0-ai/vm0/compare/core-v8.158.0...core-v8.159.0) (2026-04-07)
 
 

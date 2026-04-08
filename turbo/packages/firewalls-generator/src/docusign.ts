@@ -31,9 +31,18 @@ const DOCUSIGN_DOMAINS = [
   "demo.docusign.net",
 ];
 
+// OAuth/userinfo endpoints — required to discover the correct regional
+// API base URI before making any eSignature API calls.
+// See: https://developers.docusign.com/platform/auth/reference/user-info/
+const DOCUSIGN_OAUTH_DOMAINS = [
+  "account.docusign.com", // production
+  "account-d.docusign.com", // demo/development
+];
+
 function generateTypeScript(): string {
-  const apiEntries = DOCUSIGN_DOMAINS.map(
-    (domain) => `    {
+  const apiEntries = [...DOCUSIGN_DOMAINS, ...DOCUSIGN_OAUTH_DOMAINS]
+    .map(
+      (domain) => `    {
       base: "https://${domain}",
       auth: {
         headers: {
@@ -42,7 +51,8 @@ function generateTypeScript(): string {
       },
       permissions: [],
     }`,
-  ).join(",\n");
+    )
+    .join(",\n");
 
   const lines: string[] = [
     "// Auto-generated from DocuSign API docs.",

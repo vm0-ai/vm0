@@ -13,24 +13,10 @@ export interface OrgMetadata {
 }
 
 /**
- * Read tier from the org_metadata table (source of truth).
- * Returns "free" if the org row does not exist.
- */
-export async function readTier(orgId: string): Promise<string> {
-  const db = globalThis.services.db;
-  const [orgRow] = await db
-    .select({ tier: orgMetadata.tier })
-    .from(orgMetadata)
-    .where(eq(orgMetadata.orgId, orgId))
-    .limit(1);
-  return orgRow?.tier ?? "free";
-}
-
-/**
  * Read org metadata from the platform-owned org_metadata table.
  * Returns tier, credits, and other platform fields.
  *
- * Unlike getOrgData(), this function NEVER calls the Clerk API —
+ * Unlike getOrgNameAndSlug(), this function NEVER calls the Clerk API —
  * it only reads from our own database.
  */
 export async function getOrgMetadata(orgId: string): Promise<OrgMetadata> {

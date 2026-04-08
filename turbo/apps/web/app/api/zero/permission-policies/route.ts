@@ -4,7 +4,7 @@ import {
   tsr,
 } from "../../../../src/lib/ts-rest-handler";
 import {
-  zeroAgentFirewallPoliciesContract,
+  zeroAgentPermissionPoliciesContract,
   getConnectorFirewall,
   isFirewallConnectorType,
   type FirewallPolicies,
@@ -20,12 +20,12 @@ import { eq, and } from "drizzle-orm";
 import { requireAgentPermission } from "../../../../src/lib/zero/require-agent-permission";
 import { logger } from "../../../../src/lib/shared/logger";
 
-const log = logger("api:zero:firewall-policies");
+const log = logger("api:zero:permission-policies");
 
 function validatePolicies(policies: FirewallPolicies): string | null {
   for (const [ref, permissions] of Object.entries(policies)) {
     if (!isFirewallConnectorType(ref)) {
-      return `Unknown firewall ref: ${ref}`;
+      return `Unknown connector ref: ${ref}`;
     }
     const config = getConnectorFirewall(ref);
 
@@ -40,14 +40,14 @@ function validatePolicies(policies: FirewallPolicies): string | null {
 
     for (const permName of Object.keys(permissions)) {
       if (!validPermNames.has(permName)) {
-        return `Unknown permission "${permName}" for firewall "${ref}"`;
+        return `Unknown permission "${permName}" for connector "${ref}"`;
       }
     }
   }
   return null;
 }
 
-const router = tsr.router(zeroAgentFirewallPoliciesContract, {
+const router = tsr.router(zeroAgentPermissionPoliciesContract, {
   update: async ({ body, headers }) => {
     initServices();
 
@@ -96,21 +96,21 @@ const router = tsr.router(zeroAgentFirewallPoliciesContract, {
     const forbidden = requireAgentPermission(
       existing.owner,
       member,
-      "update firewall policies",
+      "update permission policies",
     );
     if (forbidden) return forbidden;
 
-    // Update firewall policies
+    // Update permission policies
     const now = new Date();
     await globalThis.services.db
       .update(zeroAgents)
       .set({
-        firewallPolicies: body.policies,
+        permissionPolicies: body.policies,
         updatedAt: now,
       })
       .where(eq(zeroAgents.id, body.agentId));
 
-    log.info(`Updated firewall policies for agent: ${body.agentId}`);
+    log.info(`Updated permission policies for agent: ${body.agentId}`);
 
     // Re-query to return actual persisted state
     const [agent] = await globalThis.services.db
@@ -128,15 +128,15 @@ const router = tsr.router(zeroAgentFirewallPoliciesContract, {
         displayName: agent?.displayName ?? null,
         sound: agent?.sound ?? null,
         avatarUrl: agent?.avatarUrl ?? null,
-        firewallPolicies: agent?.firewallPolicies ?? null,
+        permissionPolicies: agent?.permissionPolicies ?? null,
         customSkills: agent?.customSkills ?? [],
       },
     };
   },
 });
 
-const handler = createHandler(zeroAgentFirewallPoliciesContract, router, {
-  errorHandler: createSafeErrorHandler("zero:firewall-policies"),
+const handler = createHandler(zeroAgentPermissionPoliciesContract, router, {
+  errorHandler: createSafeErrorHandler("zero:permission-policies"),
 });
 
 export { handler as PUT };
