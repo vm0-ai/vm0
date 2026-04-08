@@ -120,7 +120,6 @@ function createMemberCapSetting(
     );
     set(internalSavingPromise$, promise);
 
-    // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove — use accept() auto-toast
     try {
       await promise;
       set(internalSavingPromise$, null);
@@ -140,7 +139,6 @@ function createMemberCapSetting(
     );
     set(internalSavingPromise$, promise);
 
-    // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove — use accept() auto-toast
     try {
       await promise;
       set(internalSavingPromise$, null);

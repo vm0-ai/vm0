@@ -11,7 +11,6 @@ export const setupLoggers$ = command(({ get }) => {
   const debugLoggers = get(get$);
   if (debugLoggers) {
     let loggerNames: string[] = [];
-    // eslint-disable-next-line no-restricted-syntax -- JSON.parse on untrusted localStorage data
     try {
       loggerNames = JSON.parse(debugLoggers);
     } catch (error) {
@@ -36,7 +35,6 @@ export const extendDebugLoggerLocalStorage$ = command(
     const debugLoggers = get(get$);
     let loggerNames: string[] = [];
     if (debugLoggers) {
-      // eslint-disable-next-line no-restricted-syntax -- JSON.parse on untrusted localStorage data
       try {
         loggerNames = JSON.parse(debugLoggers);
       } catch (error) {

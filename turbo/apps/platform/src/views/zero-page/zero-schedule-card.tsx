@@ -332,7 +332,6 @@ export function ZeroScheduleCard({
         setRunningIds((prev) => {
           return new Set([...prev, id]);
         });
-        // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove try/finally — use useLoadableSet for loading state
         try {
           await onRunNow(entry);
         } finally {

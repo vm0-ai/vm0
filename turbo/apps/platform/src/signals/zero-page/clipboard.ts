@@ -11,7 +11,6 @@ import { throwIfAbort } from "../utils.ts";
  * Returns `true` if the text was copied, `false` if both methods failed.
  */
 export async function writeToClipboard(text: string): Promise<boolean> {
-  // eslint-disable-next-line no-restricted-syntax -- clipboard API requires try/catch for browser compatibility fallback
   try {
     await navigator.clipboard.writeText(text);
     return true;
@@ -20,7 +19,6 @@ export async function writeToClipboard(text: string): Promise<boolean> {
     // Clipboard API can throw NotAllowedError on iOS Safari when the user
     // gesture context is lost (e.g. after an async boundary). Fall back to
     // the legacy execCommand approach.
-    // eslint-disable-next-line no-restricted-syntax -- clipboard API requires try/catch for legacy execCommand fallback
     try {
       const textarea = document.createElement("textarea");
       textarea.value = text;

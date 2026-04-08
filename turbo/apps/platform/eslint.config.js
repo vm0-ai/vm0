@@ -154,7 +154,6 @@ export default [
   },
   // Ban try statements in production source code.
   // Use accept() for API errors, useLoadableSet for loading states.
-  // If genuinely needed (JSON.parse, clipboard, polling), add an inline eslint-disable.
   {
     files: ["src/**/*.{ts,tsx}"],
     ignores: ["src/**/__tests__/**", "src/mocks/**"],
@@ -164,10 +163,48 @@ export default [
         {
           selector: "TryStatement",
           message:
-            "try statements are not allowed. Use accept() for API errors, useLoadableSet for loading states. If genuinely needed (JSON.parse, clipboard, polling), add an inline eslint-disable with justification.",
+            "try statements are not allowed. Use accept() for API errors, useLoadableSet for loading states.",
         },
       ],
     },
+  },
+  // Legitimate permanent try/catch exceptions — JSON.parse on untrusted storage,
+  // clipboard browser-compat fallback, polling retry loops with backoff.
+  {
+    files: [
+      "src/signals/bootstrap/loggers.ts",
+      "src/signals/external/feature-switch.ts",
+      "src/signals/zero-page/settings/connectors.ts",
+      "src/signals/zero-page/clipboard.ts",
+      "src/signals/zero-page/polling.ts",
+      "src/signals/queue-page/queue-signals.ts",
+    ],
+    rules: { "no-restricted-syntax": "off" },
+  },
+  // TODO(no-try): files below still use try/catch pending refactor to accept()
+  // or useLoadableSet. Each entry should be removed as the file is refactored.
+  {
+    files: [
+      "src/signals/activity-page/activity-network-signals.ts",
+      "src/signals/agent-chat.ts",
+      "src/signals/app-skeleton.ts",
+      "src/signals/chat-page/chat-message.ts",
+      "src/signals/external/org-domains.ts",
+      "src/signals/external/org-members.ts",
+      "src/signals/zero-page/member-credit-caps.ts",
+      "src/signals/zero-page/settings/preferences-page.ts",
+      "src/signals/zero-page/settings/settings-tab.ts",
+      "src/signals/zero-page/slack-channels.ts",
+      "src/signals/zero-page/slack-connect-signals.ts",
+      "src/signals/zero-page/zero-onboarding-actions.ts",
+      "src/signals/zero-page/zero-schedule.ts",
+      "src/views/zero-page/components/org-manage/org-general-tab.tsx",
+      "src/views/zero-page/zero-chat-composer.tsx",
+      "src/views/zero-page/zero-schedule-card.tsx",
+      "src/views/zero-page/zero-schedule-page.tsx",
+      "src/views/zero-page/zero-schedule-tab.tsx",
+    ],
+    rules: { "no-restricted-syntax": "off" },
   },
   {
     ignores: [

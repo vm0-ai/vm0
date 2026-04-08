@@ -103,7 +103,6 @@ export function ZeroScheduleTab({
 
   const handleSave = async (params: ZeroScheduleSaveParams) => {
     setSaving(true);
-    // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove try/finally — use useLoadableSet for loading state
     try {
       await onSave(params);
     } finally {

@@ -152,7 +152,6 @@ function ProfileSection({
     }
     setSaving(true);
     setSaveError(null);
-    // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove try/finally — use useLoadableSet for loading state
     try {
       if (pendingLogoFile) {
         const result = await uploadLogo(fetchFn, pendingLogoFile);
@@ -391,7 +390,6 @@ function DangerZoneSection({
       return;
     }
     setLeaving(true);
-    // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove try/finally — use useLoadableSet for loading state
     try {
       const client = createClient(zeroOrgLeaveContract);
       const result = await client.leave({ body: {} });
@@ -413,7 +411,6 @@ function DangerZoneSection({
       return;
     }
     setDeleting(true);
-    // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove try/finally — use useLoadableSet for loading state
     try {
       const client = createClient(zeroOrgDeleteContract);
       const result = await client.delete({ body: { slug: org.slug } });

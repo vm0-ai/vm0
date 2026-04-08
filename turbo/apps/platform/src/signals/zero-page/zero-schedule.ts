@@ -161,7 +161,6 @@ export const fetchZeroSchedules$ = command(
       return;
     }
 
-    // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove — use accept() error propagation
     try {
       const client = get(zeroClient$)(zeroSchedulesMainContract);
       const result = await accept(client.list(), [200], { toast: false });
@@ -394,7 +393,6 @@ export const allOrgScheduleEntries$ = computed((get) => {
 
 export const fetchAllOrgSchedules$ = command(
   async ({ get, set }, _signal: AbortSignal) => {
-    // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove — use accept() error propagation
     try {
       const client = get(zeroClient$)(zeroSchedulesMainContract);
       const result = await accept(client.list(), [200], { toast: false });
@@ -486,7 +484,6 @@ export const runScheduleNow$ = command(
     });
     const client = get(zeroClient$)(zeroScheduleRunContract);
     let result;
-    // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove — use accept() auto-toast with toastId
     try {
       result = await accept(client.run({ body: { scheduleId } }), [201], {
         toast: false,
