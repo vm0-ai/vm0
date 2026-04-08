@@ -142,7 +142,7 @@ describe("network insights page - data rendering", () => {
     await setupPage({ context, path: "/insights" });
 
     await waitFor(() => {
-      expect(screen.getByText(/Updated/)).toBeInTheDocument();
+      expect(screen.getByText(/Last updated/)).toBeInTheDocument();
     });
   });
 
@@ -428,6 +428,7 @@ describe("network insights page - data refetch", () => {
           days: [sampleDay(day1Ago, { agents })],
           totalCredits: 10,
           totalRuns: 1,
+          lastUpdated: new Date().toISOString(),
         });
       }),
     );

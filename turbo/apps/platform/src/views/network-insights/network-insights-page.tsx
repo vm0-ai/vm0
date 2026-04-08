@@ -28,7 +28,6 @@ import {
   setInsightsCalendarMonth$,
   insightsHoveredAgent$,
   setInsightsHoveredAgent$,
-  insightsRelativeTimeTick$,
   type DayInsight,
   type NetworkInsightsData,
 } from "../../signals/network-insights/network-insights-signals.ts";
@@ -938,29 +937,7 @@ function DaySection({ day }: { day: DayInsight }) {
 // Last updated label
 // ---------------------------------------------------------------------------
 
-/** Format an ISO timestamp as a relative duration, e.g. "2 hours ago". */
-function formatRelativeTime(iso: string): string {
-  const now = Date.now();
-  const then = new Date(iso).getTime();
-  const diffMs = now - then;
-  const seconds = Math.floor(diffMs / 1000);
-  const minutes = Math.floor(seconds / 60);
-  const hours = Math.floor(minutes / 60);
-  const days = Math.floor(hours / 24);
-
-  if (days > 0) {
-    return `${days}d ago`;
-  }
-  if (hours > 0) {
-    return `${hours}h ago`;
-  }
-  if (minutes > 0) {
-    return `${minutes}m ago`;
-  }
-  return "just now";
-}
-
-/** Format an ISO timestamp as a locale-aware absolute time for the tooltip. */
+/** Format an ISO timestamp as a locale-aware absolute time. */
 function formatAbsoluteTime(iso: string): string {
   return new Date(iso).toLocaleString(undefined, {
     month: "short",
@@ -983,8 +960,6 @@ function InsightsContent({ data }: { data: NetworkInsightsData }) {
       ? prefsLoadable.data.timezone
       : new Intl.DateTimeFormat().resolvedOptions().timeZone;
   const filtered = filterDays(data.days, dateRange, timezone);
-  // Reading the tick signal triggers a re-render every 60 s (driven by page setup).
-  useGet(insightsRelativeTimeTick$);
 
   return (
     <div className="h-full overflow-auto">
@@ -995,11 +970,8 @@ function InsightsContent({ data }: { data: NetworkInsightsData }) {
             <div className="flex items-baseline gap-2">
               <h1 className="text-xl font-semibold">Insights</h1>
               {data.lastUpdated && (
-                <span
-                  className="text-xs text-muted-foreground"
-                  title={formatAbsoluteTime(data.lastUpdated)}
-                >
-                  Updated {formatRelativeTime(data.lastUpdated)}
+                <span className="text-xs text-muted-foreground">
+                  Last updated {formatAbsoluteTime(data.lastUpdated)}
                 </span>
               )}
             </div>
