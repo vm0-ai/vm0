@@ -1,4 +1,4 @@
 export {
-  storeSessionHistory,
+  registerSessionHistoryBlob,
   resolveSessionHistory,
 } from "./session-history-service";

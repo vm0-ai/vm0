@@ -7,9 +7,11 @@ use crate::error::AgentError;
 use crate::http;
 use crate::paths;
 use crate::urls;
+use bytes::Bytes;
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_error, log_info};
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use std::path::Path;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
@@ -104,6 +106,87 @@ async fn create_checkpoint_impl(start: std::time::Instant) -> Result<(), AgentEr
     let line_count = session_history.lines().count();
     log_info!(LOG_TAG, "Session history loaded ({line_count} lines)");
     record_sandbox_op("session_history_read", start.elapsed(), true, None);
+
+    // Compute SHA-256 hash of session history for presigned URL upload
+    let history_bytes = session_history.as_bytes();
+    let history_hash = hex::encode(Sha256::digest(history_bytes));
+    let history_size = history_bytes.len() as u64;
+    log_info!(
+        LOG_TAG,
+        "Session history hash={}, size={history_size}",
+        &history_hash[..8]
+    );
+
+    // Upload session history via presigned URL (bypasses Vercel 4.5MB body limit)
+    let prep_start = std::time::Instant::now();
+    let prep_result = http::post_json(
+        urls::checkpoint_prepare_history_url(),
+        &json!({
+            "runId": env::run_id(),
+            "hash": history_hash,
+            "size": history_size,
+        }),
+        constants::HTTP_MAX_RETRIES,
+    )
+    .await;
+    let prep_resp = match prep_result {
+        Ok(Some(v)) => v,
+        Ok(None) => {
+            record_sandbox_op("session_history_prepare", prep_start.elapsed(), false, None);
+            return Err(AgentError::Checkpoint(
+                "Empty prepare-history response".into(),
+            ));
+        }
+        Err(e) => {
+            record_sandbox_op("session_history_prepare", prep_start.elapsed(), false, None);
+            return Err(e);
+        }
+    };
+    record_sandbox_op("session_history_prepare", prep_start.elapsed(), true, None);
+
+    let existing = prep_resp
+        .get("existing")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    if existing {
+        log_info!(
+            LOG_TAG,
+            "Session history already exists in S3 (deduplicated)"
+        );
+    } else {
+        let presigned_url = prep_resp
+            .get("presignedUrl")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| {
+                AgentError::Checkpoint("No presignedUrl in prepare-history response".into())
+            })?;
+
+        log_info!(LOG_TAG, "Uploading session history to S3...");
+        let upload_start = std::time::Instant::now();
+        if let Err(e) = http::put_presigned(
+            presigned_url,
+            Bytes::from(session_history.into_bytes()),
+            "application/octet-stream",
+        )
+        .await
+        {
+            record_sandbox_op(
+                "session_history_s3_upload",
+                upload_start.elapsed(),
+                false,
+                None,
+            );
+            return Err(e);
+        }
+        record_sandbox_op(
+            "session_history_s3_upload",
+            upload_start.elapsed(),
+            true,
+            None,
+        );
+        log_info!(LOG_TAG, "Session history uploaded to S3");
+    }
 
     // Validate drivers before starting parallel snapshot creation.
     // Driver validation uses early return, which cannot be done inside async blocks.
@@ -201,12 +284,12 @@ async fn create_checkpoint_impl(start: std::time::Instant) -> Result<(), AgentEr
     let artifact_snapshot = artifact_snapshot?;
     let memory_snapshot = memory_snapshot?;
 
-    // Build and send checkpoint payload
+    // Build and send checkpoint payload (session history hash only, content uploaded to S3)
     let mut payload = json!({
         "runId": env::run_id(),
         "cliAgentType": "claude-code",
         "cliAgentSessionId": session_id,
-        "cliAgentSessionHistory": session_history,
+        "cliAgentSessionHistoryHash": history_hash,
     });
 
     if let Some(snap) = artifact_snapshot

@@ -4,31 +4,32 @@
  * using R2 blob storage for scalability.
  */
 
-import { uploadBlobs, downloadBlob } from "../blob/blob-service";
-import { hashFileContent } from "../storage/content-hash";
+import { downloadBlob } from "../blob/blob-service";
+import { blobs } from "../../../db/schema/blob";
+import { sql } from "drizzle-orm";
 import { logger } from "../../shared/logger";
 
 const log = logger("session-history");
 
 /**
- * Store session history content to R2 blob storage
+ * Register a session history blob that was uploaded directly to S3 via presigned URL.
+ * Creates or updates the blob DB record for tracking (deduplication + ref counting).
  *
- * @param content JSONL session history content
- * @returns SHA-256 hash of the content (used as blob reference)
+ * @param hash SHA-256 hash of the content (already verified by the caller)
+ * @returns The hash
  */
-export async function storeSessionHistory(content: string): Promise<string> {
-  const buffer = Buffer.from(content, "utf-8");
-  const hash = hashFileContent(buffer);
+export async function registerSessionHistoryBlob(
+  hash: string,
+): Promise<string> {
+  log.debug(`Registering session history blob, hash=${hash}`);
 
-  log.debug(`Storing session history, hash=${hash}, size=${buffer.length}`);
-
-  // Upload to R2 (handles deduplication)
-  await uploadBlobs([
-    {
-      path: `session-history-${hash}.jsonl`,
-      content: buffer,
-    },
-  ]);
+  await globalThis.services.db
+    .insert(blobs)
+    .values({ hash, size: 0, refCount: 1 })
+    .onConflictDoUpdate({
+      target: blobs.hash,
+      set: { refCount: sql`${blobs.refCount} + 1` },
+    });
 
   return hash;
 }

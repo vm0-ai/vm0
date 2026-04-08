@@ -47,7 +47,7 @@ export interface CheckpointRequest {
   runId: string;
   cliAgentType: string;
   cliAgentSessionId: string;
-  cliAgentSessionHistory: string;
+  cliAgentSessionHistoryHash: string;
   artifactSnapshot?: ArtifactSnapshot;
   memorySnapshot?: MemorySnapshot;
   volumeVersionsSnapshot?: VolumeVersionsSnapshot;
