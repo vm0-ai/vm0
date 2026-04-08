@@ -63,11 +63,14 @@ interface GraphQLRule {
   path: string;
   typeFilter: string | null;
   opFilter: string | null;
-  fieldFilter: string | null;
+  fieldFilters: string[] | null;
 }
 
 /**
  * Parse the path+suffix portion of a rule for an optional GraphQL qualifier.
+ *
+ * The `field:` value may be comma-separated for OR semantics
+ * (e.g., `field:createIssue,closeIssue`).
  *
  * Returns null when the `GraphQL` keyword is absent (plain REST rule).
  */
@@ -80,7 +83,7 @@ function parseGraphQLRule(rest: string): GraphQLRule | null {
 
   let typeFilter: string | null = null;
   let opFilter: string | null = null;
-  let fieldFilter: string | null = null;
+  let fieldFilters: string[] | null = null;
 
   for (let i = 1; i < suffixParts.length; i++) {
     const part = suffixParts[i]!;
@@ -89,11 +92,11 @@ function parseGraphQLRule(rest: string): GraphQLRule | null {
     } else if (part.startsWith("operationName:")) {
       opFilter = part.slice(14);
     } else if (part.startsWith("field:")) {
-      fieldFilter = part.slice(6);
+      fieldFilters = part.slice(6).split(",");
     }
   }
 
-  return { path, typeFilter, opFilter, fieldFilter };
+  return { path, typeFilter, opFilter, fieldFilters };
 }
 
 /**
@@ -124,7 +127,7 @@ function matchGraphQLBody(
   body: GraphQLBody | undefined,
   typeFilter: string | null,
   opFilter: string | null,
-  fieldFilter: string | null,
+  fieldFilters: string[] | null,
 ): boolean {
   if (!body) return false;
 
@@ -138,12 +141,14 @@ function matchGraphQLBody(
     if (!matchWildcard(opName, opFilter)) return false;
   }
 
-  if (fieldFilter !== null) {
+  if (fieldFilters !== null) {
     const fields = body.fields;
     if (!fields || fields.length === 0) return false;
     if (
-      !fields.some((f) => {
-        return matchWildcard(f, fieldFilter);
+      !fieldFilters.some((pattern) => {
+        return fields.some((f) => {
+          return matchWildcard(f, pattern);
+        });
       })
     )
       return false;
@@ -190,12 +195,12 @@ export function findMatchingPermissions(
             gql &&
             (gql.typeFilter !== null ||
               gql.opFilter !== null ||
-              gql.fieldFilter !== null) &&
+              gql.fieldFilters !== null) &&
             !matchGraphQLBody(
               graphqlBody,
               gql.typeFilter,
               gql.opFilter,
-              gql.fieldFilter,
+              gql.fieldFilters,
             )
           ) {
             continue;

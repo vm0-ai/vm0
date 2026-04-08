@@ -2764,3 +2764,104 @@ class TestGraphQLNestedFieldPaths:
             body=body,
         )
         assert isinstance(result, FirewallAllow)
+
+
+class TestGraphQLCommaFieldFilter:
+    """Tests for comma-separated field: values (OR semantics)."""
+
+    def test_comma_matches_first(self):
+        """First value in comma-separated field matches."""
+        body = _gql_body("mutation { createIssue(input: {}) { id } }", "Op")
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue,closeIssue"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallAllow)
+
+    def test_comma_matches_second(self):
+        """Second value in comma-separated field matches."""
+        body = _gql_body('mutation { closeIssue(id: "1") { id } }', "Op")
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue,closeIssue"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallAllow)
+
+    def test_comma_no_match(self):
+        """No value in comma-separated field matches — blocked."""
+        body = _gql_body("mutation { deleteIssue(id: {}) { id } }", "Op")
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue,closeIssue"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallBlock)
+
+    def test_comma_with_wildcard(self):
+        """Mixed exact + wildcard in comma-separated field."""
+        body = _gql_body("mutation { deleteProject(id: {}) { id } }", "Op")
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue,delete*"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallAllow)
+
+    def test_comma_type_filter_still_applies(self):
+        """type: filter blocks even when comma field matches."""
+        body = _gql_body("query { createIssue { id } }", "Op")
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue,closeIssue"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallBlock)
+
+    def test_comma_empty_body_blocks(self):
+        """No body — blocked."""
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL field:createIssue,closeIssue"]),
+            body=None,
+        )
+        assert isinstance(result, FirewallBlock)
+
+    def test_comma_with_nested_paths(self):
+        """Comma-separated nested paths — OR semantics."""
+        body = _gql_body(
+            'query { repository(name: "x") { pullRequests { totalCount } } }',
+            "Op",
+        )
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(
+                ["POST /graphql GraphQL type:query field:repository.issues,repository.pullRequests"]
+            ),
+            body=body,
+        )
+        assert isinstance(result, FirewallAllow)
+
+    def test_comma_nested_no_match(self):
+        """Comma-separated nested paths — none match."""
+        body = _gql_body(
+            'query { repository(name: "x") { labels { nodes { name } } } }',
+            "Op",
+        )
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(
+                ["POST /graphql GraphQL type:query field:repository.issues,repository.pullRequests"]
+            ),
+            body=body,
+        )
+        assert isinstance(result, FirewallBlock)

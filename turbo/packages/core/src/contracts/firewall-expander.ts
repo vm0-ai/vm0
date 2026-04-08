@@ -60,16 +60,18 @@ function validateGraphQLModifiers(
         );
       }
     } else if (part.startsWith("field:")) {
-      const val = part.slice(6);
-      if (!val) {
-        throw new Error(
-          `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": empty GraphQL field name`,
-        );
-      }
-      if (val !== "*" && !GRAPHQL_FIELD_PATTERN_RE.test(val)) {
-        throw new Error(
-          `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": invalid GraphQL field pattern "${val}"`,
-        );
+      const fields = part.slice(6).split(",");
+      for (const val of fields) {
+        if (!val) {
+          throw new Error(
+            `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": empty GraphQL field name`,
+          );
+        }
+        if (val !== "*" && !GRAPHQL_FIELD_PATTERN_RE.test(val)) {
+          throw new Error(
+            `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": invalid GraphQL field pattern "${val}"`,
+          );
+        }
       }
     } else {
       throw new Error(

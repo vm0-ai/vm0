@@ -220,11 +220,13 @@ class FirewallBlock(NamedTuple):
     path: str
 
 
-def parse_graphql_rule(rest: str) -> tuple[str, str | None, str | None, str | None] | None:
-    """Parse a rule's path+suffix into (path, type_filter, op_filter, field_filter).
+def parse_graphql_rule(rest: str) -> tuple[str, str | None, str | None, list[str] | None] | None:
+    """Parse a rule's path+suffix into (path, type_filter, op_filter, field_filters).
 
     If the rule contains the ``GraphQL`` keyword, returns the path portion
     and optional ``type:`` / ``operationName:`` / ``field:`` filters.
+    The ``field:`` value may be comma-separated for OR semantics
+    (e.g., ``field:createIssue,closeIssue``).
     Returns None when the ``GraphQL`` keyword is absent (plain REST rule).
     """
     gql_idx = rest.find(" GraphQL")
@@ -236,7 +238,7 @@ def parse_graphql_rule(rest: str) -> tuple[str, str | None, str | None, str | No
 
     type_filter: str | None = None
     op_filter: str | None = None
-    field_filter: str | None = None
+    field_filters: list[str] | None = None
 
     for part in suffix_parts[1:]:  # skip "GraphQL" itself
         if part.startswith("type:"):
@@ -244,9 +246,9 @@ def parse_graphql_rule(rest: str) -> tuple[str, str | None, str | None, str | No
         elif part.startswith("operationName:"):
             op_filter = part[14:]
         elif part.startswith("field:"):
-            field_filter = part[6:]
+            field_filters = part[6:].split(",")
 
-    return path, type_filter, op_filter, field_filter
+    return path, type_filter, op_filter, field_filters
 
 
 def _match_wildcard(value: str, pattern: str) -> bool:
@@ -260,9 +262,12 @@ def match_graphql_body(
     body: bytes | None,
     type_filter: str | None,
     op_filter: str | None,
-    field_filter: str | None = None,
+    field_filters: list[str] | None = None,
 ) -> bool:
     """Match a GraphQL request body against type, operationName, and field filters.
+
+    Multiple field filters (from comma-separated ``field:a,b,c``) use OR
+    semantics: the body matches if any extracted field matches any pattern.
 
     Fail-closed: returns False if the body cannot be parsed or required
     fields are missing.
@@ -280,7 +285,7 @@ def match_graphql_body(
 
     # Extract query string early if any filter needs it.
     query_str: str | None = None
-    if type_filter is not None or field_filter is not None:
+    if type_filter is not None or field_filters is not None:
         raw = data.get("query")
         if not isinstance(raw, str):
             return False
@@ -309,12 +314,12 @@ def match_graphql_body(
         if not _match_wildcard(op_name, op_filter):
             return False
 
-    # Match field name (supports dot-separated paths like "repository.issues")
-    if field_filter is not None and query_str is not None:
+    # Match field filters (OR semantics: any pattern matching any field)
+    if field_filters is not None and query_str is not None:
         fields = extract_field_paths(query_str)
         if not fields:
             return False
-        if not any(_match_wildcard(f, field_filter) for f in fields):
+        if not any(_match_wildcard(f, pattern) for pattern in field_filters for f in fields):
             return False
 
     return True
@@ -388,10 +393,10 @@ def match_firewall_request(
                     # Check for GraphQL suffix
                     gql = parse_graphql_rule(rest)
                     if gql is not None:
-                        rule_pattern, type_filter, op_filter, field_filter = gql
+                        rule_pattern, type_filter, op_filter, field_filters = gql
                     else:
                         rule_pattern = rest
-                        type_filter, op_filter, field_filter = None, None, None
+                        type_filter, op_filter, field_filters = None, None, None
 
                     params = match_path(rel_path, rule_pattern)
                     if params is not None:
@@ -399,10 +404,10 @@ def match_firewall_request(
                         has_gql_filter = (
                             type_filter is not None
                             or op_filter is not None
-                            or field_filter is not None
+                            or field_filters is not None
                         )
                         if has_gql_filter and not match_graphql_body(
-                            body, type_filter, op_filter, field_filter
+                            body, type_filter, op_filter, field_filters
                         ):
                             continue
                         # Merge base params with rule params
