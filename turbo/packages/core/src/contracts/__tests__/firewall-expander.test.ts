@@ -533,6 +533,66 @@ describe("validateRule", () => {
       );
     }).not.toThrow();
   });
+
+  it("should accept dot-separated field paths", () => {
+    expect(() => {
+      return validateRule(
+        "POST /graphql GraphQL type:query field:repository.issues",
+        "p",
+        "fw",
+      );
+    }).not.toThrow();
+  });
+
+  it("should accept deeply nested field paths", () => {
+    expect(() => {
+      return validateRule(
+        "POST /graphql GraphQL type:query field:repository.issues.nodes",
+        "p",
+        "fw",
+      );
+    }).not.toThrow();
+  });
+
+  it("should accept dot-separated field path with wildcard", () => {
+    expect(() => {
+      return validateRule(
+        "POST /graphql GraphQL type:query field:repository.*",
+        "p",
+        "fw",
+      );
+    }).not.toThrow();
+  });
+
+  it("should reject field path with trailing dot", () => {
+    expect(() => {
+      return validateRule(
+        "POST /graphql GraphQL type:query field:repository.",
+        "p",
+        "fw",
+      );
+    }).toThrow("invalid GraphQL field pattern");
+  });
+
+  it("should reject field path with leading dot", () => {
+    expect(() => {
+      return validateRule(
+        "POST /graphql GraphQL type:query field:.issues",
+        "p",
+        "fw",
+      );
+    }).toThrow("invalid GraphQL field pattern");
+  });
+
+  it("should reject field path with consecutive dots", () => {
+    expect(() => {
+      return validateRule(
+        "POST /graphql GraphQL type:query field:repository..issues",
+        "p",
+        "fw",
+      );
+    }).toThrow("invalid GraphQL field pattern");
+  });
 });
 
 describe("validateBaseUrl", () => {

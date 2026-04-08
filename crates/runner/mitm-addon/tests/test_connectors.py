@@ -2651,8 +2651,8 @@ class TestGraphQLFieldMatching:
         assert isinstance(result, FirewallAllow)
         assert result.match_info["permission"] == "close"
 
-    def test_field_inline_fragment_field_at_depth2(self):
-        """Fields inside inline fragment body are at depth 2, not extracted."""
+    def test_field_inline_fragment_field_at_depth1(self):
+        """Fields inside inline fragment are attributed to parent — match succeeds."""
         body = _gql_body(
             "mutation { ... on Mutation { createIssue(input: {}) { id } } }",
             "Op",
@@ -2663,4 +2663,4 @@ class TestGraphQLFieldMatching:
             _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue"]),
             body=body,
         )
-        assert isinstance(result, FirewallBlock)
+        assert isinstance(result, FirewallAllow)

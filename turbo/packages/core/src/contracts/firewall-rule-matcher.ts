@@ -104,7 +104,7 @@ export interface GraphQLBody {
   type: "query" | "mutation" | "subscription";
   /** The named operation, if present. */
   operationName?: string;
-  /** Top-level selection field names (e.g., `["createIssue"]`). */
+  /** Dot-separated field selection paths (e.g., `["createIssue"]`, `["repository.issues"]`). */
   fields?: string[];
 }
 
