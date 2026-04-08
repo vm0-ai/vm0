@@ -79,6 +79,10 @@ export const hideAppSkeleton$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     set(resetSkeletonCycling$);
 
+    // Both operations are best-effort cache warm-ups executed before the
+    // skeleton hides. A missing agent avatar or a failed pinned-agents fetch
+    // must not prevent the skeleton from hiding — so all non-abort errors are
+    // intentionally swallowed here.
     try {
       await Promise.all([
         (async () => {
