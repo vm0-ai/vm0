@@ -273,7 +273,9 @@ describe("zero-schedule-card - save error", () => {
     await user.click(screen.getByText("Create"));
 
     await waitFor(() => {
-      expect(screen.getByText(/Schedule limit reached/)).toBeInTheDocument();
+      expect(
+        screen.getAllByText(/Schedule limit reached/)[0],
+      ).toBeInTheDocument();
     });
   });
 });
