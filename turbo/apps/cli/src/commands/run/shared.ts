@@ -48,10 +48,10 @@ export function collectVolumeVersions(
 }
 
 /**
- * Parse and validate --firewall-policies JSON string.
+ * Parse and validate --permission-policies JSON string.
  * Returns undefined when no value is provided.
  */
-export function parseFirewallPolicies(
+export function parsePermissionPolicies(
   json: string | undefined,
 ): FirewallPolicies | undefined {
   if (!json) return undefined;
@@ -60,13 +60,13 @@ export function parseFirewallPolicies(
     parsed = JSON.parse(json);
   } catch {
     throw new Error(
-      `Invalid --firewall-policies JSON: ${json}\nExpected format: '{"ref": {"permission": "allow|deny|ask"}}'`,
+      `Invalid --permission-policies JSON: ${json}\nExpected format: '{"ref": {"permission": "allow|deny|ask"}}'`,
     );
   }
   const result = firewallPoliciesSchema.safeParse(parsed);
   if (!result.success) {
     throw new Error(
-      `Invalid --firewall-policies: ${result.error.issues
+      `Invalid --permission-policies: ${result.error.issues
         .map((i) => {
           return i.message;
         })
