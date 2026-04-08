@@ -78,7 +78,7 @@ async function outputPermissionChangeMessage(
 
   // Gmail gmail.send: strongly recommend draft-based workflow over direct send
   if (
-    firewallRef === "gmail" &&
+    connectorRef === "gmail" &&
     permission === "gmail.send" &&
     action === "enable"
   ) {
