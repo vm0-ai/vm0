@@ -199,11 +199,13 @@ export function Markdown({ className, style, ...rest }: MarkdownPreviewProps) {
       rehypeRewrite={rehypeRewriteHandler}
       components={{
         table: ResponsiveTable,
-        a: ({ children, ...props }) => (
-          <a {...props} target="_blank" rel="noopener noreferrer">
-            {children}
-          </a>
-        ),
+        a: ({ children, ...props }) => {
+          return (
+            <a {...props} target="_blank" rel="noopener noreferrer">
+              {children}
+            </a>
+          );
+        },
       }}
       {...rest}
     />
