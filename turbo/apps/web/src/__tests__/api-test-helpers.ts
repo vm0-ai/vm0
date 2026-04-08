@@ -61,7 +61,7 @@ import { creditUsage } from "../db/schema/credit-usage";
 import { sandboxTelemetry } from "../db/schema/sandbox-telemetry";
 import { creditPricing } from "../db/schema/credit-pricing";
 import { runnerState } from "../db/schema/runner-state";
-import { voiceChatSessions } from "../db/schema/voice-chat";
+import { voiceChatSessions, voiceChatEvents } from "../db/schema/voice-chat";
 import { insightsDaily } from "../db/schema/insights-daily";
 import { users } from "../db/schema/user";
 import { and, eq, like, or, sql } from "drizzle-orm";
@@ -5340,6 +5340,7 @@ export async function insertTestVoiceChatSession(overrides: {
   orgId: string;
   userId: string;
   status?: string;
+  runId?: string;
   createdAt?: Date;
   lastHeartbeatAt?: Date;
 }): Promise<string> {
@@ -5351,6 +5352,7 @@ export async function insertTestVoiceChatSession(overrides: {
       orgId: overrides.orgId,
       userId: overrides.userId,
       status: overrides.status ?? "active",
+      runId: overrides.runId,
       createdAt: overrides.createdAt ?? now,
       lastHeartbeatAt: overrides.lastHeartbeatAt ?? now,
     })
@@ -5367,4 +5369,29 @@ export async function getTestVoiceChatSessionStatus(
     .from(voiceChatSessions)
     .where(eq(voiceChatSessions.id, id));
   return row?.status;
+}
+
+export async function getTestVoiceChatSessionHeartbeat(
+  id: string,
+): Promise<Date | undefined> {
+  initServices();
+  const [row] = await globalThis.services.db
+    .select({ lastHeartbeatAt: voiceChatSessions.lastHeartbeatAt })
+    .from(voiceChatSessions)
+    .where(eq(voiceChatSessions.id, id));
+  return row?.lastHeartbeatAt;
+}
+
+export async function getTestVoiceChatEvents(
+  sessionId: string,
+): Promise<Array<{ type: string; source: string; content: string | null }>> {
+  initServices();
+  return globalThis.services.db
+    .select({
+      type: voiceChatEvents.type,
+      source: voiceChatEvents.source,
+      content: voiceChatEvents.content,
+    })
+    .from(voiceChatEvents)
+    .where(eq(voiceChatEvents.sessionId, sessionId));
 }
