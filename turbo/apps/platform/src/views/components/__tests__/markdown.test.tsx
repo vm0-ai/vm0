@@ -118,7 +118,7 @@ describe("chat-d-066: markdown links open in new tab", () => {
 
     await waitFor(() => {
       const link = screen.getAllByRole("link").find((el) => {
-        return el.textContent === "example";
+        return /example/.test(el.textContent ?? "");
       });
       expect(link).toHaveAttribute("href", "https://example.com");
       expect(link).toHaveAttribute("target", "_blank");
