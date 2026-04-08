@@ -1,3 +1,5 @@
+import { randomBytes, randomInt } from "node:crypto";
+
 const CLERK_API_BASE = "https://api.clerk.com/v1";
 
 function getClerkHeaders(): Record<string, string> {
@@ -13,19 +15,15 @@ function getClerkHeaders(): Record<string, string> {
 
 export function generateTestEmail(): string {
   const jobRef = process.env.JOB_REF ?? "local";
-  const randHex = Array.from(
-    { length: 8 },
-    () => Math.floor(Math.random() * 16).toString(16)
-  ).join("");
+  const randHex = randomBytes(4).toString("hex");
   return `${jobRef}+clerk_test@${randHex}.ai`;
 }
 
 export function generatePassword(): string {
   const chars =
     "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  const rand = Array.from(
-    { length: 16 },
-    () => chars[Math.floor(Math.random() * chars.length)]
+  const rand = Array.from({ length: 16 }, () =>
+    chars[randomInt(chars.length)]
   ).join("");
   return `${rand}!Aa1`;
 }
