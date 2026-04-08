@@ -114,6 +114,9 @@ export interface GraphQLBody {
 /**
  * Match a parsed GraphQL body against type, operationName, and field filters.
  *
+ * Multiple field filters (from comma-separated `field:a,b,c`) use OR
+ * semantics: the body matches if any extracted field matches any pattern.
+ *
  * Fail-closed: returns false if required fields are missing.
  */
 function matchWildcard(value: string, pattern: string): boolean {
