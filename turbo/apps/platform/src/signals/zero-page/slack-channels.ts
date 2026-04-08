@@ -1,15 +1,10 @@
-import { command, computed, state } from "ccstate";
+import { command, state } from "ccstate";
 import { zeroSlackChannelsContract, type SlackChannel } from "@vm0/core";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 
 const slackChannelsState$ = state<SlackChannel[]>([]);
 const slackChannelsLoaded$ = state(false);
-
-/** True after the initial Slack channels fetch has completed. */
-export const slackChannelsInitialized$ = computed((get) => {
-  return get(slackChannelsLoaded$);
-});
 
 export const fetchSlackChannels$ = command(
   async ({ get, set }, _signal: AbortSignal) => {

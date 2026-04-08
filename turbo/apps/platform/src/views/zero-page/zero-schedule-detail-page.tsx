@@ -39,6 +39,7 @@ import { agents$ } from "../../signals/agent.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
   allOrgScheduleEntries$,
+  allOrgSchedulesLoaded$,
   saveOrgSchedule$,
   toggleOrgScheduleEnabled$,
   deleteOrgSchedule$,
@@ -969,6 +970,7 @@ export function ZeroScheduleDetailPage() {
   const agentsLoadable = useLoadable(agents$);
   const agents = agentsLoadable.state === "hasData" ? agentsLoadable.data : [];
 
+  const schedulesLoaded = useGet(allOrgSchedulesLoaded$);
   const slackData = useLoadable(slackOrgData$);
   const deleteSchedule = useSet(deleteOrgSchedule$);
   const navigate = useSet(detachedNavigateTo$);
@@ -990,7 +992,11 @@ export function ZeroScheduleDetailPage() {
     return <ScheduleNotFound />;
   }
 
-  if (entriesLoadable.state !== "hasData" || slackData.state !== "hasData") {
+  if (
+    !schedulesLoaded ||
+    entriesLoadable.state !== "hasData" ||
+    slackData.state !== "hasData"
+  ) {
     return <ScheduleDetailSkeleton />;
   }
 
