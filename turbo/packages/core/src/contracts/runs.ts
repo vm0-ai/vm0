@@ -383,10 +383,11 @@ const networkLogEntrySchema = z.object({
   // Capture-only fields (opt-in via captureNetworkBodies)
   request_headers: z.record(z.string(), z.string()).optional(),
   request_body: z.string().optional(),
-  request_body_encoding: z.enum(["utf-8", "base64"]).optional(),
+  request_body_encoding: z.enum(["utf-8", "base64", "binary"]).optional(),
   request_body_truncated: z.boolean().optional(),
+  response_headers: z.record(z.string(), z.string()).optional(),
   response_body: z.string().optional(),
-  response_body_encoding: z.enum(["utf-8", "base64"]).optional(),
+  response_body_encoding: z.enum(["utf-8", "base64", "binary"]).optional(),
   response_body_truncated: z.boolean().optional(),
 });
 
