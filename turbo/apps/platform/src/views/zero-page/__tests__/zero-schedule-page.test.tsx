@@ -987,9 +987,11 @@ describe("zero schedule page - schedule dialog fields", () => {
 
     await user.click(screen.getByText("Create"));
 
-    // Dialog should stay open with error message
+    // Dialog should stay open with error message (toast + inline dialog error)
     await waitFor(() => {
-      expect(screen.getByText(/Schedule limit reached/)).toBeInTheDocument();
+      expect(
+        screen.getAllByText(/Schedule limit reached/)[0],
+      ).toBeInTheDocument();
     });
     expect(
       screen.getByRole("heading", { name: "Add schedule" }),
