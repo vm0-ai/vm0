@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.202.1](https://github.com/vm0-ai/vm0/compare/app-v0.202.0...app-v0.202.1) (2026-04-08)
+
+
+### Bug Fixes
+
+* **model-providers:** use hyphenated model ids to match anthropic api format ([#8511](https://github.com/vm0-ai/vm0/issues/8511)) ([1bcd1e6](https://github.com/vm0-ai/vm0/commit/1bcd1e67f54105831b71182482488f21871ee25d))
+
+
+### Refactoring
+
+* **platform:** job detail page cleanup ([#8418](https://github.com/vm0-ai/vm0/issues/8418)) ([4ddf0ae](https://github.com/vm0-ai/vm0/commit/4ddf0ae451163d64cc1e49062df9521ce977be88))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.161.1
+
 ## [0.202.0](https://github.com/vm0-ai/vm0/compare/app-v0.201.0...app-v0.202.0) (2026-04-08)
 
 
