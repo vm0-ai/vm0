@@ -11,6 +11,8 @@ import {
   getTestScheduleRuns,
   getTestRun,
   disableAllSchedules,
+  clearComposeHeadVersion,
+  setScheduleConsecutiveFailures,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -539,6 +541,114 @@ describe("GET /api/cron/execute-schedules", () => {
       expect(schedule.enabled).toBe(false);
       expect(schedule.nextRunAt).toBeNull();
       expect(schedule.retryStartedAt).toBeNull();
+    });
+  });
+
+  describe("Pre-Run Failure Handling", () => {
+    beforeEach(async () => {
+      vi.stubEnv("CRON_SECRET", "test-secret");
+      reloadEnv();
+      await disableAllSchedules(testOrgId);
+    });
+
+    it("should set nextRunAt to next cron occurrence on pre-run failure", async () => {
+      // 1. Mock time to 8:00 AM UTC
+      context.mocks.date.setSystemTime(new Date("2025-01-15T08:00:00Z"));
+
+      // 2. Create and enable a cron schedule for 9 AM daily
+      await createTestSchedule(testComposeId, "cron-prerun-fail", {
+        cronExpression: "0 9 * * *",
+        prompt: "Daily task",
+        timezone: "UTC",
+      });
+      await enableTestSchedule(testComposeId, "cron-prerun-fail");
+
+      // 3. Clear headVersionId to cause pre-run failure in executeSchedule()
+      await clearComposeHeadVersion(testComposeId);
+
+      // 4. Advance time to 9:01 AM (schedule is due)
+      context.mocks.date.setSystemTime(new Date("2025-01-15T09:01:00Z"));
+
+      // 5. Execute cron endpoint
+      await GET(authenticatedCronRequest());
+
+      // 6. Verify: consecutiveFailures incremented, nextRunAt set to next occurrence
+      const schedule = await getTestSchedule(testComposeId, "cron-prerun-fail");
+      expect(schedule.consecutiveFailures).toBe(1);
+      expect(schedule.enabled).toBe(true);
+      expect(schedule.nextRunAt).not.toBeNull();
+      // nextRunAt should be Jan 16 at 9:00 AM (next cron occurrence)
+      expect(new Date(schedule.nextRunAt!).getTime()).toBeGreaterThan(
+        new Date("2025-01-15T09:01:00Z").getTime(),
+      );
+    });
+
+    it("should set nextRunAt to now + interval on loop pre-run failure", async () => {
+      // 1. Mock time
+      context.mocks.date.setSystemTime(new Date("2025-01-15T08:00:00Z"));
+
+      // 2. Create and enable a loop schedule
+      await createTestSchedule(testComposeId, "loop-prerun-fail", {
+        intervalSeconds: 300,
+        prompt: "Loop task",
+      });
+      await enableTestSchedule(testComposeId, "loop-prerun-fail");
+
+      // 3. Clear headVersionId to cause pre-run failure
+      await clearComposeHeadVersion(testComposeId);
+
+      // 4. Advance time slightly so schedule is due
+      context.mocks.date.setSystemTime(new Date("2025-01-15T08:00:01Z"));
+
+      // 5. Execute cron endpoint
+      await GET(authenticatedCronRequest());
+
+      // 6. Verify: consecutiveFailures incremented, nextRunAt ≈ now + 300s
+      const schedule = await getTestSchedule(testComposeId, "loop-prerun-fail");
+      expect(schedule.consecutiveFailures).toBe(1);
+      expect(schedule.enabled).toBe(true);
+      expect(schedule.nextRunAt).not.toBeNull();
+      const expectedNextRun = new Date("2025-01-15T08:05:01Z"); // now + 300s
+      expect(
+        Math.abs(
+          new Date(schedule.nextRunAt!).getTime() - expectedNextRun.getTime(),
+        ),
+      ).toBeLessThan(2000);
+    });
+
+    it("should auto-disable schedule after 3 consecutive pre-run failures", async () => {
+      // 1. Mock time
+      context.mocks.date.setSystemTime(new Date("2025-01-15T08:00:00Z"));
+
+      // 2. Create and enable a cron schedule
+      await createTestSchedule(testComposeId, "cron-autodisable", {
+        cronExpression: "0 9 * * *",
+        prompt: "Daily task",
+        timezone: "UTC",
+      });
+      await enableTestSchedule(testComposeId, "cron-autodisable");
+
+      // 3. Set consecutiveFailures to 2 (simulate 2 prior failures)
+      await setScheduleConsecutiveFailures(
+        testComposeId,
+        "cron-autodisable",
+        2,
+      );
+
+      // 4. Clear headVersionId to cause pre-run failure
+      await clearComposeHeadVersion(testComposeId);
+
+      // 5. Advance time to 9:01 AM (schedule is due)
+      context.mocks.date.setSystemTime(new Date("2025-01-15T09:01:00Z"));
+
+      // 6. Execute cron endpoint
+      await GET(authenticatedCronRequest());
+
+      // 7. Verify: auto-disabled after 3rd failure
+      const schedule = await getTestSchedule(testComposeId, "cron-autodisable");
+      expect(schedule.consecutiveFailures).toBe(3);
+      expect(schedule.enabled).toBe(false);
+      expect(schedule.nextRunAt).toBeNull();
     });
   });
 });

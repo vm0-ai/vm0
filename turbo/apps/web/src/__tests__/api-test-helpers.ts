@@ -5194,3 +5194,36 @@ export async function getAgentCustomSkills(agentId: string): Promise<string[]> {
   if (!agent) throw new Error(`Agent not found: ${agentId}`);
   return agent.customSkills;
 }
+
+/**
+ * Clear the headVersionId of a compose to simulate a compose with no versions.
+ * Useful for triggering pre-run failures in executeSchedule().
+ */
+export async function clearComposeHeadVersion(
+  composeId: string,
+): Promise<void> {
+  await globalThis.services.db
+    .update(agentComposes)
+    .set({ headVersionId: null })
+    .where(eq(agentComposes.id, composeId));
+}
+
+/**
+ * Set the consecutiveFailures count on a schedule.
+ * Useful for testing auto-disable after N failures.
+ */
+export async function setScheduleConsecutiveFailures(
+  composeId: string,
+  name: string,
+  failures: number,
+): Promise<void> {
+  await globalThis.services.db
+    .update(zeroAgentSchedules)
+    .set({ consecutiveFailures: failures })
+    .where(
+      and(
+        eq(zeroAgentSchedules.agentId, composeId),
+        eq(zeroAgentSchedules.name, name),
+      ),
+    );
+}
