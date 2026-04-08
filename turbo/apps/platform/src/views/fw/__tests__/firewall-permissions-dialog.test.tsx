@@ -10,7 +10,7 @@ import { setupPage } from "../../../__tests__/page-helper.ts";
 const context = testContext();
 
 function mockAPIs({
-  connectorType = "github" as ConnectorType,
+  connectorType = "slack" as ConnectorType,
   ownerId = "test-user-123",
   firewallPolicies = null as Record<string, Record<string, string>> | null,
 } = {}) {
@@ -186,11 +186,11 @@ describe("firewall permissions dialog - flat list connector (Notion)", () => {
   });
 });
 
-describe("firewall permissions dialog - grouped connector (GitHub)", () => {
+describe("firewall permissions dialog - grouped connector (Slack)", () => {
   it("renders group categories with permission counts (FW-D-032)", async () => {
-    mockAPIs({ connectorType: "github" });
+    mockAPIs({ connectorType: "slack" });
     await setupPage({ context, path: "/agents/my-agent" });
-    await openPermissionsDrawer("GitHub");
+    await openPermissionsDrawer("Slack");
 
     await waitFor(() => {
       expect(screen.getByText(/Read \(\d+\)/i)).toBeInTheDocument();
@@ -200,28 +200,30 @@ describe("firewall permissions dialog - grouped connector (GitHub)", () => {
   });
 
   it("toggles group visibility on collapse/expand click (FW-D-035)", async () => {
-    mockAPIs({ connectorType: "github" });
+    mockAPIs({ connectorType: "slack" });
     await setupPage({ context, path: "/agents/my-agent" });
-    const user = await openPermissionsDrawer("GitHub");
+    const user = await openPermissionsDrawer("Slack");
 
     const readButton = screen.getByText(/Read \(\d+\)/i);
 
     // Expand
     await user.click(readButton);
     await waitFor(() => {
-      return expect(screen.getByText("actions:read")).toBeInTheDocument();
+      return expect(screen.getByText("channels:read")).toBeInTheDocument();
     });
 
     // Collapse
     await user.click(readButton);
     await waitFor(() => {
-      return expect(screen.queryByText("actions:read")).not.toBeInTheDocument();
+      return expect(
+        screen.queryByText("channels:read"),
+      ).not.toBeInTheDocument();
     });
   });
 
   it("saves policies and closes drawer when Apply is clicked (FW-D-036)", async () => {
     let putCalled = false;
-    mockAPIs({ connectorType: "github" });
+    mockAPIs({ connectorType: "slack" });
     server.use(
       http.put("*/api/zero/firewall-policies", () => {
         putCalled = true;
@@ -238,7 +240,7 @@ describe("firewall permissions dialog - grouped connector (GitHub)", () => {
       }),
     );
     await setupPage({ context, path: "/agents/my-agent" });
-    const user = await openPermissionsDrawer("GitHub");
+    const user = await openPermissionsDrawer("Slack");
 
     await user.click(screen.getByText("Apply"));
 
@@ -247,15 +249,15 @@ describe("firewall permissions dialog - grouped connector (GitHub)", () => {
     });
     await waitFor(() => {
       return expect(
-        screen.queryByRole("heading", { name: /GitHub permissions/i }),
+        screen.queryByRole("heading", { name: /Slack permissions/i }),
       ).not.toBeInTheDocument();
     });
   });
 
   it("disables all policy pills and shows only Close in read-only mode (FW-V-001)", async () => {
-    mockAPIs({ connectorType: "github", ownerId: "other-user-456" });
+    mockAPIs({ connectorType: "slack", ownerId: "other-user-456" });
     await setupPage({ context, path: "/agents/my-agent" });
-    await openPermissionsDrawer("GitHub");
+    await openPermissionsDrawer("Slack");
 
     // The footer "Close" button (text content) should be present
     await waitFor(() => {
