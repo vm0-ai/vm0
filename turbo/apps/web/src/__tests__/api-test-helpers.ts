@@ -5285,3 +5285,36 @@ export async function createTestVoiceChatSession(
     .returning({ id: voiceChatSessions.id });
   return session!;
 }
+
+export async function insertTestVoiceChatSession(overrides: {
+  orgId: string;
+  userId: string;
+  status?: string;
+  createdAt?: Date;
+  lastHeartbeatAt?: Date;
+}): Promise<string> {
+  initServices();
+  const now = new Date();
+  const [row] = await globalThis.services.db
+    .insert(voiceChatSessions)
+    .values({
+      orgId: overrides.orgId,
+      userId: overrides.userId,
+      status: overrides.status ?? "active",
+      createdAt: overrides.createdAt ?? now,
+      lastHeartbeatAt: overrides.lastHeartbeatAt ?? now,
+    })
+    .returning({ id: voiceChatSessions.id });
+  return row!.id;
+}
+
+export async function getTestVoiceChatSessionStatus(
+  id: string,
+): Promise<string | undefined> {
+  initServices();
+  const [row] = await globalThis.services.db
+    .select({ status: voiceChatSessions.status })
+    .from(voiceChatSessions)
+    .where(eq(voiceChatSessions.id, id));
+  return row?.status;
+}
