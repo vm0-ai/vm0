@@ -59,7 +59,7 @@ function mockAPIs() {
         description: "Finds and summarizes information",
         sound: null,
         avatarUrl: null,
-        firewallPolicies: null,
+        permissionPolicies: null,
       });
     }),
     http.get("*/api/zero/agents/:name/instructions", () => {
