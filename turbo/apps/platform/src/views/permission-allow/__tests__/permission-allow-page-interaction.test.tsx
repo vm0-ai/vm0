@@ -1,5 +1,5 @@
 /**
- * Interaction tests for firewall-allow-page.tsx.
+ * Interaction tests for permission-allow-page.tsx.
  *
  * Covers admin Confirm button, admin request approve/reject,
  * and member request submission. These test the new centered

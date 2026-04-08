@@ -483,7 +483,7 @@ function RequestStatusView({
   request: {
     id: string;
     agentId: string;
-    permissionRef: string;
+    firewallRef: string;
     permission: string;
     action: "allow" | "deny";
     method: string | null;
@@ -505,7 +505,7 @@ function RequestStatusView({
   const showResendFormValue = useGet(resendFormVisible$);
   const doShowResendForm = useSet(showResendForm$);
 
-  const ref = request.permissionRef;
+  const ref = request.firewallRef;
   const permission = findPermission(ref, request.permission) ?? {
     name: request.permission,
   };

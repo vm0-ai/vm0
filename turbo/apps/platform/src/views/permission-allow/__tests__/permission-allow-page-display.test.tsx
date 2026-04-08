@@ -1,9 +1,9 @@
 /**
- * Display and conditional tests for firewall-allow-page.tsx.
+ * Display and conditional tests for permission-allow-page.tsx.
  *
- * Covers agent ID resolution, firewall reference types, loading/error states,
+ * Covers agent ID resolution, permission reference types, loading/error states,
  * and admin/member confirmation card rendering. Admin/member view branching and
- * HTTP method/path display are already covered in firewall-allow-page.test.tsx.
+ * HTTP method/path display are already covered in permission-allow-page.test.tsx.
  */
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";

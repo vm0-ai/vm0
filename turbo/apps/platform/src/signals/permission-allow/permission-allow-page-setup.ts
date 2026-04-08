@@ -1,4 +1,5 @@
 import { command } from "ccstate";
+import { throwIfAbort } from "../utils.ts";
 import { createElement } from "react";
 import { MinimalSidebarLayout } from "../../views/zero-page/zero-directed-connect-page.tsx";
 import { PermissionAllowPage } from "../../views/permission-allow/permission-allow-page.tsx";
@@ -41,7 +42,15 @@ export const setupPermissionAllowPage$ = command(
 
     set(reloadChatThreads$);
 
-    const agent = await get(permissionAllowAgent$);
+    // Agent load errors are displayed by the component via useLastLoadable —
+    // only re-throw abort errors; other failures render an error state in-page.
+    let agent;
+    try {
+      agent = await get(permissionAllowAgent$);
+    } catch (error) {
+      throwIfAbort(error);
+      return;
+    }
     signal.throwIfAborted();
     const ref = get(permissionAllowRef$);
 
