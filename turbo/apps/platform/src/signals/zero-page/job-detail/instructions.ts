@@ -28,7 +28,6 @@ export const zeroJobInstructions$ = computed(
     const result = await accept(
       client.get({ params: { id: detail.agentId } }),
       [200],
-      { toast: false },
     );
     return result.body;
   },

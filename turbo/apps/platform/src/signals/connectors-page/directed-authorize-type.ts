@@ -28,9 +28,7 @@ export const agentEnabledTypes$ = computed(async (get) => {
   }
   const createClient = get(zeroClient$);
   const client = createClient(zeroUserConnectorsContract);
-  const result = await accept(client.get({ params: { id: agentId } }), [200], {
-    toast: false,
-  });
+  const result = await accept(client.get({ params: { id: agentId } }), [200]);
   return result.body.enabledTypes;
 });
 
@@ -56,7 +54,6 @@ export const authorizeConnector$ = command(
     const current = await accept(
       client.get({ params: { id: agentId } }),
       [200],
-      { toast: false },
     );
     signal.throwIfAborted();
 

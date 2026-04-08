@@ -122,7 +122,7 @@ const rawSchedules$ = computed(async (get): Promise<ScheduleItem[]> => {
     return [];
   }
   const client = get(zeroClient$)(zeroSchedulesMainContract);
-  const result = await accept(client.list(), [200], { toast: false });
+  const result = await accept(client.list(), [200]);
   return result.body.schedules.filter((s) => {
     return s.agentId === detail.agentId;
   });
@@ -231,8 +231,7 @@ export const saveZeroJobSchedule$ = command(
     }
 
     const client = get(zeroClient$)(zeroSchedulesMainContract);
-    // toast: false — error is captured by useLoadableSet in the consuming view and displayed in the dialog
-    await accept(client.deploy({ body }), [200, 201], { toast: false });
+    await accept(client.deploy({ body }), [200, 201]);
     signal.throwIfAborted();
 
     toast.success(params.editName ? "Schedule updated" : "Schedule created");

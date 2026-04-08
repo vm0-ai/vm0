@@ -24,7 +24,7 @@ const orgMembersResponse$ = computed(async (get) => {
   const createClient = get(zeroClient$);
   const client = createClient(zeroOrgMembersContract);
   try {
-    const result = await accept(client.members(), [200], { toast: false });
+    const result = await accept(client.members(), [200]);
     return result.body;
   } catch (error) {
     throwIfAbort(error);

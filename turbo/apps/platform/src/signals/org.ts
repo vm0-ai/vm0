@@ -24,12 +24,7 @@ export const org$ = computed(async (get) => {
 
   const createClient = get(zeroClient$);
   const client = createClient(zeroOrgContract);
-  const result = await accept(client.get(), [200, 404], { toast: false });
-
-  if (result.status === 404) {
-    return undefined;
-  }
-
+  const result = await accept(client.get(), [200]);
   return result.body;
 });
 

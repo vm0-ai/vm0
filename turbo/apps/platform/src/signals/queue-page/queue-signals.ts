@@ -13,7 +13,7 @@ const queueReload$ = state(0);
 export const queueData$ = computed(async (get) => {
   get(queueReload$);
   const client = get(zeroClient$)(zeroRunsQueueContract);
-  const result = await accept(client.getQueue(), [200], { toast: false });
+  const result = await accept(client.getQueue(), [200]);
   return result.body;
 });
 

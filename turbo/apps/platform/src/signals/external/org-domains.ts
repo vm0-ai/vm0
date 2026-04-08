@@ -21,7 +21,7 @@ const domainsResponse$ = computed(async (get) => {
   const createClient = get(zeroClient$);
   const client = createClient(zeroOrgDomainsContract);
   try {
-    const result = await accept(client.list(), [200], { toast: false });
+    const result = await accept(client.list(), [200]);
     return result.body;
   } catch (error) {
     throwIfAbort(error);

@@ -163,7 +163,7 @@ export const fetchZeroSchedules$ = command(
 
     try {
       const client = get(zeroClient$)(zeroSchedulesMainContract);
-      const result = await accept(client.list(), [200], { toast: false });
+      const result = await accept(client.list(), [200]);
       signal.throwIfAborted();
 
       // Filter schedules for this agent's composeId
@@ -395,7 +395,7 @@ export const fetchAllOrgSchedules$ = command(
   async ({ get, set }, _signal: AbortSignal) => {
     try {
       const client = get(zeroClient$)(zeroSchedulesMainContract);
-      const result = await accept(client.list(), [200], { toast: false });
+      const result = await accept(client.list(), [200]);
       set(internalAllSchedules$, result.body.schedules);
     } catch (error) {
       throwIfAbort(error);
@@ -415,10 +415,7 @@ export const saveOrgSchedule$ = command(
     const body = buildScheduleBody(params.agentId, params);
 
     const client = get(zeroClient$)(zeroSchedulesMainContract);
-    // toast: false — error is captured by useLoadableSet in the consuming view and displayed in the dialog
-    const result = await accept(client.deploy({ body }), [200, 201], {
-      toast: false,
-    });
+    const result = await accept(client.deploy({ body }), [200, 201]);
     signal.throwIfAborted();
 
     const scheduleId = result.body.schedule.id;
@@ -485,9 +482,7 @@ export const runScheduleNow$ = command(
     const client = get(zeroClient$)(zeroScheduleRunContract);
     let result;
     try {
-      result = await accept(client.run({ body: { scheduleId } }), [201], {
-        toast: false,
-      });
+      result = await accept(client.run({ body: { scheduleId } }), [201]);
     } catch (error) {
       throwIfAbort(error);
       const message = error instanceof Error ? error.message : "Run failed";

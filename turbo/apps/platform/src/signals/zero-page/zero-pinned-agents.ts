@@ -16,7 +16,7 @@ const serverPinnedIds$ = computed(async (get) => {
   get(reloadPinned$);
   const createClient = get(zeroClient$);
   const client = createClient(zeroUserPreferencesContract);
-  const result = await accept(client.get(), [200], { toast: false });
+  const result = await accept(client.get(), [200]);
   return result.body.pinnedAgentIds;
 });
 

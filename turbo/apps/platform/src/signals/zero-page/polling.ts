@@ -110,7 +110,6 @@ async function fetchEvents(
       },
     }),
     [200],
-    { toast: false },
   );
   return { events: result.body.events, hasMore: result.body.hasMore };
 }
@@ -135,7 +134,6 @@ function createRunDetail(runId: string) {
         params: { id: runId },
       }),
       [200],
-      { toast: false },
     );
     return result;
   });
@@ -170,7 +168,6 @@ function createQueuePosition(runId: string) {
         const result = await accept(
           client.getPosition({ query: { runId } }),
           [200],
-          { toast: false },
         );
         return result.body.position;
       } catch (error) {
@@ -278,7 +275,6 @@ export function createRunLoop(runId: string) {
         fetchOptions: { signal },
       }),
       [200],
-      { toast: false },
     );
   });
 

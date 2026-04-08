@@ -142,7 +142,6 @@ function createNavigationCommands(deps: PaginationDeps) {
       const result = await accept(
         client.list({ query: paramsToQuery(intermediateParams) }),
         [200],
-        { toast: false },
       );
 
       if (!result.body.pagination.hasMore) {
@@ -228,7 +227,6 @@ export function createCursorPagination(config: CursorPaginationConfig) {
     const result = await accept(
       client.list({ query: paramsToQuery(params) }),
       [200],
-      { toast: false },
     );
     return result.body;
   });
