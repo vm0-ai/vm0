@@ -36,6 +36,7 @@ export const ZERO_CAPABILITIES = [
   "slack:write",
   "connector:read",
   "computer-use:write",
+  "voice-chat:write",
 ] as const;
 
 /** Inferred union type of all zero capability strings. */
@@ -68,6 +69,10 @@ export const ZERO_CAPABILITY_META: Record<ZeroCapability, ZeroCapabilityMeta> =
     "computer-use:write": {
       group: "Computer Use",
       label: "Control remote desktop",
+    },
+    "voice-chat:write": {
+      group: "Voice Chat",
+      label: "Read and write voice chat context",
     },
   };
 

@@ -34,6 +34,10 @@
     {
       "path": "/api/cron/process-credits",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/voice-chat-cleanup",
+      "schedule": "* * * * *"
     }
   ]
 }
