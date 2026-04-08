@@ -12,11 +12,9 @@ interface PhoneStatus {
 const internalPhoneStatus$ = state<PhoneStatus | null>(null);
 const internalPhoneLoading$ = state(true);
 const internalPhoneError$ = state<string | null>(null);
-const internalPhoneVerifyStep$ = state<"phone" | "code">("phone");
-const internalPhoneSending$ = state(false);
+const internalPhoneSaving$ = state(false);
 const internalPhoneSetupLoading$ = state(false);
 const internalPhoneInput$ = state("");
-const internalCodeInput$ = state("");
 
 // Exported computed (read-only)
 export const phoneStatus$ = computed((get) => {
@@ -28,17 +26,11 @@ export const phoneLoading$ = computed((get) => {
 export const phoneError$ = computed((get) => {
   return get(internalPhoneError$);
 });
-export const phoneVerifyStep$ = computed((get) => {
-  return get(internalPhoneVerifyStep$);
-});
-export const phoneSending$ = computed((get) => {
-  return get(internalPhoneSending$);
+export const phoneSaving$ = computed((get) => {
+  return get(internalPhoneSaving$);
 });
 export const phoneInput$ = computed((get) => {
   return get(internalPhoneInput$);
-});
-export const codeInput$ = computed((get) => {
-  return get(internalCodeInput$);
 });
 export const phoneSetupLoading$ = computed((get) => {
   return get(internalPhoneSetupLoading$);
@@ -47,20 +39,6 @@ export const phoneSetupLoading$ = computed((get) => {
 // Exported commands (write)
 export const setPhoneInput$ = command(({ set }, value: string) => {
   set(internalPhoneInput$, value);
-});
-
-export const setCodeInput$ = command(({ set }, value: string) => {
-  set(internalCodeInput$, value);
-});
-
-export const setPhoneVerifyStep$ = command(
-  ({ set }, step: "phone" | "code") => {
-    set(internalPhoneVerifyStep$, step);
-  },
-);
-
-export const setPhoneError$ = command(({ set }, error: string | null) => {
-  set(internalPhoneError$, error);
 });
 
 export const fetchPhoneStatus$ = command(
@@ -89,10 +67,10 @@ export const fetchPhoneStatus$ = command(
   },
 );
 
-export const sendPhoneVerifyCode$ = command(
+export const savePhoneLink$ = command(
   async ({ get, set }, phoneNumber: string, signal: AbortSignal) => {
     set(internalPhoneError$, null);
-    set(internalPhoneSending$, true);
+    set(internalPhoneSaving$, true);
     try {
       const base = get(apiBase$);
       const clerk = await get(clerk$);
@@ -103,60 +81,51 @@ export const sendPhoneVerifyCode$ = command(
         "Content-Type": "application/json",
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       };
-      const res = await globalThis.fetch(`${base}/api/zero/phone/verify/send`, {
+      const res = await globalThis.fetch(`${base}/api/zero/phone/link`, {
         method: "POST",
         headers,
         body: JSON.stringify({ phoneNumber }),
         signal,
       });
       if (res.ok) {
-        set(internalPhoneVerifyStep$, "code");
+        set(internalPhoneInput$, "");
+        await set(fetchPhoneStatus$, signal);
       } else {
         const data = (await res.json()) as { error?: string };
-        set(internalPhoneError$, data.error ?? "Failed to send code");
+        set(internalPhoneError$, data.error ?? "Failed to save phone number");
       }
     } finally {
-      set(internalPhoneSending$, false);
+      set(internalPhoneSaving$, false);
     }
   },
 );
 
-export const confirmPhoneVerifyCode$ = command(
-  async (
-    { get, set },
-    params: { phoneNumber: string; code: string },
-    signal: AbortSignal,
-  ) => {
+export const removePhoneLink$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
     set(internalPhoneError$, null);
-    set(internalPhoneSending$, true);
+    set(internalPhoneSaving$, true);
     try {
       const base = get(apiBase$);
       const clerk = await get(clerk$);
       signal.throwIfAborted();
       const token = await clerk.session?.getToken();
       signal.throwIfAborted();
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      };
-      const res = await globalThis.fetch(
-        `${base}/api/zero/phone/verify/confirm`,
-        {
-          method: "POST",
-          headers,
-          body: JSON.stringify(params),
-          signal,
-        },
-      );
+      const headers: Record<string, string> = token
+        ? { Authorization: `Bearer ${token}` }
+        : {};
+      const res = await globalThis.fetch(`${base}/api/zero/phone/link`, {
+        method: "DELETE",
+        headers,
+        signal,
+      });
       if (res.ok) {
-        set(internalPhoneVerifyStep$, "phone");
         await set(fetchPhoneStatus$, signal);
       } else {
         const data = (await res.json()) as { error?: string };
-        set(internalPhoneError$, data.error ?? "Invalid code");
+        set(internalPhoneError$, data.error ?? "Failed to remove phone number");
       }
     } finally {
-      set(internalPhoneSending$, false);
+      set(internalPhoneSaving$, false);
     }
   },
 );
