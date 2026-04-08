@@ -1,11 +1,10 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { GET } from "../route";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
-import {
-  insertTestVoiceChatSession,
-  getTestVoiceChatSessionStatus,
-} from "../../../../../src/__tests__/api-test-helpers";
 import { reloadEnv } from "../../../../../src/env";
+import { initServices } from "../../../../../src/lib/init-services";
+import { voiceChatSessions } from "../../../../../src/db/schema/voice-chat";
+import { eq } from "drizzle-orm";
 
 vi.hoisted(() => {
   vi.stubEnv("CRON_SECRET", "test-cron-secret");
@@ -18,6 +17,35 @@ function cronRequest(secret?: string) {
     method: "GET",
     headers: secret ? { authorization: `Bearer ${secret}` } : {},
   });
+}
+
+async function insertSession(overrides: {
+  status?: string;
+  createdAt?: Date;
+  lastHeartbeatAt?: Date;
+}) {
+  initServices();
+  const now = new Date();
+  const [row] = await globalThis.services.db
+    .insert(voiceChatSessions)
+    .values({
+      orgId: "org_test",
+      userId: "user_test",
+      status: overrides.status ?? "active",
+      createdAt: overrides.createdAt ?? now,
+      lastHeartbeatAt: overrides.lastHeartbeatAt ?? now,
+    })
+    .returning({ id: voiceChatSessions.id });
+  return row.id;
+}
+
+async function getSessionStatus(id: string) {
+  initServices();
+  const [row] = await globalThis.services.db
+    .select({ status: voiceChatSessions.status })
+    .from(voiceChatSessions)
+    .where(eq(voiceChatSessions.id, id));
+  return row?.status;
 }
 
 describe("GET /api/cron/voice-chat-cleanup", () => {
@@ -51,25 +79,19 @@ describe("GET /api/cron/voice-chat-cleanup", () => {
 
   it("should clean up sessions with stale heartbeat (>2 min)", async () => {
     const staleTime = new Date(Date.now() - 3 * 60 * 1000); // 3 min ago
-    const sessionId = await insertTestVoiceChatSession({
-      orgId: "org_test",
-      userId: "user_test",
-      lastHeartbeatAt: staleTime,
-    });
+    const sessionId = await insertSession({ lastHeartbeatAt: staleTime });
 
     const response = await GET(cronRequest("test-cron-secret"));
     const body = await response.json();
 
     expect(response.status).toBe(200);
     expect(body.cleaned).toBe(1);
-    expect(await getTestVoiceChatSessionStatus(sessionId)).toBe("timeout");
+    expect(await getSessionStatus(sessionId)).toBe("timeout");
   });
 
   it("should clean up sessions exceeding max duration (>60 min)", async () => {
     const oldTime = new Date(Date.now() - 61 * 60 * 1000); // 61 min ago
-    const sessionId = await insertTestVoiceChatSession({
-      orgId: "org_test",
-      userId: "user_test",
+    const sessionId = await insertSession({
       createdAt: oldTime,
       lastHeartbeatAt: new Date(), // heartbeat is recent
     });
@@ -79,14 +101,12 @@ describe("GET /api/cron/voice-chat-cleanup", () => {
 
     expect(response.status).toBe(200);
     expect(body.cleaned).toBe(1);
-    expect(await getTestVoiceChatSessionStatus(sessionId)).toBe("timeout");
+    expect(await getSessionStatus(sessionId)).toBe("timeout");
   });
 
   it("should not clean up active sessions within thresholds", async () => {
     const recentTime = new Date(Date.now() - 30 * 1000); // 30 sec ago
-    const sessionId = await insertTestVoiceChatSession({
-      orgId: "org_test",
-      userId: "user_test",
+    const sessionId = await insertSession({
       createdAt: recentTime,
       lastHeartbeatAt: recentTime,
     });
@@ -96,14 +116,12 @@ describe("GET /api/cron/voice-chat-cleanup", () => {
 
     expect(response.status).toBe(200);
     expect(body.cleaned).toBe(0);
-    expect(await getTestVoiceChatSessionStatus(sessionId)).toBe("active");
+    expect(await getSessionStatus(sessionId)).toBe("active");
   });
 
   it("should not clean up already-ended sessions", async () => {
     const staleTime = new Date(Date.now() - 3 * 60 * 1000);
-    await insertTestVoiceChatSession({
-      orgId: "org_test",
-      userId: "user_test",
+    await insertSession({
       status: "completed",
       lastHeartbeatAt: staleTime,
     });
