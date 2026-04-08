@@ -887,7 +887,7 @@ export async function executeSchedule(
   }
 
   // Advance schedule state (also persists lastRunId):
-  // - cron: calculate next cron time
+  // - cron: clear nextRunAt (callback will set it on completion)
   // - once: disable
   // - loop: clear nextRunAt (callback will set it on completion)
   await advanceScheduleState(schedule, runId);
