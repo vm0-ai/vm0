@@ -609,6 +609,8 @@ jobs:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           ABLY_API_KEY: ${{ secrets.ABLY_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          VAPID_PUBLIC_KEY: ${{ vars.VAPID_PUBLIC_KEY }}
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
           CONCURRENT_RUN_LIMIT_CAP: "0"
           VM0_DEBUG: "*"
           CLAUDE_CODE_VERSION_URL: ${{ vars.CLAUDE_CODE_VERSION_URL }}
@@ -815,6 +817,8 @@ jobs:
             CRON_SECRET=${{ secrets.CRON_SECRET }}
             ABLY_API_KEY=${{ secrets.ABLY_API_KEY }}
             OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}
+            VAPID_PUBLIC_KEY=${{ vars.VAPID_PUBLIC_KEY }}
+            VAPID_PRIVATE_KEY=${{ secrets.VAPID_PRIVATE_KEY }}
             CONCURRENT_RUN_LIMIT_CAP=0
             VM0_DEBUG=*
             CLAUDE_CODE_VERSION_URL=${{ vars.CLAUDE_CODE_VERSION_URL }}
@@ -1084,6 +1088,7 @@ jobs:
           environment-variables: |
             VITE_CLERK_PUBLISHABLE_KEY=${{ vars.CLERK_PUBLISHABLE_KEY }}
             VITE_API_URL=${{ needs.prepare.outputs.web-preview-url }}
+            VITE_VAPID_PUBLIC_KEY=${{ vars.VAPID_PUBLIC_KEY }}
             VITE_PLAUSIBLE_SCRIPT_URL=${{ vars.PLAUSIBLE_SCRIPT_URL }}
             VITE_SENTRY_DSN=${{ secrets.SENTRY_DSN_APP }}
             SENTRY_AUTH_TOKEN=${{ secrets.SENTRY_AUTH_TOKEN }}
