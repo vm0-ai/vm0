@@ -85,7 +85,6 @@ describe("GET /api/cron/aggregate-insights", () => {
 
   it("should return 200 with no runs for this org", async () => {
     const response = await GET(cronRequest("test-cron-secret"));
-    const body = await response.json();
 
     expect(response.status).toBe(200);
 
@@ -95,7 +94,7 @@ describe("GET /api/cron/aggregate-insights", () => {
   });
 
   it("should aggregate previous day agent runs", async () => {
-    const { date, dateStr } = recentDate();
+    const { date } = recentDate();
 
     await createCompletedTestRun({
       composeVersionId,
@@ -132,7 +131,7 @@ describe("GET /api/cron/aggregate-insights", () => {
   });
 
   it("should aggregate credit usage per member", async () => {
-    const { date, dateStr } = recentDate();
+    const { date } = recentDate();
 
     const runId = await createCompletedTestRun({
       composeVersionId,
@@ -170,7 +169,7 @@ describe("GET /api/cron/aggregate-insights", () => {
   });
 
   it("should include credit balance from org metadata", async () => {
-    const { date, dateStr } = recentDate();
+    const { date } = recentDate();
 
     await createCompletedTestRun({
       composeVersionId,
@@ -190,7 +189,7 @@ describe("GET /api/cron/aggregate-insights", () => {
   });
 
   it("should include Axiom network data when available", async () => {
-    const { date, dateStr } = recentDate();
+    const { date } = recentDate();
 
     const runId = await createCompletedTestRun({
       composeVersionId,
@@ -338,7 +337,7 @@ describe("GET /api/cron/aggregate-insights", () => {
   });
 
   it("should continue without network data when Axiom fails", async () => {
-    const { date, dateStr } = recentDate();
+    const { date } = recentDate();
 
     await createCompletedTestRun({
       composeVersionId,
@@ -369,7 +368,7 @@ describe("GET /api/cron/aggregate-insights", () => {
   });
 
   it("should be idempotent on rerun", async () => {
-    const { date, dateStr } = recentDate();
+    const { date } = recentDate();
 
     await createCompletedTestRun({
       composeVersionId,

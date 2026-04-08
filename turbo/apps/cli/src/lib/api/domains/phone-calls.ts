@@ -1,8 +1,4 @@
-import {
-  getBaseUrl,
-  getClientConfig,
-  ApiRequestError,
-} from "../core/client-factory";
+import { getClientConfig, ApiRequestError } from "../core/client-factory";
 
 interface PhoneCallResponse {
   callId: string;
@@ -28,7 +24,7 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
     headers: {
       ...config.baseHeaders,
       ...(init?.body ? { "Content-Type": "application/json" } : {}),
-      ...((init?.headers as Record<string, string>) ?? {}),
+      ...(init?.headers as Record<string, string>),
     },
   });
 

@@ -2,7 +2,6 @@ import { isRunDispatchError } from "../../../infra/run";
 import { createZeroRun } from "../../zero-run-service";
 import { buildIntegrationContext } from "../../integration-context";
 import { isApiError } from "../../../shared/errors";
-import { RUN_ERROR_GUIDANCE } from "@vm0/core";
 import { logger } from "../../../shared/logger";
 import { generateCallbackSecret, getApiUrl } from "../../../infra/callback";
 import type { PhoneCallbackPayload } from "../../../infra/callback/callback-payloads";
@@ -66,7 +65,6 @@ export async function runAgentForPhone(
     return { status, runId: result.runId };
   } catch (error) {
     if (isApiError(error)) {
-      const guidance = RUN_ERROR_GUIDANCE[error.code];
       log.warn(`Pre-run check failed: ${error.code}`, { agentId, userId });
       return { status: "failed", runId: undefined };
     }
