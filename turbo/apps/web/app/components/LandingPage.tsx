@@ -548,9 +548,9 @@ function SyncedToolsCard() {
 /* ── App UI carousel for "Teammate" card ── */
 
 const WEB_UI_SLIDES = [
-  "/assets/mockup/web-ui-1.svg",
-  "/assets/mockup/web-ui-2.svg",
-  "/assets/mockup/web-ui-3.svg",
+  "/assets/mockup/web-ui-1.png",
+  "/assets/mockup/web-ui-2.png",
+  "/assets/mockup/web-ui-3.png",
 ];
 
 function AppMockupCarousel() {
