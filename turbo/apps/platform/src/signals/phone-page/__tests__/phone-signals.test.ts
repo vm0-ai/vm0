@@ -4,11 +4,8 @@ import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import {
   phoneStatus$,
-  phoneLoading$,
   phoneError$,
-  phoneSaving$,
   phoneInput$,
-  phoneSetupLoading$,
   setPhoneInput$,
   fetchPhoneStatus$,
   savePhoneLink$,
@@ -39,28 +36,9 @@ describe("fetchPhoneStatus$", () => {
       userPhonePending: null,
       orgPhone: "+18001234567",
     });
-    expect(store.get(phoneLoading$)).toBeFalsy();
   });
 
-  it("should set loading to false after fetch completes", async () => {
-    const { store, signal } = context;
-
-    server.use(
-      http.get("*/api/zero/phone/status", () => {
-        return HttpResponse.json({
-          userPhone: null,
-          userPhonePending: null,
-          orgPhone: null,
-        });
-      }),
-    );
-
-    await store.set(fetchPhoneStatus$, signal);
-
-    expect(store.get(phoneLoading$)).toBeFalsy();
-  });
-
-  it("should set loading to false even when fetch fails", async () => {
+  it("should not update status when fetch fails", async () => {
     const { store, signal } = context;
 
     server.use(
@@ -71,7 +49,6 @@ describe("fetchPhoneStatus$", () => {
 
     await store.set(fetchPhoneStatus$, signal);
 
-    expect(store.get(phoneLoading$)).toBeFalsy();
     // Status should remain null when fetch fails
     expect(store.get(phoneStatus$)).toBeNull();
   });
@@ -108,7 +85,6 @@ describe("savePhoneLink$", () => {
     await store.set(savePhoneLink$, "+14155551234", signal);
 
     expect(store.get(phoneInput$)).toBe("");
-    expect(store.get(phoneSaving$)).toBeFalsy();
     expect(store.get(phoneError$)).toBeNull();
     expect(store.get(phoneStatus$)?.userPhone).toBe("+14155551234");
   });
@@ -130,7 +106,6 @@ describe("savePhoneLink$", () => {
     expect(store.get(phoneError$)).toBe(
       "Direct phone linking is not available for this org",
     );
-    expect(store.get(phoneSaving$)).toBeFalsy();
   });
 });
 
@@ -153,7 +128,6 @@ describe("removePhoneLink$", () => {
 
     await store.set(removePhoneLink$, signal);
 
-    expect(store.get(phoneSaving$)).toBeFalsy();
     expect(store.get(phoneError$)).toBeNull();
     expect(store.get(phoneStatus$)?.userPhone).toBeNull();
   });
@@ -173,7 +147,6 @@ describe("removePhoneLink$", () => {
     await store.set(removePhoneLink$, signal);
 
     expect(store.get(phoneError$)).toBe("Failed to remove phone number");
-    expect(store.get(phoneSaving$)).toBeFalsy();
   });
 });
 
@@ -199,7 +172,6 @@ describe("requestOrgPhoneSetup$", () => {
 
     await store.set(requestOrgPhoneSetup$, signal);
 
-    expect(store.get(phoneSetupLoading$)).toBeFalsy();
     expect(store.get(phoneError$)).toBeNull();
     expect(store.get(phoneStatus$)?.orgPhone).toBe("+18001234567");
   });
@@ -221,6 +193,5 @@ describe("requestOrgPhoneSetup$", () => {
     expect(store.get(phoneError$)).toBe(
       "Phone is only available on the Team plan",
     );
-    expect(store.get(phoneSetupLoading$)).toBeFalsy();
   });
 });

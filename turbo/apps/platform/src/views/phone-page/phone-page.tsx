@@ -1,13 +1,11 @@
 import { useGet, useSet, useLastResolved } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import { Button, Input } from "@vm0/ui";
 import { IconPhone, IconCheck, IconTrash } from "@tabler/icons-react";
 import { defaultAgentName$ } from "../../signals/agent.ts";
 import {
   phoneStatus$,
-  phoneLoading$,
   phoneError$,
-  phoneSaving$,
-  phoneSetupLoading$,
   phoneInput$,
   setPhoneInput$,
   savePhoneLink$,
@@ -19,20 +17,22 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 
 export function PhonePage() {
   const status = useGet(phoneStatus$);
-  const loading = useGet(phoneLoading$);
   const error = useGet(phoneError$);
-  const saving = useGet(phoneSaving$);
-  const setupLoading = useGet(phoneSetupLoading$);
   const phoneInput = useGet(phoneInput$);
   const pageSignal = useGet(pageSignal$);
   const agentName = useLastResolved(defaultAgentName$) ?? "Zero";
 
   const setPhoneInput = useSet(setPhoneInput$);
-  const saveLink = useSet(savePhoneLink$);
-  const removeLink = useSet(removePhoneLink$);
-  const requestSetup = useSet(requestOrgPhoneSetup$);
+  const [saveLinkLoadable, saveLink] = useLoadableSet(savePhoneLink$);
+  const [removeLinkLoadable, removeLink] = useLoadableSet(removePhoneLink$);
+  const [setupLoadable, requestSetup] = useLoadableSet(requestOrgPhoneSetup$);
 
-  if (loading && !status) {
+  const saving =
+    saveLinkLoadable.state === "loading" ||
+    removeLinkLoadable.state === "loading";
+  const setupLoading = setupLoadable.state === "loading";
+
+  if (!status) {
     return (
       <div className="flex h-full items-center justify-center">
         <div className="text-muted-foreground">Loading...</div>
@@ -52,7 +52,7 @@ export function PhonePage() {
       {/* Zero's Phone Number */}
       <section className="space-y-2">
         <h2 className="text-lg font-medium">{agentName}&apos;s Phone Number</h2>
-        {status?.orgPhone ? (
+        {status.orgPhone ? (
           <div className="flex items-center gap-2">
             <IconPhone size={18} />
             <span className="font-mono text-lg">{status.orgPhone}</span>
@@ -81,7 +81,7 @@ export function PhonePage() {
       {/* Your Phone Number */}
       <section className="space-y-3">
         <h2 className="text-lg font-medium">Your Phone Number</h2>
-        {status?.userPhone ? (
+        {status.userPhone ? (
           <div className="space-y-2">
             <div className="flex items-center gap-2">
               <IconCheck size={18} className="text-green-500" />
