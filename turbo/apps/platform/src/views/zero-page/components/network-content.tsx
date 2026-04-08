@@ -180,6 +180,8 @@ function addField(
 }
 
 // [NETWORK_LOG_FIELDS] — keep in sync with all network log schemas
+// Note: request_headers, request/response body fields are rendered
+// separately by CapturedBodySections below.
 function collectDetails(entry: NetworkLogEntry): [string, string][] {
   const out: [string, string][] = [];
   addField(out, "Timestamp", entry.timestamp, entry.timestamp);
