@@ -444,18 +444,19 @@ def match_graphql_body(
     if not isinstance(data, dict):
         return False
 
+    # Extract query string early if any filter needs it.
     query_str: str | None = None
-    needs_query = type_filter is not None or field_filter is not None
-    if needs_query:
-        query_str = data.get("query")
-        if not isinstance(query_str, str):
+    if type_filter is not None or field_filter is not None:
+        raw = data.get("query")
+        if not isinstance(raw, str):
             return False
+        query_str = raw
 
     # Extract operation type from the query string.
     # GraphQL allows compact forms like `mutation{`, `query($id: ID!)`,
     # so we extract only leading alpha characters as the keyword.
-    if type_filter is not None:
-        stripped = query_str.lstrip()  # type: ignore[union-attr]
+    if type_filter is not None and query_str is not None:
+        stripped = query_str.lstrip()
         if not stripped:
             return False
         # Extract leading alphabetic chars: "mutation(" → "mutation"
@@ -475,8 +476,8 @@ def match_graphql_body(
             return False
 
     # Match field name
-    if field_filter is not None:
-        fields = _extract_top_level_fields(query_str)  # type: ignore[arg-type]
+    if field_filter is not None and query_str is not None:
+        fields = _extract_top_level_fields(query_str)
         if not fields:
             return False
         if not any(_match_wildcard(f, field_filter) for f in fields):
