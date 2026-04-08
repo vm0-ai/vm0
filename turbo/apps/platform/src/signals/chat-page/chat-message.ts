@@ -6,7 +6,6 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { logger } from "../log.ts";
 import {
   currentDraft$,
-  talkDraft$,
   type ZeroChatAttachment,
 } from "../zero-page/chat-draft.ts";
 import {
@@ -694,10 +693,9 @@ export const loadChatMessages$ = command(
   },
 );
 
-export const startNewZeroSession$ = command(({ get, set }) => {
+export const startNewZeroSession$ = command(({ set }) => {
   set(resetTalkSendSignal$);
   set(internalLocalMessages$, []);
-  set(get(talkDraft$).clear$);
 });
 
 const internalCreatingPromise$ = state<Promise<void> | undefined>(undefined);
