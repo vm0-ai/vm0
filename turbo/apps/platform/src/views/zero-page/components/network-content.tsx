@@ -9,7 +9,7 @@ import {
   TableRow,
 } from "@vm0/ui";
 import type { NetworkLogEntry } from "@vm0/core";
-import { type BadgeColor, InlineBadge } from "./network-badge.tsx";
+import { type BadgeColor, formatSize, InlineBadge } from "./network-badge.tsx";
 import { CapturedBodySections } from "./captured-body-sections.tsx";
 import {
   networkLogExpandedRows$,
@@ -27,19 +27,6 @@ function formatTime(timestamp: string): string {
   const s = String(d.getSeconds()).padStart(2, "0");
   const ms = String(d.getMilliseconds()).padStart(3, "0");
   return `${h}:${m}:${s}.${ms}`;
-}
-
-function formatSize(bytes: number | undefined | null): string {
-  if (bytes === null || bytes === undefined) {
-    return "—";
-  }
-  if (bytes < 1024) {
-    return `${bytes}B`;
-  }
-  if (bytes < 1024 * 1024) {
-    return `${(bytes / 1024).toFixed(1)}KB`;
-  }
-  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
 }
 
 function formatLatency(ms: number | undefined | null): string {
