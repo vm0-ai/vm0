@@ -110,9 +110,8 @@ describe("slack-connect-page signals", () => {
         new URLSearchParams("w=ws1&u=user1"),
       );
 
-      await expect(
-        context.store.set(connectSlackAccount$, context.signal),
-      ).rejects.toThrow("Account already linked");
+      // Error is handled via signal state — promise resolves without rejecting
+      await context.store.set(connectSlackAccount$, context.signal);
 
       expect(context.store.get(slackConnectStatus$)).toBe("error");
       expect(context.store.get(effectiveError$)).toBe("Account already linked");

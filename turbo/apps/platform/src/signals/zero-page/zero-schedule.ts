@@ -388,9 +388,12 @@ export const allOrgScheduleEntries$ = computed((get) => {
 export const fetchAllOrgSchedules$ = command(
   async ({ get, set }, _signal: AbortSignal) => {
     const client = get(zeroClient$)(zeroSchedulesMainContract);
-    const result = await accept(client.list(), [200], { toast: false });
+    const result = await accept(client.list(), [200], { toast: false }).finally(
+      () => {
+        set(internalAllSchedulesLoaded$, true);
+      },
+    );
     set(internalAllSchedules$, result.body.schedules);
-    set(internalAllSchedulesLoaded$, true);
   },
 );
 

@@ -87,7 +87,7 @@ export const connectSlackAccount$ = command(
     const client = get(zeroClient$)(zeroSlackConnectContract);
     const channelId = params.get("c");
     const threadTs = params.get("t");
-    await accept(
+    const connected = await accept(
       client.connect({
         body: {
           workspaceId,
@@ -98,19 +98,27 @@ export const connectSlackAccount$ = command(
       }),
       [200],
       { toast: false },
-    ).catch((error: unknown) => {
-      if (signal.aborted) {
-        throw error;
-      }
-      const msg =
-        error instanceof ApiError
-          ? error.message
-          : "Failed to connect. Please try again.";
-      set(internalErrorMsg$, msg);
-      set(internalStatus$, "error");
-      throw error;
-    });
+    )
+      .then(() => {
+        return true;
+      })
+      .catch((error: unknown) => {
+        if (signal.aborted) {
+          throw error;
+        }
+        const msg =
+          error instanceof ApiError
+            ? error.message
+            : "Failed to connect. Please try again.";
+        set(internalErrorMsg$, msg);
+        set(internalStatus$, "error");
+        // error handled via signal state — return false to skip success path
+        return false;
+      });
     signal.throwIfAborted();
+    if (!connected) {
+      return;
+    }
     set(internalStatus$, "success");
     window.location.href = "slack://open";
   },

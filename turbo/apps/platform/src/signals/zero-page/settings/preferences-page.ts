@@ -39,11 +39,15 @@ export const pendingSendMode$ = computed((get) => {
 export const updateSendMode$ = command(
   async ({ get, set }, value: SendMode, signal: AbortSignal) => {
     set(internalPendingSendMode$, value);
-    await set(updateUserPreference$, { sendMode: value }, signal);
+    await set(updateUserPreference$, { sendMode: value }, signal).finally(
+      () => {
+        set(internalPendingSendMode$, null);
+      },
+    );
+    signal.throwIfAborted();
     // Await the refetched sendMode so the optimistic UI is consistent.
     await get(sendMode$);
     signal.throwIfAborted();
-    set(internalPendingSendMode$, null);
   },
 );
 

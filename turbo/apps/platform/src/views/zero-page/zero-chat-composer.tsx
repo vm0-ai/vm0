@@ -495,7 +495,13 @@ export function ZeroChatComposer({
 
   const handleConnectSuccess = async (type: string) => {
     const label = resolveConnectorLabel(type, connectorMap);
-    await addConnector(type, pageSignal);
+    await addConnector(type, pageSignal).catch((error: unknown) => {
+      if (!(error instanceof DOMException && error.name === "AbortError")) {
+        toast.error(`${label} was authorized but could not be saved`, {
+          id: `connector-save-error-${type}`,
+        });
+      }
+    });
     toast.success(`${label} connected and authorized for ${displayName}`, {
       id: `connector-connected-${type}`,
     });
