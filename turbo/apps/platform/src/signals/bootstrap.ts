@@ -41,6 +41,7 @@ import { setupNetworkInsightsPage$ } from "./network-insights/network-insights-p
 import { initSlackOrg$ } from "./zero-page/zero-slack.ts";
 import { setupSkeletonPage$, setupErrorPage$ } from "./skeleton-page-setup.ts";
 import { startSkeletonCycling$ } from "./app-skeleton.ts";
+import { detach, Reason } from "./utils.ts";
 
 /**
  * Catch-all fallback — redirects unknown paths to /.
@@ -244,12 +245,7 @@ export const bootstrap$ = command(
 
     render();
 
-    set(startSkeletonCycling$, signal).catch((error: unknown) => {
-      if (error instanceof Error && error.name === "AbortError") {
-        return;
-      }
-      throw error;
-    });
+    detach(set(startSkeletonCycling$, signal), Reason.Daemon);
 
     await Promise.all([
       set(setupGlobalMethod$, signal),
