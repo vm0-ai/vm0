@@ -519,6 +519,59 @@ class TestResponseHandler:
         assert entry["latency_ms"] > 0
         assert entry["response_size"] == 256
 
+    def test_response_size_from_stream_buffer(self, registry_file, tmp_path):
+        """response_size should use stream_buffer length when not truncated."""
+        flow = _make_http_flow(host="api.example.com")
+        log_path = str(tmp_path / "network.jsonl")
+
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_client_ip"] = "10.200.0.1"
+        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://api.example.com/"
+        # Buffer has 100 bytes, not truncated
+        flow.metadata["stream_buffer"] = bytearray(b"x" * 100)
+        flow.metadata["stream_buffer_state"] = {"truncated": False}
+
+        flow.response = MagicMock()
+        flow.response.status_code = 200
+        flow.response.headers = {"content-length": "999"}  # should be ignored
+
+        mitm_addon._request_start_times[flow.id] = __import__("time").time()
+
+        with patch.object(mitm_addon.ctx, "log", MagicMock(), create=True):
+            mitm_addon.response(flow)
+
+        lines = Path(log_path).read_text().splitlines()
+        entry = json.loads(lines[0])
+        assert entry["response_size"] == 100  # from buffer, not Content-Length
+
+    def test_response_size_falls_back_when_truncated(self, registry_file, tmp_path):
+        """response_size should fall back to Content-Length when buffer is truncated."""
+        flow = _make_http_flow(host="api.example.com")
+        log_path = str(tmp_path / "network.jsonl")
+
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_client_ip"] = "10.200.0.1"
+        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://api.example.com/"
+        flow.metadata["stream_buffer"] = bytearray(b"x" * 100)
+        flow.metadata["stream_buffer_state"] = {"truncated": True}
+
+        flow.response = MagicMock()
+        flow.response.status_code = 200
+        flow.response.headers = {"content-length": "50000"}
+
+        mitm_addon._request_start_times[flow.id] = __import__("time").time()
+
+        with patch.object(mitm_addon.ctx, "log", MagicMock(), create=True):
+            mitm_addon.response(flow)
+
+        lines = Path(log_path).read_text().splitlines()
+        entry = json.loads(lines[0])
+        assert entry["response_size"] == 50000  # from Content-Length header
+
     def test_401_firewall_cache_invalidation(self):
         """401 response with firewall_base pops the cache entry."""
         flow = _make_http_flow(host="api.github.com")

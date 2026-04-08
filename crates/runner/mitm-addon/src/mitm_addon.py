@@ -14,7 +14,10 @@ import json
 import os
 import time
 import urllib.parse
+import zlib
 
+import brotli  # type: ignore[import-untyped]
+import zstandard
 from mitmproxy import ctx, http, tcp, tls
 from mitmproxy.addonmanager import Loader
 
@@ -295,8 +298,6 @@ def _decompress_body(data: bytes, headers, max_output: int = _STREAM_BUFFER_LIMI
 
     Returns the original data unchanged if not compressed or on error.
     """
-    import zlib
-
     encoding = headers.get("content-encoding", "").strip().lower()
     if not encoding or encoding == "identity":
         return data
@@ -308,19 +309,18 @@ def _decompress_body(data: bytes, headers, max_output: int = _STREAM_BUFFER_LIMI
             result = obj.decompress(data, max_length=max_output)
             return result if result else data
         if encoding == "br":
-            import brotli  # type: ignore[import-untyped]
-
             dec = brotli.Decompressor()
             result = dec.process(data)
             return result[:max_output] if result else data
         if encoding == "zstd":
-            import zstandard
-
             obj = zstandard.ZstdDecompressor().decompressobj()
             result = obj.decompress(data)
             return result[:max_output] if result else data
-    except Exception:
-        pass
+    except (zlib.error, brotli.error, zstandard.ZstdError, Exception) as exc:
+        try:
+            ctx.log.debug(f"Decompression failed ({encoding}): {exc}")
+        except AttributeError:
+            pass  # ctx.log unavailable outside mitmproxy runtime
     return data
 
 
