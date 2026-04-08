@@ -14,6 +14,7 @@ const internalPhoneLoading$ = state(true);
 const internalPhoneError$ = state<string | null>(null);
 const internalPhoneVerifyStep$ = state<"phone" | "code">("phone");
 const internalPhoneSending$ = state(false);
+const internalPhoneSetupLoading$ = state(false);
 const internalPhoneInput$ = state("");
 const internalCodeInput$ = state("");
 
@@ -38,6 +39,9 @@ export const phoneInput$ = computed((get) => {
 });
 export const codeInput$ = computed((get) => {
   return get(internalCodeInput$);
+});
+export const phoneSetupLoading$ = computed((get) => {
+  return get(internalPhoneSetupLoading$);
 });
 
 // Exported commands (write)
@@ -153,6 +157,36 @@ export const confirmPhoneVerifyCode$ = command(
       }
     } finally {
       set(internalPhoneSending$, false);
+    }
+  },
+);
+
+export const requestOrgPhoneSetup$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    set(internalPhoneSetupLoading$, true);
+    set(internalPhoneError$, null);
+    try {
+      const base = get(apiBase$);
+      const clerk = await get(clerk$);
+      signal.throwIfAborted();
+      const token = await clerk.session?.getToken();
+      signal.throwIfAborted();
+      const headers: Record<string, string> = {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      };
+      const res = await globalThis.fetch(`${base}/api/zero/phone/setup`, {
+        method: "POST",
+        headers,
+        signal,
+      });
+      if (res.ok) {
+        await set(fetchPhoneStatus$, signal);
+      } else {
+        const data = (await res.json()) as { error?: string };
+        set(internalPhoneError$, data.error ?? "Failed to set up phone");
+      }
+    } finally {
+      set(internalPhoneSetupLoading$, false);
     }
   },
 );

@@ -7,6 +7,7 @@ import {
   phoneError$,
   phoneVerifyStep$,
   phoneSending$,
+  phoneSetupLoading$,
   phoneInput$,
   codeInput$,
   setPhoneInput$,
@@ -15,6 +16,7 @@ import {
   setPhoneError$,
   sendPhoneVerifyCode$,
   confirmPhoneVerifyCode$,
+  requestOrgPhoneSetup$,
 } from "../../signals/phone-page/phone-signals.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -25,6 +27,7 @@ export function PhonePage() {
   const error = useGet(phoneError$);
   const verifyStep = useGet(phoneVerifyStep$);
   const sending = useGet(phoneSending$);
+  const setupLoading = useGet(phoneSetupLoading$);
   const phoneInput = useGet(phoneInput$);
   const codeInput = useGet(codeInput$);
   const pageSignal = useGet(pageSignal$);
@@ -36,6 +39,7 @@ export function PhonePage() {
 
   const sendCode = useSet(sendPhoneVerifyCode$);
   const confirmCode = useSet(confirmPhoneVerifyCode$);
+  const requestSetup = useSet(requestOrgPhoneSetup$);
 
   if (loading && !status) {
     return (
@@ -63,10 +67,23 @@ export function PhonePage() {
             <span className="font-mono text-lg">{status.orgPhone}</span>
           </div>
         ) : (
-          <p className="text-muted-foreground">
-            Phone is not configured for this organization. Contact your admin to
-            set it up.
-          </p>
+          <div className="space-y-2">
+            <p className="text-muted-foreground">
+              Phone is not configured for this organization.
+            </p>
+            <Button
+              onClick={() => {
+                detach(
+                  requestSetup(pageSignal),
+                  Reason.DomCallback,
+                  "requestOrgPhoneSetup",
+                );
+              }}
+              disabled={setupLoading}
+            >
+              {setupLoading ? "Setting up..." : "Request Org Phone Number"}
+            </Button>
+          </div>
         )}
       </section>
 

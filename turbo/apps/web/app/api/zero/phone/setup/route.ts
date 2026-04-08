@@ -35,12 +35,22 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  // Check if already configured
+  // Check tier and existing config
   const [existing] = await globalThis.services.db
-    .select({ agentphoneAgentId: orgMetadata.agentphoneAgentId })
+    .select({
+      agentphoneAgentId: orgMetadata.agentphoneAgentId,
+      tier: orgMetadata.tier,
+    })
     .from(orgMetadata)
     .where(eq(orgMetadata.orgId, org.orgId))
     .limit(1);
+
+  if (existing?.tier !== "team") {
+    return NextResponse.json(
+      { error: "Phone is only available on the Team plan" },
+      { status: 403 },
+    );
+  }
 
   if (existing?.agentphoneAgentId) {
     return NextResponse.json(
