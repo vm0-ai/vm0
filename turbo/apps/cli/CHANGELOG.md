@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.108.0](https://github.com/vm0-ai/vm0/compare/cli-v9.107.2...cli-v9.108.0) (2026-04-08)
+
+
+### Features
+
+* **cli:** add voice-chat context commands for worker sandbox ([#8548](https://github.com/vm0-ai/vm0/issues/8548)) ([cee3e98](https://github.com/vm0-ai/vm0/commit/cee3e98143a8711569a24334d6047e341e6181c2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.162.0
+
 ## [9.107.2](https://github.com/vm0-ai/vm0/compare/cli-v9.107.1...cli-v9.107.2) (2026-04-08)
 
 

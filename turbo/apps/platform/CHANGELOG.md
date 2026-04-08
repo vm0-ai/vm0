@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.203.0](https://github.com/vm0-ai/vm0/compare/app-v0.202.1...app-v0.203.0) (2026-04-08)
+
+
+### Features
+
+* add web push notifications for pwa on chat completion ([#8501](https://github.com/vm0-ai/vm0/issues/8501)) ([a89b898](https://github.com/vm0-ai/vm0/commit/a89b89890c6b6ff66cc761fca39bc6195f8485bb))
+* **core:** add voice-chat types and feature flag ([#8529](https://github.com/vm0-ai/vm0/issues/8529)) ([#8539](https://github.com/vm0-ai/vm0/issues/8539)) ([ee7ee22](https://github.com/vm0-ai/vm0/commit/ee7ee222ae733f47f7cb323d871f2a9577adc41c))
+* **platform:** add voice-chat page route and entry point ([#8535](https://github.com/vm0-ai/vm0/issues/8535)) ([#8546](https://github.com/vm0-ai/vm0/issues/8546)) ([62d86c0](https://github.com/vm0-ai/vm0/commit/62d86c0d0535b1fb7c8581bde8640ddcbf93cb75))
+* **voice-chat:** add webrtc frontend with live transcript and context panels ([#8556](https://github.com/vm0-ai/vm0/issues/8556)) ([ded50f2](https://github.com/vm0-ai/vm0/commit/ded50f20faf57860f14a8aee6a11a2dbb0cb4d3d))
+
+
+### Bug Fixes
+
+* **platform:** filter null header values from network logs ([#8522](https://github.com/vm0-ai/vm0/issues/8522)) ([b72f329](https://github.com/vm0-ai/vm0/commit/b72f3298418ab018bdf892936425e885343defe1))
+
+
+### Refactoring
+
+* decompose chat thread page into smaller components ([#8555](https://github.com/vm0-ai/vm0/issues/8555)) ([99997c6](https://github.com/vm0-ai/vm0/commit/99997c6461e8d643f30c1a52fb9e9cc47e281ac8))
+* **platform:** decompose chat thread page into signal-driven components ([#8508](https://github.com/vm0-ai/vm0/issues/8508)) ([90819d7](https://github.com/vm0-ai/vm0/commit/90819d7e0b005a3ced51046579b3525eb12a9dc0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.162.0
+
 ## [0.202.1](https://github.com/vm0-ai/vm0/compare/app-v0.202.0...app-v0.202.1) (2026-04-08)
 
 
