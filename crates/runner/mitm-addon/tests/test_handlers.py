@@ -343,8 +343,8 @@ class TestRequestHandler:
 class TestResponseHeadersHandler:
     """Tests for the responseheaders() hook that enables streaming."""
 
-    def test_enables_streaming(self):
-        """All responses should be streamed to avoid ZlibError."""
+    def test_enables_streaming_with_buffer(self):
+        """All responses should be streamed via a buffer callback."""
         flow = _make_http_flow(host="api.example.com")
         flow.response = MagicMock()
         flow.response.headers = {"content-type": "application/json"}
@@ -352,7 +352,120 @@ class TestResponseHeadersHandler:
 
         mitm_addon.responseheaders(flow)
 
-        assert flow.response.stream is True
+        assert callable(flow.response.stream)
+        assert "stream_buffer" in flow.metadata
+        assert isinstance(flow.metadata["stream_buffer"], bytearray)
+
+    def test_stream_callback_buffers_chunks(self):
+        """The stream callback should accumulate chunks in the buffer."""
+        flow = _make_http_flow(host="api.example.com")
+        flow.response = MagicMock()
+        flow.response.headers = {"content-type": "application/json"}
+        flow.response.stream = False
+
+        mitm_addon.responseheaders(flow)
+
+        callback = flow.response.stream
+        result1 = callback(b"hello ")
+        result2 = callback(b"world")
+
+        assert result1 == b"hello "
+        assert result2 == b"world"
+        assert bytes(flow.metadata["stream_buffer"]) == b"hello world"
+        assert flow.metadata["stream_buffer_state"]["truncated"] is False
+
+    def test_stream_callback_stops_buffering_at_limit(self):
+        """Buffering should stop when exceeding the size limit."""
+        flow = _make_http_flow(host="api.example.com")
+        flow.response = MagicMock()
+        flow.response.headers = {"content-type": "application/json"}
+        flow.response.stream = False
+
+        mitm_addon.responseheaders(flow)
+
+        callback = flow.response.stream
+        # Fill buffer to just under limit
+        chunk = b"x" * mitm_addon._STREAM_BUFFER_LIMIT
+        result = callback(chunk)
+        assert result == chunk
+        assert len(flow.metadata["stream_buffer"]) == mitm_addon._STREAM_BUFFER_LIMIT
+        assert flow.metadata["stream_buffer_state"]["truncated"] is False
+
+        # Next chunk should trigger truncation
+        result2 = callback(b"overflow")
+        assert result2 == b"overflow"  # still forwarded to client
+        assert len(flow.metadata["stream_buffer"]) == mitm_addon._STREAM_BUFFER_LIMIT
+        assert flow.metadata["stream_buffer_state"]["truncated"] is True
+
+    def test_stream_callback_large_single_chunk(self):
+        """A single chunk larger than the limit should still capture the first part."""
+        flow = _make_http_flow(host="api.example.com")
+        flow.response = MagicMock()
+        flow.response.headers = {"content-type": "application/json"}
+        flow.response.stream = False
+
+        mitm_addon.responseheaders(flow)
+
+        callback = flow.response.stream
+        big_chunk = b"A" * (mitm_addon._STREAM_BUFFER_LIMIT + 1000)
+        result = callback(big_chunk)
+        assert result == big_chunk  # full chunk forwarded to client
+        assert len(flow.metadata["stream_buffer"]) == mitm_addon._STREAM_BUFFER_LIMIT
+        assert flow.metadata["stream_buffer_state"]["truncated"] is True
+
+    def test_stream_callback_partial_fill_then_overflow(self):
+        """Partial fill followed by an oversized chunk should capture up to the limit."""
+        flow = _make_http_flow(host="api.example.com")
+        flow.response = MagicMock()
+        flow.response.headers = {"content-type": "application/json"}
+        flow.response.stream = False
+
+        mitm_addon.responseheaders(flow)
+
+        callback = flow.response.stream
+        half = mitm_addon._STREAM_BUFFER_LIMIT // 2
+        callback(b"A" * half)
+        assert flow.metadata["stream_buffer_state"]["truncated"] is False
+
+        # This chunk overflows — should capture up to the limit
+        callback(b"B" * mitm_addon._STREAM_BUFFER_LIMIT)
+        remaining = mitm_addon._STREAM_BUFFER_LIMIT - half
+        assert len(flow.metadata["stream_buffer"]) == mitm_addon._STREAM_BUFFER_LIMIT
+        assert flow.metadata["stream_buffer"][:half] == bytearray(b"A" * half)
+        assert flow.metadata["stream_buffer"][half:] == bytearray(b"B" * remaining)
+        assert flow.metadata["stream_buffer_state"]["truncated"] is True
+
+    def test_capture_body_also_streams(self):
+        """When capture_body is set, streaming should still be enabled."""
+        flow = _make_http_flow(host="api.example.com")
+        flow.response = MagicMock()
+        flow.response.headers = {"content-type": "application/json"}
+        flow.response.stream = False
+        flow.metadata["capture_body"] = True
+
+        mitm_addon.responseheaders(flow)
+
+        assert callable(flow.response.stream)
+        assert "stream_buffer" in flow.metadata
+
+    def test_stream_callback_empty_chunk(self):
+        """Empty chunks should be forwarded without affecting the buffer."""
+        flow = _make_http_flow(host="api.example.com")
+        flow.response = MagicMock()
+        flow.response.headers = {"content-type": "application/json"}
+        flow.response.stream = False
+
+        mitm_addon.responseheaders(flow)
+
+        callback = flow.response.stream
+        result = callback(b"")
+        assert result == b""
+        assert len(flow.metadata["stream_buffer"]) == 0
+        assert flow.metadata["stream_buffer_state"]["truncated"] is False
+
+        # Normal chunk after empty should still work
+        callback(b"hello")
+        assert bytes(flow.metadata["stream_buffer"]) == b"hello"
 
     def test_no_response_is_noop(self):
         """Flow without response should not raise."""

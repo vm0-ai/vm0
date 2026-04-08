@@ -5,7 +5,9 @@ from unittest.mock import MagicMock
 
 from mitm_addon import (
     _MAX_BODY_SIZE,
+    _STREAM_BUFFER_LIMIT,
     _add_capture_fields,
+    _decompress_body,
     _encode_body,
     _is_sensitive_header,
     _is_text_content,
@@ -195,6 +197,7 @@ class TestAddCaptureFields:
         flow.response.headers.items.side_effect = lambda multi=False: (
             iter(res_pairs) if multi else iter([])
         )
+        flow.metadata = {}
         return flow
 
     def test_captures_request_body(self):
@@ -384,3 +387,136 @@ class TestAddCaptureFields:
         assert entry["request_body"] == '{"q": "test"}'
         assert entry["response_body"] == '{"a": "result"}'
         assert entry["request_headers"]["Host"] == "api.example.com"
+
+    def test_captures_response_body_from_stream_buffer(self):
+        """When stream_buffer is present, response body should be read from it."""
+        flow = self._make_flow(response_body=b"should-be-ignored")
+        body = b'{"streamed": true}'
+        flow.metadata["stream_buffer"] = bytearray(body)
+        flow.metadata["stream_buffer_state"] = {"truncated": False}
+        entry = {}
+        _add_capture_fields(flow, entry)
+        assert entry["response_body"] == '{"streamed": true}'
+        assert entry["response_body_encoding"] == "utf-8"
+        assert "response_body_truncated" not in entry
+
+    def test_empty_stream_buffer_skips_body(self):
+        """Empty stream_buffer (e.g. synthetic 403) should not produce body fields."""
+        flow = self._make_flow()
+        flow.metadata["stream_buffer"] = bytearray()
+        flow.metadata["stream_buffer_state"] = {"truncated": False}
+        entry = {}
+        _add_capture_fields(flow, entry)
+        assert "response_body" not in entry
+        assert "response_body_encoding" not in entry
+        assert "response_headers" in entry  # headers still captured
+
+    def test_stream_buffer_truncated_marks_truncation(self):
+        """When stream_buffer was truncated, response_body_truncated should be set."""
+        body = b"x" * _STREAM_BUFFER_LIMIT
+        flow = self._make_flow()
+        flow.metadata["stream_buffer"] = bytearray(body)
+        flow.metadata["stream_buffer_state"] = {"truncated": True}
+        entry = {}
+        _add_capture_fields(flow, entry)
+        assert entry["response_body_truncated"] is True
+
+    def test_stream_buffer_gzip_decompressed(self):
+        """Gzip-compressed stream_buffer should be decompressed for capture."""
+        import gzip
+
+        original = b'{"result": "ok"}'
+        compressed = gzip.compress(original)
+        flow = self._make_flow(response_ct="application/json")
+        flow.response.headers.get.side_effect = lambda k, d="": (
+            "gzip" if k == "content-encoding" else "application/json" if k == "content-type" else d
+        )
+        flow.metadata["stream_buffer"] = bytearray(compressed)
+        flow.metadata["stream_buffer_state"] = {"truncated": False}
+        entry = {}
+        _add_capture_fields(flow, entry)
+        assert entry["response_body"] == '{"result": "ok"}'
+        assert entry["response_body_encoding"] == "utf-8"
+
+
+class TestDecompressBody:
+    """Tests for _decompress_body helper."""
+
+    def _make_headers(self, encoding=""):
+        headers = MagicMock()
+        headers.get.side_effect = lambda k, d="": encoding if k == "content-encoding" else d
+        return headers
+
+    def test_no_encoding(self):
+        data = b"plain text"
+        assert _decompress_body(data, self._make_headers()) == data
+
+    def test_identity_encoding(self):
+        data = b"plain text"
+        assert _decompress_body(data, self._make_headers("identity")) == data
+
+    def test_gzip(self):
+        import gzip
+
+        original = b"hello world"
+        compressed = gzip.compress(original)
+        assert _decompress_body(compressed, self._make_headers("gzip")) == original
+
+    def test_deflate(self):
+        import zlib
+
+        original = b"hello world"
+        compressed = zlib.compress(original)
+        assert _decompress_body(compressed, self._make_headers("deflate")) == original
+
+    def test_invalid_gzip_returns_original(self):
+        data = b"not gzip at all"
+        assert _decompress_body(data, self._make_headers("gzip")) == data
+
+    def test_unknown_encoding_returns_original(self):
+        data = b"some data"
+        assert _decompress_body(data, self._make_headers("x-custom")) == data
+
+    def test_truncated_gzip_partial_decompress(self):
+        """Truncated gzip data should yield partial decompressed content."""
+        import gzip
+
+        original = b"hello world " * 1000
+        compressed = gzip.compress(original)
+        truncated = compressed[: len(compressed) // 2]
+        result = _decompress_body(truncated, self._make_headers("gzip"))
+        assert len(result) > 0
+        assert original.startswith(result)
+
+    def test_gzip_output_capped_at_max_output(self):
+        """Decompressed output should not exceed max_output to guard against zip bombs."""
+        import gzip
+
+        # 100KB of zeros compresses very small but decompresses large
+        original = b"\x00" * (100 * 1024)
+        compressed = gzip.compress(original)
+        max_out = 1024
+        result = _decompress_body(compressed, self._make_headers("gzip"), max_output=max_out)
+        assert len(result) <= max_out
+
+    def test_truncated_brotli_returns_original(self):
+        """Truncated brotli falls back to original (block too large for partial)."""
+        import brotli
+
+        original = b"hello world " * 1000
+        compressed = brotli.compress(original)
+        truncated = compressed[: len(compressed) // 2]
+        result = _decompress_body(truncated, self._make_headers("br"))
+        # brotli returns empty for incomplete blocks; fallback returns original
+        assert result == truncated or original.startswith(result)
+
+    def test_truncated_zstd_returns_original(self):
+        """Truncated zstd data falls back to original (block size too large for partial output)."""
+        import zstandard
+
+        original = b"hello world " * 1000
+        compressed = zstandard.ZstdCompressor().compress(original)
+        truncated = compressed[: len(compressed) // 2]
+        result = _decompress_body(truncated, self._make_headers("zstd"))
+        # zstd returns empty for incomplete blocks; fallback returns original
+        assert result == truncated or original.startswith(result)

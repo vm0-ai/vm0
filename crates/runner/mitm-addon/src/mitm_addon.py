@@ -220,30 +220,45 @@ async def request(flow: http.HTTPFlow) -> None:
     ctx.log.info(f"[{run_id}] ALLOW: {hostname}")
 
 
+_STREAM_BUFFER_LIMIT = 64 * 1024  # 64 KB
+
+
 def responseheaders(flow: http.HTTPFlow) -> None:
     """
-    Enable streaming for responses to avoid ZlibError.
+    Enable response streaming with body buffering.
 
-    Without streaming, mitmproxy buffers the entire response body and
-    decompresses/recompresses gzip content, which causes ZlibError for
-    chunked gzip responses (e.g., api.anthropic.com).
-
-    When body capture is enabled for a run, streaming is skipped so that
-    ``flow.response.content`` is available in the ``response()`` hook.
+    Uses a callback to stream response data to the client immediately
+    while accumulating a copy in memory (up to ``_STREAM_BUFFER_LIMIT``).
+    Once the limit is exceeded, buffering stops but streaming continues
+    uninterrupted.  The buffered body is available in the ``response()``
+    hook via ``flow.metadata["stream_buffer"]``.
     """
     if not flow.response:
         return
-    # Don't stream when body capture is enabled — need buffered body.
-    if flow.metadata.get("capture_body"):
-        return
-    flow.response.stream = True
+
+    buf = bytearray()
+    state = {"truncated": False}
+
+    def stream_and_buffer(chunk: bytes) -> bytes:
+        if not state["truncated"]:
+            remaining = _STREAM_BUFFER_LIMIT - len(buf)
+            if len(chunk) <= remaining:
+                buf.extend(chunk)
+            else:
+                buf.extend(chunk[:remaining])
+                state["truncated"] = True
+        return chunk
+
+    flow.response.stream = stream_and_buffer
+    flow.metadata["stream_buffer"] = buf
+    flow.metadata["stream_buffer_state"] = state
 
 
 # ---------------------------------------------------------------------------
 # Body capture helpers (opt-in per run via captureNetworkBodies registry flag)
 # ---------------------------------------------------------------------------
 
-_MAX_BODY_SIZE = 64 * 1024  # 64 KB
+_MAX_BODY_SIZE = _STREAM_BUFFER_LIMIT
 
 _TEXT_CONTENT_TYPES = (
     "text/",
@@ -265,6 +280,48 @@ _SENSITIVE_HEADER_KEYWORDS = (
     "password",
     "cookie",
 )
+
+
+def _decompress_body(data: bytes, headers, max_output: int = _STREAM_BUFFER_LIMIT) -> bytes:
+    """Decompress response body based on Content-Encoding header.
+
+    The stream callback receives raw wire bytes.  When the server uses
+    gzip/deflate/br/zstd encoding, we must decompress before capturing.
+    Uses incremental decompression so truncated compressed data still
+    yields whatever decompressed bytes are available.
+
+    Output is capped at *max_output* bytes to guard against decompression
+    bombs (small compressed payload expanding to huge output).
+
+    Returns the original data unchanged if not compressed or on error.
+    """
+    import zlib
+
+    encoding = headers.get("content-encoding", "").strip().lower()
+    if not encoding or encoding == "identity":
+        return data
+    try:
+        if encoding in ("gzip", "deflate"):
+            # wbits: gzip=16+MAX_WBITS, deflate=MAX_WBITS
+            wbits = 16 + zlib.MAX_WBITS if encoding == "gzip" else zlib.MAX_WBITS
+            obj = zlib.decompressobj(wbits)
+            result = obj.decompress(data, max_length=max_output)
+            return result if result else data
+        if encoding == "br":
+            import brotli  # type: ignore[import-untyped]
+
+            dec = brotli.Decompressor()
+            result = dec.process(data)
+            return result[:max_output] if result else data
+        if encoding == "zstd":
+            import zstandard
+
+            obj = zstandard.ZstdDecompressor().decompressobj()
+            result = obj.decompress(data)
+            return result[:max_output] if result else data
+    except Exception:
+        pass
+    return data
 
 
 def _is_text_content(content_type: str) -> bool:
@@ -366,18 +423,25 @@ def _add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
     if flow.response:
         log_entry["response_headers"] = _redact_headers(flow.response.headers)
 
-    # Response body — only available when streaming is disabled
+    # Response body — read from stream_buffer (available for all responses).
+    # The buffer contains raw wire bytes (possibly gzip/br/zstd compressed).
     if flow.response:
-        try:
-            body = flow.response.content
-            if not body:
+        stream_buf = flow.metadata.get("stream_buffer")
+        if stream_buf is not None:
+            body = _decompress_body(bytes(stream_buf), flow.response.headers)
+        else:
+            try:
+                body = flow.response.content
+            except Exception:
+                log_entry["response_body_encoding"] = "binary"
                 return
-        except Exception:
-            # ZlibError or other decompression failure — mark as binary
-            log_entry["response_body_encoding"] = "binary"
+        if not body:
             return
+        stream_state = flow.metadata.get("stream_buffer_state")
         res_ct = flow.response.headers.get("content-type", "")
-        truncated = len(body) > _MAX_BODY_SIZE
+        # stream_buffer may already be truncated at _STREAM_BUFFER_LIMIT;
+        # apply the capture-specific _MAX_BODY_SIZE limit as well.
+        truncated = (stream_state and stream_state["truncated"]) or len(body) > _MAX_BODY_SIZE
         if truncated:
             body = _truncate_bytes_utf8_safe(body, _MAX_BODY_SIZE)
         encoded, encoding = _encode_body(body, res_ct)
@@ -405,7 +469,15 @@ def response(flow: http.HTTPFlow) -> None:
 
     # Calculate sizes
     request_size = len(flow.request.content) if flow.request.content else 0
-    response_size = int(flow.response.headers.get("content-length", 0)) if flow.response else 0
+    # Use buffered body length when complete; fall back to Content-Length header.
+    stream_buf = flow.metadata.get("stream_buffer")
+    stream_state = flow.metadata.get("stream_buffer_state")
+    if stream_buf is not None and stream_state and not stream_state["truncated"]:
+        response_size = len(stream_buf)
+    elif flow.response:
+        response_size = int(flow.response.headers.get("content-length", 0))
+    else:
+        response_size = 0
     status_code = flow.response.status_code if flow.response else 0
 
     # Parse URL for host
