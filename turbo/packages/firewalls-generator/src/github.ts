@@ -2,8 +2,10 @@
  * Generate GitHub firewall config from GitHub's official permissions data,
  * augmented with GraphQL mutation field rules.
  *
- * REST data source: server-to-server-permissions.json from github/docs
- * (https://github.com/github/docs/tree/main/src/github-apps/data)
+ * REST data sources (merged):
+ *   - fpt (Free/Pro/Team): server-to-server-permissions.json
+ *   - ghec (Enterprise Cloud): server-to-server-permissions.json
+ * Both from https://github.com/github/docs/tree/main/src/github-apps/data
  *
  * GraphQL mutations are mapped to REST permission groups so that both
  * `gh api` (REST) and `gh issue create` (GraphQL) are covered by the
@@ -19,8 +21,11 @@ import {
 } from "./codegen";
 import type { PermissionGroup } from "./codegen";
 
-const PERMS_URL =
+const FPT_PERMS_URL =
   "https://raw.githubusercontent.com/github/docs/main/src/github-apps/data/fpt-2026-03-10/server-to-server-permissions.json";
+
+const GHEC_PERMS_URL =
+  "https://raw.githubusercontent.com/github/docs/main/src/github-apps/data/ghec-2026-03-10/server-to-server-permissions.json";
 
 const SCHEMA_URL =
   "https://raw.githubusercontent.com/octokit/graphql-schema/master/schema.json";
@@ -337,7 +342,7 @@ const MUTATION_TO_PERMISSIONS: Record<string, string[]> = {
   // vulnerability_alerts:write
   dismissRepositoryVulnerabilityAlert: ["vulnerability_alerts:write"],
 
-  // discussions:write (partial — GraphQL-first feature)
+  // discussions:write (GraphQL-first feature)
   addDiscussionComment: ["discussions:write"],
   addDiscussionPollVote: ["discussions:write"],
   addUpvote: ["discussions:write"],
@@ -351,35 +356,129 @@ const MUTATION_TO_PERMISSIONS: Record<string, string[]> = {
   unmarkDiscussionCommentAsAnswer: ["discussions:write"],
   updateDiscussion: ["discussions:write"],
   updateDiscussionComment: ["discussions:write"],
+
+  // enterprise — members, admins, org management (ghec)
+  acceptEnterpriseAdministratorInvitation: ["enterprise_teams:write"],
+  acceptEnterpriseMemberInvitation: ["enterprise_teams:write"],
+  addEnterpriseOrganizationMember: ["enterprise_teams:write"],
+  addEnterpriseSupportEntitlement: ["enterprise_teams:write"],
+  cancelEnterpriseAdminInvitation: ["enterprise_teams:write"],
+  cancelEnterpriseMemberInvitation: ["enterprise_teams:write"],
+  createEnterpriseOrganization: ["enterprise_teams:write"],
+  inviteEnterpriseAdmin: ["enterprise_teams:write"],
+  inviteEnterpriseMember: ["enterprise_teams:write"],
+  removeEnterpriseAdmin: ["enterprise_teams:write"],
+  removeEnterpriseMember: ["enterprise_teams:write"],
+  removeEnterpriseOrganization: ["enterprise_teams:write"],
+  removeEnterpriseSupportEntitlement: ["enterprise_teams:write"],
+  transferEnterpriseOrganization: ["enterprise_teams:write"],
+  updateEnterpriseAdministratorRole: ["enterprise_teams:write"],
+  updateEnterpriseOwnerOrganizationRole: ["enterprise_teams:write"],
+  updateEnterpriseProfile: ["enterprise_teams:write"],
+
+  // enterprise — identity provider / SCIM (ghec)
+  regenerateEnterpriseIdentityProviderRecoveryCodes: ["enterprise_scim:write"],
+  removeEnterpriseIdentityProvider: ["enterprise_scim:write"],
+  setEnterpriseIdentityProvider: ["enterprise_scim:write"],
+
+  // enterprise — policy settings (ghec)
+  updateEnterpriseAllowPrivateRepositoryForkingSetting: [
+    "enterprise_custom_enterprise_roles:write",
+  ],
+  updateEnterpriseDefaultRepositoryPermissionSetting: [
+    "enterprise_custom_enterprise_roles:write",
+  ],
+  updateEnterpriseMembersCanChangeRepositoryVisibilitySetting: [
+    "enterprise_custom_enterprise_roles:write",
+  ],
+  updateEnterpriseMembersCanCreateRepositoriesSetting: [
+    "enterprise_custom_enterprise_roles:write",
+  ],
+  updateEnterpriseMembersCanDeleteIssuesSetting: [
+    "enterprise_custom_enterprise_roles:write",
+  ],
+  updateEnterpriseMembersCanDeleteRepositoriesSetting: [
+    "enterprise_custom_enterprise_roles:write",
+  ],
+  updateEnterpriseMembersCanInviteCollaboratorsSetting: [
+    "enterprise_custom_enterprise_roles:write",
+  ],
+  updateEnterpriseMembersCanMakePurchasesSetting: [
+    "enterprise_custom_enterprise_roles:write",
+  ],
+  updateEnterpriseMembersCanUpdateProtectedBranchesSetting: [
+    "enterprise_custom_enterprise_roles:write",
+  ],
+  updateEnterpriseMembersCanViewDependencyInsightsSetting: [
+    "enterprise_custom_enterprise_roles:write",
+  ],
+  updateEnterpriseOrganizationProjectsSetting: [
+    "enterprise_custom_enterprise_roles:write",
+  ],
+  updateEnterpriseRepositoryProjectsSetting: [
+    "enterprise_custom_enterprise_roles:write",
+  ],
+  updateEnterpriseTeamDiscussionsSetting: [
+    "enterprise_custom_enterprise_roles:write",
+  ],
+  updateEnterpriseTwoFactorAuthenticationRequiredSetting: [
+    "enterprise_custom_enterprise_roles:write",
+  ],
+
+  // sponsorship (GraphQL-only, no REST fine-grained equivalent)
+  cancelSponsorship: ["sponsorship:write"],
+  createSponsorsListing: ["sponsorship:write"],
+  createSponsorsTier: ["sponsorship:write"],
+  createSponsorship: ["sponsorship:write"],
+  createSponsorships: ["sponsorship:write"],
+  publishSponsorsTier: ["sponsorship:write"],
+  retireSponsorsTier: ["sponsorship:write"],
+  updatePatreonSponsorability: ["sponsorship:write"],
+  updateSponsorshipPreferences: ["sponsorship:write"],
+
+  // user account (GraphQL-only, no REST fine-grained equivalent)
+  changeUserStatus: ["user:write"],
+  createUserList: ["user:write"],
+  deleteUserList: ["user:write"],
+  followOrganization: ["user:write"],
+  followUser: ["user:write"],
+  unfollowOrganization: ["user:write"],
+  unfollowUser: ["user:write"],
+  updateUserList: ["user:write"],
+  updateUserListsForItem: ["user:write"],
 };
 
-// ── Skipped mutations ────────────────────────────────────────────────────
-//
-// Mutations with no REST fine-grained permission equivalent.
-// Maintained explicitly so the generator fails when GitHub adds new
-// mutations that need classification.
+// ── Merging REST permissions ─────────────────────────────────────────────
 
-function isSkippedMutation(name: string): boolean {
-  // Enterprise administration — requires classic PAT, no fine-grained support.
-  if (/[Ee]nterprise/.test(name) && !/[Mm]igrat/.test(name)) return true;
-  // Sponsorship — no fine-grained PAT permission.
-  if (/[Ss]ponsor|[Pp]atreon/.test(name)) return true;
-  // User account operations — not repo/org scoped.
-  if (SKIPPED_USER_MUTATIONS.has(name)) return true;
-  return false;
+/**
+ * Merge two permissions datasets (fpt + ghec) into a union.
+ * For each permission key, endpoints from both sources are combined.
+ */
+function mergePermsData(a: PermsData, b: PermsData): PermsData {
+  const merged: PermsData = { ...a };
+  for (const [key, entry] of Object.entries(b)) {
+    if (!merged[key]) {
+      merged[key] = entry;
+    } else {
+      // Merge endpoints: deduplicate by verb+requestPath+access
+      const existing = new Set(
+        merged[key].permissions.map(
+          (ep) => `${ep.verb}|${ep.requestPath}|${ep.access}`,
+        ),
+      );
+      const newEndpoints = entry.permissions.filter((ep) => {
+        return !existing.has(`${ep.verb}|${ep.requestPath}|${ep.access}`);
+      });
+      if (newEndpoints.length > 0) {
+        merged[key] = {
+          ...merged[key],
+          permissions: [...merged[key].permissions, ...newEndpoints],
+        };
+      }
+    }
+  }
+  return merged;
 }
-
-const SKIPPED_USER_MUTATIONS = new Set([
-  "changeUserStatus",
-  "createUserList",
-  "deleteUserList",
-  "followOrganization",
-  "followUser",
-  "unfollowOrganization",
-  "unfollowUser",
-  "updateUserList",
-  "updateUserListsForItem",
-]);
 
 // ── Schema validation ───────────────────────────────────────────────────
 
@@ -396,7 +495,8 @@ interface IntrospectionResult {
 
 /**
  * Fetch all mutation field names from the GitHub GraphQL schema and
- * verify that every mutation is either mapped or explicitly skipped.
+ * verify complete coverage: every schema mutation must be mapped, and
+ * every mapped mutation must exist in the schema.
  */
 async function validateMutationCoverage(): Promise<void> {
   const res = await fetchSpec(SCHEMA_URL, "GitHub GraphQL schema");
@@ -408,25 +508,36 @@ async function validateMutationCoverage(): Promise<void> {
     throw new Error("Could not find Mutation type in GraphQL schema");
   }
 
-  const allMutations = mutationType.fields.map((f) => f.name);
-  console.error(`  ${allMutations.length} GraphQL mutations in schema`);
+  const schemaMutations = new Set(mutationType.fields.map((f) => f.name));
+  console.error(`  ${schemaMutations.size} GraphQL mutations in schema`);
 
-  const unmapped: string[] = [];
-  for (const name of allMutations) {
-    if (MUTATION_TO_PERMISSIONS[name]) continue;
-    if (isSkippedMutation(name)) continue;
-    unmapped.push(name);
+  // Every mapped mutation must exist in schema (catch typos / removed mutations).
+  const stale: string[] = [];
+  for (const name of Object.keys(MUTATION_TO_PERMISSIONS)) {
+    if (!schemaMutations.has(name)) {
+      stale.push(name);
+    }
   }
-
-  if (unmapped.length > 0) {
+  if (stale.length > 0) {
     throw new Error(
-      `${unmapped.length} unmapped GraphQL mutation(s) — add to MUTATION_TO_PERMISSIONS or mark as skipped:\n  ${unmapped.join("\n  ")}`,
+      `${stale.length} mapped mutation(s) not found in schema — remove or rename:\n  ${stale.join("\n  ")}`,
     );
   }
 
-  const mapped = Object.keys(MUTATION_TO_PERMISSIONS).length;
-  const skipped = allMutations.length - mapped;
-  console.error(`  ${mapped} mapped, ${skipped} skipped`);
+  // Every schema mutation must be mapped.
+  const missing: string[] = [];
+  for (const name of schemaMutations) {
+    if (!MUTATION_TO_PERMISSIONS[name]) {
+      missing.push(name);
+    }
+  }
+  if (missing.length > 0) {
+    throw new Error(
+      `${missing.length} unmapped GraphQL mutation(s) — add to MUTATION_TO_PERMISSIONS:\n  ${missing.sort().join("\n  ")}`,
+    );
+  }
+
+  console.error(`  ${schemaMutations.size}/${schemaMutations.size} mapped`);
 }
 
 // ── Grouping ─────────────────────────────────────────────────────────────
@@ -510,7 +621,7 @@ function generateTypeScript(permissions: PermissionGroup[]): string {
 
   const lines: string[] = [
     "// Auto-generated from GitHub's official permissions data + GraphQL schema.",
-    "// Source: github/docs/src/github-apps/data/fpt-2026-03-10/server-to-server-permissions.json",
+    "// Sources: github/docs fpt + ghec server-to-server-permissions.json (merged)",
     "// GraphQL: mutation field names mapped to REST permission groups",
     `// Regenerate: cd turbo && pnpm -F @vm0/firewalls-generator generate:github`,
     "//",
@@ -571,12 +682,19 @@ function generateTypeScript(permissions: PermissionGroup[]): string {
 // ── Main ─────────────────────────────────────────────────────────────────
 
 export async function generate(): Promise<void> {
-  const [permsRes] = await Promise.all([
-    fetchSpec(PERMS_URL, "GitHub permissions data"),
+  const [fptRes, ghecRes] = await Promise.all([
+    fetchSpec(FPT_PERMS_URL, "GitHub fpt permissions"),
+    fetchSpec(GHEC_PERMS_URL, "GitHub ghec permissions"),
     validateMutationCoverage(),
   ]);
-  const permsData = (await permsRes.json()) as PermsData;
-  console.error(`  ${Object.keys(permsData).length} REST permissions`);
+  const fptData = (await fptRes.json()) as PermsData;
+  const ghecData = (await ghecRes.json()) as PermsData;
+  console.error(
+    `  ${Object.keys(fptData).length} fpt + ${Object.keys(ghecData).length} ghec permissions`,
+  );
+
+  const permsData = mergePermsData(fptData, ghecData);
+  console.error(`  ${Object.keys(permsData).length} merged permissions`);
 
   const permissions = buildGroups(permsData);
   const ts = generateTypeScript(permissions);
