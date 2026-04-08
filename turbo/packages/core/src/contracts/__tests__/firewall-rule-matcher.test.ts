@@ -651,3 +651,109 @@ describe("findMatchingPermissions with GraphQL field: modifier", () => {
     ).toContain("issues-write");
   });
 });
+
+describe("findMatchingPermissions with dot-separated field paths", () => {
+  const nestedConfig: FirewallConfig = {
+    name: "github",
+    apis: [
+      {
+        base: "https://api.github.com",
+        auth: { headers: {} },
+        permissions: [
+          {
+            name: "issues-read",
+            rules: ["POST /graphql GraphQL type:query field:repository.issues"],
+          },
+          {
+            name: "deep-read",
+            rules: [
+              "POST /graphql GraphQL type:query field:repository.issues.nodes",
+            ],
+          },
+          {
+            name: "repo-wildcard",
+            rules: ["POST /graphql GraphQL type:query field:repository.*"],
+          },
+          {
+            name: "issues-write",
+            rules: ["POST /graphql GraphQL type:mutation field:createIssue"],
+          },
+        ],
+      },
+    ],
+  };
+
+  it("matches exact nested path", () => {
+    const body: GraphQLBody = {
+      type: "query",
+      fields: ["repository.issues", "repository.issues.nodes"],
+    };
+    expect(
+      findMatchingPermissions("POST", "/graphql", nestedConfig, body),
+    ).toContain("issues-read");
+  });
+
+  it("matches deeper nested path", () => {
+    const body: GraphQLBody = {
+      type: "query",
+      fields: [
+        "repository.issues",
+        "repository.issues.nodes",
+        "repository.issues.nodes.title",
+      ],
+    };
+    expect(
+      findMatchingPermissions("POST", "/graphql", nestedConfig, body),
+    ).toContain("deep-read");
+  });
+
+  it("does not match when nested path is absent", () => {
+    const body: GraphQLBody = {
+      type: "query",
+      fields: ["repository.pullRequests"],
+    };
+    expect(
+      findMatchingPermissions("POST", "/graphql", nestedConfig, body),
+    ).not.toContain("issues-read");
+  });
+
+  it("wildcard matches any nested path under prefix", () => {
+    const body: GraphQLBody = {
+      type: "query",
+      fields: ["repository.pullRequests"],
+    };
+    expect(
+      findMatchingPermissions("POST", "/graphql", nestedConfig, body),
+    ).toContain("repo-wildcard");
+  });
+
+  it("wildcard does not match different top-level", () => {
+    const body: GraphQLBody = {
+      type: "query",
+      fields: ["viewer.login"],
+    };
+    expect(
+      findMatchingPermissions("POST", "/graphql", nestedConfig, body),
+    ).not.toContain("repo-wildcard");
+  });
+
+  it("flat field still works alongside nested rules", () => {
+    const body: GraphQLBody = {
+      type: "mutation",
+      fields: ["createIssue"],
+    };
+    expect(
+      findMatchingPermissions("POST", "/graphql", nestedConfig, body),
+    ).toContain("issues-write");
+  });
+
+  it("type filter blocks nested path match", () => {
+    const body: GraphQLBody = {
+      type: "mutation",
+      fields: ["repository.issues"],
+    };
+    expect(
+      findMatchingPermissions("POST", "/graphql", nestedConfig, body),
+    ).not.toContain("issues-read");
+  });
+});
