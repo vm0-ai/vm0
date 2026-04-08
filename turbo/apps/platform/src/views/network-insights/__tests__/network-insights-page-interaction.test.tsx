@@ -41,7 +41,8 @@ function mockInsightsAPI(days: Record<string, unknown>[] = []) {
           }, 0)
         );
       }, 0);
-      return HttpResponse.json({ days, totalCredits, totalRuns });
+      const lastUpdated = days.length > 0 ? new Date().toISOString() : null;
+      return HttpResponse.json({ days, totalCredits, totalRuns, lastUpdated });
     }),
   );
 }
@@ -132,6 +133,16 @@ describe("network insights page - data rendering", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Insights")).toBeInTheDocument();
+    });
+  });
+
+  it("should display last updated timestamp", async () => {
+    mockInsightsAPI([sampleDay(daysAgoIso(1))]);
+
+    await setupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Updated/)).toBeInTheDocument();
     });
   });
 

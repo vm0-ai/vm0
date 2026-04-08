@@ -57,6 +57,7 @@ export interface NetworkInsightsData {
   days: DayInsight[];
   totalCredits: number;
   totalRuns: number;
+  lastUpdated: string | null;
 }
 
 // ---------------------------------------------------------------------------

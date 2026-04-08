@@ -934,6 +934,42 @@ function DaySection({ day }: { day: DayInsight }) {
 }
 
 // ---------------------------------------------------------------------------
+// Last updated label
+// ---------------------------------------------------------------------------
+
+/** Format an ISO timestamp as a relative duration, e.g. "2 hours ago". */
+function formatRelativeTime(iso: string): string {
+  const now = Date.now();
+  const then = new Date(iso).getTime();
+  const diffMs = now - then;
+  const seconds = Math.floor(diffMs / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+
+  if (days > 0) {
+    return `${days}d ago`;
+  }
+  if (hours > 0) {
+    return `${hours}h ago`;
+  }
+  if (minutes > 0) {
+    return `${minutes}m ago`;
+  }
+  return "just now";
+}
+
+/** Format an ISO timestamp as a locale-aware absolute time for the tooltip. */
+function formatAbsoluteTime(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Main content
 // ---------------------------------------------------------------------------
 
@@ -953,7 +989,17 @@ function InsightsContent({ data }: { data: NetworkInsightsData }) {
         {/* Header */}
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-xl font-semibold">Insights</h1>
+            <div className="flex items-baseline gap-2">
+              <h1 className="text-xl font-semibold">Insights</h1>
+              {data.lastUpdated && (
+                <span
+                  className="text-xs text-muted-foreground"
+                  title={formatAbsoluteTime(data.lastUpdated)}
+                >
+                  Updated {formatRelativeTime(data.lastUpdated)}
+                </span>
+              )}
+            </div>
             <p className="text-sm text-muted-foreground mt-1">
               Monitor what your agents access, which permissions they use, and
               spot anything unusual.

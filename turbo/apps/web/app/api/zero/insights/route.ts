@@ -36,7 +36,11 @@ export async function GET(request: Request) {
   const cutoffIso = cutoff.toISOString().split("T")[0]!;
 
   const rows = await globalThis.services.db
-    .select({ date: insightsDaily.date, data: insightsDaily.data })
+    .select({
+      date: insightsDaily.date,
+      data: insightsDaily.data,
+      updatedAt: insightsDaily.updatedAt,
+    })
     .from(insightsDaily)
     .where(
       and(
@@ -74,9 +78,21 @@ export async function GET(request: Request) {
     );
   }, 0);
 
+  let lastUpdated: string | null = null;
+  if (rows.length > 0) {
+    let latest = rows[0]!.updatedAt;
+    for (const row of rows) {
+      if (row.updatedAt > latest) {
+        latest = row.updatedAt;
+      }
+    }
+    lastUpdated = latest.toISOString();
+  }
+
   return NextResponse.json({
     days: daysData,
     totalCredits,
     totalRuns,
+    lastUpdated,
   });
 }
