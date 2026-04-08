@@ -11,7 +11,10 @@ import { logger } from "../../shared/logger";
 import { createZeroRun } from "../zero-run-service";
 import { generateCallbackSecret, getApiUrl } from "../../infra/callback";
 import { generateScheduleDescription } from "../ai/lightweight-model";
-import type { ScheduleLoopCallbackPayload } from "../../infra/callback/callback-payloads";
+import type {
+  ScheduleLoopCallbackPayload,
+  ScheduleCronCallbackPayload,
+} from "../../infra/callback/callback-payloads";
 
 const log = logger("service:schedule");
 
@@ -89,7 +92,7 @@ function isValidTimezone(timezone: string): boolean {
 /**
  * Calculate next run time from cron expression and timezone
  */
-function calculateNextRun(
+export function calculateNextRun(
   cronExpression: string,
   timezone: string,
 ): Date | null {
@@ -769,22 +772,14 @@ async function advanceScheduleState(
       })
       .where(eq(zeroAgentSchedules.id, schedule.id));
   } else if (schedule.triggerType === "cron") {
-    if (!schedule.cronExpression) {
-      throw new Error(
-        `Cron schedule ${schedule.name} (${schedule.id}) missing cronExpression`,
-      );
-    }
-    const nextRunAt = calculateNextRun(
-      schedule.cronExpression,
-      schedule.timezone,
-    );
+    // Cron: don't advance nextRunAt here — the cron callback handles it on completion
     await globalThis.services.db
       .update(zeroAgentSchedules)
       .set({
         ...(lastRunId !== undefined && { lastRunId }),
         lastRunAt: now,
         retryStartedAt: null,
-        nextRunAt,
+        nextRunAt: null, // Will be set by cron callback on run completion
       })
       .where(eq(zeroAgentSchedules.id, schedule.id));
   } else {
@@ -840,7 +835,7 @@ export async function executeSchedule(
   const callbacks: Array<{
     url: string;
     secret: string;
-    payload: ScheduleLoopCallbackPayload;
+    payload: ScheduleLoopCallbackPayload | ScheduleCronCallbackPayload;
   }> = [];
 
   // Loop schedule advancement callback (triggers next iteration on completion)
@@ -853,6 +848,20 @@ export async function executeSchedule(
       url: `${getApiUrl()}/api/internal/callbacks/schedule/loop`,
       secret: generateCallbackSecret(),
       payload: loopPayload,
+    });
+  }
+
+  // Cron schedule completion callback (tracks failures and advances next run)
+  if (schedule.triggerType === "cron") {
+    const cronPayload: ScheduleCronCallbackPayload = {
+      scheduleId: schedule.id,
+      cronExpression: schedule.cronExpression!,
+      timezone: schedule.timezone,
+    };
+    callbacks.push({
+      url: `${getApiUrl()}/api/internal/callbacks/schedule/cron`,
+      secret: generateCallbackSecret(),
+      payload: cronPayload,
     });
   }
 

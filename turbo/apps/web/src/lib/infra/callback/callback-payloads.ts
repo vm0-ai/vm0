@@ -56,6 +56,12 @@ export interface ScheduleLoopCallbackPayload {
   intervalSeconds: number;
 }
 
+export interface ScheduleCronCallbackPayload {
+  scheduleId: string;
+  cronExpression: string;
+  timezone: string;
+}
+
 export interface GitHubIssuesCallbackPayload {
   installationId: string;
   repo: string;
@@ -78,5 +84,6 @@ export type CallbackPayload =
   | EmailTriggerCallbackPayload
   | EmailReplyCallbackPayload
   | ScheduleLoopCallbackPayload
+  | ScheduleCronCallbackPayload
   | GitHubIssuesCallbackPayload
   | ChatCallbackPayload;

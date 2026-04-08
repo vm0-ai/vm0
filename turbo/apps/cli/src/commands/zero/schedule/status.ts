@@ -84,7 +84,7 @@ function printTimeSchedule(schedule: ScheduleResponse): void {
     );
   }
 
-  if (schedule.triggerType === "loop") {
+  if (schedule.triggerType === "loop" || schedule.triggerType === "cron") {
     const failureText =
       schedule.consecutiveFailures > 0
         ? chalk.yellow(`${schedule.consecutiveFailures}/3`)
