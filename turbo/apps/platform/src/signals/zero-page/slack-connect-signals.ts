@@ -2,7 +2,8 @@ import { command, computed, state } from "ccstate";
 import { searchParams$ } from "../route.ts";
 import { zeroSlackConnectContract } from "@vm0/core";
 import { zeroClient$ } from "../api-client.ts";
-import { accept } from "../../lib/accept.ts";
+import { accept, ApiError } from "../../lib/accept.ts";
+import { throwIfAbort } from "../utils.ts";
 
 // Internal state
 const internalStatus$ = state<
@@ -78,18 +79,28 @@ export const connectSlackAccount$ = command(
     const client = get(zeroClient$)(zeroSlackConnectContract);
     const channelId = params.get("c");
     const threadTs = params.get("t");
-    await accept(
-      client.connect({
-        body: {
-          workspaceId,
-          slackUserId,
-          ...(channelId ? { channelId } : {}),
-          ...(threadTs ? { threadTs } : {}),
-        },
-      }),
-      [200],
-    );
-    set(internalStatus$, "success");
-    window.location.href = "slack://open";
+    try {
+      await accept(
+        client.connect({
+          body: {
+            workspaceId,
+            slackUserId,
+            ...(channelId ? { channelId } : {}),
+            ...(threadTs ? { threadTs } : {}),
+          },
+        }),
+        [200],
+      );
+      set(internalStatus$, "success");
+      window.location.href = "slack://open";
+    } catch (error) {
+      throwIfAbort(error);
+      const msg =
+        error instanceof ApiError
+          ? error.message
+          : "Failed to connect. Please try again.";
+      set(internalErrorMsg$, msg);
+      set(internalStatus$, "error");
+    }
   },
 );
