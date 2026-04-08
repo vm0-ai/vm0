@@ -109,7 +109,7 @@ export interface GraphQLBody {
 }
 
 /**
- * Match a parsed GraphQL body against type and operationName filters.
+ * Match a parsed GraphQL body against type, operationName, and field filters.
  *
  * Fail-closed: returns false if required fields are missing.
  */
@@ -160,7 +160,7 @@ function matchGraphQLBody(
  * any HTTP method.
  *
  * When `graphqlBody` is provided, rules containing the `GraphQL` keyword
- * will also match against the parsed body's type and operationName.
+ * will also match against the parsed body's type, operationName, and fields.
  */
 export function findMatchingPermissions(
   method: string,
