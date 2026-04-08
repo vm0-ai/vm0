@@ -770,3 +770,12 @@ export {
   type InsightsRangeResponse,
   type DayInsight,
 } from "./zero-insights";
+export {
+  zeroVoiceChatContextGetContract,
+  zeroVoiceChatContextAppendContract,
+  type ZeroVoiceChatContextGetContract,
+  type ZeroVoiceChatContextAppendContract,
+  type ContextEvent,
+  type ContextEventsResponse,
+  type AppendContextEventBody,
+} from "./zero-voice-chat-context";

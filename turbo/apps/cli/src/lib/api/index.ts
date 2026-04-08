@@ -181,3 +181,9 @@ export {
   unregisterComputerUseHost,
   getComputerUseHost,
 } from "./domains/zero-computer-use";
+
+// Domain modules - Zero Voice Chat Context
+export {
+  getVoiceChatContextEvents,
+  appendVoiceChatContextEvent,
+} from "./domains/zero-voice-chat-context";

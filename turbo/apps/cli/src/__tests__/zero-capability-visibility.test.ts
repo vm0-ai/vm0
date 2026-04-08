@@ -24,6 +24,7 @@ function buildCommands(): Command[] {
     new Command("slack"),
     new Command("variable"),
     new Command("whoami"),
+    new Command("voice-chat"),
   ];
 }
 
@@ -138,6 +139,7 @@ describe("registerZeroCommands", () => {
       "secret",
       "slack",
       "variable",
+      "voice-chat",
     ]);
   });
 
@@ -272,5 +274,30 @@ describe("registerZeroCommands", () => {
     const prog = buildProgram();
 
     expect(hiddenCommandNames(prog)).toContain("connector");
+  });
+
+  it("should show voice-chat when voice-chat:write capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["voice-chat:write"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(visibleCommandNames(prog)).toContain("voice-chat");
+    expect(visibleCommandNames(prog)).toContain("whoami");
+  });
+
+  it("should hide voice-chat when voice-chat:write capability is missing", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["agent:read"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(hiddenCommandNames(prog)).toContain("voice-chat");
   });
 });
