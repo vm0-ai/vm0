@@ -395,5 +395,5 @@ def extract_field_paths(query_str: str) -> list[str]:
         lexer = Lexer(query_str)
         parser = Parser(lexer)
         return parser.parse()
-    except Exception:
+    except Exception:  # noqa: BLE001 — fail-closed: unparseable → no matches → blocked
         return []
