@@ -197,16 +197,12 @@ async def request(flow: http.HTTPFlow) -> None:
             flow.metadata["firewall_ref"] = result.ref
             error_body = json.dumps(
                 {
-                    "error": "firewall_permission_denied",
+                    "error": "permission_denied",
                     "message": "Request blocked: no matching permission rule",
                     "method": result.method,
                     "path": result.path,
-                    "firewall": result.ref,
+                    "permission": result.ref,
                     "base": result.base,
-                    "hint": (
-                        f"Add a permission rule for '{result.method} {result.path}'"
-                        f" to the {result.ref} firewall in vm0.yaml"
-                    ),
                 }
             )
             flow.response = http.Response.make(

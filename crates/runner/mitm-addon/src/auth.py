@@ -298,9 +298,9 @@ async def handle_firewall_request(
             502,
             json.dumps(
                 {
-                    "error": "firewall_auth_unavailable",
-                    "message": "Firewall auth secrets not configured",
-                    "firewall": match_info.get("ref", ""),
+                    "error": "auth_unavailable",
+                    "message": "Auth secrets not configured",
+                    "permission": match_info.get("ref", ""),
                     "base": firewall_base,
                 }
             ).encode(),
@@ -327,9 +327,9 @@ async def handle_firewall_request(
             502,
             json.dumps(
                 {
-                    "error": "firewall_auth_failed",
-                    "message": f"Failed to resolve firewall auth headers: {e}",
-                    "firewall": match_info.get("ref", ""),
+                    "error": "auth_failed",
+                    "message": f"Failed to resolve auth headers: {e}",
+                    "permission": match_info.get("ref", ""),
                     "base": firewall_base,
                 }
             ).encode(),
@@ -369,7 +369,7 @@ async def handle_firewall_request(
                     {
                         "error": "url_rewrite_forward_failed",
                         "message": "Failed to forward request to upstream",
-                        "firewall": match_info.get("ref", ""),
+                        "permission": match_info.get("ref", ""),
                     }
                 ).encode(),
                 {"Content-Type": "application/json"},

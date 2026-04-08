@@ -1110,9 +1110,9 @@ class TestHandleFirewallRequest:
         assert flow.metadata["firewall_action"] == "ALLOW"
         assert flow.metadata["firewall_error"] == "auth_failed"
         body = json.loads(flow.response.content)
-        assert body["error"] == "firewall_auth_failed"
+        assert body["error"] == "auth_failed"
         assert "API unreachable" in body["message"]
-        assert body["firewall"] == "github"
+        assert body["permission"] == "github"
 
     async def test_no_response_set_on_success(self):
         """On success, flow.response should remain None (request continues to origin)."""
@@ -1161,8 +1161,8 @@ class TestHandleFirewallRequest:
         assert flow.metadata["firewall_action"] == "ALLOW"
         assert flow.metadata["firewall_error"] == "auth_unavailable"
         body = json.loads(flow.response.content)
-        assert body["error"] == "firewall_auth_unavailable"
-        assert body["firewall"] == "github"
+        assert body["error"] == "auth_unavailable"
+        assert body["permission"] == "github"
 
 
 # =========================================================================
