@@ -118,6 +118,19 @@ export const setInsightsHoveredAgent$ = command(
   },
 );
 
+/** Tick counter incremented every 60 s to refresh relative timestamps. */
+const internalRelativeTimeTick$ = state(0);
+
+export const insightsRelativeTimeTick$ = computed((get) => {
+  return get(internalRelativeTimeTick$);
+});
+
+export const tickInsightsRelativeTime$ = command(({ set }) => {
+  set(internalRelativeTimeTick$, (n) => {
+    return n + 1;
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Data fetching
 // ---------------------------------------------------------------------------

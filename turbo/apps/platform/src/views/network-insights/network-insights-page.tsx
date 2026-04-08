@@ -1,4 +1,3 @@
-import { useEffect, useReducer } from "react";
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import {
   IconNetwork,
@@ -29,6 +28,7 @@ import {
   setInsightsCalendarMonth$,
   insightsHoveredAgent$,
   setInsightsHoveredAgent$,
+  insightsRelativeTimeTick$,
   type DayInsight,
   type NetworkInsightsData,
 } from "../../signals/network-insights/network-insights-signals.ts";
@@ -970,19 +970,6 @@ function formatAbsoluteTime(iso: string): string {
   });
 }
 
-/** Re-compute relative time every 60 s so it stays fresh while the page is open. */
-function useRelativeTime(iso: string | null): string | null {
-  const [, tick] = useReducer((n: number) => n + 1, 0);
-  useEffect(() => {
-    if (!iso) return;
-    const id = setInterval(tick, 60_000);
-    return () => {
-      clearInterval(id);
-    };
-  }, [iso]);
-  return iso ? formatRelativeTime(iso) : null;
-}
-
 // ---------------------------------------------------------------------------
 // Main content
 // ---------------------------------------------------------------------------
@@ -996,7 +983,8 @@ function InsightsContent({ data }: { data: NetworkInsightsData }) {
       ? prefsLoadable.data.timezone
       : new Intl.DateTimeFormat().resolvedOptions().timeZone;
   const filtered = filterDays(data.days, dateRange, timezone);
-  const relativeTime = useRelativeTime(data.lastUpdated);
+  // Reading the tick signal triggers a re-render every 60 s (driven by page setup).
+  useGet(insightsRelativeTimeTick$);
 
   return (
     <div className="h-full overflow-auto">
@@ -1006,12 +994,12 @@ function InsightsContent({ data }: { data: NetworkInsightsData }) {
           <div>
             <div className="flex items-baseline gap-2">
               <h1 className="text-xl font-semibold">Insights</h1>
-              {data.lastUpdated && relativeTime && (
+              {data.lastUpdated && (
                 <span
                   className="text-xs text-muted-foreground"
                   title={formatAbsoluteTime(data.lastUpdated)}
                 >
-                  Updated {relativeTime}
+                  Updated {formatRelativeTime(data.lastUpdated)}
                 </span>
               )}
             </div>

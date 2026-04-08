@@ -137,7 +137,7 @@ describe("network insights page - data rendering", () => {
   });
 
   it("should display last updated timestamp", async () => {
-    mockInsightsAPI([sampleDay(daysAgoIso(1))]);
+    mockInsightsAPI([sampleDay(day1Ago)]);
 
     await setupPage({ context, path: "/insights" });
 
