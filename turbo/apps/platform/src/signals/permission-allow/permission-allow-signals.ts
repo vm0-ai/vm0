@@ -134,6 +134,8 @@ export const permissionExistingRequest$ = computed(async (get) => {
     toast: false,
   });
   // Find latest pending/rejected request for this ref+permission+action
+  // Note: the API contract uses `firewallRef` (DB/external name); internally
+  // this layer refers to it as `permissionRef` (user-facing name).
   const match = result.body
     .filter((r) => {
       return (
@@ -221,6 +223,8 @@ const createAccessRequest$ = command(
     signal: AbortSignal,
   ): Promise<string> => {
     const client = get(zeroClient$)(permissionAccessRequestsCreateContract);
+    // Remap internal `permissionRef` to `firewallRef` for the API contract
+    // (DB/external schema uses `firewallRef`; UI uses `permissionRef`).
     const { permissionRef, ...rest } = params;
     const result = await accept(
       client.create({ body: { ...rest, firewallRef: permissionRef } }),
