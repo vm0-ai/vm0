@@ -137,7 +137,7 @@ export const permissionExistingRequest$ = computed(async (get) => {
   const match = result.body
     .filter((r) => {
       return (
-        r.permissionRef === ref &&
+        r.firewallRef === ref &&
         r.permission === permission &&
         r.action === action &&
         (r.status === "pending" || r.status === "rejected")
