@@ -37,9 +37,17 @@ const SPECS: SpecSource[] = [
   },
   {
     url: "https://developer.atlassian.com/cloud/confluence/swagger.v3.json",
-    label: "Confluence",
+    label: "Confluence v1",
     oauthSchemeKey: "oAuthDefinitions",
     pathPrefix: "/ex/confluence/{cloudId}",
+  },
+  {
+    url: "https://developer.atlassian.com/cloud/confluence/openapi-v2.v3.json",
+    label: "Confluence v2",
+    oauthSchemeKey: "oAuthDefinitions",
+    // v2 spec paths have no /wiki prefix — the proxy prepends
+    // /ex/confluence/{cloudId}/wiki/api/v2 at runtime.
+    pathPrefix: "/ex/confluence/{cloudId}/wiki/api/v2",
   },
 ];
 
