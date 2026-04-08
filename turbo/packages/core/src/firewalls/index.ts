@@ -16,7 +16,6 @@ import { slackDefaultAllowed } from "./slack.generated";
 
 // Category registrations (side-effect imports)
 import "./slack.categories";
-import "./github.categories";
 import "./gmail.categories";
 import "./vercel.categories";
 
