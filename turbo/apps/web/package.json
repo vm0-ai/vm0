@@ -39,7 +39,7 @@
     "archiver": "^7.0.1",
     "cpu-features": "0.0.10",
     "croner": "^9.1.0",
-    "drizzle-orm": "^0.44.5",
+    "drizzle-orm": "^0.45.2",
     "html-to-text": "^9.0.5",
     "import-in-the-middle": "^3.0.0",
     "next": "^16.1.7",
