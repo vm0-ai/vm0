@@ -1,5 +1,21 @@
 # Changelog
 
+## [8.161.0](https://github.com/vm0-ai/vm0/compare/core-v8.160.0...core-v8.161.0) (2026-04-08)
+
+
+### Features
+
+* **firewalls:** add confluence v2 api to atlassian firewall ([#8478](https://github.com/vm0-ai/vm0/issues/8478)) ([716ce8e](https://github.com/vm0-ai/vm0/commit/716ce8e03bf7c4a345685733b494d5c33852eded))
+* **firewalls:** add graphql field modifier for rule matching ([#8476](https://github.com/vm0-ai/vm0/issues/8476)) ([82b2049](https://github.com/vm0-ai/vm0/commit/82b20493e48325cbc75ecc431a74e8254096e46a))
+* **model-providers:** add model selection for anthropic-api-key and claude-code-oauth-token ([#8491](https://github.com/vm0-ai/vm0/issues/8491)) ([ad96e27](https://github.com/vm0-ai/vm0/commit/ad96e27561f8bcdb69bf8d3268e4d168d98b9662))
+* **platform:** capture response headers and mark binary bodies in network logs ([#8481](https://github.com/vm0-ai/vm0/issues/8481)) ([6a778f8](https://github.com/vm0-ai/vm0/commit/6a778f8ebbd88e2bd95a4d79a5e4ed1e4c3f4f26))
+* **runner:** add smart dispatch with session affinity and targeted ably push ([#8474](https://github.com/vm0-ai/vm0/issues/8474)) ([65dbe3a](https://github.com/vm0-ai/vm0/commit/65dbe3af2795aa2730a3df28e84e3572fc8a46cc)), closes [#8368](https://github.com/vm0-ai/vm0/issues/8368)
+
+
+### Bug Fixes
+
+* **firewalls:** correct sentry base url to avoid /api duplication ([#8492](https://github.com/vm0-ai/vm0/issues/8492)) ([2f6446d](https://github.com/vm0-ai/vm0/commit/2f6446d0c516de5a2e02e3f37d5ced0a9d01ce64))
+
 ## [8.160.0](https://github.com/vm0-ai/vm0/compare/core-v8.159.0...core-v8.160.0) (2026-04-08)
 
 

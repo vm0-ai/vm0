@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.202.0](https://github.com/vm0-ai/vm0/compare/app-v0.201.0...app-v0.202.0) (2026-04-08)
+
+
+### Features
+
+* **model-providers:** add model selection for anthropic-api-key and claude-code-oauth-token ([#8491](https://github.com/vm0-ai/vm0/issues/8491)) ([ad96e27](https://github.com/vm0-ai/vm0/commit/ad96e27561f8bcdb69bf8d3268e4d168d98b9662))
+* **platform:** capture response headers and mark binary bodies in network logs ([#8481](https://github.com/vm0-ai/vm0/issues/8481)) ([6a778f8](https://github.com/vm0-ai/vm0/commit/6a778f8ebbd88e2bd95a4d79a5e4ed1e4c3f4f26))
+
+
+### Bug Fixes
+
+* **slack:** skip channel context fetch for dm conversations ([#8475](https://github.com/vm0-ai/vm0/issues/8475)) ([07a3321](https://github.com/vm0-ai/vm0/commit/07a33216d0a47047b341a0784324cb71b596a7f4))
+* **ui:** remove optimistic pin state to eliminate agent list dialog button blink ([#8469](https://github.com/vm0-ai/vm0/issues/8469)) ([07b9035](https://github.com/vm0-ai/vm0/commit/07b903507c60e53f94015bec34df25465841873c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.161.0
+
 ## [0.201.0](https://github.com/vm0-ai/vm0/compare/app-v0.200.0...app-v0.201.0) (2026-04-08)
 
 

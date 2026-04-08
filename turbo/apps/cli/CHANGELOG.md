@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.107.1](https://github.com/vm0-ai/vm0/compare/cli-v9.107.0...cli-v9.107.1) (2026-04-08)
+
+
+### Bug Fixes
+
+* **firewalls:** pick narrowest permission in firewall-deny diagnostic ([#8490](https://github.com/vm0-ai/vm0/issues/8490)) ([bac70df](https://github.com/vm0-ai/vm0/commit/bac70dfc01b2346622c59da239d04f37703b37ec)), closes [#8488](https://github.com/vm0-ai/vm0/issues/8488)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.161.0
+
 ## [9.107.0](https://github.com/vm0-ai/vm0/compare/cli-v9.106.1...cli-v9.107.0) (2026-04-08)
 
 
