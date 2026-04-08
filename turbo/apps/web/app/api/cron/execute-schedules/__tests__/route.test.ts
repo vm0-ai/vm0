@@ -198,6 +198,47 @@ describe("GET /api/cron/execute-schedules", () => {
       expect(schedule.lastRunAt).not.toBeNull();
     });
 
+    it("should not create duplicate runs on concurrent cron invocations", async () => {
+      // 1. Mock time to 8:00 AM UTC
+      context.mocks.date.setSystemTime(new Date("2025-01-15T08:00:00Z"));
+
+      // 2. Create and enable a cron schedule due at 9 AM
+      await createTestSchedule(testComposeId, "concurrent-test", {
+        cronExpression: "0 9 * * *",
+        prompt: "Daily 9 AM task",
+        timezone: "UTC",
+      });
+      await enableTestSchedule(testComposeId, "concurrent-test");
+
+      // 3. Advance time to 9:01 AM (schedule is now due)
+      context.mocks.date.setSystemTime(new Date("2025-01-15T09:01:00Z"));
+
+      // 4. Invoke cron endpoint twice concurrently (simulates Vercel double-fire)
+      const [response1, response2] = await Promise.all([
+        GET(authenticatedCronRequest()),
+        GET(authenticatedCronRequest()),
+      ]);
+      const [data1, data2] = await Promise.all([
+        response1.json(),
+        response2.json(),
+      ]);
+
+      expect(response1.status).toBe(200);
+      expect(response2.status).toBe(200);
+
+      // 5. Exactly one invocation should have executed, the other should have skipped
+      const totalExecuted = data1.executed + data2.executed;
+      expect(totalExecuted).toBe(1);
+
+      // 6. Verify only 1 run was created
+      const { runs } = await getTestScheduleRuns(
+        testComposeId,
+        "concurrent-test",
+        10,
+      );
+      expect(runs.length).toBe(1);
+    });
+
     it("should execute due one-time (atTime) schedule", async () => {
       // 1. Mock time to 8:00 AM UTC
       context.mocks.date.setSystemTime(new Date("2025-01-15T08:00:00Z"));
