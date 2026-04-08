@@ -22,6 +22,9 @@ import type { PermissionGroup } from "./codegen";
 const PERMS_URL =
   "https://raw.githubusercontent.com/github/docs/main/src/github-apps/data/fpt-2026-03-10/server-to-server-permissions.json";
 
+const SCHEMA_URL =
+  "https://raw.githubusercontent.com/octokit/graphql-schema/master/schema.json";
+
 // ── Placeholder token generation ─────────────────────────────────────────
 //
 // GitHub tokens use CRC32 checksums for offline format validation.
@@ -350,6 +353,82 @@ const MUTATION_TO_PERMISSIONS: Record<string, string[]> = {
   updateDiscussionComment: ["discussions:write"],
 };
 
+// ── Skipped mutations ────────────────────────────────────────────────────
+//
+// Mutations with no REST fine-grained permission equivalent.
+// Maintained explicitly so the generator fails when GitHub adds new
+// mutations that need classification.
+
+function isSkippedMutation(name: string): boolean {
+  // Enterprise administration — requires classic PAT, no fine-grained support.
+  if (/[Ee]nterprise/.test(name) && !/[Mm]igrat/.test(name)) return true;
+  // Sponsorship — no fine-grained PAT permission.
+  if (/[Ss]ponsor|[Pp]atreon/.test(name)) return true;
+  // User account operations — not repo/org scoped.
+  if (SKIPPED_USER_MUTATIONS.has(name)) return true;
+  return false;
+}
+
+const SKIPPED_USER_MUTATIONS = new Set([
+  "changeUserStatus",
+  "createUserList",
+  "deleteUserList",
+  "followOrganization",
+  "followUser",
+  "unfollowOrganization",
+  "unfollowUser",
+  "updateUserList",
+  "updateUserListsForItem",
+]);
+
+// ── Schema validation ───────────────────────────────────────────────────
+
+interface SchemaType {
+  name: string;
+  fields?: Array<{ name: string }>;
+}
+
+interface IntrospectionResult {
+  __schema: {
+    types: SchemaType[];
+  };
+}
+
+/**
+ * Fetch all mutation field names from the GitHub GraphQL schema and
+ * verify that every mutation is either mapped or explicitly skipped.
+ */
+async function validateMutationCoverage(): Promise<void> {
+  const res = await fetchSpec(SCHEMA_URL, "GitHub GraphQL schema");
+  const schema = (await res.json()) as IntrospectionResult;
+  const mutationType = schema.__schema.types.find((t) => {
+    return t.name === "Mutation";
+  });
+  if (!mutationType?.fields) {
+    throw new Error("Could not find Mutation type in GraphQL schema");
+  }
+
+  const allMutations = mutationType.fields.map((f) => f.name);
+  console.error(`  ${allMutations.length} GraphQL mutations in schema`);
+
+  const unmapped: string[] = [];
+  for (const name of allMutations) {
+    if (MUTATION_TO_PERMISSIONS[name]) continue;
+    if (isSkippedMutation(name)) continue;
+    unmapped.push(name);
+  }
+
+  if (unmapped.length > 0) {
+    throw new Error(
+      `${unmapped.length} unmapped GraphQL mutation(s) — add to MUTATION_TO_PERMISSIONS or mark as skipped:\n  ${unmapped.join("\n  ")}`,
+    );
+  }
+
+  const mapped = Object.keys(MUTATION_TO_PERMISSIONS).length;
+  const skipped = allMutations.length - mapped;
+  console.error(`  ${mapped} mapped, ${skipped} skipped`);
+}
+
 // ── Grouping ─────────────────────────────────────────────────────────────
 
 /**
@@ -492,9 +571,12 @@ function generateTypeScript(permissions: PermissionGroup[]): string {
 // ── Main ─────────────────────────────────────────────────────────────────
 
 export async function generate(): Promise<void> {
-  const res = await fetchSpec(PERMS_URL, "GitHub permissions data");
-  const permsData = (await res.json()) as PermsData;
-  console.error(`  ${Object.keys(permsData).length} permissions`);
+  const [permsRes] = await Promise.all([
+    fetchSpec(PERMS_URL, "GitHub permissions data"),
+    validateMutationCoverage(),
+  ]);
+  const permsData = (await permsRes.json()) as PermsData;
+  console.error(`  ${Object.keys(permsData).length} REST permissions`);
 
   const permissions = buildGroups(permsData);
   const ts = generateTypeScript(permissions);
