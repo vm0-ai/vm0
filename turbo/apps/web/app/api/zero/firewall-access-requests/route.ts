@@ -36,7 +36,7 @@ function formatRequest(
   return {
     id: row.id,
     agentId: row.agentId,
-    permissionRef: row.firewallRef,
+    firewallRef: row.firewallRef,
     permission: row.permission,
     action: row.action,
     method: row.method ?? null,
