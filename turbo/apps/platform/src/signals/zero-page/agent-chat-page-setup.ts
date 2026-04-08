@@ -10,11 +10,8 @@ import {
   detachedNavigateTo$,
 } from "../route.ts";
 import { onboardGuard$ } from "./onboard-guard.ts";
-import { currentAgentId$, defaultAgentId$, subagents$ } from "../agent.ts";
-import {
-  setChatAgentId$,
-  currentChatAgentDisplayName$,
-} from "../agent-chat.ts";
+import { currentAgentId$, defaultAgentId$ } from "../agent.ts";
+import { setChatAgentId$, currentChatAgent$ } from "../agent-chat.ts";
 import { talkDraft$ } from "./chat-draft.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { reloadTagline$ } from "./zero-chat-page.ts";
@@ -45,45 +42,27 @@ export const setupAgentChatPage$ = command(
     }
 
     if (!agentId) {
-      throw new Error("Talk page requires an active agent, but none found");
+      throw new Error("Chat page requires an active agent, but none found");
     }
 
-    // Get display name from already-loaded data to avoid a separate
-    // /api/zero/agents/:id round-trip on every navigation.
-    const defaultId = await get(defaultAgentId$);
+    const agent = await get(currentChatAgent$);
     signal.throwIfAborted();
-
-    // Validate agent exists; redirect to default if unknown.
-    if (agentId !== defaultId) {
-      const subagentList = await get(subagents$);
+    if (!agent) {
+      const defaultAgentId = await get(defaultAgentId$);
       signal.throwIfAborted();
-      const agentExists = subagentList.some((a) => {
-        return a.id === agentId;
-      });
-      if (!agentExists && defaultId) {
-        set(detachedNavigateTo$, "/agents/:id/chat", {
-          pathParams: { id: defaultId },
-          replace: true,
-        });
-        return;
+      if (!defaultAgentId) {
+        throw new Error("Chat page requires an active agent, but none found");
       }
+
+      set(detachedNavigateTo$, "/agents/:id/chat", {
+        pathParams: { id: defaultAgentId },
+        replace: true,
+      });
+      return;
     }
 
-    let agentName: string;
-    if (agentId === defaultId) {
-      agentName = (await get(currentChatAgentDisplayName$)) ?? "Agent";
-      signal.throwIfAborted();
-    } else {
-      const subagents = await get(subagents$);
-      signal.throwIfAborted();
-      agentName =
-        subagents.find((a) => {
-          return a.id === agentId;
-        })?.displayName ?? "Agent";
-    }
-    set(updateDocumentTitle$, agentName);
+    set(updateDocumentTitle$, agent.displayName ?? "");
 
-    // Inject ?prompt= into the chat input and clean up the URL
     const params = get(searchParams$);
     const prompt = params.get("prompt");
     if (prompt) {

@@ -1,7 +1,7 @@
 import { command } from "ccstate";
 import { createElement } from "react";
 import { MinimalSidebarLayout } from "../../views/zero-page/zero-directed-connect-page.tsx";
-import { FirewallAllowPage } from "../../views/firewall-allow/firewall-allow-page.tsx";
+import { PermissionAllowPage } from "../../views/permission-allow/permission-allow-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
@@ -9,29 +9,28 @@ import { reloadChatThreads$ } from "../chat-page/chat-message.ts";
 import { isOrgAdmin$ } from "../org.ts";
 import {
   resetFocusedState$,
-  firewallAllowAgent$,
-  firewallAllowRef$,
-  firewallAllowPermission$,
-  firewallAllowRequestId$,
-  firewallAllowReason$,
-  firewallExistingRequest$,
+  permissionAllowAgent$,
+  permissionAllowRef$,
+  permissionAllowPermission$,
+  permissionAllowRequestId$,
+  permissionAllowReason$,
+  permissionExistingRequest$,
   updateRequestIdInUrl$,
   setReason$,
-} from "./firewall-allow-signals.ts";
+} from "./permission-allow-signals.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
-import { throwIfAbort } from "../utils.ts";
 
-export const setupFirewallAllowPage$ = command(
+export const setupPermissionAllowPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     set(
       updatePage$,
       createElement(
         MinimalSidebarLayout,
         null,
-        createElement(FirewallAllowPage),
+        createElement(PermissionAllowPage),
       ),
     );
-    set(updateDocumentTitle$, "Firewall Permissions");
+    set(updateDocumentTitle$, "Permissions");
     set(resetFocusedState$);
 
     await set(hideAppSkeleton$, signal);
@@ -42,32 +41,24 @@ export const setupFirewallAllowPage$ = command(
 
     set(reloadChatThreads$);
 
-    // Agent load errors are displayed by the component via useLastLoadable —
-    // only re-throw abort errors; other failures render an error state in-page.
-    let agent;
-    try {
-      agent = await get(firewallAllowAgent$);
-    } catch (error) {
-      throwIfAbort(error);
-      return;
-    }
+    const agent = await get(permissionAllowAgent$);
     signal.throwIfAborted();
-    const ref = get(firewallAllowRef$);
+    const ref = get(permissionAllowRef$);
 
     // Pre-fill reason from URL parameter (set by zero doctor --reason)
-    const urlReason = get(firewallAllowReason$);
+    const urlReason = get(permissionAllowReason$);
     if (urlReason) {
       set(setReason$, urlReason);
     }
 
     // Auto-redirect: member in doctor mode with existing request → request mode
-    const requestId = get(firewallAllowRequestId$);
-    const permission = get(firewallAllowPermission$);
+    const requestId = get(permissionAllowRequestId$);
+    const permission = get(permissionAllowPermission$);
     if (!requestId && permission && agent && ref) {
       const isAdmin = await get(isOrgAdmin$);
       signal.throwIfAborted();
       if (!isAdmin) {
-        const existing = await get(firewallExistingRequest$);
+        const existing = await get(permissionExistingRequest$);
         signal.throwIfAborted();
         if (existing) {
           set(updateRequestIdInUrl$, existing.id);

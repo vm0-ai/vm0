@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { extractPermissions } from "../firewall-allow-signals.ts";
+import { extractPermissions } from "../permission-allow-signals.ts";
 
 describe("extractPermissions", () => {
   it("should return empty array for unknown connector type", () => {

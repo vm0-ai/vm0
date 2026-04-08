@@ -424,7 +424,7 @@ const firewallAccessRequestActionSchema = z.enum(["allow", "deny"]);
 export const firewallAccessRequestResponseSchema = z.object({
   id: z.string().uuid(),
   agentId: z.string().uuid(),
-  firewallRef: z.string(),
+  permissionRef: z.string(),
   permission: z.string(),
   action: firewallAccessRequestActionSchema,
   method: z.string().nullable(),

@@ -34,7 +34,7 @@ import { setupConnectorsPage$ } from "./connectors-page/connectors-page-setup.ts
 import { setupDirectedConnectPage$ } from "./connectors-page/directed-connect-page-setup.ts";
 import { setupDirectedAuthorizePage$ } from "./connectors-page/directed-authorize-page-setup.ts";
 import { setupSignInTokenPage$ } from "./sign-in-token-setup.ts";
-import { setupFirewallAllowPage$ } from "./firewall-allow/firewall-allow-page-setup.ts";
+import { setupPermissionAllowPage$ } from "./permission-allow/permission-allow-page-setup.ts";
 import { setupChatListPage$ } from "./zero-page/chat-list-page-setup.ts";
 import { setupLabPage$ } from "./lab-page/lab-page-setup.ts";
 import { setupNetworkInsightsPage$ } from "./network-insights/network-insights-page-setup.ts";
@@ -117,7 +117,7 @@ const ROUTE_CONFIG = [
   },
   {
     path: ROUTES.agentPermissions,
-    setup: setupAuthPageWrapper(setupFirewallAllowPage$),
+    setup: setupAuthPageWrapper(setupPermissionAllowPage$),
   },
   {
     path: ROUTES.agentDetail,

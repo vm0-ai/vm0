@@ -11,24 +11,24 @@ import {
   IconX,
 } from "@tabler/icons-react";
 import {
-  isFirewallConnectorType,
+  isFirewallConnectorType as isPermissionConnectorType,
   CONNECTOR_TYPES,
-  getDefaultFirewallPolicies,
-  type FirewallPolicies,
+  getDefaultFirewallPolicies as getDefaultPermissionPolicies,
+  type FirewallPolicies as PermissionPolicies,
 } from "@vm0/core";
 import { user$ } from "../../signals/auth.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import {
-  firewallAllowAgentId$,
-  firewallAllowRef$,
-  firewallAllowPermission$,
-  firewallAllowMethod$,
-  firewallAllowPath$,
-  firewallAllowAgent$,
-  firewallAllowAction$,
-  firewallAllowRequestId$,
-  firewallRequestById$,
-  firewallExistingRequest$,
+  permissionAllowAgentId$,
+  permissionAllowRef$,
+  permissionAllowPermission$,
+  permissionAllowMethod$,
+  permissionAllowPath$,
+  permissionAllowAgent$,
+  permissionAllowAction$,
+  permissionAllowRequestId$,
+  permissionRequestById$,
+  permissionExistingRequest$,
   resendFormVisible$,
   showResendForm$,
   extractPermissions,
@@ -39,7 +39,7 @@ import {
   reason$,
   setReason$,
   submitAccessRequest$,
-} from "../../signals/firewall-allow/firewall-allow-signals.ts";
+} from "../../signals/permission-allow/permission-allow-signals.ts";
 import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
 import { resolveAvatarUrl } from "../zero-page/avatar-utils.ts";
 import avatar1Img from "../zero-page/assets/avatar_1.webp";
@@ -137,7 +137,7 @@ function ConnectorPermissionCard({
     <div className="w-full rounded-lg border border-border px-4 py-3">
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-2 border-b border-border/70 pb-4 pt-1">
-          {isFirewallConnectorType(connectorRef) && (
+          {isPermissionConnectorType(connectorRef) && (
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-muted/40">
               <ConnectorIcon type={connectorRef} size={20} />
             </span>
@@ -406,7 +406,7 @@ function ResendFormCard({
       submitRequest(
         {
           agentId,
-          firewallRef: ref,
+          permissionRef: ref,
           permission: permission.name,
           action,
           method: request.method ?? undefined,
@@ -475,7 +475,7 @@ function ResendFormCard({
 
 function RequestStatusView({
   request,
-  canManageFirewall,
+  canManagePermission,
   agent,
   userName,
   agentDisplayName,
@@ -483,7 +483,7 @@ function RequestStatusView({
   request: {
     id: string;
     agentId: string;
-    firewallRef: string;
+    permissionRef: string;
     permission: string;
     action: "allow" | "deny";
     method: string | null;
@@ -493,7 +493,7 @@ function RequestStatusView({
     requesterName: string | null;
     requesterUserId: string;
   };
-  canManageFirewall: boolean;
+  canManagePermission: boolean;
   agent: { avatarUrl: string | null };
   userName: string;
   agentDisplayName: string;
@@ -505,7 +505,7 @@ function RequestStatusView({
   const showResendFormValue = useGet(resendFormVisible$);
   const doShowResendForm = useSet(showResendForm$);
 
-  const ref = request.firewallRef;
+  const ref = request.permissionRef;
   const permission = findPermission(ref, request.permission) ?? {
     name: request.permission,
   };
@@ -515,7 +515,7 @@ function RequestStatusView({
   }
 
   // Rejected — member: resend form or denied card
-  if (request.status === "rejected" && !canManageFirewall) {
+  if (request.status === "rejected" && !canManagePermission) {
     if (showResendFormValue) {
       return (
         <ResendFormCard
@@ -537,7 +537,7 @@ function RequestStatusView({
     return <PermissionsDeniedCard />;
   }
 
-  if (canManageFirewall) {
+  if (canManagePermission) {
     return (
       <AdminApprovalCard
         userName={userName}
@@ -570,11 +570,11 @@ function RequestStatusView({
 }
 
 function RequestModeView() {
-  const agentId = useGet(firewallAllowAgentId$);
-  const agentLoadable = useLastLoadable(firewallAllowAgent$);
+  const agentId = useGet(permissionAllowAgentId$);
+  const agentLoadable = useLastLoadable(permissionAllowAgent$);
   const userLoadable = useLastLoadable(user$);
   const adminLoadable = useLoadable(isOrgAdmin$);
-  const requestLoadable = useLastLoadable(firewallRequestById$);
+  const requestLoadable = useLastLoadable(permissionRequestById$);
 
   if (
     agentLoadable.state === "loading" ||
@@ -603,12 +603,12 @@ function RequestModeView() {
   const currentUser =
     userLoadable.state === "hasData" ? userLoadable.data : undefined;
   const isAdmin = adminLoadable.state === "hasData" && adminLoadable.data;
-  const canManageFirewall = currentUser?.id === agent.ownerId || isAdmin;
+  const canManagePermission = currentUser?.id === agent.ownerId || isAdmin;
 
   return (
     <RequestStatusView
       request={request}
-      canManageFirewall={canManageFirewall}
+      canManagePermission={canManagePermission}
       agent={agent}
       userName={resolveUserName(currentUser)}
       agentDisplayName={agent.displayName ?? agentId ?? ""}
@@ -627,7 +627,7 @@ function DoctorModeView({
   action,
   method,
   path,
-  canManageFirewall,
+  canManagePermission,
   agent,
   userName,
 }: {
@@ -637,9 +637,9 @@ function DoctorModeView({
   action: "allow" | "deny";
   method: string | null;
   path: string | null;
-  canManageFirewall: boolean;
+  canManagePermission: boolean;
   agent: {
-    firewallPolicies: FirewallPolicies | null;
+    permissionPolicies: PermissionPolicies | null;
     displayName: string | null;
     avatarUrl: string | null;
   };
@@ -656,11 +656,11 @@ function DoctorModeView({
   const agentDisplayName = agent.displayName ?? agentId;
 
   // Check effective policy
-  const defaults = isFirewallConnectorType(ref)
-    ? getDefaultFirewallPolicies(ref)
+  const defaults = isPermissionConnectorType(ref)
+    ? getDefaultPermissionPolicies(ref)
     : null;
   const effectivePolicy =
-    agent.firewallPolicies?.[ref]?.[permission.name] ??
+    agent.permissionPolicies?.[ref]?.[permission.name] ??
     defaults?.[permission.name] ??
     "allow";
 
@@ -674,7 +674,7 @@ function DoctorModeView({
   }
 
   // Policy doesn't match — admin: confirm card
-  if (canManageFirewall) {
+  if (canManagePermission) {
     const handleSave = () => {
       detach(
         savePolicies(
@@ -683,7 +683,7 @@ function DoctorModeView({
             ref,
             permissionName: permission.name,
             action,
-            agentFirewallPolicies: agent.firewallPolicies,
+            agentPermissionPolicies: agent.permissionPolicies,
           },
           pageSignal,
         ),
@@ -751,7 +751,7 @@ function DoctorModeView({
       submitRequest(
         {
           agentId,
-          firewallRef: ref,
+          permissionRef: ref,
           permission: permission.name,
           action,
           method: method ?? undefined,
@@ -871,19 +871,19 @@ function findPermission(
 // Main Page
 // ---------------------------------------------------------------------------
 
-export function FirewallAllowPage() {
-  const agentId = useGet(firewallAllowAgentId$);
-  const ref = useGet(firewallAllowRef$);
-  const permission = useGet(firewallAllowPermission$);
-  const method = useGet(firewallAllowMethod$);
-  const path = useGet(firewallAllowPath$);
-  const action = useGet(firewallAllowAction$);
-  const requestId = useGet(firewallAllowRequestId$);
+export function PermissionAllowPage() {
+  const agentId = useGet(permissionAllowAgentId$);
+  const ref = useGet(permissionAllowRef$);
+  const permission = useGet(permissionAllowPermission$);
+  const method = useGet(permissionAllowMethod$);
+  const path = useGet(permissionAllowPath$);
+  const action = useGet(permissionAllowAction$);
+  const requestId = useGet(permissionAllowRequestId$);
 
-  const agentLoadable = useLastLoadable(firewallAllowAgent$);
+  const agentLoadable = useLastLoadable(permissionAllowAgent$);
   const userLoadable = useLastLoadable(user$);
   const adminLoadable = useLoadable(isOrgAdmin$);
-  const existingRequestLoadable = useLoadable(firewallExistingRequest$);
+  const existingRequestLoadable = useLoadable(permissionExistingRequest$);
 
   if (!agentId) {
     return <ErrorMessage message="Missing agent ID in URL parameters" />;
@@ -896,13 +896,11 @@ export function FirewallAllowPage() {
 
   // Doctor mode: needs ref + permission
   if (!ref || !permission) {
-    return (
-      <ErrorMessage message="Missing firewall ref or permission in URL parameters" />
-    );
+    return <ErrorMessage message="Missing permission in URL parameters" />;
   }
 
-  if (!isFirewallConnectorType(ref)) {
-    return <ErrorMessage message={`Unknown firewall: ${ref}`} />;
+  if (!isPermissionConnectorType(ref)) {
+    return <ErrorMessage message={`Unknown permission: ${ref}`} />;
   }
 
   if (
@@ -925,7 +923,7 @@ export function FirewallAllowPage() {
   const currentUser =
     userLoadable.state === "hasData" ? userLoadable.data : undefined;
   const isAdmin = adminLoadable.state === "hasData" && adminLoadable.data;
-  const canManageFirewall = currentUser?.id === agent.ownerId || isAdmin;
+  const canManagePermission = currentUser?.id === agent.ownerId || isAdmin;
   const userName = resolveUserName(currentUser);
   const focusedPermission = findPermission(ref, permission);
 
@@ -935,7 +933,7 @@ export function FirewallAllowPage() {
 
   // Member doctor mode: wait for existing-request check so page-setup
   // can redirect to request mode before we render anything.
-  if (!canManageFirewall && existingRequestLoadable.state === "loading") {
+  if (!canManagePermission && existingRequestLoadable.state === "loading") {
     return <LoadingCard />;
   }
 
@@ -947,8 +945,12 @@ export function FirewallAllowPage() {
       action={action ?? "allow"}
       method={method}
       path={path}
-      canManageFirewall={canManageFirewall}
-      agent={agent}
+      canManagePermission={canManagePermission}
+      agent={{
+        permissionPolicies: agent.firewallPolicies,
+        displayName: agent.displayName,
+        avatarUrl: agent.avatarUrl,
+      }}
       userName={userName}
     />
   );
