@@ -122,7 +122,8 @@
     {
       "files": [
         "src/signals/zero-page/zero-chat.ts",
-        "src/signals/zero-page/chat-draft.ts"
+        "src/signals/zero-page/chat-draft.ts",
+        "src/signals/voice-chat/voice-chat-session.ts"
       ],
       "rules": {
         "no-restricted-imports": [
