@@ -30,6 +30,7 @@ describe("zero CLI program", () => {
       "ask-user",
       "developer-support",
       "computer-use",
+      "voice-chat",
     ];
     for (const name of expectedCommands) {
       expect(commandNames).toContain(name);

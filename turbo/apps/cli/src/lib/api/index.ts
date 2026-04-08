@@ -188,3 +188,9 @@ export {
   listPhoneCalls,
   getPhoneCallDetail,
 } from "./domains/phone-calls";
+
+// Domain modules - Zero Voice Chat Context
+export {
+  getVoiceChatContextEvents,
+  appendVoiceChatContextEvent,
+} from "./domains/zero-voice-chat-context";
