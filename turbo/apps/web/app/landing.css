@@ -1,7 +1,20 @@
+/* ===== PAGE LOAD TRANSITION ===== */
+@keyframes pageReady {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.landing-page {
+  animation: pageReady 0.3s ease-out both;
+}
+
 /* ===== LANDING HEADING FONT ===== */
 .landing-heading {
-  font-family:
-    var(--font-instrument-sans), "Instrument Sans", system-ui, sans-serif;
+  font-family: var(--font-noto-sans), "Noto Sans", system-ui, sans-serif;
 }
 
 /* ===== DECORATIVE SHAPE FLOAT ANIMATIONS ===== */
@@ -213,7 +226,36 @@
 }
 
 [data-theme="dark"] .landing-page {
-  --muted-foreground: 228 7% 70%;
+}
+
+/* Noise grain overlay */
+[data-theme="dark"] .landing-noise {
+  opacity: 0.03;
+}
+
+/* Decorative hero shapes */
+[data-theme="dark"] .deco-shapes {
+  filter: invert(1) brightness(2);
+}
+
+/* Corner grid overlay */
+.landing-grid {
+  opacity: 1;
+}
+
+[data-theme="dark"] .landing-grid {
+  opacity: 0.6;
+}
+
+/* Force mockup areas to stay light in dark mode */
+[data-theme="dark"] .memory-pop,
+[data-theme="dark"] .schedule-pop {
+  background: #fff !important;
+  color: #15181e;
+}
+
+[data-theme="dark"] .schedule-pop-toggle {
+  background: #fff !important;
 }
 
 [data-theme="dark"] .btn-try-demo {
@@ -501,6 +543,9 @@ body {
 
 /* ===== FOOTER ===== */
 .footer {
+  position: relative;
+  z-index: 1;
+  background: hsl(var(--gray-0));
   border-top: 0.7px solid hsl(var(--gray-200));
   padding: 60px 0 32px;
 }
@@ -712,6 +757,297 @@ body {
 
 [data-theme="light"] .language-switcher-dropdown {
   background: hsl(var(--gray-0));
+}
+
+/* ===== DARK MODE ICON HANDLING ===== */
+[data-theme="dark"] .landing-icon-invert {
+  filter: invert(1) brightness(2);
+}
+
+.dark-only {
+  display: none;
+}
+
+[data-theme="dark"] .light-only {
+  display: none;
+}
+
+[data-theme="dark"] .dark-only {
+  display: block;
+}
+
+/* ===== CARD STORY ANIMATIONS ===== */
+
+/* Synced Tools: staggered entrance showing data flow */
+@keyframes slideInLeft {
+  from {
+    transform: translateX(-25%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+@keyframes slideInRight {
+  from {
+    transform: translateX(25%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+@keyframes arrowDraw {
+  from {
+    opacity: 0;
+    transform: scale(0.5) rotate(148deg);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) rotate(148deg);
+  }
+}
+
+/* Slack thread pop-up — starts peeking, slides into full view */
+@keyframes slackPop {
+  from {
+    transform: translateY(20%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.slack-thread-pop {
+  transform: translateY(20%);
+}
+.in-view .slack-thread-pop {
+  animation: slackPop 0.8s cubic-bezier(0.25, 0.1, 0.25, 1) 0.15s both;
+}
+
+/* Synced tools pop-up from bottom */
+.synced-tools-pop {
+  transform: translateY(20%);
+}
+/* Web UI mockup slide up 10% */
+@keyframes webuiPop {
+  from {
+    transform: translateY(10%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.webui-pop {
+  transform: translateY(10%);
+}
+.in-view .webui-pop {
+  animation: webuiPop 0.8s cubic-bezier(0.25, 0.1, 0.25, 1) 0.15s both;
+}
+
+.in-view .synced-tools-pop {
+  animation: slackPop 0.8s cubic-bezier(0.25, 0.1, 0.25, 1) 0.15s both;
+}
+
+/* Memory & Schedule mockup card pop-up — small peek then slide in */
+@keyframes cardPop {
+  from {
+    transform: translateY(20%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.memory-pop,
+.schedule-pop {
+  transform: translateY(20%);
+}
+.in-view .memory-pop {
+  animation: cardPop 0.7s cubic-bezier(0.25, 0.1, 0.25, 1) 0.2s both;
+}
+.in-view .schedule-pop {
+  animation: cardPop 0.7s cubic-bezier(0.25, 0.1, 0.25, 1) 0.4s both;
+}
+
+/* Peek then slide in — always partially visible */
+.sync-chat {
+  transform: translateX(-25%);
+}
+.sync-notion {
+  transform: translateX(25%);
+}
+.sync-arrow {
+  opacity: 0;
+}
+.in-view .sync-chat {
+  animation: slideInLeft 0.7s cubic-bezier(0.25, 0.1, 0.25, 1) both;
+}
+.in-view .sync-arrow {
+  animation: arrowDraw 0.4s cubic-bezier(0.25, 0.1, 0.25, 1) 0.5s both;
+}
+.in-view .sync-notion {
+  animation: slideInRight 0.7s cubic-bezier(0.25, 0.1, 0.25, 1) 0.3s both;
+}
+
+/* Memory card: recall sequence */
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.memory-question,
+.memory-answer {
+  opacity: 0;
+}
+.revealed .memory-question {
+  animation: fadeUp 0.5s ease-out 0.3s both;
+}
+.revealed .memory-answer {
+  animation: fadeUp 0.5s ease-out 0.8s both;
+}
+
+/* Schedule card: task appears and activates */
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+@keyframes toggleOn {
+  0% {
+    background-color: #ccc;
+  }
+  100% {
+    background-color: #ef5001;
+  }
+}
+
+.schedule-card-enter {
+  opacity: 0;
+}
+.schedule-toggle {
+  background-color: #ccc;
+}
+.revealed .schedule-card-enter {
+  animation: slideUp 0.5s ease-out 0.3s both;
+}
+.revealed .schedule-toggle {
+  animation: toggleOn 0.3s ease-out 1s both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sync-chat,
+  .sync-arrow,
+  .sync-notion,
+  .memory-question,
+  .memory-answer,
+  .schedule-card-enter {
+    opacity: 1;
+  }
+  .schedule-toggle {
+    background-color: #ef5001;
+  }
+  .revealed .sync-chat,
+  .revealed .sync-arrow,
+  .revealed .sync-notion,
+  .revealed .memory-question,
+  .revealed .memory-answer,
+  .revealed .schedule-card-enter,
+  .revealed .schedule-toggle {
+    animation: none;
+  }
+}
+
+/* ===== CONNECTOR MARQUEE ===== */
+@keyframes marqueeScroll {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.marquee-track {
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent,
+    black 5%,
+    black 95%,
+    transparent
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    black 5%,
+    black 95%,
+    transparent
+  );
+}
+
+.marquee-scroll {
+  animation: marqueeScroll 30s linear infinite;
+  width: max-content;
+}
+
+.marquee-reverse {
+  animation-direction: reverse;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .marquee-scroll {
+    animation: none;
+  }
+}
+
+/* ===== SCROLL REVEAL ANIMATIONS ===== */
+@keyframes revealUp {
+  from {
+    opacity: 0;
+    transform: translateY(32px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.reveal {
+  opacity: 0;
+}
+
+.reveal.revealed {
+  animation: revealUp 0.7s cubic-bezier(0.25, 0.1, 0.25, 1) forwards;
+}
+
+.reveal-delay-1 {
+  animation-delay: 0.1s;
+}
+.reveal-delay-2 {
+  animation-delay: 0.2s;
+}
+.reveal-delay-3 {
+  animation-delay: 0.3s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal {
+    opacity: 1;
+  }
+  .reveal.revealed {
+    animation: none;
+  }
 }
 
 /* ===== RESPONSIVE ===== */

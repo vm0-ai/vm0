@@ -95,12 +95,12 @@ const DEFAULTS: AvatarConfig[] = [
     intensity: "m",
   },
   {
-    rotation: 2,
+    rotation: 1,
     skin: 2,
     hairStyle: 1,
     hairColor: 1,
-    expression: 2,
-    intensity: "d",
+    expression: 3,
+    intensity: "m",
   },
   {
     rotation: 4,
@@ -153,30 +153,65 @@ function IdleAvatar({
   );
 }
 
-/** Sparkle particle that appears on selection */
+/** Firework particles that burst from the sides on selection */
 function Sparkles({ active }: { active: boolean }) {
   if (!active) return null;
+
+  const colors = [
+    "#ed4e01",
+    "#E0B376",
+    "#E26C9E",
+    "#45A7A8",
+    "#E0BB3C",
+    "#FF990A",
+  ];
+  // Seed-based random for consistent SSR
+  let seed = 77;
+  const rand = () => {
+    seed = (seed * 16807) % 2147483647;
+    return (seed - 1) / 2147483646;
+  };
+
+  const particles: {
+    x: number;
+    y: number;
+    size: number;
+    color: string;
+    delay: number;
+  }[] = [];
+  for (let i = 0; i < 20; i++) {
+    // Burst outward and upward from the top center
+    const xDir = (rand() - 0.5) * 140;
+    const yDir = -(30 + rand() * 50);
+    particles.push({
+      x: xDir,
+      y: yDir,
+      size: 3 + rand() * 5,
+      color: colors[Math.floor(rand() * colors.length)],
+      delay: rand() * 0.15,
+    });
+  }
+
   return (
     <div className="pointer-events-none absolute inset-0 z-10">
-      {Array.from({ length: 6 }, (_, i) => {
-        const angle = i * 60 * (Math.PI / 180);
-        const x = Math.cos(angle) * 50;
-        const y = Math.sin(angle) * 50;
-        return (
-          <div
-            key={i}
-            className="absolute left-1/2 top-1/2 h-1.5 w-1.5 rounded-full bg-[#ed4e01]"
-            style={{
-              animation: `sparkle 0.4s ease-out forwards`,
-              animationDelay: `${i * 0.03}s`,
-              transform: `translate(-50%, -50%)`,
-              // CSS custom properties for the animation endpoint
-              ["--tx" as string]: `${x}px`,
-              ["--ty" as string]: `${y}px`,
-            }}
-          />
-        );
-      })}
+      {particles.map((p, i) => (
+        <div
+          key={i}
+          className="absolute rounded-full"
+          style={{
+            width: p.size,
+            height: p.size,
+            backgroundColor: p.color,
+            left: "50%",
+            top: "10%",
+            animation: `firework 0.6s ease-out forwards`,
+            animationDelay: `${p.delay}s`,
+            transform: "translate(-50%, -50%) scale(1)",
+            ["--fx" as string]: `${p.x}px`,
+            ["--fy" as string]: `${p.y}px`,
+          }}
+        />
+      ))}
     </div>
   );
 }
@@ -188,21 +223,12 @@ export default function AvatarCustomizer() {
   const [justPicked, setJustPicked] = useState<string | null>(null);
   const [showSparkles, setShowSparkles] = useState(false);
   // Tooltip hint that disappears after first interaction
-  const [showHint, setShowHint] = useState(true);
-  const hintTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const current = editing !== null ? chars[editing] : null;
   const stepIdx = STEPS.findIndex((s) => s.key === step);
 
-  // Hide hint after 5 seconds or on first click
-  useEffect(() => {
-    hintTimer.current = setTimeout(() => setShowHint(false), 5000);
-    return () => clearTimeout(hintTimer.current);
-  }, []);
-
   const toggle = useCallback(
     (i: number) => {
-      setShowHint(false);
       if (editing === i) {
         setEditing(null);
         return;
@@ -305,13 +331,10 @@ export default function AvatarCustomizer() {
           from { opacity: 0; transform: translateY(8px) scale(0.9); }
           to { opacity: 1; transform: translateY(0) scale(1); }
         }
-        @keyframes sparkle {
+        @keyframes firework {
           0% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-          100% { opacity: 0; transform: translate(calc(-50% + var(--tx)), calc(-50% + var(--ty))) scale(0); }
-        }
-        @keyframes hintBounce {
-          0%, 100% { transform: translateY(0); }
-          50% { transform: translateY(-3px); }
+          70% { opacity: 0.8; }
+          100% { opacity: 0; transform: translate(calc(-50% + var(--fx)), calc(-50% + var(--fy))) scale(0.3); }
         }
       `}</style>
 
@@ -326,16 +349,6 @@ export default function AvatarCustomizer() {
         />
       ))}
 
-      {/* "Click to customize" hint */}
-      {showHint && editing === null && (
-        <div
-          className="absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap text-[11px] text-[#525b68]"
-          style={{ animation: "hintBounce 1.5s ease-in-out infinite" }}
-        >
-          Click to customize ✨
-        </div>
-      )}
-
       {editing !== null && current && (
         <>
           <div
@@ -343,12 +356,12 @@ export default function AvatarCustomizer() {
             onClick={() => setEditing(null)}
           />
           <div
-            className="absolute left-1/2 top-full z-30 mt-3 -translate-x-1/2 flex flex-col items-center gap-4 rounded-2xl border border-[hsl(var(--gray-200))] bg-white/95 px-5 py-4 shadow-xl backdrop-blur-sm"
+            className="absolute left-1/2 top-full z-30 mt-3 -translate-x-1/2 flex flex-col items-center gap-4 rounded-2xl border border-[hsl(var(--gray-200))]/50 bg-white/95 px-5 py-4 shadow-lg backdrop-blur-sm"
             style={{ animation: "fadeIn .15s ease", minWidth: 340 }}
           >
             {/* Live preview with sparkle effect */}
             <div
-              className={`relative transition-transform duration-200 ${justPicked ? "scale-110" : "scale-100"}`}
+              className={`relative overflow-visible transition-transform duration-200 ${justPicked ? "scale-110" : "scale-100"}`}
             >
               <AvatarPreview config={current} size={80} />
               <Sparkles active={showSparkles} />

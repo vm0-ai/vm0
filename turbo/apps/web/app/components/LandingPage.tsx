@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import NextLink from "next/link";
 import { useUser } from "@clerk/nextjs";
 import { getAppUrl } from "../../src/lib/zero/url";
@@ -8,29 +9,72 @@ import Footer from "./Footer";
 import Image from "next/image";
 import AvatarCustomizer from "./AvatarCustomizer";
 
-const CONNECTORS = [
-  [
-    { name: "Axiom", icon: "/assets/connectors/axiom.svg" },
-    { name: "Ahref", icon: "/assets/connectors/ahref.svg" },
-    { name: "Airtable", icon: "/assets/connectors/airtable.svg" },
-    { name: "Gmail", icon: "/assets/connectors/gmail.svg" },
-    { name: "Google sheet", icon: "/assets/connectors/google-sheet.svg" },
-    { name: "Notion", icon: "/assets/connectors/notion.svg" },
-  ],
-  [
-    { name: "DocuSign", icon: "/assets/connectors/docusign.svg" },
-    { name: "Linear", icon: "/assets/connectors/linear.svg" },
-    { name: "Google Calendar", icon: "/assets/connectors/google-calendar.svg" },
-    { name: "Intercom", icon: "/assets/connectors/intercom.svg" },
-    { name: "Deel", icon: "/assets/connectors/deel.svg" },
-  ],
-  [
-    { name: "HubSpot", icon: "/assets/connectors/hubspot.svg" },
-    { name: "Dropbox", icon: "/assets/connectors/dropbox.svg" },
-    { name: "Sentry", icon: "/assets/connectors/sentry.svg" },
-    { name: "Figma", icon: "/assets/connectors/figma.svg" },
-    { name: "Vercel", icon: "/assets/connectors/vercel.svg" },
-  ],
+function useScrollReveal() {
+  const ref = useRef<HTMLDivElement>(null);
+  const revealedRef = useRef(new Set<Element>());
+  const observerRef = useRef<IntersectionObserver | null>(null);
+
+  useEffect(() => {
+    observerRef.current = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting && !revealedRef.current.has(entry.target)) {
+            revealedRef.current.add(entry.target);
+            entry.target.classList.add("revealed");
+            observerRef.current?.unobserve(entry.target);
+          }
+        });
+      },
+      { threshold: 0.1 },
+    );
+    const el = ref.current;
+    if (el) {
+      el.querySelectorAll(".reveal").forEach((child) => {
+        if (!revealedRef.current.has(child)) {
+          observerRef.current?.observe(child);
+        }
+      });
+    }
+    return () => observerRef.current?.disconnect();
+  }, []);
+
+  return ref;
+}
+
+const CONNECTORS_ROW1: {
+  name: string;
+  icon: string;
+  dark?: boolean;
+  darkIcon?: string;
+}[] = [
+  { name: "Axiom", icon: "/assets/connectors/axiom.svg", dark: true },
+  { name: "Ahrefs", icon: "/assets/connectors/ahref.svg" },
+  { name: "Airtable", icon: "/assets/connectors/airtable.svg" },
+  { name: "Gmail", icon: "/assets/connectors/gmail.svg" },
+  { name: "Google Sheets", icon: "/assets/connectors/google-sheet.svg" },
+  { name: "Notion", icon: "/assets/connectors/notion.svg", dark: true },
+  { name: "DocuSign", icon: "/assets/connectors/docusign.svg" },
+  { name: "Linear", icon: "/assets/connectors/linear.svg" },
+];
+
+const CONNECTORS_ROW2: {
+  name: string;
+  icon: string;
+  dark?: boolean;
+  darkIcon?: string;
+}[] = [
+  { name: "Google Calendar", icon: "/assets/connectors/google-calendar.svg" },
+  { name: "Intercom", icon: "/assets/connectors/intercom.svg", dark: true },
+  {
+    name: "Deel",
+    icon: "/assets/connectors/deel.svg",
+    darkIcon: "/assets/connectors/deel-dark.svg",
+  },
+  { name: "HubSpot", icon: "/assets/connectors/hubspot.svg" },
+  { name: "Dropbox", icon: "/assets/connectors/dropbox.svg" },
+  { name: "Sentry", icon: "/assets/connectors/sentry.svg", dark: true },
+  { name: "Figma", icon: "/assets/connectors/figma.svg" },
+  { name: "Vercel", icon: "/assets/connectors/vercel.svg", dark: true },
 ];
 
 function CtaButton({
@@ -44,10 +88,11 @@ function CtaButton({
   ctaHref: string;
   className?: string;
 }) {
-  const baseClassName = `inline-flex items-center justify-center rounded-xl px-14 py-3.5 text-base font-medium text-white transition-all hover:bg-[#ff6a1f] ${className ?? ""}`;
+  const baseClassName = `inline-flex items-center justify-center rounded-xl px-14 py-3.5 text-base font-medium transition-all hover:bg-[#ff6a1f] ${className ?? ""}`;
   const style = {
     background: "#ed4e01",
     boxShadow: "inset 0 -2px 0 #a33703",
+    color: "#ffffff",
   };
 
   if (isSignedIn) {
@@ -73,7 +118,7 @@ function CtaButton({
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return (
-    <h2 className="landing-heading text-center text-[28px] font-semibold leading-[1.2] tracking-[-0.88px] text-[#14171d] sm:text-[34px] md:text-[40px]">
+    <h2 className="landing-heading text-center text-[28px] font-medium leading-[1.2] tracking-[-0.88px] text-[hsl(var(--foreground))] sm:text-[34px] md:text-[40px]">
       {children}
     </h2>
   );
@@ -272,30 +317,115 @@ function SlackThreadMockup() {
   );
 }
 
+/** Toggles `in-view` class each time element enters/leaves viewport */
+function useInView(threshold = 0.3) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) el.classList.add("in-view");
+        else el.classList.remove("in-view");
+      },
+      { threshold },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [threshold]);
+  return ref;
+}
+
+function SlackMockup() {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) {
+          el.classList.add("in-view");
+        } else {
+          el.classList.remove("in-view");
+        }
+      },
+      { threshold: 0.3 },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div
+      ref={ref}
+      className="flex flex-1 items-center justify-center overflow-hidden bg-[#9a948d] md:h-[400px]"
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        alt="Slack thread showing Zero AI assistant"
+        src="/assets/mockup/atslack.svg"
+        className="slack-thread-pop h-full w-full object-contain"
+        draggable={false}
+      />
+    </div>
+  );
+}
+
 function SlackCard() {
   return (
     <div className="overflow-hidden rounded-[20px] bg-white">
       <div className="flex flex-col md:flex-row">
         {/* Left text content */}
-        <div className="flex w-full flex-col gap-4 p-10 md:w-[421px] md:shrink-0">
-          <h3 className="text-2xl font-bold leading-8 text-[#14171d]">
-            Natively integrated into Slack, just @
-          </h3>
-          <p className="text-base leading-6 text-[#525b68]">
-            One question. All your work, summarized. Keep your team in sync. No
-            dashboards needed.
-          </p>
+        <div className="flex w-full flex-col justify-between gap-4 p-10 md:w-[421px] md:shrink-0">
+          <div className="flex flex-col gap-4">
+            <h3 className="text-2xl font-medium leading-8 text-[hsl(var(--foreground))]">
+              Natively integrated into Slack, just @
+            </h3>
+            <p className="text-base leading-6 text-[hsl(var(--muted-foreground))]">
+              One question. All your work, summarized. Keep your team in sync.
+              No dashboards needed.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="rounded-lg bg-[hsl(var(--gray-100))] px-4 py-1.5 text-sm font-medium text-[hsl(var(--muted-foreground))]">
+              Operations
+            </span>
+            <span className="rounded-lg bg-[hsl(var(--gray-100))] px-4 py-1.5 text-sm font-medium text-[hsl(var(--muted-foreground))]">
+              Team Sync
+            </span>
+          </div>
         </div>
         {/* Right Slack mockup */}
-        <SlackThreadMockup />
+        <SlackMockup />
       </div>
     </div>
   );
 }
 
 function SyncedToolsIllustration() {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) {
+          el.classList.add("in-view");
+        } else {
+          el.classList.remove("in-view");
+        }
+      },
+      { threshold: 0.3 },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
   return (
-    <div className="relative flex h-[400px] flex-1 items-center justify-center overflow-hidden rounded-bl-[10px] rounded-br-[10px] bg-[#39a2a3] py-3">
+    <div
+      ref={ref}
+      className="relative flex h-[400px] flex-1 items-center justify-center overflow-hidden rounded-bl-[10px] rounded-br-[10px] bg-[#39a2a3] py-3"
+    >
       <div className="relative h-[355px] w-[500px]">
         {/* Slack icon — top-left */}
         <div className="absolute left-0 top-0 z-10 flex size-[26px] items-center justify-center rounded-[6px] border border-black/[0.08] bg-white p-1 shadow-[0px_7px_7px_0px_rgba(0,0,0,0.08)]">
@@ -312,7 +442,7 @@ function SyncedToolsIllustration() {
         <img
           alt="Zero chat creating a Notion database of KOLs"
           src="/assets/tool-sync/zero-chat.png"
-          className="absolute left-[8px] top-[9px] z-[1] w-[348px] rounded-[9px]"
+          className="sync-chat absolute left-[8px] top-[9px] z-[1] w-[348px] rounded-[9px]"
           draggable={false}
         />
 
@@ -331,7 +461,7 @@ function SyncedToolsIllustration() {
         <img
           alt=""
           src="/assets/tool-sync/arrow.png"
-          className="absolute left-[155px] top-[147px] z-[5] w-[75px] -scale-y-100 rotate-[148deg]"
+          className="sync-arrow absolute left-[155px] top-[147px] z-[5] w-[75px] -scale-y-100"
           draggable={false}
         />
 
@@ -340,10 +470,45 @@ function SyncedToolsIllustration() {
         <img
           alt="Notion database showing KOL Tracker for AI & Dev Tools"
           src="/assets/tool-sync/notion-db.png"
-          className="absolute left-[215px] top-[63px] z-[2] w-[385px] rounded-[7px] shadow-[0px_0px_7px_7px_rgba(0,0,0,0.08)]"
+          className="sync-notion absolute left-[215px] top-[63px] z-[2] w-[385px] rounded-[7px] shadow-[0px_0px_7px_7px_rgba(0,0,0,0.08)]"
           draggable={false}
         />
       </div>
+    </div>
+  );
+}
+
+function SyncedToolsMockup() {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) {
+          el.classList.add("in-view");
+        } else {
+          el.classList.remove("in-view");
+        }
+      },
+      { threshold: 0.3 },
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div
+      ref={ref}
+      className="flex flex-1 items-center justify-center overflow-hidden bg-[#39A2A3] p-8"
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        alt="Synced across tools"
+        src="/assets/mockup/across-tools.png"
+        className="synced-tools-pop h-full w-full object-cover"
+        draggable={false}
+      />
     </div>
   );
 }
@@ -353,42 +518,94 @@ function SyncedToolsCard() {
     <div className="overflow-hidden rounded-[20px] bg-white">
       <div className="flex flex-col md:flex-row-reverse">
         {/* Right illustration */}
-        <div className="flex flex-1 items-center justify-center bg-[#39A2A3] p-8">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            alt="Synced across tools"
-            src="/assets/mockup/across-tools.png"
-            className="h-full w-full object-cover"
-            draggable={false}
-          />
-        </div>
+        <SyncedToolsMockup />
         {/* Left text content */}
-        <div className="flex w-full flex-col gap-4 p-10 md:w-[421px] md:shrink-0">
-          <h3 className="text-2xl font-bold leading-8 text-[#14171d]">
-            Manage synced across tools with your intent
-          </h3>
-          <p className="text-base leading-6 text-[#525b68]">
-            Already at Work, Zero connects to your tools, understands your team,
-            and gets things done.
-          </p>
+        <div className="flex w-full flex-col justify-between gap-4 p-10 md:w-[421px] md:shrink-0">
+          <div className="flex flex-col gap-4">
+            <h3 className="text-2xl font-medium leading-8 text-[hsl(var(--foreground))]">
+              From discovery to outreach, agents do the legwork.
+            </h3>
+            <p className="text-base leading-6 text-[hsl(var(--muted-foreground))]">
+              Tell Zero who you&apos;re looking for. Its agents crawl social
+              platforms, build prospect lists, and draft personalized outreach
+              so your team focuses on closing, not searching.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="rounded-lg bg-[hsl(var(--gray-100))] px-4 py-1.5 text-sm font-medium text-[hsl(var(--muted-foreground))]">
+              Marketing Outreach
+            </span>
+            <span className="rounded-lg bg-[hsl(var(--gray-100))] px-4 py-1.5 text-sm font-medium text-[hsl(var(--muted-foreground))]">
+              Cross-platform
+            </span>
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-/* ── App UI mockup for "Teammate, not tool" card — exported SVG from Figma ── */
+/* ── App UI carousel for "Teammate" card ── */
 
-function AppMockup() {
+const WEB_UI_SLIDES = [
+  "/assets/mockup/web-ui-1.svg",
+  "/assets/mockup/web-ui-2.svg",
+  "/assets/mockup/web-ui-3.svg",
+];
+
+function AppMockupCarousel() {
+  const [active, setActive] = useState(0);
+  const ref = useInView();
+  // Sidebar is ~26% of 855px width
+  const sidebarPct = "26%";
+
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      alt="VM0 app interface showing a chat conversation about migrating Zapier workflows"
-      src="/assets/mockup/details-page.svg"
-      className="mx-auto w-full max-w-[831px] select-none"
-      aria-hidden="true"
-      draggable={false}
-    />
+    <div ref={ref} className="relative w-full overflow-hidden rounded-t-xl">
+      {/* Full images — instant switch, no animation */}
+      {WEB_UI_SLIDES.map((src, i) => (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          key={src}
+          alt=""
+          src={src}
+          className={`webui-pop w-full select-none ${i === active ? "relative" : "absolute inset-0 opacity-0"}`}
+          draggable={false}
+        />
+      ))}
+      {/* Clickable hotspots over sidebar chat items */}
+      <div className="absolute inset-0 z-20">
+        <button
+          type="button"
+          aria-label="Daily Report"
+          onClick={() => setActive(0)}
+          className="absolute cursor-pointer"
+          style={{ left: "1%", top: "49%", width: "19%", height: "5%" }}
+        />
+        <button
+          type="button"
+          aria-label="Email Leads"
+          onClick={() => setActive(1)}
+          className="absolute cursor-pointer"
+          style={{ left: "1%", top: "54%", width: "19%", height: "5%" }}
+        />
+        <button
+          type="button"
+          aria-label="Sentry Report"
+          onClick={() => setActive(2)}
+          className="absolute cursor-pointer"
+          style={{ left: "1%", top: "59%", width: "19%", height: "5%" }}
+        />
+      </div>
+      {/* Hand-drawn arrow pointer */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src="/assets/mockup/arrow-pointer.svg"
+        alt=""
+        className="pointer-events-none absolute z-20 w-[10%]"
+        style={{ left: "18%", top: "40%", transform: "none" }}
+        draggable={false}
+      />
+    </div>
   );
 }
 
@@ -396,16 +613,18 @@ function TeammateCard() {
   return (
     <div className="overflow-hidden rounded-[20px] bg-white">
       <div className="flex flex-col gap-4 p-8 sm:p-10">
-        <h3 className="text-2xl font-bold leading-8 text-[#14171d]">
-          Teammate, not tool
+        <h3 className="text-2xl font-medium leading-8 text-[hsl(var(--foreground))]">
+          Your team, extended.
         </h3>
         <p className="text-sm leading-6 text-[hsl(var(--muted-foreground))] sm:text-base">
-          No new app or tab switching, an intelligent co-worker that operates
-          all your tools and actually gets the work done, not just chats.
+          Zero is not a tool. It&apos;s the one using them. Zero comes with a
+          team of specialized sub-agents you configure yourself. They work
+          inside your existing tools, understand your context, and ship real
+          output.
         </p>
       </div>
-      <div className="flex items-center justify-center bg-[#d58341] py-[40px]">
-        <AppMockup />
+      <div className="bg-[#d58341] px-8 pb-0 pt-6 sm:px-10">
+        <AppMockupCarousel />
       </div>
     </div>
   );
@@ -530,21 +749,515 @@ function SecureByDesignIllustration() {
   );
 }
 
+/* ── Cube with particle shield illustration ── */
+
+function MemoryMockupArea() {
+  const ref = useInView();
+  return (
+    <div
+      ref={ref}
+      className="flex-1 overflow-hidden rounded-b-[20px] bg-[#e0bb3c] px-8 pb-16 pt-8 sm:px-10 sm:pb-20 sm:pt-10"
+    >
+      <div className="memory-pop flex min-h-[200px] flex-col rounded-[10px] bg-white p-4">
+        <div className="flex justify-end">
+          <div className="max-w-[291px] rounded-[12px] bg-[rgba(230,234,239,0.95)] px-[10px] py-[7px]">
+            <p className="text-[11.6px] leading-[18.8px] text-[#15181e]">
+              Audit vm0.ai pages against <strong>our product direction</strong>{" "}
+              and <strong>past decisions</strong>. Flag what to keep, update, or
+              remove, with SEO improvements and next steps. Create a Linear
+              project with structured issues for the{" "}
+              <strong>right owners</strong>.
+            </p>
+          </div>
+        </div>
+        <div className="mt-[5px] pt-[7px]">
+          <p className="text-[11.6px] leading-[18.8px] text-[#15181e]">
+            Research complete. Full report ready. All vm0.ai pages are mapped
+            and synced to Notion{" "}
+            <span className="font-medium text-[#06679f]">here</span>
+            <span className="font-medium text-[#075786]">.</span>
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ScheduleMockupArea() {
+  const ref = useInView();
+  return (
+    <div
+      ref={ref}
+      className="flex-1 overflow-hidden rounded-b-[20px] bg-[#ed71a5] px-8 pb-16 pt-8 sm:px-10 sm:pb-20 sm:pt-10"
+    >
+      <div className="schedule-pop flex min-h-[200px] flex-col overflow-hidden rounded-[10px] bg-white p-4 shadow-[0px_1.6px_101px_40px_rgba(0,0,0,0.08)]">
+        <div className="flex w-full flex-col gap-[13px]">
+          <div className="flex w-full flex-col gap-1">
+            <span className="text-[11.6px] font-semibold text-black">
+              {"Zero's schedule"}
+            </span>
+            <span className="overflow-hidden text-ellipsis text-[11.6px] text-[hsl(var(--muted-foreground))]">
+              Set time and prompt for Zero to run automatically
+            </span>
+          </div>
+          <div className="w-full rounded-[8px] bg-[#f3f5f8] p-[10px]">
+            <div className="flex flex-col gap-[7px]">
+              <span className="text-[11.6px] font-semibold text-[#15181e]">
+                SEO diagnosis
+              </span>
+              <span className="text-[11.6px] text-[hsl(var(--muted-foreground))]">
+                Draft the weekly team report from the last 7 days and save to
+                the shared drive.
+              </span>
+              <div className="flex h-[13px] w-[24px] items-center rounded-full bg-[#ef5001] pl-[12px] pr-[1px] py-[1px]">
+                <div className="schedule-pop-toggle size-[10.5px] rounded-full bg-white shadow-[0px_7px_10px_-2px_rgba(0,0,0,0.1),0px_3px_4px_-3px_rgba(0,0,0,0.1)]" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function CubeShieldIllustration() {
+  const cx = 200;
+  const cy = 160;
+  const colors = ["#45A7A8", "#7587BA", "#E0B376", "#E26C9E", "#E0BB3C"];
+
+  let seed = 42;
+  const rand = () => {
+    seed = (seed * 16807 + 0) % 2147483647;
+    return (seed - 1) / 2147483646;
+  };
+
+  // Generate nodes on elliptical shell with drift offsets
+  const nodes: {
+    x: number;
+    y: number;
+    r: number;
+    opacity: number;
+    delay: number;
+    color: string;
+    dx1: number;
+    dy1: number;
+    dx2: number;
+    dy2: number;
+    dx3: number;
+    dy3: number;
+    dur: number;
+  }[] = [];
+  for (let i = 0; i < 60; i++) {
+    const angle = rand() * Math.PI * 2;
+    const distBase = i < 10 ? 25 + rand() * 50 : 60 + rand() * 120;
+    const x = cx + Math.cos(angle) * distBase;
+    const y = cy + Math.sin(angle) * distBase * 0.8;
+    const r = 0.8 + rand() * 1.5;
+    const opacity = 0.3 + rand() * 0.5;
+    const delay = rand() * 5;
+    const color = colors[Math.floor(rand() * colors.length)] ?? "#45A7A8";
+    // Random drift offsets for organic movement
+    const dx1 = (rand() - 0.5) * 16;
+    const dy1 = (rand() - 0.5) * 12;
+    const dx2 = (rand() - 0.5) * 20;
+    const dy2 = (rand() - 0.5) * 14;
+    const dx3 = (rand() - 0.5) * 16;
+    const dy3 = (rand() - 0.5) * 12;
+    const dur = 6 + rand() * 8; // 6-14s per cycle
+    nodes.push({
+      x,
+      y,
+      r,
+      opacity,
+      delay,
+      color,
+      dx1,
+      dy1,
+      dx2,
+      dy2,
+      dx3,
+      dy3,
+      dur,
+    });
+  }
+
+  // Connect nearby nodes with lines (distance < threshold)
+  const lines: {
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+    opacity: number;
+    color: string;
+    delay: number;
+  }[] = [];
+  const maxDist = 65;
+  for (let i = 0; i < nodes.length; i++) {
+    for (let j = i + 1; j < nodes.length; j++) {
+      const ni = nodes[i]!;
+      const nj = nodes[j]!;
+      const dx = ni.x - nj.x;
+      const dy = ni.y - nj.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < maxDist) {
+        const opacity = (1 - dist / maxDist) * 0.25;
+        lines.push({
+          x1: ni.x,
+          y1: ni.y,
+          x2: nj.x,
+          y2: nj.y,
+          opacity,
+          color: ni.color,
+          delay: Math.min(ni.delay, nj.delay),
+        });
+      }
+    }
+  }
+
+  return (
+    <svg
+      viewBox="0 0 400 320"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className="w-full max-w-[448px]"
+    >
+      <style>{`
+        @keyframes sparkle {
+          0%, 100% { opacity: var(--base-o); transform: translate(0,0); }
+          25% { transform: translate(var(--dx1), var(--dy1)); }
+          50% { opacity: calc(var(--base-o) * 0.3); transform: translate(var(--dx2), var(--dy2)); }
+          75% { transform: translate(var(--dx3), var(--dy3)); }
+        }
+        @keyframes linePulse {
+          0%, 100% { opacity: var(--base-o); }
+          50% { opacity: 0; }
+        }
+        .sp { animation: sparkle var(--dur) ease-in-out infinite; }
+        .ln { animation: linePulse 4s ease-in-out infinite; }
+      `}</style>
+      <defs>
+        <linearGradient
+          id="csg0"
+          x1="181"
+          y1="205"
+          x2="181"
+          y2="145"
+          gradientUnits="userSpaceOnUse"
+        >
+          <stop stopColor="#CAD1E7" />
+          <stop offset="1" stopColor="#B4BDD8" />
+        </linearGradient>
+        <linearGradient
+          id="csg1"
+          x1="34.5"
+          y1="0.7"
+          x2="7"
+          y2="56"
+          gradientUnits="userSpaceOnUse"
+        >
+          <stop stopColor="#CFD8EF" />
+          <stop offset="1" stopColor="#D5DAE9" />
+        </linearGradient>
+        <linearGradient
+          id="csg2"
+          x1="200"
+          y1="97"
+          x2="181"
+          y2="145"
+          gradientUnits="userSpaceOnUse"
+        >
+          <stop stopColor="#EDF1FD" />
+          <stop offset="1" stopColor="#E1E5F1" />
+        </linearGradient>
+      </defs>
+      {/* Back particles — behind cube (upper half, farther away) */}
+      {lines
+        .filter((_, i) => i % 2 === 0)
+        .map((l, i) => (
+          <line
+            key={`lb${i}`}
+            x1={l.x1}
+            y1={l.y1}
+            x2={l.x2}
+            y2={l.y2}
+            stroke={l.color}
+            strokeWidth="0.5"
+            className="ln"
+            style={
+              {
+                "--base-o": l.opacity,
+                animationDelay: `${l.delay}s`,
+              } as React.CSSProperties
+            }
+          />
+        ))}
+      {nodes
+        .filter(
+          (p) => p.y < cy || Math.sqrt((p.x - cx) ** 2 + (p.y - cy) ** 2) > 100,
+        )
+        .map((p, i) => (
+          <circle
+            key={`nb${i}`}
+            cx={p.x}
+            cy={p.y}
+            r={p.r}
+            fill={p.color}
+            className="sp"
+            style={
+              {
+                "--base-o": p.opacity,
+                "--dx1": `${p.dx1}px`,
+                "--dy1": `${p.dy1}px`,
+                "--dx2": `${p.dx2}px`,
+                "--dy2": `${p.dy2}px`,
+                "--dx3": `${p.dx3}px`,
+                "--dy3": `${p.dy3}px`,
+                "--dur": `${p.dur}s`,
+                animationDelay: `${p.delay}s`,
+              } as React.CSSProperties
+            }
+          />
+        ))}
+      {/* Cube — translucent glass with depth */}
+      <g transform="translate(140,90)">
+        {/* Left face */}
+        <path
+          d="M0 35.4L60 70V140L0 104.6V35.4Z"
+          fill="#3a8e8f"
+          opacity="0.25"
+        />
+        {/* Right face */}
+        <rect
+          width="69.2"
+          height="69.2"
+          transform="matrix(0.866 -0.5 0 1 60 70)"
+          fill="#5a7ab5"
+          opacity="0.2"
+        />
+        {/* Top face */}
+        <path
+          d="M60 0L120 35.4L60 70L0 35.4L60 0Z"
+          fill="#6ecfcf"
+          opacity="0.22"
+        />
+        {/* Outer edges */}
+        <path
+          d="M60 0L120 35.4L120 104.6L60 140L0 104.6L0 35.4Z"
+          stroke="#45A7A8"
+          strokeWidth="1.2"
+          opacity="0.6"
+          fill="none"
+        />
+        <line
+          x1="0"
+          y1="35.4"
+          x2="60"
+          y2="70"
+          stroke="#45A7A8"
+          strokeWidth="0.8"
+          opacity="0.5"
+        />
+        <line
+          x1="120"
+          y1="35.4"
+          x2="60"
+          y2="70"
+          stroke="#45A7A8"
+          strokeWidth="0.8"
+          opacity="0.4"
+        />
+        <line
+          x1="60"
+          y1="70"
+          x2="60"
+          y2="140"
+          stroke="#45A7A8"
+          strokeWidth="0.8"
+          opacity="0.5"
+        />
+        {/* Hidden edges — dashed */}
+        <line
+          x1="60"
+          y1="0"
+          x2="60"
+          y2="70"
+          stroke="#45A7A8"
+          strokeWidth="0.5"
+          opacity="0.2"
+          strokeDasharray="2 2"
+        />
+        <line
+          x1="0"
+          y1="104.6"
+          x2="60"
+          y2="70"
+          stroke="#45A7A8"
+          strokeWidth="0.4"
+          opacity="0.15"
+          strokeDasharray="2 2"
+        />
+        <line
+          x1="120"
+          y1="104.6"
+          x2="60"
+          y2="70"
+          stroke="#45A7A8"
+          strokeWidth="0.4"
+          opacity="0.15"
+          strokeDasharray="2 2"
+        />
+        {/* Inner cube */}
+        <g transform="translate(30,17.7) scale(0.5)">
+          <path
+            d="M0 35.4L60 70V140L0 104.6V35.4Z"
+            fill="#3a8e8f"
+            opacity="0.35"
+          />
+          <rect
+            width="69.2"
+            height="69.2"
+            transform="matrix(0.866 -0.5 0 1 60 70)"
+            fill="#5a7ab5"
+            opacity="0.28"
+          />
+          <path
+            d="M60 0L120 35.4L60 70L0 35.4L60 0Z"
+            fill="#6ecfcf"
+            opacity="0.3"
+          />
+          <path
+            d="M60 0L120 35.4L120 104.6L60 140L0 104.6L0 35.4Z"
+            stroke="#45A7A8"
+            strokeWidth="1.5"
+            opacity="0.55"
+            fill="none"
+          />
+          <line
+            x1="60"
+            y1="70"
+            x2="60"
+            y2="140"
+            stroke="#45A7A8"
+            strokeWidth="1"
+            opacity="0.45"
+          />
+          <line
+            x1="0"
+            y1="35.4"
+            x2="60"
+            y2="70"
+            stroke="#45A7A8"
+            strokeWidth="1"
+            opacity="0.45"
+          />
+          <line
+            x1="120"
+            y1="35.4"
+            x2="60"
+            y2="70"
+            stroke="#45A7A8"
+            strokeWidth="1"
+            opacity="0.45"
+          />
+        </g>
+      </g>
+      {/* Front particles — in front of cube (lower half, closer) */}
+      {lines
+        .filter((_, i) => i % 2 === 1)
+        .map((l, i) => (
+          <line
+            key={`lf${i}`}
+            x1={l.x1}
+            y1={l.y1}
+            x2={l.x2}
+            y2={l.y2}
+            stroke={l.color}
+            strokeWidth="0.5"
+            className="ln"
+            style={
+              {
+                "--base-o": l.opacity,
+                animationDelay: `${l.delay}s`,
+              } as React.CSSProperties
+            }
+          />
+        ))}
+      {nodes
+        .filter(
+          (p) =>
+            p.y >= cy && Math.sqrt((p.x - cx) ** 2 + (p.y - cy) ** 2) <= 100,
+        )
+        .map((p, i) => (
+          <circle
+            key={`nf${i}`}
+            cx={p.x}
+            cy={p.y}
+            r={p.r}
+            fill={p.color}
+            className="sp"
+            style={
+              {
+                "--base-o": p.opacity,
+                "--dx1": `${p.dx1}px`,
+                "--dy1": `${p.dy1}px`,
+                "--dx2": `${p.dx2}px`,
+                "--dy2": `${p.dy2}px`,
+                "--dx3": `${p.dx3}px`,
+                "--dy3": `${p.dy3}px`,
+                "--dur": `${p.dur}s`,
+                animationDelay: `${p.delay}s`,
+              } as React.CSSProperties
+            }
+          />
+        ))}
+    </svg>
+  );
+}
+
 export default function LandingPage() {
   const { isSignedIn } = useUser();
+  const revealRef = useScrollReveal();
 
   const ctaText = isSignedIn ? "Open app" : "Get started";
   const ctaHref = isSignedIn ? getAppUrl() : "/sign-up";
 
   return (
     <div
+      ref={revealRef}
       className="landing-page min-h-screen bg-[hsl(var(--gray-0))] text-[hsl(var(--foreground))]"
-      style={{
-        backgroundImage: 'url("/images/paper-bg.png")',
-        backgroundSize: "300px",
-        backgroundRepeat: "repeat",
-      }}
     >
+      {/* Noise grain overlay — full page */}
+      <svg
+        className="landing-noise pointer-events-none fixed inset-0 z-0 h-full w-full opacity-[0.018]"
+        aria-hidden="true"
+      >
+        <filter id="page-noise">
+          <feTurbulence
+            type="fractalNoise"
+            baseFrequency="0.8"
+            numOctaves="4"
+            stitchTiles="stitch"
+          />
+          <feColorMatrix type="saturate" values="0" />
+        </filter>
+        <rect width="100%" height="100%" filter="url(#page-noise)" />
+      </svg>
+
+      {/* Corner grid overlay — visible at corners, fades to transparent in center */}
+      <div
+        className="landing-grid pointer-events-none fixed inset-0 z-0"
+        aria-hidden="true"
+        style={{
+          backgroundImage:
+            "linear-gradient(hsl(var(--foreground) / 0.06) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--foreground) / 0.06) 1px, transparent 1px)",
+          backgroundSize: "60px 60px",
+          maskImage:
+            "radial-gradient(ellipse 70% 65% at 50% 50%, transparent 50%, black 100%)",
+          WebkitMaskImage:
+            "radial-gradient(ellipse 70% 65% at 50% 50%, transparent 50%, black 100%)",
+        }}
+      />
+
       <div className="header-container">
         <Navbar />
       </div>
@@ -554,29 +1267,27 @@ export default function LandingPage() {
         <section className="relative flex flex-col items-center overflow-hidden px-5 pt-[var(--total-header-height,80px)] sm:px-6">
           {/* Decorative background shapes */}
           <div
-            className="pointer-events-none absolute z-[1]"
+            className="pointer-events-none absolute inset-x-0 z-[1] sm:left-[12.31%] sm:right-[12.82%]"
             style={{
-              left: "12.31%",
-              right: "12.82%",
               top: "50%",
               transform: "translateY(-50%)",
-              height: "62.83%",
+              height: "80%",
             }}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="/assets/hero/decorative-shapes.svg"
               alt=""
-              className="h-full w-full"
+              className="h-full w-full deco-shapes"
             />
           </div>
 
-          <div className="relative z-10 mx-auto flex w-full max-w-[1060px] flex-col items-center gap-[50px] pb-5 pt-[60px]">
+          <div className="relative z-10 mx-auto flex w-full max-w-[1060px] flex-col items-center gap-[50px] pb-10 pt-[140px]">
             <div className="flex w-full flex-col items-center gap-8">
-              {/* Banner pill */}
+              {/* Banner pill — hidden for now */}
               <a
                 href="/blog"
-                className="inline-flex items-center gap-2 rounded-lg bg-white px-3 py-1.5 text-sm text-[#14171d] transition-colors hover:border-[hsl(var(--gray-400))] hover:bg-[hsl(var(--gray-50))]"
+                className="hidden items-center gap-2 rounded-lg border border-[hsl(var(--gray-200))] bg-white px-3 py-1.5 text-sm text-[hsl(var(--foreground))] transition-colors hover:border-[hsl(var(--gray-400))] hover:bg-white"
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
@@ -607,17 +1318,15 @@ export default function LandingPage() {
 
               {/* Heading + Subtitle */}
               <div className="flex w-full flex-col items-center gap-[15px] text-center">
-                <h1 className="w-full text-[32px] font-medium leading-[1.4] tracking-[-1.12px] text-[#14171d] sm:text-[42px] md:text-[51px]">
+                <h1 className="w-full text-[32px] font-medium leading-[1.4] tracking-[-1.12px] text-[hsl(var(--foreground))] sm:text-[42px] md:text-[51px]">
                   Zero, your trustworthy AI teammate{" "}
                   <br className="hidden sm:inline" />
                   for real work.
                 </h1>
-                <p className="max-w-2xl text-[16px] leading-7 text-[#525b68] sm:text-[18px]">
-                  Do everything in Slack and on the web, for individuals and
-                  team collaboration. <br className="hidden sm:inline" />
-                  AI handles the managing the paperwork, the context, the noise,{" "}
-                  <span className="font-bold">safely</span>. You do the
-                  creating.
+                <p className="max-w-2xl text-[16px] leading-7 text-[hsl(var(--muted-foreground))] sm:text-[18px]">
+                  For individuals and teams. AI handles the busywork, context,
+                  and noise. <span className="font-bold">Securely</span>. You
+                  focus on creating.
                 </p>
               </div>
             </div>
@@ -634,88 +1343,161 @@ export default function LandingPage() {
         </section>
 
         {/* ===== WORKS FOR YOU SECTION ===== */}
-        <section className="px-5 py-20 sm:px-6 sm:py-24 md:py-28">
+        <section className="px-5 py-10 sm:px-6 sm:py-12 md:py-16">
           <div className="mx-auto max-w-[1152px]">
-            <SectionHeading>Zero works for you and your team</SectionHeading>
+            <div className="reveal">
+              <SectionHeading>Zero works for you and your team</SectionHeading>
+            </div>
 
             <div className="mt-12 space-y-8 sm:mt-16">
-              <TeammateCard />
-
-              <SlackCard />
-
-              <SyncedToolsCard />
+              <div className="reveal">
+                <TeammateCard />
+              </div>
+              <div className="reveal">
+                <SlackCard />
+              </div>
+              <div className="reveal">
+                <SyncedToolsCard />
+              </div>
             </div>
           </div>
         </section>
 
         {/* ===== CONNECTORS SECTION ===== */}
-        <section className="px-5 py-20 sm:px-6 sm:py-24 md:py-28">
+        <section className="px-5 py-10 sm:px-6 sm:py-12 md:py-16">
           <div className="mx-auto flex max-w-[1060px] flex-col items-center gap-10">
             {/* Title block */}
-            <div className="flex flex-col items-center gap-4 rounded-[32px] px-2 pb-2 pt-6">
-              <h2 className="landing-heading text-center text-[28px] font-semibold leading-[1.2] tracking-[-0.88px] text-[#14171d] sm:text-[34px] md:text-[40px]">
+            <div className="reveal flex flex-col items-center gap-4 rounded-[32px] px-2 pb-2 pt-6">
+              <h2 className="landing-heading text-center text-[28px] font-medium leading-[1.2] tracking-[-0.88px] text-[hsl(var(--foreground))] sm:text-[34px] md:text-[40px]">
                 100+ prebuilt connectors
               </h2>
-              <p className="max-w-[856px] text-center text-sm leading-6 text-[hsl(var(--muted-foreground))] sm:text-base">
+              <p className="max-w-[856px] text-center text-base leading-6 text-[hsl(var(--muted-foreground))]">
                 100+ prebuilt connectors, making it easier for AI to help you
                 securely manage tasks across platforms and services.
               </p>
             </div>
 
-            {/* Connector pills */}
-            <div className="flex w-full max-w-[1060px] flex-col items-center gap-6">
-              {CONNECTORS.map((row, rowIndex) => (
-                <div
-                  key={rowIndex}
-                  className="flex flex-wrap items-center justify-center gap-3.5"
-                >
-                  {row.map((connector) => (
-                    <div
-                      key={connector.name}
-                      className="flex items-center gap-3.5 rounded-[22.4px] border border-[hsl(var(--gray-200))] bg-[#fcfdfd] p-3.5"
-                    >
-                      <Image
-                        src={connector.icon}
-                        alt={connector.name}
-                        width={34}
-                        height={34}
-                        className="h-[34px] w-[34px] shrink-0"
-                      />
-                      <span className="whitespace-nowrap text-[19.6px] font-medium leading-7 text-black">
-                        {connector.name}
-                      </span>
-                    </div>
-                  ))}
+            {/* Connector marquee */}
+            <div className="reveal w-full overflow-hidden">
+              <div className="marquee-container flex flex-col gap-4">
+                {/* Row 1 - scrolls left */}
+                <div className="marquee-track">
+                  <div className="marquee-scroll flex gap-3.5">
+                    {[...CONNECTORS_ROW1, ...CONNECTORS_ROW1].map(
+                      (connector, i) => (
+                        <div
+                          key={`${connector.name}-${i}`}
+                          className="connector-card flex shrink-0 items-center gap-3.5 rounded-[22.4px] border border-[hsl(var(--gray-200))] bg-white p-3.5"
+                        >
+                          {connector.darkIcon ? (
+                            <>
+                              <Image
+                                src={connector.icon}
+                                alt={connector.name}
+                                width={34}
+                                height={34}
+                                className="h-[34px] w-[34px] shrink-0 light-only"
+                              />
+                              <Image
+                                src={connector.darkIcon}
+                                alt={connector.name}
+                                width={34}
+                                height={34}
+                                className="h-[34px] w-[34px] shrink-0 dark-only"
+                              />
+                            </>
+                          ) : (
+                            <Image
+                              src={connector.icon}
+                              alt={connector.name}
+                              width={34}
+                              height={34}
+                              className={`h-[34px] w-[34px] shrink-0${connector.dark ? " landing-icon-invert" : ""}`}
+                            />
+                          )}
+                          <span className="whitespace-nowrap text-[19.6px] font-medium leading-7 text-[hsl(var(--foreground))]">
+                            {connector.name}
+                          </span>
+                        </div>
+                      ),
+                    )}
+                  </div>
                 </div>
-              ))}
+                {/* Row 2 - scrolls right */}
+                <div className="marquee-track">
+                  <div className="marquee-scroll marquee-reverse flex gap-3.5">
+                    {[...CONNECTORS_ROW2, ...CONNECTORS_ROW2].map(
+                      (connector, i) => (
+                        <div
+                          key={`${connector.name}-${i}`}
+                          className="connector-card flex shrink-0 items-center gap-3.5 rounded-[22.4px] border border-[hsl(var(--gray-200))] bg-white p-3.5"
+                        >
+                          {connector.darkIcon ? (
+                            <>
+                              <Image
+                                src={connector.icon}
+                                alt={connector.name}
+                                width={34}
+                                height={34}
+                                className="h-[34px] w-[34px] shrink-0 light-only"
+                              />
+                              <Image
+                                src={connector.darkIcon}
+                                alt={connector.name}
+                                width={34}
+                                height={34}
+                                className="h-[34px] w-[34px] shrink-0 dark-only"
+                              />
+                            </>
+                          ) : (
+                            <Image
+                              src={connector.icon}
+                              alt={connector.name}
+                              width={34}
+                              height={34}
+                              className={`h-[34px] w-[34px] shrink-0${connector.dark ? " landing-icon-invert" : ""}`}
+                            />
+                          )}
+                          <span className="whitespace-nowrap text-[19.6px] font-medium leading-7 text-[hsl(var(--foreground))]">
+                            {connector.name}
+                          </span>
+                        </div>
+                      ),
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </section>
 
         {/* ===== SECURITY SECTION ===== */}
-        <section className="px-5 py-20 sm:px-6 sm:py-24 md:py-28">
+        <section className="px-5 py-10 sm:px-6 sm:py-12 md:py-16">
           <div className="mx-auto max-w-[1152px]">
-            <h2 className="landing-heading text-center text-[28px] font-semibold leading-[1.2] tracking-[-0.88px] text-[#14171d] sm:text-[34px] md:text-[40px]">
-              Zero is built with carefully designed security features
-            </h2>
+            <div className="reveal">
+              <h2 className="landing-heading text-center text-[28px] font-medium leading-[1.2] tracking-[-0.88px] text-[hsl(var(--foreground))] sm:text-[34px] md:text-[40px]">
+                Zero is built with carefully designed security features
+              </h2>
+            </div>
 
-            <div className="mt-14 flex flex-col gap-6 md:flex-row">
+            <div className="reveal mt-14 flex flex-col gap-6 md:flex-row">
               {/* Permission management card */}
               <div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-[20px] bg-white">
                 <div className="flex flex-col gap-4 p-10">
-                  <h3 className="text-2xl font-bold leading-8 text-[#14171d]">
+                  <h3 className="text-2xl font-medium leading-8 text-[hsl(var(--foreground))]">
                     Permission management
                   </h3>
-                  <p className="text-base leading-6 text-[#525b68]">
-                    Stay in control. Grant agents exactly the right access, no
-                    more, no less.
+                  <p className="text-base leading-6 text-[hsl(var(--muted-foreground))]">
+                    You decide what Zero can see and do. Set granular read and
+                    write permissions for each connected tool, so your agents
+                    only access what they need.
                   </p>
                 </div>
-                <div className="flex flex-1 items-center justify-center rounded-b-[20px] bg-[#e7ebf0] p-10">
+                <div className="flex h-[300px] items-center justify-center rounded-b-[20px] bg-[hsl(var(--gray-100))] px-10">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     alt="Permission management interface"
-                    src="/assets/mockup/permission-managment.svg"
+                    src="/assets/mockup/permission-management.svg"
                     className="w-full max-w-[448px]"
                     draggable={false}
                   />
@@ -725,22 +1507,25 @@ export default function LandingPage() {
               {/* Secure by design card */}
               <div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-[20px] bg-white">
                 <div className="flex flex-col gap-4 p-10">
-                  <h3 className="text-2xl font-bold leading-8 text-[#14171d]">
+                  <h3 className="text-2xl font-medium leading-8 text-[hsl(var(--foreground))]">
                     Secure by design
                   </h3>
-                  <p className="text-base leading-6 text-[#525b68]">
-                    Isolated microVMs, no credential exposure, verifiable audit
-                    logs, millisecond execution, open source.
+                  <p className="min-h-[72px] text-base leading-6 text-[hsl(var(--muted-foreground))]">
+                    Every action runs in an isolated microVM. Your credentials
+                    are never exposed. Millisecond execution. And yes, it{"'"}s{" "}
+                    <a
+                      href="https://github.com/vm0-ai/vm0"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-medium text-[#45A7A8] underline underline-offset-2 hover:text-[#3a8e8f]"
+                    >
+                      open source
+                    </a>
+                    .
                   </p>
                 </div>
-                <div className="flex flex-1 items-center justify-center rounded-b-[20px] bg-[#e7ebf0] p-10">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    alt="Secure by design"
-                    src="/assets/mockup/cube-zero.svg"
-                    className="w-full max-w-[448px]"
-                    draggable={false}
-                  />
+                <div className="flex h-[300px] items-center justify-center rounded-b-[20px] bg-[hsl(var(--gray-100))] px-10">
+                  <CubeShieldIllustration />
                 </div>
               </div>
             </div>
@@ -748,132 +1533,65 @@ export default function LandingPage() {
         </section>
 
         {/* ===== AGENT INTELLIGENCE SECTION ===== */}
-        <section className="px-5 py-20 sm:px-6 sm:py-24 md:py-28">
+        <section className="px-5 py-10 sm:px-6 sm:py-12 md:py-16">
           <div className="mx-auto flex max-w-[1152px] flex-col items-center gap-14">
             {/* Section title */}
-            <h2 className="landing-heading max-w-[740px] text-center text-[28px] font-semibold leading-[1.2] tracking-[-0.88px] text-[#14171d] sm:text-[34px] md:text-[40px]">
-              Agent intelligence is what makes Zero feel human-like
-            </h2>
+            <div className="reveal">
+              <h2 className="landing-heading max-w-[740px] text-center text-[28px] font-medium leading-[1.2] tracking-[-0.88px] text-[hsl(var(--foreground))] sm:text-[34px] md:text-[40px]">
+                Agent intelligence is what makes Zero feel human-like
+              </h2>
+            </div>
 
             {/* Two large cards */}
-            <div className="grid w-full gap-6 md:grid-cols-2">
+            <div className="reveal grid w-full gap-6 md:grid-cols-2">
               {/* Persistent memory card */}
               <div className="flex flex-col overflow-hidden rounded-[20px] bg-white">
-                <div className="flex flex-col gap-4 p-8 sm:p-10">
-                  <h3 className="text-2xl font-bold leading-8 text-[#14171d]">
+                <div className="flex flex-1 flex-col gap-4 px-8 pb-4 pt-8 sm:px-10 sm:pt-10">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    alt=""
+                    src="/assets/agent-intelligence/memory-icon.svg"
+                    className="h-[22px] w-[24px] landing-icon-invert"
+                  />
+                  <h3 className="text-2xl font-medium leading-8 text-[hsl(var(--foreground))]">
                     Persistent memory
                   </h3>
-                  <p className="text-base leading-6 text-[#525b68]">
+                  <p className="text-base leading-6 text-[hsl(var(--muted-foreground))]">
                     {`Zero remembers context across conversations, past decisions, user preferences, project context, and behavioral corrections. You don't need to re-explain things every session.`}
                   </p>
                 </div>
-                <div className="relative min-h-[360px] flex-1 overflow-hidden rounded-b-[20px] bg-[#e0bb3c]">
-                  {/* Memory badge */}
-                  <div className="absolute left-[30px] top-[59px] z-10 flex items-center gap-[5px] rounded-[13px] border-[0.4px] border-white bg-[#fcfdfd] px-2 py-2 shadow-[0px_8px_8px_0px_rgba(0,0,0,0.08)]">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      alt=""
-                      src="/assets/agent-intelligence/memory-icon.svg"
-                      className="h-[13px] w-[14.5px]"
-                    />
-                    <span className="text-[11.3px] font-semibold text-black">
-                      Memory
-                    </span>
-                  </div>
-                  {/* Chat mockup card */}
-                  <div className="absolute left-1/2 top-[74px] flex w-[400px] -translate-x-1/2 flex-col rounded-[10px] bg-white p-4">
-                    {/* User message bubble */}
-                    <div className="flex justify-end">
-                      <div className="max-w-[291px] rounded-[12px] bg-[rgba(230,234,239,0.95)] px-[10px] py-[7px]">
-                        <p className="text-[11.6px] leading-[18.8px] text-[#15181e]">
-                          Audit vm0.ai pages against{" "}
-                          <strong>our product direction</strong> and{" "}
-                          <strong>past decisions</strong>. Flag what to keep,
-                          update, or remove, with SEO improvements and next
-                          steps. Create a Linear project with structured issues
-                          for the <strong>right owners</strong>.
-                        </p>
-                      </div>
-                    </div>
-                    {/* Response text */}
-                    <div className="mt-[5px] pt-[7px]">
-                      <p className="text-[11.6px] leading-[18.8px] text-[#15181e]">
-                        Research complete. Full report ready. All vm0.ai pages
-                        are mapped and synced to Notion{" "}
-                        <span className="font-medium text-[#06679f]">here</span>
-                        <span className="font-medium text-[#075786]">.</span>
-                      </p>
-                    </div>
-                  </div>
-                </div>
+                <MemoryMockupArea />
               </div>
 
               {/* Scheduled intelligence card */}
               <div className="flex flex-col overflow-hidden rounded-[20px] bg-white">
-                <div className="flex flex-col gap-4 p-8 sm:p-10">
-                  <h3 className="text-2xl font-bold leading-8 text-[#14171d]">
+                <div className="flex flex-1 flex-col gap-4 px-8 pb-4 pt-8 sm:px-10 sm:pt-10">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    alt=""
+                    src="/assets/agent-intelligence/schedule-icon.svg"
+                    className="size-[24px] landing-icon-invert"
+                  />
+                  <h3 className="text-2xl font-medium leading-8 text-[hsl(var(--foreground))]">
                     Scheduled intelligence
                   </h3>
-                  <p className="min-h-[72px] text-base leading-6 text-[#525b68]">
+                  <p className="text-base leading-6 text-[hsl(var(--muted-foreground))]">
                     Zero runs autonomous recurring tasks, daily error scans,
                     tech debt reports, morning briefs, without being prompted.
                   </p>
                 </div>
-                <div className="relative min-h-[360px] flex-1 overflow-hidden rounded-b-[20px] bg-[#ed71a5]">
-                  {/* Schedule badge */}
-                  <div className="absolute left-[30px] top-[59px] z-10 flex items-center gap-[5px] rounded-[13px] border-[0.4px] border-white bg-[#fcfdfd] px-2 py-2 shadow-[0px_8px_8px_0px_rgba(0,0,0,0.08)]">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      alt=""
-                      src="/assets/agent-intelligence/schedule-icon.svg"
-                      className="size-4"
-                    />
-                    <span className="text-[11.3px] font-semibold text-black">
-                      Schedule
-                    </span>
-                  </div>
-                  {/* Schedule mockup card */}
-                  <div className="absolute left-1/2 top-[80px] flex w-[400px] -translate-x-1/2 flex-col items-center justify-center overflow-hidden rounded-[10px] bg-white p-4 shadow-[0px_1.6px_101px_40px_rgba(0,0,0,0.08)]">
-                    <div className="flex w-full flex-col gap-[13px]">
-                      {/* Header */}
-                      <div className="flex w-full flex-col gap-1">
-                        <span className="text-[11.6px] font-semibold text-black">
-                          {"Zero's schedule"}
-                        </span>
-                        <span className="overflow-hidden text-ellipsis text-[11.6px] text-[#525b68]">
-                          Set time and prompt for Zero to run automatically
-                        </span>
-                      </div>
-                      {/* Schedule item */}
-                      <div className="w-full rounded-[8px] bg-[#f3f5f8] p-[10px]">
-                        <div className="flex flex-col gap-[7px]">
-                          <span className="text-[11.6px] font-semibold text-[#15181e]">
-                            SEO diagnosis
-                          </span>
-                          <span className="text-[11.6px] text-[#525b68]">
-                            Draft the weekly team report from the last 7 days
-                            and save to the shared drive.
-                          </span>
-                          {/* Toggle switch */}
-                          <div className="flex h-[13px] w-[24px] items-center rounded-full bg-[#ef5001] pl-[12px] pr-[1px] py-[1px]">
-                            <div className="size-[10.5px] rounded-full bg-white shadow-[0px_7px_10px_-2px_rgba(0,0,0,0.1),0px_3px_4px_-3px_rgba(0,0,0,0.1)]" />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+                <ScheduleMockupArea />
               </div>
             </div>
 
             {/* Three bottom benefit items */}
-            <div className="grid w-full gap-8 sm:grid-cols-3">
+            <div className="reveal grid w-full gap-8 sm:grid-cols-3">
               {[
                 {
                   icon: "/assets/agent-intelligence/delegation-icon.svg",
                   title: "Delegation to specialized agents",
                   description:
-                    "Zero can spin up sub-agents (e.g., a research agent, a design report agent) to handle tasks in parallel or in the background.",
+                    "Zero spins up sub-agents that act like dedicated teammates, a researcher Lisa, a designer Lucy, each with their own expertise, working in parallel on your behalf.",
                 },
                 {
                   icon: "/assets/agent-intelligence/tool-orchestration-icon.svg",
@@ -894,15 +1612,38 @@ export default function LandingPage() {
                       {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img alt="" src={item.icon} className="size-[22px]" />
                     </div>
-                    <h3 className="text-base font-bold leading-6 text-[#14171d]">
+                    <h3 className="text-base font-bold leading-6 text-[hsl(var(--foreground))]">
                       {item.title}
                     </h3>
                   </div>
-                  <p className="text-sm leading-5 text-[#525b68]">
+                  <p className="text-base leading-6 text-[hsl(var(--muted-foreground))]">
                     {item.description}
                   </p>
                 </div>
               ))}
+            </div>
+          </div>
+        </section>
+
+        {/* ===== CTA SECTION ===== */}
+        <section className="px-5 pb-10 pt-2 sm:px-6 sm:pb-12 md:pb-16">
+          <div className="mx-auto max-w-[1152px]">
+            <div className="flex flex-col items-center gap-6 rounded-[20px] bg-white px-6 py-8 text-center sm:flex-row sm:items-center sm:justify-between sm:gap-8 sm:px-10 sm:text-left">
+              <div className="flex flex-col gap-2">
+                <h2 className="landing-heading text-[22px] font-semibold leading-[1.3] tracking-[-0.5px] text-[hsl(var(--foreground))] sm:text-[26px]">
+                  People lead. Agents deliver. Together, they ship.
+                </h2>
+                <p className="text-base leading-6 text-[hsl(var(--muted-foreground))]">
+                  When humans and AI agents work as one team, your output
+                  multiplies.
+                </p>
+              </div>
+              <CtaButton
+                isSignedIn={isSignedIn ?? false}
+                ctaText={ctaText}
+                ctaHref={ctaHref}
+                className="shrink-0"
+              />
             </div>
           </div>
         </section>
