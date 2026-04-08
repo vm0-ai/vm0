@@ -76,6 +76,25 @@ async function outputPermissionChangeMessage(
     console.log("");
   }
 
+  // Gmail gmail.send: strongly recommend draft-based workflow over direct send
+  if (
+    firewallRef === "gmail" &&
+    permission === "gmail.send" &&
+    action === "enable"
+  ) {
+    console.log("");
+    console.log(
+      "IMPORTANT: Granting gmail.send allows the agent to send emails directly as the user.",
+    );
+    console.log(
+      "Consider keeping gmail.send disabled and using gmail.compose instead — the agent can create drafts for the user to review and send manually.",
+    );
+    console.log(
+      "Only request user approval below if direct sending is specifically required.",
+    );
+    console.log("");
+  }
+
   if (role === "admin" || role === "owner") {
     console.log(
       `You can ${action} the "${permission}" permission directly: [Manage ${label} firewall](${url})`,

@@ -12,6 +12,7 @@ import type {
   FirewallPolicyValue,
 } from "../contracts/firewalls";
 import type { ConnectorType } from "../contracts/connectors";
+import { gmailDefaultAllowed } from "./gmail.generated";
 import { slackDefaultAllowed } from "./slack.generated";
 
 // Category registrations (side-effect imports)
@@ -421,6 +422,7 @@ export function getConnectorFirewall(
 const DEFAULT_ALLOWED: Partial<
   Record<FirewallConnectorType, ReadonlyArray<string>>
 > = {
+  gmail: gmailDefaultAllowed,
   slack: slackDefaultAllowed,
 };
 
