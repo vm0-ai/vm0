@@ -36,7 +36,7 @@ async function insertSession(overrides: {
       lastHeartbeatAt: overrides.lastHeartbeatAt ?? now,
     })
     .returning({ id: voiceChatSessions.id });
-  return row.id;
+  return row!.id;
 }
 
 async function getSessionStatus(id: string) {
