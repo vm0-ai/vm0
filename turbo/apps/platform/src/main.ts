@@ -9,6 +9,7 @@ import { setLogErrorHandler } from "./signals/log.ts";
 import { initTheme$ } from "./signals/theme.ts";
 import { detach, Reason } from "./signals/utils.ts";
 import { setupRouter } from "./views/main.tsx";
+import { registerServiceWorker } from "./lib/push-notifications.ts";
 
 // Initialize Sentry before bootstrap so errors during startup are captured
 initSentry();
@@ -77,3 +78,6 @@ detach(
   Reason.Entrance,
   "main",
 );
+
+// Register service worker for push notifications (fire-and-forget)
+detach(registerServiceWorker(), Reason.Entrance, "sw-register");

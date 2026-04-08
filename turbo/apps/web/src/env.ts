@@ -201,6 +201,9 @@ function initEnv() {
       CRON_SECRET: z.string().min(1).optional(),
       // Lightweight model (OpenRouter) — used for internal tasks like title generation
       OPENROUTER_API_KEY: z.string().min(1).optional(),
+      // Web Push (VAPID) — used for sending push notifications to PWA users
+      VAPID_PUBLIC_KEY: z.string().min(1).optional(),
+      VAPID_PRIVATE_KEY: z.string().min(1).optional(),
       // Dev/test flags
       USE_MOCK_CLAUDE: z.enum(["true", "false"]).optional(),
       VM0_DEBUG: z.string().optional(),
@@ -353,6 +356,8 @@ function initEnv() {
       ABLY_API_KEY: process.env.ABLY_API_KEY,
       CRON_SECRET: process.env.CRON_SECRET,
       OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
+      VAPID_PUBLIC_KEY: process.env.VAPID_PUBLIC_KEY,
+      VAPID_PRIVATE_KEY: process.env.VAPID_PRIVATE_KEY,
       USE_MOCK_CLAUDE: process.env.USE_MOCK_CLAUDE,
       VM0_DEBUG: process.env.VM0_DEBUG,
       CLAUDE_CODE_VERSION_URL: process.env.CLAUDE_CODE_VERSION_URL,

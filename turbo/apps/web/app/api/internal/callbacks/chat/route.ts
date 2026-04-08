@@ -10,9 +10,11 @@ import { queryRunEventsForChat } from "../../../../../src/lib/infra/run/extract-
 import { appendChatMessages } from "../../../../../src/lib/zero/zero-session-service";
 import {
   generateChatTitle,
+  generateChatNotificationSummary,
   type TitleContextMessage,
 } from "../../../../../src/lib/zero/ai/lightweight-model";
 import { updateChatThreadTitle } from "../../../../../src/lib/zero/chat-thread";
+import { sendUserPushNotifications } from "../../../../../src/lib/push/send-push";
 import type { ChatCallbackPayload } from "../../../../../src/lib/infra/callback/callback-payloads";
 import { logger } from "../../../../../src/lib/shared/logger";
 
@@ -116,6 +118,20 @@ async function handleCompleted(
   } catch (err) {
     log.warn("Failed to generate chat title", { err });
   }
+
+  // Send push notification (best-effort)
+  try {
+    const summary = resultText
+      ? await generateChatNotificationSummary(prompt, resultText)
+      : null;
+    await sendUserPushNotifications(userId, {
+      title: prompt.slice(0, 60),
+      body: summary ?? "Your task is complete",
+      url: `/chat/${threadId}`,
+    });
+  } catch (err) {
+    log.warn("Failed to send push notification", { err });
+  }
 }
 
 /**
@@ -140,6 +156,17 @@ async function handleFailed(
       runId,
     );
     await updateThreadSessionId(threadId, sessionId);
+  }
+
+  // Send push notification (best-effort)
+  try {
+    await sendUserPushNotifications(userId, {
+      title: prompt.slice(0, 60),
+      body: `Task failed: ${errorMessage.slice(0, 80)}`,
+      url: `/chat/${threadId}`,
+    });
+  } catch (err) {
+    log.warn("Failed to send push notification", { err });
   }
 }
 
