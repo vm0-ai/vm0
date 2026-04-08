@@ -14,6 +14,7 @@ import { encryptSecretsMap } from "../../../shared/crypto/secrets-encryption";
 import { isOfficialRunnerGroup } from "../runner-group";
 import { forbidden } from "../../../shared/errors";
 import { publishJobNotification } from "../../realtime/client";
+import { findBestRunner } from "../scheduling";
 import { logger } from "../../../shared/logger";
 import { recordSandboxOperation } from "../../metrics";
 import type { PreparedContext, ExecutorResult } from "./types";
@@ -94,6 +95,7 @@ export async function executeRunnerJob(
     runId: context.runId,
     runnerGroup,
     profile,
+    sessionId: context.continuedFromSessionId ?? null,
     executionContext: storedContext,
     expiresAt,
   });
@@ -107,17 +109,13 @@ export async function executeRunnerJob(
 
   log.debug(`Run ${context.runId} queued for runner group: ${runnerGroup}`);
 
-  // Publish job notification to Ably for instant runner pickup
-  // Sends runId + profile so runner can pre-check resource budget before claiming
-  // This is fire-and-forget - failure doesn't affect the queue insertion
-  const published = await publishJobNotification(
+  // Notify runners via Ably with optional targeted dispatch
+  await notifyRunners(
     runnerGroup,
     context.runId,
     profile,
+    context.continuedFromSessionId ?? null,
   );
-  if (published) {
-    log.debug(`Job notification published for run ${context.runId}`);
-  }
 
   return {
     runId: context.runId,
@@ -125,6 +123,35 @@ export async function executeRunnerJob(
     createdAt: new Date().toISOString(),
     sandboxType: "runner",
   };
+}
+
+/**
+ * Find best runner and publish Ably job notification.
+ * Fire-and-forget — failures are logged but don't affect the queued job.
+ */
+async function notifyRunners(
+  runnerGroup: string,
+  runId: string,
+  profile: string,
+  sessionId: string | null,
+): Promise<void> {
+  let targetRunnerId: string | null = null;
+  try {
+    const target = await findBestRunner(runnerGroup, profile, sessionId);
+    targetRunnerId = target?.runnerId ?? null;
+  } catch (e) {
+    log.warn(`findBestRunner failed for run ${runId}, using broadcast`, e);
+  }
+
+  const published = await publishJobNotification(
+    runnerGroup,
+    runId,
+    profile,
+    targetRunnerId,
+  );
+  if (published) {
+    log.debug(`Job notification published for run ${runId}`);
+  }
 }
 
 /**

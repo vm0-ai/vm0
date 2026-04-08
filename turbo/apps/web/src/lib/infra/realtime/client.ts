@@ -65,6 +65,7 @@ export async function publishJobNotification(
   group: string,
   runId: string,
   profile: string,
+  targetRunnerId: string | null = null,
 ): Promise<boolean> {
   const client = getAblyClient();
   if (!client) {
@@ -74,8 +75,15 @@ export async function publishJobNotification(
 
   try {
     const channel = client.channels.get(getRunnerGroupChannelName(group));
-    await channel.publish("job", { runId, profile });
-    log.debug(`Published job notification ${runId} to runner-group:${group}`);
+    await channel.publish("job", {
+      runId,
+      profile,
+      ...(targetRunnerId && { targetRunnerId }),
+    });
+    log.debug(
+      `Published job notification ${runId} to runner-group:${group}` +
+        (targetRunnerId ? ` (target: ${targetRunnerId})` : " (broadcast)"),
+    );
     return true;
   } catch (error) {
     log.error(`Ably job notification failed for runner-group:${group}:`, error);
