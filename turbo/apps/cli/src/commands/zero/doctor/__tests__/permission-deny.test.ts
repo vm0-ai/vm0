@@ -118,7 +118,7 @@ describe("zero doctor permission-deny command", () => {
 
   describe("overlapping permissions", () => {
     it("should pick the most specific (narrowest) permission for gmail send", async () => {
-      await firewallDenyCommand.parseAsync([
+      await permissionDenyCommand.parseAsync([
         "node",
         "cli",
         "gmail",
