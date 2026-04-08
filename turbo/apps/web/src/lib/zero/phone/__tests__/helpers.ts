@@ -2,13 +2,21 @@ import { eq } from "drizzle-orm";
 import { initServices } from "../../../init-services";
 import { orgMetadata } from "../../../../db/schema/org-metadata";
 import { phoneUserLinks } from "../../../../db/schema/phone-user-link";
-import { agentComposes } from "../../../../db/schema/agent-compose";
-import { insertOrgCacheEntry } from "../../../../__tests__/api-test-helpers";
+import {
+  createTestCompose,
+  ensureOrgRow,
+} from "../../../../__tests__/api-test-helpers";
 import { uniqueId } from "../../../../__tests__/test-helpers";
 
 /**
  * Create an org configured with an AgentPhone agent ID and a default agent compose.
  * Sets up org_metadata with agentphoneAgentId + defaultAgentId.
+ *
+ * The compose is created via createTestCompose() so it has a headVersionId,
+ * making it usable in createZeroRun() test scenarios.
+ *
+ * Callers must have the Clerk mock set up (e.g., via context.setupUser()) so
+ * the compose is owned by the correct user/org context.
  */
 export async function createPhoneOrg(orgId: string): Promise<{
   orgId: string;
@@ -19,36 +27,24 @@ export async function createPhoneOrg(orgId: string): Promise<{
 
   const agentphoneAgentId = uniqueId("ap-agent");
 
-  // Insert an org cache entry so slug lookups work
-  await insertOrgCacheEntry({ orgId, slug: uniqueId("org") });
+  // Ensure org_metadata row exists for this org
+  await ensureOrgRow(orgId);
 
-  // Create a compose owned by this org
-  const userId = uniqueId("test-user");
-  const [compose] = await globalThis.services.db
-    .insert(agentComposes)
-    .values({
-      userId,
-      orgId,
-      name: uniqueId("test-compose"),
-    })
-    .returning();
-
-  if (!compose) {
-    throw new Error("Failed to create agent compose for phone org");
-  }
+  // Create a compose with headVersionId via the API so it can be used in run creation
+  const { composeId } = await createTestCompose("phone-test-agent");
 
   // Configure org_metadata with agentphone agent ID and default agent
   await globalThis.services.db
     .update(orgMetadata)
     .set({
       agentphoneAgentId,
-      defaultAgentId: compose.id,
+      defaultAgentId: composeId,
     })
     .where(eq(orgMetadata.orgId, orgId));
 
   return {
     orgId,
-    composeId: compose.id,
+    composeId,
     agentphoneAgentId,
   };
 }

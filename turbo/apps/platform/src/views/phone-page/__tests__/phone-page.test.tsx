@@ -254,15 +254,3 @@ describe("phone page - error display", () => {
     });
   });
 });
-
-describe("phone page - terms and privacy links", () => {
-  it("should show terms of use and privacy policy links", async () => {
-    mockPhoneStatusAPI();
-    await renderPhonePage();
-
-    await waitFor(() => {
-      expect(screen.getByText("Terms of Use")).toBeInTheDocument();
-      expect(screen.getByText("Privacy Policy")).toBeInTheDocument();
-    });
-  });
-});

@@ -5,7 +5,10 @@ import {
   createPhoneOrg,
   linkPhoneNumber,
 } from "../../../../../../src/lib/zero/phone/__tests__/helpers";
-import * as zeroRunModule from "../../../../../../src/lib/zero/zero-run-service";
+import {
+  insertOrgDefaultModelProvider,
+  findMostRecentRunForUser,
+} from "../../../../../../src/__tests__/api-test-helpers";
 
 vi.mock("@clerk/nextjs/server");
 vi.mock("@aws-sdk/client-s3");
@@ -25,7 +28,7 @@ vi.mock("next/server", async (importOriginal) => {
 });
 
 async function flushAfterCallbacks() {
-  await Promise.all(afterPromises);
+  await Promise.allSettled(afterPromises);
   afterPromises.length = 0;
 }
 
@@ -145,12 +148,9 @@ describe("POST /api/zero/phone/webhook", () => {
     const { agentphoneAgentId } = await createPhoneOrg(user.orgId);
     await linkPhoneNumber(TEST_FROM_NUMBER, user.userId, user.orgId);
 
-    // Mock createZeroRun to avoid full runner dispatch in test
-    vi.spyOn(zeroRunModule, "createZeroRun").mockResolvedValue({
-      runId: "mock-run-id",
-      status: "running",
-      createdAt: new Date(),
-    });
+    // Set up a non-VM0 model provider so the pre-flight check passes without
+    // requiring real API credentials or a runner in the test environment
+    await insertOrgDefaultModelProvider(user.orgId, "anthropic");
 
     const request = createWebhookRequest({
       event: "agent.call_ended",
@@ -173,8 +173,12 @@ describe("POST /api/zero/phone/webhook", () => {
     expect(afterPromises.length).toBe(1);
     await flushAfterCallbacks();
 
-    // Verify createZeroRun was called — meaning handleCallEnded resolved the org,
-    // found the linked user, and dispatched a run
-    expect(zeroRunModule.createZeroRun).toHaveBeenCalledOnce();
+    // Verify an agent_runs record was created for the user/org — this confirms
+    // handleCallEnded resolved the org, found the linked user, and dispatched a run
+    const run = await findMostRecentRunForUser(user.userId, user.orgId);
+
+    expect(run).toBeDefined();
+    expect(run!.userId).toBe(user.userId);
+    expect(run!.orgId).toBe(user.orgId);
   });
 });

@@ -5285,3 +5285,65 @@ export async function createTestVoiceChatSession(
     .returning({ id: voiceChatSessions.id });
   return session!;
 }
+
+// ============================================================================
+// Phone Helpers
+// ============================================================================
+
+/**
+ * Set the AgentPhone number ID on org_metadata.
+ * Used when a test needs a number ID attached to the org for outbound call tests.
+ */
+export async function setOrgAgentphoneNumberId(
+  orgId: string,
+  numberId: string,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .update(orgMetadata)
+    .set({ agentphoneNumberId: numberId })
+    .where(eq(orgMetadata.orgId, orgId));
+}
+
+/**
+ * Get the AgentPhone provisioning config for an org from org_metadata.
+ * Used to verify that setup correctly saved the agent/number IDs.
+ */
+export async function getOrgAgentphoneConfig(orgId: string): Promise<{
+  agentphoneAgentId: string | null;
+  agentphoneNumberId: string | null;
+  agentphoneNumber: string | null;
+}> {
+  initServices();
+  const [row] = await globalThis.services.db
+    .select({
+      agentphoneAgentId: orgMetadata.agentphoneAgentId,
+      agentphoneNumberId: orgMetadata.agentphoneNumberId,
+      agentphoneNumber: orgMetadata.agentphoneNumber,
+    })
+    .from(orgMetadata)
+    .where(eq(orgMetadata.orgId, orgId))
+    .limit(1);
+  return {
+    agentphoneAgentId: row?.agentphoneAgentId ?? null,
+    agentphoneNumberId: row?.agentphoneNumberId ?? null,
+    agentphoneNumber: row?.agentphoneNumber ?? null,
+  };
+}
+
+/**
+ * Find the most recent agent run for a user in an org.
+ * Used to verify that a run was dispatched (e.g., from a phone webhook).
+ */
+export async function findMostRecentRunForUser(
+  userId: string,
+  orgId: string,
+): Promise<typeof agentRuns.$inferSelect | undefined> {
+  initServices();
+  const [row] = await globalThis.services.db
+    .select()
+    .from(agentRuns)
+    .where(and(eq(agentRuns.userId, userId), eq(agentRuns.orgId, orgId)))
+    .limit(1);
+  return row;
+}
