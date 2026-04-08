@@ -3,7 +3,6 @@ import { delay } from "signal-timers";
 import { currentChatAgent$ } from "./agent-chat.ts";
 import { resolveAvatarUrl } from "../views/zero-page/avatar-utils.ts";
 import { resetSignal, throwIfAbort } from "./utils.ts";
-import { pinnedAgents$ } from "./zero-page/zero-pinned-agents.ts";
 
 // ---------------------------------------------------------------------------
 // Visibility
@@ -79,31 +78,17 @@ export const hideAppSkeleton$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     set(resetSkeletonCycling$);
 
-    // Both operations are best-effort cache warm-ups executed before the
-    // skeleton hides. A missing agent avatar or a failed pinned-agents fetch
-    // must not prevent the skeleton from hiding — so all non-abort errors are
-    // intentionally swallowed here. A 3s timeout ensures we never block
-    // indefinitely even if the underlying requests hang.
+    // Avatar prefetch is a best-effort cache warm-up: a missing or
+    // unavailable agent should not prevent the skeleton from hiding.
     try {
-      await Promise.race([
-        Promise.all([
-          (async () => {
-            const currentChatAgent = await get(currentChatAgent$);
-            signal.throwIfAborted();
-            if (!currentChatAgent) {
-              return;
-            }
-            const src = resolveAvatarUrl(currentChatAgent.avatarUrl);
-            if (!src) {
-              return;
-            }
-            await fetch(src, { signal });
-          })(),
-          get(pinnedAgents$),
-        ]),
-        delay(3000, { signal }),
-      ]);
+      const currentChatAgent = await get(currentChatAgent$);
       signal.throwIfAborted();
+      if (currentChatAgent) {
+        const src = resolveAvatarUrl(currentChatAgent.avatarUrl);
+        if (src) {
+          await fetch(src, { signal });
+        }
+      }
     } catch (error) {
       throwIfAbort(error);
     }
