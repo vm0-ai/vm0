@@ -248,19 +248,19 @@ describe("createZeroRun()", () => {
     it("should add firewall with only allowed permissions", async () => {
       const agentName = uniqueId("fw-agent");
       await createTestCompose(agentName);
-      await createTestConnector({ type: "github" });
+      await createTestConnector({ type: "slack" });
       await createTestZeroAgent(user.orgId, agentName, {
         firewallPolicies: {
-          github: {
-            "actions:read": "allow",
-            "actions:write": "deny",
-            "issues:read": "allow",
+          slack: {
+            "channels:read": "allow",
+            "channels:history": "allow",
+            admin: "deny",
           },
         },
       });
       const agentId = await getTestZeroAgentId(user.orgId, agentName);
-      // Grant user permission to use github connector for this agent
-      await createTestUserConnector(user.orgId, user.userId, agentId, "github");
+      // Grant user permission to use slack connector for this agent
+      await createTestUserConnector(user.orgId, user.userId, agentId, "slack");
 
       const result = await createZeroRun(baseParams({ agentId: agentId }));
 
@@ -268,16 +268,16 @@ describe("createZeroRun()", () => {
       expect(job).toBeDefined();
       const firewalls = job!.executionContext.firewalls;
       expect(firewalls).toBeDefined();
-      const ghFirewall = firewalls!.find((fw) => {
-        return fw.ref === "github";
+      const slackFirewall = firewalls!.find((fw) => {
+        return fw.ref === "slack";
       });
-      expect(ghFirewall).toBeDefined();
-      const permNames = ghFirewall!.apis[0]!.permissions!.map((p) => {
+      expect(slackFirewall).toBeDefined();
+      const permNames = slackFirewall!.apis[0]!.permissions!.map((p) => {
         return p.name;
       });
-      expect(permNames).toContain("actions:read");
-      expect(permNames).toContain("issues:read");
-      expect(permNames).not.toContain("actions:write");
+      expect(permNames).toContain("channels:read");
+      expect(permNames).toContain("channels:history");
+      expect(permNames).not.toContain("admin");
     });
 
     it("should apply default policies when no explicit policies exist", async () => {
