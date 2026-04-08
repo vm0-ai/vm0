@@ -565,7 +565,8 @@ describe("POST /api/internal/callbacks/chat", () => {
       );
 
       expect(response.status).toBe(200);
-      expect(openRouterMock).toHaveBeenCalledTimes(1);
+      // 2 calls: generateChatTitle + generateChatNotificationSummary
+      expect(openRouterMock).toHaveBeenCalledTimes(2);
 
       const title = await getThreadTitle(threadId);
       expect(title).toBe("Debugging Node.js Apps");
