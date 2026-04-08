@@ -505,6 +505,34 @@ describe("validateRule", () => {
       );
     }).toThrow("invalid GraphQL field pattern");
   });
+
+  it("should accept GraphQL field with underscore prefix", () => {
+    expect(() => {
+      return validateRule("POST /graphql GraphQL field:__typename", "p", "fw");
+    }).not.toThrow();
+  });
+
+  it("should accept GraphQL field with numbers", () => {
+    expect(() => {
+      return validateRule("POST /graphql GraphQL field:field123", "p", "fw");
+    }).not.toThrow();
+  });
+
+  it("should accept GraphQL field catch-all wildcard", () => {
+    expect(() => {
+      return validateRule("POST /graphql GraphQL field:*", "p", "fw");
+    }).not.toThrow();
+  });
+
+  it("should accept all three modifiers together", () => {
+    expect(() => {
+      return validateRule(
+        "POST /graphql GraphQL type:mutation operationName:IssueCreate field:createIssue",
+        "p",
+        "fw",
+      );
+    }).not.toThrow();
+  });
 });
 
 describe("validateBaseUrl", () => {

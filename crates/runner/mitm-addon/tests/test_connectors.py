@@ -2491,3 +2491,176 @@ class TestGraphQLFieldMatching:
             body=body,
         )
         assert isinstance(result, FirewallBlock)
+
+    def test_field_underscore_prefix(self):
+        """Fields starting with underscore (e.g., __typename) are extracted."""
+        body = _gql_body("mutation { __typename createIssue(input: {}) { id } }", "Op")
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL type:mutation field:__typename"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallAllow)
+
+    def test_field_multiple_aliases(self):
+        """Multiple aliased fields are all extracted correctly."""
+        body = _gql_body(
+            'mutation { a: createIssue(input: {}) { id } b: closeIssue(id: "1") { id } }',
+            "BatchOp",
+        )
+        fws = _wrap_firewalls(
+            [
+                {
+                    "base": "https://api.linear.app",
+                    "auth": {"headers": {}},
+                    "permissions": [
+                        {
+                            "name": "create",
+                            "rules": ["POST /graphql GraphQL type:mutation field:createIssue"],
+                        },
+                        {
+                            "name": "close",
+                            "rules": ["POST /graphql GraphQL type:mutation field:closeIssue"],
+                        },
+                    ],
+                }
+            ]
+        )
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql", "POST", fws, body=body
+        )
+        assert isinstance(result, FirewallAllow)
+        # First matching permission wins (order-dependent)
+        assert result.match_info["permission"] == "create"
+
+    def test_field_nested_object_arg_not_extracted(self):
+        """Field names inside nested object arguments must NOT be extracted."""
+        body = _gql_body(
+            "mutation { createIssue(input: { nested: { closeIssue: true } }) { id } }",
+            "Op",
+        )
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL type:mutation field:closeIssue"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallBlock)
+
+    def test_field_with_directive(self):
+        """Fields with directives are still extracted."""
+        body = _gql_body(
+            "mutation { createIssue(input: {}) @skip(if: false) { id } }",
+            "Op",
+        )
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallAllow)
+
+    def test_field_no_selection_set(self):
+        """Field without selection set or arguments (unusual but valid)."""
+        body = _gql_body("mutation { createIssue }", "Op")
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallAllow)
+
+    def test_field_empty_selection_set(self):
+        """Empty selection set has no fields."""
+        body = _gql_body("mutation { }", "Op")
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallBlock)
+
+    def test_field_multiline_with_tabs(self):
+        """Multiline query with tabs and varied whitespace."""
+        body = _gql_body(
+            "mutation Op {\n\tcreateIssue(\n\t\tinput: {}\n\t) {\n\t\tid\n\t}\n}",
+            "Op",
+        )
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallAllow)
+
+    def test_field_and_operation_name_without_type(self):
+        """field: + operationName: without type: — both must match."""
+        body = _gql_body("mutation { createIssue(input: {}) { id } }", "IssueCreate")
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL operationName:IssueCreate field:createIssue"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallAllow)
+
+    def test_field_and_operation_name_mismatch(self):
+        """field matches but operationName doesn't — blocked."""
+        body = _gql_body("mutation { createIssue(input: {}) { id } }", "WrongName")
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL operationName:IssueCreate field:createIssue"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallBlock)
+
+    def test_field_multiple_permissions_correct_match(self):
+        """With multiple permissions, the correct one is matched by field."""
+        body = _gql_body('mutation { closeIssue(id: "1") { id } }', "CloseIssue")
+        fws = _wrap_firewalls(
+            [
+                {
+                    "base": "https://api.linear.app",
+                    "auth": {"headers": {}},
+                    "permissions": [
+                        {
+                            "name": "create",
+                            "rules": ["POST /graphql GraphQL type:mutation field:createIssue"],
+                        },
+                        {
+                            "name": "close",
+                            "rules": ["POST /graphql GraphQL type:mutation field:closeIssue"],
+                        },
+                        {
+                            "name": "update",
+                            "rules": ["POST /graphql GraphQL type:mutation field:updateIssue"],
+                        },
+                    ],
+                }
+            ]
+        )
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql", "POST", fws, body=body
+        )
+        assert isinstance(result, FirewallAllow)
+        assert result.match_info["permission"] == "close"
+
+    def test_field_inline_fragment_field_at_depth2(self):
+        """Fields inside inline fragment body are at depth 2, not extracted."""
+        body = _gql_body(
+            "mutation { ... on Mutation { createIssue(input: {}) { id } } }",
+            "Op",
+        )
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallBlock)

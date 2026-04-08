@@ -499,4 +499,155 @@ describe("findMatchingPermissions with GraphQL field: modifier", () => {
       [],
     );
   });
+
+  it("field + operationName without type — both must match", () => {
+    const config: FirewallConfig = {
+      name: "test",
+      apis: [
+        {
+          base: "https://api.example.com",
+          auth: { headers: {} },
+          permissions: [
+            {
+              name: "issues",
+              rules: [
+                "POST /graphql GraphQL operationName:IssueCreate field:createIssue",
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    expect(
+      findMatchingPermissions("POST", "/graphql", config, {
+        type: "mutation",
+        operationName: "IssueCreate",
+        fields: ["createIssue"],
+      }),
+    ).toEqual(["issues"]);
+    // operationName mismatch → blocked
+    expect(
+      findMatchingPermissions("POST", "/graphql", config, {
+        type: "mutation",
+        operationName: "WrongName",
+        fields: ["createIssue"],
+      }),
+    ).toEqual([]);
+    // field mismatch → blocked
+    expect(
+      findMatchingPermissions("POST", "/graphql", config, {
+        type: "mutation",
+        operationName: "IssueCreate",
+        fields: ["deleteIssue"],
+      }),
+    ).toEqual([]);
+  });
+
+  it("multiple permissions — correct one matched by field", () => {
+    const config: FirewallConfig = {
+      name: "github",
+      apis: [
+        {
+          base: "https://api.github.com",
+          auth: { headers: {} },
+          permissions: [
+            {
+              name: "issues-read",
+              rules: ["POST /graphql GraphQL type:query field:repository"],
+            },
+            {
+              name: "issues-write",
+              rules: ["POST /graphql GraphQL type:mutation field:createIssue"],
+            },
+            {
+              name: "pr-write",
+              rules: [
+                "POST /graphql GraphQL type:mutation field:mergePullRequest",
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const body: GraphQLBody = {
+      type: "mutation",
+      fields: ["mergePullRequest"],
+    };
+    const perms = findMatchingPermissions("POST", "/graphql", config, body);
+    expect(perms).toContain("pr-write");
+    expect(perms).not.toContain("issues-write");
+    expect(perms).not.toContain("issues-read");
+  });
+
+  it("field rules coexist with REST rules in same config", () => {
+    const config: FirewallConfig = {
+      name: "github",
+      apis: [
+        {
+          base: "https://api.github.com",
+          auth: { headers: {} },
+          permissions: [
+            {
+              name: "issues-rest",
+              rules: ["GET /repos/{owner}/{repo}/issues"],
+            },
+            {
+              name: "issues-gql",
+              rules: ["POST /graphql GraphQL type:mutation field:createIssue"],
+            },
+          ],
+        },
+      ],
+    };
+    // REST rule matches REST request
+    expect(
+      findMatchingPermissions("GET", "/repos/vm0/vm0/issues", config),
+    ).toEqual(["issues-rest"]);
+    // GraphQL rule matches GraphQL request
+    expect(
+      findMatchingPermissions("POST", "/graphql", config, {
+        type: "mutation",
+        fields: ["createIssue"],
+      }),
+    ).toEqual(["issues-gql"]);
+  });
+
+  it("same field in multiple permissions — all matched", () => {
+    const config: FirewallConfig = {
+      name: "test",
+      apis: [
+        {
+          base: "https://api.example.com",
+          auth: { headers: {} },
+          permissions: [
+            {
+              name: "reactions-issues",
+              rules: ["POST /graphql GraphQL type:mutation field:addReaction"],
+            },
+            {
+              name: "reactions-prs",
+              rules: ["POST /graphql GraphQL type:mutation field:addReaction"],
+            },
+          ],
+        },
+      ],
+    };
+    const body: GraphQLBody = {
+      type: "mutation",
+      fields: ["addReaction"],
+    };
+    const perms = findMatchingPermissions("POST", "/graphql", config, body);
+    expect(perms).toContain("reactions-issues");
+    expect(perms).toContain("reactions-prs");
+  });
+
+  it("underscore-prefixed fields match", () => {
+    const body: GraphQLBody = {
+      type: "mutation",
+      fields: ["__typename", "createIssue"],
+    };
+    expect(
+      findMatchingPermissions("POST", "/graphql", fieldConfig, body),
+    ).toContain("issues-write");
+  });
 });
