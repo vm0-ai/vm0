@@ -99,15 +99,15 @@ describe("model selection for Anthropic-native providers", () => {
     "%s offers sonnet and opus models",
     (type) => {
       const models = getModels(type);
-      expect(models).toContain("claude-sonnet-4.6");
-      expect(models).toContain("claude-opus-4.6");
+      expect(models).toContain("claude-sonnet-4-6");
+      expect(models).toContain("claude-opus-4-6");
     },
   );
 
   it.each(["claude-code-oauth-token", "anthropic-api-key"] as const)(
-    "%s defaults to claude-sonnet-4.6",
+    "%s defaults to claude-sonnet-4-6",
     (type) => {
-      expect(getDefaultModel(type)).toBe("claude-sonnet-4.6");
+      expect(getDefaultModel(type)).toBe("claude-sonnet-4-6");
     },
   );
 

@@ -37,11 +37,11 @@ export const VM0_MODEL_TO_PROVIDER: Record<
   string,
   { concreteType: string; vendor: string }
 > = {
-  "claude-sonnet-4.6": {
+  "claude-sonnet-4-6": {
     concreteType: "anthropic-api-key",
     vendor: "anthropic",
   },
-  "claude-opus-4.6": {
+  "claude-opus-4-6": {
     concreteType: "anthropic-api-key",
     vendor: "anthropic",
   },
@@ -73,8 +73,8 @@ export const MODEL_PROVIDER_TYPES = {
       CLAUDE_CODE_OAUTH_TOKEN: "$secret",
       ANTHROPIC_MODEL: "$model",
     } as Record<string, string>,
-    models: ["claude-sonnet-4.6", "claude-opus-4.6"] as string[],
-    defaultModel: "claude-sonnet-4.6",
+    models: ["claude-sonnet-4-6", "claude-opus-4-6"] as string[],
+    defaultModel: "claude-sonnet-4-6",
   },
   "anthropic-api-key": {
     framework: "claude-code" as const,
@@ -87,8 +87,8 @@ export const MODEL_PROVIDER_TYPES = {
       ANTHROPIC_API_KEY: "$secret",
       ANTHROPIC_MODEL: "$model",
     } as Record<string, string>,
-    models: ["claude-sonnet-4.6", "claude-opus-4.6"] as string[],
-    defaultModel: "claude-sonnet-4.6",
+    models: ["claude-sonnet-4-6", "claude-opus-4-6"] as string[],
+    defaultModel: "claude-sonnet-4-6",
   },
   "openrouter-api-key": {
     framework: "claude-code" as const,
@@ -332,7 +332,7 @@ export const MODEL_PROVIDER_TYPES = {
     framework: "claude-code" as const,
     label: "VM0 Managed",
     models: Object.keys(VM0_MODEL_TO_PROVIDER) as string[],
-    defaultModel: "claude-sonnet-4.6",
+    defaultModel: "claude-sonnet-4-6",
   },
 } as const;
 

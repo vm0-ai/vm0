@@ -56,7 +56,7 @@ describe("VM0 managed model provider", () => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             type: "vm0",
-            selectedModel: "claude-sonnet-4.6",
+            selectedModel: "claude-sonnet-4-6",
           }),
         }),
       );
@@ -65,7 +65,7 @@ describe("VM0 managed model provider", () => {
       const data = await response.json();
       expect(data.provider.type).toBe("vm0");
       expect(data.provider.framework).toBe("claude-code");
-      expect(data.provider.selectedModel).toBe("claude-sonnet-4.6");
+      expect(data.provider.selectedModel).toBe("claude-sonnet-4-6");
       expect(data.provider.isDefault).toBe(true);
       expect(data.created).toBe(true);
     });
@@ -80,7 +80,7 @@ describe("VM0 managed model provider", () => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             type: "vm0",
-            selectedModel: "claude-opus-4.6",
+            selectedModel: "claude-opus-4-6",
           }),
         }),
       );
@@ -88,7 +88,7 @@ describe("VM0 managed model provider", () => {
 
       const data = await response.json();
       expect(data.provider.type).toBe("vm0");
-      expect(data.provider.selectedModel).toBe("claude-opus-4.6");
+      expect(data.provider.selectedModel).toBe("claude-opus-4-6");
       expect(data.created).toBe(true);
     });
   });
@@ -126,17 +126,17 @@ describe("VM0 managed model provider", () => {
 
   describe("model-to-provider mapping", () => {
     it("should resolve sonnet to anthropic-api-key", () => {
-      expect(getVm0ConcreteProviderType("claude-sonnet-4.6")).toBe(
+      expect(getVm0ConcreteProviderType("claude-sonnet-4-6")).toBe(
         "anthropic-api-key",
       );
-      expect(getVm0Vendor("claude-sonnet-4.6")).toBe("anthropic");
+      expect(getVm0Vendor("claude-sonnet-4-6")).toBe("anthropic");
     });
 
     it("should resolve opus to anthropic-api-key", () => {
-      expect(getVm0ConcreteProviderType("claude-opus-4.6")).toBe(
+      expect(getVm0ConcreteProviderType("claude-opus-4-6")).toBe(
         "anthropic-api-key",
       );
-      expect(getVm0Vendor("claude-opus-4.6")).toBe("anthropic");
+      expect(getVm0Vendor("claude-opus-4-6")).toBe("anthropic");
     });
 
     it("should throw for unknown models", () => {
@@ -146,7 +146,7 @@ describe("VM0 managed model provider", () => {
     });
 
     it("should have all VM0 provider models mapped", () => {
-      const vm0Models = ["claude-sonnet-4.6", "claude-opus-4.6"];
+      const vm0Models = ["claude-sonnet-4-6", "claude-opus-4-6"];
       for (const model of vm0Models) {
         expect(VM0_MODEL_TO_PROVIDER[model]).toBeDefined();
       }

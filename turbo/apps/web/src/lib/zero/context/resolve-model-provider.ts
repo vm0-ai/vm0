@@ -154,7 +154,7 @@ interface ModelProviderSecretResult {
   /** For meta-providers like "vm0", the concrete provider type resolved at build time.
    *  Used for firewall lookup instead of the meta-provider type. */
   concreteProviderType?: ModelProviderType;
-  /** The logical model name selected by the user (e.g. "claude-sonnet-4.6").
+  /** The logical model name selected by the user (e.g. "claude-sonnet-4-6").
    *  Used for credit usage billing. */
   selectedModel?: string;
 }

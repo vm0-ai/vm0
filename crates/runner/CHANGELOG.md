@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.68.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.67.1...runner-rs-v0.68.0) (2026-04-08)
+
+
+### Features
+
+* **firewalls:** add graphql field modifier for rule matching ([#8476](https://github.com/vm0-ai/vm0/issues/8476)) ([82b2049](https://github.com/vm0-ai/vm0/commit/82b20493e48325cbc75ecc431a74e8254096e46a))
+* **platform:** capture response headers and mark binary bodies in network logs ([#8481](https://github.com/vm0-ai/vm0/issues/8481)) ([6a778f8](https://github.com/vm0-ai/vm0/commit/6a778f8ebbd88e2bd95a4d79a5e4ed1e4c3f4f26))
+* **runner:** add smart dispatch with session affinity and targeted ably push ([#8474](https://github.com/vm0-ai/vm0/issues/8474)) ([65dbe3a](https://github.com/vm0-ai/vm0/commit/65dbe3af2795aa2730a3df28e84e3572fc8a46cc)), closes [#8368](https://github.com/vm0-ai/vm0/issues/8368)
+
+
+### Bug Fixes
+
+* **proxy:** remove firewall terminology from error responses ([#8486](https://github.com/vm0-ai/vm0/issues/8486)) ([a8292d5](https://github.com/vm0-ai/vm0/commit/a8292d585528abecfb03d7bfa15ca33e31b319cb)), closes [#8483](https://github.com/vm0-ai/vm0/issues/8483)
+* **slack:** skip channel context fetch for dm conversations ([#8475](https://github.com/vm0-ai/vm0/issues/8475)) ([07a3321](https://github.com/vm0-ai/vm0/commit/07a33216d0a47047b341a0784324cb71b596a7f4))
+
 ## [0.67.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.67.0...runner-rs-v0.67.1) (2026-04-08)
 
 ## [0.67.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.66.0...runner-rs-v0.67.0) (2026-04-07)

@@ -134,6 +134,8 @@ export const permissionExistingRequest$ = computed(async (get) => {
     toast: false,
   });
   // Find latest pending/rejected request for this ref+permission+action
+  // Note: the API contract uses `firewallRef` (DB/external name); internally
+  // this layer refers to it as `permissionRef` (user-facing name).
   const match = result.body
     .filter((r) => {
       return (

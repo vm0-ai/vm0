@@ -36,13 +36,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@vm0/ui";
-import { ZeroScheduleTab } from "./zero-schedule-tab.tsx";
-import { ZeroInstructionsTab } from "./zero-instructions-tab.tsx";
+import { ZeroScheduleTab } from "../zero-page/zero-schedule-tab.tsx";
+import { ZeroInstructionsTab } from "../zero-page/zero-instructions-tab.tsx";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
-import { ZeroSettingsTab } from "./zero-settings-tab.tsx";
+import { ZeroSettingsTab } from "../zero-page/zero-settings-tab.tsx";
 
-import { TONE_OPTIONS, type Tone } from "./zero-tone-constants.ts";
-import type { ScheduleEntry } from "./zero-schedule-card.tsx";
+import { TONE_OPTIONS, type Tone } from "../zero-page/zero-tone-constants.ts";
+import type { ScheduleEntry } from "../zero-page/zero-schedule-card.tsx";
 import {
   zeroJobDetail$,
   zeroJobInstructions$,
@@ -66,20 +66,19 @@ import {
   zeroJobPermissionPolicies$,
   reloadJobDetail$,
 } from "../../signals/zero-page/zero-job-detail.ts";
-import type { AgentDetail } from "../../signals/zero-page/agent-types.ts";
 import { runScheduleNow$ } from "../../signals/zero-page/zero-schedule.ts";
 import { zeroOnboardingStatus$ } from "../../signals/zero-page/zero-onboarding.ts";
 import { Link } from "../router/link.tsx";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import { useAgentAvatar } from "./zero-sidebar.tsx";
-import { resolveAvatarUrl } from "./avatar-utils.ts";
-import { agents$ } from "../../signals/agent.ts";
+import { useAgentAvatar } from "../zero-page/zero-sidebar.tsx";
+import { resolveAvatarUrl } from "../zero-page/avatar-utils.ts";
+import { currentAgent$ } from "../../signals/agent.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { user$ } from "../../signals/auth.ts";
-import { ZeroNoPermissionIllustration } from "./components/zero-no-permission-illustration.tsx";
-import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
-import { PermissionsDrawer } from "./components/settings/permissions-dialog.tsx";
+import { ZeroNoPermissionIllustration } from "../zero-page/components/zero-no-permission-illustration.tsx";
+import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
+import { PermissionsDrawer } from "../zero-page/components/settings/permissions-dialog.tsx";
 import {
   hasConnectorPermissions,
   savePermissionPolicies$,
@@ -103,10 +102,6 @@ import {
 // ---------------------------------------------------------------------------
 // Page shell: skeleton, error, header
 // ---------------------------------------------------------------------------
-
-interface ZeroJobDetailPageProps {
-  agentId: string;
-}
 
 function loadableErrorMessage(loadable: {
   state: string;
@@ -302,29 +297,6 @@ function resolveSound(sound: string): Tone {
   return (TONE_OPTIONS as readonly string[]).includes(sound)
     ? (sound as Tone)
     : "professional";
-}
-
-function extractAgentFields(
-  detail: AgentDetail | null,
-  fallbackName: string,
-  listItem?: {
-    displayName?: string | null;
-    description?: string | null;
-    sound?: string | null;
-    avatarUrl?: string | null;
-  },
-) {
-  return {
-    description: listItem?.description ?? detail?.description ?? "",
-    framework: null,
-    sound: listItem?.sound ?? detail?.sound ?? "professional",
-    avatarUrl: listItem?.avatarUrl ?? detail?.avatarUrl ?? null,
-    displayName:
-      listItem?.displayName ??
-      detail?.displayName ??
-      detail?.agentId ??
-      fallbackName,
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -743,141 +715,224 @@ function JobInstructionsTab() {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Main page
-// ---------------------------------------------------------------------------
+function AgentHeader({
+  displayName,
+  description,
+  avatarUrl,
+  agentId,
+  activeTab,
+  onTabChange,
+  showProfileAndInstructions,
+}: {
+  displayName: string;
+  description: string;
+  avatarUrl: string | null;
+  agentId: string;
+  activeTab: string;
+  onTabChange: (tab: string) => void;
+  showProfileAndInstructions: boolean;
+}) {
+  const nav = useSet(detachedNavigateTo$);
+  const agentAvatar = useAgentAvatar(agentId);
+  const resolvedDbAvatar = resolveAvatarUrl(avatarUrl);
+  const currentAvatar = resolvedDbAvatar ?? agentAvatar;
 
-export function ZeroJobDetailPage({ agentId }: ZeroJobDetailPageProps) {
-  const detailLoadable = useLoadable(zeroJobDetail$);
-  const detail = useLastResolved(zeroJobDetail$) ?? null;
-  const error = loadableErrorMessage(detailLoadable);
-  const agents = useLastResolved(agents$) ?? [];
-  const listItem = agents.find((a) => {
-    return a.id === agentId;
-  });
+  return (
+    <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-6 pb-0">
+      <div className="mx-auto max-w-[900px]">
+        <div className="flex items-center gap-4">
+          {currentAvatar ? (
+            <img
+              src={currentAvatar}
+              alt={displayName}
+              className="h-14 w-14 shrink-0 rounded-full object-cover object-top sm:h-16 sm:w-16"
+            />
+          ) : (
+            <div
+              className="h-14 w-14 shrink-0 rounded-full bg-muted sm:h-16 sm:w-16"
+              aria-hidden
+            />
+          )}
+          <div className="min-w-0">
+            <h1 className="text-lg font-semibold tracking-tight text-foreground sm:text-xl truncate">
+              {displayName}
+            </h1>
+            <p className="text-sm text-muted-foreground mt-1.5 leading-tight line-clamp-2">
+              {description || "Your AI teammate, tuned to you"}
+            </p>
+          </div>
+        </div>
 
-  const { description, displayName, sound, avatarUrl } = extractAgentFields(
-    detail,
-    agentId,
-    listItem,
+        <div className="mt-4 sm:mt-6 flex items-center gap-2">
+          <AgentTabNav
+            activeTab={activeTab}
+            onTabChange={onTabChange}
+            showProfileAndInstructions={showProfileAndInstructions}
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            className="shrink-0 zero-btn-morandi gap-1.5"
+            onClick={() => {
+              nav("/agents/:id/chat", { pathParams: { id: agentId } });
+            }}
+            aria-label={`Chat with ${displayName}`}
+          >
+            <IconMessageCircle size={14} stroke={2} />
+            Chat with {displayName}
+          </Button>
+        </div>
+      </div>
+    </header>
   );
-  const resolvedSound = resolveSound(sound);
+}
 
+function AgentTabContent({
+  activeTab,
+  agentId,
+  displayName,
+  description,
+  avatarUrl,
+  resolvedSound,
+  isDefaultAgent,
+  ownerId,
+}: {
+  activeTab: string;
+  agentId: string;
+  displayName: string;
+  description: string;
+  avatarUrl: string | null;
+  resolvedSound: Tone;
+  isDefaultAgent: boolean;
+  ownerId: string;
+}) {
   const deleteAgent = useSet(deleteZeroJobAgent$);
   const nav = useSet(detachedNavigateTo$);
   const pageSignal = useGet(pageSignal$);
-
-  const statusLoadable = useLastLoadable(zeroOnboardingStatus$);
-  const isDefaultAgent =
-    statusLoadable.state === "hasData" &&
-    (statusLoadable.data.defaultAgentId === agentId ||
-      statusLoadable.data.defaultAgentId === detail?.agentId);
-
-  const adminLoadable = useLoadable(isOrgAdmin$);
-  const isAdmin = adminLoadable.state === "hasData" && adminLoadable.data;
-
-  // Non-admin users cannot access profile/instructions tabs for the default agent
-  const hideProfileAndInstructions = isDefaultAgent && !isAdmin;
 
   const handleDelete = async () => {
     await deleteAgent(pageSignal);
     nav("/agents");
   };
 
+  switch (activeTab) {
+    case "authorization": {
+      return (
+        <JobPermissionsTab
+          agentId={agentId}
+          displayName={displayName}
+          ownerId={ownerId}
+        />
+      );
+    }
+    case "schedule": {
+      return <JobScheduleTab displayName={displayName} />;
+    }
+    case "profile": {
+      return (
+        <ZeroSettingsTab
+          key={`${displayName}\0${description}\0${resolvedSound}\0${avatarUrl}`}
+          displayName={displayName}
+          description={description}
+          sound={resolvedSound}
+          avatarUrl={avatarUrl}
+          updateSettings$={zeroJobUpdateSettings$}
+          inputId="job-agent-name"
+          isDefaultAgent={isDefaultAgent}
+          onDelete={handleDelete}
+        />
+      );
+    }
+    case "instructions": {
+      return <JobInstructionsTab />;
+    }
+    default: {
+      return null;
+    }
+  }
+}
+
+function useAgentFields() {
+  const agent = useLastResolved(currentAgent$);
+  const detail = useLastResolved(zeroJobDetail$);
+  // Both signals fetch from zeroAgentsByIdContract; pick whichever resolved first
+  const source = agent ?? detail;
+  const agentId = source?.agentId ?? "";
+  return {
+    detail: detail ?? null,
+    agentId,
+    displayName: source?.displayName ?? (agentId || "Agent"),
+    description: source?.description ?? "",
+    avatarUrl: source?.avatarUrl ?? null,
+    resolvedSound: resolveSound(source?.sound ?? "professional"),
+    ownerId: source?.ownerId ?? "",
+  };
+}
+
+function useTabVisibility(agentId: string) {
+  const statusLoadable = useLastLoadable(zeroOnboardingStatus$);
+  const isDefaultAgent =
+    statusLoadable.state === "hasData" &&
+    statusLoadable.data.defaultAgentId === agentId;
+
+  const adminLoadable = useLoadable(isOrgAdmin$);
+  const isAdmin = adminLoadable.state === "hasData" && adminLoadable.data;
+
   const rawTab = useGet(zeroJobActiveTab$);
   const setActiveTab = useSet(setZeroJobActiveTab$);
+  const hideProfileAndInstructions = isDefaultAgent && !isAdmin;
   const activeTab = resolveVisibleTab(rawTab, hideProfileAndInstructions);
 
-  const agentAvatar = useAgentAvatar(agentId);
-  const resolvedDbAvatar = resolveAvatarUrl(avatarUrl);
-  const currentAvatar = resolvedDbAvatar ?? agentAvatar;
+  return {
+    isDefaultAgent,
+    hideProfileAndInstructions,
+    activeTab,
+    setActiveTab,
+  };
+}
 
-  if (!detail && !error) {
+export function ZeroJobDetailPage() {
+  const detailLoadable = useLoadable(zeroJobDetail$);
+  const error = loadableErrorMessage(detailLoadable);
+  const fields = useAgentFields();
+  const {
+    isDefaultAgent,
+    hideProfileAndInstructions,
+    activeTab,
+    setActiveTab,
+  } = useTabVisibility(fields.agentId);
+
+  if (!fields.detail && !error) {
     return <DetailSkeleton />;
   }
 
   if (error) {
-    return <DetailError error={error} agentId={agentId} />;
+    return <DetailError error={error} agentId={fields.agentId} />;
   }
 
   return (
     <div className="flex flex-1 flex-col min-h-0 overflow-auto [scrollbar-gutter:stable]">
-      <Breadcrumb currentName={displayName} />
-      <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-6 pb-0">
-        <div className="mx-auto max-w-[900px]">
-          <div className="flex items-center gap-4">
-            {currentAvatar ? (
-              <img
-                src={currentAvatar}
-                alt={displayName}
-                className="h-14 w-14 shrink-0 rounded-full object-cover object-top sm:h-16 sm:w-16"
-              />
-            ) : (
-              <div
-                className="h-14 w-14 shrink-0 rounded-full bg-muted sm:h-16 sm:w-16"
-                aria-hidden
-              />
-            )}
-            <div className="min-w-0">
-              <h1 className="text-lg font-semibold tracking-tight text-foreground sm:text-xl truncate">
-                {displayName}
-              </h1>
-              <p className="text-sm text-muted-foreground mt-1.5 leading-tight line-clamp-2">
-                {description || "Your AI teammate, tuned to you"}
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-4 sm:mt-6 flex items-center gap-2">
-            <AgentTabNav
-              activeTab={activeTab}
-              onTabChange={setActiveTab}
-              showProfileAndInstructions={!hideProfileAndInstructions}
-            />
-            <Button
-              variant="outline"
-              size="sm"
-              className="shrink-0 zero-btn-morandi gap-1.5"
-              onClick={() => {
-                nav("/agents/:id/chat", { pathParams: { id: agentId } });
-              }}
-              aria-label={`Chat with ${displayName}`}
-            >
-              <IconMessageCircle size={14} stroke={2} />
-              Chat with {displayName}
-            </Button>
-          </div>
-        </div>
-      </header>
-
+      <Breadcrumb currentName={fields.displayName} />
+      <AgentHeader
+        displayName={fields.displayName}
+        description={fields.description}
+        avatarUrl={fields.avatarUrl}
+        agentId={fields.agentId}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        showProfileAndInstructions={!hideProfileAndInstructions}
+      />
       <main className="shrink-0 px-4 sm:px-6 pt-4 sm:pt-6 pb-16">
-        {activeTab === "authorization" && detail && (
-          <JobPermissionsTab
-            agentId={agentId}
-            displayName={displayName}
-            ownerId={detail.ownerId}
-          />
-        )}
-
-        {activeTab === "schedule" && (
-          <JobScheduleTab displayName={displayName} />
-        )}
-
-        {activeTab === "profile" && (
-          <ZeroSettingsTab
-            key={`${displayName}\0${description}\0${resolvedSound}\0${avatarUrl}`}
-            displayName={displayName}
-            description={description ?? ""}
-            sound={resolvedSound}
-            avatarUrl={avatarUrl}
-            updateSettings$={zeroJobUpdateSettings$}
-            inputId="job-agent-name"
-            isDefaultAgent={isDefaultAgent}
-            onDelete={handleDelete}
-          />
-        )}
-
-        {activeTab === "instructions" && <JobInstructionsTab />}
+        <AgentTabContent
+          activeTab={activeTab}
+          agentId={fields.agentId}
+          displayName={fields.displayName}
+          description={fields.description}
+          avatarUrl={fields.avatarUrl}
+          resolvedSound={fields.resolvedSound}
+          isDefaultAgent={isDefaultAgent}
+          ownerId={fields.ownerId}
+        />
       </main>
     </div>
   );

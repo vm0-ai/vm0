@@ -96,14 +96,14 @@ describe("org-model-providers vm0 provider", () => {
 
     // Verify the form has a pre-selected model
     const formValues = store.get(orgDialogFormValues$);
-    expect(formValues.selectedModel).toBe("claude-sonnet-4.6");
+    expect(formValues.selectedModel).toBe("claude-sonnet-4-6");
 
     // Submit WITHOUT changing the model selector (user accepted the default)
     await store.set(orgSubmitDialog$, signal);
 
     // The selectedModel should be included in the request
     expect(capturedBody).not.toBeNull();
-    expect(capturedBody!.selectedModel).toBe("claude-sonnet-4.6");
+    expect(capturedBody!.selectedModel).toBe("claude-sonnet-4-6");
   });
 
   it("should include selectedModel when user explicitly changes the model", async () => {

@@ -8,7 +8,7 @@ import crypto from "crypto";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { getOrgIdBySlug } from "../../../../../src/lib/auth/org-cache";
-import { verifyMembershipCached } from "../../../../../src/lib/auth/org-membership-cache";
+import { getMemberRole } from "../../../../../src/lib/auth/org-membership-cache";
 import { generateCliToken } from "../../../../../src/lib/auth/sandbox-token";
 import { cliTokens } from "../../../../../src/db/schema/cli-tokens";
 
@@ -45,7 +45,7 @@ const router = tsr.router(cliAuthOrgContract, {
     }
 
     // 3. Verify membership
-    const membership = await verifyMembershipCached(orgId, authCtx.userId);
+    const membership = await getMemberRole(orgId, authCtx.userId);
     if (!membership) {
       return {
         status: 403 as const,
