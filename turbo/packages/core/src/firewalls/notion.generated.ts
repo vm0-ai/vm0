@@ -58,6 +58,7 @@ export const notionFirewall = {
             "POST /v1/data_sources/{data_source_id}/query",
             "GET /v1/data_sources/{data_source_id}/templates",
             "GET /v1/databases/{database_id}",
+            "POST /v1/databases/{database_id}/query",
             "GET /v1/file_uploads",
             "GET /v1/file_uploads/{file_upload_id}",
             "GET /v1/pages/{page_id}",

@@ -44,12 +44,22 @@ const SKIP_TAGS = new Set(["OAuth"]);
 // Explicit overrides where the default tag+method heuristic is wrong.
 // These match Notion's documented capability requirements.
 const PATH_OVERRIDES: Record<string, Record<string, string>> = {
+  // Querying a database is reading, not inserting
+  "/v1/databases/{database_id}/query": { post: "read_content" },
   // Querying a data source is reading, not inserting
   "/v1/data_sources/{data_source_id}/query": { post: "read_content" },
   // Moving a page is updating, not inserting
   "/v1/pages/{page_id}/move": { post: "update_content" },
   // Appending children to a block is inserting content
   "/v1/blocks/{block_id}/children": { patch: "insert_content" },
+};
+
+// Endpoints missing from the OpenAPI spec but documented in the API reference.
+// These are injected into the spec before processing.
+const SPEC_PATCHES: Record<string, Record<string, { tags: string[] }>> = {
+  "/v1/databases/{database_id}/query": {
+    post: { tags: ["Databases"] },
+  },
 };
 
 /**
@@ -116,6 +126,18 @@ function buildGroups(spec: OpenApiSpec): PermissionGroup[] {
   const groups = new Map<string, Set<string>>();
   if (!spec.paths) {
     throw new Error("OpenAPI spec has no 'paths'");
+  }
+
+  // Inject missing endpoints from SPEC_PATCHES
+  for (const [patchPath, patchMethods] of Object.entries(SPEC_PATCHES)) {
+    if (!spec.paths[patchPath]) {
+      spec.paths[patchPath] = {};
+    }
+    for (const [method, op] of Object.entries(patchMethods)) {
+      if (!spec.paths[patchPath][method]) {
+        spec.paths[patchPath][method] = op;
+      }
+    }
   }
 
   for (const [apiPath, methods] of Object.entries(spec.paths)) {
