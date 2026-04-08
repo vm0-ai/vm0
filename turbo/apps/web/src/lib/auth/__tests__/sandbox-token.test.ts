@@ -269,7 +269,6 @@ describe("sandbox-token", () => {
         "schedule:write",
         "slack:write",
         "connector:read",
-        "voice-chat:write",
       ]);
       expect(auth?.capabilities).not.toContain("computer-use:write");
       expect(auth?.capabilities).not.toContain("voice-chat:write");
