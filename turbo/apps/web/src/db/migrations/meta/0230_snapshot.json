@@ -1,6 +1,6 @@
 {
-  "id": "ecff7eb0-24c7-4e3c-ad64-47bd5188f03c",
-  "prevId": "78131de5-01e3-4ce0-917e-9b5fbb5e6adf",
+  "id": "491dc202-9d0c-4980-8430-8ebec815a699",
+  "prevId": "a0803b8d-32d6-4693-90c3-02b66040493e",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2903,154 +2903,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.firewall_access_requests": {
-      "name": "firewall_access_requests",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "org_id": {
-          "name": "org_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "agent_id": {
-          "name": "agent_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "requester_user_id": {
-          "name": "requester_user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "firewall_ref": {
-          "name": "firewall_ref",
-          "type": "varchar(64)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "permission": {
-          "name": "permission",
-          "type": "varchar(128)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "action": {
-          "name": "action",
-          "type": "varchar(10)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'allow'"
-        },
-        "method": {
-          "name": "method",
-          "type": "varchar(10)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "path": {
-          "name": "path",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "reason": {
-          "name": "reason",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "status": {
-          "name": "status",
-          "type": "varchar(20)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'pending'"
-        },
-        "resolved_by": {
-          "name": "resolved_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "resolved_at": {
-          "name": "resolved_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "idx_firewall_access_requests_agent_status": {
-          "name": "idx_firewall_access_requests_agent_status",
-          "columns": [
-            {
-              "expression": "agent_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "idx_firewall_access_requests_org": {
-          "name": "idx_firewall_access_requests_org",
-          "columns": [
-            {
-              "expression": "org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "firewall_access_requests_agent_id_zero_agents_id_fk": {
-          "name": "firewall_access_requests_agent_id_zero_agents_id_fk",
-          "tableFrom": "firewall_access_requests",
-          "tableTo": "zero_agents",
-          "columnsFrom": ["agent_id"],
-          "columnsTo": ["id"],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.github_installations": {
       "name": "github_installations",
       "schema": "",
@@ -3965,6 +3817,154 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.permission_access_requests": {
+      "name": "permission_access_requests",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "org_id": {
+          "name": "org_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "agent_id": {
+          "name": "agent_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "requester_user_id": {
+          "name": "requester_user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "connector_ref": {
+          "name": "connector_ref",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "permission": {
+          "name": "permission",
+          "type": "varchar(128)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "action": {
+          "name": "action",
+          "type": "varchar(10)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'allow'"
+        },
+        "method": {
+          "name": "method",
+          "type": "varchar(10)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "path": {
+          "name": "path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reason": {
+          "name": "reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "resolved_by": {
+          "name": "resolved_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "resolved_at": {
+          "name": "resolved_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_permission_access_requests_agent_status": {
+          "name": "idx_permission_access_requests_agent_status",
+          "columns": [
+            {
+              "expression": "agent_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_permission_access_requests_org": {
+          "name": "idx_permission_access_requests_org",
+          "columns": [
+            {
+              "expression": "org_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "permission_access_requests_agent_id_zero_agents_id_fk": {
+          "name": "permission_access_requests_agent_id_zero_agents_id_fk",
+          "tableFrom": "permission_access_requests",
+          "tableTo": "zero_agents",
+          "columnsFrom": ["agent_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.push_subscriptions": {
       "name": "push_subscriptions",
       "schema": "",
@@ -4070,6 +4070,12 @@
           "notNull": true,
           "default": "'vm0/default'"
         },
+        "session_id": {
+          "name": "session_id",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
         "claimed_at": {
           "name": "claimed_at",
           "type": "timestamp",
@@ -4115,6 +4121,22 @@
           ],
           "isUnique": false,
           "where": "claimed_at IS NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "runner_job_queue_session_id_unclaimed_idx": {
+          "name": "runner_job_queue_session_id_unclaimed_idx",
+          "columns": [
+            {
+              "expression": "session_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "claimed_at IS NULL AND session_id IS NOT NULL",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -6772,8 +6794,8 @@
           "primaryKey": false,
           "notNull": false
         },
-        "firewall_policies": {
-          "name": "firewall_policies",
+        "permission_policies": {
+          "name": "permission_policies",
           "type": "jsonb",
           "primaryKey": false,
           "notNull": false
