@@ -363,7 +363,7 @@ function SlackMockup() {
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         alt="Slack thread showing Zero AI assistant"
-        src="/assets/mockup/atslack.svg"
+        src="/assets/mockup/atslack.png"
         className="slack-thread-pop h-full w-full object-contain"
         draggable={false}
       />
