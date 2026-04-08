@@ -159,8 +159,8 @@ function BinaryBadge({ title }: { title: string }) {
 export function CapturedBodySections({ entry }: { entry: NetworkLogEntry }) {
   const requestHeaders = filterHeaders(entry.request_headers);
   const responseHeaders = filterHeaders(entry.response_headers);
-  const requestBody = entry.request_body || null;
-  const responseBody = entry.response_body || null;
+  const requestBody = entry.request_body ?? null;
+  const responseBody = entry.response_body ?? null;
   const requestBodyBinary =
     !requestBody && entry.request_body_encoding === "binary";
   const responseBodyBinary =
