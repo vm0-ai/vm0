@@ -49,6 +49,7 @@ export const triggerSourceSchema = z.enum([
   "cli",
   "agent",
   "phone",
+  "voice-chat",
 ]);
 
 export type TriggerSource = z.infer<typeof triggerSourceSchema>;

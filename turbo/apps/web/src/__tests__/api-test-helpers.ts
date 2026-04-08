@@ -61,6 +61,7 @@ import { creditUsage } from "../db/schema/credit-usage";
 import { sandboxTelemetry } from "../db/schema/sandbox-telemetry";
 import { creditPricing } from "../db/schema/credit-pricing";
 import { runnerState } from "../db/schema/runner-state";
+import { voiceChatSessions } from "../db/schema/voice-chat";
 import { insightsDaily } from "../db/schema/insights-daily";
 import { users } from "../db/schema/user";
 import { and, eq, like, or, sql } from "drizzle-orm";
@@ -5263,4 +5264,24 @@ export async function insertTestRunnerState(overrides: {
 export async function deleteAllTestRunnerState(): Promise<void> {
   initServices();
   await globalThis.services.db.delete(runnerState);
+}
+
+// ============================================================================
+// Voice Chat Helpers
+// ============================================================================
+
+/**
+ * Create a voice-chat session directly in the database.
+ */
+export async function createTestVoiceChatSession(
+  orgId: string,
+  userId: string,
+  status = "active",
+): Promise<{ id: string }> {
+  initServices();
+  const [session] = await globalThis.services.db
+    .insert(voiceChatSessions)
+    .values({ orgId, userId, status })
+    .returning({ id: voiceChatSessions.id });
+  return session!;
 }

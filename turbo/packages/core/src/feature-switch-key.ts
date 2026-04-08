@@ -47,4 +47,5 @@ export enum FeatureSwitchKey {
   Lab = "lab",
   AuditLink = "auditLink",
   PhoneIntegration = "phoneIntegration",
+  VoiceChat = "voiceChat",
 }
