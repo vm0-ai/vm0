@@ -2904,7 +2904,7 @@
       "isRLSEnabled": false
     },
     "public.firewall_access_requests": {
-      "name": "permission_access_requests",
+      "name": "firewall_access_requests",
       "schema": "",
       "columns": {
         "id": {
@@ -2932,8 +2932,8 @@
           "primaryKey": false,
           "notNull": true
         },
-        "connector_ref": {
-          "name": "connector_ref",
+        "firewall_ref": {
+          "name": "firewall_ref",
           "type": "varchar(64)",
           "primaryKey": false,
           "notNull": true
@@ -2997,8 +2997,8 @@
         }
       },
       "indexes": {
-        "idx_permission_access_requests_agent_status": {
-          "name": "idx_permission_access_requests_agent_status",
+        "idx_firewall_access_requests_agent_status": {
+          "name": "idx_firewall_access_requests_agent_status",
           "columns": [
             {
               "expression": "agent_id",
@@ -3018,8 +3018,8 @@
           "method": "btree",
           "with": {}
         },
-        "idx_permission_access_requests_org": {
-          "name": "idx_permission_access_requests_org",
+        "idx_firewall_access_requests_org": {
+          "name": "idx_firewall_access_requests_org",
           "columns": [
             {
               "expression": "org_id",
@@ -3035,9 +3035,9 @@
         }
       },
       "foreignKeys": {
-        "permission_access_requests_agent_id_zero_agents_id_fk": {
-          "name": "permission_access_requests_agent_id_zero_agents_id_fk",
-          "tableFrom": "permission_access_requests",
+        "firewall_access_requests_agent_id_zero_agents_id_fk": {
+          "name": "firewall_access_requests_agent_id_zero_agents_id_fk",
+          "tableFrom": "firewall_access_requests",
           "tableTo": "zero_agents",
           "columnsFrom": ["agent_id"],
           "columnsTo": ["id"],
@@ -6712,8 +6712,8 @@
           "primaryKey": false,
           "notNull": false
         },
-        "permission_policies": {
-          "name": "permission_policies",
+        "firewall_policies": {
+          "name": "firewall_policies",
           "type": "jsonb",
           "primaryKey": false,
           "notNull": false
