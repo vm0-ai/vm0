@@ -30,7 +30,6 @@ export default [
       "ccstate/no-export-state": "error",
       "ccstate/signal-check-await": "error",
       "ccstate/tsx-in-views": "error",
-      "ccstate/no-catch-abort": "error",
       "ccstate/test-context-in-hooks": "error",
       "ccstate/setup-page-render": "error",
       "ccstate/no-side-effect-in-render": "error",

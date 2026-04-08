@@ -28,7 +28,7 @@ import {
   TooltipTrigger,
   cn,
 } from "@vm0/ui";
-import { detach, Reason, throwIfAbort } from "../../signals/utils.ts";
+import { detach, Reason } from "../../signals/utils.ts";
 import {
   zeroChatAttachments$,
   uploadZeroAttachment$,
@@ -494,41 +494,21 @@ export function ZeroChatComposer({
 
   const handleConnectSuccess = async (type: string) => {
     const label = resolveConnectorLabel(type, connectorMap);
-    // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove — use accept() auto-toast
-    try {
-      await addConnector(type, pageSignal);
-      toast.success(`${label} connected and authorized for ${displayName}`, {
-        id: `connector-connected-${type}`,
-      });
-    } catch (error) {
-      throwIfAbort(error);
-      toast.error(`${label} was authorized but could not be saved`, {
-        id: `connector-save-error-${type}`,
-      });
-    }
+    await addConnector(type, pageSignal);
+    toast.success(`${label} connected and authorized for ${displayName}`, {
+      id: `connector-connected-${type}`,
+    });
   };
 
   const handleToggle = (type: string, checked: boolean) => {
-    const label = resolveConnectorLabel(type, connectorMap);
     setSavingType(type);
     detach(
-      (async () => {
-        // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove — use accept() auto-toast
-        try {
-          if (checked) {
-            await addConnector(type, pageSignal);
-          } else {
-            await removeConnector(type, pageSignal);
-          }
-        } catch (error) {
-          throwIfAbort(error);
-          toast.error(`Failed to ${checked ? "add" : "remove"} ${label}`, {
-            id: `connector-toggle-error-${type}`,
-          });
-        } finally {
-          setSavingType(null);
-        }
-      })(),
+      (checked
+        ? addConnector(type, pageSignal)
+        : removeConnector(type, pageSignal)
+      ).finally(() => {
+        setSavingType(null);
+      }),
       Reason.DomCallback,
     );
   };

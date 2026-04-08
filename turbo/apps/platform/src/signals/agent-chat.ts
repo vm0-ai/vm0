@@ -2,12 +2,12 @@ import { command, computed, state } from "ccstate";
 import {
   chatThreadByIdContract,
   chatThreadsContract,
+  zeroAgentsByIdContract,
   type SummaryEntry,
 } from "@vm0/core";
-import { agentById, defaultAgentId$ } from "./agent.ts";
+import { defaultAgentId$ } from "./agent.ts";
 import { zeroClient$ } from "./api-client.ts";
-import { accept, ApiError } from "../lib/accept.ts";
-import { throwIfAbort } from "./utils.ts";
+import { accept } from "../lib/accept.ts";
 import { pathParams$ } from "./route.ts";
 import { activeRoute$ } from "./active-route.ts";
 import { resolveAvatarUrl } from "../views/zero-page/avatar-utils.ts";
@@ -30,16 +30,13 @@ export const currentChatAgent$ = computed(async (get) => {
     return null;
   }
 
-  // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove — use accept() multi-status [200, 404]
-  try {
-    return await get(agentById(agentId));
-  } catch (error) {
-    throwIfAbort(error);
-    if (error instanceof ApiError && error.status === 404) {
-      return null;
-    }
-    throw error;
-  }
+  const client = get(zeroClient$)(zeroAgentsByIdContract);
+  const result = await accept(
+    client.get({ params: { id: agentId } }),
+    [200, 404],
+    { toast: false },
+  );
+  return result.status === 200 ? result.body : null;
 });
 
 export const currentChatAgentDisplayName$ = computed(async (get) => {

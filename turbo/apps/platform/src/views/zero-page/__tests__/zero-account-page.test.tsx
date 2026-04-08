@@ -205,6 +205,7 @@ describe("zero-account-page - send mode interaction", () => {
           timezone: null,
           pinnedAgentIds: [],
           sendMode: "cmd-enter",
+          captureNetworkBodiesRemaining: 0,
         });
       }),
       http.post("*/api/zero/user-preferences", () => {
@@ -213,6 +214,7 @@ describe("zero-account-page - send mode interaction", () => {
             timezone: null,
             pinnedAgentIds: [],
             sendMode: "enter",
+            captureNetworkBodiesRemaining: 0,
           });
         });
       }),
@@ -243,6 +245,7 @@ describe("zero-account-page - send mode interaction", () => {
           timezone: null,
           pinnedAgentIds: [],
           sendMode: "enter",
+          captureNetworkBodiesRemaining: 0,
         });
       }),
       http.post("*/api/zero/user-preferences", () => {
@@ -251,6 +254,7 @@ describe("zero-account-page - send mode interaction", () => {
             timezone: null,
             pinnedAgentIds: [],
             sendMode: "cmd-enter",
+            captureNetworkBodiesRemaining: 0,
           });
         });
       }),

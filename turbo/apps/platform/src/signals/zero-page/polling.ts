@@ -167,18 +167,12 @@ function createQueuePosition(runId: string) {
     queuePosition$: computed(async (get) => {
       const createClient = get(zeroClient$);
       const client = createClient(zeroQueuePositionContract);
-      // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove — use accept() error propagation
-      try {
-        const result = await accept(
-          client.getPosition({ query: { runId } }),
-          [200],
-          { toast: false },
-        );
-        return result.body.position;
-      } catch (error) {
-        throwIfAbort(error);
-        return 0;
-      }
+      const result = await accept(
+        client.getPosition({ query: { runId } }),
+        [200],
+        { toast: false },
+      );
+      return result.body.position;
     }),
     reload$: command(({ set }) => {
       return set(internalReload$, (x) => {

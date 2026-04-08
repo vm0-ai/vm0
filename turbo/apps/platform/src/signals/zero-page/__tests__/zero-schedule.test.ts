@@ -216,7 +216,17 @@ describe("zero-schedule signals", () => {
       expect(entries).toHaveLength(0);
     });
 
-    it("should handle API error gracefully", async () => {
+    it("should propagate API errors", async () => {
+      // Set up normal schedules response for initial page load
+      server.use(
+        http.get("http://localhost:3000/api/zero/schedules", () => {
+          return HttpResponse.json({ schedules: [] });
+        }),
+      );
+
+      await setup();
+
+      // Now replace mock to return 500 for the explicit fetchZeroSchedules$ call
       server.use(
         http.get("http://localhost:3000/api/zero/schedules", () => {
           return HttpResponse.json(
@@ -231,11 +241,9 @@ describe("zero-schedule signals", () => {
         }),
       );
 
-      await setup();
-      await context.store.set(fetchZeroSchedules$, context.signal);
-
-      const entries = context.store.get(zeroScheduleEntries$);
-      expect(entries).toHaveLength(0);
+      await expect(
+        context.store.set(fetchZeroSchedules$, context.signal),
+      ).rejects.toThrow("Internal server error");
     });
   });
 

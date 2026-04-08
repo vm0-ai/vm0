@@ -1,16 +1,8 @@
-import {
-  command,
-  computed,
-  state,
-  type Command,
-  type Computed,
-  type State,
-} from "ccstate";
+import { command, computed, state, type Command, type State } from "ccstate";
 import { zeroMemberCreditCapContract } from "@vm0/core";
 import { zeroClient$ } from "../api-client.ts";
 import { usageMembersAsync$ } from "../usage-page/usage-signals.ts";
 import { accept } from "../../lib/accept.ts";
-import { throwIfAbort } from "../utils.ts";
 
 interface MemberCreditCap {
   creditCap: number | null;
@@ -86,7 +78,6 @@ interface MemberCapSetting {
   creditCap: number | null;
   editMode$: State<boolean>;
   value$: State<string>;
-  savingPromise$: Computed<Promise<unknown> | null>;
   save$: Command<Promise<void>, [AbortSignal]>;
   clearCap$: Command<Promise<void>, [AbortSignal]>;
   enterEditMode$: Command<void, []>;
@@ -100,10 +91,6 @@ function createMemberCapSetting(
 ): MemberCapSetting {
   const editMode$ = state(false);
   const value$ = state(creditCap?.toString() ?? "");
-  const internalSavingPromise$ = state<Promise<unknown> | null>(null);
-  const savingPromise$ = computed((get) => {
-    return get(internalSavingPromise$);
-  });
 
   const save$ = command(async ({ get, set }, _signal: AbortSignal) => {
     const rawValue = get(value$);
@@ -113,43 +100,21 @@ function createMemberCapSetting(
       return;
     }
 
-    const promise = set(
+    await set(
       setMemberCreditCap$,
       { userId: member.userId, creditCap: parsed },
       _signal,
     );
-    set(internalSavingPromise$, promise);
-
-    // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove — use accept() auto-toast
-    try {
-      await promise;
-      set(internalSavingPromise$, null);
-      set(editMode$, false);
-    } catch (error) {
-      throwIfAbort(error);
-      set(internalSavingPromise$, null);
-      // Toast is handled upstream by accept() inside setMemberCreditCap$
-    }
+    set(editMode$, false);
   });
 
   const clearCap$ = command(async ({ set }, _signal: AbortSignal) => {
-    const promise = set(
+    await set(
       setMemberCreditCap$,
       { userId: member.userId, creditCap: null },
       _signal,
     );
-    set(internalSavingPromise$, promise);
-
-    // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove — use accept() auto-toast
-    try {
-      await promise;
-      set(internalSavingPromise$, null);
-      set(editMode$, false);
-    } catch (error) {
-      throwIfAbort(error);
-      set(internalSavingPromise$, null);
-      // Toast is handled upstream by accept() inside setMemberCreditCap$
-    }
+    set(editMode$, false);
   });
 
   const enterEditMode$ = command(({ set }) => {
@@ -172,7 +137,6 @@ function createMemberCapSetting(
     creditCap,
     editMode$,
     value$,
-    savingPromise$,
     save$,
     clearCap$,
     enterEditMode$,

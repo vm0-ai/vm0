@@ -364,7 +364,7 @@ export const connectConnector$ = command(
       document.addEventListener("visibilitychange", onVisibilityChange);
     }
 
-    // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove try/finally — restructure event listener cleanup
+    // eslint-disable-next-line no-restricted-syntax -- try/finally required: event listener cleanup must run on both success and abort/error paths
     try {
       while (true) {
         if (!visibilityPollRequested) {

@@ -39,7 +39,6 @@ import { agents$ } from "../../signals/agent.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
   allOrgScheduleEntries$,
-  allOrgSchedulesLoaded$,
   saveOrgSchedule$,
   toggleOrgScheduleEnabled$,
   deleteOrgSchedule$,
@@ -48,7 +47,6 @@ import {
   type ZeroScheduleSaveParams,
 } from "../../signals/zero-page/zero-schedule.ts";
 import { slackOrgData$ } from "../../signals/zero-page/zero-slack.ts";
-import { slackChannelsInitialized$ } from "../../signals/zero-page/slack-channels.ts";
 import {
   scheduleDetailTab$,
   setScheduleDetailTab$,
@@ -971,9 +969,7 @@ export function ZeroScheduleDetailPage() {
   const agentsLoadable = useLoadable(agents$);
   const agents = agentsLoadable.state === "hasData" ? agentsLoadable.data : [];
 
-  const loaded = useGet(allOrgSchedulesLoaded$);
   const slackData = useLoadable(slackOrgData$);
-  const channelsReady = useGet(slackChannelsInitialized$);
   const deleteSchedule = useSet(deleteOrgSchedule$);
   const navigate = useSet(detachedNavigateTo$);
   const pageSignal = useGet(pageSignal$);
@@ -994,12 +990,7 @@ export function ZeroScheduleDetailPage() {
     return <ScheduleNotFound />;
   }
 
-  if (
-    !loaded ||
-    entriesLoadable.state !== "hasData" ||
-    slackData.state !== "hasData" ||
-    !channelsReady
-  ) {
+  if (entriesLoadable.state !== "hasData" || slackData.state !== "hasData") {
     return <ScheduleDetailSkeleton />;
   }
 

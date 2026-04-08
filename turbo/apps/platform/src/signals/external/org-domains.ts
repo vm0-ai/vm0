@@ -3,7 +3,6 @@ import { zeroOrgDomainsContract } from "@vm0/core";
 import { org$ } from "../org";
 import { zeroClient$ } from "../api-client";
 import { accept } from "../../lib/accept.ts";
-import { throwIfAbort } from "../utils.ts";
 
 const domainsVersion$ = state(0);
 
@@ -20,14 +19,8 @@ const domainsResponse$ = computed(async (get) => {
 
   const createClient = get(zeroClient$);
   const client = createClient(zeroOrgDomainsContract);
-  // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove — use accept() error propagation
-  try {
-    const result = await accept(client.list(), [200], { toast: false });
-    return result.body;
-  } catch (error) {
-    throwIfAbort(error);
-    return null;
-  }
+  const result = await accept(client.list(), [200], { toast: false });
+  return result.body;
 });
 
 export const orgDomains$ = computed(async (get) => {
