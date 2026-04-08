@@ -17,6 +17,7 @@ export const hideAppSkeleton$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     // Avatar prefetch is a best-effort cache warm-up: a missing or
     // unavailable agent should not prevent the skeleton from hiding.
+    // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove — restructure best-effort prefetch
     try {
       const currentChatAgent = await get(currentChatAgent$);
       signal.throwIfAborted();

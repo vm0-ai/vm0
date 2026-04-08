@@ -51,6 +51,7 @@ export const initSlackConnectPage$ = command(
     if (!initialStatus && !initialError && workspaceId) {
       set(internalStatus$, "checking");
       const client = get(zeroClient$)(zeroSlackConnectContract);
+      // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove — use accept() error propagation
       try {
         const result = await accept(client.getStatus(), [200], {
           toast: false,
@@ -86,6 +87,7 @@ export const connectSlackAccount$ = command(
     const client = get(zeroClient$)(zeroSlackConnectContract);
     const channelId = params.get("c");
     const threadTs = params.get("t");
+    // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove — use accept() auto-toast
     try {
       await accept(
         client.connect({

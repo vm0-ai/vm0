@@ -54,6 +54,7 @@ export const featureSwitch$ = computed(async (get) => {
   // Layer 3: localStorage overrides (highest priority)
   const override = get(get$);
   if (override) {
+    // eslint-disable-next-line no-restricted-syntax -- JSON.parse on untrusted localStorage data
     try {
       const parsed = JSON.parse(override) as
         | Partial<Record<string, boolean>>
@@ -72,6 +73,7 @@ export const overrideFeatureSwitch$ = command(
     const current = get(get$);
     let parsed: Partial<Record<FeatureSwitchKey, boolean>> = {};
     if (current) {
+      // eslint-disable-next-line no-restricted-syntax -- JSON.parse on untrusted localStorage data
       try {
         parsed = JSON.parse(current);
       } catch (error) {

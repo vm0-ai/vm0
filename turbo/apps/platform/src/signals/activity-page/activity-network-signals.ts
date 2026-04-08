@@ -161,6 +161,7 @@ export const loadNetworkLogsNextPage$ = command(
 
     set(pagination$, { ...pg, loading: true });
 
+    // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove try/finally — restructure loading flag cleanup
     try {
       const client = get(zeroClient$)(zeroRunNetworkLogsContract);
       const { logs, hasMore } = await fetchPage(client, runId, pg.since);
