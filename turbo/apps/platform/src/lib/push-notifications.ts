@@ -45,6 +45,7 @@ export async function ensurePushSubscription(): Promise<void> {
     return;
   }
   appStore.set(subscribing$, true);
+  // eslint-disable-next-line no-restricted-syntax -- finally block needed to reset subscribing$ state flag regardless of outcome
   try {
     const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY as
       | string
