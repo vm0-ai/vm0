@@ -43,6 +43,7 @@ export async function setLoop(
 ): Promise<void> {
   let fibIndex = 0;
   while (true) {
+    // eslint-disable-next-line no-restricted-syntax -- polling loop requires try/catch for transient error retry with backoff
     try {
       const done = await loopBody(signal);
       if (done) {
@@ -166,6 +167,7 @@ function createQueuePosition(runId: string) {
     queuePosition$: computed(async (get) => {
       const createClient = get(zeroClient$);
       const client = createClient(zeroQueuePositionContract);
+      // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove — use accept() error propagation
       try {
         const result = await accept(
           client.getPosition({ query: { runId } }),

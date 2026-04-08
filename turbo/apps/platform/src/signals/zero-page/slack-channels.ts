@@ -15,6 +15,7 @@ export const slackChannelsInitialized$ = computed((get) => {
 export const fetchSlackChannels$ = command(
   async ({ get, set }, _signal: AbortSignal) => {
     const client = get(zeroClient$)(zeroSlackChannelsContract);
+    // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove — use accept() error propagation
     try {
       const result = await accept(client.list(), [200], { toast: false });
       set(slackChannelsState$, result.body.channels);

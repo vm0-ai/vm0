@@ -20,6 +20,7 @@ const domainsResponse$ = computed(async (get) => {
 
   const createClient = get(zeroClient$);
   const client = createClient(zeroOrgDomainsContract);
+  // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove — use accept() error propagation
   try {
     const result = await accept(client.list(), [200], { toast: false });
     return result.body;

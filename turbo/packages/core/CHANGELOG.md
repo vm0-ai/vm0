@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.161.1](https://github.com/vm0-ai/vm0/compare/core-v8.161.0...core-v8.161.1) (2026-04-08)
+
+
+### Bug Fixes
+
+* **model-providers:** use hyphenated model ids to match anthropic api format ([#8511](https://github.com/vm0-ai/vm0/issues/8511)) ([1bcd1e6](https://github.com/vm0-ai/vm0/commit/1bcd1e67f54105831b71182482488f21871ee25d))
+
 ## [8.161.0](https://github.com/vm0-ai/vm0/compare/core-v8.160.0...core-v8.161.0) (2026-04-08)
 
 

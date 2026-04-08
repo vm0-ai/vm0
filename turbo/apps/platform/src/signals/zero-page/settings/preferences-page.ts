@@ -37,6 +37,7 @@ export const sendModeSaving$ = computed((get) => {
 export const updateSendMode$ = command(
   async ({ get, set }, value: SendMode, signal: AbortSignal) => {
     set(internalSendModeSaving$, value);
+    // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove — use accept() auto-toast
     try {
       await set(updateUserPreference$, { sendMode: value }, signal);
       // After the command completes the refetch has been triggered.
@@ -72,6 +73,7 @@ export const captureSaving$ = computed((get) => {
 export const updateCaptureNetworkBodies$ = command(
   async ({ set }, remaining: number, signal: AbortSignal) => {
     set(internalCaptureSaving$, true);
+    // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove — use accept() auto-toast
     try {
       await set(
         updateUserPreference$,

@@ -343,8 +343,8 @@ class TestRequestHandler:
 class TestResponseHeadersHandler:
     """Tests for the responseheaders() hook that enables streaming."""
 
-    def test_enables_streaming(self):
-        """All responses should be streamed to avoid ZlibError."""
+    def test_enables_streaming_with_buffer(self):
+        """All responses should be streamed via a buffer callback."""
         flow = _make_http_flow(host="api.example.com")
         flow.response = MagicMock()
         flow.response.headers = {"content-type": "application/json"}
@@ -352,7 +352,120 @@ class TestResponseHeadersHandler:
 
         mitm_addon.responseheaders(flow)
 
-        assert flow.response.stream is True
+        assert callable(flow.response.stream)
+        assert "stream_buffer" in flow.metadata
+        assert isinstance(flow.metadata["stream_buffer"], bytearray)
+
+    def test_stream_callback_buffers_chunks(self):
+        """The stream callback should accumulate chunks in the buffer."""
+        flow = _make_http_flow(host="api.example.com")
+        flow.response = MagicMock()
+        flow.response.headers = {"content-type": "application/json"}
+        flow.response.stream = False
+
+        mitm_addon.responseheaders(flow)
+
+        callback = flow.response.stream
+        result1 = callback(b"hello ")
+        result2 = callback(b"world")
+
+        assert result1 == b"hello "
+        assert result2 == b"world"
+        assert bytes(flow.metadata["stream_buffer"]) == b"hello world"
+        assert flow.metadata["stream_buffer_state"]["truncated"] is False
+
+    def test_stream_callback_stops_buffering_at_limit(self):
+        """Buffering should stop when exceeding the size limit."""
+        flow = _make_http_flow(host="api.example.com")
+        flow.response = MagicMock()
+        flow.response.headers = {"content-type": "application/json"}
+        flow.response.stream = False
+
+        mitm_addon.responseheaders(flow)
+
+        callback = flow.response.stream
+        # Fill buffer to just under limit
+        chunk = b"x" * mitm_addon._STREAM_BUFFER_LIMIT
+        result = callback(chunk)
+        assert result == chunk
+        assert len(flow.metadata["stream_buffer"]) == mitm_addon._STREAM_BUFFER_LIMIT
+        assert flow.metadata["stream_buffer_state"]["truncated"] is False
+
+        # Next chunk should trigger truncation
+        result2 = callback(b"overflow")
+        assert result2 == b"overflow"  # still forwarded to client
+        assert len(flow.metadata["stream_buffer"]) == mitm_addon._STREAM_BUFFER_LIMIT
+        assert flow.metadata["stream_buffer_state"]["truncated"] is True
+
+    def test_stream_callback_large_single_chunk(self):
+        """A single chunk larger than the limit should still capture the first part."""
+        flow = _make_http_flow(host="api.example.com")
+        flow.response = MagicMock()
+        flow.response.headers = {"content-type": "application/json"}
+        flow.response.stream = False
+
+        mitm_addon.responseheaders(flow)
+
+        callback = flow.response.stream
+        big_chunk = b"A" * (mitm_addon._STREAM_BUFFER_LIMIT + 1000)
+        result = callback(big_chunk)
+        assert result == big_chunk  # full chunk forwarded to client
+        assert len(flow.metadata["stream_buffer"]) == mitm_addon._STREAM_BUFFER_LIMIT
+        assert flow.metadata["stream_buffer_state"]["truncated"] is True
+
+    def test_stream_callback_partial_fill_then_overflow(self):
+        """Partial fill followed by an oversized chunk should capture up to the limit."""
+        flow = _make_http_flow(host="api.example.com")
+        flow.response = MagicMock()
+        flow.response.headers = {"content-type": "application/json"}
+        flow.response.stream = False
+
+        mitm_addon.responseheaders(flow)
+
+        callback = flow.response.stream
+        half = mitm_addon._STREAM_BUFFER_LIMIT // 2
+        callback(b"A" * half)
+        assert flow.metadata["stream_buffer_state"]["truncated"] is False
+
+        # This chunk overflows — should capture up to the limit
+        callback(b"B" * mitm_addon._STREAM_BUFFER_LIMIT)
+        remaining = mitm_addon._STREAM_BUFFER_LIMIT - half
+        assert len(flow.metadata["stream_buffer"]) == mitm_addon._STREAM_BUFFER_LIMIT
+        assert flow.metadata["stream_buffer"][:half] == bytearray(b"A" * half)
+        assert flow.metadata["stream_buffer"][half:] == bytearray(b"B" * remaining)
+        assert flow.metadata["stream_buffer_state"]["truncated"] is True
+
+    def test_capture_body_also_streams(self):
+        """When capture_body is set, streaming should still be enabled."""
+        flow = _make_http_flow(host="api.example.com")
+        flow.response = MagicMock()
+        flow.response.headers = {"content-type": "application/json"}
+        flow.response.stream = False
+        flow.metadata["capture_body"] = True
+
+        mitm_addon.responseheaders(flow)
+
+        assert callable(flow.response.stream)
+        assert "stream_buffer" in flow.metadata
+
+    def test_stream_callback_empty_chunk(self):
+        """Empty chunks should be forwarded without affecting the buffer."""
+        flow = _make_http_flow(host="api.example.com")
+        flow.response = MagicMock()
+        flow.response.headers = {"content-type": "application/json"}
+        flow.response.stream = False
+
+        mitm_addon.responseheaders(flow)
+
+        callback = flow.response.stream
+        result = callback(b"")
+        assert result == b""
+        assert len(flow.metadata["stream_buffer"]) == 0
+        assert flow.metadata["stream_buffer_state"]["truncated"] is False
+
+        # Normal chunk after empty should still work
+        callback(b"hello")
+        assert bytes(flow.metadata["stream_buffer"]) == b"hello"
 
     def test_no_response_is_noop(self):
         """Flow without response should not raise."""
@@ -389,7 +502,7 @@ class TestResponseHandler:
         }
 
         # Simulate tracked start time
-        mitm_addon._request_start_times[flow.id] = __import__("time").time() - 0.1
+        mitm_addon._request_start_times[flow.id] = time.time() - 0.1
 
         with patch.object(mitm_addon.ctx, "log", MagicMock(), create=True):
             mitm_addon.response(flow)
@@ -405,6 +518,59 @@ class TestResponseHandler:
         assert entry["host"] == "api.anthropic.com"
         assert entry["latency_ms"] > 0
         assert entry["response_size"] == 256
+
+    def test_response_size_from_stream_buffer(self, registry_file, tmp_path):
+        """response_size should use stream_buffer length when not truncated."""
+        flow = _make_http_flow(host="api.example.com")
+        log_path = str(tmp_path / "network.jsonl")
+
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_client_ip"] = "10.200.0.1"
+        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://api.example.com/"
+        # Buffer has 100 bytes, not truncated
+        flow.metadata["stream_buffer"] = bytearray(b"x" * 100)
+        flow.metadata["stream_buffer_state"] = {"truncated": False}
+
+        flow.response = MagicMock()
+        flow.response.status_code = 200
+        flow.response.headers = {"content-length": "999"}  # should be ignored
+
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        with patch.object(mitm_addon.ctx, "log", MagicMock(), create=True):
+            mitm_addon.response(flow)
+
+        lines = Path(log_path).read_text().splitlines()
+        entry = json.loads(lines[0])
+        assert entry["response_size"] == 100  # from buffer, not Content-Length
+
+    def test_response_size_falls_back_when_truncated(self, registry_file, tmp_path):
+        """response_size should fall back to Content-Length when buffer is truncated."""
+        flow = _make_http_flow(host="api.example.com")
+        log_path = str(tmp_path / "network.jsonl")
+
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_client_ip"] = "10.200.0.1"
+        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://api.example.com/"
+        flow.metadata["stream_buffer"] = bytearray(b"x" * 100)
+        flow.metadata["stream_buffer_state"] = {"truncated": True}
+
+        flow.response = MagicMock()
+        flow.response.status_code = 200
+        flow.response.headers = {"content-length": "50000"}
+
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        with patch.object(mitm_addon.ctx, "log", MagicMock(), create=True):
+            mitm_addon.response(flow)
+
+        lines = Path(log_path).read_text().splitlines()
+        entry = json.loads(lines[0])
+        assert entry["response_size"] == 50000  # from Content-Length header
 
     def test_401_firewall_cache_invalidation(self):
         """401 response with firewall_base pops the cache entry."""
