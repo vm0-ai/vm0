@@ -91,10 +91,9 @@ function setupMemberContext(agentOverrides: Partial<AgentResponse> = {}) {
 }
 
 // NOTE: Tests that render the admin confirmation card (showing agent name,
-// connector label, etc.) must use `action=deny` in the URL so that the
-// effective policy ("allow" by default for github) doesn't match the
-// requested action. When they match the page shows the "Permissions updated"
-// result card instead of the confirmation card.
+// connector label, etc.) must use an action that does NOT match the effective
+// policy. For github (no defaults → "allow"), use `action=deny`.
+// For gmail (default-denied via gmailDefaultAllowed), use `action=allow`.
 
 describe("fw-d-001: agent ID renders from signal", () => {
   it("uses agentId from the URL path to load the correct agent", async () => {
@@ -148,7 +147,7 @@ describe("fw-d-006: connector label from CONNECTOR_TYPES renders", () => {
     mockFirewallRequests();
     await setupPage({
       context,
-      path: `/agents/${AGENT_ID}/permissions?ref=gmail&permission=gmail&action=deny`,
+      path: `/agents/${AGENT_ID}/permissions?ref=gmail&permission=gmail&action=allow`,
     });
     await waitFor(() => {
       expect(screen.getAllByText(/Gmail/).length).toBeGreaterThanOrEqual(1);
