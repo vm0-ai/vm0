@@ -356,14 +356,9 @@ async function downloadAndUploadSlackFile(
   }
 }
 
-/** MIME types that represent video files. */
-const VIDEO_MIME_PREFIXES = ["video/"];
-
 function isVideoMimeType(mimetype: string | undefined): boolean {
   if (!mimetype) return false;
-  return VIDEO_MIME_PREFIXES.some((prefix) => {
-    return mimetype.startsWith(prefix);
-  });
+  return mimetype.startsWith("video/");
 }
 
 /**
