@@ -28,8 +28,8 @@ import {
 } from "./context/resolve-secrets";
 import {
   filterSecretConnectorMap,
-  mergeFirewalls,
-} from "./context/resolve-firewalls";
+  mergePermissions,
+} from "./context/resolve-permissions";
 import {
   resolveSource,
   loadAgentComposeForNewRun,
@@ -45,7 +45,7 @@ export {
   filterSecretConnectorMap,
   applyConnectorPolicies,
   UNRESTRICTED_PERMISSION,
-} from "./context/resolve-firewalls";
+} from "./context/resolve-permissions";
 
 const log = logger("zero:build-context");
 
@@ -91,8 +91,8 @@ interface BuildZeroContextParams {
   modelProvider?: string;
   // API start time for E2E timing metrics
   apiStartTime?: number;
-  // Per-permission firewall policies from zero agent configuration.
-  firewallPolicies?: FirewallPolicies;
+  // Per-permission policies from zero agent configuration.
+  permissionPolicies?: FirewallPolicies;
   // Caller-resolved org context for secret/variable/storage resolution.
   orgId: string;
   // Connector types the user has permitted for this agent run. When set, only
@@ -119,9 +119,9 @@ async function resolveSecretsAndEnvironment(
   environment: Record<string, string> | undefined;
   secretConnectorMap: Record<string, string> | undefined;
   resolvedModelProvider: ModelProviderType | undefined;
-  modelProviderFirewall: ExpandedFirewallConfig | undefined;
+  modelProviderConfig: ExpandedFirewallConfig | undefined;
   selectedModel: string | undefined;
-  connectorFirewalls: ExpandedFirewallConfig[];
+  connectorPermissionConfigs: ExpandedFirewallConfig[];
   mergedVars: Record<string, string> | undefined;
 }> {
   // Model provider secret injection
@@ -195,19 +195,19 @@ async function resolveSecretsAndEnvironment(
     [modelProviderResult.secrets, dbSecrets, cliSecrets],
   );
 
-  // Auto-generate firewall entry for model provider (if applicable).
-  // For meta-providers like "vm0", use the concrete provider type for firewall lookup.
+  // Auto-generate config entry for model provider (if applicable).
+  // For meta-providers like "vm0", use the concrete provider type for lookup.
   const modelProviderFirewallType =
     modelProviderResult.concreteProviderType ??
     modelProviderResult.resolvedModelProvider;
-  const modelProviderFirewall = modelProviderFirewallType
+  const modelProviderConfig = modelProviderFirewallType
     ? getModelProviderFirewall(modelProviderFirewallType)
     : undefined;
 
-  // Build connector firewall configs for placeholder injection.
-  // connectorFirewalls configs carry `placeholders` (custom placeholder values),
+  // Build connector permission configs for placeholder injection.
+  // connectorPermissionConfigs carry `placeholders` (custom placeholder values),
   // which expandEnvironmentFromCompose needs to replace secrets with placeholders.
-  const connectorFirewallConfigs: ExpandedFirewallConfig[] = connectorTypes
+  const connectorPermissionConfigs: ExpandedFirewallConfig[] = connectorTypes
     .filter(isFirewallConnectorType)
     .map((type) => {
       return {
@@ -217,16 +217,16 @@ async function resolveSecretsAndEnvironment(
     });
 
   // Expand environment variables from compose config.
-  // All firewalls (model provider, connector) are passed via the `firewalls` param
-  // for unified placeholder injection. Compose content no longer stores firewalls.
+  // All permission configs (model provider, connector) are passed via the
+  // `firewalls` param for unified placeholder injection.
   const { environment } = expandEnvironmentFromCompose(
     agentCompose,
     mergedVars,
     secrets,
     modelProviderResult.injectedEnvironment,
     [
-      ...(modelProviderFirewall ? [modelProviderFirewall] : []),
-      ...connectorFirewallConfigs,
+      ...(modelProviderConfig ? [modelProviderConfig] : []),
+      ...connectorPermissionConfigs,
     ],
   );
 
@@ -235,9 +235,9 @@ async function resolveSecretsAndEnvironment(
     environment,
     secretConnectorMap,
     resolvedModelProvider: modelProviderResult.resolvedModelProvider,
-    modelProviderFirewall,
+    modelProviderConfig,
     selectedModel: modelProviderResult.selectedModel,
-    connectorFirewalls: connectorFirewallConfigs,
+    connectorPermissionConfigs,
     mergedVars,
   };
 }
@@ -274,7 +274,7 @@ interface ResolveCliRunContextParams {
   vars?: Record<string, string>;
   secrets?: Record<string, string>;
   modelProvider?: string;
-  firewallPolicies?: FirewallPolicies;
+  permissionPolicies?: FirewallPolicies;
   allowedConnectorTypes?: ConnectorType[];
   // Artifact/memory
   artifactName?: string;
@@ -321,7 +321,7 @@ interface ResolvedCliContext {
  * Resolve all zero-layer data for CLI runs.
  *
  * This is the CLI counterpart to buildZeroExecutionContext — it performs the
- * same resolution (vars, secrets, connectors, firewalls, timezone, model
+ * same resolution (vars, secrets, connectors, permissions, timezone, model
  * provider) but returns pre-resolved data instead of a built ExecutionContext.
  * The CLI route calls this to get resolved context, then directly uses
  * buildInfraExecutionContext to assemble the context.
@@ -443,9 +443,9 @@ export async function resolveCliRunContext(
     environment,
     secretConnectorMap,
     resolvedModelProvider,
-    modelProviderFirewall,
+    modelProviderConfig,
     selectedModel,
-    connectorFirewalls,
+    connectorPermissionConfigs,
     mergedVars,
   } = secretsResult;
   const userTimezone = userPrefs?.timezone ?? undefined;
@@ -453,11 +453,11 @@ export async function resolveCliRunContext(
   // Step 5: Provider compatibility check for session continues.
   checkProviderCompatibility(originalModelProvider, resolvedModelProvider);
 
-  // Build firewall manifest
-  const firewalls = mergeFirewalls(
-    modelProviderFirewall,
-    connectorFirewalls,
-    params.firewallPolicies,
+  // Build permission manifest
+  const firewalls = mergePermissions(
+    modelProviderConfig,
+    connectorPermissionConfigs,
+    params.permissionPolicies,
     mergedVars,
   );
 
@@ -490,7 +490,7 @@ export async function resolveCliRunContext(
  * Handles: new run, checkpoint resume, session continue.
  *
  * This is the Zero layer's context builder — it resolves all business data
- * (model providers, secrets, connectors, variables, user preferences, firewalls)
+ * (model providers, secrets, connectors, variables, user preferences, permissions)
  * and builds the final ExecutionContext for sandbox dispatch.
  *
  * Parameter expansion:
@@ -603,9 +603,9 @@ export async function buildZeroExecutionContext(
     environment,
     secretConnectorMap,
     resolvedModelProvider,
-    modelProviderFirewall,
+    modelProviderConfig,
     selectedModel,
-    connectorFirewalls,
+    connectorPermissionConfigs,
     mergedVars,
   } = secretsResult;
   const userTimezone = userPrefs?.timezone ?? undefined;
@@ -615,11 +615,11 @@ export async function buildZeroExecutionContext(
   // original provider to avoid mid-conversation base URL mismatches.
   checkProviderCompatibility(originalModelProvider, resolvedModelProvider);
 
-  // Build firewall manifest (base + auth entries for the runner).
-  const firewalls = mergeFirewalls(
-    modelProviderFirewall,
-    connectorFirewalls,
-    params.firewallPolicies,
+  // Build permission manifest (base + auth entries for the runner).
+  const firewalls = mergePermissions(
+    modelProviderConfig,
+    connectorPermissionConfigs,
+    params.permissionPolicies,
     mergedVars,
   );
 

@@ -23,9 +23,7 @@ export const defaultAgentId$ = computed(async (get) => {
 export function agentById(id: string) {
   return computed(async (get) => {
     const client = get(zeroClient$)(zeroAgentsByIdContract);
-    const result = await accept(client.get({ params: { id } }), [200], {
-      toast: false,
-    });
+    const result = await accept(client.get({ params: { id } }), [200]);
     return result.body;
   });
 }
@@ -59,13 +57,13 @@ export const currentAgentId$ = computed((get) => {
   return typeof id === "string" ? id : null;
 });
 
-// ---------------------------------------------------------------------------
-// Identity — sidebar agent (user-selected, falls back to default)
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// Agent lists
-// ---------------------------------------------------------------------------
+export const currentAgent$ = computed((get) => {
+  const agentId = get(currentAgentId$);
+  if (!agentId) {
+    return null;
+  }
+  return get(agentById(agentId));
+});
 
 const internalReloadAgents$ = state(0);
 

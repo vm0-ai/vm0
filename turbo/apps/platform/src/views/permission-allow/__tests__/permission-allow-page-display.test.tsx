@@ -26,7 +26,7 @@ interface AgentResponse {
   displayName: string | null;
   sound: string | null;
   avatarUrl: string | null;
-  firewallPolicies: Record<string, Record<string, string>> | null;
+  permissionPolicies: Record<string, Record<string, string>> | null;
   customSkills: unknown[];
 }
 
@@ -38,7 +38,7 @@ function defaultAgent(overrides: Partial<AgentResponse> = {}): AgentResponse {
     displayName: null,
     sound: null,
     avatarUrl: null,
-    firewallPolicies: null,
+    permissionPolicies: null,
     customSkills: [],
     ...overrides,
   };
@@ -58,9 +58,9 @@ function mockAgent(agent: AgentResponse) {
   );
 }
 
-function mockFirewallRequests(requests: unknown[] = []) {
+function mockPermissionRequests(requests: unknown[] = []) {
   server.use(
-    http.get("*/api/zero/firewall-access-requests", () => {
+    http.get("*/api/zero/permission-access-requests", () => {
       return HttpResponse.json(requests);
     }),
   );
@@ -91,18 +91,17 @@ function setupMemberContext(agentOverrides: Partial<AgentResponse> = {}) {
 }
 
 // NOTE: Tests that render the admin confirmation card (showing agent name,
-// connector label, etc.) must use `action=deny` in the URL so that the
-// effective policy ("allow" by default for github) doesn't match the
-// requested action. When they match the page shows the "Permissions updated"
-// result card instead of the confirmation card.
+// connector label, etc.) must use an action that does NOT match the effective
+// policy. For github (no defaults → "allow"), use `action=deny`.
+// For gmail (default-denied via gmailDefaultAllowed), use `action=allow`.
 
 describe("fw-d-001: agent ID renders from signal", () => {
   it("uses agentId from the URL path to load the correct agent", async () => {
     mockAgent(defaultAgent({ displayName: "Special Agent Smith" }));
-    mockFirewallRequests();
+    mockPermissionRequests();
     await setupPage({
       context,
-      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read&action=deny`,
+      path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=channels:read&action=deny`,
     });
     await waitFor(() => {
       expect(
@@ -115,10 +114,10 @@ describe("fw-d-001: agent ID renders from signal", () => {
 describe("fw-d-005: agent display name renders", () => {
   it("shows the agent displayName when set", async () => {
     mockAgent(defaultAgent({ displayName: "My Smart Bot" }));
-    mockFirewallRequests();
+    mockPermissionRequests();
     await setupPage({
       context,
-      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read&action=deny`,
+      path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=channels:read&action=deny`,
     });
     await waitFor(() => {
       expect(screen.getAllByText(/My Smart Bot/).length).toBeGreaterThanOrEqual(
@@ -129,10 +128,10 @@ describe("fw-d-005: agent display name renders", () => {
 
   it("falls back to agentId when displayName is null", async () => {
     mockAgent(defaultAgent({ displayName: null }));
-    mockFirewallRequests();
+    mockPermissionRequests();
     await setupPage({
       context,
-      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read&action=deny`,
+      path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=channels:read&action=deny`,
     });
     await waitFor(() => {
       expect(
@@ -145,10 +144,10 @@ describe("fw-d-005: agent display name renders", () => {
 describe("fw-d-006: connector label from CONNECTOR_TYPES renders", () => {
   it("resolves and displays the connector label for gmail", async () => {
     mockAgent(defaultAgent());
-    mockFirewallRequests();
+    mockPermissionRequests();
     await setupPage({
       context,
-      path: `/agents/${AGENT_ID}/permissions?ref=gmail&permission=gmail&action=deny`,
+      path: `/agents/${AGENT_ID}/permissions?ref=gmail&permission=gmail&action=allow`,
     });
     await waitFor(() => {
       expect(screen.getAllByText(/Gmail/).length).toBeGreaterThanOrEqual(1);
@@ -173,11 +172,11 @@ describe("fw-d-007: loading state shows while agent loads", () => {
         return HttpResponse.json(defaultAgent());
       }),
     );
-    mockFirewallRequests();
+    mockPermissionRequests();
 
     detachedSetupPage({
       context,
-      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read`,
+      path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=channels:read`,
     });
 
     // The LoadingCard renders a spinner (animate-spin) — no text.
@@ -209,11 +208,11 @@ describe("fw-d-008: error state shows when agent load fails", () => {
         );
       }),
     );
-    mockFirewallRequests();
+    mockPermissionRequests();
 
     detachedSetupPage({
       context,
-      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read`,
+      path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=channels:read`,
     });
 
     await waitFor(() => {
@@ -225,10 +224,10 @@ describe("fw-d-008: error state shows when agent load fails", () => {
 describe("fw-d-009: member request form renders for non-owner", () => {
   it("shows request form for member who does not own the agent", async () => {
     setupMemberContext();
-    mockFirewallRequests();
+    mockPermissionRequests();
     await setupPage({
       context,
-      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read&action=deny`,
+      path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=channels:read&action=deny`,
     });
     await waitFor(() => {
       expect(screen.getByText(/requesting approval/)).toBeInTheDocument();

@@ -10,12 +10,12 @@ const log = logger("org:membership-cache");
 const CACHE_TTL_MS = 60_000; // 1 minute
 
 /**
- * Verify a user's org membership via org_members_cache with Clerk API fallback.
+ * Get a user's org role via org_members_cache with Clerk API fallback.
  *
  * Returns { role } if the user is a member, null if not.
  * Cache hit: ~1ms (DB read). Cache miss: ~50-200ms (Clerk API + cache write).
  */
-export async function verifyMembershipCached(
+export async function getMemberRole(
   orgId: string,
   userId: string,
 ): Promise<{ role: OrgRole } | null> {

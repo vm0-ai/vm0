@@ -542,3 +542,64 @@ describe("managePinnedAgentsDialog - reorder handle is present (SIDEBAR-D-041)",
     });
   });
 });
+
+describe("chatListDialog - pin buttons disabled during save (SIDEBAR-D-042)", () => {
+  it("disables pin and reorder buttons while save is in progress and re-enables after completion", async () => {
+    const user = userEvent.setup();
+    let resolvePost: (() => void) | undefined;
+    const postPromise = new Promise<void>((resolve) => {
+      resolvePost = resolve;
+    });
+
+    mockAPIsWithSubagents({ pinnedAgentIds: ["pinned-agent-id"] });
+    server.use(
+      http.post("*/api/zero/user-preferences", async () => {
+        await postPromise;
+        return HttpResponse.json({
+          timezone: null,
+          pinnedAgentIds: ["pinned-agent-id", "unpinned-agent-id"],
+          sendMode: "enter" as const,
+          captureNetworkBodiesRemaining: 0,
+        });
+      }),
+    );
+
+    await setupPage({ context, path: "/agents" });
+    await openChatListDialog(user);
+
+    const dialog = screen.getByRole("dialog");
+
+    // Wait for both pinned and unpinned agents to load
+    await waitFor(() => {
+      expect(within(dialog).getByText("Pinned")).toBeInTheDocument();
+      expect(within(dialog).getByText("Others")).toBeInTheDocument();
+    });
+
+    // Click the pin button for the unpinned agent to trigger a save
+    const pinButton = within(dialog).getByLabelText("Pin to sidebar");
+    await user.click(pinButton);
+
+    // While save is pending, existing pin/unpin/reorder buttons should be disabled
+    await waitFor(() => {
+      expect(
+        within(dialog).getByLabelText("Unpin Pinned Agent"),
+      ).toBeDisabled();
+      expect(
+        within(dialog).getByLabelText("Reorder Pinned Agent"),
+      ).toBeDisabled();
+    });
+
+    // Resolve the pending request
+    resolvePost!();
+
+    // After save completes, buttons should be re-enabled
+    await waitFor(() => {
+      expect(
+        within(dialog).getByLabelText("Unpin Pinned Agent"),
+      ).not.toBeDisabled();
+      expect(
+        within(dialog).getByLabelText("Reorder Pinned Agent"),
+      ).not.toBeDisabled();
+    });
+  });
+});

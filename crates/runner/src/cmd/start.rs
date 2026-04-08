@@ -295,6 +295,7 @@ pub async fn run_start(
             server.token,
             group,
             profiles,
+            runner_id.clone(),
             cancel.clone(),
             Arc::clone(&cancel_tokens),
         )
@@ -555,6 +556,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                         &runner_id, &name, &group, &profiles, &budget, &pool, current_mode,
                     );
                     drop(pool);
+                    provider.set_held_sessions(state.held_sessions.clone()).await;
                     provider.heartbeat(&state).await;
                 }
             }
@@ -698,6 +700,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     &runner_id, &name, &group, &profiles, &budget, &pool, current_mode,
                 );
                 drop(pool);
+                provider.set_held_sessions(state.held_sessions.clone()).await;
                 provider.heartbeat(&state).await;
             }
         }

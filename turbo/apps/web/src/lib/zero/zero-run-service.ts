@@ -229,13 +229,13 @@ export async function createZeroRunRecord(
 ): Promise<ZeroRunRecordResult> {
   const db = globalThis.services.db;
 
-  // Fetch agent metadata (displayName, description, sound, firewallPolicies, orgId)
+  // Fetch agent metadata (displayName, description, sound, permissionPolicies, orgId)
   const [row] = await db
     .select({
       displayName: zeroAgents.displayName,
       description: zeroAgents.description,
       sound: zeroAgents.sound,
-      firewallPolicies: zeroAgents.firewallPolicies,
+      permissionPolicies: zeroAgents.permissionPolicies,
       orgId: zeroAgents.orgId,
     })
     .from(zeroAgents)
@@ -246,21 +246,21 @@ export async function createZeroRunRecord(
     displayName: string | null;
     description: string | null;
     sound: string | null;
-    rawFirewallPolicies: FirewallPolicies | null;
+    rawPermissionPolicies: FirewallPolicies | null;
     orgId: string | null;
   } = row
     ? {
         displayName: row.displayName,
         description: row.description,
         sound: row.sound,
-        rawFirewallPolicies: row.firewallPolicies ?? null,
+        rawPermissionPolicies: row.permissionPolicies ?? null,
         orgId: row.orgId,
       }
     : {
         displayName: null,
         description: null,
         sound: null,
-        rawFirewallPolicies: null,
+        rawPermissionPolicies: null,
         orgId: null,
       };
 
@@ -297,10 +297,10 @@ export async function createZeroRunRecord(
     ? `${agentPrompt}\n\n${appendSystemPrompt}`
     : agentPrompt;
 
-  // Resolve firewall policies using the user's enabled connectors so that
+  // Resolve permission policies using the user's enabled connectors so that
   // default policies are seeded for each allowed connector type.
-  const firewallPolicies = resolveFirewallPolicies(
-    agent.rawFirewallPolicies,
+  const permissionPolicies = resolveFirewallPolicies(
+    agent.rawPermissionPolicies,
     allowedConnectorTypes ?? [],
   );
 
@@ -327,7 +327,7 @@ export async function createZeroRunRecord(
     memoryName: "memory",
     disallowedTools: [...DISALLOWED_TOOLS],
     vars: { ZERO_AGENT_ID: params.agentId },
-    firewallPolicies: firewallPolicies ?? undefined,
+    permissionPolicies: permissionPolicies ?? undefined,
     allowedConnectorTypes,
     agentName: resolved.agentName,
     orgId: resolved.orgId,

@@ -5,7 +5,7 @@ import { conversations } from "../../../db/schema/conversation";
 import { checkpoints } from "../../../db/schema/checkpoint";
 import { notFound } from "../../shared/errors";
 import { createAgentSession, updateAgentSession } from "../agent-session";
-import { storeSessionHistory } from "../session-history";
+import { registerSessionHistoryBlob } from "../session-history";
 import { logger } from "../../shared/logger";
 import type {
   CheckpointRequest,
@@ -64,9 +64,11 @@ export async function createCheckpoint(
     `Creating conversation record for CLI agent: ${request.cliAgentType}`,
   );
 
-  // Store session history in R2 blob storage
-  const historyHash = await storeSessionHistory(request.cliAgentSessionHistory);
-  log.debug(`Session history stored in R2, hash=${historyHash}`);
+  // Register session history blob (content already uploaded via presigned URL)
+  const historyHash = await registerSessionHistoryBlob(
+    request.cliAgentSessionHistoryHash,
+  );
+  log.debug(`Session history blob registered, hash=${historyHash}`);
 
   // Upsert conversation record (handles retries atomically)
   const [conversation] = await globalThis.services.db

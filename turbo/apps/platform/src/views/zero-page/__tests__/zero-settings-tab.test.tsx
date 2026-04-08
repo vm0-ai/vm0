@@ -36,7 +36,7 @@ function agentDetail(overrides: Record<string, unknown> = {}) {
     sound: "professional",
     avatarUrl: "preset:0",
     connectors: [],
-    firewallPolicies: null,
+    permissionPolicies: null,
     ...overrides,
   };
 }
@@ -213,7 +213,7 @@ describe("zero settings tab - display", () => {
           sound: null,
           avatarUrl: null,
           connectors: [],
-          firewallPolicies: null,
+          permissionPolicies: null,
         });
       }),
       http.get("*/api/zero/agents/:name/instructions", () => {

@@ -533,6 +533,7 @@ export function ZeroSchedulePage() {
     setTogglingIds((prev) => {
       return new Set([...prev, id]);
     });
+    // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove try/finally — use useLoadableSet for loading state
     try {
       await toggleEnabled(
         {
@@ -556,6 +557,7 @@ export function ZeroSchedulePage() {
     setRunningIds((prev) => {
       return new Set([...prev, id]);
     });
+    // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove try/finally — use useLoadableSet for loading state
     try {
       await runScheduleNow(entry.id, pageSignal);
     } finally {

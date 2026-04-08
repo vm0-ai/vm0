@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use tokio_util::sync::CancellationToken;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use reqeast::StatusCode;
@@ -45,6 +45,8 @@ pub struct ApiProvider {
     /// Profile names this runner supports (e.g., ["vm0/default"]).
     /// Sent in poll requests so the server only returns jobs this runner can handle.
     profiles: Vec<String>,
+    /// Unique runner identity (UUID). Used to filter targeted Ably notifications.
+    runner_id: String,
     /// Mutable discovery state, behind Mutex for `&self` compatibility.
     /// Only one caller (main loop) — never contended in practice.
     discovery: tokio::sync::Mutex<DiscoveryState>,
@@ -53,6 +55,8 @@ pub struct ApiProvider {
     /// Shared map of per-job cancel tokens. When a `"cancel"` event arrives
     /// via Ably, `discover()` looks up the run and cancels it directly.
     cancel_tokens: Arc<tokio::sync::Mutex<HashMap<Uuid, CancellationToken>>>,
+    /// Session IDs held in the idle pool, sent in poll requests for affinity ordering.
+    held_sessions: tokio::sync::Mutex<Vec<String>>,
     /// Shutdown signal.
     cancel: CancellationToken,
 }
@@ -62,6 +66,9 @@ struct DiscoveryState {
     ably_retry: RetryState<AblyReconnectHandle>,
     ably_connected: bool,
     poll_now: bool,
+    /// When set, schedules a deferred poll so non-targeted runners can pick up
+    /// jobs that the targeted runner may not have claimed.
+    deferred_poll_at: Option<tokio::time::Instant>,
 }
 
 type AblyReconnectHandle =
@@ -74,6 +81,7 @@ impl ApiProvider {
         token: String,
         group: String,
         profiles: Vec<String>,
+        runner_id: String,
         cancel: CancellationToken,
         cancel_tokens: Arc<tokio::sync::Mutex<HashMap<Uuid, CancellationToken>>>,
     ) -> Arc<Self> {
@@ -98,14 +106,17 @@ impl ApiProvider {
             api,
             group,
             profiles,
+            runner_id,
             discovery: tokio::sync::Mutex::new(DiscoveryState {
                 ably,
                 ably_retry,
                 ably_connected,
                 poll_now: true, // immediate first poll
+                deferred_poll_at: None,
             }),
             tokens: tokio::sync::Mutex::new(HashMap::new()),
             cancel_tokens,
+            held_sessions: tokio::sync::Mutex::new(Vec::new()),
             cancel,
         })
     }
@@ -127,6 +138,7 @@ impl JobProvider for ApiProvider {
                 ref mut ably_retry,
                 ref mut ably_connected,
                 ref mut poll_now,
+                ref mut deferred_poll_at,
             } = *state;
 
             // Spawn Ably reconnection when timer fires
@@ -134,6 +146,8 @@ impl JobProvider for ApiProvider {
 
             let sleep_dur = if *poll_now {
                 Duration::ZERO
+            } else if let Some(at) = *deferred_poll_at {
+                at.saturating_duration_since(tokio::time::Instant::now())
             } else if *ably_connected {
                 POLL_SLOW
             } else {
@@ -157,6 +171,23 @@ impl JobProvider for ApiProvider {
                                 continue;
                             }
                             if let Some(notif) = parse_job_notification(&msg) {
+                                // Targeted to another runner: defer poll instead of
+                                // claiming immediately, giving the target a 2s head start.
+                                if notif.target_runner_id.as_deref().is_some_and(|t| t != self.runner_id) {
+                                    debug!(
+                                        run_id = %notif.run_id,
+                                        target = notif.target_runner_id.as_deref().unwrap_or(""),
+                                        "ably: job targeted to another runner, deferring poll"
+                                    );
+                                    // Only set if no deferred poll is already pending,
+                                    // to avoid pushing the deadline further on rapid bursts.
+                                    if deferred_poll_at.is_none() {
+                                        *deferred_poll_at = Some(
+                                            tokio::time::Instant::now() + Duration::from_secs(2)
+                                        );
+                                    }
+                                    continue;
+                                }
                                 // Fall back to default profile when server doesn't send one
                                 // (backwards compat with pre-profile API).
                                 let profile = notif.profile.unwrap_or_else(|| crate::profile::DEFAULT_PROFILE.to_owned());
@@ -195,7 +226,9 @@ impl JobProvider for ApiProvider {
                 // Poll fallback (adaptive interval)
                 () = tokio::time::sleep(sleep_dur) => {
                     *poll_now = false;
-                    match self.api.poll(&self.group, &self.profiles).await {
+                    *deferred_poll_at = None;
+                    let sessions = self.held_sessions.lock().await.clone();
+                    match self.api.poll(&self.group, &self.profiles, &sessions).await {
                         Ok(Some(job)) => {
                             // Fall back to default profile when server doesn't send one
                             // (backwards compat with pre-profile API).
@@ -245,6 +278,10 @@ impl JobProvider for ApiProvider {
         if let Err(e) = self.api.heartbeat(state).await {
             warn!(error = %e, "heartbeat failed");
         }
+    }
+
+    async fn set_held_sessions(&self, sessions: Vec<String>) {
+        *self.held_sessions.lock().await = sessions;
     }
 
     /// # Ordering requirement
@@ -298,6 +335,7 @@ impl JobProvider for ApiProvider {
 struct JobNotification {
     run_id: Uuid,
     profile: Option<String>,
+    target_runner_id: Option<String>,
 }
 
 fn parse_cancel_notification(msg: &ably_subscriber::Message) -> Option<Uuid> {
@@ -337,7 +375,16 @@ fn parse_job_notification(msg: &ably_subscriber::Message) -> Option<JobNotificat
         .get("profile")
         .and_then(|v| v.as_str())
         .map(String::from);
-    Some(JobNotification { run_id, profile })
+    let target_runner_id = msg
+        .data
+        .get("targetRunnerId")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+    Some(JobNotification {
+        run_id,
+        profile,
+        target_runner_id,
+    })
 }
 
 /// Receive from Ably subscription, or pend forever if not connected.
@@ -443,11 +490,22 @@ impl ApiClient {
     }
 
     /// Poll for a pending job. Returns `Ok(None)` when no work is available.
-    async fn poll(&self, group: &str, profiles: &[String]) -> RunnerResult<Option<Job>> {
+    async fn poll(
+        &self,
+        group: &str,
+        profiles: &[String],
+        held_sessions: &[String],
+    ) -> RunnerResult<Option<Job>> {
+        let mut body = serde_json::json!({ "group": group, "profiles": profiles });
+        if !held_sessions.is_empty()
+            && let Some(obj) = body.as_object_mut()
+        {
+            obj.insert("heldSessions".to_string(), serde_json::json!(held_sessions));
+        }
         let resp = self
             .http
             .request(reqeast::Method::POST, "/api/runners/poll", &self.token)
-            .json(&serde_json::json!({ "group": group, "profiles": profiles }))
+            .json(&body)
             .send()
             .await
             .map_err(|e| RunnerError::Api(format!("poll: {e}")))?;
@@ -693,5 +751,32 @@ mod tests {
     fn parse_cancel_notification_missing_field() {
         let msg = make_message(Some("cancel"), serde_json::json!({ "other": "data" }));
         assert!(parse_cancel_notification(&msg).is_none());
+    }
+
+    #[test]
+    fn parse_job_notification_with_target_runner_id() {
+        let msg = make_message(
+            Some("job"),
+            serde_json::json!({
+                "runId": "00000000-0000-0000-0000-000000000001",
+                "profile": "vm0/default",
+                "targetRunnerId": "00000000-0000-0000-0000-000000000099"
+            }),
+        );
+        let notif = parse_job_notification(&msg).unwrap();
+        assert_eq!(
+            notif.target_runner_id.as_deref(),
+            Some("00000000-0000-0000-0000-000000000099")
+        );
+    }
+
+    #[test]
+    fn parse_job_notification_without_target_runner_id() {
+        let msg = make_message(
+            Some("job"),
+            serde_json::json!({ "runId": "00000000-0000-0000-0000-000000000001" }),
+        );
+        let notif = parse_job_notification(&msg).unwrap();
+        assert!(notif.target_runner_id.is_none());
     }
 }

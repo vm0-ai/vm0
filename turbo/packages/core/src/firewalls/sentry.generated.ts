@@ -14,7 +14,7 @@ export const sentryFirewall = {
   },
   apis: [
     {
-      base: "https://sentry.io/api",
+      base: "https://sentry.io",
       auth: {
         headers: {
           Authorization: "Bearer ${{ secrets.SENTRY_TOKEN }}",

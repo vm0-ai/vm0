@@ -152,6 +152,23 @@ export default [
       "ccstate/no-new-abort-controller": "off",
     },
   },
+  // Ban try statements in production source code.
+  // Use accept() for API errors, useLoadableSet for loading states.
+  // If genuinely needed (JSON.parse, clipboard, polling), add an inline eslint-disable.
+  {
+    files: ["src/**/*.{ts,tsx}"],
+    ignores: ["src/**/__tests__/**", "src/mocks/**"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "TryStatement",
+          message:
+            "try statements are not allowed. Use accept() for API errors, useLoadableSet for loading states. If genuinely needed (JSON.parse, clipboard, polling), add an inline eslint-disable with justification.",
+        },
+      ],
+    },
+  },
   {
     ignores: [
       "dist/**",

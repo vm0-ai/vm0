@@ -345,6 +345,55 @@ describe("fetchConversationContexts", () => {
     expect(client.conversations.history).toHaveBeenCalledTimes(1);
   });
 
+  it("should NOT fetch channel context for DM without thread", async () => {
+    const client = createMockConversationClient({
+      channelMessages: [{ user: "U100", text: "Should not appear", ts: "1.0" }],
+    });
+
+    const { executionContext } = await fetchConversationContexts(
+      client,
+      "D-dm-channel", // DM channel ID starts with "D"
+      undefined, // no threadTs
+      "BBOT",
+      "xoxb-token",
+      undefined,
+      undefined,
+    );
+
+    expect(executionContext).toBe("");
+    expect(client.conversations.history).not.toHaveBeenCalled();
+  });
+
+  it("should NOT fetch channel context for DM first thread session", async () => {
+    const client = createMockConversationClient({
+      threadMessages: [
+        { user: "U100", text: "DM thread parent", ts: "100.0" },
+        { user: "U200", text: "DM reply", ts: "100.1" },
+      ],
+      channelMessages: [
+        { user: "U300", text: "Should not appear", ts: "99.0" },
+      ],
+    });
+
+    const { executionContext } = await fetchConversationContexts(
+      client,
+      "D-dm-channel", // DM channel ID
+      "100.0", // threadTs
+      "BBOT",
+      "xoxb-token",
+      undefined, // lastProcessedMessageTs
+      "100.1", // currentMessageTs
+      undefined, // no existingSessionId → first session
+    );
+
+    // Thread context should be present, but no channel context
+    expect(executionContext).toContain("# Slack Thread Context");
+    expect(executionContext).not.toContain("# Recent Channel Messages");
+    expect(executionContext).toContain("DM thread parent");
+    expect(executionContext).not.toContain("Should not appear");
+    expect(client.conversations.history).not.toHaveBeenCalled();
+  });
+
   describe("image upload in channel context prefix", () => {
     const context = testContext();
 

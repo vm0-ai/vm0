@@ -934,6 +934,20 @@ function DaySection({ day }: { day: DayInsight }) {
 }
 
 // ---------------------------------------------------------------------------
+// Last updated label
+// ---------------------------------------------------------------------------
+
+/** Format an ISO timestamp as a locale-aware absolute time. */
+function formatAbsoluteTime(iso: string): string {
+  return new Date(iso).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Main content
 // ---------------------------------------------------------------------------
 
@@ -953,7 +967,14 @@ function InsightsContent({ data }: { data: NetworkInsightsData }) {
         {/* Header */}
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h1 className="text-xl font-semibold">Insights</h1>
+            <div className="flex items-baseline gap-2">
+              <h1 className="text-xl font-semibold">Insights</h1>
+              {data.lastUpdated && (
+                <span className="text-xs text-muted-foreground">
+                  Last updated {formatAbsoluteTime(data.lastUpdated)}
+                </span>
+              )}
+            </div>
             <p className="text-sm text-muted-foreground mt-1">
               Monitor what your agents access, which permissions they use, and
               spot anything unusual.

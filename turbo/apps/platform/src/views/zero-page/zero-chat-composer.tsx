@@ -494,6 +494,7 @@ export function ZeroChatComposer({
 
   const handleConnectSuccess = async (type: string) => {
     const label = resolveConnectorLabel(type, connectorMap);
+    // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove — use accept() auto-toast
     try {
       await addConnector(type, pageSignal);
       toast.success(`${label} connected and authorized for ${displayName}`, {
@@ -512,6 +513,7 @@ export function ZeroChatComposer({
     setSavingType(type);
     detach(
       (async () => {
+        // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove — use accept() auto-toast
         try {
           if (checked) {
             await addConnector(type, pageSignal);

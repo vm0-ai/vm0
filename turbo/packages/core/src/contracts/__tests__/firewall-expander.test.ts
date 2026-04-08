@@ -198,20 +198,6 @@ describe("resolveFirewallSelections", () => {
     }
   });
 
-  it("should resolve builtin github firewall without fetch", async () => {
-    const fetchFn = vi.fn<FetchFn>();
-    const expanded = await resolveFirewallSelections(
-      { github: { permissions: "all" } },
-      fetchFn,
-    );
-
-    expect(fetchFn).not.toHaveBeenCalled();
-    expect(expanded).toHaveLength(1);
-    expect(expanded[0]!.name).toBe("github");
-    expect(expanded[0]!.ref).toBe("github");
-    expect(expanded[0]!.apis.length).toBeGreaterThan(0);
-  });
-
   it("should resolve builtin slack firewall without fetch", async () => {
     const fetchFn = vi.fn<FetchFn>();
     const expanded = await resolveFirewallSelections(
@@ -476,6 +462,136 @@ describe("validateRule", () => {
     expect(() => {
       return validateRule("POST noslash GraphQL type:query", "p", "fw");
     }).toThrow("path must start with");
+  });
+
+  it("should accept GraphQL field: modifier", () => {
+    expect(() => {
+      return validateRule(
+        "POST /graphql GraphQL type:mutation field:createIssue",
+        "p",
+        "fw",
+      );
+    }).not.toThrow();
+  });
+
+  it("should accept GraphQL field wildcard", () => {
+    expect(() => {
+      return validateRule(
+        "POST /graphql GraphQL type:mutation field:create*",
+        "p",
+        "fw",
+      );
+    }).not.toThrow();
+  });
+
+  it("should accept GraphQL field-only modifier", () => {
+    expect(() => {
+      return validateRule("POST /graphql GraphQL field:createIssue", "p", "fw");
+    }).not.toThrow();
+  });
+
+  it("should reject empty GraphQL field name", () => {
+    expect(() => {
+      return validateRule("POST /graphql GraphQL field:", "p", "fw");
+    }).toThrow("empty GraphQL field name");
+  });
+
+  it("should reject invalid GraphQL field pattern", () => {
+    expect(() => {
+      return validateRule(
+        "POST /graphql GraphQL field:create-issue",
+        "p",
+        "fw",
+      );
+    }).toThrow("invalid GraphQL field pattern");
+  });
+
+  it("should accept GraphQL field with underscore prefix", () => {
+    expect(() => {
+      return validateRule("POST /graphql GraphQL field:__typename", "p", "fw");
+    }).not.toThrow();
+  });
+
+  it("should accept GraphQL field with numbers", () => {
+    expect(() => {
+      return validateRule("POST /graphql GraphQL field:field123", "p", "fw");
+    }).not.toThrow();
+  });
+
+  it("should accept GraphQL field catch-all wildcard", () => {
+    expect(() => {
+      return validateRule("POST /graphql GraphQL field:*", "p", "fw");
+    }).not.toThrow();
+  });
+
+  it("should accept all three modifiers together", () => {
+    expect(() => {
+      return validateRule(
+        "POST /graphql GraphQL type:mutation operationName:IssueCreate field:createIssue",
+        "p",
+        "fw",
+      );
+    }).not.toThrow();
+  });
+
+  it("should accept dot-separated field paths", () => {
+    expect(() => {
+      return validateRule(
+        "POST /graphql GraphQL type:query field:repository.issues",
+        "p",
+        "fw",
+      );
+    }).not.toThrow();
+  });
+
+  it("should accept deeply nested field paths", () => {
+    expect(() => {
+      return validateRule(
+        "POST /graphql GraphQL type:query field:repository.issues.nodes",
+        "p",
+        "fw",
+      );
+    }).not.toThrow();
+  });
+
+  it("should accept dot-separated field path with wildcard", () => {
+    expect(() => {
+      return validateRule(
+        "POST /graphql GraphQL type:query field:repository.*",
+        "p",
+        "fw",
+      );
+    }).not.toThrow();
+  });
+
+  it("should reject field path with trailing dot", () => {
+    expect(() => {
+      return validateRule(
+        "POST /graphql GraphQL type:query field:repository.",
+        "p",
+        "fw",
+      );
+    }).toThrow("invalid GraphQL field pattern");
+  });
+
+  it("should reject field path with leading dot", () => {
+    expect(() => {
+      return validateRule(
+        "POST /graphql GraphQL type:query field:.issues",
+        "p",
+        "fw",
+      );
+    }).toThrow("invalid GraphQL field pattern");
+  });
+
+  it("should reject field path with consecutive dots", () => {
+    expect(() => {
+      return validateRule(
+        "POST /graphql GraphQL type:query field:repository..issues",
+        "p",
+        "fw",
+      );
+    }).toThrow("invalid GraphQL field pattern");
   });
 });
 

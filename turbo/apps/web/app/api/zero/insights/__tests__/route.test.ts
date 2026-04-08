@@ -82,6 +82,7 @@ describe("GET /api/zero/insights", () => {
     expect(data.days).toEqual([]);
     expect(data.totalCredits).toBe(0);
     expect(data.totalRuns).toBe(0);
+    expect(data.lastUpdated).toBeNull();
   });
 
   it("should return insights with correct structure", async () => {
@@ -107,6 +108,8 @@ describe("GET /api/zero/insights", () => {
     expect(data.days[0].creditsUsed).toBe(100);
     expect(data.totalCredits).toBe(100);
     expect(data.totalRuns).toBe(5);
+    expect(data.lastUpdated).toBeTruthy();
+    expect(new Date(data.lastUpdated).getTime()).not.toBeNaN();
   });
 
   it("should aggregate totals across multiple days", async () => {

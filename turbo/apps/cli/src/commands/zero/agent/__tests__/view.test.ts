@@ -18,7 +18,7 @@ const mockAgent = {
   displayName: "My Agent",
   description: "A test agent",
   sound: "professional",
-  firewallPolicies: null,
+  permissionPolicies: null,
 };
 
 function mockConnectorListHandler(
@@ -95,17 +95,17 @@ describe("zero agent view command", () => {
       expect(logCalls).toContain("github (full access)");
     });
 
-    it("should show permission summary with firewall policies", async () => {
+    it("should show permission summary with permission policies", async () => {
       server.use(
         http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
           return HttpResponse.json({
             ...mockAgent,
-            firewallPolicies: {
-              github: {
-                "actions:read": "allow",
-                "actions:write": "deny",
-                "contents:read": "allow",
-                "contents:write": "deny",
+            permissionPolicies: {
+              slack: {
+                "channels:read": "allow",
+                "chat:write": "deny",
+                "reactions:read": "allow",
+                admin: "deny",
               },
             },
           });
@@ -113,7 +113,7 @@ describe("zero agent view command", () => {
         http.get(
           "http://localhost:3000/api/zero/agents/my-agent/user-connectors",
           () => {
-            return HttpResponse.json({ enabledTypes: ["github"] });
+            return HttpResponse.json({ enabledTypes: ["slack"] });
           },
         ),
         mockConnectorListHandler(),
@@ -122,7 +122,7 @@ describe("zero agent view command", () => {
       await viewCommand.parseAsync(["node", "cli", "my-agent"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toMatch(/github \(\d+\/\d+ allowed\)/);
+      expect(logCalls).toMatch(/slack \(\d+\/\d+ allowed\)/);
     });
 
     it("should show instructions content with --instructions flag", async () => {
@@ -197,12 +197,12 @@ describe("zero agent view command", () => {
         http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
           return HttpResponse.json({
             ...mockAgent,
-            firewallPolicies: {
-              github: {
-                "actions:read": "allow",
-                "actions:write": "deny",
-                "contents:read": "allow",
-                "contents:write": "ask",
+            permissionPolicies: {
+              slack: {
+                "channels:read": "allow",
+                "chat:write": "deny",
+                "reactions:read": "allow",
+                admin: "ask",
               },
             },
           });
@@ -210,7 +210,7 @@ describe("zero agent view command", () => {
         http.get(
           "http://localhost:3000/api/zero/agents/my-agent/user-connectors",
           () => {
-            return HttpResponse.json({ enabledTypes: ["github"] });
+            return HttpResponse.json({ enabledTypes: ["slack"] });
           },
         ),
         mockConnectorListHandler(),
@@ -224,7 +224,7 @@ describe("zero agent view command", () => {
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toMatch(/github \(\d+\/\d+ allowed\)/);
+      expect(logCalls).toMatch(/slack \(\d+\/\d+ allowed\)/);
       expect(logCalls).toContain("✓");
       expect(logCalls).toContain("✗");
       expect(logCalls).toContain("?");
@@ -256,7 +256,7 @@ describe("zero agent view command", () => {
       expect(logCalls).toContain("no permission rules configured");
     });
 
-    it("should handle non-firewall connectors gracefully", async () => {
+    it("should handle connectors without permissions gracefully", async () => {
       server.use(
         http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
           return HttpResponse.json(mockAgent);

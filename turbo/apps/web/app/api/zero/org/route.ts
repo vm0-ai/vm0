@@ -11,7 +11,7 @@ import {
 } from "../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";
 import { updateOrg } from "../../../../src/lib/zero/org/org-service";
-import { getOrgData } from "../../../../src/lib/zero/org/org-cache-service";
+import { getOrgNameAndSlug } from "../../../../src/lib/auth/org-cache";
 import {
   isBadRequest,
   isForbidden,
@@ -29,7 +29,7 @@ const router = tsr.router(zeroOrgContract, {
 
     try {
       const { org: resolvedOrg, member } = await resolveOrg(authCtx);
-      const orgData = await getOrgData(resolvedOrg.orgId);
+      const orgData = await getOrgNameAndSlug(resolvedOrg.orgId);
 
       return {
         status: 200 as const,

@@ -60,6 +60,7 @@ import { userCache } from "../db/schema/user-cache";
 import { creditUsage } from "../db/schema/credit-usage";
 import { sandboxTelemetry } from "../db/schema/sandbox-telemetry";
 import { creditPricing } from "../db/schema/credit-pricing";
+import { runnerState } from "../db/schema/runner-state";
 import { insightsDaily } from "../db/schema/insights-daily";
 import { users } from "../db/schema/user";
 import { and, eq, like, or, sql } from "drizzle-orm";
@@ -360,7 +361,7 @@ async function getTestAuthContext(): Promise<{
 /**
  * Create a test org by inserting into org_cache.
  *
- * Pre-populates org_cache so getOrgData() works without Clerk API calls.
+ * Pre-populates org_cache so getOrgNameAndSlug() works without Clerk API calls.
  *
  * @param slug - The org slug
  * @returns The created org with id and slug
@@ -373,7 +374,7 @@ export async function createTestOrg(
   // Use the mock Clerk orgId pattern from clerk-mock.ts
   const { orgId } = await getTestAuthContext();
 
-  // Pre-populate org_cache so getOrgData() works without Clerk API calls
+  // Pre-populate org_cache so getOrgNameAndSlug() works without Clerk API calls
   await globalThis.services.db
     .insert(orgCache)
     .values({
@@ -467,7 +468,7 @@ export async function createTestZeroAgent(
     displayName?: string;
     description?: string;
     sound?: string;
-    firewallPolicies?: FirewallPolicies;
+    permissionPolicies?: FirewallPolicies;
   },
 ): Promise<void> {
   initServices();
@@ -493,7 +494,7 @@ export async function createTestZeroAgent(
       displayName: metadata.displayName ?? null,
       description: metadata.description ?? null,
       sound: metadata.sound ?? null,
-      firewallPolicies: metadata.firewallPolicies ?? null,
+      permissionPolicies: metadata.permissionPolicies ?? null,
     })
     .onConflictDoUpdate({
       target: [zeroAgents.orgId, zeroAgents.name],
@@ -501,7 +502,7 @@ export async function createTestZeroAgent(
         displayName: metadata.displayName ?? null,
         description: metadata.description ?? null,
         sound: metadata.sound ?? null,
-        firewallPolicies: metadata.firewallPolicies ?? null,
+        permissionPolicies: metadata.permissionPolicies ?? null,
       },
     });
 }
@@ -877,7 +878,7 @@ export async function createTestRun(
     checkpointId?: string;
     memoryName?: string;
     appendSystemPrompt?: string;
-    firewallPolicies?: Record<string, Record<string, string>>;
+    permissionPolicies?: Record<string, Record<string, string>>;
   },
 ): Promise<{ runId: string; status: string }> {
   const request = createTestRequest("http://localhost:3000/api/agent/runs", {
@@ -1067,9 +1068,8 @@ async function createTestCheckpoint(
         runId,
         cliAgentType: "test-agent",
         cliAgentSessionId: `test-session-${runId}`,
-        cliAgentSessionHistory: JSON.stringify([
-          { role: "user", content: "test" },
-        ]),
+        cliAgentSessionHistoryHash:
+          "ec3ac9679505be3bb8233c4ef0b39c8ee206d2c37fc8610edc19f41fbfb9661e",
       }),
     },
   );
@@ -2582,7 +2582,7 @@ export async function createTestRunnerJob(
   versionId: string,
   runnerGroup: string,
   contextOverrides?: Partial<StoredExecutionContext>,
-  runOverrides?: { appendSystemPrompt?: string },
+  runOverrides?: { appendSystemPrompt?: string; sessionId?: string },
 ): Promise<{ runId: string }> {
   const orgId = await getOrgIdFromVersion(versionId);
 
@@ -2616,6 +2616,7 @@ export async function createTestRunnerJob(
   await globalThis.services.db.insert(runnerJobQueue).values({
     runId: run!.id,
     runnerGroup,
+    sessionId: runOverrides?.sessionId ?? null,
     executionContext: storedContext,
     expiresAt: new Date(Date.now() + 2 * 60 * 60 * 1000),
   });
@@ -2879,7 +2880,7 @@ export async function createTestTelegramInstallation(options?: {
   const orgSlug = uniqueId("org");
   const orgId = uniqueId("org");
 
-  // Pre-populate org cache for getOrgData()
+  // Pre-populate org cache for getOrgNameAndSlug()
   await globalThis.services.db
     .insert(orgCache)
     .values({
@@ -5194,4 +5195,72 @@ export async function getAgentCustomSkills(agentId: string): Promise<string[]> {
     .limit(1);
   if (!agent) throw new Error(`Agent not found: ${agentId}`);
   return agent.customSkills;
+}
+
+/**
+ * Clear the headVersionId of a compose to simulate a compose with no versions.
+ * Useful for triggering pre-run failures in executeSchedule().
+ */
+export async function clearComposeHeadVersion(
+  composeId: string,
+): Promise<void> {
+  await globalThis.services.db
+    .update(agentComposes)
+    .set({ headVersionId: null })
+    .where(eq(agentComposes.id, composeId));
+}
+
+/**
+ * Set the consecutiveFailures count on a schedule.
+ * Useful for testing auto-disable after N failures.
+ */
+export async function setScheduleConsecutiveFailures(
+  composeId: string,
+  name: string,
+  failures: number,
+): Promise<void> {
+  await globalThis.services.db
+    .update(zeroAgentSchedules)
+    .set({ consecutiveFailures: failures })
+    .where(
+      and(
+        eq(zeroAgentSchedules.agentId, composeId),
+        eq(zeroAgentSchedules.name, name),
+      ),
+    );
+}
+
+export async function insertTestRunnerState(overrides: {
+  runnerId: string;
+  runnerGroup: string;
+  runnerName?: string;
+  profiles?: string[];
+  maxConcurrent?: number;
+  runningCount?: number;
+  heldSessions?: string[];
+  mode?: string;
+  lastSeenAt?: Date;
+}): Promise<void> {
+  initServices();
+  await globalThis.services.db.insert(runnerState).values({
+    runnerId: overrides.runnerId,
+    runnerName:
+      overrides.runnerName ?? `runner-${overrides.runnerId.slice(0, 8)}`,
+    runnerGroup: overrides.runnerGroup,
+    profiles: overrides.profiles ?? ["vm0/default"],
+    totalVcpu: 16,
+    totalMemoryMb: 32768,
+    maxConcurrent: overrides.maxConcurrent ?? 8,
+    allocatedVcpu: 0,
+    allocatedMemoryMb: 0,
+    runningCount: overrides.runningCount ?? 0,
+    heldSessions: overrides.heldSessions ?? [],
+    mode: overrides.mode ?? "running",
+    lastSeenAt: overrides.lastSeenAt ?? new Date(),
+  });
+}
+
+export async function deleteAllTestRunnerState(): Promise<void> {
+  initServices();
+  await globalThis.services.db.delete(runnerState);
 }

@@ -242,6 +242,7 @@ export async function fetchConversationContexts(
   existingSessionId?: string,
 ): Promise<{ executionContext: string }> {
   const imageSessionId = `${channelId}-${threadTs ?? "channel"}`;
+  const isDm = channelId.startsWith("D");
   const contextType = threadTs ? "thread" : "channel";
 
   // First session in a thread (no existing session) — fetch channel messages
@@ -249,14 +250,21 @@ export async function fetchConversationContexts(
   const isFirstThreadSession = Boolean(threadTs && !existingSessionId);
 
   // Fetch all messages once (single Slack API call)
+  // DMs without a thread don't need channel context — the current message is
+  // already the full conversation context.
   const allMessages = threadTs
     ? await fetchThreadContext(client, channelId, threadTs)
-    : await fetchChannelContext(client, channelId, 10);
+    : isDm
+      ? []
+      : await fetchChannelContext(client, channelId, 10);
 
-  // For first thread mention, fetch the 10 channel messages before the thread
-  const channelMessages = isFirstThreadSession
-    ? await fetchChannelContext(client, channelId, 10, threadTs)
-    : [];
+  // For first thread mention in a non-DM channel, fetch the 10 channel messages
+  // before the thread so the agent has background context.
+  // DMs don't need channel history — the thread already contains the full conversation.
+  const channelMessages =
+    isFirstThreadSession && !isDm
+      ? await fetchChannelContext(client, channelId, 10, threadTs)
+      : [];
 
   // Exclude the current message (it's already sent as the prompt)
   const contextMessages = currentMessageTs

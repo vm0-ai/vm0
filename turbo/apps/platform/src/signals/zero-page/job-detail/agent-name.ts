@@ -10,7 +10,7 @@ export const setZeroJobAgentName$ = command(({ set }, name: string | null) => {
   set(internalAgentName$, name);
 });
 
-/** Read-only access to the current agent name (used by detail & firewall). */
+/** Read-only access to the current agent name (used by detail & permissions). */
 export const agentName$ = computed((get) => {
   return get(internalAgentName$);
 });

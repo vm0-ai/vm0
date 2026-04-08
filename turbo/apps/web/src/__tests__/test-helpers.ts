@@ -439,7 +439,7 @@ export function testContext(): TestContext {
       mockClerk({ userId });
 
       // Pre-populate org_cache for the default Clerk org so that
-      // getOrgData() works without hitting the Clerk API mock.
+      // getOrgNameAndSlug() works without hitting the Clerk API mock.
       // Use org-${suffix} as slug to match test conventions that derive
       // org slug from userId suffix.
       const defaultOrgId = `org_mock_${userId}`;
@@ -482,7 +482,7 @@ export function testContext(): TestContext {
     const orgSlug = uniqueId("org");
     const orgId = uniqueId("org");
 
-    // Pre-populate org cache for getOrgData()
+    // Pre-populate org cache for getOrgNameAndSlug()
     await insertOrgCacheEntry({ orgId, slug: orgSlug });
 
     // Create a compose for this user

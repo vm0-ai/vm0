@@ -175,6 +175,7 @@ export const uploadAvatar$ = command(
     ) => Promise<Response>,
     _signal: AbortSignal,
   ): Promise<void> => {
+    // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove — use accept() auto-toast
     try {
       const formData = new FormData();
       formData.append("file", file);

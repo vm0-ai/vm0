@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
+import AdmZip from "adm-zip";
 import { POST } from "../route";
 import {
   createTestRequest,
@@ -382,6 +383,182 @@ describe("POST /api/zero/developer-support", () => {
     );
     expect(step2.status).toBe(200);
     expect((await step2.json()).reference).toBeDefined();
+  });
+
+  it("includes user prompts as user_prompt events in chat-history.jsonl", async () => {
+    const prompt = "test prompt"; // default prompt from createTestRunInDb
+    const { token } = await setupRunContext(user);
+
+    // Step 1: Get consent code
+    const step1 = await postDeveloperSupport(
+      { title: "Bug", description: "Desc" },
+      token,
+    );
+    const { consentCode } = await step1.json();
+
+    // Mock Axiom to return an assistant event
+    context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
+      {
+        runId: "r1",
+        eventType: "assistant",
+        eventData: { message: "I'll fix the bug" },
+        _time: "2024-01-01T00:01:00Z",
+        sequenceNumber: 1,
+      },
+    ]);
+
+    // Step 2: Submit
+    const step2 = await postDeveloperSupport(
+      { title: "Bug", description: "Desc", consentCode },
+      token,
+    );
+    expect(step2.status).toBe(200);
+
+    // Extract ZIP and parse chat-history.jsonl
+    const zipBuffer = context.mocks.s3.uploadS3Buffer.mock
+      .calls[0]![2] as Buffer;
+    const zip = new AdmZip(zipBuffer);
+    const chatHistoryEntry = zip.getEntry("chat-history.jsonl");
+    expect(chatHistoryEntry).toBeDefined();
+
+    const lines = chatHistoryEntry!
+      .getData()
+      .toString("utf-8")
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => {
+        return JSON.parse(line);
+      });
+
+    // Verify a user_prompt event exists with the run's prompt
+    const promptEvent = lines.find((e: Record<string, unknown>) => {
+      return e.eventType === "user_prompt";
+    });
+    expect(promptEvent).toBeDefined();
+    expect(promptEvent.eventData.role).toBe("user");
+    expect(promptEvent.eventData.content).toBe(prompt);
+    expect(promptEvent.sequenceNumber).toBe(-1);
+
+    // Verify agent-events.jsonl no longer exists
+    expect(zip.getEntry("agent-events.jsonl")).toBeNull();
+  });
+
+  it("includes prompts from all runs in multi-run session ordered chronologically", async () => {
+    const sessionId = crypto.randomUUID();
+    const firstPrompt = "Deploy the new feature";
+    const secondPrompt = "Now fix the failing test";
+
+    // Create first run (completed, earlier createdAt)
+    const { composeId: composeId1 } = await createTestCompose(
+      uniqueId("agent"),
+    );
+    const { runId: firstRunId } = await createTestRunInDb(
+      user.userId,
+      composeId1,
+      {
+        status: "completed",
+        prompt: firstPrompt,
+        createdAt: new Date("2024-01-01T00:00:00Z"),
+        result: {
+          agentSessionId: sessionId,
+          checkpointId: "cp-1",
+          conversationId: "cv-1",
+        },
+      },
+    );
+
+    // Create continuation run (current, later createdAt)
+    const { composeId: composeId2 } = await createTestCompose(
+      uniqueId("agent"),
+    );
+    const { runId: currentRunId } = await createTestRunInDb(
+      user.userId,
+      composeId2,
+      {
+        status: "running",
+        prompt: secondPrompt,
+        createdAt: new Date("2024-01-01T01:00:00Z"),
+        continuedFromSessionId: sessionId,
+      },
+    );
+
+    await insertOrgMembersCacheEntry({
+      orgId: user.orgId,
+      userId: user.userId,
+      role: "admin",
+    });
+    mockClerk({ userId: null });
+    const token = await generateZeroToken(
+      user.userId,
+      currentRunId,
+      user.orgId,
+    );
+
+    // Get consent code
+    const step1 = await postDeveloperSupport(
+      { title: "Bug", description: "Desc" },
+      token,
+    );
+    const { consentCode } = await step1.json();
+
+    // Mock Axiom events for both runs
+    context.mocks.axiom.queryAxiom.mockResolvedValueOnce([
+      {
+        runId: firstRunId,
+        eventType: "assistant",
+        _time: "2024-01-01T00:00:30Z",
+        sequenceNumber: 1,
+        eventData: {},
+      },
+      {
+        runId: currentRunId,
+        eventType: "assistant",
+        _time: "2024-01-01T01:00:30Z",
+        sequenceNumber: 1,
+        eventData: {},
+      },
+    ]);
+
+    const step2 = await postDeveloperSupport(
+      { title: "Bug", description: "Desc", consentCode },
+      token,
+    );
+    expect(step2.status).toBe(200);
+
+    // Extract ZIP and parse chat-history.jsonl
+    const zipBuffer = context.mocks.s3.uploadS3Buffer.mock
+      .calls[0]![2] as Buffer;
+    const zip = new AdmZip(zipBuffer);
+    const lines = zip
+      .getEntry("chat-history.jsonl")!
+      .getData()
+      .toString("utf-8")
+      .split("\n")
+      .filter(Boolean)
+      .map((line) => {
+        return JSON.parse(line);
+      });
+
+    // Find prompt events
+    const promptEvents = lines.filter((e: Record<string, unknown>) => {
+      return e.eventType === "user_prompt";
+    });
+    expect(promptEvents).toHaveLength(2);
+
+    // First prompt should come before second prompt (chronological)
+    expect(promptEvents[0].eventData.content).toBe(firstPrompt);
+    expect(promptEvents[0].runId).toBe(firstRunId);
+    expect(promptEvents[1].eventData.content).toBe(secondPrompt);
+    expect(promptEvents[1].runId).toBe(currentRunId);
+
+    // Verify each prompt appears before its run's assistant events
+    const firstPromptIdx = lines.findIndex((e: Record<string, unknown>) => {
+      return e.eventType === "user_prompt" && e.runId === firstRunId;
+    });
+    const firstAssistantIdx = lines.findIndex((e: Record<string, unknown>) => {
+      return e.eventType === "assistant" && e.runId === firstRunId;
+    });
+    expect(firstPromptIdx).toBeLessThan(firstAssistantIdx);
   });
 
   it("returns 403 when token lacks runId and orgId", async () => {
