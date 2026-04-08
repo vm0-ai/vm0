@@ -470,18 +470,18 @@ describe("zero whoami command", () => {
             connectors: [
               {
                 id: "1",
-                type: "github",
+                type: "slack",
                 authMethod: "oauth",
-                externalId: "12345",
-                externalUsername: "octocat",
-                externalEmail: "octocat@github.com",
-                oauthScopes: ["repo"],
+                externalId: "S12345",
+                externalUsername: "john.doe",
+                externalEmail: "john@example.com",
+                oauthScopes: ["chat:write"],
                 needsReconnect: false,
                 createdAt: "2025-01-01T00:00:00Z",
                 updatedAt: "2025-01-01T00:00:00Z",
               },
             ],
-            configuredTypes: ["github"],
+            configuredTypes: ["slack"],
             connectorProvidedSecretNames: [],
           });
         }),
@@ -494,11 +494,11 @@ describe("zero whoami command", () => {
             sound: null,
             avatarUrl: null,
             firewallPolicies: {
-              github: {
-                "actions:read": "allow",
-                "actions:write": "deny",
-                "contents:read": "allow",
-                "contents:write": "ask",
+              slack: {
+                "channels:read": "allow",
+                "chat:write": "deny",
+                "reactions:read": "allow",
+                admin: "ask",
               },
             },
             customSkills: [],
@@ -507,7 +507,7 @@ describe("zero whoami command", () => {
         http.get(
           "http://localhost:3000/api/zero/agents/agent-123/user-connectors",
           () => {
-            return HttpResponse.json({ enabledTypes: ["github"] });
+            return HttpResponse.json({ enabledTypes: ["slack"] });
           },
         ),
       );
@@ -518,23 +518,23 @@ describe("zero whoami command", () => {
       expect(
         output.some((line) => {
           return (
-            line.includes("@octocat") && line.includes("(octocat@github.com)")
+            line.includes("@john.doe") && line.includes("(john@example.com)")
           );
         }),
       ).toBe(true);
       expect(
         output.some((line) => {
-          return line.includes("✓") && line.includes("actions:read");
+          return line.includes("✓") && line.includes("channels:read");
         }),
       ).toBe(true);
       expect(
         output.some((line) => {
-          return line.includes("✗") && line.includes("actions:write");
+          return line.includes("✗") && line.includes("chat:write");
         }),
       ).toBe(true);
       expect(
         output.some((line) => {
-          return line.includes("?") && line.includes("contents:write");
+          return line.includes("?") && line.includes("admin");
         }),
       ).toBe(true);
     });
@@ -731,7 +731,7 @@ describe("zero whoami command", () => {
             sound: null,
             avatarUrl: null,
             firewallPolicies: {
-              github: { "actions:read": "allow" },
+              slack: { "channels:read": "allow" },
             },
             customSkills: [],
           });

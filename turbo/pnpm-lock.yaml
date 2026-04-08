@@ -416,8 +416,8 @@ importers:
         specifier: ^9.1.0
         version: 9.1.0
       drizzle-orm:
-        specifier: ^0.44.5
-        version: 0.44.7(@neondatabase/serverless@1.0.2)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(pg@8.20.0)(postgres@3.4.8)
+        specifier: ^0.45.2
+        version: 0.45.2(@neondatabase/serverless@1.0.2)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(pg@8.20.0)(postgres@3.4.8)
       html-to-text:
         specifier: ^9.0.5
         version: 9.0.5
@@ -430,9 +430,6 @@ importers:
       next-intl:
         specifier: ^4.6.1
         version: 4.8.3(@swc/helpers@0.5.20)(next@16.2.1(@opentelemetry/api@1.9.1)(react-dom@19.2.4(react@19.2.4))(react@19.2.4))(react@19.2.4)(typescript@5.9.3)
-      p-limit:
-        specifier: ^7.2.0
-        version: 7.3.0
       pg:
         specifier: ^8.16.3
         version: 8.20.0
@@ -5753,8 +5750,8 @@ packages:
     resolution: {integrity: sha512-7OZcmQUrdGI+DUNNsKBn1aW8qSoKuTH7d0mYgSP8bAzdFzKoovxEFnoGQp2dVs82EOJeYycqRtciopszwUf8bw==}
     hasBin: true
 
-  drizzle-orm@0.44.7:
-    resolution: {integrity: sha512-quIpnYznjU9lHshEOAYLoZ9s3jweleHlZIAWR/jX9gAWNg/JhQ1wj0KGRf7/Zm+obRrYd9GjPVJg790QY9N5AQ==}
+  drizzle-orm@0.45.2:
+    resolution: {integrity: sha512-kY0BSaTNYWnoDMVoyY8uxmyHjpJW1geOmBMdSSicKo9CIIWkSxMIj2rkeSR51b8KAPB7m+qysjuHme5nKP+E5Q==}
     peerDependencies:
       '@aws-sdk/client-rds-data': '>=3'
       '@cloudflare/workers-types': '>=4'
@@ -7571,10 +7568,6 @@ packages:
     resolution: {integrity: sha512-TYOanM3wGwNGsZN2cVTYPArw454xnXj5qmWF1bEoAc4+cU/ol7GVh7odevjp1FNHduHc3KZMcFduxU5Xc6uJRQ==}
     engines: {node: '>=10'}
 
-  p-limit@7.3.0:
-    resolution: {integrity: sha512-7cIXg/Z0M5WZRblrsOla88S4wAK+zOQQWeBYfV3qJuJXMr+LnbYjaadrFaS0JILfEDPVqHyKnZ1Z/1d6J9VVUw==}
-    engines: {node: '>=20'}
-
   p-locate@4.1.0:
     resolution: {integrity: sha512-R79ZZ/0wAxKGu3oYMlz8jy/kbhsNrS7SKZ7PxEHBgJ5+F2mtFW2fK2cOtBh1cHYkQsbzFV7I+EoRKe6Yt0oK7A==}
     engines: {node: '>=8'}
@@ -9061,10 +9054,6 @@ packages:
   yocto-queue@0.1.0:
     resolution: {integrity: sha512-rVksvsnNCdJ/ohGc6xgPwyN8eheCxsiLM8mxuE/t/mOVqJewPuO1miLpTHQiRgTKCLexL4MeAFVagts7HmNZ2Q==}
     engines: {node: '>=10'}
-
-  yocto-queue@1.2.2:
-    resolution: {integrity: sha512-4LCcse/U2MHZ63HAJVE+v71o7yOdIe4cZ70Wpf8D/IyjDKYQLV5GD46B+hSTjJsvV5PztjvHoU580EftxjDZFQ==}
-    engines: {node: '>=12.20'}
 
   yoctocolors-cjs@2.1.3:
     resolution: {integrity: sha512-U/PBtDf35ff0D8X8D0jfdzHYEPFxAI7jJlxZXwCSez5M3190m+QobIfh+sWDWSHMCWWJN2AWamkegn6vr6YBTw==}
@@ -14561,7 +14550,7 @@ snapshots:
       esbuild: 0.25.12
       tsx: 4.21.0
 
-  drizzle-orm@0.44.7(@neondatabase/serverless@1.0.2)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(pg@8.20.0)(postgres@3.4.8):
+  drizzle-orm@0.45.2(@neondatabase/serverless@1.0.2)(@opentelemetry/api@1.9.1)(@types/pg@8.20.0)(pg@8.20.0)(postgres@3.4.8):
     optionalDependencies:
       '@neondatabase/serverless': 1.0.2
       '@opentelemetry/api': 1.9.1
@@ -16851,10 +16840,6 @@ snapshots:
     dependencies:
       yocto-queue: 0.1.0
 
-  p-limit@7.3.0:
-    dependencies:
-      yocto-queue: 1.2.2
-
   p-locate@4.1.0:
     dependencies:
       p-limit: 2.3.0
@@ -18565,8 +18550,6 @@ snapshots:
       yargs-parser: 21.1.1
 
   yocto-queue@0.1.0: {}
-
-  yocto-queue@1.2.2: {}
 
   yoctocolors-cjs@2.1.3: {}
 

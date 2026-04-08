@@ -9,7 +9,7 @@ import { reloadChatThreads$ } from "../chat-page/chat-message.ts";
 import { isOrgAdmin$ } from "../org.ts";
 import {
   resetFocusedState$,
-  permissionAllowAgent$,
+  permissionAllowAgentId$,
   permissionAllowRef$,
   permissionAllowPermission$,
   permissionAllowRequestId$,
@@ -41,10 +41,6 @@ export const setupPermissionAllowPage$ = command(
 
     set(reloadChatThreads$);
 
-    const agent = await get(permissionAllowAgent$);
-    signal.throwIfAborted();
-    const ref = get(permissionAllowRef$);
-
     // Pre-fill reason from URL parameter (set by zero doctor --reason)
     const urlReason = get(permissionAllowReason$);
     if (urlReason) {
@@ -52,9 +48,11 @@ export const setupPermissionAllowPage$ = command(
     }
 
     // Auto-redirect: member in doctor mode with existing request → request mode
+    const agentId = get(permissionAllowAgentId$);
+    const ref = get(permissionAllowRef$);
     const requestId = get(permissionAllowRequestId$);
     const permission = get(permissionAllowPermission$);
-    if (!requestId && permission && agent && ref) {
+    if (!requestId && permission && agentId && ref) {
       const isAdmin = await get(isOrgAdmin$);
       signal.throwIfAborted();
       if (!isAdmin) {

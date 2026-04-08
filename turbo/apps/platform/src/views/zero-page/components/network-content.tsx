@@ -9,6 +9,8 @@ import {
   TableRow,
 } from "@vm0/ui";
 import type { NetworkLogEntry } from "@vm0/core";
+import { type BadgeColor, formatSize, InlineBadge } from "./network-badge.tsx";
+import { CapturedBodySections } from "./captured-body-sections.tsx";
 import {
   networkLogExpandedRows$,
   toggleNetworkLogRowExpanded$,
@@ -25,19 +27,6 @@ function formatTime(timestamp: string): string {
   const s = String(d.getSeconds()).padStart(2, "0");
   const ms = String(d.getMilliseconds()).padStart(3, "0");
   return `${h}:${m}:${s}.${ms}`;
-}
-
-function formatSize(bytes: number | undefined | null): string {
-  if (bytes === null || bytes === undefined) {
-    return "—";
-  }
-  if (bytes < 1024) {
-    return `${bytes}B`;
-  }
-  if (bytes < 1024 * 1024) {
-    return `${(bytes / 1024).toFixed(1)}KB`;
-  }
-  return `${(bytes / (1024 * 1024)).toFixed(1)}MB`;
 }
 
 function formatLatency(ms: number | undefined | null): string {
@@ -63,23 +52,23 @@ function entryType(entry: NetworkLogEntry): string {
   return "HTTP";
 }
 
-function typeColor(type: string): string {
+function typeBadgeColor(type: string): BadgeColor {
   if (type === "HTTP") {
-    return "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400";
+    return "blue";
   }
   if (type === "TCP") {
-    return "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400";
+    return "violet";
   }
   if (type === "UDP" || type === "ICMP") {
-    return "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400";
+    return "amber";
   }
   if (type === "DNS") {
-    return "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400";
+    return "teal";
   }
   if (type === "DENY") {
-    return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400";
+    return "red";
   }
-  return "bg-muted text-muted-foreground";
+  return "muted";
 }
 
 function statusColor(status: number | undefined): string {
@@ -113,14 +102,7 @@ function latencyColor(ms: number | undefined | null): string {
 // ---------------------------------------------------------------------------
 
 function TypeBadge({ type }: { type: string }) {
-  const color = typeColor(type);
-  return (
-    <span
-      className={`inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-semibold leading-none ${color}`}
-    >
-      {type}
-    </span>
-  );
+  return <InlineBadge color={typeBadgeColor(type)}>{type}</InlineBadge>;
 }
 
 function formatValue(value: unknown): string {
@@ -179,6 +161,8 @@ function addField(
 }
 
 // [NETWORK_LOG_FIELDS] — keep in sync with all network log schemas
+// Note: request_headers, request/response body fields are rendered
+// separately by CapturedBodySections below.
 function collectDetails(entry: NetworkLogEntry): [string, string][] {
   const out: [string, string][] = [];
   addField(out, "Timestamp", entry.timestamp, entry.timestamp);
@@ -278,6 +262,10 @@ function collectDetails(entry: NetworkLogEntry): [string, string][] {
   return out;
 }
 
+// ---------------------------------------------------------------------------
+// Detail row
+// ---------------------------------------------------------------------------
+
 function NetworkLogRowDetail({ entry }: { entry: NetworkLogEntry }) {
   const details = collectDetails(entry);
 
@@ -300,6 +288,7 @@ function NetworkLogRowDetail({ entry }: { entry: NetworkLogEntry }) {
             );
           })}
         </div>
+        <CapturedBodySections entry={entry} />
       </td>
     </TableRow>
   );

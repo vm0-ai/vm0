@@ -1067,9 +1067,8 @@ async function createTestCheckpoint(
         runId,
         cliAgentType: "test-agent",
         cliAgentSessionId: `test-session-${runId}`,
-        cliAgentSessionHistory: JSON.stringify([
-          { role: "user", content: "test" },
-        ]),
+        cliAgentSessionHistoryHash:
+          "ec3ac9679505be3bb8233c4ef0b39c8ee206d2c37fc8610edc19f41fbfb9661e",
       }),
     },
   );

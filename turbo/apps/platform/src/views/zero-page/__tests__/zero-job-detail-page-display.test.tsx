@@ -68,12 +68,12 @@ function mockAPIsWithConnectors() {
         connectors: [
           {
             id: "d0000001-0000-4000-a000-000000000001",
-            type: "github",
+            type: "slack",
             authMethod: "oauth",
             externalId: null,
             externalUsername: "testuser",
             externalEmail: null,
-            oauthScopes: ["repo", "project"],
+            oauthScopes: ["channels:read", "chat:write"],
             needsReconnect: false,
             createdAt: "2026-01-01T00:00:00Z",
             updatedAt: "2026-01-01T00:00:00Z",
@@ -96,10 +96,10 @@ function mockAPIsWithConnectors() {
       });
     }),
     http.get("*/api/zero/agents/:id/user-connectors", () => {
-      return HttpResponse.json({ enabledTypes: ["github"] });
+      return HttpResponse.json({ enabledTypes: ["slack"] });
     }),
     http.put("*/api/zero/agents/:id/user-connectors", () => {
-      return HttpResponse.json({ enabledTypes: ["github"] });
+      return HttpResponse.json({ enabledTypes: ["slack"] });
     }),
   );
 }
@@ -193,10 +193,10 @@ describe("zero job detail page - connector display", () => {
     mockAPIsWithConnectors();
     await setupPage({ context, path: "/agents/my-agent" });
 
-    // GitHub is enabled (in enabledTypes), Linear is disabled
+    // Slack is enabled (in enabledTypes), Linear is disabled
     await waitFor(() => {
       expect(
-        screen.getByRole("switch", { name: /Revoke GitHub access/i }),
+        screen.getByRole("switch", { name: /Revoke Slack access/i }),
       ).toBeInTheDocument();
     });
     expect(
@@ -209,15 +209,15 @@ describe("zero job detail page - connector display", () => {
     await setupPage({ context, path: "/agents/my-agent" });
 
     await waitFor(() => {
-      expect(screen.getByText("GitHub")).toBeInTheDocument();
+      expect(screen.getByText("Slack")).toBeInTheDocument();
       expect(screen.getByText("Linear")).toBeInTheDocument();
     });
 
     await user.click(screen.getByLabelText("Search connectors"));
-    await user.type(screen.getByPlaceholderText("Search connectors..."), "git");
+    await user.type(screen.getByPlaceholderText("Search connectors..."), "sla");
 
     await waitFor(() => {
-      expect(screen.getByText("GitHub")).toBeInTheDocument();
+      expect(screen.getByText("Slack")).toBeInTheDocument();
       expect(screen.queryByText("Linear")).not.toBeInTheDocument();
     });
   });
@@ -227,16 +227,16 @@ describe("zero job detail page - connector display", () => {
     await setupPage({ context, path: "/agents/my-agent" });
 
     await waitFor(() => {
-      expect(screen.getByText("GitHub")).toBeInTheDocument();
+      expect(screen.getByText("Slack")).toBeInTheDocument();
     });
 
     // Status switch visible
     expect(
-      screen.getByRole("switch", { name: /GitHub access/i }),
+      screen.getByRole("switch", { name: /Slack access/i }),
     ).toBeInTheDocument();
-    // Manage button visible (GitHub has firewall permissions)
+    // Manage button visible (Slack has firewall permissions)
     expect(
-      screen.getByLabelText(/Manage GitHub permissions/i),
+      screen.getByLabelText(/Manage Slack permissions/i),
     ).toBeInTheDocument();
   });
 });

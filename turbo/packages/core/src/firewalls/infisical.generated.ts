@@ -15,6 +15,20 @@ export const infisicalFirewall = {
   },
   apis: [
     {
+      base: "https://us.infisical.com",
+      auth: {
+        headers: {},
+      },
+      permissions: [],
+    },
+    {
+      base: "https://eu.infisical.com",
+      auth: {
+        headers: {},
+      },
+      permissions: [],
+    },
+    {
       base: "https://app.infisical.com",
       auth: {
         headers: {},

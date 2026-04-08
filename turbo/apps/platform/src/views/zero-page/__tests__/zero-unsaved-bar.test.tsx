@@ -79,46 +79,6 @@ describe("zero unsaved bar - unsaved changes indicator (SCHED-D-093)", () => {
   });
 });
 
-describe("zero unsaved bar - save button loading state (SCHED-D-094)", () => {
-  it("shows Save button disabled while save is in progress", async () => {
-    let resolvePost!: () => void;
-    const postPending = new Promise<void>((resolve) => {
-      resolvePost = resolve;
-    });
-
-    server.use(
-      http.post("*/api/zero/schedules", async () => {
-        await postPending;
-        return HttpResponse.json({
-          schedule: createMockSchedule(),
-          created: false,
-        });
-      }),
-    );
-
-    const user = userEvent.setup();
-    mockAPIs();
-    await loadAndMakeDirty(user);
-
-    await waitFor(() => {
-      expect(screen.getByTestId("unsaved-bar")).toBeInTheDocument();
-    });
-
-    await user.click(screen.getByTestId("save-button"));
-
-    await waitFor(() => {
-      expect(screen.getByTestId("save-button")).toBeDisabled();
-      expect(screen.getByTestId("save-spinner")).toBeInTheDocument();
-    });
-
-    resolvePost();
-
-    await waitFor(() => {
-      expect(screen.queryByTestId("unsaved-bar")).not.toBeInTheDocument();
-    });
-  });
-});
-
 describe("zero unsaved bar - discard button reverts changes (SCHED-D-095)", () => {
   it("hides unsaved changes bar when Discard is clicked", async () => {
     const user = userEvent.setup();

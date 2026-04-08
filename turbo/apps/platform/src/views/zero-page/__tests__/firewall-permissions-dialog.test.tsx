@@ -64,12 +64,12 @@ function mockAPIs({
         connectors: [
           {
             id: "d0000001-0000-4000-a000-000000000001",
-            type: "github",
+            type: "slack",
             authMethod: "oauth",
             externalId: null,
             externalUsername: "testuser",
             externalEmail: null,
-            oauthScopes: ["repo", "project"],
+            oauthScopes: ["chat:write", "channels:read"],
             needsReconnect: false,
             createdAt: "2026-01-01T00:00:00Z",
             updatedAt: "2026-01-01T00:00:00Z",
@@ -80,7 +80,7 @@ function mockAPIs({
       });
     }),
     http.get("*/api/zero/agents/:id/user-connectors", () => {
-      return HttpResponse.json({ enabledTypes: ["github"] });
+      return HttpResponse.json({ enabledTypes: ["slack"] });
     }),
     http.put("*/api/zero/firewall-policies", async ({ request }) => {
       const body = (await request.json()) as {
@@ -104,23 +104,23 @@ async function openPermissionsDrawer() {
   // Wait for connectors to load
   await waitFor(() => {
     expect(
-      screen.getByLabelText(/Manage GitHub permissions/i),
+      screen.getByLabelText(/Manage Slack permissions/i),
     ).toBeInTheDocument();
   });
 
-  await user.click(screen.getByLabelText(/Manage GitHub permissions/i));
+  await user.click(screen.getByLabelText(/Manage Slack permissions/i));
 
   // Wait for drawer to open
   await waitFor(() => {
     expect(
-      screen.getByRole("heading", { name: /GitHub permissions/i }),
+      screen.getByRole("heading", { name: /Slack permissions/i }),
     ).toBeInTheDocument();
   });
 
   return user;
 }
 
-describe("firewall permissions dialog - grouped connector (GitHub)", () => {
+describe("firewall permissions dialog - grouped connector (Slack)", () => {
   it("should show category groups collapsed by default with no global select-all", async () => {
     mockAPIs();
     await setupPage({ context, path: "/agents/my-agent" });
@@ -135,8 +135,8 @@ describe("firewall permissions dialog - grouped connector (GitHub)", () => {
     expect(screen.queryByText(/Select all/i)).not.toBeInTheDocument();
 
     // Individual permissions should NOT be visible (collapsed by default)
-    expect(screen.queryByText("actions:read")).not.toBeInTheDocument();
-    expect(screen.queryByText("actions:write")).not.toBeInTheDocument();
+    expect(screen.queryByText("bookmarks:read")).not.toBeInTheDocument();
+    expect(screen.queryByText("bookmarks:write")).not.toBeInTheDocument();
   });
 
   it("should expand a group when its header is clicked and collapse when clicked again", async () => {
@@ -151,14 +151,14 @@ describe("firewall permissions dialog - grouped connector (GitHub)", () => {
 
     // Individual read permissions should now be visible
     await waitFor(() => {
-      expect(screen.getByText("actions:read")).toBeInTheDocument();
+      expect(screen.getByText("bookmarks:read")).toBeInTheDocument();
     });
 
     // Click again to collapse
     await user.click(readButton);
 
     await waitFor(() => {
-      expect(screen.queryByText("actions:read")).not.toBeInTheDocument();
+      expect(screen.queryByText("bookmarks:read")).not.toBeInTheDocument();
     });
   });
 
@@ -166,9 +166,9 @@ describe("firewall permissions dialog - grouped connector (GitHub)", () => {
     // Provide mixed policies: some allow, some deny within Read group
     mockAPIs({
       firewallPolicies: {
-        github: {
-          "actions:read": "allow",
-          "contents:read": "deny",
+        slack: {
+          "bookmarks:read": "allow",
+          "channels:read": "deny",
         },
       },
     });
@@ -242,12 +242,12 @@ describe("firewall permissions dialog - grouped connector (GitHub)", () => {
 
     // All individual Read permissions should now show "Deny" as active
     await waitFor(() => {
-      expect(screen.getByText("actions:read")).toBeInTheDocument();
+      expect(screen.getByText("bookmarks:read")).toBeInTheDocument();
     });
 
     // Find an individual permission's Deny button and verify it's active
     const actionsReadRow = screen
-      .getByText("actions:read")
+      .getByText("bookmarks:read")
       .closest(".flex.items-center") as HTMLElement;
     const individualButtons = within(actionsReadRow).getAllByRole("button");
     const individualDeny = individualButtons.find((b) => {

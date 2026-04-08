@@ -10,7 +10,7 @@ export const dopplerFirewall = {
   name: "doppler",
   description: "Doppler",
   placeholders: {
-    DOPPLER_TOKEN: "DopplerServiceTokenPlaceholder0000000000000",
+    DOPPLER_TOKEN: "dp.st.CoffeeSafeLocalCoffeeSafeLocalCoffeeSafe00",
   },
   apis: [
     {

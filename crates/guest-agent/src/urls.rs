@@ -11,6 +11,12 @@ static HEARTBEAT_URL: LazyLock<String> =
     LazyLock::new(|| format!("{}/api/webhooks/agent/heartbeat", env::api_url()));
 static TELEMETRY_URL: LazyLock<String> =
     LazyLock::new(|| format!("{}/api/webhooks/agent/telemetry", env::api_url()));
+static CHECKPOINT_PREPARE_HISTORY_URL: LazyLock<String> = LazyLock::new(|| {
+    format!(
+        "{}/api/webhooks/agent/checkpoints/prepare-history",
+        env::api_url()
+    )
+});
 static STORAGE_PREPARE_URL: LazyLock<String> =
     LazyLock::new(|| format!("{}/api/webhooks/agent/storages/prepare", env::api_url()));
 static STORAGE_COMMIT_URL: LazyLock<String> =
@@ -27,6 +33,9 @@ pub fn heartbeat_url() -> &'static str {
 }
 pub fn telemetry_url() -> &'static str {
     &TELEMETRY_URL
+}
+pub fn checkpoint_prepare_history_url() -> &'static str {
+    &CHECKPOINT_PREPARE_HISTORY_URL
 }
 pub fn storage_prepare_url() -> &'static str {
     &STORAGE_PREPARE_URL

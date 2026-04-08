@@ -41,7 +41,8 @@ function mockInsightsAPI(days: Record<string, unknown>[] = []) {
           }, 0)
         );
       }, 0);
-      return HttpResponse.json({ days, totalCredits, totalRuns });
+      const lastUpdated = days.length > 0 ? new Date().toISOString() : null;
+      return HttpResponse.json({ days, totalCredits, totalRuns, lastUpdated });
     }),
   );
 }
@@ -132,6 +133,16 @@ describe("network insights page - data rendering", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Insights")).toBeInTheDocument();
+    });
+  });
+
+  it("should display last updated timestamp", async () => {
+    mockInsightsAPI([sampleDay(day1Ago)]);
+
+    await setupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      expect(screen.getByText(/Last updated/)).toBeInTheDocument();
     });
   });
 
@@ -382,6 +393,54 @@ describe("network insights page - summary card", () => {
     await waitFor(() => {
       expect(screen.getByText(/busy day/i)).toBeInTheDocument();
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Data refetch on navigation
+// ---------------------------------------------------------------------------
+
+describe("network insights page - data refetch", () => {
+  it("should fetch fresh data when navigating to insights page", async () => {
+    let callCount = 0;
+    server.use(
+      http.get("*/api/zero/insights", () => {
+        callCount++;
+        const agents =
+          callCount <= 1
+            ? [
+                {
+                  agentName: "InitialBot",
+                  agentId: "a-init",
+                  runs: 1,
+                  credits: 10,
+                },
+              ]
+            : [
+                {
+                  agentName: "RefreshedBot",
+                  agentId: "a-ref",
+                  runs: 2,
+                  credits: 20,
+                },
+              ];
+        return HttpResponse.json({
+          days: [sampleDay(day1Ago, { agents })],
+          totalCredits: 10,
+          totalRuns: 1,
+          lastUpdated: new Date().toISOString(),
+        });
+      }),
+    );
+
+    await setupPage({ context, path: "/insights" });
+
+    // The page setup calls reloadInsights$ which triggers a second fetch,
+    // so the UI should eventually show the refreshed data.
+    await waitFor(() => {
+      expect(screen.getByText("RefreshedBot")).toBeInTheDocument();
+    });
+    expect(callCount).toBeGreaterThanOrEqual(2);
   });
 });
 

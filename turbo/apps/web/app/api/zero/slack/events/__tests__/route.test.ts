@@ -327,7 +327,7 @@ describe("POST /api/zero/slack/events", () => {
     });
 
     it("posts error when run was not created (no callback)", async () => {
-      // Set up a compose WITHOUT a version → startRun fails before creating the run
+      // Set up a compose WITHOUT a version → createZeroRun fails before creating the run
       const { agentId } = await seedTestCompose({
         userId: user.userId,
         name: uniqueId("agent"),
@@ -356,7 +356,7 @@ describe("POST /api/zero/slack/events", () => {
 
       await context.mocks.flushAfter();
 
-      // startRun failed before creating a run → no callback → handler posts error
+      // createZeroRun failed before creating a run → no callback → handler posts error
       const { WebClient } = await import("@slack/web-api");
       const mockClient = new WebClient();
       expect(mockClient.chat.postMessage).toHaveBeenCalledOnce();

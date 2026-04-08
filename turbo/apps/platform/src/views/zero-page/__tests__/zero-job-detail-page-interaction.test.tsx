@@ -63,12 +63,12 @@ function mockAPIs() {
         connectors: [
           {
             id: "d0000001-0000-4000-a000-000000000001",
-            type: "github",
+            type: "slack",
             authMethod: "oauth",
             externalId: null,
             externalUsername: "testuser",
             externalEmail: null,
-            oauthScopes: ["repo", "project"],
+            oauthScopes: ["channels:read", "chat:write"],
             needsReconnect: false,
             createdAt: "2026-01-01T00:00:00Z",
             updatedAt: "2026-01-01T00:00:00Z",
@@ -91,10 +91,10 @@ function mockAPIs() {
       });
     }),
     http.get("*/api/zero/agents/:id/user-connectors", () => {
-      return HttpResponse.json({ enabledTypes: ["github"] });
+      return HttpResponse.json({ enabledTypes: ["slack"] });
     }),
     http.put("*/api/zero/agents/:id/user-connectors", () => {
-      return HttpResponse.json({ enabledTypes: ["github"] });
+      return HttpResponse.json({ enabledTypes: ["slack"] });
     }),
   );
 }
@@ -127,7 +127,7 @@ describe("zero job detail page - interaction and state", () => {
     // Switch to Authorization tab
     await user.click(screen.getByText(/Authorization/i));
     await waitFor(() => {
-      expect(screen.getByText("GitHub")).toBeInTheDocument();
+      expect(screen.getByText("Slack")).toBeInTheDocument();
     });
   });
 
@@ -185,13 +185,13 @@ describe("zero job detail page - interaction and state", () => {
     // Wait for connectors to load
     await waitFor(() => {
       expect(
-        screen.getByRole("switch", { name: /Revoke GitHub access/i }),
+        screen.getByRole("switch", { name: /Revoke Slack access/i }),
       ).toBeInTheDocument();
     });
 
-    // Toggle GitHub off (it's currently enabled)
+    // Toggle Slack off (it's currently enabled)
     await user.click(
-      screen.getByRole("switch", { name: /Revoke GitHub access/i }),
+      screen.getByRole("switch", { name: /Revoke Slack access/i }),
     );
 
     await waitFor(() => {
@@ -208,16 +208,16 @@ describe("zero job detail page - interaction and state", () => {
     // Wait for connectors to load
     await waitFor(() => {
       expect(
-        screen.getByLabelText(/Manage GitHub permissions/i),
+        screen.getByLabelText(/Manage Slack permissions/i),
       ).toBeInTheDocument();
     });
 
-    await user.click(screen.getByLabelText(/Manage GitHub permissions/i));
+    await user.click(screen.getByLabelText(/Manage Slack permissions/i));
 
-    // Drawer should open with GitHub permissions heading
+    // Drawer should open with Slack permissions heading
     await waitFor(() => {
       expect(
-        screen.getByRole("heading", { name: /GitHub permissions/i }),
+        screen.getByRole("heading", { name: /Slack permissions/i }),
       ).toBeInTheDocument();
     });
   });
@@ -230,7 +230,7 @@ describe("zero job detail page - interaction and state", () => {
 
     // Wait for both connectors to be visible
     await waitFor(() => {
-      expect(screen.getByText("GitHub")).toBeInTheDocument();
+      expect(screen.getByText("Slack")).toBeInTheDocument();
       expect(screen.getByText("Linear")).toBeInTheDocument();
     });
 
@@ -239,11 +239,11 @@ describe("zero job detail page - interaction and state", () => {
 
     // Type search query
     const searchInput = screen.getByPlaceholderText("Search connectors...");
-    await user.type(searchInput, "git");
+    await user.type(searchInput, "sla");
 
-    // Only GitHub should be visible
+    // Only Slack should be visible
     await waitFor(() => {
-      expect(screen.getByText("GitHub")).toBeInTheDocument();
+      expect(screen.getByText("Slack")).toBeInTheDocument();
       expect(screen.queryByText("Linear")).not.toBeInTheDocument();
     });
   });
@@ -256,7 +256,7 @@ describe("zero job detail page - interaction and state", () => {
 
     // Wait for connectors
     await waitFor(() => {
-      expect(screen.getByText("GitHub")).toBeInTheDocument();
+      expect(screen.getByText("Slack")).toBeInTheDocument();
       expect(screen.getByText("Linear")).toBeInTheDocument();
     });
 
@@ -274,7 +274,7 @@ describe("zero job detail page - interaction and state", () => {
 
     // Both connectors should be visible again
     await waitFor(() => {
-      expect(screen.getByText("GitHub")).toBeInTheDocument();
+      expect(screen.getByText("Slack")).toBeInTheDocument();
       expect(screen.getByText("Linear")).toBeInTheDocument();
     });
   });
@@ -322,19 +322,19 @@ describe("zero job detail page - interaction and state", () => {
     // Wait for connectors to load
     await waitFor(() => {
       expect(
-        screen.getByRole("switch", { name: /Revoke GitHub access/i }),
+        screen.getByRole("switch", { name: /Revoke Slack access/i }),
       ).toBeInTheDocument();
     });
 
-    // Toggle GitHub connector
+    // Toggle Slack connector
     await user.click(
-      screen.getByRole("switch", { name: /Revoke GitHub access/i }),
+      screen.getByRole("switch", { name: /Revoke Slack access/i }),
     );
 
     // The switch should become disabled while the request is pending
     await waitFor(() => {
       expect(
-        screen.getByRole("switch", { name: /GitHub access/i }),
+        screen.getByRole("switch", { name: /Slack access/i }),
       ).toBeDisabled();
     });
 

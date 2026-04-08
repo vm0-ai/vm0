@@ -5,7 +5,7 @@ import {
   isFirewallConnectorType,
 } from "../firewalls/index";
 
-const CATEGORIZED_CONNECTORS = ["slack", "github", "gmail", "vercel"] as const;
+const CATEGORIZED_CONNECTORS = ["slack", "gmail", "vercel"] as const;
 
 function getFirewallPermissionNames(connectorType: string): Set<string> {
   if (!isFirewallConnectorType(connectorType)) {

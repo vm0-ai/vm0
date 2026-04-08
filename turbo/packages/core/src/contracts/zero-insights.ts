@@ -52,6 +52,7 @@ const insightsResponseSchema = z.object({
   days: z.array(dayInsightSchema),
   totalCredits: z.number(),
   totalRuns: z.number(),
+  lastUpdated: z.string().nullable(),
 });
 
 const insightsRangeResponseSchema = z.object({

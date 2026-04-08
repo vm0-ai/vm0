@@ -1,7 +1,7 @@
 import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://docs.doppler.com/reference/api";
-const PLACEHOLDER_VALUE = "DopplerServiceTokenPlaceholder0000000000000";
+const PLACEHOLDER_VALUE = "dp.st.CoffeeSafeLocalCoffeeSafeLocalCoffeeSafe00";
 
 function generateTypeScript(): string {
   const lines: string[] = [

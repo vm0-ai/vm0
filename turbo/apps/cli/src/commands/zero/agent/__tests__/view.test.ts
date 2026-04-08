@@ -101,11 +101,11 @@ describe("zero agent view command", () => {
           return HttpResponse.json({
             ...mockAgent,
             firewallPolicies: {
-              github: {
-                "actions:read": "allow",
-                "actions:write": "deny",
-                "contents:read": "allow",
-                "contents:write": "deny",
+              slack: {
+                "channels:read": "allow",
+                "chat:write": "deny",
+                "reactions:read": "allow",
+                admin: "deny",
               },
             },
           });
@@ -113,7 +113,7 @@ describe("zero agent view command", () => {
         http.get(
           "http://localhost:3000/api/zero/agents/my-agent/user-connectors",
           () => {
-            return HttpResponse.json({ enabledTypes: ["github"] });
+            return HttpResponse.json({ enabledTypes: ["slack"] });
           },
         ),
         mockConnectorListHandler(),
@@ -122,7 +122,7 @@ describe("zero agent view command", () => {
       await viewCommand.parseAsync(["node", "cli", "my-agent"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toMatch(/github \(\d+\/\d+ allowed\)/);
+      expect(logCalls).toMatch(/slack \(\d+\/\d+ allowed\)/);
     });
 
     it("should show instructions content with --instructions flag", async () => {
@@ -198,11 +198,11 @@ describe("zero agent view command", () => {
           return HttpResponse.json({
             ...mockAgent,
             firewallPolicies: {
-              github: {
-                "actions:read": "allow",
-                "actions:write": "deny",
-                "contents:read": "allow",
-                "contents:write": "ask",
+              slack: {
+                "channels:read": "allow",
+                "chat:write": "deny",
+                "reactions:read": "allow",
+                admin: "ask",
               },
             },
           });
@@ -210,7 +210,7 @@ describe("zero agent view command", () => {
         http.get(
           "http://localhost:3000/api/zero/agents/my-agent/user-connectors",
           () => {
-            return HttpResponse.json({ enabledTypes: ["github"] });
+            return HttpResponse.json({ enabledTypes: ["slack"] });
           },
         ),
         mockConnectorListHandler(),
@@ -224,7 +224,7 @@ describe("zero agent view command", () => {
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toMatch(/github \(\d+\/\d+ allowed\)/);
+      expect(logCalls).toMatch(/slack \(\d+\/\d+ allowed\)/);
       expect(logCalls).toContain("✓");
       expect(logCalls).toContain("✗");
       expect(logCalls).toContain("?");

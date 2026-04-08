@@ -11,7 +11,7 @@ describe("extractPermissions", () => {
   });
 
   it("should return permissions for a valid connector type", () => {
-    const permissions = extractPermissions("github");
+    const permissions = extractPermissions("slack");
     expect(permissions.length).toBeGreaterThan(0);
     // Each permission should have a name
     for (const p of permissions) {
@@ -20,7 +20,7 @@ describe("extractPermissions", () => {
   });
 
   it("should deduplicate permissions by name", () => {
-    const permissions = extractPermissions("github");
+    const permissions = extractPermissions("slack");
     const names = permissions.map((p) => {
       return p.name;
     });
@@ -29,7 +29,7 @@ describe("extractPermissions", () => {
   });
 
   it("should return permissions with description when available", () => {
-    const permissions = extractPermissions("github");
+    const permissions = extractPermissions("slack");
     // At least some permissions should have descriptions
     const withDescription = permissions.filter((p) => {
       return p.description;

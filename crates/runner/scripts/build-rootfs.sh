@@ -90,8 +90,8 @@ TMP_ROOTFS_PATH="${OUTPUT_DIR}/${TMP_ROOTFS}"
 ROOTFS_DIR=""
 
 # Pinned versions (changes here invalidate the rootfs cache via script hash)
-GO_VERSION="1.26.1"
-CLAUDE_CODE_VERSION="2.1.92"
+GO_VERSION="1.26.2"
+CLAUDE_CODE_VERSION="2.1.94"
 GWS_CLI_VERSION="0.22.5"
 XURL_VERSION="1.0.3"
 AGENT_BROWSER_VERSION="0.25.3"

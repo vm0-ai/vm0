@@ -1,9 +1,9 @@
 /**
- * Display and conditional tests for firewall-allow-page.tsx.
+ * Display and conditional tests for permission-allow-page.tsx.
  *
- * Covers agent ID resolution, firewall reference types, loading/error states,
+ * Covers agent ID resolution, permission reference types, loading/error states,
  * and admin/member confirmation card rendering. Admin/member view branching and
- * HTTP method/path display are already covered in firewall-allow-page.test.tsx.
+ * HTTP method/path display are already covered in permission-allow-page.test.tsx.
  */
 import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
@@ -91,10 +91,9 @@ function setupMemberContext(agentOverrides: Partial<AgentResponse> = {}) {
 }
 
 // NOTE: Tests that render the admin confirmation card (showing agent name,
-// connector label, etc.) must use `action=deny` in the URL so that the
-// effective policy ("allow" by default for github) doesn't match the
-// requested action. When they match the page shows the "Permissions updated"
-// result card instead of the confirmation card.
+// connector label, etc.) must use an action that does NOT match the effective
+// policy. For github (no defaults → "allow"), use `action=deny`.
+// For gmail (default-denied via gmailDefaultAllowed), use `action=allow`.
 
 describe("fw-d-001: agent ID renders from signal", () => {
   it("uses agentId from the URL path to load the correct agent", async () => {
@@ -102,7 +101,7 @@ describe("fw-d-001: agent ID renders from signal", () => {
     mockFirewallRequests();
     await setupPage({
       context,
-      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read&action=deny`,
+      path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=channels:read&action=deny`,
     });
     await waitFor(() => {
       expect(
@@ -118,7 +117,7 @@ describe("fw-d-005: agent display name renders", () => {
     mockFirewallRequests();
     await setupPage({
       context,
-      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read&action=deny`,
+      path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=channels:read&action=deny`,
     });
     await waitFor(() => {
       expect(screen.getAllByText(/My Smart Bot/).length).toBeGreaterThanOrEqual(
@@ -132,7 +131,7 @@ describe("fw-d-005: agent display name renders", () => {
     mockFirewallRequests();
     await setupPage({
       context,
-      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read&action=deny`,
+      path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=channels:read&action=deny`,
     });
     await waitFor(() => {
       expect(
@@ -148,7 +147,7 @@ describe("fw-d-006: connector label from CONNECTOR_TYPES renders", () => {
     mockFirewallRequests();
     await setupPage({
       context,
-      path: `/agents/${AGENT_ID}/permissions?ref=gmail&permission=gmail&action=deny`,
+      path: `/agents/${AGENT_ID}/permissions?ref=gmail&permission=gmail&action=allow`,
     });
     await waitFor(() => {
       expect(screen.getAllByText(/Gmail/).length).toBeGreaterThanOrEqual(1);
@@ -177,7 +176,7 @@ describe("fw-d-007: loading state shows while agent loads", () => {
 
     detachedSetupPage({
       context,
-      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read`,
+      path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=channels:read`,
     });
 
     // The LoadingCard renders a spinner (animate-spin) — no text.
@@ -213,7 +212,7 @@ describe("fw-d-008: error state shows when agent load fails", () => {
 
     detachedSetupPage({
       context,
-      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read`,
+      path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=channels:read`,
     });
 
     await waitFor(() => {
@@ -228,7 +227,7 @@ describe("fw-d-009: member request form renders for non-owner", () => {
     mockFirewallRequests();
     await setupPage({
       context,
-      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read&action=deny`,
+      path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=channels:read&action=deny`,
     });
     await waitFor(() => {
       expect(screen.getByText(/requesting approval/)).toBeInTheDocument();

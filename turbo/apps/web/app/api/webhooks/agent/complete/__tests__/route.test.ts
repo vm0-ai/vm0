@@ -216,7 +216,8 @@ describe("POST /api/webhooks/agent/complete", () => {
             runId: testRunId,
             cliAgentType: "claude-code",
             cliAgentSessionId: "test-session",
-            cliAgentSessionHistory: JSON.stringify({ type: "test" }),
+            cliAgentSessionHistoryHash:
+              "ec3ac9679505be3bb8233c4ef0b39c8ee206d2c37fc8610edc19f41fbfb9661e",
             artifactSnapshot: {
               artifactName: "test-artifact",
               artifactVersion: "v1",
@@ -265,7 +266,8 @@ describe("POST /api/webhooks/agent/complete", () => {
             runId: testRunId,
             cliAgentType: "claude-code",
             cliAgentSessionId: "test-session-mem",
-            cliAgentSessionHistory: JSON.stringify({ type: "test" }),
+            cliAgentSessionHistoryHash:
+              "ec3ac9679505be3bb8233c4ef0b39c8ee206d2c37fc8610edc19f41fbfb9661e",
             artifactSnapshot: {
               artifactName: "test-artifact",
               artifactVersion: "v1",
@@ -326,7 +328,8 @@ describe("POST /api/webhooks/agent/complete", () => {
             runId: testRunId,
             cliAgentType: "claude-code",
             cliAgentSessionId: "test-session-mem-store",
-            cliAgentSessionHistory: JSON.stringify({ type: "test" }),
+            cliAgentSessionHistoryHash:
+              "ec3ac9679505be3bb8233c4ef0b39c8ee206d2c37fc8610edc19f41fbfb9661e",
             memorySnapshot: {
               memoryName: "persist-memory",
               memoryVersion: "mem-v1",

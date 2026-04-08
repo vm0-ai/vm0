@@ -125,9 +125,12 @@ export const webhookCheckpointsContract = c.router({
       runId: z.string().min(1, "runId is required"),
       cliAgentType: z.string().min(1, "cliAgentType is required"),
       cliAgentSessionId: z.string().min(1, "cliAgentSessionId is required"),
-      cliAgentSessionHistory: z
+      cliAgentSessionHistoryHash: z
         .string()
-        .min(1, "cliAgentSessionHistory is required"),
+        .length(
+          64,
+          "cliAgentSessionHistoryHash must be a 64-character SHA-256 hex string",
+        ),
       artifactSnapshot: artifactSnapshotSchema.optional(),
       memorySnapshot: memorySnapshotSchema.optional(),
       volumeVersionsSnapshot: volumeVersionsSnapshotSchema.optional(),
@@ -147,6 +150,37 @@ export const webhookCheckpointsContract = c.router({
       500: apiErrorSchema,
     },
     summary: "Create checkpoint for agent run",
+  },
+});
+
+/**
+ * Webhook checkpoint prepare-history contract for /api/webhooks/agent/checkpoints/prepare-history
+ * Returns a presigned URL for uploading session history directly to S3,
+ * bypassing Vercel's 4.5MB body size limit.
+ */
+export const webhookCheckpointsPrepareHistoryContract = c.router({
+  prepare: {
+    method: "POST",
+    path: "/api/webhooks/agent/checkpoints/prepare-history",
+    headers: authHeadersSchema,
+    body: z.object({
+      runId: z.string().min(1, "runId is required"),
+      hash: z
+        .string()
+        .length(64, "hash must be a 64-character SHA-256 hex string"),
+      size: z.number().int().positive("size must be a positive integer"),
+    }),
+    responses: {
+      200: z.object({
+        presignedUrl: z.string().optional(),
+        existing: z.boolean(),
+      }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Get presigned URL for uploading session history to S3",
   },
 });
 
@@ -409,6 +443,8 @@ export const webhookStoragesCommitContract = c.router({
 export type WebhookEventsContract = typeof webhookEventsContract;
 export type WebhookCompleteContract = typeof webhookCompleteContract;
 export type WebhookCheckpointsContract = typeof webhookCheckpointsContract;
+export type WebhookCheckpointsPrepareHistoryContract =
+  typeof webhookCheckpointsPrepareHistoryContract;
 export type WebhookHeartbeatContract = typeof webhookHeartbeatContract;
 export type WebhookStoragesContract = typeof webhookStoragesContract;
 export type WebhookStoragesIncrementalContract =

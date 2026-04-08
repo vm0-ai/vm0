@@ -11,7 +11,10 @@ import { logger } from "../../shared/logger";
 import { createZeroRun } from "../zero-run-service";
 import { generateCallbackSecret, getApiUrl } from "../../infra/callback";
 import { generateScheduleDescription } from "../ai/lightweight-model";
-import type { ScheduleLoopCallbackPayload } from "../../infra/callback/callback-payloads";
+import type {
+  ScheduleLoopCallbackPayload,
+  ScheduleCronCallbackPayload,
+} from "../../infra/callback/callback-payloads";
 
 const log = logger("service:schedule");
 
@@ -89,7 +92,7 @@ function isValidTimezone(timezone: string): boolean {
 /**
  * Calculate next run time from cron expression and timezone
  */
-function calculateNextRun(
+export function calculateNextRun(
   cronExpression: string,
   timezone: string,
 ): Date | null {
@@ -732,6 +735,33 @@ export async function executeDueSchedules(): Promise<{
       }
     }
 
+    // Atomic CAS claim: advance schedule state to prevent duplicate execution.
+    // If another invocation already claimed this schedule (changed nextRunAt),
+    // the WHERE condition won't match and we skip it.
+    const [claimed] = await globalThis.services.db
+      .update(zeroAgentSchedules)
+      .set({
+        nextRunAt: null,
+        lastRunAt: now,
+        retryStartedAt: null,
+        ...(schedule.triggerType === "once" && { enabled: false }),
+      })
+      .where(
+        and(
+          eq(zeroAgentSchedules.id, schedule.id),
+          eq(zeroAgentSchedules.nextRunAt, schedule.nextRunAt!),
+        ),
+      )
+      .returning();
+
+    if (!claimed) {
+      log.debug(
+        `Skipping schedule ${schedule.name}: already claimed by another invocation`,
+      );
+      skipped++;
+      continue;
+    }
+
     try {
       await executeSchedule(schedule);
       executed++;
@@ -743,68 +773,6 @@ export async function executeDueSchedules(): Promise<{
 
   log.debug(`Executed ${executed} schedules, skipped ${skipped}`);
   return { executed, skipped };
-}
-
-/**
- * Advance schedule to next occurrence (cron), disable (one-time), or wait for callback (loop).
- * Shared by retry-window-expired, failure, and success paths.
- *
- * Loop schedules do NOT set nextRunAt here — their next run is scheduled
- * by the completion callback, which provides completion-based timing.
- */
-async function advanceScheduleState(
-  schedule: typeof zeroAgentSchedules.$inferSelect,
-  lastRunId?: string,
-): Promise<void> {
-  const now = new Date();
-  if (schedule.triggerType === "loop") {
-    // Loop: don't advance nextRunAt here — the loop callback handles it on completion
-    await globalThis.services.db
-      .update(zeroAgentSchedules)
-      .set({
-        ...(lastRunId !== undefined && { lastRunId }),
-        lastRunAt: now,
-        retryStartedAt: null,
-        nextRunAt: null, // Will be set by loop callback on run completion
-      })
-      .where(eq(zeroAgentSchedules.id, schedule.id));
-  } else if (schedule.triggerType === "cron") {
-    if (!schedule.cronExpression) {
-      throw new Error(
-        `Cron schedule ${schedule.name} (${schedule.id}) missing cronExpression`,
-      );
-    }
-    const nextRunAt = calculateNextRun(
-      schedule.cronExpression,
-      schedule.timezone,
-    );
-    await globalThis.services.db
-      .update(zeroAgentSchedules)
-      .set({
-        ...(lastRunId !== undefined && { lastRunId }),
-        lastRunAt: now,
-        retryStartedAt: null,
-        nextRunAt,
-      })
-      .where(eq(zeroAgentSchedules.id, schedule.id));
-  } else {
-    // One-time (once): disable after execution
-    if (schedule.triggerType !== "once") {
-      log.warn(
-        `advanceScheduleState reached one-time branch for schedule ${schedule.name} (${schedule.id}) with triggerType=${schedule.triggerType}`,
-      );
-    }
-    await globalThis.services.db
-      .update(zeroAgentSchedules)
-      .set({
-        enabled: false,
-        ...(lastRunId !== undefined && { lastRunId }),
-        lastRunAt: now,
-        retryStartedAt: null,
-        nextRunAt: null,
-      })
-      .where(eq(zeroAgentSchedules.id, schedule.id));
-  }
 }
 
 /**
@@ -840,7 +808,7 @@ export async function executeSchedule(
   const callbacks: Array<{
     url: string;
     secret: string;
-    payload: ScheduleLoopCallbackPayload;
+    payload: ScheduleLoopCallbackPayload | ScheduleCronCallbackPayload;
   }> = [];
 
   // Loop schedule advancement callback (triggers next iteration on completion)
@@ -856,32 +824,40 @@ export async function executeSchedule(
     });
   }
 
-  // Delegate run creation, validation, and dispatch to startRun()
-  let runId: string;
-  try {
-    const result = await createZeroRun({
-      userId: schedule.userId,
-      prompt: schedule.prompt,
-      appendSystemPrompt: schedule.appendSystemPrompt ?? undefined,
-      agentId: schedule.agentId,
+  // Cron schedule completion callback (tracks failures and advances next run)
+  if (schedule.triggerType === "cron") {
+    const cronPayload: ScheduleCronCallbackPayload = {
       scheduleId: schedule.id,
-      triggerSource: "schedule",
-      callbacks,
+      cronExpression: schedule.cronExpression!,
+      timezone: schedule.timezone,
+    };
+    callbacks.push({
+      url: `${getApiUrl()}/api/internal/callbacks/schedule/cron`,
+      secret: generateCallbackSecret(),
+      payload: cronPayload,
     });
-    runId = result.runId;
-  } catch (error) {
-    // Update schedule state (disable one-time, advance cron) on any failure
-    await advanceScheduleState(schedule);
-    log.debug(`Schedule ${schedule.name} (${schedule.triggerType}) failed`);
-
-    throw error; // Re-throw so executeDueSchedules counts it as skipped
   }
 
-  // Advance schedule state (also persists lastRunId):
-  // - cron: calculate next cron time
-  // - once: disable
-  // - loop: clear nextRunAt (callback will set it on completion)
-  await advanceScheduleState(schedule, runId);
+  // Delegate run creation, validation, and dispatch to createZeroRun()
+  // Note: schedule state (nextRunAt, lastRunAt, enabled) is already advanced
+  // by the atomic CAS claim in executeDueSchedules(). We only need to persist
+  // lastRunId after successful run creation.
+  const result = await createZeroRun({
+    userId: schedule.userId,
+    prompt: schedule.prompt,
+    appendSystemPrompt: schedule.appendSystemPrompt ?? undefined,
+    agentId: schedule.agentId,
+    scheduleId: schedule.id,
+    triggerSource: "schedule",
+    callbacks,
+  });
+
+  // Persist lastRunId so the active-run check in executeDueSchedules works
+  await globalThis.services.db
+    .update(zeroAgentSchedules)
+    .set({ lastRunId: result.runId })
+    .where(eq(zeroAgentSchedules.id, schedule.id));
+
   log.debug(`Schedule ${schedule.name} (${schedule.triggerType}) executed`);
-  return runId;
+  return result.runId;
 }

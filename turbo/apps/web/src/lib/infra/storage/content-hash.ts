@@ -6,16 +6,6 @@
 import { createHash } from "crypto";
 
 /**
- * File entry for hash computation
- */
-export interface FileEntry {
-  /** Relative path within the storage */
-  path: string;
-  /** File content as Buffer */
-  content: Buffer;
-}
-
-/**
  * Compute SHA-256 hash of a single file's content
  */
 export function hashFileContent(content: Buffer): string {

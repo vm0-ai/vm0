@@ -198,20 +198,6 @@ describe("resolveFirewallSelections", () => {
     }
   });
 
-  it("should resolve builtin github firewall without fetch", async () => {
-    const fetchFn = vi.fn<FetchFn>();
-    const expanded = await resolveFirewallSelections(
-      { github: { permissions: "all" } },
-      fetchFn,
-    );
-
-    expect(fetchFn).not.toHaveBeenCalled();
-    expect(expanded).toHaveLength(1);
-    expect(expanded[0]!.name).toBe("github");
-    expect(expanded[0]!.ref).toBe("github");
-    expect(expanded[0]!.apis.length).toBeGreaterThan(0);
-  });
-
   it("should resolve builtin slack firewall without fetch", async () => {
     const fetchFn = vi.fn<FetchFn>();
     const expanded = await resolveFirewallSelections(

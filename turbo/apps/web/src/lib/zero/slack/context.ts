@@ -356,6 +356,11 @@ async function downloadAndUploadSlackFile(
   }
 }
 
+function isVideoMimeType(mimetype: string | undefined): boolean {
+  if (!mimetype) return false;
+  return mimetype.startsWith("video/");
+}
+
 /**
  * Format file information for context with file upload to R2
  * Uploads files to R2 and provides presigned URLs for agent access
@@ -385,6 +390,19 @@ async function formatFileInfoWithUpload(
     if (presignedUrl) {
       const filename = `${file.id || "file"}.${file.filetype || "bin"}`;
       parts.push(`   Download: curl -sS -o /tmp/${filename} "${presignedUrl}"`);
+
+      if (isVideoMimeType(file.mimetype)) {
+        parts.push(
+          `   Video: To analyze this video, extract key frames with ffmpeg:`,
+        );
+        parts.push(
+          `     ffmpeg -i /tmp/${filename} -vf "fps=1" -q:v 2 /tmp/${file.id || "video"}_frame_%03d.jpg`,
+        );
+        parts.push(
+          `     Then view the extracted frames to understand the video content.`,
+        );
+      }
+
       return parts.join("\n");
     }
   }
