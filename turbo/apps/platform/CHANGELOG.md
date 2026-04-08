@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.203.1](https://github.com/vm0-ai/vm0/compare/app-v0.203.0...app-v0.203.1) (2026-04-08)
+
+
+### Bug Fixes
+
+* **platform:** remove incorrect clerk satellite configuration ([#8564](https://github.com/vm0-ai/vm0/issues/8564)) ([c426631](https://github.com/vm0-ai/vm0/commit/c426631979095db7ed6d5953d41ddcc44c387fdf))
+
 ## [0.203.0](https://github.com/vm0-ai/vm0/compare/app-v0.202.1...app-v0.203.0) (2026-04-08)
 
 
