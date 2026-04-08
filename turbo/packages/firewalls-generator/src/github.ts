@@ -448,6 +448,25 @@ const MUTATION_TO_PERMISSIONS: Record<string, string[]> = {
   updateUserListsForItem: ["user:write"],
 };
 
+// ── Invented permission groups ───────────────────────────────────────────
+//
+// Permission groups that do NOT exist in the REST fine-grained permission
+// data (server-to-server-permissions.json). These are created solely for
+// GraphQL mutations that have no REST equivalent. Every group referenced
+// by MUTATION_TO_PERMISSIONS must either exist in the REST data or be
+// listed here — the generator validates this.
+
+const INVENTED_PERMISSIONS = new Set([
+  "discussions:write", // GraphQL-only API, no REST endpoints
+  "metadata:write", // REST only has metadata:read
+  "migrations:write", // REST uses OAuth scope, not fine-grained
+  "notifications:write", // REST uses OAuth scope, not fine-grained
+  "packages:write", // REST uses OAuth scope, not fine-grained
+  "sponsorship:write", // GraphQL-only API, no REST endpoints
+  "teams:write", // REST team endpoints use members permission
+  "user:write", // User account ops, not repo/org scoped
+]);
+
 // ── Merging REST permissions ─────────────────────────────────────────────
 
 /**
@@ -568,6 +587,9 @@ function buildGroups(permsData: PermsData): PermissionGroup[] {
   const groups = new Map<string, Set<string>>();
   const descriptions = new Map<string, string>();
 
+  // Collect all REST permission group names for validation.
+  const restGroupNames = new Set<string>();
+
   for (const [permKey, entry] of Object.entries(permsData)) {
     const title = entry.title ?? entry.displayTitle ?? "";
     for (const ep of entry.permissions) {
@@ -577,6 +599,7 @@ function buildGroups(permsData: PermsData): PermissionGroup[] {
         );
       }
       const groupName = `${permKey}:${ep.access}`;
+      restGroupNames.add(groupName);
       let ruleSet = groups.get(groupName);
       if (!ruleSet) {
         ruleSet = new Set();
@@ -590,13 +613,29 @@ function buildGroups(permsData: PermsData): PermissionGroup[] {
     }
   }
 
-  // Add GraphQL mutation field rules to matching permission groups.
+  // Validate: every permission group in the mapping must be in REST data
+  // or explicitly listed in INVENTED_PERMISSIONS.
   const mutationIndex = buildMutationIndex();
+  const unknownGroups: string[] = [];
+  for (const groupName of mutationIndex.keys()) {
+    if (
+      !restGroupNames.has(groupName) &&
+      !INVENTED_PERMISSIONS.has(groupName)
+    ) {
+      unknownGroups.push(groupName);
+    }
+  }
+  if (unknownGroups.length > 0) {
+    throw new Error(
+      `${unknownGroups.length} permission group(s) not in REST data or INVENTED_PERMISSIONS:\n  ${unknownGroups.sort().join("\n  ")}`,
+    );
+  }
+
+  // Add GraphQL mutation field rules to matching permission groups.
   for (const [groupName, mutations] of mutationIndex) {
     let ruleSet = groups.get(groupName);
     if (!ruleSet) {
-      // Permission group exists only in GraphQL (e.g., discussions:write).
-      // Create a new group for it.
+      // Permission group only exists for GraphQL (listed in INVENTED_PERMISSIONS).
       ruleSet = new Set();
       groups.set(groupName, ruleSet);
     }
