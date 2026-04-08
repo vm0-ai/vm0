@@ -119,19 +119,20 @@ async function handleCompleted(
     log.warn("Failed to generate chat title", { err });
   }
 
-  // Send push notification (best-effort)
+  // Send push notification (best-effort — sendUserPushNotifications never throws)
+  let summary: string | null = null;
   try {
-    const summary = resultText
+    summary = resultText
       ? await generateChatNotificationSummary(prompt, resultText)
       : null;
-    await sendUserPushNotifications(userId, {
-      title: prompt.slice(0, 60),
-      body: summary ?? "Your task is complete",
-      url: `/chat/${threadId}`,
-    });
   } catch (err) {
-    log.warn("Failed to send push notification", { err });
+    log.warn("Failed to generate notification summary", { err });
   }
+  await sendUserPushNotifications(userId, {
+    title: prompt.slice(0, 60),
+    body: summary ?? "Your task is complete",
+    url: `/chat/${threadId}`,
+  });
 }
 
 /**
@@ -158,16 +159,12 @@ async function handleFailed(
     await updateThreadSessionId(threadId, sessionId);
   }
 
-  // Send push notification (best-effort)
-  try {
-    await sendUserPushNotifications(userId, {
-      title: prompt.slice(0, 60),
-      body: `Task failed: ${errorMessage.slice(0, 80)}`,
-      url: `/chat/${threadId}`,
-    });
-  } catch (err) {
-    log.warn("Failed to send push notification", { err });
-  }
+  // Send push notification (best-effort — sendUserPushNotifications never throws)
+  await sendUserPushNotifications(userId, {
+    title: prompt.slice(0, 60),
+    body: `Task failed: ${errorMessage.slice(0, 80)}`,
+    url: `/chat/${threadId}`,
+  });
 }
 
 /**

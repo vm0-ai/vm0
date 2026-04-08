@@ -11,6 +11,7 @@ import { clerk$ } from "../signals/auth.ts";
 import { apiBase$ } from "../signals/fetch.ts";
 
 const swRegistration$ = state<ServiceWorkerRegistration | null>(null);
+const subscribing$ = state(false);
 
 /**
  * Register the service worker. Safe to call multiple times.
@@ -36,62 +37,69 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
  * This is fire-and-forget — callers should NOT await it.
  */
 export async function ensurePushSubscription(): Promise<void> {
+  if (appStore.get(subscribing$)) {
+    return;
+  }
   const registration = appStore.get(swRegistration$);
   if (!registration) {
     return;
   }
-
-  const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY as
-    | string
-    | undefined;
-  if (!vapidPublicKey) {
-    return;
-  }
-
-  // Only prompt if user hasn't decided yet
-  if (Notification.permission === "default") {
-    const result = await Notification.requestPermission();
-    if (result !== "granted") {
+  appStore.set(subscribing$, true);
+  try {
+    const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY as
+      | string
+      | undefined;
+    if (!vapidPublicKey) {
       return;
     }
-  }
 
-  if (Notification.permission !== "granted") {
-    return;
-  }
+    // Only prompt if user hasn't decided yet
+    if (Notification.permission === "default") {
+      const result = await Notification.requestPermission();
+      if (result !== "granted") {
+        return;
+      }
+    }
 
-  // Check if already subscribed
-  const existingSub = await registration.pushManager.getSubscription();
-  if (existingSub) {
-    return;
-  }
+    if (Notification.permission !== "granted") {
+      return;
+    }
 
-  // Subscribe with VAPID key
-  const subscription = await registration.pushManager.subscribe({
-    userVisibleOnly: true,
-    applicationServerKey: urlBase64ToUint8Array(vapidPublicKey)
-      .buffer as ArrayBuffer,
-  });
+    // Check if already subscribed
+    const existingSub = await registration.pushManager.getSubscription();
+    if (existingSub) {
+      return;
+    }
 
-  // Send subscription to backend
-  const clerk = await appStore.get(clerk$);
-  const token = await clerk.session?.getToken();
-  const apiBase = appStore.get(apiBase$);
+    // Subscribe with VAPID key
+    const subscription = await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(vapidPublicKey)
+        .buffer as ArrayBuffer,
+    });
 
-  await fetch(`${apiBase}/api/zero/push-subscriptions`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: JSON.stringify({
-      endpoint: subscription.endpoint,
-      keys: {
-        p256dh: arrayBufferToBase64(subscription.getKey("p256dh")),
-        auth: arrayBufferToBase64(subscription.getKey("auth")),
+    // Send subscription to backend
+    const clerk = await appStore.get(clerk$);
+    const token = await clerk.session?.getToken();
+    const apiBase = appStore.get(apiBase$);
+
+    await fetch(`${apiBase}/api/zero/push-subscriptions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-    }),
-  });
+      body: JSON.stringify({
+        endpoint: subscription.endpoint,
+        keys: {
+          p256dh: arrayBufferToBase64(subscription.getKey("p256dh")),
+          auth: arrayBufferToBase64(subscription.getKey("auth")),
+        },
+      }),
+    });
+  } finally {
+    appStore.set(subscribing$, false);
+  }
 }
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
