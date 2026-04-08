@@ -36,13 +36,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@vm0/ui";
-import { ZeroScheduleTab } from "./zero-schedule-tab.tsx";
-import { ZeroInstructionsTab } from "./zero-instructions-tab.tsx";
+import { ZeroScheduleTab } from "../zero-page/zero-schedule-tab.tsx";
+import { ZeroInstructionsTab } from "../zero-page/zero-instructions-tab.tsx";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
-import { ZeroSettingsTab } from "./zero-settings-tab.tsx";
+import { ZeroSettingsTab } from "../zero-page/zero-settings-tab.tsx";
 
-import { TONE_OPTIONS, type Tone } from "./zero-tone-constants.ts";
-import type { ScheduleEntry } from "./zero-schedule-card.tsx";
+import { TONE_OPTIONS, type Tone } from "../zero-page/zero-tone-constants.ts";
+import type { ScheduleEntry } from "../zero-page/zero-schedule-card.tsx";
 import {
   zeroJobDetail$,
   zeroJobInstructions$,
@@ -72,14 +72,14 @@ import { zeroOnboardingStatus$ } from "../../signals/zero-page/zero-onboarding.t
 import { Link } from "../router/link.tsx";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import { useAgentAvatar } from "./zero-sidebar.tsx";
-import { resolveAvatarUrl } from "./avatar-utils.ts";
-import { agents$ } from "../../signals/agent.ts";
+import { useAgentAvatar } from "../zero-page/zero-sidebar.tsx";
+import { resolveAvatarUrl } from "../zero-page/avatar-utils.ts";
+import { agents$, currentAgent$ } from "../../signals/agent.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { user$ } from "../../signals/auth.ts";
-import { ZeroNoPermissionIllustration } from "./components/zero-no-permission-illustration.tsx";
-import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
-import { FirewallPermissionsDrawer } from "./components/settings/firewall-permissions-dialog.tsx";
+import { ZeroNoPermissionIllustration } from "../zero-page/components/zero-no-permission-illustration.tsx";
+import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
+import { FirewallPermissionsDrawer } from "../zero-page/components/settings/firewall-permissions-dialog.tsx";
 import {
   hasFirewallPermissions,
   saveFirewallPolicies$,
@@ -746,25 +746,13 @@ function JobInstructionsTab() {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Main page
-// ---------------------------------------------------------------------------
-
-export function ZeroJobDetailPage({ agentId }: ZeroJobDetailPageProps) {
+export function ZeroJobDetailPage() {
   const detailLoadable = useLoadable(zeroJobDetail$);
   const detail = useLastResolved(zeroJobDetail$) ?? null;
   const error = loadableErrorMessage(detailLoadable);
-  const agents = useLastResolved(agents$) ?? [];
-  const listItem = agents.find((a) => {
-    return a.id === agentId;
-  });
+  const agent = useLastResolved(currentAgent$);
 
-  const { description, displayName, sound, avatarUrl } = extractAgentFields(
-    detail,
-    agentId,
-    listItem,
-  );
-  const resolvedSound = resolveSound(sound);
+  const resolvedSound = resolveSound(agent?.sound ?? "professional");
 
   const deleteAgent = useSet(deleteZeroJobAgent$);
   const nav = useSet(detachedNavigateTo$);

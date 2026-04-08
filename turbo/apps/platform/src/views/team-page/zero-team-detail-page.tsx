@@ -1,8 +1,8 @@
 import { useGet } from "ccstate-react";
-import { ZeroJobDetailPage } from "../zero-page/zero-job-detail-page.tsx";
+import { ZeroJobDetailPage } from "./zero-job-detail-page.tsx";
 import { currentAgentId$ } from "../../signals/agent.ts";
 
-export function ZeroTeamDetailPage() {
+export function AgentDetailPage() {
   const agentId = useGet(currentAgentId$);
 
   return agentId ? (
