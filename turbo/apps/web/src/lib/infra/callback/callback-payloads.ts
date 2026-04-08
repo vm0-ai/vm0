@@ -78,6 +78,14 @@ export interface ChatCallbackPayload {
   agentId: string;
 }
 
+export interface PhoneCallbackPayload {
+  callId: string;
+  userId: string;
+  orgId: string;
+  agentId: string;
+  existingSessionId: string | null;
+}
+
 export type CallbackPayload =
   | TelegramCallbackPayload
   | SlackOrgCallbackPayload
@@ -86,4 +94,5 @@ export type CallbackPayload =
   | ScheduleLoopCallbackPayload
   | ScheduleCronCallbackPayload
   | GitHubIssuesCallbackPayload
-  | ChatCallbackPayload;
+  | ChatCallbackPayload
+  | PhoneCallbackPayload;

@@ -19,6 +19,7 @@ import { zeroSkillCommand } from "./commands/zero/skill";
 import { zeroLogsCommand } from "./commands/zero/logs";
 import { zeroDeveloperSupportCommand } from "./commands/zero/developer-support";
 import { zeroComputerUseCommand } from "./commands/zero/computer-use";
+import { zeroPhoneCommand } from "./commands/zero/phone";
 import {
   decodeZeroTokenPayload,
   type ZeroTokenPayload,
@@ -42,6 +43,7 @@ const COMMAND_CAPABILITY_MAP: Record<string, string | null> = {
   "ask-user": null,
   "developer-support": null,
   "computer-use": "computer-use:write",
+  phone: "phone:write",
 };
 
 const DEFAULT_COMMANDS: Command[] = [
@@ -61,6 +63,7 @@ const DEFAULT_COMMANDS: Command[] = [
   zeroSkillCommand,
   zeroDeveloperSupportCommand,
   zeroComputerUseCommand,
+  zeroPhoneCommand,
 ];
 
 function shouldHideCommand(

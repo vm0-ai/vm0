@@ -181,3 +181,10 @@ export {
   unregisterComputerUseHost,
   getComputerUseHost,
 } from "./domains/zero-computer-use";
+
+// Domain modules - Phone Calls
+export {
+  createPhoneCall,
+  listPhoneCalls,
+  getPhoneCallDetail,
+} from "./domains/phone-calls";

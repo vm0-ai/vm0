@@ -406,6 +406,9 @@ importers:
       ably:
         specifier: ^2.17.0
         version: 2.21.0(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      agentphone:
+        specifier: 1.0.2
+        version: 1.0.2
       archiver:
         specifier: ^7.0.1
         version: 7.0.1
@@ -4927,6 +4930,10 @@ packages:
   agent-base@6.0.2:
     resolution: {integrity: sha512-RZNwNclF7+MS/8bDg70amg32dyeZGZxiDuQmZxKLAlQjr3jGyLx+4Kkk58UO7D2QdgFIQCovuSuZESne6RG6XQ==}
     engines: {node: '>= 6.0.0'}
+
+  agentphone@1.0.2:
+    resolution: {integrity: sha512-hp7yJ5FS0BUpmdGwdbIlC7ZY8kld/T+DwUdvBCB6kZrnHyLL4ATY0b244JwQlwpP/+CPUf4V0WtHL2N3VVRPIw==}
+    engines: {node: '>=18.0.0'}
 
   ajv@6.14.0:
     resolution: {integrity: sha512-IWrosm/yrn43eiKqkfkHis7QioDleaXQHdDVPKg0FSwwd/DuvyX79TZnFOnYpB7dcsFAMmtFztZuXPDvSePkFw==}
@@ -13714,6 +13721,8 @@ snapshots:
       debug: 4.4.3
     transitivePeerDependencies:
       - supports-color
+
+  agentphone@1.0.2: {}
 
   ajv@6.14.0:
     dependencies:

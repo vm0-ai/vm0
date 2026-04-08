@@ -19,6 +19,7 @@ import {
   IconLayoutSidebarLeftCollapse,
   IconPlug,
   IconFlask,
+  IconPhone,
   IconSparkles,
 } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/core";
@@ -142,6 +143,15 @@ const FOOTER_NAV = [
     icon: IconChartBar as NavIcon,
     iconImg: undefined,
     featureGate: FeatureSwitchKey.Usage,
+  },
+  {
+    id: "phone",
+    activeKeys: ["phone"],
+    pathname: "/phone",
+    label: "Phone",
+    icon: IconPhone as NavIcon,
+    iconImg: undefined,
+    featureGate: FeatureSwitchKey.PhoneIntegration,
   },
   {
     id: "lab",

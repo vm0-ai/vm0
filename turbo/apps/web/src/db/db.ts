@@ -52,6 +52,8 @@ import * as vm0ApiKeySchema from "./schema/vm0-api-key";
 import * as zeroSkillSchema from "./schema/zero-skill";
 import * as computerUseHostSchema from "./schema/computer-use-host";
 import * as insightsDailySchema from "./schema/insights-daily";
+import * as phoneUserLinkSchema from "./schema/phone-user-link";
+import * as phoneThreadSessionSchema from "./schema/phone-thread-session";
 
 export const schema = {
   ...userSchema,
@@ -108,4 +110,6 @@ export const schema = {
   ...zeroSkillSchema,
   ...computerUseHostSchema,
   ...insightsDailySchema,
+  ...phoneUserLinkSchema,
+  ...phoneThreadSessionSchema,
 };

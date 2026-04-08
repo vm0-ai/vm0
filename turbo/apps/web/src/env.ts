@@ -208,6 +208,8 @@ function initEnv() {
       // Vercel platform detection
       VERCEL: z.string().optional(),
       VERCEL_AUTOMATION_BYPASS_SECRET: z.string().optional(),
+      // AgentPhone (platform-level phone channel)
+      AGENTPHONE_API_KEY: z.string().min(1).optional(),
     },
     client: {
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: z.string().min(1),
@@ -359,6 +361,7 @@ function initEnv() {
       VERCEL: process.env.VERCEL,
       VERCEL_AUTOMATION_BYPASS_SECRET:
         process.env.VERCEL_AUTOMATION_BYPASS_SECRET,
+      AGENTPHONE_API_KEY: process.env.AGENTPHONE_API_KEY,
 
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:
         process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
