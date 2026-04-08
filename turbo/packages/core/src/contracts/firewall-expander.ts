@@ -24,6 +24,10 @@ const VALID_GRAPHQL_TYPES = new Set(["query", "mutation", "subscription"]);
 
 const GRAPHQL_IDENTIFIER_RE = /^[a-zA-Z_][a-zA-Z0-9_]*\*?$/;
 
+/** Matches GraphQL field patterns: `name`, `name*`, `a.b.c`, `a.b.*` (bare `*` handled before regex). */
+const GRAPHQL_FIELD_PATTERN_RE =
+  /^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*\*?$|^([a-zA-Z_][a-zA-Z0-9_]*\.)+\*$/;
+
 function validateGraphQLModifiers(
   modifiers: string[],
   rule: string,
@@ -62,7 +66,7 @@ function validateGraphQLModifiers(
           `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": empty GraphQL field name`,
         );
       }
-      if (val !== "*" && !GRAPHQL_IDENTIFIER_RE.test(val)) {
+      if (val !== "*" && !GRAPHQL_FIELD_PATTERN_RE.test(val)) {
         throw new Error(
           `Invalid rule "${rule}" in permission "${permName}" of firewall "${serviceName}": invalid GraphQL field pattern "${val}"`,
         );

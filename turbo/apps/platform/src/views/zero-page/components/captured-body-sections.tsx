@@ -141,7 +141,7 @@ function filterHeaders(
   }
   const filtered = Object.fromEntries(
     Object.entries(raw).filter(([, v]) => {
-      return v !== "";
+      return v !== null && v !== undefined;
     }),
   );
   return Object.keys(filtered).length > 0 ? filtered : null;

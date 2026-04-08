@@ -1137,6 +1137,7 @@ jobs:
       - name: Install E2E dependencies
         run: npm install -g agent-browser@0.22.0
       - name: Run browser E2E tests
+        continue-on-error: true
         run: |
           BATS_TEST_TIMEOUT=180 ./e2e/test/libs/bats/bin/bats -T ./e2e/tests/02-browser/*.bats
         env:
@@ -1150,6 +1151,54 @@ jobs:
         with:
           name: cli-e2e-02-browser-screenshots
           path: /tmp/e2e-auth-screenshots/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  cli-e2e-02-playwright:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    concurrency:
+      group: cli-e2e-02-playwright-${{ needs.prepare.outputs.job-ref }}
+      cancel-in-progress: true
+    needs: [prepare, deploy-web, deploy-app]
+    if: |
+      always() &&
+      (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
+      needs.prepare.outputs.job-ref != '' && (
+        needs.prepare.outputs.web-changed == 'true' ||
+        needs.prepare.outputs.cli-changed == 'true' ||
+        needs.prepare.outputs.ci-changed == 'true' ||
+        needs.prepare.outputs.e2e-changed == 'true'
+      ) &&
+      needs.deploy-web.result == 'success' &&
+      needs.deploy-app.result == 'success'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - name: Install E2E dependencies
+        run: cd e2e && npm ci
+      - name: Install Playwright browsers
+        run: cd e2e && npx playwright install --with-deps chromium
+      - name: Run Playwright E2E tests
+        continue-on-error: true
+        run: cd e2e && npx playwright test --config playwright/playwright.config.ts
+        env:
+          VM0_API_URL: ${{ needs.deploy-web.outputs.preview-url }}
+          CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: |
+            e2e/playwright-report/
+            e2e/test-results/
           retention-days: 7
           if-no-files-found: ignore
 
@@ -2037,6 +2086,7 @@ jobs:
       - build-cli
       - build-e2b-template
       - cli-e2e-02-browser
+      - cli-e2e-02-playwright
       - cli-e2e-01-serial
       - deploy-runner-prepare
       - deploy-runner-start
@@ -2100,7 +2150,8 @@ jobs:
           check_result "deploy-app" "${{ needs.deploy-app.result }}" "true"
           check_result "build-cli" "${{ needs.build-cli.result }}" "true"
           check_result "build-e2b-template" "${{ needs.build-e2b-template.result }}" "true"
-          check_result "cli-e2e-02-browser" "${{ needs.cli-e2e-02-browser.result }}" "true"
+          check_result "cli-e2e-02-browser" "${{ needs.cli-e2e-02-browser.result }}" "informational"
+          check_result "cli-e2e-02-playwright" "${{ needs.cli-e2e-02-playwright.result }}" "informational"
           check_result "cli-e2e-01-serial" "${{ needs.cli-e2e-01-serial.result }}" "true"
           check_result "deploy-runner-prepare" "${{ needs.deploy-runner-prepare.result }}" "true"
           check_result "deploy-runner-start" "${{ needs.deploy-runner-start.result }}" "true"

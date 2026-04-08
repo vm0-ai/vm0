@@ -16,7 +16,7 @@ function getClerkHeaders(): Record<string, string> {
 export function generateTestEmail(): string {
   const jobRef = process.env.JOB_REF ?? "local";
   const randHex = randomBytes(4).toString("hex");
-  return `${jobRef}+clerk_test@${randHex}.ai`;
+  return `${jobRef}+clerk_test@e2e-browser-${randHex}.ai`;
 }
 
 export function generatePassword(): string {
@@ -45,6 +45,34 @@ export async function createUser(
     throw new Error(`Failed to create Clerk user: ${JSON.stringify(data)}`);
   }
   return data.id;
+}
+
+export async function deleteStaleTestUsers(): Promise<void> {
+  const jobRef = process.env.JOB_REF ?? "local";
+  const prefix = `${jobRef}+clerk_test@e2e-browser-`;
+  const searchResponse = await fetch(
+    `${CLERK_API_BASE}/users?query=${encodeURIComponent(`${jobRef}+clerk_test`)}&limit=100`,
+    { headers: getClerkHeaders() }
+  );
+  const users = (await searchResponse.json()) as Array<{
+    id: string;
+    email_addresses: Array<{ email_address: string }>;
+  }>;
+
+  for (const user of users) {
+    const userEmail = user.email_addresses[0]?.email_address;
+    if (userEmail?.startsWith(prefix)) {
+      const deleteResponse = await fetch(
+        `${CLERK_API_BASE}/users/${user.id}`,
+        { method: "DELETE", headers: getClerkHeaders() }
+      );
+      if (!deleteResponse.ok) {
+        console.warn(
+          `Failed to delete stale user ${user.id} (${userEmail}): ${deleteResponse.status}`
+        );
+      }
+    }
+  }
 }
 
 export async function deleteUserByEmail(email: string): Promise<void> {

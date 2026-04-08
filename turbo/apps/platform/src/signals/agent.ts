@@ -23,9 +23,7 @@ export const defaultAgentId$ = computed(async (get) => {
 export function agentById(id: string) {
   return computed(async (get) => {
     const client = get(zeroClient$)(zeroAgentsByIdContract);
-    const result = await accept(client.get({ params: { id } }), [200], {
-      toast: false,
-    });
+    const result = await accept(client.get({ params: { id } }), [200]);
     return result.body;
   });
 }
