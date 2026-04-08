@@ -1,5 +1,26 @@
 # Changelog
 
+## [8.160.0](https://github.com/vm0-ai/vm0/compare/core-v8.159.0...core-v8.160.0) (2026-04-08)
+
+
+### Features
+
+* display last updated timestamp and refetch insights on navigation ([#8443](https://github.com/vm0-ai/vm0/issues/8443)) ([11e5743](https://github.com/vm0-ai/vm0/commit/11e5743855d534c60ccbc7470e73f47f8cc9797b))
+
+
+### Bug Fixes
+
+* **checkpoint:** use presigned url for session history upload ([#8445](https://github.com/vm0-ai/vm0/issues/8445)) ([4a019bb](https://github.com/vm0-ai/vm0/commit/4a019bb53dc2323e2981f74d02e78f4eaf2e185c))
+* **firewalls:** add docusign oauth endpoints to firewall config ([#8468](https://github.com/vm0-ai/vm0/issues/8468)) ([fbac6c0](https://github.com/vm0-ai/vm0/commit/fbac6c0d6e1f146b607853f26828fe27f39e7509))
+* **firewalls:** default-deny gmail send and split compose to draft-only ([#8450](https://github.com/vm0-ai/vm0/issues/8450)) ([cc62cbf](https://github.com/vm0-ai/vm0/commit/cc62cbfb5db47c1d8b0e49465bad68a03f572d52))
+* **firewalls:** fix doppler placeholder and add infisical base urls ([#8422](https://github.com/vm0-ai/vm0/issues/8422)) ([3898b4b](https://github.com/vm0-ai/vm0/commit/3898b4bf03151ee256186752a670becf93b89636))
+* **firewalls:** update zapier firewall to actions.zapier.com ([#8470](https://github.com/vm0-ai/vm0/issues/8470)) ([171587c](https://github.com/vm0-ai/vm0/commit/171587c74975c460c879828a34f46bef28446690))
+
+
+### Refactoring
+
+* **firewalls:** remove fine-grained permissions from github firewall ([#8432](https://github.com/vm0-ai/vm0/issues/8432)) ([2471dfd](https://github.com/vm0-ai/vm0/commit/2471dfdd2da6bf4407f5d0a5e565d334f750cfe9))
+
 ## [8.159.0](https://github.com/vm0-ai/vm0/compare/core-v8.158.0...core-v8.159.0) (2026-04-07)
 
 

@@ -1,5 +1,37 @@
 # Changelog
 
+## [12.203.0](https://github.com/vm0-ai/vm0/compare/web-v12.202.0...web-v12.203.0) (2026-04-08)
+
+
+### Features
+
+* display last updated timestamp and refetch insights on navigation ([#8443](https://github.com/vm0-ai/vm0/issues/8443)) ([11e5743](https://github.com/vm0-ai/vm0/commit/11e5743855d534c60ccbc7470e73f47f8cc9797b))
+* **schedule:** add consecutive failure tracking and auto-disable for cron schedules ([#8430](https://github.com/vm0-ai/vm0/issues/8430)) ([22bd168](https://github.com/vm0-ai/vm0/commit/22bd168e85247530d6c5c516c0929a423255b634))
+* **slack:** add ffmpeg frame extraction hint for video attachments ([#8459](https://github.com/vm0-ai/vm0/issues/8459)) ([d5a4085](https://github.com/vm0-ai/vm0/commit/d5a40856aa7496ebe6a06f275c5240470878987a))
+
+
+### Bug Fixes
+
+* **checkpoint:** extract blob pre-registration into session-history service ([#8457](https://github.com/vm0-ai/vm0/issues/8457)) ([94f38d7](https://github.com/vm0-ai/vm0/commit/94f38d7ca4d5c96acd2387de2827d030d16cfc8a)), closes [#8454](https://github.com/vm0-ai/vm0/issues/8454)
+* **checkpoint:** use presigned url for session history upload ([#8445](https://github.com/vm0-ai/vm0/issues/8445)) ([4a019bb](https://github.com/vm0-ai/vm0/commit/4a019bb53dc2323e2981f74d02e78f4eaf2e185c))
+* **deps:** upgrade drizzle-orm to patch sql injection vulnerability ([#8424](https://github.com/vm0-ai/vm0/issues/8424)) ([c3ea03f](https://github.com/vm0-ai/vm0/commit/c3ea03f428975d983a9ada2a9c52823ac9ad202b))
+* **developer-support:** include user prompts in download bundle ([#8465](https://github.com/vm0-ai/vm0/issues/8465)) ([03e29d0](https://github.com/vm0-ai/vm0/commit/03e29d04e0b4a90d00b90a645927e2ddedf59737))
+* **onboarding:** handle clerk 422 errors and unhandled promise rejection ([#8444](https://github.com/vm0-ai/vm0/issues/8444)) ([b67a216](https://github.com/vm0-ai/vm0/commit/b67a216987194280c4b0c0d38ad8718ebe950f9c)), closes [#8439](https://github.com/vm0-ai/vm0/issues/8439)
+* **schedule:** handle pre-run failures to prevent stuck schedules ([#8463](https://github.com/vm0-ai/vm0/issues/8463)) ([6d52f12](https://github.com/vm0-ai/vm0/commit/6d52f12a652bff0fd5d5555ddfd58375496a7805)), closes [#8106](https://github.com/vm0-ai/vm0/issues/8106)
+* **schedule:** prevent duplicate execution via atomic claim ([#8451](https://github.com/vm0-ai/vm0/issues/8451)) ([d7c7c61](https://github.com/vm0-ai/vm0/commit/d7c7c61c2083d8854540519b45eaefe0881164d7)), closes [#8446](https://github.com/vm0-ai/vm0/issues/8446)
+
+
+### Refactoring
+
+* **firewalls:** remove fine-grained permissions from github firewall ([#8432](https://github.com/vm0-ai/vm0/issues/8432)) ([2471dfd](https://github.com/vm0-ai/vm0/commit/2471dfdd2da6bf4407f5d0a5e565d334f750cfe9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.160.0
+
 ## [12.202.0](https://github.com/vm0-ai/vm0/compare/web-v12.201.0...web-v12.202.0) (2026-04-07)
 
 

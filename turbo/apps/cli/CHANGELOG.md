@@ -1,5 +1,34 @@
 # Changelog
 
+## [9.107.0](https://github.com/vm0-ai/vm0/compare/cli-v9.106.1...cli-v9.107.0) (2026-04-08)
+
+
+### Features
+
+* **schedule:** add consecutive failure tracking and auto-disable for cron schedules ([#8430](https://github.com/vm0-ai/vm0/issues/8430)) ([22bd168](https://github.com/vm0-ai/vm0/commit/22bd168e85247530d6c5c516c0929a423255b634))
+
+
+### Bug Fixes
+
+* **firewalls:** default-deny gmail send and split compose to draft-only ([#8450](https://github.com/vm0-ai/vm0/issues/8450)) ([cc62cbf](https://github.com/vm0-ai/vm0/commit/cc62cbfb5db47c1d8b0e49465bad68a03f572d52))
+
+
+### Documentation
+
+* **test:** clarify os boundary mocks in desktop-server test ([#8440](https://github.com/vm0-ai/vm0/issues/8440)) ([f078c98](https://github.com/vm0-ai/vm0/commit/f078c981792dae1e5a7186b9ee43ebef140b16d2)), closes [#8303](https://github.com/vm0-ai/vm0/issues/8303)
+
+
+### Refactoring
+
+* **firewalls:** remove fine-grained permissions from github firewall ([#8432](https://github.com/vm0-ai/vm0/issues/8432)) ([2471dfd](https://github.com/vm0-ai/vm0/commit/2471dfdd2da6bf4407f5d0a5e565d334f750cfe9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.160.0
+
 ## [9.106.1](https://github.com/vm0-ai/vm0/compare/cli-v9.106.0...cli-v9.106.1) (2026-04-07)
 
 
