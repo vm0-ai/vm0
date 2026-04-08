@@ -142,6 +142,9 @@ STRIPE_SECRET_KEY=op://Development/stripe/STRIPE_SECRET_KEY
 STRIPE_WEBHOOK_SECRET=op://Development/stripe/STRIPE_WEBHOOK_SECRET
 ZERO_PRICE=op://Development/stripe/ZERO_PRICE
 
+# Optional: AgentPhone (Phone Channel)
+AGENTPHONE_API_KEY=op://Development/agentphone/AGENTPHONE_API_KEY
+
 # Optional: ngrok (Computer Connector)
 NGROK_API_KEY=op://Development/ngrok/NGROK_API_KEY
 NGROK_COMPUTER_CONNECTOR_DOMAIN=computer.vm7.io
