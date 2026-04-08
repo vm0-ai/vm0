@@ -15,7 +15,10 @@ type ZeroCapability = (typeof ZERO_CAPABILITIES)[number];
  * Capabilities not listed here are always included.
  */
 const CONDITIONAL_CAPABILITIES: ReadonlyMap<ZeroCapability, FeatureSwitchKey> =
-  new Map([["computer-use:write", FeatureSwitchKey.ComputerUse]]);
+  new Map([
+    ["computer-use:write", FeatureSwitchKey.ComputerUse],
+    ["voice-chat:write", FeatureSwitchKey.VoiceChat],
+  ]);
 
 const log = logger("auth:sandbox");
 

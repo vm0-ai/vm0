@@ -46,4 +46,5 @@ export enum FeatureSwitchKey {
   MobileChatListPage = "mobileChatListPage",
   Lab = "lab",
   AuditLink = "auditLink",
+  VoiceChat = "voiceChat",
 }
