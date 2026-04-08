@@ -94,45 +94,12 @@ export async function resolveOrgByAgentphoneAgentId(
 }
 
 /**
- * FNV-1a 32-bit hash (same as feature-switch.ts).
- */
-function fnv1a(input: string): string {
-  let h = 2166136261 >>> 0;
-  for (let i = 0; i < input.length; i++) {
-    h ^= input.charCodeAt(i);
-    h = Math.imul(h, 16777619) >>> 0;
-  }
-  return h.toString(16).padStart(8, "0");
-}
-
-/**
- * Early-access phone allowlist (before full approval).
- * Phone numbers stored as fnv1a hashes to avoid leaking PII in source.
- * User IDs are Clerk system IDs (not sensitive).
- * TODO: Remove once phone verification is generally available.
- */
-const EARLY_ACCESS_PHONES: ReadonlyArray<{
-  phoneHash: string;
-  userId: string;
-}> = [{ phoneHash: "b67da2b5", userId: "user_3BhXeU177zSlG3S5bSEphF3ZqdY" }];
-
-/**
  * Resolve a VM0 user from a verified phone number + org.
- * Falls back to the early-access hardcoded allowlist.
  */
 export async function resolveUserByPhone(
   phoneNumber: string,
   orgId: string,
 ): Promise<string | null> {
-  // Check hardcoded early-access list first
-  const phoneHash = fnv1a(phoneNumber);
-  const earlyMatch = EARLY_ACCESS_PHONES.find((entry) => {
-    return entry.phoneHash === phoneHash;
-  });
-  if (earlyMatch) {
-    return earlyMatch.userId;
-  }
-
   const [link] = await globalThis.services.db
     .select({ vm0UserId: phoneUserLinks.vm0UserId })
     .from(phoneUserLinks)

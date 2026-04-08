@@ -20,21 +20,6 @@ export async function GET(request: Request): Promise<NextResponse> {
 
   const phoneLink = await getUserPhoneLink(org.orgId, authCtx.userId);
 
-  // Early-access: users in the allowlist see a masked phone as "verified"
-  // TODO: Remove once phone verification is generally available
-  const EARLY_ACCESS_USER_HASHES = ["f09d23db"];
-  function fnv1a(input: string): string {
-    let h = 2166136261 >>> 0;
-    for (let i = 0; i < input.length; i++) {
-      h ^= input.charCodeAt(i);
-      h = Math.imul(h, 16777619) >>> 0;
-    }
-    return h.toString(16).padStart(8, "0");
-  }
-  const isEarlyAccess = EARLY_ACCESS_USER_HASHES.includes(
-    fnv1a(authCtx.userId),
-  );
-
   // Get org's phone number
   const [orgRow] = await globalThis.services.db
     .select({ agentphoneNumber: orgMetadata.agentphoneNumber })
@@ -42,11 +27,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     .where(eq(orgMetadata.orgId, org.orgId))
     .limit(1);
 
-  const userPhone = phoneLink?.verified
-    ? phoneLink.phoneNumber
-    : isEarlyAccess
-      ? "(early access)"
-      : null;
+  const userPhone = phoneLink?.verified ? phoneLink.phoneNumber : null;
 
   return NextResponse.json({
     userPhone,
