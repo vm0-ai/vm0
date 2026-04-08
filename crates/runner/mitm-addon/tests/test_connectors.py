@@ -2664,3 +2664,103 @@ class TestGraphQLFieldMatching:
             body=body,
         )
         assert isinstance(result, FirewallAllow)
+
+
+class TestGraphQLNestedFieldPaths:
+    """Tests for dot-separated field path matching (e.g., field:repository.issues)."""
+
+    def test_nested_path_exact_match(self):
+        """field:repository.issues matches query with repository { issues }."""
+        body = _gql_body(
+            'query { repository(owner: "foo", name: "bar")'
+            " { issues(first: 10) { nodes { title } } } }",
+            "GetIssues",
+        )
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL type:query field:repository.issues"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallAllow)
+
+    def test_nested_path_deeper_match(self):
+        """field:repository.issues.nodes matches three-level nesting."""
+        body = _gql_body(
+            'query { repository(name: "x") { issues { nodes { title } } } }',
+            "Op",
+        )
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL type:query field:repository.issues.nodes"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallAllow)
+
+    def test_nested_path_no_match(self):
+        """field:repository.issues does not match repository.pullRequests."""
+        body = _gql_body(
+            'query { repository(name: "x") { pullRequests { nodes { title } } } }',
+            "Op",
+        )
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL type:query field:repository.issues"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallBlock)
+
+    def test_nested_wildcard_match(self):
+        """field:repository.* matches any nested field under repository."""
+        body = _gql_body(
+            'query { repository(name: "x") { pullRequests { totalCount } } }',
+            "Op",
+        )
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL type:query field:repository.*"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallAllow)
+
+    def test_nested_wildcard_no_match_different_top(self):
+        """field:repository.* does not match viewer.login."""
+        body = _gql_body("query { viewer { login } }", "Op")
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL type:query field:repository.*"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallBlock)
+
+    def test_nested_type_filter_blocks(self):
+        """type: filter still applies to nested field rules."""
+        body = _gql_body(
+            "mutation { repository { issues { id } } }",
+            "Op",
+        )
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL type:query field:repository.issues"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallBlock)
+
+    def test_flat_field_still_works(self):
+        """Flat field:createIssue still works alongside nested path rules."""
+        body = _gql_body(
+            "mutation { createIssue(input: {}) { id } }",
+            "Op",
+        )
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallAllow)
