@@ -18,7 +18,6 @@ import {
   ALL_METHODS,
   fetchSpec,
   logStats,
-  renderPermissions,
   sortRules,
   writeOutput,
 } from "./codegen";
@@ -268,7 +267,10 @@ function buildGroups(specs: HubSpotSpec[]): {
 
 // ── TypeScript generation ────────────────────────────────────────────────
 
-function generateTypeScript(permissions: PermissionGroup[]): string {
+function generateTypeScript(_permissions: PermissionGroup[]): string {
+  // Permissions are intentionally omitted — fine-grained OAuth scope rules
+  // are too large (170 scopes, 6500+ rules, 355 KB) and not needed at the
+  // firewall level. Token scopes enforce access server-side.
   const lines: string[] = [
     `// Auto-generated from HubSpot's official OpenAPI specs.`,
     `// Source: https://github.com/${REPO}`,
@@ -292,16 +294,12 @@ function generateTypeScript(permissions: PermissionGroup[]): string {
     '          Authorization: "Bearer ${{ secrets.HUBSPOT_TOKEN }}",',
     "        },",
     "      },",
-    "      permissions: [",
+    "      permissions: [],",
+    "    },",
+    "  ],",
+    "} as const satisfies FirewallConfig;",
+    "",
   ];
-
-  lines.push(...renderPermissions(permissions));
-
-  lines.push("      ],");
-  lines.push("    },");
-  lines.push("  ],");
-  lines.push("} as const satisfies FirewallConfig;");
-  lines.push("");
 
   return lines.join("\n");
 }

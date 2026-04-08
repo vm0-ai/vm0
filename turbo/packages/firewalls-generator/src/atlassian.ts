@@ -16,7 +16,6 @@ import {
   OPENAPI_PATH_KEYS,
   fetchSpec,
   logStats,
-  renderPermissions,
   sortRules,
   writeOutput,
 } from "./codegen";
@@ -145,7 +144,10 @@ function mergeGroups(
 
 // ── TypeScript generation ────────────────────────────────────────────────
 
-function generateTypeScript(permissions: PermissionGroup[]): string {
+function generateTypeScript(_permissions: PermissionGroup[]): string {
+  // Permissions are intentionally omitted — fine-grained OAuth scope rules
+  // are too large (64 scopes, 971 rules, 90 KB) and not needed at the
+  // firewall level. Token scopes enforce access server-side.
   const lines: string[] = [
     "// Auto-generated from Atlassian (Jira + Confluence) official OpenAPI specs.",
     "// Sources:",
@@ -170,16 +172,12 @@ function generateTypeScript(permissions: PermissionGroup[]): string {
     '          Authorization: "Bearer ${{ secrets.ATLASSIAN_TOKEN }}",',
     "        },",
     "      },",
-    "      permissions: [",
+    "      permissions: [],",
+    "    },",
+    "  ],",
+    "} as const satisfies FirewallConfig;",
+    "",
   ];
-
-  lines.push(...renderPermissions(permissions));
-
-  lines.push("      ],");
-  lines.push("    },");
-  lines.push("  ],");
-  lines.push("} as const satisfies FirewallConfig;");
-  lines.push("");
 
   return lines.join("\n");
 }
