@@ -2366,3 +2366,58 @@ class TestGraphQLFieldMatching:
             body=body,
         )
         assert isinstance(result, FirewallBlock)
+
+    def test_field_string_arg_not_extracted(self):
+        """Field names inside string arguments must NOT be extracted."""
+        body = _gql_body(
+            'mutation { deleteRepository(name: "createIssue") { id } }',
+            "DeleteRepo",
+        )
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallBlock)
+
+    def test_field_string_arg_with_escape(self):
+        """Escaped quotes inside string arguments are handled."""
+        body = _gql_body(
+            r'mutation { deleteRepository(name: "foo\"createIssue") { id } }',
+            "DeleteRepo",
+        )
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallBlock)
+
+    def test_field_with_all_three_modifiers(self):
+        """type: + operationName: + field: all apply together."""
+        body = _gql_body(
+            "mutation IssueCreate { createIssue(input: {}) { id } }",
+            "IssueCreate",
+        )
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(
+                ["POST /graphql GraphQL type:mutation operationName:IssueCreate field:createIssue"]
+            ),
+            body=body,
+        )
+        assert isinstance(result, FirewallAllow)
+
+    def test_field_catch_all_blocks_empty_query(self):
+        """field:* blocks when query has no selection fields."""
+        body = json.dumps({"query": ""}).encode()
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL field:*"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallBlock)

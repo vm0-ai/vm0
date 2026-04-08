@@ -247,12 +247,48 @@ def parse_graphql_rule(rest: str) -> tuple[str, str | None, str | None, str | No
     return path, type_filter, op_filter, field_filter
 
 
+def _skip_string(s: str, i: int) -> int:
+    """Advance past a quoted string (handles escape sequences)."""
+    quote = s[i]
+    i += 1
+    while i < len(s):
+        if s[i] == "\\":
+            i += 2  # skip escaped character
+        elif s[i] == quote:
+            return i + 1
+        else:
+            i += 1
+    return i
+
+
+def _skip_parens(s: str, i: int) -> int:
+    """Advance past balanced parentheses, respecting strings."""
+    depth = 1
+    i += 1  # skip opening '('
+    while i < len(s) and depth > 0:
+        c = s[i]
+        if c == "(":
+            depth += 1
+            i += 1
+        elif c == ")":
+            depth -= 1
+            i += 1
+        elif c in ('"', "'"):
+            i = _skip_string(s, i)
+        else:
+            i += 1
+    return i
+
+
 def _extract_top_level_fields(query_str: str) -> list[str]:
     """Extract top-level selection field names from a GraphQL query string.
 
     Parses just enough to find the operation body's opening brace and then
-    extracts identifiers at depth 1.  Handles aliases (``alias: fieldName``)
-    by returning the field name, not the alias.
+    extracts identifiers at brace-depth 1.  Handles aliases
+    (``alias: fieldName``) by returning the field name, not the alias.
+
+    Properly skips string literals and parenthesized argument lists so that
+    values inside arguments cannot be mistaken for field names.
     """
     s = query_str.lstrip()
     if not s:
@@ -274,31 +310,16 @@ def _extract_top_level_fields(query_str: str) -> list[str]:
                 i += 1
         # Skip optional variable definitions: ($var: Type, ...)
         if i < len(s) and s[i] == "(":
-            depth = 1
-            i += 1
-            while i < len(s) and depth > 0:
-                if s[i] == "(":
-                    depth += 1
-                elif s[i] == ")":
-                    depth -= 1
-                i += 1
+            i = _skip_parens(s, i)
             while i < len(s) and s[i].isspace():
                 i += 1
 
     # Skip optional directives (@skip, @include, etc.) before opening brace
     while i < len(s) and s[i] == "@":
-        while i < len(s) and not s[i].isspace() and s[i] != "{":
+        while i < len(s) and not s[i].isspace() and s[i] not in ("{", "("):
             i += 1
-        # Directive might have arguments
         if i < len(s) and s[i] == "(":
-            depth = 1
-            i += 1
-            while i < len(s) and depth > 0:
-                if s[i] == "(":
-                    depth += 1
-                elif s[i] == ")":
-                    depth -= 1
-                i += 1
+            i = _skip_parens(s, i)
         while i < len(s) and s[i].isspace():
             i += 1
 
@@ -318,6 +339,10 @@ def _extract_top_level_fields(query_str: str) -> list[str]:
         elif c == "}":
             depth -= 1
             i += 1
+        elif c in ('"', "'"):
+            i = _skip_string(s, i)
+        elif c == "(":
+            i = _skip_parens(s, i)
         elif depth == 1 and (c.isalpha() or c == "_"):
             # Read identifier
             j = i
@@ -388,8 +413,7 @@ def match_graphql_body(
     # GraphQL allows compact forms like `mutation{`, `query($id: ID!)`,
     # so we extract only leading alpha characters as the keyword.
     if type_filter is not None:
-        assert query_str is not None
-        stripped = query_str.lstrip()
+        stripped = query_str.lstrip()  # type: ignore[union-attr]
         if not stripped:
             return False
         # Extract leading alphabetic chars: "mutation(" → "mutation"
@@ -410,8 +434,7 @@ def match_graphql_body(
 
     # Match field name
     if field_filter is not None:
-        assert query_str is not None
-        fields = _extract_top_level_fields(query_str)
+        fields = _extract_top_level_fields(query_str)  # type: ignore[arg-type]
         if not fields:
             return False
         if not any(_match_wildcard(f, field_filter) for f in fields):

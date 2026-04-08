@@ -477,4 +477,26 @@ describe("findMatchingPermissions with GraphQL field: modifier", () => {
       findMatchingPermissions("POST", "/graphql", fieldConfig, body),
     ).not.toContain("issues-write");
   });
+
+  it("field:* does not match empty fields", () => {
+    const config: FirewallConfig = {
+      name: "test",
+      apis: [
+        {
+          base: "https://api.example.com",
+          auth: { headers: {} },
+          permissions: [
+            {
+              name: "any-field",
+              rules: ["POST /graphql GraphQL field:*"],
+            },
+          ],
+        },
+      ],
+    };
+    const body: GraphQLBody = { type: "mutation", fields: [] };
+    expect(findMatchingPermissions("POST", "/graphql", config, body)).toEqual(
+      [],
+    );
+  });
 });
