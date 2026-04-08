@@ -35,14 +35,11 @@ import {
   lightboxUrl$ as attachmentLightboxUrl$,
   setLightboxUrl$ as setAttachmentLightboxUrl$,
 } from "../../signals/zero-page/zero-attachment-chips.ts";
-import { subagents$ } from "../../signals/agent.ts";
 import {
   currentChatAgentId$,
-  currentChatAgent$,
   currentChatAgentDisplayName$,
+  currentChatAgentAvatarUrl$,
 } from "../../signals/agent-chat.ts";
-import { resolveAvatarUrl } from "./avatar-utils.ts";
-import avatar1Img from "./assets/avatar_1.webp";
 import {
   pinnedAgentIds$,
   updatePinnedAgentIds$,
@@ -75,6 +72,7 @@ import {
   copiedMessageIdValue$,
   copyMessageContent$,
 } from "../../signals/zero-page/zero-session-chat-ui.ts";
+
 function AvatarOrPlaceholder({
   src,
   className,
@@ -90,121 +88,105 @@ function AvatarOrPlaceholder({
   return <div className={placeholderClassName ?? className} aria-hidden />;
 }
 
-// ---------------------------------------------------------------------------
-// Shared hook: resolve current chat agent identity
-// ---------------------------------------------------------------------------
+function HeaderAgentAvatar() {
+  const avatarSrc = useResolved(currentChatAgentAvatarUrl$);
+  const currentChatAgentId = useResolved(currentChatAgentId$) ?? null;
 
-function useChatAgentIdentity() {
-  const chatAgentLoadable = useLastLoadable(currentChatAgentId$);
-  const currentChatAgentId =
-    chatAgentLoadable.state === "hasData" ? chatAgentLoadable.data : null;
-  const subagentsLoadable = useLastLoadable(subagents$);
-  const subagents =
-    subagentsLoadable.state === "hasData" ? subagentsLoadable.data : [];
-  const selectedSubagent = currentChatAgentId
-    ? subagents.find((a) => {
-        return a.id === currentChatAgentId;
-      })
-    : null;
-  const sidebarAgentIdLoadable = useLastLoadable(currentChatAgentId$);
-  const sidebarAgentIdResolved =
-    sidebarAgentIdLoadable.state === "hasData"
-      ? sidebarAgentIdLoadable.data
-      : null;
-  const resolvedAgentId = selectedSubagent?.id ?? sidebarAgentIdResolved;
+  if (currentChatAgentId) {
+    return (
+      <TooltipProvider delayDuration={200}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Link
+              pathname="/agents/:id"
+              options={{ pathParams: { id: currentChatAgentId } }}
+              className="h-8 w-8 shrink-0 overflow-hidden rounded-xl transition-colors duration-150 hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              aria-label="View agent profile"
+            >
+              {avatarSrc && (
+                <AvatarOrPlaceholder
+                  src={avatarSrc}
+                  className="h-8 w-8 rounded-full object-cover object-top"
+                  placeholderClassName="h-8 w-8 rounded-full bg-muted"
+                />
+              )}
+            </Link>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            <p className="text-xs">View agent profile</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
 
-  const defaultDisplayName =
-    useResolved(currentChatAgentDisplayName$) ?? "Zero";
-  const displayName = selectedSubagent
-    ? (selectedSubagent.displayName ?? selectedSubagent.id)
-    : defaultDisplayName;
-  const sidebarAgent = useLastResolved(currentChatAgent$);
-  const avatarSrc = sidebarAgent
-    ? (resolveAvatarUrl(sidebarAgent.avatarUrl) ?? avatar1Img)
-    : null;
-
-  return { currentChatAgentId, resolvedAgentId, displayName, avatarSrc };
+  return (
+    <div className="h-8 w-8 shrink-0 overflow-hidden rounded-xl">
+      {avatarSrc && (
+        <AvatarOrPlaceholder
+          src={avatarSrc}
+          className="h-8 w-8 rounded-full object-cover object-top"
+          placeholderClassName="h-8 w-8 rounded-full bg-muted"
+        />
+      )}
+    </div>
+  );
 }
 
-// ---------------------------------------------------------------------------
-// Header — reads signals directly
-// ---------------------------------------------------------------------------
-
-function ChatThreadHeader() {
-  const { currentChatAgentId, resolvedAgentId, displayName, avatarSrc } =
-    useChatAgentIdentity();
+function PinPillButton() {
   const pageSignal = useGet(pageSignal$);
-
-  // Pin pill
   const pinnedIds = useLastResolved(pinnedAgentIds$) ?? [];
   const pinnedStatus = useLastResolved(currentChatAgentPinned$);
   const showPinPill = pinnedStatus === false;
   const [pinLoadable, savePinnedIds] = useLoadableSet(updatePinnedAgentIds$);
   const pinSaving = pinLoadable.state === "loading";
+  const currentChatAgentId = useResolved(currentChatAgentId$) ?? null;
+
+  if (!showPinPill) {
+    return null;
+  }
+
   const handlePin = () => {
-    if (currentChatAgentId) {
-      detach(
-        savePinnedIds([...pinnedIds, currentChatAgentId], pageSignal),
-        Reason.DomCallback,
-      );
+    if (!currentChatAgentId) {
+      return;
     }
+    detach(
+      savePinnedIds([...pinnedIds, currentChatAgentId], pageSignal),
+      Reason.DomCallback,
+    );
   };
+
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            onClick={handlePin}
+            disabled={pinSaving}
+            className="absolute -top-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full zero-border bg-background text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground hover:shadow-md cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+            aria-label="Pin to sidebar"
+          >
+            <IconPin size={10} stroke={2} />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          <p className="text-xs">Pin to sidebar</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+function ChatThreadHeader() {
+  const displayName = useResolved(currentChatAgentDisplayName$);
 
   return (
     <header className="hidden sm:flex shrink-0 bg-transparent px-6 py-3 items-center justify-between">
       <div className="flex items-center gap-3">
         <div className="relative shrink-0">
-          {resolvedAgentId ? (
-            <TooltipProvider delayDuration={200}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Link
-                    pathname="/agents/:id"
-                    options={{ pathParams: { id: resolvedAgentId } }}
-                    className="h-8 w-8 shrink-0 overflow-hidden rounded-xl transition-colors duration-150 hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                    aria-label="View agent profile"
-                  >
-                    <AvatarOrPlaceholder
-                      src={avatarSrc}
-                      className="h-8 w-8 rounded-full object-cover object-top"
-                      placeholderClassName="h-8 w-8 rounded-full bg-muted"
-                    />
-                  </Link>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  <p className="text-xs">View agent profile</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          ) : (
-            <div className="h-8 w-8 shrink-0 overflow-hidden rounded-xl">
-              <AvatarOrPlaceholder
-                src={avatarSrc}
-                className="h-8 w-8 rounded-full object-cover object-top"
-                placeholderClassName="h-8 w-8 rounded-full bg-muted"
-              />
-            </div>
-          )}
-          {showPinPill && (
-            <TooltipProvider delayDuration={200}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    onClick={handlePin}
-                    disabled={pinSaving}
-                    className="absolute -top-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full zero-border bg-background text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground hover:shadow-md cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
-                    aria-label="Pin to sidebar"
-                  >
-                    <IconPin size={10} stroke={2} />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  <p className="text-xs">Pin to sidebar</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          )}
+          <HeaderAgentAvatar />
+          <PinPillButton />
         </div>
         <span className="font-semibold text-foreground">{displayName}</span>
       </div>
@@ -270,7 +252,7 @@ export function ZeroChatThreadPage() {
         </main>
 
         {/* Composer — sticky inside the scroll container so it aligns with messages */}
-        <ChatThreadComposer hasMessages={messages.length > 0} />
+        <ChatThreadComposer />
       </div>
     </div>
   );
@@ -280,8 +262,11 @@ export function ZeroChatThreadPage() {
 // Composer wrapper — reads chat signals directly
 // ---------------------------------------------------------------------------
 
-function ChatThreadComposer({ hasMessages }: { hasMessages: boolean }) {
-  const { displayName } = useChatAgentIdentity();
+function ChatThreadComposer() {
+  const messagesLoadable = useLastLoadable(zeroChatMessages$);
+  const hasMessages =
+    messagesLoadable.state === "hasData" && messagesLoadable.data.length > 0;
+  const displayName = useResolved(currentChatAgentDisplayName$) ?? "Zero";
   const allFinishedLoadable = useLoadable(allFinished$);
   const sending =
     allFinishedLoadable.state === "hasData" ? !allFinishedLoadable.data : true;
@@ -510,30 +495,8 @@ function MessageRunActivityLine({
     queueLoadable.state === "hasData" ? queueLoadable.data : 0;
   const isQueued = runStatus === "queued";
   const thinkingMsg = useGet(thinkingMessage$);
-  return (
-    <RunActivityLineView
-      summaries={rawSummaries}
-      isQueued={isQueued}
-      queuePosition={queuePosition}
-      thinkingMsg={thinkingMsg}
-    />
-  );
-}
-
-/** Live run activity rendered from global signals (legacy path). */
-
-function RunActivityLineView({
-  summaries: rawSummaries,
-  isQueued,
-  queuePosition,
-  thinkingMsg,
-}: {
-  summaries: string[];
-  isQueued: boolean;
-  queuePosition: number;
-  thinkingMsg: string;
-}) {
   const openDrawer = useSet(openQueueDrawer$);
+
   if (isQueued) {
     return (
       <div className="flex items-center gap-2 min-w-0">
@@ -629,16 +592,11 @@ function queueLabel(position: number): string {
   return `In queue, ${position - 1} task${position - 1 === 1 ? "" : "s"} ahead...`;
 }
 
-function CollapsibleTimeline({
-  summaries,
-  messageId,
-}: {
-  summaries: string[];
-  messageId: string;
-}) {
+function CollapsibleTimeline({ message }: { message: AssistantChatMessage }) {
   const expandedIds = useGet(timelineExpandedIds$);
-  const expanded = expandedIds.has(messageId);
+  const expanded = expandedIds.has(message.id);
   const toggleExpanded = useSet(toggleTimelineExpanded$);
+  const summaries = message.summaries ?? [];
 
   if (summaries.length === 0) {
     return null;
@@ -657,7 +615,7 @@ function CollapsibleTimeline({
       <button
         type="button"
         onClick={() => {
-          return toggleExpanded(messageId);
+          return toggleExpanded(message.id);
         }}
         className="flex items-center justify-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors duration-150"
       >
@@ -744,8 +702,6 @@ function ReactiveAssistantMessage({
     detail?.status === "failed" ||
     detail?.status === "timeout" ||
     detail?.status === "cancelled";
-  const isTerminal = isFailed || detail?.status === "completed";
-
   // Build an enriched message with reactive content for the static renderer
   const enrichedMessage: AssistantChatMessage = {
     ...message,
@@ -755,46 +711,34 @@ function ReactiveAssistantMessage({
       ? failedRunErrorMessage(detail?.status, detail?.error)
       : undefined,
   };
+  return <StaticAssistantMessage message={enrichedMessage} />;
+}
+
+function isRunActive(message: AssistantChatMessage): boolean {
   return (
-    <StaticAssistantMessage
-      message={enrichedMessage}
-      renderActivityLine={
-        !isTerminal ? <MessageRunActivityLine message={message} /> : undefined
-      }
-    />
+    !!message.runLoop &&
+    message.status !== "completed" &&
+    message.status !== "failed" &&
+    message.status !== "timeout" &&
+    message.status !== "cancelled"
   );
 }
 
-function StaticAssistantMessage({
+function AssistantMessageActions({
   message,
-  renderActivityLine,
+  content,
 }: {
   message: AssistantChatMessage;
-  renderActivityLine?: React.ReactNode;
+  content: string;
 }) {
-  const { avatarSrc } = useChatAgentIdentity();
-  const setOrgManageOpen = useSet(setOrgManageDialogOpen$);
-  const setTab = useSet(setActiveOrgManageTab$);
   const pageSignal = useGet(pageSignal$);
-  const content = useLastResolved(message.result$) ?? "";
-
-  useAutoScroll(content);
-
-  const avatar = (
-    <div className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 shrink-0 @[900px]:mt-0.5 overflow-hidden rounded-xl">
-      <AvatarOrPlaceholder
-        src={avatarSrc}
-        className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 rounded-full object-cover object-top"
-        placeholderClassName="h-7 w-7 @[900px]:h-9 @[900px]:w-9 rounded-full bg-muted"
-      />
-    </div>
-  );
-
-  const hasSummaries = message.summaries && message.summaries.length > 0;
-
   const copiedId = useGet(copiedMessageIdValue$);
   const copied = copiedId === message.id;
   const copyMessage = useSet(copyMessageContent$);
+
+  if (!message.legacyRunId) {
+    return null;
+  }
 
   const handleCopy = () => {
     if (!content) {
@@ -803,7 +747,7 @@ function StaticAssistantMessage({
     detach(copyMessage(message.id, content, pageSignal), Reason.DomCallback);
   };
 
-  const logButton = message.legacyRunId ? (
+  return (
     <div className="@[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px]">
       <div className="hidden @[900px]:block" />
       <div className="flex items-center py-2 gap-1 -ml-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
@@ -847,86 +791,119 @@ function StaticAssistantMessage({
         )}
       </div>
     </div>
-  ) : null;
+  );
+}
+
+function AssistantErrorContent({ error }: { error: string }) {
+  const setOrgManageOpen = useSet(setOrgManageDialogOpen$);
+  const setTab = useSet(setActiveOrgManageTab$);
+  const pageSignal = useGet(pageSignal$);
+
+  const noProviderGuidance = RUN_ERROR_GUIDANCE.NO_MODEL_PROVIDER;
+  const isNoModelProvider =
+    noProviderGuidance !== undefined &&
+    error.toLowerCase().includes(noProviderGuidance.title.toLowerCase());
+
+  if (isNoModelProvider) {
+    return (
+      <div className="flex items-start gap-2 text-foreground">
+        <IconAlertCircle
+          size={16}
+          className="shrink-0 mt-[3px] text-amber-500"
+        />
+        <span>
+          No model provider configured yet.{" "}
+          <button
+            type="button"
+            className="inline-flex items-center gap-1 text-amber-500 underline underline-offset-2 hover:text-amber-400"
+            onClick={() => {
+              setTab("providers");
+              detach(setOrgManageOpen(true, pageSignal), Reason.DomCallback);
+            }}
+          >
+            Set one up in Workspace Settings
+          </button>{" "}
+          to get started.
+        </span>
+      </div>
+    );
+  }
+
+  const incompatibleGuidance = RUN_ERROR_GUIDANCE.PROVIDER_INCOMPATIBLE;
+  const isProviderIncompatible =
+    (incompatibleGuidance !== undefined &&
+      error.toLowerCase().includes(incompatibleGuidance.title.toLowerCase())) ||
+    error.includes("Cannot continue session") ||
+    error.includes("Invalid signature in thinking block");
+
+  if (isProviderIncompatible) {
+    return (
+      <div className="flex items-start gap-2 text-foreground">
+        <IconAlertCircle
+          size={16}
+          className="shrink-0 mt-[3px] text-amber-500"
+        />
+        <span>
+          This session was started with a different model provider and
+          can&apos;t be continued with the current one.{" "}
+          <Link
+            pathname="/"
+            className="inline-flex items-center gap-1 text-amber-500 underline underline-offset-2 hover:text-amber-400"
+          >
+            Start a new session
+          </Link>
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-start gap-2 text-destructive">
+      <IconAlertCircle size={16} className="shrink-0 mt-[3px]" />
+      <span>{error}</span>
+    </div>
+  );
+}
+
+function AssistantBubbleAvatar() {
+  const avatarSrc = useResolved(currentChatAgentAvatarUrl$);
+  return (
+    <div className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 shrink-0 @[900px]:mt-0.5 overflow-hidden rounded-xl">
+      <AvatarOrPlaceholder
+        src={avatarSrc}
+        className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 rounded-full object-cover object-top"
+        placeholderClassName="h-7 w-7 @[900px]:h-9 @[900px]:w-9 rounded-full bg-muted"
+      />
+    </div>
+  );
+}
+
+function StaticAssistantMessage({
+  message,
+}: {
+  message: AssistantChatMessage;
+}) {
+  const content = useLastResolved(message.result$) ?? "";
+
+  useAutoScroll(content);
+
+  const showActivityLine = isRunActive(message);
+  const hasSummaries = message.summaries && message.summaries.length > 0;
 
   if (message.error) {
-    const noProviderGuidance = RUN_ERROR_GUIDANCE.NO_MODEL_PROVIDER;
-    const isNoModelProvider =
-      noProviderGuidance !== undefined &&
-      message.error
-        .toLowerCase()
-        .includes(noProviderGuidance.title.toLowerCase());
-    const incompatibleGuidance = RUN_ERROR_GUIDANCE.PROVIDER_INCOMPATIBLE;
-    const isProviderIncompatible =
-      (incompatibleGuidance !== undefined &&
-        message.error
-          .toLowerCase()
-          .includes(incompatibleGuidance.title.toLowerCase())) ||
-      message.error.includes("Cannot continue session") ||
-      message.error.includes("Invalid signature in thinking block");
     return (
       <div
         data-role="assistant"
         className="group flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300"
       >
         <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
-          {avatar}
+          <AssistantBubbleAvatar />
           <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-sm leading-relaxed min-w-0 break-words">
-            {hasSummaries && (
-              <CollapsibleTimeline
-                summaries={message.summaries!}
-                messageId={message.id}
-              />
-            )}
-            {isNoModelProvider ? (
-              <div className="flex items-start gap-2 text-foreground">
-                <IconAlertCircle
-                  size={16}
-                  className="shrink-0 mt-[3px] text-amber-500"
-                />
-                <span>
-                  No model provider configured yet.{" "}
-                  <button
-                    type="button"
-                    className="inline-flex items-center gap-1 text-amber-500 underline underline-offset-2 hover:text-amber-400"
-                    onClick={() => {
-                      setTab("providers");
-                      setOrgManageOpen(true, pageSignal).catch(() => {
-                        return undefined;
-                      });
-                    }}
-                  >
-                    Set one up in Workspace Settings
-                  </button>{" "}
-                  to get started.
-                </span>
-              </div>
-            ) : isProviderIncompatible ? (
-              <div className="flex items-start gap-2 text-foreground">
-                <IconAlertCircle
-                  size={16}
-                  className="shrink-0 mt-[3px] text-amber-500"
-                />
-                <span>
-                  This session was started with a different model provider and
-                  can&apos;t be continued with the current one.{" "}
-                  <Link
-                    pathname="/"
-                    className="inline-flex items-center gap-1 text-amber-500 underline underline-offset-2 hover:text-amber-400"
-                  >
-                    Start a new session
-                  </Link>
-                </span>
-              </div>
-            ) : (
-              <div className="flex items-start gap-2 text-destructive">
-                <IconAlertCircle size={16} className="shrink-0 mt-[3px]" />
-                <span>{message.error}</span>
-              </div>
-            )}
+            {hasSummaries && <CollapsibleTimeline message={message} />}
+            <AssistantErrorContent error={message.error} />
           </div>
         </div>
-        {logButton}
+        <AssistantMessageActions message={message} content={content} />
       </div>
     );
   }
@@ -935,16 +912,13 @@ function StaticAssistantMessage({
     return (
       <div className="group flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
         <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
-          {avatar}
+          <AssistantBubbleAvatar />
           <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-sm leading-relaxed min-w-0 break-words">
-            {hasSummaries && (
-              <CollapsibleTimeline
-                summaries={message.summaries!}
-                messageId={message.id}
-              />
-            )}
-            {renderActivityLine && (
-              <div className="mb-3 pb-3 border-b">{renderActivityLine}</div>
+            {hasSummaries && <CollapsibleTimeline message={message} />}
+            {showActivityLine && (
+              <div className="mb-3 pb-3 border-b">
+                <MessageRunActivityLine message={message} />
+              </div>
             )}
             <Markdown source={content} />
             {message.cancelled && (
@@ -955,21 +929,23 @@ function StaticAssistantMessage({
             )}
           </div>
         </div>
-        {logButton}
+        <AssistantMessageActions message={message} content={content} />
       </div>
     );
   }
 
-  // Thinking / loading state — show live run activity
+  // Thinking / loading state
   return (
     <div
       data-role="assistant"
       className="flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300"
     >
       <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
-        {avatar}
+        <AssistantBubbleAvatar />
         <div className="zero-chat-bubble-assistant rounded-xl py-4 text-sm leading-relaxed min-w-0 overflow-hidden">
-          {renderActivityLine ?? (
+          {showActivityLine ? (
+            <MessageRunActivityLine message={message} />
+          ) : (
             <div className="flex items-center gap-2 min-w-0">
               <IconLoader2
                 size={14}
@@ -980,7 +956,7 @@ function StaticAssistantMessage({
           )}
         </div>
       </div>
-      {logButton}
+      <AssistantMessageActions message={message} content={content} />
     </div>
   );
 }
