@@ -62,8 +62,8 @@ function makePendingRequest(overrides?: Record<string, unknown>) {
   return {
     id: REQUEST_ID,
     agentId: AGENT_ID,
-    firewallRef: "github",
-    permission: "issues:read",
+    firewallRef: "slack",
+    permission: "channels:read",
     action: "allow",
     method: null,
     path: null,
@@ -98,7 +98,7 @@ describe("permission allow page", () => {
 
     await setupPage({
       context,
-      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=nonexistent:perm`,
+      path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=nonexistent:perm`,
     });
 
     await waitFor(() => {
@@ -111,7 +111,7 @@ describe("permission allow page", () => {
   it("shows error for unknown firewall ref", async () => {
     await setupPage({
       context,
-      path: `/agents/${AGENT_ID}/permissions?ref=unknown-ref&permission=issues:read`,
+      path: `/agents/${AGENT_ID}/permissions?ref=unknown-ref&permission=channels:read`,
     });
 
     await waitFor(() => {
@@ -127,11 +127,11 @@ describe("permission allow page", () => {
 
   it("shows permissions updated when policy already matches allow action", async () => {
     mockFirewallRequests();
-    mockAgentWithPolicy({ github: { "issues:read": "allow" } });
+    mockAgentWithPolicy({ slack: { "channels:read": "allow" } });
 
     await setupPage({
       context,
-      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read&action=allow`,
+      path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=channels:read&action=allow`,
     });
 
     await waitFor(() => {
@@ -141,11 +141,11 @@ describe("permission allow page", () => {
 
   it("shows permissions denied when policy already matches deny action", async () => {
     mockFirewallRequests();
-    mockAgentWithPolicy({ github: { "issues:read": "deny" } });
+    mockAgentWithPolicy({ slack: { "channels:read": "deny" } });
 
     await setupPage({
       context,
-      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read&action=deny`,
+      path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=channels:read&action=deny`,
     });
 
     await waitFor(() => {
@@ -159,15 +159,15 @@ describe("permission allow page", () => {
 
   it("shows admin confirm card when policy does not match", async () => {
     mockFirewallRequests();
-    mockAgentWithPolicy({ github: { "issues:read": "deny" } });
+    mockAgentWithPolicy({ slack: { "channels:read": "deny" } });
 
     await setupPage({
       context,
-      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read&action=allow`,
+      path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=channels:read&action=allow`,
     });
 
     await waitFor(() => {
-      expect(screen.getByText("issues:read")).toBeInTheDocument();
+      expect(screen.getByText("channels:read")).toBeInTheDocument();
     });
 
     expect(screen.getByText("Confirm")).toBeInTheDocument();
@@ -175,18 +175,18 @@ describe("permission allow page", () => {
 
   it("shows connector info in doctor mode confirm card", async () => {
     mockFirewallRequests();
-    mockAgentWithPolicy({ github: { "issues:read": "deny" } });
+    mockAgentWithPolicy({ slack: { "channels:read": "deny" } });
 
     await setupPage({
       context,
-      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read`,
+      path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=channels:read`,
     });
 
     await waitFor(() => {
-      expect(screen.getByText("GitHub")).toBeInTheDocument();
+      expect(screen.getByText("Slack")).toBeInTheDocument();
     });
 
-    expect(screen.getByText("issues:read")).toBeInTheDocument();
+    expect(screen.getByText("channels:read")).toBeInTheDocument();
   });
 
   // ---------------------------------------------------------------------------
@@ -195,12 +195,12 @@ describe("permission allow page", () => {
 
   it("shows member request form when policy does not match", async () => {
     mockMemberOrg();
-    mockAgentWithPolicy({ github: { "issues:read": "deny" } }, "other-owner");
+    mockAgentWithPolicy({ slack: { "channels:read": "deny" } }, "other-owner");
     mockFirewallRequests();
 
     await setupPage({
       context,
-      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read&action=allow`,
+      path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=channels:read&action=allow`,
     });
 
     await waitFor(() => {
@@ -354,11 +354,11 @@ describe("permission allow page", () => {
 
   it("shows deny icon in admin confirm card for deny action", async () => {
     mockFirewallRequests();
-    mockAgentWithPolicy({ github: { "issues:read": "allow" } });
+    mockAgentWithPolicy({ slack: { "channels:read": "allow" } });
 
     await setupPage({
       context,
-      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read&action=deny`,
+      path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=channels:read&action=deny`,
     });
 
     await waitFor(() => {
@@ -375,12 +375,12 @@ describe("permission allow page", () => {
 
   it("shows deny icon in member request form for deny action", async () => {
     mockMemberOrg();
-    mockAgentWithPolicy({ github: { "issues:read": "allow" } }, "other-owner");
+    mockAgentWithPolicy({ slack: { "channels:read": "allow" } }, "other-owner");
     mockFirewallRequests();
 
     await setupPage({
       context,
-      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read&action=deny`,
+      path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=channels:read&action=deny`,
     });
 
     await waitFor(() => {
@@ -470,12 +470,12 @@ describe("permission allow page", () => {
 
   it("shows editable reason textarea in member request form", async () => {
     mockMemberOrg();
-    mockAgentWithPolicy({ github: { "issues:read": "deny" } }, "other-owner");
+    mockAgentWithPolicy({ slack: { "channels:read": "deny" } }, "other-owner");
     mockFirewallRequests();
 
     await setupPage({
       context,
-      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read&action=allow`,
+      path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=channels:read&action=allow`,
     });
 
     await waitFor(() => {
