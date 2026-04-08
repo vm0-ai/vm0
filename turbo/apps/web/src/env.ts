@@ -197,6 +197,8 @@ function initEnv() {
         .optional(),
       // Realtime pub/sub
       ABLY_API_KEY: z.string().min(1).optional(),
+      // OpenAI Realtime API (for voice-chat feature)
+      OPENAI_API_KEY: z.string().min(1).optional(),
       // Vercel cron job authentication
       CRON_SECRET: z.string().min(1).optional(),
       // Lightweight model (OpenRouter) — used for internal tasks like title generation
@@ -351,6 +353,7 @@ function initEnv() {
       SENTRY_PROJECT: process.env.SENTRY_PROJECT,
       CONCURRENT_RUN_LIMIT_CAP: process.env.CONCURRENT_RUN_LIMIT_CAP,
       ABLY_API_KEY: process.env.ABLY_API_KEY,
+      OPENAI_API_KEY: process.env.OPENAI_API_KEY,
       CRON_SECRET: process.env.CRON_SECRET,
       OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
       USE_MOCK_CLAUDE: process.env.USE_MOCK_CLAUDE,
