@@ -14,7 +14,9 @@ test.describe.serial("schedule page CRUD", () => {
     page,
   }) => {
     await page.goto(`${appUrl}/schedules`);
-    await expect(page.getByText("Scheduled tasks")).toBeVisible({
+    await expect(
+      page.getByRole("heading", { name: "Scheduled tasks" })
+    ).toBeVisible({
       timeout: 20_000,
     });
     await page.getByRole("button", { name: "Add schedule" }).click();
@@ -27,16 +29,17 @@ test.describe.serial("schedule page CRUD", () => {
     await expect(page.getByLabel("Prompt")).toBeVisible({ timeout: 10_000 });
     await page.getByLabel("Prompt").fill(schedulePrompt);
     await page.getByRole("button", { name: "Create" }).click();
-    // Do not wait for schedule creation to complete (can take 60–120s backend processing)
-    // Just verify the click was accepted
-    await page.waitForTimeout(2_000);
+    // Assert the dialog closes to confirm the submission was accepted
+    await expect(page.getByLabel("Prompt")).not.toBeVisible({ timeout: 10_000 });
   });
 
   test("verify schedule list page still loads after creation", async ({
     page,
   }) => {
     await page.goto(`${appUrl}/schedules`);
-    await expect(page.getByText("Scheduled tasks")).toBeVisible({
+    await expect(
+      page.getByRole("heading", { name: "Scheduled tasks" })
+    ).toBeVisible({
       timeout: 20_000,
     });
   });
