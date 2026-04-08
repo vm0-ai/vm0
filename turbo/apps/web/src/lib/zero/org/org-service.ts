@@ -7,7 +7,7 @@ import {
   invalidateOrgCache,
 } from "../../auth/org-cache";
 import { getOrgMetadata } from "./org-metadata-service";
-import { badRequest } from "../../shared/errors";
+import { badRequest, isNotFound } from "../../shared/errors";
 import { logger } from "../../shared/logger";
 
 interface OrgData {
@@ -54,6 +54,20 @@ function validateOrgSlug(slug: string): void {
 }
 
 /**
+ * Read tier from org_metadata, defaulting to "free" for brand-new orgs
+ * that don't have an org_metadata row yet.
+ */
+async function readTierSafe(orgId: string): Promise<string> {
+  try {
+    const metadata = await getOrgMetadata(orgId);
+    return metadata.tier;
+  } catch (error) {
+    if (!isNotFound(error)) throw error;
+    return "free";
+  }
+}
+
+/**
  * Update an org's slug and/or name.
  * Updates the Clerk org and refreshes org_cache.
  * Requires force flag for slug changes since they can break existing references.
@@ -95,8 +109,8 @@ export async function updateOrg(
 
   if (Object.keys(clerkUpdate).length === 0) {
     const identity = await getOrgNameAndSlug(orgId);
-    const metadata = await getOrgMetadata(orgId);
-    return { ...identity, tier: metadata.tier };
+    const tier = await readTierSafe(orgId);
+    return { ...identity, tier };
   }
 
   log.debug("updating org", { orgId, ...clerkUpdate });
@@ -110,8 +124,8 @@ export async function updateOrg(
   // Invalidate stale cache, then re-fetch from Clerk
   await invalidateOrgCache(orgId);
   const identity = await getOrgNameAndSlug(orgId);
-  const metadata = await getOrgMetadata(orgId);
-  return { ...identity, tier: metadata.tier };
+  const tier = await readTierSafe(orgId);
+  return { ...identity, tier };
 }
 
 /**
