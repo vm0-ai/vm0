@@ -18,7 +18,7 @@ const mockAgent = {
   displayName: "My Agent",
   description: "A test agent",
   sound: "professional",
-  firewallPolicies: null,
+  permissionPolicies: null,
 };
 
 function mockConnectorListHandler(
@@ -95,12 +95,12 @@ describe("zero agent view command", () => {
       expect(logCalls).toContain("github (full access)");
     });
 
-    it("should show permission summary with firewall policies", async () => {
+    it("should show permission summary with permission policies", async () => {
       server.use(
         http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
           return HttpResponse.json({
             ...mockAgent,
-            firewallPolicies: {
+            permissionPolicies: {
               slack: {
                 "channels:read": "allow",
                 "chat:write": "deny",
@@ -197,7 +197,7 @@ describe("zero agent view command", () => {
         http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
           return HttpResponse.json({
             ...mockAgent,
-            firewallPolicies: {
+            permissionPolicies: {
               slack: {
                 "channels:read": "allow",
                 "chat:write": "deny",
@@ -256,7 +256,7 @@ describe("zero agent view command", () => {
       expect(logCalls).toContain("no permission rules configured");
     });
 
-    it("should handle non-firewall connectors gracefully", async () => {
+    it("should handle connectors without permissions gracefully", async () => {
       server.use(
         http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
           return HttpResponse.json(mockAgent);

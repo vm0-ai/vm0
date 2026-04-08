@@ -11,9 +11,9 @@ const context = testContext();
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const REQUEST_ID = "d0000000-0000-4000-a000-000000000001";
 
-function mockFirewallRequests(requests: unknown[] = []) {
+function mockPermissionRequests(requests: unknown[] = []) {
   server.use(
-    http.get("*/api/zero/firewall-access-requests", () => {
+    http.get("*/api/zero/permission-access-requests", () => {
       return HttpResponse.json(requests);
     }),
   );
@@ -33,7 +33,7 @@ function mockMemberOrg() {
 }
 
 function mockAgentWithPolicy(
-  firewallPolicies: Record<string, Record<string, string>> | null,
+  permissionPolicies: Record<string, Record<string, string>> | null,
   ownerId = "test-owner-id",
 ) {
   server.use(
@@ -51,7 +51,7 @@ function mockAgentWithPolicy(
         displayName: null,
         sound: null,
         avatarUrl: null,
-        firewallPolicies,
+        permissionPolicies,
         customSkills: [],
       });
     }),
@@ -62,7 +62,7 @@ function makePendingRequest(overrides?: Record<string, unknown>) {
   return {
     id: REQUEST_ID,
     agentId: AGENT_ID,
-    firewallRef: "slack",
+    connectorRef: "slack",
     permission: "channels:read",
     action: "allow",
     method: null,
@@ -93,7 +93,7 @@ describe("permission allow page", () => {
   });
 
   it("shows error for unknown permission", async () => {
-    mockFirewallRequests();
+    mockPermissionRequests();
     mockAgentWithPolicy(null);
 
     await setupPage({
@@ -108,7 +108,7 @@ describe("permission allow page", () => {
     });
   });
 
-  it("shows error for unknown firewall ref", async () => {
+  it("shows error for unknown connector ref", async () => {
     await setupPage({
       context,
       path: `/agents/${AGENT_ID}/permissions?ref=unknown-ref&permission=channels:read`,
@@ -126,7 +126,7 @@ describe("permission allow page", () => {
   // ---------------------------------------------------------------------------
 
   it("shows permissions updated when policy already matches allow action", async () => {
-    mockFirewallRequests();
+    mockPermissionRequests();
     mockAgentWithPolicy({ slack: { "channels:read": "allow" } });
 
     await setupPage({
@@ -140,7 +140,7 @@ describe("permission allow page", () => {
   });
 
   it("shows permissions denied when policy already matches deny action", async () => {
-    mockFirewallRequests();
+    mockPermissionRequests();
     mockAgentWithPolicy({ slack: { "channels:read": "deny" } });
 
     await setupPage({
@@ -158,7 +158,7 @@ describe("permission allow page", () => {
   // ---------------------------------------------------------------------------
 
   it("shows admin confirm card when policy does not match", async () => {
-    mockFirewallRequests();
+    mockPermissionRequests();
     mockAgentWithPolicy({ slack: { "channels:read": "deny" } });
 
     await setupPage({
@@ -174,7 +174,7 @@ describe("permission allow page", () => {
   });
 
   it("shows connector info in doctor mode confirm card", async () => {
-    mockFirewallRequests();
+    mockPermissionRequests();
     mockAgentWithPolicy({ slack: { "channels:read": "deny" } });
 
     await setupPage({
@@ -196,7 +196,7 @@ describe("permission allow page", () => {
   it("shows member request form when policy does not match", async () => {
     mockMemberOrg();
     mockAgentWithPolicy({ slack: { "channels:read": "deny" } }, "other-owner");
-    mockFirewallRequests();
+    mockPermissionRequests();
 
     await setupPage({
       context,
@@ -216,7 +216,7 @@ describe("permission allow page", () => {
   // ---------------------------------------------------------------------------
 
   it("shows admin approval card for pending request", async () => {
-    mockFirewallRequests([makePendingRequest()]);
+    mockPermissionRequests([makePendingRequest()]);
 
     await setupPage({
       context,
@@ -239,7 +239,7 @@ describe("permission allow page", () => {
   it("shows copy link card for member pending request", async () => {
     mockMemberOrg();
     mockAgentWithPolicy(null, "other-owner");
-    mockFirewallRequests([makePendingRequest()]);
+    mockPermissionRequests([makePendingRequest()]);
 
     await setupPage({
       context,
@@ -260,7 +260,7 @@ describe("permission allow page", () => {
   // ---------------------------------------------------------------------------
 
   it("shows permissions updated for approved request", async () => {
-    mockFirewallRequests([makePendingRequest({ status: "approved" })]);
+    mockPermissionRequests([makePendingRequest({ status: "approved" })]);
 
     await setupPage({
       context,
@@ -277,7 +277,7 @@ describe("permission allow page", () => {
   // ---------------------------------------------------------------------------
 
   it("shows denied card for admin on rejected request", async () => {
-    mockFirewallRequests([makePendingRequest({ status: "rejected" })]);
+    mockPermissionRequests([makePendingRequest({ status: "rejected" })]);
 
     await setupPage({
       context,
@@ -294,7 +294,7 @@ describe("permission allow page", () => {
   it("shows denied card with resend for member on rejected request", async () => {
     mockMemberOrg();
     mockAgentWithPolicy(null, "other-owner");
-    mockFirewallRequests([makePendingRequest({ status: "rejected" })]);
+    mockPermissionRequests([makePendingRequest({ status: "rejected" })]);
 
     await setupPage({
       context,
@@ -313,7 +313,7 @@ describe("permission allow page", () => {
   // ---------------------------------------------------------------------------
 
   it("shows error when request is not found", async () => {
-    mockFirewallRequests([]);
+    mockPermissionRequests([]);
 
     await setupPage({
       context,
@@ -330,7 +330,7 @@ describe("permission allow page", () => {
   // ---------------------------------------------------------------------------
 
   it("shows reason as read-only text in admin approval card", async () => {
-    mockFirewallRequests([makePendingRequest()]);
+    mockPermissionRequests([makePendingRequest()]);
 
     await setupPage({
       context,
@@ -353,7 +353,7 @@ describe("permission allow page", () => {
   // ---------------------------------------------------------------------------
 
   it("shows deny icon in admin confirm card for deny action", async () => {
-    mockFirewallRequests();
+    mockPermissionRequests();
     mockAgentWithPolicy({ slack: { "channels:read": "allow" } });
 
     await setupPage({
@@ -376,7 +376,7 @@ describe("permission allow page", () => {
   it("shows deny icon in member request form for deny action", async () => {
     mockMemberOrg();
     mockAgentWithPolicy({ slack: { "channels:read": "allow" } }, "other-owner");
-    mockFirewallRequests();
+    mockPermissionRequests();
 
     await setupPage({
       context,
@@ -396,7 +396,7 @@ describe("permission allow page", () => {
   // ---------------------------------------------------------------------------
 
   it("shows deny icon in admin approval card for deny request", async () => {
-    mockFirewallRequests([makePendingRequest({ action: "deny" })]);
+    mockPermissionRequests([makePendingRequest({ action: "deny" })]);
 
     await setupPage({
       context,
@@ -418,7 +418,7 @@ describe("permission allow page", () => {
   it("shows copy link card for member pending deny request", async () => {
     mockMemberOrg();
     mockAgentWithPolicy(null, "other-owner");
-    mockFirewallRequests([makePendingRequest({ action: "deny" })]);
+    mockPermissionRequests([makePendingRequest({ action: "deny" })]);
 
     await setupPage({
       context,
@@ -441,7 +441,7 @@ describe("permission allow page", () => {
   it("shows resend form after clicking resend on rejected request", async () => {
     mockMemberOrg();
     mockAgentWithPolicy(null, "other-owner");
-    mockFirewallRequests([makePendingRequest({ status: "rejected" })]);
+    mockPermissionRequests([makePendingRequest({ status: "rejected" })]);
 
     const user = userEvent.setup();
 
@@ -471,7 +471,7 @@ describe("permission allow page", () => {
   it("shows editable reason textarea in member request form", async () => {
     mockMemberOrg();
     mockAgentWithPolicy({ slack: { "channels:read": "deny" } }, "other-owner");
-    mockFirewallRequests();
+    mockPermissionRequests();
 
     await setupPage({
       context,

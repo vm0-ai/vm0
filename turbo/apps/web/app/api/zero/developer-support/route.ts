@@ -190,7 +190,7 @@ const router = tsr.router(zeroDeveloperSupportContract, {
           description: zeroAgents.description,
           sound: zeroAgents.sound,
           customSkills: zeroAgents.customSkills,
-          firewallPolicies: zeroAgents.firewallPolicies,
+          permissionPolicies: zeroAgents.permissionPolicies,
         })
         .from(agentComposeVersions)
         .innerJoin(
@@ -207,7 +207,7 @@ const router = tsr.router(zeroDeveloperSupportContract, {
           description: agent.description,
           sound: agent.sound,
           customSkills: agent.customSkills,
-          firewallPolicies: agent.firewallPolicies,
+          permissionPolicies: agent.permissionPolicies,
         };
       }
     }

@@ -2,7 +2,7 @@ import { clerk } from "@clerk/testing/playwright";
 import { expect, test as setup } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { STORAGE_STATE } from "./playwright.config";
+import { STORAGE_STATE, deriveAppUrl } from "./playwright.config";
 
 const CREDENTIALS_PATH = path.join(__dirname, ".clerk", "credentials.json");
 
@@ -39,10 +39,6 @@ setup("authenticate and complete onboarding", async ({ page }) => {
 
   await page.context().storageState({ path: STORAGE_STATE });
 });
-
-function deriveAppUrl(webUrl: string): string {
-  return webUrl.replace(/^(https?:\/\/)www\./, "$1app.");
-}
 
 async function completeOnboarding(
   page: import("@playwright/test").Page

@@ -66,7 +66,7 @@ function formatMetric(metric: TelemetryMetric): string {
 }
 
 /**
- * Format a denied network request (blocked by firewall permission)
+ * Format a denied network request (filtered by permission rule)
  */
 function formatNetworkDeny(entry: NetworkLogEntry): string {
   const method = entry.method || "???";

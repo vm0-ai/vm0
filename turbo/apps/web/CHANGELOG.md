@@ -1,5 +1,51 @@
 # Changelog
 
+## [12.204.1](https://github.com/vm0-ai/vm0/compare/web-v12.204.0...web-v12.204.1) (2026-04-08)
+
+
+### Bug Fixes
+
+* **model-providers:** use hyphenated model ids to match anthropic api format ([#8511](https://github.com/vm0-ai/vm0/issues/8511)) ([1bcd1e6](https://github.com/vm0-ai/vm0/commit/1bcd1e67f54105831b71182482488f21871ee25d))
+* split permission-change into its own line in agent prompt ([#8503](https://github.com/vm0-ai/vm0/issues/8503)) ([9734723](https://github.com/vm0-ai/vm0/commit/973472310708c6db3915e8085a0ba7308671d109))
+
+
+### Refactoring
+
+* **auth:** rename verify-membership-cached to get-member-role ([#8497](https://github.com/vm0-ai/vm0/issues/8497)) ([#8500](https://github.com/vm0-ai/vm0/issues/8500)) ([877fef9](https://github.com/vm0-ai/vm0/commit/877fef923c48aa6e6eeaf99a5bf0bc6523f9bd69))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.161.1
+
+## [12.204.0](https://github.com/vm0-ai/vm0/compare/web-v12.203.0...web-v12.204.0) (2026-04-08)
+
+
+### Features
+
+* **model-providers:** add model selection for anthropic-api-key and claude-code-oauth-token ([#8491](https://github.com/vm0-ai/vm0/issues/8491)) ([ad96e27](https://github.com/vm0-ai/vm0/commit/ad96e27561f8bcdb69bf8d3268e4d168d98b9662))
+* **platform:** capture response headers and mark binary bodies in network logs ([#8481](https://github.com/vm0-ai/vm0/issues/8481)) ([6a778f8](https://github.com/vm0-ai/vm0/commit/6a778f8ebbd88e2bd95a4d79a5e4ed1e4c3f4f26))
+* **runner:** add smart dispatch with session affinity and targeted ably push ([#8474](https://github.com/vm0-ai/vm0/issues/8474)) ([65dbe3a](https://github.com/vm0-ai/vm0/commit/65dbe3af2795aa2730a3df28e84e3572fc8a46cc)), closes [#8368](https://github.com/vm0-ai/vm0/issues/8368)
+
+
+### Bug Fixes
+
+* **slack:** skip channel context fetch for dm conversations ([#8475](https://github.com/vm0-ai/vm0/issues/8475)) ([07a3321](https://github.com/vm0-ai/vm0/commit/07a33216d0a47047b341a0784324cb71b596a7f4))
+
+
+### Refactoring
+
+* **org:** replace bundled org data accessors with explicit functions ([#8487](https://github.com/vm0-ai/vm0/issues/8487)) ([1d2e1bc](https://github.com/vm0-ai/vm0/commit/1d2e1bc6fff592146be61b09b1860a42e99a25e5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.161.0
+
 ## [12.203.0](https://github.com/vm0-ai/vm0/compare/web-v12.202.0...web-v12.203.0) (2026-04-08)
 
 

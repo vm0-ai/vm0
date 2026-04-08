@@ -51,6 +51,17 @@ function mockAPIs() {
         },
       });
     }),
+    http.get("*/api/zero/agents/:name", ({ params }) => {
+      return HttpResponse.json({
+        agentId: params.name as string,
+        ownerId: "test-owner-id",
+        displayName: "Research Agent",
+        description: "Finds and summarizes information",
+        sound: null,
+        avatarUrl: null,
+        permissionPolicies: null,
+      });
+    }),
     http.get("*/api/zero/agents/:name/instructions", () => {
       return HttpResponse.json({ content: null, filename: null });
     }),

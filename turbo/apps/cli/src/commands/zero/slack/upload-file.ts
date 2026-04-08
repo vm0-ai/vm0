@@ -22,7 +22,7 @@ Examples:
   With title and comment:  zero slack upload-file -f /tmp/data.csv -c C01234 --title "Daily Report" --comment "Here's the report"
 
 Notes:
-  - Uses the bot token (not user SLACK_TOKEN), so no files:write firewall permission is needed
+  - Uses the bot token (not user SLACK_TOKEN), so no files:write permission is needed
   - Returns file_id and permalink for reference`,
   )
   .action(

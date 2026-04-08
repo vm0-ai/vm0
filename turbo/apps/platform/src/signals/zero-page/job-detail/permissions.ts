@@ -3,12 +3,12 @@ import type { FirewallPolicies } from "@vm0/core";
 import { zeroJobDetail$ } from "./detail.ts";
 
 // ---------------------------------------------------------------------------
-// Firewall policies — derived from agent detail (no separate API call)
+// Permission policies — derived from agent detail (no separate API call)
 // ---------------------------------------------------------------------------
 
-export const zeroJobFirewallPolicies$ = computed(
+export const zeroJobPermissionPolicies$ = computed(
   async (get): Promise<FirewallPolicies | null> => {
     const detail = await get(zeroJobDetail$);
-    return detail?.firewallPolicies ?? null;
+    return detail?.permissionPolicies ?? null;
   },
 );

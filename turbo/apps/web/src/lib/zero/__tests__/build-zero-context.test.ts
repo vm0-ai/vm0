@@ -85,7 +85,7 @@ describe("Org-Level Runtime Resolution (Zero Layer)", () => {
         user.orgId,
         "anthropic-api-key",
         "org-api-key",
-        "claude-opus-4.6",
+        "claude-opus-4-6",
       );
 
       const result = await createZeroRun(baseParams({ agentId: modelAgentId }));
@@ -93,7 +93,7 @@ describe("Org-Level Runtime Resolution (Zero Layer)", () => {
       const job = await findTestRunnerJobEntry(result.runId);
       expect(job).toBeDefined();
       expect(job!.executionContext.environment).toMatchObject({
-        ANTHROPIC_MODEL: "claude-opus-4.6",
+        ANTHROPIC_MODEL: "claude-opus-4-6",
       });
     });
 

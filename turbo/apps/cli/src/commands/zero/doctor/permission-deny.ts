@@ -7,12 +7,12 @@ import {
 } from "@vm0/core";
 import { withErrorHandler } from "../../../lib/command";
 
-export const firewallDenyCommand = new Command()
-  .name("firewall-deny")
+export const permissionDenyCommand = new Command()
+  .name("permission-deny")
   .description(
-    "Diagnose a firewall denial and find the permission that covers it",
+    "Diagnose a permission denial and find the permission that covers it",
   )
-  .argument("<firewall-ref>", "The firewall connector type (e.g. github)")
+  .argument("<connector-ref>", "The connector type (e.g. github)")
   .addOption(
     new Option(
       "--method <method>",
@@ -26,22 +26,22 @@ export const firewallDenyCommand = new Command()
     "after",
     `
 Examples:
-  zero doctor firewall-deny github --method GET --path /repos/owner/repo/pulls
-  zero doctor firewall-deny slack --method POST --path /chat.postMessage
+  zero doctor permission-deny github --method GET --path /repos/owner/repo/pulls
+  zero doctor permission-deny slack --method POST --path /chat.postMessage
 
 Notes:
   - Identifies which named permission covers a denied request
-  - Use firewall-permissions-change to request or enable the permission`,
+  - Use permission-change to request or enable the permission`,
   )
   .action(
     withErrorHandler(
-      async (firewallRef: string, opts: { method: string; path: string }) => {
-        if (!isFirewallConnectorType(firewallRef)) {
-          throw new Error(`Unknown firewall connector type: ${firewallRef}`);
+      async (connectorRef: string, opts: { method: string; path: string }) => {
+        if (!isFirewallConnectorType(connectorRef)) {
+          throw new Error(`Unknown connector type: ${connectorRef}`);
         }
 
-        const { label } = CONNECTOR_TYPES[firewallRef];
-        const config = getConnectorFirewall(firewallRef);
+        const { label } = CONNECTOR_TYPES[connectorRef];
+        const config = getConnectorFirewall(connectorRef);
         const permissions = findMatchingPermissions(
           opts.method,
           opts.path,
@@ -49,7 +49,7 @@ Notes:
         );
 
         console.log(
-          `The ${label} firewall blocked ${opts.method} ${opts.path}.`,
+          `The ${label} permission filtered ${opts.method} ${opts.path}.`,
         );
 
         if (permissions.length === 0) {
@@ -78,7 +78,7 @@ Notes:
         });
         console.log(`This is covered by the "${permission}" permission.`);
         console.log(
-          `To request this permission, run: zero doctor firewall-permissions-change ${firewallRef} --permission ${permission} --enable --reason "why this is needed"`,
+          `To request this permission, run: zero doctor permission-change ${connectorRef} --permission ${permission} --enable --reason "why this is needed"`,
         );
       },
     ),

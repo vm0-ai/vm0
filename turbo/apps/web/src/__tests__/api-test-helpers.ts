@@ -468,7 +468,7 @@ export async function createTestZeroAgent(
     displayName?: string;
     description?: string;
     sound?: string;
-    firewallPolicies?: FirewallPolicies;
+    permissionPolicies?: FirewallPolicies;
   },
 ): Promise<void> {
   initServices();
@@ -494,7 +494,7 @@ export async function createTestZeroAgent(
       displayName: metadata.displayName ?? null,
       description: metadata.description ?? null,
       sound: metadata.sound ?? null,
-      firewallPolicies: metadata.firewallPolicies ?? null,
+      permissionPolicies: metadata.permissionPolicies ?? null,
     })
     .onConflictDoUpdate({
       target: [zeroAgents.orgId, zeroAgents.name],
@@ -502,7 +502,7 @@ export async function createTestZeroAgent(
         displayName: metadata.displayName ?? null,
         description: metadata.description ?? null,
         sound: metadata.sound ?? null,
-        firewallPolicies: metadata.firewallPolicies ?? null,
+        permissionPolicies: metadata.permissionPolicies ?? null,
       },
     });
 }
@@ -878,7 +878,7 @@ export async function createTestRun(
     checkpointId?: string;
     memoryName?: string;
     appendSystemPrompt?: string;
-    firewallPolicies?: Record<string, Record<string, string>>;
+    permissionPolicies?: Record<string, Record<string, string>>;
   },
 ): Promise<{ runId: string; status: string }> {
   const request = createTestRequest("http://localhost:3000/api/agent/runs", {

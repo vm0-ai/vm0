@@ -68,8 +68,8 @@ const unifiedRunRequestSchema = z.object({
   // How the run was triggered (defaults to "cli" on the server if not provided)
   triggerSource: triggerSourceSchema.optional(),
 
-  // Per-permission firewall policies (e.g., { "github": { "actions:read": "allow" } })
-  firewallPolicies: firewallPoliciesSchema.optional(),
+  // Per-permission policies (e.g., { "github": { "actions:read": "allow" } })
+  permissionPolicies: firewallPoliciesSchema.optional(),
 });
 
 /**

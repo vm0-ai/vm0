@@ -28,6 +28,7 @@ export const startQueuePolling$ = command(
   async ({ set }, signal: AbortSignal) => {
     // Polling loop — initial data comes from queueData$ async computed
     while (!signal.aborted) {
+      // eslint-disable-next-line no-restricted-syntax -- polling loop requires try/catch for transient error retry
       try {
         await delay(POLL_INTERVAL, { signal });
         signal.throwIfAborted();

@@ -79,6 +79,7 @@ export const connectSlackAccount$ = command(
     const client = get(zeroClient$)(zeroSlackConnectContract);
     const channelId = params.get("c");
     const threadTs = params.get("t");
+    // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove — use accept() auto-toast
     try {
       await accept(
         client.connect({

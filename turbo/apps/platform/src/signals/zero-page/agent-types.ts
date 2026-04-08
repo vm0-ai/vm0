@@ -7,7 +7,7 @@ export interface AgentDetail {
   displayName: string | null;
   sound: string | null;
   avatarUrl: string | null;
-  firewallPolicies: FirewallPolicies | null;
+  permissionPolicies: FirewallPolicies | null;
 }
 
 export interface AgentInstructions {

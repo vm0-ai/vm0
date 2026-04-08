@@ -188,43 +188,43 @@ function collectDetails(entry: NetworkLogEntry): [string, string][] {
   );
   addField(
     out,
-    "Firewall",
+    "Permission Rule",
     entry.firewall_name,
     formatValue(entry.firewall_name),
   );
   addField(
     out,
-    "Firewall Ref",
+    "Connector Ref",
     entry.firewall_ref,
     formatValue(entry.firewall_ref),
   );
   addField(
     out,
-    "Firewall Permission",
+    "Permission",
     entry.firewall_permission,
     formatValue(entry.firewall_permission),
   );
   addField(
     out,
-    "Firewall Rule Match",
+    "Rule Match",
     entry.firewall_rule_match,
     formatValue(entry.firewall_rule_match),
   );
   addField(
     out,
-    "Firewall Base URL",
+    "Base URL",
     entry.firewall_base,
     formatValue(entry.firewall_base),
   );
   addField(
     out,
-    "Firewall Params",
+    "Params",
     entry.firewall_params,
     formatParams(entry.firewall_params),
   );
   addField(
     out,
-    "Firewall Error",
+    "Permission Error",
     entry.firewall_error,
     formatValue(entry.firewall_error),
   );
@@ -376,7 +376,7 @@ export function NetworkContent({
             <TableHead>URL / Host</TableHead>
             <TableHead className="w-[60px]">Status</TableHead>
             <TableHead className="w-[80px]">Latency</TableHead>
-            <TableHead className="w-[100px]">Firewall</TableHead>
+            <TableHead className="w-[100px]">Permission</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>

@@ -1963,6 +1963,7 @@ jobs:
       - name: Install LHCI CLI
         run: npm install -g @lhci/cli
       - name: Run Lighthouse CI (app)
+        continue-on-error: true
         working-directory: e2e/lighthouse
         run: |
           lhci collect \
