@@ -79,10 +79,11 @@ export function AppSkeleton({ visible = true }: { visible?: boolean }) {
           </p>
           {/* Typewriter message: appears at 800ms, types over 1.5s */}
           <p
-            className="absolute inset-0 text-base font-medium text-foreground/70 overflow-hidden whitespace-nowrap border-r-2 border-current"
+            className="absolute top-0 left-1/2 text-base font-medium text-foreground/70 overflow-hidden whitespace-nowrap border-r-2 border-current"
             style={{
               visibility: "hidden",
               width: 0,
+              marginLeft: `${-CHAR_COUNT / 2}ch`,
               animation: `sk-show-typewriter 800ms forwards, sk-typing 1.5s steps(${CHAR_COUNT}) 800ms forwards, sk-blink 0.6s step-end 800ms infinite`,
             }}
           >
