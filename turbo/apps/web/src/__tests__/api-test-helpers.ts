@@ -139,6 +139,8 @@ import { conversations } from "../db/schema/conversation";
 import { uniqueId, uniqueNumericId } from "./test-helpers";
 import { vm0ApiKeys } from "../db/schema/vm0-api-key";
 import { getVm0ApiKey } from "../lib/zero/vm0-key/vm0-key-service";
+import { POST as registerPushSubscriptionRoute } from "../../app/api/zero/push-subscriptions/route";
+import { pushSubscriptions } from "../db/schema/push-subscription";
 
 /**
  * Helper to create a NextRequest for testing.
@@ -5264,6 +5266,54 @@ export async function insertTestRunnerState(overrides: {
 export async function deleteAllTestRunnerState(): Promise<void> {
   initServices();
   await globalThis.services.db.delete(runnerState);
+}
+
+/**
+ * Register a push subscription for the current authenticated user via the
+ * POST /api/zero/push-subscriptions route. The user must already be
+ * authenticated via mockClerk() before calling this function.
+ */
+export async function createTestPushSubscription(
+  endpoint?: string,
+): Promise<{ endpoint: string }> {
+  const ep = endpoint ?? `https://fcm.googleapis.com/fcm/send/${randomUUID()}`;
+
+  const response = await registerPushSubscriptionRoute(
+    createTestRequest("http://localhost:3000/api/zero/push-subscriptions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        endpoint: ep,
+        keys: {
+          p256dh:
+            "BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlUls0VJXg7A8u-Ts1XbjhazAkj7I99e8p8REfXRI",
+          auth: "tBHItJI5svbpC7hYyKw",
+        },
+      }),
+    }),
+  );
+
+  if (response.status !== 201) {
+    throw new Error(
+      `Failed to register push subscription: status ${response.status}`,
+    );
+  }
+
+  return { endpoint: ep };
+}
+
+/**
+ * Query push subscriptions for the given endpoint directly from the DB.
+ * Returns the matching rows (empty array means the subscription was deleted).
+ */
+export async function getPushSubscriptionsByEndpoint(
+  endpoint: string,
+): Promise<Array<{ id: string; endpoint: string }>> {
+  initServices();
+  return globalThis.services.db
+    .select({ id: pushSubscriptions.id, endpoint: pushSubscriptions.endpoint })
+    .from(pushSubscriptions)
+    .where(eq(pushSubscriptions.endpoint, endpoint));
 }
 
 // ============================================================================

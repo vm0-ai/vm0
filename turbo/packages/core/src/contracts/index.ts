@@ -771,6 +771,10 @@ export {
   type DayInsight,
 } from "./zero-insights";
 export {
+  pushSubscriptionsContract,
+  type PushSubscriptionsContract,
+} from "./push-subscriptions";
+export {
   zeroVoiceChatContextGetContract,
   zeroVoiceChatContextAppendContract,
   type ZeroVoiceChatContextGetContract,

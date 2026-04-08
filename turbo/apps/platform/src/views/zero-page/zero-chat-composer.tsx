@@ -1,5 +1,6 @@
 import type { ChangeEvent } from "react";
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
+import { ensurePushSubscription } from "../../lib/push-notifications.ts";
 import {
   IconArrowUp,
   IconLoader2,
@@ -538,6 +539,8 @@ export function ZeroChatComposer({
     if (!trimmed || sending) {
       return;
     }
+    // Fire-and-forget: request push permission on first send, never blocks
+    ensurePushSubscription();
     onSend(trimmed);
   };
 
