@@ -63,6 +63,14 @@ interface ZipEntry {
   content: string;
 }
 
+interface ChatHistoryEvent {
+  runId: string;
+  eventType: string;
+  sequenceNumber: number;
+  eventData: Record<string, unknown>;
+  _time: string;
+}
+
 async function assembleZip(entries: ZipEntry[]): Promise<Buffer> {
   const archive = archiver("zip", { zlib: { level: 6 } });
   const chunks: Buffer[] = [];
@@ -248,16 +256,16 @@ const router = tsr.router(zeroDeveloperSupportContract, {
 | where runId in (${runIdList})
 | order by _time asc, sequenceNumber asc
 | limit 2000`;
-      return queryAxiom(apl);
+      return queryAxiom<ChatHistoryEvent>(apl);
     })().catch((err) => {
       log.warn("Failed to collect agent events from Axiom", {
         error: String(err),
       });
-      return [];
+      return [] as ChatHistoryEvent[];
     });
 
     // Synthesize user_prompt events from agent_runs.prompt and merge with Axiom events
-    const promptEvents = sessionRuns.map((r) => {
+    const promptEvents: ChatHistoryEvent[] = sessionRuns.map((r) => {
       return {
         runId: r.id,
         eventType: "user_prompt",
@@ -273,12 +281,8 @@ const router = tsr.router(zeroDeveloperSupportContract, {
     });
 
     const chatHistory = [...promptEvents, ...agentEvents].sort((a, b) => {
-      const timeA = (a as Record<string, unknown>)._time as string;
-      const timeB = (b as Record<string, unknown>)._time as string;
-      if (timeA !== timeB) return timeA < timeB ? -1 : 1;
-      const seqA = (a as Record<string, unknown>).sequenceNumber as number;
-      const seqB = (b as Record<string, unknown>).sequenceNumber as number;
-      return seqA - seqB;
+      if (a._time !== b._time) return a._time < b._time ? -1 : 1;
+      return a.sequenceNumber - b.sequenceNumber;
     });
 
     log.info("Collected chat history for diagnostic bundle", {
