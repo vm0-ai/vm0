@@ -2,7 +2,6 @@ import { command, computed, state } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import type { Tone } from "../../../views/zero-page/zero-tone-constants.ts";
 import { AVATAR_PRESET_PREFIX } from "../../../views/zero-page/avatar-utils.ts";
-import { throwIfAbort } from "../../utils.ts";
 
 // ---------------------------------------------------------------------------
 // Form fields
@@ -175,24 +174,22 @@ export const uploadAvatar$ = command(
     ) => Promise<Response>,
     _signal: AbortSignal,
   ): Promise<void> => {
-    // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove — use accept() auto-toast
-    try {
-      const formData = new FormData();
-      formData.append("file", file);
-      const res = await fetchFn("/api/zero/uploads", {
-        method: "POST",
-        body: formData,
-      });
-      if (!res.ok) {
-        throw new Error(`Upload failed (${res.status})`);
-      }
-      const data: { url: string } = await res.json();
-      set(internalCustomAvatarUrl$, data.url);
-      set(internalAvatarUrl$, data.url);
-    } catch (error) {
-      throwIfAbort(error);
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetchFn("/api/zero/uploads", {
+      method: "POST",
+      body: formData,
+    }).catch((error: unknown) => {
       toast.error("Failed to upload avatar");
+      throw error;
+    });
+    if (!res.ok) {
+      toast.error("Failed to upload avatar");
+      throw new Error(`Upload failed (${res.status})`);
     }
+    const data: { url: string } = await res.json();
+    set(internalCustomAvatarUrl$, data.url);
+    set(internalAvatarUrl$, data.url);
   },
 );
 

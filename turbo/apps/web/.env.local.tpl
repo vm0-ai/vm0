@@ -176,6 +176,10 @@ DEV_MODEL_MOONSHOT_KEY=op://Development/moonshot/DEV_MODEL_MOONSHOT_KEY
 DEV_MODEL_ZAI_KEY=op://Development/z.ai/DEV_MODEL_ZAI_KEY
 DEV_MODEL_MINIMAX_KEY=op://Development/minimax/DEV_MODEL_MINIMAX_KEY
 
+# Optional: Web Push (VAPID) — for PWA push notifications
+VAPID_PUBLIC_KEY=op://Development/vapid/VAPID_PUBLIC_KEY
+VAPID_PRIVATE_KEY=op://Development/vapid/VAPID_PRIVATE_KEY
+
 # Optional: Self-hosted Runner (for local development with runner on dev-1)
 # RUNNER_DEFAULT_GROUP is auto-configured by sync-env.sh — do not add here
 OFFICIAL_RUNNER_SECRET=0000000000000000000000000000000000000000000000000000000000000000

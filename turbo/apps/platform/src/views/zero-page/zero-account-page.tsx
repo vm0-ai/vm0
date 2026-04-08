@@ -1,4 +1,5 @@
 import { useGet, useSet, useLoadable, useLastResolved } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   IconSun,
@@ -25,10 +26,9 @@ import { detach, Reason } from "../../signals/utils.ts";
 import {
   preferencesTab$,
   setPreferencesTab$,
-  sendModeSaving$,
   updateSendMode$,
+  pendingSendMode$,
   captureNetworkBodiesRemaining$,
-  captureSaving$,
   updateCaptureNetworkBodies$,
 } from "../../signals/zero-page/settings/preferences-page.ts";
 
@@ -104,9 +104,10 @@ function SendModeSettings() {
   const prefsLoadable = useLoadable(sendMode$);
   const current: SendMode =
     prefsLoadable.state === "hasData" ? prefsLoadable.data : "enter";
-  const saving = useGet(sendModeSaving$);
-  const saveSendMode = useSet(updateSendMode$);
+  const [saveModeLoadable, saveSendMode] = useLoadableSet(updateSendMode$);
   const pageSignal = useGet(pageSignal$);
+  const pendingMode = useGet(pendingSendMode$);
+  const saving = saveModeLoadable.state === "loading" ? pendingMode : null;
 
   const handleChange = (value: SendMode) => {
     detach(saveSendMode(value, pageSignal), Reason.DomCallback);
@@ -177,8 +178,10 @@ function CaptureNetworkBodiesSettings() {
   const remainingLoadable = useLoadable(captureNetworkBodiesRemaining$);
   const remaining =
     remainingLoadable.state === "hasData" ? remainingLoadable.data : 0;
-  const saving = useGet(captureSaving$);
-  const updateCapture = useSet(updateCaptureNetworkBodies$);
+  const [captureLoadable, updateCapture] = useLoadableSet(
+    updateCaptureNetworkBodies$,
+  );
+  const saving = captureLoadable.state === "loading";
   const pageSignal = useGet(pageSignal$);
   const enabled = remaining > 0;
 

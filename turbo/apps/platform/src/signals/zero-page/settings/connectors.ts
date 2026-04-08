@@ -165,11 +165,7 @@ export const scopeDiff$ = computed(async (get) => {
   }
   const createClient = get(zeroClient$);
   const client = createClient(zeroConnectorScopeDiffContract);
-  const result = await accept(
-    client.getScopeDiff({ params: { type } }),
-    [200],
-    { toast: false },
-  );
+  const result = await accept(client.getScopeDiff({ params: { type } }), [200]);
   return result.body;
 });
 
@@ -364,7 +360,7 @@ export const connectConnector$ = command(
       document.addEventListener("visibilitychange", onVisibilityChange);
     }
 
-    // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove try/finally — restructure event listener cleanup
+    // eslint-disable-next-line no-restricted-syntax -- try/finally required: event listener cleanup must run on both success and abort/error paths
     try {
       while (true) {
         if (!visibilityPollRequested) {

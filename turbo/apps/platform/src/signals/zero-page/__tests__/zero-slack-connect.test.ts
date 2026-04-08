@@ -110,6 +110,7 @@ describe("slack-connect-page signals", () => {
         new URLSearchParams("w=ws1&u=user1"),
       );
 
+      // Error is handled via signal state — promise resolves without rejecting
       await context.store.set(connectSlackAccount$, context.signal);
 
       expect(context.store.get(slackConnectStatus$)).toBe("error");

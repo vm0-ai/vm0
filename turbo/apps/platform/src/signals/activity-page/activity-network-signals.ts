@@ -31,7 +31,6 @@ async function fetchPage(
       },
     }),
     [200],
-    { toast: false },
   );
   return { logs: result.body.networkLogs, hasMore: result.body.hasMore };
 }
@@ -161,28 +160,29 @@ export const loadNetworkLogsNextPage$ = command(
 
     set(pagination$, { ...pg, loading: true });
 
-    // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove try/finally — restructure loading flag cleanup
-    try {
-      const client = get(zeroClient$)(zeroRunNetworkLogsContract);
-      const { logs, hasMore } = await fetchPage(client, runId, pg.since);
-
-      const lastEntry = logs.length > 0 ? logs[logs.length - 1] : undefined;
-      set(pagination$, (current) => {
-        return {
-          ...current,
-          logs: [...current.logs, ...logs],
-          hasMore,
-          since: lastEntry
-            ? new Date(lastEntry.timestamp).getTime()
-            : current.since,
-          pageCount: current.pageCount + 1,
-          loading: false,
-        };
-      });
-    } finally {
+    const clearLoading = () => {
       set(pagination$, (current) => {
         return current.loading ? { ...current, loading: false } : current;
       });
-    }
+    };
+
+    const client = get(zeroClient$)(zeroRunNetworkLogsContract);
+    const { logs, hasMore } = await fetchPage(client, runId, pg.since).finally(
+      clearLoading,
+    );
+
+    const lastEntry = logs.length > 0 ? logs[logs.length - 1] : undefined;
+    set(pagination$, (current) => {
+      return {
+        ...current,
+        logs: [...current.logs, ...logs],
+        hasMore,
+        since: lastEntry
+          ? new Date(lastEntry.timestamp).getTime()
+          : current.since,
+        pageCount: current.pageCount + 1,
+        loading: false,
+      };
+    });
   },
 );

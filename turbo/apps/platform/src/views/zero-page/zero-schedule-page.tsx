@@ -525,48 +525,45 @@ export function ZeroSchedulePage() {
     );
   };
 
-  const handleToggle = async (entry: CombinedEntry, enabled: boolean) => {
+  const handleToggle = (entry: CombinedEntry, enabled: boolean) => {
     if (entry.name === undefined) {
       return;
     }
     const id = entry.id;
+    const name = entry.name;
     setTogglingIds((prev) => {
       return new Set([...prev, id]);
     });
-    // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove try/finally — use useLoadableSet for loading state
-    try {
-      await toggleEnabled(
-        {
-          name: entry.name,
-          enabled,
-          agentId: entry.agentId,
-        },
+    detach(
+      toggleEnabled(
+        { name, enabled, agentId: entry.agentId },
         pageSignal,
-      );
-    } finally {
-      setTogglingIds((prev) => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
-    }
+      ).finally(() => {
+        setTogglingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+      }),
+      Reason.DomCallback,
+    );
   };
 
-  const handleRunNow = async (entry: CombinedEntry) => {
+  const handleRunNow = (entry: CombinedEntry) => {
     const id = entry.id;
     setRunningIds((prev) => {
       return new Set([...prev, id]);
     });
-    // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove try/finally — use useLoadableSet for loading state
-    try {
-      await runScheduleNow(entry.id, pageSignal);
-    } finally {
-      setRunningIds((prev) => {
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
-    }
+    detach(
+      runScheduleNow(entry.id, pageSignal).finally(() => {
+        setRunningIds((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+      }),
+      Reason.DomCallback,
+    );
   };
 
   const handleDelete = (entry: CombinedEntry) => {
@@ -661,14 +658,14 @@ export function ZeroSchedulePage() {
                 }}
                 onEdit={openScheduleDetail}
                 onToggle={(entry, enabled) => {
-                  detach(handleToggle(entry, enabled), Reason.DomCallback);
+                  handleToggle(entry, enabled);
                 }}
                 onDelete={handleDelete}
                 onNew={() => {
                   return setCreateOpen(true);
                 }}
                 onRunNow={(entry) => {
-                  detach(handleRunNow(entry), Reason.DomCallback);
+                  handleRunNow(entry);
                 }}
                 onOpenDetails={openScheduleDetail}
               />

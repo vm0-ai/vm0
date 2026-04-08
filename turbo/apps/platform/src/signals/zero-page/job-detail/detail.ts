@@ -25,9 +25,7 @@ export const zeroJobDetail$ = computed(
       return null;
     }
     const client = get(zeroClient$)(zeroAgentsByIdContract);
-    const result = await accept(client.get({ params: { id: name } }), [200], {
-      toast: false,
-    });
+    const result = await accept(client.get({ params: { id: name } }), [200]);
     return result.body;
   },
 );

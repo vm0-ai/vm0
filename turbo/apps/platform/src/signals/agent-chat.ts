@@ -6,8 +6,7 @@ import {
 } from "@vm0/core";
 import { agentById, defaultAgentId$ } from "./agent.ts";
 import { zeroClient$ } from "./api-client.ts";
-import { accept, ApiError } from "../lib/accept.ts";
-import { throwIfAbort } from "./utils.ts";
+import { accept } from "../lib/accept.ts";
 import { pathParams$ } from "./route.ts";
 import { activeRoute$ } from "./active-route.ts";
 import { resolveAvatarUrl } from "../views/zero-page/avatar-utils.ts";
@@ -30,16 +29,7 @@ export const currentChatAgent$ = computed(async (get) => {
     return null;
   }
 
-  // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove — use accept() multi-status [200, 404]
-  try {
-    return await get(agentById(agentId));
-  } catch (error) {
-    throwIfAbort(error);
-    if (error instanceof ApiError && error.status === 404) {
-      return null;
-    }
-    throw error;
-  }
+  return await get(agentById(agentId));
 });
 
 export const currentChatAgentDisplayName$ = computed(async (get) => {
@@ -105,7 +95,6 @@ export const currentChatThread$ = computed(
     const threadResult = await accept(
       threadClient.get({ params: { id: threadId } }),
       [200],
-      { toast: false },
     );
 
     const body = threadResult.body;
@@ -140,7 +129,6 @@ export const chatThreads$ = computed(async (get) => {
   const result = await accept(
     client.list({ query: { agentId: agentId } }),
     [200],
-    { toast: false },
   );
   const threads = result.body.threads;
 

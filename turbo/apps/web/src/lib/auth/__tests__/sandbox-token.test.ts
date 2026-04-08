@@ -271,15 +271,17 @@ describe("sandbox-token", () => {
         "connector:read",
       ]);
       expect(auth?.capabilities).not.toContain("computer-use:write");
+      expect(auth?.capabilities).not.toContain("voice-chat:write");
     });
 
-    it("should include computer-use:write when feature flag is enabled", async () => {
+    it("should include conditional capabilities when feature flags are enabled", async () => {
       mockIsFeatureEnabled.mockReturnValue(true);
 
       const token = await generateZeroToken("user-123", "run-456", "org-789");
       const auth = verifyZeroToken(token);
 
       expect(auth?.capabilities).toContain("computer-use:write");
+      expect(auth?.capabilities).toContain("voice-chat:write");
       expect(auth?.capabilities).toEqual([
         "agent:read",
         "agent:write",
@@ -290,6 +292,7 @@ describe("sandbox-token", () => {
         "slack:write",
         "connector:read",
         "computer-use:write",
+        "voice-chat:write",
       ]);
     });
 

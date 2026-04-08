@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent, {
   PointerEventsCheckLevel,
 } from "@testing-library/user-event";
@@ -203,7 +203,9 @@ describe("schedule dialog - save error (SCHED-D-047)", () => {
     await fill(promptInput, "My task");
     await user.click(screen.getByText("Create"));
     await waitFor(() => {
-      expect(screen.getByText(/HTTP 500/i)).toBeInTheDocument();
+      expect(
+        within(screen.getByRole("dialog")).getByText(/HTTP 500/i),
+      ).toBeInTheDocument();
     });
   });
 });

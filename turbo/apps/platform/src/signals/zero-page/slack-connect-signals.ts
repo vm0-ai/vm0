@@ -3,7 +3,6 @@ import { searchParams$ } from "../route.ts";
 import { zeroSlackConnectContract } from "@vm0/core";
 import { zeroClient$ } from "../api-client.ts";
 import { accept, ApiError } from "../../lib/accept.ts";
-import { throwIfAbort } from "../utils.ts";
 
 // Internal state
 const internalStatus$ = state<
@@ -42,7 +41,7 @@ export const resetSlackConnectState$ = command(({ set }) => {
 
 // Init: check connection on page load
 export const initSlackConnectPage$ = command(
-  async ({ get, set }, _signal: AbortSignal) => {
+  async ({ get, set }, signal: AbortSignal) => {
     const params = get(searchParams$);
     const workspaceId = params.get("w");
     const initialStatus = params.get("status");
@@ -51,18 +50,19 @@ export const initSlackConnectPage$ = command(
     if (!initialStatus && !initialError && workspaceId) {
       set(internalStatus$, "checking");
       const client = get(zeroClient$)(zeroSlackConnectContract);
-      // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove — use accept() error propagation
-      try {
-        const result = await accept(client.getStatus(), [200], {
-          toast: false,
-        });
-        if (result.body.isConnected) {
-          set(internalStatus$, "success");
-          return;
+      const result = await accept(client.getStatus(), [200], {
+        toast: false,
+      }).catch((error: unknown) => {
+        if (signal.aborted) {
+          throw error;
         }
-      } catch (error) {
-        throwIfAbort(error);
-        // silently fall through to idle
+        // silently fall through to idle on non-abort errors
+        return null;
+      });
+      signal.throwIfAborted();
+      if (result?.body.isConnected) {
+        set(internalStatus$, "success");
+        return;
       }
       set(internalStatus$, "idle");
     }
@@ -75,7 +75,7 @@ export const initSlackConnectPage$ = command(
 
 // Connect account
 export const connectSlackAccount$ = command(
-  async ({ get, set }, _signal: AbortSignal) => {
+  async ({ get, set }, signal: AbortSignal) => {
     const params = get(searchParams$);
     const workspaceId = params.get("w");
     const slackUserId = params.get("u");
@@ -87,30 +87,39 @@ export const connectSlackAccount$ = command(
     const client = get(zeroClient$)(zeroSlackConnectContract);
     const channelId = params.get("c");
     const threadTs = params.get("t");
-    // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove — use accept() auto-toast
-    try {
-      await accept(
-        client.connect({
-          body: {
-            workspaceId,
-            slackUserId,
-            ...(channelId ? { channelId } : {}),
-            ...(threadTs ? { threadTs } : {}),
-          },
-        }),
-        [200],
-        { toast: false },
-      );
-      set(internalStatus$, "success");
-      window.location.href = "slack://open";
-    } catch (error) {
-      throwIfAbort(error);
-      const msg =
-        error instanceof ApiError
-          ? error.message
-          : "Failed to connect. Please try again.";
-      set(internalErrorMsg$, msg);
-      set(internalStatus$, "error");
+    const connected = await accept(
+      client.connect({
+        body: {
+          workspaceId,
+          slackUserId,
+          ...(channelId ? { channelId } : {}),
+          ...(threadTs ? { threadTs } : {}),
+        },
+      }),
+      [200],
+      { toast: false },
+    )
+      .then(() => {
+        return true;
+      })
+      .catch((error: unknown) => {
+        if (signal.aborted) {
+          throw error;
+        }
+        const msg =
+          error instanceof ApiError
+            ? error.message
+            : "Failed to connect. Please try again.";
+        set(internalErrorMsg$, msg);
+        set(internalStatus$, "error");
+        // error handled via signal state — return false to skip success path
+        return false;
+      });
+    signal.throwIfAborted();
+    if (!connected) {
+      return;
     }
+    set(internalStatus$, "success");
+    window.location.href = "slack://open";
   },
 );

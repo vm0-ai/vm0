@@ -111,7 +111,6 @@ async function fetchEvents(
       },
     }),
     [200],
-    { toast: false },
   );
   return { events: result.body.events, hasMore: result.body.hasMore };
 }
@@ -136,7 +135,6 @@ function createRunDetail(runId: string) {
         params: { id: runId },
       }),
       [200],
-      { toast: false },
     );
     return result;
   });
@@ -167,18 +165,12 @@ function createQueuePosition(runId: string) {
     queuePosition$: computed(async (get) => {
       const createClient = get(zeroClient$);
       const client = createClient(zeroQueuePositionContract);
-      // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove — use accept() error propagation
-      try {
-        const result = await accept(
-          client.getPosition({ query: { runId } }),
-          [200],
-          { toast: false },
-        );
-        return result.body.position;
-      } catch (error) {
-        throwIfAbort(error);
-        return 0;
-      }
+      const result = await accept(
+        client.getPosition({ query: { runId } }),
+        [200],
+        { toast: false },
+      );
+      return result.body.position;
     }),
     reload$: command(({ set }) => {
       return set(internalReload$, (x) => {
@@ -280,7 +272,6 @@ export function createRunLoop(runId: string) {
         fetchOptions: { signal },
       }),
       [200],
-      { toast: false },
     );
   });
 

@@ -10,7 +10,7 @@ const internalReload$ = state(0);
 export const slackOrgData$ = computed(async (get) => {
   get(internalReload$);
   const client = get(zeroClient$)(zeroIntegrationsSlackContract);
-  const result = await accept(client.getStatus(), [200], { toast: false });
+  const result = await accept(client.getStatus(), [200]);
   return result.body;
 });
 

@@ -327,21 +327,21 @@ export function ZeroScheduleCard({
   const setRunningIds = useSet(setRunningIds$);
 
   const handleRunNow = onRunNow
-    ? async (entry: ScheduleEntry) => {
+    ? (entry: ScheduleEntry) => {
         const id = entry.id;
         setRunningIds((prev) => {
           return new Set([...prev, id]);
         });
-        // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove try/finally — use useLoadableSet for loading state
-        try {
-          await onRunNow(entry);
-        } finally {
-          setRunningIds((prev) => {
-            const next = new Set(prev);
-            next.delete(id);
-            return next;
-          });
-        }
+        detach(
+          onRunNow(entry).finally(() => {
+            setRunningIds((prev) => {
+              const next = new Set(prev);
+              next.delete(id);
+              return next;
+            });
+          }),
+          Reason.DomCallback,
+        );
       }
     : undefined;
 

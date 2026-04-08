@@ -9,7 +9,6 @@ import {
   zeroScheduleRunContract,
   type ScheduleResponse,
 } from "@vm0/core";
-import { throwIfAbort } from "../utils.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { zeroOnboardingStatus$ } from "./zero-onboarding.ts";
 import {
@@ -161,21 +160,15 @@ export const fetchZeroSchedules$ = command(
       return;
     }
 
-    // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove — use accept() error propagation
-    try {
-      const client = get(zeroClient$)(zeroSchedulesMainContract);
-      const result = await accept(client.list(), [200], { toast: false });
-      signal.throwIfAborted();
+    const client = get(zeroClient$)(zeroSchedulesMainContract);
+    const result = await accept(client.list(), [200], { toast: false });
+    signal.throwIfAborted();
 
-      // Filter schedules for this agent's composeId
-      const agentSchedules = result.body.schedules.filter((s) => {
-        return s.agentId === composeId;
-      });
-      set(internalSchedules$, agentSchedules);
-    } catch (error) {
-      throwIfAbort(error);
-      set(internalSchedules$, []);
-    }
+    // Filter schedules for this agent's composeId
+    const agentSchedules = result.body.schedules.filter((s) => {
+      return s.agentId === composeId;
+    });
+    set(internalSchedules$, agentSchedules);
   },
 );
 
@@ -363,7 +356,7 @@ export interface OrgScheduleEntry {
 const internalAllSchedules$ = state<ScheduleResponse[]>([]);
 const internalAllSchedulesLoaded$ = state(false);
 
-/** Whether the org schedules have been loaded at least once. */
+/** True after the first successful org schedule fetch has completed. */
 export const allOrgSchedulesLoaded$ = computed((get) => {
   return get(internalAllSchedulesLoaded$);
 });
@@ -394,17 +387,13 @@ export const allOrgScheduleEntries$ = computed((get) => {
 
 export const fetchAllOrgSchedules$ = command(
   async ({ get, set }, _signal: AbortSignal) => {
-    // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove — use accept() error propagation
-    try {
-      const client = get(zeroClient$)(zeroSchedulesMainContract);
-      const result = await accept(client.list(), [200], { toast: false });
-      set(internalAllSchedules$, result.body.schedules);
-    } catch (error) {
-      throwIfAbort(error);
-      set(internalAllSchedules$, []);
-    } finally {
-      set(internalAllSchedulesLoaded$, true);
-    }
+    const client = get(zeroClient$)(zeroSchedulesMainContract);
+    const result = await accept(client.list(), [200], { toast: false }).finally(
+      () => {
+        set(internalAllSchedulesLoaded$, true);
+      },
+    );
+    set(internalAllSchedules$, result.body.schedules);
   },
 );
 
@@ -417,10 +406,7 @@ export const saveOrgSchedule$ = command(
     const body = buildScheduleBody(params.agentId, params);
 
     const client = get(zeroClient$)(zeroSchedulesMainContract);
-    // toast: false — error is captured by useLoadableSet in the consuming view and displayed in the dialog
-    const result = await accept(client.deploy({ body }), [200, 201], {
-      toast: false,
-    });
+    const result = await accept(client.deploy({ body }), [200, 201]);
     signal.throwIfAborted();
 
     const scheduleId = result.body.schedule.id;
@@ -485,18 +471,13 @@ export const runScheduleNow$ = command(
       return toast.dismiss(toastId);
     });
     const client = get(zeroClient$)(zeroScheduleRunContract);
-    let result;
-    // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove — use accept() auto-toast with toastId
-    try {
-      result = await accept(client.run({ body: { scheduleId } }), [201], {
-        toast: false,
-      });
-    } catch (error) {
-      throwIfAbort(error);
+    const result = await accept(client.run({ body: { scheduleId } }), [201], {
+      toast: false,
+    }).catch((error: unknown) => {
       const message = error instanceof Error ? error.message : "Run failed";
       toast.error(message, { id: toastId });
       throw error;
-    }
+    });
     signal.throwIfAborted();
 
     const data = result.body;

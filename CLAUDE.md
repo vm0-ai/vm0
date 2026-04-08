@@ -181,6 +181,9 @@ For detailed patterns and examples, use `/testing`.
 4. Use proper conventional commit message format
 5. These checks help maintain the high standards defined in our design principles
 
+### CRITICAL: Never run checks in background
+**All pre-commit checks (lint, format, typecheck, test, knip) MUST run in the foreground.** Never use `run_in_background` for these commands. The results must be available immediately so the commit can proceed — background execution defeats this purpose.
+
 ## Code Quality Tools
 
 ### Knip - Dependency and Export Analysis

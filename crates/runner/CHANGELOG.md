@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.69.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.68.0...runner-rs-v0.69.0) (2026-04-08)
+
+
+### Features
+
+* **firewall:** add graphql field path parser with nested selection support ([#8520](https://github.com/vm0-ai/vm0/issues/8520)) ([7665bee](https://github.com/vm0-ai/vm0/commit/7665bee9864a351c1298e42066a2fe7019c0bcec))
+
+
+### Refactoring
+
+* **proxy:** replace blind streaming with buffered stream callback ([#8514](https://github.com/vm0-ai/vm0/issues/8514)) ([552cd0c](https://github.com/vm0-ai/vm0/commit/552cd0ceb3de240f97c0ffa5013e7da32b80857b))
+
 ## [0.68.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.67.1...runner-rs-v0.68.0) (2026-04-08)
 
 

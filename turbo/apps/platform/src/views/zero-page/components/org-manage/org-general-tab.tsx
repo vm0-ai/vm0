@@ -146,18 +146,16 @@ function ProfileSection({
     setSaveError(null);
   };
 
-  const handleSave = async () => {
+  const handleSave = () => {
     if (!hasChanges || saving) {
       return;
     }
     setSaving(true);
     setSaveError(null);
-    // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove try/finally — use useLoadableSet for loading state
-    try {
+    const doSave = async () => {
       if (pendingLogoFile) {
         const result = await uploadLogo(fetchFn, pendingLogoFile);
         if (!result) {
-          setSaving(false);
           return;
         }
         setLogoUrl(result.logoUrl);
@@ -180,7 +178,6 @@ function ProfileSection({
             `Failed to update (${result.status})`,
           );
           setSaveError(message);
-          setSaving(false);
           return;
         }
       }
@@ -193,9 +190,13 @@ function ProfileSection({
       refreshOrg();
       await clerk?.organization?.reload();
       toast.success("Workspace updated");
-    } finally {
-      setSaving(false);
-    }
+    };
+    detach(
+      doSave().finally(() => {
+        setSaving(false);
+      }),
+      Reason.DomCallback,
+    );
   };
 
   const handleLogoLoad = () => {
@@ -386,48 +387,59 @@ function DangerZoneSection({
   const deleteConfirm = useGet(deleteConfirm$);
   const setDeleteConfirm = useSet(setDeleteConfirm$);
 
-  const handleLeave = async () => {
+  const handleLeave = () => {
     if (leaving) {
       return;
     }
     setLeaving(true);
-    // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove try/finally — use useLoadableSet for loading state
-    try {
-      const client = createClient(zeroOrgLeaveContract);
-      const result = await client.leave({ body: {} });
-      if (result.status === 200) {
-        toast.success("You have left the workspace");
-        window.location.reload();
-      } else {
-        toast.error(
-          extractErrorMessage(result, `Failed to leave (${result.status})`),
-        );
-      }
-    } finally {
-      setLeaving(false);
-    }
+    const client = createClient(zeroOrgLeaveContract);
+    detach(
+      client
+        .leave({ body: {} })
+        .then((result) => {
+          if (result.status === 200) {
+            toast.success("You have left the workspace");
+            window.location.reload();
+          } else {
+            toast.error(
+              extractErrorMessage(result, `Failed to leave (${result.status})`),
+            );
+          }
+        })
+        .finally(() => {
+          setLeaving(false);
+        }),
+      Reason.DomCallback,
+    );
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (deleting || deleteConfirm !== org.slug) {
       return;
     }
     setDeleting(true);
-    // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove try/finally — use useLoadableSet for loading state
-    try {
-      const client = createClient(zeroOrgDeleteContract);
-      const result = await client.delete({ body: { slug: org.slug } });
-      if (result.status === 200) {
-        toast.success("Workspace deleted");
-        window.location.href = "/select-org";
-      } else {
-        toast.error(
-          extractErrorMessage(result, `Failed to delete (${result.status})`),
-        );
-      }
-    } finally {
-      setDeleting(false);
-    }
+    const client = createClient(zeroOrgDeleteContract);
+    detach(
+      client
+        .delete({ body: { slug: org.slug } })
+        .then((result) => {
+          if (result.status === 200) {
+            toast.success("Workspace deleted");
+            window.location.href = "/select-org";
+          } else {
+            toast.error(
+              extractErrorMessage(
+                result,
+                `Failed to delete (${result.status})`,
+              ),
+            );
+          }
+        })
+        .finally(() => {
+          setDeleting(false);
+        }),
+      Reason.DomCallback,
+    );
   };
 
   return (

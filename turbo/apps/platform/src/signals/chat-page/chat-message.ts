@@ -1,6 +1,6 @@
 import { command, computed, state, type Computed } from "ccstate";
 import type { AgentEvent, LogStatus } from "../zero-page/log-types.ts";
-import { resetSignal, throwIfAbort } from "../utils.ts";
+import { resetSignal } from "../utils.ts";
 import { detachedNavigateTo$ } from "../route.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { logger } from "../log.ts";
@@ -26,12 +26,11 @@ import {
   type ChatThread,
 } from "../agent-chat.ts";
 import {
-  RUN_ERROR_GUIDANCE,
   chatMessagesContract,
   chatThreadsContract,
   chatThreadByIdContract,
 } from "@vm0/core";
-import { accept, ApiError } from "../../lib/accept.ts";
+import { accept } from "../../lib/accept.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 
 export {
@@ -858,26 +857,12 @@ const sendChatMessageRequest$ = command(
     signal: AbortSignal,
   ): Promise<{ threadId: string; runId: string }> => {
     const client = get(zeroClient$)(chatMessagesContract);
-    // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove — use accept() error mapping
-    try {
-      const result = await accept(
-        client.send({ body: message, fetchOptions: { signal } }),
-        [201],
-      );
-      signal.throwIfAborted();
-      return result.body;
-    } catch (error) {
-      throwIfAbort(error);
-      if (error instanceof ApiError) {
-        const guidance = error.code
-          ? RUN_ERROR_GUIDANCE[error.code]
-          : undefined;
-        if (guidance) {
-          throw new Error(`${guidance.title}: ${guidance.guidance}`);
-        }
-      }
-      throw error;
-    }
+    const result = await accept(
+      client.send({ body: message, fetchOptions: { signal } }),
+      [201],
+    );
+    signal.throwIfAborted();
+    return result.body;
   },
 );
 
