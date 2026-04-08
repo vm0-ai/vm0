@@ -123,7 +123,7 @@ export async function handleCallEnded(event: CallEndedEvent): Promise<void> {
     callbackContext: callbackPayload,
   });
 
-  log.info("Phone run dispatched", { callId, userId, orgId: org.orgId });
+  log.info("Phone run dispatched", { callId, orgId: org.orgId });
 }
 
 /**

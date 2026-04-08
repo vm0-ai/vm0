@@ -1,10 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { POST, DELETE } from "../route";
 import { createTestRequest } from "../../../../../../src/__tests__/api-test-helpers";
-import {
-  testContext,
-  type UserContext,
-} from "../../../../../../src/__tests__/test-helpers";
+import { testContext } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 
 vi.mock("@clerk/nextjs/server");
@@ -15,11 +12,9 @@ vi.mock("@axiomhq/js");
 const context = testContext();
 
 describe("POST /api/zero/phone/link", () => {
-  let user: UserContext;
-
   beforeEach(async () => {
     context.setupMocks();
-    user = await context.setupUser();
+    await context.setupUser();
   });
 
   it("should require authentication", async () => {

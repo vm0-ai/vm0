@@ -1,7 +1,5 @@
 import { after } from "next/server";
 import { z } from "zod";
-import fs from "node:fs";
-import path from "node:path";
 import { initServices } from "../../../../../src/lib/init-services";
 import { handleCallEnded } from "../../../../../src/lib/zero/phone/handlers/call-ended";
 import { logger } from "../../../../../src/lib/shared/logger";
@@ -29,20 +27,6 @@ const webhookBodySchema = z.record(z.string(), z.unknown());
  *   "recentHistory": [...]
  * }
  */
-
-function dumpWebhookPayload(body: Record<string, unknown>): void {
-  try {
-    const dumpDir = path.join(process.cwd(), ".webhook-dumps");
-    fs.mkdirSync(dumpDir, { recursive: true });
-    const filename = `phone-${Date.now()}.json`;
-    fs.writeFileSync(
-      path.join(dumpDir, filename),
-      JSON.stringify(body, null, 2),
-    );
-  } catch {
-    // Non-critical — ignore dump failures
-  }
-}
 
 function extractCallData(body: Record<string, unknown>): {
   callId: string | undefined;
@@ -107,8 +91,6 @@ export async function POST(request: Request): Promise<Response> {
     return new Response("Bad Request", { status: 400 });
   }
   const body = parsed.data;
-
-  dumpWebhookPayload(body);
 
   const eventType = typeof body.event === "string" ? body.event : undefined;
 

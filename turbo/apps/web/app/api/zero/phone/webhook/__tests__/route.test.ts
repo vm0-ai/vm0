@@ -20,10 +20,7 @@ vi.mock("next/server", async () => {
   };
 });
 
-import {
-  testContext,
-  type UserContext,
-} from "../../../../../../src/__tests__/test-helpers";
+import { testContext } from "../../../../../../src/__tests__/test-helpers";
 
 const context = testContext();
 

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { eq, and } from "drizzle-orm";
 import { z } from "zod";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
@@ -84,7 +85,6 @@ export async function DELETE(request: NextRequest): Promise<NextResponse> {
 
   const { org } = await resolveOrg(authCtx);
 
-  const { eq, and } = await import("drizzle-orm");
   await globalThis.services.db
     .delete(phoneUserLinks)
     .where(
