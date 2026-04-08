@@ -13,9 +13,12 @@ const linkSchema = z.object({
     .regex(/^\+[1-9]\d{1,14}$/, "Use E.164 format (e.g. +14155551234)"),
 });
 
+/** Orgs allowed to use direct phone linking without OTP verification. */
+const DIRECT_LINK_ORG_SLUGS = ["vm0"];
+
 /**
  * POST /api/zero/phone/link — directly link a phone number (no OTP).
- * Only allowed for orgs with slug "vm0" (early access).
+ * Only allowed for orgs in DIRECT_LINK_ORG_SLUGS (early access).
  */
 export async function POST(request: NextRequest): Promise<NextResponse> {
   initServices();
@@ -29,9 +32,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const { org } = await resolveOrg(authCtx);
 
-  // Only allow direct linking for the vm0 org
+  // Only allow direct linking for approved orgs
   const orgIdentity = await getOrgNameAndSlug(org.orgId);
-  if (orgIdentity.slug !== "vm0") {
+  if (!DIRECT_LINK_ORG_SLUGS.includes(orgIdentity.slug)) {
     return NextResponse.json(
       { error: "Direct phone linking is not available for this org" },
       { status: 403 },

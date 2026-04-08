@@ -5,7 +5,6 @@ import { orgMetadata } from "../../db/schema/org-metadata";
 import { notFound } from "../shared/errors";
 import { canAccessCompose } from "../infra/agent/compose-access";
 import { syncAgentPhoneName } from "./phone/sync-agentphone-name";
-import { logger } from "../shared/logger";
 import type { ComposeListItem } from "@vm0/core";
 
 /**
@@ -92,10 +91,7 @@ export async function updateComposeMetadata(
 
     if (org?.defaultAgentId === compose.id) {
       const newName = body.displayName ?? compose.name;
-      syncAgentPhoneName(compose.orgId, newName).catch((err) => {
-        const log = logger("compose:metadata");
-        log.warn("Failed to sync AgentPhone name", { err });
-      });
+      await syncAgentPhoneName(compose.orgId, newName);
     }
   }
 }
