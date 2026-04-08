@@ -3,7 +3,8 @@
  *
  * Data sources:
  *   - https://developer.atlassian.com/cloud/jira/platform/swagger-v3.v3.json
- *   - https://developer.atlassian.com/cloud/confluence/swagger.v3.json
+ *   - https://developer.atlassian.com/cloud/confluence/swagger.v3.json (v1)
+ *   - https://developer.atlassian.com/cloud/confluence/openapi-v2.v3.json (v2)
  *
  * Permission groups are derived from OAuth 2.0 (3LO) scopes annotated
  * on each endpoint in the spec's security requirements.
