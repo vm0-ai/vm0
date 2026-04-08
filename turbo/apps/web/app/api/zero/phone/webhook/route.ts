@@ -140,8 +140,6 @@ export async function POST(request: Request): Promise<Response> {
       durationSeconds,
       transcript,
       summary,
-    }).catch((error) => {
-      log.error("Failed to handle call_ended", { callId, error });
     }),
   );
 
