@@ -2,14 +2,21 @@
  * Tests for the desktop HTTP server.
  *
  * Entry point: startDesktopServer()
- * Mock (external): screencapture module (macOS system commands)
- * Real (internal): HTTP server, token validation, routing
+ * Real: HTTP server, token validation, routing, JSON serialization
+ * Mocked: OS boundary adapters (see below)
+ *
+ * The 5 mocked modules (screencapture, cliclick, scroll, clipboard, application)
+ * are thin wrappers around macOS system commands (screencapture, cliclick, pbpaste,
+ * osascript, open) that are unavailable in the Linux test environment and contain
+ * no business logic. These relative vi.mock() paths are intentional — they mock at
+ * the OS boundary, not internal application code.
  */
 
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { http, passthrough } from "msw";
 import { server as mswServer } from "../../../mocks/server";
 
+// OS boundary adapters — macOS system command wrappers
 vi.mock("../screencapture", () => {
   return {
     captureScreenshot: vi.fn().mockResolvedValue({
