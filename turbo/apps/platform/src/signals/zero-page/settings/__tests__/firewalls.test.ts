@@ -9,7 +9,6 @@ const context = testContext();
 
 describe("hasFirewallPermissions", () => {
   it("should return true for connectors with firewall permissions", () => {
-    expect(hasFirewallPermissions("github")).toBeTruthy();
     expect(hasFirewallPermissions("slack")).toBeTruthy();
     expect(hasFirewallPermissions("gmail")).toBeTruthy();
     expect(hasFirewallPermissions("atlassian")).toBeTruthy();
@@ -30,7 +29,7 @@ describe("saveFirewallPolicies$", () => {
   it("should send name in request body and return persisted policies", async () => {
     await setupPage({ context, path: "/", withoutRender: true });
 
-    const policies = { github: { "issues:read": "allow" as const } };
+    const policies = { slack: { "channels:read": "allow" as const } };
     let capturedBody: Record<string, unknown> | null = null;
 
     server.use(
