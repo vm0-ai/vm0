@@ -4,10 +4,10 @@ import {
   permissionAccessRequestsListContract,
   permissionAccessRequestsResolveContract,
   zeroAgentPermissionPoliciesContract,
-  getConnectorPermission,
-  isPermissionConnectorType,
-  type PermissionPolicies,
-  type PermissionPolicyValue,
+  getConnectorFirewall,
+  isFirewallConnectorType,
+  type FirewallPolicies,
+  type FirewallPolicyValue,
 } from "@vm0/core";
 import { delay } from "signal-timers";
 import { zeroClient$ } from "../api-client.ts";
@@ -79,10 +79,10 @@ interface Permission {
 }
 
 export function extractPermissions(ref: string): Permission[] {
-  if (!isPermissionConnectorType(ref)) {
+  if (!isFirewallConnectorType(ref)) {
     return [];
   }
-  const config = getConnectorPermission(ref);
+  const config = getConnectorFirewall(ref);
   const seen = new Map<string, Permission>();
   for (const api of config.apis) {
     if (!api.permissions) {
@@ -163,11 +163,11 @@ export const updateRequestIdInUrl$ = command(({ set }, requestId: string) => {
 // Admin: save permission policies
 // ---------------------------------------------------------------------------
 
-const savePermissionPolicies$ = command(
+const saveFirewallPolicies$ = command(
   async (
     { get, set },
     agentId: string,
-    policies: PermissionPolicies,
+    policies: FirewallPolicies,
     signal: AbortSignal,
   ): Promise<void> => {
     const client = get(zeroClient$)(zeroAgentPermissionPoliciesContract);
@@ -234,7 +234,7 @@ const createAccessRequest$ = command(
 // UI state: focused views
 // ---------------------------------------------------------------------------
 
-const internalAdminFocusedPolicyOverride$ = state<PermissionPolicyValue | null>(
+const internalAdminFocusedPolicyOverride$ = state<FirewallPolicyValue | null>(
   null,
 );
 
@@ -244,8 +244,8 @@ interface SaveAdminFocusedPolicyParams {
   agentId: string;
   ref: string;
   permissionName: string;
-  action: PermissionPolicyValue;
-  agentPermissionPolicies: PermissionPolicies | null;
+  action: FirewallPolicyValue;
+  agentFirewallPolicies: FirewallPolicies | null;
 }
 
 export const saveAdminFocusedPolicy$ = command(
@@ -254,18 +254,18 @@ export const saveAdminFocusedPolicy$ = command(
     params: SaveAdminFocusedPolicyParams,
     signal: AbortSignal,
   ): Promise<void> => {
-    const { agentId, ref, permissionName, action, agentPermissionPolicies } =
+    const { agentId, ref, permissionName, action, agentFirewallPolicies } =
       params;
     const override = get(internalAdminFocusedPolicyOverride$);
     const policy = override ?? action;
-    const fullPolicies: PermissionPolicies = {
-      ...agentPermissionPolicies,
+    const fullPolicies: FirewallPolicies = {
+      ...agentFirewallPolicies,
       [ref]: {
-        ...agentPermissionPolicies?.[ref],
+        ...agentFirewallPolicies?.[ref],
         [permissionName]: policy,
       },
     };
-    await set(savePermissionPolicies$, agentId, fullPolicies, signal);
+    await set(saveFirewallPolicies$, agentId, fullPolicies, signal);
     set(internalAdminFocusedSaved$, true);
   },
 );

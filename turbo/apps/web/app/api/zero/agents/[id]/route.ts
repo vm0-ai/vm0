@@ -36,7 +36,7 @@ function agentResponseBody(
     displayName: agent?.displayName ?? null,
     sound: agent?.sound ?? null,
     avatarUrl: agent?.avatarUrl ?? null,
-    permissionPolicies: agent?.permissionPolicies ?? null,
+    firewallPolicies: agent?.firewallPolicies ?? null,
     customSkills: agent?.customSkills ?? [],
   };
 }

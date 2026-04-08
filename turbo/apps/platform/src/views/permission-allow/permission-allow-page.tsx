@@ -11,10 +11,10 @@ import {
   IconX,
 } from "@tabler/icons-react";
 import {
-  isPermissionConnectorType,
+  isFirewallConnectorType,
   CONNECTOR_TYPES,
-  getDefaultPermissionPolicies,
-  type PermissionPolicies,
+  getDefaultFirewallPolicies,
+  type FirewallPolicies,
 } from "@vm0/core";
 import { user$ } from "../../signals/auth.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
@@ -137,7 +137,7 @@ function ConnectorPermissionCard({
     <div className="w-full rounded-lg border border-border px-4 py-3">
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-2 border-b border-border/70 pb-4 pt-1">
-          {isPermissionConnectorType(connectorRef) && (
+          {isFirewallConnectorType(connectorRef) && (
             <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px] bg-muted/40">
               <ConnectorIcon type={connectorRef} size={20} />
             </span>
@@ -639,7 +639,7 @@ function DoctorModeView({
   path: string | null;
   canManagePermissions: boolean;
   agent: {
-    permissionPolicies: PermissionPolicies | null;
+    permissionPolicies: FirewallPolicies | null;
     displayName: string | null;
     avatarUrl: string | null;
   };
@@ -656,8 +656,8 @@ function DoctorModeView({
   const agentDisplayName = agent.displayName ?? agentId;
 
   // Check effective policy
-  const defaults = isPermissionConnectorType(ref)
-    ? getDefaultPermissionPolicies(ref)
+  const defaults = isFirewallConnectorType(ref)
+    ? getDefaultFirewallPolicies(ref)
     : null;
   const effectivePolicy =
     agent.permissionPolicies?.[ref]?.[permission.name] ??
@@ -683,7 +683,7 @@ function DoctorModeView({
             ref,
             permissionName: permission.name,
             action,
-            agentPermissionPolicies: agent.permissionPolicies,
+            agentFirewallPolicies: agent.permissionPolicies,
           },
           pageSignal,
         ),
@@ -899,7 +899,7 @@ export function PermissionAllowPage() {
     return <ErrorMessage message="Missing permission in URL parameters" />;
   }
 
-  if (!isPermissionConnectorType(ref)) {
+  if (!isFirewallConnectorType(ref)) {
     return <ErrorMessage message={`Unknown permission: ${ref}`} />;
   }
 

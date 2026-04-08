@@ -104,7 +104,7 @@ const router = tsr.router(zeroAgentsMainContract, {
         displayName: body.displayName ?? null,
         sound: body.sound ?? null,
         avatarUrl: body.avatarUrl ?? null,
-        permissionPolicies: null,
+        firewallPolicies: null,
         customSkills,
       },
     };
@@ -128,7 +128,7 @@ const router = tsr.router(zeroAgentsMainContract, {
         description: zeroAgents.description,
         sound: zeroAgents.sound,
         avatarUrl: zeroAgents.avatarUrl,
-        permissionPolicies: zeroAgents.permissionPolicies,
+        firewallPolicies: zeroAgents.firewallPolicies,
         customSkills: zeroAgents.customSkills,
       })
       .from(zeroAgents)
@@ -146,7 +146,7 @@ const router = tsr.router(zeroAgentsMainContract, {
           description: row.description ?? null,
           sound: row.sound ?? null,
           avatarUrl: row.avatarUrl ?? null,
-          permissionPolicies: row.permissionPolicies ?? null,
+          firewallPolicies: row.firewallPolicies ?? null,
           customSkills: row.customSkills,
         };
       }),
