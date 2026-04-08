@@ -77,7 +77,7 @@ describe("PUT /api/zero/firewall-policies", () => {
     const created = await createRes.json();
 
     const policies = {
-      github: { "issues:read": "allow", "issues:write": "deny" },
+      slack: { "channels:read": "allow", "chat:write": "deny" },
     };
 
     const response = await putPolicies(
@@ -111,7 +111,7 @@ describe("PUT /api/zero/firewall-policies", () => {
   it("should overwrite previous policies", async () => {
     const created = await (await postAgent({}, testCliToken)).json();
 
-    const first = { github: { "issues:read": "allow" } };
+    const first = { slack: { "channels:read": "allow" } };
     await putPolicies(created.agentId, { policies: first }, testCliToken);
 
     const second = { slack: { "channels:read": "deny" } };
@@ -143,7 +143,7 @@ describe("PUT /api/zero/firewall-policies", () => {
       role: "admin",
     });
 
-    const policies = { github: { "issues:read": "allow" } };
+    const policies = { slack: { "channels:read": "allow" } };
     const response = await putPolicies(
       created.agentId,
       { policies },
@@ -174,7 +174,7 @@ describe("PUT /api/zero/firewall-policies", () => {
 
     const response = await putPolicies(
       created.agentId,
-      { policies: { github: { "issues:read": "allow" } } },
+      { policies: { slack: { "channels:read": "allow" } } },
       otherMemberToken,
     );
 
@@ -194,7 +194,7 @@ describe("PUT /api/zero/firewall-policies", () => {
 
     const created = await (await postAgent({}, testCliToken)).json();
 
-    const policies = { github: { "issues:read": "allow" } };
+    const policies = { slack: { "channels:read": "allow" } };
     const response = await putPolicies(
       created.agentId,
       { policies },
@@ -226,7 +226,7 @@ describe("PUT /api/zero/firewall-policies", () => {
 
     const response = await putPolicies(
       created.agentId,
-      { policies: { github: { "totally-fake-permission": "allow" } } },
+      { policies: { slack: { "totally-fake-permission": "allow" } } },
       testCliToken,
     );
 
@@ -239,7 +239,7 @@ describe("PUT /api/zero/firewall-policies", () => {
   it("should return 404 for nonexistent agent", async () => {
     const response = await putPolicies(
       "00000000-0000-0000-0000-000000000000",
-      { policies: { github: { "issues:read": "allow" } } },
+      { policies: { slack: { "channels:read": "allow" } } },
       testCliToken,
     );
 
@@ -284,7 +284,7 @@ describe("PUT /api/zero/firewall-policies", () => {
   it("should return full agent response shape", async () => {
     const created = await (await postAgent({}, testCliToken)).json();
 
-    const policies = { github: { "issues:read": "allow" } };
+    const policies = { slack: { "channels:read": "allow" } };
     const response = await putPolicies(
       created.agentId,
       { policies },
@@ -306,7 +306,7 @@ describe("PUT /api/zero/firewall-policies", () => {
     const agent1 = await (await postAgent({}, testCliToken)).json();
     const agent2 = await (await postAgent({}, testCliToken)).json();
 
-    const policies1 = { github: { "issues:read": "allow" } };
+    const policies1 = { slack: { "channels:read": "allow" } };
     const policies2 = { slack: { "channels:read": "deny" } };
 
     await putPolicies(agent1.agentId, { policies: policies1 }, testCliToken);

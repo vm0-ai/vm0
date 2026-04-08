@@ -102,7 +102,7 @@ describe("fw-d-001: agent ID renders from signal", () => {
     mockFirewallRequests();
     await setupPage({
       context,
-      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read&action=deny`,
+      path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=channels:read&action=deny`,
     });
     await waitFor(() => {
       expect(
@@ -118,7 +118,7 @@ describe("fw-d-005: agent display name renders", () => {
     mockFirewallRequests();
     await setupPage({
       context,
-      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read&action=deny`,
+      path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=channels:read&action=deny`,
     });
     await waitFor(() => {
       expect(screen.getAllByText(/My Smart Bot/).length).toBeGreaterThanOrEqual(
@@ -132,7 +132,7 @@ describe("fw-d-005: agent display name renders", () => {
     mockFirewallRequests();
     await setupPage({
       context,
-      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read&action=deny`,
+      path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=channels:read&action=deny`,
     });
     await waitFor(() => {
       expect(
@@ -177,7 +177,7 @@ describe("fw-d-007: loading state shows while agent loads", () => {
 
     detachedSetupPage({
       context,
-      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read`,
+      path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=channels:read`,
     });
 
     // The LoadingCard renders a spinner (animate-spin) — no text.
@@ -213,7 +213,7 @@ describe("fw-d-008: error state shows when agent load fails", () => {
 
     detachedSetupPage({
       context,
-      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read`,
+      path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=channels:read`,
     });
 
     await waitFor(() => {
@@ -228,7 +228,7 @@ describe("fw-d-009: member request form renders for non-owner", () => {
     mockFirewallRequests();
     await setupPage({
       context,
-      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read&action=deny`,
+      path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=channels:read&action=deny`,
     });
     await waitFor(() => {
       expect(screen.getByText(/requesting approval/)).toBeInTheDocument();
