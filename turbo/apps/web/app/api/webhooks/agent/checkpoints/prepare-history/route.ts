@@ -7,7 +7,7 @@ import { webhookCheckpointsPrepareHistoryContract } from "@vm0/core";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import { blobs } from "../../../../../../src/db/schema/blob";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { getSandboxAuthForRun } from "../../../../../../src/lib/auth/get-sandbox-auth";
 import {
   generatePresignedPutUrl,
@@ -93,6 +93,16 @@ const router = tsr.router(webhookCheckpointsPrepareHistoryContract, {
       3600,
       true, // usePublicEndpoint for sandbox access
     );
+
+    // Pre-register the blob record with the correct size.
+    // The subsequent checkpoint call will increment refCount via registerSessionHistoryBlob.
+    await globalThis.services.db
+      .insert(blobs)
+      .values({ hash, size, refCount: 0 })
+      .onConflictDoUpdate({
+        target: blobs.hash,
+        set: { size },
+      });
 
     log.debug(`Presigned URL generated for session history: hash=${hash}`);
 

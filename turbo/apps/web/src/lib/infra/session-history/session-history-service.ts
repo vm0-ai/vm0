@@ -13,7 +13,11 @@ const log = logger("session-history");
 
 /**
  * Register a session history blob that was uploaded directly to S3 via presigned URL.
- * Creates or updates the blob DB record for tracking (deduplication + ref counting).
+ * The blob record (with correct size) is pre-created by the prepare-history endpoint;
+ * this function increments refCount to track usage.
+ *
+ * Note: The guest-agent flow is sequential: prepare-history → S3 upload → checkpoint.
+ * The blob record and S3 object are guaranteed to exist before this is called.
  *
  * @param hash SHA-256 hash of the content (already verified by the caller)
  * @returns The hash
