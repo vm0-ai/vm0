@@ -3,7 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
   createUser,
-  deleteUserByEmail,
+  deleteStaleTestUsers,
   generatePassword,
   generateTestEmail,
 } from "./lib/clerk-api";
@@ -20,7 +20,7 @@ export default async function globalSetup(): Promise<void> {
   const email = generateTestEmail();
   const password = generatePassword();
 
-  await deleteUserByEmail(email);
+  await deleteStaleTestUsers();
   await createUser(email, password);
 
   await mkdir(path.dirname(CREDENTIALS_PATH), { recursive: true });
