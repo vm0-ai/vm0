@@ -79,16 +79,8 @@ export async function handleCallEnded(event: CallEndedEvent): Promise<void> {
 
   // Fetch transcript from AgentPhone
   const client = getAgentPhoneClient();
-  let transcriptText: string;
-  try {
-    const transcript = await client.calls.getCallTranscript({
-      call_id: callId,
-    });
-    transcriptText = formatTranscript(transcript);
-  } catch (err) {
-    log.error("Failed to fetch call transcript", { callId, error: err });
-    transcriptText = "[Transcript unavailable]";
-  }
+  const transcript = await client.calls.getCallTranscript({ call_id: callId });
+  const transcriptText = formatTranscript(transcript);
 
   // Build prompt and context
   const prompt = `Phone call from ${fromNumber}:\n\n${transcriptText}`;

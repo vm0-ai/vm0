@@ -3,6 +3,18 @@ import { orgMetadata } from "../../../db/schema/org-metadata";
 import { getAgentPhoneClient } from "./agentphone-client";
 import { logger } from "../../shared/logger";
 
+function toRecord(value: unknown): Record<string, unknown> {
+  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return {};
+}
+
+function toArray(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value;
+  return [];
+}
+
 const log = logger("phone:calls");
 
 /**
@@ -36,7 +48,7 @@ export async function createOutboundCall(
     systemPrompt: opts?.systemPrompt ?? undefined,
   });
 
-  const callResult = result as unknown as Record<string, unknown>;
+  const callResult = toRecord(result);
   const callId =
     typeof callResult.id === "string"
       ? callResult.id
@@ -70,7 +82,7 @@ export async function listPhoneCalls(
     .limit(1);
 
   if (!org?.agentphoneAgentId) {
-    return { data: [], total: 0, hasMore: false };
+    throw new Error("Phone is not configured for this org");
   }
 
   const client = getAgentPhoneClient();
@@ -78,18 +90,16 @@ export async function listPhoneCalls(
     agent_id: org.agentphoneAgentId,
   });
 
-  const calls = result as unknown as Record<string, unknown>;
+  const calls = toRecord(result);
   const items = Array.isArray(calls.data)
-    ? calls.data
-    : Array.isArray(calls)
-      ? calls
+    ? toArray(calls.data)
+    : Array.isArray(result)
+      ? toArray(result)
       : [];
 
   const limit = opts?.limit ?? 20;
   const offset = opts?.offset ?? 0;
-  const sliced = items.slice(offset, offset + limit) as Array<
-    Record<string, unknown>
-  >;
+  const sliced = items.slice(offset, offset + limit).map(toRecord);
 
   return {
     data: sliced,
@@ -115,7 +125,7 @@ export async function getPhoneCallDetail(
     .limit(1);
 
   if (!org?.agentphoneAgentId) {
-    return null;
+    throw new Error("Phone is not configured for this org");
   }
 
   const client = getAgentPhoneClient();
@@ -126,7 +136,7 @@ export async function getPhoneCallDetail(
   ]);
 
   // Verify call belongs to this org's agent
-  const callData = call as unknown as Record<string, unknown>;
+  const callData = toRecord(call);
   if (
     callData.agentId !== org.agentphoneAgentId &&
     callData.agent_id !== org.agentphoneAgentId

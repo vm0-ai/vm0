@@ -4,9 +4,6 @@ import { initServices } from "../../../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../../../src/lib/zero/org/resolve-org";
 import { sendVerificationCode } from "../../../../../../src/lib/zero/phone/phone-verify-service";
-import { logger } from "../../../../../../src/lib/shared/logger";
-
-const log = logger("api:phone:verify:send");
 
 const sendSchema = z.object({
   phoneNumber: z.string().min(1),
@@ -45,18 +42,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
-  const result = await sendVerificationCode(
-    org.orgId,
-    authCtx.userId,
-    phoneNumber,
-  );
-  if (!result.success) {
-    log.warn("Verification send failed", {
-      error: result.error,
-      orgId: org.orgId,
-    });
-    return NextResponse.json({ error: result.error }, { status: 429 });
-  }
+  await sendVerificationCode(org.orgId, authCtx.userId, phoneNumber);
 
   return NextResponse.json({ success: true });
 }

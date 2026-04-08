@@ -7,9 +7,6 @@ import {
   createOutboundCall,
   listPhoneCalls,
 } from "../../../../src/lib/zero/phone/phone-calls-service";
-import { logger } from "../../../../src/lib/shared/logger";
-
-const log = logger("api:phone-calls");
 
 const createCallSchema = z.object({
   toNumber: z.string().regex(/^\+[1-9]\d{1,14}$/, "Use E.164 format"),
@@ -44,21 +41,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const { toNumber, greeting, systemPrompt } = parsed.data;
 
-  try {
-    const result = await createOutboundCall(org.orgId, toNumber, {
-      greeting,
-      systemPrompt,
-    });
-    return NextResponse.json(result, { status: 201 });
-  } catch (err) {
-    log.error("Failed to create outbound call", {
-      orgId: org.orgId,
-      error: err,
-    });
-    const message =
-      err instanceof Error ? err.message : "Failed to create call";
-    return NextResponse.json({ error: message }, { status: 400 });
-  }
+  const result = await createOutboundCall(org.orgId, toNumber, {
+    greeting,
+    systemPrompt,
+  });
+  return NextResponse.json(result, { status: 201 });
 }
 
 /**
@@ -82,14 +69,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   const limit = Number(url.searchParams.get("limit")) || 20;
   const offset = Number(url.searchParams.get("offset")) || 0;
 
-  try {
-    const result = await listPhoneCalls(org.orgId, { limit, offset });
-    return NextResponse.json(result);
-  } catch (err) {
-    log.error("Failed to list phone calls", { orgId: org.orgId, error: err });
-    return NextResponse.json(
-      { error: "Failed to list calls" },
-      { status: 500 },
-    );
-  }
+  const result = await listPhoneCalls(org.orgId, { limit, offset });
+  return NextResponse.json(result);
 }
