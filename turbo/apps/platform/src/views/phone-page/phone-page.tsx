@@ -168,6 +168,34 @@ export function PhonePage() {
           </div>
         )}
         {error && <p className="text-sm text-red-500">{error}</p>}
+        {status?.userPhone && (
+          <p className="text-muted-foreground text-sm">
+            To unsubscribe from phone notifications, remove your verified number
+            above.
+          </p>
+        )}
+        <p className="text-muted-foreground mt-2 text-xs">
+          By verifying your phone number, you agree to our{" "}
+          <a
+            href="https://vm0.ai/terms"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline"
+          >
+            Terms of Use
+          </a>{" "}
+          and{" "}
+          <a
+            href="https://vm0.ai/privacy"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline"
+          >
+            Privacy Policy
+          </a>
+          . You can unsubscribe at any time by removing your phone number on
+          this page.
+        </p>
       </section>
     </div>
   );
