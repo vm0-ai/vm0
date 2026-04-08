@@ -17,7 +17,15 @@ export function DefaultErrorFallback({ error }: ErrorFallbackProps) {
           </div>
 
           <div className="mt-2 w-80 text-center text-sm text-gray-500">
-            Give it another try or reach out&mdash;we&apos;re here to help.
+            Give it another try or reach out{" "}
+            <a
+              href="mailto:contact@vm0.ai"
+              className="text-blue-500 hover:underline"
+            >
+              support
+            </a>
+            <br />
+            We're here to help
           </div>
         </div>
       </div>

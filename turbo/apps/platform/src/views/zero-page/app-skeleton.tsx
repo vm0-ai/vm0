@@ -1,33 +1,15 @@
+import { useGet } from "ccstate-react";
 import { ZERO_AVATARS } from "./zero-avatars.ts";
-
-const LOADING_MESSAGES = [
-  "Warming up the neurons...",
-  "Brewing some ideas...",
-  "Getting things ready...",
-  "Almost there...",
-  "Loading your workspace...",
-  "Tuning the instruments...",
-  "Connecting the dots...",
-  "Spinning up the team...",
-] as const;
+import { skeletonMessages$ } from "../../signals/app-skeleton.ts";
 
 /** Pick once at module load so remounts don't flicker. */
 const AVATAR_INDEX = Math.floor(Math.random() * ZERO_AVATARS.length);
-const MSG_INDEX_1 = Math.floor(Math.random() * LOADING_MESSAGES.length);
-const MSG_INDEX_2 = (MSG_INDEX_1 + 1) % LOADING_MESSAGES.length;
-const STATIC_MSG = LOADING_MESSAGES[MSG_INDEX_1];
-const TYPEWRITER_MSG = LOADING_MESSAGES[MSG_INDEX_2];
-const CHAR_COUNT = TYPEWRITER_MSG.length;
 
-/**
- * CSS-only typewriter: hidden for the first 800ms (shows static msg),
- * then types out the second message over 1.5s with a blinking caret.
- * The static message hides at the same 800ms mark.
- */
+/** Static CSS — does not depend on message content. */
 const skeletonCSS = `
 @keyframes sk-typing {
   from { width: 0; }
-  to { width: ${CHAR_COUNT}ch; }
+  to { width: 100%; }
 }
 @keyframes sk-blink {
   0%, 100% { border-color: transparent; }
@@ -45,10 +27,17 @@ const skeletonCSS = `
 
 /**
  * Global loading screen shown during app bootstrap.
- * Shows a static message immediately; if loading takes >800ms,
- * swaps to a typewriter-animated second message.
+ * First cycle: a static message fades into a typewriter message.
+ * Subsequent cycles: continuous typewriter — each new message types out
+ * immediately after the previous one blinks for 3s.
+ *
+ * Cycling is started here and cancelled by hideAppSkeleton$ via resetSignal.
  */
 export function AppSkeleton({ visible = true }: { visible?: boolean }) {
+  const { staticMsg, typewriterMsg, isFirst, cycle } =
+    useGet(skeletonMessages$);
+  const charCount = typewriterMsg.length;
+
   return (
     <div
       data-testid="app-skeleton"
@@ -67,26 +56,37 @@ export function AppSkeleton({ visible = true }: { visible?: boolean }) {
           role="presentation"
           className="h-16 w-16 rounded-full object-cover object-top"
         />
-        <div className="relative h-6">
-          {/* Static message: visible immediately, hides at 800ms */}
+        <div key={cycle} className="relative h-6">
+          {/* Invisible spacer — sizes container to typewriter text width */}
           <p
-            className="text-base font-medium text-foreground/70 whitespace-nowrap"
-            style={{
-              animation: "sk-hide-static 800ms forwards",
-            }}
+            className="invisible text-base font-medium whitespace-nowrap"
+            aria-hidden="true"
           >
-            {STATIC_MSG}
+            {typewriterMsg}
           </p>
-          {/* Typewriter message: appears at 800ms, types over 1.5s */}
+          {/* Static message: only shown on first cycle */}
+          {isFirst && (
+            <p
+              className="absolute top-0 left-1/2 -translate-x-1/2 text-base font-medium text-foreground/70 whitespace-nowrap"
+              style={{
+                animation: "sk-hide-static 800ms forwards",
+              }}
+            >
+              {staticMsg}
+            </p>
+          )}
+          {/* Typewriter: delayed 800ms on first cycle, immediate on subsequent */}
           <p
             className="absolute inset-0 text-base font-medium text-foreground/70 overflow-hidden whitespace-nowrap border-r-2 border-current"
             style={{
               visibility: "hidden",
               width: 0,
-              animation: `sk-show-typewriter 800ms forwards, sk-typing 1.5s steps(${CHAR_COUNT}) 800ms forwards, sk-blink 0.6s step-end 800ms infinite`,
+              animation: isFirst
+                ? `sk-show-typewriter 800ms forwards, sk-typing 1.5s steps(${charCount}) 800ms forwards, sk-blink 0.6s step-end 800ms infinite`
+                : `sk-show-typewriter 0s forwards, sk-typing 1.5s steps(${charCount}) forwards, sk-blink 0.6s step-end infinite`,
             }}
           >
-            {TYPEWRITER_MSG}
+            {typewriterMsg}
           </p>
         </div>
       </div>

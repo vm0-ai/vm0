@@ -39,6 +39,8 @@ import { setupChatListPage$ } from "./zero-page/chat-list-page-setup.ts";
 import { setupLabPage$ } from "./lab-page/lab-page-setup.ts";
 import { setupNetworkInsightsPage$ } from "./network-insights/network-insights-page-setup.ts";
 import { initSlackOrg$ } from "./zero-page/zero-slack.ts";
+import { setupSkeletonPage$, setupErrorPage$ } from "./skeleton-page-setup.ts";
+import { startSkeletonCycling$ } from "./app-skeleton.ts";
 
 /**
  * Catch-all fallback — redirects unknown paths to /.
@@ -184,6 +186,14 @@ const ROUTE_CONFIG = [
     setup: setupInternalConnectorLogos$,
   },
   {
+    path: ROUTES.skeleton,
+    setup: setupSkeletonPage$,
+  },
+  {
+    path: ROUTES.error,
+    setup: setupErrorPage$,
+  },
+  {
     path: ROUTES.home,
     setup: setupAuthPageWrapper(setupHomePage$),
   },
@@ -238,6 +248,7 @@ export const bootstrap$ = command(
       set(setupGlobalMethod$, signal),
       set(setupClerk$, signal),
       set(setupRoutes$, signal),
+      set(startSkeletonCycling$, signal),
     ]);
     signal.throwIfAborted();
 
