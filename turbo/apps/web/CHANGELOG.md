@@ -1,5 +1,25 @@
 # Changelog
 
+## [12.204.1](https://github.com/vm0-ai/vm0/compare/web-v12.204.0...web-v12.204.1) (2026-04-08)
+
+
+### Bug Fixes
+
+* **model-providers:** use hyphenated model ids to match anthropic api format ([#8511](https://github.com/vm0-ai/vm0/issues/8511)) ([1bcd1e6](https://github.com/vm0-ai/vm0/commit/1bcd1e67f54105831b71182482488f21871ee25d))
+* split permission-change into its own line in agent prompt ([#8503](https://github.com/vm0-ai/vm0/issues/8503)) ([9734723](https://github.com/vm0-ai/vm0/commit/973472310708c6db3915e8085a0ba7308671d109))
+
+
+### Refactoring
+
+* **auth:** rename verify-membership-cached to get-member-role ([#8497](https://github.com/vm0-ai/vm0/issues/8497)) ([#8500](https://github.com/vm0-ai/vm0/issues/8500)) ([877fef9](https://github.com/vm0-ai/vm0/commit/877fef923c48aa6e6eeaf99a5bf0bc6523f9bd69))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.161.1
+
 ## [12.204.0](https://github.com/vm0-ai/vm0/compare/web-v12.203.0...web-v12.204.0) (2026-04-08)
 
 

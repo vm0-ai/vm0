@@ -239,6 +239,7 @@ const completeOnboarding$ = command(
       return undefined;
     }
     set(onboardingSubmitting$, true);
+    // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove try/finally — use useLoadableSet for loading state
     try {
       set(reloadBillingStatus$);
 

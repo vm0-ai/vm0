@@ -113,6 +113,7 @@ const hiddenConnectorTypes$ = computed((get): Set<ConnectorType> => {
   if (!raw) {
     return new Set();
   }
+  // eslint-disable-next-line no-restricted-syntax -- JSON.parse on untrusted localStorage data
   try {
     const arr = JSON.parse(raw) as string[];
     return new Set(arr as ConnectorType[]);
@@ -363,6 +364,7 @@ export const connectConnector$ = command(
       document.addEventListener("visibilitychange", onVisibilityChange);
     }
 
+    // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove try/finally — restructure event listener cleanup
     try {
       while (true) {
         if (!visibilityPollRequested) {

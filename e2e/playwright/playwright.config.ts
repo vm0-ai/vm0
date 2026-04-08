@@ -8,7 +8,9 @@ if (!process.env.VM0_API_URL) {
 export const STORAGE_STATE = path.join(__dirname, ".clerk", "user.json");
 
 export function deriveAppUrl(webUrl: string): string {
-  return webUrl.replace(/^(https?:\/\/)www\./, "$1app.");
+  // Handle preview URLs like https://pr-8510-www.vm6.ai -> https://pr-8510-app.vm6.ai
+  // and production URLs like https://www.vm7.ai -> https://app.vm7.ai
+  return webUrl.replace(/-www\./, "-app.").replace(/\/\/www\./, "//app.");
 }
 
 export default defineConfig({

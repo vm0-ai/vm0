@@ -6,6 +6,8 @@ Pure functions with no module-level state or I/O.
 import json
 from typing import NamedTuple
 
+from graphql_fields import extract_field_paths
+
 
 def match_host(host: str, pattern: str) -> dict | None:
     """Match a hostname against a pattern. Returns extracted params or None.
@@ -247,174 +249,6 @@ def parse_graphql_rule(rest: str) -> tuple[str, str | None, str | None, str | No
     return path, type_filter, op_filter, field_filter
 
 
-def _skip_string(s: str, i: int) -> int:
-    """Advance past a quoted string (handles escape sequences and block strings)."""
-    # Block string: """..."""
-    if s[i : i + 3] == '"""':
-        i += 3
-        while i < len(s):
-            if s[i : i + 3] == '"""':
-                return i + 3
-            i += 1
-        return i
-    # Regular string: "..."
-    quote = s[i]
-    i += 1
-    while i < len(s):
-        if s[i] == "\\":
-            i += 2  # skip escaped character
-        elif s[i] == quote:
-            return i + 1
-        else:
-            i += 1
-    return i
-
-
-def _skip_comment(s: str, i: int) -> int:
-    """Advance past a line comment (# to end of line)."""
-    while i < len(s) and s[i] != "\n":
-        i += 1
-    return i
-
-
-def _skip_spread(s: str, i: int) -> int:
-    """Advance past a fragment spread (...Name) or inline fragment (... on Type)."""
-    i += 3  # skip "..."
-    while i < len(s) and s[i].isspace():
-        i += 1
-    # Read first identifier (fragment name, or "on" for inline fragments)
-    j = i
-    while j < len(s) and (s[j].isalnum() or s[j] == "_"):
-        j += 1
-    ident = s[i:j]
-    i = j
-    # If it was "on", also skip the type name
-    if ident == "on":
-        while i < len(s) and s[i].isspace():
-            i += 1
-        while i < len(s) and (s[i].isalnum() or s[i] == "_"):
-            i += 1
-    return i
-
-
-def _skip_parens(s: str, i: int) -> int:
-    """Advance past balanced parentheses, respecting strings and comments."""
-    depth = 1
-    i += 1  # skip opening '('
-    while i < len(s) and depth > 0:
-        c = s[i]
-        if c == "(":
-            depth += 1
-            i += 1
-        elif c == ")":
-            depth -= 1
-            i += 1
-        elif c == '"':
-            i = _skip_string(s, i)
-        elif c == "#":
-            i = _skip_comment(s, i)
-        else:
-            i += 1
-    return i
-
-
-def _extract_top_level_fields(query_str: str) -> list[str]:
-    """Extract top-level selection field names from a GraphQL query string.
-
-    Parses just enough to find the operation body's opening brace and then
-    extracts identifiers at brace-depth 1.  Handles aliases
-    (``alias: fieldName``) by returning the field name, not the alias.
-
-    Properly skips string literals and parenthesized argument lists so that
-    values inside arguments cannot be mistaken for field names.
-    """
-    s = query_str.lstrip()
-    if not s:
-        return []
-
-    i = 0
-
-    # Skip operation keyword (query/mutation/subscription)
-    if s[0].isalpha():
-        while i < len(s) and s[i].isalpha():
-            i += 1
-        # Skip optional operation name
-        while i < len(s) and s[i].isspace():
-            i += 1
-        if i < len(s) and (s[i].isalpha() or s[i] == "_"):
-            while i < len(s) and (s[i].isalnum() or s[i] == "_"):
-                i += 1
-            while i < len(s) and s[i].isspace():
-                i += 1
-        # Skip optional variable definitions: ($var: Type, ...)
-        if i < len(s) and s[i] == "(":
-            i = _skip_parens(s, i)
-            while i < len(s) and s[i].isspace():
-                i += 1
-
-    # Skip optional directives (@skip, @include, etc.) before opening brace
-    while i < len(s) and s[i] == "@":
-        while i < len(s) and not s[i].isspace() and s[i] not in ("{", "("):
-            i += 1
-        if i < len(s) and s[i] == "(":
-            i = _skip_parens(s, i)
-        while i < len(s) and s[i].isspace():
-            i += 1
-
-    # Find opening brace of selection set
-    if i >= len(s) or s[i] != "{":
-        return []
-    i += 1  # skip '{'
-
-    fields: list[str] = []
-    depth = 1
-
-    while i < len(s) and depth > 0:
-        c = s[i]
-        if c == "{":
-            depth += 1
-            i += 1
-        elif c == "}":
-            depth -= 1
-            i += 1
-        elif c == '"':
-            i = _skip_string(s, i)
-        elif c == "#":
-            i = _skip_comment(s, i)
-        elif c == "(":
-            i = _skip_parens(s, i)
-        elif c == "." and i + 2 < len(s) and s[i + 1] == "." and s[i + 2] == ".":
-            i = _skip_spread(s, i)
-        elif depth == 1 and (c.isalpha() or c == "_"):
-            # Read identifier
-            j = i
-            while j < len(s) and (s[j].isalnum() or s[j] == "_"):
-                j += 1
-            ident = s[i:j]
-            i = j
-            # Skip whitespace
-            while i < len(s) and s[i].isspace():
-                i += 1
-            # Check if this is an alias (followed by ':')
-            if i < len(s) and s[i] == ":":
-                i += 1  # skip ':'
-                while i < len(s) and s[i].isspace():
-                    i += 1
-                # Read the actual field name
-                j = i
-                while j < len(s) and (s[j].isalnum() or s[j] == "_"):
-                    j += 1
-                if j > i:
-                    fields.append(s[i:j])
-                i = j
-            else:
-                fields.append(ident)
-        else:
-            i += 1
-
-    return fields
-
-
 def _match_wildcard(value: str, pattern: str) -> bool:
     """Match a value against a pattern with optional trailing wildcard."""
     if pattern.endswith("*"):
@@ -475,9 +309,9 @@ def match_graphql_body(
         if not _match_wildcard(op_name, op_filter):
             return False
 
-    # Match field name
+    # Match field name (supports dot-separated paths like "repository.issues")
     if field_filter is not None and query_str is not None:
-        fields = _extract_top_level_fields(query_str)
+        fields = extract_field_paths(query_str)
         if not fields:
             return False
         if not any(_match_wildcard(f, field_filter) for f in fields):

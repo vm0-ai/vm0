@@ -858,6 +858,7 @@ const sendChatMessageRequest$ = command(
     signal: AbortSignal,
   ): Promise<{ threadId: string; runId: string }> => {
     const client = get(zeroClient$)(chatMessagesContract);
+    // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove — use accept() error mapping
     try {
       const result = await accept(
         client.send({ body: message, fetchOptions: { signal } }),

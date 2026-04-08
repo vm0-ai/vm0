@@ -30,6 +30,7 @@ export const currentChatAgent$ = computed(async (get) => {
     return null;
   }
 
+  // eslint-disable-next-line no-restricted-syntax -- TODO(no-try): remove — use accept() multi-status [200, 404]
   try {
     return await get(agentById(agentId));
   } catch (error) {
