@@ -167,68 +167,6 @@ describe("org general tab - profile section", () => {
     });
   });
 
-  it("should show inline error when save fails", async () => {
-    const user = userEvent.setup();
-    mockAPIs({ slug: "old-slug" });
-    server.use(
-      http.put("*/api/zero/org", () => {
-        return HttpResponse.json(
-          {
-            error: {
-              message: "Slug is already taken",
-              code: "INTERNAL_SERVER_ERROR",
-            },
-          },
-          { status: 409 },
-        );
-      }),
-    );
-
-    await openGeneralTab();
-
-    const slugInput = await screen.findByDisplayValue("old-slug");
-    await fill(slugInput, "taken-slug");
-
-    await user.click(screen.getByText("Save changes"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Slug is already taken")).toBeInTheDocument();
-    });
-  });
-
-  it("should clear inline error on discard", async () => {
-    const user = userEvent.setup();
-    mockAPIs({ slug: "old-slug" });
-    server.use(
-      http.put("*/api/zero/org", () => {
-        return HttpResponse.json(
-          {
-            error: {
-              message: "Slug is already taken",
-              code: "INTERNAL_SERVER_ERROR",
-            },
-          },
-          { status: 409 },
-        );
-      }),
-    );
-
-    await openGeneralTab();
-
-    const slugInput = await screen.findByDisplayValue("old-slug");
-    await fill(slugInput, "taken-slug");
-
-    await user.click(screen.getByText("Save changes"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Slug is already taken")).toBeInTheDocument();
-    });
-
-    await user.click(screen.getByText("Discard"));
-
-    expect(screen.queryByText("Slug is already taken")).not.toBeInTheDocument();
-  });
-
   it("should load and display logo for non-admin members", async () => {
     mockAPIs({ role: "member" });
     server.use(

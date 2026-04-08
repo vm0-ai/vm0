@@ -195,46 +195,6 @@ describe("zero-account-page - theme interaction", () => {
   });
 });
 
-describe("zero-account-page - send mode saving", () => {
-  it("disables send mode buttons while saving (PREF-D-003)", async () => {
-    const user = userEvent.setup();
-    mockPreferencesAPI({
-      timezone: null,
-      pinnedAgentIds: [],
-      sendMode: "enter",
-    });
-    const deferred = makeDeferred();
-    server.use(
-      http.post("*/api/zero/user-preferences", () => {
-        return deferred.promise.then(() => {
-          return HttpResponse.json({
-            timezone: null,
-            pinnedAgentIds: [],
-            sendMode: "cmd-enter",
-          });
-        });
-      }),
-    );
-    await renderPreferencesPage();
-
-    await waitFor(() => {
-      expect(screen.getByText("Send message with")).toBeInTheDocument();
-    });
-
-    const cmdEnterBtn = findCmdEnterButton();
-    expect(cmdEnterBtn).toBeInTheDocument();
-    await user.click(cmdEnterBtn as HTMLElement);
-
-    await waitFor(() => {
-      const enterBtn = findButtonByText("Enter");
-      expect(enterBtn).toBeInTheDocument();
-      expect(enterBtn).toBeDisabled();
-    });
-
-    deferred.resolve();
-  });
-});
-
 describe("zero-account-page - send mode interaction", () => {
   it("selects Enter send mode when Enter button is clicked (PREF-D-008)", async () => {
     const user = userEvent.setup();

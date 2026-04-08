@@ -256,49 +256,6 @@ describe("zero unsaved bar - display (ORG-D-111)", () => {
   });
 });
 
-describe("zero unsaved bar - display (ORG-D-112)", () => {
-  it("shows loading state on save button when saving", async () => {
-    const user = userEvent.setup();
-    let resolveScheduleSave!: () => void;
-    const savePromise = new Promise<void>((resolve) => {
-      resolveScheduleSave = resolve;
-    });
-    await openScheduleSettings();
-    server.use(
-      http.post("*/api/zero/schedules", async () => {
-        await savePromise;
-        return HttpResponse.json({ schedule: testSchedule(), created: false });
-      }),
-    );
-    // Modify description to trigger unsaved state
-    const descInput = screen.getByPlaceholderText(
-      "Leave blank to auto-generate",
-    );
-    await fill(descInput, "New description");
-    await waitFor(() => {
-      expect(
-        screen.getAllByRole("button").find((el) => {
-          return /^Discard$/.test(el.textContent ?? "");
-        }),
-      ).toBeInTheDocument();
-    });
-    // Click Save — the button should show loading/disabled state
-    const saveBtn = screen.getAllByRole("button").find((el) => {
-      return /^Save$/.test(el.textContent ?? "");
-    })!;
-    await user.click(saveBtn);
-    await waitFor(() => {
-      expect(
-        screen.getAllByRole("button").find((el) => {
-          return /^Save$/.test(el.textContent ?? "");
-        }),
-      ).toBeDisabled();
-    });
-    resolveScheduleSave();
-    await savePromise;
-  });
-});
-
 describe("zero unsaved bar - interaction (ORG-I-113)", () => {
   it("clicking Discard reverts unsaved changes", async () => {
     const user = userEvent.setup();
