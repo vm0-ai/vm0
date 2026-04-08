@@ -248,7 +248,16 @@ def parse_graphql_rule(rest: str) -> tuple[str, str | None, str | None, str | No
 
 
 def _skip_string(s: str, i: int) -> int:
-    """Advance past a quoted string (handles escape sequences)."""
+    """Advance past a quoted string (handles escape sequences and block strings)."""
+    # Block string: """..."""
+    if s[i : i + 3] == '"""':
+        i += 3
+        while i < len(s):
+            if s[i : i + 3] == '"""':
+                return i + 3
+            i += 1
+        return i
+    # Regular string: "..."
     quote = s[i]
     i += 1
     while i < len(s):
@@ -261,8 +270,35 @@ def _skip_string(s: str, i: int) -> int:
     return i
 
 
+def _skip_comment(s: str, i: int) -> int:
+    """Advance past a line comment (# to end of line)."""
+    while i < len(s) and s[i] != "\n":
+        i += 1
+    return i
+
+
+def _skip_spread(s: str, i: int) -> int:
+    """Advance past a fragment spread (...Name) or inline fragment (... on Type)."""
+    i += 3  # skip "..."
+    while i < len(s) and s[i].isspace():
+        i += 1
+    # Read first identifier (fragment name, or "on" for inline fragments)
+    j = i
+    while j < len(s) and (s[j].isalnum() or s[j] == "_"):
+        j += 1
+    ident = s[i:j]
+    i = j
+    # If it was "on", also skip the type name
+    if ident == "on":
+        while i < len(s) and s[i].isspace():
+            i += 1
+        while i < len(s) and (s[i].isalnum() or s[i] == "_"):
+            i += 1
+    return i
+
+
 def _skip_parens(s: str, i: int) -> int:
-    """Advance past balanced parentheses, respecting strings."""
+    """Advance past balanced parentheses, respecting strings and comments."""
     depth = 1
     i += 1  # skip opening '('
     while i < len(s) and depth > 0:
@@ -273,8 +309,10 @@ def _skip_parens(s: str, i: int) -> int:
         elif c == ")":
             depth -= 1
             i += 1
-        elif c in ('"', "'"):
+        elif c == '"':
             i = _skip_string(s, i)
+        elif c == "#":
+            i = _skip_comment(s, i)
         else:
             i += 1
     return i
@@ -339,10 +377,14 @@ def _extract_top_level_fields(query_str: str) -> list[str]:
         elif c == "}":
             depth -= 1
             i += 1
-        elif c in ('"', "'"):
+        elif c == '"':
             i = _skip_string(s, i)
+        elif c == "#":
+            i = _skip_comment(s, i)
         elif c == "(":
             i = _skip_parens(s, i)
+        elif c == "." and i + 2 < len(s) and s[i + 1] == "." and s[i + 2] == ".":
+            i = _skip_spread(s, i)
         elif depth == 1 and (c.isalpha() or c == "_"):
             # Read identifier
             j = i

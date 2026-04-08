@@ -2421,3 +2421,73 @@ class TestGraphQLFieldMatching:
             body=body,
         )
         assert isinstance(result, FirewallBlock)
+
+    def test_field_comment_not_extracted(self):
+        """Field names inside comments must NOT be extracted."""
+        body = _gql_body(
+            'mutation {\n  deleteRepo(id: "1") { id }\n  # createIssue\n}',
+            "DeleteRepo",
+        )
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallBlock)
+
+    def test_field_block_string_not_extracted(self):
+        """Field names inside block strings must NOT be extracted."""
+        body = _gql_body(
+            'mutation { deleteRepo(desc: """createIssue""") { id } }',
+            "DeleteRepo",
+        )
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallBlock)
+
+    def test_field_fragment_spread_not_extracted(self):
+        """Fragment spread names must NOT be extracted as field names."""
+        body = _gql_body(
+            "mutation { ...MutationFields }",
+            "BatchOp",
+        )
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL type:mutation field:MutationFields"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallBlock)
+
+    def test_field_inline_fragment_not_extracted(self):
+        """Inline fragment type names must NOT be extracted as field names."""
+        body = _gql_body(
+            "mutation { ... on Mutation { createIssue(input: {}) { id } } }",
+            "Op",
+        )
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL type:mutation field:Mutation"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallBlock)
+
+    def test_field_comment_in_args_not_extracted(self):
+        """Comments inside arguments must not leak field names."""
+        body = _gql_body(
+            'mutation {\n  deleteRepo(\n    # createIssue\n    id: "1"\n  ) { id }\n}',
+            "DeleteRepo",
+        )
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallBlock)
