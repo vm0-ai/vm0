@@ -230,6 +230,149 @@ describe("Feature: Format Context With Image Upload", () => {
     });
   });
 
+  describe("Scenario: Upload video files with ffmpeg hint", () => {
+    it("should include ffmpeg frame extraction instructions for MP4 video", async () => {
+      const videoContent = Buffer.from("fake-mp4-content");
+
+      const downloadHandler = http.get(
+        "https://files.slack.com/download/recording.mp4",
+        () => {
+          return new HttpResponse(videoContent, {
+            headers: { "content-type": "video/mp4" },
+          });
+        },
+      );
+      server.use(downloadHandler.handler);
+
+      const messages = [
+        {
+          user: "U123",
+          text: "Check this recording",
+          ts: "1234567890.001",
+          files: [
+            {
+              id: "FVID1",
+              name: "recording.mp4",
+              mimetype: "video/mp4",
+              filetype: "mp4",
+              original_w: "1920",
+              original_h: "1080",
+              url_private_download:
+                "https://files.slack.com/download/recording.mp4",
+            },
+          ],
+        },
+      ];
+
+      const result = await formatContextForAgentWithImages(
+        messages,
+        "xoxb-test-token",
+        "test-session-123",
+        "BBOT123",
+        "thread",
+      );
+
+      expect(context.mocks.s3.uploadS3Buffer).toHaveBeenCalledWith(
+        "test-bucket",
+        expect.stringContaining("slack-files/test-session-123/"),
+        expect.any(Buffer),
+        "video/mp4",
+      );
+      expect(result).toContain("[file]: recording.mp4 (video/mp4)");
+      expect(result).toContain("Dimensions: 1920x1080");
+      expect(result).toContain(
+        'Download: curl -sS -o /tmp/FVID1.mp4 "https://mock-presigned-url"',
+      );
+      expect(result).toContain("Video: To analyze this video");
+      expect(result).toContain(
+        'ffmpeg -i /tmp/FVID1.mp4 -vf "fps=1" -q:v 2 /tmp/FVID1_frame_%03d.jpg',
+      );
+    });
+
+    it("should include ffmpeg hint for QuickTime MOV files", async () => {
+      const videoContent = Buffer.from("fake-mov-content");
+
+      const downloadHandler = http.get(
+        "https://files.slack.com/download/screen.mov",
+        () => {
+          return new HttpResponse(videoContent, {
+            headers: { "content-type": "video/quicktime" },
+          });
+        },
+      );
+      server.use(downloadHandler.handler);
+
+      const messages = [
+        {
+          user: "U123",
+          text: "Screen recording",
+          ts: "1234567890.001",
+          files: [
+            {
+              id: "FVID2",
+              name: "screen.mov",
+              mimetype: "video/quicktime",
+              filetype: "mov",
+              url_private_download:
+                "https://files.slack.com/download/screen.mov",
+            },
+          ],
+        },
+      ];
+
+      const result = await formatContextForAgentWithImages(
+        messages,
+        "xoxb-test-token",
+        "test-session-123",
+      );
+
+      expect(result).toContain("[file]: screen.mov (video/quicktime)");
+      expect(result).toContain("Video: To analyze this video");
+      expect(result).toContain("ffmpeg -i /tmp/FVID2.mov");
+    });
+
+    it("should not include ffmpeg hint for non-video files", async () => {
+      const pdfContent = Buffer.from("%PDF-1.4 fake pdf content");
+
+      const downloadHandler = http.get(
+        "https://files.slack.com/download/doc.pdf",
+        () => {
+          return new HttpResponse(pdfContent, {
+            headers: { "content-type": "application/pdf" },
+          });
+        },
+      );
+      server.use(downloadHandler.handler);
+
+      const messages = [
+        {
+          user: "U123",
+          text: "Document",
+          ts: "1234567890.001",
+          files: [
+            {
+              id: "FDOC1",
+              name: "doc.pdf",
+              mimetype: "application/pdf",
+              filetype: "pdf",
+              url_private_download: "https://files.slack.com/download/doc.pdf",
+            },
+          ],
+        },
+      ];
+
+      const result = await formatContextForAgentWithImages(
+        messages,
+        "xoxb-test-token",
+        "test-session-123",
+      );
+
+      expect(result).toContain("[file]: doc.pdf (application/pdf)");
+      expect(result).not.toContain("ffmpeg");
+      expect(result).not.toContain("Video:");
+    });
+  });
+
   describe("Scenario: Handle download failures gracefully", () => {
     it("should fall back to URL when download fails", async () => {
       const downloadHandler = http.get(
