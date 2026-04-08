@@ -27,7 +27,7 @@ import {
 import { enqueueEmail } from "../../../../src/lib/zero/email/outbox-service";
 import { buildFromAddress } from "../../../../src/lib/zero/email/handlers/shared";
 import { getCachedUser } from "../../../../src/lib/auth/user-cache-service";
-import { getOrgIdentity } from "../../../../src/lib/auth/org-cache";
+import { getOrgNameAndSlug } from "../../../../src/lib/auth/org-cache";
 import { env } from "../../../../src/env";
 import { logger } from "../../../../src/lib/shared/logger";
 
@@ -385,7 +385,7 @@ const router = tsr.router(zeroDeveloperSupportContract, {
         .catch(() => {
           return userId;
         }),
-      getOrgIdentity(orgId)
+      getOrgNameAndSlug(orgId)
         .then((o) => {
           return o.name;
         })

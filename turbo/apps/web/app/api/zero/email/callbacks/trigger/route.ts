@@ -14,7 +14,7 @@ import {
   buildUnsubscribeHeaders,
 } from "../../../../../../src/lib/zero/email/handlers/shared";
 import { env } from "../../../../../../src/env";
-import { getOrgData } from "../../../../../../src/lib/zero/org/org-cache-service";
+import { getOrgNameAndSlug } from "../../../../../../src/lib/auth/org-cache";
 import type { EmailTriggerCallbackPayload } from "../../../../../../src/lib/infra/callback/callback-payloads";
 import { logger } from "../../../../../../src/lib/shared/logger";
 
@@ -142,7 +142,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   // Resolve org slug for from address
   const orgId = payload.runtimeOrgId ?? agent.orgId;
-  const org = await getOrgData(orgId);
+  const org = await getOrgNameAndSlug(orgId);
 
   // Get run output and session ID
   const logsUrl = buildLogsUrl(runId);

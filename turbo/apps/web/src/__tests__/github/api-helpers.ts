@@ -53,7 +53,7 @@ export async function givenGitHubInstallation(
   const githubUserId = String(Math.floor(Math.random() * 1_000_000_000));
   const orgSlug = uniqueId("org");
 
-  // Pre-populate org cache for getOrgData()
+  // Pre-populate org cache for getOrgNameAndSlug()
   const orgId = uniqueId("org");
   await globalThis.services.db
     .insert(orgCache)

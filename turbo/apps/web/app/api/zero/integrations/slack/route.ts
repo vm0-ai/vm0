@@ -21,7 +21,7 @@ import {
 import { listSecrets } from "../../../../../src/lib/zero/secret/secret-service";
 import { listVariables } from "../../../../../src/lib/zero/variable/variable-service";
 import { listConnectors } from "../../../../../src/lib/zero/connector/connector-service";
-import { getOrgData } from "../../../../../src/lib/zero/org/org-cache-service";
+import { getOrgNameAndSlug } from "../../../../../src/lib/auth/org-cache";
 import { createSlackClient } from "../../../../../src/lib/zero/slack";
 import { getApiUrl } from "../../../../../src/lib/infra/callback";
 import { publishAppHome } from "../../../../../src/lib/zero/slack/client";
@@ -253,7 +253,7 @@ async function getConnectedStatus(
       .limit(1);
 
     if (compose) {
-      agentOrgSlug = (await getOrgData(compose.orgId)).slug;
+      agentOrgSlug = (await getOrgNameAndSlug(compose.orgId)).slug;
 
       if (compose.headVersionId) {
         const [version] = await db

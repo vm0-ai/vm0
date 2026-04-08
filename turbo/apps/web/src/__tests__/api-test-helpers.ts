@@ -360,7 +360,7 @@ async function getTestAuthContext(): Promise<{
 /**
  * Create a test org by inserting into org_cache.
  *
- * Pre-populates org_cache so getOrgData() works without Clerk API calls.
+ * Pre-populates org_cache so getOrgNameAndSlug() works without Clerk API calls.
  *
  * @param slug - The org slug
  * @returns The created org with id and slug
@@ -373,7 +373,7 @@ export async function createTestOrg(
   // Use the mock Clerk orgId pattern from clerk-mock.ts
   const { orgId } = await getTestAuthContext();
 
-  // Pre-populate org_cache so getOrgData() works without Clerk API calls
+  // Pre-populate org_cache so getOrgNameAndSlug() works without Clerk API calls
   await globalThis.services.db
     .insert(orgCache)
     .values({
@@ -2878,7 +2878,7 @@ export async function createTestTelegramInstallation(options?: {
   const orgSlug = uniqueId("org");
   const orgId = uniqueId("org");
 
-  // Pre-populate org cache for getOrgData()
+  // Pre-populate org cache for getOrgNameAndSlug()
   await globalThis.services.db
     .insert(orgCache)
     .values({
