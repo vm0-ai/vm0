@@ -7,6 +7,7 @@ import { STORAGE_STATE, deriveAppUrl } from "./playwright.config";
 const CREDENTIALS_PATH = path.join(__dirname, ".clerk", "credentials.json");
 
 setup("authenticate and complete onboarding", async ({ page }) => {
+  setup.setTimeout(120_000);
   const raw = await readFile(CREDENTIALS_PATH, "utf-8");
   const { email, password } = JSON.parse(raw) as {
     email: string;
