@@ -29,6 +29,7 @@ import {
   setPollIntervalForTest$,
   setFibonacciDelaysForTest$,
 } from "../signals/zero-page/polling";
+import { setCycleDelaysMs$ } from "../signals/app-skeleton";
 import { setValidateResponseForTest$ } from "../signals/api-client";
 import { detach, Reason } from "../signals/utils";
 
@@ -60,6 +61,8 @@ export async function setupPage(options: {
     [10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10],
   );
   options.context.store.set(setValidateResponseForTest$, true);
+  // Use short delays so skeleton cycling doesn't block or slow tests.
+  options.context.store.set(setCycleDelaysMs$, 10, 10);
 
   createPushStateMock(options.context.signal);
   pushState({}, "", options.path);

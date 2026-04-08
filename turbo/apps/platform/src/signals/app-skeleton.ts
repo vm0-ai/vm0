@@ -25,8 +25,16 @@ const LOADING_MESSAGES = [
   "Spinning up the team...",
 ] as const;
 
-const FIRST_CYCLE_MS = 5300;
-const CYCLE_MS = 4500;
+const firstCycleMs$ = state(5300);
+const cycleMs$ = state(4500);
+
+/** Override cycling delays — use in tests to avoid real timers. */
+export const setCycleDelaysMs$ = command(
+  ({ set }, firstMs: number, ms: number) => {
+    set(firstCycleMs$, firstMs);
+    set(cycleMs$, ms);
+  },
+);
 
 const skeletonMsgIndex$ = state(
   Math.floor(Math.random() * LOADING_MESSAGES.length),
@@ -58,10 +66,10 @@ export const startSkeletonCycling$ = command(
   async ({ get, set }, parentSignal: AbortSignal) => {
     const signal = set(resetSkeletonCycling$, parentSignal);
     const isFirst = get(skeletonFirstCycle$);
-    await delay(isFirst ? FIRST_CYCLE_MS : CYCLE_MS, { signal });
+    await delay(isFirst ? get(firstCycleMs$) : get(cycleMs$), { signal });
     while (true) {
       set(cycleSkeletonMessage$);
-      await delay(CYCLE_MS, { signal });
+      await delay(get(cycleMs$), { signal });
     }
   },
 );
