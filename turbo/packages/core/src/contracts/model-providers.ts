@@ -74,7 +74,7 @@ export const MODEL_PROVIDER_TYPES = {
       ANTHROPIC_MODEL: "$model",
     } as Record<string, string>,
     models: ["claude-sonnet-4.6", "claude-opus-4.6"] as string[],
-    defaultModel: "",
+    defaultModel: "claude-sonnet-4.6",
   },
   "anthropic-api-key": {
     framework: "claude-code" as const,
@@ -88,7 +88,7 @@ export const MODEL_PROVIDER_TYPES = {
       ANTHROPIC_MODEL: "$model",
     } as Record<string, string>,
     models: ["claude-sonnet-4.6", "claude-opus-4.6"] as string[],
-    defaultModel: "",
+    defaultModel: "claude-sonnet-4.6",
   },
   "openrouter-api-key": {
     framework: "claude-code" as const,

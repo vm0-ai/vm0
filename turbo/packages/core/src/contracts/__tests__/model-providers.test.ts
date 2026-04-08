@@ -105,9 +105,9 @@ describe("model selection for Anthropic-native providers", () => {
   );
 
   it.each(["claude-code-oauth-token", "anthropic-api-key"] as const)(
-    "%s defaults to auto mode (empty string)",
+    "%s defaults to claude-sonnet-4.6",
     (type) => {
-      expect(getDefaultModel(type)).toBe("");
+      expect(getDefaultModel(type)).toBe("claude-sonnet-4.6");
     },
   );
 
