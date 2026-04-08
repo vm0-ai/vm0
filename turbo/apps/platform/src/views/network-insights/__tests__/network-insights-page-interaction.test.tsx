@@ -386,6 +386,53 @@ describe("network insights page - summary card", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Data refetch on navigation
+// ---------------------------------------------------------------------------
+
+describe("network insights page - data refetch", () => {
+  it("should fetch fresh data when navigating to insights page", async () => {
+    let callCount = 0;
+    server.use(
+      http.get("*/api/zero/insights", () => {
+        callCount++;
+        const agents =
+          callCount <= 1
+            ? [
+                {
+                  agentName: "InitialBot",
+                  agentId: "a-init",
+                  runs: 1,
+                  credits: 10,
+                },
+              ]
+            : [
+                {
+                  agentName: "RefreshedBot",
+                  agentId: "a-ref",
+                  runs: 2,
+                  credits: 20,
+                },
+              ];
+        return HttpResponse.json({
+          days: [sampleDay(day1Ago, { agents })],
+          totalCredits: 10,
+          totalRuns: 1,
+        });
+      }),
+    );
+
+    await setupPage({ context, path: "/insights" });
+
+    // The page setup calls reloadInsights$ which triggers a second fetch,
+    // so the UI should eventually show the refreshed data.
+    await waitFor(() => {
+      expect(screen.getByText("RefreshedBot")).toBeInTheDocument();
+    });
+    expect(callCount).toBeGreaterThanOrEqual(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Team usage in credits card
 // ---------------------------------------------------------------------------
 

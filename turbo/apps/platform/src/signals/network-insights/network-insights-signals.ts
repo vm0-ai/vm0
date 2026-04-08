@@ -121,9 +121,12 @@ export const setInsightsHoveredAgent$ = command(
 // Data fetching
 // ---------------------------------------------------------------------------
 
+const internalReloadInsights$ = state(0);
+
 /** Always fetch 30 days; display filtering is handled by the UI. */
 export const networkInsightsData$ = computed(
   async (get): Promise<NetworkInsightsData> => {
+    get(internalReloadInsights$);
     const client = get(zeroClient$)(zeroInsightsContract);
     const result = await client.get({ query: { days: 30 } });
     if (result.status !== 200) {
@@ -132,3 +135,10 @@ export const networkInsightsData$ = computed(
     return result.body as NetworkInsightsData;
   },
 );
+
+/** Trigger a re-fetch of insights data. */
+export const reloadInsights$ = command(({ set }) => {
+  set(internalReloadInsights$, (x) => {
+    return x + 1;
+  });
+});

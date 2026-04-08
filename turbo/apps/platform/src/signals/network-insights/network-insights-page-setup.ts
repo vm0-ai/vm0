@@ -6,6 +6,7 @@ import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import { reloadChatThreads$ } from "../agent-chat.ts";
+import { reloadInsights$ } from "./network-insights-signals.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 
 export const setupNetworkInsightsPage$ = command(
@@ -22,5 +23,6 @@ export const setupNetworkInsightsPage$ = command(
     }
 
     set(reloadChatThreads$);
+    set(reloadInsights$);
   },
 );
