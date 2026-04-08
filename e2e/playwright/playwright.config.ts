@@ -7,6 +7,10 @@ if (!process.env.VM0_API_URL) {
 
 export const STORAGE_STATE = path.join(__dirname, ".clerk", "user.json");
 
+export function deriveAppUrl(webUrl: string): string {
+  return webUrl.replace(/^(https?:\/\/)www\./, "$1app.");
+}
+
 export default defineConfig({
   testDir: ".",
   globalSetup: "./global-setup",
