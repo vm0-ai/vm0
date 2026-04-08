@@ -15,14 +15,14 @@ interface OrgIdentity {
 }
 
 /**
- * Get org identity (slug, name) from cache or Clerk API.
+ * Get org name and slug from cache or Clerk API.
  *
  * **WARNING: This function may call the Clerk API on cache miss (1-min TTL),
  * adding 500-700ms of latency.**
  *
  * - slug, name: cached from Clerk (org_cache, 1-min TTL)
  */
-export async function getOrgIdentity(orgId: string): Promise<OrgIdentity> {
+export async function getOrgNameAndSlug(orgId: string): Promise<OrgIdentity> {
   const db = globalThis.services.db;
 
   // Check slug cache
@@ -64,7 +64,7 @@ export async function getOrgIdentity(orgId: string): Promise<OrgIdentity> {
 }
 
 /**
- * Invalidate (delete) an org_cache entry so the next getOrgIdentity call
+ * Invalidate (delete) an org_cache entry so the next getOrgNameAndSlug call
  * re-fetches from Clerk. Used after mutations that change org data
  * (e.g. slug updates) to avoid returning stale cached values.
  */
@@ -74,13 +74,12 @@ export async function invalidateOrgCache(orgId: string): Promise<void> {
 }
 
 /**
- * Get org identity by slug from cache or Clerk API (reverse lookup).
+ * Look up an org's ID by slug from cache or Clerk API (reverse lookup).
  *
- * Returns null when the slug does not exist in Clerk.
+ * Returns the orgId, or null when the slug does not exist in Clerk.
+ * The org_cache is still populated as a side effect.
  */
-export async function getOrgIdentityBySlug(
-  slug: string,
-): Promise<OrgIdentity | null> {
+export async function getOrgIdBySlug(slug: string): Promise<string | null> {
   const db = globalThis.services.db;
 
   // Check slug cache
@@ -91,7 +90,7 @@ export async function getOrgIdentityBySlug(
     .limit(1);
 
   if (cached && Date.now() - cached.cachedAt.getTime() < CACHE_TTL_MS) {
-    return { orgId: cached.orgId, slug: cached.slug, name: cached.name };
+    return cached.orgId;
   }
 
   // Fetch from Clerk by slug
@@ -128,5 +127,5 @@ export async function getOrgIdentityBySlug(
     slug: clerkOrg.slug,
   });
 
-  return { orgId: clerkOrg.id, slug: clerkOrg.slug, name: clerkOrg.name };
+  return clerkOrg.id;
 }

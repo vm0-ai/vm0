@@ -6,6 +6,7 @@ import {
   useLastResolved,
   useResolved,
 } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   IconAlertCircle,
@@ -45,6 +46,7 @@ import avatar1Img from "./assets/avatar_1.webp";
 import {
   pinnedAgentIds$,
   updatePinnedAgentIds$,
+  currentChatAgentPinned$,
 } from "../../signals/zero-page/zero-pinned-agents.ts";
 
 import {
@@ -134,16 +136,11 @@ function ChatThreadHeader() {
   const pageSignal = useGet(pageSignal$);
 
   // Pin pill
-  const pinnedLoadable = useLastLoadable(pinnedAgentIds$);
-  const pinnedIds = (
-    pinnedLoadable.state === "hasData" ? pinnedLoadable.data : []
-  ).filter((id): id is string => {
-    return id !== null;
-  });
-  const savePinnedIds = useSet(updatePinnedAgentIds$);
-  const showPinPill =
-    typeof currentChatAgentId === "string" &&
-    !pinnedIds.includes(currentChatAgentId);
+  const pinnedIds = useLastResolved(pinnedAgentIds$) ?? [];
+  const pinnedStatus = useLastResolved(currentChatAgentPinned$);
+  const showPinPill = pinnedStatus === false;
+  const [pinLoadable, savePinnedIds] = useLoadableSet(updatePinnedAgentIds$);
+  const pinSaving = pinLoadable.state === "loading";
   const handlePin = () => {
     if (currentChatAgentId) {
       detach(
@@ -195,7 +192,8 @@ function ChatThreadHeader() {
                   <button
                     type="button"
                     onClick={handlePin}
-                    className="absolute -top-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full zero-border bg-background text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground hover:shadow-md cursor-pointer"
+                    disabled={pinSaving}
+                    className="absolute -top-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full zero-border bg-background text-muted-foreground shadow-sm transition-colors hover:bg-accent hover:text-foreground hover:shadow-md cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
                     aria-label="Pin to sidebar"
                   >
                     <IconPin size={10} stroke={2} />

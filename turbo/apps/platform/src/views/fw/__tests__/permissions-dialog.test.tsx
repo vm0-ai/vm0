@@ -12,7 +12,7 @@ const context = testContext();
 function mockAPIs({
   connectorType = "slack" as ConnectorType,
   ownerId = "test-user-123",
-  firewallPolicies = null as Record<string, Record<string, string>> | null,
+  permissionPolicies = null as Record<string, Record<string, string>> | null,
 } = {}) {
   server.use(
     http.get("*/api/zero/team", () => {
@@ -52,7 +52,7 @@ function mockAPIs({
         sound: null,
         avatarUrl: null,
         connectors: [],
-        firewallPolicies,
+        permissionPolicies,
       });
     }),
     http.get("*/api/zero/agents/:name/instructions", () => {
@@ -84,7 +84,7 @@ function mockAPIs({
     http.get("*/api/zero/agents/:id/user-connectors", () => {
       return HttpResponse.json({ enabledTypes: [connectorType] });
     }),
-    http.put("*/api/zero/firewall-policies", async ({ request }) => {
+    http.put("*/api/zero/permission-policies", async ({ request }) => {
       const body = (await request.json()) as {
         agentId: string;
         policies: Record<string, Record<string, string>>;
@@ -96,7 +96,7 @@ function mockAPIs({
         displayName: "My Agent",
         sound: null,
         avatarUrl: null,
-        firewallPolicies: body.policies,
+        permissionPolicies: body.policies,
         customSkills: [],
       });
     }),
@@ -133,7 +133,7 @@ async function openPermissionsDrawer(connectorLabel: string) {
   return user;
 }
 
-describe("firewall permissions dialog - flat list connector (Notion)", () => {
+describe("permissions dialog - flat list connector (Notion)", () => {
   it("renders permission names and descriptions in flat list (FW-D-031)", async () => {
     mockAPIs({ connectorType: "notion" });
     await setupPage({ context, path: "/agents/my-agent" });
@@ -148,7 +148,7 @@ describe("firewall permissions dialog - flat list connector (Notion)", () => {
   it("shows policy status for each permission (FW-D-033)", async () => {
     mockAPIs({
       connectorType: "notion",
-      firewallPolicies: { notion: { insert_comments: "deny" } },
+      permissionPolicies: { notion: { insert_comments: "deny" } },
     });
     await setupPage({ context, path: "/agents/my-agent" });
     await openPermissionsDrawer("Notion");
@@ -186,7 +186,7 @@ describe("firewall permissions dialog - flat list connector (Notion)", () => {
   });
 });
 
-describe("firewall permissions dialog - grouped connector (Slack)", () => {
+describe("permissions dialog - grouped connector (Slack)", () => {
   it("renders group categories with permission counts (FW-D-032)", async () => {
     mockAPIs({ connectorType: "slack" });
     await setupPage({ context, path: "/agents/my-agent" });
@@ -225,7 +225,7 @@ describe("firewall permissions dialog - grouped connector (Slack)", () => {
     let putCalled = false;
     mockAPIs({ connectorType: "slack" });
     server.use(
-      http.put("*/api/zero/firewall-policies", () => {
+      http.put("*/api/zero/permission-policies", () => {
         putCalled = true;
         return HttpResponse.json({
           agentId: "e0000000-0000-4000-a000-000000000010",
@@ -234,7 +234,7 @@ describe("firewall permissions dialog - grouped connector (Slack)", () => {
           displayName: "My Agent",
           sound: null,
           avatarUrl: null,
-          firewallPolicies: {},
+          permissionPolicies: {},
           customSkills: [],
         });
       }),

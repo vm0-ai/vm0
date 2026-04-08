@@ -68,8 +68,8 @@ const unifiedRunRequestSchema = z.object({
   // How the run was triggered (defaults to "cli" on the server if not provided)
   triggerSource: triggerSourceSchema.optional(),
 
-  // Per-permission firewall policies (e.g., { "github": { "actions:read": "allow" } })
-  firewallPolicies: firewallPoliciesSchema.optional(),
+  // Per-permission policies (e.g., { "github": { "actions:read": "allow" } })
+  permissionPolicies: firewallPoliciesSchema.optional(),
 });
 
 /**
@@ -383,10 +383,11 @@ const networkLogEntrySchema = z.object({
   // Capture-only fields (opt-in via captureNetworkBodies)
   request_headers: z.record(z.string(), z.string()).optional(),
   request_body: z.string().optional(),
-  request_body_encoding: z.enum(["utf-8", "base64"]).optional(),
+  request_body_encoding: z.enum(["utf-8", "base64", "binary"]).optional(),
   request_body_truncated: z.boolean().optional(),
+  response_headers: z.record(z.string(), z.string()).optional(),
   response_body: z.string().optional(),
-  response_body_encoding: z.enum(["utf-8", "base64"]).optional(),
+  response_body_encoding: z.enum(["utf-8", "base64", "binary"]).optional(),
   response_body_truncated: z.boolean().optional(),
 });
 

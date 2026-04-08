@@ -244,13 +244,13 @@ describe("createZeroRun()", () => {
     });
   });
 
-  describe("firewall policies", () => {
+  describe("permission policies", () => {
     it("should add firewall with only allowed permissions", async () => {
       const agentName = uniqueId("fw-agent");
       await createTestCompose(agentName);
       await createTestConnector({ type: "slack" });
       await createTestZeroAgent(user.orgId, agentName, {
-        firewallPolicies: {
+        permissionPolicies: {
           slack: {
             "channels:read": "allow",
             "channels:history": "allow",
@@ -314,7 +314,7 @@ describe("createZeroRun()", () => {
       await createTestCompose(agentName);
       await createTestConnector({ type: "slack" });
       await createTestZeroAgent(user.orgId, agentName, {
-        firewallPolicies: {
+        permissionPolicies: {
           slack: { "bookmarks:read": "deny", "bookmarks:write": "deny" },
         },
       });

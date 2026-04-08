@@ -67,7 +67,13 @@ function CollapsibleSection({
   );
 }
 
-function RequestHeaders({ headers }: { headers: Record<string, string> }) {
+function HeadersSection({
+  title,
+  headers,
+}: {
+  title: string;
+  headers: Record<string, string>;
+}) {
   const entries = Object.entries(headers);
   const copyText = entries
     .map(([k, v]) => {
@@ -77,7 +83,7 @@ function RequestHeaders({ headers }: { headers: Record<string, string> }) {
 
   return (
     <CollapsibleSection
-      title={`Request Headers (${entries.length})`}
+      title={`${title} (${entries.length})`}
       copyText={copyText}
     >
       <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
@@ -127,21 +133,55 @@ function BodyBlock({
   );
 }
 
+function filterHeaders(
+  raw: Record<string, string> | undefined,
+): Record<string, string> | null {
+  if (!raw) {
+    return null;
+  }
+  const filtered = Object.fromEntries(
+    Object.entries(raw).filter(([, v]) => {
+      return v !== "";
+    }),
+  );
+  return Object.keys(filtered).length > 0 ? filtered : null;
+}
+
+function BinaryBadge({ title }: { title: string }) {
+  return (
+    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+      <span className="font-medium">{title}</span>
+      <InlineBadge color="muted">binary</InlineBadge>
+    </div>
+  );
+}
+
 export function CapturedBodySections({ entry }: { entry: NetworkLogEntry }) {
-  const requestHeaders =
-    entry.request_headers && Object.keys(entry.request_headers).length > 0
-      ? entry.request_headers
-      : null;
+  const requestHeaders = filterHeaders(entry.request_headers);
+  const responseHeaders = filterHeaders(entry.response_headers);
   const requestBody = entry.request_body ?? null;
   const responseBody = entry.response_body ?? null;
+  const requestBodyBinary =
+    !requestBody && entry.request_body_encoding === "binary";
+  const responseBodyBinary =
+    !responseBody && entry.response_body_encoding === "binary";
 
-  if (!requestHeaders && !requestBody && !responseBody) {
+  if (
+    !requestHeaders &&
+    !responseHeaders &&
+    !requestBody &&
+    !responseBody &&
+    !requestBodyBinary &&
+    !responseBodyBinary
+  ) {
     return null;
   }
 
   return (
     <div className="mt-3 space-y-2">
-      {requestHeaders && <RequestHeaders headers={requestHeaders} />}
+      {requestHeaders && (
+        <HeadersSection title="Request Headers" headers={requestHeaders} />
+      )}
       {requestBody && (
         <BodyBlock
           title="Request Body"
@@ -149,6 +189,10 @@ export function CapturedBodySections({ entry }: { entry: NetworkLogEntry }) {
           encoding={entry.request_body_encoding}
           truncated={entry.request_body_truncated}
         />
+      )}
+      {requestBodyBinary && <BinaryBadge title="Request Body" />}
+      {responseHeaders && (
+        <HeadersSection title="Response Headers" headers={responseHeaders} />
       )}
       {responseBody && (
         <BodyBlock
@@ -158,6 +202,7 @@ export function CapturedBodySections({ entry }: { entry: NetworkLogEntry }) {
           truncated={entry.response_body_truncated}
         />
       )}
+      {responseBodyBinary && <BinaryBadge title="Response Body" />}
     </div>
   );
 }

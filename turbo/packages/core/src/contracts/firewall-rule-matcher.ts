@@ -63,6 +63,7 @@ interface GraphQLRule {
   path: string;
   typeFilter: string | null;
   opFilter: string | null;
+  fieldFilter: string | null;
 }
 
 /**
@@ -79,6 +80,7 @@ function parseGraphQLRule(rest: string): GraphQLRule | null {
 
   let typeFilter: string | null = null;
   let opFilter: string | null = null;
+  let fieldFilter: string | null = null;
 
   for (let i = 1; i < suffixParts.length; i++) {
     const part = suffixParts[i]!;
@@ -86,10 +88,12 @@ function parseGraphQLRule(rest: string): GraphQLRule | null {
       typeFilter = part.slice(5);
     } else if (part.startsWith("operationName:")) {
       opFilter = part.slice(14);
+    } else if (part.startsWith("field:")) {
+      fieldFilter = part.slice(6);
     }
   }
 
-  return { path, typeFilter, opFilter };
+  return { path, typeFilter, opFilter, fieldFilter };
 }
 
 /**
@@ -100,17 +104,27 @@ export interface GraphQLBody {
   type: "query" | "mutation" | "subscription";
   /** The named operation, if present. */
   operationName?: string;
+  /** Top-level selection field names (e.g., `["createIssue"]`). */
+  fields?: string[];
 }
 
 /**
- * Match a parsed GraphQL body against type and operationName filters.
+ * Match a parsed GraphQL body against type, operationName, and field filters.
  *
  * Fail-closed: returns false if required fields are missing.
  */
+function matchWildcard(value: string, pattern: string): boolean {
+  if (pattern.endsWith("*")) {
+    return value.startsWith(pattern.slice(0, -1));
+  }
+  return value === pattern;
+}
+
 function matchGraphQLBody(
   body: GraphQLBody | undefined,
   typeFilter: string | null,
   opFilter: string | null,
+  fieldFilter: string | null,
 ): boolean {
   if (!body) return false;
 
@@ -121,11 +135,18 @@ function matchGraphQLBody(
   if (opFilter !== null) {
     const opName = body.operationName;
     if (!opName) return false;
-    if (opFilter.endsWith("*")) {
-      if (!opName.startsWith(opFilter.slice(0, -1))) return false;
-    } else if (opName !== opFilter) {
+    if (!matchWildcard(opName, opFilter)) return false;
+  }
+
+  if (fieldFilter !== null) {
+    const fields = body.fields;
+    if (!fields || fields.length === 0) return false;
+    if (
+      !fields.some((f) => {
+        return matchWildcard(f, fieldFilter);
+      })
+    )
       return false;
-    }
   }
 
   return true;
@@ -139,7 +160,7 @@ function matchGraphQLBody(
  * any HTTP method.
  *
  * When `graphqlBody` is provided, rules containing the `GraphQL` keyword
- * will also match against the parsed body's type and operationName.
+ * will also match against the parsed body's type, operationName, and fields.
  */
 export function findMatchingPermissions(
   method: string,
@@ -167,8 +188,15 @@ export function findMatchingPermissions(
         if (matchFirewallPath(path, rulePath) !== null) {
           if (
             gql &&
-            (gql.typeFilter !== null || gql.opFilter !== null) &&
-            !matchGraphQLBody(graphqlBody, gql.typeFilter, gql.opFilter)
+            (gql.typeFilter !== null ||
+              gql.opFilter !== null ||
+              gql.fieldFilter !== null) &&
+            !matchGraphQLBody(
+              graphqlBody,
+              gql.typeFilter,
+              gql.opFilter,
+              gql.fieldFilter,
+            )
           ) {
             continue;
           }

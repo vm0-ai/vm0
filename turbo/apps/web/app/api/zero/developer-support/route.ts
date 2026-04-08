@@ -27,7 +27,7 @@ import {
 import { enqueueEmail } from "../../../../src/lib/zero/email/outbox-service";
 import { buildFromAddress } from "../../../../src/lib/zero/email/handlers/shared";
 import { getCachedUser } from "../../../../src/lib/auth/user-cache-service";
-import { getOrgIdentity } from "../../../../src/lib/auth/org-cache";
+import { getOrgNameAndSlug } from "../../../../src/lib/auth/org-cache";
 import { env } from "../../../../src/env";
 import { logger } from "../../../../src/lib/shared/logger";
 
@@ -190,7 +190,7 @@ const router = tsr.router(zeroDeveloperSupportContract, {
           description: zeroAgents.description,
           sound: zeroAgents.sound,
           customSkills: zeroAgents.customSkills,
-          firewallPolicies: zeroAgents.firewallPolicies,
+          permissionPolicies: zeroAgents.permissionPolicies,
         })
         .from(agentComposeVersions)
         .innerJoin(
@@ -207,7 +207,7 @@ const router = tsr.router(zeroDeveloperSupportContract, {
           description: agent.description,
           sound: agent.sound,
           customSkills: agent.customSkills,
-          firewallPolicies: agent.firewallPolicies,
+          permissionPolicies: agent.permissionPolicies,
         };
       }
     }
@@ -385,7 +385,7 @@ const router = tsr.router(zeroDeveloperSupportContract, {
         .catch(() => {
           return userId;
         }),
-      getOrgIdentity(orgId)
+      getOrgNameAndSlug(orgId)
         .then((o) => {
           return o.name;
         })

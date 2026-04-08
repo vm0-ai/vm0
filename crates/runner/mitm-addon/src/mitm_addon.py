@@ -197,16 +197,12 @@ async def request(flow: http.HTTPFlow) -> None:
             flow.metadata["firewall_ref"] = result.ref
             error_body = json.dumps(
                 {
-                    "error": "firewall_permission_denied",
+                    "error": "permission_denied",
                     "message": "Request blocked: no matching permission rule",
                     "method": result.method,
                     "path": result.path,
-                    "firewall": result.ref,
+                    "permission": result.ref,
                     "base": result.base,
-                    "hint": (
-                        f"Add a permission rule for '{result.method} {result.path}'"
-                        f" to the {result.ref} firewall in vm0.yaml"
-                    ),
                 }
             )
             flow.response = http.Response.make(
@@ -330,22 +326,22 @@ def _is_sensitive_header(name: str) -> bool:
 
 
 def _redact_headers(headers) -> dict:
-    """Build a dict of headers with sensitive values replaced by [REDACTED]."""
+    """Build a dict of headers with sensitive values replaced by ***."""
     result = {}
     for name, value in headers.items(multi=True):
         if name in result:
             continue  # keep first occurrence only (headers.items gives all)
-        result[name] = "[REDACTED]" if _is_sensitive_header(name) else value
+        result[name] = "***" if _is_sensitive_header(name) else value
     return result
 
 
 def _add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
-    """Add request headers, request body, and response body to a log entry.
+    """Add request/response headers and bodies to a log entry.
 
     # [NETWORK_LOG_FIELDS] — capture-only fields, not part of the core schema.
     # Fields: request_headers, request_body, request_body_encoding,
-    #         request_body_truncated, response_body, response_body_encoding,
-    #         response_body_truncated
+    #         request_body_truncated, response_headers, response_body,
+    #         response_body_encoding, response_body_truncated
     """
     # Request headers (always available)
     log_entry["request_headers"] = _redact_headers(flow.request.headers)
@@ -363,6 +359,12 @@ def _add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
             log_entry["request_body_encoding"] = encoding
             if truncated:
                 log_entry["request_body_truncated"] = True
+        else:
+            log_entry["request_body_encoding"] = "binary"
+
+    # Response headers
+    if flow.response:
+        log_entry["response_headers"] = _redact_headers(flow.response.headers)
 
     # Response body — only available when streaming is disabled
     if flow.response:
@@ -371,7 +373,8 @@ def _add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
             if not body:
                 return
         except Exception:
-            # ZlibError or other decompression failure — skip body
+            # ZlibError or other decompression failure — mark as binary
+            log_entry["response_body_encoding"] = "binary"
             return
         res_ct = flow.response.headers.get("content-type", "")
         truncated = len(body) > _MAX_BODY_SIZE
@@ -383,6 +386,8 @@ def _add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
             log_entry["response_body_encoding"] = encoding
             if truncated:
                 log_entry["response_body_truncated"] = True
+        else:
+            log_entry["response_body_encoding"] = "binary"
 
 
 def response(flow: http.HTTPFlow) -> None:

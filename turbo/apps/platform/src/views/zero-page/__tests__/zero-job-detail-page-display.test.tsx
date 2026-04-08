@@ -48,7 +48,7 @@ function mockAPIs() {
         sound: null,
         avatarUrl: null,
         connectors: [],
-        firewallPolicies: null,
+        permissionPolicies: null,
       });
     }),
     http.get("*/api/zero/agents/:name/instructions", () => {
@@ -234,7 +234,7 @@ describe("zero job detail page - connector display", () => {
     expect(
       screen.getByRole("switch", { name: /Slack access/i }),
     ).toBeInTheDocument();
-    // Manage button visible (Slack has firewall permissions)
+    // Manage button visible (Slack has connector permissions)
     expect(
       screen.getByLabelText(/Manage Slack permissions/i),
     ).toBeInTheDocument();

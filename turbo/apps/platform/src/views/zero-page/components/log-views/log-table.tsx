@@ -29,7 +29,7 @@ export const STATUS_LABELS: Readonly<Record<LogStatus, string>> = {
 
 /** With source column (activity page) */
 const GRID_WITH_SOURCE =
-  "grid grid-cols-[minmax(6rem,1fr)_minmax(8rem,1.5fr)_6rem_8rem_5rem_2.5rem] gap-x-6 items-center";
+  "grid grid-cols-[minmax(6rem,1fr)_minmax(8rem,1.5fr)_minmax(4rem,0.8fr)_6rem_8rem_5rem_2.5rem] gap-x-6 items-center";
 
 /** Without source column (schedule history) */
 const GRID_WITHOUT_SOURCE =
@@ -69,6 +69,14 @@ function LogRow({
                   entry.triggerAgentName,
                 )
               : "\u2014"}
+          </div>
+        )}
+        {showSource && (
+          <div
+            className="min-w-0 truncate text-left text-sm text-muted-foreground font-mono"
+            title={entry.sessionId ?? undefined}
+          >
+            {entry.sessionId ? entry.sessionId.slice(0, 8) : "\u2014"}
           </div>
         )}
         <div className="text-left">
@@ -133,6 +141,9 @@ function SkeletonRows({
             {showSource && (
               <div className="h-4 w-12 rounded bg-muted/50 animate-pulse" />
             )}
+            {showSource && (
+              <div className="h-4 w-14 rounded bg-muted/50 animate-pulse" />
+            )}
             <div className="h-5 w-16 rounded-full bg-muted/50 animate-pulse" />
             <div className="h-4 w-24 rounded bg-muted/50 animate-pulse" />
             <div className="h-4 w-14 rounded bg-muted/50 animate-pulse" />
@@ -192,6 +203,7 @@ export function LogTable({
           >
             <div className="text-left">Agent</div>
             {showSource && <div className="text-left">Source</div>}
+            {showSource && <div className="text-left">Session</div>}
             <div className="text-left">Status</div>
             <div className="text-left">Start Time</div>
             <div className="text-left">Duration</div>

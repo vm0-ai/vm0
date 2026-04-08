@@ -10,8 +10,10 @@ import { setupPage } from "../../../__tests__/page-helper.ts";
 const context = testContext();
 
 function mockAPIs({
-  firewallPolicies = null,
-}: { firewallPolicies?: Record<string, Record<string, string>> | null } = {}) {
+  permissionPolicies = null,
+}: {
+  permissionPolicies?: Record<string, Record<string, string>> | null;
+} = {}) {
   server.use(
     http.get("*/api/zero/team", () => {
       return HttpResponse.json([
@@ -50,7 +52,7 @@ function mockAPIs({
         sound: null,
         avatarUrl: null,
         connectors: [],
-        firewallPolicies,
+        permissionPolicies,
       });
     }),
     http.get("*/api/zero/agents/:name/instructions", () => {
@@ -82,12 +84,12 @@ function mockAPIs({
     http.get("*/api/zero/agents/:id/user-connectors", () => {
       return HttpResponse.json({ enabledTypes: ["slack"] });
     }),
-    http.put("*/api/zero/firewall-policies", async ({ request }) => {
+    http.put("*/api/zero/permission-policies", async ({ request }) => {
       const body = (await request.json()) as {
         agentId: string;
         policies: Record<string, Record<string, string>>;
       };
-      return HttpResponse.json({ firewallPolicies: body.policies });
+      return HttpResponse.json({ permissionPolicies: body.policies });
     }),
   );
 }
@@ -120,7 +122,7 @@ async function openPermissionsDrawer() {
   return user;
 }
 
-describe("firewall permissions dialog - grouped connector (Slack)", () => {
+describe("permissions dialog - grouped connector (Slack)", () => {
   it("should show category groups collapsed by default with no global select-all", async () => {
     mockAPIs();
     await setupPage({ context, path: "/agents/my-agent" });
@@ -165,7 +167,7 @@ describe("firewall permissions dialog - grouped connector (Slack)", () => {
   it("should not highlight either Allow or Deny at group level when permissions are mixed", async () => {
     // Provide mixed policies: some allow, some deny within Read group
     mockAPIs({
-      firewallPolicies: {
+      permissionPolicies: {
         slack: {
           "bookmarks:read": "allow",
           "channels:read": "deny",

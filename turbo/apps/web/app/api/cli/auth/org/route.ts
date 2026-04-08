@@ -7,7 +7,7 @@ import { cliAuthOrgContract } from "@vm0/core";
 import crypto from "crypto";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
-import { getOrgBySlug } from "../../../../../src/lib/zero/org/org-cache-service";
+import { getOrgIdBySlug } from "../../../../../src/lib/auth/org-cache";
 import { verifyMembershipCached } from "../../../../../src/lib/auth/org-membership-cache";
 import { generateCliToken } from "../../../../../src/lib/auth/sandbox-token";
 import { cliTokens } from "../../../../../src/db/schema/cli-tokens";
@@ -34,8 +34,8 @@ const router = tsr.router(cliAuthOrgContract, {
     }
 
     // 2. Resolve org by slug (body.slug is validated by contract — non-empty string)
-    const orgData = await getOrgBySlug(body.slug);
-    if (!orgData) {
+    const orgId = await getOrgIdBySlug(body.slug);
+    if (!orgId) {
       return {
         status: 404 as const,
         body: {
@@ -45,10 +45,7 @@ const router = tsr.router(cliAuthOrgContract, {
     }
 
     // 3. Verify membership
-    const membership = await verifyMembershipCached(
-      orgData.orgId,
-      authCtx.userId,
-    );
+    const membership = await verifyMembershipCached(orgId, authCtx.userId);
     if (!membership) {
       return {
         status: 403 as const,
@@ -65,11 +62,7 @@ const router = tsr.router(cliAuthOrgContract, {
     const tokenId = crypto.randomUUID();
     const now = new Date();
     const expiresAt = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000); // 90 days
-    const cliToken = await generateCliToken(
-      authCtx.userId,
-      orgData.orgId,
-      tokenId,
-    );
+    const cliToken = await generateCliToken(authCtx.userId, orgId, tokenId);
 
     await globalThis.services.db.insert(cliTokens).values({
       id: tokenId,

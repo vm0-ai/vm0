@@ -3,29 +3,32 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../../mocks/server.ts";
 import { testContext } from "../../../__tests__/test-helpers.ts";
 import { setupPage } from "../../../../__tests__/page-helper.ts";
-import { hasFirewallPermissions, saveFirewallPolicies$ } from "../firewalls.ts";
+import {
+  hasConnectorPermissions,
+  savePermissionPolicies$,
+} from "../permissions.ts";
 
 const context = testContext();
 
-describe("hasFirewallPermissions", () => {
-  it("should return true for connectors with firewall permissions", () => {
-    expect(hasFirewallPermissions("slack")).toBeTruthy();
-    expect(hasFirewallPermissions("gmail")).toBeTruthy();
-    expect(hasFirewallPermissions("atlassian")).toBeTruthy();
-    expect(hasFirewallPermissions("x")).toBeTruthy();
+describe("hasConnectorPermissions", () => {
+  it("should return true for connectors with permissions", () => {
+    expect(hasConnectorPermissions("slack")).toBeTruthy();
+    expect(hasConnectorPermissions("gmail")).toBeTruthy();
+    expect(hasConnectorPermissions("atlassian")).toBeTruthy();
+    expect(hasConnectorPermissions("x")).toBeTruthy();
   });
 
-  it("should return false for connectors without firewall permissions", () => {
-    expect(hasFirewallPermissions("unknown" as never)).toBeFalsy();
+  it("should return false for connectors without permissions", () => {
+    expect(hasConnectorPermissions("unknown" as never)).toBeFalsy();
   });
 
-  it("should return false for connectors with firewall but no permissions", () => {
-    // stripe has a firewall config but no permissions defined
-    expect(hasFirewallPermissions("stripe")).toBeFalsy();
+  it("should return false for connectors with config but no permissions", () => {
+    // stripe has a connector config but no permissions defined
+    expect(hasConnectorPermissions("stripe")).toBeFalsy();
   });
 });
 
-describe("saveFirewallPolicies$", () => {
+describe("savePermissionPolicies$", () => {
   it("should send name in request body and return persisted policies", async () => {
     await setupPage({ context, path: "/", withoutRender: true });
 
@@ -33,7 +36,7 @@ describe("saveFirewallPolicies$", () => {
     let capturedBody: Record<string, unknown> | null = null;
 
     server.use(
-      http.put("*/api/zero/firewall-policies", async ({ request }) => {
+      http.put("*/api/zero/permission-policies", async ({ request }) => {
         capturedBody = (await request.json()) as Record<string, unknown>;
         return HttpResponse.json({
           agentId: "compose-1",
@@ -43,13 +46,13 @@ describe("saveFirewallPolicies$", () => {
           sound: null,
           avatarUrl: null,
           connectors: [],
-          firewallPolicies: policies,
+          permissionPolicies: policies,
         });
       }),
     );
 
     const result = await context.store.set(
-      saveFirewallPolicies$,
+      savePermissionPolicies$,
       "my-agent",
       policies,
       context.signal,
@@ -65,7 +68,7 @@ describe("saveFirewallPolicies$", () => {
     await setupPage({ context, path: "/", withoutRender: true });
 
     server.use(
-      http.put("*/api/zero/firewall-policies", () => {
+      http.put("*/api/zero/permission-policies", () => {
         return HttpResponse.json(
           {
             error: { message: "Only org admins can update", code: "FORBIDDEN" },
@@ -76,7 +79,12 @@ describe("saveFirewallPolicies$", () => {
     );
 
     await expect(
-      context.store.set(saveFirewallPolicies$, "my-agent", {}, context.signal),
+      context.store.set(
+        savePermissionPolicies$,
+        "my-agent",
+        {},
+        context.signal,
+      ),
     ).rejects.toThrow("Only org admins can update");
   });
 });

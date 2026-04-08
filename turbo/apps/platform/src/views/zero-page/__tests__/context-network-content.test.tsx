@@ -437,7 +437,7 @@ describe("networkContent", () => {
     ).toBeDefined();
     expect(
       columnHeaders.find((el) => {
-        return el.textContent?.trim() === "Firewall";
+        return el.textContent?.trim() === "Permission";
       }),
     ).toBeDefined();
 
@@ -533,7 +533,7 @@ describe("networkContent", () => {
 
     // Detail fields should now be visible
     await waitFor(() => {
-      // The expanded detail shows labels like "URL", "Firewall" etc.
+      // The expanded detail shows labels like "URL", "Permission" etc.
       const urlLabels = screen.getAllByText("URL");
       // There should be the header column AND the detail label
       expect(urlLabels.length).toBeGreaterThanOrEqual(1);

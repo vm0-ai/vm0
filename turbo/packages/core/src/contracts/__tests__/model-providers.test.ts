@@ -2,6 +2,10 @@ import { describe, it, expect } from "vitest";
 import {
   getProviderBaseUrl,
   areProvidersCompatible,
+  hasModelSelection,
+  getModels,
+  getDefaultModel,
+  getEnvironmentMapping,
   type ModelProviderType,
 } from "../model-providers";
 
@@ -80,5 +84,49 @@ describe("areProvidersCompatible", () => {
     expect(areProvidersCompatible("minimax-api-key", "zai-api-key")).toBe(
       false,
     );
+  });
+});
+
+describe("model selection for Anthropic-native providers", () => {
+  it.each(["claude-code-oauth-token", "anthropic-api-key"] as const)(
+    "%s supports model selection",
+    (type) => {
+      expect(hasModelSelection(type)).toBe(true);
+    },
+  );
+
+  it.each(["claude-code-oauth-token", "anthropic-api-key"] as const)(
+    "%s offers sonnet and opus models",
+    (type) => {
+      const models = getModels(type);
+      expect(models).toContain("claude-sonnet-4.6");
+      expect(models).toContain("claude-opus-4.6");
+    },
+  );
+
+  it.each(["claude-code-oauth-token", "anthropic-api-key"] as const)(
+    "%s defaults to claude-sonnet-4.6",
+    (type) => {
+      expect(getDefaultModel(type)).toBe("claude-sonnet-4.6");
+    },
+  );
+
+  it("anthropic-api-key maps ANTHROPIC_MODEL via environment mapping", () => {
+    const mapping = getEnvironmentMapping("anthropic-api-key");
+    expect(mapping).toBeDefined();
+    expect(mapping!["ANTHROPIC_API_KEY"]).toBe("$secret");
+    expect(mapping!["ANTHROPIC_MODEL"]).toBe("$model");
+  });
+
+  it("claude-code-oauth-token maps ANTHROPIC_MODEL via environment mapping", () => {
+    const mapping = getEnvironmentMapping("claude-code-oauth-token");
+    expect(mapping).toBeDefined();
+    expect(mapping!["CLAUDE_CODE_OAUTH_TOKEN"]).toBe("$secret");
+    expect(mapping!["ANTHROPIC_MODEL"]).toBe("$model");
+  });
+
+  it("Anthropic-native providers have no ANTHROPIC_BASE_URL (use default)", () => {
+    expect(getProviderBaseUrl("anthropic-api-key")).toBeNull();
+    expect(getProviderBaseUrl("claude-code-oauth-token")).toBeNull();
   });
 });

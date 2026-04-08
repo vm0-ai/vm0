@@ -23,7 +23,7 @@ import {
   removeZeroJobConnector$,
   saveZeroJobConnectors$,
   discardZeroJobConnectors$,
-  zeroJobFirewallPolicies$,
+  zeroJobPermissionPolicies$,
   type ZeroJobScheduleSaveParams,
 } from "../zero-job-detail";
 
@@ -37,7 +37,7 @@ function mockAgentResponse() {
     displayName: null,
     sound: null,
     avatarUrl: null,
-    firewallPolicies: null,
+    permissionPolicies: null,
     customSkills: [],
   };
 }
@@ -240,13 +240,13 @@ describe("zero-job-detail signals", () => {
       expect(capturedUrl).toContain("sub-agent");
     });
 
-    it("should derive firewall policies from detail", async () => {
+    it("should derive permission policies from detail", async () => {
       const policies = { search: { read: "allow" as const } };
       server.use(
         http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
           return HttpResponse.json({
             ...mockAgentResponse(),
-            firewallPolicies: policies,
+            permissionPolicies: policies,
           });
         }),
       );
@@ -254,8 +254,8 @@ describe("zero-job-detail signals", () => {
       await setupPage({ context, path: "/", withoutRender: true });
       context.store.set(setActiveAgent$, "my-agent");
 
-      const firewall = await context.store.get(zeroJobFirewallPolicies$);
-      expect(firewall).toStrictEqual(policies);
+      const permissions = await context.store.get(zeroJobPermissionPolicies$);
+      expect(permissions).toStrictEqual(policies);
     });
 
     it("should reset draft states on agent switch", async () => {
@@ -610,7 +610,7 @@ describe("zero-job-detail signals", () => {
               displayName: null,
               sound: null,
               avatarUrl: null,
-              firewallPolicies: null,
+              permissionPolicies: null,
             });
           },
         ),
@@ -660,7 +660,7 @@ describe("zero-job-detail signals", () => {
               displayName: null,
               sound: null,
               avatarUrl: null,
-              firewallPolicies: null,
+              permissionPolicies: null,
             });
           },
         ),

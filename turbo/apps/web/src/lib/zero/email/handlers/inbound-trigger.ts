@@ -14,7 +14,7 @@ import { createZeroRun } from "../../zero-run-service";
 import { buildIntegrationContext } from "../../integration-context";
 import { generateCallbackSecret, getApiUrl } from "../../../infra/callback";
 import { getUserIdByEmail } from "../../../auth/get-user-id-by-email";
-import { getOrgBySlug } from "../../../zero/org/org-cache-service";
+import { getOrgIdBySlug } from "../../../auth/org-cache";
 import { verifyMembershipCached } from "../../../auth/org-membership-cache";
 import { logger } from "../../../shared/logger";
 
@@ -72,8 +72,8 @@ async function resolveTrigger(
   }
 
   // 3. Resolve org by slug
-  const orgData = await getOrgBySlug(orgSlug);
-  if (!orgData) {
+  const orgId = await getOrgIdBySlug(orgSlug);
+  if (!orgId) {
     log.debug("Org not found", { orgSlug });
     return {
       ok: false,
@@ -82,9 +82,9 @@ async function resolveTrigger(
   }
 
   // 4. Verify org membership
-  const membership = await verifyMembershipCached(orgData.orgId, userId);
+  const membership = await verifyMembershipCached(orgId, userId);
   if (!membership) {
-    log.debug("User is not a member of org", { userId, orgId: orgData.orgId });
+    log.debug("User is not a member of org", { userId, orgId });
     return {
       ok: false,
       errorMessage: "You are not a member of this workspace.",
@@ -92,9 +92,9 @@ async function resolveTrigger(
   }
 
   // 5. Resolve default agent
-  const agentId = await resolveDefaultAgent(orgData.orgId);
+  const agentId = await resolveDefaultAgent(orgId);
   if (!agentId) {
-    log.debug("No default agent configured", { orgId: orgData.orgId });
+    log.debug("No default agent configured", { orgId });
     return {
       ok: false,
       errorMessage: "This workspace does not have a default agent configured.",
@@ -102,7 +102,7 @@ async function resolveTrigger(
   }
 
   return {
-    orgId: orgData.orgId,
+    orgId,
     orgSlug,
     userId,
     agentId,

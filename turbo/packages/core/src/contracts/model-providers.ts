@@ -69,6 +69,12 @@ export const MODEL_PROVIDER_TYPES = {
     secretLabel: "OAuth token",
     helpText:
       "To get your OAuth token, run: claude setup-token\n(Requires Claude Pro or Max subscription)",
+    environmentMapping: {
+      CLAUDE_CODE_OAUTH_TOKEN: "$secret",
+      ANTHROPIC_MODEL: "$model",
+    } as Record<string, string>,
+    models: ["claude-sonnet-4.6", "claude-opus-4.6"] as string[],
+    defaultModel: "claude-sonnet-4.6",
   },
   "anthropic-api-key": {
     framework: "claude-code" as const,
@@ -77,6 +83,12 @@ export const MODEL_PROVIDER_TYPES = {
     secretLabel: "API key",
     helpText:
       "Get your API key at: https://console.anthropic.com/settings/keys",
+    environmentMapping: {
+      ANTHROPIC_API_KEY: "$secret",
+      ANTHROPIC_MODEL: "$model",
+    } as Record<string, string>,
+    models: ["claude-sonnet-4.6", "claude-opus-4.6"] as string[],
+    defaultModel: "claude-sonnet-4.6",
   },
   "openrouter-api-key": {
     framework: "claude-code" as const,

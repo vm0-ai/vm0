@@ -10,7 +10,7 @@ import { logger } from "../shared/logger";
 
 import type { WebClient } from "@slack/web-api";
 
-const log = logger("zero:firewall-notification");
+const log = logger("zero:permission-notification");
 
 interface SlackDmTarget {
   client: WebClient;
@@ -69,13 +69,13 @@ function buildReviewUrl(agentId: string, requestId: string): string {
   return `${appUrl}/agents/${agentId}/permissions?request=${requestId}`;
 }
 
-function connectorLabel(firewallRef: string): string {
-  const config = CONNECTOR_TYPES[firewallRef as keyof typeof CONNECTOR_TYPES];
-  return config?.label ?? firewallRef;
+function connectorLabel(connectorRef: string): string {
+  const config = CONNECTOR_TYPES[connectorRef as keyof typeof CONNECTOR_TYPES];
+  return config?.label ?? connectorRef;
 }
 
 /**
- * Send a Slack DM to the agent owner when a firewall access request is
+ * Send a Slack DM to the agent owner when a permission access request is
  * created or re-sent. Fire-and-forget — never throws.
  */
 export async function notifyOwnerOfRequest(params: {
@@ -86,7 +86,7 @@ export async function notifyOwnerOfRequest(params: {
   agentDisplayName: string;
   requesterName: string;
   permission: string;
-  firewallRef: string;
+  connectorRef: string;
   action: string;
   reason?: string | null;
 }): Promise<void> {
@@ -96,7 +96,7 @@ export async function notifyOwnerOfRequest(params: {
       return;
     }
 
-    const label = connectorLabel(params.firewallRef);
+    const label = connectorLabel(params.connectorRef);
     const url = buildReviewUrl(params.agentId, params.requestId);
     const lines = [
       `${params.requesterName} is requesting to ${params.action} "${params.permission}" on ${label} for agent ${params.agentDisplayName}.`,
@@ -108,12 +108,12 @@ export async function notifyOwnerOfRequest(params: {
 
     await postMessage(target.client, target.slackUserId, lines.join("\n"));
   } catch (err) {
-    log.error("Failed to notify owner of firewall request", { err });
+    log.error("Failed to notify owner of permission request", { err });
   }
 }
 
 /**
- * Send a Slack DM to the requester when a firewall access request is
+ * Send a Slack DM to the requester when a permission access request is
  * approved or rejected. Fire-and-forget — never throws.
  */
 export async function notifyRequesterOfResolution(params: {
@@ -123,7 +123,7 @@ export async function notifyRequesterOfResolution(params: {
   agentDisplayName: string;
   requesterUserId: string;
   permission: string;
-  firewallRef: string;
+  connectorRef: string;
   action: string;
   resolution: "approve" | "reject";
 }): Promise<void> {
@@ -136,13 +136,13 @@ export async function notifyRequesterOfResolution(params: {
       return;
     }
 
-    const label = connectorLabel(params.firewallRef);
+    const label = connectorLabel(params.connectorRef);
     const url = buildReviewUrl(params.agentId, params.requestId);
     const outcome = params.resolution === "approve" ? "approved" : "denied";
     const text = `Your request to ${params.action} "${params.permission}" on ${label} for agent ${params.agentDisplayName} has been ${outcome}. <${url}|View>`;
 
     await postMessage(target.client, target.slackUserId, text);
   } catch (err) {
-    log.error("Failed to notify requester of firewall resolution", { err });
+    log.error("Failed to notify requester of permission resolution", { err });
   }
 }

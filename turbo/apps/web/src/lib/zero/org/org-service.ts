@@ -2,13 +2,20 @@ import { sql } from "drizzle-orm";
 import { clerkClient } from "@clerk/nextjs/server";
 import { requireOrgMember } from "./org-member-service";
 import {
-  getOrgData,
-  getOrgBySlug,
+  getOrgNameAndSlug,
+  getOrgIdBySlug,
   invalidateOrgCache,
-} from "./org-cache-service";
-import type { OrgData } from "./org-cache-service";
-import { badRequest } from "../../shared/errors";
+} from "../../auth/org-cache";
+import { getOrgMetadata } from "./org-metadata-service";
+import { badRequest, isNotFound } from "../../shared/errors";
 import { logger } from "../../shared/logger";
+
+interface OrgData {
+  orgId: string;
+  slug: string;
+  name: string;
+  tier: string;
+}
 
 const log = logger("service:org");
 
@@ -47,6 +54,20 @@ function validateOrgSlug(slug: string): void {
 }
 
 /**
+ * Read tier from org_metadata, defaulting to "free" for brand-new orgs
+ * that don't have an org_metadata row yet.
+ */
+async function readTierSafe(orgId: string): Promise<string> {
+  try {
+    const metadata = await getOrgMetadata(orgId);
+    return metadata.tier;
+  } catch (error) {
+    if (!isNotFound(error)) throw error;
+    return "free";
+  }
+}
+
+/**
  * Update an org's slug and/or name.
  * Updates the Clerk org and refreshes org_cache.
  * Requires force flag for slug changes since they can break existing references.
@@ -74,8 +95,8 @@ export async function updateOrg(
     validateOrgSlug(newSlug);
 
     // Check if new slug already exists via org_cache
-    const existing = await getOrgBySlug(newSlug);
-    if (existing && existing.orgId !== orgId) {
+    const existingOrgId = await getOrgIdBySlug(newSlug);
+    if (existingOrgId && existingOrgId !== orgId) {
       throw badRequest(`Org "${newSlug}" already exists`);
     }
 
@@ -87,7 +108,9 @@ export async function updateOrg(
   }
 
   if (Object.keys(clerkUpdate).length === 0) {
-    return await getOrgData(orgId);
+    const identity = await getOrgNameAndSlug(orgId);
+    const tier = await readTierSafe(orgId);
+    return { ...identity, tier };
   }
 
   log.debug("updating org", { orgId, ...clerkUpdate });
@@ -100,7 +123,9 @@ export async function updateOrg(
 
   // Invalidate stale cache, then re-fetch from Clerk
   await invalidateOrgCache(orgId);
-  return await getOrgData(orgId);
+  const identity = await getOrgNameAndSlug(orgId);
+  const tier = await readTierSafe(orgId);
+  return { ...identity, tier };
 }
 
 /**
