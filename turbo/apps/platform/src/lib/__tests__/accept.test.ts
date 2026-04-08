@@ -78,6 +78,21 @@ describe("accept", () => {
     expect(toast.error).toHaveBeenCalledWith("HTTP 500");
   });
 
+  it("{ toast: false } → no toast, still throws", async () => {
+    type OkOrForbidden =
+      | { status: 200; body: { id: string } }
+      | { status: 403; body: { error: { message: string; code: string } } };
+    const response: OkOrForbidden = {
+      status: 403,
+      body: { error: { message: "Forbidden", code: "FORBIDDEN" } },
+    };
+
+    await expect(
+      accept(Promise.resolve(response), [200], { toast: false }),
+    ).rejects.toBeInstanceOf(ApiError);
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
   it("thrown error is instanceof ApiError with correct fields", async () => {
     type OkOrForbidden =
       | { status: 200; body: { id: string } }

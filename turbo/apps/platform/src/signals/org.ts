@@ -24,7 +24,15 @@ export const org$ = computed(async (get) => {
 
   const createClient = get(zeroClient$);
   const client = createClient(zeroOrgContract);
-  const result = await accept(client.get(), [200]);
+  // 404 is a valid response: a newly-signed-up user has no org yet.
+  // Pass { toast: false } so the signal surfaces the absent-org state
+  // through its value (undefined) rather than firing an error toast.
+  const result = await accept(client.get(), [200, 404], { toast: false });
+
+  if (result.status === 404) {
+    return undefined;
+  }
+
   return result.body;
 });
 
