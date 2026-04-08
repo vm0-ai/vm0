@@ -33,7 +33,7 @@ describe("saveFirewallPolicies$", () => {
     let capturedBody: Record<string, unknown> | null = null;
 
     server.use(
-      http.put("*/api/zero/firewall-policies", async ({ request }) => {
+      http.put("*/api/zero/permission-policies", async ({ request }) => {
         capturedBody = (await request.json()) as Record<string, unknown>;
         return HttpResponse.json({
           agentId: "compose-1",
@@ -43,7 +43,7 @@ describe("saveFirewallPolicies$", () => {
           sound: null,
           avatarUrl: null,
           connectors: [],
-          firewallPolicies: policies,
+          permissionPolicies: policies,
         });
       }),
     );
@@ -65,7 +65,7 @@ describe("saveFirewallPolicies$", () => {
     await setupPage({ context, path: "/", withoutRender: true });
 
     server.use(
-      http.put("*/api/zero/firewall-policies", () => {
+      http.put("*/api/zero/permission-policies", () => {
         return HttpResponse.json(
           {
             error: { message: "Only org admins can update", code: "FORBIDDEN" },

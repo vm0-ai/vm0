@@ -18,7 +18,7 @@ const mockAgent = {
   displayName: "My Agent",
   description: "A test agent",
   sound: "professional",
-  firewallPolicies: null,
+  permissionPolicies: null,
 };
 
 function mockConnectorListHandler(
@@ -100,12 +100,12 @@ describe("zero agent view command", () => {
         http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
           return HttpResponse.json({
             ...mockAgent,
-            firewallPolicies: {
-              slack: {
-                "channels:read": "allow",
-                "chat:write": "deny",
-                "reactions:read": "allow",
-                admin: "deny",
+            permissionPolicies: {
+              github: {
+                "actions:read": "allow",
+                "actions:write": "deny",
+                "contents:read": "allow",
+                "contents:write": "deny",
               },
             },
           });
@@ -197,12 +197,12 @@ describe("zero agent view command", () => {
         http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
           return HttpResponse.json({
             ...mockAgent,
-            firewallPolicies: {
-              slack: {
-                "channels:read": "allow",
-                "chat:write": "deny",
-                "reactions:read": "allow",
-                admin: "ask",
+            permissionPolicies: {
+              github: {
+                "actions:read": "allow",
+                "actions:write": "deny",
+                "contents:read": "allow",
+                "contents:write": "ask",
               },
             },
           });

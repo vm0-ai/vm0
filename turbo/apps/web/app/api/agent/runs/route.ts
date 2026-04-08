@@ -268,7 +268,7 @@ const router = tsr.router(runsMainContract, {
         agentComposeVersionId: body.agentComposeVersionId,
         vars: body.vars,
         secrets: body.secrets,
-        firewallPolicies: body.firewallPolicies,
+        permissionPolicies: body.permissionPolicies,
         artifactName: body.artifactName,
         artifactVersion: body.artifactVersion,
         memoryName: body.memoryName,

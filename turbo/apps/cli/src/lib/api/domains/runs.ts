@@ -43,8 +43,8 @@ export async function createRun(body: {
   tools?: string[];
   // Settings JSON to pass to Claude CLI (passed as --settings)
   settings?: string;
-  // Per-permission firewall policies
-  firewallPolicies?: FirewallPolicies;
+  // Per-permission policies
+  permissionPolicies?: FirewallPolicies;
   // Required
   prompt: string;
 }): Promise<CreateRunResponse> {

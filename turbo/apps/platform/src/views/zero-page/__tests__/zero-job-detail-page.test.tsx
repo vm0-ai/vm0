@@ -47,7 +47,7 @@ function mockAPIs() {
         sound: null,
         avatarUrl: null,
         connectors: [],
-        firewallPolicies: null,
+        permissionPolicies: null,
       });
     }),
     http.get("*/api/zero/agents/:name/instructions", () => {
@@ -209,7 +209,7 @@ function mockAPIsWithSchedules() {
         sound: null,
         avatarUrl: null,
         connectors: [],
-        firewallPolicies: null,
+        permissionPolicies: null,
       });
     }),
     http.get("*/api/zero/agents/:name/instructions", () => {

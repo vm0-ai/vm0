@@ -26,7 +26,7 @@ export const zeroAgentResponseSchema = z.object({
   displayName: z.string().nullable(),
   sound: z.string().nullable(),
   avatarUrl: z.string().nullable(),
-  firewallPolicies: firewallPoliciesSchema.nullable(),
+  permissionPolicies: firewallPoliciesSchema.nullable(),
   customSkills: z.array(z.string()).default([]),
 });
 
@@ -162,22 +162,22 @@ export const zeroAgentsByIdContract = c.router({
 });
 
 /**
- * Update firewall policies request schema
+ * Update permission policies request schema
  */
-export const zeroAgentFirewallPoliciesRequestSchema = z.object({
+export const zeroAgentPermissionPoliciesRequestSchema = z.object({
   agentId: z.string().uuid(),
   policies: firewallPoliciesSchema,
 });
 
 /**
- * Contract for PUT /api/zero/firewall-policies
+ * Contract for PUT /api/zero/permission-policies
  */
-export const zeroAgentFirewallPoliciesContract = c.router({
+export const zeroAgentPermissionPoliciesContract = c.router({
   update: {
     method: "PUT",
-    path: "/api/zero/firewall-policies",
+    path: "/api/zero/permission-policies",
     headers: authHeadersSchema,
-    body: zeroAgentFirewallPoliciesRequestSchema,
+    body: zeroAgentPermissionPoliciesRequestSchema,
     responses: {
       200: zeroAgentResponseSchema,
       400: apiErrorSchema,
@@ -185,7 +185,7 @@ export const zeroAgentFirewallPoliciesContract = c.router({
       403: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Update zero agent firewall policies (owner only)",
+    summary: "Update zero agent permission policies (owner only)",
   },
 });
 
@@ -408,29 +408,29 @@ export const zeroSkillsDetailContract = c.router({
 });
 
 /**
- * Firewall access request status
+ * Permission access request status
  */
-export const firewallAccessRequestStatusSchema = z.enum([
+export const permissionAccessRequestStatusSchema = z.enum([
   "pending",
   "approved",
   "rejected",
 ]);
 
 /**
- * Firewall access request response schema
+ * Permission access request response schema
  */
-const firewallAccessRequestActionSchema = z.enum(["allow", "deny"]);
+const permissionAccessRequestActionSchema = z.enum(["allow", "deny"]);
 
-export const firewallAccessRequestResponseSchema = z.object({
+export const permissionAccessRequestResponseSchema = z.object({
   id: z.string().uuid(),
   agentId: z.string().uuid(),
-  firewallRef: z.string(),
+  connectorRef: z.string(),
   permission: z.string(),
-  action: firewallAccessRequestActionSchema,
+  action: permissionAccessRequestActionSchema,
   method: z.string().nullable(),
   path: z.string().nullable(),
   reason: z.string().nullable(),
-  status: firewallAccessRequestStatusSchema,
+  status: permissionAccessRequestStatusSchema,
   requesterUserId: z.string(),
   requesterName: z.string().nullable(),
   resolvedBy: z.string().nullable(),
@@ -439,88 +439,89 @@ export const firewallAccessRequestResponseSchema = z.object({
 });
 
 /**
- * Create firewall access request body
+ * Create permission access request body
  */
-export const createFirewallAccessRequestSchema = z.object({
+export const createPermissionAccessRequestSchema = z.object({
   agentId: z.string().uuid(),
-  firewallRef: z.string(),
+  connectorRef: z.string(),
   permission: z.string(),
-  action: firewallAccessRequestActionSchema.optional().default("allow"),
+  action: permissionAccessRequestActionSchema.optional().default("allow"),
   method: z.string().optional(),
   path: z.string().optional(),
   reason: z.string().optional(),
 });
 
 /**
- * Resolve firewall access request body
+ * Resolve permission access request body
  */
-export const resolveFirewallAccessRequestSchema = z.object({
+export const resolvePermissionAccessRequestSchema = z.object({
   requestId: z.string().uuid(),
   action: z.enum(["approve", "reject"]),
 });
 
 /**
- * Contract for POST /api/zero/firewall-access-requests (create)
+ * Contract for POST /api/zero/permission-access-requests (create)
  */
-export const firewallAccessRequestsCreateContract = c.router({
+export const permissionAccessRequestsCreateContract = c.router({
   create: {
     method: "POST",
-    path: "/api/zero/firewall-access-requests",
+    path: "/api/zero/permission-access-requests",
     headers: authHeadersSchema,
-    body: createFirewallAccessRequestSchema,
+    body: createPermissionAccessRequestSchema,
     responses: {
-      201: firewallAccessRequestResponseSchema,
+      201: permissionAccessRequestResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Create firewall access request",
+    summary: "Create permission access request",
   },
 });
 
 /**
- * Contract for GET /api/zero/firewall-access-requests (list)
+ * Contract for GET /api/zero/permission-access-requests (list)
  */
-const firewallAccessRequestsListQuerySchema = z.object({
+const permissionAccessRequestsListQuerySchema = z.object({
   agentId: z.string().optional(),
   requestId: z.string().optional(),
   status: z.string().optional(),
 });
 
-export const firewallAccessRequestsListContract = c.router({
+export const permissionAccessRequestsListContract = c.router({
   list: {
     method: "GET",
-    path: "/api/zero/firewall-access-requests",
+    path: "/api/zero/permission-access-requests",
     headers: authHeadersSchema,
-    query: firewallAccessRequestsListQuerySchema,
+    query: permissionAccessRequestsListQuerySchema,
     responses: {
-      200: z.array(firewallAccessRequestResponseSchema),
+      200: z.array(permissionAccessRequestResponseSchema),
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
     },
-    summary: "List firewall access requests for an agent",
+    summary: "List permission access requests for an agent",
   },
 });
 
 /**
- * Contract for PUT /api/zero/firewall-access-requests (resolve)
+ * Contract for PUT /api/zero/permission-access-requests (resolve)
  */
-export const firewallAccessRequestsResolveContract = c.router({
+export const permissionAccessRequestsResolveContract = c.router({
   resolve: {
     method: "PUT",
-    path: "/api/zero/firewall-access-requests",
+    path: "/api/zero/permission-access-requests",
     headers: authHeadersSchema,
-    body: resolveFirewallAccessRequestSchema,
+    body: resolvePermissionAccessRequestSchema,
     responses: {
-      200: firewallAccessRequestResponseSchema,
+      200: permissionAccessRequestResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Resolve (approve/reject) a firewall access request (owner only)",
+    summary:
+      "Resolve (approve/reject) a permission access request (owner only)",
   },
 });
 
@@ -536,16 +537,16 @@ export type ZeroAgentInstructionsResponse = z.infer<
 export type ZeroAgentInstructionsRequest = z.infer<
   typeof zeroAgentInstructionsRequestSchema
 >;
-export type ZeroAgentFirewallPoliciesRequest = z.infer<
-  typeof zeroAgentFirewallPoliciesRequestSchema
+export type ZeroAgentPermissionPoliciesRequest = z.infer<
+  typeof zeroAgentPermissionPoliciesRequestSchema
 >;
 
 export type ZeroAgentsMainContract = typeof zeroAgentsMainContract;
 export type ZeroAgentsByIdContract = typeof zeroAgentsByIdContract;
 export type ZeroAgentInstructionsContract =
   typeof zeroAgentInstructionsContract;
-export type ZeroAgentFirewallPoliciesContract =
-  typeof zeroAgentFirewallPoliciesContract;
+export type ZeroAgentPermissionPoliciesContract =
+  typeof zeroAgentPermissionPoliciesContract;
 export type ZeroAgentCustomSkill = z.infer<typeof zeroAgentCustomSkillSchema>;
 export type SkillFileEntry = z.infer<typeof skillFileEntrySchema>;
 export type SkillFileMetadata = z.infer<typeof skillFileMetadataSchema>;
@@ -557,18 +558,18 @@ export type ZeroAgentSkillContentResponse = z.infer<
 >;
 export type ZeroSkillsCollectionContract = typeof zeroSkillsCollectionContract;
 export type ZeroSkillsDetailContract = typeof zeroSkillsDetailContract;
-export type FirewallAccessRequestResponse = z.infer<
-  typeof firewallAccessRequestResponseSchema
+export type PermissionAccessRequestResponse = z.infer<
+  typeof permissionAccessRequestResponseSchema
 >;
-export type CreateFirewallAccessRequest = z.infer<
-  typeof createFirewallAccessRequestSchema
+export type CreatePermissionAccessRequest = z.infer<
+  typeof createPermissionAccessRequestSchema
 >;
-export type ResolveFirewallAccessRequest = z.infer<
-  typeof resolveFirewallAccessRequestSchema
+export type ResolvePermissionAccessRequest = z.infer<
+  typeof resolvePermissionAccessRequestSchema
 >;
-export type FirewallAccessRequestsCreateContract =
-  typeof firewallAccessRequestsCreateContract;
-export type FirewallAccessRequestsListContract =
-  typeof firewallAccessRequestsListContract;
-export type FirewallAccessRequestsResolveContract =
-  typeof firewallAccessRequestsResolveContract;
+export type PermissionAccessRequestsCreateContract =
+  typeof permissionAccessRequestsCreateContract;
+export type PermissionAccessRequestsListContract =
+  typeof permissionAccessRequestsListContract;
+export type PermissionAccessRequestsResolveContract =
+  typeof permissionAccessRequestsResolveContract;

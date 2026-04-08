@@ -81,7 +81,7 @@ function mockBaseAPIs(schedules: ScheduleResponse[]) {
         sound: null,
         avatarUrl: null,
         connectors: [],
-        firewallPolicies: null,
+        permissionPolicies: null,
       });
     }),
     http.get("*/api/zero/agents/:name/instructions", () => {

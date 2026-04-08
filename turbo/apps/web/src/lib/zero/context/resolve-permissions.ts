@@ -34,16 +34,16 @@ export function filterSecretConnectorMap(
  * Merge model provider and connector firewalls into a single manifest.
  * Compose content no longer stores firewalls — all firewalls are runtime-injected.
  */
-export function mergeFirewalls(
+export function mergePermissions(
   modelProviderFirewall: Firewalls[number] | null | undefined,
   connectorFirewalls: ExpandedFirewallConfig[],
-  firewallPolicies?: FirewallPolicies,
+  permissionPolicies?: FirewallPolicies,
   vars?: Record<string, string>,
 ): Firewalls | undefined {
   const autoFirewalls = modelProviderFirewall ? [modelProviderFirewall] : [];
   const policyFirewalls = applyConnectorPolicies(
     connectorFirewalls,
-    firewallPolicies,
+    permissionPolicies,
   );
   const allFirewalls = [...autoFirewalls, ...policyFirewalls];
   if (allFirewalls.length === 0) return undefined;

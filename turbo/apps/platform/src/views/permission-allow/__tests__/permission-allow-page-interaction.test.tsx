@@ -26,7 +26,7 @@ function defaultAgentResponse(overrides?: Record<string, unknown>) {
     displayName: null,
     sound: null,
     avatarUrl: null,
-    firewallPolicies: null,
+    permissionPolicies: null,
     customSkills: [],
     ...overrides,
   };
@@ -48,7 +48,7 @@ function mockAgent(overrides?: Record<string, unknown>) {
 
 function mockFirewallRequests(requests: unknown[] = []) {
   server.use(
-    http.get("*/api/zero/firewall-access-requests", () => {
+    http.get("*/api/zero/permission-access-requests", () => {
       return HttpResponse.json(requests);
     }),
   );
@@ -85,8 +85,8 @@ function pendingRequest(overrides?: Record<string, unknown>) {
   return {
     id: REQUEST_ID,
     agentId: AGENT_ID,
-    firewallRef: "slack",
-    permission: "channels:read",
+    connectorRef: "github",
+    permission: "issues:read",
     action: "allow",
     method: null,
     path: null,
@@ -109,7 +109,7 @@ describe("firewall allow page - admin doctor mode", () => {
   it("fw-d-018: Confirm button saves the policy", async () => {
     let savedBody: unknown;
     server.use(
-      http.put("*/api/zero/firewall-policies", async ({ request }) => {
+      http.put("*/api/zero/permission-policies", async ({ request }) => {
         savedBody = await request.json();
         return HttpResponse.json(defaultAgentResponse());
       }),
@@ -141,10 +141,10 @@ describe("firewall allow page - admin doctor mode", () => {
 
   it("fw-d-019: Confirm shows result card after save", async () => {
     server.use(
-      http.put("*/api/zero/firewall-policies", () => {
+      http.put("*/api/zero/permission-policies", () => {
         return HttpResponse.json(
           defaultAgentResponse({
-            firewallPolicies: { slack: { "channels:read": "deny" } },
+            permissionPolicies: { github: { "issues:read": "deny" } },
           }),
         );
       }),
@@ -172,16 +172,16 @@ describe("firewall allow page - admin doctor mode", () => {
 
   it("fw-d-020: shows Permissions denied card for deny action", async () => {
     server.use(
-      http.put("*/api/zero/firewall-policies", () => {
+      http.put("*/api/zero/permission-policies", () => {
         return HttpResponse.json(
           defaultAgentResponse({
-            firewallPolicies: { slack: { "channels:read": "deny" } },
+            permissionPolicies: { github: { "issues:read": "deny" } },
           }),
         );
       }),
     );
     // Agent starts with allow policy, action=deny → mismatch → confirmation card
-    mockAgent({ firewallPolicies: { slack: { "channels:read": "allow" } } });
+    mockAgent({ permissionPolicies: { github: { "issues:read": "allow" } } });
     mockFirewallRequests();
 
     await setupPage({
@@ -210,7 +210,7 @@ describe("firewall allow page - admin request mode", () => {
   it("fw-d-021: Approve change button approves pending request", async () => {
     let requestStatus = "pending";
     server.use(
-      http.put("*/api/zero/firewall-access-requests", () => {
+      http.put("*/api/zero/permission-access-requests", () => {
         requestStatus = "approved";
         return HttpResponse.json({
           ...pendingRequest(),
@@ -219,7 +219,7 @@ describe("firewall allow page - admin request mode", () => {
           resolvedAt: "2026-04-03T00:00:00Z",
         });
       }),
-      http.get("*/api/zero/firewall-access-requests", () => {
+      http.get("*/api/zero/permission-access-requests", () => {
         return HttpResponse.json([
           { ...pendingRequest(), status: requestStatus },
         ]);
@@ -247,7 +247,7 @@ describe("firewall allow page - admin request mode", () => {
   it("fw-d-022: Deny change button rejects pending request", async () => {
     let requestStatus = "pending";
     server.use(
-      http.put("*/api/zero/firewall-access-requests", () => {
+      http.put("*/api/zero/permission-access-requests", () => {
         requestStatus = "rejected";
         return HttpResponse.json({
           ...pendingRequest(),
@@ -256,7 +256,7 @@ describe("firewall allow page - admin request mode", () => {
           resolvedAt: "2026-04-03T00:00:00Z",
         });
       }),
-      http.get("*/api/zero/firewall-access-requests", () => {
+      http.get("*/api/zero/permission-access-requests", () => {
         return HttpResponse.json([
           { ...pendingRequest(), status: requestStatus },
         ]);
@@ -310,28 +310,31 @@ describe("firewall allow page - member request form", () => {
   it("fw-d-027: Request approval button sends the request", async () => {
     let requestBody: unknown;
     server.use(
-      http.post("*/api/zero/firewall-access-requests", async ({ request }) => {
-        requestBody = await request.json();
-        return HttpResponse.json(
-          {
-            id: "d1111111-0000-4000-a000-000000000002",
-            agentId: AGENT_ID,
-            firewallRef: "slack",
-            permission: "channels:read",
-            action: "deny",
-            method: null,
-            path: null,
-            reason: null,
-            status: "pending",
-            requesterUserId: "test-user-123",
-            requesterName: "Test User",
-            resolvedBy: null,
-            resolvedAt: null,
-            createdAt: "2026-04-03T00:00:00Z",
-          },
-          { status: 201 },
-        );
-      }),
+      http.post(
+        "*/api/zero/permission-access-requests",
+        async ({ request }) => {
+          requestBody = await request.json();
+          return HttpResponse.json(
+            {
+              id: "d1111111-0000-4000-a000-000000000002",
+              agentId: AGENT_ID,
+              connectorRef: "github",
+              permission: "issues:read",
+              action: "deny",
+              method: null,
+              path: null,
+              reason: null,
+              status: "pending",
+              requesterUserId: "test-user-123",
+              requesterName: "Test User",
+              resolvedBy: null,
+              resolvedAt: null,
+              createdAt: "2026-04-03T00:00:00Z",
+            },
+            { status: 201 },
+          );
+        },
+      ),
     );
     setupMemberContext();
     mockFirewallRequests();
@@ -354,8 +357,8 @@ describe("firewall allow page - member request form", () => {
 
     expect(requestBody).toMatchObject({
       agentId: AGENT_ID,
-      firewallRef: "slack",
-      permission: "channels:read",
+      connectorRef: "github",
+      permission: "issues:read",
       action: "deny",
     });
   });
@@ -414,28 +417,31 @@ describe("firewall allow page - member request form", () => {
   it("fw-d-031: Pre-filled reason can be edited before submission", async () => {
     let requestBody: Record<string, unknown> | undefined;
     server.use(
-      http.post("*/api/zero/firewall-access-requests", async ({ request }) => {
-        requestBody = (await request.json()) as Record<string, unknown>;
-        return HttpResponse.json(
-          {
-            id: "d0000000-0000-4000-a000-000000000099",
-            agentId: AGENT_ID,
-            firewallRef: "slack",
-            permission: "channels:read",
-            action: "deny",
-            method: null,
-            path: null,
-            reason: "Edited reason",
-            status: "pending",
-            requesterUserId: "user_abc",
-            requesterName: null,
-            resolvedBy: null,
-            resolvedAt: null,
-            createdAt: "2026-04-03T00:00:00Z",
-          },
-          { status: 201 },
-        );
-      }),
+      http.post(
+        "*/api/zero/permission-access-requests",
+        async ({ request }) => {
+          requestBody = (await request.json()) as Record<string, unknown>;
+          return HttpResponse.json(
+            {
+              id: "d0000000-0000-4000-a000-000000000099",
+              agentId: AGENT_ID,
+              connectorRef: "github",
+              permission: "issues:read",
+              action: "deny",
+              method: null,
+              path: null,
+              reason: "Edited reason",
+              status: "pending",
+              requesterUserId: "user_abc",
+              requesterName: null,
+              resolvedBy: null,
+              resolvedAt: null,
+              createdAt: "2026-04-03T00:00:00Z",
+            },
+            { status: 201 },
+          );
+        },
+      ),
     );
     setupMemberContext();
     mockFirewallRequests();

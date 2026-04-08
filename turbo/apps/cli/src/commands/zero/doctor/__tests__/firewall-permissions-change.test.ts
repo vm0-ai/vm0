@@ -197,7 +197,7 @@ describe("zero doctor firewall-permissions-change command", () => {
             displayName: null,
             sound: null,
             avatarUrl: null,
-            firewallPolicies: null,
+            permissionPolicies: null,
             customSkills: [],
           });
         }),
@@ -245,7 +245,7 @@ describe("zero doctor firewall-permissions-change command", () => {
             displayName: null,
             sound: null,
             avatarUrl: null,
-            firewallPolicies: null,
+            permissionPolicies: null,
             customSkills: [],
           });
         }),
@@ -637,7 +637,7 @@ describe("zero doctor firewall-permissions-change command", () => {
             displayName: null,
             sound: null,
             avatarUrl: null,
-            firewallPolicies: null,
+            permissionPolicies: null,
             customSkills: [],
           });
         }),

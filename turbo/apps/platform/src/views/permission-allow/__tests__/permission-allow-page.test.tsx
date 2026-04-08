@@ -13,7 +13,7 @@ const REQUEST_ID = "d0000000-0000-4000-a000-000000000001";
 
 function mockFirewallRequests(requests: unknown[] = []) {
   server.use(
-    http.get("*/api/zero/firewall-access-requests", () => {
+    http.get("*/api/zero/permission-access-requests", () => {
       return HttpResponse.json(requests);
     }),
   );
@@ -33,7 +33,7 @@ function mockMemberOrg() {
 }
 
 function mockAgentWithPolicy(
-  firewallPolicies: Record<string, Record<string, string>> | null,
+  permissionPolicies: Record<string, Record<string, string>> | null,
   ownerId = "test-owner-id",
 ) {
   server.use(
@@ -51,7 +51,7 @@ function mockAgentWithPolicy(
         displayName: null,
         sound: null,
         avatarUrl: null,
-        firewallPolicies,
+        permissionPolicies,
         customSkills: [],
       });
     }),
@@ -62,8 +62,8 @@ function makePendingRequest(overrides?: Record<string, unknown>) {
   return {
     id: REQUEST_ID,
     agentId: AGENT_ID,
-    firewallRef: "slack",
-    permission: "channels:read",
+    connectorRef: "github",
+    permission: "issues:read",
     action: "allow",
     method: null,
     path: null,

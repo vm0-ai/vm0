@@ -46,7 +46,7 @@ function mockTeamAPIs() {
         sound: null,
         avatarUrl: null,
         connectors: [],
-        firewallPolicies: null,
+        permissionPolicies: null,
       });
     }),
     http.get("*/api/zero/agents/:name/instructions", () => {

@@ -37,7 +37,7 @@ function mockAgentResponse() {
     displayName: null,
     sound: null,
     avatarUrl: null,
-    firewallPolicies: null,
+    permissionPolicies: null,
     customSkills: [],
   };
 }
@@ -246,7 +246,7 @@ describe("zero-job-detail signals", () => {
         http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
           return HttpResponse.json({
             ...mockAgentResponse(),
-            firewallPolicies: policies,
+            permissionPolicies: policies,
           });
         }),
       );
@@ -610,7 +610,7 @@ describe("zero-job-detail signals", () => {
               displayName: null,
               sound: null,
               avatarUrl: null,
-              firewallPolicies: null,
+              permissionPolicies: null,
             });
           },
         ),
@@ -660,7 +660,7 @@ describe("zero-job-detail signals", () => {
               displayName: null,
               sound: null,
               avatarUrl: null,
-              firewallPolicies: null,
+              permissionPolicies: null,
             });
           },
         ),

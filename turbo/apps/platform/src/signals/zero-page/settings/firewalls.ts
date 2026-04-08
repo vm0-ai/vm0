@@ -1,6 +1,6 @@
 import { command } from "ccstate";
 import {
-  zeroAgentFirewallPoliciesContract,
+  zeroAgentPermissionPoliciesContract,
   isFirewallConnectorType,
   getConnectorFirewall,
   type ConnectorType,
@@ -37,13 +37,13 @@ export const saveFirewallPolicies$ = command(
     policies: FirewallPolicies,
     signal: AbortSignal,
   ): Promise<FirewallPolicies | null> => {
-    const client = get(zeroClient$)(zeroAgentFirewallPoliciesContract);
+    const client = get(zeroClient$)(zeroAgentPermissionPoliciesContract);
     const result = await accept(
       client.update({ body: { agentId: agentName, policies } }),
       [200],
     );
 
     signal.throwIfAborted();
-    return result.body.firewallPolicies ?? null;
+    return result.body.permissionPolicies ?? null;
   },
 );
