@@ -1,9 +1,27 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import { http, HttpResponse } from "msw";
+import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
-import { effectiveStatus$, effectiveError$ } from "../slack-connect-signals.ts";
+import {
+  slackConnectStatus$,
+  effectiveStatus$,
+  effectiveError$,
+  connectSlackAccount$,
+} from "../slack-connect-signals.ts";
+import { updateSearchParams$ } from "../../route.ts";
+import { setMockSlackConnectData } from "../../../mocks/handlers/api-integrations-slack-connect.ts";
 
 const context = testContext();
+
+// The signal code sets window.location.href = "slack://open" on success,
+// which changes happy-dom's location and corrupts subsequent tests.
+// Reset the href after each test to prevent location pollution.
+afterEach(() => {
+  if (!window.location.href.startsWith("http://localhost")) {
+    window.location.href = "http://localhost/settings/slack";
+  }
+});
 
 async function setup(path: string) {
   await setupPage({
@@ -14,6 +32,39 @@ async function setup(path: string) {
 }
 
 describe("slack-connect-page signals", () => {
+  describe("init: check connection status on mount", () => {
+    it("should set status to success when already connected", async () => {
+      setMockSlackConnectData({ isConnected: true });
+      await setup("/settings/slack?w=ws1&u=user1");
+
+      await vi.waitFor(() => {
+        expect(context.store.get(slackConnectStatus$)).toBe("success");
+      });
+    });
+
+    it("should stay idle when not connected", async () => {
+      let checkCalled = false;
+      server.use(
+        http.get("*/api/zero/integrations/slack/connect", () => {
+          checkCalled = true;
+          return HttpResponse.json({ isConnected: false, isAdmin: false });
+        }),
+      );
+      await setup("/settings/slack?w=ws1&u=user1");
+
+      await vi.waitFor(() => {
+        expect(checkCalled).toBeTruthy();
+      });
+      expect(context.store.get(slackConnectStatus$)).toBe("idle");
+    });
+
+    it("should skip connection check when no workspace param", async () => {
+      await setup("/settings/slack");
+
+      expect(context.store.get(slackConnectStatus$)).toBe("idle");
+    });
+  });
+
   describe("effective status from URL params", () => {
     it("should return success when status=connected in URL", async () => {
       await setup("/settings/slack?status=connected");
@@ -32,6 +83,45 @@ describe("slack-connect-page signals", () => {
       await setup("/settings/slack");
 
       expect(context.store.get(effectiveStatus$)).toBe("idle");
+    });
+  });
+
+  describe("connectSlackAccount$", () => {
+    it("should set status to success on successful connect", async () => {
+      setMockSlackConnectData({ isConnected: false });
+      // Setup without w param to avoid init fetch, then add params for connect
+      await setup("/settings/slack");
+      context.store.set(
+        updateSearchParams$,
+        new URLSearchParams("w=ws1&u=user1"),
+      );
+
+      await context.store.set(connectSlackAccount$, context.signal);
+
+      expect(context.store.get(slackConnectStatus$)).toBe("success");
+    });
+
+    it("should set status to error on failed connect", async () => {
+      setMockSlackConnectData({ postError: "Account already linked" });
+      // Setup without w param to avoid init fetch, then add params for connect
+      await setup("/settings/slack");
+      context.store.set(
+        updateSearchParams$,
+        new URLSearchParams("w=ws1&u=user1"),
+      );
+
+      await context.store.set(connectSlackAccount$, context.signal);
+
+      expect(context.store.get(slackConnectStatus$)).toBe("error");
+      expect(context.store.get(effectiveError$)).toBe("Account already linked");
+    });
+
+    it("should not connect without workspace and user params", async () => {
+      await setup("/settings/slack");
+
+      await context.store.set(connectSlackAccount$, context.signal);
+
+      expect(context.store.get(slackConnectStatus$)).toBe("idle");
     });
   });
 });

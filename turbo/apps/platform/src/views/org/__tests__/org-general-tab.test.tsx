@@ -121,6 +121,27 @@ describe("org general tab - display", () => {
     );
   });
 
+  // ORG-D-012
+  it("error messages shown during save failure", async () => {
+    const user = userEvent.setup();
+    mockAPIs({ slug: "old-slug" });
+    server.use(
+      http.put("*/api/zero/org", () => {
+        return HttpResponse.json(
+          { error: { message: "Slug already taken", code: "CONFLICT" } },
+          { status: 409 },
+        );
+      }),
+    );
+    await openGeneralTab();
+    const slugInput = await screen.findByDisplayValue("old-slug");
+    await fill(slugInput, "taken-slug");
+    await user.click(screen.getByText("Save changes"));
+    await waitFor(() => {
+      expect(screen.getByText("Slug already taken")).toBeInTheDocument();
+    });
+  });
+
   // ORG-D-013
   it("logo upload preview is shown after selecting a file", async () => {
     const user = userEvent.setup();

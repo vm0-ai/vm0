@@ -193,6 +193,35 @@ describe("fw-d-007: loading state shows while agent loads", () => {
   });
 });
 
+describe("fw-d-008: error state shows when agent load fails", () => {
+  it("shows an error state when the agent API returns an error", async () => {
+    server.use(
+      http.get("*/api/zero/agents/:name", ({ params }) => {
+        if (
+          params.name === "instructions" ||
+          (typeof params.name === "string" && params.name.includes("/"))
+        ) {
+          return;
+        }
+        return HttpResponse.json(
+          { error: { message: "Internal Server Error", code: "INTERNAL" } },
+          { status: 500 },
+        );
+      }),
+    );
+    mockFirewallRequests();
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/permissions?ref=github&permission=issues:read`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Failed to load agent")).toBeInTheDocument();
+    });
+  });
+});
+
 describe("fw-d-009: member request form renders for non-owner", () => {
   it("shows request form for member who does not own the agent", async () => {
     setupMemberContext();
