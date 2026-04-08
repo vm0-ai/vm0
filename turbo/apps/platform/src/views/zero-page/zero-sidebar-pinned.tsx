@@ -4,6 +4,7 @@ import {
   useLastResolved,
   useLastLoadable,
 } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import { IconPlus, IconChevronRight, IconX } from "@tabler/icons-react";
 import {
   Tooltip,
@@ -42,7 +43,7 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
-import { ChatListDialog } from "./zero-sidebar-dialogs.tsx";
+import { AgentListDialog } from "./zero-sidebar-dialogs.tsx";
 
 export function PinnedAgentListSection() {
   const activeRoute = useGet(activeRoute$);
@@ -66,7 +67,8 @@ export function PinnedAgentListSection() {
   const collapsed = useGet(agentCardCollapsed$);
   const setCollapsed = useSet(setAgentCardCollapsed$);
   const reloadAgents = useSet(reloadAgents$);
-  const savePinnedIds = useSet(updatePinnedAgentIds$);
+  const [pinLoadable, savePinnedIds] = useLoadableSet(updatePinnedAgentIds$);
+  const savingPinned = pinLoadable.state === "loading";
   const createNewChat = useSet(createNewChatThread$);
   const setExpanded = useSet(setSidebarExpanded$);
   const pageSignal = useGet(pageSignal$);
@@ -184,7 +186,8 @@ export function PinnedAgentListSection() {
                                   }),
                                 );
                               }}
-                              className={`flex h-6 w-6 cursor-pointer items-center justify-center rounded-md invisible group-hover:visible transition-opacity duration-150 ${
+                              disabled={savingPinned}
+                              className={`flex h-6 w-6 cursor-pointer items-center justify-center rounded-md invisible group-hover:visible transition-opacity duration-150 disabled:cursor-not-allowed disabled:opacity-50 ${
                                 isPrimarySelected
                                   ? "text-slate-500 hover:text-slate-900 hover:bg-slate-300"
                                   : "text-sidebar-foreground/80 hover:text-foreground hover:bg-sidebar-foreground/10"
@@ -207,13 +210,11 @@ export function PinnedAgentListSection() {
         </div>
       )}
 
-      <ChatListDialog
+      <AgentListDialog
         open={chatListOpen}
         onOpenChange={setChatListOpenFn}
         displayName={displayName}
         subagents={subagents}
-        pinnedIds={pinnedIds}
-        onPinnedIdsChange={onPinnedIdsChange}
         onNewChat={onNewChat}
       />
     </div>
