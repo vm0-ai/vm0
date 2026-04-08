@@ -4,3 +4,6 @@ node_modules/
 .env.local
 debug-*.png
 lighthouse/lighthouse-reports/
+playwright/.clerk/
+playwright-report/
+test-results/
