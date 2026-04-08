@@ -180,7 +180,7 @@ async function resolveVm0Provider(
   const injectedEnvironment = resolveEnvironmentMapping(
     concreteType,
     concreteSecretName,
-    poolKey.model,
+    selectedModel,
   );
 
   log.debug(

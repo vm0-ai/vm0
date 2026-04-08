@@ -74,6 +74,29 @@ describe("Org-Level Runtime Resolution (Zero Layer)", () => {
       });
     });
 
+    it("should inject ANTHROPIC_MODEL when selectedModel is set", async () => {
+      const agentName = uniqueId("model-sel-agent");
+      await createTestCompose(agentName, {
+        skipDefaultApiKey: true,
+      });
+      const modelAgentId = await getTestZeroAgentId(user.orgId, agentName);
+
+      await upsertOrgModelProvider(
+        user.orgId,
+        "anthropic-api-key",
+        "org-api-key",
+        "claude-opus-4.6",
+      );
+
+      const result = await createZeroRun(baseParams({ agentId: modelAgentId }));
+
+      const job = await findTestRunnerJobEntry(result.runId);
+      expect(job).toBeDefined();
+      expect(job!.executionContext.environment).toMatchObject({
+        ANTHROPIC_MODEL: "claude-opus-4.6",
+      });
+    });
+
     it("should error when no org default provider exists", async () => {
       const agentName = uniqueId("no-key-agent");
       await createTestCompose(agentName, {
