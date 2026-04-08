@@ -4,8 +4,9 @@ import { initServices } from "../../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
 import { orgMetadata } from "../../../../../src/db/schema/org-metadata";
+import { zeroAgents } from "../../../../../src/db/schema/zero-agent";
 import { getAgentPhoneClient } from "../../../../../src/lib/zero/phone/agentphone-client";
-import { RECEPTIONIST_SYSTEM_PROMPT } from "../../../../../src/lib/zero/phone/receptionist-prompt";
+import { buildReceptionistPrompt } from "../../../../../src/lib/zero/phone/receptionist-prompt";
 import { env } from "../../../../../src/env";
 import { logger } from "../../../../../src/lib/shared/logger";
 
@@ -40,6 +41,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     .select({
       agentphoneAgentId: orgMetadata.agentphoneAgentId,
       tier: orgMetadata.tier,
+      defaultAgentId: orgMetadata.defaultAgentId,
     })
     .from(orgMetadata)
     .where(eq(orgMetadata.orgId, org.orgId))
@@ -67,14 +69,27 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     );
   }
 
+  // Resolve default agent's display name for the receptionist persona
+  let agentDisplayName = "Zero";
+  if (existing?.defaultAgentId) {
+    const [zeroAgent] = await globalThis.services.db
+      .select({ displayName: zeroAgents.displayName })
+      .from(zeroAgents)
+      .where(eq(zeroAgents.id, existing.defaultAgentId))
+      .limit(1);
+    if (zeroAgent?.displayName) {
+      agentDisplayName = zeroAgent.displayName;
+    }
+  }
+
   const client = getAgentPhoneClient();
 
-  // 1. Create AgentPhone agent
+  // 1. Create AgentPhone agent with the org's default agent name
   const agent = await client.agents.createAgent({
-    name: `Zero - ${org.orgId}`,
+    name: agentDisplayName,
     voiceMode: "hosted",
-    systemPrompt: RECEPTIONIST_SYSTEM_PROMPT,
-    beginMessage: "Hello, you've reached Zero. How can I help you today?",
+    systemPrompt: buildReceptionistPrompt(agentDisplayName),
+    beginMessage: `Hello, you've reached ${agentDisplayName}. How can I help you today?`,
   });
 
   const agentId = agent.id;

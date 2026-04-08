@@ -4,7 +4,6 @@ import {
   lookupPhoneThreadSession,
 } from "./shared";
 import { runAgentForPhone } from "./run-agent";
-import { getAgentPhoneClient } from "../agentphone-client";
 import type { PhoneCallbackPayload } from "../../../infra/callback/callback-payloads";
 import { logger } from "../../../shared/logger";
 
@@ -18,6 +17,8 @@ interface CallEndedEvent {
   direction: string;
   channel: string;
   durationSeconds?: number;
+  transcript?: unknown;
+  summary?: string;
 }
 
 /**
@@ -27,7 +28,7 @@ interface CallEndedEvent {
  * 1. Only process inbound voice calls
  * 2. Resolve org from AgentPhone agent ID
  * 3. Resolve VM0 user from caller phone number
- * 4. Fetch call transcript
+ * 4. Format transcript from webhook payload
  * 5. Look up existing phone thread session
  * 6. Create Zero run with transcript as prompt
  */
@@ -77,13 +78,17 @@ export async function handleCallEnded(event: CallEndedEvent): Promise<void> {
     return;
   }
 
-  // Fetch transcript from AgentPhone
-  const client = getAgentPhoneClient();
-  const transcript = await client.calls.getCallTranscript({ call_id: callId });
-  const transcriptText = formatTranscript(transcript);
+  // Use transcript from webhook payload (no API call needed)
+  const transcriptText = event.transcript
+    ? formatTranscript(event.transcript)
+    : "[Transcript unavailable]";
+
+  const summaryText = event.summary
+    ? `\n\nReceptionist summary: ${event.summary}`
+    : "";
 
   // Build prompt and context
-  const prompt = `Phone call from ${fromNumber}:\n\n${transcriptText}`;
+  const prompt = `Phone call from ${fromNumber}:\n\n${transcriptText}${summaryText}`;
   const phoneContext = [
     `# Phone Call Context`,
     `Caller: ${fromNumber}`,
@@ -123,8 +128,6 @@ export async function handleCallEnded(event: CallEndedEvent): Promise<void> {
 
 /**
  * Format a transcript response into readable text.
- * The exact transcript format from AgentPhone is not fully documented,
- * so we handle it defensively.
  */
 function formatTranscript(transcript: unknown): string {
   if (typeof transcript === "string") return transcript;

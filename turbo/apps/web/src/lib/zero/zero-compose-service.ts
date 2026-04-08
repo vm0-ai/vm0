@@ -1,8 +1,11 @@
 import { eq, and, desc } from "drizzle-orm";
 import { agentComposes } from "../../db/schema/agent-compose";
 import { zeroAgents } from "../../db/schema/zero-agent";
+import { orgMetadata } from "../../db/schema/org-metadata";
 import { notFound } from "../shared/errors";
 import { canAccessCompose } from "../infra/agent/compose-access";
+import { syncAgentPhoneName } from "./phone/sync-agentphone-name";
+import { logger } from "../shared/logger";
 import type { ComposeListItem } from "@vm0/core";
 
 /**
@@ -78,6 +81,23 @@ export async function updateComposeMetadata(
         updatedAt: new Date(),
       },
     });
+
+  // If displayName changed and this is the org's default agent, sync AgentPhone
+  if (body.displayName !== undefined) {
+    const [org] = await db
+      .select({ defaultAgentId: orgMetadata.defaultAgentId })
+      .from(orgMetadata)
+      .where(eq(orgMetadata.orgId, compose.orgId))
+      .limit(1);
+
+    if (org?.defaultAgentId === compose.id) {
+      const newName = body.displayName ?? compose.name;
+      syncAgentPhoneName(compose.orgId, newName).catch((err) => {
+        const log = logger("compose:metadata");
+        log.warn("Failed to sync AgentPhone name", { err });
+      });
+    }
+  }
 }
 
 /**
