@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../../../src/lib/auth/get-auth-context";
+import { resolveOrg } from "../../../../../../src/lib/zero/org/resolve-org";
 import { heartbeat } from "../../../../../../src/lib/zero/voice-chat/session-service";
 
 export async function POST(
@@ -19,8 +20,9 @@ export async function POST(
     );
   }
 
+  const { org } = await resolveOrg(authCtx);
   const { id } = await params;
-  const updated = await heartbeat(id);
+  const updated = await heartbeat(id, org.orgId, authCtx.userId);
   if (!updated) {
     return NextResponse.json(
       {

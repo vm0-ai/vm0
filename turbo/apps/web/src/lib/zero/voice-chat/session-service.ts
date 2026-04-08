@@ -6,7 +6,7 @@ import {
 import { createZeroRun } from "../zero-run-service";
 import { cancelRun } from "../zero-run-cancel";
 import { buildIntegrationContext } from "../integration-context";
-import { conflict, notFound, badRequest } from "../../shared/errors";
+import { conflict, notFound, badRequest, forbidden } from "../../shared/errors";
 import { logger } from "../../shared/logger";
 
 const log = logger("zero:voice-chat:session");
@@ -57,7 +57,11 @@ async function getSession(sessionId: string) {
   return session ?? null;
 }
 
-export async function heartbeat(sessionId: string) {
+export async function heartbeat(
+  sessionId: string,
+  orgId: string,
+  userId: string,
+) {
   const db = globalThis.services.db;
   const [updated] = await db
     .update(voiceChatSessions)
@@ -65,6 +69,8 @@ export async function heartbeat(sessionId: string) {
     .where(
       and(
         eq(voiceChatSessions.id, sessionId),
+        eq(voiceChatSessions.orgId, orgId),
+        eq(voiceChatSessions.userId, userId),
         eq(voiceChatSessions.status, "active"),
       ),
     )
@@ -82,6 +88,9 @@ export async function endSession(
   const session = await getSession(sessionId);
   if (!session) {
     throw notFound("Voice-chat session not found");
+  }
+  if (session.orgId !== orgId || session.userId !== userId) {
+    throw forbidden("Not authorized to end this session");
   }
   if (session.status !== "active") {
     throw badRequest("Session is not active");
