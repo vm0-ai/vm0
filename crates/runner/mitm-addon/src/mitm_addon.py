@@ -441,8 +441,8 @@ def _add_capture_fields(flow: http.HTTPFlow, log_entry: dict) -> None:
             return
         stream_state = flow.metadata.get("stream_buffer_state")
         res_ct = flow.response.headers.get("content-type", "")
-        # stream_buffer may already be truncated at _STREAM_BUFFER_LIMIT;
-        # apply the capture-specific _STREAM_BUFFER_LIMIT limit as well.
+        # stream_buffer may already be truncated at _STREAM_BUFFER_LIMIT.
+        # Also check decompressed size in case it expanded beyond the limit.
         truncated = (stream_state and stream_state["truncated"]) or len(body) > _STREAM_BUFFER_LIMIT
         if truncated:
             body = _truncate_bytes_utf8_safe(body, _STREAM_BUFFER_LIMIT)
