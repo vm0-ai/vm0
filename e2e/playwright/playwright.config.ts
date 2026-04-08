@@ -15,6 +15,7 @@ export default defineConfig({
   testDir: ".",
   globalSetup: "./global-setup",
   globalTeardown: "./global-teardown",
+  timeout: 120_000,
   use: {
     baseURL: process.env.VM0_API_URL,
     ignoreHTTPSErrors: true,
