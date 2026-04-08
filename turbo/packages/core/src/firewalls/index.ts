@@ -334,12 +334,6 @@ function expandPlaceholders(
   return { ...firewall, placeholders: expanded };
 }
 
-/**
- * Connectors whose fine-grained permissions are stripped at load time.
- * These connectors allow any request matching the base URL through the proxy.
- */
-const STRIP_PERMISSIONS_CONNECTORS = new Set<ConnectorType>(["github"]);
-
 function stripPermissions(firewall: FirewallConfig): FirewallConfig {
   return {
     ...firewall,
@@ -352,17 +346,15 @@ function stripPermissions(firewall: FirewallConfig): FirewallConfig {
   };
 }
 
-// Pre-compute expanded placeholders at module load time.
-// Connectors outside the fine-grained whitelist have permissions stripped.
+// Pre-compute expanded placeholders and strip fine-grained permissions
+// at module load time. Fine-grained permission rules are not yet stable
+// enough for production use — strip them globally for now and gradually
+// re-enable per connector as rules are validated and DEFAULT_ALLOWED
+// policies are configured.
 const EXPANDED_CONNECTOR_FIREWALLS = Object.fromEntries(
   Object.entries(CONNECTOR_FIREWALLS).map(([type, firewall]) => {
     const expanded = expandPlaceholders(firewall, type as ConnectorType);
-    return [
-      type,
-      STRIP_PERMISSIONS_CONNECTORS.has(type as ConnectorType)
-        ? stripPermissions(expanded)
-        : expanded,
-    ];
+    return [type, stripPermissions(expanded)];
   }),
 ) as typeof CONNECTOR_FIREWALLS;
 
