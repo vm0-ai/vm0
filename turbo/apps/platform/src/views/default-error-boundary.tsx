@@ -25,7 +25,7 @@ export function DefaultErrorFallback({ error }: ErrorFallbackProps) {
               support
             </a>
             <br />
-            We're here to help
+            We&apos;re here to help
           </div>
         </div>
       </div>

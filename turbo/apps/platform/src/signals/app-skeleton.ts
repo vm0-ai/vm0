@@ -96,8 +96,8 @@ export const hideAppSkeleton$ = command(
         get(pinnedAgents$),
       ]);
       signal.throwIfAborted();
-    } catch (e) {
-      throwIfAbort(e);
+    } catch (error) {
+      throwIfAbort(error);
     }
 
     set(internalVisible$, false);

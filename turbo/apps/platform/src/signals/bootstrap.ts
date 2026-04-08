@@ -244,11 +244,17 @@ export const bootstrap$ = command(
 
     render();
 
+    set(startSkeletonCycling$, signal).catch((error: unknown) => {
+      if (error instanceof Error && error.name === "AbortError") {
+        return;
+      }
+      throw error;
+    });
+
     await Promise.all([
       set(setupGlobalMethod$, signal),
       set(setupClerk$, signal),
       set(setupRoutes$, signal),
-      set(startSkeletonCycling$, signal),
     ]);
     signal.throwIfAborted();
 
