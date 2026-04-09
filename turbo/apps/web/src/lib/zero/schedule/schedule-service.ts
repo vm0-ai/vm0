@@ -9,7 +9,7 @@ import { decryptSecretsMap } from "../../shared/crypto";
 import { notFound, badRequest, schedulePast } from "../../shared/errors";
 import { logger } from "../../shared/logger";
 import { createZeroRun } from "../zero-run-service";
-import { buildIntegrationContext } from "../integration-context";
+import { buildIntegrationPrompt } from "../integration-prompt";
 import { generateCallbackSecret, getApiUrl } from "../../infra/callback";
 import { generateScheduleDescription } from "../ai/lightweight-model";
 import type {
@@ -885,7 +885,7 @@ export async function executeSchedule(
 
   // Build schedule integration context for the agent
   // (User info is injected centrally by createZeroRunRecord)
-  const integrationContext = buildIntegrationContext("Schedule", {
+  const integrationContext = buildIntegrationPrompt("Schedule", {
     scheduleDescription: schedule.description ?? undefined,
     triggerType: schedule.triggerType,
   });

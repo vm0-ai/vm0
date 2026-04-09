@@ -6,7 +6,7 @@ import { githubIssueSessions } from "../../../../db/schema/github-issue-session"
 import { agentComposes } from "../../../../db/schema/agent-compose";
 import { validateAgentSession } from "../../zero-run-validation";
 import { createZeroRun } from "../../zero-run-service";
-import { buildIntegrationContext } from "../../integration-context";
+import { buildGitHubPrompt } from "../../integration-prompt";
 import { resolveAgentId } from "../../zero-compose-service";
 import { generateCallbackSecret, getApiUrl } from "../../../infra/callback";
 import type { GitHubIssuesCallbackPayload } from "../../../infra/callback/callback-payloads";
@@ -309,10 +309,7 @@ function buildPromptParts(
   issueContext: string,
   isCommentTrigger: boolean,
 ): { prompt: string; appendSystemPrompt: string | undefined } {
-  const integrationContext = buildIntegrationContext("GitHub");
-  const contextParts = [integrationContext, issueContext].filter(Boolean);
-  const appendSystemPrompt =
-    contextParts.length > 0 ? contextParts.join("\n\n") : undefined;
+  const appendSystemPrompt = buildGitHubPrompt(issueContext) || undefined;
 
   const userPrompt = isCommentTrigger
     ? prompt

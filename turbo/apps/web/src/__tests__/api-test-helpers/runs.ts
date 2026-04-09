@@ -842,9 +842,13 @@ export async function enqueueTestRun(params: {
   agentComposeVersionId: string;
   orgId: string;
   prompt: string;
-}): Promise<{ runId: string; queuedAt: Date }> {
+}): Promise<{ runId: string; status: string; queuedAt: Date }> {
   const result = await enqueueRun(params);
-  return { runId: result.runId, queuedAt: result.createdAt };
+  return {
+    runId: result.runId,
+    status: result.status,
+    queuedAt: result.createdAt,
+  };
 }
 
 /**

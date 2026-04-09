@@ -172,11 +172,12 @@ function SlackThreadMockup() {
         {/* Message 1 — Lancy */}
         <div className="relative mb-4 pl-0">
           <div className="absolute left-0 top-[1.5px] h-[26.5px] w-[26.5px] overflow-hidden rounded-[3.3px]">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
+            <Image
               alt=""
               src="/assets/hero/slack-avatar-lancy.png"
-              className="h-full w-full object-cover"
+              className="object-cover"
+              fill
+              sizes="27px"
             />
           </div>
           <div className="ml-[33px]">
@@ -211,26 +212,29 @@ function SlackThreadMockup() {
           {/* Zero avatar */}
           <div className="absolute left-0 top-0 h-[26.3px] w-[26.3px] shrink-0 overflow-hidden rounded-[7.5px] bg-[#da7840]">
             <div className="absolute -left-[5.3px] -top-[5.3px] h-[34.7px] w-[34.7px] overflow-hidden">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
+              <Image
                 alt=""
                 src="/assets/hero/head0.png"
+                width={169}
+                height={188}
                 className="absolute left-[-12.08%] top-[-9.17%] h-[541.67%] w-[486.88%] max-w-none"
               />
             </div>
             <div className="absolute -left-[5.3px] -top-[5.3px] h-[34.7px] w-[34.7px] overflow-hidden">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
+              <Image
                 alt=""
                 src="/assets/hero/hair1.png"
+                width={166}
+                height={226}
                 className="absolute left-[-12.08%] top-[-40%] h-[652.29%] w-[478.12%] max-w-none"
               />
             </div>
             <div className="absolute -left-[5.3px] -top-[5.3px] h-[34.7px] w-[34.7px] overflow-hidden">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
+              <Image
                 alt=""
                 src="/assets/hero/face3.png"
+                width={169}
+                height={142}
                 className="absolute left-[-10.83%] top-[-40.62%] h-[408.33%] w-[486.87%] max-w-none"
               />
             </div>
@@ -366,10 +370,11 @@ function SlackMockup() {
       ref={ref}
       className="flex flex-1 items-center justify-center overflow-hidden bg-[#9a948d] md:h-[400px]"
     >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
+      <Image
         alt="Slack thread showing Zero AI assistant"
         src="/assets/mockup/atslack.png"
+        width={800}
+        height={400}
         className="slack-thread-pop h-full w-full object-contain"
         draggable={false}
       />
@@ -437,47 +442,52 @@ function SyncedToolsIllustration() {
       <div className="relative h-[355px] w-[500px]">
         {/* Slack icon — top-left */}
         <div className="absolute left-0 top-0 z-10 flex size-[26px] items-center justify-center rounded-[6px] border border-black/[0.08] bg-white p-1 shadow-[0px_7px_7px_0px_rgba(0,0,0,0.08)]">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
+          <Image
             alt="Slack"
             src="/assets/tool-sync/slack-icon.png"
+            width={19}
+            height={19}
             className="size-[19px]"
           />
         </div>
 
         {/* Zero chat screenshot — left */}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
+        <Image
           alt="Zero chat creating a Notion database of KOLs"
           src="/assets/tool-sync/zero-chat.png"
+          width={348}
+          height={400}
           className="sync-chat absolute left-[8px] top-[9px] z-[1] w-[348px] rounded-[9px]"
           draggable={false}
         />
 
         {/* Notion/download icon — above Notion screenshot */}
         <div className="absolute left-[204px] top-[53px] z-10 flex size-[26px] items-center justify-center rounded-[6px] border border-black/[0.08] bg-white p-1 shadow-[0px_7px_7px_0px_rgba(0,0,0,0.08)]">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
+          <Image
             alt="Notion"
             src="/assets/tool-sync/download-icon.png"
+            width={19}
+            height={19}
             className="size-[19px]"
           />
         </div>
 
         {/* Arrow connecting the two screenshots */}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
+        <Image
           alt=""
           src="/assets/tool-sync/arrow.png"
+          width={75}
+          height={75}
           className="sync-arrow absolute left-[155px] top-[147px] z-[5] w-[75px] -scale-y-100"
           draggable={false}
         />
 
         {/* Notion database screenshot — right, overlapping */}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
+        <Image
           alt="Notion database showing KOL Tracker for AI & Dev Tools"
           src="/assets/tool-sync/notion-db.png"
+          width={385}
+          height={300}
           className="sync-notion absolute left-[215px] top-[63px] z-[2] w-[385px] rounded-[7px] shadow-[0px_0px_7px_7px_rgba(0,0,0,0.08)]"
           draggable={false}
         />
@@ -512,10 +522,11 @@ function SyncedToolsMockup() {
       ref={ref}
       className="flex flex-1 items-center justify-center overflow-hidden bg-[#39A2A3] p-2 sm:p-8"
     >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
+      <Image
         alt="Synced across tools"
         src="/assets/mockup/across-tools.png"
+        width={800}
+        height={400}
         className="synced-tools-pop h-full w-full object-cover"
         draggable={false}
       />
@@ -574,11 +585,12 @@ function AppMockupCarousel() {
       {/* Full images — instant switch, no animation */}
       {WEB_UI_SLIDES.map((src, i) => {
         return (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
+          <Image
             key={src}
             alt=""
             src={src}
+            width={855}
+            height={600}
             className={`webui-pop w-full select-none ${i === active ? "relative" : "absolute inset-0 opacity-0"}`}
             draggable={false}
           />
@@ -615,10 +627,11 @@ function AppMockupCarousel() {
         />
       </div>
       {/* Hand-drawn arrow pointer */}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
+      <Image
         src="/assets/mockup/arrow-pointer.svg"
         alt=""
+        width={80}
+        height={80}
         className="pointer-events-none absolute z-20 w-[10%]"
         style={{ left: "18%", top: "40%", transform: "none" }}
         draggable={false}
@@ -1305,11 +1318,12 @@ export default function LandingPage() {
               height: "80%",
             }}
           >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
+            <Image
               src="/assets/hero/decorative-shapes.svg"
               alt=""
-              className="h-full w-full deco-shapes"
+              className="deco-shapes"
+              fill
+              priority
             />
           </div>
 
@@ -1320,10 +1334,11 @@ export default function LandingPage() {
                 href="/blog"
                 className="hidden items-center gap-2 rounded-lg border border-[hsl(var(--gray-200))] bg-white px-3 py-1.5 text-sm text-[hsl(var(--foreground))] transition-colors hover:border-[hsl(var(--gray-400))] hover:bg-white"
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
+                <Image
                   src="/assets/hero/announcement-icon.svg"
                   alt=""
+                  width={22}
+                  height={16}
                   className="h-4 w-[22px]"
                 />
                 <span>Check out our $14M seed round fundraising blog.</span>
@@ -1529,10 +1544,11 @@ export default function LandingPage() {
                   </p>
                 </div>
                 <div className="flex h-[300px] items-center justify-center rounded-b-[20px] bg-[hsl(var(--gray-100))] px-10">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
+                  <Image
                     alt="Permission management interface"
                     src="/assets/mockup/permission-management.svg"
+                    width={448}
+                    height={300}
                     className="w-full max-w-[448px]"
                     draggable={false}
                   />
@@ -1582,10 +1598,11 @@ export default function LandingPage() {
               {/* Persistent memory card */}
               <div className="flex flex-col overflow-hidden rounded-[20px] bg-white">
                 <div className="flex flex-1 flex-col gap-4 px-8 pb-4 pt-8 sm:px-10 sm:pt-10">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
+                  <Image
                     alt=""
                     src="/assets/agent-intelligence/memory-icon.svg"
+                    width={24}
+                    height={22}
                     className="h-[22px] w-[24px] landing-icon-invert"
                   />
                   <h3 className="text-2xl font-medium leading-8 text-[hsl(var(--foreground))]">
@@ -1601,10 +1618,11 @@ export default function LandingPage() {
               {/* Scheduled intelligence card */}
               <div className="flex flex-col overflow-hidden rounded-[20px] bg-white">
                 <div className="flex flex-1 flex-col gap-4 px-8 pb-4 pt-8 sm:px-10 sm:pt-10">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
+                  <Image
                     alt=""
                     src="/assets/agent-intelligence/schedule-icon.svg"
+                    width={24}
+                    height={24}
                     className="size-[24px] landing-icon-invert"
                   />
                   <h3 className="text-2xl font-medium leading-8 text-[hsl(var(--foreground))]">
@@ -1645,8 +1663,13 @@ export default function LandingPage() {
                   <div key={item.title} className="flex flex-col gap-2">
                     <div className="flex items-center gap-2">
                       <div className="flex size-[30px] items-center justify-center overflow-hidden rounded-full">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img alt="" src={item.icon} className="size-[22px]" />
+                        <Image
+                          alt=""
+                          src={item.icon}
+                          width={22}
+                          height={22}
+                          className="size-[22px]"
+                        />
                       </div>
                       <h3 className="text-base font-bold leading-6 text-[hsl(var(--foreground))]">
                         {item.title}

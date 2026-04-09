@@ -892,18 +892,13 @@ function StaticAssistantMessage({
     );
   }
 
-  if (content) {
+  if (content && !showActivityLine) {
     return (
       <div className="group flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
         <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
           <AssistantBubbleAvatar />
           <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-sm leading-relaxed min-w-0 break-words">
             {hasSummaries && <CollapsibleTimeline message={message} />}
-            {showActivityLine && (
-              <div className="mb-3 pb-3 border-b">
-                <MessageRunActivityLine message={message} />
-              </div>
-            )}
             <Markdown source={content} />
             {message.cancelled && (
               <div className="mt-3 pt-3 border-t flex items-center gap-1.5 text-xs text-muted-foreground">

@@ -444,7 +444,7 @@ describe("createZeroRun()", () => {
       expect(grantedPerms).not.toContain("chat:write");
     });
 
-    it("should grant no permissions when all are denied", async () => {
+    it("should merge partial stored denies with default policies", async () => {
       const agentName = uniqueId("fw-allden");
       await createTestCompose(agentName);
       await createTestConnector({ type: "slack" });
@@ -467,10 +467,14 @@ describe("createZeroRun()", () => {
       expect(slackFw).toBeDefined();
       expect(slackFw!.apis[0]!.permissions!.length).toBeGreaterThan(0);
 
-      // grantedPermissions has empty array (nothing allowed)
+      // Explicitly denied permissions are not granted
       const granted = job!.executionContext.grantedPermissions;
       expect(granted).toBeDefined();
-      expect(granted!.slack!.allow).toEqual([]);
+      expect(granted!.slack!.allow).not.toContain("bookmarks:read");
+      expect(granted!.slack!.allow).not.toContain("bookmarks:write");
+      // Default-allowed permissions (not overridden) are still granted
+      expect(granted!.slack!.allow).toContain("channels:read");
+      expect(granted!.slack!.allow).toContain("users:read");
       expect(granted!.slack!.allowUnknown).toBe(true);
     });
 

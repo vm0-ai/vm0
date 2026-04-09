@@ -8,10 +8,9 @@ import {
 describe("getDefaultFirewallPolicies", () => {
   it("should return allow/deny map for connectors with defaults", () => {
     const policies = getDefaultFirewallPolicies("slack");
-    expect(policies).not.toBeNull();
 
     // Slack has defaults — every permission should be either "allow" or "deny"
-    const values = Object.values(policies!);
+    const values = Object.values(policies);
     expect(values.length).toBeGreaterThan(0);
     for (const v of values) {
       expect(["allow", "deny"]).toContain(v);
@@ -19,19 +18,19 @@ describe("getDefaultFirewallPolicies", () => {
   });
 
   it("should mark default-allowed permissions as allow", () => {
-    const policies = getDefaultFirewallPolicies("slack")!;
+    const policies = getDefaultFirewallPolicies("slack");
     // "channels:read" is in slackDefaultAllowed
     expect(policies["channels:read"]).toBe("allow");
   });
 
   it("should mark non-default permissions as deny", () => {
-    const policies = getDefaultFirewallPolicies("slack")!;
+    const policies = getDefaultFirewallPolicies("slack");
     // "admin" is a slack permission that is NOT in the default-allowed list
     expect(policies["admin"]).toBe("deny");
   });
 
   it("should cover every permission from the firewall config", () => {
-    const policies = getDefaultFirewallPolicies("slack")!;
+    const policies = getDefaultFirewallPolicies("slack");
     const config = getConnectorFirewall("slack");
     const allPermissions = new Set(
       config.apis.flatMap((api) => {
@@ -49,8 +48,10 @@ describe("getDefaultFirewallPolicies", () => {
     expect(Object.keys(policies)).toHaveLength(allPermissions.size);
   });
 
-  it("should return null for connectors without defaults", () => {
-    expect(getDefaultFirewallPolicies("github")).toBeNull();
+  it("should return empty map for connectors with no permissions", () => {
+    // GitHub uses GraphQL field matching, not static permissions
+    const policies = getDefaultFirewallPolicies("github");
+    expect(Object.keys(policies)).toHaveLength(0);
   });
 });
 
@@ -64,21 +65,42 @@ describe("resolveFirewallPolicies", () => {
     expect(slack!["admin"]).toBe("deny");
   });
 
-  it("should not overwrite existing stored policies", () => {
+  it("should merge defaults with stored policies (stored overrides)", () => {
     const stored = { slack: { "channels:read": "deny" as const } };
     const resolved = resolveFirewallPolicies(stored, ["slack"]);
-    // Stored entry exists — should keep the original, not merge defaults
-    expect(resolved!["slack"]).toEqual({ "channels:read": "deny" });
+    const slack = resolved!["slack"]!;
+    // Stored override takes precedence
+    expect(slack["channels:read"]).toBe("deny");
+    // Defaults fill in for non-specified permissions
+    expect(slack["admin"]).toBe("deny");
+    expect(slack["users:read"]).toBe("allow");
   });
 
-  it("should pass through connectors without defaults unchanged", () => {
-    const stored = { github: { "repo-read": "allow" as const } };
+  it("should merge stored partial policy with defaults", () => {
+    // Simulates: admin approved files:read, but defaults should still apply
+    const stored = { slack: { "files:read": "allow" as const } };
+    const resolved = resolveFirewallPolicies(stored, ["slack"]);
+    const slack = resolved!["slack"]!;
+    // Explicitly stored
+    expect(slack["files:read"]).toBe("allow");
+    // From defaults (slackDefaultAllowed)
+    expect(slack["channels:read"]).toBe("allow");
+    expect(slack["channels:history"]).toBe("allow");
+    expect(slack["users:read"]).toBe("allow");
+    // Not in defaults — should be deny
+    expect(slack["admin"]).toBe("deny");
+  });
+
+  it("should preserve stored overrides for connectors without default-allowed list", () => {
+    const stored = { github: { "repo-read": "deny" as const } };
     const resolved = resolveFirewallPolicies(stored, ["github"]);
-    expect(resolved).toEqual(stored);
+    // GitHub has no static permissions → empty defaults, stored preserved
+    expect(resolved!["github"]!["repo-read"]).toBe("deny");
   });
 
   it("should skip non-firewall connector types", () => {
-    const resolved = resolveFirewallPolicies(null, ["jira"]);
+    // "computer" is a non-firewall connector type
+    const resolved = resolveFirewallPolicies(null, ["computer"]);
     expect(resolved).toBeNull();
   });
 
@@ -87,17 +109,19 @@ describe("resolveFirewallPolicies", () => {
     const resolved = resolveFirewallPolicies(stored, [
       "github",
       "slack",
-      "jira",
+      "computer",
     ]);
-    expect(resolved!["github"]).toEqual({ "repo-read": "allow" });
+    expect(resolved!["github"]!["repo-read"]).toBe("allow");
     const slackMixed = resolved!["slack"];
     expect(slackMixed).toBeDefined();
     expect(slackMixed!["channels:read"]).toBe("allow");
-    expect(resolved).not.toHaveProperty("jira");
+    expect(resolved).not.toHaveProperty("computer");
   });
 
-  it("should return null when no connectors need defaults", () => {
+  it("should produce entry for connectors with no stored policies", () => {
     const resolved = resolveFirewallPolicies(null, ["github"]);
-    expect(resolved).toBeNull();
+    expect(resolved).not.toBeNull();
+    // GitHub has no static permissions → empty defaults
+    expect(resolved!["github"]).toEqual({});
   });
 });

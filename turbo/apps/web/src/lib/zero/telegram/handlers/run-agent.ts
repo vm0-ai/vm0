@@ -1,6 +1,6 @@
 import { isRunDispatchError } from "../../../infra/run";
 import { createZeroRun } from "../../zero-run-service";
-import { buildIntegrationContext } from "../../integration-context";
+import { buildTelegramPrompt } from "../../integration-prompt";
 import { isApiError } from "../../../shared/errors";
 import { RUN_ERROR_GUIDANCE } from "@vm0/core";
 import { logger } from "../../../shared/logger";
@@ -46,12 +46,7 @@ export async function runAgentForTelegram(
     callbackContext,
   } = params;
 
-  const contextParts = [
-    buildIntegrationContext("Telegram"),
-    threadContext,
-  ].filter(Boolean);
-  const appendSystemPrompt =
-    contextParts.length > 0 ? contextParts.join("\n\n") : undefined;
+  const appendSystemPrompt = buildTelegramPrompt(threadContext) || undefined;
 
   const callbackUrl = `${getApiUrl()}/api/internal/callbacks/telegram`;
   const callbackSecret = generateCallbackSecret();

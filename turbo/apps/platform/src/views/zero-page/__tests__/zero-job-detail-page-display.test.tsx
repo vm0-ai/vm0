@@ -242,6 +242,114 @@ describe("zero job detail page - connector display", () => {
   });
 });
 
+describe("zero job detail page - tab visibility", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  function findTab(label: RegExp) {
+    return screen.getAllByRole("tab").find((el) => {
+      return label.test(el.textContent ?? "");
+    });
+  }
+
+  it("should show all tabs when user is the agent owner", async () => {
+    mockAPIs();
+    // Default mock user is "test-user-123" which matches ownerId
+    await setupPage({ context, path: "/agents/my-agent" });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "My Agent" }),
+      ).toBeInTheDocument();
+    });
+
+    expect(findTab(/Profile/i)).toBeInTheDocument();
+    expect(findTab(/Instructions/i)).toBeInTheDocument();
+  });
+
+  it("should show all tabs when user is org admin but not owner", async () => {
+    mockAPIs();
+    // Agent ownerId is "test-user-123", but user is "other-user"
+    // Default org mock role is "admin"
+    await setupPage({
+      context,
+      path: "/agents/my-agent",
+      user: { id: "other-user", fullName: "Other User" },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "My Agent" }),
+      ).toBeInTheDocument();
+    });
+
+    expect(findTab(/Profile/i)).toBeInTheDocument();
+    expect(findTab(/Instructions/i)).toBeInTheDocument();
+  });
+
+  it("should hide Profile and Instructions tabs for non-owner non-admin", async () => {
+    mockAPIs();
+    // Override org to "member" role and user to non-owner
+    server.use(
+      http.get("*/api/zero/org", () => {
+        return HttpResponse.json({
+          id: "org_default",
+          slug: "default-org",
+          name: "Default Org",
+          role: "member",
+        });
+      }),
+    );
+    await setupPage({
+      context,
+      path: "/agents/my-agent",
+      user: { id: "other-user", fullName: "Other User" },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "My Agent" }),
+      ).toBeInTheDocument();
+    });
+
+    expect(findTab(/Profile/i)).toBeUndefined();
+    expect(findTab(/Instructions/i)).toBeUndefined();
+    // Authorization and Scheduled should still be visible
+    expect(findTab(/Authorization/i)).toBeInTheDocument();
+    expect(findTab(/Scheduled/i)).toBeInTheDocument();
+  });
+
+  it("should coerce ?tab=profile to authorization for non-owner non-admin", async () => {
+    mockAPIs();
+    server.use(
+      http.get("*/api/zero/org", () => {
+        return HttpResponse.json({
+          id: "org_default",
+          slug: "default-org",
+          name: "Default Org",
+          role: "member",
+        });
+      }),
+    );
+    await setupPage({
+      context,
+      path: "/agents/my-agent?tab=profile",
+      user: { id: "other-user", fullName: "Other User" },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "My Agent" }),
+      ).toBeInTheDocument();
+    });
+
+    // Should show authorization tab content instead of profile
+    expect(findTab(/Profile/i)).toBeUndefined();
+    expect(findTab(/Authorization/i)).toBeInTheDocument();
+  });
+});
+
 describe("zero job detail page - delete dialog", () => {
   const user = userEvent.setup();
 

@@ -16,10 +16,11 @@ import {
   findTestCallbacksByRunId,
   findTestRunRecord,
   findTestQueueEntry,
+  enqueueTestRun,
+  getTestAgentSessionWithConversation,
+  generateTestReplyToken,
 } from "../../../../../../src/__tests__/api-test-helpers";
-import { enqueueRun } from "../../../../../../src/lib/zero/zero-run-queue-service";
 import { reloadEnv } from "../../../../../../src/env";
-import { getAgentSessionWithConversation } from "../../../../../../src/lib/infra/agent-session";
 import {
   testContext,
   uniqueId,
@@ -28,7 +29,6 @@ import {
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { randomUUID } from "crypto";
 import { POST as checkpointWebhook } from "../../checkpoints/route";
-import { generateReplyToken } from "../../../../../../src/lib/zero/email/handlers/shared";
 
 const context = testContext();
 
@@ -345,7 +345,7 @@ describe("POST /api/webhooks/agent/complete", () => {
       };
 
       // Verify agent session has memoryName
-      const session = await getAgentSessionWithConversation(
+      const session = await getTestAgentSessionWithConversation(
         checkpointData.agentSessionId,
       );
       expect(session).toBeDefined();
@@ -607,7 +607,7 @@ describe("POST /api/webhooks/agent/complete", () => {
         emailUser.userId,
         composeId,
       );
-      const replyToken = generateReplyToken(agentSession.id);
+      const replyToken = generateTestReplyToken(agentSession.id);
 
       const emailSession = await createTestEmailThreadSession({
         userId: emailUser.userId,
@@ -675,7 +675,7 @@ describe("POST /api/webhooks/agent/complete", () => {
       expect(run1.status).toBe("pending");
 
       // Enqueue a run with proper encrypted params (startRun no longer enqueues)
-      const run2 = await enqueueRun({
+      const run2 = await enqueueTestRun({
         userId: qUser.userId,
         agentComposeVersionId: versionId,
         prompt: "Queued run",

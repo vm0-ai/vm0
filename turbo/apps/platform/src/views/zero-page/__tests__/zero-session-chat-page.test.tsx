@@ -218,17 +218,18 @@ describe("chat message activity line", () => {
 
     detachedSetupPage({ context, path: "/chats/thread-activity-running" });
 
-    // The result content should be rendered
-    await waitFor(() => {
-      expect(
-        screen.getByText("Here is the partial result"),
-      ).toBeInTheDocument();
-    });
-
-    // The activity line (spinner) should still be visible since the run is not terminal
+    // The activity line (spinner) should be visible since the run is not terminal.
+    // The response body is hidden during active runs to prevent layout shift.
     await waitFor(() => {
       const shimmer = document.querySelector(".zero-shimmer-text");
       expect(shimmer).toBeInTheDocument();
+    });
+
+    // The result body should not be rendered while the run is still active
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Here is the partial result"),
+      ).not.toBeInTheDocument();
     });
   });
 
@@ -258,12 +259,7 @@ describe("chat message activity line", () => {
 
     detachedSetupPage({ context, path: "/chats/thread-activity-done" });
 
-    // Wait for content to appear
-    await waitFor(() => {
-      expect(screen.getByText("Final answer")).toBeInTheDocument();
-    });
-
-    // Activity line should be visible while running
+    // Activity line should be visible while running; body is hidden during active runs
     await waitFor(() => {
       const shimmer = document.querySelector(".zero-shimmer-text");
       expect(shimmer).toBeInTheDocument();
@@ -272,10 +268,14 @@ describe("chat message activity line", () => {
     // Now complete the run
     lifecycle.completeRun("Final answer");
 
-    // Activity line should disappear after reaching terminal status
+    // Activity line should disappear and body should appear after reaching terminal status
     await waitFor(() => {
       const shimmer = document.querySelector(".zero-shimmer-text");
       expect(shimmer).not.toBeInTheDocument();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Final answer")).toBeInTheDocument();
     });
   });
 });

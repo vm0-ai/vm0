@@ -4,9 +4,6 @@ export default defineConfig({
   test: {
     globals: true,
     passWithNoTests: true,
-    // Suppress console output from passing tests to reduce noise
-    // Logs from failing tests are still displayed for debugging
-    silent: "passed-only",
 
     coverage: {
       provider: "v8",
@@ -28,6 +25,7 @@ export default defineConfig({
     reporters: process.env.CI
       ? ["default", "github-actions", "junit"]
       : ["default"],
+
     outputFile: {
       junit: "junit.xml",
     },

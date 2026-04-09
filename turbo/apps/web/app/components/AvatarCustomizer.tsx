@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
+import Image from "next/image";
 
 type Step =
   | "rotation"
@@ -59,19 +60,26 @@ function AvatarPreview({
       className="relative overflow-hidden rounded-full"
       style={{ width: size, height: size }}
     >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img alt="" src={headSrc(config.rotation, config.skin)} className={cls} />
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
+      <Image
+        alt=""
+        src={headSrc(config.rotation, config.skin)}
+        className={cls}
+        fill
+        sizes={`${size}px`}
+      />
+      <Image
         alt=""
         src={hairSrc(config.rotation, config.hairStyle, config.hairColor)}
         className={cls}
+        fill
+        sizes={`${size}px`}
       />
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
+      <Image
         alt=""
         src={faceSrc(config.rotation, config.expression, config.intensity)}
         className={cls}
+        fill
+        sizes={`${size}px`}
       />
     </div>
   );

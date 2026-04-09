@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, warn};
 use uuid::Uuid;
 
 use reqeast::StatusCode;
@@ -174,7 +174,7 @@ impl JobProvider for ApiProvider {
                                 // Targeted to another runner: defer poll instead of
                                 // claiming immediately, giving the target a 2s head start.
                                 if notif.target_runner_id.as_deref().is_some_and(|t| t != self.runner_id) {
-                                    debug!(
+                                    info!(
                                         run_id = %notif.run_id,
                                         target = notif.target_runner_id.as_deref().unwrap_or(""),
                                         "ably: job targeted to another runner, deferring poll"
@@ -191,7 +191,8 @@ impl JobProvider for ApiProvider {
                                 // Fall back to default profile when server doesn't send one
                                 // (backwards compat with pre-profile API).
                                 let profile = notif.profile.unwrap_or_else(|| crate::profile::DEFAULT_PROFILE.to_owned());
-                                info!(run_id = %notif.run_id, %profile, "ably: job notification");
+                                let targeted = notif.target_runner_id.as_deref().is_some_and(|t| t == self.runner_id);
+                                info!(run_id = %notif.run_id, %profile, targeted, "ably: job notification");
                                 return Some((notif.run_id, profile));
                             }
                         }
