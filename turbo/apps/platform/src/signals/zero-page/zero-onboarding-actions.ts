@@ -16,6 +16,7 @@ import { allConnectorTypes$ } from "./settings/connectors.ts";
 import { detachedNavigateTo$ } from "../route.ts";
 import { slackOrgData$ } from "./zero-slack.ts";
 import { reloadBillingStatus$ } from "./billing.ts";
+import { reloadAgents$ } from "../agent.ts";
 import { showAppSkeleton$ } from "../app-skeleton.ts";
 import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
 
@@ -237,9 +238,12 @@ const completeOnboarding$ = command(
 
     const isAdmin = await get(zeroNeedsOnboarding$);
     signal.throwIfAborted();
-    return isAdmin
+    const agentId = isAdmin
       ? await set(completeZeroOnboarding$, signal)
       : await set(completeMemberOnboarding$, signal);
+
+    set(reloadAgents$);
+    return agentId;
   },
 );
 
