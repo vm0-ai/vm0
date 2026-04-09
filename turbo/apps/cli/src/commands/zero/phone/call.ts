@@ -4,6 +4,10 @@ import chalk from "chalk";
 import { createPhoneCall } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
 
+function isErrnoException(err: unknown): err is NodeJS.ErrnoException {
+  return err instanceof Error && "code" in err;
+}
+
 export const callCommand = new Command()
   .name("call")
   .description("Initiate an outbound phone call")
@@ -66,7 +70,7 @@ export const callCommand = new Command()
           try {
             systemPrompt = fs.readFileSync(options.promptFile, "utf-8");
           } catch (err) {
-            if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+            if (isErrnoException(err) && err.code === "ENOENT") {
               console.error(chalk.red(`File not found: ${options.promptFile}`));
               process.exit(1);
             }
@@ -80,7 +84,7 @@ export const callCommand = new Command()
           try {
             greeting = fs.readFileSync(options.greetingFile, "utf-8");
           } catch (err) {
-            if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+            if (isErrnoException(err) && err.code === "ENOENT") {
               console.error(
                 chalk.red(`File not found: ${options.greetingFile}`),
               );
