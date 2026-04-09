@@ -553,14 +553,19 @@ export const startVoiceChat$ = command(
   },
 );
 
-export const endVoiceChat$ = command(async ({ get, set }) => {
+export const endVoiceChat$ = command(({ get, set }) => {
   const sid = get(internalSessionId$);
   const fetchFn = get(fetch$);
 
   // End session on server so it's no longer "active" in DB
   if (sid && fetchFn) {
-    fetchFn(`/api/zero/voice-chat/${sid}/end`, { method: "POST" }).catch(
-      () => {},
+    void fetchFn(`/api/zero/voice-chat/${sid}/end`, { method: "POST" }).then(
+      () => {
+        return undefined;
+      },
+      () => {
+        return undefined;
+      },
     );
   }
 
