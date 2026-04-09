@@ -14,7 +14,7 @@ export function deriveAppUrl(webUrl: string): string {
   return webUrl.replace(/-www\./, "-app.").replace(/\/\/www\./, "//app.");
 }
 
-const STORAGE_STATE = path.join(__dirname, ".auth/storage-state.json");
+export const STORAGE_STATE = path.join(__dirname, ".auth/storage-state.json");
 
 export default defineConfig({
   testDir: "./tests",

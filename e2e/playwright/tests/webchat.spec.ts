@@ -22,7 +22,9 @@ test("send a chat message and receive a response", async ({ page }) => {
     page.locator('[data-role="user"]').last().getByText(marker),
   ).toBeVisible({ timeout: 10_000 });
 
-  // Wait for assistant response (runner picks up job, starts VM, mock claude runs)
+  // Wait for assistant response — 120s because the full pipeline runs:
+  // runner picks up job → starts VM sandbox → mock claude executes → response streams back.
+  // Requires USE_MOCK_CLAUDE=true in CI. Expected latency: 60–90s.
   await expect(page.locator('[data-role="assistant"]').first()).toBeVisible({
     timeout: 120_000,
   });

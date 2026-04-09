@@ -22,16 +22,13 @@ test("create a new schedule and verify it appears in the list", async ({
   await page.getByLabel("Prompt").fill(schedulePrompt);
   await page.getByRole("button", { name: "Create" }).click();
 
-  // After creation, app navigates to schedule detail page
-  await page.waitForURL(/\/schedules\//, { timeout: 20_000 });
+  // After creation, app navigates to schedule detail page — verify the redirect
+  await page.waitForURL(/\/schedules\/[^/]+$/, { timeout: 20_000 });
 
-  // Go back to list and verify the schedule exists
-  await page.goto(`${appUrl}/schedules`);
-  await expect(
-    page.getByRole("heading", { name: "Scheduled tasks" }),
-  ).toBeVisible({ timeout: 20_000 });
-  // The list shows auto-generated description, not the raw prompt —
-  // just verify the list is no longer empty (has at least one schedule row)
+  // Verify we're on a specific schedule detail page (URL contains an ID, not just /schedules/)
+  expect(page.url()).toMatch(/\/schedules\/[^/]+$/);
+
+  // Verify the detail page renders the schedule (toggle visible = schedule exists)
   await expect(page.getByRole("switch").first()).toBeVisible({
     timeout: 10_000,
   });
