@@ -1,7 +1,8 @@
 import { writeOutput } from "./codegen";
 
 const DOCS_URL = "https://www.plain.com/docs/graphql/introduction";
-const PLACEHOLDER_VALUE = "plainApiKey__CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLo";
+const PLACEHOLDER_VALUE =
+  "plainApiKey__CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLo";
 
 function generateTypeScript(): string {
   const lines: string[] = [
