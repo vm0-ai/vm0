@@ -450,9 +450,10 @@ const MUTATION_TO_PERMISSIONS: Record<string, string[]> = {
 
 // ── GraphQL query field → REST permission mapping ────────────────────────
 //
-// Maps Repository type sub-fields to read permission groups.
-// Fields NOT listed here are assigned to metadata:read automatically
-// by comparing against the schema's Repository type at generation time.
+// Maps Repository type sub-fields to non-metadata read permission groups.
+// Every Repository field must appear in either this map or in
+// REPO_METADATA_FIELDS — the generator validates completeness against
+// the schema so newly added fields are explicitly reviewed.
 //
 // Top-level Query type fields (viewer, user, organization, search, etc.)
 // are all assigned to metadata:read automatically.
@@ -518,6 +519,108 @@ const REPO_FIELD_TO_PERMISSIONS: Record<string, string[]> = {
   vulnerabilityAlert: ["vulnerability_alerts:read"],
   vulnerabilityAlerts: ["vulnerability_alerts:read"],
 };
+
+// ── Repository metadata fields ───────────────────────────────────────────
+//
+// Repository type fields assigned to metadata:read.  Every field in the
+// schema's Repository type must appear in either REPO_FIELD_TO_PERMISSIONS
+// or this set — the generator validates this so that newly added schema
+// fields are explicitly reviewed rather than silently defaulting.
+
+const REPO_METADATA_FIELDS = new Set([
+  "allowUpdateBranch",
+  "archivedAt",
+  "assignableUsers",
+  "autoMergeAllowed",
+  "codeOfConduct",
+  "codeowners",
+  "collaborators",
+  "commitComments",
+  "contactLinks",
+  "contributingGuidelines",
+  "createdAt",
+  "databaseId",
+  "deleteBranchOnMerge",
+  "dependencyGraphManifests",
+  "description",
+  "descriptionHTML",
+  "diskUsage",
+  "forkCount",
+  "forkingAllowed",
+  "forks",
+  "fundingLinks",
+  "hasDiscussionsEnabled",
+  "hasIssuesEnabled",
+  "hasProjectsEnabled",
+  "hasSponsorshipsEnabled",
+  "hasVulnerabilityAlertsEnabled",
+  "hasWikiEnabled",
+  "homepageUrl",
+  "id",
+  "interactionAbility",
+  "isArchived",
+  "isBlankIssuesEnabled",
+  "isDisabled",
+  "isEmpty",
+  "isFork",
+  "isInOrganization",
+  "isLocked",
+  "isMirror",
+  "isPrivate",
+  "isSecurityPolicyEnabled",
+  "isTemplate",
+  "isUserConfigurationRepository",
+  "languages",
+  "licenseInfo",
+  "lockReason",
+  "mentionableUsers",
+  "mergeCommitAllowed",
+  "mergeCommitMessage",
+  "mergeCommitTitle",
+  "mirrorUrl",
+  "name",
+  "nameWithOwner",
+  "openGraphImageUrl",
+  "owner",
+  "parent",
+  "planFeatures",
+  "primaryLanguage",
+  "projectsResourcePath",
+  "projectsUrl",
+  "pushedAt",
+  "rebaseMergeAllowed",
+  "repositoryTopics",
+  "resourcePath",
+  "rulesets",
+  "ruleset",
+  "securityPolicyUrl",
+  "shortDescriptionHTML",
+  "squashMergeAllowed",
+  "squashMergeCommitMessage",
+  "squashMergeCommitTitle",
+  "squashPrTitleUsedAsDefault",
+  "sshUrl",
+  "stargazerCount",
+  "stargazers",
+  "templateRepository",
+  "tempCloneToken",
+  "updatedAt",
+  "url",
+  "usesCustomOpenGraphImage",
+  "viewerCanAdminister",
+  "viewerCanCreateProjects",
+  "viewerCanSubscribe",
+  "viewerCanUpdateTopics",
+  "viewerDefaultCommitEmail",
+  "viewerDefaultMergeMethod",
+  "viewerHasStarred",
+  "viewerPermission",
+  "viewerPossibleCommitEmails",
+  "viewerSubscription",
+  "visibility",
+  "watchers",
+  "webCommitSignoffRequired",
+]);
 
 // ── Invented permission groups ───────────────────────────────────────────
 //
@@ -656,23 +759,48 @@ function validateQueryFieldMapping(
     `  ${repoFields.size} Repository fields, ${queryFields.size} Query fields in schema`,
   );
 
-  // Every mapped repo field must exist in schema.
-  const stale: string[] = [];
+  // Every mapped repo field must exist in schema (catch typos / removals).
+  const stalePermFields: string[] = [];
   for (const name of Object.keys(REPO_FIELD_TO_PERMISSIONS)) {
     if (!repoFields.has(name)) {
-      stale.push(name);
+      stalePermFields.push(name);
     }
   }
-  if (stale.length > 0) {
+  if (stalePermFields.length > 0) {
     throw new Error(
-      `${stale.length} mapped repo field(s) not found in schema — remove or rename:\n  ${stale.join("\n  ")}`,
+      `${stalePermFields.length} mapped repo field(s) not found in schema — remove or rename:\n  ${stalePermFields.join("\n  ")}`,
     );
   }
 
-  // Compute metadata:read fields (all repo fields not explicitly mapped).
-  const repoMetadataFields = [...repoFields]
-    .filter((f) => !REPO_FIELD_TO_PERMISSIONS[f])
-    .sort();
+  // Every metadata repo field must exist in schema.
+  const staleMetaFields: string[] = [];
+  for (const name of REPO_METADATA_FIELDS) {
+    if (!repoFields.has(name)) {
+      staleMetaFields.push(name);
+    }
+  }
+  if (staleMetaFields.length > 0) {
+    throw new Error(
+      `${staleMetaFields.length} metadata repo field(s) not found in schema — remove or rename:\n  ${staleMetaFields.join("\n  ")}`,
+    );
+  }
+
+  // Every schema Repository field must be accounted for — either in
+  // REPO_FIELD_TO_PERMISSIONS or REPO_METADATA_FIELDS.  Unrecognized
+  // fields cause an error so they are explicitly reviewed.
+  const unmapped: string[] = [];
+  for (const name of repoFields) {
+    if (!REPO_FIELD_TO_PERMISSIONS[name] && !REPO_METADATA_FIELDS.has(name)) {
+      unmapped.push(name);
+    }
+  }
+  if (unmapped.length > 0) {
+    throw new Error(
+      `${unmapped.length} unmapped Repository field(s) — add to REPO_FIELD_TO_PERMISSIONS or REPO_METADATA_FIELDS:\n  ${unmapped.sort().join("\n  ")}`,
+    );
+  }
+
+  const repoMetadataFields = [...REPO_METADATA_FIELDS].sort();
 
   const mapped = Object.keys(REPO_FIELD_TO_PERMISSIONS).length;
   console.error(
