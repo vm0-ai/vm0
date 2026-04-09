@@ -116,9 +116,11 @@ function ConfirmCard({
           </p>
           <ul className="text-sm text-muted-foreground space-y-1">
             <li>Chat history and agent events</li>
+            <li>Agent telemetry and run logs</li>
+            <li>Network request logs</li>
+            <li>Run context and environment</li>
             <li>Agent configuration</li>
             <li>Connected services (no credentials)</li>
-            <li>Run metadata and environment</li>
           </ul>
         </div>
 
