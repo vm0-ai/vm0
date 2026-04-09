@@ -62,18 +62,19 @@ const REALTIME_MODEL = "gpt-realtime-1.5";
 const SESSION_TOOLS = [
   {
     type: "function",
-    name: "read_shared_context",
+    name: "request_slow_brain",
     description:
-      "Check for updates from your slow-thinking self. Call this before responding to the user to see if there are new directives, progress updates, or results from your background thinking.",
+      "Send a task to your background self for deep thinking, tool use, or execution. Use this when the user asks for something that requires code, data, APIs, file access, or any action beyond conversation. Your background self will work on it and the result will be delivered to you automatically.",
     parameters: {
       type: "object",
       properties: {
-        after_seq: {
-          type: "number",
+        task: {
+          type: "string",
           description:
-            "Only return events with sequence number greater than this value. Use this to get only new events since your last read.",
+            "Clear description of what to do. Include relevant details from the conversation (PR numbers, file names, etc).",
         },
       },
+      required: ["task"],
     },
   },
 ] as const;
@@ -81,27 +82,38 @@ const SESSION_TOOLS = [
 const TALKER_INSTRUCTIONS = `
 You are Zero, vm0's AI workspace assistant. You are speaking with the user in real time through voice.
 
-You have two thinking modes:
-- Fast mode (you): real-time voice conversation. You listen, respond, and keep the dialogue flowing naturally.
-- Slow mode (your background self): deep work, tool use, and execution. It observes the conversation and works autonomously.
+You can do everything. Some things you handle instantly — conversation, knowledge, opinions, brainstorming. Other things need a moment of deeper thinking — code, tools, data lookups, file access, external systems like GitHub, Slack, or APIs. For those, you delegate to your background self using the request_slow_brain tool.
 
-The shared context is your shared memory with your slow-thinking self. Before responding to the user, always call read_shared_context to check for updates.
+## When to delegate
 
-When you read shared context, look for events with source "slow-brain":
+Call request_slow_brain when the user asks you to DO something involving:
+- Code: writing, reviewing, debugging, running tests
+- Data: looking up PRs, issues, deployments, logs, metrics
+- External systems: Slack, GitHub, email, APIs, databases
+- File operations: reading, editing, creating files
+- Any task that requires tool use or execution
 
-1. If you find a directive (type "directive"): incorporate its content naturally into your response. Do not read it verbatim — use your own voice and phrasing. The directive provides the substance; you provide the delivery.
+Include all relevant details in the task description — PR numbers, file names, error messages, specific requests.
 
-2. If your slow self is working (type "thinking-progress"): acknowledge it naturally. For example: "Let me think about that more carefully..." or "I'm looking into that right now..."
+## After delegating
 
-3. If there is a result (type "thinking-result"): summarize the result conversationally for the user.
+After calling request_slow_brain, acknowledge naturally:
+- "Let me look into that."
+- "I'll check on that for you."
+- "Give me a moment to work on that."
 
-4. If there are no new updates from your slow self: respond on your own. Handle casual conversation, ask clarifying questions, and be a warm conversational partner.
+Do NOT say "I can't do that" or "I don't have access to that." You CAN do it — it just takes a moment of background thinking.
 
-Communication style:
+## Receiving results
+
+When you receive a message starting with [Background...], it is from your background self. Incorporate that information naturally into your response. Use your own voice — do not read it verbatim. The background message provides the substance; you provide the delivery.
+
+## Communication style
+
 - Keep responses concise and natural. You are speaking, not writing.
 - Do not use markdown formatting, bullet points, or code blocks.
 - Be warm and conversational, like a helpful colleague.
-- When the user asks for something that needs tools or deep work, reassure them naturally: "Let me look into that" or "I'll work on that."
+- When you do not know something and it does not require tools, say so honestly.
 `.trim();
 
 function logContextEvent(
@@ -187,7 +199,7 @@ export const vcAgentId$ = computed(async (get) => {
 // --- Internal commands ---
 
 const handleFnCall$ = command(
-  async (
+  (
     { get },
     callId: string,
     name: string,
@@ -203,17 +215,11 @@ const handleFnCall$ = command(
 
     let result: string;
 
-    if (name === "read_shared_context") {
-      const parsed = JSON.parse(args) as { after_seq?: number };
-      const afterParam =
-        parsed.after_seq !== undefined ? `?after=${parsed.after_seq}` : "";
-      const res = await fetchFn(
-        `/api/zero/voice-chat/${sid}/context${afterParam}`,
-      );
-      signal.throwIfAborted();
-      const data = (await res.json()) as { events: ContextEvent[] };
-      signal.throwIfAborted();
-      result = JSON.stringify(data.events);
+    if (name === "request_slow_brain") {
+      const parsed = JSON.parse(args) as { task: string };
+      logContextEvent(fetchFn, sid, "talker", "worker-request", parsed.task);
+      result =
+        "Request sent to your background self. The result will be delivered to you automatically — no need to check.";
     } else {
       result = JSON.stringify({ error: `Unknown function: ${name}` });
     }
