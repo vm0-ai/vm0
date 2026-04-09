@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.71.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.70.2...runner-rs-v0.71.0) (2026-04-09)
+
+
+### Features
+
+* **firewalls:** add granted permissions for three-level matching ([#8621](https://github.com/vm0-ai/vm0/issues/8621)) ([534ec85](https://github.com/vm0-ai/vm0/commit/534ec85c209f52c7388bd9819b72017bb8be6cd9))
+
 ## [0.70.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.70.1...runner-rs-v0.70.2) (2026-04-09)
 
 ## [0.70.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.70.0...runner-rs-v0.70.1) (2026-04-09)

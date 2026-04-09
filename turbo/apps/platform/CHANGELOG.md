@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.208.0](https://github.com/vm0-ai/vm0/compare/app-v0.207.0...app-v0.208.0) (2026-04-09)
+
+
+### Features
+
+* **firewalls:** add granted permissions for three-level matching ([#8621](https://github.com/vm0-ai/vm0/issues/8621)) ([534ec85](https://github.com/vm0-ai/vm0/commit/534ec85c209f52c7388bd9819b72017bb8be6cd9))
+
+
+### Bug Fixes
+
+* **firewalls:** merge default policies with stored instead of skipping ([#8697](https://github.com/vm0-ai/vm0/issues/8697)) ([593cead](https://github.com/vm0-ai/vm0/commit/593cead62b099a5cad171ee37baa15a657f1b40f))
+* **platform:** hide profile/instructions tabs for non-owner non-admin users ([#8699](https://github.com/vm0-ai/vm0/issues/8699)) ([f2ff7ae](https://github.com/vm0-ai/vm0/commit/f2ff7ae48e8d5d36b410ccdb104479a807d16dd7))
+* **platform:** hide response body until task run completes ([#8681](https://github.com/vm0-ai/vm0/issues/8681)) ([1411633](https://github.com/vm0-ai/vm0/commit/141163353f65e95f2c1d66380b73b8573d73cb8f))
+* **platform:** reset avatar saving state on confirm error ([#8704](https://github.com/vm0-ai/vm0/issues/8704)) ([9981d82](https://github.com/vm0-ai/vm0/commit/9981d82ef0056bc2488cf09cb838fbc198a2b99d))
+* **voice-chat:** show full content in shared context events panel ([#8711](https://github.com/vm0-ai/vm0/issues/8711)) ([3032de4](https://github.com/vm0-ai/vm0/commit/3032de4d7572907979cc1d8f54d43d5010199bde)), closes [#8709](https://github.com/vm0-ai/vm0/issues/8709)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.167.0
+
 ## [0.207.0](https://github.com/vm0-ai/vm0/compare/app-v0.206.0...app-v0.207.0) (2026-04-09)
 
 

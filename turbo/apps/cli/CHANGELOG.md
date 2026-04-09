@@ -1,5 +1,24 @@
 # Changelog
 
+## [9.111.1](https://github.com/vm0-ai/vm0/compare/cli-v9.111.0...cli-v9.111.1) (2026-04-09)
+
+
+### Bug Fixes
+
+* **firewalls:** default all-allow for connectors without default-allowed list ([#8708](https://github.com/vm0-ai/vm0/issues/8708)) ([5d7978b](https://github.com/vm0-ai/vm0/commit/5d7978ba6898640a738f36936cda7a2218da6205))
+
+
+### Refactoring
+
+* remove ask-user-question feature ([#8691](https://github.com/vm0-ai/vm0/issues/8691)) ([bf49b10](https://github.com/vm0-ai/vm0/commit/bf49b103e42d5d45d11f8c74312754bd654ed775))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.167.0
+
 ## [9.111.0](https://github.com/vm0-ai/vm0/compare/cli-v9.110.2...cli-v9.111.0) (2026-04-09)
 
 

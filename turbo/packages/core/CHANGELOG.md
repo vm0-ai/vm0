@@ -1,5 +1,23 @@
 # Changelog
 
+## [8.167.0](https://github.com/vm0-ai/vm0/compare/core-v8.166.0...core-v8.167.0) (2026-04-09)
+
+
+### Features
+
+* **firewalls:** add granted permissions for three-level matching ([#8621](https://github.com/vm0-ai/vm0/issues/8621)) ([534ec85](https://github.com/vm0-ai/vm0/commit/534ec85c209f52c7388bd9819b72017bb8be6cd9))
+
+
+### Bug Fixes
+
+* **firewalls:** default all-allow for connectors without default-allowed list ([#8708](https://github.com/vm0-ai/vm0/issues/8708)) ([5d7978b](https://github.com/vm0-ai/vm0/commit/5d7978ba6898640a738f36936cda7a2218da6205))
+* **firewalls:** merge default policies with stored instead of skipping ([#8697](https://github.com/vm0-ai/vm0/issues/8697)) ([593cead](https://github.com/vm0-ai/vm0/commit/593cead62b099a5cad171ee37baa15a657f1b40f))
+
+
+### Refactoring
+
+* remove ask-user-question feature ([#8691](https://github.com/vm0-ai/vm0/issues/8691)) ([bf49b10](https://github.com/vm0-ai/vm0/commit/bf49b103e42d5d45d11f8c74312754bd654ed775))
+
 ## [8.166.0](https://github.com/vm0-ai/vm0/compare/core-v8.165.0...core-v8.166.0) (2026-04-09)
 
 

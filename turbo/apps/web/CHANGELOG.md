@@ -1,5 +1,35 @@
 # Changelog
 
+## [12.211.0](https://github.com/vm0-ai/vm0/compare/web-v12.210.0...web-v12.211.0) (2026-04-09)
+
+
+### Features
+
+* **firewalls:** add granted permissions for three-level matching ([#8621](https://github.com/vm0-ai/vm0/issues/8621)) ([534ec85](https://github.com/vm0-ai/vm0/commit/534ec85c209f52c7388bd9819b72017bb8be6cd9))
+
+
+### Bug Fixes
+
+* **firewalls:** merge default policies with stored instead of skipping ([#8697](https://github.com/vm0-ai/vm0/issues/8697)) ([593cead](https://github.com/vm0-ai/vm0/commit/593cead62b099a5cad171ee37baa15a657f1b40f))
+* **web:** ignore progress callbacks in schedule cron/loop endpoints ([#8694](https://github.com/vm0-ai/vm0/issues/8694)) ([fcd2ed4](https://github.com/vm0-ai/vm0/commit/fcd2ed4ae062dc23a9099cb81a14ca35adf255b1))
+* **web:** migrate landing page and avatar customizer from img to next/image ([#8692](https://github.com/vm0-ai/vm0/issues/8692)) ([8fcd163](https://github.com/vm0-ai/vm0/commit/8fcd163f605e5da64191a7ad021513bddc64e310))
+
+
+### Refactoring
+
+* consolidate integration prompts into per-integration builders ([#8702](https://github.com/vm0-ai/vm0/issues/8702)) ([ff409cb](https://github.com/vm0-ai/vm0/commit/ff409cb8160eb73bc37179827543c990570260bb)), closes [#8696](https://github.com/vm0-ai/vm0/issues/8696)
+* eliminate internal imports in slack and webhook-complete tests ([#8712](https://github.com/vm0-ai/vm0/issues/8712)) ([104a8c0](https://github.com/vm0-ai/vm0/commit/104a8c0dc4834b2b573b1394219910f7777945ab))
+* **platform:** eliminate internal imports in callback hmac tests ([#8687](https://github.com/vm0-ai/vm0/issues/8687)) ([658a0d7](https://github.com/vm0-ai/vm0/commit/658a0d70d8006af02789a0d019761221b2fca703))
+* remove ask-user-question feature ([#8691](https://github.com/vm0-ai/vm0/issues/8691)) ([bf49b10](https://github.com/vm0-ai/vm0/commit/bf49b103e42d5d45d11f8c74312754bd654ed775))
+* **web:** eliminate internal imports in phone tests (ap-12 batch b) ([#8707](https://github.com/vm0-ai/vm0/issues/8707)) ([f2e37be](https://github.com/vm0-ai/vm0/commit/f2e37bea417a787dafba96c82fb7b77c000d435b)), closes [#8633](https://github.com/vm0-ai/vm0/issues/8633)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.167.0
+
 ## [12.210.0](https://github.com/vm0-ai/vm0/compare/web-v12.209.0...web-v12.210.0) (2026-04-09)
 
 
