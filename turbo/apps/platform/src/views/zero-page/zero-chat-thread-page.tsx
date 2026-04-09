@@ -425,9 +425,11 @@ function UserMessage({ message }: { message: UserChatMessage }) {
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex flex-col items-end w-full">
           <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-sm leading-relaxed break-words overflow-hidden">
-            <div className="px-4 py-3">
-              <Markdown source={displayContent} />
-            </div>
+            {displayContent && (
+              <div className="px-4 py-3">
+                <Markdown source={displayContent} />
+              </div>
+            )}
             {allAttachments.length > 0 && (
               <div className="border-t border-foreground/10 px-3 py-2.5 flex flex-wrap gap-2">
                 {allAttachments.map((a) => {

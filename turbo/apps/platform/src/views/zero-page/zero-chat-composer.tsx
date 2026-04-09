@@ -38,6 +38,7 @@ import {
   removeZeroAttachment$,
   composerFileInput$,
   setComposerFileInput$,
+  canSendZeroChat$,
 } from "../../signals/chat-page/chat-message.ts";
 import { AttachmentChips } from "./zero-attachment-chips.tsx";
 import { useFileUploadHandlers } from "./use-file-upload-handlers.ts";
@@ -429,6 +430,8 @@ export function ZeroChatComposer({
   const showAddDialog = useGet(showAddDialog$);
   const setShowAddDialog = useSet(setShowAddDialog$);
 
+  const canSend = useGet(canSendZeroChat$);
+
   // Attachments
   const attachments = useGet(zeroChatAttachments$);
   const uploadAttachment = useSet(uploadZeroAttachment$);
@@ -523,13 +526,12 @@ export function ZeroChatComposer({
   };
 
   const handleSend = () => {
-    const trimmed = input.trim();
-    if (!trimmed || sending) {
+    if (!canSend || sending) {
       return;
     }
     // Fire-and-forget: request push permission on first send, never blocks
     ensurePushSubscription();
-    onSend(trimmed);
+    onSend(input.trim());
   };
 
   const {
@@ -642,7 +644,7 @@ export function ZeroChatComposer({
                     size="sm"
                     className="rounded-lg h-9 w-9 p-0 shrink-0"
                     onClick={handleSend}
-                    disabled={!input.trim() || !!sending}
+                    disabled={!canSend || !!sending}
                     aria-label="Send"
                   >
                     <IconArrowUp size={18} stroke={2} />

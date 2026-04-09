@@ -266,3 +266,13 @@ export const setZeroDragOver$ = command(({ get, set }, value: boolean) => {
     set(draft.setDragOver$, value);
   }
 });
+
+/**
+ * True when the current draft has content to send: either non-empty text or
+ * at least one attachment. Used as single source of truth for send enablement.
+ */
+export const canSendZeroChat$ = computed((get) => {
+  return (
+    get(zeroChatInput$).trim() !== "" || get(zeroChatAttachments$).length > 0
+  );
+});
