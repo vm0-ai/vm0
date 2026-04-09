@@ -310,10 +310,15 @@ function AvatarMakerDialogBody({
   const handleConfirm = () => {
     setSaving(true);
     detach(
-      onConfirm(config).then(() => {
-        setSaving(false);
-        closeMaker();
-      }),
+      onConfirm(config).then(
+        () => {
+          setSaving(false);
+          closeMaker();
+        },
+        () => {
+          setSaving(false);
+        },
+      ),
       Reason.DomCallback,
     );
   };
