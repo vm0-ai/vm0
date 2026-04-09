@@ -1,10 +1,32 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import SecurityPage from "./SecurityPage";
 
 const BASE_URL = "https://vm0.ai";
 
 interface PageProps {
   params: Promise<{ locale: string }>;
+}
+
+function getBreadcrumbJsonLd(locale: string) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      {
+        "@type": "ListItem",
+        position: 1,
+        name: "Home",
+        item: `${BASE_URL}/${locale}`,
+      },
+      {
+        "@type": "ListItem",
+        position: 2,
+        name: "Security",
+        item: `${BASE_URL}/${locale}/security`,
+      },
+    ],
+  };
 }
 
 export async function generateMetadata({
@@ -47,6 +69,18 @@ export async function generateMetadata({
   };
 }
 
-export default function Page() {
-  return <SecurityPage />;
+export default async function Page({ params }: PageProps) {
+  const { locale } = await params;
+  const breadcrumbJsonLd = getBreadcrumbJsonLd(locale);
+
+  return (
+    <>
+      <Script
+        id="json-ld-breadcrumb"
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+      />
+      <SecurityPage />
+    </>
+  );
 }

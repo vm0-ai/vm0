@@ -85,11 +85,15 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         return [];
       });
       for (const post of posts) {
+        const imageUrl = post.cover.startsWith("http")
+          ? post.cover
+          : `${blogBaseUrl}${post.cover}`;
         urls.push({
           url: `${blogBaseUrl}/${locale}/blog/posts/${post.slug}`,
           lastModified: new Date(post.publishedAt),
           changeFrequency: "monthly",
           priority: 0.7,
+          images: [imageUrl],
         });
       }
     }

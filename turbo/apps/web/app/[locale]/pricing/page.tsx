@@ -8,6 +8,27 @@ interface PageProps {
   params: Promise<{ locale: string }>;
 }
 
+function getBreadcrumbJsonLd(locale: string) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      {
+        "@type": "ListItem",
+        position: 1,
+        name: "Home",
+        item: `${BASE_URL}/${locale}`,
+      },
+      {
+        "@type": "ListItem",
+        position: 2,
+        name: "Pricing",
+        item: `${BASE_URL}/${locale}/pricing`,
+      },
+    ],
+  };
+}
+
 export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
@@ -86,6 +107,43 @@ const faqItems = [
   },
 ];
 
+const pricingJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: "VM0",
+  applicationCategory: "DeveloperApplication",
+  operatingSystem: "Web, Linux, macOS, Windows",
+  url: "https://vm0.ai",
+  offers: [
+    {
+      "@type": "Offer",
+      name: "Free",
+      price: "0",
+      priceCurrency: "USD",
+      description:
+        "10,000 starter credits, 1 agent at a time, community support",
+    },
+    {
+      "@type": "Offer",
+      name: "Pro",
+      price: "40",
+      priceCurrency: "USD",
+      billingIncrement: "month",
+      description:
+        "20,000 credits/month, 5 concurrent agents, priority support, credits rollover",
+    },
+    {
+      "@type": "Offer",
+      name: "Team",
+      price: "200",
+      priceCurrency: "USD",
+      billingIncrement: "month",
+      description:
+        "120,000 credits/month, 20 concurrent agents, dedicated support, team management",
+    },
+  ],
+};
+
 const faqJsonLd = {
   "@context": "https://schema.org",
   "@type": "FAQPage",
@@ -101,9 +159,22 @@ const faqJsonLd = {
   }),
 };
 
-export default function PricingPage() {
+export default async function PricingPage({ params }: PageProps) {
+  const { locale } = await params;
+  const breadcrumbJsonLd = getBreadcrumbJsonLd(locale);
+
   return (
     <>
+      <Script
+        id="json-ld-breadcrumb"
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+      />
+      <Script
+        id="json-ld-pricing"
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(pricingJsonLd) }}
+      />
       <Script
         id="json-ld-faq"
         type="application/ld+json"

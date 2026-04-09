@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import Script from "next/script";
 import { getTranslations } from "next-intl/server";
 import {
   getPosts,
@@ -12,6 +13,29 @@ import { BlogContent } from "../../components/blog";
 import Navbar from "../../components/Navbar";
 import Footer from "../../components/Footer";
 import { isBlogEnabled } from "../../../src/env";
+
+const BASE_URL = "https://vm0.ai";
+
+function getBreadcrumbJsonLd(locale: string) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      {
+        "@type": "ListItem",
+        position: 1,
+        name: "Home",
+        item: `${BASE_URL}/${locale}`,
+      },
+      {
+        "@type": "ListItem",
+        position: 2,
+        name: "Blog",
+        item: `${BASE_URL}/${locale}/blog`,
+      },
+    ],
+  };
+}
 
 export const revalidate = 3600;
 
@@ -68,8 +92,15 @@ export default async function BlogPage({ params }: BlogPageProps) {
     getCategories(locale),
   ]);
 
+  const breadcrumbJsonLd = getBreadcrumbJsonLd(locale);
+
   return (
     <>
+      <Script
+        id="json-ld-breadcrumb"
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+      />
       <div className="header-container">
         <Navbar />
       </div>
