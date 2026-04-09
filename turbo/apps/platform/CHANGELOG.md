@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.204.0](https://github.com/vm0-ai/vm0/compare/app-v0.203.1...app-v0.204.0) (2026-04-09)
+
+
+### Features
+
+* add phone channel powered by agentphone ([#8496](https://github.com/vm0-ai/vm0/issues/8496)) ([43779b3](https://github.com/vm0-ai/vm0/commit/43779b320bdfd8bf85786561dfef612f84060023))
+
+
+### Refactoring
+
+* **platform:** remove all TODO(no-try) eslint-disable comments ([#8557](https://github.com/vm0-ai/vm0/issues/8557)) ([e607102](https://github.com/vm0-ai/vm0/commit/e6071028ea3d8028edc0641158f4672ad0e74ad7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.163.0
+
 ## [0.203.1](https://github.com/vm0-ai/vm0/compare/app-v0.203.0...app-v0.203.1) (2026-04-08)
 
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.109.0](https://github.com/vm0-ai/vm0/compare/cli-v9.108.0...cli-v9.109.0) (2026-04-09)
+
+
+### Features
+
+* add phone channel powered by agentphone ([#8496](https://github.com/vm0-ai/vm0/issues/8496)) ([43779b3](https://github.com/vm0-ai/vm0/commit/43779b320bdfd8bf85786561dfef612f84060023))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.163.0
+
 ## [9.108.0](https://github.com/vm0-ai/vm0/compare/cli-v9.107.2...cli-v9.108.0) (2026-04-08)
 
 

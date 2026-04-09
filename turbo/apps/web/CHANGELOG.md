@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.206.0](https://github.com/vm0-ai/vm0/compare/web-v12.205.0...web-v12.206.0) (2026-04-09)
+
+
+### Features
+
+* add phone channel powered by agentphone ([#8496](https://github.com/vm0-ai/vm0/issues/8496)) ([43779b3](https://github.com/vm0-ai/vm0/commit/43779b320bdfd8bf85786561dfef612f84060023))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.163.0
+
 ## [12.205.0](https://github.com/vm0-ai/vm0/compare/web-v12.204.1...web-v12.205.0) (2026-04-08)
 
 

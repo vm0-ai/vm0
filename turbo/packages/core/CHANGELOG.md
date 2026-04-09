@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.163.0](https://github.com/vm0-ai/vm0/compare/core-v8.162.0...core-v8.163.0) (2026-04-09)
+
+
+### Features
+
+* add phone channel powered by agentphone ([#8496](https://github.com/vm0-ai/vm0/issues/8496)) ([43779b3](https://github.com/vm0-ai/vm0/commit/43779b320bdfd8bf85786561dfef612f84060023))
+
 ## [8.162.0](https://github.com/vm0-ai/vm0/compare/core-v8.161.1...core-v8.162.0) (2026-04-08)
 
 
