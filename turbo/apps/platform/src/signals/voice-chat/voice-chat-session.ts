@@ -429,13 +429,7 @@ const setupWebRTC$ = command(
 
 const startHeartbeat$ = command(async ({ get }, signal: AbortSignal) => {
   while (!signal.aborted) {
-    // eslint-disable-next-line no-restricted-syntax -- polling loop requires try/catch for signal-timers delay
-    try {
-      await delay(HEARTBEAT_INTERVAL_MS, { signal });
-    } catch (error) {
-      throwIfAbort(error);
-      return;
-    }
+    await delay(HEARTBEAT_INTERVAL_MS, { signal });
 
     const sid = get(internalSessionId$);
     if (!sid) {
@@ -449,13 +443,7 @@ const startHeartbeat$ = command(async ({ get }, signal: AbortSignal) => {
 
 const startPoll$ = command(async ({ get, set }, signal: AbortSignal) => {
   while (!signal.aborted) {
-    // eslint-disable-next-line no-restricted-syntax -- polling loop requires try/catch for signal-timers delay
-    try {
-      await delay(POLL_INTERVAL_MS, { signal });
-    } catch (error) {
-      throwIfAbort(error);
-      return;
-    }
+    await delay(POLL_INTERVAL_MS, { signal });
 
     const sid = get(internalSessionId$);
     if (!sid) {
