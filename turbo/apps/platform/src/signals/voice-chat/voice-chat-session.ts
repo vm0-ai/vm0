@@ -136,6 +136,30 @@ Communication style:
 - Be warm and conversational, like a helpful colleague.
 `.trim();
 
+function logContextEvent(
+  fetchFn: (url: string, init?: RequestInit) => Promise<Response>,
+  sessionId: string | null,
+  source: string,
+  type: string,
+  content: string,
+): void {
+  if (!sessionId) {
+    return;
+  }
+  void fetchFn(`/api/zero/voice-chat/${sessionId}/context`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ source, type, content }),
+  }).then(
+    () => {
+      return undefined;
+    },
+    () => {
+      return undefined;
+    },
+  );
+}
+
 // --- Internal state ---
 
 const internalStatus$ = state<ConnectionStatus>("idle");
@@ -286,6 +310,15 @@ const handleDCMessage$ = command(
           set(internalTranscript$, (prev) => {
             return upsertUserTranscript(prev, itemId, event.transcript!);
           });
+
+          // Auto-log user speech to shared context (fire-and-forget)
+          logContextEvent(
+            get(fetch$),
+            get(internalSessionId$),
+            "user",
+            "speech",
+            event.transcript,
+          );
         }
         break;
       }
@@ -328,6 +361,15 @@ const handleDCMessage$ = command(
             }
             return updated;
           });
+
+          // Auto-log talker response to shared context (fire-and-forget)
+          logContextEvent(
+            get(fetch$),
+            get(internalSessionId$),
+            "talker",
+            "response",
+            finalText,
+          );
         }
         break;
       }
