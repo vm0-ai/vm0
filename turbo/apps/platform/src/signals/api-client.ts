@@ -64,6 +64,20 @@ export const zeroClient$ = computed((get) => {
 
         const response = await tsRestFetchApi({ ...args, headers });
 
+        if (response.status === 401) {
+          // Fire-and-forget: the redirect navigates the page away so the promise
+          // may never settle. We must not await — callers need the 401 response.
+          const redirectResult = clerk.redirectToSignIn();
+          if (redirectResult instanceof Promise) {
+            redirectResult.catch((error: unknown) => {
+              if (error instanceof Error && error.name === "AbortError") {
+                return;
+              }
+              L.error("Sign-in redirect failed", error);
+            });
+          }
+        }
+
         if (IN_VITEST) {
           const schema = args.route.responses[response.status];
           if (
@@ -83,20 +97,6 @@ export const zeroClient$ = computed((get) => {
               );
             }
             return { ...response, body: parsed.data };
-          }
-        }
-
-        if (response.status === 401) {
-          // Fire-and-forget: the redirect navigates the page away so the promise
-          // may never settle. We must not await — callers need the 401 response.
-          const redirectResult = clerk.redirectToSignIn();
-          if (redirectResult instanceof Promise) {
-            redirectResult.catch((error: unknown) => {
-              if (error instanceof Error && error.name === "AbortError") {
-                return;
-              }
-              L.error("Sign-in redirect failed", error);
-            });
           }
         }
 
