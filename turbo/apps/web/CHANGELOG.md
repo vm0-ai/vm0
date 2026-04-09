@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.207.0](https://github.com/vm0-ai/vm0/compare/web-v12.206.0...web-v12.207.0) (2026-04-09)
+
+
+### Features
+
+* **web:** redesign landing page with new layouts, assets, and avatar customizer ([#8545](https://github.com/vm0-ai/vm0/issues/8545)) ([e4a9d11](https://github.com/vm0-ai/vm0/commit/e4a9d1148643bd5b8af23886cfd615ad7d40aca2))
+
 ## [12.206.0](https://github.com/vm0-ai/vm0/compare/web-v12.205.0...web-v12.206.0) (2026-04-09)
 
 

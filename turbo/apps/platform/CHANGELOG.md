@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.204.1](https://github.com/vm0-ai/vm0/compare/app-v0.204.0...app-v0.204.1) (2026-04-09)
+
+
+### Bug Fixes
+
+* disable chat input auto-focus on touch/mobile devices ([#8570](https://github.com/vm0-ai/vm0/issues/8570)) ([b0950ae](https://github.com/vm0-ai/vm0/commit/b0950aeb275e4d76a36a01eb8f32fc2805101c6f))
+* **platform:** center skeleton loading text and add message cycling ([#8471](https://github.com/vm0-ai/vm0/issues/8471)) ([0d6f411](https://github.com/vm0-ai/vm0/commit/0d6f411e07d29fea87f854b88e9f794da9a4dd34))
+
 ## [0.204.0](https://github.com/vm0-ai/vm0/compare/app-v0.203.1...app-v0.204.0) (2026-04-09)
 
 
