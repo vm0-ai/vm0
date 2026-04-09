@@ -27,6 +27,35 @@ interface ContextEvent {
   createdAt: string;
 }
 
+function updateLastTranscriptEntry(
+  prev: TranscriptEntry[],
+  id: string,
+  text: string,
+): TranscriptEntry[] {
+  const updated = [...prev];
+  const last = updated[updated.length - 1];
+  if (last && last.id === id) {
+    updated[updated.length - 1] = { ...last, text };
+  }
+  return updated;
+}
+
+function upsertUserTranscript(
+  prev: TranscriptEntry[],
+  itemId: string,
+  text: string,
+): TranscriptEntry[] {
+  const idx = prev.findIndex((e) => {
+    return e.id === itemId;
+  });
+  if (idx !== -1) {
+    const updated = [...prev];
+    updated[idx] = { ...updated[idx]!, text };
+    return updated;
+  }
+  return [...prev, { role: "user" as const, text, id: itemId }];
+}
+
 const HEARTBEAT_INTERVAL_MS = 30_000;
 const POLL_INTERVAL_MS = 2000;
 const REALTIME_MODEL = "gpt-4o-realtime-preview";
@@ -201,6 +230,7 @@ const handleDCMessage$ = command(
     const event = JSON.parse(data) as {
       type: string;
       item_id?: string;
+      item?: { id: string; type: string; role?: string };
       transcript?: string;
       response_id?: string;
       delta?: string;
@@ -210,15 +240,15 @@ const handleDCMessage$ = command(
     };
 
     switch (event.type) {
-      case "conversation.item.input_audio_transcription.completed": {
-        if (event.transcript) {
+      case "conversation.item.created": {
+        if (event.item?.role === "user" && event.item.type === "message") {
           set(internalTranscript$, (prev) => {
             return [
               ...prev,
               {
                 role: "user" as const,
-                text: event.transcript!,
-                id: event.item_id ?? crypto.randomUUID(),
+                text: "...",
+                id: event.item!.id,
               },
             ];
           });
@@ -226,26 +256,32 @@ const handleDCMessage$ = command(
         break;
       }
 
+      case "conversation.item.input_audio_transcription.completed": {
+        if (event.transcript) {
+          const itemId = event.item_id ?? crypto.randomUUID();
+          set(internalTranscript$, (prev) => {
+            return upsertUserTranscript(prev, itemId, event.transcript!);
+          });
+        }
+        break;
+      }
+
       case "response.audio_transcript.delta": {
+        const deltaText = event.delta ?? "";
         const current = get(internalCurrentAssistant$);
         if (current && current.id === event.response_id) {
-          const updatedText = current.text + (event.delta ?? "");
+          const updatedText = current.text + deltaText;
           set(internalCurrentAssistant$, { id: current.id, text: updatedText });
           set(internalTranscript$, (prev) => {
-            const updated = [...prev];
-            const last = updated[updated.length - 1];
-            if (last && last.id === current.id) {
-              updated[updated.length - 1] = { ...last, text: updatedText };
-            }
-            return updated;
+            return updateLastTranscriptEntry(prev, current.id, updatedText);
           });
         } else {
           const id = event.response_id ?? crypto.randomUUID();
-          set(internalCurrentAssistant$, { id, text: event.delta ?? "" });
+          set(internalCurrentAssistant$, { id, text: deltaText });
           set(internalTranscript$, (prev) => {
             return [
               ...prev,
-              { role: "assistant" as const, text: event.delta ?? "", id },
+              { role: "assistant" as const, text: deltaText, id },
             ];
           });
         }
@@ -322,6 +358,12 @@ const setupWebRTC$ = command(
           session: {
             modalities: ["text", "audio"],
             input_audio_transcription: { model: "whisper-1" },
+            turn_detection: {
+              type: "server_vad",
+              threshold: 0.6,
+              prefix_padding_ms: 300,
+              silence_duration_ms: 500,
+            },
             tools: SESSION_TOOLS,
           },
         }),
