@@ -107,10 +107,23 @@ function sanitizeRule(rule: string): string {
   if (spaceIdx === -1) return rule;
   const method = rule.slice(0, spaceIdx);
   const rest = rule.slice(spaceIdx + 1);
-  return `${method} ${stripQueryFragment(rest)}`;
+  const cleaned = stripQueryFragment(rest);
+  if (cleaned !== rest) {
+    console.error(
+      `  ⚠ Stripped query/fragment from rule: "${rule}" → "${method} ${cleaned}"`,
+    );
+  }
+  return `${method} ${cleaned}`;
 }
 
-export function sortRules(rules: string[]): string[] {
+/**
+ * Sanitize, deduplicate, and sort firewall rules.
+ *
+ * - Strips query strings / fragments that some OpenAPI specs include in path keys
+ * - Deduplicates rules that collapse after stripping
+ * - Sorts by path then HTTP method order
+ */
+export function sanitizeAndSortRules(rules: string[]): string[] {
   return [...new Set(rules.map(sanitizeRule))].sort((a, b) => {
     const [pathA, orderA] = ruleKey(a);
     const [pathB, orderB] = ruleKey(b);

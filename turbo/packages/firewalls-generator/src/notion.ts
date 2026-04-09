@@ -19,7 +19,7 @@ import {
   fetchSpec,
   logStats,
   renderPermissions,
-  sortRules,
+  sanitizeAndSortRules,
   writeOutput,
 } from "./codegen";
 import type { OpenApiSpec, PermissionGroup } from "./codegen";
@@ -159,7 +159,7 @@ function buildGroups(spec: OpenApiSpec): PermissionGroup[] {
       return {
         name,
         description,
-        rules: sortRules([...ruleSet]),
+        rules: sanitizeAndSortRules([...ruleSet]),
       };
     });
 }

@@ -17,7 +17,7 @@ import {
   fetchSpec,
   logStats,
   renderPermissions,
-  sortRules,
+  sanitizeAndSortRules,
   writeOutput,
 } from "./codegen";
 import type { PermissionGroup } from "./codegen";
@@ -128,7 +128,7 @@ function buildGroups(spec: SwaggerSpec): {
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([name, ruleSet]) => ({
       name,
-      rules: sortRules([...ruleSet]),
+      rules: sanitizeAndSortRules([...ruleSet]),
     }));
 
   return { permissions, unmapped };

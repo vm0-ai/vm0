@@ -16,7 +16,7 @@ import {
   fetchSpec,
   logStats,
   renderPermissions,
-  sortRules,
+  sanitizeAndSortRules,
   writeOutput,
 } from "./codegen";
 import type { OpenApiSpec, PermissionGroup } from "./codegen";
@@ -83,7 +83,7 @@ function buildGroups(spec: OpenApiSpec): PermissionGroup[] {
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([name, ruleSet]) => ({
       name,
-      rules: sortRules([...ruleSet]),
+      rules: sanitizeAndSortRules([...ruleSet]),
     }));
 }
 

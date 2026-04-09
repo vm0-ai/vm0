@@ -25,7 +25,7 @@ import {
   logStats,
   renderDefaultAllowed,
   renderPermissions,
-  sortRules,
+  sanitizeAndSortRules,
   writeOutput,
 } from "./codegen";
 import type { PermissionGroup } from "./codegen";
@@ -272,7 +272,7 @@ function buildGroups(methods: Map<string, SlackMethodData>): PermissionGroup[] {
       ordered.push({
         name,
         description: SCOPE_DESCRIPTIONS[name],
-        rules: sortRules([...ruleSet]),
+        rules: sanitizeAndSortRules([...ruleSet]),
       });
     }
   }
@@ -282,7 +282,7 @@ function buildGroups(methods: Map<string, SlackMethodData>): PermissionGroup[] {
     ordered.push({
       name: "no_scopes_required",
       description: "Methods that require a valid token but no specific scope",
-      rules: sortRules([...noScope]),
+      rules: sanitizeAndSortRules([...noScope]),
     });
   }
 
