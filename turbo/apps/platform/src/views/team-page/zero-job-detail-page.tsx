@@ -858,7 +858,7 @@ function useAgentFields() {
   };
 }
 
-function useTabVisibility(agentId: string) {
+function useTabVisibility(agentId: string, ownerId: string) {
   const statusLoadable = useLastLoadable(zeroOnboardingStatus$);
   const isDefaultAgent =
     statusLoadable.state === "hasData" &&
@@ -867,9 +867,14 @@ function useTabVisibility(agentId: string) {
   const adminLoadable = useLoadable(isOrgAdmin$);
   const isAdmin = adminLoadable.state === "hasData" && adminLoadable.data;
 
+  const userLoadable = useLoadable(user$);
+  const currentUserId =
+    userLoadable.state === "hasData" ? userLoadable.data?.id : undefined;
+  const isOwner = currentUserId === ownerId;
+
   const rawTab = useGet(zeroJobActiveTab$);
   const setActiveTab = useSet(setZeroJobActiveTab$);
-  const hideProfileAndInstructions = isDefaultAgent && !isAdmin;
+  const hideProfileAndInstructions = !isAdmin && !isOwner;
   const activeTab = resolveVisibleTab(rawTab, hideProfileAndInstructions);
 
   return {
@@ -889,7 +894,7 @@ export function ZeroJobDetailPage() {
     hideProfileAndInstructions,
     activeTab,
     setActiveTab,
-  } = useTabVisibility(fields.agentId);
+  } = useTabVisibility(fields.agentId, fields.ownerId);
 
   if (!fields.detail && !error) {
     return <DetailSkeleton />;
