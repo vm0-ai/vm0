@@ -128,6 +128,17 @@ function logContextEvent(
   );
 }
 
+function formatInjectionMessage(event: ContextEvent): string {
+  const prefixes: Record<string, string> = {
+    directive: "[Your background thinking completed]",
+    "thinking-progress": "[Your background self is working]",
+    "thinking-result": "[Background result]",
+    observation: "[Background observation]",
+  };
+  const label = prefixes[event.type] ?? `[Background update - ${event.type}]`;
+  return `${label} ${event.content ?? ""}`.trim();
+}
+
 // --- Internal state ---
 
 const internalStatus$ = state<ConnectionStatus>("idle");
@@ -343,6 +354,48 @@ const handleDCMessage$ = command(
   },
 );
 
+const injectSlowBrainEvents$ = command(
+  ({ get, set }, events: ContextEvent[]) => {
+    const dc = get(internalDc$);
+    if (!dc || dc.readyState !== "open") {
+      return;
+    }
+
+    const slowBrainEvents = events.filter((e) => {
+      return e.source === "slow-brain" && e.content;
+    });
+    if (slowBrainEvents.length === 0) {
+      return;
+    }
+
+    // Interrupt if model is mid-speech
+    const current = get(internalCurrentAssistant$);
+    if (current) {
+      dc.send(JSON.stringify({ type: "response.cancel" }));
+      set(internalCurrentAssistant$, null);
+    }
+
+    // Inject each event as a user message
+    for (const event of slowBrainEvents) {
+      dc.send(
+        JSON.stringify({
+          type: "conversation.item.create",
+          item: {
+            type: "message",
+            role: "user",
+            content: [
+              { type: "input_text", text: formatInjectionMessage(event) },
+            ],
+          },
+        }),
+      );
+    }
+
+    // Trigger model to respond to injected content
+    dc.send(JSON.stringify({ type: "response.create" }));
+  },
+);
+
 const setupWebRTC$ = command(
   async (
     { get, set },
@@ -497,6 +550,7 @@ const startPoll$ = command(async ({ get, set }, signal: AbortSignal) => {
         if (lastEvent) {
           set(internalLastSeq$, lastEvent.seq);
         }
+        set(injectSlowBrainEvents$, data.events);
       }
       return false;
     },
