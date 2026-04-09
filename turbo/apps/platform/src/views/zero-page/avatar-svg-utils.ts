@@ -47,10 +47,24 @@ export function parseAvatarSvgConfig(
   };
 }
 
-const BASE = "/avatar-svg";
+const SVG_ASSETS = Object.freeze(
+  import.meta.glob<string>("./assets/avatar-svg/*.svg", {
+    eager: true,
+    import: "default",
+  }),
+);
+
+function resolveAsset(filename: string): string {
+  const key = `./assets/avatar-svg/${filename}`;
+  const url = SVG_ASSETS[key];
+  if (!url) {
+    throw new Error(`Missing avatar SVG asset: ${filename}`);
+  }
+  return url;
+}
 
 export function headSvgUrl(rotation: number, skin: number): string {
-  return `${BASE}/head-r${rotation}-s${skin}.svg`;
+  return resolveAsset(`head-r${rotation}-s${skin}.svg`);
 }
 
 export function hairSvgUrl(
@@ -58,7 +72,7 @@ export function hairSvgUrl(
   style: number,
   color: number,
 ): string {
-  return `${BASE}/hair-r${rotation}-h${style}-c${color}.svg`;
+  return resolveAsset(`hair-r${rotation}-h${style}-c${color}.svg`);
 }
 
 export function faceSvgUrl(
@@ -66,7 +80,7 @@ export function faceSvgUrl(
   expression: number,
   intensity: string,
 ): string {
-  return `${BASE}/face-r${rotation}-f${expression}-${intensity}.svg`;
+  return resolveAsset(`face-r${rotation}-f${expression}-${intensity}.svg`);
 }
 
 export function randomAvatarSvgConfig(): AvatarSvgConfig {
