@@ -898,6 +898,12 @@ fn spawn_job(
         use_snapshot: job_profile.use_snapshot,
     };
 
+    let storage_fingerprints = context
+        .storage_manifest
+        .as_ref()
+        .map(crate::idle_pool::StorageFingerprints::from_manifest)
+        .unwrap_or_default();
+
     let provider = Arc::clone(&ctx.provider);
     let exec_config = Arc::clone(&ctx.exec_config);
     let budget = Arc::clone(&ctx.budget);
@@ -971,6 +977,7 @@ fn spawn_job(
                     source_ip,
                     parked_at: std::time::Instant::now(),
                     idle_timeout,
+                    storage_fingerprints: storage_fingerprints.clone(),
                 };
                 match pool.park(session_id.to_string(), entry) {
                     ParkResult::Parked => {
@@ -1415,6 +1422,7 @@ mod tests {
             source_ip: "10.0.0.1".into(),
             parked_at: std::time::Instant::now(),
             idle_timeout: Duration::from_secs(300),
+            storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
         }
     }
 

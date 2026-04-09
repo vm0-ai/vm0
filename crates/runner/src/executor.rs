@@ -23,7 +23,7 @@ use crate::network_logs;
 use crate::paths::{LogPaths, guest};
 use crate::proxy::{self, ProxyRegistryHandle};
 use crate::telemetry::JobTelemetry;
-use crate::types::{ExecutionContext, ResumeSession, StorageManifest};
+use crate::types::{ArtifactEntry, ExecutionContext, ResumeSession, StorageEntry, StorageManifest};
 
 /// Shared configuration for all executions (profile-independent).
 pub struct ExecutorConfig {
@@ -119,6 +119,7 @@ pub async fn execute_job_reuse(
     telemetry.record("vm_reuse", Duration::ZERO, true, None);
 
     let source_ip = idle_entry.source_ip.clone();
+    let prev_storage = idle_entry.storage_fingerprints;
     let sandbox = idle_entry.sandbox;
 
     // execute_reused_sandbox never returns Err — it always returns the sandbox
@@ -128,6 +129,7 @@ pub async fn execute_job_reuse(
         &source_ip,
         &context,
         config,
+        &prev_storage,
         &mut telemetry,
         cancel,
     )
@@ -196,12 +198,13 @@ async fn execute_new_sandbox(
     }
     telemetry.record("vm_create", t.elapsed(), true, None);
 
-    // Run job inside sandbox
+    // Run job inside sandbox (new VM — no previous storage fingerprints)
     let result = run_in_sandbox(
         sandbox.as_ref(),
         context,
         config,
         params.use_snapshot,
+        None,
         telemetry,
         cancel,
     )
@@ -244,6 +247,7 @@ async fn execute_reused_sandbox(
     source_ip: &str,
     context: &ExecutionContext,
     config: &ExecutorConfig,
+    prev_storage: &crate::idle_pool::StorageFingerprints,
     telemetry: &mut JobTelemetry,
     cancel: CancellationToken,
 ) -> ExecuteOutcome {
@@ -287,6 +291,7 @@ async fn execute_reused_sandbox(
         context,
         config,
         false, // clock/entropy already handled
+        Some(prev_storage),
         telemetry,
         cancel,
     )
@@ -382,6 +387,7 @@ async fn run_in_sandbox(
     context: &ExecutionContext,
     config: &ExecutorConfig,
     use_snapshot: bool,
+    prev_storage: Option<&crate::idle_pool::StorageFingerprints>,
     telemetry: &mut JobTelemetry,
     cancel: CancellationToken,
 ) -> RunnerResult<(i32, Option<String>)> {
@@ -400,10 +406,31 @@ async fn run_in_sandbox(
     // 2. Set guest timezone from user preference (best-effort, never fails).
     sync_guest_timezone(sandbox, context).await;
 
-    // 3. Download storages
+    // 3. Download storages (skipping entries unchanged since the previous turn)
     if let Some(manifest) = &context.storage_manifest {
+        let effective = match prev_storage {
+            Some(prev) => filter_unchanged_storages(manifest, prev),
+            None => manifest.clone(),
+        };
+        // Short-circuit: skip the vsock exec if every entry was filtered out.
+        let has_work = effective.storages.iter().any(|s| s.archive_url.is_some())
+            || effective
+                .artifact
+                .as_ref()
+                .is_some_and(|a| a.archive_url.is_some())
+            || effective
+                .memory
+                .as_ref()
+                .is_some_and(|m| m.archive_url.is_some());
+        if !has_work {
+            info!(run_id = %context.run_id, "all storages unchanged, skipping download");
+        }
         let t = Instant::now();
-        let result = download_storages(sandbox, context, manifest, &log_file).await;
+        let result = if has_work {
+            download_storages(sandbox, context, &effective, &log_file).await
+        } else {
+            Ok(())
+        };
         let err = result.as_ref().err().map(|e| e.to_string());
         telemetry.record(
             "storage_download",
@@ -879,6 +906,61 @@ async fn sync_guest_timezone(sandbox: &dyn Sandbox, context: &ExecutionContext) 
         .await
     {
         tracing::warn!(tz = %tz, error = %e, "failed to set guest timezone");
+    }
+}
+
+/// Filter a storage manifest by nulling `archive_url` for entries whose
+/// version matches the previous turn's fingerprints. `guest-download`
+/// skips entries without a valid URL, so unchanged storages stay on disk.
+fn filter_unchanged_storages(
+    manifest: &StorageManifest,
+    prev: &crate::idle_pool::StorageFingerprints,
+) -> StorageManifest {
+    let storages = manifest
+        .storages
+        .iter()
+        .map(|s| {
+            let unchanged = s
+                .archive_url
+                .as_ref()
+                .and_then(|url| {
+                    prev.storages
+                        .get(&s.mount_path)
+                        .filter(|prev_url| *prev_url == url)
+                })
+                .is_some();
+            StorageEntry {
+                mount_path: s.mount_path.clone(),
+                archive_url: if unchanged {
+                    None
+                } else {
+                    s.archive_url.clone()
+                },
+            }
+        })
+        .collect();
+
+    let filter_artifact =
+        |a: &ArtifactEntry, prev_ver: &Option<(String, String)>| -> ArtifactEntry {
+            let same = prev_ver
+                .as_ref()
+                .is_some_and(|(name, ver)| *name == a.vas_storage_name && *ver == a.vas_version_id);
+            ArtifactEntry {
+                archive_url: if same { None } else { a.archive_url.clone() },
+                ..a.clone()
+            }
+        };
+
+    StorageManifest {
+        storages,
+        artifact: manifest
+            .artifact
+            .as_ref()
+            .map(|a| filter_artifact(a, &prev.artifact)),
+        memory: manifest
+            .memory
+            .as_ref()
+            .map(|m| filter_artifact(m, &prev.memory)),
     }
 }
 
@@ -2282,6 +2364,7 @@ mod tests {
             source_ip: outcome.source_ip,
             parked_at: std::time::Instant::now(),
             idle_timeout: std::time::Duration::from_secs(300),
+            storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
         };
 
         // Reuse the sandbox for a second turn
@@ -2325,6 +2408,7 @@ mod tests {
             source_ip: outcome.source_ip,
             parked_at: std::time::Instant::now(),
             idle_timeout: std::time::Duration::from_secs(300),
+            storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
         };
 
         // Second turn: reuse with new session history
@@ -2384,6 +2468,7 @@ mod tests {
             source_ip: outcome.source_ip,
             parked_at: std::time::Instant::now(),
             idle_timeout: std::time::Duration::from_secs(300),
+            storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
         };
 
         let result = pool.park("session-1".into(), entry);
@@ -2426,6 +2511,7 @@ mod tests {
             source_ip: "10.0.0.1".into(),
             parked_at: std::time::Instant::now(),
             idle_timeout: std::time::Duration::from_secs(300),
+            storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
         };
         let _ = pool.park("session-1".into(), entry);
 
@@ -2459,6 +2545,7 @@ mod tests {
             source_ip: "10.0.0.1".into(),
             parked_at: std::time::Instant::now(),
             idle_timeout: std::time::Duration::from_secs(300),
+            storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
         };
 
         let cancel = tokio_util::sync::CancellationToken::new();
@@ -2499,6 +2586,7 @@ mod tests {
             source_ip: "10.0.0.1".into(),
             parked_at: std::time::Instant::now(),
             idle_timeout: std::time::Duration::from_secs(300),
+            storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
         };
 
         let cancel = tokio_util::sync::CancellationToken::new();
@@ -2541,6 +2629,7 @@ mod tests {
             source_ip: "10.0.0.1".into(),
             parked_at: std::time::Instant::now(),
             idle_timeout: std::time::Duration::from_secs(300),
+            storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
         };
 
         let cancel = tokio_util::sync::CancellationToken::new();
@@ -2576,5 +2665,121 @@ mod tests {
             outcome.sandbox.is_some(),
             "sandbox must be returned for caller to stop+destroy or park"
         );
+    }
+
+    // -----------------------------------------------------------------------
+    // filter_unchanged_storages tests
+    // -----------------------------------------------------------------------
+
+    fn art(name: &str, ver: &str, url: &str) -> ArtifactEntry {
+        ArtifactEntry {
+            mount_path: "/workspace".into(),
+            archive_url: Some(url.into()),
+            vas_storage_name: name.into(),
+            vas_version_id: ver.into(),
+        }
+    }
+
+    #[test]
+    fn filter_same_artifact_version_nulls_url() {
+        let manifest = StorageManifest {
+            storages: vec![],
+            artifact: Some(art("my-art", "v1", "https://s3/v1")),
+            memory: None,
+        };
+        let prev = crate::idle_pool::StorageFingerprints {
+            storages: HashMap::new(),
+            artifact: Some(("my-art".into(), "v1".into())),
+            memory: None,
+        };
+        let result = filter_unchanged_storages(&manifest, &prev);
+        assert!(result.artifact.as_ref().unwrap().archive_url.is_none());
+    }
+
+    #[test]
+    fn filter_different_artifact_version_keeps_url() {
+        let manifest = StorageManifest {
+            storages: vec![],
+            artifact: Some(art("my-art", "v2", "https://s3/v2")),
+            memory: None,
+        };
+        let prev = crate::idle_pool::StorageFingerprints {
+            storages: HashMap::new(),
+            artifact: Some(("my-art".into(), "v1".into())),
+            memory: None,
+        };
+        let result = filter_unchanged_storages(&manifest, &prev);
+        assert_eq!(
+            result.artifact.as_ref().unwrap().archive_url.as_deref(),
+            Some("https://s3/v2"),
+        );
+    }
+
+    #[test]
+    fn filter_different_artifact_name_keeps_url() {
+        let manifest = StorageManifest {
+            storages: vec![],
+            artifact: Some(art("other-art", "v1", "https://s3/v1")),
+            memory: None,
+        };
+        let prev = crate::idle_pool::StorageFingerprints {
+            storages: HashMap::new(),
+            artifact: Some(("my-art".into(), "v1".into())),
+            memory: None,
+        };
+        let result = filter_unchanged_storages(&manifest, &prev);
+        assert!(result.artifact.as_ref().unwrap().archive_url.is_some());
+    }
+
+    #[test]
+    fn filter_new_artifact_not_in_prev_keeps_url() {
+        let manifest = StorageManifest {
+            storages: vec![],
+            artifact: Some(art("my-art", "v1", "https://s3/v1")),
+            memory: None,
+        };
+        let prev = crate::idle_pool::StorageFingerprints::default();
+        let result = filter_unchanged_storages(&manifest, &prev);
+        assert!(result.artifact.as_ref().unwrap().archive_url.is_some());
+    }
+
+    #[test]
+    fn filter_empty_prev_downloads_everything() {
+        let manifest = StorageManifest {
+            storages: vec![StorageEntry {
+                mount_path: "/data".into(),
+                archive_url: Some("https://s3/data".into()),
+            }],
+            artifact: Some(art("my-art", "v1", "https://s3/v1")),
+            memory: Some(art("mem", "m1", "https://s3/m1")),
+        };
+        let prev = crate::idle_pool::StorageFingerprints::default();
+        let result = filter_unchanged_storages(&manifest, &prev);
+        assert!(result.storages[0].archive_url.is_some());
+        assert!(result.artifact.as_ref().unwrap().archive_url.is_some());
+        assert!(result.memory.as_ref().unwrap().archive_url.is_some());
+    }
+
+    #[test]
+    fn filter_all_unchanged_nulls_all_urls() {
+        let manifest = StorageManifest {
+            storages: vec![StorageEntry {
+                mount_path: "/data".into(),
+                archive_url: Some("https://s3/same-url".into()),
+            }],
+            artifact: Some(art("my-art", "v1", "https://s3/v1")),
+            memory: Some(art("mem", "m1", "https://s3/m1")),
+        };
+        let mut storages = HashMap::new();
+        storages.insert("/data".into(), "https://s3/same-url".into());
+        let prev = crate::idle_pool::StorageFingerprints {
+            storages,
+            artifact: Some(("my-art".into(), "v1".into())),
+            memory: Some(("mem".into(), "m1".into())),
+        };
+        let result = filter_unchanged_storages(&manifest, &prev);
+        assert!(result.storages[0].archive_url.is_none());
+        assert!(result.artifact.as_ref().unwrap().archive_url.is_none());
+        assert!(result.memory.as_ref().unwrap().archive_url.is_none());
     }
 }

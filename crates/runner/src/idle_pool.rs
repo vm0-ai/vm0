@@ -4,8 +4,41 @@ use std::time::{Duration, Instant};
 
 use sandbox::{Sandbox, SandboxFactory};
 
+use crate::types::{ArtifactEntry, StorageManifest};
+
 /// Default idle timeout for kept-alive VMs (5 minutes).
 const DEFAULT_IDLE_TIMEOUT_SECS: u64 = 300;
+
+/// Compact version fingerprints for storage manifest entries.
+/// Used to skip re-downloading unchanged storages on VM reuse.
+#[derive(Clone, Debug, Default)]
+pub struct StorageFingerprints {
+    /// mount_path → archive_url for regular storages.
+    pub storages: HashMap<String, String>,
+    /// (vas_storage_name, vas_version_id) for artifact.
+    pub artifact: Option<(String, String)>,
+    /// (vas_storage_name, vas_version_id) for memory.
+    pub memory: Option<(String, String)>,
+}
+
+impl StorageFingerprints {
+    pub fn from_manifest(manifest: &StorageManifest) -> Self {
+        let mut storages = HashMap::new();
+        for s in &manifest.storages {
+            if let Some(url) = &s.archive_url {
+                storages.insert(s.mount_path.clone(), url.clone());
+            }
+        }
+        fn version_tuple(entry: &ArtifactEntry) -> (String, String) {
+            (entry.vas_storage_name.clone(), entry.vas_version_id.clone())
+        }
+        Self {
+            storages,
+            artifact: manifest.artifact.as_ref().map(version_tuple),
+            memory: manifest.memory.as_ref().map(version_tuple),
+        }
+    }
+}
 
 /// Configuration for the idle sandbox pool.
 #[derive(Debug, Clone)]
@@ -39,6 +72,9 @@ pub struct IdleEntry {
     pub source_ip: String,
     pub parked_at: Instant,
     pub idle_timeout: Duration,
+    /// Version fingerprints of storages downloaded in the previous turn.
+    /// Used to skip re-downloading unchanged entries on reuse.
+    pub storage_fingerprints: StorageFingerprints,
 }
 
 impl IdleEntry {
@@ -184,6 +220,7 @@ mod tests {
             source_ip: "10.0.0.1".into(),
             parked_at: Instant::now(),
             idle_timeout: Duration::from_secs(300),
+            storage_fingerprints: StorageFingerprints::default(),
         }
     }
 
@@ -203,6 +240,7 @@ mod tests {
             source_ip: "10.0.0.1".into(),
             parked_at,
             idle_timeout,
+            storage_fingerprints: StorageFingerprints::default(),
         }
     }
 
