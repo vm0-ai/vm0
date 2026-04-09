@@ -15,6 +15,7 @@ import {
   type FirewallPolicyValue,
   type ConnectorResponse,
 } from "@vm0/core";
+import { policyIcon } from "../../../lib/utils/format-utils";
 
 interface ConnectorPermissionInfo {
   type: string;
@@ -68,12 +69,6 @@ function getConnectorPermissionInfo(
     allowed,
     total,
   };
-}
-
-function policyIcon(policy: FirewallPolicyValue): string {
-  if (policy === "allow") return chalk.green("✓");
-  if (policy === "ask") return chalk.yellow("?");
-  return chalk.dim("✗");
 }
 
 function printDetailedPermissions(info: ConnectorPermissionInfo): void {

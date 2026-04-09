@@ -17,14 +17,8 @@ import {
   getConnectorFirewall,
   resolveFirewallPolicies,
   type FirewallPolicies,
-  type FirewallPolicyValue,
 } from "@vm0/core";
-
-function policyIcon(policy: FirewallPolicyValue): string {
-  if (policy === "allow") return chalk.green("✓");
-  if (policy === "ask") return chalk.yellow("?");
-  return chalk.dim("✗");
-}
+import { policyIcon } from "../../lib/utils/format-utils";
 
 /**
  * Detect if running inside a zero sandbox (agent runtime).

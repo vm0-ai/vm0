@@ -48,7 +48,6 @@ function mockAPIs() {
         avatarUrl: "preset:0",
         connectors: [],
         permissionPolicies: null,
-        allowUnknownEndpoints: null,
       });
     }),
     http.get("*/api/zero/agents/:name/instructions", () => {

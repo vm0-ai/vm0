@@ -3653,7 +3653,7 @@ class TestThreeLevelMatching:
         )
         assert isinstance(result, FirewallBlock)
 
-    def test_unknown_endpoint_allowed_when_allow_unknown_true(self):
+    def test_unknown_endpoint_allowed_when_unknown_policy_allow(self):
         granted = {"github": {"allow": ["repo-read"], "unknownPolicy": "allow"}}
         result = matching.match_firewall_request(
             "https://api.github.com/users/octocat",
@@ -3665,8 +3665,19 @@ class TestThreeLevelMatching:
         assert result.match_info["permission"] == ""
         assert result.match_info["rule"] == ""
 
-    def test_unknown_endpoint_blocked_when_allow_unknown_false(self):
+    def test_unknown_endpoint_blocked_when_unknown_policy_deny(self):
         granted = {"github": {"allow": ["repo-read"], "unknownPolicy": "deny"}}
+        result = matching.match_firewall_request(
+            "https://api.github.com/users/octocat",
+            "GET",
+            self._firewalls(),
+            granted_permissions=granted,
+        )
+        assert isinstance(result, FirewallBlock)
+
+    def test_unknown_endpoint_blocked_when_unknown_policy_ask(self):
+        """unknownPolicy 'ask' is treated as deny at the proxy level."""
+        granted = {"github": {"allow": ["repo-read"], "unknownPolicy": "ask"}}
         result = matching.match_firewall_request(
             "https://api.github.com/users/octocat",
             "GET",
@@ -3714,8 +3725,8 @@ class TestThreeLevelMatching:
         )
         assert isinstance(result, FirewallBlock)
 
-    def test_empty_permissions_with_allow_unknown(self):
-        """Firewall with no permission rules + allowUnknown=True allows all."""
+    def test_empty_permissions_with_unknown_policy_allow(self):
+        """Firewall with no permission rules + unknownPolicy=allow allows all."""
         fws = _wrap_firewalls(
             [
                 {
@@ -3841,7 +3852,7 @@ class TestThreeLevelMatching:
         )
         assert isinstance(result, FirewallBlock)
 
-        # Slack: unknown endpoint → ALLOW (allowUnknown: True)
+        # Slack: unknown endpoint → ALLOW (unknownPolicy: allow)
         result = matching.match_firewall_request(
             "https://slack.com/api/users.info",
             "GET",
@@ -3852,8 +3863,8 @@ class TestThreeLevelMatching:
         assert result.match_info["ref"] == "slack"
         assert result.match_info["permission"] == ""
 
-    def test_different_allow_unknown_per_ref(self):
-        """allowUnknown differs per ref — github strict, slack permissive."""
+    def test_different_unknown_policy_per_ref(self):
+        """unknownPolicy differs per ref — github strict, slack permissive."""
         fws = [
             {
                 "name": "github",
@@ -3870,7 +3881,7 @@ class TestThreeLevelMatching:
             "github": {"allow": [], "unknownPolicy": "deny"},
             "slack": {"allow": [], "unknownPolicy": "allow"},
         }
-        # GitHub unknown → DENY (allowUnknown: False)
+        # GitHub unknown → DENY (unknownPolicy: deny)
         result = matching.match_firewall_request(
             "https://api.github.com/anything",
             "GET",
@@ -3879,7 +3890,7 @@ class TestThreeLevelMatching:
         )
         assert isinstance(result, FirewallBlock)
 
-        # Slack unknown → ALLOW (allowUnknown: True)
+        # Slack unknown → ALLOW (unknownPolicy: allow)
         result = matching.match_firewall_request(
             "https://slack.com/api/anything",
             "GET",
@@ -3888,8 +3899,8 @@ class TestThreeLevelMatching:
         )
         assert isinstance(result, FirewallAllow)
 
-    def test_denied_known_not_overridden_by_allow_unknown(self):
-        """A known permission that is denied must stay denied even with allowUnknown=True."""
+    def test_denied_known_not_overridden_by_unknown_policy(self):
+        """A known permission that is denied must stay denied even with unknownPolicy=allow."""
         fws = _wrap_firewalls(
             [
                 {
@@ -3910,7 +3921,7 @@ class TestThreeLevelMatching:
             fws,
             granted_permissions=granted,
         )
-        # repo-write rule matches but is not granted → DENY, not overridden by allowUnknown
+        # repo-write rule matches but is not granted → DENY, not overridden by unknownPolicy
         assert isinstance(result, FirewallBlock)
 
     def test_empty_permissions_list_denies_all_known(self):
@@ -4004,7 +4015,7 @@ class TestThreeLevelMatching:
         assert isinstance(result, FirewallAllow)
         assert result.match_info["permission"] == "repo-read"
 
-        # Second API: no permissions defined, base matches → unknown → ALLOW (allowUnknown)
+        # Second API: no permissions defined, base matches → unknown → ALLOW (unknownPolicy: allow)
         result = matching.match_firewall_request(
             "https://uploads.github.com/anything",
             "POST",
