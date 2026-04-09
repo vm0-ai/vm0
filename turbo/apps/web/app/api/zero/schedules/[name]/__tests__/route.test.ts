@@ -7,12 +7,14 @@ import {
   getTestZeroAgentId,
   createTestOrg,
   createTestSchedule,
+  insertOrgMembersCacheEntry,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
   uniqueId,
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
+import { generateZeroToken } from "../../../../../../src/lib/auth/sandbox-token";
 
 const context = testContext();
 
@@ -27,6 +29,7 @@ async function setupOrg(userId: string) {
 }
 
 describe("DELETE /api/zero/schedules/:name", () => {
+  let userId: string;
   let orgId: string;
   let testComposeId: string;
   let testZeroAgentId: string;
@@ -34,6 +37,7 @@ describe("DELETE /api/zero/schedules/:name", () => {
   beforeEach(async () => {
     context.setupMocks();
     const user = await context.setupUser();
+    userId = user.userId;
     const org = await setupOrg(user.userId);
     orgId = org.orgId;
 
@@ -100,5 +104,38 @@ describe("DELETE /api/zero/schedules/:name", () => {
     );
 
     expect(response.status).toBe(401);
+  });
+
+  it("should reject agent run token (schedule:delete is agent-excluded)", async () => {
+    await createTestSchedule(testComposeId, "agent-cant-delete", {
+      cronExpression: "0 9 * * *",
+      prompt: "Agent should not delete this",
+    });
+
+    await insertOrgMembersCacheEntry({
+      userId,
+      orgId,
+      role: "admin",
+    });
+
+    // Switch to zero token auth (agent run) — no Clerk session
+    mockClerk({ userId: null });
+    const token = await generateZeroToken(userId, "run-123", orgId);
+
+    const response = await DELETE(
+      createTestRequest(
+        `http://localhost:3000/api/zero/schedules/agent-cant-delete?agentId=${testZeroAgentId}`,
+        {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${token}` },
+        },
+      ),
+    );
+
+    expect(response.status).toBe(403);
+    const data = await response.json();
+    expect(data.error.message).toBe(
+      "Missing required capability: schedule:delete",
+    );
   });
 });
