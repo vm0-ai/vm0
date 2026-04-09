@@ -13,6 +13,7 @@ import {
   findTestCallbacksByRunId,
   insertOrgDefaultModelProvider,
   updateOrgDefaultAgent,
+  generateTestReplyToken,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -21,7 +22,6 @@ import {
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { server } from "../../../../../../src/mocks/server";
 import { http } from "../../../../../../src/__tests__/msw";
-import { generateReplyToken } from "../../../../../../src/lib/zero/email/handlers/shared";
 
 const context = testContext();
 const mockResend = vi.mocked(new Resend(""), true);
@@ -149,7 +149,7 @@ describe("POST /api/zero/email/inbound", () => {
     );
 
     // Generate a valid HMAC reply token
-    const replyToken = generateReplyToken(agentSession.id);
+    const replyToken = generateTestReplyToken(agentSession.id);
 
     // Create email thread session that links the token to the compose/session
     await createTestEmailThreadSession({
@@ -252,7 +252,7 @@ describe("POST /api/zero/email/inbound", () => {
       uniqueId("empty-agent"),
     );
     const agentSession = await createTestAgentSession(user.userId, composeId);
-    const replyToken = generateReplyToken(agentSession.id);
+    const replyToken = generateTestReplyToken(agentSession.id);
 
     await createTestEmailThreadSession({
       userId: user.userId,
@@ -355,7 +355,7 @@ describe("POST /api/zero/email/inbound", () => {
       composeId,
     );
 
-    const replyToken = generateReplyToken(agentSession.id);
+    const replyToken = generateTestReplyToken(agentSession.id);
     await createTestEmailThreadSession({
       userId: user.userId,
       agentId,
@@ -411,7 +411,7 @@ describe("POST /api/zero/email/inbound", () => {
       composeId,
     );
 
-    const replyToken = generateReplyToken(agentSession.id);
+    const replyToken = generateTestReplyToken(agentSession.id);
     await createTestEmailThreadSession({
       userId: userA.userId,
       agentId,
@@ -465,7 +465,7 @@ describe("POST /api/zero/email/inbound", () => {
       composeId,
     );
 
-    const replyToken = generateReplyToken(agentSession.id);
+    const replyToken = generateTestReplyToken(agentSession.id);
     await createTestEmailThreadSession({
       userId: user.userId,
       agentId,
@@ -1055,7 +1055,7 @@ describe("POST /api/zero/email/inbound", () => {
       user.userId,
       composeId,
     );
-    const replyToken = generateReplyToken(agentSession.id);
+    const replyToken = generateTestReplyToken(agentSession.id);
 
     await createTestEmailThreadSession({
       userId: user.userId,
@@ -1614,7 +1614,7 @@ describe("POST /api/zero/email/inbound", () => {
         user.userId,
         composeId,
       );
-      const replyToken = generateReplyToken(agentSession.id);
+      const replyToken = generateTestReplyToken(agentSession.id);
 
       await createTestEmailThreadSession({
         userId: user.userId,

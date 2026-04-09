@@ -6,6 +6,7 @@ import {
   createTestRun,
   completeTestRun,
   insertOrgCacheEntry,
+  appendTestChatMessages,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -13,7 +14,6 @@ import {
   type UserContext,
 } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
-import { appendChatMessages } from "../../../../../src/lib/zero/zero-session-service";
 
 const context = testContext();
 
@@ -35,9 +35,18 @@ describe("GET /api/agent/sessions", () => {
     const { agentSessionId } = await completeTestRun(user.userId, runId);
 
     // Append chat messages to the session so it appears in the list
-    await appendChatMessages(agentSessionId, user.userId, [
-      { role: "user", content: "Hello agent" },
-      { role: "assistant", content: "Hello user", runId },
+    await appendTestChatMessages(agentSessionId, [
+      {
+        role: "user",
+        content: "Hello agent",
+        createdAt: new Date().toISOString(),
+      },
+      {
+        role: "assistant",
+        content: "Hello user",
+        runId,
+        createdAt: new Date().toISOString(),
+      },
     ]);
 
     const request = createTestRequest(

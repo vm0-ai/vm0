@@ -6,6 +6,7 @@ import {
   createTestCompose,
   createTestVolume,
   insertOrgMembersCacheEntry,
+  createTestTarFile,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -13,10 +14,9 @@ import {
 } from "../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
 import { getInstructionsStorageName } from "@vm0/core";
-import { createSingleFileTar } from "../../../../../../../src/lib/infra/tar";
 
 function buildTarGz(filename: string, content: string): Buffer {
-  return gzipSync(createSingleFileTar(filename, Buffer.from(content, "utf-8")));
+  return gzipSync(createTestTarFile(filename, Buffer.from(content, "utf-8")));
 }
 
 const context = testContext();

@@ -31,6 +31,7 @@ import {
   clearOrgMembersCacheEntry,
   insertOrgMembersCacheEntry,
   getTestComposeVersionContent,
+  createTestTarFile,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { getInstructionsStorageName } from "@vm0/core";
 import {
@@ -38,7 +39,6 @@ import {
   type UserContext,
 } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
-import { createSingleFileTar } from "../../../../../src/lib/infra/tar";
 import { POST as runSchedule } from "../../schedules/run/route";
 
 const context = testContext();
@@ -609,7 +609,7 @@ describe("Zero Agents API", () => {
       });
       context.mocks.s3.downloadS3Buffer.mockResolvedValueOnce(
         gzipSync(
-          createSingleFileTar(
+          createTestTarFile(
             canonicalFilename,
             Buffer.from(instructionsContent, "utf-8"),
           ),

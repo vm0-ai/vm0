@@ -6,17 +6,15 @@ import {
   createTestCompose,
   createTestSessionWithConversation,
   createTestRunInDb,
+  appendTestChatMessages,
+  addTestRunToThread,
+  updateTestChatThreadTitle,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
   uniqueId,
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
-import { appendChatMessages } from "../../../../../../src/lib/zero/zero-session-service";
-import {
-  addRunToThread,
-  updateChatThreadTitle,
-} from "../../../../../../src/lib/zero/chat-thread";
 
 const context = testContext();
 
@@ -119,8 +117,12 @@ describe("GET /api/zero/chat-threads/:id - Get Thread Detail", () => {
     });
 
     // 4. Append chat messages with summaries to the session
-    await appendChatMessages(session.id, userId, [
-      { role: "user", content: "What files changed?" },
+    await appendTestChatMessages(session.id, [
+      {
+        role: "user",
+        content: "What files changed?",
+        createdAt: new Date().toISOString(),
+      },
       {
         role: "assistant",
         content: "Here are the changed files.",
@@ -130,11 +132,12 @@ describe("GET /api/zero/chat-threads/:id - Get Thread Detail", () => {
           { kind: "tool", name: "Read", input: { file_path: "src/index.ts" } },
           { kind: "tool", name: "Grep" },
         ],
+        createdAt: new Date().toISOString(),
       },
     ]);
 
     // 5. Link run to thread
-    await addRunToThread(threadId, runId, testUserId);
+    await addTestRunToThread(threadId, runId, testUserId);
 
     // 6. GET thread detail — summaries should be present
     const response = await GET(
@@ -205,7 +208,7 @@ describe("GET /api/zero/chat-threads/:id - Get Thread Detail", () => {
     const { id: threadId } = await createResponse.json();
 
     // Update title via service (simulates what the complete webhook does)
-    await updateChatThreadTitle(threadId, "AI-Generated Title");
+    await updateTestChatThreadTitle(threadId, "AI-Generated Title");
 
     // Fetch thread detail and verify title was updated
     const response = await GET(
@@ -236,7 +239,7 @@ describe("GET /api/zero/chat-threads/:id - Get Thread Detail", () => {
     const { id: threadId } = await createResponse.json();
 
     // Update title
-    await updateChatThreadTitle(threadId, "After AI update");
+    await updateTestChatThreadTitle(threadId, "After AI update");
 
     // List threads and verify title is reflected
     const listResponse = await listThreads(
@@ -272,7 +275,7 @@ describe("GET /api/zero/chat-threads/:id - Get Thread Detail", () => {
     });
 
     // Link run to thread
-    await addRunToThread(threadId, runId, testUserId);
+    await addTestRunToThread(threadId, runId, testUserId);
 
     // GET thread detail
     const response = await GET(

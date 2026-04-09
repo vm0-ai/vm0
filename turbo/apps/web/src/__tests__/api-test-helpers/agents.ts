@@ -2,6 +2,10 @@ import { and, eq } from "drizzle-orm";
 import type { RawPermissionPolicies } from "@vm0/core";
 import { initServices } from "../../lib/init-services";
 import {
+  addRunToThread,
+  updateChatThreadTitle,
+} from "../../lib/zero/chat-thread";
+import {
   agentComposes,
   agentComposeVersions,
 } from "../../db/schema/agent-compose";
@@ -690,4 +694,27 @@ export async function getTestAgentSessionWithConversation(
     memoryName: session.memoryName ?? null,
     chatMessages: (zeroSession?.chatMessages ?? []) as StoredChatMessage[],
   };
+}
+
+/**
+ * Link a run to a chat thread for test setup.
+ * Wraps addRunToThread from chat-thread-service.
+ */
+export async function addTestRunToThread(
+  threadId: string,
+  runId: string,
+  userId: string,
+): Promise<void> {
+  return addRunToThread(threadId, runId, userId);
+}
+
+/**
+ * Update the title of a chat thread for test setup.
+ * Wraps updateChatThreadTitle from chat-thread-service.
+ */
+export async function updateTestChatThreadTitle(
+  threadId: string,
+  title: string,
+): Promise<void> {
+  return updateChatThreadTitle(threadId, title);
 }

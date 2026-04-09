@@ -1,13 +1,13 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { GET, POST } from "../route";
-import { createTestRequest } from "../../../../../src/__tests__/api-test-helpers";
+import {
+  createTestRequest,
+  consumeTestCaptureNetworkBodies,
+  getTestUserPreferencesAll,
+  updateTestUserPreferencesAll,
+} from "../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
-import {
-  consumeCaptureNetworkBodies,
-  getUserPreferences,
-  updateUserPreferences,
-} from "../../../../../src/lib/zero/user/user-preferences-service";
 
 vi.mock("@axiomhq/logging");
 
@@ -483,40 +483,52 @@ describe("consumeCaptureNetworkBodies", () => {
   it("should return false when remaining is 0", async () => {
     const user = await context.setupUser();
 
-    const consumed = await consumeCaptureNetworkBodies(user.orgId, user.userId);
+    const consumed = await consumeTestCaptureNetworkBodies(
+      user.orgId,
+      user.userId,
+    );
     expect(consumed).toBe(false);
   });
 
   it("should decrement and return true when remaining > 0", async () => {
     const user = await context.setupUser();
 
-    await updateUserPreferences(user.orgId, user.userId, {
+    await updateTestUserPreferencesAll(user.orgId, user.userId, {
       captureNetworkBodiesRemaining: 3,
     });
 
-    const consumed = await consumeCaptureNetworkBodies(user.orgId, user.userId);
+    const consumed = await consumeTestCaptureNetworkBodies(
+      user.orgId,
+      user.userId,
+    );
     expect(consumed).toBe(true);
 
-    const prefs = await getUserPreferences(user.orgId, user.userId);
+    const prefs = await getTestUserPreferencesAll(user.orgId, user.userId);
     expect(prefs.captureNetworkBodiesRemaining).toBe(2);
   });
 
   it("should decrement to zero and stop", async () => {
     const user = await context.setupUser();
 
-    await updateUserPreferences(user.orgId, user.userId, {
+    await updateTestUserPreferencesAll(user.orgId, user.userId, {
       captureNetworkBodiesRemaining: 1,
     });
 
-    const first = await consumeCaptureNetworkBodies(user.orgId, user.userId);
+    const first = await consumeTestCaptureNetworkBodies(
+      user.orgId,
+      user.userId,
+    );
     expect(first).toBe(true);
 
-    const second = await consumeCaptureNetworkBodies(user.orgId, user.userId);
+    const second = await consumeTestCaptureNetworkBodies(
+      user.orgId,
+      user.userId,
+    );
     expect(second).toBe(false);
   });
 
   it("should return false for user with no preferences row", async () => {
-    const consumed = await consumeCaptureNetworkBodies(
+    const consumed = await consumeTestCaptureNetworkBodies(
       "org_nonexistent",
       "user_nonexistent",
     );

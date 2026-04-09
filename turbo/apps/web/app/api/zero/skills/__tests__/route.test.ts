@@ -13,13 +13,13 @@ import {
   seedTestCompose,
   getAgentCustomSkills,
   insertOrgMembersCacheEntry,
+  createTestTarFile,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
   type UserContext,
 } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
-import { createSingleFileTar } from "../../../../../src/lib/infra/tar";
 
 const context = testContext();
 
@@ -91,7 +91,7 @@ function mockSkillContent(
   content: string,
   extraFiles?: Array<{ path: string; size: number }>,
 ) {
-  const tarBuffer = createSingleFileTar(
+  const tarBuffer = createTestTarFile(
     "SKILL.md",
     Buffer.from(content, "utf-8"),
   );

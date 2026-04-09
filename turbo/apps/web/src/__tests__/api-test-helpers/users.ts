@@ -1,5 +1,10 @@
 import { and, eq, sql } from "drizzle-orm";
 import { initServices } from "../../lib/init-services";
+import {
+  consumeCaptureNetworkBodies,
+  getUserPreferences,
+  updateUserPreferences,
+} from "../../lib/zero/user/user-preferences-service";
 import { users } from "../../db/schema/user";
 import { userCache } from "../../db/schema/user-cache";
 import { vm0ApiKeys } from "../../db/schema/vm0-api-key";
@@ -340,4 +345,53 @@ export async function getTestVoiceChatEvents(
     })
     .from(voiceChatEvents)
     .where(eq(voiceChatEvents.sessionId, sessionId));
+}
+
+/**
+ * Atomically consume one network body capture quota for testing.
+ * Wraps consumeCaptureNetworkBodies from user-preferences-service.
+ */
+export async function consumeTestCaptureNetworkBodies(
+  orgId: string,
+  userId: string,
+): Promise<boolean> {
+  return consumeCaptureNetworkBodies(orgId, userId);
+}
+
+/**
+ * Get the full user preferences object for testing.
+ * Wraps getUserPreferences from user-preferences-service.
+ */
+export async function getTestUserPreferencesAll(
+  orgId: string,
+  userId: string,
+): Promise<{
+  timezone: string | null;
+  pinnedAgentIds: string[];
+  sendMode: string;
+  captureNetworkBodiesRemaining: number;
+}> {
+  return getUserPreferences(orgId, userId);
+}
+
+/**
+ * Update user preferences for test setup.
+ * Wraps updateUserPreferences from user-preferences-service.
+ */
+export async function updateTestUserPreferencesAll(
+  orgId: string,
+  userId: string,
+  prefs: {
+    timezone?: string;
+    pinnedAgentIds?: string[];
+    sendMode?: "enter" | "cmd-enter";
+    captureNetworkBodiesRemaining?: number;
+  },
+): Promise<{
+  timezone: string | null;
+  pinnedAgentIds: string[];
+  sendMode: string;
+  captureNetworkBodiesRemaining: number;
+}> {
+  return updateUserPreferences(orgId, userId, prefs);
 }
