@@ -4,7 +4,7 @@ import {
   randomAvatarSvgConfig,
 } from "../../../views/zero-page/avatar-svg-utils.ts";
 
-type Step =
+export type Step =
   | "rotation"
   | "skin"
   | "hairStyle"

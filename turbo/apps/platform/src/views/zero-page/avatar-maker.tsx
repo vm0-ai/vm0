@@ -19,6 +19,7 @@ import type { AvatarSvgConfig } from "./avatar-svg-utils.ts";
 import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
+  type Step,
   AVATAR_MAKER_STEPS,
   INTENSITY_LABELS,
   avatarMakerOpen$,
@@ -108,10 +109,10 @@ function StepOptions({
   justPicked,
   selectOption,
 }: {
-  step: string;
+  step: Step;
   config: AvatarSvgConfig;
   justPicked: string | null;
-  selectOption: (field: string, value: number | string) => void;
+  selectOption: (field: Step, value: number | string) => void;
 }) {
   if (step === "intensity") {
     return (["d", "m", "h"] as const).map((val, i) => {
