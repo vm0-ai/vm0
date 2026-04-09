@@ -12,7 +12,10 @@ const context = testContext();
 function mockAPIs({
   permissionPolicies = null,
 }: {
-  permissionPolicies?: Record<string, Record<string, string>> | null;
+  permissionPolicies?: Record<
+    string,
+    { permissions: Record<string, string>; allowUnknown?: boolean }
+  > | null;
 } = {}) {
   server.use(
     http.get("*/api/zero/team", () => {
@@ -87,7 +90,10 @@ function mockAPIs({
     http.put("*/api/zero/permission-policies", async ({ request }) => {
       const body = (await request.json()) as {
         agentId: string;
-        policies: Record<string, Record<string, string>>;
+        policies: Record<
+          string,
+          { permissions: Record<string, string>; allowUnknown?: boolean }
+        >;
       };
       return HttpResponse.json({
         agentId: "e0000000-0000-4000-a000-000000000010",
@@ -178,8 +184,10 @@ describe("permissions dialog - grouped connector (Slack)", () => {
     mockAPIs({
       permissionPolicies: {
         slack: {
-          "bookmarks:read": "allow",
-          "channels:read": "deny",
+          permissions: {
+            "bookmarks:read": "allow",
+            "channels:read": "deny",
+          },
         },
       },
     });
