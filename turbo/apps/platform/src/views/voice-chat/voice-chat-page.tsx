@@ -213,11 +213,8 @@ export function VoiceChatPage() {
                   <span className="text-muted-foreground">:</span>{" "}
                   <span>{event.type}</span>
                   {event.content && (
-                    <span className="text-muted-foreground ml-1">
-                      -{" "}
-                      {event.content.length > 120
-                        ? `${event.content.slice(0, 120)}...`
-                        : event.content}
+                    <span className="text-muted-foreground ml-1 whitespace-pre-wrap">
+                      - {event.content}
                     </span>
                   )}
                 </div>
