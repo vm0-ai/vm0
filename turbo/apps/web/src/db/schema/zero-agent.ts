@@ -37,9 +37,6 @@ export const zeroAgents = pgTable(
     permissionPolicies: jsonb(
       "permission_policies",
     ).$type<RawPermissionPolicies>(),
-    allowUnknownEndpoints: jsonb("allow_unknown_endpoints").$type<
-      Record<string, boolean>
-    >(),
     unknownPermissionPolicies: jsonb("unknown_permission_policies").$type<
       Record<string, FirewallPolicyValue>
     >(),
