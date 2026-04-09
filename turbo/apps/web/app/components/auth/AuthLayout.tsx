@@ -241,10 +241,10 @@ button[class*="socialButtons"] span {
   background: hsl(var(--card)) !important;
 }
 
-/* Footer action text - muted foreground */
+/* Footer action text - use foreground for sufficient contrast in dark mode */
 .cl-footerActionText,
 [class*="footerActionText"] {
-  color: hsl(var(--muted-foreground)) !important;
+  color: hsl(var(--foreground)) !important;
 }
 
 /* Footer action link - primary color */
@@ -291,11 +291,10 @@ button[class*="alternativeMethodsBlockButton"] {
   color: hsl(var(--muted-foreground)) !important;
 }
 
-/* Email address display - use muted foreground */
+/* Email address display on verification screens */
 .cl-identityPreviewText,
 [class*="identityPreview"] [class*="text"],
-.cl-card [class*="userPreview"],
-.cl-card [class*="emailAddress"] {
+.cl-card [class*="userPreview"] {
   color: hsl(var(--muted-foreground)) !important;
 }
 
