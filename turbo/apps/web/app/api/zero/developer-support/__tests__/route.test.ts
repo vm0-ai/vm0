@@ -1,11 +1,13 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import AdmZip from "adm-zip";
+import { HttpResponse } from "msw";
 import { POST } from "../route";
 import {
   createTestRequest,
   createTestCompose,
   createTestRunInDb,
   insertOrgMembersCacheEntry,
+  findTestOutboxItems,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -14,6 +16,11 @@ import {
 } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import { generateZeroToken } from "../../../../../src/lib/auth/sandbox-token";
+import { server } from "../../../../../src/mocks/server";
+import { http } from "../../../../../src/__tests__/msw";
+import { reloadEnv } from "../../../../../src/env";
+
+const PLAIN_API_URL = "https://core-api.uk.plain.com/graphql/v1";
 
 const URL = "http://localhost:3000/api/zero/developer-support";
 
@@ -575,5 +582,113 @@ describe("POST /api/zero/developer-support", () => {
     );
 
     expect(response.status).toBe(403);
+  });
+
+  // -------------------------------------------------------------------------
+  // Plain.com integration
+  // -------------------------------------------------------------------------
+
+  it("routes to Plain and skips email when PLAIN_API_KEY is set and Plain succeeds", async () => {
+    vi.stubEnv("PLAIN_API_KEY", "plainkey_test_abc");
+    reloadEnv();
+
+    let plainCallCount = 0;
+    const handler = http.post(PLAIN_API_URL, () => {
+      plainCallCount++;
+      if (plainCallCount === 1)
+        return HttpResponse.json({
+          data: {
+            upsertTenant: {
+              tenant: { id: "t1", externalId: "o1", name: "Org" },
+              error: null,
+            },
+          },
+        });
+      if (plainCallCount === 2)
+        return HttpResponse.json({
+          data: {
+            upsertCustomer: {
+              customer: { id: "c1", externalId: "u1" },
+              result: "CREATED",
+              error: null,
+            },
+          },
+        });
+      if (plainCallCount === 3)
+        return HttpResponse.json({
+          data: {
+            createThread: {
+              thread: { id: "th1", externalId: "ds-ref1" },
+              error: null,
+            },
+          },
+        });
+      return HttpResponse.json({
+        data: {
+          createThreadEvent: { threadEvent: { id: "ev1" }, error: null },
+        },
+      });
+    });
+    server.use(handler.handler);
+
+    const { token } = await setupRunContext(user);
+
+    // Step 1: get consent code
+    const step1 = await postDeveloperSupport(
+      { title: "Plain test", description: "desc" },
+      token,
+    );
+    const { consentCode } = await step1.json();
+
+    // Step 2: submit with consent code
+    const step2 = await postDeveloperSupport(
+      { title: "Plain test", description: "desc", consentCode },
+      token,
+    );
+    expect(step2.status).toBe(200);
+    const { reference } = await step2.json();
+    expect(reference).toMatch(/^ds-[a-f0-9]{8}$/);
+
+    // Plain was called (4 steps)
+    expect(plainCallCount).toBe(4);
+
+    // No email was enqueued for support@vm0.ai
+    const outbox = await findTestOutboxItems();
+    const supportEmail = outbox.find((item) => {
+      return (
+        item.subject.includes("Plain test") &&
+        item.toAddresses === "support@vm0.ai"
+      );
+    });
+    expect(supportEmail).toBeUndefined();
+  });
+
+  it("falls back to email when PLAIN_API_KEY is not set", async () => {
+    // PLAIN_API_KEY is not set in default test environment (setup.ts does not stub it)
+    const { token } = await setupRunContext(user);
+    const title = `Email fallback test ${uniqueId("ds")}`;
+
+    // Step 1: get consent code
+    const step1 = await postDeveloperSupport(
+      { title, description: "desc" },
+      token,
+    );
+    const { consentCode } = await step1.json();
+
+    // Step 2: submit with consent code
+    const step2 = await postDeveloperSupport(
+      { title, description: "desc", consentCode },
+      token,
+    );
+    expect(step2.status).toBe(200);
+
+    // Email was enqueued for support@vm0.ai
+    const outbox = await findTestOutboxItems();
+    const supportEmail = outbox.find((item) => {
+      return (
+        item.subject.includes(title) && item.toAddresses === "support@vm0.ai"
+      );
+    });
+    expect(supportEmail).toBeDefined();
   });
 });

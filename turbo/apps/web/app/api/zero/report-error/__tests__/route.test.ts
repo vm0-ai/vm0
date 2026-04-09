@@ -1,18 +1,25 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import AdmZip from "adm-zip";
 import { randomUUID } from "crypto";
+import { HttpResponse } from "msw";
 import { POST } from "../route";
 import {
   createTestRequest,
   createTestOrg,
   createTestCompose,
   createTestRunInDb,
+  findTestOutboxItems,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
   uniqueId,
 } from "../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
+import { server } from "../../../../../src/mocks/server";
+import { http } from "../../../../../src/__tests__/msw";
+import { reloadEnv } from "../../../../../src/env";
+
+const PLAIN_API_URL = "https://core-api.uk.plain.com/graphql/v1";
 
 const URL = "http://localhost:3000/api/zero/report-error";
 const context = testContext();
@@ -439,5 +446,91 @@ describe("POST /api/zero/report-error", () => {
     const response = await postReportError({ runId, title: "Bug" });
     expect(response.status).toBe(200);
     expect((await response.json()).reference).toBeDefined();
+  });
+
+  // -------------------------------------------------------------------------
+  // Plain.com integration
+  // -------------------------------------------------------------------------
+
+  it("should route to Plain and skip email when PLAIN_API_KEY is set and Plain succeeds", async () => {
+    vi.stubEnv("PLAIN_API_KEY", "plainkey_test_abc");
+    reloadEnv();
+
+    let plainCallCount = 0;
+    const handler = http.post(PLAIN_API_URL, () => {
+      plainCallCount++;
+      if (plainCallCount === 1)
+        return HttpResponse.json({
+          data: {
+            upsertTenant: {
+              tenant: { id: "t1", externalId: "o1", name: "Org" },
+              error: null,
+            },
+          },
+        });
+      if (plainCallCount === 2)
+        return HttpResponse.json({
+          data: {
+            upsertCustomer: {
+              customer: { id: "c1", externalId: "u1" },
+              result: "CREATED",
+              error: null,
+            },
+          },
+        });
+      if (plainCallCount === 3)
+        return HttpResponse.json({
+          data: {
+            createThread: {
+              thread: { id: "th1", externalId: "er-ref1" },
+              error: null,
+            },
+          },
+        });
+      return HttpResponse.json({
+        data: {
+          createThreadEvent: { threadEvent: { id: "ev1" }, error: null },
+        },
+      });
+    });
+    server.use(handler.handler);
+
+    const { runId } = await setupFailedRun(userId);
+    const title = `Plain route test ${uniqueId("er")}`;
+
+    const response = await postReportError({ runId, title });
+    expect(response.status).toBe(200);
+    const { reference } = await response.json();
+    expect(reference).toMatch(/^er-[a-f0-9]{8}$/);
+
+    // Plain was called (4 steps)
+    expect(plainCallCount).toBe(4);
+
+    // No email was enqueued for support@vm0.ai
+    const outbox = await findTestOutboxItems();
+    const supportEmail = outbox.find((item) => {
+      return (
+        item.subject.includes(title) && item.toAddresses === "support@vm0.ai"
+      );
+    });
+    expect(supportEmail).toBeUndefined();
+  });
+
+  it("should fall back to email when PLAIN_API_KEY is not set", async () => {
+    // PLAIN_API_KEY is not set in default test environment
+    const { runId } = await setupFailedRun(userId);
+    const title = `Email fallback test ${uniqueId("er")}`;
+
+    const response = await postReportError({ runId, title });
+    expect(response.status).toBe(200);
+
+    // Email was enqueued for support@vm0.ai
+    const outbox = await findTestOutboxItems();
+    const supportEmail = outbox.find((item) => {
+      return (
+        item.subject.includes(title) && item.toAddresses === "support@vm0.ai"
+      );
+    });
+    expect(supportEmail).toBeDefined();
   });
 });
