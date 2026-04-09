@@ -1,3 +1,5 @@
+// TODO(#8609): split large components to comply with max-lines-per-function (128)
+// oxlint-disable max-lines-per-function
 import { useGet, useLastResolved, useSet } from "ccstate-react";
 import { Button, cn } from "@vm0/ui";
 import {
