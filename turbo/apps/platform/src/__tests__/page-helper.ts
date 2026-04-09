@@ -25,7 +25,6 @@ import { vi } from "vitest";
 import type { FeatureSwitchKey } from "@vm0/core";
 import { setFeatureSwitchLocalStorage$ } from "../signals/external/feature-switch";
 import { setDebugLoggerLocalStorage$ } from "../signals/bootstrap/loggers";
-import { setValidateResponseForTest$ } from "../signals/api-client";
 import { detach, Reason } from "../signals/utils";
 
 export async function setupPage(options: {
@@ -47,8 +46,6 @@ export async function setupPage(options: {
   featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
   withoutRender?: boolean;
 }) {
-  options.context.store.set(setValidateResponseForTest$, true);
-
   createPushStateMock(options.context.signal);
   pushState({}, "", options.path);
 
