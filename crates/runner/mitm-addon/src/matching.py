@@ -438,13 +438,13 @@ def _find_uncovered_graphql_fields(
 
 def _build_allow_set(
     fw_ref: str,
-    granted_permissions: dict,
+    network_policies: dict,
 ) -> set:
     """Build a set of granted permission names for a firewall ref.
 
     Returns empty set when ref is absent from the map (fail-closed).
     """
-    ref_grant = granted_permissions.get(fw_ref)
+    ref_grant = network_policies.get(fw_ref)
     if ref_grant is None:
         return set()
     return set(ref_grant.get("allow", []))
@@ -452,13 +452,13 @@ def _build_allow_set(
 
 def _get_unknown_policy(
     fw_ref: str,
-    granted_permissions: dict,
+    network_policies: dict,
 ) -> str:
     """Get the policy for unknown endpoints (no rule match).
 
     Returns "allow", "deny", or "ask".
     """
-    ref_grant = granted_permissions.get(fw_ref)
+    ref_grant = network_policies.get(fw_ref)
     if ref_grant is None:
         return "deny"
     return ref_grant.get("unknownPolicy", "deny")
@@ -468,7 +468,7 @@ def match_firewall_request(
     url: str,
     method: str,
     vm_firewalls: list | None,
-    granted_permissions: dict | None = None,
+    network_policies: dict | None = None,
     body: bytes | None = None,
 ) -> FirewallAllow | FirewallBlock | None:
     """Match request against firewall permissions with three-level matching.
@@ -485,8 +485,8 @@ def match_firewall_request(
     if not vm_firewalls:
         return None
 
-    if granted_permissions is None:
-        granted_permissions = {}
+    if network_policies is None:
+        network_policies = {}
 
     # Track the first base URL that matched for block/unknown responses.
     blocked_base = None
@@ -507,7 +507,7 @@ def match_firewall_request(
     for fw_entry in vm_firewalls:
         fw_name = fw_entry.get("name", "")
         fw_ref = fw_entry.get("ref", "")
-        allow_set = _build_allow_set(fw_ref, granted_permissions)
+        allow_set = _build_allow_set(fw_ref, network_policies)
 
         for api_entry in fw_entry.get("apis", []):
             base = api_entry.get("base", "").rstrip("/")
@@ -610,7 +610,7 @@ def match_firewall_request(
             return FirewallBlock(*denied_match)
         # No permission rule matched — this is an "unknown" endpoint.
         # "ask" is treated as "deny" at the proxy level (same as ask permissions).
-        if _get_unknown_policy(blocked_ref, granted_permissions) == "allow":
+        if _get_unknown_policy(blocked_ref, network_policies) == "allow":
             return FirewallAllow(
                 first_matched_api_entry,
                 {

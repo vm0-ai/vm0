@@ -76,7 +76,7 @@ pub struct ExecutionContext {
     #[serde(default)]
     pub firewalls: Option<Vec<Firewall>>,
     #[serde(default)]
-    pub granted_permissions: Option<std::collections::HashMap<String, GrantedPermission>>,
+    pub network_policies: Option<std::collections::HashMap<String, NetworkPolicy>>,
     #[serde(default)]
     pub disallowed_tools: Option<Vec<String>>,
     #[serde(default)]
@@ -137,7 +137,7 @@ pub struct FirewallAuth {
 /// Refs absent from the map are fully permissive (all granted + allow unknown).
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct GrantedPermission {
+pub struct NetworkPolicy {
     /// Permission names granted by the user.
     pub allow: Vec<String>,
     /// Permission names explicitly denied by the admin.

@@ -11,7 +11,7 @@ use tracing::{info, warn};
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::lock;
-use crate::types::{Firewall, GrantedPermission};
+use crate::types::{Firewall, NetworkPolicy};
 
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -28,7 +28,7 @@ struct VmEntry {
     registered_at: i64,
     network_log_path: String,
     firewalls: Option<Vec<Firewall>>,
-    granted_permissions: Option<HashMap<String, GrantedPermission>>,
+    network_policies: Option<HashMap<String, NetworkPolicy>>,
     encrypted_secrets: Option<String>,
     secret_connector_map: Option<HashMap<String, String>>,
     vars: Option<HashMap<String, String>>,
@@ -43,7 +43,7 @@ pub struct VmRegistration<'a> {
     pub sandbox_token: &'a str,
     pub network_log_path: &'a std::path::Path,
     pub firewalls: Option<&'a [Firewall]>,
-    pub granted_permissions: Option<&'a HashMap<String, GrantedPermission>>,
+    pub network_policies: Option<&'a HashMap<String, NetworkPolicy>>,
     pub encrypted_secrets: Option<&'a str>,
     pub secret_connector_map: Option<&'a HashMap<String, String>>,
     pub vars: Option<&'a HashMap<String, String>>,
@@ -462,7 +462,7 @@ impl ProxyRegistryHandle {
                 registered_at: now,
                 network_log_path: registration.network_log_path.to_string_lossy().into_owned(),
                 firewalls,
-                granted_permissions: registration.granted_permissions.cloned(),
+                network_policies: registration.network_policies.cloned(),
                 encrypted_secrets: registration.encrypted_secrets.map(String::from),
                 secret_connector_map: registration.secret_connector_map.cloned(),
                 vars: registration.vars.cloned(),
@@ -561,7 +561,7 @@ mod tests {
                 registered_at: 1000,
                 network_log_path: "/tmp/network-test-run.jsonl".to_string(),
                 firewalls: None,
-                granted_permissions: None,
+                network_policies: None,
                 encrypted_secrets: None,
                 secret_connector_map: None,
                 vars: None,
@@ -610,7 +610,7 @@ mod tests {
             sandbox_token: "tok-1",
             network_log_path: std::path::Path::new("/tmp/network-run-1.jsonl"),
             firewalls: None,
-            granted_permissions: None,
+            network_policies: None,
             encrypted_secrets: None,
             secret_connector_map: None,
             vars: None,
@@ -632,7 +632,7 @@ mod tests {
 
             network_log_path: std::path::Path::new("/tmp/network-run-2.jsonl"),
             firewalls: None,
-            granted_permissions: None,
+            network_policies: None,
             encrypted_secrets: None,
             secret_connector_map: None,
             vars: None,
@@ -687,7 +687,7 @@ mod tests {
 
                     network_log_path: &log_path,
                     firewalls: None,
-                    granted_permissions: None,
+                    network_policies: None,
                     encrypted_secrets: None,
                     secret_connector_map: None,
                     vars: None,
@@ -750,7 +750,7 @@ mod tests {
             sandbox_token: "tok",
             network_log_path: std::path::Path::new("/tmp/network-run-fw.jsonl"),
             firewalls: Some(&firewall_entries),
-            granted_permissions: None,
+            network_policies: None,
             encrypted_secrets: None,
             secret_connector_map: None,
             vars: None,
@@ -818,7 +818,7 @@ mod tests {
 
             network_log_path: std::path::Path::new("/tmp/network-run-enc.jsonl"),
             firewalls: None,
-            granted_permissions: None,
+            network_policies: None,
             encrypted_secrets: Some("iv_b64:tag_b64:data_b64"),
             secret_connector_map: None,
             vars: None,
@@ -880,7 +880,7 @@ mod tests {
             sandbox_token: "tok",
             network_log_path: std::path::Path::new("/tmp/network-run-webhook.jsonl"),
             firewalls: Some(&firewall_entries),
-            granted_permissions: None,
+            network_policies: None,
             encrypted_secrets: Some("enc_data"),
             secret_connector_map: None,
             vars: None,

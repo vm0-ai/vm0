@@ -145,7 +145,7 @@ class TestRequestHandler:
                             ],
                         },
                     ],
-                    "grantedPermissions": {
+                    "networkPolicies": {
                         "github": {
                             "allow": ["full-access"],
                             "deny": [],
@@ -210,7 +210,7 @@ class TestRequestHandler:
                             ],
                         },
                     ],
-                    "grantedPermissions": {
+                    "networkPolicies": {
                         "github": {
                             "allow": ["read-repos"],
                             "deny": [],
@@ -278,7 +278,7 @@ class TestRequestHandler:
                             ],
                         },
                     ],
-                    "grantedPermissions": {
+                    "networkPolicies": {
                         "github": {
                             "allow": ["read-repos"],
                             "deny": [],
@@ -340,7 +340,7 @@ class TestRequestHandler:
                             ],
                         },
                     ],
-                    "grantedPermissions": {
+                    "networkPolicies": {
                         "github": {
                             "allow": ["full-access"],
                             "deny": [],

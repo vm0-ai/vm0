@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
-import { firewallsSchema, grantedPermissionsSchema } from "./firewalls";
+import { firewallsSchema, networkPoliciesSchema } from "./firewalls";
 import { apiErrorSchema } from "./errors";
 
 const c = initContract();
@@ -124,8 +124,8 @@ export const storedExecutionContextSchema = z.object({
   memoryName: z.string().optional(),
   // Firewall for proxy-side token replacement (complete config, all permissions)
   firewalls: firewallsSchema.optional(),
-  // Per-firewall grant config: which permissions are granted + unknownPolicy
-  grantedPermissions: grantedPermissionsSchema.optional(),
+  // Per-firewall network policies: which permissions are granted + unknownPolicy
+  networkPolicies: networkPoliciesSchema.optional(),
   // Tools to disable in Claude CLI (passed as --disallowed-tools)
   disallowedTools: z.array(z.string()).optional(),
   // Tools to make available in Claude CLI (passed as --tools)
@@ -172,8 +172,8 @@ export const executionContextSchema = z.object({
   memoryName: z.string().optional(),
   // Firewall for proxy-side token replacement (complete config, all permissions)
   firewalls: firewallsSchema.optional(),
-  // Per-firewall grant config: which permissions are granted + unknownPolicy
-  grantedPermissions: grantedPermissionsSchema.optional(),
+  // Per-firewall network policies: which permissions are granted + unknownPolicy
+  networkPolicies: networkPoliciesSchema.optional(),
   // Tools to disable in Claude CLI (passed as --disallowed-tools)
   disallowedTools: z.array(z.string()).optional(),
   // Tools to make available in Claude CLI (passed as --tools)

@@ -358,7 +358,7 @@ const router = tsr.router(runsMainContract, {
           environment: resolved.environment,
           userTimezone: resolved.userTimezone,
           firewalls: resolved.firewalls,
-          grantedPermissions: resolved.grantedPermissions,
+          networkPolicies: resolved.networkPolicies,
           disallowedTools: body.disallowedTools,
           tools: body.tools,
           settings: body.settings,

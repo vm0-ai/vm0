@@ -181,13 +181,13 @@ export function ContextContent({ context }: { context: RunContextResponse }) {
         )}
       </section>
 
-      {/* Granted Permissions */}
-      {context.grantedPermissions &&
-        Object.keys(context.grantedPermissions).length > 0 && (
+      {/* Network Policies */}
+      {context.networkPolicies &&
+        Object.keys(context.networkPolicies).length > 0 && (
           <section>
-            <SectionHeader title="Granted Permissions" />
+            <SectionHeader title="Network Policies" />
             <CodeBlock
-              value={JSON.stringify(context.grantedPermissions, null, 2)}
+              value={JSON.stringify(context.networkPolicies, null, 2)}
             />
           </section>
         )}

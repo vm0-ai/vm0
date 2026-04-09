@@ -3,7 +3,7 @@ import {
   type Firewalls,
   type ExpandedFirewallConfig,
   type FirewallPolicies,
-  type GrantedPermissions,
+  type NetworkPolicies,
 } from "@vm0/core";
 
 /**
@@ -33,12 +33,12 @@ export function filterSecretConnectorMap(
 
 interface MergedPermissions {
   firewalls: Firewalls;
-  grantedPermissions: GrantedPermissions;
+  networkPolicies: NetworkPolicies;
 }
 
 /**
  * Merge model provider and connector permissions into a single manifest.
- * Returns full (unfiltered) firewalls + per-ref grantedPermissions.
+ * Returns full (unfiltered) firewalls + per-ref networkPolicies.
  */
 export function mergePermissions(
   modelProviderFirewall: Firewalls[number] | null | undefined,
@@ -46,13 +46,13 @@ export function mergePermissions(
   permissionPolicies?: FirewallPolicies,
   vars?: Record<string, string>,
 ): MergedPermissions | undefined {
-  const { firewalls: connectorResults, grantedPermissions } =
+  const { firewalls: connectorResults, networkPolicies } =
     applyConnectorPolicies(connectorFirewalls, permissionPolicies);
 
   // Model provider firewalls — always fully permissive, grant all permissions
   const autoConfigs = modelProviderFirewall ? [modelProviderFirewall] : [];
   if (modelProviderFirewall) {
-    grantedPermissions[modelProviderFirewall.ref] = {
+    networkPolicies[modelProviderFirewall.ref] = {
       allow: collectPermissionNames(modelProviderFirewall.apis),
       deny: [],
       ask: [],
@@ -64,7 +64,7 @@ export function mergePermissions(
   if (allConfigs.length === 0) return undefined;
   return {
     firewalls: resolveFirewallBaseUrlVars(allConfigs, vars),
-    grantedPermissions,
+    networkPolicies,
   };
 }
 
@@ -83,13 +83,13 @@ function collectPermissionNames(
 
 interface ConnectorPoliciesResult {
   firewalls: Firewalls;
-  grantedPermissions: GrantedPermissions;
+  networkPolicies: NetworkPolicies;
 }
 
 /**
- * Build full (unfiltered) firewall configs + per-ref grantedPermissions.
+ * Build full (unfiltered) firewall configs + per-ref networkPolicies.
  *
- * Firewalls now carry ALL permissions (no filtering). The grantedPermissions
+ * Firewalls now carry ALL permissions (no filtering). The networkPolicies
  * map tells the proxy which permissions the user authorized and whether
  * unknown endpoints (not matching any rule) should be allowed.
  */
@@ -98,7 +98,7 @@ export function applyConnectorPolicies(
   policies?: FirewallPolicies,
 ): ConnectorPoliciesResult {
   const firewalls: Firewalls = [];
-  const grantedPermissions: GrantedPermissions = {};
+  const networkPolicies: NetworkPolicies = {};
 
   for (const fw of connectorFirewalls) {
     const refPolicy = policies?.[fw.ref];
@@ -114,12 +114,12 @@ export function applyConnectorPolicies(
 
     firewalls.push({ name: fw.name, ref: fw.ref, apis });
 
-    // Build grantedPermissions for this ref — always explicit, never omit.
+    // Build networkPolicies for this ref — always explicit, never omit.
     const unknownPolicy = refPolicy?.unknownPolicy ?? "allow";
     const allPermNames = collectPermissionNames(fw.apis);
     if (!refPolicy) {
       // No policies configured → all granted, none denied
-      grantedPermissions[fw.ref] = {
+      networkPolicies[fw.ref] = {
         allow: allPermNames,
         deny: [],
         ask: [],
@@ -139,9 +139,9 @@ export function applyConnectorPolicies(
           ask.push(name);
         }
       }
-      grantedPermissions[fw.ref] = { allow, deny, ask, unknownPolicy };
+      networkPolicies[fw.ref] = { allow, deny, ask, unknownPolicy };
     }
   }
 
-  return { firewalls, grantedPermissions };
+  return { firewalls, networkPolicies };
 }

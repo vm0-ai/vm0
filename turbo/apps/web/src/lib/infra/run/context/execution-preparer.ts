@@ -237,8 +237,8 @@ function buildPreparedContext(
     // Firewall for proxy-side token replacement
     firewalls: toNullable(context.firewalls),
 
-    // Per-firewall grant config
-    grantedPermissions: toNullable(context.grantedPermissions),
+    // Per-firewall network policies
+    networkPolicies: toNullable(context.networkPolicies),
 
     // Disallowed tools
     disallowedTools: toNullable(context.disallowedTools),

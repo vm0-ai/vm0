@@ -400,8 +400,8 @@ describe("createZeroRun()", () => {
       expect(permNames).toContain("channels:history");
       expect(permNames).toContain("admin"); // ALL permissions present
 
-      // grantedPermissions only includes "allow" ones
-      const granted = job!.executionContext.grantedPermissions;
+      // networkPolicies only includes "allow" ones
+      const granted = job!.executionContext.networkPolicies;
       expect(granted).toBeDefined();
       const slackGrant = granted!.slack;
       expect(slackGrant).toBeDefined();
@@ -433,8 +433,8 @@ describe("createZeroRun()", () => {
       });
       expect(slackFw).toBeDefined();
 
-      // Slack has default policies — grantedPermissions reflects default-allowed ones
-      const granted = job!.executionContext.grantedPermissions;
+      // Slack has default policies — networkPolicies reflects default-allowed ones
+      const granted = job!.executionContext.networkPolicies;
       expect(granted).toBeDefined();
       const grantedPerms = granted!.slack!.allow;
       expect(Array.isArray(grantedPerms)).toBe(true);
@@ -468,7 +468,7 @@ describe("createZeroRun()", () => {
       expect(slackFw!.apis[0]!.permissions!.length).toBeGreaterThan(0);
 
       // Explicitly denied permissions are not granted
-      const granted = job!.executionContext.grantedPermissions;
+      const granted = job!.executionContext.networkPolicies;
       expect(granted).toBeDefined();
       expect(granted!.slack!.allow).not.toContain("bookmarks:read");
       expect(granted!.slack!.allow).not.toContain("bookmarks:write");

@@ -41,7 +41,7 @@ def _wrap_firewalls(apis, name="test", ref="test"):
 
 
 def _grant_all(firewalls, unknown_policy="deny"):
-    """Build grantedPermissions that grants all permissions for each ref."""
+    """Build networkPolicies that grants all permissions for each ref."""
     result = {}
     for fw in firewalls or []:
         perms = set()
@@ -156,7 +156,7 @@ class TestMatchFirewallRequest:
             "https://api.github.com/repos",
             "GET",
             fw_configs,
-            granted_permissions=_grant_all(fw_configs),
+            network_policies=_grant_all(fw_configs),
         )
         assert isinstance(result, FirewallBlock)
         assert result.base == "https://api.github.com"
@@ -180,7 +180,7 @@ class TestMatchFirewallRequest:
             "https://api.github.com/repos/octocat/hello",
             "GET",
             fw_configs,
-            granted_permissions=_grant_all(fw_configs),
+            network_policies=_grant_all(fw_configs),
         )
         assert isinstance(result, FirewallAllow)
         assert result.match_info["name"] == "github"
@@ -202,7 +202,7 @@ class TestMatchFirewallRequest:
             "https://api.github.com/anything",
             "DELETE",
             fw_configs,
-            granted_permissions=_grant_all(fw_configs),
+            network_policies=_grant_all(fw_configs),
         )
         assert isinstance(result, FirewallAllow)
         assert result.match_info["permission"] == "full-access"
@@ -221,7 +221,7 @@ class TestMatchFirewallRequest:
             "https://api.github.com/repos",
             "POST",
             fw_configs,
-            granted_permissions=_grant_all(fw_configs),
+            network_policies=_grant_all(fw_configs),
         )
         assert isinstance(result, FirewallAllow)
 
@@ -239,7 +239,7 @@ class TestMatchFirewallRequest:
             "https://api.github.com/repos/a/b",
             "POST",
             fw_configs,
-            granted_permissions=_grant_all(fw_configs),
+            network_policies=_grant_all(fw_configs),
         )
         assert isinstance(result, FirewallBlock)
 
@@ -257,7 +257,7 @@ class TestMatchFirewallRequest:
             "https://api.github.com/users/octocat",
             "GET",
             fw_configs,
-            granted_permissions=_grant_all(fw_configs),
+            network_policies=_grant_all(fw_configs),
         )
         assert isinstance(result, FirewallBlock)
 
@@ -275,14 +275,14 @@ class TestMatchFirewallRequest:
             "https://api.gitlab.com/repos",
             "GET",
             fw_configs,
-            granted_permissions=_grant_all(fw_configs),
+            network_policies=_grant_all(fw_configs),
         )
         assert result is None
 
     def test_no_firewall_returns_none(self):
         assert (
             matching.match_firewall_request(
-                "https://api.github.com", "GET", None, granted_permissions=_grant_all(None)
+                "https://api.github.com", "GET", None, network_policies=_grant_all(None)
             )
             is None
         )
@@ -290,7 +290,7 @@ class TestMatchFirewallRequest:
     def test_empty_firewall_returns_none(self):
         assert (
             matching.match_firewall_request(
-                "https://api.github.com", "GET", [], granted_permissions=_grant_all([])
+                "https://api.github.com", "GET", [], network_policies=_grant_all([])
             )
             is None
         )
@@ -307,7 +307,7 @@ class TestMatchFirewallRequest:
             ]
         )
         result = matching.match_firewall_request(
-            "https://api.github.com", "GET", fw_configs, granted_permissions=_grant_all(fw_configs)
+            "https://api.github.com", "GET", fw_configs, network_policies=_grant_all(fw_configs)
         )
         assert isinstance(result, FirewallAllow)
         assert result.match_info["permission"] == "root"
@@ -327,7 +327,7 @@ class TestMatchFirewallRequest:
             "https://api.github.com/repos/",
             "GET",
             fw_configs,
-            granted_permissions=_grant_all(fw_configs),
+            network_policies=_grant_all(fw_configs),
         )
         assert isinstance(result, FirewallAllow)
 
@@ -346,7 +346,7 @@ class TestMatchFirewallRequest:
             "https://api.github.com/repos",
             "GET",
             fw_configs,
-            granted_permissions=_grant_all(fw_configs),
+            network_policies=_grant_all(fw_configs),
         )
         assert isinstance(result, FirewallAllow)
 
@@ -365,7 +365,7 @@ class TestMatchFirewallRequest:
             "https://api.github.com:8443/repos",
             "GET",
             fw_configs,
-            granted_permissions=_grant_all(fw_configs),
+            network_policies=_grant_all(fw_configs),
         )
         assert result is None
 
@@ -383,7 +383,7 @@ class TestMatchFirewallRequest:
             "https://api.github.com.evil.com/steal",
             "GET",
             fw_configs,
-            granted_permissions=_grant_all(fw_configs),
+            network_policies=_grant_all(fw_configs),
         )
         assert result is None
 
@@ -404,7 +404,7 @@ class TestMatchFirewallRequest:
             "https://slack.com/api/chat.postMessage",
             "POST",
             fw_configs,
-            granted_permissions=_grant_all(fw_configs),
+            network_policies=_grant_all(fw_configs),
         )
         assert isinstance(result, FirewallAllow)
         assert result.match_info["permission"] == "messages-send"
@@ -427,7 +427,7 @@ class TestMatchFirewallRequest:
             "https://api.github.com/repos",
             "GET",
             fw_configs,
-            granted_permissions=_grant_all(fw_configs),
+            network_policies=_grant_all(fw_configs),
         )
         assert isinstance(result, FirewallAllow)
         # Non-matching path still blocks (malformed rules don't accidentally allow)
@@ -435,7 +435,7 @@ class TestMatchFirewallRequest:
             "https://api.github.com/users",
             "GET",
             fw_configs,
-            granted_permissions=_grant_all(fw_configs),
+            network_policies=_grant_all(fw_configs),
         )
         assert isinstance(result2, FirewallBlock)
 
@@ -454,7 +454,7 @@ class TestMatchFirewallRequest:
             "https://api.github.com/REPOS/octocat",
             "GET",
             fw_configs,
-            granted_permissions=_grant_all(fw_configs),
+            network_policies=_grant_all(fw_configs),
         )
         assert isinstance(result, FirewallBlock)
 
@@ -487,7 +487,7 @@ class TestMatchFirewallRequest:
             "https://api.github.com/repos",
             "GET",
             fw_configs,
-            granted_permissions=_grant_all(fw_configs),
+            network_policies=_grant_all(fw_configs),
         )
         assert isinstance(gh, FirewallAllow)
         assert gh.match_info["name"] == "github"
@@ -496,7 +496,7 @@ class TestMatchFirewallRequest:
             "https://slack.com/api/chat.postMessage",
             "POST",
             fw_configs,
-            granted_permissions=_grant_all(fw_configs),
+            network_policies=_grant_all(fw_configs),
         )
         assert isinstance(sl, FirewallAllow)
         assert sl.match_info["name"] == "slack"
@@ -515,7 +515,7 @@ class TestMatchFirewallRequest:
             "https://api.github.com/repos?page=1",
             "GET",
             fw_configs,
-            granted_permissions=_grant_all(fw_configs),
+            network_policies=_grant_all(fw_configs),
         )
         assert isinstance(result, FirewallAllow)
 
@@ -533,7 +533,7 @@ class TestMatchFirewallRequest:
             "https://api.github.com/repos#section",
             "GET",
             fw_configs,
-            granted_permissions=_grant_all(fw_configs),
+            network_policies=_grant_all(fw_configs),
         )
         assert isinstance(result, FirewallAllow)
 
@@ -552,7 +552,7 @@ class TestMatchFirewallRequest:
             "https://api.github.com/repos",
             "GET",
             fw_configs,
-            granted_permissions=_grant_all(fw_configs),
+            network_policies=_grant_all(fw_configs),
         )
         assert isinstance(result, FirewallBlock)
 
@@ -577,7 +577,7 @@ class TestMatchFirewallRequest:
             "https://slack.com/api/conversations.history",
             "POST",
             fw_configs,
-            granted_permissions=_grant_all(fw_configs),
+            network_policies=_grant_all(fw_configs),
         )
         assert isinstance(result, FirewallAllow)
         assert result.api_entry["auth"]["headers"]["Authorization"] == "Bearer api-token"
@@ -588,7 +588,7 @@ class TestMatchFirewallRequest:
             "https://files.slack.com/files-pri/T1/download",
             "GET",
             fw_configs,
-            granted_permissions=_grant_all(fw_configs),
+            network_policies=_grant_all(fw_configs),
         )
         assert isinstance(result, FirewallAllow)
         assert result.api_entry["auth"]["headers"]["Authorization"] == "Bearer files-token"
@@ -614,7 +614,7 @@ class TestMatchFirewallRequest:
             "https://slack.com/api/chat.postMessage",
             "POST",
             fw_configs,
-            granted_permissions=_grant_all(fw_configs),
+            network_policies=_grant_all(fw_configs),
         )
         assert isinstance(result, FirewallAllow)
         assert result.api_entry["auth"]["headers"]["Authorization"] == "Bearer user"
@@ -637,7 +637,7 @@ class TestMatchFirewallRequest:
             "https://acme.zendesk.com/api/v2/tickets",
             "GET",
             fw_configs,
-            granted_permissions=_grant_all(fw_configs),
+            network_policies=_grant_all(fw_configs),
         )
         assert isinstance(result, FirewallAllow)
         assert result.match_info["name"] == "zendesk"
@@ -661,7 +661,7 @@ class TestMatchFirewallRequest:
             "https://acme.zendesk.com/api/v2/users",
             "GET",
             fw_configs,
-            granted_permissions=_grant_all(fw_configs),
+            network_policies=_grant_all(fw_configs),
         )
         assert isinstance(result, FirewallBlock)
         assert result.name == "zendesk"
@@ -681,7 +681,7 @@ class TestMatchFirewallRequest:
             "https://api.github.com/repos",
             "GET",
             fw_configs,
-            granted_permissions=_grant_all(fw_configs),
+            network_policies=_grant_all(fw_configs),
         )
         assert result is None
 
@@ -700,7 +700,7 @@ class TestMatchFirewallRequest:
             "https://api.example.com/v1/acme/projects/123",
             "GET",
             fw_configs,
-            granted_permissions=_grant_all(fw_configs),
+            network_policies=_grant_all(fw_configs),
         )
         assert isinstance(result, FirewallAllow)
         assert result.match_info["params"] == {"org": "acme", "id": "123"}
@@ -720,7 +720,7 @@ class TestMatchFirewallRequest:
             "https://us.api.example.com/v1/acme/data",
             "GET",
             fw_configs,
-            granted_permissions=_grant_all(fw_configs),
+            network_policies=_grant_all(fw_configs),
         )
         assert isinstance(result, FirewallAllow)
         assert result.match_info["params"] == {"tenant": "us", "org": "acme"}
@@ -740,7 +740,7 @@ class TestMatchFirewallRequest:
             "https://a.b.c.example.com/api",
             "GET",
             fw_configs,
-            granted_permissions=_grant_all(fw_configs),
+            network_policies=_grant_all(fw_configs),
         )
         assert isinstance(result, FirewallAllow)
         assert result.match_info["params"]["sub"] == "a.b.c"
@@ -757,7 +757,7 @@ class TestMatchFirewallRequest:
             ]
         )
         result = matching.match_firewall_request(
-            "https://example.com/api", "GET", fw_configs, granted_permissions=_grant_all(fw_configs)
+            "https://example.com/api", "GET", fw_configs, network_policies=_grant_all(fw_configs)
         )
         assert isinstance(result, FirewallAllow)
         assert result.match_info["params"]["sub"] == ""
@@ -792,7 +792,7 @@ class TestMatchFirewallRequest:
             "https://api.github.com/repos",
             "GET",
             fw_configs,
-            granted_permissions=_grant_all(fw_configs),
+            network_policies=_grant_all(fw_configs),
         )
         assert isinstance(gh, FirewallAllow)
         assert gh.match_info["name"] == "github"
@@ -801,7 +801,7 @@ class TestMatchFirewallRequest:
             "https://acme.zendesk.com/api/v2/tickets",
             "GET",
             fw_configs,
-            granted_permissions=_grant_all(fw_configs),
+            network_policies=_grant_all(fw_configs),
         )
         assert isinstance(zd, FirewallAllow)
         assert zd.match_info["name"] == "zendesk"
@@ -822,7 +822,7 @@ class TestMatchFirewallRequest:
             "https://acme.zendesk.com/api/v2/tickets?page=2",
             "GET",
             fw_configs,
-            granted_permissions=_grant_all(fw_configs),
+            network_policies=_grant_all(fw_configs),
         )
         assert isinstance(result, FirewallAllow)
         assert result.match_info["params"]["sub"] == "acme"
@@ -842,7 +842,7 @@ class TestMatchFirewallRequest:
             "https://acme.zendesk.com:8443/api",
             "GET",
             fw_configs,
-            granted_permissions=_grant_all(fw_configs),
+            network_policies=_grant_all(fw_configs),
         )
         assert result is None
 
@@ -1750,7 +1750,7 @@ class TestMatchFirewallRequestRelPath:
             "https://firewall-placeholder.vm3.ai/discord-webhook/hook",
             "POST",
             fw_configs,
-            granted_permissions=_grant_all(fw_configs),
+            network_policies=_grant_all(fw_configs),
         )
         assert isinstance(result, FirewallAllow)
         assert result.match_info["rel_path"] == "/"
@@ -1771,7 +1771,7 @@ class TestMatchFirewallRequestRelPath:
             "https://firewall-placeholder.vm3.ai/bitrix/rest/0/placeholder/crm.deal.list",
             "GET",
             fw_configs,
-            granted_permissions=_grant_all(fw_configs),
+            network_policies=_grant_all(fw_configs),
         )
         assert isinstance(result, FirewallAllow)
         assert result.match_info["rel_path"] == "/crm.deal.list"
@@ -2017,7 +2017,7 @@ class TestGraphQLMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:query"]),
             body=body,
-            granted_permissions=_grant_all(_gql_firewalls(["POST /graphql GraphQL type:query"])),
+            network_policies=_grant_all(_gql_firewalls(["POST /graphql GraphQL type:query"])),
         )
         assert isinstance(result, FirewallAllow)
 
@@ -2028,7 +2028,7 @@ class TestGraphQLMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:query"]),
             body=body,
-            granted_permissions=_grant_all(_gql_firewalls(["POST /graphql GraphQL type:query"])),
+            network_policies=_grant_all(_gql_firewalls(["POST /graphql GraphQL type:query"])),
         )
         assert isinstance(result, FirewallBlock)
 
@@ -2039,7 +2039,7 @@ class TestGraphQLMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:mutation"]),
             body=body,
-            granted_permissions=_grant_all(_gql_firewalls(["POST /graphql GraphQL type:mutation"])),
+            network_policies=_grant_all(_gql_firewalls(["POST /graphql GraphQL type:mutation"])),
         )
         assert isinstance(result, FirewallAllow)
 
@@ -2050,7 +2050,7 @@ class TestGraphQLMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:mutation"]),
             body=body,
-            granted_permissions=_grant_all(_gql_firewalls(["POST /graphql GraphQL type:mutation"])),
+            network_policies=_grant_all(_gql_firewalls(["POST /graphql GraphQL type:mutation"])),
         )
         assert isinstance(result, FirewallBlock)
 
@@ -2061,7 +2061,7 @@ class TestGraphQLMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:mutation operationName:issueCreate"]),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(["POST /graphql GraphQL type:mutation operationName:issueCreate"])
             ),
         )
@@ -2074,7 +2074,7 @@ class TestGraphQLMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:mutation operationName:issueCreate"]),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(["POST /graphql GraphQL type:mutation operationName:issueCreate"])
             ),
         )
@@ -2087,7 +2087,7 @@ class TestGraphQLMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:mutation operationName:issue*"]),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(["POST /graphql GraphQL type:mutation operationName:issue*"])
             ),
         )
@@ -2100,7 +2100,7 @@ class TestGraphQLMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:mutation operationName:issue*"]),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(["POST /graphql GraphQL type:mutation operationName:issue*"])
             ),
         )
@@ -2114,7 +2114,7 @@ class TestGraphQLMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:mutation operationName:issueCreate"]),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(["POST /graphql GraphQL type:mutation operationName:issueCreate"])
             ),
         )
@@ -2127,7 +2127,7 @@ class TestGraphQLMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:query"]),
             body=b"not json",
-            granted_permissions=_grant_all(_gql_firewalls(["POST /graphql GraphQL type:query"])),
+            network_policies=_grant_all(_gql_firewalls(["POST /graphql GraphQL type:query"])),
         )
         assert isinstance(result, FirewallBlock)
 
@@ -2138,7 +2138,7 @@ class TestGraphQLMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:query"]),
             body=b"",
-            granted_permissions=_grant_all(_gql_firewalls(["POST /graphql GraphQL type:query"])),
+            network_policies=_grant_all(_gql_firewalls(["POST /graphql GraphQL type:query"])),
         )
         assert isinstance(result, FirewallBlock)
 
@@ -2149,7 +2149,7 @@ class TestGraphQLMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:query"]),
             body=None,
-            granted_permissions=_grant_all(_gql_firewalls(["POST /graphql GraphQL type:query"])),
+            network_policies=_grant_all(_gql_firewalls(["POST /graphql GraphQL type:query"])),
         )
         assert isinstance(result, FirewallBlock)
 
@@ -2161,7 +2161,7 @@ class TestGraphQLMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:mutation"]),
             body=body,
-            granted_permissions=_grant_all(_gql_firewalls(["POST /graphql GraphQL type:mutation"])),
+            network_policies=_grant_all(_gql_firewalls(["POST /graphql GraphQL type:mutation"])),
         )
         assert isinstance(result, FirewallBlock)
 
@@ -2172,7 +2172,7 @@ class TestGraphQLMatching:
             "POST",
             _gql_firewalls(["POST /graphql"]),
             body=b"irrelevant",
-            granted_permissions=_grant_all(_gql_firewalls(["POST /graphql"])),
+            network_policies=_grant_all(_gql_firewalls(["POST /graphql"])),
         )
         assert isinstance(result, FirewallAllow)
 
@@ -2184,7 +2184,7 @@ class TestGraphQLMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:query"]),
             body=body,
-            granted_permissions=_grant_all(_gql_firewalls(["POST /graphql GraphQL type:query"])),
+            network_policies=_grant_all(_gql_firewalls(["POST /graphql GraphQL type:query"])),
         )
         # /v2 doesn't match /graphql → base matched but permission didn't → block
         assert isinstance(result, FirewallBlock)
@@ -2197,7 +2197,7 @@ class TestGraphQLMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:query"]),
             body=body,
-            granted_permissions=_grant_all(_gql_firewalls(["POST /graphql GraphQL type:query"])),
+            network_policies=_grant_all(_gql_firewalls(["POST /graphql GraphQL type:query"])),
         )
         assert isinstance(result, FirewallAllow)
 
@@ -2209,7 +2209,7 @@ class TestGraphQLMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:mutation"]),
             body=body,
-            granted_permissions=_grant_all(_gql_firewalls(["POST /graphql GraphQL type:mutation"])),
+            network_policies=_grant_all(_gql_firewalls(["POST /graphql GraphQL type:mutation"])),
         )
         assert isinstance(result, FirewallBlock)
 
@@ -2221,7 +2221,7 @@ class TestGraphQLMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL operationName:issueCreate"]),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(["POST /graphql GraphQL operationName:issueCreate"])
             ),
         )
@@ -2246,7 +2246,7 @@ class TestGraphQLMatching:
                 ]
             ),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _wrap_firewalls(
                     [
                         {
@@ -2276,7 +2276,7 @@ class TestGraphQLMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:query"]),
             body=body,
-            granted_permissions=_grant_all(_gql_firewalls(["POST /graphql GraphQL type:query"])),
+            network_policies=_grant_all(_gql_firewalls(["POST /graphql GraphQL type:query"])),
         )
         assert isinstance(result, FirewallBlock)
 
@@ -2288,7 +2288,7 @@ class TestGraphQLMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:mutation"]),
             body=body,
-            granted_permissions=_grant_all(_gql_firewalls(["POST /graphql GraphQL type:mutation"])),
+            network_policies=_grant_all(_gql_firewalls(["POST /graphql GraphQL type:mutation"])),
         )
         assert isinstance(result, FirewallAllow)
 
@@ -2300,7 +2300,7 @@ class TestGraphQLMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:query"]),
             body=body,
-            granted_permissions=_grant_all(_gql_firewalls(["POST /graphql GraphQL type:query"])),
+            network_policies=_grant_all(_gql_firewalls(["POST /graphql GraphQL type:query"])),
         )
         assert isinstance(result, FirewallBlock)
 
@@ -2315,7 +2315,7 @@ class TestGraphQLMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:mutation"]),
             body=body,
-            granted_permissions=_grant_all(_gql_firewalls(["POST /graphql GraphQL type:mutation"])),
+            network_policies=_grant_all(_gql_firewalls(["POST /graphql GraphQL type:mutation"])),
         )
         assert isinstance(result, FirewallAllow)
 
@@ -2327,7 +2327,7 @@ class TestGraphQLMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:mutation"]),
             body=body,
-            granted_permissions=_grant_all(_gql_firewalls(["POST /graphql GraphQL type:mutation"])),
+            network_policies=_grant_all(_gql_firewalls(["POST /graphql GraphQL type:mutation"])),
         )
         assert isinstance(result, FirewallBlock)
 
@@ -2339,9 +2339,7 @@ class TestGraphQLMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL operationName:*"]),
             body=body,
-            granted_permissions=_grant_all(
-                _gql_firewalls(["POST /graphql GraphQL operationName:*"])
-            ),
+            network_policies=_grant_all(_gql_firewalls(["POST /graphql GraphQL operationName:*"])),
         )
         assert isinstance(result, FirewallAllow)
 
@@ -2353,9 +2351,7 @@ class TestGraphQLMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL operationName:*"]),
             body=body,
-            granted_permissions=_grant_all(
-                _gql_firewalls(["POST /graphql GraphQL operationName:*"])
-            ),
+            network_policies=_grant_all(_gql_firewalls(["POST /graphql GraphQL operationName:*"])),
         )
         assert isinstance(result, FirewallBlock)
 
@@ -2367,7 +2363,7 @@ class TestGraphQLMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL operationName:GetViewer"]),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(["POST /graphql GraphQL operationName:GetViewer"])
             ),
         )
@@ -2381,7 +2377,7 @@ class TestGraphQLMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:query"]),
             body=body,
-            granted_permissions=_grant_all(_gql_firewalls(["POST /graphql GraphQL type:query"])),
+            network_policies=_grant_all(_gql_firewalls(["POST /graphql GraphQL type:query"])),
         )
         assert isinstance(result, FirewallBlock)
 
@@ -2392,7 +2388,7 @@ class TestGraphQLMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:subscription"]),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(["POST /graphql GraphQL type:subscription"])
             ),
         )
@@ -2405,7 +2401,7 @@ class TestGraphQLMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:subscription"]),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(["POST /graphql GraphQL type:subscription"])
             ),
         )
@@ -2422,7 +2418,7 @@ class TestGraphQLFieldMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue"]),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue"])
             ),
         )
@@ -2435,7 +2431,7 @@ class TestGraphQLFieldMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue"]),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue"])
             ),
         )
@@ -2448,7 +2444,7 @@ class TestGraphQLFieldMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:mutation field:create*"]),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(["POST /graphql GraphQL type:mutation field:create*"])
             ),
         )
@@ -2461,7 +2457,7 @@ class TestGraphQLFieldMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:mutation field:create*"]),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(["POST /graphql GraphQL type:mutation field:create*"])
             ),
         )
@@ -2475,7 +2471,7 @@ class TestGraphQLFieldMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL field:createIssue"]),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(["POST /graphql GraphQL field:createIssue"])
             ),
         )
@@ -2489,7 +2485,7 @@ class TestGraphQLFieldMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:mutation field:repository"]),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(["POST /graphql GraphQL type:mutation field:repository"])
             ),
         )
@@ -2506,7 +2502,7 @@ class TestGraphQLFieldMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue"]),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue"])
             ),
         )
@@ -2524,7 +2520,7 @@ class TestGraphQLFieldMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue"]),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue"])
             ),
         )
@@ -2540,7 +2536,7 @@ class TestGraphQLFieldMatching:
                 ]
             ),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(
                     [
                         "POST /graphql GraphQL type:mutation field:createIssue",
@@ -2558,7 +2554,7 @@ class TestGraphQLFieldMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL field:createIssue"]),
             body=None,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(["POST /graphql GraphQL field:createIssue"])
             ),
         )
@@ -2572,7 +2568,7 @@ class TestGraphQLFieldMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL field:createIssue"]),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(["POST /graphql GraphQL field:createIssue"])
             ),
         )
@@ -2589,7 +2585,7 @@ class TestGraphQLFieldMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue"]),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue"])
             ),
         )
@@ -2606,7 +2602,7 @@ class TestGraphQLFieldMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue"]),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue"])
             ),
         )
@@ -2620,7 +2616,7 @@ class TestGraphQLFieldMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL field:viewer"]),
             body=body,
-            granted_permissions=_grant_all(_gql_firewalls(["POST /graphql GraphQL field:viewer"])),
+            network_policies=_grant_all(_gql_firewalls(["POST /graphql GraphQL field:viewer"])),
         )
         assert isinstance(result, FirewallAllow)
 
@@ -2632,7 +2628,7 @@ class TestGraphQLFieldMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL field:*"]),
             body=body,
-            granted_permissions=_grant_all(_gql_firewalls(["POST /graphql GraphQL field:*"])),
+            network_policies=_grant_all(_gql_firewalls(["POST /graphql GraphQL field:*"])),
         )
         assert isinstance(result, FirewallAllow)
 
@@ -2647,7 +2643,7 @@ class TestGraphQLFieldMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:mutation field:createComment"]),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(["POST /graphql GraphQL type:mutation field:createComment"])
             ),
         )
@@ -2664,7 +2660,7 @@ class TestGraphQLFieldMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue"]),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue"])
             ),
         )
@@ -2681,7 +2677,7 @@ class TestGraphQLFieldMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue"]),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue"])
             ),
         )
@@ -2700,7 +2696,7 @@ class TestGraphQLFieldMatching:
                 ["POST /graphql GraphQL type:mutation operationName:IssueCreate field:createIssue"]
             ),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(
                     [
                         "POST /graphql GraphQL type:mutation operationName:IssueCreate field:createIssue"  # noqa: E501
@@ -2718,7 +2714,7 @@ class TestGraphQLFieldMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL field:*"]),
             body=body,
-            granted_permissions=_grant_all(_gql_firewalls(["POST /graphql GraphQL field:*"])),
+            network_policies=_grant_all(_gql_firewalls(["POST /graphql GraphQL field:*"])),
         )
         assert isinstance(result, FirewallBlock)
 
@@ -2733,7 +2729,7 @@ class TestGraphQLFieldMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue"]),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue"])
             ),
         )
@@ -2750,7 +2746,7 @@ class TestGraphQLFieldMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue"]),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue"])
             ),
         )
@@ -2767,7 +2763,7 @@ class TestGraphQLFieldMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:mutation field:MutationFields"]),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(["POST /graphql GraphQL type:mutation field:MutationFields"])
             ),
         )
@@ -2784,7 +2780,7 @@ class TestGraphQLFieldMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:mutation field:Mutation"]),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(["POST /graphql GraphQL type:mutation field:Mutation"])
             ),
         )
@@ -2801,7 +2797,7 @@ class TestGraphQLFieldMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue"]),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue"])
             ),
         )
@@ -2821,7 +2817,7 @@ class TestGraphQLFieldMatching:
                 ]
             ),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(
                     [
                         "POST /graphql GraphQL type:mutation field:__typename",
@@ -2861,7 +2857,7 @@ class TestGraphQLFieldMatching:
             "POST",
             fws,
             body=body,
-            granted_permissions=_grant_all(fws),
+            network_policies=_grant_all(fws),
         )
         assert isinstance(result, FirewallAllow)
         # First matching permission wins (order-dependent)
@@ -2878,7 +2874,7 @@ class TestGraphQLFieldMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:mutation field:closeIssue"]),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(["POST /graphql GraphQL type:mutation field:closeIssue"])
             ),
         )
@@ -2895,7 +2891,7 @@ class TestGraphQLFieldMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue"]),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue"])
             ),
         )
@@ -2909,7 +2905,7 @@ class TestGraphQLFieldMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue"]),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue"])
             ),
         )
@@ -2923,7 +2919,7 @@ class TestGraphQLFieldMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue"]),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue"])
             ),
         )
@@ -2940,7 +2936,7 @@ class TestGraphQLFieldMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue"]),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue"])
             ),
         )
@@ -2954,7 +2950,7 @@ class TestGraphQLFieldMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL operationName:IssueCreate field:createIssue"]),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(
                     ["POST /graphql GraphQL operationName:IssueCreate field:createIssue"]
                 )
@@ -2970,7 +2966,7 @@ class TestGraphQLFieldMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL operationName:IssueCreate field:createIssue"]),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(
                     ["POST /graphql GraphQL operationName:IssueCreate field:createIssue"]
                 )
@@ -3008,7 +3004,7 @@ class TestGraphQLFieldMatching:
             "POST",
             fws,
             body=body,
-            granted_permissions=_grant_all(fws),
+            network_policies=_grant_all(fws),
         )
         assert isinstance(result, FirewallAllow)
         assert result.match_info["permission"] == "close"
@@ -3024,7 +3020,7 @@ class TestGraphQLFieldMatching:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue"]),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue"])
             ),
         )
@@ -3046,7 +3042,7 @@ class TestGraphQLNestedFieldPaths:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:query field:repository.issues"]),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(["POST /graphql GraphQL type:query field:repository.issues"])
             ),
         )
@@ -3063,7 +3059,7 @@ class TestGraphQLNestedFieldPaths:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:query field:repository.issues.nodes"]),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(["POST /graphql GraphQL type:query field:repository.issues.nodes"])
             ),
         )
@@ -3080,7 +3076,7 @@ class TestGraphQLNestedFieldPaths:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:query field:repository.issues"]),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(["POST /graphql GraphQL type:query field:repository.issues"])
             ),
         )
@@ -3097,7 +3093,7 @@ class TestGraphQLNestedFieldPaths:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:query field:repository.*"]),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(["POST /graphql GraphQL type:query field:repository.*"])
             ),
         )
@@ -3111,7 +3107,7 @@ class TestGraphQLNestedFieldPaths:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:query field:repository.*"]),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(["POST /graphql GraphQL type:query field:repository.*"])
             ),
         )
@@ -3128,7 +3124,7 @@ class TestGraphQLNestedFieldPaths:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:query field:repository.issues"]),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(["POST /graphql GraphQL type:query field:repository.issues"])
             ),
         )
@@ -3145,7 +3141,7 @@ class TestGraphQLNestedFieldPaths:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue"]),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue"])
             ),
         )
@@ -3163,7 +3159,7 @@ class TestGraphQLCommaFieldFilter:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue,closeIssue"]),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue,closeIssue"])
             ),
         )
@@ -3177,7 +3173,7 @@ class TestGraphQLCommaFieldFilter:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue,closeIssue"]),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue,closeIssue"])
             ),
         )
@@ -3191,7 +3187,7 @@ class TestGraphQLCommaFieldFilter:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue,closeIssue"]),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue,closeIssue"])
             ),
         )
@@ -3205,7 +3201,7 @@ class TestGraphQLCommaFieldFilter:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue,delete*"]),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue,delete*"])
             ),
         )
@@ -3219,7 +3215,7 @@ class TestGraphQLCommaFieldFilter:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue,closeIssue"]),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue,closeIssue"])
             ),
         )
@@ -3232,7 +3228,7 @@ class TestGraphQLCommaFieldFilter:
             "POST",
             _gql_firewalls(["POST /graphql GraphQL field:createIssue,closeIssue"]),
             body=None,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(["POST /graphql GraphQL field:createIssue,closeIssue"])
             ),
         )
@@ -3251,7 +3247,7 @@ class TestGraphQLCommaFieldFilter:
                 ["POST /graphql GraphQL type:query field:repository.issues,repository.pullRequests"]
             ),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(
                     [
                         "POST /graphql GraphQL type:query field:repository.issues,repository.pullRequests"  # noqa: E501
@@ -3274,7 +3270,7 @@ class TestGraphQLCommaFieldFilter:
                 ["POST /graphql GraphQL type:query field:repository.issues,repository.pullRequests"]
             ),
             body=body,
-            granted_permissions=_grant_all(
+            network_policies=_grant_all(
                 _gql_firewalls(
                     [
                         "POST /graphql GraphQL type:query field:repository.issues,repository.pullRequests"  # noqa: E501
@@ -3327,7 +3323,7 @@ class TestGraphQLFieldCoverage:
             "POST",
             fw,
             body=body,
-            granted_permissions=_grant_all(fw),
+            network_policies=_grant_all(fw),
         )
         assert isinstance(result, FirewallAllow)
 
@@ -3349,7 +3345,7 @@ class TestGraphQLFieldCoverage:
             "POST",
             fw,
             body=body,
-            granted_permissions=_grant_all(fw),
+            network_policies=_grant_all(fw),
         )
         assert isinstance(result, FirewallBlock)
 
@@ -3366,7 +3362,7 @@ class TestGraphQLFieldCoverage:
             "POST",
             fw,
             body=body,
-            granted_permissions=_grant_all(fw),
+            network_policies=_grant_all(fw),
         )
         assert isinstance(result, FirewallAllow)
 
@@ -3385,7 +3381,7 @@ class TestGraphQLFieldCoverage:
             "POST",
             fw,
             body=body,
-            granted_permissions=_grant_all(fw),
+            network_policies=_grant_all(fw),
         )
         assert isinstance(result, FirewallAllow)
 
@@ -3407,7 +3403,7 @@ class TestGraphQLFieldCoverage:
             "POST",
             fw,
             body=body,
-            granted_permissions=_grant_all(fw),
+            network_policies=_grant_all(fw),
         )
         assert isinstance(result, FirewallBlock)
 
@@ -3424,7 +3420,7 @@ class TestGraphQLFieldCoverage:
             "POST",
             fw,
             body=body,
-            granted_permissions=_grant_all(fw),
+            network_policies=_grant_all(fw),
         )
         assert isinstance(result, FirewallAllow)
 
@@ -3446,7 +3442,7 @@ class TestGraphQLFieldCoverage:
             "POST",
             fw,
             body=body,
-            granted_permissions=_grant_all(fw),
+            network_policies=_grant_all(fw),
         )
         assert isinstance(result, FirewallAllow)
 
@@ -3465,7 +3461,7 @@ class TestGraphQLFieldCoverage:
             "POST",
             fw,
             body=body,
-            granted_permissions=_grant_all(fw),
+            network_policies=_grant_all(fw),
         )
         assert isinstance(result, FirewallAllow)
 
@@ -3486,7 +3482,7 @@ class TestGraphQLFieldCoverage:
             "POST",
             fw_broad_first,
             body=body,
-            granted_permissions=_grant_all(fw_broad_first),
+            network_policies=_grant_all(fw_broad_first),
         )
         assert isinstance(result, FirewallAllow)
 
@@ -3502,7 +3498,7 @@ class TestGraphQLFieldCoverage:
             "POST",
             fw_narrow_first,
             body=body,
-            granted_permissions=_grant_all(fw_narrow_first),
+            network_policies=_grant_all(fw_narrow_first),
         )
         assert isinstance(result, FirewallAllow)
 
@@ -3525,7 +3521,7 @@ class TestGraphQLFieldCoverage:
             "POST",
             fw,
             body=body_ok,
-            granted_permissions=_grant_all(fw),
+            network_policies=_grant_all(fw),
         )
         assert isinstance(result, FirewallAllow)
 
@@ -3541,7 +3537,7 @@ class TestGraphQLFieldCoverage:
             "POST",
             fw,
             body=body_extra,
-            granted_permissions=_grant_all(fw),
+            network_policies=_grant_all(fw),
         )
         assert isinstance(result, FirewallBlock)
 
@@ -3564,7 +3560,7 @@ class TestGraphQLFieldCoverage:
             "POST",
             fw,
             body=body,
-            granted_permissions=_grant_all(fw),
+            network_policies=_grant_all(fw),
         )
         assert isinstance(result, FirewallAllow)
 
@@ -3584,7 +3580,7 @@ class TestGraphQLFieldCoverage:
             "POST",
             fw,
             body=body,
-            granted_permissions=_grant_all(fw),
+            network_policies=_grant_all(fw),
         )
         assert isinstance(result, FirewallBlock)
 
@@ -3603,18 +3599,18 @@ class TestGraphQLFieldCoverage:
             "POST",
             fw,
             body=body,
-            granted_permissions=_grant_all(fw),
+            network_policies=_grant_all(fw),
         )
         assert isinstance(result, FirewallBlock)
 
 
 # =========================================================================
-# Three-level matching (granted_permissions)
+# Three-level matching (network_policies)
 # =========================================================================
 
 
 class TestThreeLevelMatching:
-    """Tests for three-level matching with granted_permissions."""
+    """Tests for three-level matching with network_policies."""
 
     def _firewalls(self):
         return _wrap_firewalls(
@@ -3632,24 +3628,24 @@ class TestThreeLevelMatching:
             ref="github",
         )
 
-    def test_granted_permission_allows(self):
+    def test_allowed_permission_passes(self):
         granted = {"github": {"allow": ["repo-read"], "unknownPolicy": "deny"}}
         result = matching.match_firewall_request(
             "https://api.github.com/repos/org/repo",
             "GET",
             self._firewalls(),
-            granted_permissions=granted,
+            network_policies=granted,
         )
         assert isinstance(result, FirewallAllow)
         assert result.match_info["permission"] == "repo-read"
 
-    def test_non_granted_permission_denies(self):
+    def test_non_allowed_permission_denies(self):
         granted = {"github": {"allow": ["repo-read"], "unknownPolicy": "deny"}}
         result = matching.match_firewall_request(
             "https://api.github.com/repos/org/repo",
             "PUT",
             self._firewalls(),
-            granted_permissions=granted,
+            network_policies=granted,
         )
         assert isinstance(result, FirewallBlock)
 
@@ -3659,7 +3655,7 @@ class TestThreeLevelMatching:
             "https://api.github.com/users/octocat",
             "GET",
             self._firewalls(),
-            granted_permissions=granted,
+            network_policies=granted,
         )
         assert isinstance(result, FirewallAllow)
         assert result.match_info["permission"] == ""
@@ -3671,7 +3667,7 @@ class TestThreeLevelMatching:
             "https://api.github.com/users/octocat",
             "GET",
             self._firewalls(),
-            granted_permissions=granted,
+            network_policies=granted,
         )
         assert isinstance(result, FirewallBlock)
 
@@ -3682,18 +3678,18 @@ class TestThreeLevelMatching:
             "https://api.github.com/users/octocat",
             "GET",
             self._firewalls(),
-            granted_permissions=granted,
+            network_policies=granted,
         )
         assert isinstance(result, FirewallBlock)
 
     def test_ref_absent_denies(self):
-        """Ref not in grantedPermissions → fail-closed."""
+        """Ref not in networkPolicies → fail-closed."""
         granted = {}  # github not in map
         result = matching.match_firewall_request(
             "https://api.github.com/repos/org/repo",
             "PUT",
             self._firewalls(),
-            granted_permissions=granted,
+            network_policies=granted,
         )
         assert isinstance(result, FirewallBlock)
 
@@ -3703,17 +3699,17 @@ class TestThreeLevelMatching:
             "https://api.example.com/foo",
             "GET",
             self._firewalls(),
-            granted_permissions=granted,
+            network_policies=granted,
         )
         assert result is None
 
-    def test_none_granted_permissions_denies_all(self):
-        """None grantedPermissions → empty map → fail-closed."""
+    def test_none_network_policies_denies_all(self):
+        """None networkPolicies → empty map → fail-closed."""
         result = matching.match_firewall_request(
             "https://api.github.com/repos/org/repo",
             "GET",
             self._firewalls(),
-            granted_permissions=None,
+            network_policies=None,
         )
         assert isinstance(result, FirewallBlock)
 
@@ -3721,7 +3717,7 @@ class TestThreeLevelMatching:
             "https://api.github.com/users/octocat",
             "GET",
             self._firewalls(),
-            granted_permissions=None,
+            network_policies=None,
         )
         assert isinstance(result, FirewallBlock)
 
@@ -3743,7 +3739,7 @@ class TestThreeLevelMatching:
             "https://api.hubspot.com/crm/v3/objects",
             "GET",
             fws,
-            granted_permissions=granted,
+            network_policies=granted,
         )
         assert isinstance(result, FirewallAllow)
         assert result.match_info["permission"] == ""
@@ -3769,7 +3765,7 @@ class TestThreeLevelMatching:
             "https://api.github.com/repos/org/repo",
             "GET",
             fws,
-            granted_permissions=granted,
+            network_policies=granted,
         )
         assert isinstance(result, FirewallAllow)
         assert result.match_info["permission"] == "repo-admin"
@@ -3795,7 +3791,7 @@ class TestThreeLevelMatching:
             "https://api.github.com/repos/org/repo",
             "GET",
             fws,
-            granted_permissions=granted,
+            network_policies=granted,
         )
         assert isinstance(result, FirewallBlock)
 
@@ -3838,7 +3834,7 @@ class TestThreeLevelMatching:
             "https://api.github.com/repos/org/repo",
             "GET",
             fws,
-            granted_permissions=granted,
+            network_policies=granted,
         )
         assert isinstance(result, FirewallAllow)
         assert result.match_info["ref"] == "github"
@@ -3848,7 +3844,7 @@ class TestThreeLevelMatching:
             "https://slack.com/api/conversations.list",
             "GET",
             fws,
-            granted_permissions=granted,
+            network_policies=granted,
         )
         assert isinstance(result, FirewallBlock)
 
@@ -3857,7 +3853,7 @@ class TestThreeLevelMatching:
             "https://slack.com/api/users.info",
             "GET",
             fws,
-            granted_permissions=granted,
+            network_policies=granted,
         )
         assert isinstance(result, FirewallAllow)
         assert result.match_info["ref"] == "slack"
@@ -3886,7 +3882,7 @@ class TestThreeLevelMatching:
             "https://api.github.com/anything",
             "GET",
             fws,
-            granted_permissions=granted,
+            network_policies=granted,
         )
         assert isinstance(result, FirewallBlock)
 
@@ -3895,7 +3891,7 @@ class TestThreeLevelMatching:
             "https://slack.com/api/anything",
             "GET",
             fws,
-            granted_permissions=granted,
+            network_policies=granted,
         )
         assert isinstance(result, FirewallAllow)
 
@@ -3919,7 +3915,7 @@ class TestThreeLevelMatching:
             "https://api.github.com/repos/org/repo",
             "PUT",
             fws,
-            granted_permissions=granted,
+            network_policies=granted,
         )
         # repo-write rule matches but is not granted → DENY, not overridden by unknownPolicy
         assert isinstance(result, FirewallBlock)
@@ -3945,12 +3941,12 @@ class TestThreeLevelMatching:
             "https://api.github.com/repos/org/repo",
             "GET",
             fws,
-            granted_permissions=granted,
+            network_policies=granted,
         )
         assert isinstance(result, FirewallBlock)
 
     def test_ref_absent_from_granted_denies(self):
-        """Firewall ref not in grantedPermissions → fail-closed."""
+        """Firewall ref not in networkPolicies → fail-closed."""
         fws = _wrap_firewalls(
             [
                 {
@@ -3964,13 +3960,13 @@ class TestThreeLevelMatching:
             name="github",
             ref="github",
         )
-        # grantedPermissions exists but has no entry for "github"
+        # networkPolicies exists but has no entry for "github"
         granted = {"slack": {"allow": [], "unknownPolicy": "allow"}}
         result = matching.match_firewall_request(
             "https://api.github.com/repos/org/repo",
             "GET",
             fws,
-            granted_permissions=granted,
+            network_policies=granted,
         )
         assert isinstance(result, FirewallBlock)
 
@@ -3979,7 +3975,7 @@ class TestThreeLevelMatching:
             "https://api.github.com/users/octocat",
             "GET",
             fws,
-            granted_permissions=granted,
+            network_policies=granted,
         )
         assert isinstance(result, FirewallBlock)
 
@@ -4010,7 +4006,7 @@ class TestThreeLevelMatching:
             "https://api.github.com/repos/org/repo",
             "GET",
             fws,
-            granted_permissions=granted,
+            network_policies=granted,
         )
         assert isinstance(result, FirewallAllow)
         assert result.match_info["permission"] == "repo-read"
@@ -4020,7 +4016,7 @@ class TestThreeLevelMatching:
             "https://uploads.github.com/anything",
             "POST",
             fws,
-            granted_permissions=granted,
+            network_policies=granted,
         )
         assert isinstance(result, FirewallAllow)
         assert result.match_info["permission"] == ""

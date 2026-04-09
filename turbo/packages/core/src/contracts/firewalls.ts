@@ -149,7 +149,7 @@ export function fromFirewallPolicies(policies: FirewallPolicies): {
  * what policy applies to unknown endpoints (not matching any permission rule).
  * Refs absent from the map are fully permissive (all granted + allow unknown).
  */
-const grantedPermissionSchema = z.object({
+const networkPolicySchema = z.object({
   allow: z.array(z.string()),
   deny: z.array(z.string()),
   ask: z.array(z.string()),
@@ -157,14 +157,11 @@ const grantedPermissionSchema = z.object({
 });
 
 /**
- * Granted permissions map — firewall ref → grant config.
+ * Network policies map — firewall ref → policy config.
  * Example: { "github": { allow: ["repo-read"], deny: ["admin"], ask: [], unknownPolicy: "deny" } }
  */
-export const grantedPermissionsSchema = z.record(
-  z.string(),
-  grantedPermissionSchema,
-);
-export type GrantedPermissions = z.infer<typeof grantedPermissionsSchema>;
+export const networkPoliciesSchema = z.record(z.string(), networkPolicySchema);
+export type NetworkPolicies = z.infer<typeof networkPoliciesSchema>;
 
 /** Inferred types */
 export type FirewallApi = z.infer<typeof firewallApiSchema>;

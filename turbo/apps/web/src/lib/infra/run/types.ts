@@ -1,5 +1,5 @@
 import type { ArtifactSnapshot } from "../checkpoint/types";
-import type { Firewalls, GrantedPermissions } from "@vm0/core";
+import type { Firewalls, NetworkPolicies } from "@vm0/core";
 
 /**
  * Run status values
@@ -82,8 +82,8 @@ export interface ExecutionContext {
   // Firewall for proxy-side token replacement
   firewalls?: Firewalls;
 
-  // Per-firewall grant config
-  grantedPermissions?: GrantedPermissions;
+  // Per-firewall network policies
+  networkPolicies?: NetworkPolicies;
 
   // Tools to disable in Claude CLI (passed as --disallowed-tools)
   disallowedTools?: string[];

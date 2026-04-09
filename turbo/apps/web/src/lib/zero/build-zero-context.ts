@@ -8,7 +8,7 @@ import {
   type ModelProviderType,
   type FirewallPolicies,
   type Firewalls,
-  type GrantedPermissions,
+  type NetworkPolicies,
 } from "@vm0/core";
 import { zeroRuns } from "../../db/schema/zero-run";
 import { badRequest, notFound } from "../shared/errors";
@@ -305,7 +305,7 @@ interface ResolvedCliContext {
   environment?: Record<string, string>;
   secretConnectorMap?: Record<string, string>;
   firewalls?: Firewalls;
-  grantedPermissions?: GrantedPermissions;
+  networkPolicies?: NetworkPolicies;
   userTimezone?: string;
 
   // Model provider metadata (for zero_runs upsert)
@@ -477,7 +477,7 @@ export async function resolveCliRunContext(
     environment,
     secretConnectorMap,
     firewalls: permissionResult?.firewalls,
-    grantedPermissions: permissionResult?.grantedPermissions,
+    networkPolicies: permissionResult?.networkPolicies,
     userTimezone,
     resolvedModelProvider,
     selectedModel,
@@ -647,7 +647,7 @@ export async function buildZeroExecutionContext(
       environment,
       userTimezone,
       firewalls: permissionResult?.firewalls,
-      grantedPermissions: permissionResult?.grantedPermissions,
+      networkPolicies: permissionResult?.networkPolicies,
       disallowedTools: params.disallowedTools,
       tools: params.tools,
       settings: params.settings,

@@ -249,7 +249,7 @@ impl JobProvider for LocalProvider {
             memory_name: None,
             capture_network_bodies: None,
             firewalls: None,
-            granted_permissions: None,
+            network_policies: None,
             disallowed_tools: None,
             tools: None,
             settings: None,

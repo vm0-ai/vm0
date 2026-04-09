@@ -34,7 +34,7 @@ describe("applyConnectorPolicies", () => {
       ],
     });
 
-    const { firewalls, grantedPermissions } = applyConnectorPolicies(
+    const { firewalls, networkPolicies } = applyConnectorPolicies(
       [fw],
       undefined,
     );
@@ -42,7 +42,7 @@ describe("applyConnectorPolicies", () => {
     expect(firewalls).toHaveLength(1);
     expect(firewalls[0]?.apis[0]?.permissions).toEqual(permissions);
     // No policies → all permissions granted
-    expect(grantedPermissions).toEqual({
+    expect(networkPolicies).toEqual({
       github: {
         allow: ["repo-read", "repo-write"],
         deny: [],
@@ -69,7 +69,7 @@ describe("applyConnectorPolicies", () => {
       ],
     });
 
-    const { firewalls, grantedPermissions } = applyConnectorPolicies([fw], {
+    const { firewalls, networkPolicies } = applyConnectorPolicies([fw], {
       github: {
         policies: {
           "repo-read": "allow",
@@ -81,8 +81,8 @@ describe("applyConnectorPolicies", () => {
 
     // Firewalls carry ALL permissions (unfiltered)
     expect(firewalls[0]?.apis[0]?.permissions).toEqual(allPermissions);
-    // grantedPermissions splits by policy
-    expect(grantedPermissions).toEqual({
+    // networkPolicies splits by policy
+    expect(networkPolicies).toEqual({
       github: {
         allow: ["repo-read", "issues-read"],
         deny: ["repo-write"],
@@ -107,7 +107,7 @@ describe("applyConnectorPolicies", () => {
       ],
     });
 
-    const { firewalls, grantedPermissions } = applyConnectorPolicies([fw], {
+    const { firewalls, networkPolicies } = applyConnectorPolicies([fw], {
       "custom-api": { policies: { "some-perm": "allow" } },
     });
 
@@ -115,7 +115,7 @@ describe("applyConnectorPolicies", () => {
     expect(firewalls[0]?.apis[0]?.permissions).toEqual([]);
     expect(firewalls[0]?.apis[1]?.permissions).toEqual([]);
     // No permissions defined → empty granted, allow unknown
-    expect(grantedPermissions).toEqual({
+    expect(networkPolicies).toEqual({
       "custom-api": {
         allow: [],
         deny: [],
@@ -137,12 +137,12 @@ describe("applyConnectorPolicies", () => {
       ],
     });
 
-    const { firewalls, grantedPermissions } = applyConnectorPolicies([fw], {
+    const { firewalls, networkPolicies } = applyConnectorPolicies([fw], {
       "custom-api": { policies: { x: "allow" } },
     });
 
     expect(firewalls[0]?.apis[0]?.permissions).toEqual([]);
-    expect(grantedPermissions).toEqual({
+    expect(networkPolicies).toEqual({
       "custom-api": {
         allow: [],
         deny: [],
@@ -166,11 +166,11 @@ describe("applyConnectorPolicies", () => {
       ],
     });
 
-    const { grantedPermissions } = applyConnectorPolicies([fw], {
+    const { networkPolicies } = applyConnectorPolicies([fw], {
       github: { policies: { "repo-read": "allow" }, unknownPolicy: "allow" },
     });
 
-    expect(grantedPermissions.github).toEqual({
+    expect(networkPolicies.github).toEqual({
       allow: ["repo-read"],
       deny: [],
       ask: [],
@@ -194,7 +194,7 @@ describe("applyConnectorPolicies", () => {
       ],
     });
 
-    const { grantedPermissions } = applyConnectorPolicies([fw], {
+    const { networkPolicies } = applyConnectorPolicies([fw], {
       github: {
         policies: {
           "repo-read": "allow",
@@ -204,7 +204,7 @@ describe("applyConnectorPolicies", () => {
       },
     });
 
-    expect(grantedPermissions.github).toEqual({
+    expect(networkPolicies.github).toEqual({
       allow: ["repo-read"],
       deny: ["admin"],
       ask: ["repo-write"],
@@ -226,11 +226,11 @@ describe("applyConnectorPolicies", () => {
       ],
     });
 
-    const { grantedPermissions } = applyConnectorPolicies([fw], {
+    const { networkPolicies } = applyConnectorPolicies([fw], {
       github: { policies: { "repo-read": "allow" } },
     });
 
-    expect(grantedPermissions.github).toEqual({
+    expect(networkPolicies.github).toEqual({
       allow: ["repo-read"],
       deny: [],
       ask: [],

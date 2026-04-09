@@ -1,7 +1,7 @@
 import type { StorageManifest } from "../../../infra/storage/types";
 import type { ResumeSession } from "../types";
 import type { ArtifactSnapshot } from "../../checkpoint/types";
-import type { Firewalls, GrantedPermissions } from "@vm0/core";
+import type { Firewalls, NetworkPolicies } from "@vm0/core";
 
 /**
  * Prepared execution context for executors
@@ -46,8 +46,8 @@ export interface PreparedContext {
   // Firewall for proxy-side token replacement (complete config, all permissions)
   firewalls: Firewalls | null;
 
-  // Per-firewall grant config: which permissions are granted + unknownPolicy
-  grantedPermissions: GrantedPermissions | null;
+  // Per-firewall network policies: which permissions are granted + unknownPolicy
+  networkPolicies: NetworkPolicies | null;
 
   // Tools to disable in Claude CLI (passed as --disallowed-tools)
   disallowedTools: string[] | null;

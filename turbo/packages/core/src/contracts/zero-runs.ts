@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
-import { grantedPermissionsSchema } from "./firewalls";
+import { networkPoliciesSchema } from "./firewalls";
 import {
   createRunResponseSchema,
   getRunResponseSchema,
@@ -196,7 +196,7 @@ const runContextResponseSchema = z.object({
   vars: z.record(z.string(), z.string()).nullable(),
   environment: z.record(z.string(), z.string()),
   firewalls: z.array(runContextFirewallSchema),
-  grantedPermissions: grantedPermissionsSchema.nullable().optional(),
+  networkPolicies: networkPoliciesSchema.nullable().optional(),
   volumes: z.array(runContextVolumeSchema),
   artifact: runContextArtifactSchema.nullable(),
   memory: runContextArtifactSchema.nullable(),
