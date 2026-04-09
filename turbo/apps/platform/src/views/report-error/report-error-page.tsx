@@ -55,8 +55,6 @@ export function ReportErrorPage() {
 
   return (
     <ConfirmCard
-      error={run.error}
-      runId={run.runId}
       loading={reportState === "loading"}
       onSubmit={() => {
         detach(doSubmit(pageSignal), Reason.DomCallback);
@@ -76,13 +74,9 @@ function LoadingCard() {
 }
 
 function ConfirmCard({
-  error,
-  runId,
   loading,
   onSubmit,
 }: {
-  error?: string;
-  runId: string;
   loading: boolean;
   onSubmit: () => void;
 }) {
@@ -97,18 +91,9 @@ function ConfirmCard({
           </p>
           <p className="text-center text-sm text-muted-foreground">
             Send diagnostic information for this failed run to the developer
-            team for investigation.
+            team. We will investigate and follow up shortly.
           </p>
         </div>
-
-        {error && (
-          <div className="w-full rounded-lg border border-border bg-muted/40 px-4 py-3">
-            <p className="text-xs font-medium text-muted-foreground mb-1">
-              Error
-            </p>
-            <p className="text-sm text-foreground break-words">{error}</p>
-          </div>
-        )}
 
         <div className="w-full rounded-lg border border-border bg-muted/40 px-4 py-3">
           <p className="text-xs font-medium text-muted-foreground mb-1">
@@ -123,8 +108,6 @@ function ConfirmCard({
             <li>Connected services (no credentials)</li>
           </ul>
         </div>
-
-        <code className="text-xs text-muted-foreground">Run: {runId}</code>
 
         <Button className="w-full" onClick={onSubmit} disabled={loading}>
           {loading ? (

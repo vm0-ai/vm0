@@ -217,7 +217,7 @@ const router = tsr.router(webhookCompleteContract, {
       const reportUrl = `${env().NEXT_PUBLIC_APP_URL}/runs/${body.runId}/report-error`;
       const errorMessage =
         body.error ||
-        `An unexpected error occurred (exit code ${body.exitCode}). [Report this issue](${reportUrl})`;
+        `An unexpected error occurred. [Report this issue](${reportUrl})`;
 
       const transitioned = await transitionRunStatus(
         body.runId,
