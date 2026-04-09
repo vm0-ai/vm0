@@ -1,6 +1,6 @@
 import { command, computed, state, type Computed } from "ccstate";
 import type { AgentEvent, LogStatus } from "../zero-page/log-types.ts";
-import { resetSignal } from "../utils.ts";
+import { resetSignal, setLoop } from "../utils.ts";
 import { detachedNavigateTo$ } from "../route.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { logger } from "../log.ts";
@@ -12,7 +12,6 @@ import {
   createRunLoop,
   fibDelays$,
   pollInterval$,
-  setLoop,
   type PagedRunEvents,
 } from "../zero-page/polling.ts";
 import { zeroOnboardingStatus$ } from "../zero-page/zero-onboarding.ts";

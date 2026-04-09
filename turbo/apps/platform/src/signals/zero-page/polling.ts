@@ -8,7 +8,7 @@ import {
   zeroRunsCancelContract,
 } from "@vm0/core";
 import { accept } from "../../lib/accept.ts";
-import { DEFAULT_FIBONACCI_DELAYS_MS, setLoop } from "../utils.ts";
+import { DEFAULT_FIBONACCI_DELAYS_MS } from "../utils.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 
 const AGENT_EVENTS_PAGE_LIMIT = 30;
@@ -26,8 +26,6 @@ export const setFibonacciDelaysForTest$ = command(
 export const fibDelays$ = computed((get) => {
   return get(internalFibDelays$);
 });
-
-export { setLoop };
 
 const internalPollInterval$ = state(3000);
 

@@ -9,8 +9,8 @@ import {
   createRunLoop,
   fibDelays$,
   pollInterval$,
-  setLoop,
 } from "../zero-page/polling.ts";
+import { setLoop } from "../utils.ts";
 import { accept } from "../../lib/accept.ts";
 
 // ---------------------------------------------------------------------------
