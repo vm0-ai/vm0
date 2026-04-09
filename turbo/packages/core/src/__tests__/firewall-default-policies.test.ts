@@ -8,10 +8,9 @@ import {
 describe("getDefaultFirewallPolicies", () => {
   it("should return allow/deny map for connectors with defaults", () => {
     const policies = getDefaultFirewallPolicies("slack");
-    expect(policies).not.toBeNull();
 
     // Slack has defaults — every permission should be either "allow" or "deny"
-    const values = Object.values(policies!);
+    const values = Object.values(policies);
     expect(values.length).toBeGreaterThan(0);
     for (const v of values) {
       expect(["allow", "deny"]).toContain(v);
@@ -19,19 +18,19 @@ describe("getDefaultFirewallPolicies", () => {
   });
 
   it("should mark default-allowed permissions as allow", () => {
-    const policies = getDefaultFirewallPolicies("slack")!;
+    const policies = getDefaultFirewallPolicies("slack");
     // "channels:read" is in slackDefaultAllowed
     expect(policies["channels:read"]).toBe("allow");
   });
 
   it("should mark non-default permissions as deny", () => {
-    const policies = getDefaultFirewallPolicies("slack")!;
+    const policies = getDefaultFirewallPolicies("slack");
     // "admin" is a slack permission that is NOT in the default-allowed list
     expect(policies["admin"]).toBe("deny");
   });
 
   it("should cover every permission from the firewall config", () => {
-    const policies = getDefaultFirewallPolicies("slack")!;
+    const policies = getDefaultFirewallPolicies("slack");
     const config = getConnectorFirewall("slack");
     const allPermissions = new Set(
       config.apis.flatMap((api) => {
