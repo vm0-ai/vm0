@@ -10,6 +10,10 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../../db/schema/agent-compose";
+import { sandboxTelemetry } from "../../db/schema/sandbox-telemetry";
+import { usageDaily } from "../../db/schema/usage-daily";
+import { initServices } from "../../lib/init-services";
+import { uniqueId } from "../test-helpers";
 import { resolveStartRunCompose } from "../../lib/zero/zero-run-validation";
 import {
   authorizeCompose,
@@ -33,7 +37,6 @@ import { GET as getRunByIdRoute } from "../../../app/api/agent/runs/[id]/route";
 import { POST as checkpointWebhook } from "../../../app/api/webhooks/agent/checkpoints/route";
 import { POST as completeWebhook } from "../../../app/api/webhooks/agent/complete/route";
 import { createTestRequest } from "./core";
-import { uniqueId } from "../test-helpers";
 
 export type { CreateRunResult };
 
@@ -809,7 +812,6 @@ export async function findMostRecentRunForUser(
   userId: string,
   orgId: string,
 ): Promise<typeof agentRuns.$inferSelect | undefined> {
-  const { initServices } = await import("../../lib/init-services");
   initServices();
   const [row] = await globalThis.services.db
     .select()
@@ -825,11 +827,10 @@ export async function findMostRecentRunForUser(
 export async function insertTestConversation(params: {
   runId: string;
 }): Promise<void> {
-  const { uniqueId: uid } = await import("../test-helpers");
   await globalThis.services.db.insert(conversations).values({
     runId: params.runId,
     cliAgentType: "claude-code",
-    cliAgentSessionId: uid("session"),
+    cliAgentSessionId: uniqueId("session"),
   });
 }
 
@@ -852,8 +853,6 @@ export async function enqueueTestRun(params: {
 export async function insertTestSandboxTelemetry(params: {
   runId: string;
 }): Promise<{ id: string }> {
-  const { sandboxTelemetry } =
-    await import("../../db/schema/sandbox-telemetry");
   const [record] = await globalThis.services.db
     .insert(sandboxTelemetry)
     .values({
@@ -871,8 +870,6 @@ export async function insertTestSandboxTelemetry(params: {
 export async function findTestSandboxTelemetry(
   runId: string,
 ): Promise<{ id: string } | undefined> {
-  const { sandboxTelemetry } =
-    await import("../../db/schema/sandbox-telemetry");
   const [row] = await globalThis.services.db
     .select({ id: sandboxTelemetry.id })
     .from(sandboxTelemetry)
@@ -889,7 +886,6 @@ export async function insertTestUsageDaily(params: {
   orgId: string;
   date: string;
 }): Promise<void> {
-  const { usageDaily } = await import("../../db/schema/usage-daily");
   await globalThis.services.db.insert(usageDaily).values({
     userId: params.userId,
     orgId: params.orgId,

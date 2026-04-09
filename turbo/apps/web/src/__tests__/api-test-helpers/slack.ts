@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { initServices } from "../../lib/init-services";
 import { slackOrgInstallations } from "../../db/schema/slack-org-installation";
@@ -318,7 +318,6 @@ export async function countSlackOrgPendingQuestions(
 export async function countSlackConnectionRows(
   vm0UserId: string,
 ): Promise<number> {
-  const { sql } = await import("drizzle-orm");
   const rows = await globalThis.services.db.execute(
     sql`SELECT COUNT(*)::int AS count FROM slack_org_connections WHERE vm0_user_id = ${vm0UserId}`,
   );

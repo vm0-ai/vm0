@@ -1,6 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { VOLUME_ORG_USER_ID, SYSTEM_ORG_ID } from "@vm0/core";
+import { initServices } from "../../lib/init-services";
 import { storages, storageVersions } from "../../db/schema/storage";
 import { storageVersionLineage } from "../../db/schema/storage-version-lineage";
 import { hashFileContent } from "../../lib/infra/storage/content-hash";
@@ -349,7 +350,6 @@ export async function findTestSystemStorageByName(name: string) {
  * Used to verify lineage tracking in commit webhook tests.
  */
 export async function getStorageVersionLineage(versionId: string) {
-  const { initServices } = await import("../../lib/init-services");
   initServices();
   return globalThis.services.db
     .select()

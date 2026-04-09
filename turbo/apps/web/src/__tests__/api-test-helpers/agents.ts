@@ -5,6 +5,7 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "../../db/schema/agent-compose";
+import { agentRuns } from "../../db/schema/agent-run";
 import { zeroAgents } from "../../db/schema/zero-agent";
 import { agentSessions } from "../../db/schema/agent-session";
 import {
@@ -342,7 +343,7 @@ export async function createTestSessionWithConversation(
   const versionId = await createTestComposeVersion(agentComposeId, userId);
   // Create run record
   const [run] = await globalThis.services.db
-    .insert((await import("../../db/schema/agent-run")).agentRuns)
+    .insert(agentRuns)
     .values({
       userId,
       orgId: compose.orgId,
@@ -351,7 +352,7 @@ export async function createTestSessionWithConversation(
       prompt: "test prompt",
     })
     .returning({
-      id: (await import("../../db/schema/agent-run")).agentRuns.id,
+      id: agentRuns.id,
     });
   // Create conversation
   const [conversation] = await globalThis.services.db

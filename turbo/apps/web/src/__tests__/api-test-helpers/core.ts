@@ -1,4 +1,5 @@
 import { NextRequest } from "next/server";
+import { auth } from "@clerk/nextjs/server";
 import type { AgentComposeYaml } from "../../lib/infra/agent-compose/types";
 import { generateSandboxToken } from "../../lib/auth/sandbox-token";
 import { createSingleFileTar } from "../../lib/infra/tar";
@@ -108,9 +109,7 @@ export async function getTestAuthContext(): Promise<{
   userId: string;
   orgId: string;
 }> {
-  const { userId } = await import("@clerk/nextjs/server").then((m) => {
-    return m.auth();
-  });
+  const { userId } = await auth();
   if (!userId) throw new Error("Mock Clerk userId is null");
   return { userId, orgId: `org_mock_${userId}` };
 }

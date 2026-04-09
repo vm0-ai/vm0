@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildIntegrationContext, buildUserInfo } from "../integration-context";
+import { buildIntegrationContext } from "../integration-context";
 
 describe("buildIntegrationContext", () => {
   it("should include platform name", () => {
@@ -71,77 +71,5 @@ describe("buildIntegrationContext", () => {
     expect(result).toContain("You are currently running inside: Schedule");
     expect(result).not.toContain("Schedule description");
     expect(result).not.toContain("Trigger type");
-  });
-});
-
-describe("buildUserInfo", () => {
-  it("should include all base fields", () => {
-    const result = buildUserInfo({
-      name: "Alice",
-      email: "alice@example.com",
-      timezone: "Asia/Shanghai",
-    });
-
-    expect(result).toContain("# Current User Info");
-    expect(result).toContain("Name: Alice");
-    expect(result).toContain("Email: alice@example.com");
-    expect(result).toContain("Timezone: Asia/Shanghai");
-  });
-
-  it("should include slack-specific fields", () => {
-    const result = buildUserInfo({
-      name: "Alice",
-      email: "alice@example.com",
-      timezone: "America/New_York",
-      slackDisplayName: "alice.slack",
-      slackUserId: "U12345",
-    });
-
-    expect(result).toContain("Slack display name: alice.slack");
-    expect(result).toContain("Slack user ID: U12345");
-  });
-
-  it("should omit undefined fields", () => {
-    const result = buildUserInfo({
-      email: "bob@example.com",
-      timezone: "UTC",
-    });
-
-    expect(result).toContain("Email: bob@example.com");
-    expect(result).toContain("Timezone: UTC");
-    expect(result).not.toContain("Name:");
-    expect(result).not.toContain("Slack");
-  });
-
-  it("should produce header with no fields when all options are undefined", () => {
-    const result = buildUserInfo({});
-
-    expect(result).toBe("# Current User Info\n");
-  });
-
-  it("should handle all fields simultaneously", () => {
-    const result = buildUserInfo({
-      name: "Charlie",
-      email: "charlie@test.com",
-      timezone: "Europe/London",
-      slackDisplayName: "charlie.slack",
-      slackUserId: "U99999",
-    });
-
-    expect(result).toContain("Name: Charlie");
-    expect(result).toContain("Email: charlie@test.com");
-    expect(result).toContain("Timezone: Europe/London");
-    expect(result).toContain("Slack display name: charlie.slack");
-    expect(result).toContain("Slack user ID: U99999");
-    // Verify order: name, email, timezone, slack fields
-    const nameIdx = result.indexOf("Name:");
-    const emailIdx = result.indexOf("Email:");
-    const tzIdx = result.indexOf("Timezone:");
-    const slackNameIdx = result.indexOf("Slack display name:");
-    const slackIdIdx = result.indexOf("Slack user ID:");
-    expect(nameIdx).toBeLessThan(emailIdx);
-    expect(emailIdx).toBeLessThan(tzIdx);
-    expect(tzIdx).toBeLessThan(slackNameIdx);
-    expect(slackNameIdx).toBeLessThan(slackIdIdx);
   });
 });

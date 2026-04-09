@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import type { User } from "@clerk/nextjs/server";
 import { clerkClient } from "@clerk/nextjs/server";
 import { testContext, uniqueId } from "../../../__tests__/test-helpers";
 import { mockClerk } from "../../../__tests__/clerk-mock";
@@ -7,6 +8,20 @@ import {
   insertUserCacheEntry,
 } from "../../../__tests__/api-test-helpers";
 import { getCachedUser, getCachedUserIdByEmail } from "../user-cache-service";
+
+/**
+ * Build a minimal partial Clerk User object containing only the fields read by
+ * user-cache-service. Casting to User is safe because the service only accesses
+ * emailAddresses, primaryEmailAddressId, firstName, and lastName.
+ */
+function buildClerkUserMock(fields: {
+  emailAddresses: Array<{ id: string; emailAddress: string }>;
+  primaryEmailAddressId: string | null;
+  firstName?: string | null;
+  lastName?: string | null;
+}): User {
+  return fields as unknown as User;
+}
 
 const context = testContext();
 
@@ -93,12 +108,14 @@ describe("getCachedUser", () => {
 
     // Override getUser to include firstName and lastName
     const client = await clerkClient();
-    vi.mocked(client.users.getUser).mockResolvedValueOnce({
-      emailAddresses: [{ id: "email_1", emailAddress: email }],
-      primaryEmailAddressId: "email_1",
-      firstName: "Alice",
-      lastName: "Zhang",
-    } as unknown as Awaited<ReturnType<typeof client.users.getUser>>);
+    vi.mocked(client.users.getUser).mockResolvedValueOnce(
+      buildClerkUserMock({
+        emailAddresses: [{ id: "email_1", emailAddress: email }],
+        primaryEmailAddressId: "email_1",
+        firstName: "Alice",
+        lastName: "Zhang",
+      }),
+    );
 
     const result = await getCachedUser(userId);
 
@@ -136,10 +153,12 @@ describe("getCachedUser", () => {
 
     // Override getUser to return no primary email
     const client = await clerkClient();
-    vi.mocked(client.users.getUser).mockResolvedValueOnce({
-      emailAddresses: [],
-      primaryEmailAddressId: null,
-    } as unknown as Awaited<ReturnType<typeof client.users.getUser>>);
+    vi.mocked(client.users.getUser).mockResolvedValueOnce(
+      buildClerkUserMock({
+        emailAddresses: [],
+        primaryEmailAddressId: null,
+      }),
+    );
 
     await expect(getCachedUser(userId)).rejects.toThrow(
       `No primary email found for user ${userId}`,

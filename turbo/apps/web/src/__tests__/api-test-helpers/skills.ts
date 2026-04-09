@@ -5,6 +5,7 @@ import { initServices } from "../../lib/init-services";
 import { skills } from "../../db/schema/skill";
 import { zeroAgents } from "../../db/schema/zero-agent";
 import { storages, storageVersions } from "../../db/schema/storage";
+import { buildSeedSkillValues } from "../../lib/zero/seed-skills";
 
 /**
  * Seed a skill record in the skills table for testing.
@@ -36,7 +37,6 @@ export async function seedTestSkill(
  * Used to restore skills + storages removed by orphan-deletion in tests.
  */
 export async function reseedSkills(names: readonly string[]): Promise<void> {
-  const { buildSeedSkillValues } = await import("../../lib/zero/seed-skills");
   initServices();
   const db = globalThis.services.db;
 
