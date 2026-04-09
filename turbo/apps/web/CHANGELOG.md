@@ -1,5 +1,25 @@
 # Changelog
 
+## [12.209.0](https://github.com/vm0-ai/vm0/compare/web-v12.208.0...web-v12.209.0) (2026-04-09)
+
+
+### Features
+
+* **zero:** inject base user info context and schedule integration for all runs ([#8630](https://github.com/vm0-ai/vm0/issues/8630)) ([2a1fe3b](https://github.com/vm0-ai/vm0/commit/2a1fe3b7cbefb31b19a3650e661c281c03694036))
+
+
+### Bug Fixes
+
+* **slack:** fix queued run ephemeral visibility and missing callback registration ([#8641](https://github.com/vm0-ai/vm0/issues/8641)) ([cd9e098](https://github.com/vm0-ai/vm0/commit/cd9e09822f096707b464534e84349aeee6832fd1))
+* **voice-chat:** use valid realtime api voice parameter ([#8644](https://github.com/vm0-ai/vm0/issues/8644)) ([cd722ea](https://github.com/vm0-ai/vm0/commit/cd722eaad2b021fba4e4e8d1621b8ba452217090))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.165.0
+
 ## [12.208.0](https://github.com/vm0-ai/vm0/compare/web-v12.207.0...web-v12.208.0) (2026-04-09)
 
 

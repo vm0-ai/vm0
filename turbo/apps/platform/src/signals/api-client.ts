@@ -4,7 +4,7 @@
  * Replaces raw fetch$ usage with typed ts-rest clients that provide
  * compile-time type checking for request/response shapes.
  */
-import { command, computed, state } from "ccstate";
+import { computed } from "ccstate";
 import {
   initClient,
   tsRestFetchApi,
@@ -15,6 +15,7 @@ import {
 import { clerk$ } from "./auth.ts";
 import { apiBase$ } from "./fetch.ts";
 import { logger } from "./log.ts";
+import { IN_VITEST } from "../env.ts";
 
 const L = logger("ApiClient");
 
@@ -26,14 +27,6 @@ const L = logger("ApiClient");
 export type ZeroClientFactory = <T extends AppRouter>(
   contract: T,
 ) => InitClientReturn<T, InitClientArgs>;
-
-const internalValidateResponse$ = state(false);
-
-export const setValidateResponseForTest$ = command(
-  ({ set }, validate: boolean) => {
-    set(internalValidateResponse$, validate);
-  },
-);
 
 /**
  * Factory signal for creating typed ts-rest clients.
@@ -55,12 +48,12 @@ export const setValidateResponseForTest$ = command(
 export const zeroClient$ = computed((get) => {
   return <T extends AppRouter>(contract: T) => {
     const apiBase = get(apiBase$);
-    const validateResponse = get(internalValidateResponse$);
 
     return initClient(contract, {
       baseUrl: apiBase,
       jsonQuery: false,
-      validateResponse,
+      // Validation is handled below so errors include the actual response body.
+      validateResponse: false,
       api: async (args: Parameters<typeof tsRestFetchApi>[0]) => {
         const clerk = await get(clerk$);
         const token = await clerk.session?.getToken();
@@ -82,6 +75,28 @@ export const zeroClient$ = computed((get) => {
               }
               L.error("Sign-in redirect failed", error);
             });
+          }
+        }
+
+        if (IN_VITEST) {
+          const schema = args.route.responses[response.status];
+          if (
+            schema &&
+            typeof schema === "object" &&
+            "safeParse" in schema &&
+            typeof schema.safeParse === "function"
+          ) {
+            const parsed = schema.safeParse(response.body) as
+              | { success: true; data: unknown }
+              | { success: false; error: { issues: unknown[] } };
+            if (!parsed.success) {
+              throw new Error(
+                `Response validation failed (status ${response.status}).\n` +
+                  `Body: ${JSON.stringify(response.body, null, 2)}\n` +
+                  `Issues: ${JSON.stringify(parsed.error.issues, null, 2)}`,
+              );
+            }
+            return { ...response, body: parsed.data };
           }
         }
 

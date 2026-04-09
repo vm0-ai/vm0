@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.16.0](https://github.com/vm0-ai/vm0/compare/guest-init-v0.15.2...guest-init-v0.16.0) (2026-04-09)
+
+
+### Features
+
+* **phone:** add webhook signature verification for call_ended events ([#8624](https://github.com/vm0-ai/vm0/issues/8624)) ([528e8a4](https://github.com/vm0-ai/vm0/commit/528e8a45c50588c98eb49b996f7846af56437842))
+
 ## [0.15.2](https://github.com/vm0-ai/vm0/compare/guest-init-v0.15.1...guest-init-v0.15.2) (2026-04-04)
 
 

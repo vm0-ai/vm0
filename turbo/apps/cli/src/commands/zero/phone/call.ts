@@ -15,28 +15,16 @@ export const callCommand = new Command()
     "<to-number>",
     "Phone number to call (E.164 format, e.g. +14155551234)",
   )
-  .option("--greeting <message>", "Initial greeting when the recipient answers")
   .option(
-    "--greeting-file <path>",
-    "Read greeting from a file (use instead of --greeting)",
-  )
-  .option(
-    "--system-prompt <prompt>",
-    "Override the agent's system prompt for this call",
-  )
-  .option(
-    "--prompt-file <path>",
-    "Read system prompt from a file (use instead of --system-prompt)",
+    "--system-prompt-file <path>",
+    "File that defines the agent's persona and task context for this call",
   )
   .action(
     withErrorHandler(
       async (
         toNumber: string,
         options: {
-          greeting?: string;
-          greetingFile?: string;
-          systemPrompt?: string;
-          promptFile?: string;
+          systemPromptFile?: string;
         },
       ) => {
         // Validate E.164 format
@@ -49,44 +37,14 @@ export const callCommand = new Command()
           process.exit(1);
         }
 
-        // Validate mutual exclusivity
-        if (options.systemPrompt && options.promptFile) {
-          console.error(
-            chalk.red("Cannot use both --system-prompt and --prompt-file"),
-          );
-          process.exit(1);
-        }
-
-        if (options.greeting && options.greetingFile) {
-          console.error(
-            chalk.red("Cannot use both --greeting and --greeting-file"),
-          );
-          process.exit(1);
-        }
-
-        // Resolve system prompt from file if provided
-        let systemPrompt = options.systemPrompt;
-        if (options.promptFile) {
+        let systemPrompt: string | undefined;
+        if (options.systemPromptFile) {
           try {
-            systemPrompt = fs.readFileSync(options.promptFile, "utf-8");
-          } catch (err) {
-            if (isErrnoException(err) && err.code === "ENOENT") {
-              console.error(chalk.red(`File not found: ${options.promptFile}`));
-              process.exit(1);
-            }
-            throw err;
-          }
-        }
-
-        // Resolve greeting from file if provided
-        let greeting = options.greeting;
-        if (options.greetingFile) {
-          try {
-            greeting = fs.readFileSync(options.greetingFile, "utf-8");
+            systemPrompt = fs.readFileSync(options.systemPromptFile, "utf-8");
           } catch (err) {
             if (isErrnoException(err) && err.code === "ENOENT") {
               console.error(
-                chalk.red(`File not found: ${options.greetingFile}`),
+                chalk.red(`File not found: ${options.systemPromptFile}`),
               );
               process.exit(1);
             }
@@ -96,7 +54,6 @@ export const callCommand = new Command()
 
         const result = await createPhoneCall({
           toNumber,
-          greeting,
           systemPrompt,
         });
 

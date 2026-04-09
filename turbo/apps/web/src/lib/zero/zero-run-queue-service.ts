@@ -478,6 +478,11 @@ export async function dispatchQueuedZeroRun(
       await validateComposeRequirements(composeContent);
     }
 
+    // Register callbacks early so they persist even if context building fails
+    if (params.callbacks && params.callbacks.length > 0) {
+      await registerCallbacks(runId, params.callbacks);
+    }
+
     // Generate sandbox token + build zero context
     const sandboxToken = await generateSandboxToken(params.userId, runId);
     const tokenTime = Date.now();

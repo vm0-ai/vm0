@@ -756,6 +756,12 @@ export {
   type ZeroDeveloperSupportContract,
 } from "./zero-developer-support";
 export {
+  zeroReportErrorContract,
+  reportErrorBodySchema,
+  reportErrorResponseSchema,
+  type ZeroReportErrorContract,
+} from "./zero-report-error";
+export {
   zeroComputerUseRegisterContract,
   zeroComputerUseUnregisterContract,
   zeroComputerUseHostContract,

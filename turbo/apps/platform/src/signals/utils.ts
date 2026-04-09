@@ -1,5 +1,6 @@
 import { command, state, type Command } from "ccstate";
 import type { CSSProperties } from "react";
+import { delay } from "signal-timers";
 import { IN_VITEST } from "../env.ts";
 import { logger } from "./log.ts";
 
@@ -130,6 +131,80 @@ export function throwIfNotAbort(e: unknown) {
 export function throwIfAbort(e: unknown) {
   if (isAbortError(e)) {
     throw e;
+  }
+}
+
+/**
+ * Parse JSON with a fallback value for untrusted input (e.g. localStorage).
+ * Re-throws abort errors; swallows parse errors and returns `fallback`.
+ */
+export function jsonParseOr<T>(value: string, fallback: T): T {
+  // eslint-disable-next-line no-restricted-syntax -- centralised JSON.parse guard for untrusted data
+  try {
+    return JSON.parse(value) as T;
+  } catch (error) {
+    throwIfAbort(error);
+    return fallback;
+  }
+}
+
+/**
+ * Best-effort wrapper: await `p` and swallow non-abort errors.
+ * Use for prefetch or fire-and-forget operations where failure is acceptable.
+ */
+export async function bestEffort(p: Promise<unknown>): Promise<void> {
+  // eslint-disable-next-line no-restricted-syntax -- centralised best-effort guard
+  try {
+    await p;
+  } catch (error) {
+    throwIfAbort(error);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Polling loop with fibonacci backoff
+// ---------------------------------------------------------------------------
+const FIB_DELAYS_MS = [
+  1000, 1000, 2000, 3000, 5000, 8000, 13_000, 21_000, 34_000, 55_000, 60_000,
+] as const;
+
+const MAX_LOOP_COUNT_IN_TEST = 1000;
+/**
+ * Run `loopBody` in a loop with `interval` between iterations.
+ * Transient (non-abort) errors trigger fibonacci backoff retries.
+ * Resolves when `loopBody` returns `true` (done) or rejects on abort.
+ */
+export async function setLoop(
+  loopBody: (signal: AbortSignal) => Promise<boolean> | boolean,
+  interval: number,
+  signal: AbortSignal,
+): Promise<void> {
+  let fibIndex = 0;
+  let loopCount = 0;
+  while (!signal.aborted) {
+    if (IN_VITEST && loopCount++ > MAX_LOOP_COUNT_IN_TEST) {
+      throw new Error("Max Loop Exceed");
+    }
+
+    // eslint-disable-next-line no-restricted-syntax -- polling loop requires try/catch for transient error retry with backoff
+    try {
+      const done = await loopBody(signal);
+      if (done) {
+        return;
+      }
+      fibIndex = 0;
+      await delay(IN_VITEST ? 0 : interval, { signal });
+    } catch (error) {
+      throwIfAbort(error);
+      const backoff =
+        FIB_DELAYS_MS[Math.min(fibIndex, FIB_DELAYS_MS.length - 1)] ?? 60_000;
+      L.warn(
+        `setLoop: transient error (attempt ${fibIndex + 1}), retrying in ${backoff}ms`,
+        error,
+      );
+      fibIndex++;
+      await delay(IN_VITEST ? 0 : backoff, { signal });
+    }
   }
 }
 

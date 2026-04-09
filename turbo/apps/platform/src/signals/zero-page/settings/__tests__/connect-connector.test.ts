@@ -76,13 +76,17 @@ describe("connectConnector$", () => {
 
     let pollCount = 0;
     const secondPollDeferred = createDeferredPromise<void>(context.signal);
+    let deferredResolved = false;
     server.use(
       http.get("*/api/zero/connectors", () => {
         pollCount++;
         if (pollCount <= 1) {
           return HttpResponse.json(makeEmptyConnectorResponse());
         }
-        secondPollDeferred.resolve();
+        if (!deferredResolved) {
+          deferredResolved = true;
+          secondPollDeferred.resolve();
+        }
         return HttpResponse.json(makeGithubConnectorResponse());
       }),
     );
