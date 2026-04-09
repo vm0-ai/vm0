@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.165.0](https://github.com/vm0-ai/vm0/compare/core-v8.164.0...core-v8.165.0) (2026-04-09)
+
+
+### Features
+
+* **zero:** inject base user info context and schedule integration for all runs ([#8630](https://github.com/vm0-ai/vm0/issues/8630)) ([2a1fe3b](https://github.com/vm0-ai/vm0/commit/2a1fe3b7cbefb31b19a3650e661c281c03694036))
+
 ## [8.164.0](https://github.com/vm0-ai/vm0/compare/core-v8.163.0...core-v8.164.0) (2026-04-09)
 
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.206.0](https://github.com/vm0-ai/vm0/compare/app-v0.205.0...app-v0.206.0) (2026-04-09)
+
+
+### Features
+
+* **zero:** inject base user info context and schedule integration for all runs ([#8630](https://github.com/vm0-ai/vm0/issues/8630)) ([2a1fe3b](https://github.com/vm0-ai/vm0/commit/2a1fe3b7cbefb31b19a3650e661c281c03694036))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.165.0
+
 ## [0.205.0](https://github.com/vm0-ai/vm0/compare/app-v0.204.2...app-v0.205.0) (2026-04-09)
 
 

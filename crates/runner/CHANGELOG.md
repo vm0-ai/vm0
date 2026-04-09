@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.70.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.70.0...runner-rs-v0.70.1) (2026-04-09)
+
+
+### Bug Fixes
+
+* **firewalls:** skip __typename in graphql field coverage check ([#8642](https://github.com/vm0-ai/vm0/issues/8642)) ([306f85b](https://github.com/vm0-ai/vm0/commit/306f85b60edec8b2dec1823c67f85b4554956369))
+* **runner:** clean up residual transient systemd units before service start ([#8645](https://github.com/vm0-ai/vm0/issues/8645)) ([a14b1db](https://github.com/vm0-ai/vm0/commit/a14b1db39b56657b0108475f6da95827345f0152)), closes [#8640](https://github.com/vm0-ai/vm0/issues/8640)
+
 ## [0.70.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.69.0...runner-rs-v0.70.0) (2026-04-09)
 
 
