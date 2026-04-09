@@ -264,7 +264,14 @@ function PricingPage({
   };
 
   return (
-    <div className="flex flex-col gap-5">
+    <div
+      className="flex flex-col gap-5 outline-none"
+      role="group"
+      tabIndex={-1}
+      ref={(el) => {
+        el?.focus();
+      }}
+    >
       <div className="flex items-center gap-3">
         <TooltipProvider delayDuration={200}>
           <Tooltip>
