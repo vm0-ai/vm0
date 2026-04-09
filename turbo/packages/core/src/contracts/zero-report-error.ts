@@ -6,6 +6,8 @@ const c = initContract();
 
 const reportErrorBodySchema = z.object({
   runId: z.string().min(1, "Run ID is required"),
+  title: z.string().min(1, "Title is required"),
+  description: z.string().optional(),
 });
 
 const reportErrorResponseSchema = z.object({

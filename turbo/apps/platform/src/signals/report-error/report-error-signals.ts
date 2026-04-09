@@ -34,6 +34,29 @@ export const reportErrorRun$ = computed(async (get) => {
 });
 
 // ---------------------------------------------------------------------------
+// User input state
+// ---------------------------------------------------------------------------
+
+const internalReportTitle$ = state("");
+const internalReportDescription$ = state("");
+
+export const reportTitle$ = computed((get) => {
+  return get(internalReportTitle$);
+});
+
+export const reportDescription$ = computed((get) => {
+  return get(internalReportDescription$);
+});
+
+export const setReportTitle$ = command(({ set }, title: string) => {
+  set(internalReportTitle$, title);
+});
+
+export const setReportDescription$ = command(({ set }, description: string) => {
+  set(internalReportDescription$, description);
+});
+
+// ---------------------------------------------------------------------------
 // Submission state
 // ---------------------------------------------------------------------------
 
@@ -62,11 +85,19 @@ export const submitErrorReport$ = command(
       return;
     }
 
+    const title = get(internalReportTitle$);
+    const description = get(internalReportDescription$);
+    if (!title) {
+      return;
+    }
+
     set(internalReportState$, "loading");
     set(internalReportErrorMessage$, null);
 
     const client = get(zeroClient$)(zeroReportErrorContract);
-    const result = await client.submit({ body: { runId } });
+    const result = await client.submit({
+      body: { runId, title, description: description || undefined },
+    });
 
     if (result.status === 200) {
       set(internalReportState$, "success");
@@ -86,4 +117,6 @@ export const resetReportState$ = command(({ set }) => {
   set(internalReportState$, "idle");
   set(internalReportReference$, null);
   set(internalReportErrorMessage$, null);
+  set(internalReportTitle$, "");
+  set(internalReportDescription$, "");
 });

@@ -290,8 +290,9 @@ describe("POST /api/zero/developer-support", () => {
     );
     expect(step2.status).toBe(200);
 
-    // Verify Axiom was queried
-    expect(context.mocks.axiom.queryAxiom).toHaveBeenCalledTimes(1);
+    // Verify Axiom was queried for chat history events (first call)
+    // Additional calls come from assembleActivityLog (agent telemetry + network logs)
+    expect(context.mocks.axiom.queryAxiom).toHaveBeenCalled();
     const aplQuery = context.mocks.axiom.queryAxiom.mock.calls[0]![0] as string;
     expect(aplQuery).toContain("agent-run-events");
     expect(aplQuery).toContain("limit 2000");

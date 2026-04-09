@@ -1,5 +1,5 @@
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
-import { Button } from "@vm0/ui";
+import { Button, Input } from "@vm0/ui";
 import {
   IconAlertTriangle,
   IconCheck,
@@ -12,6 +12,10 @@ import {
   reportState$,
   reportReference$,
   reportErrorMessage$,
+  reportTitle$,
+  reportDescription$,
+  setReportTitle$,
+  setReportDescription$,
   submitErrorReport$,
 } from "../../signals/report-error/report-error-signals.ts";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -80,6 +84,13 @@ function ConfirmCard({
   loading: boolean;
   onSubmit: () => void;
 }) {
+  const title = useGet(reportTitle$);
+  const description = useGet(reportDescription$);
+  const setTitle = useSet(setReportTitle$);
+  const setDescription = useSet(setReportDescription$);
+
+  const canSubmit = title.trim().length > 0;
+
   return (
     <div className="fixed inset-0 z-10 flex items-center justify-center pointer-events-none">
       <div className="pointer-events-auto flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-6 rounded-[20px] border border-border bg-background px-8 py-10">
@@ -93,6 +104,45 @@ function ConfirmCard({
             Send diagnostic information for this failed run to the developer
             team. We will investigate and follow up shortly.
           </p>
+        </div>
+
+        <div className="w-full flex flex-col gap-3">
+          <div className="flex flex-col gap-1.5">
+            <label
+              htmlFor="report-title"
+              className="text-xs font-medium text-muted-foreground"
+            >
+              Title
+            </label>
+            <Input
+              id="report-title"
+              placeholder="Brief summary of the issue"
+              value={title}
+              onChange={(e) => {
+                setTitle(e.target.value);
+              }}
+              disabled={loading}
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label
+              htmlFor="report-description"
+              className="text-xs font-medium text-muted-foreground"
+            >
+              Description
+            </label>
+            <textarea
+              id="report-description"
+              className="flex w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input px-3 py-2 text-sm text-foreground placeholder:text-sm placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10 disabled:cursor-not-allowed disabled:opacity-50 resize-none"
+              rows={3}
+              placeholder="What happened? What did you expect?"
+              value={description}
+              onChange={(e) => {
+                setDescription(e.target.value);
+              }}
+              disabled={loading}
+            />
+          </div>
         </div>
 
         <div className="w-full rounded-lg border border-border bg-muted/40 px-4 py-3">
@@ -109,7 +159,11 @@ function ConfirmCard({
           </ul>
         </div>
 
-        <Button className="w-full" onClick={onSubmit} disabled={loading}>
+        <Button
+          className="w-full"
+          onClick={onSubmit}
+          disabled={loading || !canSubmit}
+        >
           {loading ? (
             <IconLoader2 size={16} className="animate-spin mr-2" />
           ) : null}
