@@ -146,6 +146,66 @@ describe("zero jobs page - create agent dialog", () => {
   });
 });
 
+describe("zero jobs page - avatar display", () => {
+  it("renders avatar for agents in the grid (AGENT-D-012)", async () => {
+    server.use(
+      http.get("*/api/zero/team", () => {
+        return HttpResponse.json([
+          DEFAULT_AGENT,
+          {
+            id: "avatar-agent-id",
+            displayName: "Avatar Agent",
+            description: "Has a custom SVG avatar",
+            sound: null,
+            avatarUrl: "svg:r2s1h4c3f2m",
+            headVersionId: "version_av",
+            updatedAt: "2024-01-02T00:00:00Z",
+          },
+        ]);
+      }),
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
+    );
+    await setupPage({ context, path: "/agents" });
+
+    // Agent with SVG avatar should render an avatar image
+    await waitFor(() => {
+      const avatar = screen.getByRole("img", { name: "Avatar Agent" });
+      expect(avatar).toBeInTheDocument();
+    });
+  });
+
+  it("renders fallback avatar when avatarUrl is null (AGENT-D-013)", async () => {
+    server.use(
+      http.get("*/api/zero/team", () => {
+        return HttpResponse.json([
+          DEFAULT_AGENT,
+          {
+            id: "no-avatar-agent-id",
+            displayName: "No Avatar Agent",
+            description: null,
+            sound: null,
+            avatarUrl: null,
+            headVersionId: "version_no",
+            updatedAt: "2024-01-02T00:00:00Z",
+          },
+        ]);
+      }),
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
+    );
+    await setupPage({ context, path: "/agents" });
+
+    // Even without an avatar URL, a fallback SVG avatar should render
+    await waitFor(() => {
+      const avatar = screen.getByRole("img", { name: "No Avatar Agent" });
+      expect(avatar).toBeInTheDocument();
+    });
+  });
+});
+
 describe("zero jobs page - navigation", () => {
   it("navigates to agent detail when an agent card is clicked (AGENT-D-009)", async () => {
     const user = userEvent.setup();

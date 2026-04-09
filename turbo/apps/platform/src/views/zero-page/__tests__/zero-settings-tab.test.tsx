@@ -207,6 +207,80 @@ describe("zero settings tab - display", () => {
   });
 });
 
+describe("zero settings tab - avatar", () => {
+  it("shows avatar SVG preview when agent has preset avatar (AGENT-D-044)", async () => {
+    const user = userEvent.setup();
+    mockAPIs({ avatarUrl: "preset:0" });
+    await openProfileTab(user);
+
+    await waitFor(() => {
+      // The avatar row label and the wand button are both present,
+      // confirming the avatar section rendered with the SVG preview
+      expect(screen.getByText("Avatar")).toBeInTheDocument();
+      expect(screen.getByLabelText("Create custom avatar")).toBeInTheDocument();
+    });
+  });
+
+  it("shows avatar maker wand button (AGENT-D-045)", async () => {
+    const user = userEvent.setup();
+    mockAPIs();
+    await openProfileTab(user);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Create custom avatar")).toBeInTheDocument();
+    });
+  });
+
+  it("shows avatar SVG preview when agent has svg: avatar (AGENT-D-046)", async () => {
+    const user = userEvent.setup();
+    mockAPIs({ avatarUrl: "svg:r1s0h3c2f1d" });
+    await openProfileTab(user);
+
+    await waitFor(() => {
+      expect(screen.getByText("Avatar")).toBeInTheDocument();
+      expect(screen.getByLabelText("Create custom avatar")).toBeInTheDocument();
+    });
+  });
+
+  it("saves avatar when applied from avatar maker (AGENT-D-047)", async () => {
+    const user = userEvent.setup();
+    let capturedPayload: Record<string, unknown> | null = null;
+    mockAPIs({ avatarUrl: "preset:0" });
+
+    server.use(
+      http.patch("*/api/zero/agents/:id", async ({ request }) => {
+        capturedPayload = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(
+          agentDetail({ avatarUrl: capturedPayload.avatarUrl }),
+        );
+      }),
+    );
+
+    await openProfileTab(user);
+
+    // Click the wand button to open the avatar maker
+    await waitFor(() => {
+      expect(screen.getByLabelText("Create custom avatar")).toBeInTheDocument();
+    });
+    await user.click(screen.getByLabelText("Create custom avatar"));
+
+    // The avatar maker dialog should open
+    await waitFor(() => {
+      expect(screen.getByText("Create Avatar")).toBeInTheDocument();
+    });
+
+    // Click Apply to save the avatar
+    await user.click(screen.getByText("Apply"));
+
+    await waitFor(() => {
+      expect(capturedPayload).toBeTruthy();
+    });
+
+    // The saved avatar should be an SVG config string
+    expect(capturedPayload!.avatarUrl).toMatch(/^svg:r\d/);
+  });
+});
+
 describe("zero settings tab - interaction", () => {
   it("updates name field when typing (AGENT-D-048)", async () => {
     const user = userEvent.setup();

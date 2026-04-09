@@ -106,6 +106,51 @@ describe("agent avatar shows fallback when no image (SIDEBAR-D-043)", () => {
   });
 });
 
+describe("agent avatar renders SVG for preset value (SIDEBAR-D-045)", () => {
+  it("renders SVG avatar layers when avatarUrl is preset:2", async () => {
+    mockBaseAPIs([
+      { id: DEFAULT_AGENT_ID, displayName: null, avatarUrl: null },
+      {
+        id: PINNED_AGENT_ID,
+        displayName: "Preset Agent",
+        avatarUrl: "preset:2",
+      },
+    ]);
+
+    await setupPage({ context, path: "/" });
+
+    await waitFor(() => {
+      const sidebar = getSidebar();
+      // preset:2 renders as SVG layers via AvatarSvgPreview (role="img" with aria-label)
+      const avatar = within(sidebar).getByRole("img", {
+        name: "Preset Agent",
+      });
+      expect(avatar).toBeInTheDocument();
+    });
+  });
+});
+
+describe("agent avatar renders SVG for custom svg: value (SIDEBAR-D-046)", () => {
+  it("renders SVG avatar layers when avatarUrl is svg:r1s0h3c2f1d", async () => {
+    mockBaseAPIs([
+      { id: DEFAULT_AGENT_ID, displayName: null, avatarUrl: null },
+      {
+        id: PINNED_AGENT_ID,
+        displayName: "SVG Agent",
+        avatarUrl: "svg:r1s0h3c2f1d",
+      },
+    ]);
+
+    await setupPage({ context, path: "/" });
+
+    await waitFor(() => {
+      const sidebar = getSidebar();
+      const avatar = within(sidebar).getByRole("img", { name: "SVG Agent" });
+      expect(avatar).toBeInTheDocument();
+    });
+  });
+});
+
 describe("avatar loading state shows no image initially (SIDEBAR-D-044)", () => {
   it("shows no avatar image until the agent data resolves", async () => {
     const deferred = createDeferredPromise<void>(context.signal);
