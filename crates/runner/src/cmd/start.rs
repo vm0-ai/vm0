@@ -7,7 +7,7 @@ use clap::Args;
 use sandbox::{RuntimeProvider, Sandbox, SandboxFactory, SandboxRuntime};
 use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 
 use crate::config::{self, ProfileConfig};
@@ -570,7 +570,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                     send_heartbeat(&hb_ctx, current_mode).await;
                 }
                 _ = park_notify.notified() => {
-                    info!("park triggered immediate heartbeat");
+                    info!(source = "budget_exhausted", "park triggered immediate heartbeat");
                     send_heartbeat(&hb_ctx, current_mode).await;
                 }
             }
@@ -721,7 +721,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             // Immediate heartbeat after a VM is parked — eliminates the
             // up-to-10s blind spot for session affinity routing.
             _ = park_notify.notified() => {
-                info!("park triggered immediate heartbeat");
+                info!(source = "main", "park triggered immediate heartbeat");
                 send_heartbeat(&hb_ctx, current_mode).await;
             }
         }
@@ -1143,9 +1143,10 @@ async fn send_heartbeat(hb: &HeartbeatContext<'_>, mode: RunnerMode) {
     info!(
         mode = ?mode,
         running = state.running_count,
-        sessions = ?state.held_sessions,
+        sessions = state.held_sessions.len(),
         "heartbeat"
     );
+    debug!(held_sessions = ?state.held_sessions);
     hb.provider
         .set_held_sessions(state.held_sessions.clone())
         .await;
