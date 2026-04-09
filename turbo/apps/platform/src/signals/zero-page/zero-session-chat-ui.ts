@@ -1,7 +1,5 @@
 import { state, computed, command } from "ccstate";
 import { writeToClipboard } from "./clipboard.ts";
-import { delay } from "signal-timers";
-import { IN_VITEST } from "../../env.ts";
 
 // ---------------------------------------------------------------------------
 // Collapsible timeline expanded state
@@ -44,7 +42,8 @@ export const copyMessageContent$ = command(
       return;
     }
     set(copiedMessageId$, messageId);
-    await delay(IN_VITEST ? 0 : 2000, { signal });
-    set(copiedMessageId$, null);
+    window.setTimeout(() => {
+      set(copiedMessageId$, null);
+    }, 2000);
   },
 );
