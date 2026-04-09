@@ -26,14 +26,12 @@ jobs:
       releases_created: ${{ steps.release.outputs.releases_created }}
       cli_release_created: ${{ steps.release.outputs['turbo/apps/cli--release_created'] }}
       web_release_created: ${{ steps.release.outputs['turbo/apps/web--release_created'] }}
-      docs_release_created: ${{ steps.release.outputs['turbo/apps/docs--release_created'] }}
       app_release_created: ${{ steps.release.outputs['turbo/apps/platform--release_created'] }}
       runner_rs_release_created: ${{ steps.release.outputs['crates/runner--release_created'] }}
       runner_rs_version: ${{ steps.release.outputs['crates/runner--version'] }}
       web_version: ${{ steps.release.outputs['turbo/apps/web--version'] }}
       app_version: ${{ steps.release.outputs['turbo/apps/platform--version'] }}
       cli_version: ${{ steps.release.outputs['turbo/apps/cli--version'] }}
-      docs_version: ${{ steps.release.outputs['turbo/apps/docs--version'] }}
     steps:
       - uses: vm0-ai/release-please-action@vm0
         id: release
@@ -395,96 +393,6 @@ jobs:
                 text:
                   type: mrkdwn
                   text: "*Web App* ❌ Deploy failed\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
-
-  # Deploy docs app to production
-  deploy-docs-production:
-    needs: [release-please, migrate-production]
-    if: ${{ needs.release-please.outputs.docs_release_created == 'true' }}
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260320
-    permissions:
-      contents: read
-      deployments: write
-    environment: production
-    steps:
-      - uses: actions/checkout@v6
-      - uses: ./.github/actions/toolchain-init
-
-      - name: Notify Slack - Starting
-        id: slack-start
-        if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
-        uses: slackapi/slack-github-action@v3.0.1
-        with:
-          method: chat.postMessage
-          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
-          payload: |
-            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            text: "*Docs* deploying to production..."
-            blocks:
-              - type: section
-                text:
-                  type: mrkdwn
-                  text: "*Docs* deploying to production...\n📦 Version: `${{ needs.release-please.outputs.docs_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/docs-v${{ needs.release-please.outputs.docs_version }}|View Release>"
-
-      - name: Record start time
-        id: timer
-        run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
-
-      - name: Deploy Docs to Vercel Production
-        id: deploy
-        uses: ./.github/actions/vercel-deploy
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
-          vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_DOCS }}
-          environment: production
-          deployment-env: docs
-          environment-variables: |
-            NEXT_PUBLIC_PLAUSIBLE_SCRIPT_URL=${{ vars.PLAUSIBLE_SCRIPT_URL_PROD }}
-
-      - name: Calculate duration
-        id: duration
-        if: ${{ always() && steps.timer.outputs.start }}
-        run: |
-          elapsed=$(( $(date +%s) - ${{ steps.timer.outputs.start }} ))
-          h=$((elapsed / 3600)) m=$(( (elapsed % 3600) / 60 )) s=$((elapsed % 60))
-          if [ $h -gt 0 ]; then text="${h}h ${m}m ${s}s"
-          elif [ $m -gt 0 ]; then text="${m}m ${s}s"
-          else text="${s}s"; fi
-          echo "text=$text" >> "$GITHUB_OUTPUT"
-
-      - name: Notify Slack - Success
-        if: ${{ success() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v3.0.1
-        with:
-          method: chat.update
-          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
-          payload: |
-            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            ts: "${{ steps.slack-start.outputs.ts }}"
-            text: "*Docs* ✅ Deployed successfully"
-            blocks:
-              - type: section
-                text:
-                  type: mrkdwn
-                  text: "*Docs* ✅ Deployed successfully\n📦 Version: `${{ needs.release-please.outputs.docs_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/docs-v${{ needs.release-please.outputs.docs_version }}|View Release>"
-
-      - name: Notify Slack - Failure
-        if: ${{ failure() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v3.0.1
-        with:
-          method: chat.update
-          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
-          payload: |
-            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            ts: "${{ steps.slack-start.outputs.ts }}"
-            text: "*Docs* ❌ Deploy failed"
-            blocks:
-              - type: section
-                text:
-                  type: mrkdwn
-                  text: "*Docs* ❌ Deploy failed\n📦 Version: `${{ needs.release-please.outputs.docs_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/docs-v${{ needs.release-please.outputs.docs_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
   # Deploy app (Vite SPA) to production
   deploy-app-production:

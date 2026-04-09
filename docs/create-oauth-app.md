@@ -21,7 +21,7 @@ When integrating a new OAuth provider, create **two separate apps** per provider
 | Contact Email       | contact@vm0.ai         |
 | Support Email       | support@vm0.ai         |
 | Website             | https://www.vm0.ai     |
-| Documentation URL   | https://docs.vm0.ai    |
+| Documentation URL   | https://www.vm0.ai     |
 
 ### Product Description
 

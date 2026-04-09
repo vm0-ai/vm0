@@ -18,7 +18,7 @@
   <a href="https://trendshift.io/repositories/19748" target="_blank"><img src="https://trendshift.io/api/badge/repositories/19748" alt="vm0-ai%2Fvm0 | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 </h2>
 
-[Documentation](https://docs.vm0.ai) / [Website](https://www.vm0.ai) / [Discord](https://discord.gg/WMpAmHFfp6)
+[Website](https://www.vm0.ai) / [Discord](https://discord.gg/WMpAmHFfp6)
 
 `VM0` runs natural language-described workflows automatically on schedule in remote sandbox environments.
 
@@ -34,7 +34,7 @@
 - **Persistence**, continue chat, resume, fork, and version your workflow sessions
 - **Observability**, logs, metrics, and network visibility for every run
 
-## 🚀 [Quick Start](https://docs.vm0.ai/docs/quick-start)
+## 🚀 Quick Start
 
 From zero to workflow agent in 5 minutes
 
@@ -52,7 +52,7 @@ npm install -g @vm0/cli && vm0 init
 
 - **[Architecture Documentation](./docs/architecture.md)** - Comprehensive technical reference covering sandbox technologies (Firecracker microVMs), infrastructure components and network architecture
 
-For user-facing guides and tutorials, visit [docs.vm0.ai](https://docs.vm0.ai).
+For user-facing guides and tutorials, see the [architecture documentation](./docs/architecture.md).
 
 ## 📊 Coverage
 

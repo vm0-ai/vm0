@@ -25,7 +25,6 @@ When the `PREVIEW_DOMAIN` variable is configured, preview deployments get predic
 | Web      | `{job-ref}-www.{PREVIEW_DOMAIN}`      |
 | Platform | `{job-ref}-platform.{PREVIEW_DOMAIN}` |
 | Site     | `{job-ref}-site.{PREVIEW_DOMAIN}`     |
-| Docs     | `{job-ref}-docs.{PREVIEW_DOMAIN}`     |
 
 Where `{job-ref}` is `pr-{number}` for pull requests (e.g., `pr-123-www.vm6.ai`).
 
@@ -66,8 +65,6 @@ Configure these in your GitHub repository settings (Settings → Secrets and var
 - `VERCEL_TEAM_ID`: Your Vercel team/organization ID
   - Find in Vercel project settings → General → Team ID
 - `VERCEL_PROJECT_ID_WEB`: Your Vercel project ID for web app
-  - Find in Vercel project settings → General → Project ID
-- `VERCEL_PROJECT_ID_DOCS`: Your Vercel project ID for docs app
   - Find in Vercel project settings → General → Project ID
 - `NEON_PROJECT_ID`: Your Neon project ID (Optional but Recommended)
   - Find in Neon console → Project Settings → General

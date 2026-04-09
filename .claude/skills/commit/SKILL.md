@@ -101,13 +101,6 @@ cd turbo && pnpm install
 
 **Tip:** Want a refactor to trigger release? Use `fix: refactor ...`
 
-## Special: Documentation App
-
-For `turbo/apps/docs` changes, use `feat(docs):` or `fix(docs):` to trigger release:
-
-- `feat(docs): add integration guide` (triggers release)
-- `docs: add integration guide` (no release)
-
 ## Quick Examples
 
 | Wrong | Correct |
