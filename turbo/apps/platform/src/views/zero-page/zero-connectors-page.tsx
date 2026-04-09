@@ -178,6 +178,7 @@ function AvailableConnectorCard({
     <div
       role="button"
       tabIndex={0}
+      aria-label={`Connect ${connector.label}`}
       className="zero-card cursor-pointer overflow-hidden"
       onClick={onConnect}
       onKeyDown={(e) => {
