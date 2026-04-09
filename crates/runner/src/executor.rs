@@ -50,6 +50,9 @@ pub struct ExecuteOutcome {
     /// during create/start (sandbox was destroyed inline).
     pub sandbox: Option<Box<dyn Sandbox>>,
     pub source_ip: String,
+    /// CLI-generated session ID read from the guest after execution.
+    /// Used for first-run VM parking when `resume_session` is absent.
+    pub guest_session_id: Option<String>,
 }
 
 /// Execute a single job inside a **new** Firecracker VM.
@@ -87,6 +90,7 @@ pub async fn execute_job(
                 error: Some(e.to_string()),
                 sandbox: None,
                 source_ip: String::new(),
+                guest_session_id: None,
             }
         }
     };
@@ -212,11 +216,24 @@ async fn execute_new_sandbox(
         Err(e) => (1, Some(e.to_string())),
     };
 
+    // Read CLI-generated session ID for first-run parking.
+    // Only needed when resume_session is absent (first turn in a conversation).
+    let guest_session_id = if exit_code == 0 && context.session_id().is_none() {
+        let id = read_guest_session_id(sandbox.as_ref(), context.run_id).await;
+        if let Some(ref sid) = id {
+            info!(run_id = %context.run_id, session_id = %sid, "read guest session ID for parking");
+        }
+        id
+    } else {
+        None
+    };
+
     Ok(ExecuteOutcome {
         exit_code,
         error,
         sandbox: Some(sandbox),
         source_ip,
+        guest_session_id,
     })
 }
 
@@ -250,6 +267,7 @@ async fn execute_reused_sandbox(
             error: Some(e.to_string()),
             sandbox: Some(sandbox),
             source_ip: source_ip.to_string(),
+            guest_session_id: None,
         };
     }
     if let Err(e) = reseed_guest_entropy(sandbox.as_ref()).await {
@@ -260,6 +278,7 @@ async fn execute_reused_sandbox(
             error: Some(e.to_string()),
             sandbox: Some(sandbox),
             source_ip: source_ip.to_string(),
+            guest_session_id: None,
         };
     }
 
@@ -278,13 +297,20 @@ async fn execute_reused_sandbox(
     // Post-job cleanup (copy logs to host, unregister proxy, upload network logs)
     post_job_cleanup(sandbox.as_ref(), config, context, source_ip).await;
 
-    // Clean up guest log files from this turn — they've been copied to the host
-    // and would otherwise accumulate across turns on the reused VM.
-    clean_stale_guest_logs(sandbox.as_ref()).await;
-
     let (exit_code, error) = match result {
         Ok((code, err)) => (code, err),
         Err(e) => (1, Some(e.to_string())),
+    };
+
+    // Read CLI-generated session ID for first-run parking.
+    let guest_session_id = if exit_code == 0 && context.session_id().is_none() {
+        let id = read_guest_session_id(sandbox.as_ref(), context.run_id).await;
+        if let Some(ref sid) = id {
+            info!(run_id = %context.run_id, session_id = %sid, "read guest session ID for parking");
+        }
+        id
+    } else {
+        None
     };
 
     ExecuteOutcome {
@@ -292,6 +318,7 @@ async fn execute_reused_sandbox(
         error,
         sandbox: Some(sandbox),
         source_ip: source_ip.to_string(),
+        guest_session_id,
     }
 }
 
@@ -583,6 +610,34 @@ async fn read_guest_error_file(sandbox: &dyn Sandbox, run_id: Uuid) -> Option<St
     }
 }
 
+/// Read the CLI-generated session ID from the guest filesystem.
+///
+/// The guest-agent writes the session ID to `/tmp/vm0-session-{run_id}.txt`
+/// after the CLI emits its `system/init` event. On first runs (no
+/// `resume_session`), the runner uses this to park the VM for keep-alive.
+///
+/// NOTE: Path must match `crates/guest-agent/src/paths.rs` (`session_id_file()`).
+async fn read_guest_session_id(sandbox: &dyn Sandbox, run_id: Uuid) -> Option<String> {
+    // Mirror of guest-agent paths::session_id_file()
+    let path = format!("/tmp/vm0-session-{run_id}.txt");
+    let cmd = format!("cat {path} 2>/dev/null");
+    match sandbox
+        .exec(&ExecRequest {
+            cmd: &cmd,
+            timeout: Duration::from_secs(5),
+            env: &[],
+            sudo: false,
+        })
+        .await
+    {
+        Ok(result) if result.exit_code == 0 && !result.stdout.is_empty() => {
+            let id = String::from_utf8_lossy(&result.stdout).trim().to_string();
+            Some(id).filter(|s| !s.is_empty())
+        }
+        _ => None,
+    }
+}
+
 /// Returns true if dmesg output indicates an OOM kill.
 fn dmesg_indicates_oom(stdout: &str) -> bool {
     let lower = stdout.to_lowercase();
@@ -672,34 +727,11 @@ async fn drain_stdout_to_file(
 }
 
 /// Guest log file path prefixes. Each turn creates files named
-/// `{PREFIX}{run_id}{SUFFIX}` under `/tmp`. Used by both `copy_guest_logs`
-/// (to read) and `clean_stale_guest_logs` (to remove).
+/// `{PREFIX}{run_id}{SUFFIX}` under `/tmp`. Used by `copy_guest_logs`.
 const GUEST_SYSTEM_LOG_PREFIX: &str = "/tmp/vm0-system-";
 const GUEST_SYSTEM_LOG_SUFFIX: &str = ".log";
 const GUEST_METRICS_LOG_PREFIX: &str = "/tmp/vm0-metrics-";
 const GUEST_METRICS_LOG_SUFFIX: &str = ".jsonl";
-
-/// Remove stale guest log files from previous turns (best-effort).
-///
-/// On a reused VM, each turn leaves guest log files behind. These are
-/// already copied to the host by `post_job_cleanup`, so the guest copies
-/// are just waste.
-async fn clean_stale_guest_logs(sandbox: &dyn Sandbox) {
-    let cmd = format!(
-        "rm -f {GUEST_SYSTEM_LOG_PREFIX}*{GUEST_SYSTEM_LOG_SUFFIX} {GUEST_METRICS_LOG_PREFIX}*{GUEST_METRICS_LOG_SUFFIX}"
-    );
-    if let Err(e) = sandbox
-        .exec(&ExecRequest {
-            cmd: &cmd,
-            timeout: DEFAULT_EXEC_TIMEOUT,
-            env: &[],
-            sudo: false,
-        })
-        .await
-    {
-        warn!(error = %e, "failed to clean stale guest logs");
-    }
-}
 
 /// Copy guest log files to host (best-effort, post-job).
 ///
@@ -1943,32 +1975,6 @@ mod tests {
 
         assert!(!log_paths.system_log(ctx.run_id).exists());
         assert!(!log_paths.metrics_log(ctx.run_id).exists());
-    }
-
-    // -----------------------------------------------------------------------
-    // clean_stale_guest_logs tests
-    // -----------------------------------------------------------------------
-
-    #[tokio::test]
-    async fn clean_stale_guest_logs_succeeds() {
-        let sandbox = MockSandbox::new("test");
-        sandbox.push_exec_result(Ok(ExecResult {
-            exit_code: 0,
-            stdout: Vec::new(),
-            stderr: Vec::new(),
-        }));
-
-        clean_stale_guest_logs(&sandbox).await;
-        // No panic, exec result consumed — cleanup ran successfully.
-    }
-
-    #[tokio::test]
-    async fn clean_stale_guest_logs_tolerates_exec_failure() {
-        let sandbox = MockSandbox::new("test");
-        sandbox.push_exec_result(Err(SandboxError::ExecFailed("vsock down".into())));
-
-        // Should not panic
-        clean_stale_guest_logs(&sandbox).await;
     }
 
     // -----------------------------------------------------------------------

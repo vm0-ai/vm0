@@ -920,18 +920,30 @@ fn spawn_job(
             }
         });
 
-        let (exit_code, err, sandbox, source_ip) = match inner.await {
+        let (exit_code, err, sandbox, source_ip, guest_session_id) = match inner.await {
             Ok(outcome) => {
                 let err = if job_cancel.is_cancelled() {
                     Some("cancelled by user".to_string())
                 } else {
                     outcome.error
                 };
-                (outcome.exit_code, err, outcome.sandbox, outcome.source_ip)
+                (
+                    outcome.exit_code,
+                    err,
+                    outcome.sandbox,
+                    outcome.source_ip,
+                    outcome.guest_session_id,
+                )
             }
             Err(e) => {
                 error!(run_id = %run_id, error = %e, "executor task panicked");
-                (1, Some(format!("internal error: {e}")), None, String::new())
+                (
+                    1,
+                    Some(format!("internal error: {e}")),
+                    None,
+                    String::new(),
+                    None,
+                )
             }
         };
 
@@ -939,7 +951,9 @@ fn spawn_job(
         let parked = if let Some(sandbox) = sandbox {
             let parkable_session =
                 if exit_code == 0 && !job_cancel.is_cancelled() && mode == RunnerMode::Running {
-                    session_id.as_deref()
+                    // Prefer context session_id (from resume_session), fall back to
+                    // guest-reported session ID (first run — CLI generated it).
+                    session_id.as_deref().or(guest_session_id.as_deref())
                 } else {
                     None
                 };

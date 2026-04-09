@@ -184,10 +184,11 @@ pub struct ResumeSession {
 }
 
 impl ExecutionContext {
-    /// Extract the session ID for keep-alive VM reuse.
+    /// Extract the session ID from `resume_session` for keep-alive VM reuse.
     ///
-    /// Phase 1: only continued sessions (with `resume_session`) benefit.
-    /// Phase 2: a top-level `session_id` field will enable first-turn reuse.
+    /// Returns `Some` for continued sessions. For first runs this returns
+    /// `None`; the executor reads the CLI-generated session ID from the
+    /// guest filesystem post-execution (see `read_guest_session_id`).
     pub fn session_id(&self) -> Option<&str> {
         self.resume_session.as_ref().map(|r| r.session_id.as_str())
     }
