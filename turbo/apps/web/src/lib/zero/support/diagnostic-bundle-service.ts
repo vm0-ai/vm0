@@ -260,7 +260,7 @@ export async function submitDiagnosticBundle(
 
   await enqueueEmail({
     from: buildFromAddress("vm0"),
-    to: "contact@vm0.ai",
+    to: "support@vm0.ai",
     subject: `${params.emailSubjectPrefix} ${title}`,
     template: {
       template: "developer-support",
