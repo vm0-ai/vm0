@@ -35,8 +35,10 @@ export async function findBestRunner(
     );
 
   const candidates = runners.filter((r) => {
-    const freeSlots = r.maxConcurrent - r.runningCount;
-    return freeSlots > 0 && r.profiles.includes(profile);
+    // max_concurrent=0 means unlimited capacity on the runner side
+    const hasCapacity =
+      r.maxConcurrent === 0 || r.maxConcurrent > r.runningCount;
+    return hasCapacity && r.profiles.includes(profile);
   });
 
   if (candidates.length === 0) return null;
