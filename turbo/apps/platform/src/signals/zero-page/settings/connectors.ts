@@ -14,7 +14,7 @@ import { featureSwitch$ } from "../../external/feature-switch.ts";
 import { connectors$, reloadConnectors$ } from "../../external/connectors.ts";
 import { apiBaseForNavigation$ } from "../../fetch.ts";
 import { zeroClient$ } from "../../api-client.ts";
-import { throwIfAbort } from "../../utils.ts";
+import { jsonParseOr } from "../../utils.ts";
 import { delay } from "signal-timers";
 import { localStorageSignals } from "../../external/local-storage.ts";
 import { resetPermissionDialog$ } from "./permission-dialog.ts";
@@ -113,14 +113,7 @@ const hiddenConnectorTypes$ = computed((get): Set<ConnectorType> => {
   if (!raw) {
     return new Set();
   }
-  // eslint-disable-next-line no-restricted-syntax -- JSON.parse on untrusted localStorage data
-  try {
-    const arr = JSON.parse(raw) as string[];
-    return new Set(arr as ConnectorType[]);
-  } catch (error) {
-    throwIfAbort(error);
-    return new Set();
-  }
+  return new Set(jsonParseOr<ConnectorType[]>(raw, []));
 });
 
 // ---------------------------------------------------------------------------

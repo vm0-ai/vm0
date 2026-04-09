@@ -133,6 +133,20 @@ export function throwIfAbort(e: unknown) {
   }
 }
 
+/**
+ * Parse JSON with a fallback value for untrusted input (e.g. localStorage).
+ * Re-throws abort errors; swallows parse errors and returns `fallback`.
+ */
+export function jsonParseOr<T>(value: string, fallback: T): T {
+  // eslint-disable-next-line no-restricted-syntax -- centralised JSON.parse guard for untrusted data
+  try {
+    return JSON.parse(value) as T;
+  } catch (error) {
+    throwIfAbort(error);
+    return fallback;
+  }
+}
+
 export function resetSignal(): Command<AbortSignal, AbortSignal[]> {
   const controller$ = state<AbortController | undefined>(undefined);
 
