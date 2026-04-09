@@ -3073,3 +3073,40 @@ class TestGraphQLFieldCoverage:
             body=body,
         )
         assert isinstance(result, FirewallAllow)
+
+    def test_comma_patterns_in_coverage_check(self):
+        """Comma-separated patterns expand correctly in coverage check."""
+        fw = self._make_fw(
+            {
+                "repo:read": [
+                    "POST /graphql GraphQL type:query "
+                    "field:repository.issues,repository.pullRequests"
+                ],
+            }
+        )
+        # Both fields covered by comma pattern → allow
+        body_ok = json.dumps(
+            {"query": "query { repository { issues { id } pullRequests { id } } }"}
+        ).encode()
+        result = matching.match_firewall_request(
+            "https://api.example.com/graphql",
+            "POST",
+            fw,
+            body=body_ok,
+        )
+        assert isinstance(result, FirewallAllow)
+
+        # Third field not in comma pattern → block
+        body_extra = json.dumps(
+            {
+                "query": "query { repository { issues { id } "
+                "pullRequests { id } stargazers { id } } }"
+            }
+        ).encode()
+        result = matching.match_firewall_request(
+            "https://api.example.com/graphql",
+            "POST",
+            fw,
+            body=body_extra,
+        )
+        assert isinstance(result, FirewallBlock)
