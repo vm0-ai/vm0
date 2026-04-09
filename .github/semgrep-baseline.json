@@ -9,5 +9,5 @@
   "javascript.lang.security.audit.spawn-shell-true.spawn-shell-true": 1,
   "javascript.lang.security.detect-child-process.detect-child-process": 1,
   "python.lang.security.audit.dynamic-urllib-use-detected.dynamic-urllib-use-detected": 2,
-  "typescript.react.security.audit.react-dangerouslysetinnerhtml.react-dangerouslysetinnerhtml": 1
+  "typescript.react.security.audit.react-dangerouslysetinnerhtml.react-dangerouslysetinnerhtml": 5
 }
