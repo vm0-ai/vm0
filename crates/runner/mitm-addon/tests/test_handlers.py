@@ -146,7 +146,12 @@ class TestRequestHandler:
                         },
                     ],
                     "grantedPermissions": {
-                        "github": {"allow": ["full-access"], "allowUnknown": True}
+                        "github": {
+                            "allow": ["full-access"],
+                            "deny": [],
+                            "ask": [],
+                            "allowUnknown": True,
+                        },
                     },
                     "encryptedSecrets": "iv:tag:data",
                 }
@@ -206,7 +211,12 @@ class TestRequestHandler:
                         },
                     ],
                     "grantedPermissions": {
-                        "github": {"allow": ["read-repos"], "allowUnknown": False}
+                        "github": {
+                            "allow": ["read-repos"],
+                            "deny": [],
+                            "ask": [],
+                            "allowUnknown": False,
+                        },
                     },
                     "encryptedSecrets": "iv:tag:data",
                 }
@@ -269,7 +279,12 @@ class TestRequestHandler:
                         },
                     ],
                     "grantedPermissions": {
-                        "github": {"allow": ["read-repos"], "allowUnknown": False}
+                        "github": {
+                            "allow": ["read-repos"],
+                            "deny": [],
+                            "ask": [],
+                            "allowUnknown": False,
+                        },
                     },
                     "encryptedSecrets": "iv:tag:data",
                 }
@@ -326,7 +341,12 @@ class TestRequestHandler:
                         },
                     ],
                     "grantedPermissions": {
-                        "github": {"allow": ["full-access"], "allowUnknown": True}
+                        "github": {
+                            "allow": ["full-access"],
+                            "deny": [],
+                            "ask": [],
+                            "allowUnknown": True,
+                        },
                     },
                     "encryptedSecrets": "iv:tag:data",
                 }

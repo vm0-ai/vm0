@@ -48,7 +48,12 @@ def _grant_all(firewalls, allow_unknown=False):
         for api in fw.get("apis", []):
             for perm in api.get("permissions", []):
                 perms.add(perm["name"])
-        result[fw["ref"]] = {"allow": list(perms), "allowUnknown": allow_unknown}
+        result[fw["ref"]] = {
+            "allow": list(perms),
+            "deny": [],
+            "ask": [],
+            "allowUnknown": allow_unknown,
+        }
     return result
 
 
