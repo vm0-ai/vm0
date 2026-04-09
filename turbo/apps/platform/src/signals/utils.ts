@@ -179,7 +179,7 @@ export async function setLoop(
   signal: AbortSignal,
 ): Promise<void> {
   let fibIndex = 0;
-  while (true) {
+  while (!signal.aborted) {
     // eslint-disable-next-line no-restricted-syntax -- polling loop requires try/catch for transient error retry with backoff
     try {
       const done = await loopBody(signal);
