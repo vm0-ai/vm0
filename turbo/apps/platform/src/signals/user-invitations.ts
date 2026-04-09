@@ -1,7 +1,6 @@
 import { command, computed, state } from "ccstate";
 import { delay } from "signal-timers";
-import { clerk$, watchOrgSwitch$ } from "./auth.ts";
-import { onRef } from "./utils.ts";
+import { clerk$ } from "./auth.ts";
 
 const POLL_INTERVAL_MS = 30_000;
 
@@ -35,26 +34,13 @@ export const refreshUserInvitations$ = command(({ set }) => {
 /**
  * Poll invitations on a fixed interval until aborted.
  */
-const pollUserInvitations$ = command(async ({ set }, signal: AbortSignal) => {
-  while (!signal.aborted) {
-    await delay(POLL_INTERVAL_MS, { signal });
-    set(reloadInvitations$, (x) => {
-      return x + 1;
-    });
-  }
-});
-
-/**
- * Org switcher lifecycle — watches org changes and polls invitations.
- * Wire to a DOM element via `onRef`.
- */
-const orgSwitcherSetup$ = command(
-  async ({ set }, el: HTMLElement, signal: AbortSignal) => {
-    await Promise.all([
-      set(watchOrgSwitch$, el, signal),
-      set(pollUserInvitations$, signal),
-    ]);
+export const pollUserInvitations$ = command(
+  async ({ set }, signal: AbortSignal) => {
+    while (!signal.aborted) {
+      await delay(POLL_INTERVAL_MS, { signal });
+      set(reloadInvitations$, (x) => {
+        return x + 1;
+      });
+    }
   },
 );
-
-export const orgSwitcherRef$ = onRef(orgSwitcherSetup$);
