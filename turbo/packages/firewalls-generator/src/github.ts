@@ -448,19 +448,92 @@ const MUTATION_TO_PERMISSIONS: Record<string, string[]> = {
   updateUserListsForItem: ["user:write"],
 };
 
+// ── GraphQL query field → REST permission mapping ────────────────────────
+//
+// Maps Repository type sub-fields to read permission groups.
+// Fields NOT listed here are assigned to metadata:read automatically
+// by comparing against the schema's Repository type at generation time.
+//
+// Top-level Query type fields (viewer, user, organization, search, etc.)
+// are all assigned to metadata:read automatically.
+
+const REPO_FIELD_TO_PERMISSIONS: Record<string, string[]> = {
+  // issues:read
+  issue: ["issues:read"],
+  issueOrPullRequest: ["issues:read", "pull_requests:read"],
+  issues: ["issues:read"],
+  issueTemplates: ["issues:read"],
+  label: ["issues:read"],
+  labels: ["issues:read"],
+  milestone: ["issues:read"],
+  milestones: ["issues:read"],
+  pinnedIssues: ["issues:read"],
+
+  // pull_requests:read
+  mergeQueue: ["pull_requests:read"],
+  pullRequest: ["pull_requests:read"],
+  pullRequests: ["pull_requests:read"],
+  pullRequestTemplates: ["pull_requests:read"],
+
+  // discussions:read (invented — GraphQL-only feature)
+  discussion: ["discussions:read"],
+  discussionCategories: ["discussions:read"],
+  discussionCategory: ["discussions:read"],
+  discussions: ["discussions:read"],
+  pinnedDiscussions: ["discussions:read"],
+
+  // organization_projects:read
+  project: ["organization_projects:read"],
+  projectV2: ["organization_projects:read"],
+  projects: ["organization_projects:read"],
+  projectsV2: ["organization_projects:read"],
+  recentProjects: ["organization_projects:read"],
+
+  // contents:read
+  defaultBranchRef: ["contents:read"],
+  latestRelease: ["contents:read"],
+  object: ["contents:read"],
+  ref: ["contents:read"],
+  refs: ["contents:read"],
+  release: ["contents:read"],
+  releases: ["contents:read"],
+  submodules: ["contents:read"],
+
+  // deployments:read
+  deployments: ["deployments:read"],
+
+  // environments:read
+  environment: ["environments:read"],
+  environments: ["environments:read"],
+  pinnedEnvironments: ["environments:read"],
+
+  // packages:read (invented — REST uses OAuth scope)
+  packages: ["packages:read"],
+
+  // administration:read
+  branchProtectionRules: ["administration:read"],
+  deployKeys: ["administration:read"],
+
+  // vulnerability_alerts:read
+  vulnerabilityAlert: ["vulnerability_alerts:read"],
+  vulnerabilityAlerts: ["vulnerability_alerts:read"],
+};
+
 // ── Invented permission groups ───────────────────────────────────────────
 //
 // Permission groups that do NOT exist in the REST fine-grained permission
-// data (server-to-server-permissions.json). These are created solely for
-// GraphQL mutations that have no REST equivalent. Every group referenced
-// by MUTATION_TO_PERMISSIONS must either exist in the REST data or be
-// listed here — the generator validates this.
+// data (server-to-server-permissions.json). These are created for GraphQL
+// operations that have no REST equivalent. Every group referenced by
+// MUTATION_TO_PERMISSIONS or REPO_FIELD_TO_PERMISSIONS must either exist
+// in the REST data or be listed here — the generator validates this.
 
 const INVENTED_PERMISSIONS = new Set([
+  "discussions:read", // GraphQL-only API, no REST endpoints
   "discussions:write", // GraphQL-only API, no REST endpoints
   "metadata:write", // REST only has metadata:read
   "migrations:write", // REST uses OAuth scope, not fine-grained
   "notifications:write", // REST uses OAuth scope, not fine-grained
+  "packages:read", // REST uses OAuth scope, not fine-grained
   "packages:write", // REST uses OAuth scope, not fine-grained
   "sponsorship:write", // GraphQL-only API, no REST endpoints
   "teams:write", // REST team endpoints use members permission
@@ -512,22 +585,23 @@ interface IntrospectionResult {
   };
 }
 
-/**
- * Fetch all mutation field names from the GitHub GraphQL schema and
- * verify complete coverage: every schema mutation must be mapped, and
- * every mapped mutation must exist in the schema.
- */
-async function validateMutationCoverage(): Promise<void> {
-  const res = await fetchSpec(SCHEMA_URL, "GitHub GraphQL schema");
-  const schema = (await res.json()) as IntrospectionResult;
-  const mutationType = schema.__schema.types.find((t) => {
-    return t.name === "Mutation";
-  });
-  if (!mutationType?.fields) {
-    throw new Error("Could not find Mutation type in GraphQL schema");
+function getTypeFields(
+  schema: IntrospectionResult,
+  typeName: string,
+): Set<string> {
+  const schemaType = schema.__schema.types.find((t) => t.name === typeName);
+  if (!schemaType?.fields) {
+    throw new Error(`Could not find ${typeName} type in GraphQL schema`);
   }
+  return new Set(schemaType.fields.map((f) => f.name));
+}
 
-  const schemaMutations = new Set(mutationType.fields.map((f) => f.name));
+/**
+ * Verify complete mutation coverage: every schema mutation must be mapped,
+ * and every mapped mutation must exist in the schema.
+ */
+function validateMutationCoverage(schema: IntrospectionResult): void {
+  const schemaMutations = getTypeFields(schema, "Mutation");
   console.error(`  ${schemaMutations.size} GraphQL mutations in schema`);
 
   // Every mapped mutation must exist in schema (catch typos / removed mutations).
@@ -559,6 +633,59 @@ async function validateMutationCoverage(): Promise<void> {
   console.error(`  ${schemaMutations.size}/${schemaMutations.size} mapped`);
 }
 
+/**
+ * Fields from the schema's Repository type that are auto-assigned to
+ * metadata:read.  All top-level Query type fields are also assigned to
+ * metadata:read.
+ */
+interface QueryFieldInfo {
+  queryFields: string[];
+  repoMetadataFields: string[];
+}
+
+/**
+ * Validate REPO_FIELD_TO_PERMISSIONS against the schema and compute
+ * the metadata:read field lists.
+ */
+function validateQueryFieldMapping(
+  schema: IntrospectionResult,
+): QueryFieldInfo {
+  const repoFields = getTypeFields(schema, "Repository");
+  const queryFields = getTypeFields(schema, "Query");
+  console.error(
+    `  ${repoFields.size} Repository fields, ${queryFields.size} Query fields in schema`,
+  );
+
+  // Every mapped repo field must exist in schema.
+  const stale: string[] = [];
+  for (const name of Object.keys(REPO_FIELD_TO_PERMISSIONS)) {
+    if (!repoFields.has(name)) {
+      stale.push(name);
+    }
+  }
+  if (stale.length > 0) {
+    throw new Error(
+      `${stale.length} mapped repo field(s) not found in schema — remove or rename:\n  ${stale.join("\n  ")}`,
+    );
+  }
+
+  // Compute metadata:read fields (all repo fields not explicitly mapped).
+  const repoMetadataFields = [...repoFields]
+    .filter((f) => !REPO_FIELD_TO_PERMISSIONS[f])
+    .sort();
+
+  const mapped = Object.keys(REPO_FIELD_TO_PERMISSIONS).length;
+  console.error(
+    `  ${mapped} mapped + ${repoMetadataFields.length} metadata repo fields`,
+  );
+  console.error(`  ${queryFields.size} top-level query fields → metadata:read`);
+
+  return {
+    queryFields: [...queryFields].sort(),
+    repoMetadataFields,
+  };
+}
+
 // ── Grouping ─────────────────────────────────────────────────────────────
 
 /**
@@ -583,7 +710,52 @@ function buildMutationIndex(): Map<string, string[]> {
   return index;
 }
 
-function buildGroups(permsData: PermsData): PermissionGroup[] {
+/**
+ * Build a reverse index: permission group name → query field paths.
+ * Includes both explicitly mapped repo fields and auto-computed metadata fields.
+ */
+function buildQueryFieldIndex(
+  queryFieldInfo: QueryFieldInfo,
+): Map<string, string[]> {
+  const index = new Map<string, string[]>();
+
+  function addToIndex(group: string, fieldPath: string): void {
+    let list = index.get(group);
+    if (!list) {
+      list = [];
+      index.set(group, list);
+    }
+    list.push(fieldPath);
+  }
+
+  // Explicitly mapped repo fields → specific permissions.
+  for (const [field, groups] of Object.entries(REPO_FIELD_TO_PERMISSIONS)) {
+    for (const group of groups) {
+      addToIndex(group, `repository.${field}`);
+    }
+  }
+
+  // Unmapped repo fields → metadata:read.
+  for (const field of queryFieldInfo.repoMetadataFields) {
+    addToIndex("metadata:read", `repository.${field}`);
+  }
+
+  // All top-level Query fields → metadata:read.
+  for (const field of queryFieldInfo.queryFields) {
+    addToIndex("metadata:read", field);
+  }
+
+  // Sort field paths within each group for deterministic output.
+  for (const list of index.values()) {
+    list.sort();
+  }
+  return index;
+}
+
+function buildGroups(
+  permsData: PermsData,
+  queryFieldInfo: QueryFieldInfo,
+): PermissionGroup[] {
   const groups = new Map<string, Set<string>>();
   const descriptions = new Map<string, string>();
 
@@ -613,11 +785,16 @@ function buildGroups(permsData: PermsData): PermissionGroup[] {
     }
   }
 
-  // Validate: every permission group in the mapping must be in REST data
+  // Validate: every permission group in the mappings must be in REST data
   // or explicitly listed in INVENTED_PERMISSIONS.
   const mutationIndex = buildMutationIndex();
+  const queryIndex = buildQueryFieldIndex(queryFieldInfo);
+  const allGraphqlGroups = new Set([
+    ...mutationIndex.keys(),
+    ...queryIndex.keys(),
+  ]);
   const unknownGroups: string[] = [];
-  for (const groupName of mutationIndex.keys()) {
+  for (const groupName of allGraphqlGroups) {
     if (
       !restGroupNames.has(groupName) &&
       !INVENTED_PERMISSIONS.has(groupName)
@@ -631,16 +808,28 @@ function buildGroups(permsData: PermsData): PermissionGroup[] {
     );
   }
 
-  // Add GraphQL mutation field rules to matching permission groups.
-  for (const [groupName, mutations] of mutationIndex) {
+  function ensureGroup(groupName: string): Set<string> {
     let ruleSet = groups.get(groupName);
     if (!ruleSet) {
-      // Permission group only exists for GraphQL (listed in INVENTED_PERMISSIONS).
       ruleSet = new Set();
       groups.set(groupName, ruleSet);
     }
+    return ruleSet;
+  }
+
+  // Add GraphQL mutation field rules to matching permission groups.
+  for (const [groupName, mutations] of mutationIndex) {
+    const ruleSet = ensureGroup(groupName);
     for (const mutation of mutations) {
       ruleSet.add(`POST /graphql GraphQL type:mutation field:${mutation}`);
+    }
+  }
+
+  // Add GraphQL query field rules to matching permission groups.
+  for (const [groupName, fieldPaths] of queryIndex) {
+    const ruleSet = ensureGroup(groupName);
+    for (const fieldPath of fieldPaths) {
+      ruleSet.add(`POST /graphql GraphQL type:query field:${fieldPath}`);
     }
   }
 
@@ -661,7 +850,7 @@ function generateTypeScript(permissions: PermissionGroup[]): string {
   const lines: string[] = [
     "// Auto-generated from GitHub's official permissions data + GraphQL schema.",
     "// Sources: github/docs fpt + ghec server-to-server-permissions.json (merged)",
-    "// GraphQL: mutation field names mapped to REST permission groups",
+    "// GraphQL: mutation + query field names mapped to REST permission groups",
     `// Regenerate: cd turbo && pnpm -F @vm0/firewalls-generator generate:github`,
     "//",
     "// DO NOT EDIT THIS FILE MANUALLY.",
@@ -721,21 +910,25 @@ function generateTypeScript(permissions: PermissionGroup[]): string {
 // ── Main ─────────────────────────────────────────────────────────────────
 
 export async function generate(): Promise<void> {
-  const [fptRes, ghecRes] = await Promise.all([
+  const [fptRes, ghecRes, schemaRes] = await Promise.all([
     fetchSpec(FPT_PERMS_URL, "GitHub fpt permissions"),
     fetchSpec(GHEC_PERMS_URL, "GitHub ghec permissions"),
-    validateMutationCoverage(),
+    fetchSpec(SCHEMA_URL, "GitHub GraphQL schema"),
   ]);
   const fptData = (await fptRes.json()) as PermsData;
   const ghecData = (await ghecRes.json()) as PermsData;
+  const schema = (await schemaRes.json()) as IntrospectionResult;
   console.error(
     `  ${Object.keys(fptData).length} fpt + ${Object.keys(ghecData).length} ghec permissions`,
   );
 
+  validateMutationCoverage(schema);
+  const queryFieldInfo = validateQueryFieldMapping(schema);
+
   const permsData = mergePermsData(fptData, ghecData);
   console.error(`  ${Object.keys(permsData).length} merged permissions`);
 
-  const permissions = buildGroups(permsData);
+  const permissions = buildGroups(permsData, queryFieldInfo);
   const ts = generateTypeScript(permissions);
 
   logStats(permissions);
