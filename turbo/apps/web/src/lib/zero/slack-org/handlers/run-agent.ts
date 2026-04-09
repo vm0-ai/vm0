@@ -1,7 +1,7 @@
 import { isRunDispatchError } from "../../../infra/run";
 import { createZeroRun } from "../../zero-run-service";
-import { buildIntegrationContext } from "../../integration-context";
-import type { UserInfoOptions } from "../../integration-context";
+import { buildSlackPrompt } from "../../integration-prompt";
+import type { UserInfoOptions } from "../../integration-prompt";
 import { isApiError } from "../../../shared/errors";
 import { RUN_ERROR_GUIDANCE } from "@vm0/core";
 import { generateCallbackSecret, getApiUrl } from "../../../infra/callback";
@@ -64,17 +64,11 @@ export async function runAgentForSlackOrg(
 
   try {
     // Build system prompt from context parts (agent identity + user info prepended by createZeroRun)
-    const contextParts = [
-      buildIntegrationContext("Slack", {
-        botUserId,
-        channelId,
-        channelType,
-        threadId: threadTs,
-      }),
-      threadContext,
-    ].filter(Boolean);
     const appendSystemPrompt =
-      contextParts.length > 0 ? contextParts.join("\n\n") : undefined;
+      buildSlackPrompt(
+        { botUserId, channelId, channelType, threadId: threadTs },
+        threadContext,
+      ) || undefined;
 
     // Build callback (Slack-specific)
     const callbackUrl = `${getApiUrl()}/api/internal/callbacks/slack/org`;

@@ -55,7 +55,7 @@ import {
   getUserPreferences,
 } from "./user/user-preferences-service";
 import { getCachedUser } from "../auth/user-cache-service";
-import { buildUserInfo, type UserInfoOptions } from "./integration-context";
+import { buildUserInfo, type UserInfoOptions } from "./integration-prompt";
 import { logger } from "../shared/logger";
 
 const log = logger("service:zero-run");

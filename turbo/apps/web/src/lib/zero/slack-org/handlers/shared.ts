@@ -8,7 +8,7 @@ import { getAppUrl } from "../../url";
 import { resolveDefaultAgentComposeId } from "../../../infra/agent-compose/resolve-default";
 import { ensureStorageExists } from "../../../infra/storage/storage-service";
 import { createSlackClient, fetchSlackUserInfoMap } from "../../slack/client";
-import type { UserInfoOptions } from "../../integration-context";
+import type { UserInfoOptions } from "../../integration-prompt";
 import {
   fetchThreadContext,
   fetchChannelContext,

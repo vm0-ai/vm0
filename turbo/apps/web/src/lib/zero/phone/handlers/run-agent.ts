@@ -1,5 +1,5 @@
 import { createZeroRun } from "../../zero-run-service";
-import { buildIntegrationContext } from "../../integration-context";
+import { buildPhonePrompt } from "../../integration-prompt";
 import { logger } from "../../../shared/logger";
 import { generateCallbackSecret, getApiUrl } from "../../../infra/callback";
 import type { PhoneCallbackPayload } from "../../../infra/callback/callback-payloads";
@@ -23,12 +23,7 @@ export async function runAgentForPhone(params: RunAgentParams): Promise<void> {
   const { agentId, sessionId, prompt, phoneContext, userId, callbackContext } =
     params;
 
-  const contextParts = [
-    buildIntegrationContext("Phone", { channelType: "dm" }),
-    phoneContext,
-  ].filter(Boolean);
-  const appendSystemPrompt =
-    contextParts.length > 0 ? contextParts.join("\n\n") : undefined;
+  const appendSystemPrompt = buildPhonePrompt(phoneContext) || undefined;
 
   const callbackUrl = `${getApiUrl()}/api/internal/callbacks/phone`;
   const callbackSecret = generateCallbackSecret();

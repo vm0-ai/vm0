@@ -10,7 +10,7 @@ import {
   type HandlerResult,
 } from "./shared";
 import { createZeroRun } from "../../zero-run-service";
-import { buildIntegrationContext } from "../../integration-context";
+import { buildIntegrationPrompt } from "../../integration-prompt";
 import { generateCallbackSecret, getApiUrl } from "../../../infra/callback";
 import { getUserIdByEmail } from "../../../auth/get-user-id-by-email";
 import { logger } from "../../../shared/logger";
@@ -178,7 +178,7 @@ export async function handleInboundEmailReply(
   ];
 
   // 11. Create run with integration context as system prompt
-  const appendSystemPrompt = buildIntegrationContext("Email");
+  const appendSystemPrompt = buildIntegrationPrompt("Email");
   const result = await createZeroRun({
     userId: session.userId,
     prompt: replyContent,
