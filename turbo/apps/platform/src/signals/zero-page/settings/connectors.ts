@@ -5,8 +5,10 @@ import {
   CONNECTOR_TYPES,
   hasRequiredScopes,
   zeroConnectorScopeDiffContract,
+  zeroConnectorsMainContract,
   zeroSecretsContract,
   zeroVariablesContract,
+  type ConnectorListResponse,
   type ConnectorType,
   type ConnectorResponse,
 } from "@vm0/core";
@@ -340,12 +342,16 @@ export const connectConnector$ = command(
     const startTime = Date.now();
 
     await setLoop(
-      async () => {
-        set(reloadConnectors$);
-        const { connectors } = await get(connectors$);
+      async (sig) => {
+        const client = get(zeroClient$)(zeroConnectorsMainContract);
+        const result = await accept(
+          client.list({ fetchOptions: { signal: sig } }),
+          [200],
+        );
+        const polled = (result.body as ConnectorListResponse).connectors;
 
         if (
-          connectors.some((c) => {
+          polled.some((c) => {
             return c.type === type;
           })
         ) {
@@ -369,6 +375,8 @@ export const connectConnector$ = command(
       signal,
     );
 
+    // Refresh the connectors$ cache so UI picks up the latest state.
+    set(reloadConnectors$);
     const { connectors } = await get(connectors$);
     signal.throwIfAborted();
 
