@@ -161,13 +161,17 @@ async function resolveUserNames(
   const db = globalThis.services.db;
 
   const cachedUsers = await db
-    .select({ userId: userCache.userId, email: userCache.email })
+    .select({
+      userId: userCache.userId,
+      email: userCache.email,
+      name: userCache.name,
+    })
     .from(userCache)
     .where(inArray(userCache.userId, userIds));
 
   const nameMap = new Map(
     cachedUsers.map((u) => {
-      return [u.userId, u.email.split("@")[0] ?? u.email];
+      return [u.userId, u.name ?? u.email.split("@")[0] ?? u.email];
     }),
   );
 
@@ -193,10 +197,10 @@ async function resolveUserNames(
 
       await db
         .insert(userCache)
-        .values({ userId: user.id, email, cachedAt: now })
+        .values({ userId: user.id, email, name, cachedAt: now })
         .onConflictDoUpdate({
           target: userCache.userId,
-          set: { email, cachedAt: now },
+          set: { email, name, cachedAt: now },
         });
     }
   }
@@ -301,6 +305,7 @@ interface InsightData {
   creditsUsed: number;
   creditBalance: number;
   teamUsage: {
+    userId: string;
     name: string;
     credits: number;
     agentNames: string[];
@@ -328,6 +333,7 @@ function buildUserInsight(
   orgCreditsUsed: number,
   orgCreditBalance: number,
   orgTeamUsage: Array<{
+    userId: string;
     name: string;
     credits: number;
     agentNames: string[];
@@ -394,6 +400,7 @@ function buildUserInsight(
 // ---------------------------------------------------------------------------
 
 interface TeamUsageEntry {
+  userId: string;
   name: string;
   credits: number;
   agentNames: string[];
@@ -453,6 +460,7 @@ function aggregateOrgCredits(
     for (const [userId, data] of members) {
       creditsUsed += data.credits;
       teamUsage.push({
+        userId,
         name: userNameMap.get(userId) ?? userId,
         credits: data.credits,
         agentNames: [...data.agentNames],

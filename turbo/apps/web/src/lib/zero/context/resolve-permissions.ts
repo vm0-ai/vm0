@@ -3,6 +3,7 @@ import {
   type Firewalls,
   type ExpandedFirewallConfig,
   type FirewallPolicies,
+  type GrantedPermissions,
 } from "@vm0/core";
 
 /**
@@ -30,89 +31,106 @@ export function filterSecretConnectorMap(
   return Object.keys(filtered).length > 0 ? filtered : undefined;
 }
 
+interface MergedPermissions {
+  firewalls: Firewalls;
+  grantedPermissions: GrantedPermissions;
+}
+
 /**
  * Merge model provider and connector permissions into a single manifest.
- * Compose content no longer stores firewalls — all configs are runtime-injected.
+ * Returns full (unfiltered) firewalls + per-ref grantedPermissions.
  */
 export function mergePermissions(
   modelProviderFirewall: Firewalls[number] | null | undefined,
   connectorFirewalls: ExpandedFirewallConfig[],
   permissionPolicies?: FirewallPolicies,
   vars?: Record<string, string>,
-): Firewalls | undefined {
+  allowUnknownEndpoints?: Record<string, boolean>,
+): MergedPermissions | undefined {
+  const { firewalls: connectorResults, grantedPermissions } =
+    applyConnectorPolicies(
+      connectorFirewalls,
+      permissionPolicies,
+      allowUnknownEndpoints,
+    );
+
+  // Model provider firewalls — always fully permissive, grant all permissions
   const autoConfigs = modelProviderFirewall ? [modelProviderFirewall] : [];
-  const policyConfigs = applyConnectorPolicies(
-    connectorFirewalls,
-    permissionPolicies,
-  );
-  const allConfigs = [...autoConfigs, ...policyConfigs];
+  if (modelProviderFirewall) {
+    grantedPermissions[modelProviderFirewall.ref] = {
+      allow: collectPermissionNames(modelProviderFirewall.apis),
+      allowUnknown: true,
+    };
+  }
+
+  const allConfigs = [...autoConfigs, ...connectorResults];
   if (allConfigs.length === 0) return undefined;
-  return resolveFirewallBaseUrlVars(allConfigs, vars);
+  return {
+    firewalls: resolveFirewallBaseUrlVars(allConfigs, vars),
+    grantedPermissions,
+  };
 }
 
-/** Unrestricted permission — allows all endpoints through the proxy. */
-export const UNRESTRICTED_PERMISSION = {
-  name: "unrestricted",
-  description: "Allow all endpoints",
-  rules: ["ANY /{path*}"],
-};
+/** Collect all unique permission names from a firewall's APIs. */
+function collectPermissionNames(
+  apis: { permissions?: { name: string }[] }[],
+): string[] {
+  const names: string[] = [];
+  for (const api of apis) {
+    for (const perm of api.permissions ?? []) {
+      names.push(perm.name);
+    }
+  }
+  return [...new Set(names)];
+}
+
+interface ConnectorPoliciesResult {
+  firewalls: Firewalls;
+  grantedPermissions: GrantedPermissions;
+}
 
 /**
- * Apply firewall policies to connector firewall configs.
+ * Build full (unfiltered) firewall configs + per-ref grantedPermissions.
  *
- * For each connector firewall:
- * - If the ref has explicit policies, only "allow" permissions are included.
- * - If the ref has no policies, all defined permissions are included as-is
- *   (treated as all-allow). If no permissions are defined, an "unrestricted"
- *   permission is added to allow all endpoints through the proxy.
- * - If all permissions are denied, the entry is excluded entirely.
+ * Firewalls now carry ALL permissions (no filtering). The grantedPermissions
+ * map tells the proxy which permissions the user authorized and whether
+ * unknown endpoints (not matching any rule) should be allowed.
  */
 export function applyConnectorPolicies(
   connectorFirewalls: ExpandedFirewallConfig[],
   policies?: FirewallPolicies,
-): Firewalls {
-  const result: Firewalls = [];
+  allowUnknownEndpoints?: Record<string, boolean>,
+): ConnectorPoliciesResult {
+  const firewalls: Firewalls = [];
+  const grantedPermissions: GrantedPermissions = {};
 
   for (const fw of connectorFirewalls) {
     const refPolicies = policies?.[fw.ref];
 
-    // If the firewall defines no permissions on any api, treat as
-    // unrestricted (no granular permission control).
-    const hasPermissions = fw.apis.some((api) => {
-      return api.permissions && api.permissions.length > 0;
-    });
-
+    // Build full (unfiltered) firewall entry — pass permissions as-is
     const apis = fw.apis.map((api) => {
-      if (!hasPermissions) {
-        return {
-          base: api.base,
-          auth: api.auth,
-          permissions: [UNRESTRICTED_PERMISSION],
-        };
-      }
-
-      if (!refPolicies) {
-        // No policies configured — include all defined permissions.
-        return {
-          base: api.base,
-          auth: api.auth,
-          permissions: api.permissions ?? [],
-        };
-      }
-
-      const allowed = api.permissions?.filter((perm) => {
-        return refPolicies[perm.name] === "allow";
-      });
-
       return {
         base: api.base,
         auth: api.auth,
-        permissions: allowed ?? [],
+        permissions: api.permissions ?? [],
       };
     });
 
-    result.push({ name: fw.name, ref: fw.ref, apis });
+    firewalls.push({ name: fw.name, ref: fw.ref, apis });
+
+    // Build grantedPermissions for this ref — always explicit, never omit.
+    const allowUnknown = allowUnknownEndpoints?.[fw.ref] ?? true;
+    const allPermNames = collectPermissionNames(fw.apis);
+    if (!refPolicies) {
+      // No policies configured → all granted
+      grantedPermissions[fw.ref] = { allow: allPermNames, allowUnknown };
+    } else {
+      const granted = allPermNames.filter((name) => {
+        return refPolicies[name] === "allow";
+      });
+      grantedPermissions[fw.ref] = { allow: granted, allowUnknown };
+    }
   }
 
-  return result;
+  return { firewalls, grantedPermissions };
 }

@@ -114,6 +114,7 @@ export interface CreateRunParams {
   orgTier?: OrgTier;
   // Per-permission policies from zero agent configuration.
   permissionPolicies?: FirewallPolicies;
+  allowUnknownEndpoints?: Record<string, boolean>;
   allowedConnectorTypes?: ConnectorType[];
   // Pre-loaded compose data. When provided, skips the internal loadCompose() call.
   preloadedCompose?: {

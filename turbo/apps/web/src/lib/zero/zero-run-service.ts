@@ -243,6 +243,7 @@ export async function createZeroRunRecord(
       description: zeroAgents.description,
       sound: zeroAgents.sound,
       permissionPolicies: zeroAgents.permissionPolicies,
+      allowUnknownEndpoints: zeroAgents.allowUnknownEndpoints,
       orgId: zeroAgents.orgId,
     })
     .from(zeroAgents)
@@ -347,6 +348,7 @@ export async function createZeroRunRecord(
     disallowedTools: [...DISALLOWED_TOOLS],
     vars: { ZERO_AGENT_ID: params.agentId },
     permissionPolicies: permissionPolicies ?? undefined,
+    allowUnknownEndpoints: row?.allowUnknownEndpoints ?? undefined,
     allowedConnectorTypes,
     agentName: resolved.agentName,
     orgId: resolved.orgId,

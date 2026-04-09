@@ -1,6 +1,6 @@
 import { clerk, clerkSetup } from "@clerk/testing/playwright";
 import { expect, test } from "@playwright/test";
-import { deriveAppUrl } from "../playwright.config";
+import { deriveAppUrl, STORAGE_STATE } from "../playwright.config";
 
 test("sign in and complete onboarding to chat page", async ({ page }) => {
   const email = process.env.E2E_CLERK_USER_EMAIL!;
@@ -38,6 +38,9 @@ test("sign in and complete onboarding to chat page", async ({ page }) => {
     waitUntil: "domcontentloaded",
   });
   expect(page.url()).toMatch(/\/agents\/.*\/chat/);
+
+  // Save storageState for feature tests (use absolute path to match playwright.config.ts)
+  await page.context().storageState({ path: STORAGE_STATE });
 });
 
 async function completeOnboarding(page: import("@playwright/test").Page) {

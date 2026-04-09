@@ -45,14 +45,14 @@ import {
   setChatListQuery$,
   setDraftPinnedIds$,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
-import { leadAgentAvatar$, type SubagentInfo } from "../../signals/agent.ts";
+import { leadAgentAvatarUrl$, type SubagentInfo } from "../../signals/agent.ts";
 import {
   pinnedAgentIds$,
   updatePinnedAgentIds$,
 } from "../../signals/zero-page/zero-pinned-agents.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
+import { AgentAvatarImg, AvatarFromUrl } from "./zero-sidebar-shared.tsx";
 
 function SortablePinnedAgent({
   agent,
@@ -145,7 +145,7 @@ export function ManagePinnedAgentsDialog({
   subagents: SubagentInfo[];
   onPinnedIdsChange: (ids: string[]) => void;
 }) {
-  const zeroAvatarSrc = useLastResolved(leadAgentAvatar$) ?? null;
+  const zeroAvatarUrl = useLastResolved(leadAgentAvatarUrl$) ?? null;
   const draftIds = useGet(draftPinnedIds$);
   const setDraftIds = useSet(setDraftPinnedIds$);
 
@@ -225,18 +225,11 @@ export function ManagePinnedAgentsDialog({
 
         <div className="px-5 pb-1">
           <div className="flex items-center gap-2 px-1 py-2.5 rounded-lg">
-            {zeroAvatarSrc ? (
-              <img
-                src={zeroAvatarSrc}
-                alt={displayName}
-                className="h-8 w-8 shrink-0 rounded-lg object-cover object-top"
-              />
-            ) : (
-              <div
-                className="h-8 w-8 shrink-0 rounded-lg bg-muted"
-                aria-hidden
-              />
-            )}
+            <AvatarFromUrl
+              avatarUrl={zeroAvatarUrl}
+              alt={displayName}
+              className="h-8 w-8 shrink-0 rounded-lg object-cover object-top"
+            />
             <span className="text-sm font-medium text-foreground flex-1 truncate">
               {displayName}
             </span>
@@ -372,7 +365,7 @@ export function AgentListDialog({
   subagents: SubagentInfo[];
   onNewChat?: (agentId: string | null) => void;
 }) {
-  const zeroAvatarSrc = useLastResolved(leadAgentAvatar$) ?? null;
+  const zeroAvatarUrl = useLastResolved(leadAgentAvatarUrl$) ?? null;
   const query = useGet(chatListQuery$);
   const setQuery = useSet(setChatListQuery$);
   const pinnedIds = useLastResolved(pinnedAgentIds$) ?? [];
@@ -508,18 +501,11 @@ export function AgentListDialog({
                 }}
                 className="flex w-full items-center gap-2 px-1 py-2 rounded-lg hover:bg-accent transition-colors"
               >
-                {zeroAvatarSrc ? (
-                  <img
-                    src={zeroAvatarSrc}
-                    alt={displayName}
-                    className="h-8 w-8 shrink-0 rounded-lg object-cover object-top"
-                  />
-                ) : (
-                  <div
-                    className="h-8 w-8 shrink-0 rounded-lg bg-muted"
-                    aria-hidden
-                  />
-                )}
+                <AvatarFromUrl
+                  avatarUrl={zeroAvatarUrl}
+                  alt={displayName}
+                  className="h-8 w-8 shrink-0 rounded-lg object-cover object-top"
+                />
                 <div className="flex-1 min-w-0 text-left">
                   <span className="text-sm font-medium text-foreground truncate block">
                     {displayName}

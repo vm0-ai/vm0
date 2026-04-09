@@ -78,23 +78,25 @@ const router = tsr.router(chatMessagesContract, {
         sessionId = undefined;
       }
 
-      // Generate AI title in the background — don't block the response
-      const capturedThreadId = threadId;
-      void generateChatTitle(
-        body.prompt,
-        previousContext.length > 0 ? previousContext : undefined,
-      )
-        .then((title) => {
-          if (title) {
-            return updateChatThreadTitle(capturedThreadId, title);
-          }
-        })
-        .catch((err: unknown) => {
-          log.warn("Chat title generation failed", {
-            threadId: capturedThreadId,
-            err,
+      // Only generate title when prompt has actual user text
+      if (body.hasTextContent !== false) {
+        const capturedThreadId = threadId;
+        void generateChatTitle(
+          body.prompt,
+          previousContext.length > 0 ? previousContext : undefined,
+        )
+          .then((title) => {
+            if (title) {
+              return updateChatThreadTitle(capturedThreadId, title);
+            }
+          })
+          .catch((err: unknown) => {
+            log.warn("Chat title generation failed", {
+              threadId: capturedThreadId,
+              err,
+            });
           });
-        });
+      }
 
       // Build callback for session persistence
       const chatCallback: {

@@ -30,6 +30,8 @@ pnpm test             # Run all tests
 
 ## Execution Order
 
+**IMPORTANT: Run checks sequentially, one at a time.** Each check can take several minutes in this monorepo. Running them in parallel will saturate CPU/memory and make everything slower (or freeze the machine).
+
 1. **Format** (`pnpm format`) - Auto-fixes formatting
 2. **Lint** (`pnpm lint`) - Auto-fix with `--fix` flag if needed
 3. **Type Check** (`pnpm check-types`) - Requires manual fixes
@@ -98,13 +100,6 @@ cd turbo && pnpm install
 | `revert` | Revert commit | No |
 
 **Tip:** Want a refactor to trigger release? Use `fix: refactor ...`
-
-## Special: Documentation App
-
-For `turbo/apps/docs` changes, use `feat(docs):` or `fix(docs):` to trigger release:
-
-- `feat(docs): add integration guide` (triggers release)
-- `docs: add integration guide` (no release)
 
 ## Quick Examples
 

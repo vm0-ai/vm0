@@ -436,41 +436,76 @@ def _find_uncovered_graphql_fields(
     ]
 
 
+def _build_allow_set(
+    fw_ref: str,
+    granted_permissions: dict,
+) -> set:
+    """Build a set of granted permission names for a firewall ref.
+
+    Returns empty set when ref is absent from the map (fail-closed).
+    """
+    ref_grant = granted_permissions.get(fw_ref)
+    if ref_grant is None:
+        return set()
+    return set(ref_grant.get("allow", []))
+
+
+def _is_allow_unknown(
+    fw_ref: str,
+    granted_permissions: dict,
+) -> bool:
+    """Check if unknown endpoints (no rule match) should be allowed."""
+    ref_grant = granted_permissions.get(fw_ref)
+    if ref_grant is None:
+        return False
+    return ref_grant.get("allowUnknown", False)
+
+
 def match_firewall_request(
     url: str,
     method: str,
     vm_firewalls: list | None,
+    granted_permissions: dict | None = None,
     body: bytes | None = None,
 ) -> FirewallAllow | FirewallBlock | None:
-    """Match request against firewall permissions.
+    """Match request against firewall permissions with three-level matching.
 
     For GraphQL requests with field-level rules, ALL fields in the query
     body must be covered by some rule in the permissions. A query that
     includes both authorized and unauthorized fields is blocked.
 
     Returns:
-      FirewallAllow — permission matched, inject headers
-      FirewallBlock — base URL matched but no permission granted
+      FirewallAllow — granted permission matched or unknown endpoint allowed
+      FirewallBlock — base URL matched but permission denied or unknown blocked
       None — no base URL match (not a firewall request)
     """
     if not vm_firewalls:
         return None
 
-    # Track the first base URL that matched. If we find a base match but no
-    # permission rule allows the request, we block it (fail-closed). Only the
-    # first matched base is recorded — subsequent base matches don't overwrite.
+    if granted_permissions is None:
+        granted_permissions = {}
+
+    # Track the first base URL that matched for block/unknown responses.
     blocked_base = None
     blocked_ref = ""
     blocked_name = ""
+    blocked_rel_path = "/"
+    # Track the first api_entry that matched base URL (for unknown endpoint auth)
+    first_matched_api_entry = None
+    first_matched_base_params: dict = {}
 
     upper_method = method.upper()
 
-    # Track the relative path of the first blocked base for error messages
-    blocked_rel_path = "/"
+    # Track the first non-granted permission match — used for DENY when no
+    # granted permission matches.  We record it instead of returning immediately
+    # because a later permission may be granted for the same endpoint.
+    denied_match: tuple[str, str, str, str, str] | None = None  # (base, ref, name, method, path)
 
     for fw_entry in vm_firewalls:
         fw_name = fw_entry.get("name", "")
         fw_ref = fw_entry.get("ref", "")
+        allow_set = _build_allow_set(fw_ref, granted_permissions)
+
         for api_entry in fw_entry.get("apis", []):
             base = api_entry.get("base", "").rstrip("/")
             if not base:
@@ -488,10 +523,12 @@ def match_firewall_request(
                 blocked_ref = fw_ref
                 blocked_name = fw_name
                 blocked_rel_path = rel_path
+                first_matched_api_entry = api_entry
+                first_matched_base_params = base_params
 
             permissions = api_entry.get("permissions")
             if not permissions:
-                # No permissions defined or empty → block (fail-closed)
+                # No permissions defined — handled by unknown logic below
                 continue
 
             for perm in permissions:
@@ -545,19 +582,42 @@ def match_firewall_request(
 
                         # Merge base params with rule params
                         all_params = {**base_params, **params}
-                        return FirewallAllow(
-                            api_entry,
-                            {
-                                "name": fw_name,
-                                "ref": fw_ref,
-                                "permission": perm_name,
-                                "params": all_params,
-                                "rule": rule_str,
-                                "rel_path": rel_path,
-                            },
-                        )
+
+                        # Three-level: check if this permission is granted
+                        if perm_name in allow_set:
+                            return FirewallAllow(
+                                api_entry,
+                                {
+                                    "name": fw_name,
+                                    "ref": fw_ref,
+                                    "permission": perm_name,
+                                    "params": all_params,
+                                    "rule": rule_str,
+                                    "rel_path": rel_path,
+                                },
+                            )
+                        # Permission exists but not granted — record for
+                        # DENY but keep checking other permissions.
+                        if denied_match is None:
+                            denied_match = (base, fw_ref, fw_name, upper_method, rel_path)
 
     if blocked_base is not None:
+        # A non-granted permission matched — DENY takes priority over unknown.
+        if denied_match is not None:
+            return FirewallBlock(*denied_match)
+        # No permission rule matched — this is an "unknown" endpoint.
+        if _is_allow_unknown(blocked_ref, granted_permissions):
+            return FirewallAllow(
+                first_matched_api_entry,
+                {
+                    "name": blocked_name,
+                    "ref": blocked_ref,
+                    "permission": "",
+                    "params": first_matched_base_params,
+                    "rule": "",
+                    "rel_path": blocked_rel_path,
+                },
+            )
         return FirewallBlock(
             blocked_base, blocked_ref, blocked_name, upper_method, blocked_rel_path
         )

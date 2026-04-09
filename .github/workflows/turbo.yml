@@ -73,7 +73,6 @@ jobs:
       web-preview-url: ${{ steps.preview-urls.outputs.web-url }}
       app-preview-url: ${{ steps.preview-urls.outputs.app-url }}
       web-changed: ${{ steps.detect.outputs.web-changed }}
-      docs-changed: ${{ steps.detect.outputs.docs-changed }}
       cli-changed: ${{ steps.detect.outputs.cli-changed }}
       platform-changed: ${{ steps.detect.outputs.platform-changed }}
       e2b-changed: ${{ steps.detect-e2b.outputs.e2b-changed }}
@@ -1003,53 +1002,6 @@ jobs:
             /tmp/e2e-token-serial.json
             /tmp/e2e-token-runner.json
           retention-days: 1
-
-  # Deploy docs application
-  deploy-docs:
-    runs-on: ubuntu-latest
-    concurrency:
-      group: deploy-docs-${{ needs.prepare.outputs.job-ref }}
-      cancel-in-progress: true
-    container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260324
-    needs: [prepare]
-    # Deploy if job-ref is set (PR or main), not a release-please commit, and docs changed
-    if: "${{ (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) && needs.prepare.outputs.job-ref != '' && needs.prepare.outputs.docs-changed == 'true' }}"
-    permissions:
-      contents: read
-      pull-requests: write
-      deployments: write
-    steps:
-      - uses: actions/checkout@v6
-      - uses: ./.github/actions/toolchain-init
-
-      - name: Deploy Docs to Vercel
-        id: deploy
-        uses: ./.github/actions/vercel-deploy
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
-          vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_DOCS }}
-          environment: preview
-          deployment-env: docs
-          environment-variables: |
-            NEXT_PUBLIC_PLAUSIBLE_SCRIPT_URL=${{ vars.PLAUSIBLE_SCRIPT_URL }}
-          meta-branch: ${{ github.head_ref || github.ref_name }}
-          meta-pr: ${{ needs.prepare.outputs.job-ref }}
-          skip-finish: ${{ github.event_name == 'pull_request' && vars.PREVIEW_DOMAIN != '' }}
-
-      - name: Create Vercel Alias
-        if: vars.PREVIEW_DOMAIN != ''
-        uses: ./.github/actions/vercel-alias
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
-          deployment-url: ${{ steps.deploy.outputs.url }}
-          app-name: docs
-          job-ref: ${{ needs.prepare.outputs.job-ref }}
-          preview-domain: ${{ vars.PREVIEW_DOMAIN }}
-          deployment-id: ${{ steps.deploy.outputs.deployment-id }}
-          deployment-env: ${{ steps.deploy.outputs.deployment-env }}
 
   # Deploy app (Vite SPA)
   deploy-app:
@@ -2087,7 +2039,6 @@ jobs:
       - test-app
       - test-other
       - deploy-web
-      - deploy-docs
       - deploy-app
       - build-cli
       - build-e2b-template
@@ -2152,7 +2103,6 @@ jobs:
           # May-skip: 'success' or 'skipped' are both acceptable
           check_result "test-migrate" "${{ needs.test-migrate.result }}" "true"
           check_result "deploy-web" "${{ needs.deploy-web.result }}" "true"
-          check_result "deploy-docs" "${{ needs.deploy-docs.result }}" "true"
           check_result "deploy-app" "${{ needs.deploy-app.result }}" "true"
           check_result "build-cli" "${{ needs.build-cli.result }}" "true"
           check_result "build-e2b-template" "${{ needs.build-e2b-template.result }}" "true"

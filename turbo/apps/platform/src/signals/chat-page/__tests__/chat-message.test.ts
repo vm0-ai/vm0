@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { assert, describe, it, expect, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
@@ -19,6 +19,7 @@ import {
   uploadZeroAttachment$,
   removeZeroAttachment$,
   createNewChatThread$,
+  canSendZeroChat$,
 } from "../chat-message.ts";
 import { currentChatThreadId$ } from "../../agent-chat.ts";
 
@@ -42,6 +43,53 @@ describe("zero-chat signals", () => {
 
       context.store.set(clearZeroChatInput$);
       expect(context.store.get(zeroChatInput$)).toBe("");
+    });
+  });
+
+  describe("canSendZeroChat$", () => {
+    it("should return false when input is empty and no attachments", async () => {
+      await setup();
+      expect(context.store.get(canSendZeroChat$)).toBeFalsy();
+    });
+
+    it("should return true when input has text", async () => {
+      await setup();
+      context.store.set(setZeroChatInput$, "hello");
+      expect(context.store.get(canSendZeroChat$)).toBeTruthy();
+    });
+
+    it("should return false for whitespace-only input", async () => {
+      await setup();
+      context.store.set(setZeroChatInput$, "   ");
+      expect(context.store.get(canSendZeroChat$)).toBeFalsy();
+    });
+
+    it("should return true when attachments exist even with empty input", async () => {
+      server.use(
+        http.get("*/api/zero/chat-threads", () => {
+          return HttpResponse.json({ threads: [] });
+        }),
+        http.post("*/api/zero/uploads", () => {
+          return HttpResponse.json({
+            id: "upload-1",
+            filename: "photo.png",
+            contentType: "image/png",
+            size: 1024,
+            url: "https://example.com/photo.png",
+          });
+        }),
+      );
+      await setup();
+
+      expect(context.store.get(canSendZeroChat$)).toBeFalsy();
+
+      await context.store.set(
+        uploadZeroAttachment$,
+        new File(["content"], "photo.png", { type: "image/png" }),
+        context.signal,
+      );
+
+      expect(context.store.get(canSendZeroChat$)).toBeTruthy();
     });
   });
 
@@ -835,6 +883,90 @@ describe("zero-chat signals", () => {
       expect(JSON.stringify(capturedBody)).toContain("report.pdf");
 
       // Attachments should be cleared after the send
+      expect(context.store.get(zeroChatAttachments$)).toHaveLength(0);
+    });
+
+    it("should send image-only message (no text, attachment only)", async () => {
+      interface CapturedChatBody {
+        prompt: string;
+        hasTextContent: boolean;
+      }
+
+      function isCapturedChatBody(v: unknown): v is CapturedChatBody {
+        return (
+          typeof v === "object" &&
+          v !== null &&
+          "prompt" in v &&
+          typeof (v as Record<string, unknown>).prompt === "string"
+        );
+      }
+
+      let capturedBody: unknown = null;
+
+      server.use(
+        http.get("*/api/zero/chat-threads", () => {
+          return HttpResponse.json({ threads: [] });
+        }),
+        http.post("*/api/zero/uploads", () => {
+          return HttpResponse.json({
+            id: "upload-img-1",
+            filename: "photo.png",
+            contentType: "image/png",
+            size: 2048,
+            url: "https://example.com/photo.png",
+          });
+        }),
+        http.post("*/api/zero/chat-threads", () => {
+          return HttpResponse.json(
+            {
+              id: "thread-img-1",
+              title: null,
+              agentId: "c0000000-0000-4000-a000-000000000001",
+              createdAt: "2026-03-10T00:00:00Z",
+            },
+            { status: 201 },
+          );
+        }),
+        http.post("*/api/zero/chat/messages", async ({ request }) => {
+          capturedBody = await request.json();
+          return HttpResponse.json(
+            {
+              runId: "run-img-1",
+              threadId: "thread-img-1",
+              status: "pending",
+              createdAt: "2026-03-10T00:00:00Z",
+            },
+            { status: 201 },
+          );
+        }),
+      );
+
+      await setup();
+
+      // Upload image attachment
+      await context.store.set(
+        uploadZeroAttachment$,
+        new File(["img"], "photo.png", { type: "image/png" }),
+        context.signal,
+      );
+      expect(context.store.get(zeroChatAttachments$)).toHaveLength(1);
+
+      // Send with empty text (image-only)
+      context.store.set(startNewZeroSession$);
+      await context.store.set(
+        sendNewThreadMessage$,
+        "c0000000-0000-4000-a000-000000000001",
+        "",
+        context.signal,
+      );
+
+      // API should receive non-empty prompt (attachment markdown)
+      assert(isCapturedChatBody(capturedBody));
+      expect(capturedBody.prompt).toContain("https://example.com/photo.png");
+      expect(capturedBody.prompt).toContain("photo.png");
+      expect(capturedBody.prompt).not.toMatch(/^\n/);
+
+      // Attachments should be cleared after send
       expect(context.store.get(zeroChatAttachments$)).toHaveLength(0);
     });
 

@@ -61,7 +61,7 @@ export async function deleteOrgData(orgId: string): Promise<void> {
 
   // Phase 3: Database cleanup (order matters — children before parents)
 
-  // Step 1: Slack cleanup FIRST (pending_questions FK blocks compose deletion)
+  // Step 1: Slack cleanup
   const installations = await db
     .select({ slackWorkspaceId: slackOrgInstallations.slackWorkspaceId })
     .from(slackOrgInstallations)

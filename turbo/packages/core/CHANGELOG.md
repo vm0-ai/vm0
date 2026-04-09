@@ -1,5 +1,17 @@
 # Changelog
 
+## [8.166.0](https://github.com/vm0-ai/vm0/compare/core-v8.165.0...core-v8.166.0) (2026-04-09)
+
+
+### Features
+
+* add error report page and api for failed runs ([#8619](https://github.com/vm0-ai/vm0/issues/8619)) ([0b8c420](https://github.com/vm0-ai/vm0/commit/0b8c4200df1228b7fa3c16ab575bb547bba6a1f8))
+
+
+### Bug Fixes
+
+* **firewall:** strip query strings and fragments from generated rules ([#8678](https://github.com/vm0-ai/vm0/issues/8678)) ([40469b9](https://github.com/vm0-ai/vm0/commit/40469b9e5d42e02452c65cf1155e48cca2ee8583))
+
 ## [8.165.0](https://github.com/vm0-ai/vm0/compare/core-v8.164.0...core-v8.165.0) (2026-04-09)
 
 

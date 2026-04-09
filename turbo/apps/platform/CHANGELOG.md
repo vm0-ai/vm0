@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.207.0](https://github.com/vm0-ai/vm0/compare/app-v0.206.0...app-v0.207.0) (2026-04-09)
+
+
+### Features
+
+* add error report page and api for failed runs ([#8619](https://github.com/vm0-ai/vm0/issues/8619)) ([0b8c420](https://github.com/vm0-ai/vm0/commit/0b8c4200df1228b7fa3c16ab575bb547bba6a1f8))
+* **platform:** add avatar maker component with svg layer stacking ([#8618](https://github.com/vm0-ai/vm0/issues/8618)) ([01ac30b](https://github.com/vm0-ai/vm0/commit/01ac30b0b0b92a82e3962eb9ec75d9ea30976c56))
+* **voice-chat:** auto-log conversation to shared context ([#8674](https://github.com/vm0-ai/vm0/issues/8674)) ([f172c26](https://github.com/vm0-ai/vm0/commit/f172c2680c29ebe12631e7d2aec9d03ba391a3ed)), closes [#8669](https://github.com/vm0-ai/vm0/issues/8669)
+* **voice-chat:** rewrite fast brain instructions for system 1 role ([#8684](https://github.com/vm0-ai/vm0/issues/8684)) ([b597399](https://github.com/vm0-ai/vm0/commit/b597399508dd57a7cbaad5488706d93050af5cdd)), closes [#8670](https://github.com/vm0-ai/vm0/issues/8670)
+* **voice-chat:** use agent display name instead of hardcoded assistant label ([#8675](https://github.com/vm0-ai/vm0/issues/8675)) ([56a935e](https://github.com/vm0-ai/vm0/commit/56a935e6777619a3882f16e4634490c53235e296)), closes [#8672](https://github.com/vm0-ai/vm0/issues/8672)
+
+
+### Bug Fixes
+
+* **platform:** ignore credit errors in sentry + backfill starter credits for legacy orgs ([#8660](https://github.com/vm0-ai/vm0/issues/8660)) ([c1c6b32](https://github.com/vm0-ai/vm0/commit/c1c6b323f00d8fc5c7c918c8ccf9544441abdaf4))
+* **platform:** make connector card body clickable ([#8643](https://github.com/vm0-ai/vm0/issues/8643)) ([766fe1b](https://github.com/vm0-ai/vm0/commit/766fe1baaaaa7d8c0adac7f6530ab08cfc10745a))
+* **platform:** prevent tooltip auto-show on pricing page back button ([#8659](https://github.com/vm0-ai/vm0/issues/8659)) ([577756c](https://github.com/vm0-ai/vm0/commit/577756c5b25ad277e87ad5f526ac3d42cc1a11ec))
+* **platform:** remove stray dialog description in connector permission modal ([#8592](https://github.com/vm0-ai/vm0/issues/8592)) ([4e20fd7](https://github.com/vm0-ai/vm0/commit/4e20fd75d4c7a6e94caae04a0326bfac1c7046c1)), closes [#8591](https://github.com/vm0-ai/vm0/issues/8591)
+
+
+### Refactoring
+
+* **platform:** remove unnecessary try/catch in voice chat polling ([#8607](https://github.com/vm0-ai/vm0/issues/8607)) ([1545670](https://github.com/vm0-ai/vm0/commit/1545670daaf909d943de4e956517b4b2aa742757))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.166.0
+
 ## [0.206.0](https://github.com/vm0-ai/vm0/compare/app-v0.205.0...app-v0.206.0) (2026-04-09)
 
 

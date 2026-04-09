@@ -245,6 +245,5 @@ Sandboxes download directly from R2 (no proxy through VM0 API):
 
 ### Community
 
-- [Documentation](https://docs.vm0.ai)
 - [Discord](https://discord.gg/WMpAmHFfp6)
 - [GitHub](https://github.com/vm0-ai/vm0)

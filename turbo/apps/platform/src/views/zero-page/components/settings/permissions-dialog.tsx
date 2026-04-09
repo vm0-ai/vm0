@@ -33,6 +33,8 @@ import {
   permissionExpandedGroups$,
   togglePermissionGroup$,
   applyPermissionPolicies$,
+  permissionAllowUnknown$,
+  setPermissionAllowUnknown$,
 } from "../../../../signals/zero-page/settings/permissions-dialog.ts";
 import { IconCheck, IconBan, IconChevronRight } from "@tabler/icons-react";
 import { detach, Reason } from "../../../../signals/utils.ts";
@@ -47,8 +49,9 @@ interface PermissionsDrawerProps {
   connectorType: ConnectorType;
   displayName: string;
   initialPolicies: FirewallPolicies;
+  allowUnknown: boolean;
   readOnly?: boolean;
-  onApply: (policies: FirewallPolicies) => Promise<void>;
+  onApply: (policies: FirewallPolicies, allowUnknown: boolean) => Promise<void>;
   onClose: () => void;
 }
 
@@ -167,10 +170,75 @@ function PolicyPill({
   );
 }
 
+function buildSortedGroups(
+  config: FirewallConfig | null,
+  ref: string,
+): { category: string; permissions: ConnectorPermission[] }[] | null {
+  if (!config) {
+    return null;
+  }
+  return (
+    groupPermissionsByCategory(extractPermissions(config), ref)?.map(
+      (group) => {
+        return { ...group, permissions: sortPermissions(group.permissions) };
+      },
+    ) ?? null
+  );
+}
+
+function buildInitialPolicies(
+  ref: string,
+  config: FirewallConfig | null,
+  initialPolicies: FirewallPolicies,
+): Record<string, Record<string, PermissionPolicy>> {
+  const result: Record<string, Record<string, PermissionPolicy>> = {};
+  if (!config) {
+    return result;
+  }
+  const perms = extractPermissions(config);
+  const defaults = isFirewallConnectorType(ref)
+    ? getDefaultFirewallPolicies(ref)
+    : null;
+  const refPolicies: Record<string, PermissionPolicy> = {};
+  for (const p of perms) {
+    refPolicies[p.name] =
+      initialPolicies[ref]?.[p.name] ?? defaults?.[p.name] ?? "allow";
+  }
+  result[ref] = refPolicies;
+  return result;
+}
+
+function UnknownEndpointsToggle({
+  policy,
+  disabled,
+  onChange,
+}: {
+  policy: PermissionPolicy | "mixed";
+  disabled?: boolean;
+  onChange: (p: PermissionPolicy) => void;
+}) {
+  return (
+    <div className="border-t border-border/40 mx-3 mt-2 pt-3 pb-1">
+      <div className="flex items-center justify-between px-3">
+        <div className="min-w-0 flex-1">
+          <span className="text-xs font-medium text-foreground">
+            Unknown endpoints
+          </span>
+          <p className="mt-0.5 text-xs text-muted-foreground leading-relaxed">
+            Endpoints not matching any permission rule above
+          </p>
+        </div>
+        <PolicyPill policy={policy} disabled={disabled} onChange={onChange} />
+      </div>
+    </div>
+  );
+}
+
 export function PermissionsDrawer({
   connectorType,
   displayName,
   initialPolicies,
+  allowUnknown: initialAllowUnknown,
   readOnly,
   onApply,
   onClose,
@@ -181,29 +249,14 @@ export function PermissionsDrawer({
     ? getConnectorFirewall(ref)
     : null;
 
-  // Initialize policies state (idempotent — only runs on first render)
-  const buildInitialPolicies = (): Record<
-    string,
-    Record<string, PermissionPolicy>
-  > => {
-    const result: Record<string, Record<string, PermissionPolicy>> = {};
-    if (config) {
-      const perms = extractPermissions(config);
-      const defaults = isFirewallConnectorType(ref)
-        ? getDefaultFirewallPolicies(ref)
-        : null;
-      const refPolicies: Record<string, PermissionPolicy> = {};
-      for (const p of perms) {
-        refPolicies[p.name] =
-          initialPolicies[ref]?.[p.name] ?? defaults?.[p.name] ?? "allow";
-      }
-      result[ref] = refPolicies;
-    }
-    return result;
-  };
-  useSet(initPermissionPolicies$)(buildInitialPolicies());
+  useSet(initPermissionPolicies$)(
+    buildInitialPolicies(ref, config, initialPolicies),
+    initialAllowUnknown,
+  );
 
   const allPolicies = useGet(permissionAllPolicies$);
+  const allowUnknown = useGet(permissionAllowUnknown$);
+  const setAllowUnknown = useSet(setPermissionAllowUnknown$);
   const scrolled = useGet(permissionScrolled$);
   const setScrolled = useSet(setPermissionScrolled$);
   const expandedGroups = useGet(permissionExpandedGroups$);
@@ -216,16 +269,7 @@ export function PermissionsDrawer({
 
   const permissions = config ? sortPermissions(extractPermissions(config)) : [];
   const policies = allPolicies[ref] ?? {};
-  const groups = config
-    ? (groupPermissionsByCategory(extractPermissions(config), ref)?.map(
-        (group) => {
-          return {
-            ...group,
-            permissions: sortPermissions(group.permissions),
-          };
-        },
-      ) ?? null)
-    : null;
+  const groups = buildSortedGroups(config, ref);
 
   const handlePolicyChange = (name: string, policy: PermissionPolicy) => {
     setPolicyFn(ref, name, policy);
@@ -237,6 +281,7 @@ export function PermissionsDrawer({
       next[p.name] = policy;
     }
     setAllPoliciesFn(ref, next);
+    setAllowUnknown(policy === "allow");
   };
 
   const handleSetGroupAll = (
@@ -410,6 +455,14 @@ export function PermissionsDrawer({
                     );
                   })}
             </div>
+
+            <UnknownEndpointsToggle
+              policy={allowUnknown ? "allow" : "deny"}
+              disabled={readOnly}
+              onChange={(p) => {
+                setAllowUnknown(p === "allow");
+              }}
+            />
           </div>
         )}
 

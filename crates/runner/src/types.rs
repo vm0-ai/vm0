@@ -76,6 +76,8 @@ pub struct ExecutionContext {
     #[serde(default)]
     pub firewalls: Option<Vec<Firewall>>,
     #[serde(default)]
+    pub granted_permissions: Option<std::collections::HashMap<String, GrantedPermission>>,
+    #[serde(default)]
     pub disallowed_tools: Option<Vec<String>>,
     #[serde(default)]
     pub tools: Option<Vec<String>>,
@@ -128,6 +130,18 @@ pub struct FirewallAuth {
     /// When set, the proxy rewrites the request URL instead of injecting headers.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub base: Option<String>,
+}
+
+/// Per-firewall grant configuration: which permissions are authorized and
+/// whether unknown endpoints (not matching any rule) should be allowed.
+/// Refs absent from the map are fully permissive (all granted + allow unknown).
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GrantedPermission {
+    /// Permission names granted by the user.
+    pub allow: Vec<String>,
+    /// Whether to allow requests that don't match any known permission rule.
+    pub allow_unknown: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

@@ -6,7 +6,6 @@ import { logger } from "../../shared/logger";
 import type { OrgRole, OrgEnrollmentMode } from "@vm0/core";
 import { slackOrgConnections } from "../../../db/schema/slack-org-connection";
 import { slackOrgInstallations } from "../../../db/schema/slack-org-installation";
-import { slackOrgPendingQuestions } from "../../../db/schema/slack-org-pending-question";
 import { orgMembersCache } from "../../../db/schema/org-members-cache";
 import { orgMembersMetadata } from "../../../db/schema/org-members-metadata";
 
@@ -423,10 +422,6 @@ async function cleanupOrgMember(userId: string, orgId: string): Promise<void> {
       const connectionIds = connections.map((c) => {
         return c.id;
       });
-      // Delete pending questions first (no cascade from connection)
-      await db
-        .delete(slackOrgPendingQuestions)
-        .where(inArray(slackOrgPendingQuestions.connectionId, connectionIds));
       // Delete connections (cascades to slack_org_thread_sessions)
       await db
         .delete(slackOrgConnections)

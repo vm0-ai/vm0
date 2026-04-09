@@ -12,7 +12,7 @@ inputs:
     description: "Vercel deployment URL to alias"
     required: true
   app-name:
-    description: "App identifier (web, platform, site, docs)"
+    description: "App identifier (web, platform, site)"
     required: true
   job-ref:
     description: "Job reference identifier (e.g., pr-123, staging)"

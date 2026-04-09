@@ -58,12 +58,14 @@ function sampleDay(date: string, overrides?: Record<string, unknown>) {
     creditBalance: 9800,
     teamUsage: [
       {
+        userId: "user-alice",
         name: "alice",
         credits: 120,
         agentNames: ["Alpha Bot"],
         agentCredits: { "Alpha Bot": 120 },
       },
       {
+        userId: "user-bob",
         name: "bob",
         credits: 80,
         agentNames: ["Beta Bot"],
@@ -190,13 +192,13 @@ describe("network insights page - data rendering", () => {
     });
   });
 
-  it("should display blocked permissions card when denied > 0", async () => {
+  it("should display protected permissions card when denied > 0", async () => {
     mockInsightsAPI([sampleDay(day1Ago)]);
 
     await setupPage({ context, path: "/insights" });
 
     await waitFor(() => {
-      expect(screen.getByText("Blocked")).toBeInTheDocument();
+      expect(screen.getByText("Protected")).toBeInTheDocument();
     });
   });
 
@@ -227,7 +229,7 @@ describe("network insights page - data rendering", () => {
     expect(screen.getAllByText("GitHub").length).toBeGreaterThanOrEqual(1);
   });
 
-  it("should not display blocked card when no denials", async () => {
+  it("should not display protected card when no denials", async () => {
     mockInsightsAPI([
       sampleDay(day1Ago, {
         permissions: [
@@ -246,7 +248,7 @@ describe("network insights page - data rendering", () => {
     await waitFor(() => {
       expect(screen.getByText("Allowed")).toBeInTheDocument();
     });
-    expect(screen.queryByText("Blocked")).not.toBeInTheDocument();
+    expect(screen.queryByText("Protected")).not.toBeInTheDocument();
   });
 
   it("should show Yesterday header for yesterday's data", async () => {
@@ -445,11 +447,22 @@ describe("network insights page - data refetch", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Team usage in credits card
+// Team credit usage card (admin-only)
 // ---------------------------------------------------------------------------
 
-describe("network insights page - credits card", () => {
-  it("should display team member names", async () => {
+describe("network insights page - team credit usage card", () => {
+  it("should display Team Credit Usage heading for admin users", async () => {
+    mockInsightsAPI([sampleDay(day1Ago)]);
+
+    // Default MSW handler returns role: "admin"
+    await setupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Team Credit Usage")).toBeInTheDocument();
+    });
+  });
+
+  it("should display team member names in team card", async () => {
     mockInsightsAPI([sampleDay(day1Ago)]);
 
     await setupPage({ context, path: "/insights" });
@@ -468,5 +481,257 @@ describe("network insights page - credits card", () => {
     await waitFor(() => {
       expect(screen.getByText("9,800")).toBeInTheDocument();
     });
+  });
+
+  it("should not display Team Credit Usage card for non-admin users", async () => {
+    mockInsightsAPI([sampleDay(day1Ago)]);
+
+    // Override org API to return member role
+    server.use(
+      http.get("*/api/zero/org", () => {
+        return HttpResponse.json({
+          id: "org_1",
+          slug: "user-12345678",
+          name: "User 12345678",
+          role: "member",
+        });
+      }),
+    );
+
+    await setupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Your Credit Usage")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Team Credit Usage")).not.toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Your credit usage card (everyone)
+// ---------------------------------------------------------------------------
+
+describe("network insights page - your credit usage card", () => {
+  it("should display Your Credit Usage heading", async () => {
+    mockInsightsAPI([sampleDay(day1Ago)]);
+
+    await setupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Your Credit Usage")).toBeInTheDocument();
+    });
+  });
+
+  it("should show personal credits matching the current user", async () => {
+    mockInsightsAPI([
+      sampleDay(day1Ago, {
+        teamUsage: [
+          {
+            userId: "test-user-123",
+            name: "me",
+            credits: 75,
+            agentNames: ["Alpha Bot"],
+            agentCredits: { "Alpha Bot": 75 },
+          },
+          {
+            userId: "other-user",
+            name: "other",
+            credits: 125,
+            agentNames: ["Beta Bot"],
+            agentCredits: { "Beta Bot": 125 },
+          },
+        ],
+      }),
+    ]);
+
+    await setupPage({ context, path: "/insights" });
+
+    // "Your Credit Usage" card should show the current user's credits (75)
+    await waitFor(() => {
+      expect(screen.getByText("Your Credit Usage")).toBeInTheDocument();
+    });
+    expect(screen.getByText("75")).toBeInTheDocument();
+  });
+
+  it("should show 0 credits when current user has no usage", async () => {
+    mockInsightsAPI([
+      sampleDay(day1Ago, {
+        teamUsage: [
+          {
+            userId: "someone-else",
+            name: "someone",
+            credits: 200,
+            agentNames: ["Alpha Bot"],
+          },
+        ],
+      }),
+    ]);
+
+    await setupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Your Credit Usage")).toBeInTheDocument();
+    });
+    // No match for current user → 0
+    expect(screen.getByText("0")).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Allowed permissions card — load more toggle
+// ---------------------------------------------------------------------------
+
+describe("network insights page - allowed permissions load more", () => {
+  it("should show Load more button when more than 5 permissions", async () => {
+    const manyPermissions = Array.from({ length: 8 }, (_, i) => {
+      return {
+        label: `perm-${i}`,
+        connectorType: `svc-${i}`,
+        allowed: i + 1,
+        denied: 0,
+        agentNames: ["Alpha Bot"],
+      };
+    });
+    mockInsightsAPI([sampleDay(day1Ago, { permissions: manyPermissions })]);
+
+    await setupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Load more")).toBeInTheDocument();
+    });
+  });
+
+  it("should not show Load more button when 5 or fewer permissions", async () => {
+    const fewPermissions = Array.from({ length: 4 }, (_, i) => {
+      return {
+        label: `perm-${i}`,
+        connectorType: `svc-${i}`,
+        allowed: i + 1,
+        denied: 0,
+        agentNames: ["Alpha Bot"],
+      };
+    });
+    mockInsightsAPI([sampleDay(day1Ago, { permissions: fewPermissions })]);
+
+    await setupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Allowed")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Load more")).not.toBeInTheDocument();
+  });
+
+  it("should expand all permissions on Load more click", async () => {
+    const user = userEvent.setup();
+    const manyPermissions = Array.from({ length: 7 }, (_, i) => {
+      return {
+        label: `action-${i}`,
+        connectorType: `connector-${i}`,
+        allowed: 1,
+        denied: 0,
+        agentNames: ["Alpha Bot"],
+      };
+    });
+    mockInsightsAPI([sampleDay(day1Ago, { permissions: manyPermissions })]);
+
+    await setupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Load more")).toBeInTheDocument();
+    });
+
+    // Only first 5 visible initially; permission 6 (action-6) should not be visible
+    expect(screen.queryByText("action-6")).not.toBeInTheDocument();
+
+    await user.click(screen.getByText("Load more"));
+
+    await waitFor(() => {
+      expect(screen.getByText("action-6")).toBeInTheDocument();
+    });
+    // Button should now say "Show less"
+    expect(screen.getByText("Show less")).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Allowed permissions card — redesigned layout
+// ---------------------------------------------------------------------------
+
+describe("network insights page - allowed card layout", () => {
+  it("should show connector name and description on separate lines", async () => {
+    mockInsightsAPI([
+      sampleDay(day1Ago, {
+        services: [],
+        permissions: [
+          {
+            label: "chat:write",
+            connectorType: "slack",
+            allowed: 8,
+            denied: 0,
+            agentNames: ["Alpha Bot"],
+          },
+        ],
+      }),
+    ]);
+
+    await setupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Allowed")).toBeInTheDocument();
+    });
+    // Description (label) displayed separately below the connector name
+    expect(screen.getByText("chat:write")).toBeInTheDocument();
+    // Call count with "calls" label
+    expect(screen.getByText("8 calls")).toBeInTheDocument();
+  });
+
+  it("should show calls count with singular form", async () => {
+    mockInsightsAPI([
+      sampleDay(day1Ago, {
+        permissions: [
+          {
+            label: "repo:read",
+            connectorType: "github",
+            allowed: 1,
+            denied: 0,
+            agentNames: ["Beta Bot"],
+          },
+        ],
+      }),
+    ]);
+
+    await setupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      expect(screen.getByText("1 call")).toBeInTheDocument();
+    });
+  });
+
+  it("should not show description when label equals connectorType", async () => {
+    mockInsightsAPI([
+      sampleDay(day1Ago, {
+        services: [],
+        permissions: [
+          {
+            label: "github",
+            connectorType: "github",
+            allowed: 5,
+            denied: 0,
+            agentNames: ["Beta Bot"],
+          },
+        ],
+      }),
+    ]);
+
+    await setupPage({ context, path: "/insights" });
+
+    await waitFor(() => {
+      expect(screen.getByText("Allowed")).toBeInTheDocument();
+    });
+    expect(screen.getByText("5 calls")).toBeInTheDocument();
+    // "calls made within 1 granted permission" — updated text
+    expect(
+      screen.getByText(/calls made within 1 granted permission/),
+    ).toBeInTheDocument();
   });
 });

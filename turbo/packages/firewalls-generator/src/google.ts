@@ -10,7 +10,7 @@ import {
   fetchSpec,
   logStats,
   renderPermissions,
-  sortRules,
+  sanitizeAndSortRules,
   writeOutput,
 } from "./codegen";
 import type { PermissionGroup } from "./codegen";
@@ -171,7 +171,7 @@ function buildGroups(
     .map(([name, ruleSet]) => ({
       name,
       description: scopeDescs.get(name) ?? "",
-      rules: sortRules([...ruleSet]),
+      rules: sanitizeAndSortRules([...ruleSet]),
     }));
 }
 
@@ -276,7 +276,7 @@ function mergePermissions(
     if (existing) {
       const ruleSet = new Set(existing.rules);
       for (const rule of perm.rules) ruleSet.add(rule);
-      existing.rules = sortRules([...ruleSet]);
+      existing.rules = sanitizeAndSortRules([...ruleSet]);
       if (!existing.description && perm.description) {
         existing.description = perm.description;
       }

@@ -35,6 +35,7 @@ export interface TopTask {
 }
 
 export interface MemberCredits {
+  userId: string;
   name: string;
   credits: number;
   agentNames: string[];
@@ -143,3 +144,26 @@ export const reloadInsights$ = command(({ set }) => {
     return x + 1;
   });
 });
+
+// ---------------------------------------------------------------------------
+// "Load more" toggle for allowed-permissions card (keyed by day date)
+// ---------------------------------------------------------------------------
+
+const internalExpandedAllowed$ = state<Set<string>>(new Set());
+
+export const expandedAllowedDays$ = computed((get) => {
+  return get(internalExpandedAllowed$);
+});
+
+export const toggleExpandedAllowed$ = command(
+  ({ get, set }, dayDate: string) => {
+    const current = get(internalExpandedAllowed$);
+    const next = new Set(current);
+    if (next.has(dayDate)) {
+      next.delete(dayDate);
+    } else {
+      next.add(dayDate);
+    }
+    set(internalExpandedAllowed$, next);
+  },
+);

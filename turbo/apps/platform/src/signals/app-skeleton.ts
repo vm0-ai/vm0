@@ -3,12 +3,28 @@ import { currentChatAgent$ } from "./agent-chat.ts";
 import { resolveAvatarUrl } from "../views/zero-page/avatar-utils.ts";
 import { resetSignal, bestEffort, setLoop } from "./utils.ts";
 import { agents$ } from "./agent.ts";
+import { getAvatarPresets } from "../views/zero-page/zero-avatars.ts";
 
 // ---------------------------------------------------------------------------
 // Visibility
 // ---------------------------------------------------------------------------
 
 const internalVisible$ = state(true);
+
+// ---------------------------------------------------------------------------
+// Avatar – picked once at module load so remounts don't flicker
+// ---------------------------------------------------------------------------
+
+const internalSkeletonAvatar$ = state(
+  (() => {
+    const presets = getAvatarPresets();
+    return presets[Math.floor(Math.random() * presets.length)];
+  })(),
+);
+
+export const skeletonAvatarConfig$ = computed((get) => {
+  return get(internalSkeletonAvatar$);
+});
 
 // ---------------------------------------------------------------------------
 // Message cycling

@@ -23,6 +23,7 @@ function mockAgentApi(connectors: string[]) {
         sound: null,
         avatarUrl: null,
         permissionPolicies: null,
+        allowUnknownEndpoints: null,
       });
     }),
     http.get(
@@ -69,6 +70,7 @@ describe("zeroAddedConnectors$", () => {
           sound: null,
           avatarUrl: null,
           permissionPolicies: null,
+          allowUnknownEndpoints: null,
         });
       }),
       http.get("*/api/zero/agents/sub-agent-compose-id/user-connectors", () => {

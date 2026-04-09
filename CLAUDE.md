@@ -181,6 +181,17 @@ For detailed patterns and examples, use `/testing`.
 4. Use proper conventional commit message format
 5. These checks help maintain the high standards defined in our design principles
 
+### Running Vitest Correctly
+
+**Resource contention occurs when multiple vitest processes run simultaneously.** Follow these rules to avoid test conflicts:
+
+1. **Run one vitest process at a time** - Wait for it to fully exit before starting the next. Never launch parallel vitest processes.
+2. **Prefer workspace-scoped testing** - Instead of running all tests with `pnpm vitest`, target a specific workspace for faster, isolated runs:
+   ```
+   pnpm -F @vm0/app exec vitest
+   ```
+   Replace `@vm0/app` with the workspace name relevant to your changes (e.g. `@vm0/cli`, `@vm0/api`).
+
 ### CRITICAL: Never run checks in background
 **All pre-commit checks (lint, format, typecheck, test, knip) MUST run in the foreground.** Never use `run_in_background` for these commands. The results must be available immediately so the commit can proceed — background execution defeats this purpose.
 

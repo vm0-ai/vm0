@@ -3,7 +3,6 @@
 import { useGet, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
-import { fetch$ } from "../../signals/fetch.ts";
 import {
   Button,
   Card,
@@ -19,7 +18,7 @@ import {
   Input,
   cn,
 } from "@vm0/ui";
-import { IconTrash, IconUpload, IconCheck } from "@tabler/icons-react";
+import { IconTrash } from "@tabler/icons-react";
 import {
   type Tone,
   TONE_OPTIONS,
@@ -31,9 +30,11 @@ import { detach, Reason } from "../../signals/utils.ts";
 import { ZeroUnsavedBar } from "./zero-unsaved-bar.tsx";
 import type { Command } from "ccstate";
 import { InlineSettingsRow } from "./components/zero-inline-settings-row.tsx";
-import { ZERO_AVATARS } from "./zero-avatars.ts";
-import { AVATAR_PRESET_PREFIX } from "./avatar-utils.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
+import { serializeAvatarSvgConfig } from "./avatar-svg-utils.ts";
+import { resolveAvatarSvgConfig } from "./avatar-utils.ts";
+import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
+import { AvatarMaker } from "./avatar-maker.tsx";
 import {
   settingsAgentName$,
   setSettingsAgentName$,
@@ -43,14 +44,10 @@ import {
   setSettingsTone$,
   settingsAvatarUrl$,
   setSettingsAvatarUrl$,
-  settingsCustomAvatarUrl$,
-  settingsFileInputEl$,
-  setSettingsFileInputEl$,
   settingsDirty$,
   initSettingsForm$,
   resetSettingsForm$,
   markSettingsSaved$,
-  uploadAvatar$,
   deleteAgent$,
 } from "../../signals/zero-page/settings/settings-tab.ts";
 
@@ -103,16 +100,9 @@ export function ZeroSettingsTab({
   const setTone = useSet(setSettingsTone$);
   const avatarUrl = useGet(settingsAvatarUrl$);
   const setAvatarUrl = useSet(setSettingsAvatarUrl$);
-  const customAvatarUrl = useGet(settingsCustomAvatarUrl$);
-  const fileInputEl = useGet(settingsFileInputEl$);
-  const setFileInputEl = useSet(setSettingsFileInputEl$);
   const isSettingsDirty = useGet(settingsDirty$);
   const resetForm = useSet(resetSettingsForm$);
   const markSaved = useSet(markSettingsSaved$);
-
-  const fetchFn = useGet(fetch$);
-  const [uploadLoadable, uploadAvatarFn] = useLoadableSet(uploadAvatar$);
-  const uploading = uploadLoadable.state === "loading";
 
   const [deleteLoadable, deleteAgentFn] = useLoadableSet(deleteAgent$);
   const deleting = deleteLoadable.state === "loading";
@@ -159,113 +149,41 @@ export function ZeroSettingsTab({
           <CardContent className="p-4 sm:p-5">
             <InlineSettingsRow
               label="Avatar"
-              description="Pick a preset or upload a custom image."
+              description="Create your own avatar."
               wideControls
             >
               <div className="min-w-0 w-full">
-                <div
-                  className="flex flex-wrap gap-2"
-                  role="radiogroup"
-                  aria-label="Avatar"
-                >
-                  {ZERO_AVATARS.map((src, idx) => {
-                    const presetValue = `${AVATAR_PRESET_PREFIX}${idx}`;
-                    const isSelected = avatarUrl === presetValue;
-                    return (
-                      <button
-                        key={presetValue}
-                        type="button"
-                        role="radio"
-                        aria-checked={isSelected}
-                        aria-label={`Avatar ${idx + 1}`}
-                        onClick={() => {
-                          return setAvatarUrl(presetValue);
-                        }}
-                        className={cn(
-                          "relative h-12 w-12 shrink-0 rounded-full overflow-hidden border-2 transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                          isSelected
-                            ? "border-primary ring-2 ring-primary/20"
-                            : "border-transparent hover:border-muted-foreground/30",
-                        )}
-                      >
-                        <img
-                          src={src}
-                          alt={`Avatar ${idx + 1}`}
-                          className="h-full w-full object-cover object-top"
-                        />
-                        {isSelected && (
-                          <div className="absolute inset-0 flex items-center justify-center bg-primary/20">
-                            <IconCheck
-                              size={16}
-                              stroke={2.5}
-                              className="text-primary"
-                            />
-                          </div>
-                        )}
-                      </button>
-                    );
-                  })}
-                  {customAvatarUrl &&
-                    (() => {
-                      const isSelected = avatarUrl === customAvatarUrl;
+                <div className="flex flex-wrap gap-2 items-center">
+                  {(() => {
+                    const resolved = resolveAvatarSvgConfig(avatarUrl);
+                    if (resolved) {
                       return (
-                        <button
-                          type="button"
-                          role="radio"
-                          aria-checked={isSelected}
-                          aria-label="Custom avatar"
-                          onClick={() => {
-                            return setAvatarUrl(customAvatarUrl);
-                          }}
-                          className={cn(
-                            "relative h-12 w-12 shrink-0 rounded-full overflow-hidden border-2 transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                            isSelected
-                              ? "border-primary ring-2 ring-primary/20"
-                              : "border-transparent hover:border-muted-foreground/30",
-                          )}
-                        >
-                          <img
-                            src={customAvatarUrl}
-                            alt="Custom avatar"
-                            className="h-full w-full object-cover object-top"
+                        <div className="h-12 w-12 shrink-0 rounded-full border-2 border-primary ring-2 ring-primary/20">
+                          <AvatarSvgPreview
+                            config={resolved}
+                            className="h-full w-full rounded-full"
                           />
-                          {isSelected && (
-                            <div className="absolute inset-0 flex items-center justify-center bg-primary/20">
-                              <IconCheck
-                                size={16}
-                                stroke={2.5}
-                                className="text-primary"
-                              />
-                            </div>
-                          )}
-                        </button>
+                        </div>
                       );
-                    })()}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      return fileInputEl?.click();
-                    }}
-                    disabled={uploading}
-                    className="h-12 w-12 shrink-0 rounded-full border-2 border-dashed border-muted-foreground/30 flex items-center justify-center text-muted-foreground hover:border-muted-foreground/50 hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                    aria-label="Upload custom avatar"
-                  >
-                    <IconUpload size={16} stroke={1.5} />
-                  </button>
-                  <input
-                    ref={setFileInputEl}
-                    type="file"
-                    accept="image/png,image/jpeg,image/gif,image/webp"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) {
-                        detach(
-                          uploadAvatarFn(file, fetchFn, pageSignal),
-                          Reason.DomCallback,
-                        );
-                      }
-                      e.target.value = "";
+                    }
+                    return null;
+                  })()}
+                  <AvatarMaker
+                    onConfirm={(cfg) => {
+                      const newAvatarUrl = serializeAvatarSvgConfig(cfg);
+                      setAvatarUrl(newAvatarUrl);
+                      return triggerUpdateSettings(
+                        {
+                          displayName: agentName,
+                          description: desc,
+                          sound: tone,
+                          avatarUrl: newAvatarUrl,
+                        },
+                        pageSignal,
+                      ).then(() => {
+                        markSaved();
+                        toast.success("Profile saved");
+                      });
                     }}
                   />
                 </div>

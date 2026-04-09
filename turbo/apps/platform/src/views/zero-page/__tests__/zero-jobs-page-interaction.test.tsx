@@ -66,31 +66,6 @@ describe("zero jobs page - create agent dialog", () => {
     });
   });
 
-  it("previews custom image after file selection (AGENT-D-012)", async () => {
-    const user = userEvent.setup();
-    mockTeamAPI();
-    server.use(
-      http.post("*/api/zero/uploads", () => {
-        return HttpResponse.json({ url: "https://cdn.example.com/custom.png" });
-      }),
-    );
-    await setupPage({ context, path: "/agents" });
-
-    await openDialog(user);
-
-    const dialog = screen.getByRole("dialog");
-    const fileInput =
-      dialog.querySelector<HTMLInputElement>('input[type="file"]');
-    const file = new File(["img"], "avatar.png", { type: "image/png" });
-    await user.upload(fileInput!, file);
-
-    await waitFor(() => {
-      expect(screen.getByAltText("New agent").getAttribute("src")).toBe(
-        "https://cdn.example.com/custom.png",
-      );
-    });
-  });
-
   it("creates agent and shows it in the grid (AGENT-D-014)", async () => {
     const user = userEvent.setup();
     const NEW_AGENT = {
@@ -125,6 +100,7 @@ describe("zero jobs page - create agent dialog", () => {
             avatarUrl: null,
             connectors: [],
             permissionPolicies: null,
+            allowUnknownEndpoints: null,
           },
           { status: 201 },
         );
@@ -139,6 +115,7 @@ describe("zero jobs page - create agent dialog", () => {
           avatarUrl: null,
           connectors: [],
           permissionPolicies: null,
+          allowUnknownEndpoints: null,
         });
       }),
     );
@@ -167,6 +144,66 @@ describe("zero jobs page - create agent dialog", () => {
 
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+  });
+});
+
+describe("zero jobs page - avatar display", () => {
+  it("renders avatar for agents in the grid (AGENT-D-012)", async () => {
+    server.use(
+      http.get("*/api/zero/team", () => {
+        return HttpResponse.json([
+          DEFAULT_AGENT,
+          {
+            id: "avatar-agent-id",
+            displayName: "Avatar Agent",
+            description: "Has a custom SVG avatar",
+            sound: null,
+            avatarUrl: "svg:r2s1h4c3f2m",
+            headVersionId: "version_av",
+            updatedAt: "2024-01-02T00:00:00Z",
+          },
+        ]);
+      }),
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
+    );
+    await setupPage({ context, path: "/agents" });
+
+    // Agent with SVG avatar should render an avatar image
+    await waitFor(() => {
+      const avatar = screen.getByRole("img", { name: "Avatar Agent" });
+      expect(avatar).toBeInTheDocument();
+    });
+  });
+
+  it("renders fallback avatar when avatarUrl is null (AGENT-D-013)", async () => {
+    server.use(
+      http.get("*/api/zero/team", () => {
+        return HttpResponse.json([
+          DEFAULT_AGENT,
+          {
+            id: "no-avatar-agent-id",
+            displayName: "No Avatar Agent",
+            description: null,
+            sound: null,
+            avatarUrl: null,
+            headVersionId: "version_no",
+            updatedAt: "2024-01-02T00:00:00Z",
+          },
+        ]);
+      }),
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
+    );
+    await setupPage({ context, path: "/agents" });
+
+    // Even without an avatar URL, a fallback SVG avatar should render
+    await waitFor(() => {
+      const avatar = screen.getByRole("img", { name: "No Avatar Agent" });
+      expect(avatar).toBeInTheDocument();
     });
   });
 });

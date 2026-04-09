@@ -161,9 +161,9 @@ export const axiomFirewall = {
         {
           name: "query|read",
           rules: [
-            "POST /v1/datasets/_apl?format=tabular",
+            "POST /v1/datasets/_apl",
             "POST /v1/datasets/{dataset_name}/query",
-            "POST /v1/query/_apl?format=tabular",
+            "POST /v1/query/_apl",
             "POST /v1/query/_mpl",
             "POST /v1/query/batch",
             "GET /v1/query/metrics/info/datasets/{dataset}/metrics",

@@ -367,6 +367,113 @@ describe("GET /api/cron/aggregate-insights", () => {
     expect(row!.data.permissions).toEqual([]);
   });
 
+  it("should include userId in teamUsage entries", async () => {
+    const { date } = recentDate();
+
+    const runId = await createCompletedTestRun({
+      composeVersionId,
+      userId,
+      createdAt: date,
+      startedAt: date,
+      completedAt: new Date(date.getTime() + 5000),
+    });
+
+    await seedUserCacheEntry(userId, "test@example.com");
+
+    await seedCreditUsageRecord({
+      runId,
+      orgId,
+      userId,
+      creditsCharged: 100,
+      createdAt: date,
+    });
+
+    const response = await GET(cronRequest("test-cron-secret"));
+    expect(response.status).toBe(200);
+
+    const row = await findInsightsDaily(orgId, todayDateStr(), userId);
+    expect(row).toBeDefined();
+
+    const teamUsage = row!.data.teamUsage as Array<{
+      userId: string;
+      name: string;
+      credits: number;
+    }>;
+    expect(teamUsage).toHaveLength(1);
+    expect(teamUsage[0]!.userId).toBe(userId);
+  });
+
+  it("should use cached name when available in user_cache", async () => {
+    const { date } = recentDate();
+
+    const runId = await createCompletedTestRun({
+      composeVersionId,
+      userId,
+      createdAt: date,
+      startedAt: date,
+      completedAt: new Date(date.getTime() + 5000),
+    });
+
+    await seedUserCacheEntry(userId, "alice@example.com", "Alice");
+
+    await seedCreditUsageRecord({
+      runId,
+      orgId,
+      userId,
+      creditsCharged: 200,
+      createdAt: date,
+    });
+
+    const response = await GET(cronRequest("test-cron-secret"));
+    expect(response.status).toBe(200);
+
+    const row = await findInsightsDaily(orgId, todayDateStr(), userId);
+    expect(row).toBeDefined();
+
+    const teamUsage = row!.data.teamUsage as Array<{
+      name: string;
+      credits: number;
+    }>;
+    expect(teamUsage).toHaveLength(1);
+    expect(teamUsage[0]!.name).toBe("Alice");
+  });
+
+  it("should fall back to email prefix when name is null in user_cache", async () => {
+    const { date } = recentDate();
+
+    const runId = await createCompletedTestRun({
+      composeVersionId,
+      userId,
+      createdAt: date,
+      startedAt: date,
+      completedAt: new Date(date.getTime() + 5000),
+    });
+
+    // Seed cache entry without name (name=null)
+    await seedUserCacheEntry(userId, "bob@example.com");
+
+    await seedCreditUsageRecord({
+      runId,
+      orgId,
+      userId,
+      creditsCharged: 150,
+      createdAt: date,
+    });
+
+    const response = await GET(cronRequest("test-cron-secret"));
+    expect(response.status).toBe(200);
+
+    const row = await findInsightsDaily(orgId, todayDateStr(), userId);
+    expect(row).toBeDefined();
+
+    const teamUsage = row!.data.teamUsage as Array<{
+      name: string;
+      credits: number;
+    }>;
+    expect(teamUsage).toHaveLength(1);
+    expect(teamUsage[0]!.name).toBe("bob");
+  });
+
   it("should be idempotent on rerun", async () => {
     const { date } = recentDate();
 

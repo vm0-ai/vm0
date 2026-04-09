@@ -14,6 +14,8 @@ export function deriveAppUrl(webUrl: string): string {
   return webUrl.replace(/-www\./, "-app.").replace(/\/\/www\./, "//app.");
 }
 
+export const STORAGE_STATE = path.join(__dirname, ".auth/storage-state.json");
+
 export default defineConfig({
   testDir: "./tests",
   globalSetup: "./global-setup",
@@ -25,4 +27,25 @@ export default defineConfig({
     trace: "on-first-retry",
     ...devices["Desktop Chrome"],
   },
+  projects: [
+    {
+      name: "setup",
+      testMatch: "smoke.spec.ts",
+    },
+    {
+      name: "features",
+      testMatch: [
+        "agents.spec.ts",
+        "schedule.spec.ts",
+        "chat.spec.ts",
+        "create-agent.spec.ts",
+        "create-schedule.spec.ts",
+        "webchat.spec.ts",
+      ],
+      dependencies: ["setup"],
+      use: {
+        storageState: STORAGE_STATE,
+      },
+    },
+  ],
 });

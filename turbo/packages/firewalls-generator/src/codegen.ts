@@ -68,6 +68,20 @@ export const OPENAPI_PATH_KEYS = new Set([
   "trace",
 ]);
 
+// ── Path sanitization ────────────────────────────────────────────────────
+
+/**
+ * Strip query string (`?…`) and fragment (`#…`) from an OpenAPI path.
+ * Some specs include these in path keys; firewall rules must not contain them.
+ */
+export function stripQueryFragment(p: string): string {
+  const qIdx = p.indexOf("?");
+  const hIdx = p.indexOf("#");
+  if (qIdx === -1 && hIdx === -1) return p;
+  const cutIdx = qIdx === -1 ? hIdx : hIdx === -1 ? qIdx : Math.min(qIdx, hIdx);
+  return p.slice(0, cutIdx);
+}
+
 // ── Rule sorting ─────────────────────────────────────────────────────────
 
 const METHOD_ORDER: Record<string, number> = {
@@ -84,8 +98,33 @@ function ruleKey(rule: string): [string, number] {
   return [rulePath, METHOD_ORDER[method] ?? 9];
 }
 
-export function sortRules(rules: string[]): string[] {
-  return [...rules].sort((a, b) => {
+/**
+ * Sanitize a rule by stripping query strings / fragments from its path.
+ * e.g. `"POST /v1/datasets/_apl?format=tabular"` → `"POST /v1/datasets/_apl"`
+ */
+function sanitizeRule(rule: string): string {
+  const spaceIdx = rule.indexOf(" ");
+  if (spaceIdx === -1) return rule;
+  const method = rule.slice(0, spaceIdx);
+  const rest = rule.slice(spaceIdx + 1);
+  const cleaned = stripQueryFragment(rest);
+  if (cleaned !== rest) {
+    console.error(
+      `  ⚠ Stripped query/fragment from rule: "${rule}" → "${method} ${cleaned}"`,
+    );
+  }
+  return `${method} ${cleaned}`;
+}
+
+/**
+ * Sanitize, deduplicate, and sort firewall rules.
+ *
+ * - Strips query strings / fragments that some OpenAPI specs include in path keys
+ * - Deduplicates rules that collapse after stripping
+ * - Sorts by path then HTTP method order
+ */
+export function sanitizeAndSortRules(rules: string[]): string[] {
+  return [...new Set(rules.map(sanitizeRule))].sort((a, b) => {
     const [pathA, orderA] = ruleKey(a);
     const [pathB, orderB] = ruleKey(b);
     return pathA < pathB ? -1 : pathA > pathB ? 1 : orderA - orderB;

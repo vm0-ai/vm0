@@ -1,7 +1,6 @@
-import { eq, and, isNull, inArray } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import { slackOrgInstallations } from "../../../db/schema/slack-org-installation";
 import { slackOrgConnections } from "../../../db/schema/slack-org-connection";
-import { slackOrgPendingQuestions } from "../../../db/schema/slack-org-pending-question";
 import {
   ensureOrgArtifact,
   resolveDefaultComposeId,
@@ -215,7 +214,7 @@ export async function disconnect(params: {
 /**
  * Remove a workspace installation and all associated data.
  *
- * Deletes: pending questions → connections (cascades thread sessions) → installation.
+ * Deletes: connections (cascades thread sessions) → installation.
  * Skips Slack API calls — the caller decides whether to refresh App Homes first.
  *
  * Returns true if an installation was deleted, false if none existed.
@@ -233,21 +232,6 @@ export async function cleanupWorkspaceInstallation(
 
   if (!installation) {
     return false;
-  }
-
-  // Delete pending questions for all connections in this workspace
-  const connections = await db
-    .select({ id: slackOrgConnections.id })
-    .from(slackOrgConnections)
-    .where(eq(slackOrgConnections.slackWorkspaceId, workspaceId));
-
-  if (connections.length > 0) {
-    const connectionIds = connections.map((c) => {
-      return c.id;
-    });
-    await db
-      .delete(slackOrgPendingQuestions)
-      .where(inArray(slackOrgPendingQuestions.connectionId, connectionIds));
   }
 
   // Delete all connections (cascades to thread sessions)

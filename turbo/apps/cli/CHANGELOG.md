@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.111.0](https://github.com/vm0-ai/vm0/compare/cli-v9.110.2...cli-v9.111.0) (2026-04-09)
+
+
+### Features
+
+* add error report page and api for failed runs ([#8619](https://github.com/vm0-ai/vm0/issues/8619)) ([0b8c420](https://github.com/vm0-ai/vm0/commit/0b8c4200df1228b7fa3c16ab575bb547bba6a1f8))
+* **cli:** add --mode flag to phone call command with onhold and fire-and-forget modes ([#8677](https://github.com/vm0-ai/vm0/issues/8677)) ([b0041d1](https://github.com/vm0-ai/vm0/commit/b0041d19616ef3d5fd6ddfaf0a18668bbd85534d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.166.0
+
 ## [9.110.2](https://github.com/vm0-ai/vm0/compare/cli-v9.110.1...cli-v9.110.2) (2026-04-09)
 
 

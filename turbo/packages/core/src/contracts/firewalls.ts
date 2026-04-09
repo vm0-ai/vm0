@@ -79,6 +79,26 @@ export const firewallPoliciesSchema = z.record(
 );
 export type FirewallPolicies = z.infer<typeof firewallPoliciesSchema>;
 
+/**
+ * Per-firewall grant configuration — which permissions are granted and
+ * whether unknown endpoints (not matching any permission rule) are allowed.
+ * Refs absent from the map are fully permissive (all granted + allow unknown).
+ */
+const grantedPermissionSchema = z.object({
+  allow: z.array(z.string()),
+  allowUnknown: z.boolean(),
+});
+
+/**
+ * Granted permissions map — firewall ref → grant config.
+ * Example: { "github": { allow: ["repo-read"], allowUnknown: false } }
+ */
+export const grantedPermissionsSchema = z.record(
+  z.string(),
+  grantedPermissionSchema,
+);
+export type GrantedPermissions = z.infer<typeof grantedPermissionsSchema>;
+
 /** Inferred types */
 export type FirewallApi = z.infer<typeof firewallApiSchema>;
 export type FirewallConfig = z.infer<typeof firewallConfigSchema>;

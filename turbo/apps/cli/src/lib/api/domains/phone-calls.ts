@@ -5,15 +5,30 @@ interface PhoneCallResponse {
   status: string;
 }
 
+export interface PhoneCall {
+  id: string;
+  status: string;
+  fromNumber: string;
+  toNumber: string;
+  durationSeconds: number | null;
+  startedAt: string | null;
+  lastTranscriptSnippet?: string | null;
+}
+
+export interface TranscriptEntry {
+  role: string;
+  text: string;
+}
+
 interface PhoneCallListResponse {
-  data: Array<Record<string, unknown>>;
+  data: PhoneCall[];
   total: number;
   hasMore: boolean;
 }
 
 interface PhoneCallDetailResponse {
-  call: Record<string, unknown>;
-  transcript: unknown;
+  call: PhoneCall;
+  transcript: TranscriptEntry[] | null;
 }
 
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {

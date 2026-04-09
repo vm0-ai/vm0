@@ -46,8 +46,8 @@ const mockCallDetail = {
     startedAt: "2026-04-08T10:00:00Z",
   },
   transcript: [
-    { role: "agent", content: "Hello, how can I help?" },
-    { role: "user", content: "I have a question about my account." },
+    { role: "agent", text: "Hello, how can I help?" },
+    { role: "user", text: "I have a question about my account." },
   ],
 };
 

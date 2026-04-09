@@ -17,7 +17,8 @@ import {
   fetchSpec,
   logStats,
   renderPermissions,
-  sortRules,
+  sanitizeAndSortRules,
+  stripQueryFragment,
   writeOutput,
 } from "./codegen";
 import type { PermissionGroup } from "./codegen";
@@ -104,7 +105,7 @@ function buildGroups(spec: SwaggerSpec): {
       if (!ALL_METHODS.has(method)) continue;
 
       const httpMethod = method.toUpperCase();
-      const fullPath = `${basePath}${path}`;
+      const fullPath = stripQueryFragment(`${basePath}${path}`);
       const rule = `${httpMethod} ${fullPath}`;
 
       const scopes = SCOPE_MAP[rule];
@@ -128,7 +129,7 @@ function buildGroups(spec: SwaggerSpec): {
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([name, ruleSet]) => ({
       name,
-      rules: sortRules([...ruleSet]),
+      rules: sanitizeAndSortRules([...ruleSet]),
     }));
 
   return { permissions, unmapped };
@@ -213,7 +214,9 @@ export async function generate(): Promise<void> {
   for (const [path, methods] of Object.entries(spec.paths ?? {})) {
     for (const method of Object.keys(methods)) {
       if (!ALL_METHODS.has(method)) continue;
-      specRules.add(`${method.toUpperCase()} ${basePath}${path}`);
+      specRules.add(
+        `${method.toUpperCase()} ${stripQueryFragment(`${basePath}${path}`)}`,
+      );
     }
   }
   const staleEntries = Object.keys(SCOPE_MAP).filter(

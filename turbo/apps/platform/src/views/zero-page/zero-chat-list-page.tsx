@@ -29,11 +29,9 @@ import { navigateToChat$ } from "../../signals/zero-page/zero-nav.ts";
 import {
   currentChatThreadId$,
   currentChatAgentId$,
-  currentChatAgent$,
   currentChatAgentDisplayName$,
 } from "../../signals/agent-chat.ts";
-import { resolveAvatarUrl } from "./avatar-utils.ts";
-import avatar1Img from "./assets/avatar_1.webp";
+import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { subagents$ } from "../../signals/agent.ts";
 import {
   pendingDeleteThreadId$,
@@ -76,11 +74,6 @@ export function ZeroChatListPage() {
 
   const searchTerm = useGet(chatListQuery$);
   const setSearchTerm = useSet(setChatListQuery$);
-
-  const sidebarAgent = useLastResolved(currentChatAgent$);
-  const avatarSrc = sidebarAgent
-    ? (resolveAvatarUrl(sidebarAgent.avatarUrl) ?? avatar1Img)
-    : null;
 
   // Filter sessions by current agent
   const subagentIds = new Set(
@@ -126,15 +119,11 @@ export function ZeroChatListPage() {
       {/* Header */}
       <div className="shrink-0 px-4 pt-4 pb-2">
         <div className="flex items-center gap-3 mb-3">
-          {avatarSrc ? (
-            <img
-              src={avatarSrc}
-              alt=""
-              className="h-8 w-8 rounded-full object-cover object-top"
-            />
-          ) : (
-            <div className="h-8 w-8 rounded-full bg-muted" />
-          )}
+          <AgentAvatarImg
+            name={currentChatAgentId ?? ""}
+            alt=""
+            className="h-8 w-8 rounded-full object-cover object-top"
+          />
           <h1 className="text-lg font-semibold">Chats with {agentLabel}</h1>
         </div>
 

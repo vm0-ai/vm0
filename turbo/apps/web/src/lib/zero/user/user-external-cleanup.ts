@@ -6,7 +6,6 @@ import { connectors } from "../../../db/schema/connector";
 import { githubUserLinks } from "../../../db/schema/github-user-link";
 import { telegramUserLinks } from "../../../db/schema/telegram-user-link";
 import { slackOrgConnections } from "../../../db/schema/slack-org-connection";
-import { slackOrgPendingQuestions } from "../../../db/schema/slack-org-pending-question";
 
 const log = logger("service:user-external-cleanup");
 
@@ -127,13 +126,6 @@ async function deleteUserSlackConnections(userId: string): Promise<void> {
   const connectionIds = connections.map((c) => {
     return c.id;
   });
-
-  // Delete pending questions first (FK constraint: connectionId references slack_org_connections)
-  for (const connectionId of connectionIds) {
-    await db
-      .delete(slackOrgPendingQuestions)
-      .where(eq(slackOrgPendingQuestions.connectionId, connectionId));
-  }
 
   // Delete connections (cascades slack_org_thread_sessions)
   await db

@@ -73,8 +73,6 @@ import { PinnedAgentListSection } from "./zero-sidebar-pinned.tsx";
 import { OverlayScrollArea } from "./zero-sidebar-scroll.tsx";
 import { SidebarUpgradeCard } from "./zero-sidebar-upgrade.tsx";
 
-// Re-export shared types/components for backward compatibility
-export { useAgentAvatar } from "./zero-sidebar-shared.tsx";
 export { AccountDropdown } from "./zero-sidebar-account.tsx";
 
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;

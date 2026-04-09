@@ -43,8 +43,7 @@ import {
   submitAccessRequest$,
 } from "../../signals/permission-allow/permission-allow-signals.ts";
 import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
-import { resolveAvatarUrl } from "../zero-page/avatar-utils.ts";
-import avatar1Img from "../zero-page/assets/avatar_1.webp";
+import { AvatarFromUrl } from "../zero-page/zero-sidebar-shared.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
 
 // ---------------------------------------------------------------------------
@@ -108,11 +107,10 @@ function AgentPill({
   avatarUrl: string | null;
   displayName: string;
 }) {
-  const src = resolveAvatarUrl(avatarUrl) ?? avatar1Img;
   return (
     <div className="w-full rounded-lg border border-border bg-muted/30 pl-2 pr-8 py-3 flex items-center gap-2">
-      <img
-        src={src}
+      <AvatarFromUrl
+        avatarUrl={avatarUrl}
         alt=""
         className="h-10 w-10 shrink-0 rounded-full object-cover object-top"
       />

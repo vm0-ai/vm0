@@ -1,5 +1,12 @@
 import { command, computed, state } from "ccstate";
-import { randomPresetAvatar } from "../../views/zero-page/avatar-utils.ts";
+import {
+  randomAvatarSvgConfig,
+  serializeAvatarSvgConfig,
+} from "../../views/zero-page/avatar-svg-utils.ts";
+
+function randomSvgAvatarUrl(): string {
+  return serializeAvatarSvgConfig(randomAvatarSvgConfig());
+}
 
 // ---------------------------------------------------------------------------
 // Create-teammate dialog state
@@ -23,51 +30,13 @@ export const setJobsNewName$ = command(({ set }, name: string) => {
 
 // -- Avatar -----------------------------------------------------------------
 
-const internalAvatarUrl$ = state(randomPresetAvatar());
+const internalAvatarUrl$ = state(randomSvgAvatarUrl());
 export const jobsAvatarUrl$ = computed((get) => {
   return get(internalAvatarUrl$);
 });
-export const resetJobsAvatarUrl$ = command(({ set }) => {
-  set(internalAvatarUrl$, randomPresetAvatar());
+export const setJobsAvatarUrl$ = command(({ set }, url: string) => {
+  set(internalAvatarUrl$, url);
 });
-
-// -- File input ref ---------------------------------------------------------
-
-const internalFileInputEl$ = state<HTMLInputElement | null>(null);
-export const jobsFileInputEl$ = computed((get) => {
-  return get(internalFileInputEl$);
-});
-export const setJobsFileInputEl$ = command(
-  ({ set }, el: HTMLInputElement | null) => {
-    set(internalFileInputEl$, el);
-  },
-);
-
-// -- Upload avatar command --------------------------------------------------
-
-export const uploadJobsAvatar$ = command(
-  async (
-    { set },
-    file: File,
-    fetchFn: (
-      url: string | URL | Request,
-      options?: RequestInit,
-    ) => Promise<Response>,
-    _signal: AbortSignal,
-  ): Promise<void> => {
-    const formData = new FormData();
-    formData.append("file", file);
-    const res = await fetchFn("/api/zero/uploads", {
-      method: "POST",
-      body: formData,
-    });
-    if (!res.ok) {
-      throw new Error(`Upload failed (${res.status})`);
-    }
-    const data: { url: string } = await res.json();
-    set(internalAvatarUrl$, data.url);
-  },
-);
 
 // -- View mode (grid / list) ------------------------------------------------
 
@@ -83,5 +52,5 @@ export const setJobsViewMode$ = command(({ set }, mode: "grid" | "list") => {
 
 export const resetJobsDialog$ = command(({ set }) => {
   set(internalNewName$, "");
-  set(internalAvatarUrl$, randomPresetAvatar());
+  set(internalAvatarUrl$, randomSvgAvatarUrl());
 });

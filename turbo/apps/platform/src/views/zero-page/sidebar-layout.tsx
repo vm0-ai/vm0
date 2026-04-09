@@ -13,8 +13,7 @@ import {
   currentChatAgent$,
   currentChatAgentId$,
 } from "../../signals/agent-chat.ts";
-import { resolveAvatarUrl } from "./avatar-utils.ts";
-import avatar1Img from "./assets/avatar_1.webp";
+import { AvatarFromUrl } from "./zero-sidebar-shared.tsx";
 import { QueueDrawer } from "../queue-page/queue-drawer.tsx";
 import {
   zeroShowAboutPage$,
@@ -44,19 +43,17 @@ import { OrgManageDialog } from "./components/org-manage/org-manage-dialog.tsx";
 
 function AgentAvatarInTopBar() {
   const agent = useLastResolved(currentChatAgent$);
-  const src = agent ? (resolveAvatarUrl(agent.avatarUrl) ?? avatar1Img) : null;
-  if (!src) {
+  if (!agent) {
     return (
       <div className="h-6 w-6 shrink-0 rounded-full bg-muted" aria-hidden />
     );
   }
   return (
-    <img
-      src={src}
+    <AvatarFromUrl
+      avatarUrl={agent.avatarUrl}
       alt=""
-      role="presentation"
-      data-testid="agent-avatar"
       className="h-6 w-6 shrink-0 rounded-full object-cover object-top"
+      data-testid="agent-avatar"
     />
   );
 }

@@ -8,7 +8,8 @@ import {
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import slackIcon from "./components/settings/icons/slack.svg";
-import zeroAvatarImg from "./assets/avatar_0.webp";
+import { getAvatarPresets } from "./zero-avatars.ts";
+import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
 import zeroAnimatedSrc from "./assets/zero-animated.webp";
 import slackPreviewImg from "./assets/Slack.png";
 import { Button, Input } from "@vm0/ui";
@@ -405,11 +406,10 @@ function WhereToWorkContent() {
           className="flex items-center gap-4 rounded-xl bg-card px-6 py-6 text-left transition-colors hover:bg-muted/30 disabled:opacity-50 zero-border"
         >
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg overflow-hidden">
-            <img
-              src={zeroAvatarImg}
-              alt=""
-              role="presentation"
-              className="h-10 w-10 rounded-lg object-cover object-top"
+            <AvatarSvgPreview
+              config={getAvatarPresets()[0]}
+              size={40}
+              className="rounded-lg"
             />
           </span>
           <div className="min-w-0 flex-1">
@@ -463,10 +463,10 @@ function ChatPreview() {
 
         {/* Zero reply */}
         <div className="flex items-start gap-2.5 pr-10">
-          <img
-            src={zeroAvatarImg}
-            alt=""
-            className="h-6 w-6 shrink-0 object-contain mt-0.5"
+          <AvatarSvgPreview
+            config={getAvatarPresets()[0]}
+            size={24}
+            className="shrink-0 rounded-full mt-0.5"
           />
           <div className="text-[13px] text-foreground leading-relaxed">
             Created in Notion and shared in #product. Sarah and James tagged for
@@ -485,10 +485,10 @@ function ChatPreview() {
 
         {/* Zero reply */}
         <div className="flex items-start gap-2.5 pr-10">
-          <img
-            src={zeroAvatarImg}
-            alt=""
-            className="h-6 w-6 shrink-0 object-contain mt-0.5"
+          <AvatarSvgPreview
+            config={getAvatarPresets()[0]}
+            size={24}
+            className="shrink-0 rounded-full mt-0.5"
           />
           <div className="text-[13px] text-foreground leading-relaxed">
             Done! I&apos;ll update every Friday and post a summary to #product.

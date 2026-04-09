@@ -231,7 +231,7 @@ async function cleanupOrphanedOrg(
 
   // Phase 3: Database cleanup (same order as org-deletion-service.ts)
 
-  // Step 1: Slack cleanup FIRST (pending_questions FK blocks compose deletion)
+  // Step 1: Slack cleanup
   const slackRows = await db.execute<{ slack_workspace_id: string }>(
     sql.raw(
       `SELECT slack_workspace_id FROM slack_org_installations WHERE org_id = '${orgId.replace(/'/g, "''")}'`,
@@ -239,12 +239,6 @@ async function cleanupOrphanedOrg(
   );
   for (const row of slackRows) {
     const wsId = row.slack_workspace_id.replace(/'/g, "''");
-    // Delete pending questions first (no cascade from connection)
-    await db.execute(
-      sql.raw(
-        `DELETE FROM slack_org_pending_questions WHERE connection_id IN (SELECT id FROM slack_org_connections WHERE slack_workspace_id = '${wsId}')`,
-      ),
-    );
     // Delete connections (cascades to thread sessions)
     await db.execute(
       sql.raw(

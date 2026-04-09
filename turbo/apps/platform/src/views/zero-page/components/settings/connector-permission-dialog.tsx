@@ -14,8 +14,7 @@ import { Button } from "@vm0/ui/components/ui/button";
 import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
 import { agents$ } from "../../../../signals/agent.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
-import { resolveAvatarUrl } from "../../avatar-utils.ts";
-import { ZERO_AVATARS } from "../../zero-avatars.ts";
+import { AvatarFromUrl } from "../../zero-sidebar-shared.tsx";
 import { ConnectorIcon } from "./connector-icons.tsx";
 import {
   permissionDialogSelected$,
@@ -123,8 +122,6 @@ export function ConnectorPermissionDialog({
             <div className="grid grid-cols-4 gap-x-2 gap-y-2.5">
               {visibleAgents.map((agent) => {
                 const isSelected = selected.has(agent.id);
-                const avatarSrc =
-                  resolveAvatarUrl(agent.avatarUrl) ?? ZERO_AVATARS[0];
                 return (
                   <button
                     key={agent.id}
@@ -140,8 +137,8 @@ export function ConnectorPermissionDialog({
                         className="shrink-0 text-[#ed4e01]"
                       />
                     ) : (
-                      <img
-                        src={avatarSrc}
+                      <AvatarFromUrl
+                        avatarUrl={agent.avatarUrl}
                         alt={agent.displayName ?? "Agent"}
                         className="h-[27px] w-[27px] shrink-0 rounded-full object-cover"
                       />
@@ -154,8 +151,8 @@ export function ConnectorPermissionDialog({
               })}
               {remainingCount > 0 && (
                 <div className="flex items-center gap-2 rounded-xl border-[0.7px] border-[#c6cdd7] bg-white p-2.5 shadow-[0px_1px_3px_0px_rgba(45,49,57,0.08)]">
-                  <img
-                    src={ZERO_AVATARS[0]}
+                  <AvatarFromUrl
+                    avatarUrl={null}
                     alt="More"
                     className="h-[27px] w-[27px] shrink-0 rounded-full object-cover"
                   />

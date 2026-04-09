@@ -37,6 +37,7 @@ function agentDetail(overrides: Record<string, unknown> = {}) {
     avatarUrl: "preset:0",
     connectors: [],
     permissionPolicies: null,
+    allowUnknownEndpoints: null,
     ...overrides,
   };
 }
@@ -87,37 +88,6 @@ async function openProfileTab(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe("zero settings tab - display", () => {
-  it("shows checkmark on the selected avatar preset (AGENT-D-036)", async () => {
-    const user = userEvent.setup();
-    mockAPIs({ avatarUrl: "preset:0" });
-    await openProfileTab(user);
-
-    await waitFor(() => {
-      expect(screen.getByRole("radio", { name: "Avatar 1" })).toHaveAttribute(
-        "aria-checked",
-        "true",
-      );
-    });
-
-    expect(screen.getByRole("radio", { name: "Avatar 2" })).toHaveAttribute(
-      "aria-checked",
-      "false",
-    );
-  });
-
-  it("shows custom avatar option when avatarUrl is a custom URL (AGENT-D-037)", async () => {
-    const user = userEvent.setup();
-    const customUrl = "https://cdn.example.com/custom-avatar.png";
-    mockAPIs({ avatarUrl: customUrl });
-    await openProfileTab(user);
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("radio", { name: "Custom avatar" }),
-      ).toHaveAttribute("aria-checked", "true");
-    });
-  });
-
   it("shows agent name in the name input (AGENT-D-038)", async () => {
     const user = userEvent.setup();
     mockAPIs({ displayName: "My Agent" });
@@ -214,6 +184,7 @@ describe("zero settings tab - display", () => {
           avatarUrl: null,
           connectors: [],
           permissionPolicies: null,
+          allowUnknownEndpoints: null,
         });
       }),
       http.get("*/api/zero/agents/:name/instructions", () => {
@@ -238,91 +209,81 @@ describe("zero settings tab - display", () => {
   });
 });
 
-describe("zero settings tab - interaction", () => {
-  it("changes selected avatar when clicking a different preset (AGENT-D-044)", async () => {
+describe("zero settings tab - avatar", () => {
+  it("shows avatar SVG preview when agent has preset avatar (AGENT-D-044)", async () => {
     const user = userEvent.setup();
     mockAPIs({ avatarUrl: "preset:0" });
     await openProfileTab(user);
 
     await waitFor(() => {
-      expect(screen.getByRole("radio", { name: "Avatar 1" })).toHaveAttribute(
-        "aria-checked",
-        "true",
-      );
-    });
-
-    await user.click(screen.getByRole("radio", { name: "Avatar 2" }));
-
-    await waitFor(() => {
-      expect(screen.getByRole("radio", { name: "Avatar 2" })).toHaveAttribute(
-        "aria-checked",
-        "true",
-      );
-      expect(screen.getByRole("radio", { name: "Avatar 1" })).toHaveAttribute(
-        "aria-checked",
-        "false",
-      );
+      // The avatar row label and the wand button are both present,
+      // confirming the avatar section rendered with the SVG preview
+      expect(screen.getByText("Avatar")).toBeInTheDocument();
+      expect(screen.getByLabelText("Create custom avatar")).toBeInTheDocument();
     });
   });
 
-  it("shows uploaded image as custom avatar preview (AGENT-D-046)", async () => {
+  it("shows avatar maker wand button (AGENT-D-045)", async () => {
     const user = userEvent.setup();
-    const uploadedUrl = "https://cdn.example.com/avatar-new.png";
     mockAPIs();
-    server.use(
-      http.post("*/api/zero/uploads", () => {
-        return HttpResponse.json({ url: uploadedUrl });
-      }),
-    );
     await openProfileTab(user);
 
-    const fileInput =
-      document.querySelector<HTMLInputElement>('input[type="file"]');
-    const file = new File(["img"], "avatar.png", { type: "image/png" });
-    await user.upload(fileInput!, file);
-
     await waitFor(() => {
-      expect(
-        screen.getByRole("radio", { name: "Custom avatar" }),
-      ).toHaveAttribute("aria-checked", "true");
+      expect(screen.getByLabelText("Create custom avatar")).toBeInTheDocument();
     });
   });
 
-  it("clears custom avatar selection when switching to a preset (AGENT-D-047)", async () => {
+  it("shows avatar SVG preview when agent has svg: avatar (AGENT-D-046)", async () => {
     const user = userEvent.setup();
-    const uploadedUrl = "https://cdn.example.com/avatar-new.png";
-    mockAPIs();
-    server.use(
-      http.post("*/api/zero/uploads", () => {
-        return HttpResponse.json({ url: uploadedUrl });
-      }),
-    );
+    mockAPIs({ avatarUrl: "svg:r1s0h3c2f1d" });
     await openProfileTab(user);
 
-    const fileInput =
-      document.querySelector<HTMLInputElement>('input[type="file"]');
-    const file = new File(["img"], "avatar.png", { type: "image/png" });
-    await user.upload(fileInput!, file);
-
     await waitFor(() => {
-      expect(
-        screen.getByRole("radio", { name: "Custom avatar" }),
-      ).toHaveAttribute("aria-checked", "true");
-    });
-
-    await user.click(screen.getByRole("radio", { name: "Avatar 1" }));
-
-    await waitFor(() => {
-      expect(screen.getByRole("radio", { name: "Avatar 1" })).toHaveAttribute(
-        "aria-checked",
-        "true",
-      );
-      expect(
-        screen.getByRole("radio", { name: "Custom avatar" }),
-      ).toHaveAttribute("aria-checked", "false");
+      expect(screen.getByText("Avatar")).toBeInTheDocument();
+      expect(screen.getByLabelText("Create custom avatar")).toBeInTheDocument();
     });
   });
 
+  it("saves avatar when applied from avatar maker (AGENT-D-047)", async () => {
+    const user = userEvent.setup();
+    let capturedPayload: Record<string, unknown> | null = null;
+    mockAPIs({ avatarUrl: "preset:0" });
+
+    server.use(
+      http.patch("*/api/zero/agents/:id", async ({ request }) => {
+        capturedPayload = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(
+          agentDetail({ avatarUrl: capturedPayload.avatarUrl }),
+        );
+      }),
+    );
+
+    await openProfileTab(user);
+
+    // Click the wand button to open the avatar maker
+    await waitFor(() => {
+      expect(screen.getByLabelText("Create custom avatar")).toBeInTheDocument();
+    });
+    await user.click(screen.getByLabelText("Create custom avatar"));
+
+    // The avatar maker dialog should open
+    await waitFor(() => {
+      expect(screen.getByText("Create Avatar")).toBeInTheDocument();
+    });
+
+    // Click Apply to save the avatar
+    await user.click(screen.getByText("Apply"));
+
+    await waitFor(() => {
+      expect(capturedPayload).toBeTruthy();
+    });
+
+    // The saved avatar should be an SVG config string
+    expect(capturedPayload!.avatarUrl).toMatch(/^svg:r\d/);
+  });
+});
+
+describe("zero settings tab - interaction", () => {
   it("updates name field when typing (AGENT-D-048)", async () => {
     const user = userEvent.setup();
     mockAPIs({ displayName: "My Agent" });

@@ -28,10 +28,14 @@ import {
   setInsightsCalendarMonth$,
   insightsHoveredAgent$,
   setInsightsHoveredAgent$,
+  expandedAllowedDays$,
+  toggleExpandedAllowed$,
   type DayInsight,
   type NetworkInsightsData,
 } from "../../signals/network-insights/network-insights-signals.ts";
 import { userPreferences$ } from "../../signals/zero-page/settings/user-preferences.ts";
+import { isOrgAdmin$ } from "../../signals/org.ts";
+import { user$ } from "../../signals/auth.ts";
 import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
 
 // ---------------------------------------------------------------------------
@@ -547,10 +551,10 @@ function AgentsCard({
 }
 
 // ---------------------------------------------------------------------------
-// Card: Credits consumed
+// Card: Team credit usage (admin-only)
 // ---------------------------------------------------------------------------
 
-function CreditsCard({
+function TeamCreditUsageCard({
   day,
   colorIndex,
   hoveredAgent,
@@ -585,7 +589,7 @@ function CreditsCard({
         className="text-xs font-semibold uppercase tracking-widest mb-3"
         style={{ color: accent }}
       >
-        Credits
+        Team Credit Usage
       </p>
       <p className="text-5xl font-black leading-none tabular-nums font-serif transition-all duration-150">
         {displayCredits.toLocaleString()}
@@ -596,60 +600,109 @@ function CreditsCard({
           : "consumed today"}
       </p>
 
-      <div>
-        <div className="flex items-center justify-between mt-4">
-          <span className="text-sm opacity-60">Balance</span>
-          <span className="text-sm font-semibold tabular-nums">
-            {day.creditBalance.toLocaleString()}
-          </span>
-        </div>
-
-        {sorted.length > 0 && (
-          <div className="mt-4">
-            <p
-              className="text-xs font-semibold uppercase tracking-widest mb-3"
-              style={{ color: accent }}
-            >
-              Team
-            </p>
-            <div className="flex flex-col gap-2">
-              {sorted.map((m) => {
-                const isActive =
-                  hoveredAgent === null || m.agentNames?.includes(hoveredAgent);
-                const memberCredits =
-                  hoveredAgent &&
-                  m.agentCredits?.[hoveredAgent] !== null &&
-                  m.agentCredits?.[hoveredAgent] !== undefined
-                    ? m.agentCredits[hoveredAgent]
-                    : m.credits;
-                const pct = (memberCredits / maxCredits) * 100;
-                return (
-                  <div
-                    key={m.name}
-                    className={`flex items-center gap-3 transition-opacity duration-150 ${isActive ? "opacity-100" : "opacity-30"}`}
-                  >
-                    <span className="text-sm w-20 truncate shrink-0">
-                      {m.name}
-                    </span>
-                    <div className="flex-1 h-1.5 rounded-full bg-current/10 overflow-hidden">
-                      <div
-                        className="h-full rounded-full"
-                        style={{
-                          width: `${pct}%`,
-                          backgroundColor: accent,
-                        }}
-                      />
-                    </div>
-                    <span className="text-xs opacity-60 w-10 text-right shrink-0 tabular-nums">
-                      {memberCredits}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
+      <div className="flex items-center justify-between mt-4">
+        <span className="text-sm opacity-60">Balance</span>
+        <span className="text-sm font-semibold tabular-nums">
+          {day.creditBalance.toLocaleString()}
+        </span>
       </div>
+
+      {sorted.length > 0 && (
+        <div className="mt-4">
+          <p
+            className="text-xs font-semibold uppercase tracking-widest mb-3"
+            style={{ color: accent }}
+          >
+            Team
+          </p>
+          <div className="flex flex-col gap-2">
+            {sorted.map((m) => {
+              const isActive =
+                hoveredAgent === null || m.agentNames?.includes(hoveredAgent);
+              const memberCredits =
+                hoveredAgent &&
+                m.agentCredits?.[hoveredAgent] !== null &&
+                m.agentCredits?.[hoveredAgent] !== undefined
+                  ? m.agentCredits[hoveredAgent]
+                  : m.credits;
+              const pct = (memberCredits / maxCredits) * 100;
+              return (
+                <div
+                  key={m.name}
+                  className={`flex items-center gap-3 transition-opacity duration-150 ${isActive ? "opacity-100" : "opacity-30"}`}
+                >
+                  <span className="text-sm w-20 truncate shrink-0">
+                    {m.name}
+                  </span>
+                  <div className="flex-1 h-1.5 rounded-full bg-current/10 overflow-hidden">
+                    <div
+                      className="h-full rounded-full"
+                      style={{
+                        width: `${pct}%`,
+                        backgroundColor: accent,
+                      }}
+                    />
+                  </div>
+                  <span className="text-xs opacity-60 w-10 text-right shrink-0 tabular-nums">
+                    {memberCredits}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Card: Your credit usage (everyone)
+// ---------------------------------------------------------------------------
+
+function YourCreditUsageCard({
+  day,
+  colorIndex,
+  userId,
+  hoveredAgent,
+}: {
+  day: DayInsight;
+  colorIndex: number;
+  userId: string | null;
+  hoveredAgent: string | null;
+}) {
+  const { accent } = getCardPalette(colorIndex);
+  const myUsage = userId
+    ? day.teamUsage.find((m) => {
+        return m.userId === userId;
+      })
+    : null;
+  const displayCredits =
+    hoveredAgent && myUsage?.agentCredits?.[hoveredAgent] !== undefined
+      ? myUsage.agentCredits[hoveredAgent]
+      : (myUsage?.credits ?? 0);
+  const hoveredAgentData = hoveredAgent
+    ? day.agents.find((a) => {
+        return a.agentName === hoveredAgent;
+      })
+    : null;
+
+  return (
+    <Card>
+      <p
+        className="text-xs font-semibold uppercase tracking-widest mb-3"
+        style={{ color: accent }}
+      >
+        Your Credit Usage
+      </p>
+      <p className="text-5xl font-black leading-none tabular-nums font-serif transition-all duration-150">
+        {displayCredits.toLocaleString()}
+      </p>
+      <p className="text-sm opacity-60 mt-2">
+        {hoveredAgentData
+          ? `by ${hoveredAgentData.agentName}`
+          : "consumed today"}
+      </p>
     </Card>
   );
 }
@@ -752,6 +805,8 @@ function ServicesCard({
 // Card: Permissions
 // ---------------------------------------------------------------------------
 
+const ALLOWED_INITIAL_COUNT = 5;
+
 function PermissionsAllowedCard({
   day,
   colorIndex,
@@ -761,6 +816,10 @@ function PermissionsAllowedCard({
   colorIndex: number;
   hoveredAgent: string | null;
 }) {
+  const expandedDays = useGet(expandedAllowedDays$);
+  const toggleExpanded = useSet(toggleExpandedAllowed$);
+  const expanded = expandedDays.has(day.date);
+
   const allowed = day.permissions.filter((p) => {
     return p.allowed > 0;
   });
@@ -773,6 +832,8 @@ function PermissionsAllowedCard({
     return s + p.allowed;
   }, 0);
   const { accent } = getCardPalette(colorIndex);
+  const visible = expanded ? allowed : allowed.slice(0, ALLOWED_INITIAL_COUNT);
+  const hasMore = allowed.length > ALLOWED_INITIAL_COUNT;
 
   return (
     <Card>
@@ -786,26 +847,48 @@ function PermissionsAllowedCard({
         {totalAllowed}
       </p>
       <p className="text-sm opacity-60 mt-2">
-        calls passed across {allowed.length}{" "}
+        calls made within {allowed.length} granted{" "}
         {allowed.length === 1 ? "permission" : "permissions"}
       </p>
-      <div className="flex flex-col gap-2 mt-4">
-        {allowed.map((p) => {
+      <div className="flex flex-col gap-3 mt-4">
+        {visible.map((p) => {
           const isActive =
             hoveredAgent === null || p.agentNames.includes(hoveredAgent);
+          const hasDescription = p.connectorType && p.label !== p.connectorType;
           return (
             <div
-              key={p.label}
-              className={`flex items-center justify-between gap-2 transition-opacity duration-150 ${isActive ? "opacity-100" : "opacity-30"}`}
+              key={`${p.connectorType ?? ""}:${p.label}`}
+              className={`transition-opacity duration-150 ${isActive ? "opacity-100" : "opacity-30"}`}
             >
-              <span className="text-sm">{permissionLabel(p)}</span>
-              <span className="text-xs opacity-60 tabular-nums shrink-0">
-                {p.allowed}
-              </span>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-medium decoration-dotted underline decoration-foreground/40 decoration-[1px] underline-offset-2">
+                  {connectorLabel(p.connectorType ?? p.label)}
+                </span>
+                <span className="text-xs opacity-60 tabular-nums shrink-0">
+                  {p.allowed} {p.allowed === 1 ? "call" : "calls"}
+                </span>
+              </div>
+              {hasDescription && (
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {p.label}
+                </p>
+              )}
             </div>
           );
         })}
       </div>
+      {hasMore && (
+        <button
+          type="button"
+          onClick={() => {
+            toggleExpanded(day.date);
+          }}
+          className="text-xs font-medium mt-3"
+          style={{ color: accent }}
+        >
+          {expanded ? "Show less" : "Load more"}
+        </button>
+      )}
     </Card>
   );
 }
@@ -837,13 +920,13 @@ function PermissionsBlockedCard({
         className="text-xs font-semibold uppercase tracking-widest mb-3"
         style={{ color: accent }}
       >
-        Blocked
+        Protected
       </p>
       <p className="text-5xl font-black leading-none tabular-nums font-serif">
         {totalBlocked}
       </p>
       <p className="text-sm opacity-60 mt-2">
-        calls blocked across {blocked.length}{" "}
+        calls protected across {blocked.length}{" "}
         {blocked.length === 1 ? "permission" : "permissions"}
       </p>
       <div className="flex flex-col gap-2 mt-4">
@@ -853,7 +936,7 @@ function PermissionsBlockedCard({
           const fullyBlocked = p.allowed === 0;
           return (
             <div
-              key={p.label}
+              key={`${p.connectorType ?? ""}:${p.label}`}
               className={`flex items-center justify-between gap-2 transition-opacity duration-150 ${isActive ? "opacity-100" : "opacity-30"}`}
             >
               <span className="text-sm font-medium">{permissionLabel(p)}</span>
@@ -899,7 +982,15 @@ function formatDate(iso: string): string {
 // Day section — masonry of cards (dim approach for hover)
 // ---------------------------------------------------------------------------
 
-function DaySection({ day }: { day: DayInsight }) {
+function DaySection({
+  day,
+  isAdmin,
+  userId,
+}: {
+  day: DayInsight;
+  isAdmin: boolean;
+  userId: string | null;
+}) {
   const hoveredAgent = useGet(insightsHoveredAgent$);
   const setHoveredAgent = useSet(setInsightsHoveredAgent$);
 
@@ -914,7 +1005,19 @@ function DaySection({ day }: { day: DayInsight }) {
       </h2>
       <div className="columns-1 sm:columns-2 lg:columns-3 gap-3">
         <SummaryCard day={day} />
-        <CreditsCard day={day} colorIndex={1} hoveredAgent={hoveredAgent} />
+        {isAdmin && (
+          <TeamCreditUsageCard
+            day={day}
+            colorIndex={1}
+            hoveredAgent={hoveredAgent}
+          />
+        )}
+        <YourCreditUsageCard
+          day={day}
+          colorIndex={1}
+          userId={userId}
+          hoveredAgent={hoveredAgent}
+        />
         <AgentsCard
           day={day}
           colorIndex={0}
@@ -955,11 +1058,18 @@ function InsightsContent({ data }: { data: NetworkInsightsData }) {
   const dateRange = useGet(insightsDateRange$);
   const setRange = useSet(setInsightsDateRange$);
   const prefsLoadable = useLastLoadable(userPreferences$);
+  const adminLoadable = useLastLoadable(isOrgAdmin$);
+  const userLoadable = useLastLoadable(user$);
   const timezone =
     prefsLoadable.state === "hasData" && prefsLoadable.data?.timezone
       ? prefsLoadable.data.timezone
       : new Intl.DateTimeFormat().resolvedOptions().timeZone;
   const filtered = filterDays(data.days, dateRange, timezone);
+
+  const isAdmin =
+    adminLoadable.state === "hasData" ? adminLoadable.data : false;
+  const userId =
+    userLoadable.state === "hasData" ? (userLoadable.data?.id ?? null) : null;
 
   return (
     <div className="h-full overflow-auto">
@@ -1009,7 +1119,14 @@ function InsightsContent({ data }: { data: NetworkInsightsData }) {
           </div>
         ) : (
           filtered.map((day) => {
-            return <DaySection key={day.date} day={day} />;
+            return (
+              <DaySection
+                key={day.date}
+                day={day}
+                isAdmin={isAdmin}
+                userId={userId}
+              />
+            );
           })
         )}
       </div>

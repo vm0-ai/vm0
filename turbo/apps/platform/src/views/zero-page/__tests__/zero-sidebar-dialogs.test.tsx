@@ -179,8 +179,10 @@ describe("chatListDialog", () => {
       expect(within(dialog).getByText("Others")).toBeInTheDocument();
     });
 
-    // Find the unpinned agent's avatar image within the dialog
-    const unpinnedAvatar = within(dialog).getByAltText("Unpinned Agent");
+    // Find the unpinned agent's avatar within the dialog (SVG preview uses aria-label)
+    const unpinnedAvatar = within(dialog).getByRole("img", {
+      name: "Unpinned Agent",
+    });
     expect(unpinnedAvatar.className).not.toContain("opacity-60");
   });
 

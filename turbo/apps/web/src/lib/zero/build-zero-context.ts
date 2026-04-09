@@ -7,6 +7,8 @@ import {
   type ExpandedFirewallConfig,
   type ModelProviderType,
   type FirewallPolicies,
+  type Firewalls,
+  type GrantedPermissions,
 } from "@vm0/core";
 import { zeroRuns } from "../../db/schema/zero-run";
 import { badRequest, notFound } from "../shared/errors";
@@ -44,7 +46,6 @@ export { MODEL_PROVIDER_ENV_VARS } from "./context/resolve-model-provider";
 export {
   filterSecretConnectorMap,
   applyConnectorPolicies,
-  UNRESTRICTED_PERMISSION,
 } from "./context/resolve-permissions";
 
 const log = logger("zero:build-context");
@@ -93,6 +94,8 @@ interface BuildZeroContextParams {
   apiStartTime?: number;
   // Per-permission policies from zero agent configuration.
   permissionPolicies?: FirewallPolicies;
+  // Per-connector setting: whether to allow requests to unknown endpoints.
+  allowUnknownEndpoints?: Record<string, boolean>;
   // Caller-resolved org context for secret/variable/storage resolution.
   orgId: string;
   // Connector types the user has permitted for this agent run. When set, only
@@ -275,6 +278,7 @@ interface ResolveCliRunContextParams {
   secrets?: Record<string, string>;
   modelProvider?: string;
   permissionPolicies?: FirewallPolicies;
+  allowUnknownEndpoints?: Record<string, boolean>;
   allowedConnectorTypes?: ConnectorType[];
   // Artifact/memory
   artifactName?: string;
@@ -303,7 +307,8 @@ interface ResolvedCliContext {
   secrets?: Record<string, string>;
   environment?: Record<string, string>;
   secretConnectorMap?: Record<string, string>;
-  firewalls?: import("@vm0/core").Firewalls;
+  firewalls?: Firewalls;
+  grantedPermissions?: GrantedPermissions;
   userTimezone?: string;
 
   // Model provider metadata (for zero_runs upsert)
@@ -454,11 +459,12 @@ export async function resolveCliRunContext(
   checkProviderCompatibility(originalModelProvider, resolvedModelProvider);
 
   // Build permission manifest
-  const firewalls = mergePermissions(
+  const permissionResult = mergePermissions(
     modelProviderConfig,
     connectorPermissionConfigs,
     params.permissionPolicies,
     mergedVars,
+    params.allowUnknownEndpoints,
   );
 
   return {
@@ -474,7 +480,8 @@ export async function resolveCliRunContext(
     secrets,
     environment,
     secretConnectorMap,
-    firewalls,
+    firewalls: permissionResult?.firewalls,
+    grantedPermissions: permissionResult?.grantedPermissions,
     userTimezone,
     resolvedModelProvider,
     selectedModel,
@@ -616,11 +623,12 @@ export async function buildZeroExecutionContext(
   checkProviderCompatibility(originalModelProvider, resolvedModelProvider);
 
   // Build permission manifest (base + auth entries for the runner).
-  const firewalls = mergePermissions(
+  const permissionResult = mergePermissions(
     modelProviderConfig,
     connectorPermissionConfigs,
     params.permissionPolicies,
     mergedVars,
+    params.allowUnknownEndpoints,
   );
 
   // Build final execution context
@@ -643,7 +651,8 @@ export async function buildZeroExecutionContext(
       volumeVersions,
       environment,
       userTimezone,
-      firewalls,
+      firewalls: permissionResult?.firewalls,
+      grantedPermissions: permissionResult?.grantedPermissions,
       disallowedTools: params.disallowedTools,
       tools: params.tools,
       settings: params.settings,

@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ExpandedFirewallConfig } from "@vm0/core";
-import {
-  applyConnectorPolicies,
-  UNRESTRICTED_PERMISSION,
-} from "../build-zero-context";
+import { applyConnectorPolicies } from "../build-zero-context";
 
 function makeFirewall(
   overrides: Partial<ExpandedFirewallConfig> & { ref: string },
@@ -37,34 +34,40 @@ describe("applyConnectorPolicies", () => {
       ],
     });
 
-    const result = applyConnectorPolicies([fw], undefined);
+    const { firewalls, grantedPermissions } = applyConnectorPolicies(
+      [fw],
+      undefined,
+    );
 
-    expect(result).toHaveLength(1);
-    const entry = result[0];
-    expect(entry).toBeDefined();
-    expect(entry?.apis[0]?.permissions).toEqual(permissions);
+    expect(firewalls).toHaveLength(1);
+    expect(firewalls[0]?.apis[0]?.permissions).toEqual(permissions);
+    // No policies → all permissions granted
+    expect(grantedPermissions).toEqual({
+      github: {
+        allow: ["repo-read", "repo-write"],
+        allowUnknown: true,
+      },
+    });
   });
 
-  it("filters permissions by policy when permissions are defined", () => {
+  it("keeps all permissions in firewalls but grants only allowed ones", () => {
+    const allPermissions = [
+      { name: "repo-read", rules: ["GET /repos/{owner}/{repo}"] },
+      { name: "repo-write", rules: ["PUT /repos/{owner}/{repo}"] },
+      { name: "issues-read", rules: ["GET /repos/{owner}/{repo}/issues"] },
+    ];
     const fw = makeFirewall({
       ref: "github",
       apis: [
         {
           base: "https://api.github.com",
           auth: { headers: { Authorization: "Bearer token" } },
-          permissions: [
-            { name: "repo-read", rules: ["GET /repos/{owner}/{repo}"] },
-            { name: "repo-write", rules: ["PUT /repos/{owner}/{repo}"] },
-            {
-              name: "issues-read",
-              rules: ["GET /repos/{owner}/{repo}/issues"],
-            },
-          ],
+          permissions: allPermissions,
         },
       ],
     });
 
-    const result = applyConnectorPolicies([fw], {
+    const { firewalls, grantedPermissions } = applyConnectorPolicies([fw], {
       github: {
         "repo-read": "allow",
         "repo-write": "deny",
@@ -72,13 +75,18 @@ describe("applyConnectorPolicies", () => {
       },
     });
 
-    expect(result[0]?.apis[0]?.permissions).toEqual([
-      { name: "repo-read", rules: ["GET /repos/{owner}/{repo}"] },
-      { name: "issues-read", rules: ["GET /repos/{owner}/{repo}/issues"] },
-    ]);
+    // Firewalls carry ALL permissions (unfiltered)
+    expect(firewalls[0]?.apis[0]?.permissions).toEqual(allPermissions);
+    // grantedPermissions only includes "allow" ones
+    expect(grantedPermissions).toEqual({
+      github: {
+        allow: ["repo-read", "issues-read"],
+        allowUnknown: true,
+      },
+    });
   });
 
-  it("returns unrestricted when firewall has no permissions on any api", () => {
+  it("passes empty permissions as-is when firewall has none", () => {
     const fw = makeFirewall({
       ref: "custom-api",
       apis: [
@@ -93,16 +101,23 @@ describe("applyConnectorPolicies", () => {
       ],
     });
 
-    const result = applyConnectorPolicies([fw], {
+    const { firewalls, grantedPermissions } = applyConnectorPolicies([fw], {
       "custom-api": { "some-perm": "allow" },
     });
 
-    expect(result).toHaveLength(1);
-    expect(result[0]?.apis[0]?.permissions).toEqual([UNRESTRICTED_PERMISSION]);
-    expect(result[0]?.apis[1]?.permissions).toEqual([UNRESTRICTED_PERMISSION]);
+    expect(firewalls).toHaveLength(1);
+    expect(firewalls[0]?.apis[0]?.permissions).toEqual([]);
+    expect(firewalls[0]?.apis[1]?.permissions).toEqual([]);
+    // No permissions defined → empty granted, allow unknown
+    expect(grantedPermissions).toEqual({
+      "custom-api": {
+        allow: [],
+        allowUnknown: true,
+      },
+    });
   });
 
-  it("returns unrestricted when all api permissions are empty arrays", () => {
+  it("passes empty permissions when all api permissions are empty arrays", () => {
     const fw = makeFirewall({
       ref: "custom-api",
       apis: [
@@ -114,10 +129,66 @@ describe("applyConnectorPolicies", () => {
       ],
     });
 
-    const result = applyConnectorPolicies([fw], {
+    const { firewalls, grantedPermissions } = applyConnectorPolicies([fw], {
       "custom-api": { x: "allow" },
     });
 
-    expect(result[0]?.apis[0]?.permissions).toEqual([UNRESTRICTED_PERMISSION]);
+    expect(firewalls[0]?.apis[0]?.permissions).toEqual([]);
+    expect(grantedPermissions).toEqual({
+      "custom-api": {
+        allow: [],
+        allowUnknown: true,
+      },
+    });
+  });
+
+  it("sets allowUnknown from allowUnknownEndpoints param", () => {
+    const fw = makeFirewall({
+      ref: "github",
+      apis: [
+        {
+          base: "https://api.github.com",
+          auth: { headers: { Authorization: "Bearer token" } },
+          permissions: [
+            { name: "repo-read", rules: ["GET /repos/{owner}/{repo}"] },
+          ],
+        },
+      ],
+    });
+
+    const { grantedPermissions } = applyConnectorPolicies(
+      [fw],
+      { github: { "repo-read": "allow" } },
+      { github: true },
+    );
+
+    expect(grantedPermissions.github).toEqual({
+      allow: ["repo-read"],
+      allowUnknown: true,
+    });
+  });
+
+  it("defaults allowUnknown to true when ref absent from allowUnknownEndpoints", () => {
+    const fw = makeFirewall({
+      ref: "github",
+      apis: [
+        {
+          base: "https://api.github.com",
+          auth: { headers: { Authorization: "Bearer token" } },
+          permissions: [
+            { name: "repo-read", rules: ["GET /repos/{owner}/{repo}"] },
+          ],
+        },
+      ],
+    });
+
+    const { grantedPermissions } = applyConnectorPolicies([fw], {
+      github: { "repo-read": "allow" },
+    });
+
+    expect(grantedPermissions.github).toEqual({
+      allow: ["repo-read"],
+      allowUnknown: true,
+    });
   });
 });

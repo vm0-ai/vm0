@@ -94,6 +94,7 @@ async function updateInstructions(
       sound: agent?.sound ?? null,
       avatarUrl: agent?.avatarUrl ?? null,
       permissionPolicies: agent?.permissionPolicies ?? null,
+      allowUnknownEndpoints: agent?.allowUnknownEndpoints ?? null,
       customSkills: agent?.customSkills ?? [],
     },
   };

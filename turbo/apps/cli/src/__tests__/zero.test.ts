@@ -27,7 +27,6 @@ describe("zero CLI program", () => {
       "slack",
       "variable",
       "whoami",
-      "ask-user",
       "developer-support",
       "computer-use",
       "voice-chat",
@@ -54,7 +53,7 @@ describe("zero CLI program", () => {
     }
   });
 
-  it("should have exactly 18 commands", () => {
-    expect(commandNames).toHaveLength(18);
+  it("should have exactly 17 commands", () => {
+    expect(commandNames).toHaveLength(17);
   });
 });

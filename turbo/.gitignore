@@ -32,7 +32,6 @@ dist
 .contentlayer
 .content-collections
 .source
-apps/docs/.source
 
 # Next.js
 apps/*/next-env.d.ts

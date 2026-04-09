@@ -83,7 +83,7 @@ describe("agent avatar renders from database (SIDEBAR-D-042)", () => {
 });
 
 describe("agent avatar shows fallback when no image (SIDEBAR-D-043)", () => {
-  it("renders img element with fallback preset when avatarUrl is null", async () => {
+  it("renders SVG fallback when avatarUrl is null", async () => {
     mockBaseAPIs([
       { id: DEFAULT_AGENT_ID, displayName: null, avatarUrl: null },
       {
@@ -97,8 +97,56 @@ describe("agent avatar shows fallback when no image (SIDEBAR-D-043)", () => {
 
     await waitFor(() => {
       const sidebar = getSidebar();
-      const img = within(sidebar).getByRole("img", { name: "Fallback Agent" });
-      expect(img.getAttribute("src")).toMatch(/avatar_1/);
+      // Fallback renders SVG layers (multiple img elements) instead of a single img
+      const imgs = within(sidebar).getAllByRole("img", {
+        name: "Fallback Agent",
+      });
+      expect(imgs.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+});
+
+describe("agent avatar renders SVG for preset value (SIDEBAR-D-045)", () => {
+  it("renders SVG avatar layers when avatarUrl is preset:2", async () => {
+    mockBaseAPIs([
+      { id: DEFAULT_AGENT_ID, displayName: null, avatarUrl: null },
+      {
+        id: PINNED_AGENT_ID,
+        displayName: "Preset Agent",
+        avatarUrl: "preset:2",
+      },
+    ]);
+
+    await setupPage({ context, path: "/" });
+
+    await waitFor(() => {
+      const sidebar = getSidebar();
+      // preset:2 renders as SVG layers via AvatarSvgPreview (role="img" with aria-label)
+      const avatar = within(sidebar).getByRole("img", {
+        name: "Preset Agent",
+      });
+      expect(avatar).toBeInTheDocument();
+    });
+  });
+});
+
+describe("agent avatar renders SVG for custom svg: value (SIDEBAR-D-046)", () => {
+  it("renders SVG avatar layers when avatarUrl is svg:r1s0h3c2f1d", async () => {
+    mockBaseAPIs([
+      { id: DEFAULT_AGENT_ID, displayName: null, avatarUrl: null },
+      {
+        id: PINNED_AGENT_ID,
+        displayName: "SVG Agent",
+        avatarUrl: "svg:r1s0h3c2f1d",
+      },
+    ]);
+
+    await setupPage({ context, path: "/" });
+
+    await waitFor(() => {
+      const sidebar = getSidebar();
+      const avatar = within(sidebar).getByRole("img", { name: "SVG Agent" });
+      expect(avatar).toBeInTheDocument();
     });
   });
 });

@@ -39,7 +39,7 @@ inputs:
     required: false
     default: ""
   deployment-env:
-    description: "Deployment environment name (e.g., web, docs)"
+    description: "Deployment environment name (e.g., web, platform)"
     required: true
   skip-finish:
     description: "Skip finishing the deployment (use when you need to set a custom env_url later)"

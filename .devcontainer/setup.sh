@@ -23,7 +23,7 @@ echo "✓ Locale configured"
 # Add vm7.ai domains to /etc/hosts (Caddy reverse proxy listens on 127.0.0.1)
 echo "🌐 Configuring vm7.ai hosts..."
 if ! grep -q "vm7.ai" /etc/hosts 2>/dev/null; then
-  echo "127.0.0.1 vm7.ai www.vm7.ai docs.vm7.ai app.vm7.ai platform.vm7.ai" | sudo tee -a /etc/hosts > /dev/null
+  echo "127.0.0.1 vm7.ai www.vm7.ai app.vm7.ai platform.vm7.ai" | sudo tee -a /etc/hosts > /dev/null
   echo "✓ vm7.ai domains added to /etc/hosts"
 else
   echo "✓ vm7.ai domains already in /etc/hosts"

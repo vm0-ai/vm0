@@ -366,7 +366,7 @@ describe("createZeroRun()", () => {
   });
 
   describe("permission policies", () => {
-    it("should add firewall with only allowed permissions", async () => {
+    it("should carry all permissions and grant only allowed ones", async () => {
       const agentName = uniqueId("fw-agent");
       await createTestCompose(agentName);
       await createTestConnector({ type: "slack" });
@@ -380,13 +380,13 @@ describe("createZeroRun()", () => {
         },
       });
       const agentId = await getTestZeroAgentId(user.orgId, agentName);
-      // Grant user permission to use slack connector for this agent
       await createTestUserConnector(user.orgId, user.userId, agentId, "slack");
 
       const result = await createZeroRun(baseParams({ agentId: agentId }));
 
       const job = await findTestRunnerJobEntry(result.runId);
       expect(job).toBeDefined();
+      // Firewalls carry ALL permissions (unfiltered)
       const firewalls = job!.executionContext.firewalls;
       expect(firewalls).toBeDefined();
       const slackFirewall = firewalls!.find((fw) => {
@@ -398,39 +398,53 @@ describe("createZeroRun()", () => {
       });
       expect(permNames).toContain("channels:read");
       expect(permNames).toContain("channels:history");
-      expect(permNames).not.toContain("admin");
+      expect(permNames).toContain("admin"); // ALL permissions present
+
+      // grantedPermissions only includes "allow" ones
+      const granted = job!.executionContext.grantedPermissions;
+      expect(granted).toBeDefined();
+      const slackGrant = granted!.slack;
+      expect(slackGrant).toBeDefined();
+      const grantedPerms = slackGrant!.allow;
+      expect(grantedPerms).toContain("channels:read");
+      expect(grantedPerms).toContain("channels:history");
+      expect(grantedPerms).not.toContain("admin");
+      // No allowUnknownEndpoints set → defaults to true
+      expect(slackGrant!.allowUnknown).toBe(true);
     });
 
-    it("should apply default policies when no explicit policies exist", async () => {
+    it("should grant all permissions when no explicit policies exist", async () => {
       const agentName = uniqueId("fw-nopol");
       await createTestCompose(agentName);
       await createTestConnector({ type: "slack" });
       await createTestZeroAgent(user.orgId, agentName, {});
       const agentId = await getTestZeroAgentId(user.orgId, agentName);
-      // Grant user permission to use slack connector for this agent
       await createTestUserConnector(user.orgId, user.userId, agentId, "slack");
 
       const result = await createZeroRun(baseParams({ agentId: agentId }));
 
       const job = await findTestRunnerJobEntry(result.runId);
       expect(job).toBeDefined();
+      // Firewalls carry all permissions
       const firewalls = job!.executionContext.firewalls;
       expect(firewalls).toBeDefined();
       const slackFw = firewalls!.find((fw) => {
         return fw.ref === "slack";
       });
       expect(slackFw).toBeDefined();
-      // Slack has default policies — only default-allowed permissions included
-      const permNames = slackFw!.apis[0]!.permissions!.map((p) => {
-        return p.name;
-      });
-      expect(permNames).toContain("channels:read");
-      expect(permNames).toContain("users:read");
-      expect(permNames).not.toContain("admin");
-      expect(permNames).not.toContain("chat:write");
+
+      // Slack has default policies — grantedPermissions reflects default-allowed ones
+      const granted = job!.executionContext.grantedPermissions;
+      expect(granted).toBeDefined();
+      const grantedPerms = granted!.slack!.allow;
+      expect(Array.isArray(grantedPerms)).toBe(true);
+      expect(grantedPerms).toContain("channels:read");
+      expect(grantedPerms).toContain("users:read");
+      expect(grantedPerms).not.toContain("admin");
+      expect(grantedPerms).not.toContain("chat:write");
     });
 
-    it("should keep firewall entry with empty permissions when all are denied", async () => {
+    it("should grant no permissions when all are denied", async () => {
       const agentName = uniqueId("fw-allden");
       await createTestCompose(agentName);
       await createTestConnector({ type: "slack" });
@@ -440,21 +454,24 @@ describe("createZeroRun()", () => {
         },
       });
       const agentId = await getTestZeroAgentId(user.orgId, agentName);
-      // Grant user permission to use slack connector for this agent
       await createTestUserConnector(user.orgId, user.userId, agentId, "slack");
 
       const result = await createZeroRun(baseParams({ agentId: agentId }));
 
       const job = await findTestRunnerJobEntry(result.runId);
       expect(job).toBeDefined();
-      // All denied → entry preserved with empty permissions for token injection
+      // Firewalls still carry all permissions (unfiltered)
       const slackFw = job!.executionContext.firewalls?.find((fw) => {
         return fw.ref === "slack";
       });
       expect(slackFw).toBeDefined();
-      for (const api of slackFw!.apis) {
-        expect(api.permissions).toEqual([]);
-      }
+      expect(slackFw!.apis[0]!.permissions!.length).toBeGreaterThan(0);
+
+      // grantedPermissions has empty array (nothing allowed)
+      const granted = job!.executionContext.grantedPermissions;
+      expect(granted).toBeDefined();
+      expect(granted!.slack!.allow).toEqual([]);
+      expect(granted!.slack!.allowUnknown).toBe(true);
     });
 
     it("should add multiple firewall entries for multi-ref connector", async () => {

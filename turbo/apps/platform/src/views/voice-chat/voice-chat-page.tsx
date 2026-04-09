@@ -8,6 +8,7 @@ import {
   IconPhoneOff,
   IconLoader2,
 } from "@tabler/icons-react";
+import { defaultAgentName$ } from "../../signals/agent.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
@@ -77,6 +78,7 @@ export function VoiceChatPage() {
   const startSession = useSet(startVoiceChat$);
   const endSession = useSet(endVoiceChat$);
   const toggleMute = useSet(toggleVoiceChatMute$);
+  const agentName = useLastResolved(defaultAgentName$) ?? "Zero";
 
   if (enabled === false) {
     return (
@@ -178,7 +180,7 @@ export function VoiceChatPage() {
                   )}
                 >
                   <span className="text-xs font-medium text-muted-foreground block mb-0.5">
-                    {entry.role === "user" ? "You" : "Assistant"}
+                    {entry.role === "user" ? "You" : agentName}
                   </span>
                   {entry.text}
                 </div>

@@ -42,6 +42,7 @@ export {
   removeZeroAttachment$,
   zeroDragOver$,
   setZeroDragOver$,
+  canSendZeroChat$,
   type ZeroChatAttachment,
 } from "../zero-page/chat-draft.ts";
 
@@ -751,7 +752,7 @@ const prepareUserMessage$ = command(
     { get, set },
     prompt: string,
     signal: AbortSignal,
-  ): Promise<{ fullPrompt: string }> => {
+  ): Promise<{ fullPrompt: string } | null> => {
     const draft = get(currentDraft$);
     const allAttachments = draft ? get(draft.attachments$) : [];
     const allInfos = await Promise.all(
@@ -776,13 +777,22 @@ const prepareUserMessage$ = command(
         },
       );
 
-    let fullPrompt = prompt.trim();
-    if (ready.length > 0) {
-      const lines = ready.map((r) => {
-        return `[Attached file: ${r.attachment.filename}](${r.info.url})\nDownload with: curl -sL -o "${r.attachment.filename}" "${r.info.url}"`;
-      });
-      fullPrompt = `${fullPrompt}\n\n${lines.join("\n")}`;
+    // Guard: nothing to send (no text and no ready attachments)
+    if (!prompt.trim() && ready.length === 0) {
+      return null;
     }
+
+    const attachmentLines = ready.map((r) => {
+      return `[Attached file: ${r.attachment.filename}](${r.info.url})\nDownload with: curl -sL -o "${r.attachment.filename}" "${r.info.url}"`;
+    });
+
+    // Build fullPrompt without leading \n\n when text is empty
+    const trimmedPrompt = prompt.trim();
+    const fullPrompt = trimmedPrompt
+      ? attachmentLines.length > 0
+        ? `${trimmedPrompt}\n\n${attachmentLines.join("\n")}`
+        : trimmedPrompt
+      : attachmentLines.join("\n");
 
     const userMessage: UserChatMessage = {
       id: crypto.randomUUID(),
@@ -817,6 +827,7 @@ interface ChatMessageArgs {
   agentId: string;
   prompt: string;
   threadId?: string;
+  hasTextContent: boolean;
 }
 
 const prepareChatMessage$ = command(
@@ -826,16 +837,17 @@ const prepareChatMessage$ = command(
     prompt: string,
     signal: AbortSignal,
   ): Promise<ChatMessageArgs | null> => {
-    if (!prompt.trim()) {
+    const result = await set(prepareUserMessage$, prompt, signal);
+    if (!result) {
       return null;
     }
-
-    const { fullPrompt } = await set(prepareUserMessage$, prompt, signal);
     signal.throwIfAborted();
 
+    const trimmedPrompt = prompt.trim();
     return {
       agentId,
-      prompt: fullPrompt,
+      prompt: result.fullPrompt,
+      hasTextContent: trimmedPrompt.length > 0,
     };
   },
 );

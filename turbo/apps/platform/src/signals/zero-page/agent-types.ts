@@ -8,6 +8,7 @@ export interface AgentDetail {
   sound: string | null;
   avatarUrl: string | null;
   permissionPolicies: FirewallPolicies | null;
+  allowUnknownEndpoints: Record<string, boolean> | null;
 }
 
 export interface AgentInstructions {

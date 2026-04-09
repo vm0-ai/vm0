@@ -7,11 +7,8 @@ import {
 import {
   createTestSlackOrgInstallation,
   seedTestSlackOrgConnection,
-  seedTestCompose,
-  seedTestSlackOrgPendingQuestion,
   countSlackOrgInstallations,
   countSlackOrgConnections,
-  countSlackOrgPendingQuestions,
 } from "../../../../__tests__/api-test-helpers";
 import {
   adminConnect,
@@ -184,33 +181,17 @@ describe("connect-service", () => {
   });
 
   describe("cleanupWorkspaceInstallation", () => {
-    it("deletes installation, connections, and pending questions", async () => {
+    it("deletes installation and connections", async () => {
       const workspaceId = uniqueId("T-ws");
-      const orgId = uniqueId("org");
-      await createTestSlackOrgInstallation({ workspaceId, orgId });
+      await createTestSlackOrgInstallation({
+        workspaceId,
+        orgId: uniqueId("org"),
+      });
 
-      const { connectionId } = await seedTestSlackOrgConnection({
+      await seedTestSlackOrgConnection({
         slackUserId: uniqueId("U-slack"),
         slackWorkspaceId: workspaceId,
         vm0UserId: user.userId,
-      });
-
-      const { composeId } = await seedTestCompose({
-        userId: user.userId,
-        name: uniqueId("agent"),
-        orgId,
-      });
-
-      await seedTestSlackOrgPendingQuestion({
-        runId: uniqueId("run"),
-        slackWorkspaceId: workspaceId,
-        slackChannelId: "C-test",
-        slackThreadTs: uniqueId("ts"),
-        connectionId,
-        composeId,
-        agentName: "test-agent",
-        questions: [{ question: "test?" }],
-        expiresAt: new Date(Date.now() + 3600000),
       });
 
       const deleted = await cleanupWorkspaceInstallation(workspaceId);
@@ -218,7 +199,6 @@ describe("connect-service", () => {
       expect(deleted).toBe(true);
       expect(await countSlackOrgInstallations(workspaceId)).toBe(0);
       expect(await countSlackOrgConnections(workspaceId)).toBe(0);
-      expect(await countSlackOrgPendingQuestions(connectionId)).toBe(0);
     });
 
     it("returns false when workspace does not exist", async () => {

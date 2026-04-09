@@ -23,9 +23,6 @@
         "turbo/apps/web": {
             "release-type": "node"
         },
-        "turbo/apps/docs": {
-            "release-type": "node"
-        },
         "turbo/apps/platform": {
             "release-type": "node"
         },

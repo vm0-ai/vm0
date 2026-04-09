@@ -417,6 +417,8 @@ export {
   type Firewalls,
   type FirewallPolicyValue,
   type FirewallPolicies,
+  grantedPermissionsSchema,
+  type GrantedPermissions,
   hasBaseUrlParams,
   hasBaseUrlVars,
   resolveFirewallBaseUrlVars,
@@ -736,18 +738,6 @@ export {
   zeroMemberCreditCapContract,
   type ZeroMemberCreditCapContract,
 } from "./zero-member-credit-cap";
-export {
-  zeroAskUserQuestionContract,
-  zeroAskUserAnswerContract,
-  askUserAnswerStatusSchema,
-  type ZeroAskUserQuestionContract,
-  type ZeroAskUserAnswerContract,
-  type AskUserQuestionItem,
-  type AskUserQuestionBody,
-  type AskUserQuestionResponse,
-  type AskUserAnswerStatus,
-  type AskUserAnswerResponse,
-} from "./zero-ask-user";
 export {
   zeroDeveloperSupportContract,
   developerSupportBodySchema,

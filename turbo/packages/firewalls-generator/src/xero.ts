@@ -19,7 +19,7 @@ import {
   fetchSpec,
   logStats,
   renderPermissions,
-  sortRules,
+  sanitizeAndSortRules,
   writeOutput,
 } from "./codegen";
 import type { PermissionGroup } from "./codegen";
@@ -171,7 +171,7 @@ function buildGroups(specs: ParsedSpec[]): {
 
       permissions.push({
         name: scope,
-        rules: sortRules([...ruleSet]),
+        rules: sanitizeAndSortRules([...ruleSet]),
       });
     }
 

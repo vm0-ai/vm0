@@ -197,6 +197,35 @@ describe("POST /api/internal/callbacks/schedule/cron", () => {
     });
   });
 
+  describe("Progress Callback", () => {
+    it("should ignore progress notifications without affecting failure count", async () => {
+      const { schedule, runId, secret } = await setupCronSchedule();
+
+      const request = createSignedCallbackRequest(
+        "http://localhost/api/internal/callbacks/schedule/cron",
+        {
+          runId,
+          status: "progress",
+          payload: {
+            scheduleId: schedule.id,
+            cronExpression: "0 9 * * *",
+            timezone: "UTC",
+          },
+        },
+        secret,
+      );
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.skipped).toBe(true);
+
+      const updated = await findTestScheduleById(schedule.id);
+      expect(updated!.consecutiveFailures).toBe(0);
+      expect(updated!.enabled).toBe(true);
+    });
+  });
+
   describe("Edge Cases", () => {
     it("should skip callback for deleted schedule", async () => {
       const { schedule, runId, secret } = await setupCronSchedule();

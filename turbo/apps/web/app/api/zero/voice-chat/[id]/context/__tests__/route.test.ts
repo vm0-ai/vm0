@@ -303,6 +303,31 @@ describe("POST /api/zero/voice-chat/[id]/context", () => {
     expect(body.error.message).toContain("not active");
   });
 
+  it.each([
+    "directive",
+    "thinking-progress",
+    "thinking-result",
+    "observation",
+  ] as const)("should accept slow brain event type: %s", async (type) => {
+    const session = await createSession(orgId, userId);
+    const response = await POST(
+      createTestRequest(contextUrl(session.id), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          source: "slow-brain",
+          type,
+          content: "test content",
+        }),
+      }),
+      paramsFor(session.id),
+    );
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.event.type).toBe(type);
+    expect(body.event.source).toBe("slow-brain");
+  });
+
   it("should produce incrementing seq numbers", async () => {
     const session = await createSession(orgId, userId);
 

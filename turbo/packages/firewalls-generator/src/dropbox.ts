@@ -18,7 +18,7 @@ import {
   fetchSpec,
   logStats,
   renderPermissions,
-  sortRules,
+  sanitizeAndSortRules,
   writeOutput,
 } from "./codegen";
 import type { PermissionGroup } from "./codegen";
@@ -177,7 +177,7 @@ function buildGroups(routes: StoneRoute[]): Map<DropboxHost, HostPermissions> {
 
       permissions.push({
         name: scope,
-        rules: sortRules([...ruleSet]),
+        rules: sanitizeAndSortRules([...ruleSet]),
       });
     }
 
