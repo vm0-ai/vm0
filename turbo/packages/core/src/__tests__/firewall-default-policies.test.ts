@@ -10,22 +10,22 @@ describe("getDefaultFirewallPolicies", () => {
     const policy = getDefaultFirewallPolicies("slack");
 
     // Slack has defaults — every permission should be either "allow" or "deny"
-    const values = Object.values(policy.permissions);
+    const values = Object.values(policy.policies);
     expect(values.length).toBeGreaterThan(0);
     for (const v of values) {
       expect(["allow", "deny"]).toContain(v);
     }
-    expect(policy.allowUnknown).toBe(true);
+    expect(policy.unknownPolicy).toBe("allow");
   });
 
   it("should mark default-allowed permissions as allow", () => {
     const policy = getDefaultFirewallPolicies("slack");
-    expect(policy.permissions["channels:read"]).toBe("allow");
+    expect(policy.policies["channels:read"]).toBe("allow");
   });
 
   it("should mark non-default permissions as deny", () => {
     const policy = getDefaultFirewallPolicies("slack");
-    expect(policy.permissions["admin"]).toBe("deny");
+    expect(policy.policies["admin"]).toBe("deny");
   });
 
   it("should cover every permission from the firewall config", () => {
@@ -42,15 +42,15 @@ describe("getDefaultFirewallPolicies", () => {
     );
 
     for (const name of allPermissions) {
-      expect(policy.permissions).toHaveProperty(name);
+      expect(policy.policies).toHaveProperty(name);
     }
-    expect(Object.keys(policy.permissions)).toHaveLength(allPermissions.size);
+    expect(Object.keys(policy.policies)).toHaveLength(allPermissions.size);
   });
 
   it("should return empty permissions for connectors with no static permissions", () => {
     const policy = getDefaultFirewallPolicies("github");
-    expect(Object.keys(policy.permissions)).toHaveLength(0);
-    expect(policy.allowUnknown).toBe(true);
+    expect(Object.keys(policy.policies)).toHaveLength(0);
+    expect(policy.unknownPolicy).toBe("allow");
   });
 });
 
@@ -60,57 +60,57 @@ describe("resolveFirewallPolicies", () => {
     expect(resolved).not.toBeNull();
     const slack = resolved!["slack"]!;
     expect(slack).toBeDefined();
-    expect(slack.permissions["channels:read"]).toBe("allow");
-    expect(slack.permissions["admin"]).toBe("deny");
+    expect(slack.policies["channels:read"]).toBe("allow");
+    expect(slack.policies["admin"]).toBe("deny");
   });
 
   it("should merge defaults with stored policies (stored overrides)", () => {
     const stored = {
-      slack: { permissions: { "channels:read": "deny" as const } },
+      slack: { policies: { "channels:read": "deny" as const } },
     };
     const resolved = resolveFirewallPolicies(stored, ["slack"]);
     const slack = resolved!["slack"]!;
-    expect(slack.permissions["channels:read"]).toBe("deny");
-    expect(slack.permissions["admin"]).toBe("deny");
-    expect(slack.permissions["users:read"]).toBe("allow");
+    expect(slack.policies["channels:read"]).toBe("deny");
+    expect(slack.policies["admin"]).toBe("deny");
+    expect(slack.policies["users:read"]).toBe("allow");
   });
 
   it("should merge stored partial policy with defaults", () => {
     const stored = {
-      slack: { permissions: { "files:read": "allow" as const } },
+      slack: { policies: { "files:read": "allow" as const } },
     };
     const resolved = resolveFirewallPolicies(stored, ["slack"]);
     const slack = resolved!["slack"]!;
-    expect(slack.permissions["files:read"]).toBe("allow");
-    expect(slack.permissions["channels:read"]).toBe("allow");
-    expect(slack.permissions["channels:history"]).toBe("allow");
-    expect(slack.permissions["users:read"]).toBe("allow");
-    expect(slack.permissions["admin"]).toBe("deny");
+    expect(slack.policies["files:read"]).toBe("allow");
+    expect(slack.policies["channels:read"]).toBe("allow");
+    expect(slack.policies["channels:history"]).toBe("allow");
+    expect(slack.policies["users:read"]).toBe("allow");
+    expect(slack.policies["admin"]).toBe("deny");
   });
 
-  it("should preserve stored allowUnknown override", () => {
+  it("should preserve stored unknownPolicy override", () => {
     const stored = {
-      slack: { permissions: {}, allowUnknown: false },
+      slack: { policies: {}, unknownPolicy: "deny" as const },
     };
     const resolved = resolveFirewallPolicies(stored, ["slack"]);
     const slack = resolved!["slack"]!;
-    expect(slack.allowUnknown).toBe(false);
+    expect(slack.unknownPolicy).toBe("deny");
   });
 
-  it("should default allowUnknown to true when not stored", () => {
+  it("should default unknownPolicy to allow when not stored", () => {
     const stored = {
-      slack: { permissions: { "channels:read": "allow" as const } },
+      slack: { policies: { "channels:read": "allow" as const } },
     };
     const resolved = resolveFirewallPolicies(stored, ["slack"]);
-    expect(resolved!["slack"]!.allowUnknown).toBe(true);
+    expect(resolved!["slack"]!.unknownPolicy).toBe("allow");
   });
 
   it("should preserve stored overrides for connectors without default-allowed list", () => {
     const stored = {
-      github: { permissions: { "repo-read": "deny" as const } },
+      github: { policies: { "repo-read": "deny" as const } },
     };
     const resolved = resolveFirewallPolicies(stored, ["github"]);
-    expect(resolved!["github"]!.permissions["repo-read"]).toBe("deny");
+    expect(resolved!["github"]!.policies["repo-read"]).toBe("deny");
   });
 
   it("should skip non-firewall connector types", () => {
@@ -120,23 +120,23 @@ describe("resolveFirewallPolicies", () => {
 
   it("should handle mixed connectors", () => {
     const stored = {
-      github: { permissions: { "repo-read": "allow" as const } },
+      github: { policies: { "repo-read": "allow" as const } },
     };
     const resolved = resolveFirewallPolicies(stored, [
       "github",
       "slack",
       "computer",
     ]);
-    expect(resolved!["github"]!.permissions["repo-read"]).toBe("allow");
+    expect(resolved!["github"]!.policies["repo-read"]).toBe("allow");
     expect(resolved!["slack"]).toBeDefined();
-    expect(resolved!["slack"]!.permissions["channels:read"]).toBe("allow");
+    expect(resolved!["slack"]!.policies["channels:read"]).toBe("allow");
     expect(resolved).not.toHaveProperty("computer");
   });
 
   it("should produce entry for connectors with no stored policies", () => {
     const resolved = resolveFirewallPolicies(null, ["github"]);
     expect(resolved).not.toBeNull();
-    expect(resolved!["github"]!.permissions).toEqual({});
-    expect(resolved!["github"]!.allowUnknown).toBe(true);
+    expect(resolved!["github"]!.policies).toEqual({});
+    expect(resolved!["github"]!.unknownPolicy).toBe("allow");
   });
 });

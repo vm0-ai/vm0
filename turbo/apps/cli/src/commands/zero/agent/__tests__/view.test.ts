@@ -102,10 +102,12 @@ describe("zero agent view command", () => {
             ...mockAgent,
             permissionPolicies: {
               slack: {
-                "channels:read": "allow",
-                "chat:write": "deny",
-                "reactions:read": "allow",
-                admin: "deny",
+                policies: {
+                  "channels:read": "allow",
+                  "chat:write": "deny",
+                  "reactions:read": "allow",
+                  admin: "deny",
+                },
               },
             },
           });
@@ -199,7 +201,7 @@ describe("zero agent view command", () => {
             ...mockAgent,
             permissionPolicies: {
               slack: {
-                permissions: {
+                policies: {
                   "channels:read": "allow",
                   "chat:write": "deny",
                   "reactions:read": "allow",

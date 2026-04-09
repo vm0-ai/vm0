@@ -135,7 +135,7 @@ describe("permission allow page - admin doctor mode", () => {
 
     expect(savedBody).toMatchObject({
       agentId: AGENT_ID,
-      policies: { slack: { permissions: { "channels:read": "deny" } } },
+      policies: { slack: { policies: { "channels:read": "deny" } } },
     });
   });
 
@@ -145,7 +145,7 @@ describe("permission allow page - admin doctor mode", () => {
         return HttpResponse.json(
           defaultAgentResponse({
             permissionPolicies: {
-              slack: { permissions: { "channels:read": "deny" } },
+              slack: { policies: { "channels:read": "deny" } },
             },
           }),
         );
@@ -178,7 +178,7 @@ describe("permission allow page - admin doctor mode", () => {
         return HttpResponse.json(
           defaultAgentResponse({
             permissionPolicies: {
-              slack: { permissions: { "channels:read": "deny" } },
+              slack: { policies: { "channels:read": "deny" } },
             },
           }),
         );
@@ -187,7 +187,7 @@ describe("permission allow page - admin doctor mode", () => {
     // Agent starts with allow policy, action=deny → mismatch → confirmation card
     mockAgent({
       permissionPolicies: {
-        slack: { permissions: { "channels:read": "allow" } },
+        slack: { policies: { "channels:read": "allow" } },
       },
     });
     mockPermissionRequests();

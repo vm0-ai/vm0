@@ -1674,6 +1674,13 @@
       "when": 1775900100000,
       "tag": "0238_rare_clea",
       "breakpoints": true
+    },
+    {
+      "idx": 239,
+      "version": "7",
+      "when": 1775900100001,
+      "tag": "0239_silly_whizzer",
+      "breakpoints": true
     }
   ]
 }

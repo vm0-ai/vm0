@@ -14,7 +14,7 @@ function mockAPIs({
   ownerId = "test-user-123",
   permissionPolicies = null as Record<
     string,
-    { permissions: Record<string, string>; allowUnknown?: boolean }
+    { policies: Record<string, string>; unknownPolicy?: string }
   > | null,
 } = {}) {
   server.use(
@@ -152,7 +152,7 @@ describe("permissions dialog - flat list connector (Notion)", () => {
     mockAPIs({
       connectorType: "notion",
       permissionPolicies: {
-        notion: { permissions: { insert_comments: "deny" } },
+        notion: { policies: { insert_comments: "deny" } },
       },
     });
     await setupPage({ context, path: "/agents/my-agent" });

@@ -40,7 +40,7 @@ function validatePolicies(policies: FirewallPolicies): string | null {
       }
     }
 
-    for (const permName of Object.keys(policy.permissions)) {
+    for (const permName of Object.keys(policy.policies)) {
       if (!validPermNames.has(permName)) {
         return `Unknown permission "${permName}" for connector "${ref}"`;
       }
@@ -104,14 +104,13 @@ const router = tsr.router(zeroAgentPermissionPoliciesContract, {
 
     // Update permission policies — split unified type back into two DB columns
     const now = new Date();
-    const { permissionPolicies, allowUnknownEndpoints } = fromFirewallPolicies(
-      body.policies,
-    );
+    const { permissionPolicies, unknownPermissionPolicies } =
+      fromFirewallPolicies(body.policies);
     await globalThis.services.db
       .update(zeroAgents)
       .set({
         permissionPolicies,
-        allowUnknownEndpoints,
+        unknownPermissionPolicies,
         updatedAt: now,
       })
       .where(eq(zeroAgents.id, body.agentId));
@@ -146,7 +145,7 @@ function buildAgentResponse(
     avatarUrl: agent?.avatarUrl ?? null,
     permissionPolicies: toFirewallPolicies(
       agent?.permissionPolicies,
-      agent?.allowUnknownEndpoints,
+      agent?.unknownPermissionPolicies,
     ),
     customSkills: agent?.customSkills ?? [],
   };

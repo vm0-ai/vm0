@@ -56,7 +56,7 @@ export function mergePermissions(
       allow: collectPermissionNames(modelProviderFirewall.apis),
       deny: [],
       ask: [],
-      allowUnknown: true,
+      unknownPolicy: "allow",
     };
   }
 
@@ -115,7 +115,7 @@ export function applyConnectorPolicies(
     firewalls.push({ name: fw.name, ref: fw.ref, apis });
 
     // Build grantedPermissions for this ref — always explicit, never omit.
-    const allowUnknown = refPolicy?.allowUnknown ?? true;
+    const unknownPolicy = refPolicy?.unknownPolicy ?? "allow";
     const allPermNames = collectPermissionNames(fw.apis);
     if (!refPolicy) {
       // No policies configured → all granted, none denied
@@ -123,14 +123,14 @@ export function applyConnectorPolicies(
         allow: allPermNames,
         deny: [],
         ask: [],
-        allowUnknown,
+        unknownPolicy,
       };
     } else {
       const allow: string[] = [];
       const deny: string[] = [];
       const ask: string[] = [];
       for (const name of allPermNames) {
-        const policy = refPolicy.permissions[name];
+        const policy = refPolicy.policies[name];
         if (policy === "allow") {
           allow.push(name);
         } else if (policy === "deny") {
@@ -139,7 +139,7 @@ export function applyConnectorPolicies(
           ask.push(name);
         }
       }
-      grantedPermissions[fw.ref] = { allow, deny, ask, allowUnknown };
+      grantedPermissions[fw.ref] = { allow, deny, ask, unknownPolicy };
     }
   }
 

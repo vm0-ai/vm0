@@ -261,8 +261,8 @@ export const saveAdminFocusedPolicy$ = command(
       ...agentFirewallPolicies,
       [ref]: {
         ...existing,
-        permissions: {
-          ...existing?.permissions,
+        policies: {
+          ...existing?.policies,
           [permissionName]: policy,
         },
       },

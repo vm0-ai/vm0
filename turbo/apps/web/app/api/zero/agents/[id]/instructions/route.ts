@@ -96,7 +96,7 @@ async function updateInstructions(
       avatarUrl: agent?.avatarUrl ?? null,
       permissionPolicies: toFirewallPolicies(
         agent?.permissionPolicies,
-        agent?.allowUnknownEndpoints,
+        agent?.unknownPermissionPolicies,
       ),
       customSkills: agent?.customSkills ?? [],
     },

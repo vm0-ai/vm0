@@ -129,7 +129,7 @@ const router = tsr.router(zeroAgentsMainContract, {
         sound: zeroAgents.sound,
         avatarUrl: zeroAgents.avatarUrl,
         permissionPolicies: zeroAgents.permissionPolicies,
-        allowUnknownEndpoints: zeroAgents.allowUnknownEndpoints,
+        unknownPermissionPolicies: zeroAgents.unknownPermissionPolicies,
         customSkills: zeroAgents.customSkills,
       })
       .from(zeroAgents)
@@ -149,7 +149,7 @@ const router = tsr.router(zeroAgentsMainContract, {
           avatarUrl: row.avatarUrl ?? null,
           permissionPolicies: toFirewallPolicies(
             row.permissionPolicies,
-            row.allowUnknownEndpoints,
+            row.unknownPermissionPolicies,
           ),
           customSkills: row.customSkills,
         };

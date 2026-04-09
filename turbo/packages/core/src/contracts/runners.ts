@@ -124,7 +124,7 @@ export const storedExecutionContextSchema = z.object({
   memoryName: z.string().optional(),
   // Firewall for proxy-side token replacement (complete config, all permissions)
   firewalls: firewallsSchema.optional(),
-  // Per-firewall grant config: which permissions are granted + allowUnknown flag
+  // Per-firewall grant config: which permissions are granted + unknownPolicy
   grantedPermissions: grantedPermissionsSchema.optional(),
   // Tools to disable in Claude CLI (passed as --disallowed-tools)
   disallowedTools: z.array(z.string()).optional(),
@@ -172,7 +172,7 @@ export const executionContextSchema = z.object({
   memoryName: z.string().optional(),
   // Firewall for proxy-side token replacement (complete config, all permissions)
   firewalls: firewallsSchema.optional(),
-  // Per-firewall grant config: which permissions are granted + allowUnknown flag
+  // Per-firewall grant config: which permissions are granted + unknownPolicy
   grantedPermissions: grantedPermissionsSchema.optional(),
   // Tools to disable in Claude CLI (passed as --disallowed-tools)
   disallowedTools: z.array(z.string()).optional(),

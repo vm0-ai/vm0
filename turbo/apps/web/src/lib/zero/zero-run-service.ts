@@ -244,7 +244,7 @@ export async function createZeroRunRecord(
       description: zeroAgents.description,
       sound: zeroAgents.sound,
       permissionPolicies: zeroAgents.permissionPolicies,
-      allowUnknownEndpoints: zeroAgents.allowUnknownEndpoints,
+      unknownPermissionPolicies: zeroAgents.unknownPermissionPolicies,
       orgId: zeroAgents.orgId,
     })
     .from(zeroAgents)
@@ -264,7 +264,7 @@ export async function createZeroRunRecord(
         sound: row.sound,
         rawPermissionPolicies: toFirewallPolicies(
           row.permissionPolicies,
-          row.allowUnknownEndpoints,
+          row.unknownPermissionPolicies,
         ),
         orgId: row.orgId,
       }

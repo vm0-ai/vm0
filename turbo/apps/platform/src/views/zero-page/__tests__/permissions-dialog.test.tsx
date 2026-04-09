@@ -14,7 +14,7 @@ function mockAPIs({
 }: {
   permissionPolicies?: Record<
     string,
-    { permissions: Record<string, string>; allowUnknown?: boolean }
+    { policies: Record<string, string>; unknownPolicy?: string }
   > | null;
 } = {}) {
   server.use(
@@ -92,7 +92,7 @@ function mockAPIs({
         agentId: string;
         policies: Record<
           string,
-          { permissions: Record<string, string>; allowUnknown?: boolean }
+          { policies: Record<string, string>; unknownPolicy?: string }
         >;
       };
       return HttpResponse.json({
@@ -184,7 +184,7 @@ describe("permissions dialog - grouped connector (Slack)", () => {
     mockAPIs({
       permissionPolicies: {
         slack: {
-          permissions: {
+          policies: {
             "bookmarks:read": "allow",
             "channels:read": "deny",
           },

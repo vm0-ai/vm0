@@ -47,7 +47,7 @@ describe("applyConnectorPolicies", () => {
         allow: ["repo-read", "repo-write"],
         deny: [],
         ask: [],
-        allowUnknown: true,
+        unknownPolicy: "allow",
       },
     });
   });
@@ -71,7 +71,7 @@ describe("applyConnectorPolicies", () => {
 
     const { firewalls, grantedPermissions } = applyConnectorPolicies([fw], {
       github: {
-        permissions: {
+        policies: {
           "repo-read": "allow",
           "repo-write": "deny",
           "issues-read": "allow",
@@ -87,7 +87,7 @@ describe("applyConnectorPolicies", () => {
         allow: ["repo-read", "issues-read"],
         deny: ["repo-write"],
         ask: [],
-        allowUnknown: true,
+        unknownPolicy: "allow",
       },
     });
   });
@@ -108,7 +108,7 @@ describe("applyConnectorPolicies", () => {
     });
 
     const { firewalls, grantedPermissions } = applyConnectorPolicies([fw], {
-      "custom-api": { permissions: { "some-perm": "allow" } },
+      "custom-api": { policies: { "some-perm": "allow" } },
     });
 
     expect(firewalls).toHaveLength(1);
@@ -120,7 +120,7 @@ describe("applyConnectorPolicies", () => {
         allow: [],
         deny: [],
         ask: [],
-        allowUnknown: true,
+        unknownPolicy: "allow",
       },
     });
   });
@@ -138,7 +138,7 @@ describe("applyConnectorPolicies", () => {
     });
 
     const { firewalls, grantedPermissions } = applyConnectorPolicies([fw], {
-      "custom-api": { permissions: { x: "allow" } },
+      "custom-api": { policies: { x: "allow" } },
     });
 
     expect(firewalls[0]?.apis[0]?.permissions).toEqual([]);
@@ -147,12 +147,12 @@ describe("applyConnectorPolicies", () => {
         allow: [],
         deny: [],
         ask: [],
-        allowUnknown: true,
+        unknownPolicy: "allow",
       },
     });
   });
 
-  it("sets allowUnknown from allowUnknownEndpoints param", () => {
+  it("sets unknownPolicy from unknownPolicy param", () => {
     const fw = makeFirewall({
       ref: "github",
       apis: [
@@ -167,14 +167,14 @@ describe("applyConnectorPolicies", () => {
     });
 
     const { grantedPermissions } = applyConnectorPolicies([fw], {
-      github: { permissions: { "repo-read": "allow" }, allowUnknown: true },
+      github: { policies: { "repo-read": "allow" }, unknownPolicy: "allow" },
     });
 
     expect(grantedPermissions.github).toEqual({
       allow: ["repo-read"],
       deny: [],
       ask: [],
-      allowUnknown: true,
+      unknownPolicy: "allow",
     });
   });
 
@@ -196,7 +196,7 @@ describe("applyConnectorPolicies", () => {
 
     const { grantedPermissions } = applyConnectorPolicies([fw], {
       github: {
-        permissions: {
+        policies: {
           "repo-read": "allow",
           "repo-write": "ask",
           admin: "deny",
@@ -208,11 +208,11 @@ describe("applyConnectorPolicies", () => {
       allow: ["repo-read"],
       deny: ["admin"],
       ask: ["repo-write"],
-      allowUnknown: true,
+      unknownPolicy: "allow",
     });
   });
 
-  it("defaults allowUnknown to true when ref absent from allowUnknownEndpoints", () => {
+  it("defaults unknownPolicy to allow when ref absent from unknownPermissionPolicies", () => {
     const fw = makeFirewall({
       ref: "github",
       apis: [
@@ -227,14 +227,14 @@ describe("applyConnectorPolicies", () => {
     });
 
     const { grantedPermissions } = applyConnectorPolicies([fw], {
-      github: { permissions: { "repo-read": "allow" } },
+      github: { policies: { "repo-read": "allow" } },
     });
 
     expect(grantedPermissions.github).toEqual({
       allow: ["repo-read"],
       deny: [],
       ask: [],
-      allowUnknown: true,
+      unknownPolicy: "allow",
     });
   });
 });

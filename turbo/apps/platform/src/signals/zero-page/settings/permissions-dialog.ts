@@ -1,4 +1,5 @@
 import { command, computed, state } from "ccstate";
+import type { FirewallPolicyValue } from "@vm0/core";
 import type { PermissionPolicy } from "./permissions.ts";
 
 // ---------------------------------------------------------------------------
@@ -12,13 +13,15 @@ export const permissionAllPolicies$ = computed((get) => {
   return get(internalAllPolicies$);
 });
 
-const internalAllowUnknown$ = state(false);
-export const permissionAllowUnknown$ = computed((get) => {
-  return get(internalAllowUnknown$);
+const internalUnknownPolicy$ = state<FirewallPolicyValue>("allow");
+export const permissionUnknownPolicy$ = computed((get) => {
+  return get(internalUnknownPolicy$);
 });
-export const setPermissionAllowUnknown$ = command(({ set }, value: boolean) => {
-  set(internalAllowUnknown$, value);
-});
+export const setPermissionUnknownPolicy$ = command(
+  ({ set }, value: FirewallPolicyValue) => {
+    set(internalUnknownPolicy$, value);
+  },
+);
 
 const internalInitialized$ = state(false);
 
@@ -26,14 +29,14 @@ export const initPermissionPolicies$ = command(
   (
     { get, set },
     policies: Record<string, Record<string, PermissionPolicy>>,
-    allowUnknown: boolean,
+    unknownPolicy: FirewallPolicyValue,
   ) => {
     if (get(internalInitialized$)) {
       return;
     }
     set(internalInitialized$, true);
     set(internalAllPolicies$, policies);
-    set(internalAllowUnknown$, allowUnknown);
+    set(internalUnknownPolicy$, unknownPolicy);
   },
 );
 
@@ -97,14 +100,14 @@ export const applyPermissionPolicies$ = command(
     { get },
     onApply: (
       policies: Record<string, Record<string, PermissionPolicy>>,
-      allowUnknown: boolean,
+      unknownPolicy: FirewallPolicyValue,
     ) => Promise<void>,
     onClose: () => void,
     _signal: AbortSignal,
   ): Promise<void> => {
     const policies = get(internalAllPolicies$);
-    const allowUnknown = get(internalAllowUnknown$);
-    await onApply(policies, allowUnknown);
+    const unknownPolicy = get(internalUnknownPolicy$);
+    await onApply(policies, unknownPolicy);
     onClose();
   },
 );

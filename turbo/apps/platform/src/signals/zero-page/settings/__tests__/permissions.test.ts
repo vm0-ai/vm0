@@ -34,7 +34,7 @@ describe("savePermissionPolicies$", () => {
     await setupPage({ context, path: "/", withoutRender: true });
 
     const policies = {
-      slack: { permissions: { "channels:read": "allow" as const } },
+      slack: { policies: { "channels:read": "allow" as const } },
     };
     let capturedBody: Record<string, unknown> | null = null;
 

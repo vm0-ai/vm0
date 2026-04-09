@@ -133,7 +133,7 @@ pub struct FirewallAuth {
 }
 
 /// Per-firewall grant configuration: which permissions are authorized and
-/// whether unknown endpoints (not matching any rule) should be allowed.
+/// what policy applies to unknown endpoints (not matching any rule).
 /// Refs absent from the map are fully permissive (all granted + allow unknown).
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -144,8 +144,9 @@ pub struct GrantedPermission {
     pub deny: Vec<String>,
     /// Permission names requiring user approval before use.
     pub ask: Vec<String>,
-    /// Whether to allow requests that don't match any known permission rule.
-    pub allow_unknown: bool,
+    /// Policy for requests not matching any known permission rule.
+    /// Values: "allow", "deny", "ask"
+    pub unknown_policy: String,
 }
 
 #[derive(Debug, Deserialize, Serialize)]

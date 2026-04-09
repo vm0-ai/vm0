@@ -450,15 +450,18 @@ def _build_allow_set(
     return set(ref_grant.get("allow", []))
 
 
-def _is_allow_unknown(
+def _get_unknown_policy(
     fw_ref: str,
     granted_permissions: dict,
-) -> bool:
-    """Check if unknown endpoints (no rule match) should be allowed."""
+) -> str:
+    """Get the policy for unknown endpoints (no rule match).
+
+    Returns "allow", "deny", or "ask".
+    """
     ref_grant = granted_permissions.get(fw_ref)
     if ref_grant is None:
-        return False
-    return ref_grant.get("allowUnknown", False)
+        return "deny"
+    return ref_grant.get("unknownPolicy", "deny")
 
 
 def match_firewall_request(
@@ -606,7 +609,8 @@ def match_firewall_request(
         if denied_match is not None:
             return FirewallBlock(*denied_match)
         # No permission rule matched — this is an "unknown" endpoint.
-        if _is_allow_unknown(blocked_ref, granted_permissions):
+        # "ask" is treated as "deny" at the proxy level (same as ask permissions).
+        if _get_unknown_policy(blocked_ref, granted_permissions) == "allow":
             return FirewallAllow(
                 first_matched_api_entry,
                 {

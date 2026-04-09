@@ -92,7 +92,7 @@ interface BuildZeroContextParams {
   modelProvider?: string;
   // API start time for E2E timing metrics
   apiStartTime?: number;
-  // Per-permission policies from zero agent configuration (includes allowUnknown).
+  // Per-permission policies from zero agent configuration (includes unknownPolicy).
   permissionPolicies?: FirewallPolicies;
   // Caller-resolved org context for secret/variable/storage resolution.
   orgId: string;

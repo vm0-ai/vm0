@@ -28,7 +28,7 @@ interface AgentResponse {
   avatarUrl: string | null;
   permissionPolicies: Record<
     string,
-    { permissions: Record<string, string>; allowUnknown?: boolean }
+    { policies: Record<string, string>; unknownPolicy?: string }
   > | null;
   customSkills: unknown[];
 }

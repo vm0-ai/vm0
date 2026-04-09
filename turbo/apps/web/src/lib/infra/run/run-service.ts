@@ -112,7 +112,7 @@ export interface CreateRunParams {
   orgId: string;
   // Caller-resolved org tier for concurrency limit derivation.
   orgTier?: OrgTier;
-  // Per-permission policies from zero agent configuration (includes allowUnknown).
+  // Per-permission policies from zero agent configuration (includes unknownPolicy).
   permissionPolicies?: FirewallPolicies;
   allowedConnectorTypes?: ConnectorType[];
   // Pre-loaded compose data. When provided, skips the internal loadCompose() call.

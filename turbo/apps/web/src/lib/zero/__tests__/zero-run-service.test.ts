@@ -409,8 +409,8 @@ describe("createZeroRun()", () => {
       expect(grantedPerms).toContain("channels:read");
       expect(grantedPerms).toContain("channels:history");
       expect(grantedPerms).not.toContain("admin");
-      // No allowUnknownEndpoints set → defaults to true
-      expect(slackGrant!.allowUnknown).toBe(true);
+      // No unknownPermissionPolicies set → defaults to "allow"
+      expect(slackGrant!.unknownPolicy).toBe("allow");
     });
 
     it("should grant all permissions when no explicit policies exist", async () => {
@@ -475,7 +475,7 @@ describe("createZeroRun()", () => {
       // Default-allowed permissions (not overridden) are still granted
       expect(granted!.slack!.allow).toContain("channels:read");
       expect(granted!.slack!.allow).toContain("users:read");
-      expect(granted!.slack!.allowUnknown).toBe(true);
+      expect(granted!.slack!.unknownPolicy).toBe("allow");
     });
 
     it("should add multiple firewall entries for multi-ref connector", async () => {

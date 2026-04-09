@@ -35,7 +35,7 @@ function mockMemberOrg() {
 function mockAgentWithPolicy(
   permissionPolicies: Record<
     string,
-    { permissions: Record<string, string>; allowUnknown?: boolean }
+    { policies: Record<string, string>; unknownPolicy?: string }
   > | null,
   ownerId = "test-owner-id",
 ) {
@@ -131,7 +131,7 @@ describe("permission allow page", () => {
   it("shows permissions updated when policy already matches allow action", async () => {
     mockPermissionRequests();
     mockAgentWithPolicy({
-      slack: { permissions: { "channels:read": "allow" } },
+      slack: { policies: { "channels:read": "allow" } },
     });
 
     await setupPage({
@@ -147,7 +147,7 @@ describe("permission allow page", () => {
   it("shows permissions denied when policy already matches deny action", async () => {
     mockPermissionRequests();
     mockAgentWithPolicy({
-      slack: { permissions: { "channels:read": "deny" } },
+      slack: { policies: { "channels:read": "deny" } },
     });
 
     await setupPage({
@@ -167,7 +167,7 @@ describe("permission allow page", () => {
   it("shows admin confirm card when policy does not match", async () => {
     mockPermissionRequests();
     mockAgentWithPolicy({
-      slack: { permissions: { "channels:read": "deny" } },
+      slack: { policies: { "channels:read": "deny" } },
     });
 
     await setupPage({
@@ -185,7 +185,7 @@ describe("permission allow page", () => {
   it("shows connector info in doctor mode confirm card", async () => {
     mockPermissionRequests();
     mockAgentWithPolicy({
-      slack: { permissions: { "channels:read": "deny" } },
+      slack: { policies: { "channels:read": "deny" } },
     });
 
     await setupPage({
@@ -207,7 +207,7 @@ describe("permission allow page", () => {
   it("shows member request form when policy does not match", async () => {
     mockMemberOrg();
     mockAgentWithPolicy(
-      { slack: { permissions: { "channels:read": "deny" } } },
+      { slack: { policies: { "channels:read": "deny" } } },
       "other-owner",
     );
     mockPermissionRequests();
@@ -369,7 +369,7 @@ describe("permission allow page", () => {
   it("shows deny icon in admin confirm card for deny action", async () => {
     mockPermissionRequests();
     mockAgentWithPolicy({
-      slack: { permissions: { "channels:read": "allow" } },
+      slack: { policies: { "channels:read": "allow" } },
     });
 
     await setupPage({
@@ -392,7 +392,7 @@ describe("permission allow page", () => {
   it("shows deny icon in member request form for deny action", async () => {
     mockMemberOrg();
     mockAgentWithPolicy(
-      { slack: { permissions: { "channels:read": "allow" } } },
+      { slack: { policies: { "channels:read": "allow" } } },
       "other-owner",
     );
     mockPermissionRequests();
@@ -490,7 +490,7 @@ describe("permission allow page", () => {
   it("shows editable reason textarea in member request form", async () => {
     mockMemberOrg();
     mockAgentWithPolicy(
-      { slack: { permissions: { "channels:read": "deny" } } },
+      { slack: { policies: { "channels:read": "deny" } } },
       "other-owner",
     );
     mockPermissionRequests();

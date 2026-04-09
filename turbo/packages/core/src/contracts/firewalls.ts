@@ -73,14 +73,14 @@ export type FirewallPolicyValue = z.infer<typeof firewallPolicyValueSchema>;
  * Per-connector policy: permission map + unknown endpoint handling.
  */
 export const firewallPolicySchema = z.object({
-  permissions: z.record(z.string(), firewallPolicyValueSchema),
-  allowUnknown: z.boolean().optional(),
+  policies: z.record(z.string(), firewallPolicyValueSchema),
+  unknownPolicy: firewallPolicyValueSchema.optional(),
 });
 export type FirewallPolicy = z.infer<typeof firewallPolicySchema>;
 
 /**
  * Firewall policies — map of firewall ref → connector policy.
- * Example: { "github": { permissions: { "repo-read": "allow" }, allowUnknown: true } }
+ * Example: { "github": { policies: { "repo-read": "allow" }, unknownPolicy: "allow" } }
  */
 export const firewallPoliciesSchema = z.record(
   z.string(),
@@ -103,19 +103,22 @@ export type RawPermissionPolicies = Record<
  */
 export function toFirewallPolicies(
   raw: RawPermissionPolicies | null | undefined,
-  allowUnknown: Record<string, boolean> | null | undefined,
+  unknownPermissionPolicies:
+    | Record<string, FirewallPolicyValue>
+    | null
+    | undefined,
 ): FirewallPolicies | null {
-  if (!raw && !allowUnknown) return null;
+  if (!raw && !unknownPermissionPolicies) return null;
   const result: FirewallPolicies = {};
   const allRefs = new Set([
     ...Object.keys(raw ?? {}),
-    ...Object.keys(allowUnknown ?? {}),
+    ...Object.keys(unknownPermissionPolicies ?? {}),
   ]);
   for (const ref of allRefs) {
     result[ref] = {
-      permissions: raw?.[ref] ?? {},
-      ...(allowUnknown?.[ref] !== undefined && {
-        allowUnknown: allowUnknown[ref],
+      policies: raw?.[ref] ?? {},
+      ...(unknownPermissionPolicies?.[ref] !== undefined && {
+        unknownPolicy: unknownPermissionPolicies[ref],
       }),
     };
   }
@@ -128,34 +131,34 @@ export function toFirewallPolicies(
  */
 export function fromFirewallPolicies(policies: FirewallPolicies): {
   permissionPolicies: RawPermissionPolicies;
-  allowUnknownEndpoints: Record<string, boolean>;
+  unknownPermissionPolicies: Record<string, FirewallPolicyValue>;
 } {
   const permissionPolicies: RawPermissionPolicies = {};
-  const allowUnknownEndpoints: Record<string, boolean> = {};
+  const unknownPermissionPolicies: Record<string, FirewallPolicyValue> = {};
   for (const [ref, config] of Object.entries(policies)) {
-    permissionPolicies[ref] = config.permissions;
-    if (config.allowUnknown !== undefined) {
-      allowUnknownEndpoints[ref] = config.allowUnknown;
+    permissionPolicies[ref] = config.policies;
+    if (config.unknownPolicy !== undefined) {
+      unknownPermissionPolicies[ref] = config.unknownPolicy;
     }
   }
-  return { permissionPolicies, allowUnknownEndpoints };
+  return { permissionPolicies, unknownPermissionPolicies };
 }
 
 /**
  * Per-firewall grant configuration — which permissions are granted and
- * whether unknown endpoints (not matching any permission rule) are allowed.
+ * what policy applies to unknown endpoints (not matching any permission rule).
  * Refs absent from the map are fully permissive (all granted + allow unknown).
  */
 const grantedPermissionSchema = z.object({
   allow: z.array(z.string()),
   deny: z.array(z.string()),
   ask: z.array(z.string()),
-  allowUnknown: z.boolean(),
+  unknownPolicy: firewallPolicyValueSchema,
 });
 
 /**
  * Granted permissions map — firewall ref → grant config.
- * Example: { "github": { allow: ["repo-read"], deny: ["admin"], ask: [], allowUnknown: false } }
+ * Example: { "github": { allow: ["repo-read"], deny: ["admin"], ask: [], unknownPolicy: "deny" } }
  */
 export const grantedPermissionsSchema = z.record(
   z.string(),

@@ -40,7 +40,7 @@ def _wrap_firewalls(apis, name="test", ref="test"):
     return [{"name": name, "ref": ref, "apis": apis}]
 
 
-def _grant_all(firewalls, allow_unknown=False):
+def _grant_all(firewalls, unknown_policy="deny"):
     """Build grantedPermissions that grants all permissions for each ref."""
     result = {}
     for fw in firewalls or []:
@@ -52,7 +52,7 @@ def _grant_all(firewalls, allow_unknown=False):
             "allow": list(perms),
             "deny": [],
             "ask": [],
-            "allowUnknown": allow_unknown,
+            "unknownPolicy": unknown_policy,
         }
     return result
 
@@ -3633,7 +3633,7 @@ class TestThreeLevelMatching:
         )
 
     def test_granted_permission_allows(self):
-        granted = {"github": {"allow": ["repo-read"], "allowUnknown": False}}
+        granted = {"github": {"allow": ["repo-read"], "unknownPolicy": "deny"}}
         result = matching.match_firewall_request(
             "https://api.github.com/repos/org/repo",
             "GET",
@@ -3644,7 +3644,7 @@ class TestThreeLevelMatching:
         assert result.match_info["permission"] == "repo-read"
 
     def test_non_granted_permission_denies(self):
-        granted = {"github": {"allow": ["repo-read"], "allowUnknown": False}}
+        granted = {"github": {"allow": ["repo-read"], "unknownPolicy": "deny"}}
         result = matching.match_firewall_request(
             "https://api.github.com/repos/org/repo",
             "PUT",
@@ -3654,7 +3654,7 @@ class TestThreeLevelMatching:
         assert isinstance(result, FirewallBlock)
 
     def test_unknown_endpoint_allowed_when_allow_unknown_true(self):
-        granted = {"github": {"allow": ["repo-read"], "allowUnknown": True}}
+        granted = {"github": {"allow": ["repo-read"], "unknownPolicy": "allow"}}
         result = matching.match_firewall_request(
             "https://api.github.com/users/octocat",
             "GET",
@@ -3666,7 +3666,7 @@ class TestThreeLevelMatching:
         assert result.match_info["rule"] == ""
 
     def test_unknown_endpoint_blocked_when_allow_unknown_false(self):
-        granted = {"github": {"allow": ["repo-read"], "allowUnknown": False}}
+        granted = {"github": {"allow": ["repo-read"], "unknownPolicy": "deny"}}
         result = matching.match_firewall_request(
             "https://api.github.com/users/octocat",
             "GET",
@@ -3727,7 +3727,7 @@ class TestThreeLevelMatching:
             name="hubspot",
             ref="hubspot",
         )
-        granted = {"hubspot": {"allow": [], "allowUnknown": True}}
+        granted = {"hubspot": {"allow": [], "unknownPolicy": "allow"}}
         result = matching.match_firewall_request(
             "https://api.hubspot.com/crm/v3/objects",
             "GET",
@@ -3753,7 +3753,7 @@ class TestThreeLevelMatching:
             name="github",
             ref="github",
         )
-        granted = {"github": {"allow": ["repo-admin"], "allowUnknown": False}}
+        granted = {"github": {"allow": ["repo-admin"], "unknownPolicy": "deny"}}
         result = matching.match_firewall_request(
             "https://api.github.com/repos/org/repo",
             "GET",
@@ -3779,7 +3779,7 @@ class TestThreeLevelMatching:
             name="github",
             ref="github",
         )
-        granted = {"github": {"allow": ["issues-read"], "allowUnknown": False}}
+        granted = {"github": {"allow": ["issues-read"], "unknownPolicy": "deny"}}
         result = matching.match_firewall_request(
             "https://api.github.com/repos/org/repo",
             "GET",
@@ -3819,8 +3819,8 @@ class TestThreeLevelMatching:
             },
         ]
         granted = {
-            "github": {"allow": ["repo-read"], "allowUnknown": False},
-            "slack": {"allow": [], "allowUnknown": True},
+            "github": {"allow": ["repo-read"], "unknownPolicy": "deny"},
+            "slack": {"allow": [], "unknownPolicy": "allow"},
         }
         # GitHub: granted → ALLOW
         result = matching.match_firewall_request(
@@ -3867,8 +3867,8 @@ class TestThreeLevelMatching:
             },
         ]
         granted = {
-            "github": {"allow": [], "allowUnknown": False},
-            "slack": {"allow": [], "allowUnknown": True},
+            "github": {"allow": [], "unknownPolicy": "deny"},
+            "slack": {"allow": [], "unknownPolicy": "allow"},
         }
         # GitHub unknown → DENY (allowUnknown: False)
         result = matching.match_firewall_request(
@@ -3903,7 +3903,7 @@ class TestThreeLevelMatching:
             name="github",
             ref="github",
         )
-        granted = {"github": {"allow": [], "allowUnknown": True}}
+        granted = {"github": {"allow": [], "unknownPolicy": "allow"}}
         result = matching.match_firewall_request(
             "https://api.github.com/repos/org/repo",
             "PUT",
@@ -3929,7 +3929,7 @@ class TestThreeLevelMatching:
             name="github",
             ref="github",
         )
-        granted = {"github": {"allow": [], "allowUnknown": False}}
+        granted = {"github": {"allow": [], "unknownPolicy": "deny"}}
         result = matching.match_firewall_request(
             "https://api.github.com/repos/org/repo",
             "GET",
@@ -3954,7 +3954,7 @@ class TestThreeLevelMatching:
             ref="github",
         )
         # grantedPermissions exists but has no entry for "github"
-        granted = {"slack": {"allow": [], "allowUnknown": True}}
+        granted = {"slack": {"allow": [], "unknownPolicy": "allow"}}
         result = matching.match_firewall_request(
             "https://api.github.com/repos/org/repo",
             "GET",
@@ -3992,7 +3992,7 @@ class TestThreeLevelMatching:
             name="github",
             ref="github",
         )
-        granted = {"github": {"allow": ["repo-read"], "allowUnknown": True}}
+        granted = {"github": {"allow": ["repo-read"], "unknownPolicy": "allow"}}
 
         # First API: known permission granted → ALLOW
         result = matching.match_firewall_request(

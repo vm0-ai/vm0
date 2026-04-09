@@ -20,6 +20,7 @@ import {
   type ConnectorType,
   type FirewallConfig,
   type FirewallPolicies,
+  type FirewallPolicyValue,
 } from "@vm0/core";
 import { ConnectorIcon } from "./connector-icons.tsx";
 import type { PermissionPolicy } from "../../../../signals/zero-page/settings/permissions.ts";
@@ -33,8 +34,8 @@ import {
   permissionExpandedGroups$,
   togglePermissionGroup$,
   applyPermissionPolicies$,
-  permissionAllowUnknown$,
-  setPermissionAllowUnknown$,
+  permissionUnknownPolicy$,
+  setPermissionUnknownPolicy$,
 } from "../../../../signals/zero-page/settings/permissions-dialog.ts";
 import { IconCheck, IconBan, IconChevronRight } from "@tabler/icons-react";
 import { detach, Reason } from "../../../../signals/utils.ts";
@@ -198,7 +199,7 @@ function buildInitialPolicies(
   const resolved = resolveFirewallPolicies(initialPolicies, [ref]);
   const refPolicies: Record<string, PermissionPolicy> = {};
   for (const p of perms) {
-    refPolicies[p.name] = resolved?.[ref]?.permissions[p.name] ?? "allow";
+    refPolicies[p.name] = resolved?.[ref]?.policies[p.name] ?? "allow";
   }
   result[ref] = refPolicies;
   return result;
@@ -244,15 +245,15 @@ export function PermissionsDrawer({
     ? getConnectorFirewall(ref)
     : null;
 
-  const initialAllowUnknown = initialPolicies[ref]?.allowUnknown ?? true;
+  const initialUnknownPolicy = initialPolicies[ref]?.unknownPolicy ?? "allow";
   useSet(initPermissionPolicies$)(
     buildInitialPolicies(ref, config, initialPolicies),
-    initialAllowUnknown,
+    initialUnknownPolicy,
   );
 
   const allPolicies = useGet(permissionAllPolicies$);
-  const allowUnknown = useGet(permissionAllowUnknown$);
-  const setAllowUnknown = useSet(setPermissionAllowUnknown$);
+  const unknownPolicy = useGet(permissionUnknownPolicy$);
+  const setUnknownPolicy = useSet(setPermissionUnknownPolicy$);
   const scrolled = useGet(permissionScrolled$);
   const setScrolled = useSet(setPermissionScrolled$);
   const expandedGroups = useGet(permissionExpandedGroups$);
@@ -277,7 +278,7 @@ export function PermissionsDrawer({
       next[p.name] = policy;
     }
     setAllPoliciesFn(ref, next);
-    setAllowUnknown(policy === "allow");
+    setUnknownPolicy(policy);
   };
 
   const handleSetGroupAll = (
@@ -294,12 +295,12 @@ export function PermissionsDrawer({
   const handleApply = () => {
     const wrappedApply = async (
       perms: Record<string, Record<string, PermissionPolicy>>,
-      unknownFlag: boolean,
+      unknownFlag: FirewallPolicyValue,
     ): Promise<void> => {
-      // Convert dialog state (flat perms + allowUnknown) to unified FirewallPolicies
+      // Convert dialog state (flat perms + unknownPolicy) to unified FirewallPolicies
       const unified: FirewallPolicies = {};
       for (const [r, p] of Object.entries(perms)) {
-        unified[r] = { permissions: p, allowUnknown: unknownFlag };
+        unified[r] = { policies: p, unknownPolicy: unknownFlag };
       }
       await onApply(unified);
     };
@@ -464,10 +465,10 @@ export function PermissionsDrawer({
             </div>
 
             <UnknownEndpointsToggle
-              policy={allowUnknown ? "allow" : "deny"}
+              policy={unknownPolicy}
               disabled={readOnly}
               onChange={(p) => {
-                setAllowUnknown(p === "allow");
+                setUnknownPolicy(p);
               }}
             />
           </div>

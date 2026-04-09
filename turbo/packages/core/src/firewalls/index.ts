@@ -431,7 +431,7 @@ const DEFAULT_ALLOWED: Partial<
  *
  * Returns a ConnectorPolicy with all permissions mapped. Connectors with a
  * default-allowed list get "allow"/"deny" selectively; others get all-allow.
- * `allowUnknown` defaults to true.
+ * `unknownPolicy` defaults to "allow".
  */
 export function getDefaultFirewallPolicies(
   type: FirewallConnectorType,
@@ -439,16 +439,15 @@ export function getDefaultFirewallPolicies(
   const allowed = DEFAULT_ALLOWED[type];
   const allowSet = allowed ? new Set<string>(allowed) : null;
   const config = getConnectorFirewall(type);
-  const permissions: Record<string, FirewallPolicyValue> = {};
+  const policies: Record<string, FirewallPolicyValue> = {};
   for (const api of config.apis) {
     if (api.permissions) {
       for (const p of api.permissions) {
-        permissions[p.name] =
-          !allowSet || allowSet.has(p.name) ? "allow" : "deny";
+        policies[p.name] = !allowSet || allowSet.has(p.name) ? "allow" : "deny";
       }
     }
   }
-  return { permissions, allowUnknown: true };
+  return { policies, unknownPolicy: "allow" };
 }
 
 /**
@@ -456,7 +455,7 @@ export function getDefaultFirewallPolicies(
  *
  * For each connector, builds a full default policy (all-allow for connectors
  * without a default-allowed list, selective for those with one), then layers
- * stored overrides on top. Merges both `permissions` and `allowUnknown`.
+ * stored overrides on top. Merges both `policies` and `unknownPolicy`.
  */
 export function resolveFirewallPolicies(
   stored: FirewallPolicies | null,
@@ -470,10 +469,10 @@ export function resolveFirewallPolicies(
     resolved = {
       ...resolved,
       [connector]: {
-        permissions: { ...defaults.permissions, ...existing?.permissions },
-        ...(existing?.allowUnknown !== undefined
-          ? { allowUnknown: existing.allowUnknown }
-          : { allowUnknown: defaults.allowUnknown }),
+        policies: { ...defaults.policies, ...existing?.policies },
+        ...(existing?.unknownPolicy !== undefined
+          ? { unknownPolicy: existing.unknownPolicy }
+          : { unknownPolicy: defaults.unknownPolicy }),
       },
     };
   }
