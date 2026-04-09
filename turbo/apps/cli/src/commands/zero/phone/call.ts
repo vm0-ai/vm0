@@ -63,21 +63,31 @@ export const callCommand = new Command()
         // Resolve system prompt from file if provided
         let systemPrompt = options.systemPrompt;
         if (options.promptFile) {
-          if (!fs.existsSync(options.promptFile)) {
-            console.error(chalk.red(`File not found: ${options.promptFile}`));
-            process.exit(1);
+          try {
+            systemPrompt = fs.readFileSync(options.promptFile, "utf-8");
+          } catch (err) {
+            if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+              console.error(chalk.red(`File not found: ${options.promptFile}`));
+              process.exit(1);
+            }
+            throw err;
           }
-          systemPrompt = fs.readFileSync(options.promptFile, "utf-8");
         }
 
         // Resolve greeting from file if provided
         let greeting = options.greeting;
         if (options.greetingFile) {
-          if (!fs.existsSync(options.greetingFile)) {
-            console.error(chalk.red(`File not found: ${options.greetingFile}`));
-            process.exit(1);
+          try {
+            greeting = fs.readFileSync(options.greetingFile, "utf-8");
+          } catch (err) {
+            if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+              console.error(
+                chalk.red(`File not found: ${options.greetingFile}`),
+              );
+              process.exit(1);
+            }
+            throw err;
           }
-          greeting = fs.readFileSync(options.greetingFile, "utf-8");
         }
 
         const result = await createPhoneCall({
