@@ -1,8 +1,6 @@
 import {
   type AvatarSvgConfig,
-  headSvgUrl,
-  hairSvgUrl,
-  faceSvgUrl,
+  compositeAvatarSvgInner,
 } from "./avatar-svg-utils.ts";
 
 interface AvatarSvgPreviewProps {
@@ -14,7 +12,8 @@ interface AvatarSvgPreviewProps {
 }
 
 /**
- * Renders a composite avatar by stacking head, face, and hair SVG layers.
+ * Renders a composite avatar by stacking head, face, and hair SVG layers
+ * into a single inline `<svg>` element (zero network requests).
  */
 export function AvatarSvgPreview({
   config,
@@ -23,7 +22,6 @@ export function AvatarSvgPreview({
   alt,
   "data-testid": testId,
 }: AvatarSvgPreviewProps) {
-  const layerClass = "absolute inset-0 h-full w-full object-cover";
   return (
     <div
       className={`relative overflow-hidden ${className ?? ""}`}
@@ -32,20 +30,12 @@ export function AvatarSvgPreview({
       data-testid={testId}
     >
       <div className="absolute inset-0 scale-[1.25]">
-        <img
-          alt=""
-          src={headSvgUrl(config.rotation, config.skin)}
-          className={layerClass}
-        />
-        <img
-          alt=""
-          src={faceSvgUrl(config.rotation, config.expression, config.intensity)}
-          className={layerClass}
-        />
-        <img
-          alt=""
-          src={hairSvgUrl(config.rotation, config.hairStyle, config.hairColor)}
-          className={layerClass}
+        <svg
+          viewBox="0 0 480 480"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+          className="h-full w-full"
+          dangerouslySetInnerHTML={{ __html: compositeAvatarSvgInner(config) }}
         />
       </div>
     </div>

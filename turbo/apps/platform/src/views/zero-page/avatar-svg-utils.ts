@@ -47,40 +47,47 @@ export function parseAvatarSvgConfig(
   };
 }
 
-const SVG_ASSETS = Object.freeze(
+const SVG_RAW_ASSETS = Object.freeze(
   import.meta.glob<string>("./assets/avatar-svg/*.svg", {
     eager: true,
+    query: "?raw",
     import: "default",
   }),
 );
 
-function resolveAsset(filename: string): string {
+function resolveRawAsset(filename: string): string {
   const key = `./assets/avatar-svg/${filename}`;
-  const url = SVG_ASSETS[key];
-  if (!url) {
+  const raw = SVG_RAW_ASSETS[key];
+  if (!raw) {
     throw new Error(`Missing avatar SVG asset: ${filename}`);
   }
-  return url;
+  return raw;
 }
 
-export function headSvgUrl(rotation: number, skin: number): string {
-  return resolveAsset(`head-r${rotation}-s${skin}.svg`);
+/** Extract the inner content of an SVG string (everything between <svg> and </svg>). */
+function extractSvgInner(raw: string): string {
+  const open = raw.indexOf(">", raw.indexOf("<svg"));
+  const close = raw.lastIndexOf("</svg>");
+  if (open === -1 || close === -1) {
+    return "";
+  }
+  return raw.slice(open + 1, close);
 }
 
-export function hairSvgUrl(
-  rotation: number,
-  style: number,
-  color: number,
-): string {
-  return resolveAsset(`hair-r${rotation}-h${style}-c${color}.svg`);
-}
-
-export function faceSvgUrl(
-  rotation: number,
-  expression: number,
-  intensity: string,
-): string {
-  return resolveAsset(`face-r${rotation}-f${expression}-${intensity}.svg`);
+/**
+ * Build the combined inner SVG markup for a composite avatar (head + face + hair).
+ * All three layers share viewBox 0 0 480 480 and their clip-path IDs are unique,
+ * so they can be safely merged into a single `<svg>` element.
+ */
+export function compositeAvatarSvgInner(config: AvatarSvgConfig): string {
+  const head = resolveRawAsset(`head-r${config.rotation}-s${config.skin}.svg`);
+  const face = resolveRawAsset(
+    `face-r${config.rotation}-f${config.expression}-${config.intensity}.svg`,
+  );
+  const hair = resolveRawAsset(
+    `hair-r${config.rotation}-h${config.hairStyle}-c${config.hairColor}.svg`,
+  );
+  return extractSvgInner(head) + extractSvgInner(face) + extractSvgInner(hair);
 }
 
 export function randomAvatarSvgConfig(): AvatarSvgConfig {
