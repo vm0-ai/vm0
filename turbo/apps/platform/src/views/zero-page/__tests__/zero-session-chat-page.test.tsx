@@ -226,9 +226,11 @@ describe("chat message activity line", () => {
     });
 
     // The result body should not be rendered while the run is still active
-    expect(
-      screen.queryByText("Here is the partial result"),
-    ).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Here is the partial result"),
+      ).not.toBeInTheDocument();
+    });
   });
 
   it("should hide activity line after run reaches terminal status", async () => {

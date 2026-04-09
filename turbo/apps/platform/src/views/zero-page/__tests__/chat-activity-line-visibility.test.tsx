@@ -48,24 +48,27 @@ describe("activity line visibility while run is still running", () => {
       makeToolUseEvent("Read", { path: "/tmp/data.txt" }, 3),
     ]);
 
-    // The result content should appear
+    // The activity line (shimmer) should remain visible while the run is still running
+    await waitFor(() => {
+      const shimmer = document.querySelector(".zero-shimmer-text");
+      expect(shimmer).toBeInTheDocument();
+    });
+
+    // The result body should NOT appear while the run is still active (prevents layout shift)
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Here is the first part of the answer."),
+      ).not.toBeInTheDocument();
+    });
+
+    // Complete the run — the result body should appear after terminal state
+    ctrl.completeRun("Here is the first part of the answer.");
+
     await waitFor(() => {
       expect(
         screen.getByText("Here is the first part of the answer."),
       ).toBeInTheDocument();
     });
-
-    // The activity line (shimmer text or summary steps) should still be
-    // visible because run status is still "running".
-    const shimmer = document.querySelector(".zero-shimmer-text");
-    expect(shimmer).toBeInTheDocument();
-
-    // The activity line should appear ABOVE the result content in the DOM,
-    // so the user sees the ongoing CoT before the result text.
-    const resultEl = screen.getByText("Here is the first part of the answer.");
-    expect(shimmer!.compareDocumentPosition(resultEl)).toBe(
-      Node.DOCUMENT_POSITION_FOLLOWING,
-    );
   });
 
   it("should hide activity line only after run reaches terminal status", async () => {
@@ -101,15 +104,15 @@ describe("activity line visibility while run is still running", () => {
       },
     ]);
 
-    // Result content should be displayed
+    // Result body should NOT be visible while run is still active (prevents layout shift)
     await waitFor(() => {
-      expect(screen.getByText("Intermediate result")).toBeInTheDocument();
+      expect(screen.queryByText("Intermediate result")).not.toBeInTheDocument();
     });
 
     // Activity line should still be visible (run is "running")
     expect(document.querySelector(".zero-shimmer-text")).toBeInTheDocument();
 
-    // Now complete the run — activity line should disappear
+    // Now complete the run — activity line should disappear and body should appear
     ctrl.completeRun("Final result");
 
     await waitFor(() => {
