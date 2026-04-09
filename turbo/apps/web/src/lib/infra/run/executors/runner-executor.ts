@@ -95,7 +95,7 @@ export async function executeRunnerJob(
     runId: context.runId,
     runnerGroup,
     profile,
-    sessionId: context.continuedFromSessionId ?? null,
+    sessionId: context.resumeSession?.sessionId ?? null,
     executionContext: storedContext,
     expiresAt,
   });
@@ -114,7 +114,7 @@ export async function executeRunnerJob(
     runnerGroup,
     context.runId,
     profile,
-    context.continuedFromSessionId ?? null,
+    context.resumeSession?.sessionId ?? null,
   );
 
   return {
@@ -184,7 +184,7 @@ function buildRunContextSnapshot(context: PreparedContext): RunContextSnapshot {
     userId: context.userId,
     prompt: context.prompt,
     appendSystemPrompt: context.appendSystemPrompt,
-    sessionId: context.continuedFromSessionId ?? null,
+    sessionId: context.resumeSession?.sessionId ?? null,
     secretNames: context.secrets ? Object.keys(context.secrets) : [],
     environment,
     firewalls,
