@@ -6,7 +6,7 @@ import { pathname, pushState, replaceState, search } from "./location.ts";
 import { setPageSignal$ } from "./page-signal.ts";
 import { rootSignal$ } from "./root-signal.ts";
 import { pollUserInvitations$ } from "./user-invitations.ts";
-import { detach, onDomEventFn, Reason, resetSignal } from "./utils.ts";
+import { onDomEventFn, resetSignal, throwIfNotAbort } from "./utils.ts";
 import { logger } from "./log.ts";
 
 const L = logger("Route");
@@ -250,8 +250,8 @@ export const setupAuthPageWrapper = (
       }
     }
 
-    detach(set(watchOrgSwitch$, signal), Reason.Entrance);
-    detach(set(pollUserInvitations$, signal), Reason.Entrance);
+    void set(watchOrgSwitch$, signal).catch(throwIfNotAbort);
+    void set(pollUserInvitations$, signal).catch(throwIfNotAbort);
 
     await set(setupPageWrapper(fn), signal);
   });
