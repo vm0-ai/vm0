@@ -215,6 +215,8 @@ function initEnv() {
       VERCEL_AUTOMATION_BYPASS_SECRET: z.string().optional(),
       // AgentPhone (platform-level phone channel)
       AGENTPHONE_API_KEY: z.string().min(1).optional(),
+      // Plain.com (developer support thread creation) — optional, falls back to email
+      PLAIN_API_KEY: z.string().min(1).optional(),
     },
     client: {
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: z.string().min(1),
@@ -370,6 +372,7 @@ function initEnv() {
       VERCEL_AUTOMATION_BYPASS_SECRET:
         process.env.VERCEL_AUTOMATION_BYPASS_SECRET,
       AGENTPHONE_API_KEY: process.env.AGENTPHONE_API_KEY,
+      PLAIN_API_KEY: process.env.PLAIN_API_KEY,
 
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:
         process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,

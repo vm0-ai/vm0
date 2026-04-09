@@ -12,6 +12,7 @@ import { listConnectors } from "../connector/connector-service";
 import { uploadS3Buffer, generatePresignedUrl } from "../../infra/s3/s3-client";
 import { enqueueEmail } from "../email/outbox-service";
 import { buildFromAddress } from "../email/handlers/shared";
+import { createPlainSupportThread } from "./plain-service";
 import { getCachedUser } from "../../auth/user-cache-service";
 import { getOrgNameAndSlug } from "../../auth/org-cache";
 import { env } from "../../../env";
@@ -258,26 +259,50 @@ export async function submitDiagnosticBundle(
       }),
   ]);
 
-  await enqueueEmail({
-    from: buildFromAddress("vm0"),
-    to: "support@vm0.ai",
-    subject: `${params.emailSubjectPrefix} ${title}`,
-    template: {
-      template: "developer-support",
-      props: {
-        title,
-        description: description ?? "",
-        reference,
-        userId,
-        userEmail,
-        orgId,
-        orgName,
-        runId,
-        downloadUrl,
-        expiresAt,
-      },
-    },
+  // Notify support: prefer Plain.com thread, fall back to email if Plain is
+  // unconfigured (PLAIN_API_KEY absent) or any API call fails.
+  const plainCreated = await createPlainSupportThread({
+    userId,
+    userEmail,
+    orgId,
+    orgName,
+    runId,
+    title,
+    description,
+    reference,
+    downloadUrl,
+    expiresAt,
+    emailSubjectPrefix: params.emailSubjectPrefix,
+  }).catch((err) => {
+    log.warn("createPlainSupportThread threw unexpectedly", {
+      reference,
+      error: String(err),
+    });
+    return false;
   });
+
+  if (!plainCreated) {
+    await enqueueEmail({
+      from: buildFromAddress("vm0"),
+      to: "support@vm0.ai",
+      subject: `${params.emailSubjectPrefix} ${title}`,
+      template: {
+        template: "developer-support",
+        props: {
+          title,
+          description: description ?? "",
+          reference,
+          userId,
+          userEmail,
+          orgId,
+          orgName,
+          runId,
+          downloadUrl,
+          expiresAt,
+        },
+      },
+    });
+  }
 
   log.info("Diagnostic bundle submitted", { reference, runId, orgId });
 

@@ -27,6 +27,7 @@
     "@neondatabase/serverless": "^1.0.2",
     "@opentelemetry/api": "^1.9.0",
     "@react-email/components": "^1.0.7",
+    "@team-plain/typescript-sdk": "^5.12.1",
     "@sentry/nextjs": "^10.38.0",
     "@slack/web-api": "^7.13.0",
     "@t3-oss/env-nextjs": "^0.13.8",
