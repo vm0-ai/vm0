@@ -13,9 +13,9 @@ import {
 } from "@vm0/ui";
 import {
   getConnectorFirewall,
-  getDefaultFirewallPolicies,
   groupPermissionsByCategory,
   isFirewallConnectorType,
+  resolveFirewallPolicies,
   CONNECTOR_TYPES,
   type ConnectorType,
   type FirewallConfig,
@@ -196,13 +196,10 @@ function buildInitialPolicies(
     return result;
   }
   const perms = extractPermissions(config);
-  const defaults = isFirewallConnectorType(ref)
-    ? getDefaultFirewallPolicies(ref)
-    : null;
+  const resolved = resolveFirewallPolicies(initialPolicies, [ref]);
   const refPolicies: Record<string, PermissionPolicy> = {};
   for (const p of perms) {
-    refPolicies[p.name] =
-      initialPolicies[ref]?.[p.name] ?? defaults?.[p.name] ?? "allow";
+    refPolicies[p.name] = resolved?.[ref]?.[p.name] ?? "allow";
   }
   result[ref] = refPolicies;
   return result;

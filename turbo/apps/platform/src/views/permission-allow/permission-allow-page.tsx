@@ -15,7 +15,7 @@ import {
 import {
   isFirewallConnectorType,
   CONNECTOR_TYPES,
-  getDefaultFirewallPolicies,
+  resolveFirewallPolicies,
   type FirewallPolicies,
 } from "@vm0/core";
 import { user$ } from "../../signals/auth.ts";
@@ -656,13 +656,8 @@ function DoctorModeView({
   const agentDisplayName = agent.displayName ?? agentId;
 
   // Check effective policy
-  const defaults = isFirewallConnectorType(ref)
-    ? getDefaultFirewallPolicies(ref)
-    : null;
-  const effectivePolicy =
-    agent.permissionPolicies?.[ref]?.[permission.name] ??
-    defaults?.[permission.name] ??
-    "allow";
+  const resolved = resolveFirewallPolicies(agent.permissionPolicies, [ref]);
+  const effectivePolicy = resolved?.[ref]?.[permission.name] ?? "allow";
 
   // Policy already matches — show result
   if (effectivePolicy === action) {

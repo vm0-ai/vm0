@@ -467,10 +467,13 @@ export function resolveFirewallPolicies(
   let resolved: FirewallPolicies | null = stored;
   for (const connector of connectors) {
     if (!isFirewallConnectorType(connector)) continue;
-    if (resolved?.[connector]) continue;
     const defaults = getDefaultFirewallPolicies(connector);
     if (!defaults) continue;
-    resolved = { ...resolved, [connector]: defaults };
+    // Merge: defaults as base, stored overrides specific entries.
+    resolved = {
+      ...resolved,
+      [connector]: { ...defaults, ...resolved?.[connector] },
+    };
   }
   return resolved;
 }

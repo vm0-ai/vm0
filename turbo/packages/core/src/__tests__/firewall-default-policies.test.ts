@@ -64,11 +64,30 @@ describe("resolveFirewallPolicies", () => {
     expect(slack!["admin"]).toBe("deny");
   });
 
-  it("should not overwrite existing stored policies", () => {
+  it("should merge defaults with stored policies (stored overrides)", () => {
     const stored = { slack: { "channels:read": "deny" as const } };
     const resolved = resolveFirewallPolicies(stored, ["slack"]);
-    // Stored entry exists — should keep the original, not merge defaults
-    expect(resolved!["slack"]).toEqual({ "channels:read": "deny" });
+    const slack = resolved!["slack"]!;
+    // Stored override takes precedence
+    expect(slack["channels:read"]).toBe("deny");
+    // Defaults fill in for non-specified permissions
+    expect(slack["admin"]).toBe("deny");
+    expect(slack["users:read"]).toBe("allow");
+  });
+
+  it("should merge stored partial policy with defaults", () => {
+    // Simulates: admin approved files:read, but defaults should still apply
+    const stored = { slack: { "files:read": "allow" as const } };
+    const resolved = resolveFirewallPolicies(stored, ["slack"]);
+    const slack = resolved!["slack"]!;
+    // Explicitly stored
+    expect(slack["files:read"]).toBe("allow");
+    // From defaults (slackDefaultAllowed)
+    expect(slack["channels:read"]).toBe("allow");
+    expect(slack["channels:history"]).toBe("allow");
+    expect(slack["users:read"]).toBe("allow");
+    // Not in defaults — should be deny
+    expect(slack["admin"]).toBe("deny");
   });
 
   it("should pass through connectors without defaults unchanged", () => {
