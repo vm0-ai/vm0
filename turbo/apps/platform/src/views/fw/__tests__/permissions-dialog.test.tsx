@@ -12,7 +12,10 @@ const context = testContext();
 function mockAPIs({
   connectorType = "slack" as ConnectorType,
   ownerId = "test-user-123",
-  permissionPolicies = null as Record<string, Record<string, string>> | null,
+  permissionPolicies = null as Record<
+    string,
+    { permissions: Record<string, string>; allowUnknown?: boolean }
+  > | null,
 } = {}) {
   server.use(
     http.get("*/api/zero/team", () => {
@@ -148,7 +151,9 @@ describe("permissions dialog - flat list connector (Notion)", () => {
   it("shows policy status for each permission (FW-D-033)", async () => {
     mockAPIs({
       connectorType: "notion",
-      permissionPolicies: { notion: { insert_comments: "deny" } },
+      permissionPolicies: {
+        notion: { permissions: { insert_comments: "deny" } },
+      },
     });
     await setupPage({ context, path: "/agents/my-agent" });
     await openPermissionsDrawer("Notion");
