@@ -135,7 +135,7 @@ export function PhonePage() {
         <p className="text-muted-foreground mt-2 text-xs">
           By linking your phone number, you agree to our{" "}
           <a
-            href="https://vm0.ai/terms"
+            href="https://vm0.ai/terms-of-use"
             target="_blank"
             rel="noopener noreferrer"
             className="underline"
@@ -144,7 +144,7 @@ export function PhonePage() {
           </a>{" "}
           and{" "}
           <a
-            href="https://vm0.ai/privacy"
+            href="https://vm0.ai/privacy-policy"
             target="_blank"
             rel="noopener noreferrer"
             className="underline"
