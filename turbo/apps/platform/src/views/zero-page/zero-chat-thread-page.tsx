@@ -302,7 +302,7 @@ function ChatThreadComposer() {
             detach(cancelRun(pageSignal), Reason.DomCallback);
           }}
           displayName={displayName}
-          autoFocus={!hasMessages}
+          autoFocus={!hasMessages && !window.matchMedia('(pointer: coarse)').matches}
         />
       </div>
     </footer>
