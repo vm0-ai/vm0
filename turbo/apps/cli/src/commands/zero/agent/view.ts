@@ -39,7 +39,9 @@ function getConnectorPermissionInfo(
     };
   }
 
-  const policies = resolvedPolicies?.[type] ?? null;
+  const rawPolicies = resolvedPolicies?.[type];
+  const policies =
+    rawPolicies && Object.keys(rawPolicies).length > 0 ? rawPolicies : null;
   const config = getConnectorFirewall(type);
   const permissions = config.apis.flatMap((a) => {
     return a.permissions ?? [];

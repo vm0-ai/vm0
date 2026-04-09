@@ -53,8 +53,8 @@ function printConnectorPermissions(
 ): void {
   if (!isFirewallConnectorType(type)) return;
 
-  const policies = resolvedPolicies?.[type] ?? null;
-  if (!policies) {
+  const policies = resolvedPolicies?.[type];
+  if (!policies || Object.keys(policies).length === 0) {
     console.log(chalk.dim("    full access — no permission rules configured"));
     return;
   }
