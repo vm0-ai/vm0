@@ -1,5 +1,34 @@
 # Changelog
 
+## [12.212.0](https://github.com/vm0-ai/vm0/compare/web-v12.211.0...web-v12.212.0) (2026-04-09)
+
+
+### Features
+
+* add plain connector ([#8728](https://github.com/vm0-ai/vm0/issues/8728)) ([04e4083](https://github.com/vm0-ai/vm0/commit/04e4083e55c5cbfebd2c8c2dc2a69d975f6b0ea1))
+* **core:** add schedule:delete capability and exclude from agent run tokens ([#8705](https://github.com/vm0-ai/vm0/issues/8705)) ([9573bbf](https://github.com/vm0-ai/vm0/commit/9573bbf4a74d75b066f7c420c74eb21f78361636))
+* **firewalls:** add deny and ask lists to granted permissions schema ([#8719](https://github.com/vm0-ai/vm0/issues/8719)) ([5a02f38](https://github.com/vm0-ai/vm0/commit/5a02f389160a6cbf961656798fe353ca029c2ece))
+* route developer support tickets to Plain.com ([#8735](https://github.com/vm0-ai/vm0/issues/8735)) ([44bb3de](https://github.com/vm0-ai/vm0/commit/44bb3de0dc9e6761ce6b5d0d540f39589f923e81))
+* **voice-chat:** replace read_shared_context with request_slow_brain tool ([#8748](https://github.com/vm0-ai/vm0/issues/8748)) ([4bd848d](https://github.com/vm0-ai/vm0/commit/4bd848dd18398b3083652547c1a4cb77586a5726)), closes [#8745](https://github.com/vm0-ai/vm0/issues/8745)
+
+
+### Refactoring
+
+* AP-12 batch A — eliminate internal imports in callback HMAC tests (9 files) ([#8714](https://github.com/vm0-ai/vm0/issues/8714)) ([c9eb9b6](https://github.com/vm0-ai/vm0/commit/c9eb9b69cfcf2a51c929d7335dd3a4093800f41e))
+* AP-12 batch D+E — eliminate internal imports in email, agent, session, and utility tests ([#8732](https://github.com/vm0-ai/vm0/issues/8732)) ([7da93b6](https://github.com/vm0-ai/vm0/commit/7da93b64c94191440674baab9af7c035a71e8303))
+* **firewalls:** change allow-unknown from boolean to policy value ([#8733](https://github.com/vm0-ai/vm0/issues/8733)) ([4e2bea3](https://github.com/vm0-ai/vm0/commit/4e2bea3758707b157bf28162ee815da2129c5f32))
+* **firewalls:** rename granted-permissions to network-policies ([#8740](https://github.com/vm0-ai/vm0/issues/8740)) ([2ad2c5c](https://github.com/vm0-ai/vm0/commit/2ad2c5ce175d98304adcb5a43770df3d9d5ee9d2)), closes [#8738](https://github.com/vm0-ai/vm0/issues/8738)
+* **firewalls:** unify firewall policies to include allow-unknown ([#8721](https://github.com/vm0-ai/vm0/issues/8721)) ([8905fbe](https://github.com/vm0-ai/vm0/commit/8905fbe85efdc0968f265e6b943cd9a65944923b))
+* **tests:** AP-12 batch G — eliminate vi.spyOn on internal modules (7 files) ([#8739](https://github.com/vm0-ai/vm0/issues/8739)) ([1eff827](https://github.com/vm0-ai/vm0/commit/1eff8275388c04e128a8a5e937d10967f2a0b147))
+* **web:** eliminate internal imports in telegram tests (ap-12 batch c) ([#8730](https://github.com/vm0-ai/vm0/issues/8730)) ([44151b1](https://github.com/vm0-ai/vm0/commit/44151b165a691a3aeb96d813b6ddc2f108119dc4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.168.0
+
 ## [12.211.0](https://github.com/vm0-ai/vm0/compare/web-v12.210.0...web-v12.211.0) (2026-04-09)
 
 

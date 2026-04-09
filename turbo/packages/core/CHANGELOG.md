@@ -1,5 +1,21 @@
 # Changelog
 
+## [8.168.0](https://github.com/vm0-ai/vm0/compare/core-v8.167.0...core-v8.168.0) (2026-04-09)
+
+
+### Features
+
+* add plain connector ([#8728](https://github.com/vm0-ai/vm0/issues/8728)) ([04e4083](https://github.com/vm0-ai/vm0/commit/04e4083e55c5cbfebd2c8c2dc2a69d975f6b0ea1))
+* **core:** add schedule:delete capability and exclude from agent run tokens ([#8705](https://github.com/vm0-ai/vm0/issues/8705)) ([9573bbf](https://github.com/vm0-ai/vm0/commit/9573bbf4a74d75b066f7c420c74eb21f78361636))
+* **firewalls:** add deny and ask lists to granted permissions schema ([#8719](https://github.com/vm0-ai/vm0/issues/8719)) ([5a02f38](https://github.com/vm0-ai/vm0/commit/5a02f389160a6cbf961656798fe353ca029c2ece))
+
+
+### Refactoring
+
+* **firewalls:** change allow-unknown from boolean to policy value ([#8733](https://github.com/vm0-ai/vm0/issues/8733)) ([4e2bea3](https://github.com/vm0-ai/vm0/commit/4e2bea3758707b157bf28162ee815da2129c5f32))
+* **firewalls:** rename granted-permissions to network-policies ([#8740](https://github.com/vm0-ai/vm0/issues/8740)) ([2ad2c5c](https://github.com/vm0-ai/vm0/commit/2ad2c5ce175d98304adcb5a43770df3d9d5ee9d2)), closes [#8738](https://github.com/vm0-ai/vm0/issues/8738)
+* **firewalls:** unify firewall policies to include allow-unknown ([#8721](https://github.com/vm0-ai/vm0/issues/8721)) ([8905fbe](https://github.com/vm0-ai/vm0/commit/8905fbe85efdc0968f265e6b943cd9a65944923b))
+
 ## [8.167.0](https://github.com/vm0-ai/vm0/compare/core-v8.166.0...core-v8.167.0) (2026-04-09)
 
 

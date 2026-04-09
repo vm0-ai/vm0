@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.111.2](https://github.com/vm0-ai/vm0/compare/cli-v9.111.1...cli-v9.111.2) (2026-04-09)
+
+
+### Refactoring
+
+* **firewalls:** change allow-unknown from boolean to policy value ([#8733](https://github.com/vm0-ai/vm0/issues/8733)) ([4e2bea3](https://github.com/vm0-ai/vm0/commit/4e2bea3758707b157bf28162ee815da2129c5f32))
+* **firewalls:** unify firewall policies to include allow-unknown ([#8721](https://github.com/vm0-ai/vm0/issues/8721)) ([8905fbe](https://github.com/vm0-ai/vm0/commit/8905fbe85efdc0968f265e6b943cd9a65944923b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.168.0
+
 ## [9.111.1](https://github.com/vm0-ai/vm0/compare/cli-v9.111.0...cli-v9.111.1) (2026-04-09)
 
 

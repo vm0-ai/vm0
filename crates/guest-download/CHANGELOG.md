@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.0](https://github.com/vm0-ai/vm0/compare/guest-download-v0.16.0...guest-download-v0.17.0) (2026-04-09)
+
+
+### Features
+
+* **runner:** read guest session id for first-run vm parking ([#8731](https://github.com/vm0-ai/vm0/issues/8731)) ([9bdcda9](https://github.com/vm0-ai/vm0/commit/9bdcda9c5e2bb5af853696c19661862ab0f000b6))
+
 ## [0.16.0](https://github.com/vm0-ai/vm0/compare/guest-download-v0.15.2...guest-download-v0.16.0) (2026-04-09)
 
 

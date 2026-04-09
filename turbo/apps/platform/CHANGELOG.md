@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.209.0](https://github.com/vm0-ai/vm0/compare/app-v0.208.0...app-v0.209.0) (2026-04-09)
+
+
+### Features
+
+* add plain connector ([#8728](https://github.com/vm0-ai/vm0/issues/8728)) ([04e4083](https://github.com/vm0-ai/vm0/commit/04e4083e55c5cbfebd2c8c2dc2a69d975f6b0ea1))
+* update SMS consent disclosure to meet carrier requirements ([#8727](https://github.com/vm0-ai/vm0/issues/8727)) ([1874efb](https://github.com/vm0-ai/vm0/commit/1874efb9303ad98d52d1b9f03ea8c09f5d0ee3ab))
+* **voice-chat:** add proactive injection of slow-brain events into realtime data channel ([#8746](https://github.com/vm0-ai/vm0/issues/8746)) ([d427116](https://github.com/vm0-ai/vm0/commit/d427116d7340db40924e83b3fb70e5d2821f866b)), closes [#8744](https://github.com/vm0-ai/vm0/issues/8744)
+* **voice-chat:** replace read_shared_context with request_slow_brain tool ([#8748](https://github.com/vm0-ai/vm0/issues/8748)) ([4bd848d](https://github.com/vm0-ai/vm0/commit/4bd848dd18398b3083652547c1a4cb77586a5726)), closes [#8745](https://github.com/vm0-ai/vm0/issues/8745)
+
+
+### Bug Fixes
+
+* **platform:** fix user invitations polling loop exiting after one iteration ([#8686](https://github.com/vm0-ai/vm0/issues/8686)) ([5a6e014](https://github.com/vm0-ai/vm0/commit/5a6e01485d4580983e4548959ece5db71799fbf3))
+* **platform:** move global polling from per-page setup to bootstrap ([#8734](https://github.com/vm0-ai/vm0/issues/8734)) ([7091bc3](https://github.com/vm0-ai/vm0/commit/7091bc31e75cc394ab24c2d1dd7b22d761f74756))
+* reload agents list after onboarding completes ([#8723](https://github.com/vm0-ai/vm0/issues/8723)) ([e8869e4](https://github.com/vm0-ai/vm0/commit/e8869e4823b8659361c21394a0181e9f0319260f))
+
+
+### Refactoring
+
+* **firewalls:** change allow-unknown from boolean to policy value ([#8733](https://github.com/vm0-ai/vm0/issues/8733)) ([4e2bea3](https://github.com/vm0-ai/vm0/commit/4e2bea3758707b157bf28162ee815da2129c5f32))
+* **firewalls:** rename granted-permissions to network-policies ([#8740](https://github.com/vm0-ai/vm0/issues/8740)) ([2ad2c5c](https://github.com/vm0-ai/vm0/commit/2ad2c5ce175d98304adcb5a43770df3d9d5ee9d2)), closes [#8738](https://github.com/vm0-ai/vm0/issues/8738)
+* **firewalls:** unify firewall policies to include allow-unknown ([#8721](https://github.com/vm0-ai/vm0/issues/8721)) ([8905fbe](https://github.com/vm0-ai/vm0/commit/8905fbe85efdc0968f265e6b943cd9a65944923b))
+* **web:** eliminate internal imports in telegram tests (ap-12 batch c) ([#8730](https://github.com/vm0-ai/vm0/issues/8730)) ([44151b1](https://github.com/vm0-ai/vm0/commit/44151b165a691a3aeb96d813b6ddc2f108119dc4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.168.0
+
 ## [0.208.0](https://github.com/vm0-ai/vm0/compare/app-v0.207.0...app-v0.208.0) (2026-04-09)
 
 
