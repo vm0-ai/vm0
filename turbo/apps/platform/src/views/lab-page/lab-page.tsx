@@ -65,23 +65,27 @@ export function LabPage() {
       <div className="flex-1 overflow-y-auto px-4 sm:px-6 pb-10">
         <div className="mx-auto max-w-[900px]">
           <div className="zero-card divide-y divide-border">
-            {Object.values(FeatureSwitchKey).map((key) => {
-              const enabled = features?.[key] ?? false;
-              return (
-                <label
-                  key={key}
-                  className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-muted/50 transition-colors"
-                >
-                  <span className="text-sm text-foreground">{key}</span>
-                  <Switch
-                    checked={enabled}
-                    onCheckedChange={(checked) => {
-                      handleToggle(key, checked);
-                    }}
-                  />
-                </label>
-              );
-            })}
+            {Object.values(FeatureSwitchKey)
+              .sort((a, b) => {
+                return a.localeCompare(b, undefined, { sensitivity: "base" });
+              })
+              .map((key) => {
+                const enabled = features?.[key] ?? false;
+                return (
+                  <label
+                    key={key}
+                    className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-muted/50 transition-colors"
+                  >
+                    <span className="text-sm text-foreground">{key}</span>
+                    <Switch
+                      checked={enabled}
+                      onCheckedChange={(checked) => {
+                        handleToggle(key, checked);
+                      }}
+                    />
+                  </label>
+                );
+              })}
           </div>
         </div>
       </div>
