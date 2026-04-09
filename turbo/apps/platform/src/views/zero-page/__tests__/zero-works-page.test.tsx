@@ -123,7 +123,7 @@ describe("works page - install and connect button visibility", () => {
 
 describe("works page - install to slack interaction", () => {
   it("clicking Install to Slack opens the install OAuth URL in a new tab (CONN-I-062)", async () => {
-    const user = userEvent.setup();
+    const user = userEvent.setup({ delay: null });
     const openSpy = vi.spyOn(window, "open").mockImplementation(() => {
       return null;
     });
@@ -137,10 +137,10 @@ describe("works page - install to slack interaction", () => {
     await renderWorksPage();
 
     await waitFor(() => {
-      expect(screen.getByText(/install to slack/i)).toBeInTheDocument();
+      expect(screen.getByTestId("slack-install-button")).toBeInTheDocument();
     });
 
-    await user.click(screen.getByText(/install to slack/i));
+    await user.click(screen.getByTestId("slack-install-button"));
 
     expect(openSpy).toHaveBeenCalledWith(
       expect.stringContaining("slack.com/oauth/install"),
