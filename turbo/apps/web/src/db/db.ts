@@ -43,6 +43,7 @@ import * as exportJobSchema from "./schema/export-job";
 import * as emailSuppressionSchema from "./schema/email-suppression";
 import * as skillSchema from "./schema/skill";
 import * as creditUsageSchema from "./schema/credit-usage";
+import * as proxyCreditUsageSchema from "./schema/proxy-credit-usage";
 import * as creditPricingSchema from "./schema/credit-pricing";
 import * as zeroAgentSchema from "./schema/zero-agent";
 import * as zeroRunSchema from "./schema/zero-run";
@@ -102,6 +103,7 @@ export const schema = {
   ...emailSuppressionSchema,
   ...skillSchema,
   ...creditUsageSchema,
+  ...proxyCreditUsageSchema,
   ...creditPricingSchema,
   ...zeroAgentSchema,
   ...zeroRunSchema,
