@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.110.2](https://github.com/vm0-ai/vm0/compare/cli-v9.110.1...cli-v9.110.2) (2026-04-09)
+
+
+### Refactoring
+
+* **cli:** simplify phone call to only support --system-prompt-file ([#8654](https://github.com/vm0-ai/vm0/issues/8654)) ([2ad6271](https://github.com/vm0-ai/vm0/commit/2ad62716317af077f012bb301bc1154f4ca99eab))
+
 ## [9.110.1](https://github.com/vm0-ai/vm0/compare/cli-v9.110.0...cli-v9.110.1) (2026-04-09)
 
 

@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "ably-subscriber"
-version = "0.6.5"
+version = "0.7.0"
 dependencies = [
  "base64",
  "futures-util",
@@ -709,7 +709,7 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "guest-agent"
-version = "0.19.5"
+version = "0.20.0"
 dependencies = [
  "base64",
  "bytes",
@@ -729,7 +729,7 @@ dependencies = [
 
 [[package]]
 name = "guest-common"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "serde",
@@ -738,7 +738,7 @@ dependencies = [
 
 [[package]]
 name = "guest-download"
-version = "0.15.2"
+version = "0.16.0"
 dependencies = [
  "flate2",
  "guest-common",
@@ -752,7 +752,7 @@ dependencies = [
 
 [[package]]
 name = "guest-init"
-version = "0.15.2"
+version = "0.16.0"
 dependencies = [
  "libc",
  "nix",
@@ -761,7 +761,7 @@ dependencies = [
 
 [[package]]
 name = "guest-mock-claude"
-version = "0.16.1"
+version = "0.17.0"
 dependencies = [
  "serde_json",
  "tempfile",
@@ -769,7 +769,7 @@ dependencies = [
 
 [[package]]
 name = "guest-reseed"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "hex",
  "libc",
@@ -1333,7 +1333,7 @@ dependencies = [
 
 [[package]]
 name = "nbd-cow"
-version = "0.3.4"
+version = "0.4.0"
 dependencies = [
  "bitvec",
  "libc",
@@ -1613,7 +1613,7 @@ checksum = "dc897dd8d9e8bd1ed8cdad82b5966c3e0ecae09fb1907d58efaa013543185d0a"
 
 [[package]]
 name = "reqeast"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "reqwest",
  "rustls",
@@ -1699,7 +1699,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.70.1"
+version = "0.70.2"
 dependencies = [
  "ably-subscriber",
  "async-trait",
@@ -1852,7 +1852,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "async-trait",
  "thiserror 2.0.18",
@@ -1862,7 +1862,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.22.2"
+version = "0.23.0"
 dependencies = [
  "async-trait",
  "base64",
@@ -1887,7 +1887,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-mock"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "async-trait",
  "sandbox",
@@ -2661,7 +2661,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vsock-guest"
-version = "0.8.1"
+version = "0.9.0"
 dependencies = [
  "libc",
  "vsock-proto",
@@ -2669,7 +2669,7 @@ dependencies = [
 
 [[package]]
 name = "vsock-host"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "nix",
  "tokio",
@@ -2678,11 +2678,11 @@ dependencies = [
 
 [[package]]
 name = "vsock-proto"
-version = "0.7.0"
+version = "0.8.0"
 
 [[package]]
 name = "vsock-test"
-version = "0.7.1"
+version = "0.8.0"
 dependencies = [
  "tokio",
  "vsock-guest",
