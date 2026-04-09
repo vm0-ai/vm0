@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect } from "react";
 
 type Step =
   | "rotation"
@@ -153,48 +153,45 @@ function IdleAvatar({
   );
 }
 
-/** Firework particles that burst from the sides on selection */
-function Sparkles({ active }: { active: boolean }) {
-  if (!active) return null;
+const SPARKLE_COLORS = [
+  "#ed4e01",
+  "#E0B376",
+  "#E26C9E",
+  "#45A7A8",
+  "#E0BB3C",
+  "#FF990A",
+];
 
-  const colors = [
-    "#ed4e01",
-    "#E0B376",
-    "#E26C9E",
-    "#45A7A8",
-    "#E0BB3C",
-    "#FF990A",
-  ];
-  // Seed-based random for consistent SSR
+function generateParticles() {
   let seed = 77;
   const rand = () => {
     seed = (seed * 16807) % 2147483647;
     return (seed - 1) / 2147483646;
   };
 
-  const particles: {
-    x: number;
-    y: number;
-    size: number;
-    color: string;
-    delay: number;
-  }[] = [];
-  for (let i = 0; i < 20; i++) {
-    // Burst outward and upward from the top center
+  return Array.from({ length: 20 }, () => {
     const xDir = (rand() - 0.5) * 140;
     const yDir = -(30 + rand() * 50);
-    particles.push({
+    return {
       x: xDir,
       y: yDir,
       size: 3 + rand() * 5,
-      color: colors[Math.floor(rand() * colors.length)] ?? "#ed4e01",
+      color:
+        SPARKLE_COLORS[Math.floor(rand() * SPARKLE_COLORS.length)] ?? "#ed4e01",
       delay: rand() * 0.15,
-    });
-  }
+    };
+  });
+}
+
+const SPARKLE_PARTICLES = generateParticles();
+
+/** Firework particles that burst from the sides on selection */
+function Sparkles({ active }: { active: boolean }) {
+  if (!active) return null;
 
   return (
     <div className="pointer-events-none absolute inset-0 z-10">
-      {particles.map((p, i) => {
+      {SPARKLE_PARTICLES.map((p, i) => {
         return (
           <div
             key={i}
