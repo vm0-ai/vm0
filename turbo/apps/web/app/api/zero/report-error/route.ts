@@ -1,6 +1,6 @@
 import archiver from "archiver";
 import { createHandler, tsr } from "../../../../src/lib/ts-rest-handler";
-import { zeroReportErrorContract, type AxiomNetworkEvent } from "@vm0/core";
+import { zeroReportErrorContract } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import {
   requireAuth,
@@ -19,7 +19,7 @@ import {
   getDatasetName,
   DATASETS,
 } from "../../../../src/lib/shared/axiom";
-import { queryRunContext } from "../../../../src/lib/infra/run/run-context-service";
+import { assembleActivityLog } from "../../../../src/lib/infra/run/activity-log-service";
 import { listConnectors } from "../../../../src/lib/zero/connector/connector-service";
 import {
   uploadS3Buffer,
@@ -93,6 +93,8 @@ const router = tsr.router(zeroReportErrorContract, {
         id: agentRuns.id,
         status: agentRuns.status,
         error: agentRuns.error,
+        prompt: agentRuns.prompt,
+        appendSystemPrompt: agentRuns.appendSystemPrompt,
         createdAt: agentRuns.createdAt,
         startedAt: agentRuns.startedAt,
         completedAt: agentRuns.completedAt,
@@ -100,6 +102,7 @@ const router = tsr.router(zeroReportErrorContract, {
         runnerGroup: agentRuns.runnerGroup,
         continuedFromSessionId: agentRuns.continuedFromSessionId,
         orgId: agentRuns.orgId,
+        result: agentRuns.result,
       })
       .from(agentRuns)
       .where(eq(agentRuns.id, runId))
@@ -157,6 +160,7 @@ const router = tsr.router(zeroReportErrorContract, {
           sound: zeroAgents.sound,
           customSkills: zeroAgents.customSkills,
           permissionPolicies: zeroAgents.permissionPolicies,
+          composeContent: agentComposeVersions.content,
         })
         .from(agentComposeVersions)
         .innerJoin(
@@ -174,6 +178,7 @@ const router = tsr.router(zeroReportErrorContract, {
           sound: agent.sound,
           customSkills: agent.customSkills,
           permissionPolicies: agent.permissionPolicies,
+          composeContent: agent.composeContent,
         };
       }
     }
@@ -256,37 +261,8 @@ const router = tsr.router(zeroReportErrorContract, {
       promptCount: promptEvents.length,
     });
 
-    // Collect run context snapshot (prompt, vars, environment, firewalls, volumes)
-    const runContext = await queryRunContext(runId).catch((err) => {
-      log.warn("Failed to collect run context", { error: String(err) });
-      return null;
-    });
-
-    // Collect full agent telemetry events for the failed run
-    const agentTelemetryDataset = getDatasetName(DATASETS.AGENT_RUN_EVENTS);
-    const agentTelemetry = await (async () => {
-      const apl = `['${agentTelemetryDataset}']
-| where runId == "${runId}"
-| order by _time asc, sequenceNumber asc
-| limit 5000`;
-      return queryAxiom<ChatHistoryEvent>(apl);
-    })().catch((err) => {
-      log.warn("Failed to collect agent telemetry", { error: String(err) });
-      return [] as ChatHistoryEvent[];
-    });
-
-    // Collect network logs from Axiom
-    const networkDataset = getDatasetName(DATASETS.SANDBOX_TELEMETRY_NETWORK);
-    const networkLogs = await (async () => {
-      const apl = `['${networkDataset}']
-| where runId == "${runId}"
-| order by _time asc
-| limit 5000`;
-      return queryAxiom<AxiomNetworkEvent>(apl);
-    })().catch((err) => {
-      log.warn("Failed to collect network logs", { error: String(err) });
-      return [] as AxiomNetworkEvent[];
-    });
+    // Assemble activity log (same format as activity detail download)
+    const activityLog = await assembleActivityLog(runId, run, agentConfig);
 
     // Safe connector subset (no tokens)
     const safeConnectors = connectors.map((c) => {
@@ -356,29 +332,9 @@ const router = tsr.router(zeroReportErrorContract, {
         content: JSON.stringify(agentConfig, null, 2),
       },
       {
-        path: "agent-telemetry.jsonl",
-        content: agentTelemetry
-          .map((e) => {
-            return JSON.stringify(e);
-          })
-          .join("\n"),
+        path: "activity-log.json",
+        content: JSON.stringify(activityLog),
       },
-      {
-        path: "network-logs.jsonl",
-        content: networkLogs
-          .map((e) => {
-            return JSON.stringify(e);
-          })
-          .join("\n"),
-      },
-      ...(runContext
-        ? [
-            {
-              path: "run-context.json",
-              content: JSON.stringify(runContext, null, 2),
-            },
-          ]
-        : []),
     ];
 
     const zipBuffer = await assembleZip(zipEntries);
