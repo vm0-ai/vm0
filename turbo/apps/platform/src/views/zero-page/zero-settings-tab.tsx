@@ -30,8 +30,14 @@ import { ZeroUnsavedBar } from "./zero-unsaved-bar.tsx";
 import type { Command } from "ccstate";
 import { InlineSettingsRow } from "./components/zero-inline-settings-row.tsx";
 import { ZERO_AVATARS } from "./zero-avatars.ts";
-import { AVATAR_PRESET_PREFIX } from "./avatar-utils.ts";
+import { AVATAR_PRESET_PREFIX, isAvatarSvg } from "./avatar-utils.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
+import {
+  parseAvatarSvgConfig,
+  serializeAvatarSvgConfig,
+} from "./avatar-svg-utils.ts";
+import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
+import { AvatarMaker } from "./avatar-maker.tsx";
 import {
   settingsAgentName$,
   setSettingsAgentName$,
@@ -157,7 +163,7 @@ export function ZeroSettingsTab({
           <CardContent className="p-4 sm:p-5">
             <InlineSettingsRow
               label="Avatar"
-              description="Pick a preset or upload a custom image."
+              description="Pick a preset, create your own, or upload."
               wideControls
             >
               <div className="min-w-0 w-full">
@@ -203,6 +209,34 @@ export function ZeroSettingsTab({
                       </button>
                     );
                   })}
+                  {isAvatarSvg(avatarUrl) &&
+                    (() => {
+                      const svgConfig = parseAvatarSvgConfig(avatarUrl);
+                      if (!svgConfig) {
+                        return null;
+                      }
+                      return (
+                        <button
+                          type="button"
+                          role="radio"
+                          aria-checked
+                          aria-label="Custom SVG avatar"
+                          onClick={() => {
+                            return setAvatarUrl(avatarUrl);
+                          }}
+                          className="relative h-12 w-12 shrink-0 rounded-full overflow-hidden border-2 transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 border-primary ring-2 ring-primary/20"
+                        >
+                          <AvatarSvgPreview config={svgConfig} size={48} />
+                          <div className="absolute inset-0 flex items-center justify-center bg-primary/20">
+                            <IconCheck
+                              size={16}
+                              stroke={2.5}
+                              className="text-primary"
+                            />
+                          </div>
+                        </button>
+                      );
+                    })()}
                   {customAvatarUrl &&
                     (() => {
                       const isSelected = avatarUrl === customAvatarUrl;
@@ -239,6 +273,12 @@ export function ZeroSettingsTab({
                         </button>
                       );
                     })()}
+                  <AvatarMaker
+                    initialConfig={parseAvatarSvgConfig(avatarUrl)}
+                    onConfirm={(cfg) => {
+                      return setAvatarUrl(serializeAvatarSvgConfig(cfg));
+                    }}
+                  />
                   <button
                     type="button"
                     onClick={() => {
