@@ -184,6 +184,7 @@ function buildRunContextSnapshot(context: PreparedContext): RunContextSnapshot {
     userId: context.userId,
     prompt: context.prompt,
     appendSystemPrompt: context.appendSystemPrompt,
+    sessionId: context.continuedFromSessionId ?? null,
     secretNames: context.secrets ? Object.keys(context.secrets) : [],
     environment,
     firewalls,

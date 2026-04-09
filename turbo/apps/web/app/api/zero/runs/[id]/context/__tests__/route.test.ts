@@ -34,6 +34,7 @@ function makeSnapshot(runId: string, userId: string): RunContextSnapshot {
     userId,
     prompt: "test prompt",
     appendSystemPrompt: null,
+    sessionId: null,
     secretNames: ["API_KEY", "DB_PASSWORD"],
     environment: {
       NODE_ENV: "production",
