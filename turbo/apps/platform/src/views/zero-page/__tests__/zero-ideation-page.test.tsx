@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { fill, setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { getCategories } from "../zero-ideation-data.ts";
 import { pathname } from "../../../signals/location.ts";
 
@@ -23,7 +23,7 @@ function mockChatAPI() {
 
 async function renderIdeationPage() {
   mockChatAPI();
-  await setupPage({ context, path: IDEAS_PATH });
+  detachedSetupPage({ context, path: IDEAS_PATH });
 }
 
 describe("ideation page - direct route rendering", () => {
@@ -339,7 +339,7 @@ describe("ideation page - navigation", () => {
         ]);
       }),
     );
-    await setupPage({ context, path: `/agents/${customAgentId}/ideas` });
+    detachedSetupPage({ context, path: `/agents/${customAgentId}/ideas` });
 
     await waitFor(() => {
       expect(

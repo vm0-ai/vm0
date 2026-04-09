@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import type {
   LogEntry,
   LogsListResponse,
@@ -68,7 +68,7 @@ describe("log-table", () => {
         }),
       ]),
     );
-    await setupPage({ context, path: "/activities" });
+    detachedSetupPage({ context, path: "/activities" });
 
     await waitFor(() => {
       expect(screen.getByText("Alpha Agent")).toBeInTheDocument();
@@ -88,7 +88,7 @@ describe("log-table", () => {
   // ACT-D-051
   it("empty state renders", async () => {
     mockLogsAPI(makeLogsResponse([]));
-    await setupPage({ context, path: "/activities" });
+    detachedSetupPage({ context, path: "/activities" });
 
     await waitFor(() => {
       expect(screen.getByTestId("empty-state")).toBeInTheDocument();
@@ -99,7 +99,7 @@ describe("log-table", () => {
   it("filtered empty state renders", async () => {
     // Apply a status filter via URL so hasActiveFilter becomes true
     mockLogsAPI(makeLogsResponse([]));
-    await setupPage({ context, path: "/activities?status=failed" });
+    detachedSetupPage({ context, path: "/activities?status=failed" });
 
     await waitFor(() => {
       expect(screen.getByTestId("filtered-empty-state")).toBeInTheDocument();
@@ -111,7 +111,7 @@ describe("log-table", () => {
     mockLogsAPI(
       makeLogsResponse([makeLog({ status: "running", completedAt: null })]),
     );
-    await setupPage({ context, path: "/activities" });
+    detachedSetupPage({ context, path: "/activities" });
 
     await waitFor(() => {
       const badge = screen.getByTestId("status-badge");
@@ -125,7 +125,7 @@ describe("log-table", () => {
     mockLogsAPI(
       makeLogsResponse([makeLog({ status: "running", completedAt: null })]),
     );
-    await setupPage({ context, path: "/activities" });
+    detachedSetupPage({ context, path: "/activities" });
 
     await waitFor(() => {
       // Running entries show a spinner icon in the duration column
@@ -182,7 +182,7 @@ describe("log-table", () => {
       }),
     );
 
-    await setupPage({ context, path: "/activities" });
+    detachedSetupPage({ context, path: "/activities" });
 
     const user = userEvent.setup();
 

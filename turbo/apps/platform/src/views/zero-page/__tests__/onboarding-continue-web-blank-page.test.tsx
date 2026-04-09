@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 
@@ -48,7 +48,7 @@ describe("onboarding continue in web → skeleton → chat page (#7902)", () => 
     const user = userEvent.setup();
     const mock = mockMemberOnboardingDeferred();
 
-    await setupPage({ context, path: "/onboarding" });
+    detachedSetupPage({ context, path: "/onboarding" });
 
     await waitFor(() => {
       expect(

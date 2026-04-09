@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import {
   completeZeroOnboarding$,
   setZeroAgentName$,
@@ -40,7 +40,7 @@ describe("completeZeroOnboarding$", () => {
       }),
     );
 
-    await setupPage({ context, path: "/", withoutRender: true });
+    detachedSetupPage({ context, path: "/", withoutRender: true });
 
     context.store.set(setZeroAgentName$, "My Assistant");
 
@@ -61,7 +61,7 @@ describe("completeZeroOnboarding$", () => {
       }),
     );
 
-    await setupPage({ context, path: "/", withoutRender: true });
+    detachedSetupPage({ context, path: "/", withoutRender: true });
 
     context.store.set(toggleZeroConnector$, "slack");
 
@@ -80,7 +80,7 @@ describe("completeZeroOnboarding$", () => {
       }),
     );
 
-    await setupPage({ context, path: "/", withoutRender: true });
+    detachedSetupPage({ context, path: "/", withoutRender: true });
 
     context.store.set(setZeroWorkspaceName$, "My Workspace");
 
@@ -99,7 +99,7 @@ describe("completeZeroOnboarding$", () => {
       }),
     );
 
-    await setupPage({ context, path: "/", withoutRender: true });
+    detachedSetupPage({ context, path: "/", withoutRender: true });
 
     await context.store.set(completeZeroOnboarding$, context.signal);
 
@@ -116,7 +116,7 @@ describe("completeZeroOnboarding$", () => {
       }),
     );
 
-    await setupPage({ context, path: "/", withoutRender: true });
+    detachedSetupPage({ context, path: "/", withoutRender: true });
 
     await context.store.set(completeZeroOnboarding$, context.signal);
 
@@ -127,7 +127,7 @@ describe("completeZeroOnboarding$", () => {
   it("should return agentId from setup response", async () => {
     server.use(setupHandler());
 
-    await setupPage({ context, path: "/", withoutRender: true });
+    detachedSetupPage({ context, path: "/", withoutRender: true });
 
     const agentId = await context.store.set(
       completeZeroOnboarding$,
@@ -147,7 +147,7 @@ describe("completeZeroOnboarding$", () => {
       }),
     );
 
-    await setupPage({ context, path: "/", withoutRender: true });
+    detachedSetupPage({ context, path: "/", withoutRender: true });
 
     const agentId = await context.store.set(
       completeZeroOnboarding$,

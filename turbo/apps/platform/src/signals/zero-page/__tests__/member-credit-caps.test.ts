@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { creditsMemberList$ } from "../member-credit-caps.ts";
 
 const context = testContext();
@@ -95,7 +95,7 @@ function mockCreditCapPut(captured: { calls: CapturedCapCall[] }) {
 }
 
 async function setup() {
-  await setupPage({ context, path: "/", withoutRender: true });
+  detachedSetupPage({ context, path: "/", withoutRender: true });
 }
 
 describe("creditsMemberList$", () => {

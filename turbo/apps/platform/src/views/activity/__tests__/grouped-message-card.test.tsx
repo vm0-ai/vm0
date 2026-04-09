@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import {
   loadInspectLogFile$,
   setInspectStepSearch$,
@@ -45,7 +45,7 @@ async function loadInspectData(data: InspectLogData): Promise<void> {
 }
 
 async function renderInspectPage(): Promise<void> {
-  await setupPage({ context, path: "/activities/inspect" });
+  detachedSetupPage({ context, path: "/activities/inspect" });
 }
 
 describe("groupedMessageCard", () => {

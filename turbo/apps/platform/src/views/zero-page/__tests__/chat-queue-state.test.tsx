@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import {
   mockChatLifecycle,
   sendMessageInUI,
@@ -20,7 +20,7 @@ describe("chat queue state", () => {
     ctrl.setRunStatus("queued");
     ctrl.setQueuePosition(3);
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/agents/c0000000-0000-4000-a000-000000000001/chat",
     });
@@ -48,7 +48,7 @@ describe("chat queue state", () => {
     ctrl.setRunStatus("queued");
     ctrl.setQueuePosition(2);
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/agents/c0000000-0000-4000-a000-000000000001/chat",
     });

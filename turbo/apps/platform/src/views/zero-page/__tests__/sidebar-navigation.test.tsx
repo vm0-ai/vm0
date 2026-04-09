@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 
@@ -147,7 +147,7 @@ describe("sidebar new chat navigation", () => {
     mockSubagentAPIs();
 
     // Start on /team so the "new chat" button navigates away
-    await setupPage({ context, path: "/agents" });
+    detachedSetupPage({ context, path: "/agents" });
 
     // Wait for the sidebar to render with the new chat button
     const newChatButton = await waitFor(() => {
@@ -166,7 +166,7 @@ describe("sidebar new chat navigation", () => {
     const user = userEvent.setup();
     mockSubagentAPIs();
 
-    await setupPage({ context, path: "/agents/subagent-compose-id/chat" });
+    detachedSetupPage({ context, path: "/agents/subagent-compose-id/chat" });
 
     // Wait for the subagent chat to load — find the new chat button for the subagent
     const newChatButton = await waitFor(() => {
@@ -200,7 +200,7 @@ describe("sidebar new chat navigation", () => {
       }),
     );
 
-    await setupPage({ context, path: "/agents" });
+    detachedSetupPage({ context, path: "/agents" });
 
     const newChatButton = await waitFor(() => {
       return screen.getByLabelText("New chat with Zero");
@@ -257,7 +257,7 @@ describe("sidebar new chat navigation", () => {
       }),
     );
 
-    await setupPage({ context, path: "/agents" });
+    detachedSetupPage({ context, path: "/agents" });
 
     const newChatButton = await waitFor(() => {
       return screen.getByLabelText("New chat with Zero");

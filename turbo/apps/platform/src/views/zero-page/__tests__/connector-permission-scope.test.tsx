@@ -13,7 +13,10 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  setupPage,
+} from "../../../__tests__/page-helper.ts";
 import { setScopeReviewType$ } from "../../../signals/zero-page/settings/connectors.ts";
 import type { ConnectorType } from "@vm0/core";
 
@@ -33,7 +36,7 @@ async function openScopeReviewModal(
       return HttpResponse.json(scopeDiff);
     }),
   );
-  await setupPage({ context, path: "/connectors" });
+  detachedSetupPage({ context, path: "/connectors" });
   await waitFor(() => {
     expect(
       screen.getByRole("heading", { name: "Connectors" }),
@@ -138,7 +141,7 @@ describe("scope review modal - states", () => {
       }),
     );
 
-    await setupPage({ context, path: "/connectors" });
+    detachedSetupPage({ context, path: "/connectors" });
     await waitFor(() => {
       expect(
         screen.getByRole("heading", { name: "Connectors" }),
@@ -166,7 +169,7 @@ describe("scope review modal - states", () => {
       }),
     );
 
-    await setupPage({ context, path: "/connectors" });
+    detachedSetupPage({ context, path: "/connectors" });
     await waitFor(() => {
       expect(
         screen.getByRole("heading", { name: "Connectors" }),

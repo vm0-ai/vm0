@@ -3,7 +3,7 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import {
-  setupPage,
+  detachedSetupPage,
   updateTestPathname$,
 } from "../../../__tests__/page-helper.ts";
 import { allConnectorTypes$ } from "../settings/connectors.ts";
@@ -14,7 +14,7 @@ const context = testContext();
 
 describe("connectors", () => {
   it("should show gmail connector without any feature switch", async () => {
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/",
       user: {
@@ -62,7 +62,7 @@ describe("connectors", () => {
       }),
     );
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/",
       user: {
@@ -135,7 +135,7 @@ describe("zero connectors — agent switch", () => {
       }),
     );
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/agents/agent-a",
       withoutRender: true,

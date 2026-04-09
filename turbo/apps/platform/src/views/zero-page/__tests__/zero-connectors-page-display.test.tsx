@@ -13,7 +13,7 @@ import userEvent from "@testing-library/user-event";
 import { http } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { mockConnectors } from "./zero-connectors-page-test-helpers.ts";
 
 const context = testContext();
@@ -22,7 +22,7 @@ describe("connectors page - count display", () => {
   it("connected connectors count is displayed (CONN-D-001)", async () => {
     mockConnectors([{ type: "github" }, { type: "linear" }]);
 
-    await setupPage({ context, path: "/connectors" });
+    detachedSetupPage({ context, path: "/connectors" });
 
     await waitFor(() => {
       expect(screen.getByText("Connected (2)")).toBeInTheDocument();
@@ -32,7 +32,7 @@ describe("connectors page - count display", () => {
   it("available connectors count is displayed (CONN-D-002)", async () => {
     mockConnectors([{ type: "github" }]);
 
-    await setupPage({ context, path: "/connectors" });
+    detachedSetupPage({ context, path: "/connectors" });
 
     await waitFor(() => {
       const availableHeading = screen.getByText(/^Available \(\d+\)$/);
@@ -60,7 +60,7 @@ describe("connectors page - connector status indicators", () => {
     // Return a fake popup that stays open so the connector enters polling state.
     vi.spyOn(window, "open").mockReturnValue({ closed: false } as Window);
 
-    await setupPage({ context, path: "/connectors" });
+    detachedSetupPage({ context, path: "/connectors" });
 
     await waitFor(() => {
       expect(screen.getByText("Reconnect")).toBeInTheDocument();
@@ -91,7 +91,7 @@ describe("connectors page - connector status indicators", () => {
   it("connector shows reconnect needed state (CONN-D-004)", async () => {
     mockConnectors([{ type: "github", needsReconnect: true }]);
 
-    await setupPage({ context, path: "/connectors" });
+    detachedSetupPage({ context, path: "/connectors" });
 
     await waitFor(() => {
       expect(screen.getByText("Connection expired")).toBeInTheDocument();
@@ -105,7 +105,7 @@ describe("connectors page - connector status indicators", () => {
       { type: "github", oauthScopes: [], needsReconnect: false },
     ]);
 
-    await setupPage({ context, path: "/connectors" });
+    detachedSetupPage({ context, path: "/connectors" });
 
     await waitFor(() => {
       expect(
@@ -125,7 +125,7 @@ describe("connectors page - connector status indicators", () => {
       },
     ]);
 
-    await setupPage({ context, path: "/connectors" });
+    detachedSetupPage({ context, path: "/connectors" });
 
     await waitFor(() => {
       expect(screen.getByText("@octocat")).toBeInTheDocument();
@@ -143,16 +143,18 @@ describe("connectors page - loading state", () => {
       }),
     );
 
-    await setupPage({ context, path: "/connectors" });
+    detachedSetupPage({ context, path: "/connectors" });
 
-    const skeletons = screen.getAllByTestId("connector-skeleton");
-    expect(skeletons.length).toBeGreaterThan(0);
+    await waitFor(() => {
+      const skeletons = screen.getAllByTestId("connector-skeleton");
+      expect(skeletons.length).toBeGreaterThan(0);
+    });
   });
 });
 
 describe("connectors page - help text", () => {
   it("help text is shown per connector type (CONN-D-008)", async () => {
-    await setupPage({ context, path: "/connectors" });
+    detachedSetupPage({ context, path: "/connectors" });
 
     await waitFor(() => {
       const helpTexts = screen.getAllByTestId("connector-help-text");

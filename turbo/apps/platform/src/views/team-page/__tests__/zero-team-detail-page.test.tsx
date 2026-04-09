@@ -3,7 +3,7 @@ import { screen, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 
 const context = testContext();
 
@@ -62,7 +62,7 @@ describe("zero team detail page", () => {
   // AGENT-S-003: Agent detail renders when agentId available
   it("renders ZeroJobDetailPage when agentId is available", async () => {
     mockTeamAPIs();
-    await setupPage({ context, path: "/agents/my-agent" });
+    detachedSetupPage({ context, path: "/agents/my-agent" });
 
     await waitFor(() => {
       expect(

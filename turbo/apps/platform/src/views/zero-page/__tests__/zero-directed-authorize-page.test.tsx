@@ -12,7 +12,10 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  setupPage,
+} from "../../../__tests__/page-helper.ts";
 import { CONNECTOR_TYPES } from "@vm0/core";
 
 const context = testContext();
@@ -48,7 +51,7 @@ describe("directed authorize page", () => {
   it("renders authorize card for a connected connector", async () => {
     mockConnectorsConnected("gmail");
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: `/connectors/gmail/authorize?agentId=${AGENT_ID}`,
     });
@@ -68,7 +71,7 @@ describe("directed authorize page", () => {
     const user = userEvent.setup();
     mockConnectorsConnected("gmail");
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: `/connectors/gmail/authorize?agentId=${AGENT_ID}`,
     });
@@ -86,7 +89,7 @@ describe("directed authorize page", () => {
   });
 
   it("renders nothing when agentId query param is missing", async () => {
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/connectors/gmail/authorize",
     });
@@ -100,7 +103,7 @@ describe("directed authorize page", () => {
   });
 
   it("renders nothing for an unknown connector type", async () => {
-    await setupPage({
+    detachedSetupPage({
       context,
       path: `/connectors/nonexistent/authorize?agentId=${AGENT_ID}`,
     });
@@ -115,7 +118,7 @@ describe("directed authorize page", () => {
   it("normalizes uppercase type in URL", async () => {
     mockConnectorsConnected("gmail");
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: `/connectors/Gmail/authorize?agentId=${AGENT_ID}`,
     });
@@ -135,7 +138,7 @@ describe("directed authorize page", () => {
       }),
     );
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: `/connectors/gmail/authorize?agentId=${AGENT_ID}`,
     });
@@ -155,7 +158,7 @@ describe("directed authorize page", () => {
       }),
     );
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: `/connectors/gmail/authorize?agentId=${AGENT_ID}`,
     });
@@ -171,7 +174,7 @@ describe("directed authorize page", () => {
   it("has a logo link that navigates to /connectors", async () => {
     mockConnectorsConnected("gmail");
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: `/connectors/gmail/authorize?agentId=${AGENT_ID}`,
     });

@@ -23,7 +23,11 @@ import {
 } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { fill, setupPage } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  fill,
+  setupPage,
+} from "../../../__tests__/page-helper.ts";
 
 const context = testContext();
 
@@ -56,7 +60,7 @@ function mockBaseAPIs() {
 describe("internal connector logos - display (ORG-D-118)", () => {
   it("lists all connector types with labels and type identifiers", async () => {
     mockBaseAPIs();
-    await setupPage({ context, path: "/__internal-connector-logos" });
+    detachedSetupPage({ context, path: "/__internal-connector-logos" });
     const connectorTypes = Object.keys(CONNECTOR_TYPES) as ConnectorType[];
     // Verify at least one connector type and its label appears in the document
     // (labels and type keys may appear multiple times due to icon display variants)
@@ -78,7 +82,7 @@ describe("internal connector logos - display (ORG-D-118)", () => {
 describe("internal connector logos - display (ORG-D-119)", () => {
   it("heading displays the count of connector types", async () => {
     mockBaseAPIs();
-    await setupPage({ context, path: "/__internal-connector-logos" });
+    detachedSetupPage({ context, path: "/__internal-connector-logos" });
     const connectorTypes = Object.keys(CONNECTOR_TYPES);
     await waitFor(() => {
       expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
@@ -92,7 +96,7 @@ describe("internal connector logos - interaction (ORG-I-121)", () => {
   it("size selection buttons change the displayed icon size", async () => {
     const user = userEvent.setup();
     mockBaseAPIs();
-    await setupPage({ context, path: "/__internal-connector-logos" });
+    detachedSetupPage({ context, path: "/__internal-connector-logos" });
     // Default size button is "128" — clicking "16" should switch to a smaller size
     await waitFor(() => {
       expect(
@@ -170,7 +174,7 @@ function mockScheduleDetailAPIs(
 describe("inline settings row - display (ORG-D-108)", () => {
   it("label text is displayed", async () => {
     mockScheduleDetailAPIs();
-    await setupPage({
+    detachedSetupPage({
       context,
       path: `/schedules/${TEST_SCHEDULE_ID}`,
     });
@@ -184,7 +188,7 @@ describe("inline settings row - display (ORG-D-108)", () => {
 describe("inline settings row - conditional (ORG-C-109)", () => {
   it("description text is shown when provided", async () => {
     mockScheduleDetailAPIs();
-    await setupPage({
+    detachedSetupPage({
       context,
       path: `/schedules/${TEST_SCHEDULE_ID}`,
     });
@@ -204,7 +208,7 @@ describe("inline settings row - conditional (ORG-C-109)", () => {
 describe("zero no permission illustration - display (ORG-D-110)", () => {
   it("displays the illustration image when schedule is not found", async () => {
     mockScheduleDetailAPIs([]);
-    await setupPage({
+    detachedSetupPage({
       context,
       path: `/schedules/nonexistent-schedule-id`,
     });
@@ -227,7 +231,7 @@ describe("zero no permission illustration - display (ORG-D-110)", () => {
 
 async function openScheduleSettings() {
   mockScheduleDetailAPIs();
-  await setupPage({ context, path: `/schedules/${TEST_SCHEDULE_ID}` });
+  detachedSetupPage({ context, path: `/schedules/${TEST_SCHEDULE_ID}` });
   // Wait until the settings form is ready — the description input is always rendered
   // on the settings tab once the schedule data has loaded
   await waitFor(() => {
@@ -344,7 +348,7 @@ async function openSetupPrompt(user: ReturnType<typeof userEvent.setup>) {
       });
     }),
   );
-  await setupPage({ context, path: "/?settings=providers" });
+  detachedSetupPage({ context, path: "/?settings=providers" });
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
@@ -419,7 +423,7 @@ describe("clerk provider - display (ORG-D-122)", () => {
         return HttpResponse.json({ schedules: [] });
       }),
     );
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
     // VM0ClerkProvider wraps children and renders null if Clerk is not loaded.
     // Verify that app content rendered — the mock-auth Clerk instance is in "hasData"
     // state, so the provider should allow children to render.

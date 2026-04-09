@@ -16,7 +16,10 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  setupPage,
+} from "../../../__tests__/page-helper.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import { resetMockBilling } from "../../../mocks/handlers/api-billing.ts";
 import { pathname } from "../../../signals/location.ts";
@@ -115,7 +118,7 @@ describe("zero sidebar - chat session list collapses and expands (SIDEBAR-D-011)
         makeThread("thread-1", "Deploy to prod", "2026-03-10T00:00:00Z"),
       ],
     });
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     // Wait for thread to appear
     await waitFor(() => {
@@ -147,7 +150,7 @@ describe("zero sidebar - agent list collapses and expands (SIDEBAR-D-012)", () =
     mockBaseAPIs({ agents: [makeDefaultAgent(), makePinnedAgent()] });
     setMockUserPreferences({ pinnedAgentIds: [PINNED_AGENT_ID] });
 
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     // Wait for pinned agent to appear
     await waitFor(() => {
@@ -177,7 +180,7 @@ describe("zero sidebar - tab navigation switches active section (SIDEBAR-D-023)"
   it("navigates to /agents when the Agents nav link is clicked", async () => {
     const user = userEvent.setup();
     mockBaseAPIs();
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     await waitFor(() => {
       expect(
@@ -196,7 +199,7 @@ describe("zero sidebar - tab navigation switches active section (SIDEBAR-D-023)"
   it("navigates to /schedules when the Scheduled nav link is clicked", async () => {
     const user = userEvent.setup();
     mockBaseAPIs();
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     await waitFor(() => {
       expect(
@@ -220,7 +223,7 @@ describe("zero sidebar - billing button opens billing dialog (SIDEBAR-D-024)", (
     // Default billing: tier = "free" → shows "Get Pro" card
     // Default org role from api-org handler: "admin" → upgrade card is shown
 
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     // Wait for upgrade card to appear
     const upgradeBtn = await waitFor(() => {
@@ -240,7 +243,7 @@ describe("zero sidebar - settings button navigates to settings (SIDEBAR-D-025)",
   it("navigates to /settings when Preferences is clicked in account dropdown", async () => {
     const user = userEvent.setup();
     mockBaseAPIs();
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     await waitFor(() => {
       expect(screen.getByText("Test User")).toBeInTheDocument();
@@ -264,7 +267,7 @@ describe("zero sidebar - settings button navigates to settings (SIDEBAR-D-025)",
 describe("zero sidebar - sidebar scroll state persists (SIDEBAR-D-065)", () => {
   it("applies a box shadow to the scroll area when scrolled and removes it when back at top", async () => {
     mockBaseAPIs();
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     const scrollArea = await waitFor(() => {
       return screen.getByTestId("sidebar-scroll-area");

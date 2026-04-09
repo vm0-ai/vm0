@@ -10,7 +10,11 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { fill, setupPage } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  fill,
+  setupPage,
+} from "../../../__tests__/page-helper.ts";
 import {
   resetMockBilling,
   setMockBillingStatus,
@@ -57,7 +61,7 @@ describe("chat-i-078: auto-recharge switch toggles enabled state", () => {
       hasSubscription: true,
       autoRecharge: { enabled: false, threshold: null, amount: null },
     });
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
     await openBillingDialogAndWait();
 
     await waitFor(() => {
@@ -84,7 +88,7 @@ describe("chat-s-084: auto-recharge toggle state reflects enabled value from ser
       hasSubscription: true,
       autoRecharge: { enabled: false, threshold: null, amount: null },
     });
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
     await openBillingDialogAndWait();
 
     await waitFor(() => {
@@ -103,7 +107,7 @@ describe("chat-s-084: auto-recharge toggle state reflects enabled value from ser
       hasSubscription: true,
       autoRecharge: { enabled: true, threshold: 1000, amount: 10_000 },
     });
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
     await openBillingDialogAndWait();
 
     await waitFor(() => {
@@ -137,7 +141,7 @@ describe("chat-i-079: threshold input updates form state on change", () => {
       hasSubscription: true,
       autoRecharge: { enabled: true, threshold: 1000, amount: 10_000 },
     });
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
     await openBillingDialogAndWait();
 
     await waitFor(() => {
@@ -182,7 +186,7 @@ describe("chat-i-080: amount input updates form state on change", () => {
       hasSubscription: true,
       autoRecharge: { enabled: true, threshold: 1000, amount: 10_000 },
     });
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
     await openBillingDialogAndWait();
 
     await waitFor(() => {
@@ -227,7 +231,7 @@ describe("chat-i-081: save button saves auto-recharge settings", () => {
       hasSubscription: true,
       autoRecharge: { enabled: true, threshold: 2000, amount: 5000 },
     });
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
     await openBillingDialogAndWait();
 
     await waitFor(() => {
@@ -272,7 +276,7 @@ describe("chat-i-082: plan card click updates selected tier", () => {
       subscriptionStatus: "active",
       hasSubscription: true,
     });
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
     await openBillingDialogAndWait();
 
     await waitFor(() => {
@@ -314,7 +318,7 @@ describe("chat-i-083: upgrade/downgrade button triggers plan change action", () 
       subscriptionStatus: "active",
       hasSubscription: true,
     });
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
     await openBillingDialogAndWait();
 
     await waitFor(() => {
@@ -352,7 +356,7 @@ describe("chat-i-083: upgrade/downgrade button triggers plan change action", () 
       subscriptionStatus: "active",
       hasSubscription: true,
     });
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
     await openBillingDialogAndWait();
 
     await waitFor(() => {
@@ -395,7 +399,7 @@ describe("chat-i-085: form fields derive from server config via async computed",
       hasSubscription: true,
       autoRecharge: { enabled: true, threshold: 3000, amount: 15_000 },
     });
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
     await openBillingDialogAndWait();
 
     // formThreshold$ and formAmount$ async-derive from autoRechargeConfig$ when no
@@ -447,7 +451,7 @@ describe("chat-i-086: form overrides clear after successful save", () => {
       hasSubscription: true,
       autoRecharge: { enabled: true, threshold: 1000, amount: 5000 },
     });
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
     await openBillingDialogAndWait();
 
     await waitFor(() => {

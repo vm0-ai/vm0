@@ -3,7 +3,7 @@ import { screen, waitFor, act } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { detachedNavigateTo$ } from "../../../signals/route.ts";
 
 const context = testContext();
@@ -57,7 +57,7 @@ describe("chat to queue navigation", () => {
     mockChatThread();
     mockQueueAPIs();
 
-    await setupPage({ context, path: "/chats/thread-1" });
+    detachedSetupPage({ context, path: "/chats/thread-1" });
 
     // Wait for chat to render
     await waitFor(() => {

@@ -3,7 +3,7 @@ import { screen, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { navigate$ } from "../../../signals/route.ts";
 
 const context = testContext();
@@ -125,7 +125,7 @@ function mockTwoAgents() {
 describe("sidebar agent scoping (#7239)", () => {
   it("should show Alpha chats on /talk/agent-alpha and Beta chats on /talk/agent-beta", async () => {
     mockTwoAgents();
-    await setupPage({ context, path: "/agents/agent-alpha/chat" });
+    detachedSetupPage({ context, path: "/agents/agent-alpha/chat" });
 
     // Alpha thread should be visible
     await waitFor(() => {
@@ -154,7 +154,7 @@ describe("sidebar agent scoping (#7239)", () => {
 
   it("should switch back to first agent after visiting second agent", async () => {
     mockTwoAgents();
-    await setupPage({ context, path: "/agents/agent-alpha/chat" });
+    detachedSetupPage({ context, path: "/agents/agent-alpha/chat" });
 
     await waitFor(() => {
       expect(screen.getByText("Alpha thread")).toBeInTheDocument();
@@ -186,7 +186,7 @@ describe("sidebar agent scoping (#7239)", () => {
 
   it("should retain agent scope when navigating to a non-chat page and back", async () => {
     mockTwoAgents();
-    await setupPage({ context, path: "/agents/agent-beta/chat" });
+    detachedSetupPage({ context, path: "/agents/agent-beta/chat" });
 
     // Verify Beta threads are shown
     await waitFor(() => {
@@ -209,7 +209,7 @@ describe("sidebar agent scoping (#7239)", () => {
     mockTwoAgents();
 
     // Start with Alpha's chat view — sidebar remembers Alpha
-    await setupPage({ context, path: "/agents/agent-alpha/chat" });
+    detachedSetupPage({ context, path: "/agents/agent-alpha/chat" });
     await waitFor(() => {
       expect(screen.getByText("Alpha thread")).toBeInTheDocument();
     });

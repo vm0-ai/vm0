@@ -1,5 +1,5 @@
 import { testContext } from "../signals/__tests__/test-helpers";
-import { setupPage } from "./page-helper";
+import { detachedSetupPage, setupPage } from "./page-helper";
 import { expect, it, describe } from "vitest";
 import { Level, logger } from "../signals/log";
 import { localStorageSignals } from "../signals/external/local-storage";
@@ -8,7 +8,7 @@ const context = testContext();
 
 describe("setupPage", () => {
   it("should set debug loggers correctly", async () => {
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/",
       debugLoggers: ["Foo"],
@@ -21,7 +21,7 @@ describe("setupPage", () => {
     const { set$ } = localStorageSignals("debugLogger");
     context.store.set(set$, JSON.stringify(["Foo"]));
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/",
     });

@@ -8,7 +8,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { fill, setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 
 const context = testContext();
@@ -74,7 +74,7 @@ function mockAPIs(detailOverrides: Record<string, unknown> = {}) {
 }
 
 async function openProfileTab(user: ReturnType<typeof userEvent.setup>) {
-  await setupPage({ context, path: "/agents/my-agent" });
+  detachedSetupPage({ context, path: "/agents/my-agent" });
   await waitFor(() => {
     expect(
       screen.getByRole("heading", { name: "My Agent" }),
@@ -194,7 +194,7 @@ describe("zero settings tab - display", () => {
     );
 
     const user = userEvent.setup();
-    await setupPage({ context, path: "/agents/zero" });
+    detachedSetupPage({ context, path: "/agents/zero" });
     await waitFor(() => {
       expect(screen.getByRole("heading", { name: "Zero" })).toBeInTheDocument();
     });

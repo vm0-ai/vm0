@@ -12,7 +12,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import type {
   LogEntry,
   LogsListResponse,
@@ -137,7 +137,7 @@ describe("pagination component", () => {
         );
       }),
     );
-    await setupPage({ context, path: "/activities" });
+    detachedSetupPage({ context, path: "/activities" });
 
     await waitFor(() => {
       expect(screen.getByText("Page 1 Log")).toBeInTheDocument();
@@ -166,7 +166,7 @@ describe("pagination component", () => {
         totalPages: 5,
       }),
     );
-    await setupPage({ context, path: "/activities" });
+    detachedSetupPage({ context, path: "/activities" });
 
     await waitFor(() => {
       expect(screen.getByText(/of 5/)).toBeInTheDocument();
@@ -179,7 +179,7 @@ describe("pagination component", () => {
         totalPages: 2,
       }),
     );
-    await setupPage({ context, path: "/activities" });
+    detachedSetupPage({ context, path: "/activities" });
 
     await waitFor(() => {
       expect(
@@ -194,7 +194,7 @@ describe("pagination component", () => {
         totalPages: 2,
       }),
     );
-    await setupPage({ context, path: "/activities" });
+    detachedSetupPage({ context, path: "/activities" });
 
     const user = userEvent.setup();
     const rowsPerPageSelect = await waitFor(() => {
@@ -221,7 +221,7 @@ describe("pagination component", () => {
         );
       }),
     );
-    await setupPage({ context, path: "/activities" });
+    detachedSetupPage({ context, path: "/activities" });
 
     await waitFor(() => {
       expect(screen.getByText(/Page 1/)).toBeInTheDocument();
@@ -265,7 +265,7 @@ describe("pagination component", () => {
         );
       }),
     );
-    await setupPage({ context, path: "/activities" });
+    detachedSetupPage({ context, path: "/activities" });
 
     await waitFor(() => {
       expect(screen.getByText("Page 1 Log")).toBeInTheDocument();
@@ -310,7 +310,7 @@ describe("pagination component", () => {
         );
       }),
     );
-    await setupPage({ context, path: "/activities" });
+    detachedSetupPage({ context, path: "/activities" });
 
     await waitFor(() => {
       expect(screen.getByText("Page 1 Log")).toBeInTheDocument();
@@ -358,7 +358,7 @@ describe("pagination component", () => {
         );
       }),
     );
-    await setupPage({ context, path: "/activities" });
+    detachedSetupPage({ context, path: "/activities" });
 
     await waitFor(() => {
       expect(screen.getByText("Page 1 Log")).toBeInTheDocument();
@@ -412,7 +412,7 @@ describe("pagination component", () => {
         );
       }),
     );
-    await setupPage({ context, path: "/activities" });
+    detachedSetupPage({ context, path: "/activities" });
 
     await waitFor(() => {
       expect(screen.getByText("Page 1 Log")).toBeInTheDocument();
@@ -451,7 +451,7 @@ describe("pagination component", () => {
         );
       }),
     );
-    await setupPage({ context, path: "/activities" });
+    detachedSetupPage({ context, path: "/activities" });
 
     await waitFor(() => {
       expect(screen.getByText("Page 1 Log")).toBeInTheDocument();
@@ -502,7 +502,7 @@ describe("pagination component", () => {
       }),
     );
 
-    await setupPage({ context, path: "/activities" });
+    detachedSetupPage({ context, path: "/activities" });
 
     await waitFor(() => {
       expect(screen.getByText("Page 1 Log")).toBeInTheDocument();
@@ -537,7 +537,7 @@ describe("loading switch component", () => {
       }),
     );
 
-    await setupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
+    detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
 
     const switchEl = await waitFor(() => {
       return screen.getByRole("switch", { name: "Disable this schedule" });
@@ -570,7 +570,7 @@ describe("loading switch component", () => {
       }),
     );
 
-    await setupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
+    detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
 
     const switchEl = await waitFor(() => {
       return screen.getByRole("switch", { name: "Enable this schedule" });
@@ -607,7 +607,7 @@ describe("loading switch component", () => {
       }),
     );
 
-    await setupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
+    detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
 
     const user = userEvent.setup();
 

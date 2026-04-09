@@ -3,7 +3,7 @@ import { screen, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { setTheme$ } from "../../../signals/theme.ts";
 
 const context = testContext();
@@ -38,7 +38,7 @@ describe("chat-d-064: markdown content renders from props", () => {
       }),
     );
 
-    await setupPage({ context, path: "/chats/thread-markdown" });
+    detachedSetupPage({ context, path: "/chats/thread-markdown" });
 
     await waitFor(() => {
       expect(
@@ -69,7 +69,7 @@ describe("chat-d-065: theme signal applied to markdown rendering", () => {
       }),
     );
 
-    await setupPage({ context, path: "/chats/thread-theme" });
+    detachedSetupPage({ context, path: "/chats/thread-theme" });
 
     await waitFor(() => {
       expect(screen.getByText("hello")).toBeInTheDocument();
@@ -114,7 +114,7 @@ describe("chat-d-066: markdown links open in new tab", () => {
       }),
     );
 
-    await setupPage({ context, path: "/chats/thread-link" });
+    detachedSetupPage({ context, path: "/chats/thread-link" });
 
     await waitFor(() => {
       const link = screen.getAllByRole("link").find((el) => {

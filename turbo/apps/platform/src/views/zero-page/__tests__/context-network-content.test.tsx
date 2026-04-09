@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import {
   FeatureSwitchKey,
   type RunContextResponse,
@@ -154,7 +154,7 @@ function setupMocks(options: {
 async function setupAndNavigateToTab(tabName: "Context" | "Network") {
   const user = userEvent.setup();
 
-  await setupPage({
+  detachedSetupPage({
     context,
     path: `/activities/${LOG_ID}`,
     featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },

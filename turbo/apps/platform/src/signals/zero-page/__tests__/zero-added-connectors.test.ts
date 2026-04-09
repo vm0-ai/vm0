@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { zeroAddedConnectors$, addZeroConnector$ } from "../zero-connectors.ts";
 const context = testContext();
 
@@ -38,7 +38,7 @@ describe("zeroAddedConnectors$", () => {
   it("should seed connectors from user-connectors api", async () => {
     mockAgentApi(["slack", "github"]);
 
-    await setupPage({ context, path: "/", withoutRender: true });
+    detachedSetupPage({ context, path: "/", withoutRender: true });
 
     const connectors = await context.store.get(zeroAddedConnectors$);
     // Server filters out seed skills, only user connectors remain
@@ -48,7 +48,7 @@ describe("zeroAddedConnectors$", () => {
   it("should return empty connectors when agent has none", async () => {
     mockAgentApi([]);
 
-    await setupPage({ context, path: "/", withoutRender: true });
+    detachedSetupPage({ context, path: "/", withoutRender: true });
 
     const connectors = await context.store.get(zeroAddedConnectors$);
     expect(connectors).toStrictEqual([]);
@@ -99,7 +99,7 @@ describe("zeroAddedConnectors$", () => {
       }),
     );
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/agents/sub-agent-compose-id/chat",
       withoutRender: true,
@@ -127,7 +127,7 @@ describe("addZeroConnector$", () => {
       ),
     );
 
-    await setupPage({ context, path: "/", withoutRender: true });
+    detachedSetupPage({ context, path: "/", withoutRender: true });
 
     // Add connector — saves immediately via user-connectors API
     await context.store.set(addZeroConnector$, "github", context.signal);

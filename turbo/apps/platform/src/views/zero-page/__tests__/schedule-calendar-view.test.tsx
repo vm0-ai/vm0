@@ -5,7 +5,7 @@ import { http, HttpResponse } from "msw";
 import type { ScheduleResponse } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import { setCalendarSelectedDay$ } from "../../../signals/schedule-page/schedule-page-ui.ts";
 
@@ -185,7 +185,7 @@ describe("schedule calendar view - schedule entries in cells (SCHED-D-068)", () 
   it("shows schedule entries in their corresponding time slots", async () => {
     const user = userEvent.setup();
     mockScheduleAPI([weekdaySchedule()]);
-    await setupPage({ context, path: "/schedules" });
+    detachedSetupPage({ context, path: "/schedules" });
     await switchToCalendarView(user);
 
     await waitFor(() => {
@@ -213,7 +213,7 @@ describe("schedule calendar view - agent labels with color coding (SCHED-D-069)"
         cronExpression: "0 9 * * 1-5",
       }),
     ]);
-    await setupPage({ context, path: "/schedules" });
+    detachedSetupPage({ context, path: "/schedules" });
     await switchToCalendarView(user);
 
     await waitFor(() => {
@@ -227,7 +227,7 @@ describe("schedule calendar view - loop/monthly/once sections (SCHED-D-071)", ()
   it("renders loop, monthly, and once schedule entries in their respective sections", async () => {
     const user = userEvent.setup();
     mockScheduleAPI([loopSchedule(), monthlySchedule(), onceSchedule()]);
-    await setupPage({ context, path: "/schedules" });
+    detachedSetupPage({ context, path: "/schedules" });
     await switchToCalendarView(user);
 
     await waitFor(() => {
@@ -247,7 +247,7 @@ describe("schedule calendar view - mobile single day view (SCHED-D-072)", () => 
   it("shows previous day and next day navigation buttons for mobile view", async () => {
     const user = userEvent.setup();
     mockScheduleAPI([weekdaySchedule()]);
-    await setupPage({ context, path: "/schedules" });
+    detachedSetupPage({ context, path: "/schedules" });
     await switchToCalendarView(user);
 
     await waitFor(() => {
@@ -261,7 +261,7 @@ describe("schedule calendar view - previous day navigation (SCHED-D-075)", () =>
   it("shifts to the previous day when Previous day button is clicked", async () => {
     const user = userEvent.setup();
     mockScheduleAPI([weekdaySchedule()]);
-    await setupPage({ context, path: "/schedules" });
+    detachedSetupPage({ context, path: "/schedules" });
     await switchToCalendarView(user);
 
     const navBar = await screen.findByRole("navigation", {
@@ -282,7 +282,7 @@ describe("schedule calendar view - next day navigation (SCHED-D-076)", () => {
   it("shifts to the next day when Next day button is clicked", async () => {
     const user = userEvent.setup();
     mockScheduleAPI([weekdaySchedule()]);
-    await setupPage({ context, path: "/schedules" });
+    detachedSetupPage({ context, path: "/schedules" });
     await switchToCalendarView(user);
 
     const navBar = await screen.findByRole("navigation", {
@@ -307,7 +307,7 @@ describe("schedule calendar view - entry popover on hover (SCHED-D-077)", () => 
     // only one CalendarEntryPopover instance — avoids DismissableLayer
     // conflicts when two popover instances are open simultaneously in happy-dom.
     mockScheduleAPI([mondayOnlySchedule()]);
-    await setupPage({ context, path: "/schedules" });
+    detachedSetupPage({ context, path: "/schedules" });
     context.store.set(setCalendarSelectedDay$, 4); // Friday — no Monday entry in mobile
     await switchToCalendarView(user);
 
@@ -328,7 +328,7 @@ describe("schedule calendar view - double-click opens edit (SCHED-D-078)", () =>
   it("navigates to schedule detail on double-click", async () => {
     const user = userEvent.setup();
     mockScheduleAPI([weekdaySchedule()]);
-    await setupPage({ context, path: "/schedules" });
+    detachedSetupPage({ context, path: "/schedules" });
     await switchToCalendarView(user);
 
     const entryBtns = await waitFor(() => {
@@ -352,7 +352,7 @@ describe("schedule calendar view - edit button in popover (SCHED-D-079)", () => 
     // Monday-only schedule: only one desktop entry renders.
     // Pin mobile to Friday — same reasoning as SCHED-D-077.
     mockScheduleAPI([mondayOnlySchedule()]);
-    await setupPage({ context, path: "/schedules" });
+    detachedSetupPage({ context, path: "/schedules" });
     context.store.set(setCalendarSelectedDay$, 4); // Friday — no Monday entry in mobile
     await switchToCalendarView(user);
 

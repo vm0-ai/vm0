@@ -3,7 +3,7 @@ import { screen, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 
 const context = testContext();
 
@@ -51,7 +51,7 @@ function mockAPIs(schedules = [createMockSchedule()]) {
 describe("zero schedule detail page", () => {
   it("should render schedule detail when navigating to /schedules/:id", async () => {
     mockAPIs();
-    await setupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
+    detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
 
     // The detail page shows the description as the page title (appears in
     // breadcrumb, header, and sidebar, so use getAllByText).
@@ -67,7 +67,7 @@ describe("zero schedule detail page", () => {
 
   it("should show not-found when schedule id does not match any schedule", async () => {
     mockAPIs();
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/schedules/f0000001-0000-4000-a000-999999999999",
     });

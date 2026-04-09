@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server";
 import { testContext } from "../../__tests__/test-helpers";
-import { setupPage } from "../../../__tests__/page-helper";
+import { detachedSetupPage } from "../../../__tests__/page-helper";
 import {
   zeroJobDetail$,
   zeroJobInstructions$,
@@ -168,7 +168,7 @@ function registerStandardHandlers() {
 
 async function setupWithAgent() {
   registerStandardHandlers();
-  await setupPage({ context, path: "/", withoutRender: true });
+  detachedSetupPage({ context, path: "/", withoutRender: true });
   context.store.set(setActiveAgent$, "my-agent");
 }
 
@@ -191,7 +191,7 @@ describe("zero-job-detail signals", () => {
         }),
       );
 
-      await setupPage({ context, path: "/", withoutRender: true });
+      detachedSetupPage({ context, path: "/", withoutRender: true });
       context.store.set(setActiveAgent$, "my-agent");
 
       const detail = await context.store.get(zeroJobDetail$);
@@ -230,7 +230,7 @@ describe("zero-job-detail signals", () => {
         }),
       );
 
-      await setupPage({ context, path: "/", withoutRender: true });
+      detachedSetupPage({ context, path: "/", withoutRender: true });
       context.store.set(setActiveAgent$, "my-org/sub-agent");
 
       const detail = await context.store.get(zeroJobDetail$);
@@ -253,7 +253,7 @@ describe("zero-job-detail signals", () => {
         }),
       );
 
-      await setupPage({ context, path: "/", withoutRender: true });
+      detachedSetupPage({ context, path: "/", withoutRender: true });
       context.store.set(setActiveAgent$, "my-agent");
 
       const permissions = await context.store.get(zeroJobPermissionPolicies$);
@@ -556,7 +556,7 @@ describe("zero-job-detail signals", () => {
         }),
       );
 
-      await setupPage({ context, path: "/", withoutRender: true });
+      detachedSetupPage({ context, path: "/", withoutRender: true });
       context.store.set(setActiveAgent$, "my-agent");
       // Wait for data to load
       await context.store.get(zeroJobDetail$);
@@ -690,7 +690,7 @@ describe("zero-job-detail signals", () => {
         }),
       );
 
-      await setupPage({ context, path: "/", withoutRender: true });
+      detachedSetupPage({ context, path: "/", withoutRender: true });
       context.store.set(setActiveAgent$, "my-agent");
       await context.store.get(zeroJobDetail$);
     }
@@ -779,7 +779,7 @@ describe("zero-job-detail signals", () => {
         ),
       );
 
-      await setupPage({ context, path: "/", withoutRender: true });
+      detachedSetupPage({ context, path: "/", withoutRender: true });
       context.store.set(setActiveAgent$, "my-agent");
       await context.store.get(zeroJobDetail$);
     }

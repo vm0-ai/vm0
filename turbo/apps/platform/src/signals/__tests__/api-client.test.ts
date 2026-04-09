@@ -4,7 +4,7 @@ import { server } from "../../mocks/server.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { zeroOrgContract } from "@vm0/core";
 import { testContext } from "./test-helpers.ts";
-import { detachedSetupPage, setupPage } from "../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../__tests__/page-helper.ts";
 import { mockedClerk } from "../../__tests__/mock-auth.ts";
 
 const context = testContext();
@@ -37,7 +37,7 @@ describe("zeroClient$ 401 redirect", () => {
   });
 
   it("should not redirect on non-401 errors", async () => {
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/",
       withoutRender: true,

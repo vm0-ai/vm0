@@ -3,7 +3,7 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import {
-  setupPage,
+  detachedSetupPage,
   createPushStateMock,
 } from "../../../__tests__/page-helper.ts";
 import { mockLocation } from "../../location.ts";
@@ -75,7 +75,7 @@ function mockLogsEndpoint(
 describe("schedule-run-history signals", () => {
   describe("scheduleRunData$", () => {
     it("returns empty data when no scheduleId is set", async () => {
-      await setupPage({ context, path: "/", withoutRender: true });
+      detachedSetupPage({ context, path: "/", withoutRender: true });
 
       // Don't set scheduleId — buildFetchParams returns null
       const data = await context.store.get(scheduleRunData$);
@@ -85,7 +85,7 @@ describe("schedule-run-history signals", () => {
     });
 
     it("fetches logs with scheduleId param", async () => {
-      await setupPage({ context, path: "/", withoutRender: true });
+      detachedSetupPage({ context, path: "/", withoutRender: true });
 
       const captured = { urls: [] as string[] };
       mockLogsEndpoint(logsResponse(), captured);
@@ -105,7 +105,7 @@ describe("schedule-run-history signals", () => {
     });
 
     it("includes status filter in fetch params", async () => {
-      await setupPage({ context, path: "/", withoutRender: true });
+      detachedSetupPage({ context, path: "/", withoutRender: true });
       createPushStateMock(context.signal);
 
       const captured = { urls: [] as string[] };
@@ -141,7 +141,7 @@ describe("schedule-run-history signals", () => {
 
   describe("setScheduleRunStatusFilter$", () => {
     it("updates URL with runStatus param", async () => {
-      await setupPage({ context, path: "/", withoutRender: true });
+      detachedSetupPage({ context, path: "/", withoutRender: true });
       createPushStateMock(context.signal);
 
       mockLogsEndpoint(emptyLogsResponse());
@@ -152,7 +152,7 @@ describe("schedule-run-history signals", () => {
     });
 
     it("removes runStatus from URL when set to all", async () => {
-      await setupPage({ context, path: "/", withoutRender: true });
+      detachedSetupPage({ context, path: "/", withoutRender: true });
       createPushStateMock(context.signal);
 
       mockLogsEndpoint(emptyLogsResponse());
@@ -169,7 +169,7 @@ describe("schedule-run-history signals", () => {
 
   describe("pagination", () => {
     it("starts on page 1 with no previous page", async () => {
-      await setupPage({ context, path: "/", withoutRender: true });
+      detachedSetupPage({ context, path: "/", withoutRender: true });
 
       context.store.set(setScheduleRunHistoryScheduleId$, "sched-1");
       context.store.set(seedScheduleRunCursorHistory$);
@@ -179,7 +179,7 @@ describe("schedule-run-history signals", () => {
     });
 
     it("navigates to next page and back", async () => {
-      await setupPage({ context, path: "/", withoutRender: true });
+      detachedSetupPage({ context, path: "/", withoutRender: true });
       createPushStateMock(context.signal);
 
       context.store.set(setScheduleRunHistoryScheduleId$, "sched-1");
@@ -224,7 +224,7 @@ describe("schedule-run-history signals", () => {
     });
 
     it("setRowsPerPage resets pagination to page 1", async () => {
-      await setupPage({ context, path: "/", withoutRender: true });
+      detachedSetupPage({ context, path: "/", withoutRender: true });
       createPushStateMock(context.signal);
 
       context.store.set(setScheduleRunHistoryScheduleId$, "sched-1");
@@ -253,7 +253,7 @@ describe("schedule-run-history signals", () => {
 
   describe("scheduleRunAvailableStatuses$", () => {
     it("returns statuses from the server response", async () => {
-      await setupPage({ context, path: "/", withoutRender: true });
+      detachedSetupPage({ context, path: "/", withoutRender: true });
 
       mockLogsEndpoint(
         logsResponse({

@@ -5,7 +5,7 @@ import { http, HttpResponse } from "msw";
 import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { fill, setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import {
   mockChatLifecycle,
   sendMessageInUI,
@@ -65,7 +65,7 @@ describe("zero chat composer - textarea interaction", () => {
   it("updates textarea value to reflect typed text", async () => {
     mockChatLifecycle();
 
-    await setupPage({ context, path: CHAT_PATH });
+    detachedSetupPage({ context, path: CHAT_PATH });
 
     const textarea = await waitFor(() => {
       return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
@@ -94,13 +94,16 @@ describe("zero chat composer - file input", () => {
       }),
     );
 
-    await setupPage({ context, path: CHAT_PATH });
+    detachedSetupPage({ context, path: CHAT_PATH });
 
-    const fileInput = await waitFor(() => {
-      const el = document.querySelector<HTMLInputElement>('input[type="file"]');
-      expect(el).toBeInTheDocument();
-      return el as HTMLInputElement;
+    // Wait for the chat composer to be fully rendered
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
     });
+
+    const fileInput =
+      document.querySelector<HTMLInputElement>('input[type="file"]')!;
+    expect(fileInput).toBeInTheDocument();
 
     const file = new File(["content"], "test.png", { type: "image/png" });
     await user.upload(fileInput, file);
@@ -118,7 +121,7 @@ describe("zero chat composer - connectors popover", () => {
     mockChatLifecycle();
     mockConnectors();
 
-    await setupPage({ context, path: CHAT_PATH });
+    detachedSetupPage({ context, path: CHAT_PATH });
 
     const connectorsButton = await waitFor(() => {
       return screen.getByLabelText("Connectors");
@@ -171,7 +174,7 @@ describe("zero chat composer - connectors popover", () => {
       }),
     );
 
-    await setupPage({ context, path: CHAT_PATH });
+    detachedSetupPage({ context, path: CHAT_PATH });
 
     const connectorsButton = await waitFor(() => {
       return screen.getByLabelText("Connectors");
@@ -198,7 +201,7 @@ describe("zero chat composer - connectors popover", () => {
     const user = userEvent.setup();
     mockChatLifecycle();
 
-    await setupPage({ context, path: CHAT_PATH });
+    detachedSetupPage({ context, path: CHAT_PATH });
 
     const connectorsButton = await waitFor(() => {
       return screen.getByLabelText("Connectors");
@@ -226,7 +229,7 @@ describe("zero chat composer - send and stop actions", () => {
     const user = userEvent.setup();
     mockChatLifecycle();
 
-    await setupPage({ context, path: CHAT_PATH });
+    detachedSetupPage({ context, path: CHAT_PATH });
 
     const textarea = await waitFor(() => {
       return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
@@ -250,7 +253,7 @@ describe("zero chat composer - send and stop actions", () => {
     const user = userEvent.setup();
     const ctrl = mockChatLifecycle();
 
-    await setupPage({ context, path: CHAT_PATH });
+    detachedSetupPage({ context, path: CHAT_PATH });
 
     const textarea = await waitFor(() => {
       return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
@@ -277,7 +280,7 @@ describe("zero chat composer - send and stop actions", () => {
     const user = userEvent.setup();
     const ctrl = mockChatLifecycle();
 
-    await setupPage({ context, path: CHAT_PATH });
+    detachedSetupPage({ context, path: CHAT_PATH });
 
     // Initially: no Stop button, Send button is present
     await waitFor(() => {
@@ -312,7 +315,7 @@ describe("zero chat composer - add connectors dialog", () => {
     const user = userEvent.setup();
     mockChatLifecycle();
 
-    await setupPage({ context, path: CHAT_PATH });
+    detachedSetupPage({ context, path: CHAT_PATH });
 
     const connectorsButton = await waitFor(() => {
       return screen.getByLabelText("Connectors");
@@ -347,7 +350,7 @@ describe("zero chat composer - add connectors dialog", () => {
     const user = userEvent.setup();
     mockChatLifecycle();
 
-    await setupPage({ context, path: CHAT_PATH });
+    detachedSetupPage({ context, path: CHAT_PATH });
 
     const connectorsButton = await waitFor(() => {
       return screen.getByLabelText("Connectors");

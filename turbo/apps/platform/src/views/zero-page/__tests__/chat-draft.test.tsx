@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { fill, setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { detachedNavigateTo$ } from "../../../signals/route.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
 
@@ -38,7 +38,7 @@ function getTextarea(): HTMLTextAreaElement {
 describe("chat draft persistence across thread navigation", () => {
   it("should preserve input text when switching between threads", async () => {
     mockThreads();
-    await setupPage({ context, path: "/chats/thread-1" });
+    detachedSetupPage({ context, path: "/chats/thread-1" });
 
     await waitFor(() => {
       expect(getTextarea()).toBeInTheDocument();
@@ -82,7 +82,7 @@ describe("chat draft persistence across thread navigation", () => {
 
   it("should not leak thread draft into a different thread", async () => {
     mockThreads();
-    await setupPage({ context, path: "/chats/thread-a" });
+    detachedSetupPage({ context, path: "/chats/thread-a" });
 
     await waitFor(() => {
       expect(getTextarea()).toBeInTheDocument();
@@ -139,7 +139,7 @@ describe("chat draft persistence across thread navigation", () => {
       }),
     );
 
-    await setupPage({ context, path: "/chats/thread-1" });
+    detachedSetupPage({ context, path: "/chats/thread-1" });
 
     await waitFor(() => {
       expect(getTextarea()).toBeInTheDocument();

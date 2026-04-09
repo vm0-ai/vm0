@@ -7,7 +7,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import { createRoot } from "react-dom/client";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { ErrorBoundary } from "../../error-boundary.tsx";
 import { showAppSkeleton$ } from "../../../signals/app-skeleton.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
@@ -21,7 +21,7 @@ function ThrowError({ message }: { message: string }): never {
 
 describe("main - toaster", () => {
   it("toast notification container renders with top-center position (INFRA-D-001)", async () => {
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/select-org",
       org: { activeOrg: null, memberships: [{ id: "org_1" }] },
@@ -44,7 +44,7 @@ describe("main - toaster", () => {
 
 describe("router - page signal rendering", () => {
   it("dynamic page content renders from page$ signal (INFRA-D-002)", async () => {
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/select-org",
       org: { activeOrg: null, memberships: [{ id: "org_1" }] },
@@ -58,7 +58,7 @@ describe("router - page signal rendering", () => {
 
 describe("router - app skeleton", () => {
   it("appSkeleton shows when skeletonVisible is true (INFRA-D-003)", async () => {
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/select-org",
       org: { activeOrg: null, memberships: [{ id: "org_1" }] },
@@ -73,7 +73,7 @@ describe("router - app skeleton", () => {
   });
 
   it("appSkeleton hides once page loads (INFRA-D-004)", async () => {
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/select-org",
       org: { activeOrg: null, memberships: [{ id: "org_1" }] },
@@ -246,7 +246,7 @@ describe("error boundary", () => {
 
 describe("select org page", () => {
   it("organization list renders with Clerk component and correct props (INFRA-D-028)", async () => {
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/select-org",
       org: { activeOrg: null, memberships: [{ id: "org_1" }] },

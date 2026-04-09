@@ -1,13 +1,13 @@
 import { describe, it, expect } from "vitest";
 import { testContext } from "../../__tests__/test-helpers";
-import { setupPage } from "../../../__tests__/page-helper";
+import { detachedSetupPage } from "../../../__tests__/page-helper";
 import { localStorageSignals } from "../local-storage";
 
 const context = testContext();
 
 describe("local storage signal", () => {
   it("can read and write to local storage", async () => {
-    await setupPage({ context, path: "/", withoutRender: true });
+    detachedSetupPage({ context, path: "/", withoutRender: true });
 
     const { get$, set$, clear$ } = localStorageSignals("foo");
     expect(context.store.get(get$)).toBeNull();
@@ -20,7 +20,7 @@ describe("local storage signal", () => {
   });
 
   it("should clear after last test", async () => {
-    await setupPage({ context, path: "/", withoutRender: true });
+    detachedSetupPage({ context, path: "/", withoutRender: true });
 
     const { get$ } = localStorageSignals("foo");
     expect(context.store.get(get$)).toBeNull();

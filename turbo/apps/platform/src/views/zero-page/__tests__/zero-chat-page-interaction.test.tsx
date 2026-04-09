@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 
 const context = testContext();
 
@@ -40,7 +40,7 @@ describe("zero chat page - agent avatar link", () => {
   it("navigates to agent detail page when avatar link is clicked (CHAT-N-010)", async () => {
     const user = userEvent.setup();
     mockChatAPI();
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     const link = await waitFor(() => {
       return screen.getByLabelText("View agent profile");
@@ -59,7 +59,7 @@ describe("zero chat page - pin button", () => {
     const user = userEvent.setup();
     mockSubagentTeam();
     mockChatAPI();
-    await setupPage({ context, path: `/agents/${SUBAGENT_ID}/chat` });
+    detachedSetupPage({ context, path: `/agents/${SUBAGENT_ID}/chat` });
 
     const pinButton = await waitFor(() => {
       return screen.getByLabelText("Pin to sidebar");
@@ -92,7 +92,7 @@ describe("zero chat page - invite button", () => {
       }),
     );
     mockChatAPI();
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     const inviteButton = await waitFor(() => {
       return screen.getByTestId("invite-button");
@@ -115,7 +115,7 @@ describe("zero chat page - ideas navigation", () => {
     const user = userEvent.setup();
     mockSubagentTeam();
     mockChatAPI();
-    await setupPage({ context, path: `/agents/${SUBAGENT_ID}/chat` });
+    detachedSetupPage({ context, path: `/agents/${SUBAGENT_ID}/chat` });
 
     await waitFor(() => {
       expect(screen.getByText("Ideas & use cases")).toBeInTheDocument();

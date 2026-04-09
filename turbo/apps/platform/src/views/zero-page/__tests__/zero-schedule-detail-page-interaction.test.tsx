@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { fill, setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 
 const context = testContext();
 
@@ -114,7 +114,7 @@ async function openRunHistoryTab(user: ReturnType<typeof userEvent.setup>) {
 describe("zero schedule detail page - settings form inputs accept text (SCHED-D-020)", () => {
   it("should accept and display text typed into the description input", async () => {
     mockAPIs();
-    await setupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
+    detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
     await waitForPageLoad();
 
     const descriptionInput = screen.getByPlaceholderText(
@@ -153,7 +153,7 @@ describe("zero schedule detail page - toggle switch changes enabled state (SCHED
     );
 
     const user = userEvent.setup();
-    await setupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
+    detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
 
     await waitFor(() => {
       expect(
@@ -188,7 +188,7 @@ describe("zero schedule detail page - settings save button persists changes (SCH
       }),
     );
     const user = userEvent.setup();
-    await setupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
+    detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
     await waitForPageLoad();
 
     const descriptionInput = screen.getByPlaceholderText(
@@ -215,7 +215,7 @@ describe("zero schedule detail page - delete button opens confirmation dialog (S
   it("should open a confirmation dialog when delete schedule is clicked", async () => {
     mockAPIs();
     const user = userEvent.setup();
-    await setupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
+    detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
     await waitForPageLoad();
 
     await user.click(screen.getByText("Delete schedule"));
@@ -251,7 +251,7 @@ describe("zero schedule detail page - instruction save button saves instructions
       }),
     );
     const user = userEvent.setup();
-    await setupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
+    detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
     await waitForPageLoad();
 
     const instructionsTab = screen.getAllByRole("tab").find((el) => {
@@ -283,7 +283,7 @@ describe("zero schedule detail page - instruction discard button reverts changes
   it("should revert to original instructions when discard is clicked", async () => {
     mockAPIs();
     const user = userEvent.setup();
-    await setupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
+    detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
     await waitForPageLoad();
 
     const instructionsTab = screen.getAllByRole("tab").find((el) => {
@@ -318,7 +318,7 @@ describe("zero schedule detail page - pagination previous button works (SCHED-D-
     mockAPIs();
     mockLogsWithPagination();
     const user = userEvent.setup();
-    await setupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
+    detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
     await waitForPageLoad();
     await openRunHistoryTab(user);
 
@@ -339,7 +339,7 @@ describe("zero schedule detail page - pagination next button works (SCHED-D-027)
     mockAPIs();
     mockLogsWithPagination();
     const user = userEvent.setup();
-    await setupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
+    detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
     await waitForPageLoad();
     await openRunHistoryTab(user);
 
@@ -356,7 +356,7 @@ describe("zero schedule detail page - pagination forward 2 button works (SCHED-D
     mockAPIs();
     mockLogsWithPagination();
     const user = userEvent.setup();
-    await setupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
+    detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
     await waitForPageLoad();
     await openRunHistoryTab(user);
 
@@ -373,7 +373,7 @@ describe("zero schedule detail page - pagination back 2 button works (SCHED-D-02
     mockAPIs();
     mockLogsWithPagination();
     const user = userEvent.setup();
-    await setupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
+    detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
     await waitForPageLoad();
     await openRunHistoryTab(user);
 
@@ -409,7 +409,7 @@ describe("zero schedule detail page - rows per page select changes page size (SC
       }),
     );
     const user = userEvent.setup();
-    await setupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
+    detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
     await waitForPageLoad();
 
     await user.click(screen.getByText(/Run History/i));
@@ -454,7 +454,7 @@ describe("zero schedule detail page - status filter select filters runs (SCHED-D
       }),
     );
     const user = userEvent.setup();
-    await setupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
+    detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
     await waitForPageLoad();
 
     await user.click(screen.getByText(/Run History/i));
@@ -493,7 +493,7 @@ describe("zero schedule detail page - run now button triggers immediate run (SCH
       }),
     );
     const user = userEvent.setup();
-    await setupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
+    detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
     await waitForPageLoad();
 
     await user.click(screen.getByText(/Run now/i));
@@ -508,7 +508,7 @@ describe("zero schedule detail page - tab triggers switch between tabs (SCHED-D-
   it("should switch content when tab triggers are clicked", async () => {
     mockAPIs();
     const user = userEvent.setup();
-    await setupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
+    detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
     await waitForPageLoad();
 
     const instructionsTab = screen.getAllByRole("tab").find((el) => {

@@ -5,7 +5,7 @@ import { http, HttpResponse } from "msw";
 import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 
 const context = testContext();
@@ -111,7 +111,7 @@ describe("zero job detail page - interaction and state", () => {
   it("should switch tabs when tab trigger buttons are clicked (AGENT-D-027)", async () => {
     const user = userEvent.setup();
     mockAPIs();
-    await setupPage({ context, path: "/agents/my-agent" });
+    detachedSetupPage({ context, path: "/agents/my-agent" });
     await waitForPageLoad();
 
     // Switch to Scheduled tab
@@ -134,7 +134,7 @@ describe("zero job detail page - interaction and state", () => {
   it("should switch tabs via mobile select dropdown (AGENT-D-028)", async () => {
     const user = userEvent.setup();
     mockAPIs();
-    await setupPage({ context, path: "/agents/my-agent" });
+    detachedSetupPage({ context, path: "/agents/my-agent" });
     await waitForPageLoad();
 
     // The mobile Select has a combobox role
@@ -158,7 +158,7 @@ describe("zero job detail page - interaction and state", () => {
   it("should navigate to chat when chat button is clicked (AGENT-D-029)", async () => {
     const user = userEvent.setup();
     mockAPIs();
-    await setupPage({ context, path: "/agents/my-agent" });
+    detachedSetupPage({ context, path: "/agents/my-agent" });
     await waitForPageLoad();
 
     await user.click(screen.getByText("Chat with My Agent"));
@@ -179,7 +179,7 @@ describe("zero job detail page - interaction and state", () => {
         return HttpResponse.json({ enabledTypes: [] });
       }),
     );
-    await setupPage({ context, path: "/agents/my-agent" });
+    detachedSetupPage({ context, path: "/agents/my-agent" });
     await waitForPageLoad();
 
     // Wait for connectors to load
@@ -202,7 +202,7 @@ describe("zero job detail page - interaction and state", () => {
   it("should open permissions drawer when manage button is clicked (AGENT-D-031)", async () => {
     const user = userEvent.setup();
     mockAPIs();
-    await setupPage({ context, path: "/agents/my-agent" });
+    detachedSetupPage({ context, path: "/agents/my-agent" });
     await waitForPageLoad();
 
     // Wait for connectors to load
@@ -225,7 +225,7 @@ describe("zero job detail page - interaction and state", () => {
   it("should filter connector list when searching (AGENT-D-032)", async () => {
     const user = userEvent.setup();
     mockAPIs();
-    await setupPage({ context, path: "/agents/my-agent" });
+    detachedSetupPage({ context, path: "/agents/my-agent" });
     await waitForPageLoad();
 
     // Wait for both connectors to be visible
@@ -251,7 +251,7 @@ describe("zero job detail page - interaction and state", () => {
   it("should reset filter when search close button is clicked (AGENT-D-033)", async () => {
     const user = userEvent.setup();
     mockAPIs();
-    await setupPage({ context, path: "/agents/my-agent" });
+    detachedSetupPage({ context, path: "/agents/my-agent" });
     await waitForPageLoad();
 
     // Wait for connectors
@@ -282,7 +282,7 @@ describe("zero job detail page - interaction and state", () => {
   it("should open delete confirmation dialog (AGENT-D-034)", async () => {
     const user = userEvent.setup();
     mockAPIs();
-    await setupPage({ context, path: "/agents/my-agent" });
+    detachedSetupPage({ context, path: "/agents/my-agent" });
     await waitForPageLoad();
 
     // Switch to Profile tab
@@ -316,7 +316,7 @@ describe("zero job detail page - interaction and state", () => {
         return HttpResponse.json({ enabledTypes: [] });
       }),
     );
-    await setupPage({ context, path: "/agents/my-agent" });
+    detachedSetupPage({ context, path: "/agents/my-agent" });
     await waitForPageLoad();
 
     // Wait for connectors to load

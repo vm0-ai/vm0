@@ -8,14 +8,14 @@
 
 import { describe, it, expect } from "vitest";
 import { testContext } from "./test-helpers.ts";
-import { setupPage } from "../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../__tests__/page-helper.ts";
 import { detach, Reason } from "../utils.ts";
 import { pollUserInvitations$ } from "../user-invitations.ts";
 
 const context = testContext();
 
 async function setup() {
-  await setupPage({
+  detachedSetupPage({
     context,
     path: "/",
     withoutRender: true,

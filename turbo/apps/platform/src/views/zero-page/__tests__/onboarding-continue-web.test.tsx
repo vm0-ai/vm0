@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { fill, setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 
 const context = testContext();
@@ -119,7 +119,7 @@ describe("onboarding continue in web → agent chat page", () => {
     const user = userEvent.setup();
     mockAdminOnboarding();
 
-    await setupPage({ context, path: "/onboarding" });
+    detachedSetupPage({ context, path: "/onboarding" });
     await walkAdminToWhereStep(user);
 
     switchToAdminComplete();
@@ -135,7 +135,7 @@ describe("onboarding continue in web → agent chat page", () => {
     const user = userEvent.setup();
     mockMemberOnboarding();
 
-    await setupPage({ context, path: "/onboarding" });
+    detachedSetupPage({ context, path: "/onboarding" });
 
     // Member with no connectors skips directly to step 4
     await waitFor(() => {
@@ -163,7 +163,7 @@ describe("onboarding add to Slack → works page", () => {
     const user = userEvent.setup();
     mockAdminOnboarding();
 
-    await setupPage({ context, path: "/onboarding" });
+    detachedSetupPage({ context, path: "/onboarding" });
     await walkAdminToWhereStep(user);
 
     switchToAdminComplete();
@@ -179,7 +179,7 @@ describe("onboarding add to Slack → works page", () => {
     const user = userEvent.setup();
     mockMemberOnboarding();
 
-    await setupPage({ context, path: "/onboarding" });
+    detachedSetupPage({ context, path: "/onboarding" });
 
     // Member with no connectors skips directly to step 4
     await waitFor(() => {

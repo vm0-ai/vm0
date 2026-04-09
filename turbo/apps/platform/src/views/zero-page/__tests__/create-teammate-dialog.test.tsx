@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { fill, setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 
 const context = testContext();
 
@@ -39,7 +39,7 @@ function mockTeamWithSubagent() {
 }
 
 async function openCreateDialog(user: ReturnType<typeof userEvent.setup>) {
-  await setupPage({ context, path: "/agents" });
+  detachedSetupPage({ context, path: "/agents" });
 
   await waitFor(() => {
     expect(screen.getByText("Research Agent")).toBeInTheDocument();

@@ -3,7 +3,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { navigate$ } from "../../../signals/route.ts";
 
 const context = testContext();
@@ -49,7 +49,7 @@ function getAgentsNavLink(): HTMLElement {
 describe("sidebar Agents tab highlight", () => {
   it("should highlight Agents tab on /agents list page", async () => {
     mockAgentAPIs();
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     await waitFor(() => {
       expect(getAgentsNavLink()).toBeInTheDocument();
@@ -65,7 +65,7 @@ describe("sidebar Agents tab highlight", () => {
 
   it("should not highlight Agents tab on /agents/:id/chat", async () => {
     mockAgentAPIs();
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     await waitFor(() => {
       expect(getAgentsNavLink()).toBeInTheDocument();
@@ -86,7 +86,7 @@ describe("sidebar Agents tab highlight", () => {
 
   it("should not highlight Agents tab on /agents/:id/ideas", async () => {
     mockAgentAPIs();
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     await waitFor(() => {
       expect(getAgentsNavLink()).toBeInTheDocument();

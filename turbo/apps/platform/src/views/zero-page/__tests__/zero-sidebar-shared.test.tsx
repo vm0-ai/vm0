@@ -17,7 +17,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 
@@ -72,7 +72,7 @@ describe("agent avatar renders from database (SIDEBAR-D-042)", () => {
       },
     ]);
 
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     await waitFor(() => {
       const sidebar = getSidebar();
@@ -93,7 +93,7 @@ describe("agent avatar shows fallback when no image (SIDEBAR-D-043)", () => {
       },
     ]);
 
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     await waitFor(() => {
       const sidebar = getSidebar();
@@ -117,7 +117,7 @@ describe("agent avatar renders SVG for preset value (SIDEBAR-D-045)", () => {
       },
     ]);
 
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     await waitFor(() => {
       const sidebar = getSidebar();
@@ -141,7 +141,7 @@ describe("agent avatar renders SVG for custom svg: value (SIDEBAR-D-046)", () =>
       },
     ]);
 
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     await waitFor(() => {
       const sidebar = getSidebar();
@@ -184,9 +184,14 @@ describe("avatar loading state shows no image initially (SIDEBAR-D-044)", () => 
       }),
     );
 
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     // While team API is still pending, no avatar img should be rendered
+    await waitFor(() => {
+      expect(
+        screen.getByRole("navigation", { name: "Sidebar" }),
+      ).toBeInTheDocument();
+    });
     const sidebar = getSidebar();
     expect(within(sidebar).queryAllByRole("img")).toHaveLength(0);
 
@@ -195,7 +200,7 @@ describe("avatar loading state shows no image initially (SIDEBAR-D-044)", () => 
     // After team data resolves, the fallback avatar img appears
     await waitFor(() => {
       expect(
-        within(sidebar).getByRole("img", { name: "Loading Agent" }),
+        within(getSidebar()).getByRole("img", { name: "Loading Agent" }),
       ).toBeInTheDocument();
     });
   });

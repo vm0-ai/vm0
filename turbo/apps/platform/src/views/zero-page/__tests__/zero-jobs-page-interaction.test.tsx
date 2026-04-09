@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { fill, setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 
 const context = testContext();
@@ -54,7 +54,7 @@ describe("zero jobs page - create agent dialog", () => {
   it("opens the dialog when create agent button is clicked (AGENT-D-008)", async () => {
     const user = userEvent.setup();
     mockTeamAPI();
-    await setupPage({ context, path: "/agents" });
+    detachedSetupPage({ context, path: "/agents" });
 
     await waitFor(() => {
       expect(screen.getByText("New agent")).toBeInTheDocument();
@@ -118,7 +118,7 @@ describe("zero jobs page - create agent dialog", () => {
       }),
     );
 
-    await setupPage({ context, path: "/agents" });
+    detachedSetupPage({ context, path: "/agents" });
     await openDialog(user);
 
     const input = screen.getByPlaceholderText("e.g. Research Assistant");
@@ -134,7 +134,7 @@ describe("zero jobs page - create agent dialog", () => {
   it("closes the dialog when cancel is clicked (AGENT-D-015)", async () => {
     const user = userEvent.setup();
     mockTeamAPI();
-    await setupPage({ context, path: "/agents" });
+    detachedSetupPage({ context, path: "/agents" });
 
     await openDialog(user);
 
@@ -167,7 +167,7 @@ describe("zero jobs page - avatar display", () => {
         return HttpResponse.json({ threads: [] });
       }),
     );
-    await setupPage({ context, path: "/agents" });
+    detachedSetupPage({ context, path: "/agents" });
 
     // Agent with SVG avatar should render an avatar image
     await waitFor(() => {
@@ -196,7 +196,7 @@ describe("zero jobs page - avatar display", () => {
         return HttpResponse.json({ threads: [] });
       }),
     );
-    await setupPage({ context, path: "/agents" });
+    detachedSetupPage({ context, path: "/agents" });
 
     // Even without an avatar URL, a fallback SVG avatar should render
     await waitFor(() => {
@@ -228,7 +228,7 @@ describe("zero jobs page - navigation", () => {
         return HttpResponse.json({ threads: [] });
       }),
     );
-    await setupPage({ context, path: "/agents" });
+    detachedSetupPage({ context, path: "/agents" });
 
     const card = await waitFor(() => {
       return screen.getByText("Nav Agent");

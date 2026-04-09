@@ -12,7 +12,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import {
   setMockSlackConnectData,
   resetMockSlackConnect,
@@ -32,7 +32,7 @@ afterEach(() => {
 // CONN-D-050: Status indicator is displayed
 describe("zero-slack-connect-page - connection status indicator (CONN-D-050)", () => {
   it("shows a connection failed indicator when error param is present", async () => {
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/settings/slack?error=Something+went+wrong",
     });
@@ -49,7 +49,7 @@ describe("zero-slack-connect-page - connection status indicator (CONN-D-050)", (
 describe("zero-slack-connect-page - status icon (CONN-D-051)", () => {
   it("shows success heading when connected", async () => {
     setMockSlackConnectData({ isConnected: true });
-    await setupPage({ context, path: "/settings/slack?w=ws1&u=u1" });
+    detachedSetupPage({ context, path: "/settings/slack?w=ws1&u=u1" });
 
     await waitFor(() => {
       // Success state: IconCircleCheck rendered, heading "Connected to Slack!" present
@@ -63,7 +63,7 @@ describe("zero-slack-connect-page - status icon (CONN-D-051)", () => {
 // CONN-D-052: Status message is shown
 describe("zero-slack-connect-page - status message (CONN-D-052)", () => {
   it("shows a descriptive message for the current connection state", async () => {
-    await setupPage({ context, path: "/settings/slack?w=ws1&u=u1" });
+    detachedSetupPage({ context, path: "/settings/slack?w=ws1&u=u1" });
 
     await waitFor(() => {
       // Idle state (after checking): shows connect confirmation message
@@ -77,7 +77,7 @@ describe("zero-slack-connect-page - status message (CONN-D-052)", () => {
 // CONN-D-053: Workspace name on success
 describe("zero-slack-connect-page - workspace name on success (CONN-D-053)", () => {
   it("displays the connected workspace name when status=connected and workspace param is set", async () => {
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/settings/slack?status=connected&workspace=My+Team",
     });
@@ -93,7 +93,7 @@ describe("zero-slack-connect-page - workspace name on success (CONN-D-053)", () 
 // CONN-D-054: Error message on failure
 describe("zero-slack-connect-page - error message on failure (CONN-D-054)", () => {
   it("displays the error message from the error URL param", async () => {
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/settings/slack?error=Account+already+linked",
     });
@@ -107,7 +107,7 @@ describe("zero-slack-connect-page - error message on failure (CONN-D-054)", () =
 // CONN-N-055: Back to settings navigation
 describe("zero-slack-connect-page - back to settings link (CONN-N-055)", () => {
   it("back link navigates to /works", async () => {
-    await setupPage({ context, path: "/settings/slack?w=ws1&u=u1" });
+    detachedSetupPage({ context, path: "/settings/slack?w=ws1&u=u1" });
 
     await waitFor(() => {
       const link = screen.getAllByRole("link").find((el) => {
@@ -139,15 +139,18 @@ describe("zero-slack-connect-page - connect button (CONN-I-056)", () => {
       ),
     );
 
-    await setupPage({ context, path: "/settings/slack?w=ws1&u=u1" });
+    detachedSetupPage({ context, path: "/settings/slack?w=ws1&u=u1" });
 
-    const connectButton = await waitFor(() => {
-      const btn = screen.getAllByRole("button").find((el) => {
-        return /^Connect$/i.test(el.textContent ?? "");
-      });
-      expect(btn).toBeDefined();
-      return btn!;
+    // Wait for the idle connect state (init checking has completed)
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Link your account to this Slack workspace/i),
+      ).toBeInTheDocument();
     });
+
+    const connectButton = screen.getAllByRole("button").find((el) => {
+      return /^Connect$/i.test(el.textContent ?? "");
+    })!;
 
     await user.click(connectButton);
 
@@ -166,7 +169,7 @@ describe("zero-slack-connect-page - open slack button on success (CONN-I-057)", 
     const user = userEvent.setup();
     // Use isConnected: true via mock API to get success state without URL-triggered redirect
     setMockSlackConnectData({ isConnected: true });
-    await setupPage({ context, path: "/settings/slack?w=ws1&u=u1" });
+    detachedSetupPage({ context, path: "/settings/slack?w=ws1&u=u1" });
 
     const openSlackBtn = await waitFor(() => {
       const btn = screen.getAllByRole("button").find((el) => {

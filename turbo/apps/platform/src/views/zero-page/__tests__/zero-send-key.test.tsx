@@ -5,7 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { fill, setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 
 const context = testContext();
 
@@ -58,7 +58,7 @@ function mockSendMode(mode: "enter" | "cmd-enter") {
 async function renderChatPage(sendMode: "enter" | "cmd-enter" = "enter") {
   const api = mockChatAPI();
   mockSendMode(sendMode);
-  await setupPage({ context, path: "/" });
+  detachedSetupPage({ context, path: "/" });
   return api;
 }
 

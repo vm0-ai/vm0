@@ -5,7 +5,7 @@ import { mockLocation } from "../../../location.ts";
 import { testContext } from "../../../__tests__/test-helpers.ts";
 import {
   createPushStateMock,
-  setupPage,
+  detachedSetupPage,
 } from "../../../../__tests__/page-helper.ts";
 import { mockUser, clearMockedAuth } from "../../../../__tests__/mock-auth.ts";
 import {
@@ -142,7 +142,7 @@ describe("checkSettingsParam$", () => {
 
 describe("inviteMember$", () => {
   it("should throw ApiError with API message on invite failure", async () => {
-    await setupPage({ context, path: "/", withoutRender: true });
+    detachedSetupPage({ context, path: "/", withoutRender: true });
 
     server.use(
       http.post("*/api/zero/org/invite", () => {

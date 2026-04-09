@@ -6,7 +6,7 @@ import userEvent, {
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { fill, setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 
 const context = testContext();
@@ -85,7 +85,7 @@ function mockCreateModeAPIs() {
 
 async function openCreateDialog(user: ReturnType<typeof userEvent.setup>) {
   mockCreateModeAPIs();
-  await setupPage({ context, path: "/schedules" });
+  detachedSetupPage({ context, path: "/schedules" });
   await waitFor(() => {
     expect(screen.getByText(/Add schedule/i)).not.toBeDisabled();
   });
@@ -140,7 +140,7 @@ function mockEditModeAPIs() {
 async function openEditDialog(user: ReturnType<typeof userEvent.setup>) {
   mockEditModeAPIs();
   // Navigate with ?tab=schedule so resetActiveTab$ picks up the schedule tab from the URL.
-  await setupPage({ context, path: "/agents/my-agent?tab=schedule" });
+  detachedSetupPage({ context, path: "/agents/my-agent?tab=schedule" });
   await waitFor(() => {
     expect(
       screen.getAllByLabelText("More actions for Every weekday at 9:00 AM")[0],

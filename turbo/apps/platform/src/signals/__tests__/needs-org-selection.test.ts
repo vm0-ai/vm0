@@ -1,13 +1,13 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { testContext } from "./test-helpers.ts";
-import { setupPage } from "../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../__tests__/page-helper.ts";
 import { pathname$ } from "../route.ts";
 
 const context = testContext();
 
 describe("org selection after auth", () => {
   it("redirects to /select-org when user has multiple orgs and no active org", async () => {
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/",
       org: {
@@ -17,11 +17,13 @@ describe("org selection after auth", () => {
       withoutRender: true,
     });
 
-    expect(context.store.get(pathname$)).toBe("/select-org");
+    await vi.waitFor(() => {
+      expect(context.store.get(pathname$)).toBe("/select-org");
+    });
   });
 
   it("redirects to /select-org when user has pending invitations and no active org", async () => {
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/",
       org: {
@@ -31,11 +33,13 @@ describe("org selection after auth", () => {
       withoutRender: true,
     });
 
-    expect(context.store.get(pathname$)).toBe("/select-org");
+    await vi.waitFor(() => {
+      expect(context.store.get(pathname$)).toBe("/select-org");
+    });
   });
 
   it("redirects to /select-org when user has single org but no active org", async () => {
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/",
       org: {
@@ -45,11 +49,13 @@ describe("org selection after auth", () => {
       withoutRender: true,
     });
 
-    expect(context.store.get(pathname$)).toBe("/select-org");
+    await vi.waitFor(() => {
+      expect(context.store.get(pathname$)).toBe("/select-org");
+    });
   });
 
   it("does not redirect when active org is already set", async () => {
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/",
       org: {
@@ -64,7 +70,7 @@ describe("org selection after auth", () => {
   });
 
   it("does not redirect when already on /select-org", async () => {
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/select-org",
       org: {
@@ -79,7 +85,7 @@ describe("org selection after auth", () => {
   });
 
   it("redirects to /select-org when user has no orgs", async () => {
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/",
       org: {
@@ -89,6 +95,8 @@ describe("org selection after auth", () => {
       withoutRender: true,
     });
 
-    expect(context.store.get(pathname$)).toBe("/select-org");
+    await vi.waitFor(() => {
+      expect(context.store.get(pathname$)).toBe("/select-org");
+    });
   });
 });

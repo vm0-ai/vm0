@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { cancelQueueRun$ } from "../queue-signals.ts";
 
 const context = testContext();
@@ -43,7 +43,7 @@ describe("cancelQueueRun$", () => {
       }),
     );
 
-    await setupPage({ context, path: "/", withoutRender: true });
+    detachedSetupPage({ context, path: "/", withoutRender: true });
 
     await context.store.set(cancelQueueRun$, "run-1", context.signal);
 
@@ -63,7 +63,7 @@ describe("cancelQueueRun$", () => {
       }),
     );
 
-    await setupPage({ context, path: "/", withoutRender: true });
+    detachedSetupPage({ context, path: "/", withoutRender: true });
 
     await expect(
       context.store.set(cancelQueueRun$, "run-1", context.signal),

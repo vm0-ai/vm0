@@ -12,7 +12,10 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  setupPage,
+} from "../../../__tests__/page-helper.ts";
 import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
 
 const context = testContext();
@@ -59,7 +62,7 @@ function mockUserConnectors(agentId: string, enabledTypes: string[] = []) {
 
 describe("directed connect page", () => {
   it("renders connect card for an oauth connector", async () => {
-    await setupPage({ context, path: "/connectors/gmail/connect" });
+    detachedSetupPage({ context, path: "/connectors/gmail/connect" });
 
     await waitFor(() => {
       expect(
@@ -75,7 +78,7 @@ describe("directed connect page", () => {
   it("shows connected state when connector is already connected", async () => {
     mockConnectors([{ type: "github" }]);
 
-    await setupPage({ context, path: "/connectors/github/connect" });
+    detachedSetupPage({ context, path: "/connectors/github/connect" });
 
     await waitFor(() => {
       expect(screen.getByText("GitHub connected")).toBeInTheDocument();
@@ -85,7 +88,7 @@ describe("directed connect page", () => {
   });
 
   it("normalizes uppercase type in URL to match connector key", async () => {
-    await setupPage({ context, path: "/connectors/Gmail/connect" });
+    detachedSetupPage({ context, path: "/connectors/Gmail/connect" });
 
     await waitFor(() => {
       expect(
@@ -95,7 +98,7 @@ describe("directed connect page", () => {
   });
 
   it("renders nothing for an unknown connector type", async () => {
-    await setupPage({ context, path: "/connectors/nonexistent/connect" });
+    detachedSetupPage({ context, path: "/connectors/nonexistent/connect" });
 
     // The card should not render — no heading, no button
     await waitFor(() => {
@@ -124,7 +127,7 @@ describe("directed connect page", () => {
 
     const config = CONNECTOR_TYPES[apiTokenOnlyType];
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: `/connectors/${apiTokenOnlyType}/connect`,
     });
@@ -146,7 +149,7 @@ describe("directed connect page", () => {
   });
 
   it("has a logo link that navigates to /connectors", async () => {
-    await setupPage({ context, path: "/connectors/gmail/connect" });
+    detachedSetupPage({ context, path: "/connectors/gmail/connect" });
 
     await waitFor(() => {
       expect(
@@ -170,7 +173,7 @@ describe("directed connect page", () => {
       }),
     );
 
-    await setupPage({ context, path: "/connectors/axiom/connect" });
+    detachedSetupPage({ context, path: "/connectors/axiom/connect" });
 
     await waitFor(() => {
       expect(
@@ -208,7 +211,7 @@ describe("directed connect page", () => {
       .spyOn(window, "open")
       .mockReturnValue({ closed: true } as Window);
 
-    await setupPage({ context, path: "/connectors/gmail/connect" });
+    detachedSetupPage({ context, path: "/connectors/gmail/connect" });
 
     await waitFor(() => {
       expect(
@@ -255,7 +258,7 @@ describe("directed connect page", () => {
       }),
     );
 
-    await setupPage({ context, path: "/connectors/axiom/connect" });
+    detachedSetupPage({ context, path: "/connectors/axiom/connect" });
 
     await waitFor(() => {
       expect(
@@ -317,7 +320,7 @@ describe("directed connect page", () => {
       }),
     );
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: `/connectors/axiom/connect?agentId=${AGENT_ID}`,
     });
@@ -379,7 +382,7 @@ describe("directed connect page", () => {
       }),
     );
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/connectors/axiom/connect",
     });

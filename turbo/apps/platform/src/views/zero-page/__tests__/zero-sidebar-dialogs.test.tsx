@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import {
@@ -117,7 +117,7 @@ describe("chatListDialog", () => {
   it("should navigate to chat when clicking a pinned agent", async () => {
     const user = userEvent.setup();
     mockAPIsWithSubagents();
-    await setupPage({ context, path: "/agents" });
+    detachedSetupPage({ context, path: "/agents" });
 
     await openChatListDialog(user);
 
@@ -143,7 +143,7 @@ describe("chatListDialog", () => {
   it("should navigate to chat when clicking an unpinned agent", async () => {
     const user = userEvent.setup();
     mockAPIsWithSubagents();
-    await setupPage({ context, path: "/agents" });
+    detachedSetupPage({ context, path: "/agents" });
 
     await openChatListDialog(user);
 
@@ -169,7 +169,7 @@ describe("chatListDialog", () => {
   it("should render unpinned agent avatars without reduced opacity", async () => {
     const user = userEvent.setup();
     mockAPIsWithSubagents();
-    await setupPage({ context, path: "/agents" });
+    detachedSetupPage({ context, path: "/agents" });
 
     await openChatListDialog(user);
 
@@ -189,7 +189,7 @@ describe("chatListDialog", () => {
   it("should navigate to chat when clicking the lead agent", async () => {
     const user = userEvent.setup();
     mockAPIsWithSubagents();
-    await setupPage({ context, path: "/agents" });
+    detachedSetupPage({ context, path: "/agents" });
 
     await openChatListDialog(user);
 
@@ -211,7 +211,7 @@ describe("chatListDialog", () => {
 describe("managePinnedAgentsDialog - pinned agents list renders (SIDEBAR-D-026)", () => {
   it("displays the pinned agent name in the dialog", async () => {
     mockAPIsWithSubagents();
-    await setupPage({ context, path: "/agents" });
+    detachedSetupPage({ context, path: "/agents" });
     openManagePinnedDialog();
 
     const dialog = await waitFor(() => {
@@ -226,7 +226,7 @@ describe("managePinnedAgentsDialog - pinned agents list renders (SIDEBAR-D-026)"
 describe("managePinnedAgentsDialog - available agents list renders (SIDEBAR-D-027)", () => {
   it("shows unpinned agents in the Available agents section", async () => {
     mockAPIsWithSubagents();
-    await setupPage({ context, path: "/agents" });
+    detachedSetupPage({ context, path: "/agents" });
     // Only pin one agent; the other appears in available
     context.store.set(setDraftPinnedIds$, ["pinned-agent-id"]);
     context.store.set(setManagePinnedDialogOpen$, true);
@@ -244,7 +244,7 @@ describe("managePinnedAgentsDialog - available agents list renders (SIDEBAR-D-02
 describe("managePinnedAgentsDialog - lead agent displays distinctly (SIDEBAR-D-028)", () => {
   it("shows the Lead badge for the zero agent", async () => {
     mockAPIsWithSubagents();
-    await setupPage({ context, path: "/agents" });
+    detachedSetupPage({ context, path: "/agents" });
     openManagePinnedDialog();
 
     const dialog = await waitFor(() => {
@@ -260,7 +260,7 @@ describe("chatListDialog - agent search results filter (SIDEBAR-D-029)", () => {
   it("filters agent list to matching results when search term is typed", async () => {
     const user = userEvent.setup();
     mockAPIsWithSubagents();
-    await setupPage({ context, path: "/agents" });
+    detachedSetupPage({ context, path: "/agents" });
     await openChatListDialog(user);
 
     const dialog = screen.getByRole("dialog");
@@ -280,7 +280,7 @@ describe("chatListDialog - agent search results filter (SIDEBAR-D-029)", () => {
 describe("managePinnedAgentsDialog - dialog title and description render (SIDEBAR-D-030)", () => {
   it("shows the dialog title and description text", async () => {
     mockAPIsWithSubagents();
-    await setupPage({ context, path: "/agents" });
+    detachedSetupPage({ context, path: "/agents" });
     openManagePinnedDialog();
 
     const dialog = await waitFor(() => {
@@ -300,7 +300,7 @@ describe("managePinnedAgentsDialog - dialog title and description render (SIDEBA
 describe("managePinnedAgentsDialog - pin status visual feedback displays (SIDEBAR-D-032)", () => {
   it("shows distinct unpin and pin buttons for pinned and available agents", async () => {
     mockAPIsWithSubagents();
-    await setupPage({ context, path: "/agents" });
+    detachedSetupPage({ context, path: "/agents" });
     openManagePinnedDialog();
 
     const dialog = await waitFor(() => {
@@ -324,7 +324,7 @@ describe("managePinnedAgentsDialog - drag-and-drop reorders pinned agents (SIDEB
     mockAPIsWithSubagents({
       pinnedAgentIds: ["pinned-agent-id", "unpinned-agent-id"],
     });
-    await setupPage({ context, path: "/agents" });
+    detachedSetupPage({ context, path: "/agents" });
 
     // Seed draft with both agents pinned
     context.store.set(setDraftPinnedIds$, [
@@ -366,7 +366,7 @@ describe("managePinnedAgentsDialog - unpin button removes agent from pinned (SID
   it("moves the agent from pinned to available when unpin is clicked", async () => {
     const user = userEvent.setup();
     mockAPIsWithSubagents();
-    await setupPage({ context, path: "/agents" });
+    detachedSetupPage({ context, path: "/agents" });
     openManagePinnedDialog();
 
     const dialog = await waitFor(() => {
@@ -395,7 +395,7 @@ describe("managePinnedAgentsDialog - pin button adds agent to pinned (SIDEBAR-D-
   it("moves the agent from available to pinned when pin is clicked", async () => {
     const user = userEvent.setup();
     mockAPIsWithSubagents();
-    await setupPage({ context, path: "/agents" });
+    detachedSetupPage({ context, path: "/agents" });
     // Start with no agents pinned
     context.store.set(setDraftPinnedIds$, []);
     context.store.set(setManagePinnedDialogOpen$, true);
@@ -427,7 +427,7 @@ describe("chatListDialog - agent list item opens chat on click (SIDEBAR-D-036)",
   it("opens a chat session when a pinned agent is clicked in the dialog", async () => {
     const user = userEvent.setup();
     mockAPIsWithSubagents();
-    await setupPage({ context, path: "/agents" });
+    detachedSetupPage({ context, path: "/agents" });
     await openChatListDialog(user);
 
     await waitFor(() => {
@@ -451,7 +451,7 @@ describe("chatListDialog - search input accepts text (SIDEBAR-D-037)", () => {
   it("accepts text typed into the search input", async () => {
     const user = userEvent.setup();
     mockAPIsWithSubagents();
-    await setupPage({ context, path: "/agents" });
+    detachedSetupPage({ context, path: "/agents" });
     await openChatListDialog(user);
 
     const dialog = screen.getByRole("dialog");
@@ -466,7 +466,7 @@ describe("chatListDialog - clear search button resets dialog search (SIDEBAR-D-0
   it("clears the search field and restores the full agent list", async () => {
     const user = userEvent.setup();
     mockAPIsWithSubagents();
-    await setupPage({ context, path: "/agents" });
+    detachedSetupPage({ context, path: "/agents" });
     await openChatListDialog(user);
 
     const dialog = screen.getByRole("dialog");
@@ -494,7 +494,7 @@ describe("managePinnedAgentsDialog - save button persists changes (SIDEBAR-D-039
   it("saves the new pinned order and closes the dialog when Save is clicked", async () => {
     const user = userEvent.setup();
     mockAPIsWithSubagents();
-    await setupPage({ context, path: "/agents" });
+    detachedSetupPage({ context, path: "/agents" });
     openManagePinnedDialog();
 
     const dialog = await waitFor(() => {
@@ -513,7 +513,7 @@ describe("managePinnedAgentsDialog - cancel button discards changes (SIDEBAR-D-0
   it("closes the dialog without saving when Cancel is clicked", async () => {
     const user = userEvent.setup();
     mockAPIsWithSubagents();
-    await setupPage({ context, path: "/agents" });
+    detachedSetupPage({ context, path: "/agents" });
     openManagePinnedDialog();
 
     const dialog = await waitFor(() => {
@@ -531,7 +531,7 @@ describe("managePinnedAgentsDialog - cancel button discards changes (SIDEBAR-D-0
 describe("managePinnedAgentsDialog - reorder handle is present (SIDEBAR-D-041)", () => {
   it("shows a drag handle button for each pinned agent", async () => {
     mockAPIsWithSubagents();
-    await setupPage({ context, path: "/agents" });
+    detachedSetupPage({ context, path: "/agents" });
     openManagePinnedDialog();
 
     const dialog = await waitFor(() => {
@@ -566,7 +566,7 @@ describe("chatListDialog - pin buttons disabled during save (SIDEBAR-D-042)", ()
       }),
     );
 
-    await setupPage({ context, path: "/agents" });
+    detachedSetupPage({ context, path: "/agents" });
     await openChatListDialog(user);
 
     const dialog = screen.getByRole("dialog");

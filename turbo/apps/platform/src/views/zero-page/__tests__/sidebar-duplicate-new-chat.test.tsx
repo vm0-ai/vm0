@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 
 const context = testContext();
@@ -110,7 +110,7 @@ describe("sidebar duplicate new chat (#7368)", () => {
     const user = userEvent.setup();
     const { getCreateCount, getThreads } = mockAPIs();
 
-    await setupPage({ context, path: "/agents" });
+    detachedSetupPage({ context, path: "/agents" });
 
     // --- First: click "Open a conversation" and select Zero ---
     await openConversationAndSelectZero(user);

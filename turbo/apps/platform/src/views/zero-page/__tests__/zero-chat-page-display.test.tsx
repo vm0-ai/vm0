@@ -3,7 +3,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { getCategories } from "../zero-ideation-data.ts";
 
 const context = testContext();
@@ -20,7 +20,7 @@ function mockChatAPI() {
 describe("zero chat page display - tagline with userName via TypewriterText", () => {
   it("renders a tagline containing the user first name via TypewriterText animation", async () => {
     mockChatAPI();
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/",
       user: {
@@ -43,7 +43,7 @@ describe("zero chat page display - suggested prompt connector icons", () => {
     });
 
     mockChatAPI();
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     const exploreText = await waitFor(() => {
       return screen.getByText(/Ideas & use cases/);

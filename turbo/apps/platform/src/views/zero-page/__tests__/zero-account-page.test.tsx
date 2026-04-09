@@ -9,7 +9,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import type { UserPreferencesResponse } from "@vm0/core";
 
 const context = testContext();
@@ -29,7 +29,7 @@ function mockPreferencesAPI(
 }
 
 async function renderPreferencesPage() {
-  await setupPage({ context, path: "/settings" });
+  detachedSetupPage({ context, path: "/settings" });
 }
 
 function makeDeferred() {

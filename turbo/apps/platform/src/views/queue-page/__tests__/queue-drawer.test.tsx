@@ -69,7 +69,7 @@ function queueResponse(overrides?: {
 
 async function openDrawer() {
   mockHomeAPIs();
-  await setupPage({ context, path: "/" });
+  detachedSetupPage({ context, path: "/" });
   context.store.set(openQueueDrawer$);
 }
 

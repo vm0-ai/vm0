@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { fill, setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
 import { pathname } from "../../../signals/location.ts";
 
@@ -94,7 +94,7 @@ describe("onboarding → chat page (no auto-intro)", () => {
     const user = userEvent.setup();
     mockAdminOnboarding();
 
-    await setupPage({ context, path: "/onboarding" });
+    detachedSetupPage({ context, path: "/onboarding" });
     await walkToWhereStep(user, false);
 
     // Switch onboarding status so post-navigate route doesn't redirect back
@@ -133,7 +133,7 @@ describe("onboarding → chat page (no auto-intro)", () => {
     const user = userEvent.setup();
     mockMemberOnboarding();
 
-    await setupPage({ context, path: "/onboarding" });
+    detachedSetupPage({ context, path: "/onboarding" });
     await walkToWhereStep(user, true);
 
     server.use(

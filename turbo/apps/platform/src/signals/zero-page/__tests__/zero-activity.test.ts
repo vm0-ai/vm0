@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import {
   zeroActivityData$,
   zeroActivityHasPrev$,
@@ -88,7 +88,7 @@ function createMockLogDetail() {
 }
 
 async function setup() {
-  await setupPage({
+  detachedSetupPage({
     context,
     path: "/activities",
     withoutRender: true,
@@ -231,7 +231,7 @@ describe("zero-activity signals", () => {
         ),
       );
 
-      await setupPage({
+      detachedSetupPage({
         context,
         path: "/activities/a0000000-0000-4000-a000-000000000001",
         withoutRender: true,

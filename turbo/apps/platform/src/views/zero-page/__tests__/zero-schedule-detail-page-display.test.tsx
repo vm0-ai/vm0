@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 
 const context = testContext();
 
@@ -53,7 +53,7 @@ function mockAPIs(overrides: Record<string, unknown> = {}) {
 describe("zero schedule detail page - entry details (SCHED-D-012)", () => {
   it("should display prompt, time, and timezone of the schedule", async () => {
     mockAPIs();
-    await setupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
+    detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
 
     await waitFor(() => {
       // Description is shown as title (may appear in header + breadcrumb)
@@ -71,7 +71,7 @@ describe("zero schedule detail page - entry details (SCHED-D-012)", () => {
 describe("zero schedule detail page - enabled/disabled state (SCHED-D-013)", () => {
   it("should show Active status when schedule is enabled", async () => {
     mockAPIs({ enabled: true });
-    await setupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
+    detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
 
     await waitFor(() => {
       expect(screen.getByText("Active")).toBeInTheDocument();
@@ -80,7 +80,7 @@ describe("zero schedule detail page - enabled/disabled state (SCHED-D-013)", () 
 
   it("should show Paused status when schedule is disabled", async () => {
     mockAPIs({ enabled: false });
-    await setupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
+    detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
 
     await waitFor(() => {
       expect(screen.getByText("Paused")).toBeInTheDocument();
@@ -102,7 +102,7 @@ describe("zero schedule detail page - toggle loading state (SCHED-D-014)", () =>
       }),
     );
     mockAPIs();
-    await setupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
+    detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
 
     await waitFor(() => {
       expect(
@@ -131,7 +131,7 @@ describe("zero schedule detail page - toggle loading state (SCHED-D-014)", () =>
 describe("zero schedule detail page - instruction editor (SCHED-D-016)", () => {
   it("should display the instruction editor with current content after clicking Instructions tab", async () => {
     mockAPIs();
-    await setupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
+    detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
 
     const user = userEvent.setup();
 
@@ -181,7 +181,7 @@ describe("zero schedule detail page - run history table with pagination (SCHED-D
       }),
     );
     mockAPIs();
-    await setupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
+    detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
 
     const user = userEvent.setup();
 
@@ -203,7 +203,7 @@ describe("zero schedule detail page - run history table with pagination (SCHED-D
 describe("zero schedule detail page - status filter dropdown (SCHED-D-018)", () => {
   it("should render the status filter dropdown in the Run History tab", async () => {
     mockAPIs();
-    await setupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
+    detachedSetupPage({ context, path: `/schedules/${SCHEDULE_ID}` });
 
     const user = userEvent.setup();
 

@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import type { OrgDomain } from "@vm0/core";
 
 const context = testContext();
@@ -62,7 +62,7 @@ function mockAPIs(domains: OrgDomain[] = [], overrides?: { role?: string }) {
 }
 
 async function openDomainsTab() {
-  await setupPage({ context, path: "/?settings=domains" });
+  detachedSetupPage({ context, path: "/?settings=domains" });
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
@@ -106,7 +106,7 @@ describe("org domains tab - display loading", () => {
       }),
     );
 
-    await setupPage({ context, path: "/?settings=domains" });
+    detachedSetupPage({ context, path: "/?settings=domains" });
     await waitFor(() => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
@@ -244,7 +244,7 @@ describe("org domains tab - validation", () => {
 describe("org domains tab - access control", () => {
   it("redirects non-admin users to the general tab when navigating to domains", async () => {
     mockAPIs([], { role: "member" });
-    await setupPage({ context, path: "/?settings=domains" });
+    detachedSetupPage({ context, path: "/?settings=domains" });
 
     await waitFor(() => {
       expect(

@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import { pathname } from "../../../signals/location.ts";
 
@@ -67,7 +67,7 @@ describe("pinned agent switch (#6897)", () => {
     const user = userEvent.setup();
     mockPinnedAgents();
 
-    await setupPage({ context, path: "/agents/agent-alpha/chat" });
+    detachedSetupPage({ context, path: "/agents/agent-alpha/chat" });
 
     // Wait for pinned agents to render in the sidebar
     await waitFor(() => {
@@ -100,7 +100,7 @@ describe("pinned agent switch (#6897)", () => {
     const user = userEvent.setup();
     mockPinnedAgents();
 
-    await setupPage({ context, path: "/agents/agent-alpha/chat" });
+    detachedSetupPage({ context, path: "/agents/agent-alpha/chat" });
 
     await waitFor(() => {
       expect(

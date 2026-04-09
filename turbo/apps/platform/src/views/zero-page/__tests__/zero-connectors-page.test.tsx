@@ -13,14 +13,18 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { fill, setupPage } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  fill,
+  setupPage,
+} from "../../../__tests__/page-helper.ts";
 import { mockConnectors } from "./zero-connectors-page-test-helpers.ts";
 
 const context = testContext();
 
 describe("connectors page", () => {
   it("renders the page header and search input", async () => {
-    await setupPage({ context, path: "/connectors" });
+    detachedSetupPage({ context, path: "/connectors" });
 
     await waitFor(() => {
       expect(
@@ -33,7 +37,7 @@ describe("connectors page", () => {
   });
 
   it("shows available connectors when none are connected", async () => {
-    await setupPage({ context, path: "/connectors" });
+    detachedSetupPage({ context, path: "/connectors" });
 
     // Default mock returns no connected connectors, so all should be in "Available"
     await waitFor(() => {
@@ -47,7 +51,7 @@ describe("connectors page", () => {
   it("shows connected and available sections when some connectors are connected", async () => {
     mockConnectors([{ type: "github", externalUsername: "testuser" }]);
 
-    await setupPage({ context, path: "/connectors" });
+    detachedSetupPage({ context, path: "/connectors" });
 
     await waitFor(() => {
       expect(screen.getByText(/Connected \(/)).toBeInTheDocument();
@@ -58,7 +62,7 @@ describe("connectors page", () => {
   });
 
   it("filters connectors by search term", async () => {
-    await setupPage({ context, path: "/connectors" });
+    detachedSetupPage({ context, path: "/connectors" });
 
     await waitFor(() => {
       expect(screen.getByText("GitHub")).toBeInTheDocument();
@@ -75,7 +79,7 @@ describe("connectors page", () => {
   });
 
   it("shows empty state when search has no matches", async () => {
-    await setupPage({ context, path: "/connectors" });
+    detachedSetupPage({ context, path: "/connectors" });
 
     await waitFor(() => {
       expect(screen.getByText("GitHub")).toBeInTheDocument();
@@ -105,7 +109,7 @@ describe("connectors page", () => {
       }),
     );
 
-    await setupPage({ context, path: "/connectors" });
+    detachedSetupPage({ context, path: "/connectors" });
 
     // Wait for the connected GitHub card to appear
     await waitFor(() => {
@@ -145,7 +149,7 @@ describe("connectors page", () => {
       }),
     );
 
-    await setupPage({ context, path: "/connectors" });
+    detachedSetupPage({ context, path: "/connectors" });
 
     await waitFor(() => {
       expect(screen.getByText(/Connected \(/)).toBeInTheDocument();

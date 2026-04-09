@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { createDeferredPromise } from "../../utils.ts";
 import {
   pollSlackConnection$,
@@ -12,7 +12,7 @@ import {
 const context = testContext();
 
 async function setup() {
-  await setupPage({
+  detachedSetupPage({
     context,
     path: "/",
     withoutRender: true,

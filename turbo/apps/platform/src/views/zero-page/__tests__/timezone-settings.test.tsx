@@ -8,7 +8,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { getTimezoneLabel } from "../../../signals/zero-page/cron.ts";
 import type { UserPreferencesResponse } from "@vm0/core";
 
@@ -29,7 +29,7 @@ function mockPreferencesAPI(
 }
 
 async function openTimezoneTab(user: ReturnType<typeof userEvent.setup>) {
-  await setupPage({ context, path: "/settings" });
+  detachedSetupPage({ context, path: "/settings" });
   await user.click(await screen.findByText("Time Zone"));
   await waitFor(() => {
     expect(screen.getByRole("combobox")).toBeInTheDocument();
@@ -89,7 +89,7 @@ describe("timezone-settings - display", () => {
       }),
     );
     const user = userEvent.setup();
-    await setupPage({ context, path: "/settings" });
+    detachedSetupPage({ context, path: "/settings" });
 
     await user.click(await screen.findByText("Time Zone"));
 

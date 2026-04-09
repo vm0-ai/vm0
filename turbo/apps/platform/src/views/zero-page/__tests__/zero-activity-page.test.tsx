@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import type {
   LogEntry,
   LogsListResponse,
@@ -67,7 +67,7 @@ function mockLogsAPI(response: LogsListResponse) {
 describe("zeroActivityPage", () => {
   it("should render page title and description", async () => {
     mockLogsAPI(makeLogsResponse([]));
-    await setupPage({ context, path: "/activities" });
+    detachedSetupPage({ context, path: "/activities" });
 
     await waitFor(() => {
       expect(
@@ -99,7 +99,7 @@ describe("zeroActivityPage", () => {
         });
       }),
     );
-    await setupPage({ context, path: "/activities" });
+    detachedSetupPage({ context, path: "/activities" });
 
     const user = userEvent.setup();
     const agentFilter = await waitFor(() => {
@@ -121,7 +121,7 @@ describe("zeroActivityPage", () => {
     mockLogsAPI(
       makeLogsResponse([makeLog()], {}, { statuses: ["completed", "failed"] }),
     );
-    await setupPage({ context, path: "/activities" });
+    detachedSetupPage({ context, path: "/activities" });
 
     const user = userEvent.setup();
     const statusFilter = await waitFor(() => {
@@ -144,7 +144,7 @@ describe("zeroActivityPage", () => {
 
   it("should render source filter options from availableSourcesLoadable", async () => {
     mockLogsAPI(makeLogsResponse([makeLog()], {}, { sources: ["cli", "web"] }));
-    await setupPage({ context, path: "/activities" });
+    detachedSetupPage({ context, path: "/activities" });
 
     const user = userEvent.setup();
     const sourceFilter = await waitFor(() => {
@@ -167,7 +167,7 @@ describe("zeroActivityPage", () => {
         makeLog({ displayName: "Alpha Agent", status: "completed" }),
       ]),
     );
-    await setupPage({ context, path: "/activities" });
+    detachedSetupPage({ context, path: "/activities" });
 
     await waitFor(() => {
       expect(screen.getByText("Alpha Agent")).toBeInTheDocument();
@@ -188,7 +188,7 @@ describe("zeroActivityPage", () => {
         );
       }),
     );
-    await setupPage({ context, path: "/activities" });
+    detachedSetupPage({ context, path: "/activities" });
 
     await waitFor(() => {
       expect(screen.getByRole("alert")).toBeInTheDocument();
@@ -203,7 +203,7 @@ describe("zeroActivityPage", () => {
         totalPages: 3,
       }),
     );
-    await setupPage({ context, path: "/activities" });
+    detachedSetupPage({ context, path: "/activities" });
 
     await waitFor(() => {
       expect(screen.getByText(/Page 1 of 3/)).toBeInTheDocument();
@@ -215,7 +215,7 @@ describe("zeroActivityPage", () => {
 
   it("should not render pagination when totalPages is 1", async () => {
     mockLogsAPI(makeLogsResponse([makeLog()], { totalPages: 1 }));
-    await setupPage({ context, path: "/activities" });
+    detachedSetupPage({ context, path: "/activities" });
 
     await waitFor(() => {
       expect(screen.getByText("Test Agent")).toBeInTheDocument();
@@ -254,7 +254,7 @@ describe("zeroActivityPage", () => {
         });
       }),
     );
-    await setupPage({ context, path: "/activities" });
+    detachedSetupPage({ context, path: "/activities" });
 
     await waitFor(() => {
       expect(screen.getByText("All Agents Log")).toBeInTheDocument();
@@ -292,7 +292,7 @@ describe("zeroActivityPage", () => {
         );
       }),
     );
-    await setupPage({ context, path: "/activities" });
+    detachedSetupPage({ context, path: "/activities" });
 
     await waitFor(() => {
       expect(screen.getByText("All Status Log")).toBeInTheDocument();
@@ -332,7 +332,7 @@ describe("zeroActivityPage", () => {
         );
       }),
     );
-    await setupPage({ context, path: "/activities" });
+    detachedSetupPage({ context, path: "/activities" });
 
     await waitFor(() => {
       expect(screen.getByText("All Sources Log")).toBeInTheDocument();
@@ -377,7 +377,7 @@ describe("zeroActivityPage", () => {
         );
       }),
     );
-    await setupPage({ context, path: "/activities" });
+    detachedSetupPage({ context, path: "/activities" });
 
     await waitFor(() => {
       expect(screen.getByText("Page 1 Log")).toBeInTheDocument();
@@ -419,7 +419,7 @@ describe("zeroActivityPage", () => {
         );
       }),
     );
-    await setupPage({ context, path: "/activities" });
+    detachedSetupPage({ context, path: "/activities" });
 
     await waitFor(() => {
       expect(screen.getByText("Page 1 Log")).toBeInTheDocument();
@@ -476,7 +476,7 @@ describe("zeroActivityPage", () => {
         );
       }),
     );
-    await setupPage({ context, path: "/activities" });
+    detachedSetupPage({ context, path: "/activities" });
 
     await waitFor(() => {
       expect(screen.getByText("Page 1 Log")).toBeInTheDocument();
@@ -524,7 +524,7 @@ describe("zeroActivityPage", () => {
         );
       }),
     );
-    await setupPage({ context, path: "/activities" });
+    detachedSetupPage({ context, path: "/activities" });
 
     await waitFor(() => {
       expect(screen.getByText("Page 1 Log")).toBeInTheDocument();
@@ -558,7 +558,7 @@ describe("zeroActivityPage", () => {
         );
       }),
     );
-    await setupPage({ context, path: "/activities" });
+    detachedSetupPage({ context, path: "/activities" });
 
     await waitFor(() => {
       expect(screen.getByText(/Page 1/)).toBeInTheDocument();

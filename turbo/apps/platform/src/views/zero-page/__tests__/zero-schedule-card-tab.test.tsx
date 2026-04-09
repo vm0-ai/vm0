@@ -5,7 +5,7 @@ import { http, HttpResponse } from "msw";
 import type { ScheduleResponse } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { fill, setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 
 const context = testContext();
@@ -94,7 +94,7 @@ function mockBaseAPIs(schedules: ScheduleResponse[]) {
 }
 
 async function navigateToScheduleTab() {
-  await setupPage({ context, path: "/agents/my-agent?tab=schedule" });
+  detachedSetupPage({ context, path: "/agents/my-agent?tab=schedule" });
 }
 
 async function openMenuAndClick(
@@ -361,7 +361,7 @@ describe("zero-schedule-tab - loading state", () => {
       }),
     );
 
-    const pagePromise = setupPage({
+    detachedSetupPage({
       context,
       path: "/agents/my-agent?tab=schedule",
     });
@@ -371,7 +371,6 @@ describe("zero-schedule-tab - loading state", () => {
     });
 
     hangDeferred.resolve();
-    await pagePromise;
   });
 });
 

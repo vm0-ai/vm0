@@ -10,7 +10,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 
 const context = testContext();
@@ -32,7 +32,7 @@ function mockAPIs() {
 describe("link component", () => {
   it("computed href attribute renders correctly (INFRA-D-010)", async () => {
     mockAPIs();
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     const link = await waitFor(() => {
       return screen.getByText("Agents").closest("a");
@@ -48,7 +48,7 @@ describe("link component", () => {
       return null;
     });
 
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     const link = await waitFor(() => {
       return screen.getByText("Agents").closest("a")!;
@@ -71,7 +71,7 @@ describe("link component", () => {
       return null;
     });
 
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     const link = await waitFor(() => {
       return screen.getByText("Agents").closest("a")!;

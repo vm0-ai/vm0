@@ -17,7 +17,10 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  setupPage,
+} from "../../../__tests__/page-helper.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 
@@ -96,7 +99,7 @@ describe("zero sidebar - chat thread list display (SIDEBAR-D-001)", () => {
         },
       ],
     });
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     await waitFor(() => {
       const sidebar = getSidebar();
@@ -131,7 +134,7 @@ describe("zero sidebar - loading state (SIDEBAR-D-002)", () => {
       }),
     );
 
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     // While the chat-threads request is hanging, skeletons should be visible
     await waitFor(() => {
@@ -167,7 +170,7 @@ describe("zero sidebar - search results filter (SIDEBAR-D-003)", () => {
       ],
     });
 
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     await waitFor(() => {
       expect(
@@ -204,7 +207,7 @@ describe("zero sidebar - search term displays in input (SIDEBAR-D-004)", () => {
       ],
     });
 
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     await waitFor(() => {
       expect(
@@ -247,7 +250,7 @@ describe("zero sidebar - agent cards display (SIDEBAR-D-006)", () => {
     });
     setMockUserPreferences({ pinnedAgentIds: ["agent-research"] });
 
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     await waitFor(() => {
       const sidebar = getSidebar();
@@ -263,7 +266,7 @@ describe("zero sidebar - active tab indicator (SIDEBAR-D-007)", () => {
   it("highlights the Agents nav link with aria-current=page when on /agents", async () => {
     mockBaseAPIs();
 
-    await setupPage({ context, path: "/agents" });
+    detachedSetupPage({ context, path: "/agents" });
 
     await waitFor(() => {
       const nav = getSidebar();
@@ -282,7 +285,7 @@ describe("zero sidebar - pinned agents display (SIDEBAR-D-008)", () => {
   it("shows the Pinned section header in the sidebar", async () => {
     mockBaseAPIs();
 
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     await waitFor(() => {
       const sidebar = getSidebar();
@@ -315,7 +318,7 @@ describe("zero sidebar - pinned agents display (SIDEBAR-D-008)", () => {
     });
     setMockUserPreferences({ pinnedAgentIds: ["agent-writer"] });
 
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     await waitFor(() => {
       const sidebar = getSidebar();
@@ -350,7 +353,7 @@ describe("zero sidebar - Slack scope mismatch indicator (SIDEBAR-D-009)", () => 
     );
     mockBaseAPIs();
 
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     await waitFor(() => {
       expect(
@@ -370,7 +373,7 @@ describe("zero sidebar - Slack scope mismatch indicator (SIDEBAR-D-009)", () => 
 describe("zero sidebar - new chat button enabled/disabled state (SIDEBAR-D-010)", () => {
   it("shows the new chat button as enabled when not creating a session", async () => {
     mockBaseAPIs();
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     await waitFor(() => {
       const newChatButton = screen.getByLabelText(/New chat with/i);
@@ -399,7 +402,7 @@ describe("zero sidebar - new chat button enabled/disabled state (SIDEBAR-D-010)"
       }),
     );
 
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     await waitFor(() => {
       expect(screen.getByLabelText(/New chat with/i)).toBeDefined();

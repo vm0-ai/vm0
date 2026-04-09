@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { FeatureSwitchKey } from "@vm0/core";
 import type {
   LogDetail,
@@ -82,7 +82,7 @@ describe("zeroActivityDetailPageDisplay", () => {
   it("should render agent display name in header (ACT-D-016)", async () => {
     mockDetailAPI({ displayName: "My Custom Agent" });
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: `/activities/${BASE_LOG_ID}`,
     });
@@ -97,7 +97,7 @@ describe("zeroActivityDetailPageDisplay", () => {
   it("should render completed status badge as Done (ACT-D-017)", async () => {
     mockDetailAPI({ status: "completed" });
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: `/activities/${BASE_LOG_ID}`,
     });
@@ -110,7 +110,7 @@ describe("zeroActivityDetailPageDisplay", () => {
   it("should render failed status badge as Failed (ACT-D-017)", async () => {
     mockDetailAPI({ status: "failed", error: "Something went wrong" });
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: `/activities/${BASE_LOG_ID}`,
     });
@@ -123,7 +123,7 @@ describe("zeroActivityDetailPageDisplay", () => {
   it("should render trigger source with schedule link (ACT-D-018)", async () => {
     mockDetailAPI({ triggerSource: "schedule", scheduleId: "sched-123" });
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: `/activities/${BASE_LOG_ID}`,
     });
@@ -145,7 +145,7 @@ describe("zeroActivityDetailPageDisplay", () => {
       selectedModel: "claude-sonnet-4.5",
     });
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: `/activities/${BASE_LOG_ID}`,
       featureSwitches: { [FeatureSwitchKey.ModelDetail]: true },
@@ -166,7 +166,7 @@ describe("zeroActivityDetailPageDisplay", () => {
       completedAt: "2026-03-10T14:56:10Z",
     });
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: `/activities/${BASE_LOG_ID}`,
     });
@@ -179,7 +179,7 @@ describe("zeroActivityDetailPageDisplay", () => {
   it("should render formatted start time (ACT-D-021)", async () => {
     mockDetailAPI({ createdAt: "2026-03-10T14:56:00Z" });
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: `/activities/${BASE_LOG_ID}`,
     });
@@ -198,7 +198,7 @@ describe("zeroActivityDetailPageDisplay", () => {
       error: "No model provider configured",
     });
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: `/activities/${BASE_LOG_ID}`,
     });
@@ -253,7 +253,7 @@ describe("zeroActivityDetailPageDisplay", () => {
 
     const user = userEvent.setup();
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: `/activities/${BASE_LOG_ID}`,
     });
@@ -297,7 +297,7 @@ describe("zeroActivityDetailPageDisplay", () => {
 
     const user = userEvent.setup();
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: `/activities/${BASE_LOG_ID}`,
     });
@@ -325,7 +325,7 @@ describe("zeroActivityDetailPageDisplay", () => {
   it("should render prompt content in a collapsible block (ACT-D-025)", async () => {
     mockDetailAPI({ prompt: "Build a web app" });
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: `/activities/${BASE_LOG_ID}`,
     });
@@ -360,7 +360,7 @@ describe("zeroActivityDetailPageDisplay", () => {
   it("should render system prompt content in a collapsible block when feature enabled (ACT-D-026)", async () => {
     mockDetailAPI({ appendSystemPrompt: "You are a coding assistant" });
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: `/activities/${BASE_LOG_ID}`,
       featureSwitches: { [FeatureSwitchKey.ShowSystemPrompt]: true },
@@ -421,7 +421,7 @@ describe("zeroActivityDetailPageDisplay", () => {
 
     const user = userEvent.setup();
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: `/activities/${BASE_LOG_ID}`,
     });

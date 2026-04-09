@@ -3,7 +3,7 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { FeatureSwitchKey } from "@vm0/core";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import {
   loadInspectLogFile$,
   inspectStepSearch$,
@@ -54,7 +54,7 @@ describe("activityInspectPage", () => {
   describe("empty state", () => {
     // ACT-D-046
     it("upload JSON button opens file picker", async () => {
-      await setupPage({ context, path: "/activities/inspect" });
+      detachedSetupPage({ context, path: "/activities/inspect" });
 
       await waitFor(() => {
         expect(screen.getByText("No log loaded")).toBeInTheDocument();
@@ -69,7 +69,7 @@ describe("activityInspectPage", () => {
   describe("loaded data", () => {
     // ACT-D-032
     it("inspect log data renders", async () => {
-      await setupPage({ context, path: "/activities/inspect" });
+      detachedSetupPage({ context, path: "/activities/inspect" });
       await loadInspectData(makeInspectData());
 
       await waitFor(() => {
@@ -81,7 +81,7 @@ describe("activityInspectPage", () => {
 
     // ACT-D-033
     it("display name falls back to Imported Log", async () => {
-      await setupPage({ context, path: "/activities/inspect" });
+      detachedSetupPage({ context, path: "/activities/inspect" });
       await loadInspectData(makeInspectData({ displayName: undefined }));
 
       await waitFor(() => {
@@ -93,7 +93,7 @@ describe("activityInspectPage", () => {
 
     // ACT-D-034
     it("log status renders", async () => {
-      await setupPage({ context, path: "/activities/inspect" });
+      detachedSetupPage({ context, path: "/activities/inspect" });
       await loadInspectData(makeInspectData({ status: "failed" }));
 
       await waitFor(() => {
@@ -103,7 +103,7 @@ describe("activityInspectPage", () => {
 
     // ACT-D-035
     it("trigger source and agent name render", async () => {
-      await setupPage({ context, path: "/activities/inspect" });
+      detachedSetupPage({ context, path: "/activities/inspect" });
       await loadInspectData(
         makeInspectData({
           triggerSource: "agent",
@@ -118,7 +118,7 @@ describe("activityInspectPage", () => {
 
     // ACT-D-036
     it("detail object properties render", async () => {
-      await setupPage({ context, path: "/activities/inspect" });
+      detachedSetupPage({ context, path: "/activities/inspect" });
       await loadInspectData(makeInspectData({ framework: "claude-code" }));
 
       await waitFor(() => {
@@ -129,7 +129,7 @@ describe("activityInspectPage", () => {
 
     // ACT-D-037
     it("formatted duration and time render", async () => {
-      await setupPage({ context, path: "/activities/inspect" });
+      detachedSetupPage({ context, path: "/activities/inspect" });
       await loadInspectData(
         makeInspectData({
           startedAt: "2026-03-10T14:56:01Z",
@@ -157,7 +157,7 @@ describe("activityInspectPage", () => {
         createdAt: "2026-03-10T14:56:02Z",
       };
 
-      await setupPage({ context, path: "/activities/inspect" });
+      detachedSetupPage({ context, path: "/activities/inspect" });
       await loadInspectData(makeInspectData({}, [testEvent]));
 
       await waitFor(() => {
@@ -167,7 +167,7 @@ describe("activityInspectPage", () => {
 
     // ACT-D-039
     it("prompt and system prompt render", async () => {
-      await setupPage({ context, path: "/activities/inspect" });
+      detachedSetupPage({ context, path: "/activities/inspect" });
       await loadInspectData(
         makeInspectData({
           prompt: "My test prompt",
@@ -194,7 +194,7 @@ describe("activityInspectPage", () => {
         createdAt: "2026-03-10T14:56:02Z",
       };
 
-      await setupPage({ context, path: "/activities/inspect" });
+      detachedSetupPage({ context, path: "/activities/inspect" });
       await loadInspectData(makeInspectData({}, [visibleEvent]));
 
       await waitFor(() => {
@@ -223,7 +223,7 @@ describe("activityInspectPage", () => {
         createdAt: "2026-03-10T14:56:02Z",
       };
 
-      await setupPage({ context, path: "/activities/inspect" });
+      detachedSetupPage({ context, path: "/activities/inspect" });
       await loadInspectData(makeInspectData({}, [visibleEvent]));
 
       await waitFor(() => {
@@ -235,7 +235,7 @@ describe("activityInspectPage", () => {
   describe("tabs", () => {
     // ACT-D-042
     it("active tab selection renders", async () => {
-      await setupPage({
+      detachedSetupPage({
         context,
         path: "/activities/inspect",
         featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
@@ -249,7 +249,7 @@ describe("activityInspectPage", () => {
 
     // ACT-D-043
     it("context and network tabs are visible when showDebugTabs is enabled", async () => {
-      await setupPage({
+      detachedSetupPage({
         context,
         path: "/activities/inspect",
         featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
@@ -278,7 +278,7 @@ describe("activityInspectPage", () => {
 
     // ACT-D-044
     it("only Steps tab is visible when showDebugTabs is disabled", async () => {
-      await setupPage({ context, path: "/activities/inspect" });
+      detachedSetupPage({ context, path: "/activities/inspect" });
       await loadInspectData(makeInspectData());
 
       await waitFor(() => {
@@ -307,7 +307,7 @@ describe("activityInspectPage", () => {
     // ACT-D-048
     it("tab triggers switch content to context view", async () => {
       const user = userEvent.setup();
-      await setupPage({
+      detachedSetupPage({
         context,
         path: "/activities/inspect",
         featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
@@ -332,7 +332,7 @@ describe("activityInspectPage", () => {
     // ACT-D-045
     it("search input onChange updates inspectStepSearch$", async () => {
       const user = userEvent.setup();
-      await setupPage({ context, path: "/activities/inspect" });
+      detachedSetupPage({ context, path: "/activities/inspect" });
       await loadInspectData(makeInspectData());
 
       await waitFor(() => {
@@ -348,7 +348,7 @@ describe("activityInspectPage", () => {
     // ACT-D-047
     it("file input loads JSON data", async () => {
       const user = userEvent.setup();
-      await setupPage({ context, path: "/activities/inspect" });
+      detachedSetupPage({ context, path: "/activities/inspect" });
 
       await waitFor(() => {
         expect(screen.getByText("No log loaded")).toBeInTheDocument();

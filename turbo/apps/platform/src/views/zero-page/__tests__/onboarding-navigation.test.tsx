@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { fill, setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 
 const context = testContext();
@@ -63,7 +63,7 @@ describe("onboarding navigation", () => {
   it("should redirect to /onboarding when admin needs onboarding", async () => {
     mockOnboardingNeededAdmin();
 
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     // The / route should redirect to /onboarding
     await waitFor(() => {
@@ -80,7 +80,7 @@ describe("onboarding navigation", () => {
     const user = userEvent.setup();
     mockOnboardingNeededAdmin();
 
-    await setupPage({ context, path: "/onboarding" });
+    detachedSetupPage({ context, path: "/onboarding" });
 
     // Step 1: Workspace name
     await waitFor(() => {
@@ -139,7 +139,7 @@ describe("onboarding navigation", () => {
   it("should redirect to /onboarding when member needs onboarding", async () => {
     mockOnboardingNeededMember();
 
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     // The / route should redirect to /onboarding
     await waitFor(() => {
@@ -158,7 +158,7 @@ describe("onboarding navigation", () => {
     const user = userEvent.setup();
     mockOnboardingNeededMember();
 
-    await setupPage({ context, path: "/onboarding" });
+    detachedSetupPage({ context, path: "/onboarding" });
 
     // Member with no connectors goes straight to step 4 (where-to-work)
     await waitFor(() => {

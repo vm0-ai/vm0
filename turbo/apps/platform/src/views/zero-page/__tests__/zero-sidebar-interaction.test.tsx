@@ -16,7 +16,10 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  setupPage,
+} from "../../../__tests__/page-helper.ts";
 import { mockedClerk } from "../../../__tests__/mock-auth.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import { pathname } from "../../../signals/location.ts";
@@ -151,7 +154,7 @@ describe("zero sidebar - account dropdown opens (SIDEBAR-D-013)", () => {
   it("shows a dropdown menu with sign-out option when account trigger is clicked", async () => {
     const user = userEvent.setup();
     mockBaseAPIs();
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     await waitFor(() => {
       expect(screen.getByText("Default Org")).toBeInTheDocument();
@@ -170,7 +173,7 @@ describe("zero sidebar - sign-out option works (SIDEBAR-D-014)", () => {
   it("calls clerk signOut and closes the dropdown when sign-out is clicked", async () => {
     const user = userEvent.setup();
     mockBaseAPIs();
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     await waitFor(() => {
       expect(screen.getByText("Default Org")).toBeInTheDocument();
@@ -198,7 +201,7 @@ describe("zero sidebar - search input accepts text (SIDEBAR-D-015)", () => {
     mockBaseAPIs({
       threads: [makeThread("thread-1", "First chat", "2026-03-10T00:00:00Z")],
     });
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     await waitFor(() => {
       expect(screen.getByText("First chat")).toBeInTheDocument();
@@ -223,7 +226,7 @@ describe("zero sidebar - clear search button resets search (SIDEBAR-D-016)", () 
         makeThread("thread-2", "Second chat", "2026-03-09T00:00:00Z"),
       ],
     });
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     await waitFor(() => {
       expect(screen.getByText("First chat")).toBeInTheDocument();
@@ -281,7 +284,7 @@ describe("zero sidebar - new chat button creates session (SIDEBAR-D-017)", () =>
     );
 
     // Start on /agents so the new chat button triggers thread creation (not route navigation)
-    await setupPage({ context, path: "/agents" });
+    detachedSetupPage({ context, path: "/agents" });
 
     const newChatButton = await waitFor(() => {
       return screen.getByLabelText("New chat with Zero");
@@ -301,7 +304,7 @@ describe("zero sidebar - delete thread button shows confirmation (SIDEBAR-D-018)
     mockBaseAPIs({
       threads: [makeThread("thread-1", "First chat", "2026-03-10T00:00:00Z")],
     });
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     await waitFor(() => {
       expect(screen.getByText("First chat")).toBeInTheDocument();
@@ -356,7 +359,7 @@ describe("zero sidebar - confirm delete removes thread (SIDEBAR-D-019)", () => {
       }),
     );
 
-    await setupPage({ context, path: "/chats/thread-2" });
+    detachedSetupPage({ context, path: "/chats/thread-2" });
 
     await waitFor(() => {
       expect(screen.getByText("First chat")).toBeInTheDocument();
@@ -391,7 +394,7 @@ describe("zero sidebar - agent card toggles chat list (SIDEBAR-D-020)", () => {
     mockBaseAPIs({ agents: [makeDefaultAgent(), makePinnedAgent()] });
     setMockUserPreferences({ pinnedAgentIds: [PINNED_AGENT_ID] });
 
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     await waitFor(() => {
       expect(screen.getByText("Pinned")).toBeInTheDocument();
@@ -411,7 +414,7 @@ describe("zero sidebar - sidebar collapse button hides sidebar (SIDEBAR-D-022)",
   it("collapses the sidebar and shows expand button when collapse is clicked", async () => {
     const user = userEvent.setup();
     mockBaseAPIs();
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     await waitFor(() => {
       expect(
@@ -434,7 +437,7 @@ describe("zero sidebar - agent action menu opens (SIDEBAR-D-066)", () => {
     mockBaseAPIs({ agents: [makeDefaultAgent(), makePinnedAgent()] });
     setMockUserPreferences({ pinnedAgentIds: [PINNED_AGENT_ID] });
 
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     await waitFor(() => {
       expect(screen.getByText("Research Agent")).toBeInTheDocument();

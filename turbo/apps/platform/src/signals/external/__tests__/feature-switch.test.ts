@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { testContext } from "../../__tests__/test-helpers";
-import { setupPage } from "../../../__tests__/page-helper";
+import { detachedSetupPage } from "../../../__tests__/page-helper";
 import {
   featureSwitch$,
   syncFeatureSwitchToClerk$,
@@ -12,7 +12,7 @@ const context = testContext();
 
 describe("feature switch", () => {
   it("should support dummy switch", async () => {
-    await setupPage({ context, path: "/", withoutRender: true });
+    detachedSetupPage({ context, path: "/", withoutRender: true });
 
     await expect(context.store.get(featureSwitch$)).resolves.toHaveProperty(
       "dummy",
@@ -21,7 +21,7 @@ describe("feature switch", () => {
   });
 
   it("should override dummy switch", async () => {
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/",
       featureSwitches: { dummy: false },
@@ -37,7 +37,7 @@ describe("feature switch", () => {
   it("should not override keys not present in localStorage", async () => {
     // When localStorage only has partial overrides, other keys should keep their default values
     // Setting an empty object should not affect the default value of 'dummy' (which is true)
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/",
       featureSwitches: {},
@@ -52,7 +52,7 @@ describe("feature switch", () => {
 
   it("should apply Clerk unsafeMetadata overrides", async () => {
     // Dummy is globally enabled (true). Override it to false via Clerk unsafeMetadata.
-    await setupPage({ context, path: "/", withoutRender: true });
+    detachedSetupPage({ context, path: "/", withoutRender: true });
 
     await context.store.set(
       syncFeatureSwitchToClerk$,
@@ -66,7 +66,7 @@ describe("feature switch", () => {
 
   it("should prioritize localStorage over Clerk unsafeMetadata", async () => {
     // localStorage says dummy=true, Clerk says dummy=false — localStorage wins
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/",
       featureSwitches: { dummy: true },
@@ -84,7 +84,7 @@ describe("feature switch", () => {
   });
 
   it("should sync feature switch override to Clerk unsafeMetadata", async () => {
-    await setupPage({ context, path: "/", withoutRender: true });
+    detachedSetupPage({ context, path: "/", withoutRender: true });
 
     await context.store.set(
       syncFeatureSwitchToClerk$,
@@ -99,7 +99,7 @@ describe("feature switch", () => {
 
   it("should reset all feature switch overrides", async () => {
     // Set localStorage and Clerk overrides, then reset both
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/",
       featureSwitches: { dummy: false },

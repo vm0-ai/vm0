@@ -3,7 +3,7 @@ import { screen, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { pathname, search } from "../../../signals/location.ts";
 
 const context = testContext();
@@ -21,7 +21,7 @@ function mockChatAPI() {
 describe("prompt query parameter injection", () => {
   it("should inject ?prompt= into chat input when navigating to /", async () => {
     mockChatAPI();
-    await setupPage({ context, path: "/?prompt=Hello%20world" });
+    detachedSetupPage({ context, path: "/?prompt=Hello%20world" });
 
     // Should redirect to /talk/:id and show the prompt in the input
     const textarea = await waitFor(() => {
@@ -33,7 +33,7 @@ describe("prompt query parameter injection", () => {
 
   it("should inject ?prompt= into chat input when navigating to /talk/:id", async () => {
     mockChatAPI();
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/agents/c0000000-0000-4000-a000-000000000001/chat?prompt=Set%20up%20a%20daily%20report",
     });
@@ -47,7 +47,7 @@ describe("prompt query parameter injection", () => {
 
   it("should strip ?prompt= from URL after injection", async () => {
     mockChatAPI();
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/agents/c0000000-0000-4000-a000-000000000001/chat?prompt=test",
     });
@@ -62,7 +62,7 @@ describe("prompt query parameter injection", () => {
 
   it("should not modify input when no ?prompt= is present", async () => {
     mockChatAPI();
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/agents/c0000000-0000-4000-a000-000000000001/chat",
     });
@@ -76,7 +76,7 @@ describe("prompt query parameter injection", () => {
 
   it("should redirect from / to /talk/:id with prompt in URL", async () => {
     mockChatAPI();
-    await setupPage({ context, path: "/?prompt=hello" });
+    detachedSetupPage({ context, path: "/?prompt=hello" });
 
     await waitFor(() => {
       expect(pathname()).toMatch(/^\/agents\//);

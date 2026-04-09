@@ -3,7 +3,7 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../mocks/server.ts";
 import { fetch$ } from "../fetch.ts";
 import { testContext } from "./test-helpers.ts";
-import { setupPage } from "../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../__tests__/page-helper.ts";
 import { mockedClerk } from "../../__tests__/mock-auth.ts";
 
 const context = testContext();
@@ -41,7 +41,7 @@ function createCaptureHandler(
 
 describe("fetch$ signal integration tests", () => {
   it("should handle Headers object", async () => {
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/",
       withoutRender: true,
@@ -71,7 +71,7 @@ describe("fetch$ signal integration tests", () => {
   it("should add Authorization header when session token exists", async () => {
     const mockToken = "test-jwt-token";
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/",
       session: { token: mockToken },
@@ -114,7 +114,7 @@ describe("fetch$ signal integration tests", () => {
   it("should handle both Authorization and custom headers", async () => {
     const mockToken = "test-jwt-token";
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/",
       session: { token: mockToken },
@@ -148,7 +148,7 @@ describe("fetch$ signal integration tests", () => {
   it("should allow user-provided Authorization to override automatic one", async () => {
     const mockToken = "test-jwt-token";
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/",
       session: { token: mockToken },
@@ -242,7 +242,7 @@ describe("url handling", () => {
 
 describe("401 redirect", () => {
   it("should redirect to sign-in when API returns 401", async () => {
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/",
       withoutRender: true,
@@ -267,7 +267,7 @@ describe("401 redirect", () => {
   });
 
   it("should not redirect on non-401 errors", async () => {
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/",
       withoutRender: true,

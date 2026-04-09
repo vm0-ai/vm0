@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { fill, setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { getCategories } from "../zero-ideation-data.ts";
 
 const context = testContext();
@@ -19,7 +19,7 @@ function mockChatAPI() {
 
 async function renderChatPage() {
   mockChatAPI();
-  await setupPage({ context, path: "/" });
+  detachedSetupPage({ context, path: "/" });
 }
 
 describe("zero chat page - suggested prompts", () => {
@@ -313,7 +313,7 @@ describe("zero chat page - connectors popover", () => {
       ),
     );
     mockChatAPI();
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     const user = userEvent.setup();
     const connectorsButton = await waitFor(() => {
@@ -388,7 +388,7 @@ describe("zero chat page - connector label casing", () => {
       }),
     );
     mockChatAPI();
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     const connectorsButton = await waitFor(() => {
       return screen.getByLabelText("Connectors");

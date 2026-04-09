@@ -17,7 +17,7 @@ import { http, HttpResponse } from "msw";
 import { FeatureSwitchKey } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { pathname, search } from "../../../signals/location.ts";
 import { setSidebarExpanded$ } from "../../../signals/zero-page/zero-nav.ts";
 
@@ -49,7 +49,7 @@ function mockBaseAPIs() {
 describe("sidebar layout - breadcrumb section text (SIDEBAR-D-045)", () => {
   it("renders the breadcrumb section name in the mobile top bar", async () => {
     mockBaseAPIs();
-    await setupPage({ context, path: "/agents" });
+    detachedSetupPage({ context, path: "/agents" });
     await waitFor(() => {
       // The breadcrumb renders a link in the mobile top bar pointing to /agents
       expect(
@@ -85,7 +85,7 @@ describe("sidebar layout - breadcrumb name renders (SIDEBAR-D-046)", () => {
       }),
     );
 
-    await setupPage({ context, path: `/agents/${DEFAULT_AGENT_ID}` });
+    detachedSetupPage({ context, path: `/agents/${DEFAULT_AGENT_ID}` });
 
     await waitFor(() => {
       // The breadcrumb name renders as a truncated span with data-testid="breadcrumb-name"
@@ -99,7 +99,7 @@ describe("sidebar layout - breadcrumb name renders (SIDEBAR-D-046)", () => {
 describe("sidebar layout - breadcrumb avatar displays for agent pages (SIDEBAR-D-047)", () => {
   it("shows an agent avatar image in the breadcrumb for chat routes", async () => {
     mockBaseAPIs();
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
     await waitFor(() => {
       // AgentAvatarInTopBar renders an img with data-testid="agent-avatar" inside the mobile top bar
       expect(screen.getByTestId("agent-avatar")).toBeInTheDocument();
@@ -110,7 +110,7 @@ describe("sidebar layout - breadcrumb avatar displays for agent pages (SIDEBAR-D
 describe("sidebar layout - invite button shows for admins (SIDEBAR-D-048)", () => {
   it("renders the Invite button on chat routes for admin users", async () => {
     mockBaseAPIs();
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
     await waitFor(() => {
       expect(screen.getByText("Invite")).toBeInTheDocument();
     });
@@ -130,7 +130,7 @@ describe("sidebar layout - invite button hidden for non-admins (SIDEBAR-D-049)",
         });
       }),
     );
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
     await waitFor(() => {
       expect(screen.queryByText("Invite")).not.toBeInTheDocument();
     });
@@ -141,13 +141,15 @@ describe("sidebar layout - menu toggle expands sidebar when flag is off (SIDEBAR
   it("expands the sidebar overlay when the menu toggle button is clicked and MobileChatListPage flag is off", async () => {
     const user = userEvent.setup();
     mockBaseAPIs();
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/",
       featureSwitches: { [FeatureSwitchKey.MobileChatListPage]: false },
     });
 
-    const menuButton = screen.getByLabelText("Open menu");
+    const menuButton = await waitFor(() => {
+      return screen.getByLabelText("Open menu");
+    });
     await user.click(menuButton);
 
     await waitFor(() => {
@@ -160,13 +162,15 @@ describe("sidebar layout - menu toggle navigates to chat list when flag is on (S
   it("navigates to the chat list page when the menu toggle button is clicked and MobileChatListPage flag is on", async () => {
     const user = userEvent.setup();
     mockBaseAPIs();
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/",
       featureSwitches: { [FeatureSwitchKey.MobileChatListPage]: true },
     });
 
-    const menuButton = screen.getByLabelText("Open menu");
+    const menuButton = await waitFor(() => {
+      return screen.getByLabelText("Open menu");
+    });
     await user.click(menuButton);
 
     await waitFor(() => {
@@ -203,19 +207,22 @@ describe("sidebar layout - breadcrumb section link navigates (SIDEBAR-D-051)", (
       }),
     );
 
-    await setupPage({ context, path: `/agents/${DEFAULT_AGENT_ID}` });
+    detachedSetupPage({ context, path: `/agents/${DEFAULT_AGENT_ID}` });
 
-    // Click the breadcrumb link to /agents in the mobile top bar
-    const agentsLink = await waitFor(() => {
-      const links = screen.getAllByRole("link").filter((el) => {
-        return (
-          el.getAttribute("href") === "/agents" &&
-          el.textContent?.trim() === "Agents"
-        );
-      });
-      expect(links.length).toBeGreaterThan(0);
-      return links[0];
+    // Wait for the breadcrumb name to appear (initial route setup is complete)
+    await waitFor(() => {
+      expect(screen.getByTestId("breadcrumb-name")).toHaveTextContent(
+        "My Agent",
+      );
     });
+
+    // Click the breadcrumb section link to /agents in the mobile top bar
+    const agentsLink = screen.getAllByRole("link").find((el) => {
+      return (
+        el.getAttribute("href") === "/agents" &&
+        el.textContent?.trim() === "Agents"
+      );
+    })!;
     await user.click(agentsLink);
 
     await waitFor(() => {
@@ -243,7 +250,7 @@ describe("sidebar layout - invite button opens member dialog (SIDEBAR-D-052)", (
       }),
     );
 
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     const inviteButton = await waitFor(() => {
       return screen.getByText("Invite");
@@ -284,13 +291,15 @@ describe("sidebar layout - menu toggle passes agent ID to chat list (SIDEBAR-D-0
         return HttpResponse.json({ threads: [] });
       }),
     );
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/",
       featureSwitches: { [FeatureSwitchKey.MobileChatListPage]: true },
     });
 
-    const menuButton = screen.getByLabelText("Open menu");
+    const menuButton = await waitFor(() => {
+      return screen.getByLabelText("Open menu");
+    });
     await user.click(menuButton);
 
     await waitFor(() => {
@@ -314,7 +323,7 @@ describe("sidebar layout - overlay click collapses sidebar (SIDEBAR-D-054)", () 
   it("hides the sidebar overlay when the overlay is clicked", async () => {
     const user = userEvent.setup();
     mockBaseAPIs();
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     // Expand the sidebar via signal to show the overlay
     context.store.set(setSidebarExpanded$, true);

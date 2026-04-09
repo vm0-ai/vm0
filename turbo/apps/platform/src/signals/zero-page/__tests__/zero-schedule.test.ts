@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import {
   fetchZeroSchedules$,
   zeroScheduleEntries$,
@@ -149,7 +149,7 @@ function createMockSchedules() {
 }
 
 async function setup() {
-  await setupPage({
+  detachedSetupPage({
     context,
     path: "/schedules",
     withoutRender: true,
@@ -217,29 +217,29 @@ describe("zero-schedule signals", () => {
     });
 
     it("should propagate API errors", async () => {
-      // Set up normal schedules response for initial page load
+      // The background bootstrap also hits GET /api/zero/schedules via
+      // fetchAllOrgSchedules$. Use a request counter so the first call
+      // (bootstrap) succeeds and the second call (explicit test) gets 500.
+      let requestCount = 0;
       server.use(
         http.get("http://localhost:3000/api/zero/schedules", () => {
+          requestCount++;
+          if (requestCount > 1) {
+            return HttpResponse.json(
+              {
+                error: {
+                  message: "Internal server error",
+                  code: "INTERNAL_SERVER_ERROR",
+                },
+              },
+              { status: 500 },
+            );
+          }
           return HttpResponse.json({ schedules: [] });
         }),
       );
 
       await setup();
-
-      // Now replace mock to return 500 for the explicit fetchZeroSchedules$ call
-      server.use(
-        http.get("http://localhost:3000/api/zero/schedules", () => {
-          return HttpResponse.json(
-            {
-              error: {
-                message: "Internal server error",
-                code: "INTERNAL_SERVER_ERROR",
-              },
-            },
-            { status: 500 },
-          );
-        }),
-      );
 
       await expect(
         context.store.set(fetchZeroSchedules$, context.signal),
@@ -952,7 +952,7 @@ describe("zero-schedule signals", () => {
 
 describe("org schedule signals", () => {
   async function setup() {
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/schedules",
       withoutRender: true,

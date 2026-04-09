@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { setZeroShowAboutPage$ } from "../../../signals/zero-page/zero-nav.ts";
 
 const context = testContext();
@@ -34,7 +34,7 @@ describe("zero about page", () => {
   // AGENT-D-072: About page renders when flag is set
   it("renders the about page when zeroShowAboutPage is true", async () => {
     mockBasicAPIs();
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
     context.store.set(setZeroShowAboutPage$, true);
 
     await waitFor(() => {
@@ -71,7 +71,7 @@ describe("zero about page", () => {
         });
       }),
     );
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
     context.store.set(setZeroShowAboutPage$, true);
 
     await waitFor(() => {
@@ -85,7 +85,7 @@ describe("zero about page", () => {
   it("back button hides the about page", async () => {
     const user = userEvent.setup();
     mockBasicAPIs();
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
     context.store.set(setZeroShowAboutPage$, true);
 
     await waitFor(() => {
@@ -104,7 +104,7 @@ describe("zero about page", () => {
   // AGENT-D-075: External link opens vm0.ai
   it("renders external link to vm0.ai", async () => {
     mockBasicAPIs();
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
     context.store.set(setZeroShowAboutPage$, true);
 
     await waitFor(() => {

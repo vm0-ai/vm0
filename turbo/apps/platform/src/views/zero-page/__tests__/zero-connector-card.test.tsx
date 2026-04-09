@@ -3,7 +3,7 @@ import { screen, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import {
   CONNECTOR_TYPES,
   type ConnectorResponse,
@@ -85,7 +85,7 @@ async function renderTeamPage(
     }),
   );
 
-  await setupPage({ context, path: "/agents/zero" });
+  detachedSetupPage({ context, path: "/agents/zero" });
 }
 
 describe("zero authorization tab — toggle rows", () => {
@@ -219,7 +219,7 @@ async function renderTeamPageAsMember(
     }),
   );
 
-  await setupPage({ context, path: "/agents/zero" });
+  detachedSetupPage({ context, path: "/agents/zero" });
 }
 
 describe("zero authorization tab — member on default agent", () => {

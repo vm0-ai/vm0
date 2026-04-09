@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 
 const context = testContext();
 
@@ -83,7 +83,7 @@ function makePendingRequest(overrides?: Record<string, unknown>) {
 
 describe("permission allow page", () => {
   it("shows error when ref query param is missing", async () => {
-    await setupPage({
+    detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/permissions`,
     });
@@ -99,7 +99,7 @@ describe("permission allow page", () => {
     mockPermissionRequests();
     mockAgentWithPolicy(null);
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=nonexistent:perm`,
     });
@@ -112,7 +112,7 @@ describe("permission allow page", () => {
   });
 
   it("shows error for unknown connector ref", async () => {
-    await setupPage({
+    detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/permissions?ref=unknown-ref&permission=channels:read`,
     });
@@ -134,7 +134,7 @@ describe("permission allow page", () => {
       slack: { permissions: { "channels:read": "allow" } },
     });
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=channels:read&action=allow`,
     });
@@ -150,7 +150,7 @@ describe("permission allow page", () => {
       slack: { permissions: { "channels:read": "deny" } },
     });
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=channels:read&action=deny`,
     });
@@ -170,7 +170,7 @@ describe("permission allow page", () => {
       slack: { permissions: { "channels:read": "deny" } },
     });
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=channels:read&action=allow`,
     });
@@ -188,7 +188,7 @@ describe("permission allow page", () => {
       slack: { permissions: { "channels:read": "deny" } },
     });
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=channels:read`,
     });
@@ -212,7 +212,7 @@ describe("permission allow page", () => {
     );
     mockPermissionRequests();
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=channels:read&action=allow`,
     });
@@ -232,7 +232,7 @@ describe("permission allow page", () => {
   it("shows admin approval card for pending request", async () => {
     mockPermissionRequests([makePendingRequest()]);
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/permissions?request=${REQUEST_ID}`,
     });
@@ -255,7 +255,7 @@ describe("permission allow page", () => {
     mockAgentWithPolicy(null, "other-owner");
     mockPermissionRequests([makePendingRequest()]);
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/permissions?request=${REQUEST_ID}`,
     });
@@ -276,7 +276,7 @@ describe("permission allow page", () => {
   it("shows permissions updated for approved request", async () => {
     mockPermissionRequests([makePendingRequest({ status: "approved" })]);
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/permissions?request=${REQUEST_ID}`,
     });
@@ -293,7 +293,7 @@ describe("permission allow page", () => {
   it("shows denied card for admin on rejected request", async () => {
     mockPermissionRequests([makePendingRequest({ status: "rejected" })]);
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/permissions?request=${REQUEST_ID}`,
     });
@@ -310,7 +310,7 @@ describe("permission allow page", () => {
     mockAgentWithPolicy(null, "other-owner");
     mockPermissionRequests([makePendingRequest({ status: "rejected" })]);
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/permissions?request=${REQUEST_ID}`,
     });
@@ -329,7 +329,7 @@ describe("permission allow page", () => {
   it("shows error when request is not found", async () => {
     mockPermissionRequests([]);
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/permissions?request=${REQUEST_ID}`,
     });
@@ -346,7 +346,7 @@ describe("permission allow page", () => {
   it("shows reason as read-only text in admin approval card", async () => {
     mockPermissionRequests([makePendingRequest()]);
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/permissions?request=${REQUEST_ID}`,
     });
@@ -372,7 +372,7 @@ describe("permission allow page", () => {
       slack: { permissions: { "channels:read": "allow" } },
     });
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=channels:read&action=deny`,
     });
@@ -397,7 +397,7 @@ describe("permission allow page", () => {
     );
     mockPermissionRequests();
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=channels:read&action=deny`,
     });
@@ -417,7 +417,7 @@ describe("permission allow page", () => {
   it("shows deny icon in admin approval card for deny request", async () => {
     mockPermissionRequests([makePendingRequest({ action: "deny" })]);
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/permissions?request=${REQUEST_ID}`,
     });
@@ -439,7 +439,7 @@ describe("permission allow page", () => {
     mockAgentWithPolicy(null, "other-owner");
     mockPermissionRequests([makePendingRequest({ action: "deny" })]);
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/permissions?request=${REQUEST_ID}`,
     });
@@ -464,7 +464,7 @@ describe("permission allow page", () => {
 
     const user = userEvent.setup();
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/permissions?request=${REQUEST_ID}`,
     });
@@ -495,7 +495,7 @@ describe("permission allow page", () => {
     );
     mockPermissionRequests();
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/permissions?ref=slack&permission=channels:read&action=allow`,
     });

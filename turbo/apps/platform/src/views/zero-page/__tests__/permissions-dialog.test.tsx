@@ -5,7 +5,7 @@ import { http, HttpResponse } from "msw";
 import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 
 const context = testContext();
 
@@ -140,7 +140,7 @@ async function openPermissionsDrawer() {
 describe("permissions dialog - grouped connector (Slack)", () => {
   it("should show category groups collapsed by default with no global select-all", async () => {
     mockAPIs();
-    await setupPage({ context, path: "/agents/my-agent" });
+    detachedSetupPage({ context, path: "/agents/my-agent" });
     await openPermissionsDrawer();
 
     // Category groups should be visible
@@ -158,7 +158,7 @@ describe("permissions dialog - grouped connector (Slack)", () => {
 
   it("should expand a group when its header is clicked and collapse when clicked again", async () => {
     mockAPIs();
-    await setupPage({ context, path: "/agents/my-agent" });
+    detachedSetupPage({ context, path: "/agents/my-agent" });
     const user = await openPermissionsDrawer();
 
     const readButton = screen.getByText(/Read \(\d+\)/i);
@@ -191,7 +191,7 @@ describe("permissions dialog - grouped connector (Slack)", () => {
         },
       },
     });
-    await setupPage({ context, path: "/agents/my-agent" });
+    detachedSetupPage({ context, path: "/agents/my-agent" });
     await openPermissionsDrawer();
 
     // Find the Read group row — it contains the group button and a PolicyPill
@@ -222,7 +222,7 @@ describe("permissions dialog - grouped connector (Slack)", () => {
   it("should highlight Allow at group level when all permissions in group are allow", async () => {
     // Default policies are all "allow" when not specified
     mockAPIs();
-    await setupPage({ context, path: "/agents/my-agent" });
+    detachedSetupPage({ context, path: "/agents/my-agent" });
     await openPermissionsDrawer();
 
     const readButton = screen.getByText(/Read \(\d+\)/i);
@@ -241,7 +241,7 @@ describe("permissions dialog - grouped connector (Slack)", () => {
 
   it("should set all permissions in a group when group-level Allow/Deny is clicked", async () => {
     mockAPIs();
-    await setupPage({ context, path: "/agents/my-agent" });
+    detachedSetupPage({ context, path: "/agents/my-agent" });
     const user = await openPermissionsDrawer();
 
     // Click Deny on the Read group
@@ -277,7 +277,7 @@ describe("permissions dialog - grouped connector (Slack)", () => {
 
   it("should show unknown endpoints toggle defaulting to Allow", async () => {
     mockAPIs();
-    await setupPage({ context, path: "/agents/my-agent" });
+    detachedSetupPage({ context, path: "/agents/my-agent" });
     await openPermissionsDrawer();
 
     expect(screen.getByText("Unknown endpoints")).toBeInTheDocument();
@@ -298,7 +298,7 @@ describe("permissions dialog - grouped connector (Slack)", () => {
 
   it("should show unknown endpoints as Allow when saved as allow", async () => {
     mockAPIs({});
-    await setupPage({ context, path: "/agents/my-agent" });
+    detachedSetupPage({ context, path: "/agents/my-agent" });
     await openPermissionsDrawer();
 
     const unknownLabel = screen.getByText("Unknown endpoints");

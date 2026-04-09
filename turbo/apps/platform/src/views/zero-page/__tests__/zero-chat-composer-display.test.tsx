@@ -5,7 +5,7 @@ import { http, HttpResponse } from "msw";
 import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { fill, setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import {
   mockChatLifecycle,
   sendMessageInUI,
@@ -65,7 +65,7 @@ describe("chat-d-015: attachment chips in composer", () => {
 
   it("should render attachment chip with remove button after file upload", async () => {
     const user = userEvent.setup();
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     await waitFor(() => {
       expect(screen.getByLabelText("Attach")).toBeInTheDocument();
@@ -100,7 +100,7 @@ describe("chat-d-016: connected connector icons in composer trigger", () => {
         });
       }),
     );
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     const connectorsButton = await waitFor(() => {
       return screen.getByLabelText("Connectors");
@@ -120,7 +120,7 @@ describe("chat-d-017: connector list in popover", () => {
     const user = userEvent.setup();
     mockChatAPI();
     mockConnectedConnectors(["github", "linear"]);
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     const connectorsButton = await waitFor(() => {
       return screen.getByLabelText("Connectors");
@@ -142,7 +142,7 @@ describe("chat-d-018: add dialog with search filtering", () => {
   it("should render unconnected connectors in add dialog with filterable search input", async () => {
     const user = userEvent.setup();
     mockChatAPI();
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     const connectorsButton = await waitFor(() => {
       return screen.getByLabelText("Connectors");
@@ -176,7 +176,7 @@ describe("chat-d-019: connector description in add dialog", () => {
   it("should render a description for each connector in the add dialog", async () => {
     const user = userEvent.setup();
     mockChatAPI();
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     const connectorsButton = await waitFor(() => {
       return screen.getByLabelText("Connectors");
@@ -210,7 +210,7 @@ describe("chat-d-020: connectors popover after load", () => {
       }),
     );
 
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     const connectorsButton = await waitFor(() => {
       return screen.getByLabelText("Connectors");
@@ -228,7 +228,7 @@ describe("chat-d-021: send button state changes", () => {
     const user = userEvent.setup();
     const ctrl = mockChatLifecycle();
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/agents/c0000000-0000-4000-a000-000000000001/chat",
     });

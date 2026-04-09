@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { FeatureSwitchKey } from "@vm0/core";
 import type {
   LogDetail,
@@ -147,7 +147,7 @@ describe("activity detail stale data", () => {
     mockAPIs();
 
     // Start on the first activity detail page
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/activities/a0000000-0000-4000-a000-000000000001",
       featureSwitches: { [FeatureSwitchKey.ActivityLogList]: true },

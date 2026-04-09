@@ -14,14 +14,17 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  setupPage,
+} from "../../../__tests__/page-helper.ts";
 import { mockConnectors } from "./zero-connectors-page-test-helpers.ts";
 
 const context = testContext();
 
 test("connect button opens api-token form (CONN-I-011)", async () => {
   const user = userEvent.setup();
-  await setupPage({ context, path: "/connectors" });
+  detachedSetupPage({ context, path: "/connectors" });
 
   await waitFor(() => {
     expect(screen.getByLabelText("Connect Axiom")).toBeInTheDocument();
@@ -50,7 +53,7 @@ test("review button opens scope diff with added permissions (CONN-I-013)", async
     }),
   );
 
-  await setupPage({ context, path: "/connectors" });
+  detachedSetupPage({ context, path: "/connectors" });
 
   await waitFor(() => {
     expect(screen.getByText("Review")).toBeInTheDocument();

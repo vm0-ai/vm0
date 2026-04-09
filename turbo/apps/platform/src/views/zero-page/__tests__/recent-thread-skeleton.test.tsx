@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 
@@ -71,15 +71,17 @@ describe("recent thread skeleton (#7546)", () => {
     const user = userEvent.setup();
     mockAgentsWithThreads();
 
-    await setupPage({ context, path: "/agents/agent-alpha/chat" });
+    detachedSetupPage({ context, path: "/agents/agent-alpha/chat" });
 
     // Wait for the recent thread to appear in the sidebar
-    const sidebar = screen.getByRole("navigation", { name: "Sidebar" });
     await waitFor(() => {
       expect(
-        within(sidebar).getByText("My test conversation"),
+        within(screen.getByRole("navigation", { name: "Sidebar" })).getByText(
+          "My test conversation",
+        ),
       ).toBeInTheDocument();
     });
+    const sidebar = screen.getByRole("navigation", { name: "Sidebar" });
 
     // Make chat-threads API hang so the only way the sidebar can show
     // threads is by retaining the previous useLastLoadable data.

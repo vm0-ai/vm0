@@ -10,7 +10,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 
 const context = testContext();
 
@@ -113,7 +113,7 @@ describe("network insights page - empty state", () => {
   it("should show empty message when no data", async () => {
     mockInsightsAPI([]);
 
-    await setupPage({ context, path: "/insights" });
+    detachedSetupPage({ context, path: "/insights" });
 
     await waitFor(() => {
       expect(
@@ -131,7 +131,7 @@ describe("network insights page - data rendering", () => {
   it("should render the Insights heading", async () => {
     mockInsightsAPI([sampleDay(day1Ago)]);
 
-    await setupPage({ context, path: "/insights" });
+    detachedSetupPage({ context, path: "/insights" });
 
     await waitFor(() => {
       expect(screen.getByText("Insights")).toBeInTheDocument();
@@ -141,7 +141,7 @@ describe("network insights page - data rendering", () => {
   it("should display last updated timestamp", async () => {
     mockInsightsAPI([sampleDay(day1Ago)]);
 
-    await setupPage({ context, path: "/insights" });
+    detachedSetupPage({ context, path: "/insights" });
 
     await waitFor(() => {
       expect(screen.getByText(/Last updated/)).toBeInTheDocument();
@@ -151,7 +151,7 @@ describe("network insights page - data rendering", () => {
   it("should display agent names from the data", async () => {
     mockInsightsAPI([sampleDay(day1Ago)]);
 
-    await setupPage({ context, path: "/insights" });
+    detachedSetupPage({ context, path: "/insights" });
 
     await waitFor(() => {
       expect(screen.getByText("Alpha Bot")).toBeInTheDocument();
@@ -162,7 +162,7 @@ describe("network insights page - data rendering", () => {
   it("should display credit amount", async () => {
     mockInsightsAPI([sampleDay(day1Ago)]);
 
-    await setupPage({ context, path: "/insights" });
+    detachedSetupPage({ context, path: "/insights" });
 
     await waitFor(() => {
       expect(screen.getByText("200")).toBeInTheDocument();
@@ -172,7 +172,7 @@ describe("network insights page - data rendering", () => {
   it("should display most-used service with proper connector label", async () => {
     mockInsightsAPI([sampleDay(day1Ago)]);
 
-    await setupPage({ context, path: "/insights" });
+    detachedSetupPage({ context, path: "/insights" });
 
     await waitFor(() => {
       expect(screen.getByText(/Most used:/)).toBeInTheDocument();
@@ -184,7 +184,7 @@ describe("network insights page - data rendering", () => {
   it("should display connector label from CONNECTOR_TYPES for services", async () => {
     mockInsightsAPI([sampleDay(day1Ago)]);
 
-    await setupPage({ context, path: "/insights" });
+    detachedSetupPage({ context, path: "/insights" });
 
     await waitFor(() => {
       // "github" domain should render as "GitHub" via CONNECTOR_TYPES label
@@ -195,7 +195,7 @@ describe("network insights page - data rendering", () => {
   it("should display protected permissions card when denied > 0", async () => {
     mockInsightsAPI([sampleDay(day1Ago)]);
 
-    await setupPage({ context, path: "/insights" });
+    detachedSetupPage({ context, path: "/insights" });
 
     await waitFor(() => {
       expect(screen.getByText("Protected")).toBeInTheDocument();
@@ -205,7 +205,7 @@ describe("network insights page - data rendering", () => {
   it("should show ConnectorName(description) for permissions with description", async () => {
     mockInsightsAPI([sampleDay(day1Ago)]);
 
-    await setupPage({ context, path: "/insights" });
+    detachedSetupPage({ context, path: "/insights" });
 
     await waitFor(() => {
       // "chat:write" with connectorType "slack" → "Slack(chat:write)"
@@ -219,7 +219,7 @@ describe("network insights page - data rendering", () => {
   it("should show plain connector label when permission label equals connectorType", async () => {
     mockInsightsAPI([sampleDay(day1Ago)]);
 
-    await setupPage({ context, path: "/insights" });
+    detachedSetupPage({ context, path: "/insights" });
 
     await waitFor(() => {
       // label "github" === connectorType "github" → just "GitHub"
@@ -243,7 +243,7 @@ describe("network insights page - data rendering", () => {
       }),
     ]);
 
-    await setupPage({ context, path: "/insights" });
+    detachedSetupPage({ context, path: "/insights" });
 
     await waitFor(() => {
       expect(screen.getByText("Allowed")).toBeInTheDocument();
@@ -254,7 +254,7 @@ describe("network insights page - data rendering", () => {
   it("should show Yesterday header for yesterday's data", async () => {
     mockInsightsAPI([sampleDay(day1Ago)]);
 
-    await setupPage({ context, path: "/insights" });
+    detachedSetupPage({ context, path: "/insights" });
 
     await waitFor(() => {
       expect(screen.getByText("Yesterday")).toBeInTheDocument();
@@ -271,7 +271,7 @@ describe("network insights page - data rendering", () => {
       }),
     ]);
 
-    await setupPage({ context, path: "/insights" });
+    detachedSetupPage({ context, path: "/insights" });
 
     await waitFor(() => {
       expect(screen.getByText("Alpha Bot")).toBeInTheDocument();
@@ -288,7 +288,7 @@ describe("network insights page - date range filter", () => {
   it("should show date range dropdown when data exists", async () => {
     mockInsightsAPI([sampleDay(day1Ago)]);
 
-    await setupPage({ context, path: "/insights" });
+    detachedSetupPage({ context, path: "/insights" });
 
     await waitFor(() => {
       expect(screen.getByText("Last 7 Days")).toBeInTheDocument();
@@ -298,7 +298,7 @@ describe("network insights page - date range filter", () => {
   it("should not show date range dropdown when no data", async () => {
     mockInsightsAPI([]);
 
-    await setupPage({ context, path: "/insights" });
+    detachedSetupPage({ context, path: "/insights" });
 
     await waitFor(() => {
       expect(
@@ -312,7 +312,7 @@ describe("network insights page - date range filter", () => {
     // Only data from 20 days ago, but default range is "last7"
     mockInsightsAPI([sampleDay(day20Ago)]);
 
-    await setupPage({ context, path: "/insights" });
+    detachedSetupPage({ context, path: "/insights" });
 
     await waitFor(() => {
       expect(
@@ -332,7 +332,7 @@ describe("network insights page - date range filter", () => {
       }),
     ]);
 
-    await setupPage({ context, path: "/insights" });
+    detachedSetupPage({ context, path: "/insights" });
 
     // Default is "Last 7 Days" — OldBot not visible
     await waitFor(() => {
@@ -372,7 +372,7 @@ describe("network insights page - summary card", () => {
       }),
     ]);
 
-    await setupPage({ context, path: "/insights" });
+    detachedSetupPage({ context, path: "/insights" });
 
     await waitFor(() => {
       expect(screen.getByText(/5 requests were blocked/)).toBeInTheDocument();
@@ -390,7 +390,7 @@ describe("network insights page - summary card", () => {
       }),
     ]);
 
-    await setupPage({ context, path: "/insights" });
+    detachedSetupPage({ context, path: "/insights" });
 
     await waitFor(() => {
       expect(screen.getByText(/busy day/i)).toBeInTheDocument();
@@ -435,7 +435,7 @@ describe("network insights page - data refetch", () => {
       }),
     );
 
-    await setupPage({ context, path: "/insights" });
+    detachedSetupPage({ context, path: "/insights" });
 
     // The page setup calls reloadInsights$ which triggers a second fetch,
     // so the UI should eventually show the refreshed data.
@@ -455,7 +455,7 @@ describe("network insights page - team credit usage card", () => {
     mockInsightsAPI([sampleDay(day1Ago)]);
 
     // Default MSW handler returns role: "admin"
-    await setupPage({ context, path: "/insights" });
+    detachedSetupPage({ context, path: "/insights" });
 
     await waitFor(() => {
       expect(screen.getByText("Team Credit Usage")).toBeInTheDocument();
@@ -465,7 +465,7 @@ describe("network insights page - team credit usage card", () => {
   it("should display team member names in team card", async () => {
     mockInsightsAPI([sampleDay(day1Ago)]);
 
-    await setupPage({ context, path: "/insights" });
+    detachedSetupPage({ context, path: "/insights" });
 
     await waitFor(() => {
       expect(screen.getByText("alice")).toBeInTheDocument();
@@ -476,7 +476,7 @@ describe("network insights page - team credit usage card", () => {
   it("should display credit balance", async () => {
     mockInsightsAPI([sampleDay(day1Ago)]);
 
-    await setupPage({ context, path: "/insights" });
+    detachedSetupPage({ context, path: "/insights" });
 
     await waitFor(() => {
       expect(screen.getByText("9,800")).toBeInTheDocument();
@@ -498,7 +498,7 @@ describe("network insights page - team credit usage card", () => {
       }),
     );
 
-    await setupPage({ context, path: "/insights" });
+    detachedSetupPage({ context, path: "/insights" });
 
     await waitFor(() => {
       expect(screen.getByText("Your Credit Usage")).toBeInTheDocument();
@@ -515,7 +515,7 @@ describe("network insights page - your credit usage card", () => {
   it("should display Your Credit Usage heading", async () => {
     mockInsightsAPI([sampleDay(day1Ago)]);
 
-    await setupPage({ context, path: "/insights" });
+    detachedSetupPage({ context, path: "/insights" });
 
     await waitFor(() => {
       expect(screen.getByText("Your Credit Usage")).toBeInTheDocument();
@@ -544,7 +544,7 @@ describe("network insights page - your credit usage card", () => {
       }),
     ]);
 
-    await setupPage({ context, path: "/insights" });
+    detachedSetupPage({ context, path: "/insights" });
 
     // "Your Credit Usage" card should show the current user's credits (75)
     await waitFor(() => {
@@ -567,7 +567,7 @@ describe("network insights page - your credit usage card", () => {
       }),
     ]);
 
-    await setupPage({ context, path: "/insights" });
+    detachedSetupPage({ context, path: "/insights" });
 
     await waitFor(() => {
       expect(screen.getByText("Your Credit Usage")).toBeInTheDocument();
@@ -594,7 +594,7 @@ describe("network insights page - allowed permissions load more", () => {
     });
     mockInsightsAPI([sampleDay(day1Ago, { permissions: manyPermissions })]);
 
-    await setupPage({ context, path: "/insights" });
+    detachedSetupPage({ context, path: "/insights" });
 
     await waitFor(() => {
       expect(screen.getByText("Load more")).toBeInTheDocument();
@@ -613,7 +613,7 @@ describe("network insights page - allowed permissions load more", () => {
     });
     mockInsightsAPI([sampleDay(day1Ago, { permissions: fewPermissions })]);
 
-    await setupPage({ context, path: "/insights" });
+    detachedSetupPage({ context, path: "/insights" });
 
     await waitFor(() => {
       expect(screen.getByText("Allowed")).toBeInTheDocument();
@@ -634,7 +634,7 @@ describe("network insights page - allowed permissions load more", () => {
     });
     mockInsightsAPI([sampleDay(day1Ago, { permissions: manyPermissions })]);
 
-    await setupPage({ context, path: "/insights" });
+    detachedSetupPage({ context, path: "/insights" });
 
     await waitFor(() => {
       expect(screen.getByText("Load more")).toBeInTheDocument();
@@ -674,7 +674,7 @@ describe("network insights page - allowed card layout", () => {
       }),
     ]);
 
-    await setupPage({ context, path: "/insights" });
+    detachedSetupPage({ context, path: "/insights" });
 
     await waitFor(() => {
       expect(screen.getByText("Allowed")).toBeInTheDocument();
@@ -700,7 +700,7 @@ describe("network insights page - allowed card layout", () => {
       }),
     ]);
 
-    await setupPage({ context, path: "/insights" });
+    detachedSetupPage({ context, path: "/insights" });
 
     await waitFor(() => {
       expect(screen.getByText("1 call")).toBeInTheDocument();
@@ -723,7 +723,7 @@ describe("network insights page - allowed card layout", () => {
       }),
     ]);
 
-    await setupPage({ context, path: "/insights" });
+    detachedSetupPage({ context, path: "/insights" });
 
     await waitFor(() => {
       expect(screen.getByText("Allowed")).toBeInTheDocument();

@@ -1,8 +1,9 @@
 import { assert, describe, it, expect, vi } from "vitest";
+import { waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { createDeferredPromise } from "../../utils.ts";
 import {
   zeroChatMessages$,
@@ -26,7 +27,7 @@ import { currentChatThreadId$ } from "../../agent-chat.ts";
 const context = testContext();
 
 async function setup() {
-  await setupPage({
+  detachedSetupPage({
     context,
     path: "/",
     withoutRender: true,
@@ -120,10 +121,12 @@ describe("zero-chat signals", () => {
 
       await setup();
 
-      const threads = await context.store.get(chatThreads$);
-      expect(threads).toHaveLength(2);
-      expect(threads[0]?.id).toBe("t1");
-      expect(threads[1]?.title).toBe("World");
+      await waitFor(async () => {
+        const threads = await context.store.get(chatThreads$);
+        expect(threads).toHaveLength(2);
+        expect(threads[0]?.id).toBe("t1");
+        expect(threads[1]?.title).toBe("World");
+      });
     });
 
     it("should pass agentId as query parameter", async () => {
@@ -137,12 +140,13 @@ describe("zero-chat signals", () => {
 
       await setup();
 
-      await context.store.get(chatThreads$);
-
-      const url = new URL(capturedUrl);
-      expect(url.searchParams.get("agentId")).toBe(
-        "c0000000-0000-4000-a000-000000000001",
-      );
+      await waitFor(async () => {
+        await context.store.get(chatThreads$);
+        const url = new URL(capturedUrl);
+        expect(url.searchParams.get("agentId")).toBe(
+          "c0000000-0000-4000-a000-000000000001",
+        );
+      });
     });
   });
 
@@ -210,7 +214,7 @@ describe("zero-chat signals", () => {
       );
 
       // Set up on an existing thread URL so currentChatThreadId$ is pre-populated
-      await setupPage({
+      detachedSetupPage({
         context,
         path: "/chats/thread-existing",
         withoutRender: true,
@@ -299,7 +303,7 @@ describe("zero-chat signals", () => {
         }),
       );
 
-      await setupPage({
+      detachedSetupPage({
         context,
         path: "/chats/thread-error-recovery",
         withoutRender: true,
@@ -417,7 +421,7 @@ describe("zero-chat signals", () => {
         }),
       );
 
-      await setupPage({
+      detachedSetupPage({
         context,
         path: "/chats/thread-dedup",
         withoutRender: true,
@@ -518,7 +522,7 @@ describe("zero-chat signals", () => {
       );
 
       // Route setup calls loadSessionFromSnapshot$ which reads chatSessionSnapshot$
-      await setupPage({
+      detachedSetupPage({
         context,
         path: "/chats/url-thread",
         withoutRender: true,
@@ -534,7 +538,7 @@ describe("zero-chat signals", () => {
     });
 
     it("should return null for URL without session ID", async () => {
-      await setupPage({
+      detachedSetupPage({
         context,
         path: "/chat",
         withoutRender: true,
@@ -568,7 +572,7 @@ describe("zero-chat signals", () => {
       );
 
       // Route setup loads the thread
-      await setupPage({
+      detachedSetupPage({
         context,
         path: "/chats/already-loaded",
         withoutRender: true,
@@ -994,6 +998,14 @@ describe("zero-chat signals", () => {
         }),
       );
       await setup();
+
+      // Wait for background bootstrap to complete the home-page redirect
+      // and agent chat page setup (which clears the talk draft on entrance).
+      // chatThreads$ resolves only after the agent ID is set and the API is called.
+      await waitFor(async () => {
+        const threads = await context.store.get(chatThreads$);
+        expect(threads).toHaveLength(0);
+      });
 
       const promise1 = context.store.set(
         uploadZeroAttachment$,

@@ -1,75 +1,79 @@
 import { describe, expect, it } from "vitest";
+import { waitFor } from "@testing-library/react";
 import { testContext } from "./test-helpers";
-import { setupPage } from "../../__tests__/page-helper";
+import { detachedSetupPage } from "../../__tests__/page-helper";
 
 const context = testContext();
 
 describe("global debug loggers", () => {
   it("should has vm0 method after init", async () => {
-    await setupPage({ context, path: "/", withoutRender: true });
+    detachedSetupPage({ context, path: "/", withoutRender: true });
 
-    expect(window._vm0).toBeDefined();
+    await waitFor(() => {
+      expect(window._vm0).toBeDefined();
+    });
   });
 
   it("should init all loggers in info level", async () => {
-    await setupPage({ context, path: "/", withoutRender: true });
+    detachedSetupPage({ context, path: "/", withoutRender: true });
 
-    const loggers = window._vm0?.loggers;
-    expect(loggers).toBeDefined();
-    if (loggers) {
-      for (const loggerName of Object.keys(loggers)) {
-        expect(loggers[loggerName].debug).toBeFalsy();
+    await waitFor(() => {
+      const loggers = window._vm0?.loggers;
+      expect(loggers).toBeDefined();
+      if (loggers) {
+        for (const loggerName of Object.keys(loggers)) {
+          expect(loggers[loggerName].debug).toBeFalsy();
+        }
       }
-    }
+    });
   });
 
   it("should set logger to debug level when set debug to true", async () => {
-    await setupPage({ context, path: "/", withoutRender: true });
+    detachedSetupPage({ context, path: "/", withoutRender: true });
 
-    const loggers = window._vm0?.loggers;
-    expect(loggers).toBeDefined();
-    if (!loggers) {
-      return;
-    }
+    await waitFor(() => {
+      expect(window._vm0?.loggers).toBeDefined();
+    });
 
+    const loggers = window._vm0!.loggers;
     loggers.Promise.debug = true;
     expect(loggers.Promise.debug).toBeTruthy();
   });
 
   it("should affected by setupPage debugLoggers", async () => {
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/",
       debugLoggers: ["Promise"],
       withoutRender: true,
     });
 
-    const loggers = window._vm0?.loggers;
-    expect(loggers).toBeDefined();
-    if (!loggers) {
-      return;
-    }
-
-    expect(loggers.Promise.debug).toBeTruthy();
+    await waitFor(() => {
+      expect(window._vm0?.loggers?.Promise.debug).toBeTruthy();
+    });
   });
 });
 
 describe("global feature switches", () => {
   it("should have featureSwitches after init", async () => {
-    await setupPage({ context, path: "/", withoutRender: true });
+    detachedSetupPage({ context, path: "/", withoutRender: true });
 
-    expect(window._vm0).toBeDefined();
-    expect(window._vm0?.featureSwitches.dummy).toBeTruthy();
+    await waitFor(() => {
+      expect(window._vm0).toBeDefined();
+      expect(window._vm0?.featureSwitches.dummy).toBeTruthy();
+    });
   });
 
   it("should override feature switch when set value", async () => {
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/",
       featureSwitches: { dummy: false },
       withoutRender: true,
     });
 
-    expect(window._vm0?.featureSwitches.dummy).toBeFalsy();
+    await waitFor(() => {
+      expect(window._vm0?.featureSwitches.dummy).toBeFalsy();
+    });
   });
 });

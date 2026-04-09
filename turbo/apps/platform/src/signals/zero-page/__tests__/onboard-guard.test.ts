@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { onboardGuard$ } from "../onboard-guard.ts";
 import { pathname } from "../../location.ts";
 
@@ -40,7 +40,7 @@ describe("onboardGuard$", () => {
       hasDefaultAgent: true,
     });
 
-    await setupPage({ context, path: "/", withoutRender: true });
+    detachedSetupPage({ context, path: "/", withoutRender: true });
 
     const redirected = await context.store.set(onboardGuard$, context.signal);
 
@@ -54,7 +54,7 @@ describe("onboardGuard$", () => {
       hasDefaultAgent: false,
     });
 
-    await setupPage({ context, path: "/", withoutRender: true });
+    detachedSetupPage({ context, path: "/", withoutRender: true });
 
     const redirected = await context.store.set(onboardGuard$, context.signal);
 
@@ -69,7 +69,7 @@ describe("onboardGuard$", () => {
       hasDefaultAgent: false,
     });
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/",
       withoutRender: true,
@@ -92,7 +92,7 @@ describe("onboardGuard$", () => {
       hasDefaultAgent: false,
     });
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/",
       withoutRender: true,

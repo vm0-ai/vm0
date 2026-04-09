@@ -5,7 +5,7 @@ import { http, HttpResponse } from "msw";
 import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 
 const context = testContext();
 
@@ -111,7 +111,7 @@ describe("zero job detail page - display", () => {
 
   it("should render agent header elements (AGENT-D-016, AGENT-D-017)", async () => {
     mockAPIs();
-    await setupPage({ context, path: "/agents/my-agent" });
+    detachedSetupPage({ context, path: "/agents/my-agent" });
 
     await waitFor(() => {
       expect(screen.getByRole("img", { name: "My Agent" })).toBeInTheDocument();
@@ -123,7 +123,7 @@ describe("zero job detail page - display", () => {
 
   it("should show current agent name in breadcrumb (AGENT-D-019)", async () => {
     mockAPIs();
-    await setupPage({ context, path: "/agents/my-agent" });
+    detachedSetupPage({ context, path: "/agents/my-agent" });
 
     await waitFor(() => {
       expect(
@@ -138,7 +138,7 @@ describe("zero job detail page - display", () => {
 
   it("should show schedule empty state when ?tab=schedule is active with no schedules (AGENT-D-020)", async () => {
     mockAPIs();
-    await setupPage({ context, path: "/agents/my-agent?tab=schedule" });
+    detachedSetupPage({ context, path: "/agents/my-agent?tab=schedule" });
 
     await waitFor(() => {
       expect(
@@ -170,7 +170,7 @@ describe("zero job detail page - display", () => {
       }),
     );
 
-    await setupPage({ context, path: "/agents/nonexistent" });
+    detachedSetupPage({ context, path: "/agents/nonexistent" });
 
     // Not-found state shows a "Back to team" link instead of the agent heading
     await waitFor(() => {
@@ -191,7 +191,7 @@ describe("zero job detail page - connector display", () => {
 
   it("should show connector enabled and disabled states in permission list (AGENT-D-021)", async () => {
     mockAPIsWithConnectors();
-    await setupPage({ context, path: "/agents/my-agent" });
+    detachedSetupPage({ context, path: "/agents/my-agent" });
 
     // Slack is enabled (in enabledTypes), Linear is disabled
     await waitFor(() => {
@@ -206,7 +206,7 @@ describe("zero job detail page - connector display", () => {
 
   it("should display filtered connector search results (AGENT-D-022)", async () => {
     mockAPIsWithConnectors();
-    await setupPage({ context, path: "/agents/my-agent" });
+    detachedSetupPage({ context, path: "/agents/my-agent" });
 
     await waitFor(() => {
       expect(screen.getByText("Slack")).toBeInTheDocument();
@@ -224,7 +224,7 @@ describe("zero job detail page - connector display", () => {
 
   it("should show connector name, status, and manage button in permission row (AGENT-D-025)", async () => {
     mockAPIsWithConnectors();
-    await setupPage({ context, path: "/agents/my-agent" });
+    detachedSetupPage({ context, path: "/agents/my-agent" });
 
     await waitFor(() => {
       expect(screen.getByText("Slack")).toBeInTheDocument();
@@ -255,7 +255,7 @@ describe("zero job detail page - tab visibility", () => {
   it("should show all tabs when user is the agent owner", async () => {
     mockAPIs();
     // Default mock user is "test-user-123" which matches ownerId
-    await setupPage({ context, path: "/agents/my-agent" });
+    detachedSetupPage({ context, path: "/agents/my-agent" });
 
     await waitFor(() => {
       expect(
@@ -271,7 +271,7 @@ describe("zero job detail page - tab visibility", () => {
     mockAPIs();
     // Agent ownerId is "test-user-123", but user is "other-user"
     // Default org mock role is "admin"
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/agents/my-agent",
       user: { id: "other-user", fullName: "Other User" },
@@ -300,7 +300,7 @@ describe("zero job detail page - tab visibility", () => {
         });
       }),
     );
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/agents/my-agent",
       user: { id: "other-user", fullName: "Other User" },
@@ -331,7 +331,7 @@ describe("zero job detail page - tab visibility", () => {
         });
       }),
     );
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/agents/my-agent?tab=profile",
       user: { id: "other-user", fullName: "Other User" },
@@ -358,7 +358,7 @@ describe("zero job detail page - delete dialog", () => {
 
   it("should open delete confirmation dialog (AGENT-D-026)", async () => {
     mockAPIs();
-    await setupPage({ context, path: "/agents/my-agent" });
+    detachedSetupPage({ context, path: "/agents/my-agent" });
 
     await waitFor(() => {
       expect(

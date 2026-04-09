@@ -13,7 +13,10 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  setupPage,
+} from "../../../__tests__/page-helper.ts";
 import { setPermissionDialogType$ } from "../../../signals/zero-page/settings/connectors.ts";
 import { permissionDialogSelected$ } from "../../../signals/zero-page/settings/permission-dialog.ts";
 import type { ConnectorType } from "@vm0/core";
@@ -43,7 +46,7 @@ function mockAgents(
 }
 
 async function openPermissionDialog(connectorType: ConnectorType = "github") {
-  await setupPage({ context, path: "/connectors" });
+  detachedSetupPage({ context, path: "/connectors" });
 
   // Wait for page to render
   await waitFor(() => {

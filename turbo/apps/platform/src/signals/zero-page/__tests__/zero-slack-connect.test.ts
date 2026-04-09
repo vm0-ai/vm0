@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import {
   slackConnectStatus$,
   effectiveStatus$,
@@ -24,7 +24,7 @@ afterEach(() => {
 });
 
 async function setup(path: string) {
-  await setupPage({
+  detachedSetupPage({
     context,
     path,
     withoutRender: true,

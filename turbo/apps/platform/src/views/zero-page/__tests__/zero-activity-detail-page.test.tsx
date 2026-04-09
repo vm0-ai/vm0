@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { FeatureSwitchKey } from "@vm0/core";
 import type {
   LogDetail,
@@ -71,7 +71,7 @@ describe("zeroActivityDetailPage", () => {
   it("should load detail when navigating directly to /activities/:id", async () => {
     mockActivityDetailAPI();
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/activities/a0000000-0000-4000-a000-000000000001",
     });
@@ -90,7 +90,7 @@ describe("zeroActivityDetailPage", () => {
   it("should hide Activity breadcrumb when ActivityLogList switch is off", async () => {
     mockActivityDetailAPI();
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/activities/a0000000-0000-4000-a000-000000000001",
       featureSwitches: { [FeatureSwitchKey.ActivityLogList]: false },
@@ -112,7 +112,7 @@ describe("zeroActivityDetailPage", () => {
   it("should show Activity breadcrumb when ActivityLogList switch is on", async () => {
     mockActivityDetailAPI();
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/activities/a0000000-0000-4000-a000-000000000001",
       featureSwitches: { [FeatureSwitchKey.ActivityLogList]: true },
@@ -169,7 +169,7 @@ describe("zeroActivityDetailPage", () => {
       }),
     );
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/activities/a0000000-0000-4000-a000-000000000002",
     });
@@ -224,7 +224,7 @@ describe("zeroActivityDetailPage", () => {
       }),
     );
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/activities/a0000000-0000-4000-a000-000000000003",
     });
@@ -247,7 +247,7 @@ describe("zeroActivityDetailPage", () => {
   it("should render non-schedule source as plain text", async () => {
     mockActivityDetailAPI();
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/activities/a0000000-0000-4000-a000-000000000001",
     });
@@ -308,7 +308,7 @@ describe("zeroActivityDetailPage", () => {
       }),
     );
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/activities/a0000000-0000-4000-a000-000000000004",
       featureSwitches: { [FeatureSwitchKey.ShowSystemPrompt]: true },
@@ -369,7 +369,7 @@ describe("zeroActivityDetailPage", () => {
       }),
     );
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/activities/a0000000-0000-4000-a000-000000000005",
       featureSwitches: { [FeatureSwitchKey.ModelDetail]: true },
@@ -423,7 +423,7 @@ describe("zeroActivityDetailPage", () => {
       }),
     );
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/activities/a0000000-0000-4000-a000-000000000006",
       featureSwitches: { [FeatureSwitchKey.ModelDetail]: false },
@@ -478,7 +478,7 @@ describe("zeroActivityDetailPage", () => {
       }),
     );
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/activities/a0000000-0000-4000-a000-000000000007",
       featureSwitches: { [FeatureSwitchKey.ModelDetail]: true },

@@ -3,7 +3,7 @@ import { screen, waitFor, act } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 
 const context = testContext();
 
@@ -74,7 +74,7 @@ function mockAPIs() {
 describe("team page navigation", () => {
   it("should render team list at /team", async () => {
     mockAPIs();
-    await setupPage({ context, path: "/agents" });
+    detachedSetupPage({ context, path: "/agents" });
 
     await waitFor(() => {
       expect(screen.getByText("Research Agent")).toBeInTheDocument();
@@ -83,7 +83,7 @@ describe("team page navigation", () => {
 
   it("should render agent detail at /team/:name", async () => {
     mockAPIs();
-    await setupPage({ context, path: "/agents/agent-2" });
+    detachedSetupPage({ context, path: "/agents/agent-2" });
 
     await waitFor(() => {
       expect(
@@ -96,7 +96,7 @@ describe("team page navigation", () => {
     mockAPIs();
 
     // Start on the detail page
-    await setupPage({ context, path: "/agents/agent-2" });
+    detachedSetupPage({ context, path: "/agents/agent-2" });
 
     await waitFor(() => {
       expect(

@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import type {
   LogDetail,
   AgentEvent,
@@ -64,7 +64,7 @@ function mockDetailAPI(events: AgentEvent[]): void {
 }
 
 async function renderActivityPage(): Promise<void> {
-  await setupPage({ context, path: `/activities/${BASE_LOG_ID}` });
+  detachedSetupPage({ context, path: `/activities/${BASE_LOG_ID}` });
   await waitFor(() => {
     expect(
       screen.getByRole("heading", { name: "Tool Summary Agent" }),

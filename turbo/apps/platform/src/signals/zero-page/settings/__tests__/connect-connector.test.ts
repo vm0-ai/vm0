@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../mocks/server.ts";
 import { testContext } from "../../../__tests__/test-helpers.ts";
-import { setupPage } from "../../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../../__tests__/page-helper.ts";
 import {
   connectConnector$,
   permissionDialogType$,
@@ -69,7 +69,7 @@ function mockMatchMedia(standalone: boolean) {
 
 describe("connectConnector$", () => {
   it("detects connector via API polling while popup is open", async () => {
-    await setupPage({ context, path: "/", withoutRender: true });
+    detachedSetupPage({ context, path: "/", withoutRender: true });
 
     const mockWindow = { closed: false, close: vi.fn() };
     vi.spyOn(window, "open").mockReturnValue(mockWindow as unknown as Window);
@@ -108,7 +108,7 @@ describe("connectConnector$", () => {
   });
 
   it("exits when popup is closed even if connector not found", async () => {
-    await setupPage({ context, path: "/", withoutRender: true });
+    detachedSetupPage({ context, path: "/", withoutRender: true });
 
     const mockWindow = { closed: false, close: vi.fn() };
     vi.spyOn(window, "open").mockReturnValue(mockWindow as unknown as Window);
@@ -137,7 +137,7 @@ describe("connectConnector$", () => {
   });
 
   it("sets permissionDialogType$ after successful OAuth connection", async () => {
-    await setupPage({ context, path: "/", withoutRender: true });
+    detachedSetupPage({ context, path: "/", withoutRender: true });
 
     const mockWindow = { closed: false, close: vi.fn() };
     vi.spyOn(window, "open").mockReturnValue(mockWindow as unknown as Window);
@@ -154,7 +154,7 @@ describe("connectConnector$", () => {
   });
 
   it("does not set permissionDialogType$ when popup closed without connecting", async () => {
-    await setupPage({ context, path: "/", withoutRender: true });
+    detachedSetupPage({ context, path: "/", withoutRender: true });
 
     const mockWindow = { closed: false, close: vi.fn() };
     vi.spyOn(window, "open").mockReturnValue(mockWindow as unknown as Window);
@@ -176,7 +176,7 @@ describe("connectConnector$", () => {
   });
 
   it("completes oauth flow in standalone mode without popup dimensions", async () => {
-    await setupPage({ context, path: "/", withoutRender: true });
+    detachedSetupPage({ context, path: "/", withoutRender: true });
 
     mockMatchMedia(true);
     vi.spyOn(window, "open").mockReturnValue(null);
@@ -200,7 +200,7 @@ describe("connectConnector$", () => {
   });
 
   it("polls after connector appears following multiple poll cycles in standalone mode", async () => {
-    await setupPage({ context, path: "/", withoutRender: true });
+    detachedSetupPage({ context, path: "/", withoutRender: true });
 
     mockMatchMedia(true);
     vi.spyOn(window, "open").mockReturnValue(null);
@@ -231,7 +231,7 @@ describe("connectConnector$", () => {
   });
 
   it("exits polling after timeout in standalone mode", async () => {
-    await setupPage({ context, path: "/", withoutRender: true });
+    detachedSetupPage({ context, path: "/", withoutRender: true });
 
     mockMatchMedia(true);
     vi.spyOn(window, "open").mockReturnValue(null);
@@ -268,7 +268,7 @@ describe("connectConnector$", () => {
 
 describe("submitApiToken$", () => {
   it("sets permissionDialogType$ after successful API token submission", async () => {
-    await setupPage({ context, path: "/", withoutRender: true });
+    detachedSetupPage({ context, path: "/", withoutRender: true });
 
     await context.store.set(
       submitApiToken$,

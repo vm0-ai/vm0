@@ -5,7 +5,7 @@ import { http, HttpResponse } from "msw";
 import { FeatureSwitchKey } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import type {
   LogDetail,
   AgentEventsResponse,
@@ -96,7 +96,7 @@ describe("activity paged events", () => {
       }),
     );
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/activities/a0000000-0000-4000-a000-000000000099",
     });
@@ -187,7 +187,7 @@ describe("activity paged events", () => {
     // Start on the list page so setup can complete while the run is still
     // "running" (polling on the detail page would loop forever).
     // Enable ActivityLogList so the breadcrumb link back to /activities is rendered.
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/activities",
       featureSwitches: { [FeatureSwitchKey.ActivityLogList]: true },

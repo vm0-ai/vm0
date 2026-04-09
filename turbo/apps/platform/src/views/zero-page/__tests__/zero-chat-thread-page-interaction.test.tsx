@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import { setMockUserPreferences } from "../../../mocks/handlers/api-user-preferences.ts";
 import {
@@ -23,7 +23,7 @@ describe("zero chat thread page - sending state affects composer button display"
     const user = userEvent.setup();
     const ctrl = mockChatLifecycle();
 
-    await setupPage({ context, path: `/chats/${THREAD_ID}` });
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
     const textarea = await waitFor(() => {
       return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
@@ -51,10 +51,14 @@ describe("zero chat thread page - agent avatar link navigation", () => {
     const user = userEvent.setup();
     mockSubagentThread(THREAD_ID);
 
-    await setupPage({ context, path: `/chats/${THREAD_ID}` });
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
+    // Wait for the chat page to be fully rendered before interacting
     const link = await waitFor(() => {
-      return screen.getByLabelText("View agent profile");
+      const el = screen.getByLabelText("View agent profile");
+      // Verify the link has a non-empty href (agent data resolved)
+      expect(el).toHaveAttribute("href", `/agents/${SUB_AGENT_ID}`);
+      return el;
     });
 
     await user.click(link);
@@ -72,7 +76,7 @@ describe("zero chat thread page - pin button toggles pin state", () => {
     setMockUserPreferences({ pinnedAgentIds: [] });
     mockSubagentThread(THREAD_ID);
 
-    await setupPage({ context, path: `/chats/${THREAD_ID}` });
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
     const pinButton = await waitFor(() => {
       return screen.getByLabelText("Pin to sidebar");
@@ -101,7 +105,7 @@ describe("zero chat thread page - image attachment opens lightbox", () => {
       ],
     });
 
-    await setupPage({ context, path: `/chats/${THREAD_ID}` });
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
     await waitFor(() => {
       expect(
@@ -145,7 +149,7 @@ describe("zero chat thread page - timeline expansion button", () => {
       ],
     });
 
-    await setupPage({ context, path: `/chats/${THREAD_ID}` });
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
     const expandButton = await waitFor(() => {
       return screen.getByText(/Took 1 step/);
@@ -184,7 +188,7 @@ describe("zero chat thread page - copy message button", () => {
       ],
     });
 
-    await setupPage({ context, path: `/chats/${THREAD_ID}` });
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
     await waitFor(() => {
       expect(screen.getByText("Hello world")).toBeInTheDocument();
@@ -222,7 +226,7 @@ describe("zero chat thread page - view activity logs link", () => {
       ],
     });
 
-    await setupPage({ context, path: `/chats/${THREAD_ID}` });
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
     await waitFor(() => {
       expect(screen.getByText("Hello world")).toBeInTheDocument();
@@ -252,7 +256,7 @@ describe("zero chat thread page - file attachment download does not navigate awa
       ],
     });
 
-    await setupPage({ context, path: `/chats/${THREAD_ID}` });
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
     const downloadLink = await waitFor(() => {
       return screen.getByTitle("document.pdf");

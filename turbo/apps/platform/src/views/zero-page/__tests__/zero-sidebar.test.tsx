@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers";
-import { fill, setupPage } from "../../../__tests__/page-helper";
+import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { featureSwitch$ } from "../../../signals/external/feature-switch";
@@ -69,16 +69,18 @@ function mockAPIs({
 
 describe("zero sidebar", () => {
   it("should render org switcher with current org name", async () => {
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/",
     });
 
-    expect(screen.getByText("Default Org")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText("Default Org")).toBeInTheDocument();
+    });
   });
 
   it("should enable dataExport feature switch via localStorage override", async () => {
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/",
       featureSwitches: { dataExport: true },
@@ -89,7 +91,7 @@ describe("zero sidebar", () => {
   });
 
   it("should disable dataExport feature switch when not overridden", async () => {
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/",
       featureSwitches: { dataExport: false },
@@ -101,7 +103,7 @@ describe("zero sidebar", () => {
 
   it("should hide Activity logs when ActivityLogList switch is off", async () => {
     mockAPIs();
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/",
       featureSwitches: { [FeatureSwitchKey.ActivityLogList]: false },
@@ -115,7 +117,7 @@ describe("zero sidebar", () => {
 
   it("should show Activity logs when ActivityLogList switch is on", async () => {
     mockAPIs();
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/",
       featureSwitches: { [FeatureSwitchKey.ActivityLogList]: true },
@@ -130,7 +132,7 @@ describe("zero sidebar", () => {
   it("should filter chat sessions when searching", async () => {
     const user = userEvent.setup();
     mockAPIs();
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     // Wait for chat threads to render
     await waitFor(() => {
@@ -154,7 +156,7 @@ describe("zero sidebar", () => {
   it("should close search and reset filter", async () => {
     const user = userEvent.setup();
     mockAPIs();
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     // Wait for chat threads to render
     await waitFor(() => {

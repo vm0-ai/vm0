@@ -5,7 +5,7 @@ import { http, HttpResponse } from "msw";
 import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 
 const context = testContext();
 
@@ -139,7 +139,7 @@ async function openPermissionsDrawer(connectorLabel: string) {
 describe("permissions dialog - flat list connector (Notion)", () => {
   it("renders permission names and descriptions in flat list (FW-D-031)", async () => {
     mockAPIs({ connectorType: "notion" });
-    await setupPage({ context, path: "/agents/my-agent" });
+    detachedSetupPage({ context, path: "/agents/my-agent" });
     await openPermissionsDrawer("Notion");
 
     await waitFor(() => {
@@ -155,7 +155,7 @@ describe("permissions dialog - flat list connector (Notion)", () => {
         notion: { permissions: { insert_comments: "deny" } },
       },
     });
-    await setupPage({ context, path: "/agents/my-agent" });
+    detachedSetupPage({ context, path: "/agents/my-agent" });
     await openPermissionsDrawer("Notion");
 
     await waitFor(() => {
@@ -194,7 +194,7 @@ describe("permissions dialog - flat list connector (Notion)", () => {
 describe("permissions dialog - grouped connector (Slack)", () => {
   it("renders group categories with permission counts (FW-D-032)", async () => {
     mockAPIs({ connectorType: "slack" });
-    await setupPage({ context, path: "/agents/my-agent" });
+    detachedSetupPage({ context, path: "/agents/my-agent" });
     await openPermissionsDrawer("Slack");
 
     await waitFor(() => {
@@ -206,7 +206,7 @@ describe("permissions dialog - grouped connector (Slack)", () => {
 
   it("toggles group visibility on collapse/expand click (FW-D-035)", async () => {
     mockAPIs({ connectorType: "slack" });
-    await setupPage({ context, path: "/agents/my-agent" });
+    detachedSetupPage({ context, path: "/agents/my-agent" });
     const user = await openPermissionsDrawer("Slack");
 
     const readButton = screen.getByText(/Read \(\d+\)/i);
@@ -244,7 +244,7 @@ describe("permissions dialog - grouped connector (Slack)", () => {
         });
       }),
     );
-    await setupPage({ context, path: "/agents/my-agent" });
+    detachedSetupPage({ context, path: "/agents/my-agent" });
     const user = await openPermissionsDrawer("Slack");
 
     await user.click(screen.getByText("Apply"));
@@ -261,7 +261,7 @@ describe("permissions dialog - grouped connector (Slack)", () => {
 
   it("disables all policy pills and shows only Close in read-only mode (FW-V-001)", async () => {
     mockAPIs({ connectorType: "slack", ownerId: "other-user-456" });
-    await setupPage({ context, path: "/agents/my-agent" });
+    detachedSetupPage({ context, path: "/agents/my-agent" });
     await openPermissionsDrawer("Slack");
 
     // The footer "Close" button (text content) should be present

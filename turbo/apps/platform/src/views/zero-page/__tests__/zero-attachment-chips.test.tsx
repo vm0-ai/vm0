@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
 
 const context = testContext();
@@ -34,7 +34,7 @@ describe("chat-d-056: file type icon renders based on getFileTypeIcon", () => {
       ],
     });
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/chats/thread-test-1",
     });
@@ -63,7 +63,7 @@ describe("chat-d-056: file type icon renders based on getFileTypeIcon", () => {
       ],
     });
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/chats/thread-test-1",
     });
@@ -93,7 +93,7 @@ describe("chat-d-057: upload progress indicator in AttachmentChip", () => {
     );
     mockChatAPI();
 
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     await waitFor(() => {
       expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
@@ -136,7 +136,7 @@ describe("chat-d-058: image preview thumbnails in AttachmentChip", () => {
     );
     mockChatAPI();
 
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     await waitFor(() => {
       expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
@@ -178,7 +178,7 @@ describe("chat-i-059: image preview button opens lightbox", () => {
     );
     mockChatAPI();
 
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     await waitFor(() => {
       expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
@@ -229,7 +229,7 @@ describe("chat-i-060: close button closes lightbox", () => {
     );
     mockChatAPI();
 
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     await waitFor(() => {
       expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
@@ -286,7 +286,7 @@ describe("chat-i-061: backdrop click closes lightbox", () => {
     );
     mockChatAPI();
 
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     await waitFor(() => {
       expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
@@ -344,7 +344,7 @@ describe("chat-i-062: remove button on attachment chip calls onRemove", () => {
     );
     mockChatAPI();
 
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     await waitFor(() => {
       expect(screen.getByPlaceholderText(PLACEHOLDER)).toBeInTheDocument();
@@ -390,7 +390,7 @@ describe("chat-d-063: download link renders for file attachment", () => {
       ],
     });
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/chats/thread-test-1",
     });

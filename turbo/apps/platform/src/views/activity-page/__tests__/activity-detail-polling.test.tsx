@@ -3,7 +3,7 @@ import { screen, waitFor } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import type {
   LogDetail,
   AgentEventsResponse,
@@ -87,7 +87,7 @@ describe("activity detail polling with initially empty events", () => {
     );
 
     // Navigate directly to a fresh run's detail page
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/activities/a0000000-0000-4000-a000-000000000099",
     });

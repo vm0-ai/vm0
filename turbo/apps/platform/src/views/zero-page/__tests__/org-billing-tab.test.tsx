@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { fill, setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { setMockBillingStatus } from "../../../mocks/handlers/api-billing.ts";
 
 const context = testContext();
@@ -35,7 +35,7 @@ function mockAPIs() {
 }
 
 async function openBillingTab() {
-  await setupPage({ context, path: "/?settings=billing" });
+  detachedSetupPage({ context, path: "/?settings=billing" });
   await waitFor(() => {
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });

@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import {
   fireClerkListeners,
   mockedClerk,
@@ -37,7 +37,7 @@ function mockAPIs() {
 describe("zero org switcher - current org avatar and name render (SIDEBAR-D-054)", () => {
   it("displays the current organization name in the sidebar trigger", async () => {
     mockAPIs();
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/",
       org: {
@@ -81,7 +81,7 @@ describe("zero org switcher - organization slug renders (SIDEBAR-D-055)", () => 
       }),
     );
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/",
       org: {
@@ -106,7 +106,7 @@ describe("zero org switcher - organization slug renders (SIDEBAR-D-055)", () => 
 describe("zero org switcher - pending invitations badge shows count (SIDEBAR-D-056)", () => {
   it("shows a red dot badge when there are pending invitations", async () => {
     mockAPIs();
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/",
       org: {
@@ -139,7 +139,7 @@ describe("zero org switcher - pending invitations badge shows count (SIDEBAR-D-0
 describe("zero org switcher - pending invitations list renders (SIDEBAR-D-057)", () => {
   it("shows pending invitation items when dropdown is opened", async () => {
     mockAPIs();
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/",
       org: {
@@ -178,7 +178,7 @@ describe("zero org switcher - pending invitations list renders (SIDEBAR-D-057)",
 describe("zero org switcher - other org memberships list renders (SIDEBAR-D-058)", () => {
   it("shows other organizations the user belongs to when dropdown is opened", async () => {
     mockAPIs();
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/",
       org: {
@@ -206,7 +206,7 @@ describe("zero org switcher - other org memberships list renders (SIDEBAR-D-058)
 describe("zero org switcher - dropdown opens (SIDEBAR-D-059)", () => {
   it("shows org management options when dropdown is opened", async () => {
     mockAPIs();
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/",
       org: {
@@ -262,7 +262,7 @@ describe("zero org switcher - manage button opens org management (SIDEBAR-D-060)
       }),
     );
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/",
       org: {
@@ -321,7 +321,7 @@ describe("zero org switcher - org switch menu item switches organization (SIDEBA
     );
 
     mockAPIs();
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/",
       org: {
@@ -355,7 +355,7 @@ describe("zero org switcher - org switch menu item switches organization (SIDEBA
 describe("zero org switcher - join button accepts invitation (SIDEBAR-D-062)", () => {
   it("removes the invitation from the list after Join is clicked", async () => {
     mockAPIs();
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/",
       org: {
@@ -426,7 +426,7 @@ describe("zero org switcher - create workspace item starts creation flow (SIDEBA
     );
 
     mockAPIs();
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/",
       org: {
@@ -457,7 +457,7 @@ describe("zero org switcher - create workspace item starts creation flow (SIDEBA
 describe("zero org switcher - pending invitations badge hidden when none (SIDEBAR-D-064)", () => {
   it("should not show red dot when there are no pending invitations", async () => {
     mockAPIs();
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/",
       org: {

@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 
@@ -69,7 +69,7 @@ function mockScheduleAPI(schedules = [createEnabledSchedule()]) {
 describe("schedule list view - empty state (SCHED-D-080)", () => {
   it("renders empty state image and message when no schedules exist", async () => {
     mockScheduleAPI([]);
-    await setupPage({ context, path: "/schedules" });
+    detachedSetupPage({ context, path: "/schedules" });
 
     await waitFor(() => {
       expect(
@@ -88,7 +88,7 @@ describe("schedule list view - empty state (SCHED-D-080)", () => {
 describe("schedule list view - schedule list renders (SCHED-D-081)", () => {
   it("renders schedule entries in a table with expected columns", async () => {
     mockScheduleAPI();
-    await setupPage({ context, path: "/schedules" });
+    detachedSetupPage({ context, path: "/schedules" });
 
     await waitFor(() => {
       expect(
@@ -126,7 +126,7 @@ describe("schedule list view - agent labels (SCHED-D-082)", () => {
         prompt: "Research daily summary",
       },
     ]);
-    await setupPage({ context, path: "/schedules" });
+    detachedSetupPage({ context, path: "/schedules" });
 
     await waitFor(() => {
       expect(screen.getAllByText("Zero")[0]).toBeInTheDocument();
@@ -143,7 +143,7 @@ describe("schedule list view - time and timezone (SCHED-D-083)", () => {
         timezone: "America/New_York",
       },
     ]);
-    await setupPage({ context, path: "/schedules" });
+    detachedSetupPage({ context, path: "/schedules" });
 
     await waitFor(() => {
       expect(
@@ -158,7 +158,7 @@ describe("schedule list view - time and timezone (SCHED-D-083)", () => {
 describe("schedule list view - enabled/disabled indicator (SCHED-D-084)", () => {
   it("renders toggle switches with distinct labels for enabled and disabled schedules", async () => {
     mockScheduleAPI([createEnabledSchedule(), createDisabledSchedule()]);
-    await setupPage({ context, path: "/schedules" });
+    detachedSetupPage({ context, path: "/schedules" });
 
     await waitFor(() => {
       // Enabled schedule: switch shows "Disable <time>"
@@ -189,7 +189,7 @@ describe("schedule list view - running action indicator (SCHED-D-085)", () => {
       }),
     );
     const user = userEvent.setup();
-    await setupPage({ context, path: "/schedules" });
+    detachedSetupPage({ context, path: "/schedules" });
 
     await waitFor(() => {
       expect(
@@ -234,7 +234,7 @@ describe("schedule list view - empty state add schedule button (SCHED-D-086)", (
   it("opens the schedule form dialog when Add schedule is clicked in empty state", async () => {
     const user = userEvent.setup();
     mockScheduleAPI([]);
-    await setupPage({ context, path: "/schedules" });
+    detachedSetupPage({ context, path: "/schedules" });
 
     await waitFor(() => {
       expect(screen.getByText("No runs scheduled")).toBeInTheDocument();
@@ -260,7 +260,7 @@ describe("schedule list view - row click navigates to detail (SCHED-D-087)", () 
   it("navigates to the schedule detail page when a schedule row is clicked", async () => {
     const user = userEvent.setup();
     mockScheduleAPI();
-    await setupPage({ context, path: "/schedules" });
+    detachedSetupPage({ context, path: "/schedules" });
 
     await waitFor(() => {
       expect(
@@ -302,7 +302,7 @@ describe("schedule list view - toggle switch (SCHED-D-088)", () => {
       }),
     );
 
-    await setupPage({ context, path: "/schedules" });
+    detachedSetupPage({ context, path: "/schedules" });
 
     await waitFor(() => {
       expect(
@@ -324,7 +324,7 @@ describe("schedule list view - more actions dropdown (SCHED-D-089)", () => {
   it("opens a dropdown with Run now, Edit, and Delete options", async () => {
     const user = userEvent.setup();
     mockScheduleAPI();
-    await setupPage({ context, path: "/schedules" });
+    detachedSetupPage({ context, path: "/schedules" });
 
     await waitFor(() => {
       expect(
@@ -376,7 +376,7 @@ describe("schedule list view - run now action (SCHED-D-090)", () => {
       }),
     );
 
-    await setupPage({ context, path: "/schedules" });
+    detachedSetupPage({ context, path: "/schedules" });
 
     await waitFor(() => {
       expect(
@@ -418,7 +418,7 @@ describe("schedule list view - edit action (SCHED-D-091)", () => {
   it("navigates to the schedule detail page when Edit is clicked", async () => {
     const user = userEvent.setup();
     mockScheduleAPI();
-    await setupPage({ context, path: "/schedules" });
+    detachedSetupPage({ context, path: "/schedules" });
 
     await waitFor(() => {
       expect(
@@ -458,7 +458,7 @@ describe("schedule list view - delete action (SCHED-D-092)", () => {
   it("shows delete confirmation dialog when Delete is clicked", async () => {
     const user = userEvent.setup();
     mockScheduleAPI();
-    await setupPage({ context, path: "/schedules" });
+    detachedSetupPage({ context, path: "/schedules" });
 
     await waitFor(() => {
       expect(

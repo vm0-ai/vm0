@@ -10,7 +10,10 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import {
+  detachedSetupPage,
+  setupPage,
+} from "../../../__tests__/page-helper.ts";
 import {
   resetMockBilling,
   setMockBillingStatus,
@@ -42,7 +45,7 @@ describe("chat-d-067: AutoRechargeSection renders threshold value", () => {
       hasSubscription: true,
       autoRecharge: { enabled: true, threshold: 5000, amount: 10_000 },
     });
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
     await openBillingDialogAndWait();
 
     await waitFor(() => {
@@ -62,7 +65,7 @@ describe("chat-d-068: AutoRechargeSection renders amount value in credits", () =
       hasSubscription: true,
       autoRecharge: { enabled: true, threshold: 5000, amount: 10_000 },
     });
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
     await openBillingDialogAndWait();
 
     await waitFor(() => {
@@ -82,7 +85,7 @@ describe("chat-d-069: AutoRechargeSection renders dollarAmount calculated from a
       hasSubscription: true,
       autoRecharge: { enabled: true, threshold: 5000, amount: 10_000 },
     });
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
     await openBillingDialogAndWait();
 
     await waitFor(() => {
@@ -122,7 +125,7 @@ describe("chat-s-070: Loading state disables Save button during save", () => {
       hasSubscription: true,
       autoRecharge: { enabled: true, threshold: 5000, amount: 10_000 },
     });
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
     await openBillingDialogAndWait();
 
     await waitFor(() => {
@@ -169,7 +172,7 @@ describe("chat-c-071: AutoRechargeSection fields render conditionally based on d
       hasSubscription: true,
       autoRecharge: { enabled: false, threshold: null, amount: null },
     });
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
     await openBillingDialogAndWait();
 
     await waitFor(() => {
@@ -191,7 +194,7 @@ describe("chat-c-071: AutoRechargeSection fields render conditionally based on d
       hasSubscription: true,
       autoRecharge: { enabled: true, threshold: 1000, amount: 5000 },
     });
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
     await openBillingDialogAndWait();
 
     await waitFor(() => {
@@ -210,7 +213,7 @@ describe("chat-d-072-073: BillingDialog renders status.tier and credit count", (
       subscriptionStatus: "active",
       hasSubscription: true,
     });
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
     await openBillingDialogAndWait();
 
     await waitFor(() => {
@@ -238,7 +241,7 @@ describe("chat-d-075: Selected plan ring highlight renders on chosen PlanCard", 
       subscriptionStatus: "active",
       hasSubscription: true,
     });
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
     context.store.set(setSelectedPlanTier$, "team");
     await openBillingDialogAndWait();
 
@@ -259,7 +262,7 @@ describe("chat-c-076: Button text changes based on isUpgrade/isDowngrade determi
       subscriptionStatus: "active",
       hasSubscription: true,
     });
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
     await openBillingDialogAndWait();
 
     await waitFor(() => {
@@ -287,7 +290,7 @@ describe("chat-c-076: Button text changes based on isUpgrade/isDowngrade determi
       subscriptionStatus: "active",
       hasSubscription: true,
     });
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
     await openBillingDialogAndWait();
 
     await waitFor(() => {
@@ -332,7 +335,7 @@ describe("chat-c-077: Action button is disabled during redirect", () => {
       subscriptionStatus: "active",
       hasSubscription: true,
     });
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
     await openBillingDialogAndWait();
 
     await waitFor(() => {

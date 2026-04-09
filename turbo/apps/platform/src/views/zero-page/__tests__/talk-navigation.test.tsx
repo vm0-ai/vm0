@@ -4,7 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { fill, setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage, fill } from "../../../__tests__/page-helper.ts";
 import { pathname } from "../../../signals/location.ts";
 
 const context = testContext();
@@ -85,7 +85,7 @@ describe("talk navigation", () => {
     const user = userEvent.setup();
     mockChatAPIs();
 
-    await setupPage({
+    detachedSetupPage({
       context,
       path: "/agents/c0000000-0000-4000-a000-000000000001/chat",
     });
@@ -146,7 +146,7 @@ describe("talk navigation", () => {
     // Mock chat APIs for the agent chat page
     mockChatAPIs();
 
-    await setupPage({ context, path: "/" });
+    detachedSetupPage({ context, path: "/" });
 
     // Step 1: Workspace name
     await waitFor(() => {
