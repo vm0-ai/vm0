@@ -64,76 +64,44 @@ const SESSION_TOOLS = [
     type: "function",
     name: "read_shared_context",
     description:
-      "Read shared context events from the voice chat session blackboard",
+      "Check for updates from your slow-thinking self. Call this before responding to the user to see if there are new directives, progress updates, or results from your background thinking.",
     parameters: {
       type: "object",
       properties: {
         after_seq: {
           type: "number",
           description:
-            "Only return events with sequence number greater than this value",
+            "Only return events with sequence number greater than this value. Use this to get only new events since your last read.",
         },
       },
-    },
-  },
-  {
-    type: "function",
-    name: "append_shared_context",
-    description:
-      "Append an event to the shared context blackboard of the voice chat session",
-    parameters: {
-      type: "object",
-      properties: {
-        source: {
-          type: "string",
-          enum: ["system", "user", "talker", "worker"],
-          description: "Source of the event",
-        },
-        type: {
-          type: "string",
-          enum: [
-            "speech",
-            "acknowledgement",
-            "worker-request",
-            "progress",
-            "result",
-            "response",
-          ],
-          description: "Type of the event",
-        },
-        content: {
-          type: "string",
-          description: "Content of the event",
-        },
-      },
-      required: ["source", "type"],
     },
   },
 ] as const;
 
 const TALKER_INSTRUCTIONS = `
-You are the front-stage Talker in a real-time voice chat system. You speak directly with the user while a background Worker agent handles tasks that require execution.
+You are Zero, vm0's AI workspace assistant. You are speaking with the user in real time through voice.
 
-You have two tools for communicating through a shared context blackboard:
+You have two thinking modes:
+- Fast mode (you): real-time voice conversation. You listen, respond, and keep the dialogue flowing naturally.
+- Slow mode (your background self): deep work, tool use, and execution. It observes the conversation and works autonomously.
 
-- append_shared_context: Write events to the blackboard. Use source "talker" and type "worker-request" to delegate a task to the Worker. Include a clear description of the task in the content field.
-- read_shared_context: Read events from the blackboard. Use the after_seq parameter to only get new events since your last read. Look for events with source "worker" and type "progress" or "result".
+The shared context is your shared memory with your slow-thinking self. Before responding to the user, always call read_shared_context to check for updates.
 
-When to delegate to the Worker:
-- The user asks for something that requires action: writing or editing code, running commands, creating pull requests or issues, searching repositories, calling APIs, or any task needing tools beyond conversation.
-- To delegate, call append_shared_context with source "talker", type "worker-request", and content describing the task clearly.
-- After delegating, periodically call read_shared_context with after_seq to check for progress and results from the Worker. When you see a result, summarize it conversationally to the user.
+When you read shared context, look for events with source "slow-brain":
 
-When NOT to delegate:
-- Simple questions, casual conversation, clarifications, opinions, explanations, or discussion. Handle these directly.
+1. If you find a directive (type "directive"): incorporate its content naturally into your response. Do not read it verbatim — use your own voice and phrasing. The directive provides the substance; you provide the delivery.
+
+2. If your slow self is working (type "thinking-progress"): acknowledge it naturally. For example: "Let me think about that more carefully..." or "I'm looking into that right now..."
+
+3. If there is a result (type "thinking-result"): summarize the result conversationally for the user.
+
+4. If there are no new updates from your slow self: respond on your own. Handle casual conversation, ask clarifying questions, and be a warm conversational partner.
 
 Communication style:
 - Keep responses concise and natural. You are speaking, not writing.
-- Acknowledge delegation naturally, for example: "Let me have the agent look into that."
-- Report progress conversationally: "The agent is working on it."
-- Summarize results in plain language: "Here is what the agent found."
-- Do not use markdown formatting, bullet points, or code blocks in your speech.
+- Do not use markdown formatting, bullet points, or code blocks.
 - Be warm and conversational, like a helpful colleague.
+- When the user asks for something that needs tools or deep work, reassure them naturally: "Let me look into that" or "I'll work on that."
 `.trim();
 
 function logContextEvent(
@@ -235,21 +203,6 @@ const handleFnCall$ = command(
       const data = (await res.json()) as { events: ContextEvent[] };
       signal.throwIfAborted();
       result = JSON.stringify(data.events);
-    } else if (name === "append_shared_context") {
-      const parsed = JSON.parse(args) as {
-        source: string;
-        type: string;
-        content?: string;
-      };
-      const res = await fetchFn(`/api/zero/voice-chat/${sid}/context`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(parsed),
-      });
-      signal.throwIfAborted();
-      const data = (await res.json()) as { event: ContextEvent };
-      signal.throwIfAborted();
-      result = JSON.stringify(data.event);
     } else {
       result = JSON.stringify({ error: `Unknown function: ${name}` });
     }
