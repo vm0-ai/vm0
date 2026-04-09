@@ -85,13 +85,13 @@ export type FirewallPolicies = z.infer<typeof firewallPoliciesSchema>;
  * Refs absent from the map are fully permissive (all granted + allow unknown).
  */
 const grantedPermissionSchema = z.object({
-  permissions: z.array(z.string()),
+  allow: z.array(z.string()),
   allowUnknown: z.boolean(),
 });
 
 /**
  * Granted permissions map — firewall ref → grant config.
- * Example: { "github": { permissions: ["repo-read"], allowUnknown: false } }
+ * Example: { "github": { allow: ["repo-read"], allowUnknown: false } }
  */
 export const grantedPermissionsSchema = z.record(
   z.string(),

@@ -146,7 +146,7 @@ class TestRequestHandler:
                         },
                     ],
                     "grantedPermissions": {
-                        "github": {"permissions": ["full-access"], "allowUnknown": True}
+                        "github": {"allow": ["full-access"], "allowUnknown": True}
                     },
                     "encryptedSecrets": "iv:tag:data",
                 }
@@ -206,7 +206,7 @@ class TestRequestHandler:
                         },
                     ],
                     "grantedPermissions": {
-                        "github": {"permissions": ["read-repos"], "allowUnknown": False}
+                        "github": {"allow": ["read-repos"], "allowUnknown": False}
                     },
                     "encryptedSecrets": "iv:tag:data",
                 }
@@ -269,7 +269,7 @@ class TestRequestHandler:
                         },
                     ],
                     "grantedPermissions": {
-                        "github": {"permissions": ["read-repos"], "allowUnknown": False}
+                        "github": {"allow": ["read-repos"], "allowUnknown": False}
                     },
                     "encryptedSecrets": "iv:tag:data",
                 }
@@ -326,7 +326,7 @@ class TestRequestHandler:
                         },
                     ],
                     "grantedPermissions": {
-                        "github": {"permissions": ["full-access"], "allowUnknown": True}
+                        "github": {"allow": ["full-access"], "allowUnknown": True}
                     },
                     "encryptedSecrets": "iv:tag:data",
                 }

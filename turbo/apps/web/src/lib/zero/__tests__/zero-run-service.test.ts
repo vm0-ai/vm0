@@ -405,7 +405,7 @@ describe("createZeroRun()", () => {
       expect(granted).toBeDefined();
       const slackGrant = granted!.slack;
       expect(slackGrant).toBeDefined();
-      const grantedPerms = slackGrant!.permissions;
+      const grantedPerms = slackGrant!.allow;
       expect(grantedPerms).toContain("channels:read");
       expect(grantedPerms).toContain("channels:history");
       expect(grantedPerms).not.toContain("admin");
@@ -436,7 +436,7 @@ describe("createZeroRun()", () => {
       // Slack has default policies — grantedPermissions reflects default-allowed ones
       const granted = job!.executionContext.grantedPermissions;
       expect(granted).toBeDefined();
-      const grantedPerms = granted!.slack!.permissions;
+      const grantedPerms = granted!.slack!.allow;
       expect(Array.isArray(grantedPerms)).toBe(true);
       expect(grantedPerms).toContain("channels:read");
       expect(grantedPerms).toContain("users:read");
@@ -470,7 +470,7 @@ describe("createZeroRun()", () => {
       // grantedPermissions has empty array (nothing allowed)
       const granted = job!.executionContext.grantedPermissions;
       expect(granted).toBeDefined();
-      expect(granted!.slack!.permissions).toEqual([]);
+      expect(granted!.slack!.allow).toEqual([]);
       expect(granted!.slack!.allowUnknown).toBe(true);
     });
 

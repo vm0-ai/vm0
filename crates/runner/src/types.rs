@@ -139,7 +139,7 @@ pub struct FirewallAuth {
 #[serde(rename_all = "camelCase")]
 pub struct GrantedPermission {
     /// Permission names granted by the user.
-    pub permissions: Vec<String>,
+    pub allow: Vec<String>,
     /// Whether to allow requests that don't match any known permission rule.
     pub allow_unknown: bool,
 }

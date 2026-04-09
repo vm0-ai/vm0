@@ -58,7 +58,7 @@ export function mergePermissions(
   const autoConfigs = modelProviderFirewall ? [modelProviderFirewall] : [];
   if (modelProviderFirewall) {
     grantedPermissions[modelProviderFirewall.ref] = {
-      permissions: collectPermissionNames(modelProviderFirewall.apis),
+      allow: collectPermissionNames(modelProviderFirewall.apis),
       allowUnknown: true,
     };
   }
@@ -123,12 +123,12 @@ export function applyConnectorPolicies(
     const allPermNames = collectPermissionNames(fw.apis);
     if (!refPolicies) {
       // No policies configured → all granted
-      grantedPermissions[fw.ref] = { permissions: allPermNames, allowUnknown };
+      grantedPermissions[fw.ref] = { allow: allPermNames, allowUnknown };
     } else {
       const granted = allPermNames.filter((name) => {
         return refPolicies[name] === "allow";
       });
-      grantedPermissions[fw.ref] = { permissions: granted, allowUnknown };
+      grantedPermissions[fw.ref] = { allow: granted, allowUnknown };
     }
   }
 

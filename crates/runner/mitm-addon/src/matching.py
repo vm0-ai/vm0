@@ -447,7 +447,7 @@ def _build_granted_set(
     ref_grant = granted_permissions.get(fw_ref)
     if ref_grant is None:
         return set()
-    return set(ref_grant.get("permissions", []))
+    return set(ref_grant.get("allow", []))
 
 
 def _is_allow_unknown(

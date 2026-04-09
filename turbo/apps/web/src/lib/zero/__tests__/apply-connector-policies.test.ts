@@ -44,7 +44,7 @@ describe("applyConnectorPolicies", () => {
     // No policies → all permissions granted
     expect(grantedPermissions).toEqual({
       github: {
-        permissions: ["repo-read", "repo-write"],
+        allow: ["repo-read", "repo-write"],
         allowUnknown: true,
       },
     });
@@ -80,7 +80,7 @@ describe("applyConnectorPolicies", () => {
     // grantedPermissions only includes "allow" ones
     expect(grantedPermissions).toEqual({
       github: {
-        permissions: ["repo-read", "issues-read"],
+        allow: ["repo-read", "issues-read"],
         allowUnknown: true,
       },
     });
@@ -111,7 +111,7 @@ describe("applyConnectorPolicies", () => {
     // No permissions defined → empty granted, allow unknown
     expect(grantedPermissions).toEqual({
       "custom-api": {
-        permissions: [],
+        allow: [],
         allowUnknown: true,
       },
     });
@@ -136,7 +136,7 @@ describe("applyConnectorPolicies", () => {
     expect(firewalls[0]?.apis[0]?.permissions).toEqual([]);
     expect(grantedPermissions).toEqual({
       "custom-api": {
-        permissions: [],
+        allow: [],
         allowUnknown: true,
       },
     });
@@ -163,7 +163,7 @@ describe("applyConnectorPolicies", () => {
     );
 
     expect(grantedPermissions.github).toEqual({
-      permissions: ["repo-read"],
+      allow: ["repo-read"],
       allowUnknown: true,
     });
   });
@@ -187,7 +187,7 @@ describe("applyConnectorPolicies", () => {
     });
 
     expect(grantedPermissions.github).toEqual({
-      permissions: ["repo-read"],
+      allow: ["repo-read"],
       allowUnknown: true,
     });
   });
