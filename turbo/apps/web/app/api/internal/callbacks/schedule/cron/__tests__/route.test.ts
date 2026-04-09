@@ -32,7 +32,7 @@ function createCallbackRequest(
   body: {
     callbackId?: string;
     runId: string;
-    status: "completed" | "failed";
+    status: "completed" | "failed" | "progress";
     error?: string;
     payload: CronCallbackPayload;
   },
@@ -223,6 +223,34 @@ describe("POST /api/internal/callbacks/schedule/cron", () => {
       expect(updated!.consecutiveFailures).toBe(3);
       expect(updated!.enabled).toBe(false);
       expect(updated!.nextRunAt).toBeNull();
+    });
+  });
+
+  describe("Progress Callback", () => {
+    it("should ignore progress notifications without affecting failure count", async () => {
+      const { schedule, runId, secret } = await setupCronSchedule();
+
+      const request = createCallbackRequest(
+        {
+          runId,
+          status: "progress",
+          payload: {
+            scheduleId: schedule.id,
+            cronExpression: "0 9 * * *",
+            timezone: "UTC",
+          },
+        },
+        secret,
+      );
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.skipped).toBe(true);
+
+      const updated = await findTestScheduleById(schedule.id);
+      expect(updated!.consecutiveFailures).toBe(0);
+      expect(updated!.enabled).toBe(true);
     });
   });
 

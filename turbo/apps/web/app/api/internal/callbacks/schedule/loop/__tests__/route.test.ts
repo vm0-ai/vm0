@@ -31,7 +31,7 @@ function createCallbackRequest(
   body: {
     callbackId?: string;
     runId: string;
-    status: "completed" | "failed";
+    status: "completed" | "failed" | "progress";
     error?: string;
     payload: LoopCallbackPayload;
   },
@@ -257,6 +257,30 @@ describe("POST /api/internal/callbacks/schedule/loop", () => {
       expect(updated!.consecutiveFailures).toBe(3);
       expect(updated!.enabled).toBe(false);
       expect(updated!.nextRunAt).toBeNull();
+    });
+  });
+
+  describe("Progress Callback", () => {
+    it("should ignore progress notifications without affecting failure count", async () => {
+      const { schedule, runId, secret } = await setupLoopSchedule();
+
+      const request = createCallbackRequest(
+        {
+          runId,
+          status: "progress",
+          payload: { scheduleId: schedule.id, intervalSeconds: 300 },
+        },
+        secret,
+      );
+      const response = await POST(request);
+
+      expect(response.status).toBe(200);
+      const data = await response.json();
+      expect(data.skipped).toBe(true);
+
+      const updated = await findTestScheduleById(schedule.id);
+      expect(updated!.consecutiveFailures).toBe(0);
+      expect(updated!.enabled).toBe(true);
     });
   });
 

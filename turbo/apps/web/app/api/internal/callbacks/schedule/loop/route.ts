@@ -45,6 +45,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   const { scheduleId, intervalSeconds } = payload;
 
+  // Ignore progress notifications — only act on terminal states
+  if (status === "progress") {
+    return NextResponse.json({ success: true, skipped: true });
+  }
+
   log.debug("Processing loop schedule callback", {
     runId: result.data.runId,
     status,
