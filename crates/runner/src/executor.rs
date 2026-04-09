@@ -202,7 +202,6 @@ async fn execute_new_sandbox(
         context,
         config,
         params.use_snapshot,
-        false, // new sandbox — download storages normally
         telemetry,
         cancel,
     )
@@ -282,13 +281,12 @@ async fn execute_reused_sandbox(
         };
     }
 
-    // Run job — clock/entropy already handled, storage persists from previous turn
+    // Run job — clock/entropy already handled.
     let result = run_in_sandbox(
         sandbox.as_ref(),
         context,
         config,
         false, // clock/entropy already handled
-        true,  // skip storage download — filesystem persists across turns
         telemetry,
         cancel,
     )
@@ -384,7 +382,6 @@ async fn run_in_sandbox(
     context: &ExecutionContext,
     config: &ExecutorConfig,
     use_snapshot: bool,
-    skip_storage_download: bool,
     telemetry: &mut JobTelemetry,
     cancel: CancellationToken,
 ) -> RunnerResult<(i32, Option<String>)> {
@@ -403,8 +400,8 @@ async fn run_in_sandbox(
     // 2. Set guest timezone from user preference (best-effort, never fails).
     sync_guest_timezone(sandbox, context).await;
 
-    // 3. Download storages (skipped for reused VMs — filesystem persists)
-    if !skip_storage_download && let Some(manifest) = &context.storage_manifest {
+    // 3. Download storages
+    if let Some(manifest) = &context.storage_manifest {
         let t = Instant::now();
         let result = download_storages(sandbox, context, manifest, &log_file).await;
         let err = result.as_ref().err().map(|e| e.to_string());
@@ -2515,56 +2512,6 @@ mod tests {
         );
     }
 
-    /// Verify that the reuse path skips storage download even when context
-    /// has a storage_manifest. Strategy: push a write_file error — if download
-    /// ran, it would call write_file (consuming the error and failing).
-    /// Since download is skipped, write_file is never called and the test passes.
-    #[tokio::test]
-    async fn execute_job_reuse_skips_storage_download() {
-        let dir = tempfile::tempdir().unwrap();
-        let config = test_executor_config(dir.path()).await;
-
-        let sandbox = MockSandbox::new("reuse-skip-download");
-        // Poison write_file: if called, it would fail with this error.
-        sandbox.push_write_file_result(Err(SandboxError::ExecFailed(
-            "download should be skipped".into(),
-        )));
-
-        let mut ctx = minimal_context();
-        ctx.storage_manifest = Some(StorageManifest {
-            storages: vec![StorageEntry {
-                mount_path: "/data".into(),
-                archive_url: Some("https://s3/archive.tar.gz".into()),
-            }],
-            artifact: None,
-            memory: None,
-        });
-
-        let idle_entry = crate::idle_pool::IdleEntry {
-            sandbox: Box::new(sandbox),
-            factory: std::sync::Arc::new(
-                Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>
-            ),
-            session_id: "sess-1".into(),
-            profile_name: "vm0/default".into(),
-            vcpu: 2,
-            memory_mb: 2048,
-            source_ip: "10.0.0.1".into(),
-            parked_at: std::time::Instant::now(),
-            idle_timeout: std::time::Duration::from_secs(300),
-        };
-
-        let cancel = tokio_util::sync::CancellationToken::new();
-        let outcome = execute_job_reuse(idle_entry, ctx, &config, cancel).await;
-
-        // If storage download was NOT skipped, write_file would have been called
-        // with the poisoned error, causing the job to fail with "download should
-        // be skipped". Success here proves download was truly skipped.
-        assert_eq!(outcome.exit_code, 0, "reuse should skip storage download");
-        assert!(outcome.error.is_none());
-        assert!(outcome.sandbox.is_some());
-    }
-
     /// Verify that session restore failure during reuse still returns the sandbox.
     #[tokio::test]
     async fn execute_job_reuse_session_restore_failure_returns_sandbox() {
@@ -2605,78 +2552,6 @@ mod tests {
             outcome.sandbox.is_some(),
             "sandbox must be returned on session restore failure"
         );
-    }
-
-    /// Verify that reuse skips storage download but still runs session restore
-    /// when both storage_manifest and resume_session are present.
-    ///
-    /// Strategy: push a write_file error. If storage download ran, it would
-    /// call write_file first (for the manifest), consuming the error and
-    /// failing with "storage should be skipped". Since download IS skipped,
-    /// the first write_file call is for restore_session (session history),
-    /// which consumes the error and fails with "storage should be skipped"
-    /// — proving both that download was skipped AND session restore ran.
-    #[tokio::test]
-    async fn execute_job_reuse_skips_storage_but_runs_session_restore() {
-        let dir = tempfile::tempdir().unwrap();
-        let config = test_executor_config(dir.path()).await;
-
-        let sandbox = MockSandbox::new("reuse-combined");
-        // Poison write_file: consumed by whichever calls write_file first.
-        sandbox.push_write_file_result(Err(SandboxError::ExecFailed(
-            "storage should be skipped".into(),
-        )));
-
-        let mut ctx = minimal_context();
-        ctx.storage_manifest = Some(StorageManifest {
-            storages: vec![StorageEntry {
-                mount_path: "/data".into(),
-                archive_url: Some("https://s3/archive.tar.gz".into()),
-            }],
-            artifact: None,
-            memory: None,
-        });
-        ctx.resume_session = Some(ResumeSession {
-            session_id: "sess-combined".into(),
-            session_history: r#"{"type":"init"}"#.into(),
-        });
-
-        let idle_entry = crate::idle_pool::IdleEntry {
-            sandbox: Box::new(sandbox),
-            factory: std::sync::Arc::new(
-                Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>
-            ),
-            session_id: "sess-combined".into(),
-            profile_name: "vm0/default".into(),
-            vcpu: 2,
-            memory_mb: 2048,
-            source_ip: "10.0.0.1".into(),
-            parked_at: std::time::Instant::now(),
-            idle_timeout: std::time::Duration::from_secs(300),
-        };
-
-        let cancel = tokio_util::sync::CancellationToken::new();
-        let outcome = execute_job_reuse(idle_entry, ctx, &config, cancel).await;
-
-        // If storage download was NOT skipped, write_file would be called for
-        // the manifest, consuming the error. Session restore's write_file would
-        // then succeed (default), and the download exec would fail — the error
-        // message would NOT contain "storage should be skipped".
-        //
-        // Since storage IS skipped, session restore is the first write_file
-        // caller, it consumes the error, and we see it in the outcome.
-        assert_eq!(outcome.exit_code, 1);
-        assert!(
-            outcome
-                .error
-                .as_ref()
-                .unwrap()
-                .contains("storage should be skipped"),
-            "session restore should have consumed the write_file error, \
-             proving it ran while storage download was skipped. Got: {:?}",
-            outcome.error,
-        );
-        assert!(outcome.sandbox.is_some());
     }
 
     #[tokio::test]
