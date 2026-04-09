@@ -11,7 +11,13 @@ import {
   appendEvent,
 } from "../../../../../../src/lib/zero/voice-chat/context-service";
 
-const VALID_SOURCES = ["system", "user", "talker", "worker"] as const;
+const VALID_SOURCES = [
+  "system",
+  "user",
+  "talker",
+  "worker",
+  "slow-brain",
+] as const;
 const VALID_TYPES = [
   "session-start",
   "session-end",

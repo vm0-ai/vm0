@@ -158,7 +158,7 @@ Stay quiet when the conversation is:
 
 When you have something for the user, write to the shared context:
 
-\`zero voice-chat context append <SESSION_ID> --source worker --type <TYPE> --content "<CONTENT>"\`
+\`zero voice-chat context append <SESSION_ID> --source slow-brain --type <TYPE> --content "<CONTENT>"\`
 
 ### Event Types
 

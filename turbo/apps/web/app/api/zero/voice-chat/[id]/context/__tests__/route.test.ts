@@ -315,7 +315,7 @@ describe("POST /api/zero/voice-chat/[id]/context", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          source: "worker",
+          source: "slow-brain",
           type,
           content: "test content",
         }),
@@ -325,7 +325,7 @@ describe("POST /api/zero/voice-chat/[id]/context", () => {
     const body = await response.json();
     expect(response.status).toBe(200);
     expect(body.event.type).toBe(type);
-    expect(body.event.source).toBe("worker");
+    expect(body.event.source).toBe("slow-brain");
   });
 
   it("should produce incrementing seq numbers", async () => {
