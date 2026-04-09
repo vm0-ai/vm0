@@ -38,6 +38,9 @@ test("sign in and complete onboarding to chat page", async ({ page }) => {
     waitUntil: "domcontentloaded",
   });
   expect(page.url()).toMatch(/\/agents\/.*\/chat/);
+
+  // Save storageState for feature tests
+  await page.context().storageState({ path: "playwright/.auth/storage-state.json" });
 });
 
 async function completeOnboarding(page: import("@playwright/test").Page) {
