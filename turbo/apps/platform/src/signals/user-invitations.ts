@@ -41,7 +41,7 @@ export const pollUserInvitations$ = command(
         set(reloadInvitations$, (x) => {
           return x + 1;
         });
-        return true;
+        return false;
       },
       POLL_INTERVAL_MS,
       signal,
