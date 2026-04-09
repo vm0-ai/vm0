@@ -45,6 +45,8 @@ describe("applyConnectorPolicies", () => {
     expect(grantedPermissions).toEqual({
       github: {
         allow: ["repo-read", "repo-write"],
+        deny: [],
+        ask: [],
         allowUnknown: true,
       },
     });
@@ -77,10 +79,12 @@ describe("applyConnectorPolicies", () => {
 
     // Firewalls carry ALL permissions (unfiltered)
     expect(firewalls[0]?.apis[0]?.permissions).toEqual(allPermissions);
-    // grantedPermissions only includes "allow" ones
+    // grantedPermissions splits by policy
     expect(grantedPermissions).toEqual({
       github: {
         allow: ["repo-read", "issues-read"],
+        deny: ["repo-write"],
+        ask: [],
         allowUnknown: true,
       },
     });
@@ -112,6 +116,8 @@ describe("applyConnectorPolicies", () => {
     expect(grantedPermissions).toEqual({
       "custom-api": {
         allow: [],
+        deny: [],
+        ask: [],
         allowUnknown: true,
       },
     });
@@ -137,6 +143,8 @@ describe("applyConnectorPolicies", () => {
     expect(grantedPermissions).toEqual({
       "custom-api": {
         allow: [],
+        deny: [],
+        ask: [],
         allowUnknown: true,
       },
     });
@@ -164,6 +172,8 @@ describe("applyConnectorPolicies", () => {
 
     expect(grantedPermissions.github).toEqual({
       allow: ["repo-read"],
+      deny: [],
+      ask: [],
       allowUnknown: true,
     });
   });
@@ -188,6 +198,8 @@ describe("applyConnectorPolicies", () => {
 
     expect(grantedPermissions.github).toEqual({
       allow: ["repo-read"],
+      deny: [],
+      ask: [],
       allowUnknown: true,
     });
   });

@@ -59,6 +59,8 @@ export function mergePermissions(
   if (modelProviderFirewall) {
     grantedPermissions[modelProviderFirewall.ref] = {
       allow: collectPermissionNames(modelProviderFirewall.apis),
+      deny: [],
+      ask: [],
       allowUnknown: true,
     };
   }
@@ -122,13 +124,28 @@ export function applyConnectorPolicies(
     const allowUnknown = allowUnknownEndpoints?.[fw.ref] ?? true;
     const allPermNames = collectPermissionNames(fw.apis);
     if (!refPolicies) {
-      // No policies configured → all granted
-      grantedPermissions[fw.ref] = { allow: allPermNames, allowUnknown };
+      // No policies configured → all granted, none denied
+      grantedPermissions[fw.ref] = {
+        allow: allPermNames,
+        deny: [],
+        ask: [],
+        allowUnknown,
+      };
     } else {
-      const granted = allPermNames.filter((name) => {
-        return refPolicies[name] === "allow";
-      });
-      grantedPermissions[fw.ref] = { allow: granted, allowUnknown };
+      const allow: string[] = [];
+      const deny: string[] = [];
+      const ask: string[] = [];
+      for (const name of allPermNames) {
+        const policy = refPolicies[name];
+        if (policy === "allow") {
+          allow.push(name);
+        } else if (policy === "deny") {
+          deny.push(name);
+        } else if (policy === "ask") {
+          ask.push(name);
+        }
+      }
+      grantedPermissions[fw.ref] = { allow, deny, ask, allowUnknown };
     }
   }
 

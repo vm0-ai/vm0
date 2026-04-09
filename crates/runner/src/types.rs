@@ -140,6 +140,10 @@ pub struct FirewallAuth {
 pub struct GrantedPermission {
     /// Permission names granted by the user.
     pub allow: Vec<String>,
+    /// Permission names explicitly denied by the admin.
+    pub deny: Vec<String>,
+    /// Permission names requiring user approval before use.
+    pub ask: Vec<String>,
     /// Whether to allow requests that don't match any known permission rule.
     pub allow_unknown: bool,
 }

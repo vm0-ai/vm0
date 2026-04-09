@@ -86,12 +86,14 @@ export type FirewallPolicies = z.infer<typeof firewallPoliciesSchema>;
  */
 const grantedPermissionSchema = z.object({
   allow: z.array(z.string()),
+  deny: z.array(z.string()),
+  ask: z.array(z.string()),
   allowUnknown: z.boolean(),
 });
 
 /**
  * Granted permissions map — firewall ref → grant config.
- * Example: { "github": { allow: ["repo-read"], allowUnknown: false } }
+ * Example: { "github": { allow: ["repo-read"], deny: ["admin"], ask: [], allowUnknown: false } }
  */
 export const grantedPermissionsSchema = z.record(
   z.string(),
