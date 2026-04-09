@@ -196,9 +196,11 @@ describe("applyConnectorPolicies", () => {
 
     const { grantedPermissions } = applyConnectorPolicies([fw], {
       github: {
-        "repo-read": "allow",
-        "repo-write": "ask",
-        admin: "deny",
+        permissions: {
+          "repo-read": "allow",
+          "repo-write": "ask",
+          admin: "deny",
+        },
       },
     });
 
