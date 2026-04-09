@@ -53,7 +53,6 @@ function mockAPIs({
         avatarUrl: null,
         connectors: [],
         permissionPolicies,
-        allowUnknownEndpoints: null,
       });
     }),
     http.get("*/api/zero/agents/:name/instructions", () => {
@@ -98,7 +97,6 @@ function mockAPIs({
         sound: null,
         avatarUrl: null,
         permissionPolicies: body.policies,
-        allowUnknownEndpoints: null,
         customSkills: [],
       });
     }),
@@ -237,7 +235,6 @@ describe("permissions dialog - grouped connector (Slack)", () => {
           sound: null,
           avatarUrl: null,
           permissionPolicies: {},
-          allowUnknownEndpoints: null,
           customSkills: [],
         });
       }),

@@ -8,7 +8,7 @@ import {
   permissionAccessRequestsListContract,
   permissionAccessRequestsResolveContract,
   isFirewallConnectorType,
-  type FirewallPolicies,
+  type RawPermissionPolicies,
 } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import {
@@ -392,10 +392,9 @@ const resolveRouter = tsr.router(permissionAccessRequestsResolveContract, {
           .where(eq(zeroAgents.id, existing.agentId))
           .limit(1);
 
-        const currentPolicies =
-          (agent?.permissionPolicies as FirewallPolicies | null) ?? {};
+        const currentPolicies = agent?.permissionPolicies ?? {};
         const refPolicies = currentPolicies[existing.connectorRef] ?? {};
-        const updatedPolicies: FirewallPolicies = {
+        const updatedPolicies: RawPermissionPolicies = {
           ...currentPolicies,
           [existing.connectorRef]: {
             ...refPolicies,

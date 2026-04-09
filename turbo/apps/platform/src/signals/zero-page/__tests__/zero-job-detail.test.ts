@@ -38,7 +38,6 @@ function mockAgentResponse() {
     sound: null,
     avatarUrl: null,
     permissionPolicies: null,
-    allowUnknownEndpoints: null,
     customSkills: [],
   };
 }
@@ -242,7 +241,9 @@ describe("zero-job-detail signals", () => {
     });
 
     it("should derive permission policies from detail", async () => {
-      const policies = { search: { read: "allow" as const } };
+      const policies = {
+        search: { permissions: { read: "allow" as const } },
+      };
       server.use(
         http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
           return HttpResponse.json({
@@ -612,7 +613,6 @@ describe("zero-job-detail signals", () => {
               sound: null,
               avatarUrl: null,
               permissionPolicies: null,
-              allowUnknownEndpoints: null,
             });
           },
         ),
@@ -663,7 +663,6 @@ describe("zero-job-detail signals", () => {
               sound: null,
               avatarUrl: null,
               permissionPolicies: null,
-              allowUnknownEndpoints: null,
             });
           },
         ),

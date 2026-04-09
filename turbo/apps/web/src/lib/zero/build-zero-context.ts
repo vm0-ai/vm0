@@ -92,10 +92,8 @@ interface BuildZeroContextParams {
   modelProvider?: string;
   // API start time for E2E timing metrics
   apiStartTime?: number;
-  // Per-permission policies from zero agent configuration.
+  // Per-permission policies from zero agent configuration (includes allowUnknown).
   permissionPolicies?: FirewallPolicies;
-  // Per-connector setting: whether to allow requests to unknown endpoints.
-  allowUnknownEndpoints?: Record<string, boolean>;
   // Caller-resolved org context for secret/variable/storage resolution.
   orgId: string;
   // Connector types the user has permitted for this agent run. When set, only
@@ -278,7 +276,6 @@ interface ResolveCliRunContextParams {
   secrets?: Record<string, string>;
   modelProvider?: string;
   permissionPolicies?: FirewallPolicies;
-  allowUnknownEndpoints?: Record<string, boolean>;
   allowedConnectorTypes?: ConnectorType[];
   // Artifact/memory
   artifactName?: string;
@@ -464,7 +461,6 @@ export async function resolveCliRunContext(
     connectorPermissionConfigs,
     params.permissionPolicies,
     mergedVars,
-    params.allowUnknownEndpoints,
   );
 
   return {
@@ -628,7 +624,6 @@ export async function buildZeroExecutionContext(
     connectorPermissionConfigs,
     params.permissionPolicies,
     mergedVars,
-    params.allowUnknownEndpoints,
   );
 
   // Build final execution context

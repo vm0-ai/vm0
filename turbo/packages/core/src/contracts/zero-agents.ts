@@ -27,7 +27,6 @@ export const zeroAgentResponseSchema = z.object({
   sound: z.string().nullable(),
   avatarUrl: z.string().nullable(),
   permissionPolicies: firewallPoliciesSchema.nullable(),
-  allowUnknownEndpoints: z.record(z.string(), z.boolean()).nullable(),
   customSkills: z.array(z.string()).default([]),
 });
 
@@ -168,7 +167,6 @@ export const zeroAgentsByIdContract = c.router({
 export const zeroAgentPermissionPoliciesRequestSchema = z.object({
   agentId: z.string().uuid(),
   policies: firewallPoliciesSchema,
-  allowUnknownEndpoints: z.record(z.string(), z.boolean()).optional(),
 });
 
 /**

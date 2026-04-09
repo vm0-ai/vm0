@@ -62,7 +62,6 @@ function mockAPIs({
         sound: null,
         avatarUrl: null,
         permissionPolicies: null,
-        allowUnknownEndpoints: null,
       });
     }),
   );

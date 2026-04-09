@@ -45,14 +45,9 @@ export function mergePermissions(
   connectorFirewalls: ExpandedFirewallConfig[],
   permissionPolicies?: FirewallPolicies,
   vars?: Record<string, string>,
-  allowUnknownEndpoints?: Record<string, boolean>,
 ): MergedPermissions | undefined {
   const { firewalls: connectorResults, grantedPermissions } =
-    applyConnectorPolicies(
-      connectorFirewalls,
-      permissionPolicies,
-      allowUnknownEndpoints,
-    );
+    applyConnectorPolicies(connectorFirewalls, permissionPolicies);
 
   // Model provider firewalls — always fully permissive, grant all permissions
   const autoConfigs = modelProviderFirewall ? [modelProviderFirewall] : [];
@@ -101,13 +96,12 @@ interface ConnectorPoliciesResult {
 export function applyConnectorPolicies(
   connectorFirewalls: ExpandedFirewallConfig[],
   policies?: FirewallPolicies,
-  allowUnknownEndpoints?: Record<string, boolean>,
 ): ConnectorPoliciesResult {
   const firewalls: Firewalls = [];
   const grantedPermissions: GrantedPermissions = {};
 
   for (const fw of connectorFirewalls) {
-    const refPolicies = policies?.[fw.ref];
+    const refPolicy = policies?.[fw.ref];
 
     // Build full (unfiltered) firewall entry — pass permissions as-is
     const apis = fw.apis.map((api) => {
@@ -121,9 +115,9 @@ export function applyConnectorPolicies(
     firewalls.push({ name: fw.name, ref: fw.ref, apis });
 
     // Build grantedPermissions for this ref — always explicit, never omit.
-    const allowUnknown = allowUnknownEndpoints?.[fw.ref] ?? true;
+    const allowUnknown = refPolicy?.allowUnknown ?? true;
     const allPermNames = collectPermissionNames(fw.apis);
-    if (!refPolicies) {
+    if (!refPolicy) {
       // No policies configured → all granted, none denied
       grantedPermissions[fw.ref] = {
         allow: allPermNames,
@@ -136,7 +130,7 @@ export function applyConnectorPolicies(
       const deny: string[] = [];
       const ask: string[] = [];
       for (const name of allPermNames) {
-        const policy = refPolicies[name];
+        const policy = refPolicy.permissions[name];
         if (policy === "allow") {
           allow.push(name);
         } else if (policy === "deny") {

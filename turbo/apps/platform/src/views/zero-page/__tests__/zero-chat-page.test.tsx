@@ -357,7 +357,6 @@ describe("zero chat page - connector label casing", () => {
           sound: null,
           avatarUrl: null,
           permissionPolicies: null,
-          allowUnknownEndpoints: null,
         });
       }),
       http.get(

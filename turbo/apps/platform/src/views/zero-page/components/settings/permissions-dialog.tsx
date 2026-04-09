@@ -49,9 +49,8 @@ interface PermissionsDrawerProps {
   connectorType: ConnectorType;
   displayName: string;
   initialPolicies: FirewallPolicies;
-  allowUnknown: boolean;
   readOnly?: boolean;
-  onApply: (policies: FirewallPolicies, allowUnknown: boolean) => Promise<void>;
+  onApply: (policies: FirewallPolicies) => Promise<void>;
   onClose: () => void;
 }
 
@@ -199,7 +198,7 @@ function buildInitialPolicies(
   const resolved = resolveFirewallPolicies(initialPolicies, [ref]);
   const refPolicies: Record<string, PermissionPolicy> = {};
   for (const p of perms) {
-    refPolicies[p.name] = resolved?.[ref]?.[p.name] ?? "allow";
+    refPolicies[p.name] = resolved?.[ref]?.permissions[p.name] ?? "allow";
   }
   result[ref] = refPolicies;
   return result;
@@ -235,7 +234,6 @@ export function PermissionsDrawer({
   connectorType,
   displayName,
   initialPolicies,
-  allowUnknown: initialAllowUnknown,
   readOnly,
   onApply,
   onClose,
@@ -246,6 +244,7 @@ export function PermissionsDrawer({
     ? getConnectorFirewall(ref)
     : null;
 
+  const initialAllowUnknown = initialPolicies[ref]?.allowUnknown ?? true;
   useSet(initPermissionPolicies$)(
     buildInitialPolicies(ref, config, initialPolicies),
     initialAllowUnknown,
@@ -293,7 +292,18 @@ export function PermissionsDrawer({
   };
 
   const handleApply = () => {
-    detach(applyFn(onApply, onClose, pageSignal), Reason.DomCallback);
+    const wrappedApply = async (
+      perms: Record<string, Record<string, PermissionPolicy>>,
+      unknownFlag: boolean,
+    ): Promise<void> => {
+      // Convert dialog state (flat perms + allowUnknown) to unified FirewallPolicies
+      const unified: FirewallPolicies = {};
+      for (const [r, p] of Object.entries(perms)) {
+        unified[r] = { permissions: p, allowUnknown: unknownFlag };
+      }
+      await onApply(unified);
+    };
+    detach(applyFn(wrappedApply, onClose, pageSignal), Reason.DomCallback);
   };
 
   const connectorLabel = CONNECTOR_TYPES[connectorType]?.label ?? connectorType;

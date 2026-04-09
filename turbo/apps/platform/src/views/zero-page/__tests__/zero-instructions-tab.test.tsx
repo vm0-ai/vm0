@@ -58,7 +58,6 @@ function mockAPIs(instructionsContent: string | null = null) {
         avatarUrl: null,
         connectors: [],
         permissionPolicies: null,
-        allowUnknownEndpoints: null,
         customSkills: [],
       });
     }),
@@ -124,7 +123,6 @@ describe("zero instructions tab - display", () => {
           avatarUrl: null,
           connectors: [],
           permissionPolicies: null,
-          allowUnknownEndpoints: null,
           customSkills: [],
         });
       }),
@@ -220,7 +218,6 @@ describe("zero instructions tab - display", () => {
           sound: null,
           avatarUrl: null,
           permissionPolicies: null,
-          allowUnknownEndpoints: null,
           customSkills: [],
         });
       }),

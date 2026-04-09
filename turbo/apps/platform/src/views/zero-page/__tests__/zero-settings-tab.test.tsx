@@ -37,7 +37,6 @@ function agentDetail(overrides: Record<string, unknown> = {}) {
     avatarUrl: "preset:0",
     connectors: [],
     permissionPolicies: null,
-    allowUnknownEndpoints: null,
     ...overrides,
   };
 }
@@ -184,7 +183,6 @@ describe("zero settings tab - display", () => {
           avatarUrl: null,
           connectors: [],
           permissionPolicies: null,
-          allowUnknownEndpoints: null,
         });
       }),
       http.get("*/api/zero/agents/:name/instructions", () => {

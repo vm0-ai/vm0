@@ -100,7 +100,6 @@ describe("zero jobs page - create agent dialog", () => {
             avatarUrl: null,
             connectors: [],
             permissionPolicies: null,
-            allowUnknownEndpoints: null,
           },
           { status: 201 },
         );
@@ -115,7 +114,6 @@ describe("zero jobs page - create agent dialog", () => {
           avatarUrl: null,
           connectors: [],
           permissionPolicies: null,
-          allowUnknownEndpoints: null,
         });
       }),
     );

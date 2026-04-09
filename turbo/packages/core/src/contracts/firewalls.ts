@@ -70,14 +70,76 @@ export const firewallPolicyValueSchema = z.enum(["allow", "deny", "ask"]);
 export type FirewallPolicyValue = z.infer<typeof firewallPolicyValueSchema>;
 
 /**
- * Firewall policies — nested map of firewall ref → permission name → policy.
- * Example: { "github": { "repo-read": "allow", "issues-write": "deny" } }
+ * Per-connector policy: permission map + unknown endpoint handling.
+ */
+export const firewallPolicySchema = z.object({
+  permissions: z.record(z.string(), firewallPolicyValueSchema),
+  allowUnknown: z.boolean().optional(),
+});
+export type FirewallPolicy = z.infer<typeof firewallPolicySchema>;
+
+/**
+ * Firewall policies — map of firewall ref → connector policy.
+ * Example: { "github": { permissions: { "repo-read": "allow" }, allowUnknown: true } }
  */
 export const firewallPoliciesSchema = z.record(
   z.string(),
-  z.record(z.string(), firewallPolicyValueSchema),
+  firewallPolicySchema,
 );
 export type FirewallPolicies = z.infer<typeof firewallPoliciesSchema>;
+
+/**
+ * Raw DB format for permission_policies column (flat permission map).
+ * Used only for DB column type annotations — application code uses FirewallPolicies.
+ */
+export type RawPermissionPolicies = Record<
+  string,
+  Record<string, FirewallPolicyValue>
+>;
+
+/**
+ * Merge two DB columns into a unified FirewallPolicies object.
+ * Call at DB read boundaries.
+ */
+export function toFirewallPolicies(
+  raw: RawPermissionPolicies | null | undefined,
+  allowUnknown: Record<string, boolean> | null | undefined,
+): FirewallPolicies | null {
+  if (!raw && !allowUnknown) return null;
+  const result: FirewallPolicies = {};
+  const allRefs = new Set([
+    ...Object.keys(raw ?? {}),
+    ...Object.keys(allowUnknown ?? {}),
+  ]);
+  for (const ref of allRefs) {
+    result[ref] = {
+      permissions: raw?.[ref] ?? {},
+      ...(allowUnknown?.[ref] !== undefined && {
+        allowUnknown: allowUnknown[ref],
+      }),
+    };
+  }
+  return Object.keys(result).length > 0 ? result : null;
+}
+
+/**
+ * Split a unified FirewallPolicies back into two DB column values.
+ * Call at DB write boundaries.
+ */
+export function fromFirewallPolicies(policies: FirewallPolicies): {
+  permissionPolicies: RawPermissionPolicies;
+  allowUnknownEndpoints: Record<string, boolean>;
+} {
+  const permissionPolicies: RawPermissionPolicies = {};
+  const allowUnknownEndpoints: Record<string, boolean> = {};
+  for (const [ref, config] of Object.entries(policies)) {
+    permissionPolicies[ref] = config.permissions;
+    if (config.allowUnknown !== undefined) {
+      allowUnknownEndpoints[ref] = config.allowUnknown;
+    }
+  }
+  return { permissionPolicies, allowUnknownEndpoints };
+}
 
 /**
  * Per-firewall grant configuration — which permissions are granted and

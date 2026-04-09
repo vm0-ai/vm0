@@ -8,7 +8,7 @@ import {
   index,
   jsonb,
 } from "drizzle-orm/pg-core";
-import type { FirewallPolicies } from "@vm0/core";
+import type { RawPermissionPolicies } from "@vm0/core";
 import { agentComposes } from "./agent-compose";
 
 /**
@@ -34,7 +34,9 @@ export const zeroAgents = pgTable(
     description: text("description"),
     sound: varchar("sound", { length: 64 }),
     avatarUrl: varchar("avatar_url", { length: 1024 }),
-    permissionPolicies: jsonb("permission_policies").$type<FirewallPolicies>(),
+    permissionPolicies: jsonb(
+      "permission_policies",
+    ).$type<RawPermissionPolicies>(),
     allowUnknownEndpoints: jsonb("allow_unknown_endpoints").$type<
       Record<string, boolean>
     >(),

@@ -10,6 +10,7 @@ import {
   getInstructionsFilename,
   agentComposeApiContentSchema,
   stripMetadataFrontmatter,
+  toFirewallPolicies,
 } from "@vm0/core";
 import { initServices } from "../../../../../../src/lib/init-services";
 import {
@@ -93,8 +94,10 @@ async function updateInstructions(
       displayName: agent?.displayName ?? null,
       sound: agent?.sound ?? null,
       avatarUrl: agent?.avatarUrl ?? null,
-      permissionPolicies: agent?.permissionPolicies ?? null,
-      allowUnknownEndpoints: agent?.allowUnknownEndpoints ?? null,
+      permissionPolicies: toFirewallPolicies(
+        agent?.permissionPolicies,
+        agent?.allowUnknownEndpoints,
+      ),
       customSkills: agent?.customSkills ?? [],
     },
   };

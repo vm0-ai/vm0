@@ -12,10 +12,3 @@ export const zeroJobPermissionPolicies$ = computed(
     return detail?.permissionPolicies ?? null;
   },
 );
-
-export const zeroJobAllowUnknownEndpoints$ = computed(
-  async (get): Promise<Record<string, boolean> | null> => {
-    const detail = await get(zeroJobDetail$);
-    return detail?.allowUnknownEndpoints ?? null;
-  },
-);

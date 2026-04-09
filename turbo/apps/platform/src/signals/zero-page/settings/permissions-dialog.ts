@@ -2,18 +2,6 @@ import { command, computed, state } from "ccstate";
 import type { PermissionPolicy } from "./permissions.ts";
 
 // ---------------------------------------------------------------------------
-// Allow-unknown-endpoints toggle state
-// ---------------------------------------------------------------------------
-
-const internalAllowUnknown$ = state(false);
-export const permissionAllowUnknown$ = computed((get) => {
-  return get(internalAllowUnknown$);
-});
-export const setPermissionAllowUnknown$ = command(({ set }, value: boolean) => {
-  set(internalAllowUnknown$, value);
-});
-
-// ---------------------------------------------------------------------------
 // Permissions dialog form state
 // ---------------------------------------------------------------------------
 
@@ -22,6 +10,14 @@ const internalAllPolicies$ = state<
 >({});
 export const permissionAllPolicies$ = computed((get) => {
   return get(internalAllPolicies$);
+});
+
+const internalAllowUnknown$ = state(false);
+export const permissionAllowUnknown$ = computed((get) => {
+  return get(internalAllowUnknown$);
+});
+export const setPermissionAllowUnknown$ = command(({ set }, value: boolean) => {
+  set(internalAllowUnknown$, value);
 });
 
 const internalInitialized$ = state(false);

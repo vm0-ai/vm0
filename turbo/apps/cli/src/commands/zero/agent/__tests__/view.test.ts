@@ -199,10 +199,12 @@ describe("zero agent view command", () => {
             ...mockAgent,
             permissionPolicies: {
               slack: {
-                "channels:read": "allow",
-                "chat:write": "deny",
-                "reactions:read": "allow",
-                admin: "ask",
+                permissions: {
+                  "channels:read": "allow",
+                  "chat:write": "deny",
+                  "reactions:read": "allow",
+                  admin: "ask",
+                },
               },
             },
           });
@@ -252,8 +254,7 @@ describe("zero agent view command", () => {
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("full access");
-      expect(logCalls).toContain("no permission rules configured");
+      expect(logCalls).toContain("unknown endpoints");
     });
 
     it("should handle connectors without permissions gracefully", async () => {

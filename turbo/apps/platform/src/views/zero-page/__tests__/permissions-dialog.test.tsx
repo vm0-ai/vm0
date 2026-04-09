@@ -11,10 +11,8 @@ const context = testContext();
 
 function mockAPIs({
   permissionPolicies = null,
-  allowUnknownEndpoints = null,
 }: {
   permissionPolicies?: Record<string, Record<string, string>> | null;
-  allowUnknownEndpoints?: Record<string, boolean> | null;
 } = {}) {
   server.use(
     http.get("*/api/zero/team", () => {
@@ -55,7 +53,6 @@ function mockAPIs({
         avatarUrl: null,
         connectors: [],
         permissionPolicies,
-        allowUnknownEndpoints,
       });
     }),
     http.get("*/api/zero/agents/:name/instructions", () => {
@@ -100,7 +97,6 @@ function mockAPIs({
         sound: null,
         avatarUrl: null,
         permissionPolicies: body.policies,
-        allowUnknownEndpoints: null,
         customSkills: [],
       });
     }),
@@ -285,7 +281,6 @@ describe("permissions dialog - grouped connector (Slack)", () => {
     ) as HTMLElement;
     expect(unknownRow).not.toBeNull();
 
-    // Allow should be active by default (no allowUnknownEndpoints set)
     const pillButtons = within(unknownRow).getAllByRole("button");
     const allowBtn = pillButtons.find((b) => {
       return b.textContent?.includes("Allow") ?? false;
@@ -294,9 +289,7 @@ describe("permissions dialog - grouped connector (Slack)", () => {
   });
 
   it("should show unknown endpoints as Allow when saved as allow", async () => {
-    mockAPIs({
-      allowUnknownEndpoints: { slack: true },
-    });
+    mockAPIs({});
     await setupPage({ context, path: "/agents/my-agent" });
     await openPermissionsDrawer();
 

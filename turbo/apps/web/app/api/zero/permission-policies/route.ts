@@ -7,6 +7,8 @@ import {
   zeroAgentPermissionPoliciesContract,
   getConnectorFirewall,
   isFirewallConnectorType,
+  fromFirewallPolicies,
+  toFirewallPolicies,
   type FirewallPolicies,
 } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
@@ -23,7 +25,7 @@ import { logger } from "../../../../src/lib/shared/logger";
 const log = logger("api:zero:permission-policies");
 
 function validatePolicies(policies: FirewallPolicies): string | null {
-  for (const [ref, permissions] of Object.entries(policies)) {
+  for (const [ref, policy] of Object.entries(policies)) {
     if (!isFirewallConnectorType(ref)) {
       return `Unknown connector ref: ${ref}`;
     }
@@ -38,7 +40,7 @@ function validatePolicies(policies: FirewallPolicies): string | null {
       }
     }
 
-    for (const permName of Object.keys(permissions)) {
+    for (const permName of Object.keys(policy.permissions)) {
       if (!validPermNames.has(permName)) {
         return `Unknown permission "${permName}" for connector "${ref}"`;
       }
@@ -100,13 +102,16 @@ const router = tsr.router(zeroAgentPermissionPoliciesContract, {
     );
     if (forbidden) return forbidden;
 
-    // Update permission policies
+    // Update permission policies — split unified type back into two DB columns
     const now = new Date();
+    const { permissionPolicies, allowUnknownEndpoints } = fromFirewallPolicies(
+      body.policies,
+    );
     await globalThis.services.db
       .update(zeroAgents)
       .set({
-        permissionPolicies: body.policies,
-        allowUnknownEndpoints: body.allowUnknownEndpoints ?? null,
+        permissionPolicies,
+        allowUnknownEndpoints,
         updatedAt: now,
       })
       .where(eq(zeroAgents.id, body.agentId));
@@ -139,8 +144,10 @@ function buildAgentResponse(
     displayName: agent?.displayName ?? null,
     sound: agent?.sound ?? null,
     avatarUrl: agent?.avatarUrl ?? null,
-    permissionPolicies: agent?.permissionPolicies ?? null,
-    allowUnknownEndpoints: agent?.allowUnknownEndpoints ?? null,
+    permissionPolicies: toFirewallPolicies(
+      agent?.permissionPolicies,
+      agent?.allowUnknownEndpoints,
+    ),
     customSkills: agent?.customSkills ?? [],
   };
 }

@@ -3,7 +3,7 @@ import {
   createSafeErrorHandler,
   tsr,
 } from "../../../../../src/lib/ts-rest-handler";
-import { zeroAgentsByIdContract } from "@vm0/core";
+import { zeroAgentsByIdContract, toFirewallPolicies } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import {
   requireAuth,
@@ -36,8 +36,10 @@ function agentResponseBody(
     displayName: agent?.displayName ?? null,
     sound: agent?.sound ?? null,
     avatarUrl: agent?.avatarUrl ?? null,
-    permissionPolicies: agent?.permissionPolicies ?? null,
-    allowUnknownEndpoints: agent?.allowUnknownEndpoints ?? null,
+    permissionPolicies: toFirewallPolicies(
+      agent?.permissionPolicies,
+      agent?.allowUnknownEndpoints,
+    ),
     customSkills: agent?.customSkills ?? [],
   };
 }

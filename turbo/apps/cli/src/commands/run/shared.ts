@@ -60,7 +60,7 @@ export function parsePermissionPolicies(
     parsed = JSON.parse(json);
   } catch {
     throw new Error(
-      `Invalid --permission-policies JSON: ${json}\nExpected format: '{"ref": {"permission": "allow|deny|ask"}}'`,
+      `Invalid --permission-policies JSON: ${json}\nExpected format: '{"ref": {"permissions": {"perm": "allow|deny|ask"}}}'`,
     );
   }
   const result = firewallPoliciesSchema.safeParse(parsed);

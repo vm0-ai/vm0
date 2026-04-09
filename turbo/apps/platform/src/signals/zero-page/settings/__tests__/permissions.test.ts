@@ -33,7 +33,9 @@ describe("savePermissionPolicies$", () => {
   it("should send name in request body and return persisted policies", async () => {
     await setupPage({ context, path: "/", withoutRender: true });
 
-    const policies = { slack: { "channels:read": "allow" as const } };
+    const policies = {
+      slack: { permissions: { "channels:read": "allow" as const } },
+    };
     let capturedBody: Record<string, unknown> | null = null;
 
     server.use(
@@ -48,7 +50,6 @@ describe("savePermissionPolicies$", () => {
           avatarUrl: null,
           connectors: [],
           permissionPolicies: policies,
-          allowUnknownEndpoints: null,
         });
       }),
     );
@@ -57,7 +58,6 @@ describe("savePermissionPolicies$", () => {
       savePermissionPolicies$,
       "my-agent",
       policies,
-      undefined,
       context.signal,
     );
 
@@ -86,7 +86,6 @@ describe("savePermissionPolicies$", () => {
         savePermissionPolicies$,
         "my-agent",
         {},
-        undefined,
         context.signal,
       ),
     ).rejects.toThrow("Only org admins can update");

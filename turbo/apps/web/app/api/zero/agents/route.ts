@@ -3,7 +3,7 @@ import {
   createSafeErrorHandler,
   tsr,
 } from "../../../../src/lib/ts-rest-handler";
-import { zeroAgentsMainContract } from "@vm0/core";
+import { zeroAgentsMainContract, toFirewallPolicies } from "@vm0/core";
 import { initServices } from "../../../../src/lib/init-services";
 import {
   requireAuth,
@@ -105,7 +105,6 @@ const router = tsr.router(zeroAgentsMainContract, {
         sound: body.sound ?? null,
         avatarUrl: body.avatarUrl ?? null,
         permissionPolicies: null,
-        allowUnknownEndpoints: null,
         customSkills,
       },
     };
@@ -148,8 +147,10 @@ const router = tsr.router(zeroAgentsMainContract, {
           description: row.description ?? null,
           sound: row.sound ?? null,
           avatarUrl: row.avatarUrl ?? null,
-          permissionPolicies: row.permissionPolicies ?? null,
-          allowUnknownEndpoints: row.allowUnknownEndpoints ?? null,
+          permissionPolicies: toFirewallPolicies(
+            row.permissionPolicies,
+            row.allowUnknownEndpoints,
+          ),
           customSkills: row.customSkills,
         };
       }),

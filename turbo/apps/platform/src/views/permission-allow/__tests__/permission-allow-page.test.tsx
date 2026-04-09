@@ -52,7 +52,6 @@ function mockAgentWithPolicy(
         sound: null,
         avatarUrl: null,
         permissionPolicies,
-        allowUnknownEndpoints: null,
         customSkills: [],
       });
     }),

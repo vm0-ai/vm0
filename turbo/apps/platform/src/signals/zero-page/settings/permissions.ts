@@ -35,14 +35,11 @@ export const savePermissionPolicies$ = command(
     { get },
     agentName: string,
     policies: FirewallPolicies,
-    allowUnknownEndpoints: Record<string, boolean> | undefined,
     signal: AbortSignal,
   ): Promise<FirewallPolicies | null> => {
     const client = get(zeroClient$)(zeroAgentPermissionPoliciesContract);
     const result = await accept(
-      client.update({
-        body: { agentId: agentName, policies, allowUnknownEndpoints },
-      }),
+      client.update({ body: { agentId: agentName, policies } }),
       [200],
     );
 

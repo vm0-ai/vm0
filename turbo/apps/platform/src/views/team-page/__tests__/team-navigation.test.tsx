@@ -60,7 +60,6 @@ function mockAPIs() {
         sound: null,
         avatarUrl: null,
         permissionPolicies: null,
-        allowUnknownEndpoints: null,
       });
     }),
     http.get("*/api/zero/agents/:name/instructions", () => {

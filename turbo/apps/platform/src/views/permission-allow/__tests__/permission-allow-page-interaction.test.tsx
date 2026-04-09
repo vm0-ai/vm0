@@ -27,7 +27,6 @@ function defaultAgentResponse(overrides?: Record<string, unknown>) {
     sound: null,
     avatarUrl: null,
     permissionPolicies: null,
-    allowUnknownEndpoints: null,
     customSkills: [],
     ...overrides,
   };

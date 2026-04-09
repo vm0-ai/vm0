@@ -495,10 +495,12 @@ describe("zero whoami command", () => {
             avatarUrl: null,
             permissionPolicies: {
               slack: {
-                "channels:read": "allow",
-                "chat:write": "deny",
-                "reactions:read": "allow",
-                admin: "ask",
+                permissions: {
+                  "channels:read": "allow",
+                  "chat:write": "deny",
+                  "reactions:read": "allow",
+                  admin: "ask",
+                },
               },
             },
             customSkills: [],
@@ -604,7 +606,7 @@ describe("zero whoami command", () => {
       ).toBe(true);
       expect(
         output.some((line) => {
-          return line.includes("full access");
+          return line.includes("unknown endpoints");
         }),
       ).toBe(true);
     });

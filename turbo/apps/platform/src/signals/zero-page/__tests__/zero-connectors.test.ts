@@ -113,7 +113,6 @@ describe("zero connectors — agent switch", () => {
           sound: null,
           avatarUrl: null,
           permissionPolicies: null,
-          allowUnknownEndpoints: null,
         });
       }),
       http.get("*/api/zero/agents/agent-b", () => {
@@ -126,7 +125,6 @@ describe("zero connectors — agent switch", () => {
           sound: null,
           avatarUrl: null,
           permissionPolicies: null,
-          allowUnknownEndpoints: null,
         });
       }),
       http.get("*/api/zero/agents/:id/user-connectors", ({ params }) => {

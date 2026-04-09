@@ -80,7 +80,6 @@ describe("create agent dialog - avatar", () => {
             avatarUrl: capturedPayload.avatarUrl ?? null,
             connectors: [],
             permissionPolicies: null,
-            allowUnknownEndpoints: null,
           },
           { status: 201 },
         );
@@ -96,7 +95,6 @@ describe("create agent dialog - avatar", () => {
           avatarUrl: null,
           connectors: [],
           permissionPolicies: null,
-          allowUnknownEndpoints: null,
         });
       }),
     );
@@ -135,7 +133,6 @@ describe("create agent dialog - avatar", () => {
             avatarUrl: capturedPayload.avatarUrl ?? null,
             connectors: [],
             permissionPolicies: null,
-            allowUnknownEndpoints: null,
           },
           { status: 201 },
         );
@@ -151,7 +148,6 @@ describe("create agent dialog - avatar", () => {
           avatarUrl: null,
           connectors: [],
           permissionPolicies: null,
-          allowUnknownEndpoints: null,
         });
       }),
     );

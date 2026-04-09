@@ -256,11 +256,15 @@ export const saveAdminFocusedPolicy$ = command(
       params;
     const override = get(internalAdminFocusedPolicyOverride$);
     const policy = override ?? action;
+    const existing = agentFirewallPolicies?.[ref];
     const fullPolicies: FirewallPolicies = {
       ...agentFirewallPolicies,
       [ref]: {
-        ...agentFirewallPolicies?.[ref],
-        [permissionName]: policy,
+        ...existing,
+        permissions: {
+          ...existing?.permissions,
+          [permissionName]: policy,
+        },
       },
     };
     await set(saveFirewallPolicies$, agentId, fullPolicies, signal);

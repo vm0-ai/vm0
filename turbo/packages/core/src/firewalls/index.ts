@@ -8,6 +8,7 @@
 
 import type {
   FirewallConfig,
+  FirewallPolicy,
   FirewallPolicies,
   FirewallPolicyValue,
 } from "../contracts/firewalls";
@@ -428,34 +429,34 @@ const DEFAULT_ALLOWED: Partial<
 /**
  * Get the default firewall policies for a connector type.
  *
- * Builds a full permission → policy map. Connectors with a default-allowed
- * list get "allow" for listed permissions and "deny" for everything else.
- * Connectors without a default-allowed list get "allow" for all permissions.
+ * Returns a ConnectorPolicy with all permissions mapped. Connectors with a
+ * default-allowed list get "allow"/"deny" selectively; others get all-allow.
+ * `allowUnknown` defaults to true.
  */
 export function getDefaultFirewallPolicies(
   type: FirewallConnectorType,
-): Record<string, FirewallPolicyValue> {
+): FirewallPolicy {
   const allowed = DEFAULT_ALLOWED[type];
   const allowSet = allowed ? new Set<string>(allowed) : null;
   const config = getConnectorFirewall(type);
-  const result: Record<string, FirewallPolicyValue> = {};
+  const permissions: Record<string, FirewallPolicyValue> = {};
   for (const api of config.apis) {
     if (api.permissions) {
       for (const p of api.permissions) {
-        result[p.name] = !allowSet || allowSet.has(p.name) ? "allow" : "deny";
+        permissions[p.name] =
+          !allowSet || allowSet.has(p.name) ? "allow" : "deny";
       }
     }
   }
-  return result;
+  return { permissions, allowUnknown: true };
 }
 
 /**
  * Merge stored firewall policies with per-connector defaults.
  *
- * For each connector, builds a full default policy map (all-allow for
- * connectors without a default-allowed list, selective for those with one),
- * then layers stored overrides on top. This ensures unspecified permissions
- * are never implicitly denied.
+ * For each connector, builds a full default policy (all-allow for connectors
+ * without a default-allowed list, selective for those with one), then layers
+ * stored overrides on top. Merges both `permissions` and `allowUnknown`.
  */
 export function resolveFirewallPolicies(
   stored: FirewallPolicies | null,
@@ -465,10 +466,15 @@ export function resolveFirewallPolicies(
   for (const connector of connectors) {
     if (!isFirewallConnectorType(connector)) continue;
     const defaults = getDefaultFirewallPolicies(connector);
-    // Merge: defaults as base, stored overrides specific entries.
+    const existing = resolved?.[connector];
     resolved = {
       ...resolved,
-      [connector]: { ...defaults, ...resolved?.[connector] },
+      [connector]: {
+        permissions: { ...defaults.permissions, ...existing?.permissions },
+        ...(existing?.allowUnknown !== undefined
+          ? { allowUnknown: existing.allowUnknown }
+          : { allowUnknown: defaults.allowUnknown }),
+      },
     };
   }
   return resolved;

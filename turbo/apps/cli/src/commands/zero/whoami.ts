@@ -53,8 +53,8 @@ function printConnectorPermissions(
 ): void {
   if (!isFirewallConnectorType(type)) return;
 
-  const policies = resolvedPolicies?.[type];
-  if (!policies || Object.keys(policies).length === 0) {
+  const refPolicy = resolvedPolicies?.[type];
+  if (!refPolicy) {
     console.log(chalk.dim("    full access — no permission rules configured"));
     return;
   }
@@ -63,16 +63,26 @@ function printConnectorPermissions(
   const permissions = config.apis.flatMap((a) => {
     return a.permissions ?? [];
   });
-  if (permissions.length === 0) return;
+
+  if (
+    permissions.length === 0 &&
+    Object.keys(refPolicy.permissions).length === 0
+  ) {
+    const unknownIcon =
+      refPolicy.allowUnknown !== false ? chalk.green("✓") : chalk.dim("✗");
+    console.log(`    ${unknownIcon} unknown endpoints`);
+    return;
+  }
 
   const nameWidth = Math.max(
+    "unknown endpoints".length,
     ...permissions.map((p) => {
       return p.name.length;
     }),
   );
 
   for (const perm of permissions) {
-    const policy = policies[perm.name] ?? "deny";
+    const policy = refPolicy.permissions[perm.name] ?? "deny";
     const icon =
       policy === "allow"
         ? chalk.green("✓")
@@ -82,6 +92,12 @@ function printConnectorPermissions(
     const desc = perm.description ?? "";
     console.log(`    ${icon} ${perm.name.padEnd(nameWidth)}  ${desc}`);
   }
+
+  const unknownIcon =
+    refPolicy.allowUnknown !== false ? chalk.green("✓") : chalk.dim("✗");
+  console.log(
+    `    ${unknownIcon} ${"unknown endpoints".padEnd(nameWidth)}  Endpoints not matching any rule`,
+  );
 }
 
 async function showSandboxInfo(showPermissions: boolean): Promise<void> {

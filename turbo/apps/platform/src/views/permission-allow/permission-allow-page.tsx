@@ -657,7 +657,8 @@ function DoctorModeView({
 
   // Check effective policy
   const resolved = resolveFirewallPolicies(agent.permissionPolicies, [ref]);
-  const effectivePolicy = resolved?.[ref]?.[permission.name] ?? "allow";
+  const effectivePolicy =
+    resolved?.[ref]?.permissions[permission.name] ?? "allow";
 
   // Policy already matches — show result
   if (effectivePolicy === action) {

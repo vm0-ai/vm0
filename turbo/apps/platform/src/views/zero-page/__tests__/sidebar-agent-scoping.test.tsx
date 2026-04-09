@@ -73,7 +73,6 @@ function mockTwoAgents() {
           sound: null;
           avatarUrl: null;
           permissionPolicies: null;
-          allowUnknownEndpoints: null;
         }
       > = {
         "mock-compose-id": {
@@ -84,7 +83,6 @@ function mockTwoAgents() {
           sound: null,
           avatarUrl: null,
           permissionPolicies: null,
-          allowUnknownEndpoints: null,
         },
         "agent-alpha": {
           agentId: "agent-alpha",
@@ -94,7 +92,6 @@ function mockTwoAgents() {
           sound: null,
           avatarUrl: null,
           permissionPolicies: null,
-          allowUnknownEndpoints: null,
         },
         "agent-beta": {
           agentId: "agent-beta",
@@ -104,7 +101,6 @@ function mockTwoAgents() {
           sound: null,
           avatarUrl: null,
           permissionPolicies: null,
-          allowUnknownEndpoints: null,
         },
       };
       const agent = agents[params.id as string];

@@ -11,6 +11,7 @@ import {
   isFirewallConnectorType,
   getConnectorFirewall,
   resolveFirewallPolicies,
+  type FirewallPolicies,
   type FirewallPolicyValue,
   type ConnectorResponse,
 } from "@vm0/core";
@@ -20,13 +21,14 @@ interface ConnectorPermissionInfo {
   hasPermissions: boolean;
   permissions: Array<{ name: string; description?: string }>;
   policies: Record<string, FirewallPolicyValue> | null;
+  allowUnknown: boolean;
   allowed: number;
   total: number;
 }
 
 function getConnectorPermissionInfo(
   type: string,
-  resolvedPolicies: Record<string, Record<string, FirewallPolicyValue>> | null,
+  resolvedPolicies: FirewallPolicies | null,
 ): ConnectorPermissionInfo {
   if (!isFirewallConnectorType(type)) {
     return {
@@ -34,14 +36,17 @@ function getConnectorPermissionInfo(
       hasPermissions: false,
       permissions: [],
       policies: null,
+      allowUnknown: true,
       allowed: 0,
       total: 0,
     };
   }
 
-  const rawPolicies = resolvedPolicies?.[type];
+  const refPolicy = resolvedPolicies?.[type];
   const policies =
-    rawPolicies && Object.keys(rawPolicies).length > 0 ? rawPolicies : null;
+    refPolicy && Object.keys(refPolicy.permissions).length > 0
+      ? refPolicy.permissions
+      : null;
   const config = getConnectorFirewall(type);
   const permissions = config.apis.flatMap((a) => {
     return a.permissions ?? [];
@@ -53,7 +58,50 @@ function getConnectorPermissionInfo(
       }).length
     : 0;
 
-  return { type, hasPermissions: true, permissions, policies, allowed, total };
+  const allowUnknown = refPolicy?.allowUnknown ?? true;
+  return {
+    type,
+    hasPermissions: true,
+    permissions,
+    policies,
+    allowUnknown,
+    allowed,
+    total,
+  };
+}
+
+function policyIcon(policy: FirewallPolicyValue): string {
+  if (policy === "allow") return chalk.green("✓");
+  if (policy === "ask") return chalk.yellow("?");
+  return chalk.dim("✗");
+}
+
+function printDetailedPermissions(info: ConnectorPermissionInfo): void {
+  if (!info.policies) {
+    const icon = info.allowUnknown ? chalk.green("✓") : chalk.dim("✗");
+    console.log(`    ${icon} unknown endpoints`);
+    return;
+  }
+
+  const nameWidth = Math.max(
+    "unknown endpoints".length,
+    ...info.permissions.map((p) => {
+      return p.name.length;
+    }),
+  );
+
+  for (const perm of info.permissions) {
+    const policy = info.policies[perm.name] ?? "deny";
+    const desc = perm.description ?? "";
+    console.log(
+      `    ${policyIcon(policy)} ${perm.name.padEnd(nameWidth)}  ${desc}`,
+    );
+  }
+
+  const unknownIcon = info.allowUnknown ? chalk.green("✓") : chalk.dim("✗");
+  console.log(
+    `    ${unknownIcon} ${"unknown endpoints".padEnd(nameWidth)}  Endpoints not matching any rule`,
+  );
 }
 
 function formatConnectorIdentity(
@@ -164,34 +212,8 @@ Examples:
           for (const info of connectorInfos) {
             const identity = formatDetailIdentity(identityMap.get(info.type));
             console.log(`  ${info.type.padEnd(14)}${identity}`);
-
-            if (!info.hasPermissions) continue;
-
-            if (!info.policies) {
-              console.log(
-                chalk.dim("    full access — no permission rules configured"),
-              );
-              continue;
-            }
-
-            const nameWidth = Math.max(
-              ...info.permissions.map((p) => {
-                return p.name.length;
-              }),
-            );
-
-            for (const perm of info.permissions) {
-              const policy = info.policies[perm.name] ?? "deny";
-              const icon =
-                policy === "allow"
-                  ? chalk.green("✓")
-                  : policy === "ask"
-                    ? chalk.yellow("?")
-                    : chalk.dim("✗");
-              const desc = perm.description ?? "";
-              console.log(
-                `    ${icon} ${perm.name.padEnd(nameWidth)}  ${desc}`,
-              );
+            if (info.hasPermissions) {
+              printDetailedPermissions(info);
             }
           }
         }

@@ -1,6 +1,7 @@
 import { eq, and, sql } from "drizzle-orm";
 import {
   resolveFirewallPolicies,
+  toFirewallPolicies,
   orgTierSchema,
   type TriggerSource,
   type FirewallPolicies,
@@ -261,7 +262,10 @@ export async function createZeroRunRecord(
         displayName: row.displayName,
         description: row.description,
         sound: row.sound,
-        rawPermissionPolicies: row.permissionPolicies ?? null,
+        rawPermissionPolicies: toFirewallPolicies(
+          row.permissionPolicies,
+          row.allowUnknownEndpoints,
+        ),
         orgId: row.orgId,
       }
     : {
@@ -348,7 +352,6 @@ export async function createZeroRunRecord(
     disallowedTools: [...DISALLOWED_TOOLS],
     vars: { ZERO_AGENT_ID: params.agentId },
     permissionPolicies: permissionPolicies ?? undefined,
-    allowUnknownEndpoints: row?.allowUnknownEndpoints ?? undefined,
     allowedConnectorTypes,
     agentName: resolved.agentName,
     orgId: resolved.orgId,

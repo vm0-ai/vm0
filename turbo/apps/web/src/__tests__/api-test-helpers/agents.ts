@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import type { FirewallPolicies } from "@vm0/core";
+import type { RawPermissionPolicies } from "@vm0/core";
 import { initServices } from "../../lib/init-services";
 import {
   agentComposes,
@@ -99,7 +99,7 @@ export async function createTestZeroAgent(
     displayName?: string;
     description?: string;
     sound?: string;
-    permissionPolicies?: FirewallPolicies;
+    permissionPolicies?: RawPermissionPolicies;
   },
 ): Promise<void> {
   initServices();
