@@ -44,9 +44,6 @@ import {
 } from "../../signals/zero-page/zero-chat-page.ts";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
-import { FeatureSwitchKey } from "@vm0/core";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
-import { ROUTES } from "../../signals/route-paths.ts";
 import { Link } from "../router/link.tsx";
 import {
   resetTalkSendSignal$,
@@ -212,7 +209,6 @@ export function AgentChatPage() {
 
   const suggestedPrompts = useGet(suggestedPrompts$);
   const navigate = useSet(detachedNavigateTo$);
-  const features = useLastResolved(featureSwitch$);
 
   const pinnedIds = useLastResolved(pinnedAgentIds$) ?? [];
   const pinnedStatus = useLastResolved(currentChatAgentPinned$);
@@ -402,27 +398,6 @@ export function AgentChatPage() {
                 <IconArrowUpRight size={14} stroke={2} />
               </div>
             </button>
-            {features?.[FeatureSwitchKey.VoiceChat] && (
-              <button
-                type="button"
-                className="zero-card cursor-pointer p-4 text-left flex flex-col relative group hover:bg-muted/30 transition-colors"
-                onClick={() => {
-                  navigate(ROUTES.voiceChat);
-                }}
-              >
-                <IconArrowUpRight
-                  size={14}
-                  stroke={2}
-                  className="absolute top-4 right-4 text-muted-foreground/0 group-hover:text-muted-foreground transition-colors"
-                />
-                <p className="text-sm font-semibold text-foreground pr-5">
-                  Voice chat
-                </p>
-                <p className="text-sm text-muted-foreground mt-1.5 leading-relaxed">
-                  Talk to your agent with real-time voice
-                </p>
-              </button>
-            )}
           </div>
         </div>
       </main>

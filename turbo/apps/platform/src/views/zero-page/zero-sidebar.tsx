@@ -20,6 +20,7 @@ import {
   IconPlug,
   IconFlask,
   IconPhone,
+  IconMicrophone,
   IconSparkles,
 } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/core";
@@ -152,6 +153,15 @@ const FOOTER_NAV = [
     icon: IconPhone as NavIcon,
     iconImg: undefined,
     featureGate: FeatureSwitchKey.PhoneIntegration,
+  },
+  {
+    id: "voiceChat",
+    activeKeys: ["voiceChat"],
+    pathname: "/voice-chat",
+    label: "Voice Chat",
+    icon: IconMicrophone as NavIcon,
+    iconImg: undefined,
+    featureGate: FeatureSwitchKey.VoiceChat,
   },
   {
     id: "lab",
