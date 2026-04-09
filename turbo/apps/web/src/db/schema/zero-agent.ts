@@ -35,6 +35,9 @@ export const zeroAgents = pgTable(
     sound: varchar("sound", { length: 64 }),
     avatarUrl: varchar("avatar_url", { length: 1024 }),
     permissionPolicies: jsonb("permission_policies").$type<FirewallPolicies>(),
+    allowUnknownEndpoints: jsonb("allow_unknown_endpoints").$type<
+      Record<string, boolean>
+    >(),
     customSkills: jsonb("custom_skills")
       .$type<string[]>()
       .notNull()

@@ -11,8 +11,10 @@ const context = testContext();
 
 function mockAPIs({
   permissionPolicies = null,
+  allowUnknownEndpoints = null,
 }: {
   permissionPolicies?: Record<string, Record<string, string>> | null;
+  allowUnknownEndpoints?: Record<string, boolean> | null;
 } = {}) {
   server.use(
     http.get("*/api/zero/team", () => {
@@ -53,6 +55,7 @@ function mockAPIs({
         avatarUrl: null,
         connectors: [],
         permissionPolicies,
+        allowUnknownEndpoints,
       });
     }),
     http.get("*/api/zero/agents/:name/instructions", () => {
@@ -89,7 +92,17 @@ function mockAPIs({
         agentId: string;
         policies: Record<string, Record<string, string>>;
       };
-      return HttpResponse.json({ permissionPolicies: body.policies });
+      return HttpResponse.json({
+        agentId: "e0000000-0000-4000-a000-000000000010",
+        ownerId: "test-user-123",
+        description: null,
+        displayName: null,
+        sound: null,
+        avatarUrl: null,
+        permissionPolicies: body.policies,
+        allowUnknownEndpoints: null,
+        customSkills: [],
+      });
     }),
   );
 }
@@ -256,5 +269,46 @@ describe("permissions dialog - grouped connector (Slack)", () => {
       return b.textContent?.includes("Deny") ?? false;
     });
     expect(individualDeny!.className).toContain("bg-muted");
+  });
+
+  it("should show unknown endpoints toggle defaulting to Allow", async () => {
+    mockAPIs();
+    await setupPage({ context, path: "/agents/my-agent" });
+    await openPermissionsDrawer();
+
+    expect(screen.getByText("Unknown endpoints")).toBeInTheDocument();
+
+    // Find the unknown endpoints row
+    const unknownLabel = screen.getByText("Unknown endpoints");
+    const unknownRow = unknownLabel.closest(
+      ".flex.items-center.justify-between",
+    ) as HTMLElement;
+    expect(unknownRow).not.toBeNull();
+
+    // Allow should be active by default (no allowUnknownEndpoints set)
+    const pillButtons = within(unknownRow).getAllByRole("button");
+    const allowBtn = pillButtons.find((b) => {
+      return b.textContent?.includes("Allow") ?? false;
+    });
+    expect(allowBtn!.className).toContain("bg-muted");
+  });
+
+  it("should show unknown endpoints as Allow when saved as allow", async () => {
+    mockAPIs({
+      allowUnknownEndpoints: { slack: true },
+    });
+    await setupPage({ context, path: "/agents/my-agent" });
+    await openPermissionsDrawer();
+
+    const unknownLabel = screen.getByText("Unknown endpoints");
+    const unknownRow = unknownLabel.closest(
+      ".flex.items-center.justify-between",
+    ) as HTMLElement;
+
+    const pillButtons = within(unknownRow).getAllByRole("button");
+    const allowBtn = pillButtons.find((b) => {
+      return b.textContent?.includes("Allow") ?? false;
+    });
+    expect(allowBtn!.className).toContain("bg-muted");
   });
 });

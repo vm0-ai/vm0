@@ -66,6 +66,7 @@ import {
   zeroJobActiveTab$,
   setZeroJobActiveTab$,
   zeroJobPermissionPolicies$,
+  zeroJobAllowUnknownEndpoints$,
   reloadJobDetail$,
 } from "../../signals/zero-page/zero-job-detail.ts";
 import { runScheduleNow$ } from "../../signals/zero-page/zero-schedule.ts";
@@ -414,6 +415,8 @@ function JobPermissionsTab({
   const pageSignal = useGet(pageSignal$);
   const permissionPolicies =
     useLastResolved(zeroJobPermissionPolicies$) ?? null;
+  const allowUnknownEndpoints =
+    useLastResolved(zeroJobAllowUnknownEndpoints$) ?? null;
   const reloadDetail = useSet(reloadJobDetail$);
   const savePermPol = useSet(savePermissionPolicies$);
   const connectorType = useGet(permConnectorType$);
@@ -607,9 +610,19 @@ function JobPermissionsTab({
               connectorType={connectorType}
               displayName={displayName}
               initialPolicies={permissionPolicies ?? {}}
+              allowUnknown={allowUnknownEndpoints?.[connectorType] ?? true}
               readOnly={!isOwner}
-              onApply={async (policies) => {
-                const saved = await savePermPol(agentId, policies, pageSignal);
+              onApply={async (policies, allowUnknown) => {
+                const updatedAllowUnknown = {
+                  ...allowUnknownEndpoints,
+                  [connectorType]: allowUnknown,
+                };
+                const saved = await savePermPol(
+                  agentId,
+                  policies,
+                  updatedAllowUnknown,
+                  pageSignal,
+                );
                 if (saved !== undefined) {
                   reloadDetail();
                 }

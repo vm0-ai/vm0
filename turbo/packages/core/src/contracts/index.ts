@@ -417,6 +417,8 @@ export {
   type Firewalls,
   type FirewallPolicyValue,
   type FirewallPolicies,
+  grantedPermissionsSchema,
+  type GrantedPermissions,
   hasBaseUrlParams,
   hasBaseUrlVars,
   resolveFirewallBaseUrlVars,

@@ -181,6 +181,17 @@ export function ContextContent({ context }: { context: RunContextResponse }) {
         )}
       </section>
 
+      {/* Granted Permissions */}
+      {context.grantedPermissions &&
+        Object.keys(context.grantedPermissions).length > 0 && (
+          <section>
+            <SectionHeader title="Granted Permissions" />
+            <CodeBlock
+              value={JSON.stringify(context.grantedPermissions, null, 2)}
+            />
+          </section>
+        )}
+
       {/* Volumes */}
       <section>
         <SectionHeader title="Volumes" />

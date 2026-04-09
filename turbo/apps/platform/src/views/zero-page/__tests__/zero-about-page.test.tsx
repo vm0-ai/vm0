@@ -68,6 +68,7 @@ describe("zero about page", () => {
           sound: null,
           avatarUrl: null,
           permissionPolicies: null,
+          allowUnknownEndpoints: null,
         });
       }),
     );

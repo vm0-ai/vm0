@@ -58,6 +58,7 @@ const router = tsr.router(zeroRunContextContract, {
         vars: (run.vars as Record<string, string> | undefined) ?? null,
         environment: snapshot.environment,
         firewalls: snapshot.firewalls,
+        grantedPermissions: snapshot.grantedPermissions,
         volumes: snapshot.volumes,
         artifact: snapshot.artifact,
         memory: snapshot.memory,

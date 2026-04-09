@@ -40,7 +40,10 @@ export {
 } from "./schedule.ts";
 export type { ZeroJobScheduleSaveParams } from "./schedule.ts";
 
-export { zeroJobPermissionPolicies$ } from "./permissions.ts";
+export {
+  zeroJobPermissionPolicies$,
+  zeroJobAllowUnknownEndpoints$,
+} from "./permissions.ts";
 
 export { deleteZeroJobAgent$ } from "./delete.ts";
 

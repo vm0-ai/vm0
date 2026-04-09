@@ -74,6 +74,7 @@ export async function executeRunnerJob(
     secretConnectorMap: context.secretConnectorMap,
     cliAgentType: context.cliAgentType,
     firewalls: context.firewalls ?? undefined,
+    grantedPermissions: context.grantedPermissions ?? undefined,
     disallowedTools: context.disallowedTools ?? undefined,
     tools: context.tools ?? undefined,
     settings: context.settings ?? undefined,
@@ -188,6 +189,7 @@ function buildRunContextSnapshot(context: PreparedContext): RunContextSnapshot {
     secretNames: context.secrets ? Object.keys(context.secrets) : [],
     environment,
     firewalls,
+    grantedPermissions: context.grantedPermissions,
     volumes: (manifest?.storages ?? []).map((s) => {
       return {
         name: s.name,

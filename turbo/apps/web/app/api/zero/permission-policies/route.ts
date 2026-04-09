@@ -106,6 +106,7 @@ const router = tsr.router(zeroAgentPermissionPoliciesContract, {
       .update(zeroAgents)
       .set({
         permissionPolicies: body.policies,
+        allowUnknownEndpoints: body.allowUnknownEndpoints ?? null,
         updatedAt: now,
       })
       .where(eq(zeroAgents.id, body.agentId));
@@ -121,19 +122,28 @@ const router = tsr.router(zeroAgentPermissionPoliciesContract, {
 
     return {
       status: 200 as const,
-      body: {
-        agentId: body.agentId,
-        ownerId: agent?.owner ?? member.userId,
-        description: agent?.description ?? null,
-        displayName: agent?.displayName ?? null,
-        sound: agent?.sound ?? null,
-        avatarUrl: agent?.avatarUrl ?? null,
-        permissionPolicies: agent?.permissionPolicies ?? null,
-        customSkills: agent?.customSkills ?? [],
-      },
+      body: buildAgentResponse(body.agentId, agent, member.userId),
     };
   },
 });
+
+function buildAgentResponse(
+  agentId: string,
+  agent: typeof zeroAgents.$inferSelect | undefined,
+  fallbackOwner: string,
+) {
+  return {
+    agentId,
+    ownerId: agent?.owner ?? fallbackOwner,
+    description: agent?.description ?? null,
+    displayName: agent?.displayName ?? null,
+    sound: agent?.sound ?? null,
+    avatarUrl: agent?.avatarUrl ?? null,
+    permissionPolicies: agent?.permissionPolicies ?? null,
+    allowUnknownEndpoints: agent?.allowUnknownEndpoints ?? null,
+    customSkills: agent?.customSkills ?? [],
+  };
+}
 
 const handler = createHandler(zeroAgentPermissionPoliciesContract, router, {
   errorHandler: createSafeErrorHandler("zero:permission-policies"),

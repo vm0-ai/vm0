@@ -110,6 +110,7 @@ function mockBaseAPIs(options?: {
           avatarUrl: null;
           headVersionId: string;
           permissionPolicies: null;
+          allowUnknownEndpoints: null;
         }
       > = {
         [DEFAULT_AGENT_ID]: {
@@ -121,6 +122,7 @@ function mockBaseAPIs(options?: {
           avatarUrl: null,
           headVersionId: "version_1",
           permissionPolicies: null,
+          allowUnknownEndpoints: null,
         },
         [PINNED_AGENT_ID]: {
           agentId: PINNED_AGENT_ID,
@@ -131,6 +133,7 @@ function mockBaseAPIs(options?: {
           avatarUrl: null,
           headVersionId: "version_2",
           permissionPolicies: null,
+          allowUnknownEndpoints: null,
         },
       };
       const agent = agents[params.id as string];

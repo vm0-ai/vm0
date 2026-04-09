@@ -88,6 +88,7 @@ function mockSubagentAPIs() {
           sound: null;
           avatarUrl: null;
           permissionPolicies: null;
+          allowUnknownEndpoints: null;
         }
       > = {
         "c0000000-0000-4000-a000-000000000001": {
@@ -98,6 +99,7 @@ function mockSubagentAPIs() {
           sound: null,
           avatarUrl: null,
           permissionPolicies: null,
+          allowUnknownEndpoints: null,
         },
         "subagent-compose-id": {
           agentId: "subagent-compose-id",
@@ -107,6 +109,7 @@ function mockSubagentAPIs() {
           sound: null,
           avatarUrl: null,
           permissionPolicies: null,
+          allowUnknownEndpoints: null,
         },
       };
       const agent = agents[params.id as string];

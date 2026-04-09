@@ -48,6 +48,7 @@ describe("savePermissionPolicies$", () => {
           avatarUrl: null,
           connectors: [],
           permissionPolicies: policies,
+          allowUnknownEndpoints: null,
         });
       }),
     );
@@ -56,6 +57,7 @@ describe("savePermissionPolicies$", () => {
       savePermissionPolicies$,
       "my-agent",
       policies,
+      undefined,
       context.signal,
     );
 
@@ -84,6 +86,7 @@ describe("savePermissionPolicies$", () => {
         savePermissionPolicies$,
         "my-agent",
         {},
+        undefined,
         context.signal,
       ),
     ).rejects.toThrow("Only org admins can update");

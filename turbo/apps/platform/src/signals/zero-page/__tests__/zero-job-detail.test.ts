@@ -38,6 +38,7 @@ function mockAgentResponse() {
     sound: null,
     avatarUrl: null,
     permissionPolicies: null,
+    allowUnknownEndpoints: null,
     customSkills: [],
   };
 }
@@ -611,6 +612,7 @@ describe("zero-job-detail signals", () => {
               sound: null,
               avatarUrl: null,
               permissionPolicies: null,
+              allowUnknownEndpoints: null,
             });
           },
         ),
@@ -661,6 +663,7 @@ describe("zero-job-detail signals", () => {
               sound: null,
               avatarUrl: null,
               permissionPolicies: null,
+              allowUnknownEndpoints: null,
             });
           },
         ),
