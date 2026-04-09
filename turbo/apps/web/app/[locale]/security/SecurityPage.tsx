@@ -81,7 +81,7 @@ export default function SecurityPage() {
             <p className="text-[15px] leading-relaxed text-[hsl(var(--muted-foreground))]">
               Questions about security?{" "}
               <a
-                href="mailto:support@vm0.ai"
+                href="mailto:contact@vm0.ai"
                 className="text-[hsl(var(--foreground))] underline underline-offset-4"
               >
                 Contact us

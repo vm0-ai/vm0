@@ -29,7 +29,7 @@ export async function sendUserPushNotifications(
   }
 
   webpush.setVapidDetails(
-    "mailto:support@vm0.ai",
+    "mailto:contact@vm0.ai",
     VAPID_PUBLIC_KEY,
     VAPID_PRIVATE_KEY,
   );

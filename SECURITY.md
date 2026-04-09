@@ -14,7 +14,7 @@ We only provide security updates for the latest release. We recommend always run
 
 If you discover a security vulnerability, please report it responsibly by emailing us at:
 
-**[support@vm0.ai](mailto:support@vm0.ai)**
+**[contact@vm0.ai](mailto:contact@vm0.ai)**
 
 ### What to Include
 

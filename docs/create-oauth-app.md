@@ -18,8 +18,8 @@ When integrating a new OAuth provider, create **two separate apps** per provider
 | Field       | Value                          |
 |-------------|--------------------------------|
 | Developer / Company | Max & Zoe, Inc.        |
-| Contact Email       | support@vm0.ai         |
-| Support Email       | support@vm0.ai         |
+| Contact Email       | contact@vm0.ai         |
+| Support Email       | contact@vm0.ai         |
 | Website             | https://www.vm0.ai     |
 | Documentation URL   | https://docs.vm0.ai    |
 
