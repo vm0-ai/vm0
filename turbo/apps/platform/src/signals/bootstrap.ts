@@ -44,6 +44,7 @@ import { setupNetworkInsightsPage$ } from "./network-insights/network-insights-p
 import { initSlackOrg$ } from "./zero-page/zero-slack.ts";
 import { setupSkeletonPage$, setupErrorPage$ } from "./skeleton-page-setup.ts";
 import { startSkeletonCycling$ } from "./app-skeleton.ts";
+import { throwIfNotAbort } from "./utils.ts";
 import { pollUserInvitations$ } from "./user-invitations.ts";
 
 /**
@@ -260,15 +261,16 @@ export const bootstrap$ = command(
 
     render();
 
+    void set(startSkeletonCycling$, signal).catch(throwIfNotAbort);
+    void set(pollUserInvitations$, signal).catch(throwIfNotAbort);
+
     await Promise.all([
-      set(startSkeletonCycling$, signal),
       set(setupGlobalMethod$, signal),
       (async () => {
         await set(setupClerk$, signal);
         await set(watchOrgSwitch$, signal);
       })(),
       set(setupRoutes$, signal),
-      set(pollUserInvitations$, signal),
     ]);
 
     signal.throwIfAborted();
