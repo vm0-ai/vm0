@@ -574,7 +574,7 @@ describe("PUT /api/zero/permission-access-requests", () => {
     );
     const agentData = await agentRes.json();
     expect(agentData.permissionPolicies).toStrictEqual({
-      github: { permissions: { "issues:read": "allow" } },
+      github: { policies: { "issues:read": "allow" } },
     });
   });
 
@@ -615,7 +615,7 @@ describe("PUT /api/zero/permission-access-requests", () => {
     );
     const agentData = await agentRes.json();
     expect(agentData.permissionPolicies).toStrictEqual({
-      github: { permissions: { "issues:read": "deny" } },
+      github: { policies: { "issues:read": "deny" } },
     });
   });
 
@@ -790,7 +790,7 @@ describe("PUT /api/zero/permission-access-requests", () => {
         },
         body: JSON.stringify({
           agentId: agent.agentId,
-          policies: { slack: { permissions: { "channels:read": "allow" } } },
+          policies: { slack: { policies: { "channels:read": "allow" } } },
         }),
       }),
     );
@@ -825,8 +825,8 @@ describe("PUT /api/zero/permission-access-requests", () => {
     );
     const agentData = await agentRes.json();
     expect(agentData.permissionPolicies).toStrictEqual({
-      slack: { permissions: { "channels:read": "allow" } },
-      github: { permissions: { "issues:read": "allow" } },
+      slack: { policies: { "channels:read": "allow" } },
+      github: { policies: { "issues:read": "allow" } },
     });
   });
 });

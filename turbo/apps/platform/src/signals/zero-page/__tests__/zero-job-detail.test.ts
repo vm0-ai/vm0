@@ -242,7 +242,7 @@ describe("zero-job-detail signals", () => {
 
     it("should derive permission policies from detail", async () => {
       const policies = {
-        search: { permissions: { read: "allow" as const } },
+        search: { policies: { read: "allow" as const } },
       };
       server.use(
         http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
