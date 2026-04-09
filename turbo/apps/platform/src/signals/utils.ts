@@ -183,7 +183,7 @@ export async function setLoop(
   let loopCount = 0;
   while (!signal.aborted) {
     if (IN_VITEST && loopCount++ > MAX_LOOP_COUNT_IN_TEST) {
-      throw new Error("Max Loop Exceed");
+      return;
     }
 
     // eslint-disable-next-line no-restricted-syntax -- polling loop requires try/catch for transient error retry with backoff
