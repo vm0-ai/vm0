@@ -187,7 +187,7 @@ function Sparkles({ active }: { active: boolean }) {
       x: xDir,
       y: yDir,
       size: 3 + rand() * 5,
-      color: colors[Math.floor(rand() * colors.length)],
+      color: colors[Math.floor(rand() * colors.length)] ?? "#ed4e01",
       delay: rand() * 0.15,
     });
   }
