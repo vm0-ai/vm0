@@ -20,6 +20,15 @@ const CONDITIONAL_CAPABILITIES: ReadonlyMap<ZeroCapability, FeatureSwitchKey> =
     ["voice-chat:write", FeatureSwitchKey.VoiceChat],
   ]);
 
+/**
+ * Capabilities that are never included in agent run (zero) tokens.
+ * Unlike CONDITIONAL_CAPABILITIES (feature-flag gated for gradual rollout),
+ * these are structurally excluded for safety — agents should never have them.
+ */
+const AGENT_EXCLUDED_CAPABILITIES: ReadonlySet<ZeroCapability> = new Set([
+  "schedule:delete",
+]);
+
 const log = logger("auth:sandbox");
 
 /**
@@ -327,9 +336,12 @@ export async function generateZeroToken(
   const now = Math.floor(Date.now() / 1000);
   const expiresIn = 2 * 60 * 60; // 2 hours
 
-  // Build capabilities, filtering out gated ones where the flag is disabled
+  // Build capabilities, filtering out agent-excluded and conditionally gated ones
   const capabilities: ZeroCapability[] = [];
   for (const cap of ZERO_CAPABILITIES) {
+    if (AGENT_EXCLUDED_CAPABILITIES.has(cap)) {
+      continue;
+    }
     const flag = CONDITIONAL_CAPABILITIES.get(cap);
     if (flag) {
       if (isFeatureEnabled(flag, { userId, orgId })) {

@@ -18,7 +18,7 @@ const router = tsr.router(zeroSchedulesByNameContract, {
     initServices();
 
     const authCtx = await requireAuth(headers.authorization, {
-      requiredCapability: "schedule:write",
+      requiredCapability: "schedule:delete",
     });
     if (isAuthError(authCtx)) return authCtx;
     const { userId } = authCtx;

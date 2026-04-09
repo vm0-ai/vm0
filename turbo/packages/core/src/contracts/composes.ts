@@ -33,6 +33,7 @@ export const ZERO_CAPABILITIES = [
   "agent-run:write",
   "schedule:read",
   "schedule:write",
+  "schedule:delete",
   "slack:write",
   "connector:read",
   "computer-use:write",
@@ -62,8 +63,9 @@ export const ZERO_CAPABILITY_META: Record<ZeroCapability, ZeroCapabilityMeta> =
     "schedule:read": { group: "Schedules", label: "View schedules" },
     "schedule:write": {
       group: "Schedules",
-      label: "Create & delete schedules",
+      label: "Create & manage schedules",
     },
+    "schedule:delete": { group: "Schedules", label: "Delete schedules" },
     "slack:write": { group: "Integrations", label: "Send Slack messages" },
     "connector:read": { group: "Connectors", label: "View connected services" },
     "computer-use:write": {

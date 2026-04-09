@@ -296,6 +296,16 @@ describe("sandbox-token", () => {
       ]);
     });
 
+    it("should exclude agent-excluded capabilities from zero tokens", async () => {
+      mockIsFeatureEnabled.mockReturnValue(true);
+
+      const token = await generateZeroToken("user-123", "run-456", "org-789");
+      const auth = verifyZeroToken(token);
+
+      expect(auth?.capabilities).not.toContain("schedule:delete");
+      expect(auth?.capabilities).toContain("schedule:write");
+    });
+
     it("should return null for expired zero token", async () => {
       const token = await generateZeroToken("user-123", "run-456", "org-789");
 
