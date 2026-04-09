@@ -1,5 +1,31 @@
 # Changelog
 
+## [12.210.0](https://github.com/vm0-ai/vm0/compare/web-v12.209.0...web-v12.210.0) (2026-04-09)
+
+
+### Features
+
+* add error report page and api for failed runs ([#8619](https://github.com/vm0-ai/vm0/issues/8619)) ([0b8c420](https://github.com/vm0-ai/vm0/commit/0b8c4200df1228b7fa3c16ab575bb547bba6a1f8))
+* **cli:** add --mode flag to phone call command with onhold and fire-and-forget modes ([#8677](https://github.com/vm0-ai/vm0/issues/8677)) ([b0041d1](https://github.com/vm0-ai/vm0/commit/b0041d19616ef3d5fd6ddfaf0a18668bbd85534d))
+
+
+### Bug Fixes
+
+* **platform:** ignore credit errors in sentry + backfill starter credits for legacy orgs ([#8660](https://github.com/vm0-ai/vm0/issues/8660)) ([c1c6b32](https://github.com/vm0-ai/vm0/commit/c1c6b323f00d8fc5c7c918c8ccf9544441abdaf4))
+* **runner:** use resume session id for runner job queue and notifications ([#8683](https://github.com/vm0-ai/vm0/issues/8683)) ([a06b4ed](https://github.com/vm0-ai/vm0/commit/a06b4edcd4deebaff495b263154951b1010a3d92)), closes [#8657](https://github.com/vm0-ai/vm0/issues/8657)
+
+
+### Refactoring
+
+* **web:** split api-test-helpers.ts into domain sub-modules ([#8649](https://github.com/vm0-ai/vm0/issues/8649)) ([c92f273](https://github.com/vm0-ai/vm0/commit/c92f27326eb3a37aaf3e262e1d78c261ab412ad6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.166.0
+
 ## [12.209.0](https://github.com/vm0-ai/vm0/compare/web-v12.208.0...web-v12.209.0) (2026-04-09)
 
 
