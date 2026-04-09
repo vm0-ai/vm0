@@ -74,7 +74,7 @@ export const OPENAPI_PATH_KEYS = new Set([
  * Strip query string (`?…`) and fragment (`#…`) from an OpenAPI path.
  * Some specs include these in path keys; firewall rules must not contain them.
  */
-function stripQueryFragment(p: string): string {
+export function stripQueryFragment(p: string): string {
   const qIdx = p.indexOf("?");
   const hIdx = p.indexOf("#");
   if (qIdx === -1 && hIdx === -1) return p;
