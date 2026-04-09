@@ -1,4 +1,4 @@
-import { and, eq, like, or, sql } from "drizzle-orm";
+import { and, desc, eq, like, or, sql } from "drizzle-orm";
 import type { OrgTier } from "@vm0/core";
 import { generateSandboxToken } from "../../lib/auth/sandbox-token";
 import { agentRuns } from "../../db/schema/agent-run";
@@ -817,6 +817,7 @@ export async function findMostRecentRunForUser(
     .select()
     .from(agentRuns)
     .where(and(eq(agentRuns.userId, userId), eq(agentRuns.orgId, orgId)))
+    .orderBy(desc(agentRuns.createdAt))
     .limit(1);
   return row;
 }
