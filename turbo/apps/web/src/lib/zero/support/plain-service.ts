@@ -41,8 +41,8 @@ interface CreateSupportThreadParams {
  *  4. createThreadEvent — attach description, metadata, and download link
  *
  * Returns true if the thread was created successfully, false if Plain is
- * unconfigured (PLAIN_API_KEY absent) or any step fails. Errors are logged
- * but never thrown — the reference has already been returned to the caller.
+ * unconfigured (PLAIN_API_KEY absent) or any step returns an API-level error.
+ * Unexpected exceptions are not caught here — they propagate to the caller.
  */
 export async function createPlainSupportThread(
   params: CreateSupportThreadParams,
@@ -67,99 +67,90 @@ export async function createPlainSupportThread(
     emailSubjectPrefix,
   } = params;
 
-  try {
-    // 1. Upsert the tenant (org)
-    const tenantRes = await client.upsertTenant({
-      identifier: { externalId: orgId },
-      name: orgName,
-      externalId: orgId,
-    });
-    if (tenantRes.error) {
-      log.warn("Plain upsertTenant failed", {
-        reference,
-        code: tenantRes.error.type,
-        message: tenantRes.error.message,
-      });
-      return false;
-    }
-
-    // 2. Upsert the customer (user), associated with the tenant
-    const customerRes = await client.upsertCustomer({
-      identifier: { externalId: userId },
-      onCreate: {
-        fullName: userEmail,
-        email: { email: userEmail, isVerified: true },
-        externalId: userId,
-        tenantIdentifiers: [{ externalId: orgId }],
-      },
-      onUpdate: {
-        fullName: { value: userEmail },
-        email: { email: userEmail, isVerified: true },
-      },
-    });
-    if (customerRes.error) {
-      log.warn("Plain upsertCustomer failed", {
-        reference,
-        code: customerRes.error.type,
-        message: customerRes.error.message,
-      });
-      return false;
-    }
-
-    // 3. Create the thread
-    const threadRes = await client.createThread({
-      customerIdentifier: { externalId: userId },
-      title: `${emailSubjectPrefix} ${title}`,
-      externalId: reference,
-      tenantIdentifier: { externalId: orgId },
-      priority: 2,
-    });
-    if (threadRes.error) {
-      log.warn("Plain createThread failed", {
-        reference,
-        code: threadRes.error.type,
-        message: threadRes.error.message,
-      });
-      return false;
-    }
-
-    const threadId = threadRes.data.id;
-
-    // 4. Add description, metadata, and download link as a thread event
-    const eventRes = await client.createThreadEvent({
-      threadId,
-      title: "Diagnostic Report",
-      components: buildEventComponents({
-        description,
-        userEmail,
-        userId,
-        orgName,
-        orgId,
-        runId,
-        downloadUrl,
-        expiresAt,
-      }),
-    });
-    if (eventRes.error) {
-      // Thread already exists — log the failure but don't trigger email fallback
-      log.warn("Plain createThreadEvent failed", {
-        reference,
-        threadId,
-        code: eventRes.error.type,
-        message: eventRes.error.message,
-      });
-      return true;
-    }
-
-    log.info("Plain support thread created", { reference, threadId });
-    return true;
-  } catch (err) {
-    log.warn("Unexpected error creating Plain support thread", {
+  // 1. Upsert the tenant (org)
+  const tenantRes = await client.upsertTenant({
+    identifier: { externalId: orgId },
+    name: orgName,
+    externalId: orgId,
+  });
+  if (tenantRes.error) {
+    log.warn("Plain upsertTenant failed", {
       reference,
-      error: String(err),
+      code: tenantRes.error.type,
+      message: tenantRes.error.message,
     });
     return false;
   }
+
+  // 2. Upsert the customer (user), associated with the tenant
+  const customerRes = await client.upsertCustomer({
+    identifier: { externalId: userId },
+    onCreate: {
+      fullName: userEmail,
+      email: { email: userEmail, isVerified: true },
+      externalId: userId,
+      tenantIdentifiers: [{ externalId: orgId }],
+    },
+    onUpdate: {
+      fullName: { value: userEmail },
+      email: { email: userEmail, isVerified: true },
+    },
+  });
+  if (customerRes.error) {
+    log.warn("Plain upsertCustomer failed", {
+      reference,
+      code: customerRes.error.type,
+      message: customerRes.error.message,
+    });
+    return false;
+  }
+
+  // 3. Create the thread
+  const threadRes = await client.createThread({
+    customerIdentifier: { externalId: userId },
+    title: `${emailSubjectPrefix} ${title}`,
+    externalId: reference,
+    tenantIdentifier: { externalId: orgId },
+    priority: 2,
+  });
+  if (threadRes.error) {
+    log.warn("Plain createThread failed", {
+      reference,
+      code: threadRes.error.type,
+      message: threadRes.error.message,
+    });
+    return false;
+  }
+
+  const threadId = threadRes.data.id;
+
+  // 4. Add description, metadata, and download link as a thread event
+  const eventRes = await client.createThreadEvent({
+    threadId,
+    title: "Diagnostic Report",
+    components: buildEventComponents({
+      description,
+      userEmail,
+      userId,
+      orgName,
+      orgId,
+      runId,
+      downloadUrl,
+      expiresAt,
+    }),
+  });
+  if (eventRes.error) {
+    log.warn("Plain createThreadEvent failed", {
+      reference,
+      threadId,
+      code: eventRes.error.type,
+      message: eventRes.error.message,
+    });
+    return false;
+  }
+
+  log.info("Plain support thread created", { reference, threadId });
+  return true;
 }
 
 function buildEventComponents(p: {

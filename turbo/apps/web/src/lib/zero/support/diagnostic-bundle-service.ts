@@ -260,7 +260,7 @@ export async function submitDiagnosticBundle(
   ]);
 
   // Notify support: prefer Plain.com thread, fall back to email if Plain is
-  // unconfigured (PLAIN_API_KEY absent) or any API call fails.
+  // unconfigured (PLAIN_API_KEY absent) or any API-level step fails.
   const plainCreated = await createPlainSupportThread({
     userId,
     userEmail,
@@ -273,12 +273,6 @@ export async function submitDiagnosticBundle(
     downloadUrl,
     expiresAt,
     emailSubjectPrefix: params.emailSubjectPrefix,
-  }).catch((err) => {
-    log.warn("createPlainSupportThread threw unexpectedly", {
-      reference,
-      error: String(err),
-    });
-    return false;
   });
 
   if (!plainCreated) {
