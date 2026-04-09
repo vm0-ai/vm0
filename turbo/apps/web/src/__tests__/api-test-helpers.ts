@@ -3578,11 +3578,13 @@ export async function disableAllSchedules(orgId: string): Promise<void> {
 export async function insertUserCacheEntry(entry: {
   userId: string;
   email: string;
+  name?: string;
   cachedAt?: Date;
 }): Promise<void> {
   await globalThis.services.db.insert(userCache).values({
     userId: entry.userId,
     email: entry.email,
+    name: entry.name ?? null,
     cachedAt: entry.cachedAt ?? new Date(),
   });
 }

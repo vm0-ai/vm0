@@ -112,4 +112,36 @@ describe("buildUserInfo", () => {
     expect(result).not.toContain("Name:");
     expect(result).not.toContain("Slack");
   });
+
+  it("should produce header with no fields when all options are undefined", () => {
+    const result = buildUserInfo({});
+
+    expect(result).toBe("# Current User Info\n");
+  });
+
+  it("should handle all fields simultaneously", () => {
+    const result = buildUserInfo({
+      name: "Charlie",
+      email: "charlie@test.com",
+      timezone: "Europe/London",
+      slackDisplayName: "charlie.slack",
+      slackUserId: "U99999",
+    });
+
+    expect(result).toContain("Name: Charlie");
+    expect(result).toContain("Email: charlie@test.com");
+    expect(result).toContain("Timezone: Europe/London");
+    expect(result).toContain("Slack display name: charlie.slack");
+    expect(result).toContain("Slack user ID: U99999");
+    // Verify order: name, email, timezone, slack fields
+    const nameIdx = result.indexOf("Name:");
+    const emailIdx = result.indexOf("Email:");
+    const tzIdx = result.indexOf("Timezone:");
+    const slackNameIdx = result.indexOf("Slack display name:");
+    const slackIdIdx = result.indexOf("Slack user ID:");
+    expect(nameIdx).toBeLessThan(emailIdx);
+    expect(emailIdx).toBeLessThan(tzIdx);
+    expect(tzIdx).toBeLessThan(slackNameIdx);
+    expect(slackNameIdx).toBeLessThan(slackIdIdx);
+  });
 });
