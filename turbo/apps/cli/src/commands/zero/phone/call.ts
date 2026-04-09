@@ -1,3 +1,4 @@
+import { readFileSync } from "fs";
 import { Command } from "commander";
 import chalk from "chalk";
 import { createPhoneCall } from "../../../lib/api";
@@ -12,14 +13,14 @@ export const callCommand = new Command()
   )
   .option("--greeting <message>", "Initial greeting when the recipient answers")
   .option(
-    "--system-prompt <prompt>",
-    "Override the agent's system prompt for this call",
+    "--system-prompt-file <path>",
+    "File containing system prompt to override the agent's prompt for this call",
   )
   .action(
     withErrorHandler(
       async (
         toNumber: string,
-        options: { greeting?: string; systemPrompt?: string },
+        options: { greeting?: string; systemPromptFile?: string },
       ) => {
         // Validate E.164 format
         if (!/^\+[1-9]\d{1,14}$/.test(toNumber)) {
@@ -31,10 +32,15 @@ export const callCommand = new Command()
           process.exit(1);
         }
 
+        let systemPrompt: string | undefined;
+        if (options.systemPromptFile) {
+          systemPrompt = readFileSync(options.systemPromptFile, "utf-8").trim();
+        }
+
         const result = await createPhoneCall({
           toNumber,
           greeting: options.greeting,
-          systemPrompt: options.systemPrompt,
+          systemPrompt,
         });
 
         console.log(chalk.green("Call initiated"));

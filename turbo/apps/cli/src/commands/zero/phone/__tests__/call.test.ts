@@ -7,6 +7,9 @@
  * - Real (internal): All CLI code, formatters, validators
  */
 
+import { writeFileSync, mkdtempSync, rmSync } from "fs";
+import { join } from "path";
+import { tmpdir } from "os";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../mocks/server";
@@ -79,7 +82,11 @@ describe("zero phone call command", () => {
       expect(capturedBody.greeting).toBe("Hello, how can I help?");
     });
 
-    it("should pass --system-prompt option to the API", async () => {
+    it("should read --system-prompt-file and pass contents to the API", async () => {
+      const tmpDir = mkdtempSync(join(tmpdir(), "call-test-"));
+      const promptFile = join(tmpDir, "prompt.txt");
+      writeFileSync(promptFile, "You are a helpful assistant.\n");
+
       let capturedBody: Record<string, unknown> = {};
       server.use(
         http.post(
@@ -98,11 +105,13 @@ describe("zero phone call command", () => {
         "node",
         "cli",
         "+14155551234",
-        "--system-prompt",
-        "You are a helpful assistant.",
+        "--system-prompt-file",
+        promptFile,
       ]);
 
       expect(capturedBody.systemPrompt).toBe("You are a helpful assistant.");
+
+      rmSync(tmpDir, { recursive: true });
     });
   });
 
