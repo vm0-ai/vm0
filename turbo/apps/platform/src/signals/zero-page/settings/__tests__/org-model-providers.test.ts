@@ -30,7 +30,7 @@ describe("org-model-providers vm0 provider", () => {
         return HttpResponse.json(
           {
             provider: {
-              id: "test-id",
+              id: "a1b2c3d4-e5f6-4890-abcd-ef1234567890",
               type: "vm0",
               framework: "claude-code",
               secretName: null,
@@ -73,7 +73,7 @@ describe("org-model-providers vm0 provider", () => {
         return HttpResponse.json(
           {
             provider: {
-              id: "test-id",
+              id: "a1b2c3d4-e5f6-4890-abcd-ef1234567890",
               type: "vm0",
               framework: "claude-code",
               secretName: null,
@@ -116,7 +116,7 @@ describe("org-model-providers vm0 provider", () => {
         return HttpResponse.json(
           {
             provider: {
-              id: "test-id",
+              id: "a1b2c3d4-e5f6-4890-abcd-ef1234567890",
               type: "vm0",
               framework: "claude-code",
               secretName: null,

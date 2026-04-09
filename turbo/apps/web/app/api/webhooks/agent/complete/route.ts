@@ -26,6 +26,7 @@ import {
 } from "../../../../../src/lib/zero/zero-run-queue-service";
 import { processOrgCredits } from "../../../../../src/lib/zero/credit/credit-service";
 import { after } from "next/server";
+import { env } from "../../../../../src/env";
 
 const log = logger("webhook:complete");
 
@@ -213,8 +214,10 @@ const router = tsr.router(webhookCompleteContract, {
       log.debug(`Run ${body.runId} completed successfully`);
     } else {
       // Failure: store error in run table
+      const reportUrl = `${env().NEXT_PUBLIC_APP_URL}/runs/${body.runId}/report-error`;
       const errorMessage =
-        body.error || `Agent exited with code ${body.exitCode}`;
+        body.error ||
+        `An unexpected error occurred. [Report this issue](${reportUrl})`;
 
       const transitioned = await transitionRunStatus(
         body.runId,

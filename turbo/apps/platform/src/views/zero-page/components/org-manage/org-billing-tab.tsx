@@ -1,3 +1,5 @@
+// TODO(#8609): split large components to comply with max-lines-per-function (128)
+// oxlint-disable max-lines-per-function
 import { useGet, useSet, useLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import {
@@ -262,7 +264,14 @@ function PricingPage({
   };
 
   return (
-    <div className="flex flex-col gap-5">
+    <div
+      className="flex flex-col gap-5 outline-none"
+      role="group"
+      tabIndex={-1}
+      ref={(el) => {
+        el?.focus();
+      }}
+    >
       <div className="flex items-center gap-3">
         <TooltipProvider delayDuration={200}>
           <Tooltip>

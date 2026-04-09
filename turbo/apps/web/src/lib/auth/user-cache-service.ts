@@ -11,6 +11,7 @@ const CACHE_TTL_MS = 60_000; // 1 minute
 interface CachedUser {
   userId: string;
   email: string;
+  name: string | null;
 }
 
 /**
@@ -31,7 +32,7 @@ export async function getCachedUser(userId: string): Promise<CachedUser> {
     .limit(1);
 
   if (cached && Date.now() - cached.cachedAt.getTime() < CACHE_TTL_MS) {
-    return { userId, email: cached.email };
+    return { userId, email: cached.email, name: cached.name };
   }
 
   // 2. Fetch from Clerk (source of truth)
@@ -47,20 +48,22 @@ export async function getCachedUser(userId: string): Promise<CachedUser> {
   }
 
   const email = primaryEmail.emailAddress;
+  const name =
+    [user.firstName, user.lastName].filter(Boolean).join(" ") || null;
 
   // 3. Upsert cache
   const now = new Date();
   await db
     .insert(userCache)
-    .values({ userId, email, cachedAt: now })
+    .values({ userId, email, name, cachedAt: now })
     .onConflictDoUpdate({
       target: userCache.userId,
-      set: { email, cachedAt: now },
+      set: { email, name, cachedAt: now },
     });
 
   log.debug("user cache refreshed", { userId });
 
-  return { userId, email };
+  return { userId, email, name };
 }
 
 /**

@@ -1,7 +1,12 @@
+import * as fs from "fs";
 import { Command } from "commander";
 import chalk from "chalk";
 import { createPhoneCall } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
+
+function isErrnoException(err: unknown): err is NodeJS.ErrnoException {
+  return err instanceof Error && "code" in err;
+}
 
 export const callCommand = new Command()
   .name("call")
@@ -10,16 +15,17 @@ export const callCommand = new Command()
     "<to-number>",
     "Phone number to call (E.164 format, e.g. +14155551234)",
   )
-  .option("--greeting <message>", "Initial greeting when the recipient answers")
   .option(
-    "--system-prompt <prompt>",
-    "Override the agent's system prompt for this call",
+    "--system-prompt-file <path>",
+    "File that defines the agent's persona and task context for this call",
   )
   .action(
     withErrorHandler(
       async (
         toNumber: string,
-        options: { greeting?: string; systemPrompt?: string },
+        options: {
+          systemPromptFile?: string;
+        },
       ) => {
         // Validate E.164 format
         if (!/^\+[1-9]\d{1,14}$/.test(toNumber)) {
@@ -31,10 +37,24 @@ export const callCommand = new Command()
           process.exit(1);
         }
 
+        let systemPrompt: string | undefined;
+        if (options.systemPromptFile) {
+          try {
+            systemPrompt = fs.readFileSync(options.systemPromptFile, "utf-8");
+          } catch (err) {
+            if (isErrnoException(err) && err.code === "ENOENT") {
+              console.error(
+                chalk.red(`File not found: ${options.systemPromptFile}`),
+              );
+              process.exit(1);
+            }
+            throw err;
+          }
+        }
+
         const result = await createPhoneCall({
           toNumber,
-          greeting: options.greeting,
-          systemPrompt: options.systemPrompt,
+          systemPrompt,
         });
 
         console.log(chalk.green("Call initiated"));

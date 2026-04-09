@@ -1,3 +1,5 @@
+// TODO(#8609): split large components to comply with max-lines-per-function (128)
+// oxlint-disable max-lines-per-function
 import { useGet, useSet, useLoadable } from "ccstate-react";
 import { IconPlus, IconDotsVertical } from "@tabler/icons-react";
 import { MODEL_PROVIDER_TYPES, type ModelProviderType } from "@vm0/core";

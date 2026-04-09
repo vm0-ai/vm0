@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.70.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.70.1...runner-rs-v0.70.2) (2026-04-09)
+
+## [0.70.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.70.0...runner-rs-v0.70.1) (2026-04-09)
+
+
+### Bug Fixes
+
+* **firewalls:** skip __typename in graphql field coverage check ([#8642](https://github.com/vm0-ai/vm0/issues/8642)) ([306f85b](https://github.com/vm0-ai/vm0/commit/306f85b60edec8b2dec1823c67f85b4554956369))
+* **runner:** clean up residual transient systemd units before service start ([#8645](https://github.com/vm0-ai/vm0/issues/8645)) ([a14b1db](https://github.com/vm0-ai/vm0/commit/a14b1db39b56657b0108475f6da95827345f0152)), closes [#8640](https://github.com/vm0-ai/vm0/issues/8640)
+
+## [0.70.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.69.0...runner-rs-v0.70.0) (2026-04-09)
+
+
+### Features
+
+* **billing:** add proxy-side usage extraction for billing verification ([#8581](https://github.com/vm0-ai/vm0/issues/8581)) ([87f5049](https://github.com/vm0-ai/vm0/commit/87f5049ab3eb8e4aaa26537f412b628d0f687bc6))
+* **firewalls:** support comma-separated field values in graphql rules ([#8549](https://github.com/vm0-ai/vm0/issues/8549)) ([e9cda88](https://github.com/vm0-ai/vm0/commit/e9cda88fbb87f4df7a47922e2e63b2c55f7e2de2))
+
+
+### Bug Fixes
+
+* **firewalls:** require all graphql fields to be covered by permissions ([#8599](https://github.com/vm0-ai/vm0/issues/8599)) ([7f8c21b](https://github.com/vm0-ai/vm0/commit/7f8c21b4a0d77a19e05fe18175f9b77fd4949ce6))
+* **runner:** send immediate heartbeat after vm park and exclude idle vms from running count ([#8626](https://github.com/vm0-ai/vm0/issues/8626)) ([71d340d](https://github.com/vm0-ai/vm0/commit/71d340d540f546ef008671830aca970eaf00158d))
+
 ## [0.69.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.68.0...runner-rs-v0.69.0) (2026-04-08)
 
 

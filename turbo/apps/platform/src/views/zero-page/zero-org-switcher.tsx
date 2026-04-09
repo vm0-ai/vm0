@@ -1,3 +1,5 @@
+// TODO(#8609): split large components to comply with max-lines-per-function (128)
+// oxlint-disable max-lines-per-function
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import {
   DropdownMenu,
@@ -18,7 +20,6 @@ import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-ma
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { org$ } from "../../signals/org.ts";
 import {
-  orgSwitcherRef$,
   userInvitations$,
   refreshUserInvitations$,
 } from "../../signals/user-invitations.ts";
@@ -63,7 +64,6 @@ function OrgAvatar({
 }
 
 export function ZeroOrgSwitcher() {
-  const orgSwitcherRef = useSet(orgSwitcherRef$);
   const openManage = useSet(setOrgManageDialogOpen$);
   const pageSignal = useGet(pageSignal$);
   const clerkLoadable = useLoadable(clerk$);
@@ -137,7 +137,7 @@ export function ZeroOrgSwitcher() {
     pendingInvitations !== undefined && pendingInvitations.length > 0;
 
   return (
-    <div ref={orgSwitcherRef}>
+    <div>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button

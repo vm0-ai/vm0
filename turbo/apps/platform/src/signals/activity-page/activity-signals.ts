@@ -5,12 +5,8 @@ import { pathParams$, searchParams$, updateSearchParams$ } from "../route.ts";
 import { createCursorPagination } from "../cursor-pagination.ts";
 import { zeroOnboardingStatus$ } from "../zero-page/zero-onboarding.ts";
 import { zeroClient$ } from "../api-client.ts";
-import {
-  createRunLoop,
-  fibDelays$,
-  pollInterval$,
-  setLoop,
-} from "../zero-page/polling.ts";
+import { createRunLoop } from "../zero-page/polling.ts";
+import { setLoop } from "../utils.ts";
 import { accept } from "../../lib/accept.ts";
 
 // ---------------------------------------------------------------------------
@@ -254,9 +250,8 @@ export const setupActivityLogLoop$ = command(
       (sig) => {
         return set(run.checkFinished$, sig);
       },
-      get(pollInterval$),
+      3000,
       signal,
-      get(fibDelays$),
     );
   },
 );

@@ -288,15 +288,29 @@ async fn start(args: ServiceRunArgs) -> RunnerResult<()> {
 }
 
 /// `service stop` — stop the named unit.
+///
+/// Also clears residual transient unit state so that a subsequent
+/// `service start` with the same name succeeds.
 async fn stop(args: ServiceNameArgs) -> RunnerResult<()> {
     let unit = unit_name(&args.name)?;
-    if !is_unit_active(&unit).await? {
-        info!(unit = %unit, "no active service found");
-        return Ok(());
-    }
     let svc = format!("{unit}.service");
-    run_systemctl(&["stop", &svc]).await?;
-    info!(unit = %unit, "stopped");
+
+    if is_unit_active(&unit).await? {
+        // Active unit: stop must succeed — failure means the runner process
+        // (and its Firecracker VMs) would keep running.
+        run_systemctl(&["stop", &svc]).await?;
+        info!(unit = %unit, "stopped");
+    } else {
+        // Unit may be loaded but inactive (residual transient unit).
+        // Try stop to trigger systemd GC.  Ignore errors — the unit may
+        // not exist at all (first run on this host).
+        let _ = run_systemctl(&["stop", &svc]).await;
+        info!(unit = %unit, "no active service found");
+    }
+
+    // Clear "failed" latch so systemd fully unloads the transient unit.
+    // (stop alone does not clear the failed state.)
+    let _ = run_systemctl(&["reset-failed", &svc]).await;
     Ok(())
 }
 

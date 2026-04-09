@@ -525,6 +525,9 @@ jobs:
           }
           trap cleanup EXIT
 
+          # Clean up any residual transient unit from a previous CI run
+          sudo "$BIN_DIR/runner" service stop --name "$SVC" 2>/dev/null || true
+
           # Start transient runner service
           echo "--- Starting runner ---"
           sudo "$BIN_DIR/runner" service start --name "$SVC" \
@@ -739,6 +742,9 @@ jobs:
           }
           trap cleanup EXIT
 
+          # Clean up any residual transient unit from a previous CI run
+          sudo "$BIN_DIR/runner" service stop --name "$SVC" 2>/dev/null || true
+
           # Start transient runner service
           echo "--- Starting runner ---"
           sudo "$BIN_DIR/runner" service start --name "$SVC" \
@@ -841,6 +847,9 @@ jobs:
             sudo "$BIN_DIR/runner" service stop --name "$SVC" 2>/dev/null || true
           }
           trap cleanup EXIT
+
+          # Clean up any residual transient unit from a previous CI run
+          sudo "$BIN_DIR/runner" service stop --name "$SVC" 2>/dev/null || true
 
           # Start transient runner service
           echo "--- Starting runner ---"
@@ -1142,6 +1151,9 @@ jobs:
             sudo "$BIN_DIR/runner" service stop --name "$SVC" 2>/dev/null || true
           }
           trap cleanup EXIT
+
+          # Clean up any residual transient unit from a previous CI run
+          sudo "$BIN_DIR/runner" service stop --name "$SVC" 2>/dev/null || true
 
           # Start transient runner service with keep-alive
           echo "--- Starting runner (keep-alive enabled) ---"

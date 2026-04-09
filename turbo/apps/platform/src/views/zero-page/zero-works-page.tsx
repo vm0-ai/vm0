@@ -71,6 +71,7 @@ function SlackCardActions({
       ) : null}
       {!isInstalled && isAdmin && installUrl && (
         <Button
+          data-testid="slack-install-button"
           variant="outline"
           size="sm"
           className="h-8 shrink-0 gap-1.5 rounded-lg"

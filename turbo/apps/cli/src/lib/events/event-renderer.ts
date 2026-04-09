@@ -147,7 +147,21 @@ export class EventRenderer {
     // Visual separator to distinguish from event stream
     console.error("");
     console.error(chalk.red("✗ Run failed"));
-    console.error(`  Error: ${chalk.red(error || "Unknown error")}`);
+
+    // Parse markdown links from the error message and render them as
+    // plain URLs that terminals can auto-detect as clickable.
+    const errorText = error || "Unknown error";
+    const linkMatch = errorText.match(/\[([^\]]+)\]\(([^)]+)\)/);
+    if (linkMatch) {
+      const messageWithoutLink = errorText
+        .replace(linkMatch[0], "")
+        .replace(/\s+$/, "");
+      console.error(`  Error: ${chalk.red(messageWithoutLink)}`);
+      console.error(`  ${linkMatch[1]}: ${chalk.cyan(linkMatch[2])}`);
+    } else {
+      console.error(`  Error: ${chalk.red(errorText)}`);
+    }
+
     console.error(
       chalk.dim(`  (use "vm0 logs ${runId} --system" to view system logs)`),
     );

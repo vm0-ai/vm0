@@ -1,3 +1,5 @@
+// TODO(#8609): split large components to comply with max-lines-per-function (128)
+// oxlint-disable max-lines-per-function
 import type { ChangeEvent } from "react";
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import { ensurePushSubscription } from "../../lib/push-notifications.ts";

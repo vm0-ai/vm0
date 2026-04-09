@@ -1,10 +1,9 @@
 import { command, computed, state } from "ccstate";
 import { FeatureSwitchKey } from "@vm0/core";
-import { delay } from "signal-timers";
 import { fetch$ } from "../fetch.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import { currentChatAgentId$ } from "../agent-chat.ts";
-import { resetSignal, throwIfAbort, onDomEventFn } from "../utils.ts";
+import { resetSignal, throwIfAbort, onDomEventFn, setLoop } from "../utils.ts";
 
 type ConnectionStatus =
   | "idle"
@@ -111,6 +110,31 @@ const SESSION_TOOLS = [
     },
   },
 ] as const;
+
+const TALKER_INSTRUCTIONS = `
+You are the front-stage Talker in a real-time voice chat system. You speak directly with the user while a background Worker agent handles tasks that require execution.
+
+You have two tools for communicating through a shared context blackboard:
+
+- append_shared_context: Write events to the blackboard. Use source "talker" and type "worker-request" to delegate a task to the Worker. Include a clear description of the task in the content field.
+- read_shared_context: Read events from the blackboard. Use the after_seq parameter to only get new events since your last read. Look for events with source "worker" and type "progress" or "result".
+
+When to delegate to the Worker:
+- The user asks for something that requires action: writing or editing code, running commands, creating pull requests or issues, searching repositories, calling APIs, or any task needing tools beyond conversation.
+- To delegate, call append_shared_context with source "talker", type "worker-request", and content describing the task clearly.
+- After delegating, periodically call read_shared_context with after_seq to check for progress and results from the Worker. When you see a result, summarize it conversationally to the user.
+
+When NOT to delegate:
+- Simple questions, casual conversation, clarifications, opinions, explanations, or discussion. Handle these directly.
+
+Communication style:
+- Keep responses concise and natural. You are speaking, not writing.
+- Acknowledge delegation naturally, for example: "Let me have the agent look into that."
+- Report progress conversationally: "The agent is working on it."
+- Summarize results in plain language: "Here is what the agent found."
+- Do not use markdown formatting, bullet points, or code blocks in your speech.
+- Be warm and conversational, like a helpful colleague.
+`.trim();
 
 // --- Internal state ---
 
@@ -357,6 +381,7 @@ const setupWebRTC$ = command(
           type: "session.update",
           session: {
             modalities: ["text", "audio"],
+            instructions: TALKER_INSTRUCTIONS,
             input_audio_transcription: { model: "whisper-1" },
             turn_detection: {
               type: "server_vad",
@@ -428,66 +453,64 @@ const setupWebRTC$ = command(
 );
 
 const startHeartbeat$ = command(async ({ get }, signal: AbortSignal) => {
-  while (!signal.aborted) {
-    // eslint-disable-next-line no-restricted-syntax -- polling loop requires try/catch for signal-timers delay
-    try {
-      await delay(HEARTBEAT_INTERVAL_MS, { signal });
-    } catch (error) {
-      throwIfAbort(error);
-      return;
-    }
+  await setLoop(
+    async (sig: AbortSignal) => {
+      const sid = get(internalSessionId$);
+      if (!sid) {
+        return true;
+      }
 
-    const sid = get(internalSessionId$);
-    if (!sid) {
-      return;
-    }
-
-    const fetchFn = get(fetch$);
-    await fetchFn(`/api/zero/voice-chat/${sid}/heartbeat`, { method: "POST" });
-  }
+      const fetchFn = get(fetch$);
+      await fetchFn(`/api/zero/voice-chat/${sid}/heartbeat`, {
+        method: "POST",
+        signal: sig,
+      });
+      return false;
+    },
+    HEARTBEAT_INTERVAL_MS,
+    signal,
+  );
 });
 
 const startPoll$ = command(async ({ get, set }, signal: AbortSignal) => {
-  while (!signal.aborted) {
-    // eslint-disable-next-line no-restricted-syntax -- polling loop requires try/catch for signal-timers delay
-    try {
-      await delay(POLL_INTERVAL_MS, { signal });
-    } catch (error) {
-      throwIfAbort(error);
-      return;
-    }
-
-    const sid = get(internalSessionId$);
-    if (!sid) {
-      return;
-    }
-
-    const lastSeq = get(internalLastSeq$);
-    const fetchFn = get(fetch$);
-    const res = await fetchFn(
-      `/api/zero/voice-chat/${sid}/context?after=${lastSeq}`,
-    );
-    signal.throwIfAborted();
-    if (!res.ok) {
-      continue;
-    }
-
-    const data = (await res.json()) as { events: ContextEvent[] };
-    signal.throwIfAborted();
-    if (data.events.length > 0) {
-      set(internalEvents$, (prev) => {
-        return [...prev, ...data.events];
-      });
-      const lastEvent = data.events[data.events.length - 1];
-      if (lastEvent) {
-        set(internalLastSeq$, lastEvent.seq);
+  await setLoop(
+    async (signal: AbortSignal) => {
+      const sid = get(internalSessionId$);
+      if (!sid) {
+        return true;
       }
-    }
-  }
+
+      const lastSeq = get(internalLastSeq$);
+      const fetchFn = get(fetch$);
+      const res = await fetchFn(
+        `/api/zero/voice-chat/${sid}/context?after=${lastSeq}`,
+        { signal },
+      );
+
+      if (!res.ok) {
+        return false;
+      }
+
+      const data = (await res.json()) as { events: ContextEvent[] };
+      signal.throwIfAborted();
+
+      if (data.events.length > 0) {
+        set(internalEvents$, (prev) => {
+          return [...prev, ...data.events];
+        });
+        const lastEvent = data.events[data.events.length - 1];
+        if (lastEvent) {
+          set(internalLastSeq$, lastEvent.seq);
+        }
+      }
+      return false;
+    },
+    POLL_INTERVAL_MS,
+    signal,
+  );
 });
 
 // --- Exported commands ---
-
 export const startVoiceChat$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     if (

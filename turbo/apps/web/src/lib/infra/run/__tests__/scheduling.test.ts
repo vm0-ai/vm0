@@ -105,6 +105,19 @@ describe("findBestRunner", () => {
     expect(result).toBeNull();
   });
 
+  it("treats maxConcurrent=0 as unlimited capacity", async () => {
+    const runnerId = randomUUID();
+    await insertTestRunnerState({
+      runnerId,
+      runnerGroup: GROUP,
+      heldSessions: ["session-1"],
+      maxConcurrent: 0,
+      runningCount: 5,
+    });
+    const result = await findBestRunner(GROUP, PROFILE, "session-1");
+    expect(result).toEqual({ runnerId });
+  });
+
   it("picks the affinity runner even with less free capacity", async () => {
     await insertTestRunnerState({
       runnerId: randomUUID(),

@@ -103,31 +103,29 @@ function persistOrgId(orgId: string | undefined) {
  * Command that monitors the active Clerk organization and reloads
  * the page when it changes. Persists the active org ID to session storage.
  */
-export const watchOrgSwitch$ = command(
-  async ({ get }, _el: HTMLElement, signal: AbortSignal) => {
-    const clerk = await get(clerk$);
-    signal.throwIfAborted();
+export const watchOrgSwitch$ = command(async ({ get }, signal: AbortSignal) => {
+  const clerk = await get(clerk$);
+  signal.throwIfAborted();
 
-    let prevOrgId = sessionStorage.getItem(ORG_ID_KEY) ?? undefined;
-    const currentOrgId = clerk.organization?.id ?? undefined;
-    prevOrgId = currentOrgId;
-    persistOrgId(currentOrgId);
+  let prevOrgId = sessionStorage.getItem(ORG_ID_KEY) ?? undefined;
+  const currentOrgId = clerk.organization?.id ?? undefined;
+  prevOrgId = currentOrgId;
+  persistOrgId(currentOrgId);
 
-    const unsubscribe = clerk.addListener(() => {
-      const newOrgId = clerk.organization?.id ?? undefined;
-      if (newOrgId !== prevOrgId) {
-        prevOrgId = newOrgId;
-        persistOrgId(newOrgId);
-        // Navigate to the Zero homepage on org switch. A full page load is
-        // required because server-side data (agents, jobs, secrets, etc.) is
-        // scoped to the active organization, and multiple signal trees depend
-        // on the org context established at bootstrap time.
-        location.href = "/";
-      }
-    });
-    signal.addEventListener("abort", unsubscribe);
-  },
-);
+  const unsubscribe = clerk.addListener(() => {
+    const newOrgId = clerk.organization?.id ?? undefined;
+    if (newOrgId !== prevOrgId) {
+      prevOrgId = newOrgId;
+      persistOrgId(newOrgId);
+      // Navigate to the Zero homepage on org switch. A full page load is
+      // required because server-side data (agents, jobs, secrets, etc.) is
+      // scoped to the active organization, and multiple signal trees depend
+      // on the org context established at bootstrap time.
+      location.href = "/";
+    }
+  });
+  signal.addEventListener("abort", unsubscribe);
+});
 
 export const user$ = computed(async (get) => {
   get(reload$);

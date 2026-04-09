@@ -1,11 +1,12 @@
 import { command, computed, state, type Command } from "ccstate";
 import { match } from "path-to-regexp";
 import type { RoutePath } from "../types/route.ts";
-import { clerk$, needsOrgSelection$ } from "./auth.ts";
+import { clerk$, needsOrgSelection$, watchOrgSwitch$ } from "./auth.ts";
 import { pathname, pushState, replaceState, search } from "./location.ts";
 import { setPageSignal$ } from "./page-signal.ts";
 import { rootSignal$ } from "./root-signal.ts";
-import { onDomEventFn, resetSignal } from "./utils.ts";
+import { pollUserInvitations$ } from "./user-invitations.ts";
+import { onDomEventFn, resetSignal, throwIfNotAbort } from "./utils.ts";
 import { logger } from "./log.ts";
 
 const L = logger("Route");
@@ -248,6 +249,9 @@ export const setupAuthPageWrapper = (
         return;
       }
     }
+
+    void set(watchOrgSwitch$, signal).catch(throwIfNotAbort);
+    void set(pollUserInvitations$, signal).catch(throwIfNotAbort);
 
     await set(setupPageWrapper(fn), signal);
   });

@@ -25,11 +25,6 @@ import { vi } from "vitest";
 import type { FeatureSwitchKey } from "@vm0/core";
 import { setFeatureSwitchLocalStorage$ } from "../signals/external/feature-switch";
 import { setDebugLoggerLocalStorage$ } from "../signals/bootstrap/loggers";
-import {
-  setPollIntervalForTest$,
-  setFibonacciDelaysForTest$,
-} from "../signals/zero-page/polling";
-import { setValidateResponseForTest$ } from "../signals/api-client";
 import { detach, Reason } from "../signals/utils";
 
 export async function setupPage(options: {
@@ -51,15 +46,6 @@ export async function setupPage(options: {
   featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
   withoutRender?: boolean;
 }) {
-  // During testing, we require all tests to pass with a polling interval of 0.
-  // Do not attempt to increase these values to resolve the testing issues.
-  options.context.store.set(setPollIntervalForTest$, 0);
-  options.context.store.set(
-    setFibonacciDelaysForTest$,
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-  );
-  options.context.store.set(setValidateResponseForTest$, true);
-
   createPushStateMock(options.context.signal);
   pushState({}, "", options.path);
 

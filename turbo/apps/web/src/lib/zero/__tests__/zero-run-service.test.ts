@@ -15,11 +15,13 @@ import {
   findTestZeroRun,
   findTestRunCallbacks,
   findTestRunnerJobEntry,
+  insertUserCacheEntry,
 } from "../../../__tests__/api-test-helpers";
 import { createZeroRun } from "../zero-run-service";
 import { verifyZeroToken } from "../../auth/sandbox-token";
 import { decryptSecretsMap } from "../../shared/crypto/secrets-encryption";
 import { reloadEnv } from "../../../env";
+import { updateUserPreferences } from "../user/user-preferences-service";
 import type { TriggerSource } from "@vm0/core";
 
 const context = testContext();
@@ -241,6 +243,125 @@ describe("createZeroRun()", () => {
       expect(run).toBeDefined();
       // appendSystemPrompt is prepended with agent identity, so check it contains our text
       expect(run!.appendSystemPrompt).toContain("You are a helpful bot.");
+    });
+  });
+
+  describe("user info injection", () => {
+    it("should inject # Current User Info with email and timezone into appendSystemPrompt", async () => {
+      const result = await createZeroRun(baseParams());
+
+      const run = await findTestRunRecord(result.runId);
+      expect(run).toBeDefined();
+      expect(run!.appendSystemPrompt).toContain("# Current User Info");
+      expect(run!.appendSystemPrompt).toContain("Email:");
+      expect(run!.appendSystemPrompt).toContain("Timezone:");
+    });
+
+    it("should default timezone to UTC when user has no timezone preference", async () => {
+      const result = await createZeroRun(baseParams());
+
+      const run = await findTestRunRecord(result.runId);
+      expect(run).toBeDefined();
+      expect(run!.appendSystemPrompt).toContain("Timezone: UTC");
+    });
+
+    it("should use user timezone preference when set", async () => {
+      await updateUserPreferences(user.orgId, user.userId, {
+        timezone: "Asia/Shanghai",
+      });
+
+      const result = await createZeroRun(baseParams());
+
+      const run = await findTestRunRecord(result.runId);
+      expect(run).toBeDefined();
+      expect(run!.appendSystemPrompt).toContain("Timezone: Asia/Shanghai");
+    });
+
+    it("should include cached user name when available", async () => {
+      await insertUserCacheEntry({
+        userId: user.userId,
+        email: "alice@example.com",
+        name: "Alice Zhang",
+      });
+
+      const result = await createZeroRun(baseParams());
+
+      const run = await findTestRunRecord(result.runId);
+      expect(run).toBeDefined();
+      expect(run!.appendSystemPrompt).toContain("Name: Alice Zhang");
+    });
+
+    it("should omit name from user info when not cached", async () => {
+      const result = await createZeroRun(baseParams());
+
+      const run = await findTestRunRecord(result.runId);
+      expect(run).toBeDefined();
+      expect(run!.appendSystemPrompt).toContain("# Current User Info");
+      expect(run!.appendSystemPrompt).not.toContain("Name:");
+    });
+
+    it("should merge userInfoExtras into user info block", async () => {
+      const result = await createZeroRun(
+        baseParams({
+          userInfoExtras: {
+            slackDisplayName: "alice.slack",
+            slackUserId: "U12345",
+          },
+        }),
+      );
+
+      const run = await findTestRunRecord(result.runId);
+      expect(run).toBeDefined();
+      expect(run!.appendSystemPrompt).toContain(
+        "Slack display name: alice.slack",
+      );
+      expect(run!.appendSystemPrompt).toContain("Slack user ID: U12345");
+    });
+
+    it("should inject user info for all trigger sources", async () => {
+      const triggerSources: TriggerSource[] = [
+        "web",
+        "schedule",
+        "telegram",
+        "slack",
+        "email",
+        "github",
+        "agent",
+      ];
+
+      for (const triggerSource of triggerSources) {
+        const result = await createZeroRun(baseParams({ triggerSource }));
+
+        const run = await findTestRunRecord(result.runId);
+        expect(run).toBeDefined();
+        expect(run!.appendSystemPrompt).toContain("# Current User Info");
+      }
+    });
+
+    it("should place user info between agent prompt and trigger context", async () => {
+      const agentName = uniqueId("order-agent");
+      await createTestCompose(agentName);
+      await createTestZeroAgent(user.orgId, agentName, {
+        displayName: "OrderBot",
+        description: "An ordering assistant",
+      });
+      const orderId = await getTestZeroAgentId(user.orgId, agentName);
+
+      const result = await createZeroRun(
+        baseParams({
+          agentId: orderId,
+          appendSystemPrompt: "Custom trigger context",
+        }),
+      );
+
+      const run = await findTestRunRecord(result.runId);
+      expect(run).toBeDefined();
+      const prompt = run!.appendSystemPrompt!;
+      const agentIdx = prompt.indexOf("# Agent Identity");
+      const userInfoIdx = prompt.indexOf("# Current User Info");
+      const triggerIdx = prompt.indexOf("Custom trigger context");
+      expect(agentIdx).toBeLessThan(userInfoIdx);
+      expect(userInfoIdx).toBeLessThan(triggerIdx);
     });
   });
 

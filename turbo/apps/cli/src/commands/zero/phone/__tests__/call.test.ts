@@ -7,6 +7,9 @@
  * - Real (internal): All CLI code, formatters, validators
  */
 
+import * as os from "os";
+import * as fs from "fs";
+import * as path from "path";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../mocks/server";
@@ -23,15 +26,14 @@ describe("zero phone call command", () => {
     .mockImplementation(() => {});
 
   beforeEach(() => {
+    vi.clearAllMocks();
     chalk.level = 0;
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
   });
 
   afterEach(() => {
-    mockExit.mockClear();
-    mockConsoleLog.mockClear();
-    mockConsoleError.mockClear();
+    vi.unstubAllEnvs();
   });
 
   describe("successful call", () => {
@@ -51,58 +53,6 @@ describe("zero phone call command", () => {
       expect(logCalls).toContain("Call initiated");
       expect(logCalls).toContain("call_abc123");
       expect(logCalls).toContain("initiated");
-    });
-
-    it("should pass --greeting option to the API", async () => {
-      let capturedBody: Record<string, unknown> = {};
-      server.use(
-        http.post(
-          "http://localhost:3000/api/zero/phone-calls",
-          async ({ request }) => {
-            capturedBody = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json({
-              callId: "call_xyz",
-              status: "initiated",
-            });
-          },
-        ),
-      );
-
-      await callCommand.parseAsync([
-        "node",
-        "cli",
-        "+14155551234",
-        "--greeting",
-        "Hello, how can I help?",
-      ]);
-
-      expect(capturedBody.greeting).toBe("Hello, how can I help?");
-    });
-
-    it("should pass --system-prompt option to the API", async () => {
-      let capturedBody: Record<string, unknown> = {};
-      server.use(
-        http.post(
-          "http://localhost:3000/api/zero/phone-calls",
-          async ({ request }) => {
-            capturedBody = (await request.json()) as Record<string, unknown>;
-            return HttpResponse.json({
-              callId: "call_xyz",
-              status: "initiated",
-            });
-          },
-        ),
-      );
-
-      await callCommand.parseAsync([
-        "node",
-        "cli",
-        "+14155551234",
-        "--system-prompt",
-        "You are a helpful assistant.",
-      ]);
-
-      expect(capturedBody.systemPrompt).toBe("You are a helpful assistant.");
     });
   });
 
@@ -134,6 +84,66 @@ describe("zero phone call command", () => {
         await callCommand.parseAsync(["node", "cli", "+14155551234"]);
       }).rejects.toThrow("process.exit called");
 
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+  });
+
+  describe("--system-prompt-file", () => {
+    let tmpDir: string;
+
+    beforeEach(() => {
+      tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "phone-test-"));
+    });
+
+    afterEach(() => {
+      fs.rmSync(tmpDir, { recursive: true });
+    });
+
+    it("should read system prompt from file and pass to API", async () => {
+      const promptFile = path.join(tmpDir, "prompt.txt");
+      fs.writeFileSync(promptFile, "Custom multi-line\nsystem prompt");
+
+      let capturedBody: Record<string, unknown> = {};
+      server.use(
+        http.post(
+          "http://localhost:3000/api/zero/phone-calls",
+          async ({ request }) => {
+            capturedBody = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json({
+              callId: "call_xyz",
+              status: "initiated",
+            });
+          },
+        ),
+      );
+
+      await callCommand.parseAsync([
+        "node",
+        "cli",
+        "+14155551234",
+        "--system-prompt-file",
+        promptFile,
+      ]);
+
+      expect(capturedBody.systemPrompt).toBe(
+        "Custom multi-line\nsystem prompt",
+      );
+    });
+
+    it("should error if file does not exist", async () => {
+      await expect(async () => {
+        await callCommand.parseAsync([
+          "node",
+          "cli",
+          "+14155551234",
+          "--system-prompt-file",
+          "/nonexistent/path/prompt.txt",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("File not found: /nonexistent/path/prompt.txt"),
+      );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
   });

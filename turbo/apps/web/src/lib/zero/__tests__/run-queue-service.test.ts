@@ -8,6 +8,7 @@ import {
   createTestCompose,
   createTestRunInDb,
   findTestRunRecord,
+  findTestRunCallbacks,
   findTestQueueEntry,
   markRunningRunsAsCompleted,
   expireQueueEntry,
@@ -115,6 +116,42 @@ describe("run-queue-service", () => {
       // Queue entry should be deleted
       const queueEntry = await findTestQueueEntry(queued.runId);
       expect(queueEntry).toBeUndefined();
+    });
+
+    it("should register callbacks for queued zero runs on dispatch", async () => {
+      // Create a run directly (simulates what dequeueNextAtomic produces)
+      const { runId } = await createTestRunInDb(user.userId, composeId, {
+        prompt: "With callback",
+      });
+
+      const callbackUrl = "https://example.com/callback";
+      const callbackPayload = { channelId: "C123", threadTs: "123.456" };
+      const params = baseParams({
+        prompt: "With callback",
+        composeId,
+        vars: { ZERO_AGENT_ID: composeId },
+        callbacks: [
+          {
+            url: callbackUrl,
+            secret: "test-secret",
+            payload: callbackPayload,
+          },
+        ],
+      });
+
+      // No callbacks registered yet
+      const callbacksBefore = await findTestRunCallbacks(runId);
+      expect(callbacksBefore).toHaveLength(0);
+
+      // dispatchQueuedZeroRun registers callbacks early, then fails later
+      // during token generation / context building — that's expected in tests.
+      await dispatchQueuedZeroRun(runId, params).catch(() => {});
+
+      // Callbacks should be registered in the database despite later failure
+      const callbacksAfter = await findTestRunCallbacks(runId);
+      expect(callbacksAfter).toHaveLength(1);
+      expect(callbacksAfter[0]!.url).toBe(callbackUrl);
+      expect(callbacksAfter[0]!.payload).toEqual(callbackPayload);
     });
 
     it("should drain across users in the same org", async () => {

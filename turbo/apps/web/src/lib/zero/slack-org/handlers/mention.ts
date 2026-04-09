@@ -92,7 +92,7 @@ export async function handleOrgMention(
     await client.chat.postEphemeral({
       channel: context.channelId,
       user: context.userId,
-      thread_ts: threadTs,
+      ...(context.threadTs && { thread_ts: threadTs }),
       text: "No agent is configured for this org. Please ask your org admin to set a default agent.",
     });
     return;
@@ -103,7 +103,7 @@ export async function handleOrgMention(
     await client.chat.postEphemeral({
       channel: context.channelId,
       user: context.userId,
-      thread_ts: threadTs,
+      ...(context.threadTs && { thread_ts: threadTs }),
       text: "The configured agent could not be found. Please contact your org admin.",
     });
     return;
@@ -114,15 +114,17 @@ export async function handleOrgMention(
   await setThreadStatus(client, context.channelId, threadTs, "is thinking...");
 
   // 5. Enrich message content
-  const { prompt: messageContent, userContext } = await enrichMessageContent({
-    messageContent: context.messageText,
-    files: context.files,
-    botToken,
-    channelId: context.channelId,
-    threadTs,
-    client,
-    userId: context.userId,
-  });
+  const { prompt: messageContent, userInfoExtras } = await enrichMessageContent(
+    {
+      messageContent: context.messageText,
+      files: context.files,
+      botToken,
+      channelId: context.channelId,
+      threadTs,
+      client,
+      userId: context.userId,
+    },
+  );
 
   // 6. Look up existing thread session
   let existingSessionId: string | undefined;
@@ -180,7 +182,7 @@ export async function handleOrgMention(
     sessionId: existingSessionId,
     prompt: messageContent,
     threadContext: executionContext,
-    userContext,
+    userInfoExtras,
     userId: connection.vm0UserId,
     botUserId,
     channelId: context.channelId,
@@ -199,7 +201,7 @@ export async function handleOrgMention(
     await client.chat.postEphemeral({
       channel: context.channelId,
       user: context.userId,
-      thread_ts: threadTs,
+      ...(context.threadTs && { thread_ts: threadTs }),
       text: `⚠ Run queued — concurrency limit reached. Will start automatically when a slot is available. <${queueUrl}|View queue>`,
       blocks: [
         {

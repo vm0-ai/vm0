@@ -1,5 +1,35 @@
 # Changelog
 
+## [9.110.2](https://github.com/vm0-ai/vm0/compare/cli-v9.110.1...cli-v9.110.2) (2026-04-09)
+
+
+### Refactoring
+
+* **cli:** simplify phone call to only support --system-prompt-file ([#8654](https://github.com/vm0-ai/vm0/issues/8654)) ([2ad6271](https://github.com/vm0-ai/vm0/commit/2ad62716317af077f012bb301bc1154f4ca99eab))
+
+## [9.110.1](https://github.com/vm0-ai/vm0/compare/cli-v9.110.0...cli-v9.110.1) (2026-04-09)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.165.0
+
+## [9.110.0](https://github.com/vm0-ai/vm0/compare/cli-v9.109.0...cli-v9.110.0) (2026-04-09)
+
+
+### Features
+
+* **phone:** improve receptionist prompt and add file input flags to CLI ([#8580](https://github.com/vm0-ai/vm0/issues/8580)) ([cbdd656](https://github.com/vm0-ai/vm0/commit/cbdd656f75a1ac9fd58b6c6041ca1d34db38a84b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.164.0
+
 ## [9.109.0](https://github.com/vm0-ai/vm0/compare/cli-v9.108.0...cli-v9.109.0) (2026-04-09)
 
 
