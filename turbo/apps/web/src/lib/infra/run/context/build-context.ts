@@ -1,7 +1,7 @@
 import { expandEnvironmentFromCompose } from "../environment/expand-environment";
 import type { ExecutionContext, ResumeSession } from "../types";
 import type { ArtifactSnapshot } from "../../checkpoint/types";
-import type { Firewalls } from "@vm0/core";
+import type { Firewalls, GrantedPermissions } from "@vm0/core";
 
 interface BuildInfraContextParams {
   runId: string;
@@ -22,6 +22,7 @@ interface BuildInfraContextParams {
   environment?: Record<string, string>;
   userTimezone?: string;
   firewalls?: Firewalls;
+  grantedPermissions?: GrantedPermissions;
   disallowedTools?: string[];
   tools?: string[];
   settings?: string;
@@ -76,6 +77,7 @@ export function buildInfraExecutionContext(
     environment,
     userTimezone: params.userTimezone,
     firewalls: params.firewalls,
+    grantedPermissions: params.grantedPermissions,
     disallowedTools: params.disallowedTools,
     tools: params.tools,
     settings: params.settings,
