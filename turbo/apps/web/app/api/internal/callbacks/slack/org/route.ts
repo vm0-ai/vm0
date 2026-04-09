@@ -4,6 +4,7 @@ import { initServices } from "../../../../../../src/lib/init-services";
 import { verifyCallback } from "../../../../../../src/lib/infra/callback";
 import { decryptSecretValue } from "../../../../../../src/lib/shared/crypto/secrets-encryption";
 import { slackOrgInstallations } from "../../../../../../src/db/schema/slack-org-installation";
+import { slackOrgConnections } from "../../../../../../src/db/schema/slack-org-connection";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import { isFeatureEnabled, FeatureSwitchKey } from "@vm0/core";
 import { findNewSessionId } from "../../../../../../src/lib/infra/session/find-new-session";
@@ -43,6 +44,19 @@ function parsePayload(payload: unknown): SlackOrgCallbackPayload | null {
 
 function errorResponse(message: string, status: number): NextResponse {
   return NextResponse.json({ error: message }, { status });
+}
+
+/** Best-effort resolution of the Slack user who triggered the run. */
+async function resolveTriggeredByLabel(
+  connectionId: string,
+): Promise<string | undefined> {
+  const [connection] = await globalThis.services.db
+    .select({ slackUserId: slackOrgConnections.slackUserId })
+    .from(slackOrgConnections)
+    .where(eq(slackOrgConnections.id, connectionId))
+    .limit(1);
+  if (!connection) return undefined;
+  return `Triggered by <@${connection.slackUserId}>`;
 }
 
 function buildResponseText(
@@ -192,6 +206,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   // Resolve session
   await saveOrgThreadSession(payload, runId, status);
 
+  // Resolve triggering user for footer attribution (best-effort)
+  const triggeredByLabel = await resolveTriggeredByLabel(
+    payload.connectionId,
+  ).catch(() => {
+    return undefined;
+  });
+
   // Post each result as a separate Slack reply (in order)
   for (let i = 0; i < allOutputs.length; i++) {
     const output = allOutputs[i]!;
@@ -201,10 +222,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     const isLast = i === allOutputs.length - 1;
     const logsUrl =
       isLast && auditLinkEnabled ? buildLogsUrl(runId) : undefined;
+    const triggeredBy = isLast ? triggeredByLabel : undefined;
 
     await postMessage(client, payload.channelId, responseText, {
       threadTs: payload.threadTs,
-      blocks: buildAgentResponseMessage(responseText, logsUrl),
+      blocks: buildAgentResponseMessage(responseText, logsUrl, triggeredBy),
     });
   }
 

@@ -417,6 +417,52 @@ describe("POST /api/internal/callbacks/slack/org", () => {
     expect(blocksStr).not.toContain("clipboard");
   });
 
+  it("includes triggeredBy footer with Slack user mention in completion message", async () => {
+    const slackUserId = uniqueId("U-slack");
+    const { workspaceId } = await setupOrgSlack();
+    const { connectionId } = await seedTestSlackOrgConnection({
+      slackUserId,
+      slackWorkspaceId: workspaceId,
+      vm0UserId: user.userId,
+    });
+    const { composeId } = await createTestCompose(uniqueId("agent"));
+    const { runId } = await createTestRunInDb(user.userId, composeId, {
+      prompt: "Test prompt",
+    });
+    await completeTestRun(user.userId, runId);
+
+    const channelId = uniqueId("C-ch");
+    const threadTs = uniqueId("ts");
+    const payload: OrgCallbackPayload = {
+      workspaceId,
+      channelId,
+      threadTs,
+      messageTs: threadTs,
+      connectionId,
+      agentId: composeId,
+    };
+
+    const { secret } = await createTestCallback({
+      runId,
+      url: "http://localhost/api/internal/callbacks/slack/org",
+      payload: { ...payload },
+    });
+
+    const request = createCallbackRequest(
+      { runId, status: "completed", payload },
+      secret,
+    );
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+
+    const { WebClient } = await import("@slack/web-api");
+    const mockClient = new WebClient();
+    const call = (mockClient.chat.postMessage as ReturnType<typeof vi.fn>).mock
+      .calls[0]![0] as { blocks: unknown[] };
+    const blocksStr = JSON.stringify(call.blocks);
+    expect(blocksStr).toContain(`Triggered by <@${slackUserId}>`);
+  });
+
   it("includes audit link block when AuditLink switch is on", async () => {
     const { workspaceId, connectionId } = await setupOrgSlack();
     const { composeId } = await createTestCompose(uniqueId("agent"));
