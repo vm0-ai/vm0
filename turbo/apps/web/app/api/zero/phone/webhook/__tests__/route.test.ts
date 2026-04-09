@@ -4,7 +4,7 @@ import { testContext } from "../../../../../../src/__tests__/test-helpers";
 import {
   createPhoneOrg,
   linkPhoneNumber,
-} from "../../../../../../src/lib/zero/phone/__tests__/helpers";
+} from "../../../../../../src/__tests__/api-test-helpers";
 import {
   insertOrgDefaultModelProvider,
   findMostRecentRunForUser,

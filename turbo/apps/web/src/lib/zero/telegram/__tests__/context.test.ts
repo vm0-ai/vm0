@@ -1,7 +1,10 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { fetchTelegramContext } from "../context";
 import { uniqueId } from "../../../../__tests__/test-helpers";
-import { createTelegramInstallation, insertTelegramMessage } from "./helpers";
+import {
+  createTelegramInstallation,
+  insertTelegramMessage,
+} from "../../../../__tests__/api-test-helpers";
 
 describe("fetchTelegramContext", () => {
   let installationId: string;

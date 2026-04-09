@@ -8,7 +8,7 @@ import { createTestCompose } from "../../../../../src/__tests__/api-test-helpers
 import {
   createTelegramInstallation,
   createTelegramPendingLinkInstallation,
-} from "../../../../../src/lib/zero/telegram/__tests__/helpers";
+} from "../../../../../src/__tests__/api-test-helpers";
 import { GET as linkGET } from "../../../../api/integrations/telegram/link/route";
 import { PENDING_TELEGRAM_USER_ID } from "../../../../../src/lib/zero/telegram/handlers/shared";
 import { server } from "../../../../../src/mocks/server";

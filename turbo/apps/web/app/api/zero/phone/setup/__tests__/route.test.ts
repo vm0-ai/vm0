@@ -8,7 +8,7 @@ import {
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { testContext } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
-import { createPhoneOrg } from "../../../../../../src/lib/zero/phone/__tests__/helpers";
+import { createPhoneOrg } from "../../../../../../src/__tests__/api-test-helpers";
 import { server } from "../../../../../../src/mocks/server";
 import { reloadEnv } from "../../../../../../src/env";
 

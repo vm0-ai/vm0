@@ -14,7 +14,7 @@ import {
   createTestCompose,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { computeHmacSignature } from "../../../../../../src/lib/infra/callback/hmac";
-import { createTelegramCallbackInstallation } from "../../../../../../src/lib/zero/telegram/__tests__/helpers";
+import { createTelegramCallbackInstallation } from "../../../../../../src/__tests__/api-test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { server } from "../../../../../../src/mocks/server";
 import { http } from "../../../../../../src/__tests__/msw";

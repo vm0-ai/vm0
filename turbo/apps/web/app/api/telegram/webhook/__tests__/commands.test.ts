@@ -13,7 +13,7 @@ import {
   telegramUserLinkExists,
   createTelegramThreadSession,
   telegramThreadSessionExists,
-} from "../../../../../src/lib/zero/telegram/__tests__/helpers";
+} from "../../../../../src/__tests__/api-test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import { server } from "../../../../../src/mocks/server";
 import { http } from "../../../../../src/__tests__/msw";
