@@ -21,6 +21,10 @@ const VALID_TYPES = [
   "progress",
   "result",
   "response",
+  "directive",
+  "thinking-progress",
+  "thinking-result",
+  "observation",
 ] as const;
 
 const appendEventBodySchema = z.object({
