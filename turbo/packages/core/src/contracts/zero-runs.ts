@@ -190,6 +190,7 @@ const runContextFirewallSchema = z.object({
 const runContextResponseSchema = z.object({
   prompt: z.string(),
   appendSystemPrompt: z.string().nullable(),
+  sessionId: z.string().nullable(),
   secretNames: z.array(z.string()),
   vars: z.record(z.string(), z.string()).nullable(),
   environment: z.record(z.string(), z.string()),

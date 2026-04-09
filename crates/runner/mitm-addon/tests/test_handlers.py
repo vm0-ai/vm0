@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import os
 import time
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -623,6 +624,485 @@ class TestResponseHandler:
         warn_msg = mock_log.warn.call_args[0][0]
         assert "500" in warn_msg
         assert "api.example.com" in warn_msg
+
+
+class TestSseUsageExtractor:
+    """Tests for the incremental SSE usage parser."""
+
+    def test_extracts_usage_from_message_start(self):
+        parse, usage = mitm_addon._create_sse_usage_extractor()
+        chunk = (
+            b"event: message_start\n"
+            b'data: {"type":"message_start","message":{"id":"msg_1","model":"claude-sonnet-4-6",'
+            b'"usage":{"input_tokens":100,"cache_creation_input_tokens":0,"cache_read_input_tokens":50,"output_tokens":1}}}\n'
+            b"\n"
+        )
+        parse(chunk)
+        assert usage["model"] == "claude-sonnet-4-6"
+        assert usage["input_tokens"] == 100
+        assert usage["cache_read_input_tokens"] == 50
+        assert usage["cache_creation_input_tokens"] == 0
+        assert usage["output_tokens"] == 1
+
+    def test_extracts_output_tokens_from_message_delta(self):
+        parse, usage = mitm_addon._create_sse_usage_extractor()
+        # First send message_start
+        parse(
+            b"event: message_start\n"
+            b'data: {"type":"message_start","message":'
+            b'{"model":"claude-sonnet-4-6",'
+            b'"usage":{"input_tokens":10,"output_tokens":1}}}\n\n'
+        )
+        # Then message_delta with final output_tokens
+        parse(
+            b"event: message_delta\n"
+            b'data: {"type":"message_delta",'
+            b'"delta":{"stop_reason":"end_turn"},'
+            b'"usage":{"output_tokens":500}}\n\n'
+        )
+        assert usage["output_tokens"] == 500  # updated from message_delta
+
+    def test_handles_chunked_lines(self):
+        """SSE data split across multiple chunks mid-line should still parse."""
+        parse, usage = mitm_addon._create_sse_usage_extractor()
+        # Split the data line in the middle
+        parse(b"event: message_start\n")
+        parse(b'data: {"type":"message_start","message":{"model":"claude-opus-4-6"')
+        parse(b',"usage":{"input_tokens":200}}}\n\n')
+        assert usage["model"] == "claude-opus-4-6"
+        assert usage["input_tokens"] == 200
+
+    def test_skips_content_events(self):
+        parse, usage = mitm_addon._create_sse_usage_extractor()
+        parse(
+            b"event: content_block_delta\n"
+            b'data: {"type":"content_block_delta",'
+            b'"delta":{"text":"Hello"}}\n\n'
+        )
+        assert usage == {}
+
+    def test_resilient_to_malformed_json(self):
+        parse, usage = mitm_addon._create_sse_usage_extractor()
+        parse(b"event: message_start\ndata: {invalid json}\n\n")
+        assert usage == {}  # no crash, no data
+
+    def test_empty_chunks(self):
+        parse, usage = mitm_addon._create_sse_usage_extractor()
+        parse(b"")
+        parse(b"")
+        assert usage == {}
+
+    def test_crlf_line_endings(self):
+        """Servers may use \\r\\n line endings — parser should handle them."""
+        parse, usage = mitm_addon._create_sse_usage_extractor()
+        chunk = (
+            b"event: message_start\r\n"
+            b'data: {"type":"message_start","message":'
+            b'{"model":"claude-sonnet-4-6",'
+            b'"usage":{"input_tokens":77}}}\r\n'
+            b"\r\n"
+        )
+        parse(chunk)
+        assert usage["model"] == "claude-sonnet-4-6"
+        assert usage["input_tokens"] == 77
+
+    def test_skips_content_block_data_without_buffering(self):
+        """Large content_block_delta data should not accumulate in line_buf."""
+        parse, usage = mitm_addon._create_sse_usage_extractor()
+        # First, send message_start to get input tokens
+        parse(
+            b"event: message_start\n"
+            b'data: {"type":"message_start","message":'
+            b'{"model":"claude-sonnet-4-6",'
+            b'"usage":{"input_tokens":10}}}\n\n'
+        )
+        assert usage["input_tokens"] == 10
+        # Now send a large content_block_delta (should be skipped)
+        parse(b"event: content_block_delta\n")
+        # Large data line split across chunks — should not be buffered
+        parse(b"data: " + b"x" * 100_000)
+        parse(b"y" * 100_000 + b"\n\n")
+        # Parser should recover for the next event
+        parse(b'event: message_delta\ndata: {"usage":{"output_tokens":999}}\n\n')
+        assert usage["output_tokens"] == 999
+
+    def test_skip_recovery_same_chunk(self):
+        """When skip mode finds boundary and next event in one chunk, both should parse."""
+        parse, usage = mitm_addon._create_sse_usage_extractor()
+        # Enter skip mode with content_block_delta
+        parse(b"event: content_block_delta\n")
+        # Single chunk: end of skipped event + message_delta
+        parse(
+            b'data: {"delta":{"text":"hi"}}\n\n'
+            b"event: message_delta\n"
+            b'data: {"usage":{"output_tokens":42}}\n\n'
+        )
+        assert usage["output_tokens"] == 42
+
+    def test_skip_with_leftover_in_line_buf(self):
+        """Entering skip mode leaves unprocessed line_buf data; next chunk should handle it."""
+        parse, usage = mitm_addon._create_sse_usage_extractor()
+        # One chunk has event line + start of data (no newline yet) + another event
+        # The while loop processes "event: content_block_start", sets skip, returns.
+        # line_buf still has the partial "data: ..." from this chunk.
+        parse(
+            b"event: content_block_start\n"
+            b'data: {"type":"content_block_start"}\n\n'
+            b"event: message_delta\n"
+            b'data: {"usage":{"output_tokens":77}}\n\n'
+        )
+        # content_block_start triggers skip, but \n\n boundary is in same chunk.
+        # Skip mode should find it and then process message_delta.
+        assert usage["output_tokens"] == 77
+
+    def test_consecutive_skip_events(self):
+        """Multiple non-usage events in a row should all be skipped."""
+        parse, usage = mitm_addon._create_sse_usage_extractor()
+        parse(
+            b"event: message_start\n"
+            b'data: {"type":"message_start","message":'
+            b'{"model":"m","usage":{"input_tokens":5}}}\n\n'
+        )
+        # Two consecutive skip events
+        parse(
+            b"event: content_block_start\n"
+            b'data: {"type":"content_block_start"}\n\n'
+            b"event: content_block_delta\n"
+            b'data: {"delta":{"text":"hello world"}}\n\n'
+            b"event: content_block_stop\n"
+            b'data: {"type":"content_block_stop"}\n\n'
+            b"event: message_delta\n"
+            b'data: {"usage":{"output_tokens":99}}\n\n'
+        )
+        assert usage["input_tokens"] == 5
+        assert usage["output_tokens"] == 99
+
+    def test_empty_usage_dict_not_reported(self):
+        """Empty proxy_usage (SSE ran but no usage found) should not trigger report."""
+        parse, usage = mitm_addon._create_sse_usage_extractor()
+        # Only content events, no message_start or message_delta
+        parse(b"event: ping\ndata: {}\n\n")
+        assert usage == {}
+        # Verify empty dict is falsy (used in response() guard)
+        assert not usage
+
+    def test_event_without_data_line(self):
+        """event: line followed by blank line (no data:) should not crash."""
+        parse, usage = mitm_addon._create_sse_usage_extractor()
+        parse(b"event: message_start\n\n")
+        # No data extracted, event_type reset
+        assert usage == {}
+        # Subsequent valid event should still work
+        parse(b'event: message_delta\ndata: {"usage":{"output_tokens":10}}\n\n')
+        assert usage["output_tokens"] == 10
+
+    def test_non_numeric_usage_values_ignored(self):
+        """Non-numeric usage values (e.g. string) should be silently skipped."""
+        parse, usage = mitm_addon._create_sse_usage_extractor()
+        parse(
+            b"event: message_start\n"
+            b'data: {"type":"message_start","message":{"model":"m",'
+            b'"usage":{"input_tokens":"not_a_number","output_tokens":1}}}\n\n'
+        )
+        assert "input_tokens" not in usage
+        assert usage["output_tokens"] == 1
+
+    def test_unknown_usage_fields_excluded(self):
+        """Only known billing fields should be extracted, not arbitrary numerics."""
+        parse, usage = mitm_addon._create_sse_usage_extractor()
+        parse(
+            b"event: message_start\n"
+            b'data: {"type":"message_start","message":{"model":"m",'
+            b'"usage":{"input_tokens":10,"total_tokens":99}}}\n\n'
+        )
+        assert usage["input_tokens"] == 10
+        assert "total_tokens" not in usage
+
+    def test_extracts_web_search_requests(self):
+        """web_search_requests from server_tool_use should be extracted."""
+        parse, usage = mitm_addon._create_sse_usage_extractor()
+        parse(
+            b"event: message_delta\n"
+            b'data: {"type":"message_delta",'
+            b'"usage":{"output_tokens":100,'
+            b'"server_tool_use":{"web_search_requests":3}}}\n\n'
+        )
+        assert usage["output_tokens"] == 100
+        assert usage["web_search_requests"] == 3
+
+
+class TestReportUsage:
+    """Tests for _report_usage HTTP request construction."""
+
+    def test_posts_correct_payload(self):
+        usage = {"model": "claude-sonnet-4-6", "input_tokens": 100}
+        with patch.object(mitm_addon, "_opener") as mock_opener:
+            mock_opener.open.return_value = MagicMock()
+            mitm_addon._report_usage("https://api.vm0.ai", "tok-123", "run-1", usage)
+        mock_opener.open.assert_called_once()
+        req = mock_opener.open.call_args[0][0]
+        assert req.full_url == "https://api.vm0.ai/api/webhooks/agent/usage"
+        assert req.get_header("Content-type") == "application/json"
+        assert req.get_header("Authorization") == "Bearer tok-123"
+        body = json.loads(req.data)
+        assert body["runId"] == "run-1"
+        assert body["usage"]["model"] == "claude-sonnet-4-6"
+
+    def test_swallows_network_errors(self):
+        """Network failures should be caught, not propagated."""
+        with (
+            patch.object(
+                mitm_addon,
+                "_opener",
+                **{"open.side_effect": ConnectionError("refused")},
+            ),
+            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+        ):
+            # Should not raise
+            mitm_addon._report_usage("https://api.vm0.ai", "tok", "run-1", {})
+
+    def test_closes_http_error_response(self):
+        """HTTPError (non-2xx) should be closed to avoid socket leak."""
+        import urllib.error
+
+        http_err = urllib.error.HTTPError(
+            "https://api.vm0.ai", 500, "Internal Server Error", {}, None
+        )
+        http_err.close = MagicMock()
+        with (
+            patch.object(
+                mitm_addon,
+                "_opener",
+                **{"open.side_effect": http_err},
+            ),
+            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+        ):
+            mitm_addon._report_usage("https://api.vm0.ai", "tok", "run-1", {})
+        http_err.close.assert_called_once()
+
+    def test_adds_vercel_bypass_header(self):
+        with (
+            patch.object(mitm_addon, "_opener") as mock_opener,
+            patch.dict(
+                os.environ,
+                {"VERCEL_AUTOMATION_BYPASS_SECRET": "bypass-secret"},
+            ),
+        ):
+            mock_opener.open.return_value = MagicMock()
+            mitm_addon._report_usage("https://api.vm0.ai", "tok", "run-1", {})
+        req = mock_opener.open.call_args[0][0]
+        assert req.get_header("X-vercel-protection-bypass") == "bypass-secret"
+
+
+class TestResponseHeadersSseParser:
+    """Tests for SSE parser setup in responseheaders()."""
+
+    def test_sets_up_sse_parser_for_model_provider(self):
+        flow = _make_http_flow(host="api.anthropic.com")
+        flow.response = MagicMock()
+        flow.response.headers = {"content-type": "text/event-stream"}
+        flow.response.stream = False
+        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+
+        mitm_addon.responseheaders(flow)
+
+        assert "proxy_usage" in flow.metadata
+        assert isinstance(flow.metadata["proxy_usage"], dict)
+        # Feed SSE data through the callback
+        callback = flow.response.stream
+        callback(
+            b"event: message_start\n"
+            b'data: {"type":"message_start","message":'
+            b'{"model":"claude-sonnet-4-6",'
+            b'"usage":{"input_tokens":42}}}\n\n'
+        )
+        assert flow.metadata["proxy_usage"]["model"] == "claude-sonnet-4-6"
+        assert flow.metadata["proxy_usage"]["input_tokens"] == 42
+
+    def test_no_sse_parser_for_non_model_provider(self):
+        flow = _make_http_flow(host="api.github.com")
+        flow.response = MagicMock()
+        flow.response.headers = {"content-type": "text/event-stream"}
+        flow.response.stream = False
+        flow.metadata["firewall_name"] = "github"
+
+        mitm_addon.responseheaders(flow)
+
+        assert "proxy_usage" not in flow.metadata
+
+    def test_no_sse_parser_for_non_sse_response(self):
+        flow = _make_http_flow(host="api.anthropic.com")
+        flow.response = MagicMock()
+        flow.response.headers = {"content-type": "application/json"}
+        flow.response.stream = False
+        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+
+        mitm_addon.responseheaders(flow)
+
+        assert "proxy_usage" not in flow.metadata
+
+    def test_no_sse_parser_without_firewall_name(self):
+        flow = _make_http_flow(host="api.anthropic.com")
+        flow.response = MagicMock()
+        flow.response.headers = {"content-type": "text/event-stream"}
+        flow.response.stream = False
+        # No firewall_name set (e.g. auto-allowed VM0 API request)
+
+        mitm_addon.responseheaders(flow)
+
+        assert "proxy_usage" not in flow.metadata
+
+
+class TestResponseUsageReporting:
+    """Tests for usage extraction and reporting in response() hook."""
+
+    def setup_method(self):
+        _reset()
+
+    def test_reports_proxy_usage_from_sse(self, tmp_path):
+        """When proxy_usage is set by SSE parser, it should trigger a usage report."""
+        flow = _make_http_flow(host="api.anthropic.com")
+        log_path = str(tmp_path / "network.jsonl")
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_client_ip"] = "10.200.0.1"
+        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://api.anthropic.com/v1/messages"
+        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["vm_sandbox_token"] = "tok-xyz"
+        flow.metadata["proxy_usage"] = {
+            "model": "claude-sonnet-4-6",
+            "input_tokens": 100,
+            "output_tokens": 500,
+        }
+        flow.response = MagicMock()
+        flow.response.status_code = 200
+        flow.response.headers = {"content-type": "text/event-stream"}
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        with (
+            patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
+            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            patch.object(mitm_addon.threading, "Thread") as mock_thread,
+        ):
+            mitm_addon.response(flow)
+
+        mock_thread.assert_called_once()
+        call_kwargs = mock_thread.call_args
+        assert call_kwargs[1]["target"] == mitm_addon._report_usage
+        args = call_kwargs[1]["args"]
+        assert args[0] == "https://api.vm0.ai"  # api_url
+        assert args[1] == "tok-xyz"  # sandbox_token from metadata
+        assert args[2] == "run-abc-123"  # run_id
+        assert args[3]["model"] == "claude-sonnet-4-6"
+
+    def test_non_streaming_json_fallback(self, tmp_path):
+        """Non-streaming JSON response should extract usage from buffer."""
+        flow = _make_http_flow(host="api.anthropic.com")
+        log_path = str(tmp_path / "network.jsonl")
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_client_ip"] = "10.200.0.1"
+        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://api.anthropic.com/v1/messages"
+        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["vm_sandbox_token"] = "tok-xyz"
+        # No proxy_usage set (no SSE parser) — JSON body in buffer
+        body = json.dumps(
+            {
+                "id": "msg_1",
+                "model": "claude-sonnet-4-6",
+                "content": [{"type": "text", "text": "Hello"}],
+                "usage": {"input_tokens": 50, "output_tokens": 200},
+            }
+        ).encode()
+        flow.metadata["stream_buffer"] = bytearray(body)
+        flow.metadata["stream_buffer_state"] = {"truncated": False}
+        flow.response = MagicMock()
+        flow.response.status_code = 200
+        flow.response.headers = MagicMock()
+        flow.response.headers.get = lambda k, d="": {
+            "content-type": "application/json",
+            "content-encoding": "",
+            "content-length": str(len(body)),
+        }.get(k, d)
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        with (
+            patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
+            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            patch.object(mitm_addon.threading, "Thread") as mock_thread,
+        ):
+            mitm_addon.response(flow)
+
+        mock_thread.assert_called_once()
+        args = mock_thread.call_args[1]["args"]
+        usage = args[3]
+        assert usage["model"] == "claude-sonnet-4-6"
+        assert usage["input_tokens"] == 50
+        assert usage["output_tokens"] == 200
+
+    def test_model_provider_buffer_not_truncated(self):
+        """Model provider responses should buffer without truncation."""
+        flow = _make_http_flow(host="api.anthropic.com")
+        flow.response = MagicMock()
+        flow.response.headers = {"content-type": "application/json"}
+        flow.response.stream = False
+        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+
+        mitm_addon.responseheaders(flow)
+
+        callback = flow.response.stream
+        # Feed data exceeding _STREAM_BUFFER_LIMIT (64KB)
+        large_chunk = b"x" * (mitm_addon._STREAM_BUFFER_LIMIT + 1000)
+        callback(large_chunk)
+
+        buf = flow.metadata["stream_buffer"]
+        state = flow.metadata["stream_buffer_state"]
+        assert len(buf) == len(large_chunk)
+        assert not state["truncated"]
+
+    def test_non_model_provider_buffer_truncated(self):
+        """Non-model-provider responses should truncate at 64KB."""
+        flow = _make_http_flow(host="api.github.com")
+        flow.response = MagicMock()
+        flow.response.headers = {"content-type": "application/json"}
+        flow.response.stream = False
+        # No firewall_name — not a model provider
+
+        mitm_addon.responseheaders(flow)
+
+        callback = flow.response.stream
+        large_chunk = b"x" * (mitm_addon._STREAM_BUFFER_LIMIT + 1000)
+        callback(large_chunk)
+
+        buf = flow.metadata["stream_buffer"]
+        state = flow.metadata["stream_buffer_state"]
+        assert len(buf) == mitm_addon._STREAM_BUFFER_LIMIT
+        assert state["truncated"]
+
+    def test_no_usage_report_for_non_model_provider(self, tmp_path):
+        """Non-model-provider requests should not trigger usage reporting."""
+        flow = _make_http_flow(host="api.github.com")
+        log_path = str(tmp_path / "network.jsonl")
+        flow.metadata["vm_run_id"] = "run-abc-123"
+        flow.metadata["vm_client_ip"] = "10.200.0.1"
+        flow.metadata["vm_network_log_path"] = log_path
+        flow.metadata["firewall_action"] = "ALLOW"
+        flow.metadata["original_url"] = "https://api.github.com/repos"
+        flow.metadata["firewall_name"] = "github"
+        flow.response = MagicMock()
+        flow.response.status_code = 200
+        flow.response.headers = {"content-type": "application/json"}
+        mitm_addon._request_start_times[flow.id] = time.time()
+
+        with (
+            patch.object(mitm_addon.ctx, "log", MagicMock(), create=True),
+            patch.object(mitm_addon.threading, "Thread") as mock_thread,
+        ):
+            mitm_addon.response(flow)
+
+        mock_thread.assert_not_called()
 
 
 class TestErrorHandler:

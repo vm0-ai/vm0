@@ -757,3 +757,163 @@ describe("findMatchingPermissions with dot-separated field paths", () => {
     ).not.toContain("issues-read");
   });
 });
+
+describe("findMatchingPermissions with comma-separated field values", () => {
+  const commaConfig: FirewallConfig = {
+    name: "github",
+    apis: [
+      {
+        base: "https://api.github.com",
+        auth: { headers: {} },
+        permissions: [
+          {
+            name: "issues-write",
+            rules: [
+              "POST /graphql GraphQL type:mutation field:createIssue,closeIssue,updateIssue",
+            ],
+          },
+          {
+            name: "pr-write",
+            rules: [
+              "POST /graphql GraphQL type:mutation field:createPullRequest,mergePullRequest",
+            ],
+          },
+          {
+            name: "mixed-wildcard",
+            rules: [
+              "POST /graphql GraphQL type:mutation field:create*,delete*",
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  it("matches first value in comma-separated field", () => {
+    const body: GraphQLBody = {
+      type: "mutation",
+      fields: ["createIssue"],
+    };
+    expect(
+      findMatchingPermissions("POST", "/graphql", commaConfig, body),
+    ).toContain("issues-write");
+  });
+
+  it("matches second value in comma-separated field", () => {
+    const body: GraphQLBody = {
+      type: "mutation",
+      fields: ["closeIssue"],
+    };
+    expect(
+      findMatchingPermissions("POST", "/graphql", commaConfig, body),
+    ).toContain("issues-write");
+  });
+
+  it("matches third value in comma-separated field", () => {
+    const body: GraphQLBody = {
+      type: "mutation",
+      fields: ["updateIssue"],
+    };
+    expect(
+      findMatchingPermissions("POST", "/graphql", commaConfig, body),
+    ).toContain("issues-write");
+  });
+
+  it("does not match unrelated field", () => {
+    const body: GraphQLBody = {
+      type: "mutation",
+      fields: ["deleteIssue"],
+    };
+    expect(
+      findMatchingPermissions("POST", "/graphql", commaConfig, body),
+    ).not.toContain("issues-write");
+  });
+
+  it("comma wildcards — matches first pattern", () => {
+    const body: GraphQLBody = {
+      type: "mutation",
+      fields: ["createProject"],
+    };
+    expect(
+      findMatchingPermissions("POST", "/graphql", commaConfig, body),
+    ).toContain("mixed-wildcard");
+  });
+
+  it("comma wildcards — matches second pattern", () => {
+    const body: GraphQLBody = {
+      type: "mutation",
+      fields: ["deleteProject"],
+    };
+    expect(
+      findMatchingPermissions("POST", "/graphql", commaConfig, body),
+    ).toContain("mixed-wildcard");
+  });
+
+  it("comma wildcards — no match for other prefix", () => {
+    const body: GraphQLBody = {
+      type: "mutation",
+      fields: ["updateProject"],
+    };
+    expect(
+      findMatchingPermissions("POST", "/graphql", commaConfig, body),
+    ).not.toContain("mixed-wildcard");
+  });
+
+  it("type filter still applies", () => {
+    const body: GraphQLBody = {
+      type: "query",
+      fields: ["createIssue"],
+    };
+    expect(
+      findMatchingPermissions("POST", "/graphql", commaConfig, body),
+    ).not.toContain("issues-write");
+  });
+
+  it("empty fields — no match", () => {
+    const body: GraphQLBody = {
+      type: "mutation",
+      fields: [],
+    };
+    expect(
+      findMatchingPermissions("POST", "/graphql", commaConfig, body),
+    ).toEqual([]);
+  });
+
+  it("comma-separated with nested paths", () => {
+    const config: FirewallConfig = {
+      name: "test",
+      apis: [
+        {
+          base: "https://api.example.com",
+          auth: { headers: {} },
+          permissions: [
+            {
+              name: "repo-read",
+              rules: [
+                "POST /graphql GraphQL type:query field:repository.issues,repository.pullRequests",
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    expect(
+      findMatchingPermissions("POST", "/graphql", config, {
+        type: "query",
+        fields: ["repository.pullRequests"],
+      }),
+    ).toContain("repo-read");
+    expect(
+      findMatchingPermissions("POST", "/graphql", config, {
+        type: "query",
+        fields: ["repository.issues"],
+      }),
+    ).toContain("repo-read");
+    expect(
+      findMatchingPermissions("POST", "/graphql", config, {
+        type: "query",
+        fields: ["repository.labels"],
+      }),
+    ).not.toContain("repo-read");
+  });
+});

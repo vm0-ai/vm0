@@ -101,12 +101,6 @@
       }
     },
     {
-      "files": ["**/*.tsx"],
-      "rules": {
-        "max-lines-per-function": ["allow"]
-      }
-    },
-    {
       "files": ["custom-eslint/**/*.*"],
       "rules": {
         "new-cap": "allow",

@@ -593,6 +593,66 @@ describe("validateRule", () => {
       );
     }).toThrow("invalid GraphQL field pattern");
   });
+
+  it("should accept comma-separated field values", () => {
+    expect(() => {
+      return validateRule(
+        "POST /graphql GraphQL type:mutation field:createIssue,closeIssue,updateIssue",
+        "p",
+        "fw",
+      );
+    }).not.toThrow();
+  });
+
+  it("should accept comma-separated wildcards", () => {
+    expect(() => {
+      return validateRule(
+        "POST /graphql GraphQL type:mutation field:create*,delete*",
+        "p",
+        "fw",
+      );
+    }).not.toThrow();
+  });
+
+  it("should accept comma-separated nested paths", () => {
+    expect(() => {
+      return validateRule(
+        "POST /graphql GraphQL type:query field:repository.issues,repository.pullRequests",
+        "p",
+        "fw",
+      );
+    }).not.toThrow();
+  });
+
+  it("should reject trailing comma in field value", () => {
+    expect(() => {
+      return validateRule(
+        "POST /graphql GraphQL type:mutation field:createIssue,",
+        "p",
+        "fw",
+      );
+    }).toThrow("empty GraphQL field name");
+  });
+
+  it("should reject leading comma in field value", () => {
+    expect(() => {
+      return validateRule(
+        "POST /graphql GraphQL type:mutation field:,createIssue",
+        "p",
+        "fw",
+      );
+    }).toThrow("empty GraphQL field name");
+  });
+
+  it("should reject double comma in field value", () => {
+    expect(() => {
+      return validateRule(
+        "POST /graphql GraphQL type:mutation field:createIssue,,closeIssue",
+        "p",
+        "fw",
+      );
+    }).toThrow("empty GraphQL field name");
+  });
 });
 
 describe("validateBaseUrl", () => {

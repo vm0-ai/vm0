@@ -24,7 +24,7 @@ describe("getCachedUser", () => {
 
     const result = await getCachedUser(userId);
 
-    expect(result).toEqual({ userId, email });
+    expect(result).toEqual({ userId, email, name: null });
 
     // Verify Clerk API was called
     const client = await clerkClient();
@@ -33,7 +33,7 @@ describe("getCachedUser", () => {
     // Verify cache was populated: second call should NOT hit Clerk again
     vi.mocked(client.users.getUser).mockClear();
     const cached = await getCachedUser(userId);
-    expect(cached).toEqual({ userId, email });
+    expect(cached).toEqual({ userId, email, name: null });
     expect(client.users.getUser).not.toHaveBeenCalled();
   });
 
@@ -48,7 +48,7 @@ describe("getCachedUser", () => {
 
     const result = await getCachedUser(userId);
 
-    expect(result).toEqual({ userId, email });
+    expect(result).toEqual({ userId, email, name: null });
 
     // Clerk API should NOT have been called
     const client = await clerkClient();
@@ -82,6 +82,50 @@ describe("getCachedUser", () => {
     vi.mocked(client.users.getUser).mockClear();
     const cached = await getCachedUser(userId);
     expect(cached.email).toBe(freshEmail);
+    expect(client.users.getUser).not.toHaveBeenCalled();
+  });
+
+  it("fetches and caches user name from Clerk", async () => {
+    const userId = uniqueId("test-user");
+    const email = `${userId}@example.com`;
+    mockClerk({ userId, email, firstName: "Alice", lastName: "Zhang" });
+    await createTestOrg(uniqueId("org"));
+
+    // Override getUser to include firstName and lastName
+    const client = await clerkClient();
+    vi.mocked(client.users.getUser).mockResolvedValueOnce({
+      emailAddresses: [{ id: "email_1", emailAddress: email }],
+      primaryEmailAddressId: "email_1",
+      firstName: "Alice",
+      lastName: "Zhang",
+    } as unknown as Awaited<ReturnType<typeof client.users.getUser>>);
+
+    const result = await getCachedUser(userId);
+
+    expect(result).toEqual({ userId, email, name: "Alice Zhang" });
+
+    // Verify cache was populated with name: second call uses cache
+    vi.mocked(client.users.getUser).mockClear();
+    const cached = await getCachedUser(userId);
+    expect(cached).toEqual({ userId, email, name: "Alice Zhang" });
+    expect(client.users.getUser).not.toHaveBeenCalled();
+  });
+
+  it("returns cached name from fresh cache entry", async () => {
+    const userId = uniqueId("test-user");
+    const email = `${userId}@cached.com`;
+    mockClerk({ userId });
+    await createTestOrg(uniqueId("org"));
+
+    // Pre-populate cache with name
+    await insertUserCacheEntry({ userId, email, name: "Bob Smith" });
+
+    const result = await getCachedUser(userId);
+
+    expect(result).toEqual({ userId, email, name: "Bob Smith" });
+
+    // Clerk API should NOT have been called
+    const client = await clerkClient();
     expect(client.users.getUser).not.toHaveBeenCalled();
   });
 

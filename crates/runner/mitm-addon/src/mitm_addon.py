@@ -12,8 +12,11 @@ This addon runs on the runner HOST (not inside VMs) and:
 import base64
 import json
 import os
+import threading
 import time
+import urllib.error
 import urllib.parse
+import urllib.request
 import zlib
 
 import brotli  # type: ignore[import-untyped]
@@ -22,7 +25,7 @@ from mitmproxy import ctx, http, tcp, tls
 from mitmproxy.addonmanager import Loader
 
 # --- Sub-module imports (only symbols used in this file's own code) ---
-from auth import _firewall_header_cache, evict_stale_cache_keys, handle_firewall_request
+from auth import _firewall_header_cache, _opener, evict_stale_cache_keys, handle_firewall_request
 from logging_utils import add_firewall_metadata, log_network_entry
 from matching import FirewallAllow, FirewallBlock, match_firewall_request
 from url_utils import get_original_url
@@ -167,6 +170,7 @@ async def request(flow: http.HTTPFlow) -> None:
     flow.metadata["vm_client_ip"] = client_ip
     flow.metadata["vm_network_log_path"] = vm_info.get("networkLogPath", "")
     flow.metadata["capture_body"] = vm_info.get("captureNetworkBodies", False)
+    flow.metadata["vm_sandbox_token"] = vm_info.get("sandboxToken", "")
 
     # Get target hostname
     hostname = flow.request.pretty_host.lower()
@@ -226,6 +230,185 @@ async def request(flow: http.HTTPFlow) -> None:
 _STREAM_BUFFER_LIMIT = 64 * 1024  # 64 KB
 
 
+# ---------------------------------------------------------------------------
+# Proxy-side usage extraction (for billing verification)
+# ---------------------------------------------------------------------------
+
+# Only extract known billing fields to avoid capturing unrelated numerics.
+_BILLING_FIELDS = frozenset(
+    (
+        "input_tokens",
+        "output_tokens",
+        "cache_read_input_tokens",
+        "cache_creation_input_tokens",
+    )
+)
+
+
+def _extract_billing_usage(raw_usage, target: dict) -> None:
+    """Extract known billing fields from an Anthropic usage object into *target*.
+
+    Handles both flat fields (input_tokens, etc.) and the nested
+    ``server_tool_use.web_search_requests`` field.
+    """
+    if not raw_usage or not isinstance(raw_usage, dict):
+        return
+    for k, v in raw_usage.items():
+        if k in _BILLING_FIELDS and isinstance(v, (int, float)):
+            target[k] = v
+    stu = raw_usage.get("server_tool_use")
+    if isinstance(stu, dict):
+        wsr = stu.get("web_search_requests")
+        if isinstance(wsr, (int, float)):
+            target["web_search_requests"] = wsr
+
+
+def _create_sse_usage_extractor():
+    """Create an incremental SSE parser that extracts usage from Anthropic API streams.
+
+    All model providers in this system use the Anthropic Messages API streaming
+    format.  Usage data appears in two SSE events:
+
+    - ``message_start`` — ``message.usage`` contains input token counts and
+      ``message.model`` identifies the model.
+    - ``message_delta`` — ``usage`` contains the final ``output_tokens`` count.
+
+    Returns ``(parse_chunk, usage)`` where *parse_chunk* processes raw bytes
+    incrementally and *usage* is a dict that accumulates extracted fields.
+    """
+    usage: dict = {}
+    line_buf = bytearray()
+    event_type = {"current": None}
+    # Events we need to parse — all others are skipped to avoid buffering
+    # large content_block_delta payloads.
+    _usage_events = frozenset(("message_start", "message_delta"))
+    # When True, discard incoming bytes until the next empty line (event
+    # boundary) to avoid buffering irrelevant data lines.
+    skipping = {"active": False}
+
+    def parse_chunk(chunk: bytes) -> None:
+        # In skip mode, scan for event boundary (empty line) without
+        # buffering the (potentially large) chunk.
+        if skipping["active"]:
+            # Look for \n\n or \r\n\r\n in existing buf + new chunk.
+            combined = line_buf + chunk
+            for sep in (b"\r\n\r\n", b"\n\n"):
+                idx = combined.find(sep)
+                if idx != -1:
+                    # Found event boundary — line_buf gets the remainder.
+                    # Do NOT extend again below; data is already in line_buf.
+                    after = idx + len(sep)
+                    line_buf[:] = combined[after:]
+                    skipping["active"] = False
+                    event_type["current"] = None
+                    break
+            else:
+                # No boundary found — discard everything except the
+                # last few bytes (could be a partial \r\n\r\n).
+                line_buf[:] = combined[-3:] if len(combined) > 3 else combined
+                return
+            # Boundary found — fall through to process line_buf contents.
+            # line_buf already has the data, so skip the extend.
+        else:
+            line_buf.extend(chunk)
+        while b"\n" in line_buf:
+            raw_line, _, remaining = line_buf.partition(b"\n")
+            line_buf[:] = remaining
+            line = raw_line.rstrip(b"\r").decode("utf-8", errors="replace")
+
+            # Blank line = event boundary.
+            if line == "":
+                event_type["current"] = None
+                skipping["active"] = False
+                continue
+
+            if skipping["active"]:
+                continue
+
+            if line.startswith("event: "):
+                evt_name = line[7:]
+                event_type["current"] = evt_name
+                if evt_name not in _usage_events:
+                    # Skip data lines of this event within line_buf.
+                    # Cross-chunk large data lines are handled by the
+                    # skip mode at the top of parse_chunk.
+                    skipping["active"] = True
+                    continue
+            elif line.startswith("data: "):
+                evt = event_type["current"]
+                if evt == "message_start":
+                    try:
+                        data = json.loads(line[6:])
+                        msg = data.get("message") or {}
+                        model = msg.get("model")
+                        if model:
+                            usage["model"] = model
+                        _extract_billing_usage(msg.get("usage"), usage)
+                    except (json.JSONDecodeError, AttributeError, TypeError):
+                        pass  # SSE data lines may be partial/malformed; best-effort extraction
+                elif evt == "message_delta":
+                    try:
+                        data = json.loads(line[6:])
+                        _extract_billing_usage(data.get("usage"), usage)
+                    except (json.JSONDecodeError, AttributeError, TypeError):
+                        pass  # SSE data lines may be partial/malformed; best-effort extraction
+
+    return parse_chunk, usage
+
+
+def _extract_usage_from_json(body: bytes, headers) -> dict | None:
+    """Extract usage from a non-streaming Anthropic API JSON response.
+
+    Falls back to decompressing the body if *headers* indicate compression.
+    Returns ``None`` when the body is not valid JSON or contains no usage.
+    """
+    if headers:
+        body = _decompress_body(body, headers)
+    try:
+        data = json.loads(body)
+    except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+        return None
+    if not isinstance(data, dict):
+        return None
+    usage: dict = {}
+    model = data.get("model")
+    if model:
+        usage["model"] = model
+    _extract_billing_usage(data.get("usage"), usage)
+    return usage if usage else None
+
+
+def _report_usage(api_url: str, sandbox_token: str, run_id: str, usage: dict) -> None:
+    """POST extracted usage to the platform webhook (fire-and-forget in a daemon thread)."""
+    url = f"{api_url}/api/webhooks/agent/usage"
+    payload = json.dumps({"runId": run_id, "usage": usage}).encode()
+    req = urllib.request.Request(
+        url,
+        data=payload,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {sandbox_token}",
+        },
+    )
+    vercel_bypass = os.environ.get("VERCEL_AUTOMATION_BYPASS_SECRET", "")
+    if vercel_bypass:
+        req.add_header("x-vercel-protection-bypass", vercel_bypass)
+    try:
+        resp = _opener.open(req, timeout=10)
+        resp.close()
+    except urllib.error.HTTPError as exc:
+        exc.close()  # HTTPError holds an open socket
+        try:
+            ctx.log.warn(f"[{run_id}] Usage report failed: HTTP {exc.code}")
+        except AttributeError:
+            pass  # ctx.log unavailable outside mitmproxy runtime
+    except Exception as exc:
+        try:
+            ctx.log.warn(f"[{run_id}] Usage report failed: {exc}")
+        except AttributeError:
+            pass  # ctx.log unavailable outside mitmproxy runtime
+
+
 def responseheaders(flow: http.HTTPFlow) -> None:
     """
     Enable response streaming with body buffering.
@@ -242,14 +425,35 @@ def responseheaders(flow: http.HTTPFlow) -> None:
     buf = bytearray()
     state = {"truncated": False}
 
+    # Set up SSE usage extraction for model provider streaming responses.
+    # For non-SSE model provider responses, disable buffer truncation so the
+    # full JSON body is available for usage extraction in response().
+    sse_parser = None
+    is_model_provider = flow.metadata.get("firewall_name", "").startswith("model-provider:")
+    if is_model_provider:
+        content_type = flow.response.headers.get("content-type", "")
+        if "text/event-stream" in content_type:
+            parser_fn, usage_dict = _create_sse_usage_extractor()
+            sse_parser = parser_fn
+            flow.metadata["proxy_usage"] = usage_dict
+
+    # Model provider responses are never truncated so usage extraction
+    # always has the complete body.  Other responses use the 64 KB limit.
+    buf_limit = None if is_model_provider else _STREAM_BUFFER_LIMIT
+
     def stream_and_buffer(chunk: bytes) -> bytes:
         if not state["truncated"]:
-            remaining = _STREAM_BUFFER_LIMIT - len(buf)
-            if len(chunk) <= remaining:
+            if buf_limit is None:
                 buf.extend(chunk)
             else:
-                buf.extend(chunk[:remaining])
-                state["truncated"] = True
+                remaining = buf_limit - len(buf)
+                if len(chunk) <= remaining:
+                    buf.extend(chunk)
+                else:
+                    buf.extend(chunk[:remaining])
+                    state["truncated"] = True
+        if sse_parser is not None:
+            sse_parser(chunk)
         return chunk
 
     flow.response.stream = stream_and_buffer
@@ -519,6 +723,27 @@ def response(flow: http.HTTPFlow) -> None:
             _add_capture_fields(flow, log_entry)
 
         log_network_entry(network_log_path, log_entry)
+
+    # Report proxy-extracted usage for model provider responses
+    firewall_name = flow.metadata.get("firewall_name", "")
+    if firewall_name.startswith("model-provider:") and run_id:
+        proxy_usage = flow.metadata.get("proxy_usage")
+        if not proxy_usage and stream_buf:
+            # Non-streaming fallback: buffer is never truncated for model
+            # provider responses (buf_limit=None in responseheaders).
+            proxy_usage = _extract_usage_from_json(
+                bytes(stream_buf),
+                flow.response.headers if flow.response else None,
+            )
+        if proxy_usage:
+            sandbox_token = flow.metadata.get("vm_sandbox_token", "")
+            api_url = get_api_url()
+            if sandbox_token and api_url:
+                threading.Thread(
+                    target=_report_usage,
+                    args=(api_url, sandbox_token, run_id, proxy_usage),
+                    daemon=True,
+                ).start()
 
     # Invalidate firewall header cache on 401 so next request gets fresh headers
     if flow.response and flow.response.status_code == 401 and flow.metadata.get("firewall_base"):

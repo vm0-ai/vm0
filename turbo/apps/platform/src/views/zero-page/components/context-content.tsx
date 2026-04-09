@@ -124,6 +124,16 @@ export function ContextContent({ context }: { context: RunContextResponse }) {
         </section>
       )}
 
+      {/* Session */}
+      {context.sessionId && (
+        <section>
+          <SectionHeader title="Session" />
+          <p className="text-sm font-mono text-muted-foreground">
+            {context.sessionId}
+          </p>
+        </section>
+      )}
+
       {/* Secrets */}
       <section>
         <SectionHeader title="Secrets" />

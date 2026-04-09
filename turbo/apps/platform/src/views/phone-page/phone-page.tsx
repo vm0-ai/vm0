@@ -1,3 +1,5 @@
+// TODO(#8609): split large components to comply with max-lines-per-function (128)
+// oxlint-disable max-lines-per-function
 import { useGet, useSet, useLastResolved } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { Button, Input } from "@vm0/ui";
@@ -135,7 +137,7 @@ export function PhonePage() {
         <p className="text-muted-foreground mt-2 text-xs">
           By linking your phone number, you agree to our{" "}
           <a
-            href="https://vm0.ai/terms"
+            href="https://vm0.ai/terms-of-use"
             target="_blank"
             rel="noopener noreferrer"
             className="underline"
@@ -144,7 +146,7 @@ export function PhonePage() {
           </a>{" "}
           and{" "}
           <a
-            href="https://vm0.ai/privacy"
+            href="https://vm0.ai/privacy-policy"
             target="_blank"
             rel="noopener noreferrer"
             className="underline"

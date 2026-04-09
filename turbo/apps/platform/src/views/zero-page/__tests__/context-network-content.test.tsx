@@ -65,6 +65,7 @@ function makeBaseContext(
   return {
     prompt: "Default prompt text",
     appendSystemPrompt: null,
+    sessionId: null,
     secretNames: [],
     vars: null,
     environment: {},
@@ -203,6 +204,40 @@ describe("contextContent", () => {
       ).toBeInTheDocument();
     });
     expect(screen.getByText("Be helpful")).toBeInTheDocument();
+  });
+
+  it("should render session id when present (ACT-C-002c)", async () => {
+    setupMocks({
+      contextResponse: makeBaseContext({
+        sessionId: "sess-abc-123",
+      }),
+    });
+
+    await setupAndNavigateToTab("Context");
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Session", level: 3 }),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByText("sess-abc-123")).toBeInTheDocument();
+  });
+
+  it("should not render session id when null (ACT-C-002d)", async () => {
+    setupMocks({
+      contextResponse: makeBaseContext({ sessionId: null }),
+    });
+
+    await setupAndNavigateToTab("Context");
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Prompt", level: 3 }),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByRole("heading", { name: "Session", level: 3 }),
+    ).not.toBeInTheDocument();
   });
 
   it("should not render system prompt when null (ACT-C-002b)", async () => {

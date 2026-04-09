@@ -407,7 +407,7 @@ function mpFirewall(
     : secretRef;
   return {
     name: `model-provider:${type}`,
-    ref: "__auto__",
+    ref: `model-provider:${type}`,
     apis: [
       {
         base: getFirewallBaseUrl(type),

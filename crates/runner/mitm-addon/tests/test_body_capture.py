@@ -7,6 +7,7 @@ from mitm_addon import (
     _STREAM_BUFFER_LIMIT,
     _add_capture_fields,
     _encode_body,
+    _extract_usage_from_json,
     _is_sensitive_header,
     _is_text_content,
     _redact_headers,
@@ -587,3 +588,56 @@ class TestDecompression:
         entry = {}
         _add_capture_fields(flow, entry)
         assert entry.get("response_body_truncated") is True or "response_body" not in entry
+
+
+class TestExtractUsageFromJson:
+    """Tests for _extract_usage_from_json helper."""
+
+    def test_extracts_model_and_tokens(self):
+        body = b'{"model":"claude-sonnet-4-6","usage":{"input_tokens":100,"output_tokens":500}}'
+        result = _extract_usage_from_json(body, None)
+        assert result == {
+            "model": "claude-sonnet-4-6",
+            "input_tokens": 100,
+            "output_tokens": 500,
+        }
+
+    def test_extracts_cache_tokens(self):
+        body = (
+            b'{"model":"claude-sonnet-4-6","usage":'
+            b'{"input_tokens":10,"output_tokens":5,'
+            b'"cache_read_input_tokens":50,"cache_creation_input_tokens":0}}'
+        )
+        result = _extract_usage_from_json(body, None)
+        assert result["cache_read_input_tokens"] == 50
+        assert result["cache_creation_input_tokens"] == 0
+
+    def test_gzip_compressed(self):
+        import gzip
+
+        original = b'{"model":"test","usage":{"input_tokens":42}}'
+        compressed = gzip.compress(original)
+        headers = MagicMock()
+        headers.get = lambda k, d="": "gzip" if k == "content-encoding" else d
+        result = _extract_usage_from_json(compressed, headers)
+        assert result["model"] == "test"
+        assert result["input_tokens"] == 42
+
+    def test_invalid_json_returns_none(self):
+        assert _extract_usage_from_json(b"not json", None) is None
+
+    def test_no_usage_field_returns_none(self):
+        assert _extract_usage_from_json(b'{"id":"msg_1"}', None) is None
+
+    def test_non_dict_returns_none(self):
+        assert _extract_usage_from_json(b"[1,2,3]", None) is None
+
+    def test_extracts_web_search_requests(self):
+        body = (
+            b'{"model":"claude-sonnet-4-6","usage":'
+            b'{"input_tokens":10,"output_tokens":5,'
+            b'"server_tool_use":{"web_search_requests":2}}}'
+        )
+        result = _extract_usage_from_json(body, None)
+        assert result["web_search_requests"] == 2
+        assert result["input_tokens"] == 10

@@ -60,6 +60,7 @@ export type SidebarNavId =
   | "settingsUsage"
   | "queues"
   | "phone"
+  | "voiceChat"
   | "lab";
 
 export function isChatRoute(key: RouteKey | null): boolean {
@@ -86,6 +87,7 @@ export const handleZeroNavSelect$ = command(({ set }, id: SidebarNavId) => {
       settings: ROUTES.settings,
       settingsUsage: ROUTES.settingsUsage,
       phone: ROUTES.phone,
+      voiceChat: ROUTES.voiceChat,
       lab: ROUTES.lab,
     } satisfies Record<
       Exclude<SidebarNavId, "queues">,

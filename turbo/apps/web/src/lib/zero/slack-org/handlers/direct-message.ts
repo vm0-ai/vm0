@@ -117,15 +117,17 @@ export async function handleOrgDirectMessage(
   await setThreadStatus(client, context.channelId, threadTs, "is thinking...");
 
   // 5. Enrich message
-  const { prompt: messageContent, userContext } = await enrichMessageContent({
-    messageContent: context.messageText,
-    files: context.files,
-    botToken,
-    channelId: context.channelId,
-    threadTs,
-    client,
-    userId: context.userId,
-  });
+  const { prompt: messageContent, userInfoExtras } = await enrichMessageContent(
+    {
+      messageContent: context.messageText,
+      files: context.files,
+      botToken,
+      channelId: context.channelId,
+      threadTs,
+      client,
+      userId: context.userId,
+    },
+  );
 
   // 6. Look up existing thread session
   let existingSessionId: string | undefined;
@@ -181,7 +183,7 @@ export async function handleOrgDirectMessage(
     sessionId: existingSessionId,
     prompt: messageContent,
     threadContext: executionContext,
-    userContext,
+    userInfoExtras,
     userId: connection.vm0UserId,
     botUserId,
     channelId: context.channelId,

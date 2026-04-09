@@ -9,6 +9,7 @@ import {
   createTestSlackOrgInstallation,
   insertOrgMembersCacheEntry,
   createTestSchedule,
+  seedTestSlackOrgConnection,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -302,7 +303,7 @@ describe("POST /api/zero/integrations/slack/message", () => {
     expect(footerCtx.elements![0]!.text).toBe("Sent via My Assistant");
   });
 
-  it("appends schedule context in footer when run is triggered by a schedule", async () => {
+  it("appends schedule and creator in footer when run is triggered by a schedule", async () => {
     const agentName = uniqueId("agent");
     const { composeId } = await createTestCompose(agentName);
     await createTestZeroAgent(user.orgId, agentName, {
@@ -320,6 +321,17 @@ describe("POST /api/zero/integrations/slack/message", () => {
       triggerSource: "schedule",
     });
 
+    // Seed Slack connection so the creator is resolvable
+    const slackUserId = uniqueId("U-slack");
+    const { slackWorkspaceId } = await createTestSlackOrgInstallation({
+      orgId: user.orgId,
+    });
+    await seedTestSlackOrgConnection({
+      slackUserId,
+      slackWorkspaceId,
+      vm0UserId: user.userId,
+    });
+
     mockClerk({ userId: null });
     await insertOrgMembersCacheEntry({
       orgId: user.orgId,
@@ -327,7 +339,6 @@ describe("POST /api/zero/integrations/slack/message", () => {
       role: "admin",
     });
     const token = await generateZeroToken(user.userId, runId, user.orgId);
-    await createTestSlackOrgInstallation({ orgId: user.orgId });
 
     const request = createTestRequest(URL, {
       method: "POST",
@@ -352,7 +363,61 @@ describe("POST /api/zero/integrations/slack/message", () => {
     const footerCtx = blocks[blocks.length - 1]!;
     expect(footerCtx.type).toBe("context");
     expect(footerCtx.elements![0]!.text).toBe(
-      'Sent via My Assistant · Triggered by schedule "Daily standup summary"',
+      `Sent via My Assistant · Triggered by schedule "Daily standup summary" · Created by <@${slackUserId}>`,
+    );
+  });
+
+  it("appends user attribution footer when run is user-triggered (not scheduled)", async () => {
+    const agentName = uniqueId("agent");
+    const { composeId } = await createTestCompose(agentName);
+    await createTestZeroAgent(user.orgId, agentName, {
+      displayName: "My Assistant",
+    });
+    const { runId } = await createTestRunInDb(user.userId, composeId);
+
+    // Seed a Slack connection for the user so resolveUserLabel can find the Slack user ID
+    const slackUserId = uniqueId("U-slack");
+    const { slackWorkspaceId } = await createTestSlackOrgInstallation({
+      orgId: user.orgId,
+    });
+    await seedTestSlackOrgConnection({
+      slackUserId,
+      slackWorkspaceId,
+      vm0UserId: user.userId,
+    });
+
+    mockClerk({ userId: null });
+    await insertOrgMembersCacheEntry({
+      orgId: user.orgId,
+      userId: user.userId,
+      role: "admin",
+    });
+    const token = await generateZeroToken(user.userId, runId, user.orgId);
+
+    const request = createTestRequest(URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ channel: "C123456", text: "Hello" }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+
+    const mockClient = vi.mocked(new WebClient(""));
+    const call = vi.mocked(mockClient.chat.postMessage).mock.calls[0]![0] as {
+      blocks: Array<{ type: string; elements?: Array<{ text: string }> }>;
+    };
+
+    const blocks = call.blocks;
+    expect(blocks).toHaveLength(3); // section + divider + context
+
+    const footerCtx = blocks[blocks.length - 1]!;
+    expect(footerCtx.type).toBe("context");
+    expect(footerCtx.elements![0]!.text).toBe(
+      `Sent via My Assistant · Triggered by <@${slackUserId}>`,
     );
   });
 });

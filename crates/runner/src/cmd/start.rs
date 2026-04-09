@@ -482,6 +482,21 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // -----------------------------------------------------------------------
     // Main loop
     // -----------------------------------------------------------------------
+    // Notification channel: spawned jobs signal the main loop to send an
+    // immediate heartbeat after parking a VM, so the server learns about the
+    // new heldSession without waiting for the next 10-second tick.
+    let park_notify = Arc::new(tokio::sync::Notify::new());
+
+    let hb_ctx = HeartbeatContext {
+        idle_pool: &idle_pool,
+        runner_id: &runner_id,
+        name: &name,
+        group: &group,
+        profiles: &profiles,
+        budget: &budget,
+        provider: &*provider,
+    };
+
     let mut current_mode = RunnerMode::Running;
     let mut spawn_ctx = SpawnContext {
         provider: Arc::clone(&provider),
@@ -490,6 +505,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         idle_pool: Arc::clone(&idle_pool),
         status: Arc::clone(&status),
         mode: current_mode,
+        park_notify: Arc::clone(&park_notify),
     };
     loop {
         let mode = *mode_rx.borrow_and_update();
@@ -551,13 +567,10 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 // Heartbeat must also run when budget is exhausted, otherwise
                 // the server thinks the runner is dead.
                 _ = heartbeat_tick.tick() => {
-                    let pool = idle_pool.lock().await;
-                    let state = collect_heartbeat_state(
-                        &runner_id, &name, &group, &profiles, &budget, &pool, current_mode,
-                    );
-                    drop(pool);
-                    provider.set_held_sessions(state.held_sessions.clone()).await;
-                    provider.heartbeat(&state).await;
+                    send_heartbeat(&hb_ctx, current_mode).await;
+                }
+                _ = park_notify.notified() => {
+                    send_heartbeat(&hb_ctx, current_mode).await;
                 }
             }
             continue;
@@ -695,13 +708,12 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             }
             // Heartbeat: report runner state to the server
             _ = heartbeat_tick.tick() => {
-                let pool = idle_pool.lock().await;
-                let state = collect_heartbeat_state(
-                    &runner_id, &name, &group, &profiles, &budget, &pool, current_mode,
-                );
-                drop(pool);
-                provider.set_held_sessions(state.held_sessions.clone()).await;
-                provider.heartbeat(&state).await;
+                send_heartbeat(&hb_ctx, current_mode).await;
+            }
+            // Immediate heartbeat after a VM is parked — eliminates the
+            // up-to-10s blind spot for session affinity routing.
+            _ = park_notify.notified() => {
+                send_heartbeat(&hb_ctx, current_mode).await;
             }
         }
     }
@@ -840,6 +852,10 @@ struct SpawnContext {
     idle_pool: SharedIdlePool,
     status: Arc<StatusTracker>,
     mode: RunnerMode,
+    /// Notifies the main loop to send an immediate heartbeat after parking a VM.
+    /// This eliminates the up-to-10s blind spot where the server doesn't know
+    /// which runner holds a newly-parked session.
+    park_notify: Arc<tokio::sync::Notify>,
 }
 
 /// Spawn a job executor task.
@@ -878,6 +894,7 @@ fn spawn_job(
     let budget = Arc::clone(&ctx.budget);
     let status = Arc::clone(&ctx.status);
     let idle_pool = Arc::clone(&ctx.idle_pool);
+    let park_notify = Arc::clone(&ctx.park_notify);
     let mode = ctx.mode;
     let factory_for_cleanup = Arc::clone(&factory);
 
@@ -935,11 +952,16 @@ fn spawn_job(
                 match pool.park(session_id.to_string(), entry) {
                     ParkResult::Parked => {
                         info!(run_id = %run_id, session_id, "VM parked for keep-alive");
+                        drop(pool);
+                        park_notify.notify_one();
                         true
                     }
                     ParkResult::Evicted(evicted) => {
                         info!(run_id = %run_id, session_id, "VM parked, evicting previous");
                         drop(pool);
+                        // Notify immediately — session is already in pool.
+                        // Don't wait for stop_and_destroy which can be slow.
+                        park_notify.notify_one();
                         let evict_vcpu = evicted.vcpu;
                         let evict_mem = evicted.memory_mb;
                         evicted.stop_and_destroy().await;
@@ -1083,6 +1105,38 @@ fn handle_mitm_restart_result(
     }
 }
 
+/// References needed to collect and send a heartbeat.
+/// Avoids passing 8+ arguments through `send_heartbeat`.
+struct HeartbeatContext<'a> {
+    idle_pool: &'a SharedIdlePool,
+    runner_id: &'a str,
+    name: &'a str,
+    group: &'a str,
+    profiles: &'a BTreeMap<String, ProfileConfig>,
+    budget: &'a ResourceBudget,
+    provider: &'a dyn JobProvider,
+}
+
+/// Collect current runner state, update the provider's held-sessions cache,
+/// and send a heartbeat to the server.
+async fn send_heartbeat(hb: &HeartbeatContext<'_>, mode: RunnerMode) {
+    let pool = hb.idle_pool.lock().await;
+    let state = collect_heartbeat_state(
+        hb.runner_id,
+        hb.name,
+        hb.group,
+        hb.profiles,
+        hb.budget,
+        &pool,
+        mode,
+    );
+    drop(pool);
+    hb.provider
+        .set_held_sessions(state.held_sessions.clone())
+        .await;
+    hb.provider.heartbeat(&state).await;
+}
+
 /// Collect current runner state for heartbeat reporting.
 fn collect_heartbeat_state(
     runner_id: &str,
@@ -1093,7 +1147,11 @@ fn collect_heartbeat_state(
     idle_pool: &crate::idle_pool::IdlePool,
     mode: RunnerMode,
 ) -> HeartbeatState {
-    let (allocated_vcpu, allocated_memory_mb, running_count) = budget.allocated();
+    let (allocated_vcpu, allocated_memory_mb, budget_running) = budget.allocated();
+    // budget.allocated() includes parked (idle) VMs that hold their budget.
+    // Report only actively running jobs so the scheduler sees real capacity.
+    let idle_count = idle_pool.len();
+    let running_count = budget_running.saturating_sub(idle_count);
     HeartbeatState {
         runner_id: runner_id.to_string(),
         runner_name: name.to_string(),
@@ -1292,5 +1350,152 @@ mod tests {
             .unwrap();
         let result = load_or_generate_runner_id(dir.path()).await;
         assert!(result.is_err());
+    }
+
+    // -----------------------------------------------------------------------
+    // collect_heartbeat_state: running_count excludes idle VMs
+    // -----------------------------------------------------------------------
+
+    use crate::idle_pool::{IdleEntry, IdlePool, IdlePoolConfig, ParkResult};
+    use sandbox_mock::{MockSandbox, MockSandboxFactory};
+
+    fn test_profiles() -> BTreeMap<String, config::ProfileConfig> {
+        let mut m = BTreeMap::new();
+        m.insert(
+            "vm0/default".to_string(),
+            config::ProfileConfig {
+                rootfs_hash: "hash".into(),
+                snapshot_hash: None,
+                vcpu: 2,
+                memory_mb: 4096,
+                disk_mb: 10240,
+            },
+        );
+        m
+    }
+
+    fn make_idle_entry(session_id: &str) -> IdleEntry {
+        IdleEntry {
+            sandbox: Box::new(MockSandbox::new("test")),
+            factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
+            session_id: session_id.into(),
+            profile_name: "vm0/default".into(),
+            vcpu: 2,
+            memory_mb: 4096,
+            source_ip: "10.0.0.1".into(),
+            parked_at: std::time::Instant::now(),
+            idle_timeout: Duration::from_secs(300),
+        }
+    }
+
+    #[test]
+    fn heartbeat_running_count_no_idle() {
+        let budget = ResourceBudget::new(8, 32768, 1.0, 4);
+        budget.try_reserve(2, 4096);
+        budget.try_reserve(2, 4096);
+        let pool = IdlePool::new(IdlePoolConfig {
+            enabled: true,
+            default_timeout: Duration::from_secs(300),
+            max_idle: 0,
+        });
+        let profiles = test_profiles();
+
+        let state = collect_heartbeat_state(
+            "r1",
+            "runner-1",
+            "vm0/test",
+            &profiles,
+            &budget,
+            &pool,
+            RunnerMode::Running,
+        );
+        // 2 running jobs, 0 idle → running_count = 2
+        assert_eq!(state.running_count, 2);
+    }
+
+    #[test]
+    fn heartbeat_running_count_excludes_idle() {
+        let budget = ResourceBudget::new(8, 32768, 1.0, 4);
+        // 3 budget reservations: 2 running + 1 will be parked
+        budget.try_reserve(2, 4096);
+        budget.try_reserve(2, 4096);
+        budget.try_reserve(2, 4096);
+        let mut pool = IdlePool::new(IdlePoolConfig {
+            enabled: true,
+            default_timeout: Duration::from_secs(300),
+            max_idle: 0,
+        });
+        // Park 1 VM — budget still held, but pool.len() = 1
+        assert!(matches!(
+            pool.park("sess-1".into(), make_idle_entry("sess-1")),
+            ParkResult::Parked,
+        ));
+        let profiles = test_profiles();
+
+        let state = collect_heartbeat_state(
+            "r1",
+            "runner-1",
+            "vm0/test",
+            &profiles,
+            &budget,
+            &pool,
+            RunnerMode::Running,
+        );
+        // budget says 3, idle pool has 1 → running_count = 2
+        assert_eq!(state.running_count, 2);
+        assert_eq!(state.held_sessions, vec!["sess-1"]);
+    }
+
+    #[test]
+    fn heartbeat_running_count_all_idle() {
+        let budget = ResourceBudget::new(8, 32768, 1.0, 4);
+        budget.try_reserve(2, 4096);
+        budget.try_reserve(2, 4096);
+        let mut pool = IdlePool::new(IdlePoolConfig {
+            enabled: true,
+            default_timeout: Duration::from_secs(300),
+            max_idle: 0,
+        });
+        let _ = pool.park("sess-1".into(), make_idle_entry("sess-1"));
+        let _ = pool.park("sess-2".into(), make_idle_entry("sess-2"));
+        let profiles = test_profiles();
+
+        let state = collect_heartbeat_state(
+            "r1",
+            "runner-1",
+            "vm0/test",
+            &profiles,
+            &budget,
+            &pool,
+            RunnerMode::Running,
+        );
+        // budget says 2, idle pool has 2 → running_count = 0
+        assert_eq!(state.running_count, 0);
+    }
+
+    #[test]
+    fn heartbeat_running_count_saturates_on_transient_inconsistency() {
+        // Simulate transient state: budget released before idle pool updated
+        let budget = ResourceBudget::new(8, 32768, 1.0, 4);
+        // budget_running = 0 but pool has 1 entry (inconsistent)
+        let mut pool = IdlePool::new(IdlePoolConfig {
+            enabled: true,
+            default_timeout: Duration::from_secs(300),
+            max_idle: 0,
+        });
+        let _ = pool.park("sess-1".into(), make_idle_entry("sess-1"));
+        let profiles = test_profiles();
+
+        let state = collect_heartbeat_state(
+            "r1",
+            "runner-1",
+            "vm0/test",
+            &profiles,
+            &budget,
+            &pool,
+            RunnerMode::Running,
+        );
+        // saturating_sub prevents underflow: 0 - 1 → 0
+        assert_eq!(state.running_count, 0);
     }
 }

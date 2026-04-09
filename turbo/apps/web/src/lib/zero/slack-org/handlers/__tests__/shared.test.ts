@@ -83,7 +83,7 @@ function createMockSlackClient(
 }
 
 describe("enrichMessageContent", () => {
-  it("should return prompt and userContext as separate fields", async () => {
+  it("should return prompt and userInfoExtras as separate fields", async () => {
     const client = createMockSlackClient({
       ok: true,
       user: {
@@ -104,11 +104,13 @@ describe("enrichMessageContent", () => {
     });
 
     expect(result.prompt).toBe("Hello world");
-    expect(result.userContext).toContain("# Current User");
-    expect(result.userContext).toContain("- SENDER: {id: U123, name: Jane");
+    expect(result.userInfoExtras).toEqual({
+      slackDisplayName: "Jane",
+      slackUserId: "U123",
+    });
   });
 
-  it("should return empty userContext when user info is unavailable", async () => {
+  it("should return empty userInfoExtras when user info is unavailable", async () => {
     const client = createMockSlackClient({ ok: false, error: "not_found" });
 
     const result = await enrichMessageContent({
@@ -122,7 +124,7 @@ describe("enrichMessageContent", () => {
     });
 
     expect(result.prompt).toBe("Hello world");
-    expect(result.userContext).toBe("");
+    expect(result.userInfoExtras).toEqual({});
   });
 
   it("should not prepend user info to prompt", async () => {

@@ -6,6 +6,8 @@ import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import { zeroAgents } from "../../../../../../src/db/schema/zero-agent";
 import { zeroRuns } from "../../../../../../src/db/schema/zero-run";
 import { zeroAgentSchedules } from "../../../../../../src/db/schema/zero-agent-schedule";
+import { slackOrgConnections } from "../../../../../../src/db/schema/slack-org-connection";
+import { slackOrgInstallations } from "../../../../../../src/db/schema/slack-org-installation";
 import {
   isSlackPlatformError,
   openDMChannel,
@@ -17,7 +19,7 @@ import {
 } from "../../../../../../src/lib/zero/slack/resolve-slack-client";
 import { buildFooterBlocks } from "../../../../../../src/lib/zero/slack/blocks";
 import type { Block, KnownBlock } from "@slack/web-api";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 
 /** Best-effort agent display name resolution from a run ID. */
 async function resolveAgentLabel(runId: string): Promise<string | undefined> {
@@ -53,6 +55,30 @@ async function resolveScheduleLabel(
   return row?.description ?? undefined;
 }
 
+/** Best-effort resolution of the Slack user mention for the run owner. */
+async function resolveUserMention(runId: string): Promise<string | undefined> {
+  const [row] = await globalThis.services.db
+    .select({ slackUserId: slackOrgConnections.slackUserId })
+    .from(agentRuns)
+    .innerJoin(
+      slackOrgInstallations,
+      eq(slackOrgInstallations.orgId, agentRuns.orgId),
+    )
+    .innerJoin(
+      slackOrgConnections,
+      and(
+        eq(slackOrgConnections.vm0UserId, agentRuns.userId),
+        eq(
+          slackOrgConnections.slackWorkspaceId,
+          slackOrgInstallations.slackWorkspaceId,
+        ),
+      ),
+    )
+    .where(eq(agentRuns.id, runId))
+    .limit(1);
+  return row ? `<@${row.slackUserId}>` : undefined;
+}
+
 const router = tsr.router(integrationsSlackMessageContract, {
   sendMessage: async ({ body, headers }) => {
     initServices();
@@ -75,11 +101,25 @@ const router = tsr.router(integrationsSlackMessageContract, {
         })
       : undefined;
 
+    // Resolve user mention for footer attribution (best-effort)
+    const userMention = slackCtx.authRunId
+      ? await resolveUserMention(slackCtx.authRunId).catch(() => {
+          return undefined;
+        })
+      : undefined;
+
     // Build combined footer text from available context
     const footerParts: string[] = [];
     if (agentLabel) footerParts.push(`Sent via ${agentLabel}`);
     if (scheduleLabel)
       footerParts.push(`Triggered by schedule "${scheduleLabel}"`);
+    if (userMention) {
+      footerParts.push(
+        scheduleLabel
+          ? `Created by ${userMention}`
+          : `Triggered by ${userMention}`,
+      );
+    }
 
     // Resolve target channel: DM via user ID or direct channel ID
     let targetChannel: string;

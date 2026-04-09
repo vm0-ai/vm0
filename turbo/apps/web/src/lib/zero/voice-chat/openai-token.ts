@@ -25,8 +25,8 @@ export async function createEphemeralToken(): Promise<EphemeralTokenResponse> {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "gpt-4o-realtime-preview",
-      voice: "alloy",
+      model: "gpt-realtime-1.5",
+      voice: "onyx",
     }),
   });
 

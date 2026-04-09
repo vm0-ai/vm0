@@ -34,6 +34,7 @@ function makeSnapshot(runId: string, userId: string): RunContextSnapshot {
     userId,
     prompt: "test prompt",
     appendSystemPrompt: null,
+    sessionId: null,
     secretNames: ["API_KEY", "DB_PASSWORD"],
     environment: {
       NODE_ENV: "production",
@@ -95,6 +96,7 @@ describe("GET /api/zero/runs/:id/context", () => {
 
     const data = await response.json();
     expect(data.prompt).toBe("test prompt");
+    expect(data.sessionId).toBeNull();
     expect(data.secretNames).toEqual(["API_KEY", "DB_PASSWORD"]);
     expect(data.environment).toEqual({
       NODE_ENV: "production",

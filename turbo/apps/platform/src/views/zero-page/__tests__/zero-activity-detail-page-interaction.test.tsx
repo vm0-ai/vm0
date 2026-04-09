@@ -181,6 +181,7 @@ describe("zeroActivityDetailPageInteraction", () => {
     const contextResponse: RunContextResponse = {
       prompt: "What is the capital of France?",
       appendSystemPrompt: null,
+      sessionId: null,
       secretNames: [],
       vars: null,
       environment: {},
