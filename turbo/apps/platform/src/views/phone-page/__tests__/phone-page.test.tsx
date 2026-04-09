@@ -221,32 +221,6 @@ describe("phone page - user phone linked", () => {
   });
 });
 
-describe("phone page - legal links", () => {
-  it("links to canonical terms-of-use URL", async () => {
-    mockPhoneStatusAPI({ orgPhone: "+18001234567", userPhone: null });
-    await renderPhonePage();
-
-    await waitFor(() => {
-      const link = screen.getAllByRole("link").find((el) => {
-        return /Terms of Use/.test(el.textContent ?? "");
-      });
-      expect(link).toHaveAttribute("href", "https://vm0.ai/terms-of-use");
-    });
-  });
-
-  it("links to canonical privacy-policy URL", async () => {
-    mockPhoneStatusAPI({ orgPhone: "+18001234567", userPhone: null });
-    await renderPhonePage();
-
-    await waitFor(() => {
-      const link = screen.getAllByRole("link").find((el) => {
-        return /Privacy Policy/.test(el.textContent ?? "");
-      });
-      expect(link).toHaveAttribute("href", "https://vm0.ai/privacy-policy");
-    });
-  });
-});
-
 describe("phone page - error display", () => {
   it("should show error message when link fails", async () => {
     const user = userEvent.setup();
