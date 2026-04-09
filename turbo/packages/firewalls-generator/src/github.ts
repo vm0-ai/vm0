@@ -622,21 +622,32 @@ const REPO_METADATA_FIELDS = new Set([
   "webCommitSignoffRequired",
 ]);
 
-// ── Top-level Query fields ───────────────────────────────────────────────
+// ── Top-level Query field mapping ────────────────────────────────────────
 //
-// Top-level Query type fields assigned to metadata:read.  Entry points
-// with fine-grained sub-field permissions (e.g., `repository`) are listed
-// separately and excluded — they are covered by the ancestor check.
-// Every Query type field must appear in one of these two sets.
+// Maps top-level Query type fields to permission groups.  Fields are split
+// into three categories; every Query field must be in exactly one:
+//
+//   QUERY_FIELD_TO_PERMISSIONS — non-metadata permissions (enterprise, org)
+//   QUERY_METADATA_FIELDS      — metadata:read (public / basic API access)
+//   QUERY_FIELD_ENTRY_POINTS   — excluded, covered by ancestor check
+//
+// The generator validates completeness against the schema.
+
+const QUERY_FIELD_TO_PERMISSIONS: Record<string, string[]> = {
+  // enterprise_teams:read — enterprise-level access
+  enterprise: ["enterprise_teams:read"],
+  enterpriseAdministratorInvitation: ["enterprise_teams:read"],
+  enterpriseAdministratorInvitationByToken: ["enterprise_teams:read"],
+  enterpriseMemberInvitation: ["enterprise_teams:read"],
+  enterpriseMemberInvitationByToken: ["enterprise_teams:read"],
+
+  // organization_administration:read — organization-level access
+  organization: ["organization_administration:read"],
+};
 
 const QUERY_METADATA_FIELDS = new Set([
   "codeOfConduct",
   "codesOfConduct",
-  "enterprise",
-  "enterpriseAdministratorInvitation",
-  "enterpriseAdministratorInvitationByToken",
-  "enterpriseMemberInvitation",
-  "enterpriseMemberInvitationByToken",
   "license",
   "licenses",
   "marketplaceCategories",
@@ -646,7 +657,6 @@ const QUERY_METADATA_FIELDS = new Set([
   "meta",
   "node",
   "nodes",
-  "organization",
   "rateLimit",
   "relay",
   "repositoryOwner",
@@ -662,9 +672,10 @@ const QUERY_METADATA_FIELDS = new Set([
 ]);
 
 // Entry points with fine-grained sub-field permissions.  These are NOT
-// added to metadata:read — they are covered by the ancestor check from
-// their sub-field patterns.  Including them would let metadata:read
-// cover all sub-fields via the descendant check (privilege escalation).
+// added to any permission — they are covered by the ancestor check from
+// their sub-field patterns (e.g., any `repository.*` pattern covers
+// `repository`).  Including them would let a single permission cover
+// all sub-fields via the descendant check (privilege escalation).
 const QUERY_FIELD_ENTRY_POINTS = new Set(["repository"]);
 
 // ── Invented permission groups ───────────────────────────────────────────
@@ -788,6 +799,7 @@ function validateMutationCoverage(schema: IntrospectionResult): void {
  */
 interface QueryFieldInfo {
   queryFields: string[];
+  queryMappedFields: Record<string, string[]>;
   repoMetadataFields: string[];
 }
 
@@ -847,17 +859,16 @@ function validateQueryFieldMapping(
 
   // ── Validate top-level Query fields ──────────────────────────────────
 
-  // Every query metadata field must exist in schema.
+  // Every listed query field must exist in schema.
   const staleQueryFields: string[] = [];
+  for (const name of Object.keys(QUERY_FIELD_TO_PERMISSIONS)) {
+    if (!queryFields.has(name)) staleQueryFields.push(name);
+  }
   for (const name of QUERY_METADATA_FIELDS) {
-    if (!queryFields.has(name)) {
-      staleQueryFields.push(name);
-    }
+    if (!queryFields.has(name)) staleQueryFields.push(name);
   }
   for (const name of QUERY_FIELD_ENTRY_POINTS) {
-    if (!queryFields.has(name)) {
-      staleQueryFields.push(name);
-    }
+    if (!queryFields.has(name)) staleQueryFields.push(name);
   }
   if (staleQueryFields.length > 0) {
     throw new Error(
@@ -869,6 +880,7 @@ function validateQueryFieldMapping(
   const unmappedQuery: string[] = [];
   for (const name of queryFields) {
     if (
+      !QUERY_FIELD_TO_PERMISSIONS[name] &&
       !QUERY_METADATA_FIELDS.has(name) &&
       !QUERY_FIELD_ENTRY_POINTS.has(name)
     ) {
@@ -877,24 +889,26 @@ function validateQueryFieldMapping(
   }
   if (unmappedQuery.length > 0) {
     throw new Error(
-      `${unmappedQuery.length} unmapped Query field(s) — add to QUERY_METADATA_FIELDS or QUERY_FIELD_ENTRY_POINTS:\n  ${unmappedQuery.sort().join("\n  ")}`,
+      `${unmappedQuery.length} unmapped Query field(s) — add to QUERY_FIELD_TO_PERMISSIONS, QUERY_METADATA_FIELDS, or QUERY_FIELD_ENTRY_POINTS:\n  ${unmappedQuery.sort().join("\n  ")}`,
     );
   }
 
   // ── Build results ─────────────────────────────────────────────────────
 
   const repoMetadataFields = [...REPO_METADATA_FIELDS].sort();
+  const queryMapped = Object.keys(QUERY_FIELD_TO_PERMISSIONS).length;
 
   const mapped = Object.keys(REPO_FIELD_TO_PERMISSIONS).length;
   console.error(
     `  ${mapped} mapped + ${repoMetadataFields.length} metadata repo fields`,
   );
   console.error(
-    `  ${QUERY_METADATA_FIELDS.size} metadata + ${QUERY_FIELD_ENTRY_POINTS.size} entry point query fields`,
+    `  ${queryMapped} mapped + ${QUERY_METADATA_FIELDS.size} metadata + ${QUERY_FIELD_ENTRY_POINTS.size} entry point query fields`,
   );
 
   return {
     queryFields: [...QUERY_METADATA_FIELDS].sort(),
+    queryMappedFields: QUERY_FIELD_TO_PERMISSIONS,
     repoMetadataFields,
   };
 }
@@ -953,9 +967,16 @@ function buildQueryFieldIndex(
     addToIndex("metadata:read", `repository.${field}`);
   }
 
+  // Top-level Query fields with explicit permissions.
+  for (const [field, groups] of Object.entries(
+    queryFieldInfo.queryMappedFields,
+  )) {
+    for (const group of groups) {
+      addToIndex(group, field);
+    }
+  }
+
   // Top-level Query metadata fields → metadata:read.
-  // Entry points (QUERY_FIELD_ENTRY_POINTS) are excluded — already
-  // validated and covered by the ancestor check.
   for (const field of queryFieldInfo.queryFields) {
     addToIndex("metadata:read", field);
   }
