@@ -1,9 +1,9 @@
 import { command, computed, state } from "ccstate";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import { delay } from "signal-timers";
 import { zeroIntegrationsSlackContract } from "@vm0/core";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
+import { setLoop } from "../utils.ts";
 
 const internalReload$ = state(0);
 
@@ -82,16 +82,24 @@ export const pollSlackConnection$ = command(
       return;
     }
 
-    while (!signal.aborted) {
-      await delay(get(slackPollIntervalMs$), { signal });
-      set(reloadSlackOrg$);
-      const result = await get(slackOrgData$);
-      signal.throwIfAborted();
-      if (result.isConnected) {
-        toast.success("Slack connected successfully");
-        return;
-      }
-    }
+    await setLoop(
+      async (signal: AbortSignal) => {
+        set(reloadSlackOrg$);
+
+        const client = get(zeroClient$)(zeroIntegrationsSlackContract);
+        const result = await accept(
+          client.getStatus({
+            fetchOptions: { signal },
+          }),
+          [200],
+        );
+        return result.body.isConnected;
+      },
+      3000,
+      signal,
+    );
+
+    toast.success("Slack connected successfully");
   },
 );
 
