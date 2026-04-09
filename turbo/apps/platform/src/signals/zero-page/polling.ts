@@ -181,23 +181,41 @@ function createQueuePosition(runId: string) {
 }
 
 function createRunPagedEvents(runId: string) {
-  return computed(async (get) => {
-    const firstPage = createEventPageComputed(runId);
-    const pagedEventsList = [firstPage];
+  const firstPage = createEventPageComputed(runId);
+  const pagedEventsList$ = state([firstPage]);
 
-    while (true) {
-      const lastPage = await get(pagedEventsList[pagedEventsList.length - 1]);
+  const finished$ = computed(async (get) => {
+    const pagedEventsList = get(pagedEventsList$);
+    const lastPage = await get(pagedEventsList[pagedEventsList.length - 1]);
+    return !lastPage.hasMore;
+  });
 
-      if (!lastPage.hasMore) {
-        break;
+  const reloadAndCheckFinished$ = command(
+    async ({ set, get }, signal: AbortSignal) => {
+      const finished = await get(finished$);
+      signal.throwIfAborted();
+
+      if (finished) {
+        return true;
       }
+
+      const pagedEventsList = get(pagedEventsList$);
+      const lastPage = await get(pagedEventsList[pagedEventsList.length - 1]);
+      signal.throwIfAborted();
 
       const lastEvent = lastPage.events[lastPage.events.length - 1];
       const nextPage$ = createEventPageComputed(runId, lastEvent?.createdAt);
-      pagedEventsList.push(nextPage$);
-    }
-    return pagedEventsList;
-  });
+      set(pagedEventsList$, (x) => {
+        return [...x, nextPage$];
+      });
+      return false;
+    },
+  );
+
+  return {
+    checkFinished$: reloadAndCheckFinished$,
+    pagedEventsList$,
+  };
 }
 
 export function createRunLoop(runId: string) {
@@ -209,7 +227,11 @@ export function createRunLoop(runId: string) {
 
   const { queuePosition$, reload$: reloadQueuePosition$ } =
     createQueuePosition(runId);
-  const initialRunPagedEvents$ = createRunPagedEvents(runId);
+  const {
+    pagedEventsList$: initialRunPagedEvents$,
+    checkFinished$: initialCheckFinished$,
+  } = createRunPagedEvents(runId);
+
   const internalLoopedPagedEvents$ = state<Computed<Promise<PagedRunEvents>>[]>(
     [],
   );
@@ -221,6 +243,10 @@ export function createRunLoop(runId: string) {
   });
 
   const checkFinished$ = command(async ({ set, get }, signal: AbortSignal) => {
+    if (!(await set(initialCheckFinished$, signal))) {
+      return false;
+    }
+
     set(reloadRunStatus$);
     let status = (await get(runDetail$)).status;
     signal.throwIfAborted();
