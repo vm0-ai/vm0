@@ -104,7 +104,9 @@ export async function handleCallEnded(event: CallEndedEvent): Promise<void> {
       : null,
     ``,
     `# Available Actions`,
-    `You can call the user back using: zero phone call ${fromNumber}`,
+    `You can call the user back using: zero phone call --mode <mode> ${fromNumber}`,
+    `  --mode onhold: Stay on the line until the call completes, then get the transcript back. Use when you need a quick answer from the user.`,
+    `  --mode fire-and-forget: Initiate the call and return immediately. Use for open-ended conversations or when you don't need an immediate response.`,
     `You can view call history using: zero phone record`,
   ]
     .filter((line) => {

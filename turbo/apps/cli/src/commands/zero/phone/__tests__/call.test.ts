@@ -36,8 +36,8 @@ describe("zero phone call command", () => {
     vi.unstubAllEnvs();
   });
 
-  describe("successful call", () => {
-    it("should initiate a call and display call ID and status", async () => {
+  describe("fire-and-forget mode", () => {
+    it("should initiate a call and return immediately", async () => {
       server.use(
         http.post("http://localhost:3000/api/zero/phone-calls", () => {
           return HttpResponse.json({
@@ -47,7 +47,13 @@ describe("zero phone call command", () => {
         }),
       );
 
-      await callCommand.parseAsync(["node", "cli", "+14155551234"]);
+      await callCommand.parseAsync([
+        "node",
+        "cli",
+        "+14155551234",
+        "--mode",
+        "fire-and-forget",
+      ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Call initiated");
@@ -56,14 +62,103 @@ describe("zero phone call command", () => {
     });
   });
 
+  describe("onhold mode", () => {
+    it("should poll until call completes and print transcript", async () => {
+      vi.useFakeTimers();
+      let pollCount = 0;
+
+      server.use(
+        http.post("http://localhost:3000/api/zero/phone-calls", () => {
+          return HttpResponse.json({
+            callId: "call_hold123",
+            status: "initiated",
+          });
+        }),
+        http.get(
+          "http://localhost:3000/api/zero/phone-calls/call_hold123",
+          () => {
+            pollCount++;
+            if (pollCount < 2) {
+              return HttpResponse.json({
+                call: {
+                  id: "call_hold123",
+                  status: "active",
+                  fromNumber: "+16067551512",
+                  toNumber: "+14155551234",
+                  durationSeconds: 0,
+                  startedAt: "2026-04-09T08:00:00Z",
+                },
+                transcript: null,
+              });
+            }
+            return HttpResponse.json({
+              call: {
+                id: "call_hold123",
+                status: "completed",
+                fromNumber: "+16067551512",
+                toNumber: "+14155551234",
+                durationSeconds: 25,
+                startedAt: "2026-04-09T08:00:00Z",
+              },
+              transcript: [
+                { role: "agent", text: "Hello, is this a good time?" },
+                { role: "user", text: "Yes, go ahead." },
+              ],
+            });
+          },
+        ),
+      );
+
+      const promise = callCommand.parseAsync([
+        "node",
+        "cli",
+        "+14155551234",
+        "--mode",
+        "onhold",
+      ]);
+
+      // Advance past each 10s poll interval
+      await vi.advanceTimersByTimeAsync(10_000);
+      await vi.advanceTimersByTimeAsync(10_000);
+
+      await promise;
+      vi.useRealTimers();
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Call initiated");
+      expect(logCalls).toContain("Call Detail");
+      expect(logCalls).toContain("Transcript");
+      expect(logCalls).toContain("Hello, is this a good time?");
+      expect(logCalls).toContain("Yes, go ahead.");
+      expect(pollCount).toBe(2);
+    });
+  });
+
   describe("validation", () => {
     it("should reject invalid phone number format", async () => {
       await expect(async () => {
-        await callCommand.parseAsync(["node", "cli", "5551234"]);
+        await callCommand.parseAsync([
+          "node",
+          "cli",
+          "5551234",
+          "--mode",
+          "fire-and-forget",
+        ]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining("Invalid phone number format"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should require --mode flag", async () => {
+      await expect(async () => {
+        await callCommand.parseAsync(["node", "cli", "+14155551234"]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Missing required --mode flag"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
@@ -81,7 +176,13 @@ describe("zero phone call command", () => {
       );
 
       await expect(async () => {
-        await callCommand.parseAsync(["node", "cli", "+14155551234"]);
+        await callCommand.parseAsync([
+          "node",
+          "cli",
+          "+14155551234",
+          "--mode",
+          "fire-and-forget",
+        ]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockExit).toHaveBeenCalledWith(1);
@@ -123,6 +224,8 @@ describe("zero phone call command", () => {
         "+14155551234",
         "--system-prompt-file",
         promptFile,
+        "--mode",
+        "fire-and-forget",
       ]);
 
       expect(capturedBody.systemPrompt).toBe(
@@ -138,6 +241,8 @@ describe("zero phone call command", () => {
           "+14155551234",
           "--system-prompt-file",
           "/nonexistent/path/prompt.txt",
+          "--mode",
+          "fire-and-forget",
         ]);
       }).rejects.toThrow("process.exit called");
 
