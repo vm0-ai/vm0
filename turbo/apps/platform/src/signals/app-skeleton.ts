@@ -2,7 +2,7 @@ import { command, computed, state, type Command, type Computed } from "ccstate";
 import { delay } from "signal-timers";
 import { currentChatAgent$ } from "./agent-chat.ts";
 import { resolveAvatarUrl } from "../views/zero-page/avatar-utils.ts";
-import { resetSignal, throwIfAbort } from "./utils.ts";
+import { resetSignal, bestEffort } from "./utils.ts";
 import { agents$ } from "./agent.ts";
 
 // ---------------------------------------------------------------------------
@@ -81,18 +81,7 @@ const prefetch$ = command(
     fn$: Command<Promise<unknown>, [AbortSignal]> | Computed<Promise<unknown>>,
     signal: AbortSignal,
   ) => {
-    // Failure is acceptable for prefetch behavior, as this is merely a best-effort attempt.
-    // Regarding this specific instance, the ESLint issue has been confirmed by Ethan.
-    // eslint-disable-next-line no-restricted-syntax
-    try {
-      if ("read" in fn$) {
-        await get(fn$);
-      } else {
-        await set(fn$, signal);
-      }
-    } catch (error) {
-      throwIfAbort(error);
-    }
+    await bestEffort("read" in fn$ ? get(fn$) : set(fn$, signal));
   },
 );
 

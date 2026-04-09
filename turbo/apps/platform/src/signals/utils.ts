@@ -147,6 +147,19 @@ export function jsonParseOr<T>(value: string, fallback: T): T {
   }
 }
 
+/**
+ * Best-effort wrapper: await `p` and swallow non-abort errors.
+ * Use for prefetch or fire-and-forget operations where failure is acceptable.
+ */
+export async function bestEffort(p: Promise<unknown>): Promise<void> {
+  // eslint-disable-next-line no-restricted-syntax -- centralised best-effort guard
+  try {
+    await p;
+  } catch (error) {
+    throwIfAbort(error);
+  }
+}
+
 export function resetSignal(): Command<AbortSignal, AbortSignal[]> {
   const controller$ = state<AbortController | undefined>(undefined);
 
