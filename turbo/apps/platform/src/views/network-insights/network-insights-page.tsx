@@ -1,4 +1,4 @@
-import { useGet, useSet, useLastLoadable, useLoadable } from "ccstate-react";
+import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import {
   IconNetwork,
   IconChevronDown,
@@ -857,7 +857,7 @@ function PermissionsAllowedCard({
           const hasDescription = p.connectorType && p.label !== p.connectorType;
           return (
             <div
-              key={p.label}
+              key={`${p.connectorType ?? ""}:${p.label}`}
               className={`transition-opacity duration-150 ${isActive ? "opacity-100" : "opacity-30"}`}
             >
               <div className="flex items-center justify-between gap-2">
@@ -884,7 +884,7 @@ function PermissionsAllowedCard({
             toggleExpanded(day.date);
           }}
           className="text-xs font-medium mt-3"
-          style={{ color: "#ed4e01" }}
+          style={{ color: accent }}
         >
           {expanded ? "Show less" : "Load more"}
         </button>
@@ -936,7 +936,7 @@ function PermissionsBlockedCard({
           const fullyBlocked = p.allowed === 0;
           return (
             <div
-              key={p.label}
+              key={`${p.connectorType ?? ""}:${p.label}`}
               className={`flex items-center justify-between gap-2 transition-opacity duration-150 ${isActive ? "opacity-100" : "opacity-30"}`}
             >
               <span className="text-sm font-medium">{permissionLabel(p)}</span>
@@ -1058,7 +1058,7 @@ function InsightsContent({ data }: { data: NetworkInsightsData }) {
   const dateRange = useGet(insightsDateRange$);
   const setRange = useSet(setInsightsDateRange$);
   const prefsLoadable = useLastLoadable(userPreferences$);
-  const adminLoadable = useLoadable(isOrgAdmin$);
+  const adminLoadable = useLastLoadable(isOrgAdmin$);
   const userLoadable = useLastLoadable(user$);
   const timezone =
     prefsLoadable.state === "hasData" && prefsLoadable.data?.timezone
