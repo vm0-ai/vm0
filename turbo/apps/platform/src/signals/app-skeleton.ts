@@ -60,7 +60,7 @@ export const startSkeletonCycling$ = command(
     const signal = set(resetSkeletonCycling$, parentSignal);
     const isFirst = get(skeletonFirstCycle$);
     await delay(isFirst ? get(firstCycleMs$) : get(cycleMs$), { signal });
-    while (!signal.aborted) {
+    while (true) {
       set(cycleSkeletonMessage$);
       await delay(get(cycleMs$), { signal });
     }
