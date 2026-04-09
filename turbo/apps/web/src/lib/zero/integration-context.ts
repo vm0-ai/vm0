@@ -6,6 +6,7 @@ type IntegrationPlatform =
   | "Email"
   | "GitHub"
   | "Phone"
+  | "Schedule"
   | "Slack"
   | "Telegram"
   | "Voice-Chat";
@@ -20,6 +21,8 @@ export function buildIntegrationContext(
     channelId?: string;
     channelType?: "channel" | "dm" | "group_dm";
     threadId?: string;
+    scheduleDescription?: string;
+    triggerType?: string;
   },
 ): string {
   let context = `# Current Integration\nYou are currently running inside: ${platform}`;
@@ -41,5 +44,42 @@ export function buildIntegrationContext(
   if (options?.threadId) {
     context += `\nThread ID: ${options.threadId}`;
   }
+  if (options?.scheduleDescription) {
+    context += `\nSchedule description: ${options.scheduleDescription}`;
+  }
+  if (options?.triggerType) {
+    context += `\nTrigger type: ${options.triggerType}`;
+  }
   return context;
+}
+
+export interface UserInfoOptions {
+  name?: string;
+  email?: string;
+  timezone?: string;
+  slackDisplayName?: string;
+  slackUserId?: string;
+}
+
+/**
+ * Build the user info section for agent system prompts.
+ */
+export function buildUserInfo(options: UserInfoOptions): string {
+  const lines: string[] = [];
+  if (options.name) {
+    lines.push(`Name: ${options.name}`);
+  }
+  if (options.email) {
+    lines.push(`Email: ${options.email}`);
+  }
+  if (options.timezone) {
+    lines.push(`Timezone: ${options.timezone}`);
+  }
+  if (options.slackDisplayName) {
+    lines.push(`Slack display name: ${options.slackDisplayName}`);
+  }
+  if (options.slackUserId) {
+    lines.push(`Slack user ID: ${options.slackUserId}`);
+  }
+  return `# Current User Info\n${lines.join("\n")}`;
 }

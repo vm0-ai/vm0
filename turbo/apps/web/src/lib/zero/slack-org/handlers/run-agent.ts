@@ -1,6 +1,7 @@
 import { isRunDispatchError } from "../../../infra/run";
 import { createZeroRun } from "../../zero-run-service";
 import { buildIntegrationContext } from "../../integration-context";
+import type { UserInfoOptions } from "../../integration-context";
 import { isApiError } from "../../../shared/errors";
 import { RUN_ERROR_GUIDANCE } from "@vm0/core";
 import { generateCallbackSecret, getApiUrl } from "../../../infra/callback";
@@ -16,7 +17,7 @@ interface RunAgentParams {
   sessionId: string | undefined;
   prompt: string;
   threadContext: string;
-  userContext: string;
+  userInfoExtras?: UserInfoOptions;
   userId: string;
   botUserId: string;
   channelId?: string;
@@ -52,7 +53,7 @@ export async function runAgentForSlackOrg(
     sessionId,
     prompt,
     threadContext,
-    userContext,
+    userInfoExtras,
     userId,
     botUserId,
     channelId,
@@ -62,7 +63,7 @@ export async function runAgentForSlackOrg(
   } = params;
 
   try {
-    // Build system prompt from context parts (agent identity is prepended by createZeroRun)
+    // Build system prompt from context parts (agent identity + user info prepended by createZeroRun)
     const contextParts = [
       buildIntegrationContext("Slack", {
         botUserId,
@@ -71,7 +72,6 @@ export async function runAgentForSlackOrg(
         threadId: threadTs,
       }),
       threadContext,
-      userContext,
     ].filter(Boolean);
     const appendSystemPrompt =
       contextParts.length > 0 ? contextParts.join("\n\n") : undefined;
@@ -87,6 +87,7 @@ export async function runAgentForSlackOrg(
       appendSystemPrompt,
       sessionId,
       triggerSource: "slack",
+      userInfoExtras,
       callbacks: [
         {
           url: callbackUrl,

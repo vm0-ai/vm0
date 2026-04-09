@@ -50,7 +50,12 @@ import type { CallbackPayload } from "../infra/callback/callback-payloads";
 import { zeroAgents } from "../../db/schema/zero-agent";
 import { zeroRuns } from "../../db/schema/zero-run";
 import { userConnectors } from "../../db/schema/user-connector";
-import { consumeCaptureNetworkBodies } from "./user/user-preferences-service";
+import {
+  consumeCaptureNetworkBodies,
+  getUserPreferences,
+} from "./user/user-preferences-service";
+import { getCachedUser } from "../auth/user-cache-service";
+import { buildUserInfo, type UserInfoOptions } from "./integration-context";
 import { logger } from "../shared/logger";
 
 const log = logger("service:zero-run");
@@ -71,6 +76,8 @@ interface ZeroRunParams {
   callbacks?: Array<{ url: string; secret: string; payload: CallbackPayload }>;
   scheduleId?: string;
   triggerAgentId?: string;
+  /** Extra user info fields merged into the base # Current User Info block. */
+  userInfoExtras?: UserInfoOptions;
 }
 
 /**
@@ -290,13 +297,6 @@ export async function createZeroRunRecord(
       });
   }
 
-  // Build agent system prompt: identity + tools first, then trigger context
-  const agentPrompt = buildAgentPrompt(agent);
-  let { appendSystemPrompt } = params;
-  appendSystemPrompt = appendSystemPrompt
-    ? `${agentPrompt}\n\n${appendSystemPrompt}`
-    : agentPrompt;
-
   // Resolve permission policies using the user's enabled connectors so that
   // default policies are seeded for each allowed connector type.
   const permissionPolicies = resolveFirewallPolicies(
@@ -313,6 +313,25 @@ export async function createZeroRunRecord(
   });
   const orgMeta = await getOrgMetadata(resolved.orgId);
   const orgTier = orgTierSchema.parse(orgMeta.tier);
+
+  // Build agent system prompt: identity + tools + user info, then trigger context
+  const agentPrompt = buildAgentPrompt(agent);
+  const [cachedUser, userPrefs] = await Promise.all([
+    getCachedUser(params.userId),
+    getUserPreferences(resolved.orgId, params.userId),
+  ]);
+  const userInfo = buildUserInfo({
+    name: cachedUser.name ?? undefined,
+    email: cachedUser.email,
+    timezone: userPrefs.timezone || "UTC",
+    ...params.userInfoExtras,
+  });
+  let { appendSystemPrompt } = params;
+  const systemParts = [agentPrompt, userInfo];
+  if (appendSystemPrompt) {
+    systemParts.push(appendSystemPrompt);
+  }
+  appendSystemPrompt = systemParts.join("\n\n");
 
   // 2. Construct CreateRunParams (infra knows nothing about ZERO_TOKEN)
   const runParams: CreateRunParams = {

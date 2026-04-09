@@ -24,7 +24,7 @@ describe("getCachedUser", () => {
 
     const result = await getCachedUser(userId);
 
-    expect(result).toEqual({ userId, email });
+    expect(result).toEqual({ userId, email, name: null });
 
     // Verify Clerk API was called
     const client = await clerkClient();
@@ -33,7 +33,7 @@ describe("getCachedUser", () => {
     // Verify cache was populated: second call should NOT hit Clerk again
     vi.mocked(client.users.getUser).mockClear();
     const cached = await getCachedUser(userId);
-    expect(cached).toEqual({ userId, email });
+    expect(cached).toEqual({ userId, email, name: null });
     expect(client.users.getUser).not.toHaveBeenCalled();
   });
 
@@ -48,7 +48,7 @@ describe("getCachedUser", () => {
 
     const result = await getCachedUser(userId);
 
-    expect(result).toEqual({ userId, email });
+    expect(result).toEqual({ userId, email, name: null });
 
     // Clerk API should NOT have been called
     const client = await clerkClient();

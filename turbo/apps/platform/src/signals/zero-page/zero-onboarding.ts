@@ -157,6 +157,7 @@ export const completeZeroOnboarding$ = command(
           avatarUrl: "preset:0",
           selectedConnectors:
             selectedConnectors.length > 0 ? selectedConnectors : undefined,
+          timezone: new Intl.DateTimeFormat().resolvedOptions().timeZone,
         },
       }),
       [200, 409],
