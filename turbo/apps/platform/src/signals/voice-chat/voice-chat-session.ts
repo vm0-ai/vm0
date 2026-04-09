@@ -1,10 +1,9 @@
 import { command, computed, state } from "ccstate";
 import { FeatureSwitchKey } from "@vm0/core";
-import { delay } from "signal-timers";
 import { fetch$ } from "../fetch.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import { currentChatAgentId$ } from "../agent-chat.ts";
-import { resetSignal, throwIfAbort, onDomEventFn } from "../utils.ts";
+import { resetSignal, throwIfAbort, onDomEventFn, setLoop } from "../utils.ts";
 
 type ConnectionStatus =
   | "idle"
@@ -454,54 +453,64 @@ const setupWebRTC$ = command(
 );
 
 const startHeartbeat$ = command(async ({ get }, signal: AbortSignal) => {
-  while (!signal.aborted) {
-    await delay(HEARTBEAT_INTERVAL_MS, { signal });
+  await setLoop(
+    async (sig: AbortSignal) => {
+      const sid = get(internalSessionId$);
+      if (!sid) {
+        return true;
+      }
 
-    const sid = get(internalSessionId$);
-    if (!sid) {
-      return;
-    }
-
-    const fetchFn = get(fetch$);
-    await fetchFn(`/api/zero/voice-chat/${sid}/heartbeat`, { method: "POST" });
-  }
+      const fetchFn = get(fetch$);
+      await fetchFn(`/api/zero/voice-chat/${sid}/heartbeat`, {
+        method: "POST",
+        signal: sig,
+      });
+      return false;
+    },
+    HEARTBEAT_INTERVAL_MS,
+    signal,
+  );
 });
 
 const startPoll$ = command(async ({ get, set }, signal: AbortSignal) => {
-  while (!signal.aborted) {
-    await delay(POLL_INTERVAL_MS, { signal });
-
-    const sid = get(internalSessionId$);
-    if (!sid) {
-      return;
-    }
-
-    const lastSeq = get(internalLastSeq$);
-    const fetchFn = get(fetch$);
-    const res = await fetchFn(
-      `/api/zero/voice-chat/${sid}/context?after=${lastSeq}`,
-    );
-    signal.throwIfAborted();
-    if (!res.ok) {
-      continue;
-    }
-
-    const data = (await res.json()) as { events: ContextEvent[] };
-    signal.throwIfAborted();
-    if (data.events.length > 0) {
-      set(internalEvents$, (prev) => {
-        return [...prev, ...data.events];
-      });
-      const lastEvent = data.events[data.events.length - 1];
-      if (lastEvent) {
-        set(internalLastSeq$, lastEvent.seq);
+  await setLoop(
+    async (signal: AbortSignal) => {
+      const sid = get(internalSessionId$);
+      if (!sid) {
+        return true;
       }
-    }
-  }
+
+      const lastSeq = get(internalLastSeq$);
+      const fetchFn = get(fetch$);
+      const res = await fetchFn(
+        `/api/zero/voice-chat/${sid}/context?after=${lastSeq}`,
+        { signal },
+      );
+
+      if (!res.ok) {
+        return false;
+      }
+
+      const data = (await res.json()) as { events: ContextEvent[] };
+      signal.throwIfAborted();
+
+      if (data.events.length > 0) {
+        set(internalEvents$, (prev) => {
+          return [...prev, ...data.events];
+        });
+        const lastEvent = data.events[data.events.length - 1];
+        if (lastEvent) {
+          set(internalLastSeq$, lastEvent.seq);
+        }
+      }
+      return false;
+    },
+    POLL_INTERVAL_MS,
+    signal,
+  );
 });
 
 // --- Exported commands ---
-
 export const startVoiceChat$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     if (
