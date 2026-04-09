@@ -663,18 +663,18 @@ function TeamCreditUsageCard({
 function YourCreditUsageCard({
   day,
   colorIndex,
-  userName,
+  userId,
   hoveredAgent,
 }: {
   day: DayInsight;
   colorIndex: number;
-  userName: string | null;
+  userId: string | null;
   hoveredAgent: string | null;
 }) {
   const { accent } = getCardPalette(colorIndex);
-  const myUsage = userName
+  const myUsage = userId
     ? day.teamUsage.find((m) => {
-        return m.name === userName;
+        return m.userId === userId;
       })
     : null;
   const displayCredits =
@@ -985,11 +985,11 @@ function formatDate(iso: string): string {
 function DaySection({
   day,
   isAdmin,
-  userName,
+  userId,
 }: {
   day: DayInsight;
   isAdmin: boolean;
-  userName: string | null;
+  userId: string | null;
 }) {
   const hoveredAgent = useGet(insightsHoveredAgent$);
   const setHoveredAgent = useSet(setInsightsHoveredAgent$);
@@ -1015,7 +1015,7 @@ function DaySection({
         <YourCreditUsageCard
           day={day}
           colorIndex={1}
-          userName={userName}
+          userId={userId}
           hoveredAgent={hoveredAgent}
         />
         <AgentsCard
@@ -1054,27 +1054,6 @@ function formatAbsoluteTime(iso: string): string {
 // Main content
 // ---------------------------------------------------------------------------
 
-/** Resolve display name from Clerk user, matching backend aggregation logic. */
-function resolveUserName(
-  user:
-    | {
-        firstName?: string | null;
-        username?: string | null;
-        primaryEmailAddress?: { emailAddress: string } | null;
-      }
-    | undefined,
-): string | null {
-  if (!user) {
-    return null;
-  }
-  return (
-    user.firstName ??
-    user.username ??
-    user.primaryEmailAddress?.emailAddress?.split("@")[0] ??
-    null
-  );
-}
-
 function InsightsContent({ data }: { data: NetworkInsightsData }) {
   const dateRange = useGet(insightsDateRange$);
   const setRange = useSet(setInsightsDateRange$);
@@ -1089,10 +1068,8 @@ function InsightsContent({ data }: { data: NetworkInsightsData }) {
 
   const isAdmin =
     adminLoadable.state === "hasData" ? adminLoadable.data : false;
-  const userName =
-    userLoadable.state === "hasData"
-      ? resolveUserName(userLoadable.data)
-      : null;
+  const userId =
+    userLoadable.state === "hasData" ? (userLoadable.data?.id ?? null) : null;
 
   return (
     <div className="h-full overflow-auto">
@@ -1147,7 +1124,7 @@ function InsightsContent({ data }: { data: NetworkInsightsData }) {
                 key={day.date}
                 day={day}
                 isAdmin={isAdmin}
-                userName={userName}
+                userId={userId}
               />
             );
           })

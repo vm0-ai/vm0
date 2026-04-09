@@ -35,6 +35,7 @@ export interface TopTask {
 }
 
 export interface MemberCredits {
+  userId?: string;
   name: string;
   credits: number;
   agentNames: string[];
