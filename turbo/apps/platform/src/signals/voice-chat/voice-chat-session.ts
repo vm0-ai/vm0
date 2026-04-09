@@ -29,7 +29,7 @@ interface ContextEvent {
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
 const POLL_INTERVAL_MS = 2000;
-const REALTIME_MODEL = "gpt-4o-realtime-preview";
+const REALTIME_MODEL = "gpt-realtime-1.5";
 
 const SESSION_TOOLS = [
   {
