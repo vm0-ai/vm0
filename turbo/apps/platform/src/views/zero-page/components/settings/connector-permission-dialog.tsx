@@ -4,7 +4,6 @@ import { IconSearch, IconCircleCheckFilled } from "@tabler/icons-react";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -73,7 +72,10 @@ export function ConnectorPermissionDialog({
         }
       }}
     >
-      <DialogContent className="flex max-w-[620px] flex-col gap-4 px-6 pb-6 pt-6">
+      <DialogContent
+        className="flex max-w-[620px] flex-col gap-4 px-6 pb-6 pt-6"
+        aria-describedby={undefined}
+      >
         <DialogHeader className="mt-5 items-center gap-2.5 text-center">
           <div className="flex items-center justify-center rounded-[10px] bg-[#f3f5f8] p-2.5">
             <ConnectorIcon type={connectorType} size={20} />
@@ -81,9 +83,6 @@ export function ConnectorPermissionDialog({
           <DialogTitle className="text-base font-medium">
             {config.label}
           </DialogTitle>
-          <DialogDescription>
-            Choose which agents can use this connector.
-          </DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col gap-10">
