@@ -135,9 +135,12 @@ export function PhonePage() {
         )}
         {error && <p className="text-sm text-red-500">{error}</p>}
         <p className="text-muted-foreground mt-2 text-xs">
-          By linking your phone number, you agree to our{" "}
+          By providing your phone number, you authorize VM0 to send text
+          messages including verification codes and notifications to the number
+          provided. Message and data rates may apply. Message frequency varies.
+          Reply HELP for help or STOP to opt out. See{" "}
           <a
-            href="https://vm0.ai/terms-of-use"
+            href="https://www.vm0.ai/terms-of-use"
             target="_blank"
             rel="noopener noreferrer"
             className="underline"
@@ -146,15 +149,14 @@ export function PhonePage() {
           </a>{" "}
           and{" "}
           <a
-            href="https://vm0.ai/privacy-policy"
+            href="https://www.vm0.ai/privacy-policy"
             target="_blank"
             rel="noopener noreferrer"
             className="underline"
           >
             Privacy Policy
           </a>
-          . You can unsubscribe at any time by removing your phone number on
-          this page.
+          .
         </p>
       </section>
     </div>
