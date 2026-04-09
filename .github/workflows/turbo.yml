@@ -961,7 +961,7 @@ jobs:
             user=$(curl -sS -X POST "https://api.clerk.com/v1/users" \
               -H "Authorization: Bearer ${CLERK_SECRET_KEY}" \
               -H "Content-Type: application/json" \
-              -d "{\"email_address\":[\"${email}\"],\"skip_password_requirement\":true}")
+              -d "{\"email_address\":[\"${email}\"],\"skip_password_requirement\":true,\"legal_accepted_at\":\"$(date -u +'%Y-%m-%dT%H:%M:%SZ')\"}")
             user_id=$(echo "$user" | jq -r '.id')
             if [[ "$user_id" == "null" || -z "$user_id" ]]; then
               echo "Error: Failed to create user ${email}"

@@ -26,6 +26,7 @@ export async function createUser(email: string): Promise<string> {
     body: JSON.stringify({
       email_address: [email],
       skip_password_requirement: true,
+      legal_accepted_at: new Date().toISOString(),
     }),
   });
   const data = (await response.json()) as { id?: string; errors?: unknown[] };
