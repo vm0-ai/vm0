@@ -78,7 +78,7 @@ describe("PUT /api/zero/permission-policies", () => {
 
     const policies = {
       slack: {
-        permissions: { "channels:read": "allow", "chat:write": "deny" },
+        policies: { "channels:read": "allow", "chat:write": "deny" },
       },
     };
 
@@ -99,7 +99,7 @@ describe("PUT /api/zero/permission-policies", () => {
 
     const policies = {
       slack: {
-        permissions: { "channels:read": "allow", "chat:write": "ask" },
+        policies: { "channels:read": "allow", "chat:write": "ask" },
       },
     };
 
@@ -230,7 +230,7 @@ describe("PUT /api/zero/permission-policies", () => {
       {
         policies: {
           "nonexistent-connector": {
-            permissions: { "perm:read": "allow" },
+            policies: { "perm:read": "allow" },
           },
         },
       },
