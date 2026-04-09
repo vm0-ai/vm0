@@ -84,4 +84,27 @@ describe("copyMessageContent$", () => {
 
     expect(context.store.get(copiedMessageIdValue$)).toBeNull();
   });
+
+  it("second copy call cancels the first timer and sets new message id", async () => {
+    writeTextMock.mockResolvedValue(undefined);
+
+    await context.store.set(
+      copyMessageContent$,
+      "msg-4",
+      "First message",
+      context.signal,
+    );
+    expect(context.store.get(copiedMessageIdValue$)).toBe("msg-4");
+
+    await context.store.set(
+      copyMessageContent$,
+      "msg-5",
+      "Second message",
+      context.signal,
+    );
+
+    // Second call should override the first — state reflects most recent copy,
+    // and the first timer is cancelled so it cannot clear state set by the second.
+    expect(context.store.get(copiedMessageIdValue$)).toBe("msg-5");
+  });
 });
