@@ -948,10 +948,16 @@ describe("zero-chat signals", () => {
 
       // API should receive non-empty prompt (attachment markdown)
       expect(capturedBody).toBeDefined();
-      const body = capturedBody as { prompt: string };
+      expect(
+        typeof capturedBody === "object" &&
+          capturedBody !== null &&
+          "prompt" in capturedBody,
+      ).toBeTruthy();
+      const body = capturedBody as Record<string, unknown>;
+      expect(typeof body.prompt).toBe("string");
       expect(body.prompt).toContain("https://example.com/photo.png");
       expect(body.prompt).toContain("photo.png");
-      expect(body.prompt).not.toMatch(/^\n/);
+      expect(String(body.prompt)).not.toMatch(/^\n/);
 
       // Attachments should be cleared after send
       expect(context.store.get(zeroChatAttachments$)).toHaveLength(0);

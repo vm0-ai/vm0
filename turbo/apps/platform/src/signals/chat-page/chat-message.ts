@@ -837,6 +837,7 @@ interface ChatMessageArgs {
   agentId: string;
   prompt: string;
   threadId?: string;
+  hasTextContent: boolean;
 }
 
 const prepareChatMessage$ = command(
@@ -852,9 +853,11 @@ const prepareChatMessage$ = command(
     }
     signal.throwIfAborted();
 
+    const trimmedPrompt = prompt.trim();
     return {
       agentId,
       prompt: result.fullPrompt,
+      hasTextContent: trimmedPrompt.length > 0,
     };
   },
 );

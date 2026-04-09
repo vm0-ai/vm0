@@ -78,8 +78,8 @@ const router = tsr.router(chatMessagesContract, {
         sessionId = undefined;
       }
 
-      // Only generate title when prompt has actual user text (not just attachment markdown)
-      if (!body.prompt.startsWith("[Attached file:")) {
+      // Only generate title when prompt has actual user text
+      if (body.hasTextContent !== false) {
         const capturedThreadId = threadId;
         void generateChatTitle(
           body.prompt,

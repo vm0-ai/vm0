@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { HttpResponse } from "msw";
 import { POST } from "../route";
 import {
   createTestRequest,
@@ -15,6 +16,10 @@ import {
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
 import { generateSandboxToken } from "../../../../../../src/lib/auth/sandbox-token";
 import { reloadEnv } from "../../../../../../src/env";
+import { server } from "../../../../../../src/mocks/server";
+import { http } from "../../../../../../src/__tests__/msw";
+
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
 const context = testContext();
 
@@ -216,6 +221,64 @@ describe("POST /api/zero/chat/messages", () => {
       const callbacks = await findTestCallbacksByRunId(data.runId);
       expect(callbacks.length).toBeGreaterThan(0);
       expect(callbacks[0]!.url).toContain("/api/internal/callbacks/chat");
+    });
+
+    it("should skip title generation when hasTextContent is false (image-only message)", async () => {
+      vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+      reloadEnv();
+
+      const openRouterHandler = http.post(OPENROUTER_URL, () => {
+        return HttpResponse.json({
+          choices: [{ message: { content: "Generated Title" } }],
+        });
+      });
+      server.use(openRouterHandler.handler);
+
+      const response = await POST(
+        createTestRequest(URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentId,
+            prompt: "[Attached file: photo.png](https://example.com/photo.png)",
+            hasTextContent: false,
+          }),
+        }),
+      );
+      expect(response.status).toBe(201);
+
+      await context.mocks.flushAfter();
+
+      expect(openRouterHandler.mocked).not.toHaveBeenCalled();
+    });
+
+    it("should generate title when hasTextContent is true (text message)", async () => {
+      vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+      reloadEnv();
+
+      const openRouterHandler = http.post(OPENROUTER_URL, () => {
+        return HttpResponse.json({
+          choices: [{ message: { content: "Project Help" } }],
+        });
+      });
+      server.use(openRouterHandler.handler);
+
+      const response = await POST(
+        createTestRequest(URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentId,
+            prompt: "Help me set up my project",
+            hasTextContent: true,
+          }),
+        }),
+      );
+      expect(response.status).toBe(201);
+
+      await context.mocks.flushAfter();
+
+      expect(openRouterHandler.mocked).toHaveBeenCalledTimes(1);
     });
   });
 });
