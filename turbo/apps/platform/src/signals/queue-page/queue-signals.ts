@@ -1,9 +1,8 @@
 import { command, state, computed } from "ccstate";
-import { delay } from "signal-timers";
 import { zeroRunsQueueContract, zeroRunsCancelContract } from "@vm0/core";
-import { throwIfAbort } from "../utils.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
+import { setLoop } from "../utils.ts";
 
 const POLL_INTERVAL = 5000;
 
@@ -26,17 +25,14 @@ const reloadQueueData$ = command(({ set }) => {
 
 export const startQueuePolling$ = command(
   async ({ set }, signal: AbortSignal) => {
-    // Polling loop — initial data comes from queueData$ async computed
-    while (!signal.aborted) {
-      // eslint-disable-next-line no-restricted-syntax -- polling loop requires try/catch for transient error retry
-      try {
-        await delay(POLL_INTERVAL, { signal });
-        signal.throwIfAborted();
+    await setLoop(
+      () => {
         set(reloadQueueData$);
-      } catch (error) {
-        throwIfAbort(error);
-      }
-    }
+        return false;
+      },
+      POLL_INTERVAL,
+      signal,
+    );
   },
 );
 

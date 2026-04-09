@@ -1,6 +1,6 @@
 import { command, computed, state } from "ccstate";
-import { delay } from "signal-timers";
 import { clerk$ } from "./auth.ts";
+import { setLoop } from "./utils.ts";
 
 const POLL_INTERVAL_MS = 30_000;
 
@@ -36,11 +36,15 @@ export const refreshUserInvitations$ = command(({ set }) => {
  */
 export const pollUserInvitations$ = command(
   async ({ set }, signal: AbortSignal) => {
-    while (!signal.aborted) {
-      await delay(POLL_INTERVAL_MS, { signal });
-      set(reloadInvitations$, (x) => {
-        return x + 1;
-      });
-    }
+    await setLoop(
+      () => {
+        set(reloadInvitations$, (x) => {
+          return x + 1;
+        });
+        return true;
+      },
+      POLL_INTERVAL_MS,
+      signal,
+    );
   },
 );

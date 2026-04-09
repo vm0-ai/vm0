@@ -29,6 +29,7 @@ export const ROUTES = {
   voiceChat: "/voice-chat",
   insights: "/insights",
   internalConnectorLogos: "/__internal-connector-logos",
+  reportError: "/runs/:runId/report-error",
   skeleton: "/_/skeleton",
   error: "/_/error",
 } as const;

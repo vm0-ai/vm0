@@ -864,7 +864,7 @@ function AssistantErrorContent({ error }: { error: string }) {
   return (
     <div className="flex items-start gap-2 text-destructive">
       <IconAlertCircle size={16} className="shrink-0 mt-[3px]" />
-      <span>{error}</span>
+      <Markdown source={error} />
     </div>
   );
 }

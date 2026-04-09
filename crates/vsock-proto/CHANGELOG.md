@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.7.0...vsock-proto-v0.8.0) (2026-04-09)
+
+
+### Features
+
+* **phone:** add webhook signature verification for call_ended events ([#8624](https://github.com/vm0-ai/vm0/issues/8624)) ([528e8a4](https://github.com/vm0-ai/vm0/commit/528e8a45c50588c98eb49b996f7846af56437842))
+
 ## [0.7.0](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.6.0...vsock-proto-v0.7.0) (2026-03-20)
 
 

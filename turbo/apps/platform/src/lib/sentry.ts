@@ -49,6 +49,9 @@ export function initSentry(): void {
       "ResizeObserver loop",
       // Clerk SDK - session cleared by Mobile Safari ITP (third-party noise)
       "Unable to authenticate the request",
+      // Expected API errors surfaced as toasts — not actionable in Sentry
+      "Credits depleted",
+      "Insufficient credits",
     ],
   });
 }

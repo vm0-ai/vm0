@@ -2,7 +2,7 @@ import { command, computed, state } from "ccstate";
 import { logger } from "../log";
 import { FeatureSwitchKey, getAllFeatureStates } from "@vm0/core";
 import { localStorageSignals } from "./local-storage";
-import { throwIfAbort } from "../utils";
+import { jsonParseOr } from "../utils";
 import { clerk$, user$ } from "../auth";
 
 const L = logger("FeatureSwitch");
@@ -54,15 +54,11 @@ export const featureSwitch$ = computed(async (get) => {
   // Layer 3: localStorage overrides (highest priority)
   const override = get(get$);
   if (override) {
-    // eslint-disable-next-line no-restricted-syntax -- JSON.parse on untrusted localStorage data
-    try {
-      const parsed = JSON.parse(override) as
-        | Partial<Record<string, boolean>>
-        | undefined;
-      applyOverrides(result, parsed, true);
-    } catch (error) {
-      throwIfAbort(error);
-    }
+    const parsed = jsonParseOr<Partial<Record<string, boolean>> | undefined>(
+      override,
+      undefined,
+    );
+    applyOverrides(result, parsed, true);
   }
 
   return result;
@@ -71,16 +67,12 @@ export const featureSwitch$ = computed(async (get) => {
 export const overrideFeatureSwitch$ = command(
   ({ get, set }, overrides: Partial<Record<FeatureSwitchKey, boolean>>) => {
     const current = get(get$);
-    let parsed: Partial<Record<FeatureSwitchKey, boolean>> = {};
-    if (current) {
-      // eslint-disable-next-line no-restricted-syntax -- JSON.parse on untrusted localStorage data
-      try {
-        parsed = JSON.parse(current);
-      } catch (error) {
-        throwIfAbort(error);
-      }
-    }
-    parsed = { ...parsed, ...overrides };
+    const parsed = {
+      ...(current
+        ? jsonParseOr<Partial<Record<FeatureSwitchKey, boolean>>>(current, {})
+        : {}),
+      ...overrides,
+    };
     set(set$, JSON.stringify(parsed));
     set(internalReload$, (v) => {
       return v + 1;
