@@ -397,7 +397,7 @@ const router = tsr.router(zeroDeveloperSupportContract, {
     // Send email notification
     await enqueueEmail({
       from: buildFromAddress("vm0"),
-      to: "contact@vm0.ai",
+      to: "support@vm0.ai",
       subject: `[Developer Support] ${body.title}`,
       template: {
         template: "developer-support",
