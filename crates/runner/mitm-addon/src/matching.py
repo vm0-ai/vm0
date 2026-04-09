@@ -436,7 +436,7 @@ def _find_uncovered_graphql_fields(
     ]
 
 
-def _build_granted_set(
+def _build_allow_set(
     fw_ref: str,
     granted_permissions: dict,
 ) -> set:
@@ -504,7 +504,7 @@ def match_firewall_request(
     for fw_entry in vm_firewalls:
         fw_name = fw_entry.get("name", "")
         fw_ref = fw_entry.get("ref", "")
-        granted_set = _build_granted_set(fw_ref, granted_permissions)
+        granted_set = _build_allow_set(fw_ref, granted_permissions)
 
         for api_entry in fw_entry.get("apis", []):
             base = api_entry.get("base", "").rstrip("/")
