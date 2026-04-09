@@ -8,9 +8,16 @@ import {
   DialogTitle,
   cn,
 } from "@vm0/ui";
-import { IconWand, IconChevronLeft, IconCheck } from "@tabler/icons-react";
+import {
+  IconWand,
+  IconChevronLeft,
+  IconChevronRight,
+  IconDice,
+  IconCheck,
+} from "@tabler/icons-react";
 import type { AvatarSvgConfig } from "./avatar-svg-utils.ts";
 import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
+import { detach, Reason } from "../../signals/utils.ts";
 import {
   AVATAR_MAKER_STEPS,
   INTENSITY_LABELS,
@@ -19,62 +26,138 @@ import {
   avatarMakerStep$,
   avatarMakerStepIdx$,
   avatarMakerJustPicked$,
+  avatarMakerShowSparkles$,
+  avatarMakerShuffling$,
   openAvatarMaker$,
   selectAvatarOption$,
+  shuffleAvatar$,
   goBackStep$,
+  goForwardStep$,
   closeAvatarMaker$,
+  avatarMakerSaving$,
+  setAvatarMakerSaving$,
 } from "../../signals/zero-page/settings/avatar-maker.ts";
 
-interface AvatarMakerProps {
-  initialConfig: AvatarSvgConfig | null;
-  onConfirm: (config: AvatarSvgConfig) => void;
+function getSparkleColors() {
+  return ["#ed4e01", "#E0B376", "#E26C9E", "#45A7A8", "#E0BB3C", "#FF990A"];
 }
 
-export function AvatarMaker({ initialConfig, onConfirm }: AvatarMakerProps) {
+function generateParticles() {
+  let seed = 77;
+  const rand = () => {
+    seed = (seed * 16_807) % 2_147_483_647;
+    return (seed - 1) / 2_147_483_646;
+  };
+
+  const colors = getSparkleColors();
+  return Array.from({ length: 20 }, () => {
+    const xDir = (rand() - 0.5) * 140;
+    const yDir = -(30 + rand() * 50);
+    return {
+      x: xDir,
+      y: yDir,
+      size: 3 + rand() * 5,
+      color: colors[Math.floor(rand() * colors.length)] ?? "#ed4e01",
+      delay: rand() * 0.15,
+    };
+  });
+}
+
+function getSparkleParticles() {
+  return generateParticles();
+}
+
+function Sparkles({ active }: { active: boolean }) {
+  if (!active) {
+    return null;
+  }
+
+  const particles = getSparkleParticles();
+  return (
+    <div className="pointer-events-none absolute inset-0 z-10">
+      {particles.map((p) => {
+        const key = `${p.x.toFixed(2)}_${p.y.toFixed(2)}_${p.size.toFixed(2)}`;
+        return (
+          <div
+            key={key}
+            className="absolute rounded-full"
+            style={
+              {
+                width: p.size,
+                height: p.size,
+                backgroundColor: p.color,
+                left: "50%",
+                top: "10%",
+                animation: "avatar-firework 0.6s ease-out forwards",
+                animationDelay: `${p.delay}s`,
+                transform: "translate(-50%, -50%) scale(1)",
+                "--fx": `${p.x}px`,
+                "--fy": `${p.y}px`,
+              } as React.CSSProperties
+            }
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+interface AvatarMakerProps {
+  onConfirm: (config: AvatarSvgConfig) => Promise<void>;
+  /** Custom trigger element. Receives `openMaker` as `onClick`. When omitted, the default wand button is rendered. */
+  trigger?: (openMaker: () => void) => React.ReactNode;
+}
+
+export function AvatarMaker({ onConfirm, trigger }: AvatarMakerProps) {
   const open = useGet(avatarMakerOpen$);
   const config = useGet(avatarMakerConfig$);
   const step = useGet(avatarMakerStep$);
   const stepIdx = useGet(avatarMakerStepIdx$);
   const justPicked = useGet(avatarMakerJustPicked$);
+  const showSparkles = useGet(avatarMakerShowSparkles$);
+  const shuffling = useGet(avatarMakerShuffling$);
+  const saving = useGet(avatarMakerSaving$);
 
   const openMaker = useSet(openAvatarMaker$);
   const selectOption = useSet(selectAvatarOption$);
+  const shuffle = useSet(shuffleAvatar$);
   const goBack = useSet(goBackStep$);
+  const goForward = useSet(goForwardStep$);
   const closeMaker = useSet(closeAvatarMaker$);
+  const setSaving = useSet(setAvatarMakerSaving$);
 
   const handleConfirm = () => {
-    onConfirm(config);
-    closeMaker();
+    setSaving(true);
+    detach(
+      onConfirm(config).then(() => {
+        setSaving(false);
+        closeMaker();
+      }),
+      Reason.DomCallback,
+    );
   };
 
   function renderOptions() {
     if (step === "intensity") {
-      return (["d", "m", "h"] as const).map((val) => {
+      return (["d", "m", "h"] as const).map((val, i) => {
         const isPicked = justPicked === `intensity-${val}`;
         const preview = { ...config, intensity: val };
-        const isActive = config.intensity === val;
         return (
           <button
             key={val}
             type="button"
             className={cn(
-              "flex flex-col items-center gap-1.5 rounded-full transition-all duration-150 hover:scale-105",
-              isPicked && "scale-105",
+              "flex flex-col items-center gap-1 rounded-full transition-all hover:scale-110",
+              isPicked && "scale-110 ring-2 ring-[#ed4e01] ring-offset-2",
             )}
+            style={{
+              animation: `avatar-option-appear 0.2s ease-out ${i * 0.05}s both`,
+            }}
             onClick={() => {
               return selectOption("intensity", val);
             }}
           >
-            <div
-              className={cn(
-                "rounded-full border-2 transition-all duration-150",
-                isActive
-                  ? "border-primary ring-2 ring-primary/20"
-                  : "border-transparent",
-              )}
-            >
-              <AvatarSvgPreview config={preview} size={56} />
-            </div>
+            <AvatarSvgPreview config={preview} size={56} />
             <span className="text-[10px] text-muted-foreground">
               {INTENSITY_LABELS[val]}
             </span>
@@ -88,62 +171,48 @@ export function AvatarMaker({ initialConfig, onConfirm }: AvatarMakerProps) {
         const val = i;
         const isPicked = justPicked === `skin-${val}`;
         const preview = { ...config, skin: val };
-        const isActive = config.skin === val;
         return (
           <button
             key={val}
             type="button"
             className={cn(
-              "rounded-full transition-all duration-150 hover:scale-105",
-              isPicked && "scale-105",
+              "rounded-full transition-all hover:scale-110",
+              isPicked && "scale-110 ring-2 ring-[#ed4e01] ring-offset-2",
             )}
+            style={{
+              animation: `avatar-option-appear 0.2s ease-out ${i * 0.05}s both`,
+            }}
             onClick={() => {
               return selectOption("skin", val);
             }}
           >
-            <div
-              className={cn(
-                "rounded-full border-2 transition-all duration-150",
-                isActive
-                  ? "border-primary ring-2 ring-primary/20"
-                  : "border-transparent",
-              )}
-            >
-              <AvatarSvgPreview config={preview} size={56} />
-            </div>
+            <AvatarSvgPreview config={preview} size={56} />
           </button>
         );
       });
     }
 
-    const max = step === "hairColor" ? 4 : 5;
+    const max = 5;
     return Array.from({ length: max }, (_, i) => {
       const val = i + 1;
       const isPicked = justPicked === `${step}-${val}`;
       const preview = { ...config, [step]: val };
-      const isActive = config[step] === val;
       return (
         <button
           key={val}
           type="button"
           className={cn(
-            "rounded-full transition-all duration-150 hover:scale-105",
-            isPicked && "scale-105",
+            "rounded-full transition-all hover:scale-110",
+            isPicked && "scale-110 ring-2 ring-[#ed4e01] ring-offset-2",
           )}
+          style={{
+            animation: `avatar-option-appear 0.2s ease-out ${i * 0.05}s both`,
+          }}
           onClick={() => {
             return selectOption(step, val);
           }}
         >
-          <div
-            className={cn(
-              "rounded-full border-2 transition-all duration-150",
-              isActive
-                ? "border-primary ring-2 ring-primary/20"
-                : "border-transparent",
-            )}
-          >
-            <AvatarSvgPreview config={preview as AvatarSvgConfig} size={56} />
-          </div>
+          <AvatarSvgPreview config={preview as AvatarSvgConfig} size={56} />
         </button>
       );
     });
@@ -151,16 +220,36 @@ export function AvatarMaker({ initialConfig, onConfirm }: AvatarMakerProps) {
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => {
-          return openMaker(initialConfig);
-        }}
-        className="h-12 w-12 shrink-0 rounded-full border-2 border-dashed border-muted-foreground/30 flex items-center justify-center text-muted-foreground hover:border-muted-foreground/50 hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-        aria-label="Create custom avatar"
-      >
-        <IconWand size={16} stroke={1.5} />
-      </button>
+      <style>{`
+        @keyframes avatar-option-appear {
+          from { opacity: 0; transform: translateY(8px) scale(0.9); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        @keyframes avatar-dice-spin {
+          0% { transform: rotate(0deg) scale(1); }
+          30% { transform: rotate(180deg) scale(1.3); }
+          100% { transform: rotate(360deg) scale(1); }
+        }
+        @keyframes avatar-firework {
+          0% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+          70% { opacity: 0.8; }
+          100% { opacity: 0; transform: translate(calc(-50% + var(--fx)), calc(-50% + var(--fy))) scale(0.3); }
+        }
+      `}</style>
+      {trigger ? (
+        trigger(openMaker)
+      ) : (
+        <button
+          type="button"
+          onClick={() => {
+            return openMaker();
+          }}
+          className="h-12 w-12 shrink-0 rounded-full border-2 border-dashed border-muted-foreground/30 flex items-center justify-center text-muted-foreground hover:border-muted-foreground/50 hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          aria-label="Create custom avatar"
+        >
+          <IconWand size={16} stroke={1.5} />
+        </button>
+      )}
       <Dialog
         open={open}
         onOpenChange={(v) => {
@@ -177,11 +266,33 @@ export function AvatarMaker({ initialConfig, onConfirm }: AvatarMakerProps) {
           <div className="flex flex-col items-center gap-4 py-2">
             <div
               className={cn(
-                "transition-transform duration-200",
-                justPicked ? "scale-110" : "scale-100",
+                "group relative overflow-visible transition-transform duration-200",
+                justPicked || shuffling ? "scale-110" : "scale-100",
               )}
             >
               <AvatarSvgPreview config={config} size={96} />
+              <Sparkles active={showSparkles} />
+              <button
+                type="button"
+                className={cn(
+                  "absolute -right-1 -bottom-1 flex h-7 w-7 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm border border-border transition-opacity hover:text-foreground",
+                  shuffling
+                    ? "opacity-100"
+                    : "opacity-0 group-hover:opacity-100",
+                )}
+                onClick={shuffle}
+                aria-label="Randomize avatar"
+              >
+                <IconDice
+                  size={14}
+                  stroke={1.5}
+                  style={
+                    shuffling
+                      ? { animation: "avatar-dice-spin 0.6s ease-out" }
+                      : undefined
+                  }
+                />
+              </button>
             </div>
 
             <div className="flex items-center gap-1">
@@ -202,33 +313,50 @@ export function AvatarMaker({ initialConfig, onConfirm }: AvatarMakerProps) {
               })}
             </div>
 
-            <p className="text-xs font-semibold text-foreground">
-              {AVATAR_MAKER_STEPS[stepIdx]?.label}
-            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className={cn(
+                  "flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground",
+                  stepIdx === 0 && "invisible",
+                )}
+                onClick={goBack}
+                aria-label="Previous step"
+              >
+                <IconChevronLeft size={14} />
+              </button>
+              <p
+                className="min-w-[3rem] text-center text-xs font-semibold text-foreground"
+                key={step}
+                style={{ animation: "avatar-option-appear 0.15s ease-out" }}
+              >
+                {AVATAR_MAKER_STEPS[stepIdx]?.label}
+              </p>
+              <button
+                type="button"
+                className={cn(
+                  "flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground",
+                  stepIdx === AVATAR_MAKER_STEPS.length - 1 && "invisible",
+                )}
+                onClick={goForward}
+                aria-label="Next step"
+              >
+                <IconChevronRight size={14} />
+              </button>
+            </div>
 
             <div className="flex gap-3 flex-wrap justify-center">
               {renderOptions()}
             </div>
-
-            {stepIdx > 0 && (
-              <button
-                type="button"
-                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                onClick={goBack}
-              >
-                <IconChevronLeft size={14} />
-                Back
-              </button>
-            )}
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={closeMaker}>
+            <Button variant="outline" onClick={closeMaker} disabled={saving}>
               Cancel
             </Button>
-            <Button onClick={handleConfirm}>
+            <Button onClick={handleConfirm} disabled={saving}>
               <IconCheck size={16} className="mr-1" />
-              Apply
+              {saving ? "Saving…" : "Apply"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -6,8 +6,6 @@ import {
   IconList,
   IconLoader2,
   IconPlus,
-  IconTrash,
-  IconUpload,
 } from "@tabler/icons-react";
 import {
   Card,
@@ -32,27 +30,23 @@ import {
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
-import { useAgentAvatar } from "../zero-page/zero-sidebar.tsx";
-import { ZERO_AVATARS } from "../zero-page/zero-avatars.ts";
 import {
-  AVATAR_PRESET_PREFIX,
-  resolveAvatarUrl,
-} from "../zero-page/avatar-utils.ts";
-import { fetch$ } from "../../signals/fetch.ts";
+  AgentAvatarImg,
+  AvatarFromUrl,
+} from "../zero-page/zero-sidebar-shared.tsx";
 import {
   jobsDialogOpen$,
   setJobsDialogOpen$,
   jobsNewName$,
   setJobsNewName$,
   jobsAvatarUrl$,
-  resetJobsAvatarUrl$,
-  uploadJobsAvatar$,
-  jobsFileInputEl$,
-  setJobsFileInputEl$,
+  setJobsAvatarUrl$,
   resetJobsDialog$,
   jobsViewMode$,
   setJobsViewMode$,
 } from "../../signals/zero-page/zero-jobs-page.ts";
+import { serializeAvatarSvgConfig } from "../zero-page/avatar-svg-utils.ts";
+import { AvatarMaker } from "../zero-page/avatar-maker.tsx";
 
 export function AgentsPage() {
   const dialogOpen = useGet(jobsDialogOpen$);
@@ -294,68 +288,32 @@ function CreateTeammateDialogContent({
   creating: boolean;
 }) {
   const avatarUrl = useGet(jobsAvatarUrl$);
-  const resetAvatarUrl = useSet(resetJobsAvatarUrl$);
-  const [uploadLoadable, uploadAvatarFn] = useLoadableSet(uploadJobsAvatar$);
-  const uploading = uploadLoadable.state === "loading";
-  const fileInputEl = useGet(jobsFileInputEl$);
-  const setFileInputEl = useSet(setJobsFileInputEl$);
-  const fetchFn = useGet(fetch$);
-  const pageSignal = useGet(pageSignal$);
-
-  const handleUpload = (file: File) => {
-    detach(
-      uploadAvatarFn(file, fetchFn, pageSignal).then(
-        undefined,
-        (error: unknown) => {
-          toast.error(
-            error instanceof Error ? error.message : "Failed to upload avatar",
-          );
-        },
-      ),
-      Reason.DomCallback,
-    );
-  };
-
-  const isCustom = !avatarUrl.startsWith(AVATAR_PRESET_PREFIX);
-  const displaySrc = resolveAvatarUrl(avatarUrl) ?? ZERO_AVATARS[0];
+  const setAvatarUrl = useSet(setJobsAvatarUrl$);
 
   return (
     <DialogContent className="sm:max-w-[420px]">
       <DialogHeader className="flex flex-col items-center text-center pt-4">
-        <div className="relative group mb-2">
-          <img
-            src={displaySrc}
-            alt="New agent"
-            className="h-14 w-14 rounded-full object-cover object-top"
-          />
-          <button
-            type="button"
-            onClick={() => {
-              return isCustom ? resetAvatarUrl() : fileInputEl?.click();
+        <div className="mb-2">
+          <AvatarMaker
+            onConfirm={(cfg) => {
+              setAvatarUrl(serializeAvatarSvgConfig(cfg));
+              return Promise.resolve();
             }}
-            disabled={uploading}
-            className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-            aria-label={isCustom ? "Remove custom avatar" : "Upload avatar"}
-          >
-            {uploading ? (
-              <IconLoader2 size={18} className="text-white animate-spin" />
-            ) : isCustom ? (
-              <IconTrash size={18} className="text-white" />
-            ) : (
-              <IconUpload size={18} className="text-white" />
-            )}
-          </button>
-          <input
-            ref={setFileInputEl}
-            type="file"
-            accept="image/png,image/jpeg,image/gif,image/webp"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) {
-                handleUpload(file);
-              }
-              e.target.value = "";
+            trigger={(openMaker) => {
+              return (
+                <button
+                  type="button"
+                  onClick={openMaker}
+                  className="rounded-full transition-transform duration-200 hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  aria-label="Customize avatar"
+                >
+                  <AvatarFromUrl
+                    avatarUrl={avatarUrl}
+                    alt="New agent"
+                    className="h-14 w-14 rounded-full object-cover object-top"
+                  />
+                </button>
+              );
             }}
           />
         </div>
@@ -425,7 +383,6 @@ type AgentProps = {
 function AgentCard({ agent }: AgentProps) {
   const defaultAgentId = useLastResolved(defaultAgentId$);
   const lead = agent.id === defaultAgentId;
-  const avatarSrc = useAgentAvatar(agent.id);
   const displayName = agent.displayName ?? agent.id;
   const description = defaultAgentId
     ? agent.description || (lead ? "Your core agent" : "Sub-agent")
@@ -433,18 +390,11 @@ function AgentCard({ agent }: AgentProps) {
   return (
     <Card className="zero-card cursor-pointer flex flex-col hover:bg-muted/30 transition-colors h-full">
       <CardContent className="px-5 py-4 flex items-center gap-3">
-        {avatarSrc ? (
-          <img
-            src={avatarSrc}
-            alt={displayName}
-            className="h-10 w-10 shrink-0 rounded-full object-cover object-top"
-          />
-        ) : (
-          <div
-            className="h-10 w-10 shrink-0 rounded-full bg-muted"
-            aria-hidden
-          />
-        )}
+        <AgentAvatarImg
+          name={agent.id}
+          alt={displayName}
+          className="h-10 w-10 shrink-0 rounded-full object-cover object-top"
+        />
         <div className="flex-1 min-w-0">
           <span className="text-sm font-medium text-foreground truncate block">
             {displayName}
@@ -462,7 +412,6 @@ function AgentListRow({ agent, isLast }: AgentProps & { isLast?: boolean }) {
   const defaultAgentId = useLastResolved(defaultAgentId$);
   const lead = agent.id === defaultAgentId;
 
-  const avatarSrc = useAgentAvatar(agent.id);
   const displayName = agent.displayName ?? agent.id;
   const description = defaultAgentId
     ? agent.description || (lead ? "Your core agent" : "Sub-agent")
@@ -471,18 +420,11 @@ function AgentListRow({ agent, isLast }: AgentProps & { isLast?: boolean }) {
   return (
     <>
       <div className="flex items-center gap-3 px-5 py-4 w-full text-left transition-colors hover:bg-muted/30 cursor-pointer">
-        {avatarSrc ? (
-          <img
-            src={avatarSrc}
-            alt={displayName}
-            className="h-10 w-10 shrink-0 rounded-full object-cover object-top"
-          />
-        ) : (
-          <div
-            className="h-10 w-10 shrink-0 rounded-full bg-muted"
-            aria-hidden
-          />
-        )}
+        <AgentAvatarImg
+          name={agent.id}
+          alt={displayName}
+          className="h-10 w-10 shrink-0 rounded-full object-cover object-top"
+        />
         <div className="flex-1 min-w-0">
           <span className="text-sm font-medium text-foreground truncate block">
             {displayName}

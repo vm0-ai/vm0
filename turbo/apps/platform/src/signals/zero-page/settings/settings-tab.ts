@@ -1,7 +1,5 @@
 import { command, computed, state } from "ccstate";
-import { toast } from "@vm0/ui/components/ui/sonner";
 import type { Tone } from "../../../views/zero-page/zero-tone-constants.ts";
-import { AVATAR_PRESET_PREFIX } from "../../../views/zero-page/avatar-utils.ts";
 
 // ---------------------------------------------------------------------------
 // Form fields
@@ -38,25 +36,6 @@ export const settingsAvatarUrl$ = computed((get) => {
 export const setSettingsAvatarUrl$ = command(
   ({ set }, value: string | null) => {
     set(internalAvatarUrl$, value);
-  },
-);
-
-const internalCustomAvatarUrl$ = state<string | null>(null);
-export const settingsCustomAvatarUrl$ = computed((get) => {
-  return get(internalCustomAvatarUrl$);
-});
-
-// ---------------------------------------------------------------------------
-// DOM ref for file input
-// ---------------------------------------------------------------------------
-
-const internalFileInputEl$ = state<HTMLInputElement | null>(null);
-export const settingsFileInputEl$ = computed((get) => {
-  return get(internalFileInputEl$);
-});
-export const setSettingsFileInputEl$ = command(
-  ({ set }, el: HTMLInputElement | null) => {
-    set(internalFileInputEl$, el);
   },
 );
 
@@ -121,12 +100,6 @@ export const initSettingsForm$ = command(({ get, set }, opts: FormSource) => {
   set(internalDesc$, opts.description);
   set(internalTone$, opts.tone);
   set(internalAvatarUrl$, opts.avatarUrl);
-  set(
-    internalCustomAvatarUrl$,
-    opts.avatarUrl && !opts.avatarUrl.startsWith(AVATAR_PRESET_PREFIX)
-      ? opts.avatarUrl
-      : null,
-  );
   set(internalSavedSettings$, {
     name: opts.name,
     description: opts.description,
@@ -159,39 +132,6 @@ export const markSettingsSaved$ = command(({ get, set }) => {
     avatarUrl: get(internalAvatarUrl$),
   });
 });
-
-// ---------------------------------------------------------------------------
-// Upload avatar command
-// ---------------------------------------------------------------------------
-
-export const uploadAvatar$ = command(
-  async (
-    { set },
-    file: File,
-    fetchFn: (
-      url: string | URL | Request,
-      options?: RequestInit,
-    ) => Promise<Response>,
-    _signal: AbortSignal,
-  ): Promise<void> => {
-    const formData = new FormData();
-    formData.append("file", file);
-    const res = await fetchFn("/api/zero/uploads", {
-      method: "POST",
-      body: formData,
-    }).catch((error: unknown) => {
-      toast.error("Failed to upload avatar");
-      throw error;
-    });
-    if (!res.ok) {
-      toast.error("Failed to upload avatar");
-      throw new Error(`Upload failed (${res.status})`);
-    }
-    const data: { url: string } = await res.json();
-    set(internalCustomAvatarUrl$, data.url);
-    set(internalAvatarUrl$, data.url);
-  },
-);
 
 // ---------------------------------------------------------------------------
 // Delete agent command

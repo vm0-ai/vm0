@@ -87,37 +87,6 @@ async function openProfileTab(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe("zero settings tab - display", () => {
-  it("shows checkmark on the selected avatar preset (AGENT-D-036)", async () => {
-    const user = userEvent.setup();
-    mockAPIs({ avatarUrl: "preset:0" });
-    await openProfileTab(user);
-
-    await waitFor(() => {
-      expect(screen.getByRole("radio", { name: "Avatar 1" })).toHaveAttribute(
-        "aria-checked",
-        "true",
-      );
-    });
-
-    expect(screen.getByRole("radio", { name: "Avatar 2" })).toHaveAttribute(
-      "aria-checked",
-      "false",
-    );
-  });
-
-  it("shows custom avatar option when avatarUrl is a custom URL (AGENT-D-037)", async () => {
-    const user = userEvent.setup();
-    const customUrl = "https://cdn.example.com/custom-avatar.png";
-    mockAPIs({ avatarUrl: customUrl });
-    await openProfileTab(user);
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("radio", { name: "Custom avatar" }),
-      ).toHaveAttribute("aria-checked", "true");
-    });
-  });
-
   it("shows agent name in the name input (AGENT-D-038)", async () => {
     const user = userEvent.setup();
     mockAPIs({ displayName: "My Agent" });
@@ -239,90 +208,6 @@ describe("zero settings tab - display", () => {
 });
 
 describe("zero settings tab - interaction", () => {
-  it("changes selected avatar when clicking a different preset (AGENT-D-044)", async () => {
-    const user = userEvent.setup();
-    mockAPIs({ avatarUrl: "preset:0" });
-    await openProfileTab(user);
-
-    await waitFor(() => {
-      expect(screen.getByRole("radio", { name: "Avatar 1" })).toHaveAttribute(
-        "aria-checked",
-        "true",
-      );
-    });
-
-    await user.click(screen.getByRole("radio", { name: "Avatar 2" }));
-
-    await waitFor(() => {
-      expect(screen.getByRole("radio", { name: "Avatar 2" })).toHaveAttribute(
-        "aria-checked",
-        "true",
-      );
-      expect(screen.getByRole("radio", { name: "Avatar 1" })).toHaveAttribute(
-        "aria-checked",
-        "false",
-      );
-    });
-  });
-
-  it("shows uploaded image as custom avatar preview (AGENT-D-046)", async () => {
-    const user = userEvent.setup();
-    const uploadedUrl = "https://cdn.example.com/avatar-new.png";
-    mockAPIs();
-    server.use(
-      http.post("*/api/zero/uploads", () => {
-        return HttpResponse.json({ url: uploadedUrl });
-      }),
-    );
-    await openProfileTab(user);
-
-    const fileInput =
-      document.querySelector<HTMLInputElement>('input[type="file"]');
-    const file = new File(["img"], "avatar.png", { type: "image/png" });
-    await user.upload(fileInput!, file);
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("radio", { name: "Custom avatar" }),
-      ).toHaveAttribute("aria-checked", "true");
-    });
-  });
-
-  it("clears custom avatar selection when switching to a preset (AGENT-D-047)", async () => {
-    const user = userEvent.setup();
-    const uploadedUrl = "https://cdn.example.com/avatar-new.png";
-    mockAPIs();
-    server.use(
-      http.post("*/api/zero/uploads", () => {
-        return HttpResponse.json({ url: uploadedUrl });
-      }),
-    );
-    await openProfileTab(user);
-
-    const fileInput =
-      document.querySelector<HTMLInputElement>('input[type="file"]');
-    const file = new File(["img"], "avatar.png", { type: "image/png" });
-    await user.upload(fileInput!, file);
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("radio", { name: "Custom avatar" }),
-      ).toHaveAttribute("aria-checked", "true");
-    });
-
-    await user.click(screen.getByRole("radio", { name: "Avatar 1" }));
-
-    await waitFor(() => {
-      expect(screen.getByRole("radio", { name: "Avatar 1" })).toHaveAttribute(
-        "aria-checked",
-        "true",
-      );
-      expect(
-        screen.getByRole("radio", { name: "Custom avatar" }),
-      ).toHaveAttribute("aria-checked", "false");
-    });
-  });
-
   it("updates name field when typing (AGENT-D-048)", async () => {
     const user = userEvent.setup();
     mockAPIs({ displayName: "My Agent" });

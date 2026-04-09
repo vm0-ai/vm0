@@ -1,9 +1,16 @@
 import { useLastResolved } from "ccstate-react";
 import { agents$ } from "../../signals/agent.ts";
-import { resolveAvatarUrl, isAvatarSvg } from "./avatar-utils.ts";
-import { parseAvatarSvgConfig } from "./avatar-svg-utils.ts";
+import { resolveAvatarUrl, resolveAvatarSvgConfig } from "./avatar-utils.ts";
 import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
-import avatar1Img from "./assets/avatar_1.webp";
+import { getAvatarPresets } from "./zero-avatars.ts";
+
+/**
+ * Fallback preset config used when the agent hasn't loaded yet or has no avatar.
+ * Matches preset:0 — the default avatar.
+ */
+function getFallbackConfig() {
+  return getAvatarPresets()[0];
+}
 
 interface AgentAvatarState {
   /** Resolved image URL, or null when SVG/loading. */
@@ -27,16 +34,53 @@ function useAgentAvatarState(id: string): AgentAvatarState {
   });
   const rawAvatarUrl = agent?.avatarUrl;
   const dbAvatar = resolveAvatarUrl(rawAvatarUrl);
-  return { src: dbAvatar ?? avatar1Img, rawAvatarUrl };
+  return { src: dbAvatar, rawAvatarUrl };
 }
 
 /**
- * Reactive hook that returns the agent avatar image URL from the DB.
- * Backwards-compatible: returns a string URL or null.
+ * Render an avatar from an avatarUrl string (preset, svg, or custom upload).
+ * Does NOT look up the agent — use this when you already have the avatarUrl.
  */
-export function useAgentAvatar(id: string): string | null {
-  const { src } = useAgentAvatarState(id);
-  return src;
+export function AvatarFromUrl({
+  avatarUrl,
+  alt,
+  className,
+  size,
+  "data-testid": testId,
+}: {
+  avatarUrl: string | null | undefined;
+  alt: string;
+  className: string;
+  size?: number;
+  "data-testid"?: string;
+}) {
+  const svgConfig = resolveAvatarSvgConfig(avatarUrl);
+  if (svgConfig) {
+    return (
+      <AvatarSvgPreview
+        config={svgConfig}
+        size={size}
+        className={className}
+        alt={alt}
+        data-testid={testId}
+      />
+    );
+  }
+  const src = resolveAvatarUrl(avatarUrl);
+  if (src) {
+    return (
+      <img src={src} alt={alt} className={className} data-testid={testId} />
+    );
+  }
+  return (
+    <AvatarSvgPreview
+      config={getFallbackConfig()}
+      size={size}
+      className={className}
+      alt={alt}
+      data-testid={testId}
+    />
+  );
 }
 
 /** Reactive avatar image that respects DB-persisted and user overrides. */
@@ -45,27 +89,45 @@ export function AgentAvatarImg({
   alt,
   className,
   size,
+  "data-testid": testId,
 }: {
   name: string;
   alt: string;
   className: string;
   size?: number;
+  "data-testid"?: string;
 }) {
   const { src, rawAvatarUrl } = useAgentAvatarState(name);
-  if (isAvatarSvg(rawAvatarUrl)) {
-    const config = parseAvatarSvgConfig(rawAvatarUrl);
-    if (config) {
-      return (
-        <AvatarSvgPreview
-          config={config}
-          size={size ?? 40}
-          className={className}
-        />
-      );
-    }
+
+  // SVG avatar (preset or custom svg:)
+  const svgConfig = resolveAvatarSvgConfig(rawAvatarUrl);
+  if (svgConfig) {
+    return (
+      <AvatarSvgPreview
+        config={svgConfig}
+        size={size}
+        className={className}
+        alt={alt}
+        data-testid={testId}
+      />
+    );
   }
-  if (!src) {
-    return <div className={`${className} bg-muted`} aria-hidden />;
+
+  // Custom uploaded image
+  if (src) {
+    return (
+      <img src={src} alt={alt} className={className} data-testid={testId} />
+    );
   }
-  return <img src={src} alt={alt} className={className} />;
+
+  // Fallback: default preset SVG
+  return (
+    <AvatarSvgPreview
+      config={getFallbackConfig()}
+      size={size}
+      className={className}
+      alt={alt}
+      data-testid={testId}
+    />
+  );
 }

@@ -83,7 +83,7 @@ describe("agent avatar renders from database (SIDEBAR-D-042)", () => {
 });
 
 describe("agent avatar shows fallback when no image (SIDEBAR-D-043)", () => {
-  it("renders img element with fallback preset when avatarUrl is null", async () => {
+  it("renders SVG fallback when avatarUrl is null", async () => {
     mockBaseAPIs([
       { id: DEFAULT_AGENT_ID, displayName: null, avatarUrl: null },
       {
@@ -97,8 +97,11 @@ describe("agent avatar shows fallback when no image (SIDEBAR-D-043)", () => {
 
     await waitFor(() => {
       const sidebar = getSidebar();
-      const img = within(sidebar).getByRole("img", { name: "Fallback Agent" });
-      expect(img.getAttribute("src")).toMatch(/avatar_1/);
+      // Fallback renders SVG layers (multiple img elements) instead of a single img
+      const imgs = within(sidebar).getAllByRole("img", {
+        name: "Fallback Agent",
+      });
+      expect(imgs.length).toBeGreaterThanOrEqual(1);
     });
   });
 });

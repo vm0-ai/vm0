@@ -71,35 +71,78 @@ export const avatarMakerJustPicked$ = computed((get) => {
 });
 
 // ---------------------------------------------------------------------------
+// Show sparkles state (separate from justPicked for animation timing)
+// ---------------------------------------------------------------------------
+
+const internalShowSparkles$ = state(false);
+export const avatarMakerShowSparkles$ = computed((get) => {
+  return get(internalShowSparkles$);
+});
+
+// ---------------------------------------------------------------------------
+// Shuffling state (dice animation)
+// ---------------------------------------------------------------------------
+
+const internalShuffling$ = state(false);
+export const avatarMakerShuffling$ = computed((get) => {
+  return get(internalShuffling$);
+});
+
+// ---------------------------------------------------------------------------
+// Saving state
+// ---------------------------------------------------------------------------
+
+const internalSaving$ = state(false);
+export const avatarMakerSaving$ = computed((get) => {
+  return get(internalSaving$);
+});
+export const setAvatarMakerSaving$ = command(({ set }, value: boolean) => {
+  set(internalSaving$, value);
+});
+
+// ---------------------------------------------------------------------------
 // Commands
 // ---------------------------------------------------------------------------
 
-/** Open the dialog, optionally seeding from an existing config. */
-export const openAvatarMaker$ = command(
-  ({ set }, initialConfig: AvatarSvgConfig | null) => {
-    set(internalConfig$, initialConfig ?? randomAvatarSvgConfig());
-    set(internalStep$, "rotation");
-    set(internalJustPicked$, null);
-    set(internalOpen$, true);
-  },
-);
+/** Randomize the avatar config with dice animation and sparkles. */
+export const shuffleAvatar$ = command(({ set }) => {
+  set(internalConfig$, randomAvatarSvgConfig());
+  set(internalShuffling$, true);
+  set(internalShowSparkles$, true);
+  window.setTimeout(() => {
+    set(internalShuffling$, false);
+    set(internalShowSparkles$, false);
+  }, 600);
+});
+
+/** Open the dialog with a fresh random avatar. */
+export const openAvatarMaker$ = command(({ set }) => {
+  set(internalConfig$, randomAvatarSvgConfig());
+  set(internalStep$, "rotation");
+  set(internalJustPicked$, null);
+  set(internalShowSparkles$, false);
+  set(internalShuffling$, false);
+  set(internalOpen$, true);
+});
 
 /** Select an option for the current step. Auto-advances after a delay. */
 export const selectAvatarOption$ = command(
   ({ get, set }, field: Step, value: number | string) => {
     set(internalJustPicked$, `${field}-${value}`);
+    set(internalShowSparkles$, true);
     const prev = get(internalConfig$);
     set(internalConfig$, { ...prev, [field]: value });
 
     window.setTimeout(() => {
       set(internalJustPicked$, null);
+      set(internalShowSparkles$, false);
       const idx = AVATAR_MAKER_STEPS.findIndex((s) => {
         return s.key === field;
       });
       if (idx + 1 < AVATAR_MAKER_STEPS.length) {
         set(internalStep$, AVATAR_MAKER_STEPS[idx + 1]!.key);
       }
-    }, 300);
+    }, 350);
   },
 );
 
@@ -111,7 +154,17 @@ export const goBackStep$ = command(({ get, set }) => {
   }
 });
 
+/** Go forward one step. */
+export const goForwardStep$ = command(({ get, set }) => {
+  const idx = get(avatarMakerStepIdx$);
+  if (idx + 1 < AVATAR_MAKER_STEPS.length) {
+    set(internalStep$, AVATAR_MAKER_STEPS[idx + 1]!.key);
+  }
+});
+
 /** Close the dialog. */
 export const closeAvatarMaker$ = command(({ set }) => {
   set(internalOpen$, false);
+  set(internalShowSparkles$, false);
+  set(internalJustPicked$, null);
 });

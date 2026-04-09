@@ -66,31 +66,6 @@ describe("zero jobs page - create agent dialog", () => {
     });
   });
 
-  it("previews custom image after file selection (AGENT-D-012)", async () => {
-    const user = userEvent.setup();
-    mockTeamAPI();
-    server.use(
-      http.post("*/api/zero/uploads", () => {
-        return HttpResponse.json({ url: "https://cdn.example.com/custom.png" });
-      }),
-    );
-    await setupPage({ context, path: "/agents" });
-
-    await openDialog(user);
-
-    const dialog = screen.getByRole("dialog");
-    const fileInput =
-      dialog.querySelector<HTMLInputElement>('input[type="file"]');
-    const file = new File(["img"], "avatar.png", { type: "image/png" });
-    await user.upload(fileInput!, file);
-
-    await waitFor(() => {
-      expect(screen.getByAltText("New agent").getAttribute("src")).toBe(
-        "https://cdn.example.com/custom.png",
-      );
-    });
-  });
-
   it("creates agent and shows it in the grid (AGENT-D-014)", async () => {
     const user = userEvent.setup();
     const NEW_AGENT = {

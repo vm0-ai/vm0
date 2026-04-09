@@ -4,7 +4,7 @@ export interface AvatarSvgConfig {
   rotation: number; // 1-5
   skin: number; // 0-4
   hairStyle: number; // 1-5
-  hairColor: number; // 1-4 (1=yellow, 2=green, 3=grey, 4=pink)
+  hairColor: number; // 1-5 (1=yellow, 2=teal, 3=grey, 4=pink, 5=brown)
   expression: number; // 1-5
   intensity: "d" | "m" | "h"; // default, medium, high
 }
@@ -32,7 +32,7 @@ export function parseAvatarSvgConfig(
     return null;
   }
   const body = value.slice(AVATAR_SVG_PREFIX.length);
-  const match = /^r([1-5])s([0-4])h([1-5])c([1-4])f([1-5])([dmh])$/.exec(body);
+  const match = /^r([1-5])s([0-4])h([1-5])c([1-5])f([1-5])([dmh])$/.exec(body);
   if (!match) {
     return null;
   }
@@ -92,7 +92,7 @@ export function randomAvatarSvgConfig(): AvatarSvgConfig {
     rotation: rand(1, 5),
     skin: rand(0, 4),
     hairStyle: rand(1, 5),
-    hairColor: rand(1, 4),
+    hairColor: rand(1, 5),
     expression: rand(1, 5),
     intensity: intensities[rand(0, 2)]!,
   };

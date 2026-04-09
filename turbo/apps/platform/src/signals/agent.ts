@@ -12,8 +12,6 @@ import { activeRoute$ } from "./active-route.ts";
 import { zeroOnboardingStatus$ } from "./zero-page/zero-onboarding.ts";
 import { zeroClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
-import { resolveAvatarUrl } from "../views/zero-page/avatar-utils.ts";
-import avatar1Img from "../views/zero-page/assets/avatar_1.webp";
 
 export const defaultAgentId$ = computed(async (get) => {
   const status = await get(zeroOnboardingStatus$);
@@ -113,12 +111,12 @@ export interface SubagentInfo {
   displayName?: string | null;
 }
 
-export const leadAgentAvatar$ = computed(async (get) => {
+export const leadAgentAvatarUrl$ = computed(async (get) => {
   const agentId = await get(defaultAgentId$);
   if (!agentId) {
     return null;
   }
   const client = get(zeroClient$)(zeroAgentsByIdContract);
   const result = await accept(client.get({ params: { id: agentId } }), [200]);
-  return resolveAvatarUrl(result.body.avatarUrl) ?? avatar1Img;
+  return result.body.avatarUrl ?? null;
 });

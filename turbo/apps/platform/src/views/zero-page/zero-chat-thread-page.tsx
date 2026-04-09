@@ -38,7 +38,6 @@ import {
 import {
   currentChatAgentId$,
   currentChatAgentDisplayName$,
-  currentChatAgentAvatarUrl$,
 } from "../../signals/agent-chat.ts";
 import {
   pinnedAgentIds$,
@@ -63,6 +62,7 @@ import {
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
 import { useAutoScroll } from "./use-auto-scroll.ts";
 import { setChatScrollContainer$ } from "../../signals/chat-page/chat-auto-scroll.ts";
+import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
 import { setActiveOrgManageTab$ } from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
@@ -73,23 +73,7 @@ import {
   copyMessageContent$,
 } from "../../signals/zero-page/zero-session-chat-ui.ts";
 
-function AvatarOrPlaceholder({
-  src,
-  className,
-  placeholderClassName,
-}: {
-  src: string | null | undefined;
-  className: string;
-  placeholderClassName?: string;
-}) {
-  if (src) {
-    return <img src={src} alt="" role="presentation" className={className} />;
-  }
-  return <div className={placeholderClassName ?? className} aria-hidden />;
-}
-
 function HeaderAgentAvatar() {
-  const avatarSrc = useResolved(currentChatAgentAvatarUrl$);
   const currentChatAgentId = useResolved(currentChatAgentId$) ?? null;
 
   if (currentChatAgentId) {
@@ -103,13 +87,11 @@ function HeaderAgentAvatar() {
               className="h-8 w-8 shrink-0 overflow-hidden rounded-xl transition-colors duration-150 hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               aria-label="View agent profile"
             >
-              {avatarSrc && (
-                <AvatarOrPlaceholder
-                  src={avatarSrc}
-                  className="h-8 w-8 rounded-full object-cover object-top"
-                  placeholderClassName="h-8 w-8 rounded-full bg-muted"
-                />
-              )}
+              <AgentAvatarImg
+                name={currentChatAgentId}
+                alt=""
+                className="h-8 w-8 rounded-full object-cover object-top"
+              />
             </Link>
           </TooltipTrigger>
           <TooltipContent side="bottom">
@@ -122,13 +104,11 @@ function HeaderAgentAvatar() {
 
   return (
     <div className="h-8 w-8 shrink-0 overflow-hidden rounded-xl">
-      {avatarSrc && (
-        <AvatarOrPlaceholder
-          src={avatarSrc}
-          className="h-8 w-8 rounded-full object-cover object-top"
-          placeholderClassName="h-8 w-8 rounded-full bg-muted"
-        />
-      )}
+      <AgentAvatarImg
+        name=""
+        alt=""
+        className="h-8 w-8 rounded-full object-cover object-top"
+      />
     </div>
   );
 }
@@ -868,13 +848,13 @@ function AssistantErrorContent({ error }: { error: string }) {
 }
 
 function AssistantBubbleAvatar() {
-  const avatarSrc = useResolved(currentChatAgentAvatarUrl$);
+  const currentChatAgentId = useResolved(currentChatAgentId$) ?? "";
   return (
     <div className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 shrink-0 @[900px]:mt-0.5 overflow-hidden rounded-xl">
-      <AvatarOrPlaceholder
-        src={avatarSrc}
+      <AgentAvatarImg
+        name={currentChatAgentId}
+        alt=""
         className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 rounded-full object-cover object-top"
-        placeholderClassName="h-7 w-7 @[900px]:h-9 @[900px]:w-9 rounded-full bg-muted"
       />
     </div>
   );

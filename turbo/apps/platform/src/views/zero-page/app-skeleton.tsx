@@ -1,9 +1,9 @@
 import { useGet } from "ccstate-react";
-import { ZERO_AVATARS } from "./zero-avatars.ts";
-import { skeletonMessages$ } from "../../signals/app-skeleton.ts";
-
-/** Pick once at module load so remounts don't flicker. */
-const AVATAR_INDEX = Math.floor(Math.random() * ZERO_AVATARS.length);
+import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
+import {
+  skeletonMessages$,
+  skeletonAvatarConfig$,
+} from "../../signals/app-skeleton.ts";
 
 /** Static CSS — does not depend on message content. */
 const skeletonCSS = `
@@ -34,6 +34,7 @@ const skeletonCSS = `
  * Cycling is started here and cancelled by hideAppSkeleton$ via resetSignal.
  */
 export function AppSkeleton({ visible = true }: { visible?: boolean }) {
+  const skeletonConfig = useGet(skeletonAvatarConfig$);
   const { staticMsg, typewriterMsg, isFirst, cycle } =
     useGet(skeletonMessages$);
   const charCount = typewriterMsg.length;
@@ -50,11 +51,10 @@ export function AppSkeleton({ visible = true }: { visible?: boolean }) {
     >
       <style>{skeletonCSS}</style>
       <div className="flex flex-col items-center gap-5">
-        <img
-          src={ZERO_AVATARS[AVATAR_INDEX]}
-          alt=""
-          role="presentation"
-          className="h-16 w-16 rounded-full object-cover object-top"
+        <AvatarSvgPreview
+          config={skeletonConfig}
+          size={64}
+          className="rounded-full"
         />
         <div key={cycle} className="relative h-6">
           {/* Invisible spacer — sizes container to typewriter text width */}

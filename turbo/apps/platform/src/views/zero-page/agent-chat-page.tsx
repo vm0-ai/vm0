@@ -20,7 +20,6 @@ import {
 import {
   currentChatAgentId$,
   currentChatAgentDisplayName$,
-  currentChatAgentAvatarUrl$,
 } from "../../signals/agent-chat.ts";
 import {
   pinnedAgentIds$,
@@ -44,6 +43,7 @@ import {
 } from "../../signals/zero-page/zero-chat-page.ts";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
+import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
 import {
   resetTalkSendSignal$,
@@ -174,7 +174,6 @@ function InviteButton({ pageSignal }: { pageSignal: AbortSignal }) {
 
 export function AgentChatPage() {
   const currentChatAgentId = useResolved(currentChatAgentId$);
-  const currentChatAgentAvatar = useResolved(currentChatAgentAvatarUrl$);
   const currentChatAgentDisplayName = useResolved(currentChatAgentDisplayName$);
 
   const sendNewThread = useSet(sendNewThreadMessage$);
@@ -251,19 +250,11 @@ export function AgentChatPage() {
                         aria-label="View agent profile"
                         className="h-14 w-14 shrink-0 sm:h-16 sm:w-16 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-accent cursor-pointer"
                       >
-                        {currentChatAgentAvatar ? (
-                          <img
-                            src={currentChatAgentAvatar}
-                            alt=""
-                            role="presentation"
-                            className="h-14 w-14 rounded-full object-cover object-top sm:h-16 sm:w-16"
-                          />
-                        ) : (
-                          <div
-                            className="h-14 w-14 rounded-full bg-muted sm:h-16 sm:w-16"
-                            aria-hidden
-                          />
-                        )}
+                        <AgentAvatarImg
+                          name={currentChatAgentId}
+                          alt=""
+                          className="h-14 w-14 rounded-full object-cover object-top sm:h-16 sm:w-16"
+                        />
                       </Link>
                     </TooltipTrigger>
                     <TooltipContent side="bottom">
@@ -273,19 +264,11 @@ export function AgentChatPage() {
                 </TooltipProvider>
               ) : (
                 <div className="h-14 w-14 shrink-0 sm:h-16 sm:w-16 flex items-center justify-center overflow-hidden rounded-xl">
-                  {currentChatAgentAvatar ? (
-                    <img
-                      src={currentChatAgentAvatar}
-                      alt=""
-                      role="presentation"
-                      className="h-14 w-14 rounded-full object-cover object-top sm:h-16 sm:w-16"
-                    />
-                  ) : (
-                    <div
-                      className="h-14 w-14 rounded-full bg-muted sm:h-16 sm:w-16"
-                      aria-hidden
-                    />
-                  )}
+                  <AgentAvatarImg
+                    name=""
+                    alt=""
+                    className="h-14 w-14 rounded-full object-cover object-top sm:h-16 sm:w-16"
+                  />
                 </div>
               )}
               {showPinPill && (
