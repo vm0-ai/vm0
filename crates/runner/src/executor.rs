@@ -408,9 +408,13 @@ async fn run_in_sandbox(
 
     // 3. Download storages (skipping entries unchanged since the previous turn)
     if let Some(manifest) = &context.storage_manifest {
+        let filtered;
         let effective = match prev_storage {
-            Some(prev) => filter_unchanged_storages(manifest, prev),
-            None => manifest.clone(),
+            Some(prev) => {
+                filtered = filter_unchanged_storages(manifest, prev);
+                &filtered
+            }
+            None => manifest,
         };
         // Short-circuit: skip the vsock exec if every entry was filtered out.
         let has_work = effective.storages.iter().any(|s| s.archive_url.is_some())
@@ -427,7 +431,7 @@ async fn run_in_sandbox(
         }
         let t = Instant::now();
         let result = if has_work {
-            download_storages(sandbox, context, &effective, &log_file).await
+            download_storages(sandbox, context, effective, &log_file).await
         } else {
             Ok(())
         };
@@ -916,19 +920,22 @@ fn filter_unchanged_storages(
     manifest: &StorageManifest,
     prev: &crate::idle_pool::StorageFingerprints,
 ) -> StorageManifest {
+    let mut skipped: usize = 0;
+
     let storages = manifest
         .storages
         .iter()
         .map(|s| {
-            let unchanged = s
-                .archive_url
-                .as_ref()
-                .and_then(|url| {
-                    prev.storages
-                        .get(&s.mount_path)
-                        .filter(|prev_url| *prev_url == url)
-                })
-                .is_some();
+            let unchanged = match (&s.vas_storage_name, &s.vas_version_id) {
+                (Some(name), Some(ver)) => prev
+                    .storages
+                    .get(&s.mount_path)
+                    .is_some_and(|(pn, pv)| pn == name && pv == ver),
+                _ => false, // no version info → always download
+            };
+            if unchanged {
+                skipped += 1;
+            }
             StorageEntry {
                 mount_path: s.mount_path.clone(),
                 archive_url: if unchanged {
@@ -936,31 +943,46 @@ fn filter_unchanged_storages(
                 } else {
                     s.archive_url.clone()
                 },
+                vas_storage_name: s.vas_storage_name.clone(),
+                vas_version_id: s.vas_version_id.clone(),
             }
         })
         .collect();
 
     let filter_artifact =
-        |a: &ArtifactEntry, prev_ver: &Option<(String, String)>| -> ArtifactEntry {
+        |a: &ArtifactEntry, prev_ver: &Option<(String, String)>, skipped: &mut usize| {
             let same = prev_ver
                 .as_ref()
                 .is_some_and(|(name, ver)| *name == a.vas_storage_name && *ver == a.vas_version_id);
+            if same {
+                *skipped += 1;
+            }
             ArtifactEntry {
                 archive_url: if same { None } else { a.archive_url.clone() },
                 ..a.clone()
             }
         };
 
+    let artifact = manifest
+        .artifact
+        .as_ref()
+        .map(|a| filter_artifact(a, &prev.artifact, &mut skipped));
+    let memory = manifest
+        .memory
+        .as_ref()
+        .map(|m| filter_artifact(m, &prev.memory, &mut skipped));
+
+    if skipped > 0 {
+        let total = manifest.storages.len()
+            + manifest.artifact.iter().count()
+            + manifest.memory.iter().count();
+        info!(skipped, total, "filtered unchanged storage entries");
+    }
+
     StorageManifest {
         storages,
-        artifact: manifest
-            .artifact
-            .as_ref()
-            .map(|a| filter_artifact(a, &prev.artifact)),
-        memory: manifest
-            .memory
-            .as_ref()
-            .map(|m| filter_artifact(m, &prev.memory)),
+        artifact,
+        memory,
     }
 }
 
@@ -1274,6 +1296,8 @@ mod tests {
             storages: vec![StorageEntry {
                 mount_path: "/data".into(),
                 archive_url: None,
+                vas_storage_name: None,
+                vas_version_id: None,
             }],
             artifact: Some(ArtifactEntry {
                 mount_path: "/artifacts".into(),
@@ -1875,6 +1899,8 @@ mod tests {
             storages: vec![StorageEntry {
                 mount_path: "/data".into(),
                 archive_url: Some("https://s3/archive.tar.gz".into()),
+                vas_storage_name: None,
+                vas_version_id: None,
             }],
             artifact: None,
             memory: None,
@@ -2242,6 +2268,8 @@ mod tests {
             storages: vec![StorageEntry {
                 mount_path: "/data".into(),
                 archive_url: Some("https://example.com/data.tar.gz".into()),
+                vas_storage_name: None,
+                vas_version_id: None,
             }],
             artifact: None,
             memory: None,
@@ -2749,6 +2777,8 @@ mod tests {
             storages: vec![StorageEntry {
                 mount_path: "/data".into(),
                 archive_url: Some("https://s3/data".into()),
+                vas_storage_name: Some("vol-1".into()),
+                vas_version_id: Some("v1".into()),
             }],
             artifact: Some(art("my-art", "v1", "https://s3/v1")),
             memory: Some(art("mem", "m1", "https://s3/m1")),
@@ -2766,12 +2796,14 @@ mod tests {
             storages: vec![StorageEntry {
                 mount_path: "/data".into(),
                 archive_url: Some("https://s3/same-url".into()),
+                vas_storage_name: Some("vol-1".into()),
+                vas_version_id: Some("v1".into()),
             }],
             artifact: Some(art("my-art", "v1", "https://s3/v1")),
             memory: Some(art("mem", "m1", "https://s3/m1")),
         };
         let mut storages = HashMap::new();
-        storages.insert("/data".into(), "https://s3/same-url".into());
+        storages.insert("/data".into(), ("vol-1".into(), "v1".into()));
         let prev = crate::idle_pool::StorageFingerprints {
             storages,
             artifact: Some(("my-art".into(), "v1".into())),

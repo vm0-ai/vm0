@@ -977,7 +977,7 @@ fn spawn_job(
                     source_ip,
                     parked_at: std::time::Instant::now(),
                     idle_timeout,
-                    storage_fingerprints: storage_fingerprints.clone(),
+                    storage_fingerprints,
                 };
                 match pool.park(session_id.to_string(), entry) {
                     ParkResult::Parked => {

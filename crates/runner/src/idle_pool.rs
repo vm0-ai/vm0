@@ -4,17 +4,21 @@ use std::time::{Duration, Instant};
 
 use sandbox::{Sandbox, SandboxFactory};
 
-use crate::types::{ArtifactEntry, StorageManifest};
+use crate::types::StorageManifest;
 
 /// Default idle timeout for kept-alive VMs (5 minutes).
 const DEFAULT_IDLE_TIMEOUT_SECS: u64 = 300;
 
 /// Compact version fingerprints for storage manifest entries.
 /// Used to skip re-downloading unchanged storages on VM reuse.
+///
+/// All comparisons use `(vas_storage_name, vas_version_id)` tuples.
+/// For regular storages without version fields, the entry is omitted
+/// from the map and will always be re-downloaded.
 #[derive(Clone, Debug, Default)]
 pub struct StorageFingerprints {
-    /// mount_path → archive_url for regular storages.
-    pub storages: HashMap<String, String>,
+    /// mount_path → (vas_storage_name, vas_version_id) for regular storages.
+    pub storages: HashMap<String, (String, String)>,
     /// (vas_storage_name, vas_version_id) for artifact.
     pub artifact: Option<(String, String)>,
     /// (vas_storage_name, vas_version_id) for memory.
@@ -25,12 +29,12 @@ impl StorageFingerprints {
     pub fn from_manifest(manifest: &StorageManifest) -> Self {
         let mut storages = HashMap::new();
         for s in &manifest.storages {
-            if let Some(url) = &s.archive_url {
-                storages.insert(s.mount_path.clone(), url.clone());
+            if let (Some(name), Some(ver)) = (&s.vas_storage_name, &s.vas_version_id) {
+                storages.insert(s.mount_path.clone(), (name.clone(), ver.clone()));
             }
         }
-        fn version_tuple(entry: &ArtifactEntry) -> (String, String) {
-            (entry.vas_storage_name.clone(), entry.vas_version_id.clone())
+        fn version_tuple(e: &crate::types::ArtifactEntry) -> (String, String) {
+            (e.vas_storage_name.clone(), e.vas_version_id.clone())
         }
         Self {
             storages,

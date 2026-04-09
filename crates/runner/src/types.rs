@@ -165,6 +165,10 @@ pub struct StorageEntry {
     pub mount_path: String,
     #[serde(default)]
     pub archive_url: Option<String>,
+    #[serde(default)]
+    pub vas_storage_name: Option<String>,
+    #[serde(default)]
+    pub vas_version_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
