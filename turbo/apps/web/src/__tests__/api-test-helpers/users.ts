@@ -86,13 +86,14 @@ export async function getTestVm0ApiKey(vendor: string) {
 export async function seedUserCacheEntry(
   userId: string,
   email: string,
+  name?: string,
 ): Promise<void> {
   await globalThis.services.db
     .insert(userCache)
-    .values({ userId, email, cachedAt: new Date() })
+    .values({ userId, email, name: name ?? null, cachedAt: new Date() })
     .onConflictDoUpdate({
       target: userCache.userId,
-      set: { email, cachedAt: new Date() },
+      set: { email, name: name ?? null, cachedAt: new Date() },
     });
 }
 
