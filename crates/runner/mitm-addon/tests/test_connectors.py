@@ -3040,17 +3040,36 @@ class TestGraphQLFieldCoverage:
         assert isinstance(result, FirewallAllow)
 
     def test_broad_rule_bypasses_field_coverage(self):
-        """A broad rule (no field filter) allows without triggering coverage check."""
-        fw = self._make_fw(
+        """A broad rule (no field filter) skips coverage — regardless of permission order."""
+        body = json.dumps(
+            {"query": "query { repository { issues { id } unknown { id } } }"}
+        ).encode()
+        # Broad rule BEFORE narrow rule
+        fw_broad_first = self._make_fw(
             {
                 "graphql:all": ["POST /graphql GraphQL type:query"],
                 "issues:read": ["POST /graphql GraphQL type:query field:repository.issues"],
             }
         )
-        # The broad type:query rule matches first — no field filter means
-        # the coverage check is skipped entirely, so unknown fields are OK.
-        body = json.dumps({"query": "query { repository { unknown { id } } }"}).encode()
         result = matching.match_firewall_request(
-            "https://api.example.com/graphql", "POST", fw, body=body
+            "https://api.example.com/graphql",
+            "POST",
+            fw_broad_first,
+            body=body,
+        )
+        assert isinstance(result, FirewallAllow)
+
+        # Narrow rule BEFORE broad rule — must still allow
+        fw_narrow_first = self._make_fw(
+            {
+                "issues:read": ["POST /graphql GraphQL type:query field:repository.issues"],
+                "graphql:all": ["POST /graphql GraphQL type:query"],
+            }
+        )
+        result = matching.match_firewall_request(
+            "https://api.example.com/graphql",
+            "POST",
+            fw_narrow_first,
+            body=body,
         )
         assert isinstance(result, FirewallAllow)

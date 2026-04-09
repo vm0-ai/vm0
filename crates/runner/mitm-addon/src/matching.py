@@ -335,8 +335,13 @@ def _collect_field_patterns(
     permissions: list,
     method: str,
     op_type: str,
-) -> list[str]:
-    """Collect all GraphQL field patterns from rules matching the operation type."""
+) -> list[str] | None:
+    """Collect all GraphQL field patterns from rules matching the operation type.
+
+    Returns ``None`` when a broad rule (matching method and type but with no
+    field filter) exists — the caller should skip the coverage check entirely
+    because the broad rule allows any field.
+    """
     patterns: list[str] = []
     for perm in permissions:
         for rule_str in perm.get("rules", []):
@@ -352,8 +357,10 @@ def _collect_field_patterns(
             _, type_filter, _, field_filters = gql
             if type_filter is not None and type_filter != op_type:
                 continue
-            if field_filters is not None:
-                patterns.extend(field_filters)
+            if field_filters is None:
+                # Broad rule with no field filter — covers everything.
+                return None
+            patterns.extend(field_filters)
     return patterns
 
 
@@ -412,9 +419,10 @@ def _find_uncovered_graphql_fields(
 
     op_type = _extract_op_type(query_str)
 
-    # Collect field patterns matching this operation type
+    # Collect field patterns matching this operation type.
+    # None means a broad rule exists — skip coverage check.
     all_patterns = _collect_field_patterns(permissions, method, op_type)
-    if not all_patterns:
+    if all_patterns is None or len(all_patterns) == 0:
         return []
 
     return [f for f in fields if not _is_field_covered(f, all_patterns)]
