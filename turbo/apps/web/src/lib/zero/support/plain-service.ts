@@ -17,7 +17,7 @@ function getPlainClient(): PlainClient | null {
   return plainClient;
 }
 
-export interface CreateSupportThreadParams {
+interface CreateSupportThreadParams {
   userId: string;
   userEmail: string;
   orgId: string;
@@ -183,7 +183,9 @@ function buildEventComponents(p: {
   components.push(
     uiComponent.row({
       mainContent: [uiComponent.text({ text: "User", color: "MUTED" })],
-      asideContent: [uiComponent.text({ text: `${p.userEmail} (${p.userId})` })],
+      asideContent: [
+        uiComponent.text({ text: `${p.userEmail} (${p.userId})` }),
+      ],
     }),
   );
   components.push(
