@@ -5,8 +5,10 @@ import {
   CONNECTOR_TYPES,
   hasRequiredScopes,
   zeroConnectorScopeDiffContract,
+  zeroConnectorsMainContract,
   zeroSecretsContract,
   zeroVariablesContract,
+  type ConnectorListResponse,
   type ConnectorType,
   type ConnectorResponse,
 } from "@vm0/core";
@@ -14,8 +16,7 @@ import { featureSwitch$ } from "../../external/feature-switch.ts";
 import { connectors$, reloadConnectors$ } from "../../external/connectors.ts";
 import { apiBaseForNavigation$ } from "../../fetch.ts";
 import { zeroClient$ } from "../../api-client.ts";
-import { throwIfAbort } from "../../utils.ts";
-import { delay } from "signal-timers";
+import { jsonParseOr, setLoop } from "../../utils.ts";
 import { localStorageSignals } from "../../external/local-storage.ts";
 import { resetPermissionDialog$ } from "./permission-dialog.ts";
 
@@ -113,14 +114,7 @@ const hiddenConnectorTypes$ = computed((get): Set<ConnectorType> => {
   if (!raw) {
     return new Set();
   }
-  // eslint-disable-next-line no-restricted-syntax -- JSON.parse on untrusted localStorage data
-  try {
-    const arr = JSON.parse(raw) as string[];
-    return new Set(arr as ConnectorType[]);
-  } catch (error) {
-    throwIfAbort(error);
-    return new Set();
-  }
+  return new Set(jsonParseOr<ConnectorType[]>(raw, []));
 });
 
 // ---------------------------------------------------------------------------
@@ -345,66 +339,50 @@ export const connectConnector$ = command(
     // Poll the API until the connector appears or the popup is closed.
     // The platform and OAuth callback page live on different origins
     // (app.* vs www.*), so BroadcastChannel cannot be used.
-    let freshConnectors: ConnectorResponse[] = [];
     const startTime = Date.now();
 
-    // In standalone mode, trigger an immediate poll when the user switches
-    // back to the PWA (after completing OAuth in external Safari).
-    let visibilityPollRequested = false;
-    const onVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        visibilityPollRequested = true;
-      }
-    };
-    if (standalone) {
-      document.addEventListener("visibilitychange", onVisibilityChange);
-    }
-
-    // eslint-disable-next-line no-restricted-syntax -- try/finally required: event listener cleanup must run on both success and abort/error paths
-    try {
-      while (true) {
-        if (!visibilityPollRequested) {
-          await delay(2000, { signal });
-        }
-        visibilityPollRequested = false;
-
-        set(reloadConnectors$);
-        const { connectors: polled } = await get(connectors$);
-        signal.throwIfAborted();
+    await setLoop(
+      async (sig) => {
+        const client = get(zeroClient$)(zeroConnectorsMainContract);
+        const result = await accept(
+          client.list({ fetchOptions: { signal: sig } }),
+          [200],
+        );
+        const polled = (result.body as ConnectorListResponse).connectors;
 
         if (
           polled.some((c) => {
             return c.type === type;
           })
         ) {
-          freshConnectors = polled;
-          break;
+          return true;
         }
 
-        // In non-standalone mode, exit when the popup window is closed.
         if (authWindow?.closed) {
-          freshConnectors = polled;
-          break;
+          return true;
         }
 
-        // In standalone mode, exit after timeout to avoid infinite polling.
         if (
           standalone &&
           Date.now() - startTime >= STANDALONE_POLLING_TIMEOUT_MS
         ) {
-          freshConnectors = polled;
-          break;
+          return true;
         }
-      }
-    } finally {
-      if (standalone) {
-        document.removeEventListener("visibilitychange", onVisibilityChange);
-      }
-    }
+
+        return false;
+      },
+      2000,
+      signal,
+    );
+
+    // Refresh the connectors$ cache so UI picks up the latest state.
+    set(reloadConnectors$);
+    const { connectors } = await get(connectors$);
+    signal.throwIfAborted();
 
     // Mark as optimistically connected before clearing polling so the UI
     // transitions directly from "Connecting…" to "Connected" without flash.
-    const isConnected = freshConnectors.some((c) => {
+    const isConnected = connectors.some((c) => {
       return c.type === type;
     });
     if (isConnected) {

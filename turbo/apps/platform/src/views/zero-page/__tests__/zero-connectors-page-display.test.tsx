@@ -58,8 +58,6 @@ describe("connectors page - connector status indicators", () => {
     ]);
 
     // Return a fake popup that stays open so the connector enters polling state.
-    // Cast to Window is safe here — the only property accessed on the return
-    // value during polling is `closed`, which the fake provides.
     vi.spyOn(window, "open").mockReturnValue({ closed: false } as Window);
 
     await setupPage({ context, path: "/connectors" });
@@ -67,6 +65,15 @@ describe("connectors page - connector status indicators", () => {
     await waitFor(() => {
       expect(screen.getByText("Reconnect")).toBeInTheDocument();
     });
+
+    // After page load, block the connectors API so the polling loop stays
+    // in flight and "Connecting…" remains visible. The never-resolving promise
+    // is cancelled by the abort signal via fetchOptions.signal in setLoop.
+    server.use(
+      http.get("*/api/zero/connectors", () => {
+        return new Promise<never>(() => {});
+      }),
+    );
 
     await userEvent.click(screen.getByText("Reconnect"));
 

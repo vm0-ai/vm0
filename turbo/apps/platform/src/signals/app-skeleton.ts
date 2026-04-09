@@ -1,8 +1,7 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
-import { delay } from "signal-timers";
 import { currentChatAgent$ } from "./agent-chat.ts";
 import { resolveAvatarUrl } from "../views/zero-page/avatar-utils.ts";
-import { resetSignal, throwIfAbort } from "./utils.ts";
+import { resetSignal, bestEffort, setLoop } from "./utils.ts";
 import { agents$ } from "./agent.ts";
 
 // ---------------------------------------------------------------------------
@@ -25,9 +24,6 @@ const LOADING_MESSAGES = [
   "Connecting the dots...",
   "Spinning up the team...",
 ] as const;
-
-const firstCycleMs$ = state(5300);
-const cycleMs$ = state(4500);
 
 const skeletonMsgIndex$ = state(
   Math.floor(Math.random() * LOADING_MESSAGES.length),
@@ -56,14 +52,15 @@ const cycleSkeletonMessage$ = command(({ set }) => {
 });
 
 export const startSkeletonCycling$ = command(
-  async ({ get, set }, parentSignal: AbortSignal) => {
-    const signal = set(resetSkeletonCycling$, parentSignal);
-    const isFirst = get(skeletonFirstCycle$);
-    await delay(isFirst ? get(firstCycleMs$) : get(cycleMs$), { signal });
-    while (!signal.aborted) {
-      set(cycleSkeletonMessage$);
-      await delay(get(cycleMs$), { signal });
-    }
+  async ({ set }, parentSignal: AbortSignal) => {
+    await setLoop(
+      () => {
+        set(cycleSkeletonMessage$);
+        return false;
+      },
+      4000,
+      set(resetSkeletonCycling$, parentSignal),
+    );
   },
 );
 
@@ -81,18 +78,7 @@ const prefetch$ = command(
     fn$: Command<Promise<unknown>, [AbortSignal]> | Computed<Promise<unknown>>,
     signal: AbortSignal,
   ) => {
-    // Failure is acceptable for prefetch behavior, as this is merely a best-effort attempt.
-    // Regarding this specific instance, the ESLint issue has been confirmed by Ethan.
-    // eslint-disable-next-line no-restricted-syntax
-    try {
-      if ("read" in fn$) {
-        await get(fn$);
-      } else {
-        await set(fn$, signal);
-      }
-    } catch (error) {
-      throwIfAbort(error);
-    }
+    await bestEffort("read" in fn$ ? get(fn$) : set(fn$, signal));
   },
 );
 

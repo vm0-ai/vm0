@@ -48,24 +48,20 @@ describe("link component", () => {
       return null;
     });
 
-    try {
-      await setupPage({ context, path: "/" });
+    await setupPage({ context, path: "/" });
 
-      const link = await waitFor(() => {
-        return screen.getByText("Agents").closest("a")!;
-      });
+    const link = await waitFor(() => {
+      return screen.getByText("Agents").closest("a")!;
+    });
 
-      const user = userEvent.setup();
-      await user.click(link!);
+    const user = userEvent.setup();
+    await user.click(link!);
 
-      await waitFor(() => {
-        expect(pathname()).toBe("/agents");
-      });
+    await waitFor(() => {
+      expect(pathname()).toBe("/agents");
+    });
 
-      expect(openSpy).not.toHaveBeenCalled();
-    } finally {
-      openSpy.mockRestore();
-    }
+    expect(openSpy).not.toHaveBeenCalled();
   });
 
   it("modifier click opens new tab (INFRA-D-013)", async () => {
@@ -75,56 +71,52 @@ describe("link component", () => {
       return null;
     });
 
-    try {
-      await setupPage({ context, path: "/" });
+    await setupPage({ context, path: "/" });
 
-      const link = await waitFor(() => {
-        return screen.getByText("Agents").closest("a")!;
-      });
+    const link = await waitFor(() => {
+      return screen.getByText("Agents").closest("a")!;
+    });
 
-      const user = userEvent.setup();
+    const user = userEvent.setup();
 
-      // meta click
-      await user.keyboard("{Meta>}");
-      await user.click(link!);
-      await user.keyboard("{/Meta}");
+    // meta click
+    await user.keyboard("{Meta>}");
+    await user.click(link!);
+    await user.keyboard("{/Meta}");
 
-      await waitFor(() => {
-        expect(openSpy).toHaveBeenCalledWith(
-          expect.stringContaining("/agents"),
-          "_blank",
-        );
-      });
+    await waitFor(() => {
+      expect(openSpy).toHaveBeenCalledWith(
+        expect.stringContaining("/agents"),
+        "_blank",
+      );
+    });
 
-      openSpy.mockClear();
+    openSpy.mockClear();
 
-      // ctrl click
-      await user.keyboard("{Control>}");
-      await user.click(link!);
-      await user.keyboard("{/Control}");
+    // ctrl click
+    await user.keyboard("{Control>}");
+    await user.click(link!);
+    await user.keyboard("{/Control}");
 
-      await waitFor(() => {
-        expect(openSpy).toHaveBeenCalledWith(
-          expect.stringContaining("/agents"),
-          "_blank",
-        );
-      });
+    await waitFor(() => {
+      expect(openSpy).toHaveBeenCalledWith(
+        expect.stringContaining("/agents"),
+        "_blank",
+      );
+    });
 
-      openSpy.mockClear();
+    openSpy.mockClear();
 
-      // shift click
-      await user.keyboard("{Shift>}");
-      await user.click(link!);
-      await user.keyboard("{/Shift}");
+    // shift click
+    await user.keyboard("{Shift>}");
+    await user.click(link!);
+    await user.keyboard("{/Shift}");
 
-      await waitFor(() => {
-        expect(openSpy).toHaveBeenCalledWith(
-          expect.stringContaining("/agents"),
-          "_blank",
-        );
-      });
-    } finally {
-      openSpy.mockRestore();
-    }
+    await waitFor(() => {
+      expect(openSpy).toHaveBeenCalledWith(
+        expect.stringContaining("/agents"),
+        "_blank",
+      );
+    });
   });
 });
