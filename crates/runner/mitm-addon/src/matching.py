@@ -504,7 +504,7 @@ def match_firewall_request(
     for fw_entry in vm_firewalls:
         fw_name = fw_entry.get("name", "")
         fw_ref = fw_entry.get("ref", "")
-        granted_set = _build_allow_set(fw_ref, granted_permissions)
+        allow_set = _build_allow_set(fw_ref, granted_permissions)
 
         for api_entry in fw_entry.get("apis", []):
             base = api_entry.get("base", "").rstrip("/")
@@ -584,7 +584,7 @@ def match_firewall_request(
                         all_params = {**base_params, **params}
 
                         # Three-level: check if this permission is granted
-                        if perm_name in granted_set:
+                        if perm_name in allow_set:
                             return FirewallAllow(
                                 api_entry,
                                 {
