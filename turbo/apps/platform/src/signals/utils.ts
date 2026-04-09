@@ -121,7 +121,7 @@ const isAbortError = (error: unknown): boolean => {
   return false;
 };
 
-function throwIfNotAbort(e: unknown) {
+export function throwIfNotAbort(e: unknown) {
   if (!isAbortError(e)) {
     throw e;
   }

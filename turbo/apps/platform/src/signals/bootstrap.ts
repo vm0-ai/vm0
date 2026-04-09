@@ -42,7 +42,7 @@ import { setupNetworkInsightsPage$ } from "./network-insights/network-insights-p
 import { initSlackOrg$ } from "./zero-page/zero-slack.ts";
 import { setupSkeletonPage$, setupErrorPage$ } from "./skeleton-page-setup.ts";
 import { startSkeletonCycling$ } from "./app-skeleton.ts";
-import { detach, Reason } from "./utils.ts";
+import { throwIfNotAbort } from "./utils.ts";
 
 /**
  * Catch-all fallback — redirects unknown paths to /.
@@ -250,7 +250,7 @@ export const bootstrap$ = command(
 
     render();
 
-    detach(set(startSkeletonCycling$, signal), Reason.Daemon);
+    void set(startSkeletonCycling$, signal).catch(throwIfNotAbort);
 
     await Promise.all([
       set(setupGlobalMethod$, signal),
