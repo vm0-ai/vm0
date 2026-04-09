@@ -107,6 +107,7 @@ const CONNECTOR_ICON_COLORFUL = {
   neon: true,
   pdf4me: true,
   pdfco: true,
+  plain: true,
   plausible: true,
   podchaser: true,
   posthog: true,
