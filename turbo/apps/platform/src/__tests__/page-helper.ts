@@ -29,7 +29,6 @@ import {
   setPollIntervalForTest$,
   setFibonacciDelaysForTest$,
 } from "../signals/zero-page/polling";
-import { setCycleDelaysMs$ } from "../signals/app-skeleton";
 import { setValidateResponseForTest$ } from "../signals/api-client";
 import { detach, Reason } from "../signals/utils";
 
@@ -52,17 +51,14 @@ export async function setupPage(options: {
   featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>;
   withoutRender?: boolean;
 }) {
-  // in tests we want to control the polling interval to make them faster and deterministic
-  // if a test requires a specific interval to run, it indicates that the test is tightly coupled with real-world time. This is a very bad code smell.
-  // So you should never try to modify this time interval here just to make a test pass. Instead, try your best to discover the underlying timing issues within the test.
-  options.context.store.set(setPollIntervalForTest$, 10);
+  // During testing, we require all tests to pass with a polling interval of 0.
+  // Do not attempt to increase these values to resolve the testing issues.
+  options.context.store.set(setPollIntervalForTest$, 0);
   options.context.store.set(
     setFibonacciDelaysForTest$,
-    [10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10],
+    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
   );
   options.context.store.set(setValidateResponseForTest$, true);
-  // Use short delays so skeleton cycling doesn't block or slow tests.
-  options.context.store.set(setCycleDelaysMs$, 10, 10);
 
   createPushStateMock(options.context.signal);
   pushState({}, "", options.path);

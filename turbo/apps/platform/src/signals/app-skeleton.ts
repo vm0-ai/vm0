@@ -1,8 +1,9 @@
-import { command, computed, state } from "ccstate";
+import { command, computed, state, type Command, type Computed } from "ccstate";
 import { delay } from "signal-timers";
 import { currentChatAgent$ } from "./agent-chat.ts";
 import { resolveAvatarUrl } from "../views/zero-page/avatar-utils.ts";
 import { resetSignal, throwIfAbort } from "./utils.ts";
+import { agents$ } from "./agent.ts";
 
 // ---------------------------------------------------------------------------
 // Visibility
@@ -27,14 +28,6 @@ const LOADING_MESSAGES = [
 
 const firstCycleMs$ = state(5300);
 const cycleMs$ = state(4500);
-
-/** Override cycling delays — use in tests to avoid real timers. */
-export const setCycleDelaysMs$ = command(
-  ({ set }, firstMs: number, ms: number) => {
-    set(firstCycleMs$, firstMs);
-    set(cycleMs$, ms);
-  },
-);
 
 const skeletonMsgIndex$ = state(
   Math.floor(Math.random() * LOADING_MESSAGES.length),
@@ -67,7 +60,7 @@ export const startSkeletonCycling$ = command(
     const signal = set(resetSkeletonCycling$, parentSignal);
     const isFirst = get(skeletonFirstCycle$);
     await delay(isFirst ? get(firstCycleMs$) : get(cycleMs$), { signal });
-    while (true) {
+    while (!signal.aborted) {
       set(cycleSkeletonMessage$);
       await delay(get(cycleMs$), { signal });
     }
@@ -82,25 +75,49 @@ export const showAppSkeleton$ = command(({ set }) => {
   set(internalVisible$, true);
 });
 
-export const hideAppSkeleton$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    set(resetSkeletonCycling$);
-
-    // Avatar prefetch is a best-effort cache warm-up: a missing or
-    // unavailable agent should not prevent the skeleton from hiding.
-    // eslint-disable-next-line no-restricted-syntax -- best-effort avatar prefetch: failures must not prevent the skeleton from hiding
+const prefetch$ = command(
+  async (
+    { get, set },
+    fn$: Command<Promise<unknown>, [AbortSignal]> | Computed<Promise<unknown>>,
+    signal: AbortSignal,
+  ) => {
+    // Failure is acceptable for prefetch behavior, as this is merely a best-effort attempt.
+    // Regarding this specific instance, the ESLint issue has been confirmed by Ethan.
+    // eslint-disable-next-line no-restricted-syntax
     try {
-      const currentChatAgent = await get(currentChatAgent$);
-      signal.throwIfAborted();
-      if (currentChatAgent) {
-        const src = resolveAvatarUrl(currentChatAgent.avatarUrl);
-        if (src) {
-          await fetch(src, { signal });
-        }
+      if ("read" in fn$) {
+        await get(fn$);
+      } else {
+        await set(fn$, signal);
       }
     } catch (error) {
       throwIfAbort(error);
     }
+  },
+);
+
+const prefetchAvatar$ = command(async ({ get }, signal: AbortSignal) => {
+  const currentChatAgent = await get(currentChatAgent$);
+  signal.throwIfAborted();
+  if (!currentChatAgent) {
+    return;
+  }
+  const src = resolveAvatarUrl(currentChatAgent.avatarUrl);
+  if (!src) {
+    return;
+  }
+  await fetch(src, { signal });
+});
+
+export const hideAppSkeleton$ = command(
+  async ({ set }, signal: AbortSignal) => {
+    set(resetSkeletonCycling$);
+
+    await Promise.all([
+      set(prefetch$, prefetchAvatar$, signal),
+      set(prefetch$, agents$, signal),
+    ]);
+    signal.throwIfAborted();
 
     set(internalVisible$, false);
   },
