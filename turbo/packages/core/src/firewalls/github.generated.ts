@@ -1547,7 +1547,6 @@ export const githubFirewall = {
             "POST /graphql GraphQL type:query field:organization",
             "POST /graphql GraphQL type:query field:rateLimit",
             "POST /graphql GraphQL type:query field:relay",
-            "POST /graphql GraphQL type:query field:repository",
             "POST /graphql GraphQL type:query field:repository.allowUpdateBranch",
             "POST /graphql GraphQL type:query field:repository.archivedAt",
             "POST /graphql GraphQL type:query field:repository.assignableUsers",

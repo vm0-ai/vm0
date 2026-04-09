@@ -740,9 +740,16 @@ function buildQueryFieldIndex(
     addToIndex("metadata:read", `repository.${field}`);
   }
 
-  // All top-level Query fields → metadata:read.
+  // Top-level Query fields → metadata:read, EXCEPT entry points that
+  // have fine-grained sub-field permissions. Those are covered by the
+  // ancestor check (any `repository.*` pattern covers `repository`).
+  // Including them in metadata:read would let that single permission
+  // cover all sub-fields via the descendant check — a privilege escalation.
+  const QUERY_FIELD_ENTRY_POINTS = new Set(["repository"]);
   for (const field of queryFieldInfo.queryFields) {
-    addToIndex("metadata:read", field);
+    if (!QUERY_FIELD_ENTRY_POINTS.has(field)) {
+      addToIndex("metadata:read", field);
+    }
   }
 
   // Sort field paths within each group for deterministic output.
