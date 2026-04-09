@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { setupClerk$ } from "./auth.ts";
+import { setupClerk$, watchOrgSwitch$ } from "./auth.ts";
 import { setRootSignal$ } from "./root-signal.ts";
 import {
   initRoutes$,
@@ -45,6 +45,7 @@ import { initSlackOrg$ } from "./zero-page/zero-slack.ts";
 import { setupSkeletonPage$, setupErrorPage$ } from "./skeleton-page-setup.ts";
 import { startSkeletonCycling$ } from "./app-skeleton.ts";
 import { throwIfNotAbort } from "./utils.ts";
+import { pollUserInvitations$ } from "./user-invitations.ts";
 
 /**
  * Catch-all fallback — redirects unknown paths to /.
@@ -260,13 +261,17 @@ export const bootstrap$ = command(
 
     render();
 
-    void set(startSkeletonCycling$, signal).catch(throwIfNotAbort);
-
     await Promise.all([
+      set(startSkeletonCycling$, signal),
       set(setupGlobalMethod$, signal),
-      set(setupClerk$, signal),
+      (async () => {
+        await set(setupClerk$, signal);
+        await set(watchOrgSwitch$, signal);
+      })(),
       set(setupRoutes$, signal),
+      set(pollUserInvitations$, signal),
     ]);
+
     signal.throwIfAborted();
 
     set(initSlackOrg$);

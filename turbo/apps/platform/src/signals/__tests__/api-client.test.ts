@@ -4,19 +4,13 @@ import { server } from "../../mocks/server.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { zeroOrgContract } from "@vm0/core";
 import { testContext } from "./test-helpers.ts";
-import { setupPage } from "../../__tests__/page-helper.ts";
+import { detachedSetupPage, setupPage } from "../../__tests__/page-helper.ts";
 import { mockedClerk } from "../../__tests__/mock-auth.ts";
 
 const context = testContext();
 
 describe("zeroClient$ 401 redirect", () => {
   it("should redirect to sign-in when API returns 401", async () => {
-    await setupPage({
-      context,
-      path: "/",
-      withoutRender: true,
-    });
-
     server.use(
       http.get("http://localhost:3000/api/zero/org", () => {
         return HttpResponse.json(
@@ -27,6 +21,12 @@ describe("zeroClient$ 401 redirect", () => {
     );
 
     mockedClerk.redirectToSignIn.mockClear();
+
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+    });
 
     const createClient = context.store.get(zeroClient$);
     const client = createClient(zeroOrgContract);

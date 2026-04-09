@@ -3,7 +3,7 @@ import { screen, waitFor, act } from "@testing-library/react";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { setupPage } from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 
 const context = testContext();
 
@@ -64,7 +64,7 @@ function mockAPIs() {
 describe("sidebar chat navigation from /team", () => {
   it("should navigate from /team to chat session when clicking sidebar chat link", async () => {
     mockAPIs();
-    await setupPage({ context, path: "/agents" });
+    detachedSetupPage({ context, path: "/agents" });
 
     // Verify agents page is rendered
     await waitFor(() => {
