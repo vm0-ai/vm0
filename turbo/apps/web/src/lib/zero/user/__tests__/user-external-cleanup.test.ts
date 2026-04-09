@@ -7,11 +7,9 @@ import {
   insertTestSlackOrgInstallation,
   insertTestSlackOrgConnection,
   insertTestSlackOrgThreadSession,
-  insertTestSlackOrgPendingQuestionNoSession,
   findTestGitHubUserLinksByVm0UserId,
   findTestTelegramUserLinksByVm0UserId,
   findTestSlackOrgConnectionsByVm0UserId,
-  findTestSlackOrgPendingQuestionsByConnectionId,
 } from "../../../../__tests__/api-test-helpers";
 import { cleanupUserExternalServices } from "../user-external-cleanup";
 
@@ -73,7 +71,7 @@ describe("cleanupUserExternalServices", () => {
     expect(after).toHaveLength(0);
   });
 
-  it("deletes slack connections with pending questions (FK ordering)", async () => {
+  it("deletes slack connections", async () => {
     const workspaceId = uniqueId("W");
     await insertTestSlackOrgInstallation({
       slackWorkspaceId: workspaceId,
@@ -82,27 +80,13 @@ describe("cleanupUserExternalServices", () => {
       installedByUserId: userId,
     });
 
-    const connection = await insertTestSlackOrgConnection({
+    await insertTestSlackOrgConnection({
       slackUserId: uniqueId("slack-user"),
       slackWorkspaceId: workspaceId,
       vm0UserId: userId,
     });
 
-    // Insert a pending question that references this connection
-    const compose = await context.createAgentCompose(userId);
-    await insertTestSlackOrgPendingQuestionNoSession({
-      connectionId: connection.id,
-      composeId: compose.id,
-      runId: uniqueId("run"),
-      slackWorkspaceId: workspaceId,
-    });
-
     await cleanupUserExternalServices(userId);
-
-    // Pending questions should be deleted
-    const remainingQuestions =
-      await findTestSlackOrgPendingQuestionsByConnectionId(connection.id);
-    expect(remainingQuestions).toHaveLength(0);
 
     // Connections should be deleted
     const remainingConnections =

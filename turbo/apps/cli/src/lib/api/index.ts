@@ -166,9 +166,6 @@ export {
   type LogsSearchResponse,
 } from "./domains/logs";
 
-// Domain modules - Zero Ask User
-export { postAskUserQuestion, getAskUserAnswer } from "./domains/zero-ask-user";
-
 // Domain modules - Zero Developer Support
 export {
   requestDeveloperSupportConsent,

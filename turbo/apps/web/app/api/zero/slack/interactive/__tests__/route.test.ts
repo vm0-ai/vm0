@@ -1,16 +1,13 @@
 import { createHmac } from "crypto";
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import {
   testContext,
   uniqueId,
   type UserContext,
 } from "../../../../../../src/__tests__/test-helpers";
 import {
-  createTestCompose,
   createTestSlackOrgInstallation,
   seedTestSlackOrgConnection,
-  seedTestSlackOrgPendingQuestion,
-  updateOrgDefaultAgent,
   countSlackOrgConnections,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { reloadEnv } from "../../../../../../src/env";
@@ -141,261 +138,15 @@ describe("POST /api/zero/slack/interactive", () => {
     });
   });
 
-  describe("ask_user_submit", () => {
-    it("claims pending question and writes answer to DB", async () => {
-      const workspaceId = uniqueId("T-ws");
-      const slackUserId = uniqueId("U-slack");
-      const channelId = uniqueId("C-ch");
-      const threadTs = uniqueId("ts");
-
-      await createTestSlackOrgInstallation({ workspaceId, orgId: user.orgId });
-      const { connectionId } = await seedTestSlackOrgConnection({
-        slackUserId,
-        slackWorkspaceId: workspaceId,
-        vm0UserId: user.userId,
-      });
-      const compose = await createTestCompose(uniqueId("agent"));
-      await updateOrgDefaultAgent(user.orgId, compose.agentId);
-
-      const messageTs = uniqueId("msg-ts");
-      const { pendingQuestionId } = await seedTestSlackOrgPendingQuestion({
-        runId: uniqueId("run"),
-        slackWorkspaceId: workspaceId,
-        slackChannelId: channelId,
-        slackThreadTs: threadTs,
-        slackMessageTs: messageTs,
-        connectionId,
-        composeId: compose.composeId,
-        agentName: "test-agent",
-        questions: [
-          {
-            question: "Pick a color",
-            options: [{ label: "Red" }, { label: "Blue" }, { label: "Green" }],
-            multiSelect: true,
-          },
-        ],
-        expiresAt: new Date(Date.now() + 3600000),
-      });
-
-      const request = createInteractiveRequest({
-        type: "block_actions",
-        user: { id: slackUserId, username: "testuser", team_id: workspaceId },
-        team: { id: workspaceId, domain: "test" },
-        channel: { id: channelId },
-        message: { ts: messageTs },
-        actions: [
-          {
-            action_id: "ask_user_submit",
-            block_id: "submit",
-            value: pendingQuestionId,
-          },
-        ],
-        state: {
-          values: {
-            ask_user_block_q0: {
-              ask_user_select_q0: {
-                type: "static_select",
-                selected_options: [{ value: "q0_o0" }],
-              },
-            },
-          },
-        },
-      });
-
-      const response = await POST(request);
-      expect(response.status).toBe(200);
-
-      // Wait for the fire-and-forget async handler to complete
-      const { WebClient } = await import("@slack/web-api");
-      const mockClient = new WebClient();
-      await vi.waitFor(() => {
-        expect(mockClient.chat.update).toHaveBeenCalled();
-      });
+  it("returns 200 with no action for empty actions array", async () => {
+    const request = createInteractiveRequest({
+      type: "block_actions",
+      user: { id: "U-test", username: "testuser", team_id: "T-test" },
+      team: { id: "T-test", domain: "test" },
+      actions: [],
     });
 
-    it("silently returns for expired pending question", async () => {
-      const workspaceId = uniqueId("T-ws");
-      const slackUserId = uniqueId("U-slack");
-      const channelId = uniqueId("C-ch");
-      const threadTs = uniqueId("ts");
-
-      await createTestSlackOrgInstallation({ workspaceId, orgId: user.orgId });
-      const { connectionId } = await seedTestSlackOrgConnection({
-        slackUserId,
-        slackWorkspaceId: workspaceId,
-        vm0UserId: user.userId,
-      });
-      const compose = await createTestCompose(uniqueId("agent"));
-
-      const { pendingQuestionId } = await seedTestSlackOrgPendingQuestion({
-        runId: uniqueId("run"),
-        slackWorkspaceId: workspaceId,
-        slackChannelId: channelId,
-        slackThreadTs: threadTs,
-        connectionId,
-        composeId: compose.composeId,
-        agentName: "test-agent",
-        questions: [{ question: "Pick one", options: [{ label: "A" }] }],
-        expiresAt: new Date(Date.now() - 1000), // already expired
-      });
-
-      const request = createInteractiveRequest({
-        type: "block_actions",
-        user: { id: slackUserId, username: "testuser", team_id: workspaceId },
-        team: { id: workspaceId, domain: "test" },
-        actions: [
-          {
-            action_id: "ask_user_submit",
-            block_id: "submit",
-            value: pendingQuestionId,
-          },
-        ],
-        state: { values: {} },
-      });
-
-      // Get mock client reference before POST so we can verify after
-      const { WebClient } = await import("@slack/web-api");
-      const mockClient = new WebClient();
-
-      const response = await POST(request);
-      expect(response.status).toBe(200);
-
-      // Wait for the fire-and-forget handler to settle, then verify no card update
-      await vi.waitFor(() => {
-        expect(mockClient.chat.update).not.toHaveBeenCalled();
-      });
-    });
-
-    it("rejects unauthorized submitter", async () => {
-      const workspaceId = uniqueId("T-ws");
-      const slackUserId = uniqueId("U-slack");
-      const wrongUserId = uniqueId("U-wrong");
-      const channelId = uniqueId("C-ch");
-      const threadTs = uniqueId("ts");
-
-      await createTestSlackOrgInstallation({ workspaceId, orgId: user.orgId });
-      const { connectionId } = await seedTestSlackOrgConnection({
-        slackUserId,
-        slackWorkspaceId: workspaceId,
-        vm0UserId: user.userId,
-      });
-      const compose = await createTestCompose(uniqueId("agent"));
-
-      const { pendingQuestionId } = await seedTestSlackOrgPendingQuestion({
-        runId: uniqueId("run"),
-        slackWorkspaceId: workspaceId,
-        slackChannelId: channelId,
-        slackThreadTs: threadTs,
-        connectionId,
-        composeId: compose.composeId,
-        agentName: "test-agent",
-        questions: [{ question: "Pick one", options: [{ label: "A" }] }],
-        expiresAt: new Date(Date.now() + 3600000),
-      });
-
-      // Wrong user tries to submit
-      const request = createInteractiveRequest({
-        type: "block_actions",
-        user: { id: wrongUserId, username: "wrong", team_id: workspaceId },
-        team: { id: workspaceId, domain: "test" },
-        actions: [
-          {
-            action_id: "ask_user_submit",
-            block_id: "submit",
-            value: pendingQuestionId,
-          },
-        ],
-        state: { values: {} },
-      });
-
-      const response = await POST(request);
-      expect(response.status).toBe(200);
-
-      // Wait for the fire-and-forget async handler to complete
-      const { WebClient } = await import("@slack/web-api");
-      const mockClient = new WebClient();
-      await vi.waitFor(() => {
-        expect(mockClient.chat.postEphemeral).toHaveBeenCalledWith(
-          expect.objectContaining({
-            user: wrongUserId,
-            text: expect.stringContaining("Only the person who started"),
-          }),
-        );
-      });
-    });
-  });
-
-  describe("direct_pick", () => {
-    it("claims pending question and writes answer for single-select", async () => {
-      const workspaceId = uniqueId("T-ws");
-      const slackUserId = uniqueId("U-slack");
-      const channelId = uniqueId("C-ch");
-      const threadTs = uniqueId("ts");
-
-      await createTestSlackOrgInstallation({ workspaceId, orgId: user.orgId });
-      const { connectionId } = await seedTestSlackOrgConnection({
-        slackUserId,
-        slackWorkspaceId: workspaceId,
-        vm0UserId: user.userId,
-      });
-      const compose = await createTestCompose(uniqueId("agent"));
-      await updateOrgDefaultAgent(user.orgId, compose.agentId);
-
-      const messageTs = uniqueId("msg-ts");
-      const { pendingQuestionId } = await seedTestSlackOrgPendingQuestion({
-        runId: uniqueId("run"),
-        slackWorkspaceId: workspaceId,
-        slackChannelId: channelId,
-        slackThreadTs: threadTs,
-        slackMessageTs: messageTs,
-        connectionId,
-        composeId: compose.composeId,
-        agentName: "test-agent",
-        questions: [
-          {
-            question: "Pick a fruit",
-            options: [{ label: "Apple" }, { label: "Banana" }],
-          },
-        ],
-        expiresAt: new Date(Date.now() + 3600000),
-      });
-
-      const request = createInteractiveRequest({
-        type: "block_actions",
-        user: { id: slackUserId, username: "testuser", team_id: workspaceId },
-        team: { id: workspaceId, domain: "test" },
-        channel: { id: channelId },
-        message: { ts: messageTs },
-        actions: [
-          {
-            action_id: "ask_user_pick_q0_o1",
-            block_id: "pick",
-            value: pendingQuestionId,
-          },
-        ],
-      });
-
-      const response = await POST(request);
-      expect(response.status).toBe(200);
-
-      // Wait for the fire-and-forget async handler to complete
-      const { WebClient } = await import("@slack/web-api");
-      const mockClient = new WebClient();
-      await vi.waitFor(() => {
-        expect(mockClient.chat.update).toHaveBeenCalled();
-      });
-    });
-
-    it("returns 200 with no action for empty actions array", async () => {
-      const request = createInteractiveRequest({
-        type: "block_actions",
-        user: { id: "U-test", username: "testuser", team_id: "T-test" },
-        team: { id: "T-test", domain: "test" },
-        actions: [],
-      });
-
-      const response = await POST(request);
-      expect(response.status).toBe(200);
-    });
+    const response = await POST(request);
+    expect(response.status).toBe(200);
   });
 });

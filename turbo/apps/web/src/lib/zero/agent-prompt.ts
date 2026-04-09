@@ -51,13 +51,11 @@ function buildAgentIdentityPrompt(identity: AgentIdentity): string {
 /**
  * Tools to disallow for all zero agent runs.
  * - Cron tools: agents use `zero schedule` instead.
- * - AskUserQuestion: agents use `zero ask-user question` instead.
  */
 export const DISALLOWED_TOOLS = [
   "CronCreate",
   "CronList",
   "CronDelete",
-  "AskUserQuestion",
 ] as const;
 
 /**
@@ -71,7 +69,6 @@ function buildAgentToolsPrompt(): string {
     "- Discover available commands: `zero --help`.",
     "- Delegate tasks to teammates: `zero run --help` and `zero agent list`.",
     "- Schedule recurring tasks: `zero schedule --help`. Do NOT use /loop or cron tools (CronCreate, CronList, CronDelete) — they are not available.",
-    "- Ask the user a question: `zero ask-user question --help`.",
     "- Slack messaging and file uploads: `zero slack --help`. Your replies are automatically sent to the originating thread — only use these commands for different channels/threads. Never use SLACK_TOKEN directly — it's a user OAuth token.",
     "- Diagnose missing tokens or expired connectors: `zero doctor missing-token --help`.",
     "- Troubleshoot permission denials: `zero doctor permission-deny --help` to identify which permission covers a blocked request.",

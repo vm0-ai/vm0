@@ -31,7 +31,6 @@ import {
   insertOrgMembersEntry,
   insertTestSlackOrgInstallation,
   insertTestSlackOrgConnection,
-  insertTestSlackOrgPendingQuestion,
   countOrgRows,
   countUserRows,
   countSlackConnectionRows,
@@ -392,13 +391,6 @@ describe("organization.deleted e2e cleanup", () => {
       slackWorkspaceId: workspaceId,
       vm0UserId: userId,
     });
-    await insertTestSlackOrgPendingQuestion({
-      connectionId: connection.id,
-      composeId,
-      sessionId: session.id,
-      runId: uniqueId("run"),
-      slackWorkspaceId: workspaceId,
-    });
 
     // Membership + org identity
     await insertOrgMembersCacheEntry({ orgId, userId, role: "admin" });
@@ -532,7 +524,7 @@ describe("user.deleted e2e cleanup", () => {
     // Usage daily
     await insertTestUsageDaily({ userId, orgId, date: "2026-01-01" });
 
-    // Slack installation + connection + pending question
+    // Slack installation + connection
     const workspaceId = uniqueId("ws");
     await insertTestSlackOrgInstallation({
       slackWorkspaceId: workspaceId,
@@ -544,13 +536,6 @@ describe("user.deleted e2e cleanup", () => {
       slackUserId: uniqueId("slack-user"),
       slackWorkspaceId: workspaceId,
       vm0UserId: userId,
-    });
-    await insertTestSlackOrgPendingQuestion({
-      connectionId: connection.id,
-      composeId,
-      sessionId: session.id,
-      runId: uniqueId("run"),
-      slackWorkspaceId: workspaceId,
     });
     await insertTestSlackOrgThreadSession({
       connectionId: connection.id,

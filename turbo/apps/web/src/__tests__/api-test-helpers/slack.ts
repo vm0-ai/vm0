@@ -3,7 +3,6 @@ import { randomUUID } from "crypto";
 import { initServices } from "../../lib/init-services";
 import { slackOrgInstallations } from "../../db/schema/slack-org-installation";
 import { slackOrgConnections } from "../../db/schema/slack-org-connection";
-import { slackOrgPendingQuestions } from "../../db/schema/slack-org-pending-question";
 import { slackOrgThreadSessions } from "../../db/schema/slack-org-thread-session";
 import { encryptSecretValue } from "../../lib/shared/crypto/secrets-encryption";
 import { uniqueId } from "../test-helpers";
@@ -216,48 +215,6 @@ export async function insertTestSlackOrgConnection(params: {
   return row!;
 }
 
-export async function insertTestSlackOrgPendingQuestion(params: {
-  connectionId: string;
-  composeId: string;
-  sessionId: string;
-  runId: string;
-  slackWorkspaceId: string;
-}): Promise<void> {
-  await globalThis.services.db.insert(slackOrgPendingQuestions).values({
-    connectionId: params.connectionId,
-    composeId: params.composeId,
-    sessionId: params.sessionId,
-    runId: params.runId,
-    slackWorkspaceId: params.slackWorkspaceId,
-    slackChannelId: "C-test",
-    slackThreadTs: "1234.5678",
-    slackMessageTs: "1234.5679",
-    agentName: "test-agent",
-    questions: [{ question: "test?" }],
-    expiresAt: new Date(Date.now() + 3600000),
-  });
-}
-
-export async function insertTestSlackOrgPendingQuestionNoSession(params: {
-  connectionId: string;
-  composeId: string;
-  runId: string;
-  slackWorkspaceId: string;
-}): Promise<void> {
-  await globalThis.services.db.insert(slackOrgPendingQuestions).values({
-    connectionId: params.connectionId,
-    composeId: params.composeId,
-    runId: params.runId,
-    slackWorkspaceId: params.slackWorkspaceId,
-    slackChannelId: "C-test",
-    slackThreadTs: "1234.5678",
-    slackMessageTs: "1234.5679",
-    agentName: "test-agent",
-    questions: [{ question: "test?" }],
-    expiresAt: new Date(Date.now() + 3600000),
-  });
-}
-
 export async function insertTestSlackOrgThreadSession(params: {
   connectionId: string;
   agentSessionId?: string;
@@ -299,20 +256,6 @@ export async function countSlackOrgConnections(
 }
 
 /**
- * Count Slack org pending questions for a connection.
- */
-export async function countSlackOrgPendingQuestions(
-  connectionId: string,
-): Promise<number> {
-  initServices();
-  const rows = await globalThis.services.db
-    .select({ id: slackOrgPendingQuestions.id })
-    .from(slackOrgPendingQuestions)
-    .where(eq(slackOrgPendingQuestions.connectionId, connectionId));
-  return rows.length;
-}
-
-/**
  * Count rows in slack_org_connections where vm0_user_id matches.
  */
 export async function countSlackConnectionRows(
@@ -331,91 +274,4 @@ export async function findTestSlackOrgConnectionsByVm0UserId(
     .select()
     .from(slackOrgConnections)
     .where(eq(slackOrgConnections.vm0UserId, vm0UserId));
-}
-
-export async function findTestSlackOrgPendingQuestionsByConnectionId(
-  connectionId: string,
-) {
-  return globalThis.services.db
-    .select()
-    .from(slackOrgPendingQuestions)
-    .where(eq(slackOrgPendingQuestions.connectionId, connectionId));
-}
-
-/**
- * Seed a Slack org pending question for testing.
- */
-export async function seedTestSlackOrgPendingQuestion(opts: {
-  runId: string;
-  slackWorkspaceId: string;
-  slackChannelId: string;
-  slackThreadTs: string;
-  slackMessageTs?: string;
-  connectionId: string;
-  composeId: string;
-  agentName: string;
-  questions: unknown;
-  expiresAt: Date;
-}): Promise<{ pendingQuestionId: string }> {
-  initServices();
-  const [row] = await globalThis.services.db
-    .insert(slackOrgPendingQuestions)
-    .values({
-      runId: opts.runId,
-      slackWorkspaceId: opts.slackWorkspaceId,
-      slackChannelId: opts.slackChannelId,
-      slackThreadTs: opts.slackThreadTs,
-      slackMessageTs: opts.slackMessageTs,
-      connectionId: opts.connectionId,
-      composeId: opts.composeId,
-      agentName: opts.agentName,
-      questions: opts.questions,
-      expiresAt: opts.expiresAt,
-    })
-    .returning({ id: slackOrgPendingQuestions.id });
-  if (!row) {
-    throw new Error("Failed to seed pending question");
-  }
-  return { pendingQuestionId: row.id };
-}
-
-/**
- * Update a pending question record to simulate a user answering.
- */
-export async function updateTestPendingQuestionAnswer(
-  pendingId: string,
-  answer: string,
-): Promise<void> {
-  initServices();
-  await globalThis.services.db
-    .update(slackOrgPendingQuestions)
-    .set({ answer, answeredAt: new Date() })
-    .where(eq(slackOrgPendingQuestions.id, pendingId));
-}
-
-/**
- * Update a pending question record's expiration to simulate expiry.
- */
-export async function updateTestPendingQuestionExpiry(
-  pendingId: string,
-  expiresAt: Date,
-): Promise<void> {
-  initServices();
-  await globalThis.services.db
-    .update(slackOrgPendingQuestions)
-    .set({ expiresAt })
-    .where(eq(slackOrgPendingQuestions.id, pendingId));
-}
-
-/**
- * Find a pending question record by ID.
- */
-export async function findTestPendingQuestion(pendingId: string) {
-  initServices();
-  const [row] = await globalThis.services.db
-    .select()
-    .from(slackOrgPendingQuestions)
-    .where(eq(slackOrgPendingQuestions.id, pendingId))
-    .limit(1);
-  return row;
 }

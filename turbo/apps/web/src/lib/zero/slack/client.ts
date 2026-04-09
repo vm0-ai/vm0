@@ -245,30 +245,6 @@ export async function exchangeOAuthCodeForUser(
 }
 
 /**
- * Update an existing message in a Slack channel
- *
- * @param client - Slack WebClient
- * @param channel - Channel ID
- * @param ts - Message timestamp to update
- * @param text - New text (fallback for blocks)
- * @param blocks - Optional Block Kit blocks
- */
-export async function updateMessage(
-  client: WebClient,
-  channel: string,
-  ts: string,
-  text: string,
-  blocks?: (Block | KnownBlock)[],
-): Promise<void> {
-  await client.chat.update({
-    channel,
-    ts,
-    text,
-    blocks,
-  });
-}
-
-/**
  * Set the assistant thread status indicator.
  *
  * Shows a typing-style status below the thread (e.g. "is thinking...").

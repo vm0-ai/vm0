@@ -27,7 +27,6 @@ import {
   insertTestSlackOrgInstallation,
   insertTestSlackOrgConnection,
   insertTestSlackOrgThreadSession,
-  insertTestSlackOrgPendingQuestion,
   setDefaultAgentByComposeId,
   clearOrgMembersCacheEntry,
   insertOrgMembersCacheEntry,
@@ -865,7 +864,7 @@ describe("Zero Agents API", () => {
       expect(data.error.code).toBe("NOT_FOUND");
     });
 
-    it("should delete agent with linked Slack thread sessions and pending questions", async () => {
+    it("should delete agent with linked Slack thread sessions", async () => {
       // Create an agent
       const created = await (await postAgent({}, testCliToken)).json();
 
@@ -894,15 +893,6 @@ describe("Zero Agents API", () => {
       await insertTestSlackOrgThreadSession({
         connectionId: connection.id,
         agentSessionId: session.id,
-      });
-
-      // Create a pending question referencing both compose and session
-      await insertTestSlackOrgPendingQuestion({
-        connectionId: connection.id,
-        composeId: created.agentId,
-        sessionId: session.id,
-        runId: `run-${user.userId.slice(-8)}`,
-        slackWorkspaceId,
       });
 
       // Delete the agent — this would fail with FK constraint before the fix

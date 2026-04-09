@@ -12,7 +12,6 @@ import { usageDaily } from "../../../db/schema/usage-daily";
 import { exportJobs } from "../../../db/schema/export-job";
 import { zeroAgentSchedules } from "../../../db/schema/zero-agent-schedule";
 import { slackOrgConnections } from "../../../db/schema/slack-org-connection";
-import { slackOrgPendingQuestions } from "../../../db/schema/slack-org-pending-question";
 import { githubUserLinks } from "../../../db/schema/github-user-link";
 import { telegramUserLinks } from "../../../db/schema/telegram-user-link";
 import { cliTokens } from "../../../db/schema/cli-tokens";
@@ -62,22 +61,7 @@ export async function deleteUserData(userId: string): Promise<void> {
   // Phase 0: Cancel all running work
   await cancelUserRuns(userId);
 
-  // Step 1: Slack cleanup (pending_questions FK blocks connection deletion)
-  const connections = await db
-    .select({ id: slackOrgConnections.id })
-    .from(slackOrgConnections)
-    .where(eq(slackOrgConnections.vm0UserId, userId));
-
-  if (connections.length > 0) {
-    const connectionIds = connections.map((c) => {
-      return c.id;
-    });
-    await db
-      .delete(slackOrgPendingQuestions)
-      .where(inArray(slackOrgPendingQuestions.connectionId, connectionIds));
-  }
-
-  // Delete connections (cascades slack_org_thread_sessions)
+  // Step 1: Slack cleanup (cascades slack_org_thread_sessions)
   await db
     .delete(slackOrgConnections)
     .where(eq(slackOrgConnections.vm0UserId, userId));
@@ -92,8 +76,7 @@ export async function deleteUserData(userId: string): Promise<void> {
   // Delete runs first (references compose_versions with SET NULL)
   await db.delete(agentRuns).where(eq(agentRuns.userId, userId));
   // Then composes (cascades: compose_versions, sessions, chat_threads,
-  // email_thread_sessions, github_installations, telegram_installations,
-  // slack_org_pending_questions)
+  // email_thread_sessions, github_installations, telegram_installations)
   await db.delete(agentComposes).where(eq(agentComposes.userId, userId));
   // Storages (cascades: storage_versions, storage_version_lineage)
   await db.delete(storages).where(eq(storages.userId, userId));

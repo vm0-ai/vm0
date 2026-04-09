@@ -11,11 +11,9 @@ import {
   seedTestSlackOrgConnection,
   seedTestCompose,
   seedOrphanCompose,
-  seedTestSlackOrgPendingQuestion,
   updateOrgDefaultAgent,
   countSlackOrgInstallations,
   countSlackOrgConnections,
-  countSlackOrgPendingQuestions,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { reloadEnv } from "../../../../../../src/env";
 
@@ -986,54 +984,6 @@ describe("POST /api/zero/slack/events", () => {
 
       expect(await countSlackOrgInstallations(workspaceId)).toBe(0);
       expect(await countSlackOrgConnections(workspaceId)).toBe(0);
-    });
-
-    it("deletes pending questions before connections", async () => {
-      const workspaceId = uniqueId("T-ws");
-      const orgId = uniqueId("org");
-
-      await createTestSlackOrgInstallation({ workspaceId, orgId });
-
-      const { connectionId } = await seedTestSlackOrgConnection({
-        slackUserId: "U001",
-        slackWorkspaceId: workspaceId,
-        vm0UserId: uniqueId("user"),
-      });
-
-      const { composeId } = await seedTestCompose({
-        userId: uniqueId("user"),
-        name: uniqueId("compose"),
-        orgId,
-      });
-
-      await seedTestSlackOrgPendingQuestion({
-        runId: uniqueId("run"),
-        slackWorkspaceId: workspaceId,
-        slackChannelId: "C001",
-        slackThreadTs: "1234567890.000001",
-        connectionId,
-        composeId,
-        agentName: "test-agent",
-        questions: [{ type: "text", question: "test?" }],
-        expiresAt: new Date(Date.now() + 3600000),
-      });
-
-      const request = createSlackEventRequest({
-        type: "event_callback",
-        team_id: workspaceId,
-        event: { type: "app_uninstalled" },
-        event_id: uniqueId("evt"),
-        event_time: Date.now(),
-      });
-
-      const response = await POST(request);
-      expect(response.status).toBe(200);
-
-      await context.mocks.flushAfter();
-
-      expect(await countSlackOrgPendingQuestions(connectionId)).toBe(0);
-      expect(await countSlackOrgConnections(workspaceId)).toBe(0);
-      expect(await countSlackOrgInstallations(workspaceId)).toBe(0);
     });
 
     it("handles nonexistent workspace gracefully", async () => {

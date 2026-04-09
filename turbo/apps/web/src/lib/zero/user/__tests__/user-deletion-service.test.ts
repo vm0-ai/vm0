@@ -15,7 +15,6 @@ import {
   insertTestQueueEntry,
   insertTestSlackOrgInstallation,
   insertTestSlackOrgConnection,
-  insertTestSlackOrgPendingQuestion,
   insertTestSlackOrgThreadSession,
   insertTestCreditUsageForRun,
   insertTestConversation,
@@ -156,7 +155,7 @@ describe("deleteUserData", () => {
     expect(await countUserRows("export_jobs", userId)).toBe(0);
   });
 
-  it("should clean up Slack connections and pending questions", async () => {
+  it("should clean up Slack connections", async () => {
     context.setupMocks();
     const { userId, orgId } = await context.setupUser();
 
@@ -177,14 +176,6 @@ describe("deleteUserData", () => {
 
     const { composeId } = await createTestCompose("slack-test");
     const session = await createTestAgentSession(userId, composeId);
-
-    await insertTestSlackOrgPendingQuestion({
-      connectionId: connection.id,
-      composeId,
-      sessionId: session.id,
-      runId: uniqueId("run"),
-      slackWorkspaceId: workspaceId,
-    });
 
     await insertTestSlackOrgThreadSession({ connectionId: connection.id });
 
@@ -321,13 +312,6 @@ describe("deleteUserData", () => {
       slackUserId: uniqueId("slack-user"),
       slackWorkspaceId: workspaceId,
       vm0UserId: userId,
-    });
-    await insertTestSlackOrgPendingQuestion({
-      connectionId: connection.id,
-      composeId,
-      sessionId: session.id,
-      runId: uniqueId("run"),
-      slackWorkspaceId: workspaceId,
     });
 
     // User-only tables
