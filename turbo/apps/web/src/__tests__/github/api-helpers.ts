@@ -20,6 +20,7 @@ import {
 import { zeroAgents } from "../../db/schema/zero-agent";
 import { githubInstallations } from "../../db/schema/github-installation";
 import { githubUserLinks } from "../../db/schema/github-user-link";
+import { userCache } from "../../db/schema/user-cache";
 
 interface GitHubInstallationResult {
   installation: {
@@ -32,6 +33,7 @@ interface GitHubInstallationResult {
   versionId: string;
   userId: string;
   githubUserId: string;
+  orgId: string;
 }
 
 /**
@@ -91,7 +93,12 @@ export async function givenGitHubInstallation(
 
   // Create compose version (content-addressed: id is SHA-256 hash)
   const versionContent = {
-    agents: { default: { model: "claude-sonnet-4-20250514" } },
+    agents: {
+      default: {
+        model: "claude-sonnet-4-20250514",
+        environment: { ANTHROPIC_API_KEY: "test-api-key" },
+      },
+    },
   };
   const versionId = crypto
     .createHash("sha256")
@@ -137,6 +144,17 @@ export async function givenGitHubInstallation(
     vm0UserId: userId,
   });
 
+  // Pre-populate user_cache so getCachedUser() works without calling Clerk API
+  await globalThis.services.db
+    .insert(userCache)
+    .values({
+      userId,
+      email: `${userId}@test.example.com`,
+      name: userId,
+      cachedAt: new Date(),
+    })
+    .onConflictDoNothing();
+
   return {
     installation: {
       id: installation!.id,
@@ -148,5 +166,6 @@ export async function givenGitHubInstallation(
     versionId,
     userId,
     githubUserId,
+    orgId,
   };
 }

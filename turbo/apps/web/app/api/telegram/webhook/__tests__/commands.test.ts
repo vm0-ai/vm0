@@ -7,6 +7,7 @@ import {
 import {
   createTestCompose,
   createTestAgentSession,
+  createTestRunInDb,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   createTelegramCallbackInstallation,
@@ -18,7 +19,6 @@ import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import { server } from "../../../../../src/mocks/server";
 import { http } from "../../../../../src/__tests__/msw";
 import { POST } from "../[installationId]/route";
-import * as zeroRunModule from "../../../../../src/lib/zero/zero-run-service";
 
 // Mock Next.js after() to execute synchronously
 const afterPromises: Promise<unknown>[] = [];
@@ -511,16 +511,23 @@ describe("Telegram bot commands", () => {
   });
 
   describe("queued run notification", () => {
+    beforeEach(async () => {
+      // Fill the org's concurrency slot (free tier = 1 concurrent run)
+      // so createZeroRun returns status: "queued" naturally.
+      // Use a separate compose to avoid overwriting the main compose's headVersionId.
+      const { composeId: fillerComposeId } = await createTestCompose(
+        uniqueId("filler"),
+      );
+      await createTestRunInDb(userId, fillerComposeId, {
+        status: "running",
+        startedAt: new Date(),
+      });
+    });
+
     it("should send queued message for DM when run is queued", async () => {
       const sendMsg = telegramSendMessage();
       const editMsg = telegramEditMessageText();
       server.use(sendMsg.handler, editMsg.handler);
-
-      vi.spyOn(zeroRunModule, "createZeroRun").mockResolvedValue({
-        runId: "mock-run-id",
-        status: "queued",
-        createdAt: new Date(),
-      });
 
       const request = createWebhookRequest({
         update_id: 1,
@@ -550,12 +557,6 @@ describe("Telegram bot commands", () => {
       const sendMsg = telegramSendMessage();
       const editMsg = telegramEditMessageText();
       server.use(sendMsg.handler, editMsg.handler);
-
-      vi.spyOn(zeroRunModule, "createZeroRun").mockResolvedValue({
-        runId: "mock-run-id",
-        status: "queued",
-        createdAt: new Date(),
-      });
 
       const request = createWebhookRequest({
         update_id: 1,

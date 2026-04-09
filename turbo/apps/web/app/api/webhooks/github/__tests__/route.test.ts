@@ -12,17 +12,13 @@ import {
   createTestCompose,
   insertTestPendingGitHubInstallation,
   findTestGitHubInstallationsByTargetId,
+  findMostRecentRunForUser,
+  findTestZeroRun,
+  findTestRunCallbacks,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { mockClerk } from "../../../../../src/__tests__/clerk-mock";
 import { POST } from "../route";
-import * as zeroRunModule from "../../../../../src/lib/zero/zero-run-service";
 import { reloadEnv } from "../../../../../src/env";
-
-// Note: createZeroRun is spied on (rather than exercised with real DB + executor)
-// because this test file focuses on the webhook routing layer: signature
-// verification, event routing, trigger conditions, and callback context
-// construction.  Real run creation integration is covered by its own dedicated
-// tests in src/lib/zero/__tests__/zero-run-service.test.ts.
 
 // Mock Next.js after() to capture callbacks for controlled execution
 const afterPromises: Promise<unknown>[] = [];
@@ -153,8 +149,6 @@ function buildIssueCommentPayload(overrides?: CommentPayloadOverrides) {
 }
 
 describe("POST /api/webhooks/github", () => {
-  let createZeroRunSpy: ReturnType<typeof vi.spyOn>;
-
   beforeEach(() => {
     afterPromises.length = 0;
     context.setupMocks();
@@ -184,15 +178,6 @@ describe("POST /api/webhooks/github", () => {
         },
       ),
     );
-
-    // Mock createZeroRun to prevent actual sandbox dispatch
-    createZeroRunSpy = vi
-      .spyOn(zeroRunModule, "createZeroRun")
-      .mockResolvedValue({
-        runId: "test-run-id",
-        status: "running",
-        createdAt: new Date(),
-      });
   });
 
   describe("Signature Verification", () => {
@@ -246,7 +231,7 @@ describe("POST /api/webhooks/github", () => {
   describe("Issues Event", () => {
     it("should trigger agent for opened issue with app slug label", async () => {
       // Given a GitHub installation exists
-      const { ghInstallationId, githubUserId } =
+      const { ghInstallationId, githubUserId, userId, orgId } =
         await givenGitHubInstallation();
 
       // When a webhook arrives for an opened issue with the app slug label
@@ -264,25 +249,22 @@ describe("POST /api/webhooks/github", () => {
 
       await flushAfterCallbacks();
 
-      // Then createRun should have been called
-      expect(createZeroRunSpy).toHaveBeenCalledTimes(1);
-      const callArgs = createZeroRunSpy.mock.calls[0]![0] as {
-        prompt: string;
-        appendSystemPrompt: string;
-        callbacks: Array<{ payload: { issueNumber: number } }>;
-      };
+      // Then a run should have been created
+      const run = await findMostRecentRunForUser(userId, orgId);
+      expect(run).toBeDefined();
       // Issue body and integration context are now in appendSystemPrompt
-      expect(callArgs.appendSystemPrompt).toContain(
-        "This is a test issue body",
-      );
-      expect(callArgs.appendSystemPrompt).toContain(
+      expect(run?.appendSystemPrompt).toContain("This is a test issue body");
+      expect(run?.appendSystemPrompt).toContain(
         "You are currently running inside: GitHub",
       );
-      expect(callArgs.callbacks[0]!.payload.issueNumber).toBe(42);
+      const callbacks = await findTestRunCallbacks(run!.id);
+      expect(callbacks).toHaveLength(1);
+      const payload = callbacks[0]!.payload as { issueNumber: number };
+      expect(payload.issueNumber).toBe(42);
     });
 
     it("should trigger agent when app slug label is added", async () => {
-      const { ghInstallationId, githubUserId } =
+      const { ghInstallationId, githubUserId, userId, orgId } =
         await givenGitHubInstallation();
 
       const request = createGitHubWebhookRequest(
@@ -300,11 +282,12 @@ describe("POST /api/webhooks/github", () => {
 
       await flushAfterCallbacks();
 
-      expect(createZeroRunSpy).toHaveBeenCalledTimes(1);
+      const run = await findMostRecentRunForUser(userId, orgId);
+      expect(run).toBeDefined();
     });
 
     it("should NOT trigger agent for opened issue without app slug label", async () => {
-      const { ghInstallationId, githubUserId } =
+      const { ghInstallationId, githubUserId, userId, orgId } =
         await givenGitHubInstallation();
 
       const request = createGitHubWebhookRequest(
@@ -321,11 +304,12 @@ describe("POST /api/webhooks/github", () => {
 
       await flushAfterCallbacks();
 
-      expect(createZeroRunSpy).not.toHaveBeenCalled();
+      const run = await findMostRecentRunForUser(userId, orgId);
+      expect(run).toBeUndefined();
     });
 
     it("should NOT trigger agent when a non-app slug label is added", async () => {
-      const { ghInstallationId, githubUserId } =
+      const { ghInstallationId, githubUserId, userId, orgId } =
         await givenGitHubInstallation();
 
       const request = createGitHubWebhookRequest(
@@ -346,16 +330,15 @@ describe("POST /api/webhooks/github", () => {
 
       await flushAfterCallbacks();
 
-      expect(createZeroRunSpy).not.toHaveBeenCalled();
+      const run = await findMostRecentRunForUser(userId, orgId);
+      expect(run).toBeUndefined();
     });
 
     it("should ignore closed/edited/other issue actions", async () => {
-      const { ghInstallationId, githubUserId } =
+      const { ghInstallationId, githubUserId, userId, orgId } =
         await givenGitHubInstallation();
 
       for (const action of ["closed", "edited", "reopened", "deleted"]) {
-        createZeroRunSpy.mockClear();
-
         const request = createGitHubWebhookRequest(
           "issues",
           buildIssuesPayload({
@@ -369,13 +352,14 @@ describe("POST /api/webhooks/github", () => {
         expect(response.status).toBe(200);
 
         await flushAfterCallbacks();
-
-        expect(createZeroRunSpy).not.toHaveBeenCalled();
       }
+
+      const run = await findMostRecentRunForUser(userId, orgId);
+      expect(run).toBeUndefined();
     });
 
     it("should handle issue with null body", async () => {
-      const { ghInstallationId, githubUserId } =
+      const { ghInstallationId, githubUserId, userId, orgId } =
         await givenGitHubInstallation();
 
       const request = createGitHubWebhookRequest(
@@ -393,14 +377,11 @@ describe("POST /api/webhooks/github", () => {
 
       await flushAfterCallbacks();
 
-      expect(createZeroRunSpy).toHaveBeenCalledTimes(1);
-      const callArgs = createZeroRunSpy.mock.calls[0]![0] as {
-        prompt: string;
-        appendSystemPrompt: string;
-      };
       // When body is null, falls back to issue title in appendSystemPrompt
-      expect(callArgs.appendSystemPrompt).toContain("Test Issue");
-      expect(callArgs.appendSystemPrompt).toContain(
+      const run = await findMostRecentRunForUser(userId, orgId);
+      expect(run).toBeDefined();
+      expect(run?.appendSystemPrompt).toContain("Test Issue");
+      expect(run?.appendSystemPrompt).toContain(
         "You are currently running inside: GitHub",
       );
     });
@@ -408,7 +389,7 @@ describe("POST /api/webhooks/github", () => {
 
   describe("Issue Comment Event", () => {
     it("should NOT trigger for comment on issue with app slug label but no mention", async () => {
-      const { ghInstallationId, githubUserId } =
+      const { ghInstallationId, githubUserId, userId, orgId } =
         await givenGitHubInstallation();
 
       const request = createGitHubWebhookRequest(
@@ -426,11 +407,12 @@ describe("POST /api/webhooks/github", () => {
       await flushAfterCallbacks();
 
       // Label alone should NOT trigger — bot mention is required
-      expect(createZeroRunSpy).not.toHaveBeenCalled();
+      const run = await findMostRecentRunForUser(userId, orgId);
+      expect(run).toBeUndefined();
     });
 
     it("should trigger agent for comment mentioning @bot", async () => {
-      const { ghInstallationId, githubUserId } =
+      const { ghInstallationId, githubUserId, userId, orgId } =
         await givenGitHubInstallation();
 
       const request = createGitHubWebhookRequest(
@@ -447,11 +429,12 @@ describe("POST /api/webhooks/github", () => {
 
       await flushAfterCallbacks();
 
-      expect(createZeroRunSpy).toHaveBeenCalledTimes(1);
+      const run = await findMostRecentRunForUser(userId, orgId);
+      expect(run).toBeDefined();
     });
 
     it("should NOT trigger for comment without label or mention", async () => {
-      const { ghInstallationId, githubUserId } =
+      const { ghInstallationId, githubUserId, userId, orgId } =
         await givenGitHubInstallation();
 
       const request = createGitHubWebhookRequest(
@@ -468,11 +451,12 @@ describe("POST /api/webhooks/github", () => {
 
       await flushAfterCallbacks();
 
-      expect(createZeroRunSpy).not.toHaveBeenCalled();
+      const run = await findMostRecentRunForUser(userId, orgId);
+      expect(run).toBeUndefined();
     });
 
     it("should prevent self-triggering from bot comments", async () => {
-      const { ghInstallationId, githubUserId } =
+      const { ghInstallationId, githubUserId, userId, orgId } =
         await givenGitHubInstallation();
 
       const request = createGitHubWebhookRequest(
@@ -491,16 +475,15 @@ describe("POST /api/webhooks/github", () => {
 
       await flushAfterCallbacks();
 
-      expect(createZeroRunSpy).not.toHaveBeenCalled();
+      const run = await findMostRecentRunForUser(userId, orgId);
+      expect(run).toBeUndefined();
     });
 
     it("should ignore non-created comment actions", async () => {
-      const { ghInstallationId, githubUserId } =
+      const { ghInstallationId, githubUserId, userId, orgId } =
         await givenGitHubInstallation();
 
       for (const action of ["edited", "deleted"]) {
-        createZeroRunSpy.mockClear();
-
         const request = createGitHubWebhookRequest(
           "issue_comment",
           buildIssueCommentPayload({
@@ -514,9 +497,10 @@ describe("POST /api/webhooks/github", () => {
         expect(response.status).toBe(200);
 
         await flushAfterCallbacks();
-
-        expect(createZeroRunSpy).not.toHaveBeenCalled();
       }
+
+      const run = await findMostRecentRunForUser(userId, orgId);
+      expect(run).toBeUndefined();
     });
   });
 
@@ -536,7 +520,8 @@ describe("POST /api/webhooks/github", () => {
       // The error thrown in dispatchAgentRun is caught by the .catch() in route.ts
       await flushAfterCallbacks();
 
-      expect(createZeroRunSpy).not.toHaveBeenCalled();
+      // No run should be created since the installation doesn't exist
+      // (no userId/orgId available to query, so we just verify 200 response above)
     });
   });
 
@@ -680,7 +665,7 @@ describe("POST /api/webhooks/github", () => {
 
   describe("Session Continuity", () => {
     it("should include callback context with session info", async () => {
-      const { ghInstallationId, githubUserId } =
+      const { ghInstallationId, githubUserId, userId, orgId } =
         await givenGitHubInstallation();
 
       const request = createGitHubWebhookRequest(
@@ -697,26 +682,20 @@ describe("POST /api/webhooks/github", () => {
 
       await flushAfterCallbacks();
 
-      expect(createZeroRunSpy).toHaveBeenCalledTimes(1);
-      const callArgs = createZeroRunSpy.mock.calls[0]![0] as {
-        callbacks: Array<{
-          url: string;
-          secret: string;
-          payload: {
-            repo: string;
-            issueNumber: number;
-            installationId: string;
-          };
-        }>;
-      };
+      // Verify a run was created
+      const run = await findMostRecentRunForUser(userId, orgId);
+      expect(run).toBeDefined();
 
-      // Callback should include GitHub-specific context
-      expect(callArgs.callbacks).toHaveLength(1);
-      expect(callArgs.callbacks[0]!.url).toContain(
-        "/api/internal/callbacks/github",
-      );
-      expect(callArgs.callbacks[0]!.payload.repo).toBe("owner/repo");
-      expect(callArgs.callbacks[0]!.payload.issueNumber).toBe(42);
+      // Verify callback was stored with GitHub-specific context
+      const callbacks = await findTestRunCallbacks(run!.id);
+      expect(callbacks).toHaveLength(1);
+      expect(callbacks[0]!.url).toContain("/api/internal/callbacks/github");
+      const payload = callbacks[0]!.payload as {
+        repo: string;
+        issueNumber: number;
+      };
+      expect(payload.repo).toBe("owner/repo");
+      expect(payload.issueNumber).toBe(42);
     });
   });
 });

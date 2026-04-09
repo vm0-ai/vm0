@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { GET } from "../route";
 import {
   createTestRequest,
@@ -12,7 +12,6 @@ import {
 } from "../../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../../src/__tests__/clerk-mock";
 import { randomUUID } from "crypto";
-import * as metricsModule from "../../../../../../../../src/lib/infra/metrics";
 
 const context = testContext();
 
@@ -29,11 +28,6 @@ describe("GET /api/agent/runs/:id/telemetry/system-log", () => {
 
     const { runId } = await createTestRun(composeId, "Test prompt");
     testRunId = runId;
-
-    vi.spyOn(
-      metricsModule,
-      "recordSandboxInternalOperation",
-    ).mockImplementation(() => {});
   });
 
   describe("Authentication", () => {

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import {
   createTestRequest,
   createTestOrg,
@@ -7,13 +7,13 @@ import {
   insertTestVoiceChatSession,
   getTestVoiceChatSessionStatus,
   getTestVoiceChatEvents,
+  findTestRunRecord,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
   uniqueId,
 } from "../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
-import * as zeroRunCancelModule from "../../../../../../../src/lib/zero/zero-run-cancel";
 
 const { POST } = await import("../route");
 
@@ -47,14 +47,6 @@ describe("POST /api/zero/voice-chat/[id]/end", () => {
     userId = user.userId;
     const org = await setupOrg(userId);
     orgId = org.orgId;
-
-    vi.spyOn(zeroRunCancelModule, "cancelRun").mockResolvedValue({
-      runId: "mock",
-      previousStatus: "running",
-      orgId,
-      sandboxId: null,
-      runnerGroup: null,
-    });
   });
 
   it("should return 401 when not authenticated", async () => {
@@ -147,11 +139,8 @@ describe("POST /api/zero/voice-chat/[id]/end", () => {
     expect(event.type).toBe("session-end");
     expect(event.source).toBe("system");
 
-    // Verify cancelRun was called
-    expect(zeroRunCancelModule.cancelRun).toHaveBeenCalledWith(
-      testRun.runId,
-      userId,
-      orgId,
-    );
+    // Verify run was cancelled (cancelRun ran for real — pure DB operation)
+    const runRecord = await findTestRunRecord(testRun.runId);
+    expect(runRecord?.status).toBe("cancelled");
   });
 });
