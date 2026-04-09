@@ -49,8 +49,10 @@ describe("getDefaultFirewallPolicies", () => {
     expect(Object.keys(policies)).toHaveLength(allPermissions.size);
   });
 
-  it("should return null for connectors without defaults", () => {
-    expect(getDefaultFirewallPolicies("github")).toBeNull();
+  it("should return empty map for connectors with no permissions", () => {
+    // GitHub uses GraphQL field matching, not static permissions
+    const policies = getDefaultFirewallPolicies("github");
+    expect(Object.keys(policies)).toHaveLength(0);
   });
 });
 
@@ -90,14 +92,16 @@ describe("resolveFirewallPolicies", () => {
     expect(slack["admin"]).toBe("deny");
   });
 
-  it("should pass through connectors without defaults unchanged", () => {
-    const stored = { github: { "repo-read": "allow" as const } };
+  it("should preserve stored overrides for connectors without default-allowed list", () => {
+    const stored = { github: { "repo-read": "deny" as const } };
     const resolved = resolveFirewallPolicies(stored, ["github"]);
-    expect(resolved).toEqual(stored);
+    // GitHub has no static permissions → empty defaults, stored preserved
+    expect(resolved!["github"]!["repo-read"]).toBe("deny");
   });
 
   it("should skip non-firewall connector types", () => {
-    const resolved = resolveFirewallPolicies(null, ["jira"]);
+    // "computer" is a non-firewall connector type
+    const resolved = resolveFirewallPolicies(null, ["computer"]);
     expect(resolved).toBeNull();
   });
 
@@ -106,17 +110,19 @@ describe("resolveFirewallPolicies", () => {
     const resolved = resolveFirewallPolicies(stored, [
       "github",
       "slack",
-      "jira",
+      "computer",
     ]);
-    expect(resolved!["github"]).toEqual({ "repo-read": "allow" });
+    expect(resolved!["github"]!["repo-read"]).toBe("allow");
     const slackMixed = resolved!["slack"];
     expect(slackMixed).toBeDefined();
     expect(slackMixed!["channels:read"]).toBe("allow");
-    expect(resolved).not.toHaveProperty("jira");
+    expect(resolved).not.toHaveProperty("computer");
   });
 
-  it("should return null when no connectors need defaults", () => {
+  it("should produce entry for connectors with no stored policies", () => {
     const resolved = resolveFirewallPolicies(null, ["github"]);
-    expect(resolved).toBeNull();
+    expect(resolved).not.toBeNull();
+    // GitHub has no static permissions → empty defaults
+    expect(resolved!["github"]).toEqual({});
   });
 });
