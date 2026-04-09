@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.164.0](https://github.com/vm0-ai/vm0/compare/core-v8.163.0...core-v8.164.0) (2026-04-09)
+
+
+### Features
+
+* **billing:** add proxy-side usage extraction for billing verification ([#8581](https://github.com/vm0-ai/vm0/issues/8581)) ([87f5049](https://github.com/vm0-ai/vm0/commit/87f5049ab3eb8e4aaa26537f412b628d0f687bc6))
+* **firewalls:** support comma-separated field values in graphql rules ([#8549](https://github.com/vm0-ai/vm0/issues/8549)) ([e9cda88](https://github.com/vm0-ai/vm0/commit/e9cda88fbb87f4df7a47922e2e63b2c55f7e2de2))
+* **runs:** add session id to run context snapshot and ui ([#8577](https://github.com/vm0-ai/vm0/issues/8577)) ([96c6616](https://github.com/vm0-ai/vm0/commit/96c6616ac27410f3801352c44d23c75514b65672))
+
+
+### Bug Fixes
+
+* **firewall:** use explicit model-provider ref instead of __auto__ placeholder ([#8597](https://github.com/vm0-ai/vm0/issues/8597)) ([15b8a07](https://github.com/vm0-ai/vm0/commit/15b8a07729ca6e07491327f1b75528e9c4a1f13a))
+
 ## [8.163.0](https://github.com/vm0-ai/vm0/compare/core-v8.162.0...core-v8.163.0) (2026-04-09)
 
 

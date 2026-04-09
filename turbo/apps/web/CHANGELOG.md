@@ -1,5 +1,35 @@
 # Changelog
 
+## [12.208.0](https://github.com/vm0-ai/vm0/compare/web-v12.207.0...web-v12.208.0) (2026-04-09)
+
+
+### Features
+
+* **billing:** add proxy-side usage extraction for billing verification ([#8581](https://github.com/vm0-ai/vm0/issues/8581)) ([87f5049](https://github.com/vm0-ai/vm0/commit/87f5049ab3eb8e4aaa26537f412b628d0f687bc6))
+* **phone:** improve receptionist prompt and add file input flags to CLI ([#8580](https://github.com/vm0-ai/vm0/issues/8580)) ([cbdd656](https://github.com/vm0-ai/vm0/commit/cbdd656f75a1ac9fd58b6c6041ca1d34db38a84b))
+* **runs:** add session id to run context snapshot and ui ([#8577](https://github.com/vm0-ai/vm0/issues/8577)) ([96c6616](https://github.com/vm0-ai/vm0/commit/96c6616ac27410f3801352c44d23c75514b65672))
+* **slack:** include triggering user in slack message footers ([#8579](https://github.com/vm0-ai/vm0/issues/8579)) ([b8d5cd0](https://github.com/vm0-ai/vm0/commit/b8d5cd0458db147114c0f94332c14b099bf678af)), closes [#8575](https://github.com/vm0-ai/vm0/issues/8575)
+* **voice-chat:** upgrade realtime model to gpt-realtime-1.5 and use onyx voice ([#8596](https://github.com/vm0-ai/vm0/issues/8596)) ([ed4bcf5](https://github.com/vm0-ai/vm0/commit/ed4bcf5f2cd1855bb79c58586ab1b2bc9a7f41a6)), closes [#8588](https://github.com/vm0-ai/vm0/issues/8588)
+
+
+### Bug Fixes
+
+* make terms and privacy pages accessible without login on locale-prefixed urls ([#8586](https://github.com/vm0-ai/vm0/issues/8586)) ([f7a32d8](https://github.com/vm0-ai/vm0/commit/f7a32d87f719579e9f7e1294b6a908f79fe81868))
+* revert contact email changes except developer-support route ([#8627](https://github.com/vm0-ai/vm0/issues/8627)) ([ea70ebf](https://github.com/vm0-ai/vm0/commit/ea70ebfcd248dc87cf42587a112f8207a5e0c5ee))
+* **runner:** treat max_concurrent=0 as unlimited in session affinity routing ([#8616](https://github.com/vm0-ai/vm0/issues/8616)) ([2f8127b](https://github.com/vm0-ai/vm0/commit/2f8127b4d3e77d414c0479ad9aeefbf028384bf0))
+
+
+### Refactoring
+
+* replace contact@vm0.ai with support@vm0.ai ([#8617](https://github.com/vm0-ai/vm0/issues/8617)) ([c8d67df](https://github.com/vm0-ai/vm0/commit/c8d67df2cab759b0845be81f4ef2d0f97fb4fe64)), closes [#8615](https://github.com/vm0-ai/vm0/issues/8615)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.164.0
+
 ## [12.207.0](https://github.com/vm0-ai/vm0/compare/web-v12.206.0...web-v12.207.0) (2026-04-09)
 
 

@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.205.0](https://github.com/vm0-ai/vm0/compare/app-v0.204.2...app-v0.205.0) (2026-04-09)
+
+
+### Features
+
+* **runs:** add session id to run context snapshot and ui ([#8577](https://github.com/vm0-ai/vm0/issues/8577)) ([96c6616](https://github.com/vm0-ai/vm0/commit/96c6616ac27410f3801352c44d23c75514b65672))
+* **voice-chat:** add talker instructions for realtime session ([#8605](https://github.com/vm0-ai/vm0/issues/8605)) ([9063262](https://github.com/vm0-ai/vm0/commit/9063262775569077de7242491ab46a850fabfc4a)), closes [#8598](https://github.com/vm0-ai/vm0/issues/8598)
+* **voice-chat:** upgrade realtime model to gpt-realtime-1.5 and use onyx voice ([#8596](https://github.com/vm0-ai/vm0/issues/8596)) ([ed4bcf5](https://github.com/vm0-ai/vm0/commit/ed4bcf5f2cd1855bb79c58586ab1b2bc9a7f41a6)), closes [#8588](https://github.com/vm0-ai/vm0/issues/8588)
+
+
+### Bug Fixes
+
+* make terms and privacy pages accessible without login on locale-prefixed urls ([#8586](https://github.com/vm0-ai/vm0/issues/8586)) ([f7a32d8](https://github.com/vm0-ai/vm0/commit/f7a32d87f719579e9f7e1294b6a908f79fe81868))
+* **platform:** call end session api when stopping voice chat ([#8584](https://github.com/vm0-ai/vm0/issues/8584)) ([01ddbac](https://github.com/vm0-ai/vm0/commit/01ddbac46ab72a624ba3d59e6aadfee2c5eed7a4))
+* **platform:** prevent horizontal scrollbar on long chat content ([#8629](https://github.com/vm0-ai/vm0/issues/8629)) ([2d9e11b](https://github.com/vm0-ai/vm0/commit/2d9e11b1334954ac11f18a52c92e59a8cd04442e))
+* **platform:** prevent infinite hang in computed without abort signal ([#8589](https://github.com/vm0-ai/vm0/issues/8589)) ([22f6189](https://github.com/vm0-ai/vm0/commit/22f61896202bae577e216c979d215fc242c4b634))
+* **platform:** remove blanket max-lines-per-function override for tsx files ([#8623](https://github.com/vm0-ai/vm0/issues/8623)) ([7effc11](https://github.com/vm0-ai/vm0/commit/7effc11ef13554beae4dd8e8fc37b6c6961df2df)), closes [#8609](https://github.com/vm0-ai/vm0/issues/8609)
+* revert contact email changes except developer-support route ([#8627](https://github.com/vm0-ai/vm0/issues/8627)) ([ea70ebf](https://github.com/vm0-ai/vm0/commit/ea70ebfcd248dc87cf42587a112f8207a5e0c5ee))
+* **voice-chat:** prevent auto-sending on startup and fix transcript ordering ([#8590](https://github.com/vm0-ai/vm0/issues/8590)) ([48c5b79](https://github.com/vm0-ai/vm0/commit/48c5b79fa2c1a2f02fdea0c23e5fc525dabf8701)), closes [#8587](https://github.com/vm0-ai/vm0/issues/8587)
+
+
+### Refactoring
+
+* **platform:** move org polling from dom ref to page setup lifecycle ([#8600](https://github.com/vm0-ai/vm0/issues/8600)) ([b16e881](https://github.com/vm0-ai/vm0/commit/b16e88175c8b070607bfaa6d525389f2fed4e43f))
+* replace contact@vm0.ai with support@vm0.ai ([#8617](https://github.com/vm0-ai/vm0/issues/8617)) ([c8d67df](https://github.com/vm0-ai/vm0/commit/c8d67df2cab759b0845be81f4ef2d0f97fb4fe64)), closes [#8615](https://github.com/vm0-ai/vm0/issues/8615)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.164.0
+
 ## [0.204.2](https://github.com/vm0-ai/vm0/compare/app-v0.204.1...app-v0.204.2) (2026-04-09)
 
 
