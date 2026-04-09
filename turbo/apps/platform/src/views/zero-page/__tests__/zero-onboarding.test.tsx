@@ -24,7 +24,7 @@ function mockOnboardingNeeded() {
   );
 }
 
-async function renderOnboardingPage() {
+function renderOnboardingPage() {
   detachedSetupPage({ context, path: "/" });
 }
 

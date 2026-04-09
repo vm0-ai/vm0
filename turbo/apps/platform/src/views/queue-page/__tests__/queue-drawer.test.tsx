@@ -15,10 +15,7 @@ import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import {
-  setupPage,
-  detachedSetupPage,
-} from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { openQueueDrawer$ } from "../../../signals/queue-page/queue-drawer-state.ts";
 import { pathname$ } from "../../../signals/route.ts";
 import { mockChatLifecycle } from "../../zero-page/__tests__/chat-test-helpers.ts";
@@ -67,7 +64,7 @@ function queueResponse(overrides?: {
   };
 }
 
-async function openDrawer() {
+function openDrawer() {
   mockHomeAPIs();
   detachedSetupPage({ context, path: "/" });
   context.store.set(openQueueDrawer$);

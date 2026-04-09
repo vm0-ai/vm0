@@ -140,7 +140,7 @@ describe("schedule-run-history signals", () => {
   });
 
   describe("setScheduleRunStatusFilter$", () => {
-    it("updates URL with runStatus param", async () => {
+    it("updates URL with runStatus param", () => {
       detachedSetupPage({ context, path: "/", withoutRender: true });
       createPushStateMock(context.signal);
 
@@ -151,7 +151,7 @@ describe("schedule-run-history signals", () => {
       expect(context.store.get(scheduleRunStatusFilter$)).toBe("failed");
     });
 
-    it("removes runStatus from URL when set to all", async () => {
+    it("removes runStatus from URL when set to all", () => {
       detachedSetupPage({ context, path: "/", withoutRender: true });
       createPushStateMock(context.signal);
 
@@ -168,7 +168,7 @@ describe("schedule-run-history signals", () => {
   });
 
   describe("pagination", () => {
-    it("starts on page 1 with no previous page", async () => {
+    it("starts on page 1 with no previous page", () => {
       detachedSetupPage({ context, path: "/", withoutRender: true });
 
       context.store.set(setScheduleRunHistoryScheduleId$, "sched-1");

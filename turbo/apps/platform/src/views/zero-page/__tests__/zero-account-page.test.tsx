@@ -28,7 +28,7 @@ function mockPreferencesAPI(
   );
 }
 
-async function renderPreferencesPage() {
+function renderPreferencesPage() {
   detachedSetupPage({ context, path: "/settings" });
 }
 

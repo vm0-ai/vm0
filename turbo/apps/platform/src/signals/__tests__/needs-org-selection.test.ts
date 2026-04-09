@@ -54,7 +54,7 @@ describe("org selection after auth", () => {
     });
   });
 
-  it("does not redirect when active org is already set", async () => {
+  it("does not redirect when active org is already set", () => {
     detachedSetupPage({
       context,
       path: "/",
@@ -69,7 +69,7 @@ describe("org selection after auth", () => {
     expect(context.store.get(pathname$)).not.toBe("/select-org");
   });
 
-  it("does not redirect when already on /select-org", async () => {
+  it("does not redirect when already on /select-org", () => {
     detachedSetupPage({
       context,
       path: "/select-org",

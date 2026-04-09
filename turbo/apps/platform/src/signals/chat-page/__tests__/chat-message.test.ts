@@ -26,7 +26,7 @@ import { currentChatThreadId$ } from "../../agent-chat.ts";
 
 const context = testContext();
 
-async function setup() {
+function setup() {
   detachedSetupPage({
     context,
     path: "/",
@@ -537,7 +537,7 @@ describe("zero-chat signals", () => {
       }
     });
 
-    it("should return null for URL without session ID", async () => {
+    it("should return null for URL without session ID", () => {
       detachedSetupPage({
         context,
         path: "/chat",

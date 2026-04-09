@@ -44,7 +44,7 @@ async function loadInspectData(data: InspectLogData): Promise<void> {
   await context.store.set(loadInspectLogFile$, file, context.signal);
 }
 
-async function renderInspectPage(): Promise<void> {
+function renderInspectPage(): void {
   detachedSetupPage({ context, path: "/activities/inspect" });
 }
 

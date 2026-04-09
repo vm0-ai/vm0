@@ -148,7 +148,7 @@ function createMockSchedules() {
   ];
 }
 
-async function setup() {
+function setup() {
   detachedSetupPage({
     context,
     path: "/schedules",
@@ -951,7 +951,7 @@ describe("zero-schedule signals", () => {
 });
 
 describe("org schedule signals", () => {
-  async function setup() {
+  function setup() {
     detachedSetupPage({
       context,
       path: "/schedules",

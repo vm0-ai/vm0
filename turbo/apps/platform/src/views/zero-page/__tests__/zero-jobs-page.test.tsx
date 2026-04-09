@@ -60,7 +60,7 @@ function mockTeamAPI(
   );
 }
 
-async function renderTeamPage() {
+function renderTeamPage() {
   detachedSetupPage({ context, path: "/agents" });
 }
 
@@ -263,7 +263,7 @@ function mockScheduleAPI(schedules = createMockSchedulesFromAPI()) {
   );
 }
 
-async function renderSchedulePage() {
+function renderSchedulePage() {
   detachedSetupPage({ context, path: "/schedules" });
 }
 

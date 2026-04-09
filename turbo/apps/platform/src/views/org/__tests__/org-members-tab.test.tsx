@@ -92,7 +92,7 @@ function mockMembersAPI(options?: {
   );
 }
 
-async function renderMembersTab() {
+function renderMembersTab() {
   detachedSetupPage({ context, path: "/?settings=members" });
 }
 

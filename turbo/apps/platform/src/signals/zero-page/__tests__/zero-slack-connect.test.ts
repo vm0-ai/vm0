@@ -23,7 +23,7 @@ afterEach(() => {
   }
 });
 
-async function setup(path: string) {
+function setup(path: string) {
   detachedSetupPage({
     context,
     path,

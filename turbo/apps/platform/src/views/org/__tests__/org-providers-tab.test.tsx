@@ -13,10 +13,7 @@ import { http, HttpResponse } from "msw";
 import { type ModelProviderResponse, MODEL_PROVIDER_TYPES } from "@vm0/core";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import {
-  detachedSetupPage,
-  setupPage,
-} from "../../../__tests__/page-helper.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 
 const context = testContext();
 

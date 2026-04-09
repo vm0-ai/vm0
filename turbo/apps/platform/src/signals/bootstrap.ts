@@ -44,7 +44,6 @@ import { setupNetworkInsightsPage$ } from "./network-insights/network-insights-p
 import { initSlackOrg$ } from "./zero-page/zero-slack.ts";
 import { setupSkeletonPage$, setupErrorPage$ } from "./skeleton-page-setup.ts";
 import { startSkeletonCycling$ } from "./app-skeleton.ts";
-import { throwIfNotAbort } from "./utils.ts";
 import { pollUserInvitations$ } from "./user-invitations.ts";
 
 /**

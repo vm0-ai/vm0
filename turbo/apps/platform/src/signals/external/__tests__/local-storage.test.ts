@@ -6,7 +6,7 @@ import { localStorageSignals } from "../local-storage";
 const context = testContext();
 
 describe("local storage signal", () => {
-  it("can read and write to local storage", async () => {
+  it("can read and write to local storage", () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
 
     const { get$, set$, clear$ } = localStorageSignals("foo");
@@ -19,7 +19,7 @@ describe("local storage signal", () => {
     expect(context.store.get(get$)).toBeNull();
   });
 
-  it("should clear after last test", async () => {
+  it("should clear after last test", () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
 
     const { get$ } = localStorageSignals("foo");

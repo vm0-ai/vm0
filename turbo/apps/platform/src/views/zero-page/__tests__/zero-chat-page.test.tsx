@@ -17,7 +17,7 @@ function mockChatAPI() {
   );
 }
 
-async function renderChatPage() {
+function renderChatPage() {
   mockChatAPI();
   detachedSetupPage({ context, path: "/" });
 }

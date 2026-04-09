@@ -29,7 +29,7 @@ function mockPreferencesAPI(prefs = createMockPreferences()) {
   );
 }
 
-async function renderPreferencesPage() {
+function renderPreferencesPage() {
   detachedSetupPage({ context, path: "/settings" });
 }
 

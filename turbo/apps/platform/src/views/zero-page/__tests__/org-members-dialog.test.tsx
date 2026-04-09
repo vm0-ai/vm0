@@ -56,7 +56,7 @@ function mockMembersAPI(members: OrgMember[] = [adminMember, regularMember]) {
   );
 }
 
-async function renderMembersTab() {
+function renderMembersTab() {
   detachedSetupPage({ context, path: "/?settings=members" });
 }
 

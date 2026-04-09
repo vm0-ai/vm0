@@ -120,7 +120,7 @@ function mockScheduleAPI(schedules = createMockSchedules()) {
   );
 }
 
-async function renderSchedulePage() {
+function renderSchedulePage() {
   detachedSetupPage({ context, path: "/schedules" });
 }
 

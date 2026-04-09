@@ -55,7 +55,7 @@ function mockSendMode(mode: "enter" | "cmd-enter") {
   );
 }
 
-async function renderChatPage(sendMode: "enter" | "cmd-enter" = "enter") {
+function renderChatPage(sendMode: "enter" | "cmd-enter" = "enter") {
   const api = mockChatAPI();
   mockSendMode(sendMode);
   detachedSetupPage({ context, path: "/" });

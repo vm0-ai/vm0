@@ -94,7 +94,7 @@ function mockCreditCapPut(captured: { calls: CapturedCapCall[] }) {
   );
 }
 
-async function setup() {
+function setup() {
   detachedSetupPage({ context, path: "/", withoutRender: true });
 }
 

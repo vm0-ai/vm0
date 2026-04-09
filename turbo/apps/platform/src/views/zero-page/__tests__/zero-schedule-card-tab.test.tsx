@@ -93,7 +93,7 @@ function mockBaseAPIs(schedules: ScheduleResponse[]) {
   );
 }
 
-async function navigateToScheduleTab() {
+function navigateToScheduleTab() {
   detachedSetupPage({ context, path: "/agents/my-agent?tab=schedule" });
 }
 

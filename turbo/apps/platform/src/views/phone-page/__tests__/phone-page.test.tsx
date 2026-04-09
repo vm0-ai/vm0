@@ -25,7 +25,7 @@ function mockPhoneStatusAPI(overrides: Record<string, unknown> = {}) {
   );
 }
 
-async function renderPhonePage() {
+function renderPhonePage() {
   detachedSetupPage({
     context,
     path: "/phone",

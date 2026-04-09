@@ -11,7 +11,7 @@ import {
 
 const context = testContext();
 
-async function setup() {
+function setup() {
   detachedSetupPage({
     context,
     path: "/",

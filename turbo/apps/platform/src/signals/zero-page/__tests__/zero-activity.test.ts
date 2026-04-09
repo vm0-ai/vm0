@@ -87,7 +87,7 @@ function createMockLogDetail() {
   };
 }
 
-async function setup() {
+function setup() {
   detachedSetupPage({
     context,
     path: "/activities",

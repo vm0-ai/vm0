@@ -21,7 +21,7 @@ function mockChatAPI() {
   );
 }
 
-async function renderIdeationPage() {
+function renderIdeationPage() {
   mockChatAPI();
   detachedSetupPage({ context, path: IDEAS_PATH });
 }

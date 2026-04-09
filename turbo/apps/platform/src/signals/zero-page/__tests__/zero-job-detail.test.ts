@@ -166,7 +166,7 @@ function registerStandardHandlers() {
   );
 }
 
-async function setupWithAgent() {
+function setupWithAgent() {
   registerStandardHandlers();
   detachedSetupPage({ context, path: "/", withoutRender: true });
   context.store.set(setActiveAgent$, "my-agent");

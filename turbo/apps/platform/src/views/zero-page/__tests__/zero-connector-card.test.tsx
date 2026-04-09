@@ -62,7 +62,7 @@ function mockConnectors(connectors: ConnectorResponse[]) {
  * `orgConnectors` are the org-level connected connectors (shown in the list).
  * `enabledTypes` are the agent-level permissions (toggle checked state).
  */
-async function renderTeamPage(
+function renderTeamPage(
   orgConnectors: ConnectorResponse[],
   enabledTypes: string[],
 ) {
@@ -174,7 +174,7 @@ describe("zero authorization tab — multiple connectors", () => {
  * Render the default agent's authorization tab as a non-admin member.
  * Connector permissions are user-level, so toggles remain interactive.
  */
-async function renderTeamPageAsMember(
+function renderTeamPageAsMember(
   orgConnectors: ConnectorResponse[],
   enabledTypes: string[],
 ) {

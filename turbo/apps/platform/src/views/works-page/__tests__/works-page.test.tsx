@@ -36,7 +36,7 @@ function mockSlackAPI(overrides: Record<string, unknown> = {}) {
   );
 }
 
-async function renderWorksPage() {
+function renderWorksPage() {
   detachedSetupPage({ context, path: "/works" });
 }
 

@@ -14,7 +14,7 @@ import { pollUserInvitations$ } from "../user-invitations.ts";
 
 const context = testContext();
 
-async function setup() {
+function setup() {
   detachedSetupPage({
     context,
     path: "/",
