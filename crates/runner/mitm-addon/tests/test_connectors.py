@@ -3110,3 +3110,53 @@ class TestGraphQLFieldCoverage:
             body=body_extra,
         )
         assert isinstance(result, FirewallBlock)
+
+    def test_typename_ignored_in_coverage_check(self):
+        """__typename is a built-in introspection field injected by many
+        clients (Apollo, Relay).  It should not cause coverage failures."""
+        fw = self._make_fw(
+            {
+                "issues:read": ["POST /graphql GraphQL type:query field:repository.issues"],
+            }
+        )
+        body = json.dumps(
+            {
+                "query": "query { repository { __typename issues "
+                "{ __typename nodes { __typename title } } } }"
+            }
+        ).encode()
+        result = matching.match_firewall_request(
+            "https://api.example.com/graphql", "POST", fw, body=body
+        )
+        assert isinstance(result, FirewallAllow)
+
+    def test_typename_alone_does_not_bypass(self):
+        """A query with ONLY __typename still needs a matching rule to
+        pass the rule-matching step (coverage check is moot)."""
+        fw = self._make_fw(
+            {
+                "issues:read": ["POST /graphql GraphQL type:query field:repository.issues"],
+            }
+        )
+        body = json.dumps({"query": "query { repository { __typename } }"}).encode()
+        # field filter is "repository.issues" — the query has no matching
+        # field (only __typename), so the rule itself doesn't match → block.
+        result = matching.match_firewall_request(
+            "https://api.example.com/graphql", "POST", fw, body=body
+        )
+        assert isinstance(result, FirewallBlock)
+
+    def test_uncovered_field_with_typename_still_blocks(self):
+        """__typename is ignored but other uncovered fields still block."""
+        fw = self._make_fw(
+            {
+                "issues:read": ["POST /graphql GraphQL type:query field:repository.issues"],
+            }
+        )
+        body = json.dumps(
+            {"query": "query { repository { __typename issues { id } stargazers { id } } }"}
+        ).encode()
+        result = matching.match_firewall_request(
+            "https://api.example.com/graphql", "POST", fw, body=body
+        )
+        assert isinstance(result, FirewallBlock)

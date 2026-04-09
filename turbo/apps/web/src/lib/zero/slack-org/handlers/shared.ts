@@ -7,11 +7,8 @@ import { orgMetadata as orgTable } from "../../../../db/schema/org-metadata";
 import { getAppUrl } from "../../url";
 import { resolveDefaultAgentComposeId } from "../../../infra/agent-compose/resolve-default";
 import { ensureStorageExists } from "../../../infra/storage/storage-service";
-import {
-  createSlackClient,
-  fetchSlackUserInfoMap,
-  formatSenderBlock,
-} from "../../slack/client";
+import { createSlackClient, fetchSlackUserInfoMap } from "../../slack/client";
+import type { UserInfoOptions } from "../../integration-context";
 import {
   fetchThreadContext,
   fetchChannelContext,
@@ -390,8 +387,8 @@ export async function resolveSessionCompose(
  * Enrich message content with file attachments and Slack user info.
  * Shared between direct-message and mention handlers.
  *
- * Returns prompt (message text + files) and userContext (Slack user metadata)
- * separately so callers can route them to user prompt vs system prompt.
+ * Returns prompt (message text + files) and userInfoExtras (Slack-specific user metadata)
+ * separately so callers can merge Slack fields into the base user info block.
  */
 export async function enrichMessageContent(opts: {
   messageContent: string;
@@ -401,7 +398,7 @@ export async function enrichMessageContent(opts: {
   threadTs: string;
   client: SlackClient;
   userId: string;
-}): Promise<{ prompt: string; userContext: string }> {
+}): Promise<{ prompt: string; userInfoExtras: UserInfoOptions }> {
   let prompt = opts.messageContent;
 
   // Include files attached to the current message in the prompt
@@ -423,13 +420,16 @@ export async function enrichMessageContent(opts: {
   // Resolve mentions in prompt text
   prompt = resolveUserMentions(prompt, userInfoMap);
 
-  // Build user context for system prompt
+  // Build Slack-specific user info extras (base user info is injected by createZeroRunRecord)
   const currentUser = userInfoMap.get(opts.userId);
-  const userContext = currentUser
-    ? `# Current User\n${formatSenderBlock(currentUser)}`
-    : "";
+  const userInfoExtras: UserInfoOptions = currentUser
+    ? {
+        slackDisplayName: currentUser.name,
+        slackUserId: currentUser.id,
+      }
+    : {};
 
-  return { prompt, userContext };
+  return { prompt, userInfoExtras };
 }
 
 /**

@@ -224,19 +224,23 @@ const router = tsr.router(onboardingSetupContract, {
           target: orgMetadata.orgId,
           set: { defaultAgentId: agentId, updatedAt: new Date() },
         }),
-      // Mark onboarding complete
+      // Mark onboarding complete + set timezone from browser
       db
         .insert(orgMembersMetadata)
         .values({
           orgId: org.orgId,
           userId,
           onboardingDone: true,
+          timezone: body.timezone ?? null,
           createdAt: new Date(),
           updatedAt: new Date(),
         })
         .onConflictDoUpdate({
           target: [orgMembersMetadata.orgId, orgMembersMetadata.userId],
-          set: { onboardingDone: true, updatedAt: new Date() },
+          set: {
+            onboardingDone: true,
+            updatedAt: new Date(),
+          },
         }),
     ];
 

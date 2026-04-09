@@ -68,6 +68,7 @@ export const onboardingSetupContract = c.router({
       sound: z.string().optional(),
       avatarUrl: z.string().optional(),
       selectedConnectors: z.array(z.string()).optional(),
+      timezone: z.string().optional(),
     }),
     responses: {
       200: z.object({ agentId: z.string() }),

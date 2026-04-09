@@ -9,6 +9,7 @@ import { decryptSecretsMap } from "../../shared/crypto";
 import { notFound, badRequest, schedulePast } from "../../shared/errors";
 import { logger } from "../../shared/logger";
 import { createZeroRun } from "../zero-run-service";
+import { buildIntegrationContext } from "../integration-context";
 import { generateCallbackSecret, getApiUrl } from "../../infra/callback";
 import { generateScheduleDescription } from "../ai/lightweight-model";
 import type {
@@ -882,6 +883,18 @@ export async function executeSchedule(
     });
   }
 
+  // Build schedule integration context for the agent
+  // (User info is injected centrally by createZeroRunRecord)
+  const integrationContext = buildIntegrationContext("Schedule", {
+    scheduleDescription: schedule.description ?? undefined,
+    triggerType: schedule.triggerType,
+  });
+
+  const baseAppendPrompt = schedule.appendSystemPrompt ?? undefined;
+  const appendSystemPrompt = baseAppendPrompt
+    ? `${integrationContext}\n\n${baseAppendPrompt}`
+    : integrationContext;
+
   // Delegate run creation, validation, and dispatch to createZeroRun()
   // Note: schedule state (nextRunAt, lastRunAt, enabled) is already advanced
   // by the atomic CAS claim in executeDueSchedules(). We only need to persist
@@ -889,7 +902,7 @@ export async function executeSchedule(
   const result = await createZeroRun({
     userId: schedule.userId,
     prompt: schedule.prompt,
-    appendSystemPrompt: schedule.appendSystemPrompt ?? undefined,
+    appendSystemPrompt,
     agentId: schedule.agentId,
     scheduleId: schedule.id,
     triggerSource: "schedule",

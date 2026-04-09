@@ -425,7 +425,15 @@ def _find_uncovered_graphql_fields(
     if all_patterns is None or len(all_patterns) == 0:
         return []
 
-    return [f for f in fields if not _is_field_covered(f, all_patterns)]
+    return [
+        f
+        for f in fields
+        # __typename is a built-in introspection field on every type.
+        # Many clients (Apollo, Relay) inject it automatically.
+        # It carries no data access beyond what the parent covers.
+        if not (f == "__typename" or f.endswith(".__typename"))
+        and not _is_field_covered(f, all_patterns)
+    ]
 
 
 def match_firewall_request(

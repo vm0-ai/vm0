@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.110.0](https://github.com/vm0-ai/vm0/compare/cli-v9.109.0...cli-v9.110.0) (2026-04-09)
+
+
+### Features
+
+* **phone:** improve receptionist prompt and add file input flags to CLI ([#8580](https://github.com/vm0-ai/vm0/issues/8580)) ([cbdd656](https://github.com/vm0-ai/vm0/commit/cbdd656f75a1ac9fd58b6c6041ca1d34db38a84b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.164.0
+
 ## [9.109.0](https://github.com/vm0-ai/vm0/compare/cli-v9.108.0...cli-v9.109.0) (2026-04-09)
 
 
