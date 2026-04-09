@@ -325,6 +325,95 @@ def match_graphql_body(
     return True
 
 
+def _collect_field_patterns(
+    permissions: list,
+    method: str,
+    op_type: str,
+) -> list[str]:
+    """Collect all GraphQL field patterns from rules matching the operation type."""
+    patterns: list[str] = []
+    for perm in permissions:
+        for rule_str in perm.get("rules", []):
+            parts = rule_str.split(" ", 1)
+            if len(parts) != 2:
+                continue
+            rule_method = parts[0].upper()
+            if rule_method != "ANY" and rule_method != method:
+                continue
+            gql = parse_graphql_rule(parts[1])
+            if gql is None:
+                continue
+            _, type_filter, _, field_filters = gql
+            if type_filter is not None and type_filter != op_type:
+                continue
+            if field_filters is not None:
+                patterns.extend(field_filters)
+    return patterns
+
+
+def _is_field_covered(field: str, patterns: list[str]) -> bool:
+    """Check if a field is covered by any pattern.
+
+    A field is covered if:
+    - It matches a pattern (exact or wildcard), OR
+    - A pattern is a prefix of it (field is under a covered parent), OR
+    - It is a prefix of a pattern (structural parent of a covered field)
+    """
+    for pattern in patterns:
+        if _match_wildcard(field, pattern):
+            return True
+        # Field is descendant of exact pattern
+        if not pattern.endswith("*") and field.startswith(pattern + "."):
+            return True
+        # Field is ancestor of any pattern (structural parent)
+        if pattern.startswith(field + "."):
+            return True
+    return False
+
+
+def _find_uncovered_graphql_fields(
+    body: bytes,
+    permissions: list,
+    method: str,
+) -> list[str]:
+    """Find GraphQL body fields not covered by any field rule.
+
+    Parses the body to extract operation type and field paths, then checks
+    each field against all field patterns from all permissions. Returns a
+    list of uncovered fields (empty if all fields are covered or if no
+    field rules exist for the operation type).
+    """
+    try:
+        data = json.loads(body)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return []
+
+    if not isinstance(data, dict):
+        return []
+
+    query_str = data.get("query")
+    if not isinstance(query_str, str):
+        return []
+
+    fields = extract_field_paths(query_str)
+    if not fields:
+        return []
+
+    # Determine operation type
+    stripped = query_str.lstrip()
+    end = 0
+    while end < len(stripped) and stripped[end].isalpha():
+        end += 1
+    op_type = stripped[:end].lower() if end > 0 else "query"
+
+    # Collect field patterns matching this operation type
+    all_patterns = _collect_field_patterns(permissions, method, op_type)
+    if not all_patterns:
+        return []
+
+    return [f for f in fields if not _is_field_covered(f, all_patterns)]
+
+
 def match_firewall_request(
     url: str,
     method: str,
@@ -332,6 +421,10 @@ def match_firewall_request(
     body: bytes | None = None,
 ) -> FirewallAllow | FirewallBlock | None:
     """Match request against firewall permissions.
+
+    For GraphQL requests with field-level rules, ALL fields in the query
+    body must be covered by some rule in the permissions. A query that
+    includes both authorized and unauthorized fields is blocked.
 
     Returns:
       FirewallAllow — permission matched, inject headers
@@ -410,6 +503,24 @@ def match_firewall_request(
                             body, type_filter, op_filter, field_filters
                         ):
                             continue
+
+                        # For GraphQL rules with field filters, verify ALL
+                        # body fields are covered by some rule in the
+                        # permissions. Blocks queries that mix authorized
+                        # and unauthorized fields.
+                        if field_filters is not None and body is not None:
+                            uncovered = _find_uncovered_graphql_fields(
+                                body, permissions, upper_method
+                            )
+                            if uncovered:
+                                return FirewallBlock(
+                                    base,
+                                    fw_ref,
+                                    fw_name,
+                                    upper_method,
+                                    rel_path,
+                                )
+
                         # Merge base params with rule params
                         all_params = {**base_params, **params}
                         return FirewallAllow(

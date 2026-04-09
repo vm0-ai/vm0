@@ -2269,15 +2269,29 @@ class TestGraphQLFieldMatching:
         assert isinstance(result, FirewallAllow)
 
     def test_field_among_multiple_selections(self):
-        """Match when target field is one of several top-level selections."""
+        """Match when target field is one of several — all fields must be covered."""
         body = _gql_body(
             "mutation { addReaction(input: {}) { id } createIssue(input: {}) { id } }",
             "BatchOp",
         )
+        # Only createIssue covered → blocked (addReaction uncovered)
         result = matching.match_firewall_request(
             "https://api.linear.app/graphql",
             "POST",
             _gql_firewalls(["POST /graphql GraphQL type:mutation field:createIssue"]),
+            body=body,
+        )
+        assert isinstance(result, FirewallBlock)
+        # Both fields covered → allowed
+        result = matching.match_firewall_request(
+            "https://api.linear.app/graphql",
+            "POST",
+            _gql_firewalls(
+                [
+                    "POST /graphql GraphQL type:mutation field:createIssue",
+                    "POST /graphql GraphQL type:mutation field:addReaction",
+                ]
+            ),
             body=body,
         )
         assert isinstance(result, FirewallAllow)
@@ -2495,10 +2509,16 @@ class TestGraphQLFieldMatching:
     def test_field_underscore_prefix(self):
         """Fields starting with underscore (e.g., __typename) are extracted."""
         body = _gql_body("mutation { __typename createIssue(input: {}) { id } }", "Op")
+        # Both __typename and createIssue must be covered
         result = matching.match_firewall_request(
             "https://api.linear.app/graphql",
             "POST",
-            _gql_firewalls(["POST /graphql GraphQL type:mutation field:__typename"]),
+            _gql_firewalls(
+                [
+                    "POST /graphql GraphQL type:mutation field:__typename",
+                    "POST /graphql GraphQL type:mutation field:createIssue",
+                ]
+            ),
             body=body,
         )
         assert isinstance(result, FirewallAllow)
@@ -2865,3 +2885,156 @@ class TestGraphQLCommaFieldFilter:
             body=body,
         )
         assert isinstance(result, FirewallBlock)
+
+
+class TestGraphQLFieldCoverage:
+    """Verify that GraphQL requests with multiple fields are only allowed
+    when ALL fields are covered by some permission rule."""
+
+    def _make_fw(self, rules_by_perm):
+        """Build firewalls with multiple permissions, each with its own rules."""
+        perms = [{"name": name, "rules": rules} for name, rules in rules_by_perm.items()]
+        return [
+            {
+                "name": "test",
+                "ref": "test",
+                "apis": [
+                    {
+                        "base": "https://api.example.com",
+                        "auth": {"headers": {"Authorization": "Bearer tok"}},
+                        "permissions": perms,
+                    }
+                ],
+            }
+        ]
+
+    def test_all_fields_covered_allows(self):
+        """Query with all fields covered by permissions → allow."""
+        fw = self._make_fw(
+            {
+                "issues:read": ["POST /graphql GraphQL type:query field:repository.issues"],
+                "pull_requests:read": [
+                    "POST /graphql GraphQL type:query field:repository.pullRequests"
+                ],
+            }
+        )
+        body = json.dumps(
+            {
+                "query": "query { repository { issues { nodes { id } } "
+                "pullRequests { nodes { id } } } }"
+            }
+        ).encode()
+        result = matching.match_firewall_request(
+            "https://api.example.com/graphql", "POST", fw, body=body
+        )
+        assert isinstance(result, FirewallAllow)
+
+    def test_uncovered_field_blocks(self):
+        """Query with an uncovered field → block."""
+        fw = self._make_fw(
+            {
+                "issues:read": ["POST /graphql GraphQL type:query field:repository.issues"],
+            }
+        )
+        body = json.dumps(
+            {
+                "query": "query { repository { issues { nodes { id } } "
+                "pullRequests { nodes { id } } } }"
+            }
+        ).encode()
+        result = matching.match_firewall_request(
+            "https://api.example.com/graphql", "POST", fw, body=body
+        )
+        assert isinstance(result, FirewallBlock)
+
+    def test_single_field_covered_allows(self):
+        """Query with only one field, covered → allow."""
+        fw = self._make_fw(
+            {
+                "issues:read": ["POST /graphql GraphQL type:query field:repository.issues"],
+            }
+        )
+        body = json.dumps({"query": "query { repository { issues { nodes { id } } } }"}).encode()
+        result = matching.match_firewall_request(
+            "https://api.example.com/graphql", "POST", fw, body=body
+        )
+        assert isinstance(result, FirewallAllow)
+
+    def test_mutation_all_covered_allows(self):
+        """Mutation with all fields covered → allow."""
+        fw = self._make_fw(
+            {
+                "issues:write": ["POST /graphql GraphQL type:mutation field:createIssue"],
+            }
+        )
+        body = json.dumps(
+            {"query": 'mutation { createIssue(input: {title: "x"}) { issue { id } } }'}
+        ).encode()
+        result = matching.match_firewall_request(
+            "https://api.example.com/graphql", "POST", fw, body=body
+        )
+        assert isinstance(result, FirewallAllow)
+
+    def test_mutation_uncovered_blocks(self):
+        """Mutation with an uncovered mutation field → block."""
+        fw = self._make_fw(
+            {
+                "issues:write": ["POST /graphql GraphQL type:mutation field:createIssue"],
+            }
+        )
+        body = json.dumps(
+            {
+                "query": "mutation { createIssue(input: {}) { issue { id } } "
+                "deleteIssue(input: {}) { clientMutationId } }"
+            }
+        ).encode()
+        result = matching.match_firewall_request(
+            "https://api.example.com/graphql", "POST", fw, body=body
+        )
+        assert isinstance(result, FirewallBlock)
+
+    def test_no_field_rules_skips_coverage_check(self):
+        """When no field rules exist, the coverage check is skipped."""
+        fw = self._make_fw(
+            {
+                "graphql:all": ["POST /graphql GraphQL type:query"],
+            }
+        )
+        body = json.dumps({"query": "query { repository { anything } }"}).encode()
+        result = matching.match_firewall_request(
+            "https://api.example.com/graphql", "POST", fw, body=body
+        )
+        assert isinstance(result, FirewallAllow)
+
+    def test_type_filter_isolates_coverage(self):
+        """Query field rules don't affect mutation coverage checks."""
+        fw = self._make_fw(
+            {
+                "issues:read": ["POST /graphql GraphQL type:query field:repository.issues"],
+                "issues:write": ["POST /graphql GraphQL type:mutation field:createIssue"],
+            }
+        )
+        # Mutation with only createIssue — should be allowed even though
+        # query field rules don't cover mutation fields
+        body = json.dumps(
+            {"query": 'mutation { createIssue(input: {title: "x"}) { issue { id } } }'}
+        ).encode()
+        result = matching.match_firewall_request(
+            "https://api.example.com/graphql", "POST", fw, body=body
+        )
+        assert isinstance(result, FirewallAllow)
+
+    def test_wildcard_pattern_covers_descendants(self):
+        """Wildcard pattern covers all matching fields."""
+        fw = self._make_fw(
+            {
+                "repo:read": ["POST /graphql GraphQL type:query field:repository.*"],
+            }
+        )
+        body = json.dumps(
+            {"query": "query { repository { issues { id } pullRequests { id } } }"}
+        ).encode()
+        result = matching.match_firewall_request(
+            "https://api.example.com/graphql", "POST", fw, body=body
+        )
+        assert isinstance(result, FirewallAllow)
