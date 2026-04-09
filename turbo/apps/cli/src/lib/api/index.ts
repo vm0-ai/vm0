@@ -187,6 +187,8 @@ export {
   createPhoneCall,
   listPhoneCalls,
   getPhoneCallDetail,
+  type PhoneCall,
+  type TranscriptEntry,
 } from "./domains/phone-calls";
 
 // Domain modules - Zero Voice Chat Context

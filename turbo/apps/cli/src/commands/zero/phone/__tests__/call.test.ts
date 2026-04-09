@@ -13,7 +13,7 @@ import * as path from "path";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../../mocks/server";
-import { callCommand } from "../call";
+import { callCommand, delay } from "../call";
 import chalk from "chalk";
 
 describe("zero phone call command", () => {
@@ -63,8 +63,16 @@ describe("zero phone call command", () => {
   });
 
   describe("onhold mode", () => {
+    const originalDelayMs = delay.ms;
+
+    afterEach(() => {
+      delay.ms = originalDelayMs;
+    });
+
     it("should poll until call completes and print transcript", async () => {
-      vi.useFakeTimers();
+      delay.ms = () => {
+        return Promise.resolve();
+      };
       let pollCount = 0;
 
       server.use(
@@ -109,20 +117,13 @@ describe("zero phone call command", () => {
         ),
       );
 
-      const promise = callCommand.parseAsync([
+      await callCommand.parseAsync([
         "node",
         "cli",
         "+14155551234",
         "--mode",
         "onhold",
       ]);
-
-      // Advance past each 10s poll interval
-      await vi.advanceTimersByTimeAsync(10_000);
-      await vi.advanceTimersByTimeAsync(10_000);
-
-      await promise;
-      vi.useRealTimers();
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("Call initiated");
@@ -157,9 +158,6 @@ describe("zero phone call command", () => {
         await callCommand.parseAsync(["node", "cli", "+14155551234"]);
       }).rejects.toThrow("process.exit called");
 
-      expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Missing required --mode flag"),
-      );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
   });

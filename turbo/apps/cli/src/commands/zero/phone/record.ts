@@ -28,14 +28,12 @@ async function showCallList(limit: number) {
   console.log();
 
   for (const call of result.data) {
-    const id = String(call.id ?? "");
-    const from = String(call.fromNumber ?? call.from_number ?? "");
-    const to = String(call.toNumber ?? call.to_number ?? "");
-    const status = String(call.status ?? "");
-    const duration = call.durationSeconds ?? call.duration_seconds;
-    const snippet = String(
-      call.lastTranscriptSnippet ?? call.last_transcript_snippet ?? "",
-    );
+    const id = call.id;
+    const from = call.fromNumber;
+    const to = call.toNumber;
+    const status = call.status;
+    const duration = call.durationSeconds;
+    const snippet = call.lastTranscriptSnippet ?? "";
 
     console.log(`  ${chalk.cyan(id)}`);
     console.log(

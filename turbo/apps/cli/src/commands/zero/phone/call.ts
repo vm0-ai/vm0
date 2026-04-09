@@ -8,6 +8,14 @@ import { printTranscript, printCallInfo } from "./format";
 const POLL_INTERVAL_MS = 10_000;
 const POLL_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
 
+export const delay = {
+  ms: (ms: number): Promise<void> => {
+    return new Promise((resolve) => {
+      setTimeout(resolve, ms);
+    });
+  },
+};
+
 const TERMINAL_STATUSES = new Set([
   "completed",
   "ended",
@@ -32,7 +40,9 @@ export const callCommand = new Command()
     new Option(
       "--mode <mode>",
       "onhold: wait for call to complete and return transcript. fire-and-forget: initiate and return immediately.",
-    ).choices(["onhold", "fire-and-forget"]),
+    )
+      .choices(["onhold", "fire-and-forget"])
+      .makeOptionMandatory(),
   )
   .option(
     "--system-prompt-file <path>",
@@ -43,20 +53,10 @@ export const callCommand = new Command()
       async (
         toNumber: string,
         options: {
-          mode?: "onhold" | "fire-and-forget";
+          mode: "onhold" | "fire-and-forget";
           systemPromptFile?: string;
         },
       ) => {
-        // --mode is required
-        if (!options.mode) {
-          console.error(
-            chalk.red(
-              "Missing required --mode flag. Use --mode onhold or --mode fire-and-forget.",
-            ),
-          );
-          process.exit(1);
-        }
-
         // Validate E.164 format
         if (!/^\+[1-9]\d{1,14}$/.test(toNumber)) {
           console.error(
@@ -104,12 +104,10 @@ export const callCommand = new Command()
         const startTime = Date.now();
 
         while (Date.now() - startTime < POLL_TIMEOUT_MS) {
-          await new Promise((resolve) => {
-            return setTimeout(resolve, POLL_INTERVAL_MS);
-          });
+          await delay.ms(POLL_INTERVAL_MS);
 
           const detail = await getPhoneCallDetail(result.callId);
-          const status = String(detail.call.status ?? "");
+          const status = detail.call.status;
           const elapsed = Math.round((Date.now() - startTime) / 1000);
 
           if (TERMINAL_STATUSES.has(status)) {
@@ -128,9 +126,7 @@ export const callCommand = new Command()
             return;
           }
 
-          console.log(
-            chalk.dim(`  [${elapsed}s] status: ${status || "unknown"}`),
-          );
+          console.log(chalk.dim(`  [${elapsed}s] status: ${status}`));
         }
 
         console.error(chalk.red("\nCall timed out after 15 minutes"));
