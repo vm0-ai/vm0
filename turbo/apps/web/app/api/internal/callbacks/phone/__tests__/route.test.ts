@@ -13,12 +13,19 @@ import {
   createSignedCallbackRequest,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
-import type { PhoneCallbackPayload } from "../../../../../../src/lib/infra/callback/callback-payloads";
 
 vi.mock("@clerk/nextjs/server");
 vi.mock("@aws-sdk/client-s3");
 vi.mock("@aws-sdk/s3-request-presigner");
 vi.mock("@axiomhq/js");
+
+interface PhoneCallbackPayload {
+  callId: string;
+  userId: string;
+  orgId: string;
+  agentId: string;
+  existingSessionId: string | null;
+}
 
 const context = testContext();
 
