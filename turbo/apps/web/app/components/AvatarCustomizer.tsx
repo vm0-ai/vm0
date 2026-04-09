@@ -65,18 +65,21 @@ function AvatarPreview({
         src={headSrc(config.rotation, config.skin)}
         className={cls}
         fill
+        sizes={`${size}px`}
       />
       <Image
         alt=""
         src={hairSrc(config.rotation, config.hairStyle, config.hairColor)}
         className={cls}
         fill
+        sizes={`${size}px`}
       />
       <Image
         alt=""
         src={faceSrc(config.rotation, config.expression, config.intensity)}
         className={cls}
         fill
+        sizes={`${size}px`}
       />
     </div>
   );

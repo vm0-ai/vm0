@@ -177,6 +177,7 @@ function SlackThreadMockup() {
               src="/assets/hero/slack-avatar-lancy.png"
               className="object-cover"
               fill
+              sizes="27px"
             />
           </div>
           <div className="ml-[33px]">
@@ -1322,6 +1323,7 @@ export default function LandingPage() {
               alt=""
               className="deco-shapes"
               fill
+              priority
             />
           </div>
 
