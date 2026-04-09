@@ -622,6 +622,51 @@ const REPO_METADATA_FIELDS = new Set([
   "webCommitSignoffRequired",
 ]);
 
+// ── Top-level Query fields ───────────────────────────────────────────────
+//
+// Top-level Query type fields assigned to metadata:read.  Entry points
+// with fine-grained sub-field permissions (e.g., `repository`) are listed
+// separately and excluded — they are covered by the ancestor check.
+// Every Query type field must appear in one of these two sets.
+
+const QUERY_METADATA_FIELDS = new Set([
+  "codeOfConduct",
+  "codesOfConduct",
+  "enterprise",
+  "enterpriseAdministratorInvitation",
+  "enterpriseAdministratorInvitationByToken",
+  "enterpriseMemberInvitation",
+  "enterpriseMemberInvitationByToken",
+  "license",
+  "licenses",
+  "marketplaceCategories",
+  "marketplaceCategory",
+  "marketplaceListing",
+  "marketplaceListings",
+  "meta",
+  "node",
+  "nodes",
+  "organization",
+  "rateLimit",
+  "relay",
+  "repositoryOwner",
+  "resource",
+  "search",
+  "securityAdvisories",
+  "securityAdvisory",
+  "securityVulnerabilities",
+  "sponsorables",
+  "topic",
+  "user",
+  "viewer",
+]);
+
+// Entry points with fine-grained sub-field permissions.  These are NOT
+// added to metadata:read — they are covered by the ancestor check from
+// their sub-field patterns.  Including them would let metadata:read
+// cover all sub-fields via the descendant check (privilege escalation).
+const QUERY_FIELD_ENTRY_POINTS = new Set(["repository"]);
+
 // ── Invented permission groups ───────────────────────────────────────────
 //
 // Permission groups that do NOT exist in the REST fine-grained permission
@@ -800,16 +845,56 @@ function validateQueryFieldMapping(
     );
   }
 
+  // ── Validate top-level Query fields ──────────────────────────────────
+
+  // Every query metadata field must exist in schema.
+  const staleQueryFields: string[] = [];
+  for (const name of QUERY_METADATA_FIELDS) {
+    if (!queryFields.has(name)) {
+      staleQueryFields.push(name);
+    }
+  }
+  for (const name of QUERY_FIELD_ENTRY_POINTS) {
+    if (!queryFields.has(name)) {
+      staleQueryFields.push(name);
+    }
+  }
+  if (staleQueryFields.length > 0) {
+    throw new Error(
+      `${staleQueryFields.length} query field(s) not found in schema — remove or rename:\n  ${staleQueryFields.join("\n  ")}`,
+    );
+  }
+
+  // Every schema Query field must be accounted for.
+  const unmappedQuery: string[] = [];
+  for (const name of queryFields) {
+    if (
+      !QUERY_METADATA_FIELDS.has(name) &&
+      !QUERY_FIELD_ENTRY_POINTS.has(name)
+    ) {
+      unmappedQuery.push(name);
+    }
+  }
+  if (unmappedQuery.length > 0) {
+    throw new Error(
+      `${unmappedQuery.length} unmapped Query field(s) — add to QUERY_METADATA_FIELDS or QUERY_FIELD_ENTRY_POINTS:\n  ${unmappedQuery.sort().join("\n  ")}`,
+    );
+  }
+
+  // ── Build results ─────────────────────────────────────────────────────
+
   const repoMetadataFields = [...REPO_METADATA_FIELDS].sort();
 
   const mapped = Object.keys(REPO_FIELD_TO_PERMISSIONS).length;
   console.error(
     `  ${mapped} mapped + ${repoMetadataFields.length} metadata repo fields`,
   );
-  console.error(`  ${queryFields.size} top-level query fields → metadata:read`);
+  console.error(
+    `  ${QUERY_METADATA_FIELDS.size} metadata + ${QUERY_FIELD_ENTRY_POINTS.size} entry point query fields`,
+  );
 
   return {
-    queryFields: [...queryFields].sort(),
+    queryFields: [...QUERY_METADATA_FIELDS].sort(),
     repoMetadataFields,
   };
 }
@@ -868,16 +953,11 @@ function buildQueryFieldIndex(
     addToIndex("metadata:read", `repository.${field}`);
   }
 
-  // Top-level Query fields → metadata:read, EXCEPT entry points that
-  // have fine-grained sub-field permissions. Those are covered by the
-  // ancestor check (any `repository.*` pattern covers `repository`).
-  // Including them in metadata:read would let that single permission
-  // cover all sub-fields via the descendant check — a privilege escalation.
-  const QUERY_FIELD_ENTRY_POINTS = new Set(["repository"]);
+  // Top-level Query metadata fields → metadata:read.
+  // Entry points (QUERY_FIELD_ENTRY_POINTS) are excluded — already
+  // validated and covered by the ancestor check.
   for (const field of queryFieldInfo.queryFields) {
-    if (!QUERY_FIELD_ENTRY_POINTS.has(field)) {
-      addToIndex("metadata:read", field);
-    }
+    addToIndex("metadata:read", field);
   }
 
   // Sort field paths within each group for deterministic output.
