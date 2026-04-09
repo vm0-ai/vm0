@@ -952,6 +952,7 @@ fn spawn_job(
                 match pool.park(session_id.to_string(), entry) {
                     ParkResult::Parked => {
                         info!(run_id = %run_id, session_id, "VM parked for keep-alive");
+                        drop(pool);
                         park_notify.notify_one();
                         true
                     }
