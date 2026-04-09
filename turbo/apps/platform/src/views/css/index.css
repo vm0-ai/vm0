@@ -612,6 +612,7 @@
 .wmde-markdown a {
   color: hsl(216 70% 45%);
   text-decoration: none;
+  overflow-wrap: break-word;
 }
 
 .wmde-markdown a:hover {
@@ -722,11 +723,13 @@
   background-color: hsl(var(--gray-100));
   color: hsl(var(--foreground));
   border-radius: 4px;
+  overflow-wrap: break-word;
 }
 
 /* --- Code Blocks -------------------------------------------------------- */
 .wmde-markdown pre {
   overflow-x: auto;
+  max-width: 100%;
   border: 0.7px solid hsl(var(--gray-400));
   border-radius: 8px;
 }
