@@ -190,13 +190,13 @@ describe("network insights page - data rendering", () => {
     });
   });
 
-  it("should display blocked permissions card when denied > 0", async () => {
+  it("should display protected permissions card when denied > 0", async () => {
     mockInsightsAPI([sampleDay(day1Ago)]);
 
     await setupPage({ context, path: "/insights" });
 
     await waitFor(() => {
-      expect(screen.getByText("Blocked")).toBeInTheDocument();
+      expect(screen.getByText("Protected")).toBeInTheDocument();
     });
   });
 
@@ -227,7 +227,7 @@ describe("network insights page - data rendering", () => {
     expect(screen.getAllByText("GitHub").length).toBeGreaterThanOrEqual(1);
   });
 
-  it("should not display blocked card when no denials", async () => {
+  it("should not display protected card when no denials", async () => {
     mockInsightsAPI([
       sampleDay(day1Ago, {
         permissions: [
@@ -246,7 +246,7 @@ describe("network insights page - data rendering", () => {
     await waitFor(() => {
       expect(screen.getByText("Allowed")).toBeInTheDocument();
     });
-    expect(screen.queryByText("Blocked")).not.toBeInTheDocument();
+    expect(screen.queryByText("Protected")).not.toBeInTheDocument();
   });
 
   it("should show Yesterday header for yesterday's data", async () => {

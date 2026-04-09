@@ -664,17 +664,28 @@ function YourCreditUsageCard({
   day,
   colorIndex,
   userName,
+  hoveredAgent,
 }: {
   day: DayInsight;
   colorIndex: number;
   userName: string | null;
+  hoveredAgent: string | null;
 }) {
   const { accent } = getCardPalette(colorIndex);
-  const personalCredits = userName
-    ? (day.teamUsage.find((m) => {
+  const myUsage = userName
+    ? day.teamUsage.find((m) => {
         return m.name === userName;
-      })?.credits ?? 0)
-    : 0;
+      })
+    : null;
+  const displayCredits =
+    hoveredAgent && myUsage?.agentCredits?.[hoveredAgent] !== undefined
+      ? myUsage.agentCredits[hoveredAgent]
+      : (myUsage?.credits ?? 0);
+  const hoveredAgentData = hoveredAgent
+    ? day.agents.find((a) => {
+        return a.agentName === hoveredAgent;
+      })
+    : null;
 
   return (
     <Card>
@@ -684,10 +695,14 @@ function YourCreditUsageCard({
       >
         Your Credit Usage
       </p>
-      <p className="text-5xl font-black leading-none tabular-nums font-serif">
-        {personalCredits.toLocaleString()}
+      <p className="text-5xl font-black leading-none tabular-nums font-serif transition-all duration-150">
+        {displayCredits.toLocaleString()}
       </p>
-      <p className="text-sm opacity-60 mt-2">consumed today</p>
+      <p className="text-sm opacity-60 mt-2">
+        {hoveredAgentData
+          ? `by ${hoveredAgentData.agentName}`
+          : "consumed today"}
+      </p>
     </Card>
   );
 }
@@ -905,13 +920,13 @@ function PermissionsBlockedCard({
         className="text-xs font-semibold uppercase tracking-widest mb-3"
         style={{ color: accent }}
       >
-        Blocked
+        Protected
       </p>
       <p className="text-5xl font-black leading-none tabular-nums font-serif">
         {totalBlocked}
       </p>
       <p className="text-sm opacity-60 mt-2">
-        calls blocked across {blocked.length}{" "}
+        calls protected across {blocked.length}{" "}
         {blocked.length === 1 ? "permission" : "permissions"}
       </p>
       <div className="flex flex-col gap-2 mt-4">
@@ -997,7 +1012,12 @@ function DaySection({
             hoveredAgent={hoveredAgent}
           />
         )}
-        <YourCreditUsageCard day={day} colorIndex={1} userName={userName} />
+        <YourCreditUsageCard
+          day={day}
+          colorIndex={1}
+          userName={userName}
+          hoveredAgent={hoveredAgent}
+        />
         <AgentsCard
           day={day}
           colorIndex={0}
