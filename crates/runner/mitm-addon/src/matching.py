@@ -258,6 +258,20 @@ def _match_wildcard(value: str, pattern: str) -> bool:
     return value == pattern
 
 
+def _extract_op_type(query_str: str) -> str:
+    """Extract the GraphQL operation type from a query string.
+
+    Returns ``"query"``, ``"mutation"``, or ``"subscription"`` based on the
+    leading keyword.  Defaults to ``"query"`` when no keyword is present
+    (bare ``{ … }`` shorthand).
+    """
+    stripped = query_str.lstrip()
+    end = 0
+    while end < len(stripped) and stripped[end].isalpha():
+        end += 1
+    return stripped[:end].lower() if end > 0 else "query"
+
+
 def match_graphql_body(
     body: bytes | None,
     type_filter: str | None,
@@ -291,19 +305,11 @@ def match_graphql_body(
             return False
         query_str = raw
 
-    # Extract operation type from the query string.
-    # GraphQL allows compact forms like `mutation{`, `query($id: ID!)`,
-    # so we extract only leading alpha characters as the keyword.
+    # Match operation type (query / mutation / subscription).
     if type_filter is not None and query_str is not None:
-        stripped = query_str.lstrip()
-        if not stripped:
+        if not query_str.lstrip():
             return False
-        # Extract leading alphabetic chars: "mutation(" → "mutation"
-        end = 0
-        while end < len(stripped) and stripped[end].isalpha():
-            end += 1
-        keyword = stripped[:end].lower() if end > 0 else "query"
-        if keyword != type_filter:
+        if _extract_op_type(query_str) != type_filter:
             return False
 
     # Match operationName
@@ -382,6 +388,11 @@ def _find_uncovered_graphql_fields(
     each field against all field patterns from all permissions. Returns a
     list of uncovered fields (empty if all fields are covered or if no
     field rules exist for the operation type).
+
+    Returns ``[]`` on parse failure.  This is safe because the caller
+    (``match_firewall_request``) only reaches the coverage check after
+    ``match_graphql_body()`` has already successfully parsed the body —
+    so a parse failure here cannot happen in practice.
     """
     try:
         data = json.loads(body)
@@ -399,12 +410,7 @@ def _find_uncovered_graphql_fields(
     if not fields:
         return []
 
-    # Determine operation type
-    stripped = query_str.lstrip()
-    end = 0
-    while end < len(stripped) and stripped[end].isalpha():
-        end += 1
-    op_type = stripped[:end].lower() if end > 0 else "query"
+    op_type = _extract_op_type(query_str)
 
     # Collect field patterns matching this operation type
     all_patterns = _collect_field_patterns(permissions, method, op_type)
