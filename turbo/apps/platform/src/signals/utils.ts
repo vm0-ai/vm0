@@ -164,8 +164,7 @@ export async function bestEffort(p: Promise<unknown>): Promise<void> {
 // ---------------------------------------------------------------------------
 // Polling loop with fibonacci backoff
 // ---------------------------------------------------------------------------
-
-export const DEFAULT_FIBONACCI_DELAYS_MS = [
+const FIB_DELAYS_MS = [
   1000, 1000, 2000, 3000, 5000, 8000, 13_000, 21_000, 34_000, 55_000, 60_000,
 ] as const;
 
@@ -178,7 +177,6 @@ export async function setLoop(
   loopBody: (signal: AbortSignal) => Promise<boolean> | boolean,
   interval: number,
   signal: AbortSignal,
-  fibDelays: readonly number[] = DEFAULT_FIBONACCI_DELAYS_MS,
 ): Promise<void> {
   let fibIndex = 0;
   while (true) {
@@ -189,17 +187,17 @@ export async function setLoop(
         return;
       }
       fibIndex = 0;
-      await delay(interval, { signal });
+      await delay(IN_VITEST ? 0 : interval, { signal });
     } catch (error) {
       throwIfAbort(error);
       const backoff =
-        fibDelays[Math.min(fibIndex, fibDelays.length - 1)] ?? 60_000;
+        FIB_DELAYS_MS[Math.min(fibIndex, FIB_DELAYS_MS.length - 1)] ?? 60_000;
       L.warn(
         `setLoop: transient error (attempt ${fibIndex + 1}), retrying in ${backoff}ms`,
         error,
       );
       fibIndex++;
-      await delay(backoff, { signal });
+      await delay(IN_VITEST ? 0 : backoff, { signal });
     }
   }
 }

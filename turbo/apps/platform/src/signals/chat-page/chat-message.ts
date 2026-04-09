@@ -8,12 +8,7 @@ import {
   currentDraft$,
   type ZeroChatAttachment,
 } from "../zero-page/chat-draft.ts";
-import {
-  createRunLoop,
-  fibDelays$,
-  pollInterval$,
-  type PagedRunEvents,
-} from "../zero-page/polling.ts";
+import { createRunLoop, type PagedRunEvents } from "../zero-page/polling.ts";
 import { zeroOnboardingStatus$ } from "../zero-page/zero-onboarding.ts";
 import { navigateToChat$ } from "../zero-page/zero-nav.ts";
 import {
@@ -669,18 +664,14 @@ export const loadChatMessages$ = command(
         }
 
         await setLoop(
-          async (sig) => {
-            const finished = await set(runLoop.checkFinished$, sig);
-            if (!finished) {
-              set(reloadThinkingMessage$, (x) => {
-                return x + 1;
-              });
-            }
-            return finished;
+          (sig) => {
+            set(reloadThinkingMessage$, (x) => {
+              return x + 1;
+            });
+            return set(runLoop.checkFinished$, sig);
           },
-          get(pollInterval$),
+          3000,
           signal,
-          get(fibDelays$),
         );
 
         set(reloadChatThreads$);
@@ -918,17 +909,13 @@ export const sendExistingThreadMessage$ = command(
     }
 
     await setLoop(
-      async (sig) => {
-        const finished = await set(runLoop.checkFinished$, sig);
-        if (!finished) {
-          set(reloadChatThreads$);
-          set(reloadCurrentChatThread$);
-        }
-        return finished;
+      (sig) => {
+        set(reloadChatThreads$);
+        set(reloadCurrentChatThread$);
+        return set(runLoop.checkFinished$, sig);
       },
-      get(pollInterval$),
+      3000,
       signal,
-      get(fibDelays$),
     );
   },
 );

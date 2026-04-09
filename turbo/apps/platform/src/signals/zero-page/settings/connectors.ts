@@ -337,30 +337,25 @@ export const connectConnector$ = command(
     // Poll the API until the connector appears or the popup is closed.
     // The platform and OAuth callback page live on different origins
     // (app.* vs www.*), so BroadcastChannel cannot be used.
-    let freshConnectors: ConnectorResponse[] = [];
     const startTime = Date.now();
 
     await setLoop(
       async () => {
         set(reloadConnectors$);
-        const { connectors: polled } = await get(connectors$);
-
-        freshConnectors = polled;
+        const { connectors } = await get(connectors$);
 
         if (
-          polled.some((c) => {
+          connectors.some((c) => {
             return c.type === type;
           })
         ) {
           return true;
         }
 
-        // In non-standalone mode, exit when the popup window is closed.
         if (authWindow?.closed) {
           return true;
         }
 
-        // In standalone mode, exit after timeout to avoid infinite polling.
         if (
           standalone &&
           Date.now() - startTime >= STANDALONE_POLLING_TIMEOUT_MS
@@ -374,9 +369,12 @@ export const connectConnector$ = command(
       signal,
     );
 
+    const { connectors } = await get(connectors$);
+    signal.throwIfAborted();
+
     // Mark as optimistically connected before clearing polling so the UI
     // transitions directly from "Connecting…" to "Connected" without flash.
-    const isConnected = freshConnectors.some((c) => {
+    const isConnected = connectors.some((c) => {
       return c.type === type;
     });
     if (isConnected) {

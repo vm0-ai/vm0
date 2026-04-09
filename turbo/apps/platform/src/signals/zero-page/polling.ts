@@ -8,34 +8,9 @@ import {
   zeroRunsCancelContract,
 } from "@vm0/core";
 import { accept } from "../../lib/accept.ts";
-import { DEFAULT_FIBONACCI_DELAYS_MS } from "../utils.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 
 const AGENT_EVENTS_PAGE_LIMIT = 30;
-
-const internalFibDelays$ = state<readonly number[]>(
-  DEFAULT_FIBONACCI_DELAYS_MS,
-);
-
-export const setFibonacciDelaysForTest$ = command(
-  ({ set }, delays: readonly number[]) => {
-    set(internalFibDelays$, delays);
-  },
-);
-
-export const fibDelays$ = computed((get) => {
-  return get(internalFibDelays$);
-});
-
-const internalPollInterval$ = state(3000);
-
-export const setPollIntervalForTest$ = command(({ set }, interval: number) => {
-  set(internalPollInterval$, interval);
-});
-
-export const pollInterval$ = computed((get) => {
-  return get(internalPollInterval$);
-});
 
 function isTerminalStatus(status: string | null): boolean {
   return (
