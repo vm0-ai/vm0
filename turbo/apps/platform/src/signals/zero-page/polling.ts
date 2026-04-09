@@ -8,18 +8,10 @@ import {
   zeroRunsCancelContract,
 } from "@vm0/core";
 import { accept } from "../../lib/accept.ts";
-import { throwIfAbort } from "../utils.ts";
+import { DEFAULT_FIBONACCI_DELAYS_MS, setLoop } from "../utils.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
-import { delay } from "signal-timers";
-import { logger } from "../log.ts";
-
-const L = logger("Polling");
 
 const AGENT_EVENTS_PAGE_LIMIT = 30;
-
-const DEFAULT_FIBONACCI_DELAYS_MS = [
-  1000, 1000, 2000, 3000, 5000, 8000, 13_000, 21_000, 34_000, 55_000, 60_000,
-] as const;
 
 const internalFibDelays$ = state<readonly number[]>(
   DEFAULT_FIBONACCI_DELAYS_MS,
@@ -35,35 +27,7 @@ export const fibDelays$ = computed((get) => {
   return get(internalFibDelays$);
 });
 
-export async function setLoop(
-  loopBody: (signal: AbortSignal) => Promise<boolean>,
-  interval: number,
-  signal: AbortSignal,
-  fibDelays: readonly number[],
-): Promise<void> {
-  let fibIndex = 0;
-  while (true) {
-    // eslint-disable-next-line no-restricted-syntax -- polling loop requires try/catch for transient error retry with backoff
-    try {
-      const done = await loopBody(signal);
-      if (done) {
-        return;
-      }
-      fibIndex = 0;
-      await delay(interval, { signal });
-    } catch (error) {
-      throwIfAbort(error);
-      const backoff =
-        fibDelays[Math.min(fibIndex, fibDelays.length - 1)] ?? 60_000;
-      L.warn(
-        `setLoop: transient error (attempt ${fibIndex + 1}), retrying in ${backoff}ms`,
-        error,
-      );
-      fibIndex++;
-      await delay(backoff, { signal });
-    }
-  }
-}
+export { setLoop };
 
 const internalPollInterval$ = state(3000);
 

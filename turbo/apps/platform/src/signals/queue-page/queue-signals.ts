@@ -2,7 +2,7 @@ import { command, state, computed } from "ccstate";
 import { zeroRunsQueueContract, zeroRunsCancelContract } from "@vm0/core";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
-import { setLoop } from "../zero-page/polling.ts";
+import { setLoop } from "../utils.ts";
 
 const POLL_INTERVAL = 5000;
 
