@@ -6,8 +6,10 @@ import {
   uniqueId,
 } from "../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../src/__tests__/clerk-mock";
-import { createTestTelegramInstallation } from "../../../../../../src/__tests__/api-test-helpers";
-import { signConnectParams } from "../../../../../../src/lib/zero/telegram/connect-token";
+import {
+  createTestTelegramInstallation,
+  signTestConnectParams,
+} from "../../../../../../src/__tests__/api-test-helpers";
 
 const TEST_BOT_TOKEN = "test-bot-token";
 
@@ -260,18 +262,16 @@ describe("/api/integrations/telegram/link", () => {
       });
 
       const telegramUserId = "99002";
-      const timestamp = Math.floor(Date.now() / 1000);
-      const signature = signConnectParams(
+      const { sig, ts } = signTestConnectParams(
         installationId,
         telegramUserId,
-        timestamp,
         TEST_BOT_TOKEN,
       );
 
       const response = await POST(
         linkRequest("POST", {
           installationId,
-          connectSignature: { telegramUserId, timestamp, signature },
+          connectSignature: { telegramUserId, timestamp: ts, signature: sig },
         }),
       );
       const data = await response.json();

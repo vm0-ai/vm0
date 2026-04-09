@@ -4,13 +4,13 @@ import {
   testContext,
   uniqueId,
 } from "../../../../../src/__tests__/test-helpers";
-import { createTestCompose } from "../../../../../src/__tests__/api-test-helpers";
 import {
+  createTestCompose,
   createTelegramInstallation,
   createTelegramPendingLinkInstallation,
+  PENDING_TELEGRAM_USER_ID,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { GET as linkGET } from "../../../../api/integrations/telegram/link/route";
-import { PENDING_TELEGRAM_USER_ID } from "../../../../../src/lib/zero/telegram/handlers/shared";
 import { server } from "../../../../../src/mocks/server";
 import { http } from "../../../../../src/__tests__/msw";
 import { POST } from "../[installationId]/route";
