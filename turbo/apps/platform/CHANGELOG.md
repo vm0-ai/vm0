@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.204.2](https://github.com/vm0-ai/vm0/compare/app-v0.204.1...app-v0.204.2) (2026-04-09)
+
+
+### Refactoring
+
+* **platform:** move voice chat button from chat page to sidebar ([#8576](https://github.com/vm0-ai/vm0/issues/8576)) ([372204b](https://github.com/vm0-ai/vm0/commit/372204b0d832987baa9ddda37e72a62e0869e2ff))
+
 ## [0.204.1](https://github.com/vm0-ai/vm0/compare/app-v0.204.0...app-v0.204.1) (2026-04-09)
 
 
