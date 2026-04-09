@@ -14,10 +14,10 @@ import {
   createTestAgentSession,
   createTestPushSubscription,
   getPushSubscriptionsByEndpoint,
+  createSignedCallbackRequest,
+  getTestSessionChatMessages,
 } from "../../../../../../src/__tests__/api-test-helpers";
-import { computeHmacSignature } from "../../../../../../src/lib/infra/callback/hmac";
 import { reloadEnv } from "../../../../../../src/env";
-import { getSessionChatMessages } from "../../../../../../src/lib/zero/zero-session-service";
 import { POST as createThreadHandler } from "../../../../zero/chat-threads/route";
 import { POST } from "../route";
 import { http } from "../../../../../../src/__tests__/msw";
@@ -47,22 +47,6 @@ interface ChatCallbackBody {
     threadId: string;
     agentId: string;
   };
-}
-
-function createCallbackRequest(body: ChatCallbackBody, secret: string) {
-  const bodyString = JSON.stringify(body);
-  const timestamp = Math.floor(Date.now() / 1000);
-  const signature = computeHmacSignature(bodyString, secret, timestamp);
-
-  return createTestRequest("http://localhost/api/internal/callbacks/chat", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-VM0-Signature": signature,
-      "X-VM0-Timestamp": timestamp.toString(),
-    },
-    body: bodyString,
-  });
 }
 
 describe("POST /api/internal/callbacks/chat", () => {
@@ -146,7 +130,8 @@ describe("POST /api/internal/callbacks/chat", () => {
     const { threadId, runId, secret } = await setupRunAndThread();
 
     const response = await POST(
-      createCallbackRequest(
+      createSignedCallbackRequest(
+        "http://localhost/api/internal/callbacks/chat",
         {
           runId,
           status: "progress",
@@ -172,7 +157,8 @@ describe("POST /api/internal/callbacks/chat", () => {
     context.mocks.axiom.queryAxiom.mockResolvedValueOnce([]);
 
     const response = await POST(
-      createCallbackRequest(
+      createSignedCallbackRequest(
+        "http://localhost/api/internal/callbacks/chat",
         {
           runId,
           status: "completed",
@@ -199,7 +185,8 @@ describe("POST /api/internal/callbacks/chat", () => {
     context.mocks.axiom.queryAxiom.mockResolvedValueOnce([]);
 
     const makeRequest = () => {
-      return createCallbackRequest(
+      return createSignedCallbackRequest(
+        "http://localhost/api/internal/callbacks/chat",
         {
           runId,
           status: "completed",
@@ -220,24 +207,16 @@ describe("POST /api/internal/callbacks/chat", () => {
   it("should return 400 for invalid payload", async () => {
     const { runId, secret } = await setupRunAndThread();
 
-    const bodyString = JSON.stringify({
-      runId,
-      status: "completed",
-      payload: { invalid: true },
-    });
-    const timestamp = Math.floor(Date.now() / 1000);
-    const signature = computeHmacSignature(bodyString, secret, timestamp);
-
     const response = await POST(
-      createTestRequest("http://localhost/api/internal/callbacks/chat", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-VM0-Signature": signature,
-          "X-VM0-Timestamp": timestamp.toString(),
+      createSignedCallbackRequest(
+        "http://localhost/api/internal/callbacks/chat",
+        {
+          runId,
+          status: "completed",
+          payload: { invalid: true },
         },
-        body: bodyString,
-      }),
+        secret,
+      ),
     );
 
     expect(response.status).toBe(400);
@@ -280,7 +259,8 @@ describe("POST /api/internal/callbacks/chat", () => {
       ]);
 
       const response = await POST(
-        createCallbackRequest(
+        createSignedCallbackRequest(
+          "http://localhost/api/internal/callbacks/chat",
           {
             runId,
             status: "completed",
@@ -301,7 +281,7 @@ describe("POST /api/internal/callbacks/chat", () => {
           { kind: "tool"; name: string } | { kind: "text"; text: string }
         >;
       };
-      const chatMessages = (await getSessionChatMessages(
+      const chatMessages = (await getTestSessionChatMessages(
         sessionId,
       )) as StoredMessage[];
       expect(chatMessages).toHaveLength(2);
@@ -334,7 +314,8 @@ describe("POST /api/internal/callbacks/chat", () => {
       context.mocks.axiom.queryAxiom.mockResolvedValueOnce([]);
 
       const response = await POST(
-        createCallbackRequest(
+        createSignedCallbackRequest(
+          "http://localhost/api/internal/callbacks/chat",
           {
             runId,
             status: "completed",
@@ -348,7 +329,7 @@ describe("POST /api/internal/callbacks/chat", () => {
 
       // Verify session has only user message
       type StoredMessage = { role: string; content: string };
-      const chatMessages = (await getSessionChatMessages(
+      const chatMessages = (await getTestSessionChatMessages(
         sessionId,
       )) as StoredMessage[];
       expect(chatMessages).toHaveLength(1);
@@ -368,7 +349,8 @@ describe("POST /api/internal/callbacks/chat", () => {
       ]);
 
       const response = await POST(
-        createCallbackRequest(
+        createSignedCallbackRequest(
+          "http://localhost/api/internal/callbacks/chat",
           {
             runId,
             status: "completed",
@@ -385,7 +367,7 @@ describe("POST /api/internal/callbacks/chat", () => {
         content: string;
         summaries?: string[];
       };
-      const chatMessages = (await getSessionChatMessages(
+      const chatMessages = (await getTestSessionChatMessages(
         sessionId,
       )) as StoredMessage[];
 
@@ -427,7 +409,8 @@ describe("POST /api/internal/callbacks/chat", () => {
       ]);
 
       const response = await POST(
-        createCallbackRequest(
+        createSignedCallbackRequest(
+          "http://localhost/api/internal/callbacks/chat",
           {
             runId,
             status: "completed",
@@ -445,7 +428,7 @@ describe("POST /api/internal/callbacks/chat", () => {
           { kind: "tool"; name: string } | { kind: "text"; text: string }
         >;
       };
-      const chatMessages = (await getSessionChatMessages(
+      const chatMessages = (await getTestSessionChatMessages(
         sessionId,
       )) as StoredMessage[];
 
@@ -469,7 +452,8 @@ describe("POST /api/internal/callbacks/chat", () => {
       });
 
       const response = await POST(
-        createCallbackRequest(
+        createSignedCallbackRequest(
+          "http://localhost/api/internal/callbacks/chat",
           {
             runId,
             status: "failed",
@@ -487,7 +471,7 @@ describe("POST /api/internal/callbacks/chat", () => {
         content: string;
         runId?: string;
       };
-      const chatMessages = (await getSessionChatMessages(
+      const chatMessages = (await getTestSessionChatMessages(
         sessionId,
       )) as StoredMessage[];
       expect(chatMessages).toHaveLength(2);
@@ -512,7 +496,8 @@ describe("POST /api/internal/callbacks/chat", () => {
       });
 
       const response = await POST(
-        createCallbackRequest(
+        createSignedCallbackRequest(
+          "http://localhost/api/internal/callbacks/chat",
           {
             runId,
             status: "failed",
@@ -570,7 +555,8 @@ describe("POST /api/internal/callbacks/chat", () => {
       const openRouterMock = mockOpenRouter("Debugging Node.js Apps");
 
       const response = await POST(
-        createCallbackRequest(
+        createSignedCallbackRequest(
+          "http://localhost/api/internal/callbacks/chat",
           {
             runId,
             status: "completed",
@@ -597,7 +583,8 @@ describe("POST /api/internal/callbacks/chat", () => {
       const openRouterMock = mockOpenRouter("Should not be called");
 
       const response = await POST(
-        createCallbackRequest(
+        createSignedCallbackRequest(
+          "http://localhost/api/internal/callbacks/chat",
           {
             runId,
             status: "failed",
@@ -624,7 +611,8 @@ describe("POST /api/internal/callbacks/chat", () => {
       mockOpenRouterError(500);
 
       const response = await POST(
-        createCallbackRequest(
+        createSignedCallbackRequest(
+          "http://localhost/api/internal/callbacks/chat",
           {
             runId,
             status: "completed",
@@ -650,7 +638,8 @@ describe("POST /api/internal/callbacks/chat", () => {
 
       // Do NOT set OPENROUTER_API_KEY — feature should be a no-op
       const response = await POST(
-        createCallbackRequest(
+        createSignedCallbackRequest(
+          "http://localhost/api/internal/callbacks/chat",
           {
             runId,
             status: "completed",
@@ -691,7 +680,8 @@ describe("POST /api/internal/callbacks/chat", () => {
       enableVapid();
 
       const response = await POST(
-        createCallbackRequest(
+        createSignedCallbackRequest(
+          "http://localhost/api/internal/callbacks/chat",
           {
             runId,
             status: "completed",
@@ -721,7 +711,8 @@ describe("POST /api/internal/callbacks/chat", () => {
       enableVapid();
 
       const response = await POST(
-        createCallbackRequest(
+        createSignedCallbackRequest(
+          "http://localhost/api/internal/callbacks/chat",
           {
             runId,
             status: "failed",
@@ -751,7 +742,8 @@ describe("POST /api/internal/callbacks/chat", () => {
 
       // VAPID keys not set — push notifications should be a no-op
       const response = await POST(
-        createCallbackRequest(
+        createSignedCallbackRequest(
+          "http://localhost/api/internal/callbacks/chat",
           {
             runId,
             status: "completed",
@@ -774,7 +766,8 @@ describe("POST /api/internal/callbacks/chat", () => {
       enableVapid();
 
       const response = await POST(
-        createCallbackRequest(
+        createSignedCallbackRequest(
+          "http://localhost/api/internal/callbacks/chat",
           {
             runId,
             status: "completed",
@@ -798,7 +791,8 @@ describe("POST /api/internal/callbacks/chat", () => {
       enableVapid();
 
       const response = await POST(
-        createCallbackRequest(
+        createSignedCallbackRequest(
+          "http://localhost/api/internal/callbacks/chat",
           {
             runId,
             status: "completed",
@@ -826,7 +820,8 @@ describe("POST /api/internal/callbacks/chat", () => {
       );
 
       const response = await POST(
-        createCallbackRequest(
+        createSignedCallbackRequest(
+          "http://localhost/api/internal/callbacks/chat",
           {
             runId,
             status: "completed",

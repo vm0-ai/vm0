@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { NextRequest } from "next/server";
 import {
   testContext,
   uniqueId,
@@ -13,8 +12,8 @@ import {
   createTestRequest,
   seedTestSlackOrgConnection,
   completeTestRun,
+  createSignedCallbackRequest,
 } from "../../../../../../../src/__tests__/api-test-helpers";
-import { computeHmacSignature } from "../../../../../../../src/lib/infra/callback/hmac";
 import { POST } from "../route";
 
 // The staff org ID whose FNV-1a hash (afce210e) is listed in STAFF_ORG_ID_HASHES,
@@ -31,33 +30,6 @@ interface OrgCallbackPayload {
   connectionId: string;
   agentId: string;
   existingSessionId?: string | undefined;
-}
-
-function createCallbackRequest(
-  body: {
-    runId: string;
-    status: "completed" | "failed" | "progress";
-    error?: string;
-    payload: OrgCallbackPayload;
-  },
-  secret: string,
-): NextRequest {
-  const bodyString = JSON.stringify(body);
-  const timestamp = Math.floor(Date.now() / 1000);
-  const signature = computeHmacSignature(bodyString, secret, timestamp);
-
-  return createTestRequest(
-    "http://localhost/api/internal/callbacks/slack/org",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-VM0-Signature": signature,
-        "X-VM0-Timestamp": timestamp.toString(),
-      },
-      body: bodyString,
-    },
-  );
 }
 
 describe("POST /api/internal/callbacks/slack/org", () => {
@@ -96,7 +68,8 @@ describe("POST /api/internal/callbacks/slack/org", () => {
       },
     });
 
-    const request = createCallbackRequest(
+    const request = createSignedCallbackRequest(
+      "http://localhost/api/internal/callbacks/slack/org",
       {
         runId,
         status: "completed",
@@ -136,7 +109,8 @@ describe("POST /api/internal/callbacks/slack/org", () => {
       payload: { ...payload },
     });
 
-    const request = createCallbackRequest(
+    const request = createSignedCallbackRequest(
+      "http://localhost/api/internal/callbacks/slack/org",
       { runId, status: "progress", payload },
       secret,
     );
@@ -180,7 +154,8 @@ describe("POST /api/internal/callbacks/slack/org", () => {
       payload: { ...payload },
     });
 
-    const request = createCallbackRequest(
+    const request = createSignedCallbackRequest(
+      "http://localhost/api/internal/callbacks/slack/org",
       { runId, status: "progress", payload },
       secret,
     );
@@ -223,7 +198,8 @@ describe("POST /api/internal/callbacks/slack/org", () => {
       payload: { ...payload },
     });
 
-    const request = createCallbackRequest(
+    const request = createSignedCallbackRequest(
+      "http://localhost/api/internal/callbacks/slack/org",
       { runId, status: "completed", payload },
       secret,
     );
@@ -268,7 +244,8 @@ describe("POST /api/internal/callbacks/slack/org", () => {
       payload: { ...payload },
     });
 
-    const request = createCallbackRequest(
+    const request = createSignedCallbackRequest(
+      "http://localhost/api/internal/callbacks/slack/org",
       { runId, status: "failed", error: "Something broke", payload },
       secret,
     );
@@ -311,7 +288,8 @@ describe("POST /api/internal/callbacks/slack/org", () => {
       payload: { ...payload },
     });
 
-    const request = createCallbackRequest(
+    const request = createSignedCallbackRequest(
+      "http://localhost/api/internal/callbacks/slack/org",
       { runId, status: "completed", payload },
       secret,
     );
@@ -351,7 +329,8 @@ describe("POST /api/internal/callbacks/slack/org", () => {
       payload: { ...payload },
     });
 
-    const request = createCallbackRequest(
+    const request = createSignedCallbackRequest(
+      "http://localhost/api/internal/callbacks/slack/org",
       { runId, status: "completed", payload },
       secret,
     );
@@ -401,7 +380,8 @@ describe("POST /api/internal/callbacks/slack/org", () => {
       payload: { ...payload },
     });
 
-    const request = createCallbackRequest(
+    const request = createSignedCallbackRequest(
+      "http://localhost/api/internal/callbacks/slack/org",
       { runId, status: "completed", payload },
       secret,
     );
@@ -444,7 +424,8 @@ describe("POST /api/internal/callbacks/slack/org", () => {
       payload: { ...payload },
     });
 
-    const request = createCallbackRequest(
+    const request = createSignedCallbackRequest(
+      "http://localhost/api/internal/callbacks/slack/org",
       { runId, status: "completed", payload },
       secret,
     );

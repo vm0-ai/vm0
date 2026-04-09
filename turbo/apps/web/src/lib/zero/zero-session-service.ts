@@ -70,25 +70,6 @@ export async function listSessionsWithMessages(
 }
 
 /**
- * Get chat messages for a session by ID.
- */
-export async function getSessionChatMessages(
-  sessionId: string,
-): Promise<StoredChatMessage[]> {
-  const [row] = await globalThis.services.db
-    .select({ chatMessages: zeroAgentSessions.chatMessages })
-    .from(zeroAgentSessions)
-    .where(eq(zeroAgentSessions.id, sessionId))
-    .limit(1);
-
-  if (!row) {
-    return [];
-  }
-
-  return (row.chatMessages ?? []) as StoredChatMessage[];
-}
-
-/**
  * Append chat messages to a session's chatMessages JSONB array.
  * Adds server-side createdAt timestamp to each message.
  * CRITICAL: preserves the transaction that writes to both agentSessions

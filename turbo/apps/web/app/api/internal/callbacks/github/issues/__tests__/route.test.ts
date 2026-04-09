@@ -16,8 +16,8 @@ import {
   insertTestGitHubInstallation,
   insertTestGitHubIssueSession,
   findTestGitHubIssueSession,
+  createSignedCallbackRequest,
 } from "../../../../../../../src/__tests__/api-test-helpers";
-import { computeHmacSignature } from "../../../../../../../src/lib/infra/callback/hmac";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
 
 const context = testContext();
@@ -30,40 +30,6 @@ interface CallbackPayload {
   issueNumber: number;
   agentId: string;
   existingSessionId?: string;
-}
-
-/**
- * Create a signed callback request for GitHub issues callback.
- */
-function createCallbackRequest(
-  body: {
-    runId: string;
-    status: "completed" | "failed";
-    result?: Record<string, unknown>;
-    error?: string;
-    payload: CallbackPayload;
-  },
-  secret: string,
-  options?: { invalidSignature?: boolean; expiredTimestamp?: boolean },
-) {
-  const bodyString = JSON.stringify(body);
-  const timestamp = options?.expiredTimestamp
-    ? Math.floor(Date.now() / 1000) - 600 // 10 minutes ago
-    : Math.floor(Date.now() / 1000);
-
-  const signature = options?.invalidSignature
-    ? "invalid-signature"
-    : computeHmacSignature(bodyString, secret, timestamp);
-
-  return createTestRequest(TEST_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-VM0-Signature": signature,
-      "X-VM0-Timestamp": timestamp.toString(),
-    },
-    body: bodyString,
-  });
 }
 
 interface CapturedComment {
@@ -162,7 +128,8 @@ describe("POST /api/internal/callbacks/github/issues", () => {
     it("should reject request with invalid signature", async () => {
       const { runId, payload, secret } = await givenGitHubCallbackSetup();
 
-      const request = createCallbackRequest(
+      const request = createSignedCallbackRequest(
+        TEST_URL,
         { runId, status: "completed", payload },
         secret,
         { invalidSignature: true },
@@ -177,7 +144,8 @@ describe("POST /api/internal/callbacks/github/issues", () => {
     it("should reject request with expired timestamp", async () => {
       const { runId, payload, secret } = await givenGitHubCallbackSetup();
 
-      const request = createCallbackRequest(
+      const request = createSignedCallbackRequest(
+        TEST_URL,
         { runId, status: "completed", payload },
         secret,
         { expiredTimestamp: true },
@@ -246,26 +214,18 @@ describe("POST /api/internal/callbacks/github/issues", () => {
       const { runId, secret } = await givenGitHubCallbackSetup();
 
       // Send request with incomplete payload (missing required fields)
-      const body = JSON.stringify({
-        runId,
-        status: "completed",
-        payload: {
-          installationId: "inst-123",
-          // Missing repo, issueNumber, composeId
+      const request = createSignedCallbackRequest(
+        TEST_URL,
+        {
+          runId,
+          status: "completed",
+          payload: {
+            installationId: "inst-123",
+            // Missing repo, issueNumber, composeId
+          },
         },
-      });
-      const timestamp = Math.floor(Date.now() / 1000);
-      const signature = computeHmacSignature(body, secret, timestamp);
-
-      const request = createTestRequest(TEST_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-VM0-Signature": signature,
-          "X-VM0-Timestamp": timestamp.toString(),
-        },
-        body,
-      });
+        secret,
+      );
       const response = await POST(request);
 
       expect(response.status).toBe(400);
@@ -279,7 +239,8 @@ describe("POST /api/internal/callbacks/github/issues", () => {
       const { runId, payload, secret, capturedComments } =
         await givenGitHubCallbackSetup();
 
-      const request = createCallbackRequest(
+      const request = createSignedCallbackRequest(
+        TEST_URL,
         { runId, status: "completed", payload },
         secret,
       );
@@ -302,7 +263,8 @@ describe("POST /api/internal/callbacks/github/issues", () => {
       const { runId, payload, secret, capturedComments } =
         await givenGitHubCallbackSetup();
 
-      const request = createCallbackRequest(
+      const request = createSignedCallbackRequest(
+        TEST_URL,
         {
           runId,
           status: "failed",
@@ -350,7 +312,8 @@ describe("POST /api/internal/callbacks/github/issues", () => {
         payload: payload as unknown as Record<string, unknown>,
       });
 
-      const request = createCallbackRequest(
+      const request = createSignedCallbackRequest(
+        TEST_URL,
         { runId, status: "completed", payload },
         secret,
       );
@@ -370,7 +333,8 @@ describe("POST /api/internal/callbacks/github/issues", () => {
       // Create an agent session so findNewSessionId can find it
       const session = await createTestAgentSession(userId, composeId);
 
-      const request = createCallbackRequest(
+      const request = createSignedCallbackRequest(
+        TEST_URL,
         { runId, status: "completed", payload },
         secret,
       );
@@ -410,7 +374,8 @@ describe("POST /api/internal/callbacks/github/issues", () => {
         lastCommentId: "old-comment-id",
       });
 
-      const request = createCallbackRequest(
+      const request = createSignedCallbackRequest(
+        TEST_URL,
         {
           runId,
           status: "completed",

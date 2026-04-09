@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { Resend } from "resend";
-import { NextRequest } from "next/server";
 import { POST } from "../route";
 import {
   testContext,
@@ -10,15 +9,14 @@ import {
   createTestCompose,
   createTestRun,
   createTestCallback,
-  createTestRequest,
   createTestAgentSession,
   createTestEmailThreadSession,
   findTestEmailThreadSession,
   completeTestRun,
+  createSignedCallbackRequest,
+  generateTestReplyToken,
 } from "../../../../../../../src/__tests__/api-test-helpers";
-import { computeHmacSignature } from "../../../../../../../src/lib/infra/callback/hmac";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
-import { generateReplyToken } from "../../../../../../../src/lib/zero/email/handlers/shared";
 
 const context = testContext();
 const mockResend = vi.mocked(new Resend(""), true);
@@ -30,34 +28,6 @@ interface ReplyCallbackPayload {
   inboundReferences?: string;
   replyRecipientTo?: string[];
   replyRecipientCc?: string[];
-}
-
-function createCallbackRequest(
-  body: {
-    runId: string;
-    status: "completed" | "failed";
-    error?: string;
-    payload: ReplyCallbackPayload;
-  },
-  secret: string,
-  options?: { invalidSignature?: boolean },
-): NextRequest {
-  const bodyString = JSON.stringify(body);
-  const timestamp = Math.floor(Date.now() / 1000);
-
-  const signature = options?.invalidSignature
-    ? "invalid-signature"
-    : computeHmacSignature(bodyString, secret, timestamp);
-
-  return createTestRequest("http://localhost/api/zero/email/callbacks/reply", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-VM0-Signature": signature,
-      "X-VM0-Timestamp": timestamp.toString(),
-    },
-    body: bodyString,
-  });
 }
 
 describe("POST /api/zero/email/callbacks/reply", () => {
@@ -74,7 +44,7 @@ describe("POST /api/zero/email/callbacks/reply", () => {
         uniqueId("reply-agent"),
       );
       const agentSession = await createTestAgentSession(user.userId, composeId);
-      const replyToken = generateReplyToken(agentSession.id);
+      const replyToken = generateTestReplyToken(agentSession.id);
       const emailSession = await createTestEmailThreadSession({
         userId: user.userId,
         agentId,
@@ -95,7 +65,8 @@ describe("POST /api/zero/email/callbacks/reply", () => {
         payload: { ...payload },
       });
 
-      const request = createCallbackRequest(
+      const request = createSignedCallbackRequest(
+        "http://localhost/api/zero/email/callbacks/reply",
         { runId, status: "completed", payload },
         secret,
         { invalidSignature: true },
@@ -114,7 +85,7 @@ describe("POST /api/zero/email/callbacks/reply", () => {
         uniqueId("reply-agent"),
       );
       const agentSession = await createTestAgentSession(user.userId, composeId);
-      const replyToken = generateReplyToken(agentSession.id);
+      const replyToken = generateTestReplyToken(agentSession.id);
       const emailSession = await createTestEmailThreadSession({
         userId: user.userId,
         agentId,
@@ -145,7 +116,8 @@ describe("POST /api/zero/email/callbacks/reply", () => {
         payload: { ...payload },
       });
 
-      const request = createCallbackRequest(
+      const request = createSignedCallbackRequest(
+        "http://localhost/api/zero/email/callbacks/reply",
         { runId, status: "completed", payload },
         secret,
       );
@@ -189,7 +161,7 @@ describe("POST /api/zero/email/callbacks/reply", () => {
         uniqueId("reply-agent"),
       );
       const agentSession = await createTestAgentSession(user.userId, composeId);
-      const replyToken = generateReplyToken(agentSession.id);
+      const replyToken = generateTestReplyToken(agentSession.id);
       const emailSession = await createTestEmailThreadSession({
         userId: user.userId,
         agentId,
@@ -217,7 +189,8 @@ describe("POST /api/zero/email/callbacks/reply", () => {
         payload: { ...payload },
       });
 
-      const request = createCallbackRequest(
+      const request = createSignedCallbackRequest(
+        "http://localhost/api/zero/email/callbacks/reply",
         { runId, status: "completed", payload },
         secret,
       );
@@ -241,7 +214,7 @@ describe("POST /api/zero/email/callbacks/reply", () => {
         uniqueId("reply-agent"),
       );
       const agentSession = await createTestAgentSession(user.userId, composeId);
-      const replyToken = generateReplyToken(agentSession.id);
+      const replyToken = generateTestReplyToken(agentSession.id);
       const emailSession = await createTestEmailThreadSession({
         userId: user.userId,
         agentId,
@@ -270,7 +243,8 @@ describe("POST /api/zero/email/callbacks/reply", () => {
         payload: { ...payload },
       });
 
-      const request = createCallbackRequest(
+      const request = createSignedCallbackRequest(
+        "http://localhost/api/zero/email/callbacks/reply",
         { runId, status: "completed", payload },
         secret,
       );
@@ -299,7 +273,7 @@ describe("POST /api/zero/email/callbacks/reply", () => {
         uniqueId("reply-agent"),
       );
       const agentSession = await createTestAgentSession(user.userId, composeId);
-      const replyToken = generateReplyToken(agentSession.id);
+      const replyToken = generateTestReplyToken(agentSession.id);
       const emailSession = await createTestEmailThreadSession({
         userId: user.userId,
         agentId,
@@ -326,7 +300,8 @@ describe("POST /api/zero/email/callbacks/reply", () => {
         payload: { ...payload },
       });
 
-      const request = createCallbackRequest(
+      const request = createSignedCallbackRequest(
+        "http://localhost/api/zero/email/callbacks/reply",
         { runId, status: "completed", payload },
         secret,
       );
@@ -350,7 +325,7 @@ describe("POST /api/zero/email/callbacks/reply", () => {
         uniqueId("reply-agent"),
       );
       const agentSession = await createTestAgentSession(user.userId, composeId);
-      const replyToken = generateReplyToken(agentSession.id);
+      const replyToken = generateTestReplyToken(agentSession.id);
       const emailSession = await createTestEmailThreadSession({
         userId: user.userId,
         agentId,
@@ -378,7 +353,8 @@ describe("POST /api/zero/email/callbacks/reply", () => {
         payload: { ...payload },
       });
 
-      const request = createCallbackRequest(
+      const request = createSignedCallbackRequest(
+        "http://localhost/api/zero/email/callbacks/reply",
         { runId, status: "completed", payload },
         secret,
       );
@@ -402,7 +378,7 @@ describe("POST /api/zero/email/callbacks/reply", () => {
         uniqueId("reply-agent"),
       );
       const agentSession = await createTestAgentSession(user.userId, composeId);
-      const replyToken = generateReplyToken(agentSession.id);
+      const replyToken = generateTestReplyToken(agentSession.id);
       const emailSession = await createTestEmailThreadSession({
         userId: user.userId,
         agentId,
@@ -423,7 +399,8 @@ describe("POST /api/zero/email/callbacks/reply", () => {
         payload: { ...payload },
       });
 
-      const request = createCallbackRequest(
+      const request = createSignedCallbackRequest(
+        "http://localhost/api/zero/email/callbacks/reply",
         { runId, status: "failed", error: "Agent crashed", payload },
         secret,
       );

@@ -8,16 +8,27 @@ import { createTestRequest } from "./core";
  * @param url - The URL for the request
  * @param body - The request body (will be JSON-serialized)
  * @param secret - The HMAC secret to sign with
+ * @param options - Optional overrides for testing error scenarios
+ * @param options.invalidSignature - If true, uses "invalid-signature" instead of computed HMAC
+ * @param options.expiredTimestamp - If true, uses a timestamp 10 minutes in the past
  * @returns A NextRequest with HMAC signature headers
  */
 export function createSignedCallbackRequest(
   url: string,
   body: unknown,
   secret: string,
+  options?: {
+    invalidSignature?: boolean;
+    expiredTimestamp?: boolean;
+  },
 ): NextRequest {
-  const timestamp = Math.floor(Date.now() / 1000);
+  const timestamp = options?.expiredTimestamp
+    ? Math.floor(Date.now() / 1000) - 600
+    : Math.floor(Date.now() / 1000);
   const payload = JSON.stringify(body);
-  const signature = computeHmacSignature(payload, secret, timestamp);
+  const signature = options?.invalidSignature
+    ? "invalid-signature"
+    : computeHmacSignature(payload, secret, timestamp);
   return createTestRequest(url, {
     method: "POST",
     headers: {

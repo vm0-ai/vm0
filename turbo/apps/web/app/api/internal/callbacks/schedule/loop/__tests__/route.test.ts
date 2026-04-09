@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { NextRequest } from "next/server";
 import { POST } from "../route";
 import {
   testContext,
@@ -9,7 +8,6 @@ import {
   createTestCompose,
   createTestRunInDb,
   createTestCallback,
-  createTestRequest,
   createTestSchedule,
   createTestZeroAgent,
   enableTestSchedule,
@@ -17,46 +15,14 @@ import {
   deleteTestSchedule,
   updateTestScheduleState,
   findTestScheduleById,
+  createSignedCallbackRequest,
 } from "../../../../../../../src/__tests__/api-test-helpers";
-import { computeHmacSignature } from "../../../../../../../src/lib/infra/callback/hmac";
 
 const context = testContext();
 
 interface LoopCallbackPayload {
   scheduleId: string;
   intervalSeconds: number;
-}
-
-function createCallbackRequest(
-  body: {
-    callbackId?: string;
-    runId: string;
-    status: "completed" | "failed";
-    error?: string;
-    payload: LoopCallbackPayload;
-  },
-  secret: string,
-  options?: { invalidSignature?: boolean },
-): NextRequest {
-  const bodyString = JSON.stringify(body);
-  const timestamp = Math.floor(Date.now() / 1000);
-
-  const signature = options?.invalidSignature
-    ? "invalid-signature"
-    : computeHmacSignature(bodyString, secret, timestamp);
-
-  return createTestRequest(
-    "http://localhost/api/internal/callbacks/schedule/loop",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-VM0-Signature": signature,
-        "X-VM0-Timestamp": timestamp.toString(),
-      },
-      body: bodyString,
-    },
-  );
 }
 
 describe("POST /api/internal/callbacks/schedule/loop", () => {
@@ -95,7 +61,8 @@ describe("POST /api/internal/callbacks/schedule/loop", () => {
     it("should reject request with invalid signature", async () => {
       const { schedule, runId, secret } = await setupLoopSchedule();
 
-      const request = createCallbackRequest(
+      const request = createSignedCallbackRequest(
+        "http://localhost/api/internal/callbacks/schedule/loop",
         {
           runId,
           status: "completed",
@@ -110,7 +77,8 @@ describe("POST /api/internal/callbacks/schedule/loop", () => {
     });
 
     it("should reject request with unknown runId", async () => {
-      const request = createCallbackRequest(
+      const request = createSignedCallbackRequest(
+        "http://localhost/api/internal/callbacks/schedule/loop",
         {
           runId: "00000000-0000-0000-0000-000000000000",
           status: "completed",
@@ -129,7 +97,8 @@ describe("POST /api/internal/callbacks/schedule/loop", () => {
     it("should verify using callbackId for PK-based secret lookup", async () => {
       const { schedule, runId, callbackId, secret } = await setupLoopSchedule();
 
-      const request = createCallbackRequest(
+      const request = createSignedCallbackRequest(
+        "http://localhost/api/internal/callbacks/schedule/loop",
         {
           callbackId,
           runId,
@@ -161,7 +130,8 @@ describe("POST /api/internal/callbacks/schedule/loop", () => {
       });
 
       // With callbackId, the loop callback should still verify with its own secret
-      const request = createCallbackRequest(
+      const request = createSignedCallbackRequest(
+        "http://localhost/api/internal/callbacks/schedule/loop",
         {
           callbackId,
           runId,
@@ -188,7 +158,8 @@ describe("POST /api/internal/callbacks/schedule/loop", () => {
       // Simulate prior consecutive failures
       await updateTestScheduleState(schedule.id, { consecutiveFailures: 2 });
 
-      const request = createCallbackRequest(
+      const request = createSignedCallbackRequest(
+        "http://localhost/api/internal/callbacks/schedule/loop",
         {
           runId,
           status: "completed",
@@ -214,7 +185,8 @@ describe("POST /api/internal/callbacks/schedule/loop", () => {
     it("should increment failure counter on first failure", async () => {
       const { schedule, runId, secret } = await setupLoopSchedule();
 
-      const request = createCallbackRequest(
+      const request = createSignedCallbackRequest(
+        "http://localhost/api/internal/callbacks/schedule/loop",
         {
           runId,
           status: "failed",
@@ -240,7 +212,8 @@ describe("POST /api/internal/callbacks/schedule/loop", () => {
       // Set to 2 consecutive failures already
       await updateTestScheduleState(schedule.id, { consecutiveFailures: 2 });
 
-      const request = createCallbackRequest(
+      const request = createSignedCallbackRequest(
+        "http://localhost/api/internal/callbacks/schedule/loop",
         {
           runId,
           status: "failed",
@@ -267,7 +240,8 @@ describe("POST /api/internal/callbacks/schedule/loop", () => {
       // Delete the schedule via API helper
       await deleteTestSchedule(composeId, schedule.name);
 
-      const request = createCallbackRequest(
+      const request = createSignedCallbackRequest(
+        "http://localhost/api/internal/callbacks/schedule/loop",
         {
           runId,
           status: "completed",
@@ -288,7 +262,8 @@ describe("POST /api/internal/callbacks/schedule/loop", () => {
       // Disable the schedule via API helper
       await disableTestSchedule(composeId, schedule.name);
 
-      const request = createCallbackRequest(
+      const request = createSignedCallbackRequest(
+        "http://localhost/api/internal/callbacks/schedule/loop",
         {
           runId,
           status: "completed",
