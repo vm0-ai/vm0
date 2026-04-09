@@ -140,6 +140,8 @@ export const chatMessagesContract = c.router({
       prompt: z.string().min(1),
       threadId: z.string().optional(),
       modelProvider: z.string().optional(),
+      // Optional for backward compatibility: older clients that omit this field
+      // still trigger title generation (server guards with !== false, not === true).
       hasTextContent: z.boolean().optional(),
     }),
     responses: {

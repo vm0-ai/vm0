@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { assert, describe, it, expect, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
@@ -887,6 +887,20 @@ describe("zero-chat signals", () => {
     });
 
     it("should send image-only message (no text, attachment only)", async () => {
+      interface CapturedChatBody {
+        prompt: string;
+        hasTextContent: boolean;
+      }
+
+      function isCapturedChatBody(v: unknown): v is CapturedChatBody {
+        return (
+          typeof v === "object" &&
+          v !== null &&
+          "prompt" in v &&
+          typeof (v as Record<string, unknown>).prompt === "string"
+        );
+      }
+
       let capturedBody: unknown = null;
 
       server.use(
@@ -947,17 +961,10 @@ describe("zero-chat signals", () => {
       );
 
       // API should receive non-empty prompt (attachment markdown)
-      expect(capturedBody).toBeDefined();
-      expect(
-        typeof capturedBody === "object" &&
-          capturedBody !== null &&
-          "prompt" in capturedBody,
-      ).toBeTruthy();
-      const body = capturedBody as Record<string, unknown>;
-      expect(typeof body.prompt).toBe("string");
-      expect(body.prompt).toContain("https://example.com/photo.png");
-      expect(body.prompt).toContain("photo.png");
-      expect(String(body.prompt)).not.toMatch(/^\n/);
+      assert(isCapturedChatBody(capturedBody));
+      expect(capturedBody.prompt).toContain("https://example.com/photo.png");
+      expect(capturedBody.prompt).toContain("photo.png");
+      expect(capturedBody.prompt).not.toMatch(/^\n/);
 
       // Attachments should be cleared after send
       expect(context.store.get(zeroChatAttachments$)).toHaveLength(0);
