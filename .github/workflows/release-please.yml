@@ -328,6 +328,7 @@ jobs:
             CLERK_WEBHOOK_SIGNING_SECRET=${{ secrets.CLERK_WEBHOOK_SIGNING_SECRET }}
             ZERO_PRICE=${{ secrets.ZERO_PRICE }}
             AGENTPHONE_API_KEY=${{ secrets.AGENTPHONE_API_KEY }}
+            PLAIN_API_KEY=${{ secrets.PLAIN_API_KEY }}
             NGROK_API_KEY=${{ secrets.NGROK_API_KEY }}
             NGROK_COMPUTER_CONNECTOR_DOMAIN=${{ vars.NGROK_COMPUTER_CONNECTOR_DOMAIN }}
             APP_URL=https://app.vm0.ai

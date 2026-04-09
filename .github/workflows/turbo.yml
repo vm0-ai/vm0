@@ -690,6 +690,7 @@ jobs:
           STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
           ZERO_PRICE: ${{ secrets.ZERO_PRICE }}
           AGENTPHONE_API_KEY: ${{ secrets.AGENTPHONE_API_KEY }}
+          PLAIN_API_KEY: ${{ secrets.PLAIN_API_KEY }}
           NGROK_API_KEY: ${{ secrets.NGROK_API_KEY }}
           NGROK_COMPUTER_CONNECTOR_DOMAIN: ${{ vars.NGROK_COMPUTER_CONNECTOR_DOMAIN }}
           APP_URL: ${{ needs.prepare.outputs.app-preview-url }}
@@ -896,6 +897,7 @@ jobs:
             STRIPE_SECRET_KEY=${{ secrets.STRIPE_SECRET_KEY }}
             STRIPE_WEBHOOK_SECRET=${{ secrets.STRIPE_WEBHOOK_SECRET }}
             ZERO_PRICE=${{ secrets.ZERO_PRICE }}
+            PLAIN_API_KEY=${{ secrets.PLAIN_API_KEY }}
             NGROK_API_KEY=${{ secrets.NGROK_API_KEY }}
             NGROK_COMPUTER_CONNECTOR_DOMAIN=${{ vars.NGROK_COMPUTER_CONNECTOR_DOMAIN }}
             APP_URL=${{ needs.prepare.outputs.app-preview-url }}
