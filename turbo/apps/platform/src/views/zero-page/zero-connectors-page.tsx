@@ -175,7 +175,18 @@ function AvailableConnectorCard({
   onConnect: () => void;
 }) {
   return (
-    <div className="zero-card cursor-pointer overflow-hidden">
+    <div
+      role="button"
+      tabIndex={0}
+      className="zero-card cursor-pointer overflow-hidden"
+      onClick={onConnect}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onConnect();
+        }
+      }}
+    >
       <div className="flex items-center gap-2.5 px-5 pt-4 pb-1">
         <span className="flex h-5 w-5 shrink-0 items-center justify-center">
           {connector.type in CONNECTOR_TYPES ? (
@@ -198,14 +209,12 @@ function AvailableConnectorCard({
             className="shrink-0 text-muted-foreground animate-spin"
           />
         ) : (
-          <button
-            type="button"
-            onClick={onConnect}
-            className="shrink-0 flex h-7 w-7 items-center justify-center rounded-md border border-border/60 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-            aria-label={`Connect ${connector.label}`}
+          <span
+            className="shrink-0 flex h-7 w-7 items-center justify-center rounded-md border border-border/60 text-muted-foreground"
+            aria-hidden="true"
           >
             <IconPlus size={14} stroke={1.5} />
-          </button>
+          </span>
         )}
       </div>
       <div className="px-5 pb-4 pt-1">
