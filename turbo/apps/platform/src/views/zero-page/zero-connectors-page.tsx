@@ -39,7 +39,42 @@ import {
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
 } from "@vm0/ui";
+
+const GOOGLE_CONNECTOR_TYPES = new Set([
+  "gmail",
+  "google-sheets",
+  "google-docs",
+  "google-drive",
+  "google-calendar",
+]);
+
+const GOOGLE_OAUTH_NOTE =
+  "Google OAuth is under verification review — a standard compliance step that doesn't affect functionality.";
+
+function GoogleEarlyAccessIndicator() {
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="shrink-0 inline-flex items-center gap-0.5 text-[11px] text-muted-foreground cursor-default">
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-muted-foreground/40" />
+            Early Access
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="max-w-xs text-xs leading-relaxed">
+          Our Google OAuth is under Google&apos;s verification review. This is a
+          standard compliance step and does not affect vm0&apos;s functionality
+          or security. You can safely proceed by clicking &quot;Continue&quot;.
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
 
 function GlobalConnectorCard({
   connector,
@@ -223,7 +258,31 @@ function AvailableConnectorCard({
           data-testid="connector-help-text"
           className="text-xs text-muted-foreground line-clamp-2"
         >
-          {connector.helpText ?? ""}
+          {GOOGLE_CONNECTOR_TYPES.has(connector.type) ? (
+            <>
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="font-medium text-muted-foreground cursor-default underline decoration-dotted underline-offset-2 decoration-muted-foreground/40">
+                      Early Access
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent
+                    side="bottom"
+                    className="max-w-xs text-xs leading-relaxed"
+                  >
+                    Our Google OAuth is under Google&apos;s verification review.
+                    This is a standard compliance step and does not affect
+                    vm0&apos;s functionality or security. You can safely proceed
+                    by clicking &quot;Continue&quot;.
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+              {connector.helpText ? `: ${connector.helpText}` : ""}
+            </>
+          ) : (
+            (connector.helpText ?? "")
+          )}
         </div>
       </div>
     </div>
@@ -360,7 +419,7 @@ export function ZeroConnectorsPage() {
                 onChange={(e) => {
                   return setSearch(e.target.value);
                 }}
-                className="h-9 w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input pl-9 pr-3 text-sm text-foreground outline-none placeholder:text-muted-foreground/50 transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10"
+                className="h-9 w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input pl-9 pr-3 text-sm text-foreground outline-none placeholder:text-muted-foreground transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10"
               />
             </div>
           </div>
