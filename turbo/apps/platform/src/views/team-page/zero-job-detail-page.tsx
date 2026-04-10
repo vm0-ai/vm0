@@ -19,6 +19,7 @@ import {
   IconSearch,
   IconX,
   IconMessageCircle,
+  IconWand,
 } from "@tabler/icons-react";
 import {
   Button,
@@ -74,6 +75,7 @@ import { Link } from "../router/link.tsx";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { AgentAvatarImg } from "../zero-page/zero-sidebar-shared.tsx";
+import { openAvatarMaker$ } from "../../signals/zero-page/settings/avatar-maker.ts";
 import { currentAgent$ } from "../../signals/agent.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { user$ } from "../../signals/auth.ts";
@@ -732,16 +734,41 @@ function AgentHeader({
   showProfileAndInstructions: boolean;
 }) {
   const nav = useSet(detachedNavigateTo$);
+  const openMaker = useSet(openAvatarMaker$);
 
   return (
     <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-6 pb-0">
       <div className="mx-auto max-w-[900px]">
         <div className="flex items-center gap-4">
-          <AgentAvatarImg
-            name={agentId}
-            alt={displayName}
-            className="h-14 w-14 shrink-0 rounded-full object-cover object-top sm:h-16 sm:w-16"
-          />
+          <div className="group relative shrink-0">
+            <AgentAvatarImg
+              name={agentId}
+              alt={displayName}
+              className="h-14 w-14 shrink-0 rounded-full object-cover object-top sm:h-16 sm:w-16"
+            />
+            {showProfileAndInstructions && (
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onTabChange("profile");
+                        openMaker();
+                      }}
+                      className="absolute -right-0.5 -bottom-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm border border-border opacity-0 group-hover:opacity-100 hover:text-foreground transition-all"
+                      aria-label="Customize avatar"
+                    >
+                      <IconWand size={12} stroke={1.5} />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    <p className="text-xs">Customize avatar</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+          </div>
           <div className="min-w-0">
             <h1 className="text-lg font-semibold tracking-tight text-foreground sm:text-xl truncate">
               {displayName}
