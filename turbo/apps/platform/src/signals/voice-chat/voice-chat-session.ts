@@ -65,6 +65,12 @@ const PREP_TIMEOUT_MEETING_MS = 300_000;
 const MAX_RECONNECT_ATTEMPTS = 5;
 const RECONNECT_BASE_DELAY_MS = 1000;
 const REALTIME_MODEL = "gpt-realtime-1.5";
+const SERVER_VAD_CONFIG = {
+  type: "server_vad",
+  threshold: 0.8,
+  prefix_padding_ms: 300,
+  silence_duration_ms: 600,
+} as const;
 
 const SESSION_TOOLS = [
   {
@@ -479,14 +485,7 @@ const setupWebRTC$ = command(
     dc.addEventListener("open", () => {
       const inputMode = get(internalInputMode$);
       const turnDetection =
-        inputMode === "hands-free"
-          ? {
-              type: "server_vad",
-              threshold: 0.8,
-              prefix_padding_ms: 300,
-              silence_duration_ms: 600,
-            }
-          : null;
+        inputMode === "hands-free" ? SERVER_VAD_CONFIG : null;
 
       dc.send(
         JSON.stringify({
@@ -1181,15 +1180,7 @@ export const switchInputMode$ = command(
 
     set(internalInputMode$, mode);
 
-    const turnDetection =
-      mode === "hands-free"
-        ? {
-            type: "server_vad",
-            threshold: 0.8,
-            prefix_padding_ms: 300,
-            silence_duration_ms: 600,
-          }
-        : null;
+    const turnDetection = mode === "hands-free" ? SERVER_VAD_CONFIG : null;
 
     dc.send(
       JSON.stringify({
