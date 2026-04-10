@@ -20,6 +20,7 @@ import {
   vcEnabled$,
   vcAgentId$,
   vcPrompt$,
+  vcPrepElapsedMs$,
   vcMeetingPromptInput$,
   setMeetingPromptInput$,
   startVoiceChat$,
@@ -95,6 +96,7 @@ export function VoiceChatPage() {
   const endSession = useSet(endVoiceChat$);
   const toggleMute = useSet(toggleVoiceChatMute$);
   const prompt = useGet(vcPrompt$);
+  const prepElapsedMs = useGet(vcPrepElapsedMs$);
   const meetingPrompt = useGet(vcMeetingPromptInput$);
   const setMeetingPrompt = useSet(setMeetingPromptInput$);
   const agentName = useLastResolved(defaultAgentName$) ?? "Zero";
@@ -103,6 +105,8 @@ export function VoiceChatPage() {
 
   useTranscriptAutoScroll(transcript.length);
   useEventsAutoScroll(events.length);
+
+  const elapsedSeconds = Math.floor(prepElapsedMs / 1000);
 
   if (enabled === false) {
     return (
@@ -180,6 +184,12 @@ export function VoiceChatPage() {
             <h1 className="text-lg font-semibold">
               {prompt ? "Preparing Meeting" : "Preparing..."}
             </h1>
+            {elapsedSeconds > 0 && (
+              <span className="text-sm tabular-nums text-muted-foreground">
+                {Math.floor(elapsedSeconds / 60)}:
+                {String(elapsedSeconds % 60).padStart(2, "0")}
+              </span>
+            )}
             <StatusBadge status={status} />
           </div>
           <Button
