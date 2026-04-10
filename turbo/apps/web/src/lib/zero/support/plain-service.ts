@@ -48,7 +48,8 @@ export async function createPlainSupportThread(
 ): Promise<void> {
   const client = getPlainClient();
   if (!client) {
-    throw new Error("PLAIN_API_KEY not configured");
+    log.warn("PLAIN_API_KEY not configured, skipping Plain support thread");
+    return;
   }
 
   const {
