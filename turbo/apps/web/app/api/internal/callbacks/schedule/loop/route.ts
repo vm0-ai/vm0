@@ -112,13 +112,20 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   // Generate run summary (best-effort)
   if (status === "completed" && schedule.prompt) {
-    const resultText = (await getRunOutputText(result.data.runId)) ?? "";
-    await saveRunSummary(
-      result.data.runId,
-      "schedule",
-      schedule.prompt,
-      resultText,
-    );
+    try {
+      const resultText = (await getRunOutputText(result.data.runId)) ?? "";
+      await saveRunSummary(
+        result.data.runId,
+        "schedule",
+        schedule.prompt,
+        resultText,
+      );
+    } catch (err) {
+      log.warn("Failed to generate run summary", {
+        runId: result.data.runId,
+        err,
+      });
+    }
   }
 
   return NextResponse.json({ success: true });

@@ -214,13 +214,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
   // Generate run summary (best-effort)
   if (runContext?.prompt) {
-    const combinedOutput = allOutputs
-      .map((o) => {
-        return o.result;
-      })
-      .filter(Boolean)
-      .join("\n");
-    await saveRunSummary(runId, "slack", runContext.prompt, combinedOutput);
+    try {
+      const combinedOutput = allOutputs
+        .map((o) => {
+          return o.result;
+        })
+        .filter(Boolean)
+        .join("\n");
+      await saveRunSummary(runId, "slack", runContext.prompt, combinedOutput);
+    } catch (err) {
+      log.warn("Failed to generate run summary", { runId, err });
+    }
   }
 
   // Clear assistant thinking status
