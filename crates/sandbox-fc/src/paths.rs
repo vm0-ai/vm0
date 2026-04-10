@@ -258,4 +258,15 @@ mod tests {
             vsock.display()
         );
     }
+
+    #[test]
+    fn cow_bitmap_consistent_with_cow() {
+        let output = SnapshotOutputPaths::new(PathBuf::from("/data/images/abc123"));
+        let expected = PathBuf::from(format!("{}.bitmap", output.cow().display()));
+        assert_eq!(
+            output.cow_bitmap(),
+            expected,
+            "cow_bitmap() must be cow() + \".bitmap\" suffix"
+        );
+    }
 }
