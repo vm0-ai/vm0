@@ -651,6 +651,5 @@ describe("POST /api/zero/developer-support", () => {
 
     // Plain was called (4 steps)
     expect(plainCallCount).toBe(4);
-
   });
 });
