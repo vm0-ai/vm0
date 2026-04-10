@@ -95,7 +95,7 @@ struct GcCandidate {
     _lock: Flock<std::fs::File>,
 }
 
-/// GC a single artifact directory (rootfs/ or snapshots/).
+/// GC a single artifact directory (e.g. images/).
 ///
 /// Each subdirectory is named by its content hash. We try an exclusive nonblocking
 /// flock on the corresponding lock file — if it succeeds the resource is unused.

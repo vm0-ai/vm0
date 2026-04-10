@@ -193,11 +193,6 @@ pub async fn run_build(args: BuildArgs, provider: &dyn SnapshotProvider) -> Runn
         return Ok(());
     }
 
-    // Create output directory
-    tokio::fs::create_dir_all(&output_dir)
-        .await
-        .map_err(|e| RunnerError::Internal(format!("create {}: {e}", output_dir.display())))?;
-
     // --- Phase 1: Build rootfs ---
 
     // Clean up any partial build from a previous failed attempt so we start fresh.
@@ -458,6 +453,27 @@ mod tests {
         for &(input, expected) in cases {
             assert_eq!(human_bytes(input), expected, "human_bytes({input})");
         }
+    }
+
+    /// Guard against accidental changes to the hash function.
+    /// If this test fails, ALL cached images on ALL hosts are invalidated.
+    /// Only update the expected hash deliberately.
+    #[tokio::test]
+    async fn image_hash_is_stable() {
+        let dir = tempfile::tempdir().unwrap();
+        let bin = dir.path().join("agent");
+        tokio::fs::write(&bin, b"test-binary").await.unwrap();
+        let bins: &[(&Path, &str)] = &[(&bin, "/usr/local/bin/guest-agent")];
+        let provider = sandbox_mock::MockSnapshotProvider;
+
+        let hash = compute_image_hash(bins, 16384, &provider, 2, 2048)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            hash, "70ff284ebd80bc8754ddd730181866f4187008755258cb45f32827c1d609a9a0",
+            "image hash changed — this invalidates ALL cached images on ALL hosts"
+        );
     }
 
     #[tokio::test]
