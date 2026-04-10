@@ -143,8 +143,8 @@ async function compareProxyUsage(
     for (const field of fields) {
       const clientVal = client[field] ?? 0;
       const proxyVal = proxy[field] ?? 0;
-      if (clientVal !== proxyVal) {
-        log.error("Proxy usage mismatch", {
+      if (proxyVal < clientVal) {
+        log.error("Proxy usage undercount", {
           orgId,
           runId: client.runId,
           field,

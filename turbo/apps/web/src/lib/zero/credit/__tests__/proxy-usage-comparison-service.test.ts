@@ -25,7 +25,7 @@ function callsForOrg(
 ): Array<Record<string, unknown>> {
   return spy.mock.calls
     .filter((call) => {
-      return call[0] === "Proxy usage mismatch";
+      return call[0] === "Proxy usage undercount";
     })
     .map((call) => {
       return call[1] as Record<string, unknown>;
@@ -105,8 +105,42 @@ describe("compareRecentRunsProxyUsage", () => {
     expect(callsForOrg(logSpy, orgId)).toHaveLength(0);
   });
 
-  it("logs error for mismatching usage within window", async () => {
-    const { orgId, userId } = await context.setupUser({ prefix: "mismatch" });
+  it("logs error when proxy undercount (proxy < client)", async () => {
+    const { orgId, userId } = await context.setupUser({ prefix: "under" });
+
+    const runId = await createCompletedRun(
+      orgId,
+      userId,
+      new Date(Date.now() - 120_000),
+    );
+    await insertTestCreditUsageForRun({
+      runId,
+      orgId,
+      userId,
+      status: "processed",
+    });
+    await insertTestProxyCreditUsage({
+      runId,
+      orgId,
+      userId,
+      inputTokens: 30,
+      outputTokens: 50,
+    });
+
+    await compareRecentRunsProxyUsage();
+
+    const calls = callsForOrg(logSpy, orgId);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({
+      runId,
+      field: "inputTokens",
+      clientValue: 100,
+      proxyValue: 30,
+    });
+  });
+
+  it("does not log when proxy overcounts (subagent usage)", async () => {
+    const { orgId, userId } = await context.setupUser({ prefix: "over" });
 
     const runId = await createCompletedRun(
       orgId,
@@ -129,14 +163,7 @@ describe("compareRecentRunsProxyUsage", () => {
 
     await compareRecentRunsProxyUsage();
 
-    const calls = callsForOrg(logSpy, orgId);
-    expect(calls).toHaveLength(1);
-    expect(calls[0]).toMatchObject({
-      runId,
-      field: "inputTokens",
-      clientValue: 100,
-      proxyValue: 200,
-    });
+    expect(callsForOrg(logSpy, orgId)).toHaveLength(0);
   });
 
   it("does not log when usage matches", async () => {
@@ -218,7 +245,7 @@ describe("compareRecentRunsProxyUsage", () => {
       runId: run2,
       orgId: user2.orgId,
       userId: user2.userId,
-      inputTokens: 300,
+      inputTokens: 30,
     });
 
     await compareRecentRunsProxyUsage();
