@@ -200,6 +200,16 @@ pub async fn run_build(args: BuildArgs, provider: &dyn SnapshotProvider) -> Runn
 
     // --- Phase 1: Build rootfs ---
 
+    // Clean up any partial build from a previous failed attempt so we start fresh.
+    if tokio::fs::try_exists(&output_dir).await.unwrap_or(false) {
+        tokio::fs::remove_dir_all(&output_dir)
+            .await
+            .map_err(|e| RunnerError::Internal(format!("clean {}: {e}", output_dir.display())))?;
+    }
+    tokio::fs::create_dir_all(&output_dir)
+        .await
+        .map_err(|e| RunnerError::Internal(format!("create {}: {e}", output_dir.display())))?;
+
     // Write scripts to a temp directory
     let work_dir =
         tempfile::tempdir().map_err(|e| RunnerError::Internal(format!("create temp dir: {e}")))?;
