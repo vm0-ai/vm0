@@ -201,8 +201,8 @@ export const setZeroActivityFilter$ = command(
 
 export const currentRunId$ = computed((get) => {
   const params = get(pathParams$);
-  if (params && typeof params === "object" && "runId" in params) {
-    return String(params.runId);
+  if (params && typeof params === "object" && "activityRunId" in params) {
+    return String(params.activityRunId);
   }
   return null;
 });

@@ -238,15 +238,15 @@ const ROUTE_CONFIG = [
   { path: "/activity", setup: redirectTo(ROUTES.activities) },
   {
     path: "/activity/:id",
-    setup: redirectWithId(ROUTES.activityDetail, "runId"),
+    setup: redirectWithId(ROUTES.activityDetail, "activityRunId"),
   },
   {
     path: "/activity/:id/context",
-    setup: redirectWithId(ROUTES.activityDetail, "runId"),
+    setup: redirectWithId(ROUTES.activityDetail, "activityRunId"),
   },
   {
     path: "/activity/:id/network",
-    setup: redirectWithId(ROUTES.activityDetail, "runId"),
+    setup: redirectWithId(ROUTES.activityDetail, "activityRunId"),
   },
   { path: "/chat/:id", setup: redirectWithId(ROUTES.chat, "threadId") },
   { path: "/schedule", setup: redirectTo(ROUTES.schedules) },

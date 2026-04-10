@@ -105,6 +105,13 @@ export default [
       ],
     },
   },
+  // Enforce unique route param names in route definitions
+  {
+    files: ["src/signals/route-paths.ts"],
+    rules: {
+      "ccstate/no-duplicate-route-param": "error",
+    },
+  },
   // Allow detach() in signal infrastructure (definition site)
   {
     files: ["src/signals/utils.ts"],

@@ -103,10 +103,10 @@ const activityDetailBreadcrumb$ = computed(
       return null;
     }
     const params = get(pathParams$) as Params;
-    const runId = getStringParam(params, "runId");
-    if (runId) {
+    const activityRunId = getStringParam(params, "activityRunId");
+    if (activityRunId) {
       const detail = await get(zeroActivityDetail$);
-      if (detail && detail.id === runId) {
+      if (detail && detail.id === activityRunId) {
         return {
           section: "Activity logs",
           sectionPath: ROUTES.activities,

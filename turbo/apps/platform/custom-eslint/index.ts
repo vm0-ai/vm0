@@ -51,6 +51,7 @@ import noTestDelay from "./rules/no-test-delay.ts";
 import requireAccept from "./rules/require-accept.ts";
 import noGetByRoleName from "./rules/no-get-by-role-name.ts";
 import noUserClearTab from "./rules/no-user-clear-tab.ts";
+import noDuplicateRouteParam from "./rules/no-duplicate-route-param.ts";
 
 const plugin = {
   meta: {
@@ -83,6 +84,7 @@ const plugin = {
     "require-accept": requireAccept,
     "no-get-by-role-name": noGetByRoleName,
     "no-user-clear-tab": noUserClearTab,
+    "no-duplicate-route-param": noDuplicateRouteParam,
   },
 };
 

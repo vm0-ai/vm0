@@ -739,8 +739,8 @@ function AssistantMessageActions({
           <Tooltip>
             <TooltipTrigger asChild>
               <Link
-                pathname="/activities/:runId"
-                options={{ pathParams: { runId: message.legacyRunId } }}
+                pathname="/activities/:activityRunId"
+                options={{ pathParams: { activityRunId: message.legacyRunId } }}
                 className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
                 aria-label="View run logs"
               >
