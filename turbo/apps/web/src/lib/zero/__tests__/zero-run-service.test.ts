@@ -508,21 +508,23 @@ describe("createZeroRun()", () => {
   });
 
   describe("AutoSkill guidance injection", () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
     it("should inject skill guidance when AutoSkill feature switch is enabled", async () => {
-      const spy = vi
-        .spyOn(core, "isFeatureEnabled")
-        .mockImplementation((key: FeatureSwitchKey) => {
+      vi.spyOn(core, "isFeatureEnabled").mockImplementation(
+        (key: FeatureSwitchKey) => {
           if (key === FeatureSwitchKey.AutoSkill) return true;
           return false;
-        });
+        },
+      );
 
       const result = await createZeroRun(baseParams());
       const run = await findTestRunRecord(result.runId);
       expect(run).toBeDefined();
       expect(run!.appendSystemPrompt).toContain("# Skill Management Guidance");
       expect(run!.appendSystemPrompt).toContain("zero skill create");
-
-      spy.mockRestore();
     });
 
     it("should not inject skill guidance when AutoSkill feature switch is disabled", async () => {
