@@ -12,6 +12,7 @@ This addon runs on the runner HOST (not inside VMs) and:
 import base64
 import json
 import os
+import sys
 import time
 import urllib.error
 import urllib.parse
@@ -427,7 +428,8 @@ def _report_usage_with_retry(
                         f"[{run_id}] Usage report failed after {attempt + 1} attempts: {exc}"
                     )
                 except AttributeError:
-                    pass  # ctx.log unavailable outside mitmproxy runtime
+                    msg = f"[{run_id}] Usage report failed after {attempt + 1} attempts: {exc}"
+                    print(f"[WARNING] {msg}", file=sys.stderr)
 
 
 # ---------------------------------------------------------------------------
