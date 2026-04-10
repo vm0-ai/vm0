@@ -66,13 +66,7 @@ function PromptVariants({ variants }: { variants: UseCase["promptVariants"] }) {
   );
 }
 
-export default function UseCaseDetailClient({
-  useCase,
-  relatedCases,
-}: {
-  useCase: UseCase;
-  relatedCases: UseCase[];
-}) {
+export default function UseCaseDetailClient({ useCase }: { useCase: UseCase }) {
   const t = useTranslations("useCases");
 
   return (

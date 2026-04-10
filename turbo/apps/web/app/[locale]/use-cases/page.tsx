@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Script from "next/script";
 import UseCasesGalleryClient from "./UseCasesGalleryClient";
 import { USE_CASES } from "./data";
 
@@ -68,11 +67,9 @@ const itemListJsonLd = {
 export default function UseCasesPage() {
   return (
     <>
-      <Script
-        id="json-ld-use-cases"
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(itemListJsonLd) }}
-      />
+      <script type="application/ld+json" suppressHydrationWarning>
+        {JSON.stringify(itemListJsonLd)}
+      </script>
       <UseCasesGalleryClient />
     </>
   );

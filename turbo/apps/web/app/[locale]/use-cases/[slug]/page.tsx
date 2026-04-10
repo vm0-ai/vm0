@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import Script from "next/script";
 import UseCaseDetailClient from "./UseCaseDetailClient";
-import { USE_CASES, getUseCaseBySlug, getRelatedCases } from "../data";
+import { USE_CASES, getUseCaseBySlug } from "../data";
 import { locales } from "../../../../i18n";
 
 const BASE_URL = "https://vm0.ai";
@@ -74,8 +73,6 @@ export default async function UseCaseDetailPage({ params }: PageProps) {
     notFound();
   }
 
-  const relatedCases = getRelatedCases(useCase);
-
   const howToJsonLd = {
     "@context": "https://schema.org",
     "@type": "HowTo",
@@ -93,12 +90,10 @@ export default async function UseCaseDetailPage({ params }: PageProps) {
 
   return (
     <>
-      <Script
-        id={`json-ld-use-case-${slug}`}
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(howToJsonLd) }}
-      />
-      <UseCaseDetailClient useCase={useCase} relatedCases={relatedCases} />
+      <script type="application/ld+json" suppressHydrationWarning>
+        {JSON.stringify(howToJsonLd)}
+      </script>
+      <UseCaseDetailClient useCase={useCase} />
     </>
   );
 }

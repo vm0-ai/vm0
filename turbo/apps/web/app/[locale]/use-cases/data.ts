@@ -1260,13 +1260,3 @@ export function getUseCaseBySlug(slug: string): UseCase | undefined {
     return uc.slug === slug;
   });
 }
-
-export function getRelatedCases(useCase: UseCase): UseCase[] {
-  return useCase.relatedSlugs
-    .map((slug) => {
-      return getUseCaseBySlug(slug);
-    })
-    .filter((uc): uc is UseCase => {
-      return uc !== undefined;
-    });
-}
