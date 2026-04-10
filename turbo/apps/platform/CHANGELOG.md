@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.212.0](https://github.com/vm0-ai/vm0/compare/app-v0.211.1...app-v0.212.0) (2026-04-10)
+
+
+### Features
+
+* replace mandatory SMS consent text with optional checkbox on phone page ([#8852](https://github.com/vm0-ai/vm0/issues/8852)) ([961a0ca](https://github.com/vm0-ai/vm0/commit/961a0cad3f14c236a29915344e9d021327063d20))
+
+
+### Bug Fixes
+
+* increase voice VAD threshold to reduce false triggers ([#8858](https://github.com/vm0-ai/vm0/issues/8858)) ([53b5e22](https://github.com/vm0-ai/vm0/commit/53b5e22945b016dd2d0558697fca4f1f2dbc7bbd))
+* **voice-chat:** inject preparation events into fast brain after webrtc connects ([#8855](https://github.com/vm0-ai/vm0/issues/8855)) ([a90de33](https://github.com/vm0-ai/vm0/commit/a90de334345f09311474267b899b449b5befa0b4)), closes [#8851](https://github.com/vm0-ai/vm0/issues/8851)
+
 ## [0.211.1](https://github.com/vm0-ai/vm0/compare/app-v0.211.0...app-v0.211.1) (2026-04-10)
 
 
