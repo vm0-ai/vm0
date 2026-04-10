@@ -27,6 +27,7 @@ static SECRET_VALUES: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_SECR
 static DISALLOWED_TOOLS: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_DISALLOWED_TOOLS"));
 static TOOLS: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_TOOLS"));
 static SETTINGS: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_SETTINGS"));
+static FEATURE_FLAGS: LazyLock<String> = LazyLock::new(|| env_or_empty("VM0_FEATURE_FLAGS"));
 static USE_MOCK_CLAUDE: LazyLock<bool> = LazyLock::new(|| {
     std::env::var("USE_MOCK_CLAUDE")
         .map(|v| v == "true")
@@ -115,6 +116,9 @@ pub fn tools() -> &'static str {
 }
 pub fn settings() -> &'static str {
     &SETTINGS
+}
+pub fn feature_flags() -> &'static str {
+    &FEATURE_FLAGS
 }
 pub fn use_mock_claude() -> bool {
     *USE_MOCK_CLAUDE

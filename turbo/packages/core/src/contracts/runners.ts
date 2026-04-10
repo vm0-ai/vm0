@@ -134,6 +134,8 @@ export const storedExecutionContextSchema = z.object({
   settings: z.string().optional(),
   // VM profile for resource allocation (e.g., "vm0/default")
   experimentalProfile: z.string().optional(),
+  // Feature flags evaluated at job creation time (all switch states for user/org)
+  featureFlags: z.record(z.string(), z.boolean()).optional(),
 });
 
 /**
@@ -182,6 +184,8 @@ export const executionContextSchema = z.object({
   settings: z.string().optional(),
   // VM profile for resource allocation (e.g., "vm0/default")
   experimentalProfile: z.string().optional(),
+  // Feature flags evaluated at job creation time (all switch states for user/org)
+  featureFlags: z.record(z.string(), z.boolean()).optional(),
 });
 
 /**

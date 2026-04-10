@@ -134,6 +134,33 @@ export function ContextContent({ context }: { context: RunContextResponse }) {
         </section>
       )}
 
+      {/* Feature Flags */}
+      {context.featureFlags && Object.keys(context.featureFlags).length > 0 && (
+        <section>
+          <SectionHeader title="Feature Flags" />
+          <div className="flex flex-wrap gap-1.5">
+            {Object.entries(context.featureFlags)
+              .sort(([, a], [, b]) => {
+                return a === b ? 0 : a ? -1 : 1;
+              })
+              .map(([name, enabled]) => {
+                return (
+                  <span
+                    key={name}
+                    className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-mono ${
+                      enabled
+                        ? "bg-muted/50"
+                        : "bg-transparent text-muted-foreground line-through"
+                    }`}
+                  >
+                    {name}
+                  </span>
+                );
+              })}
+          </div>
+        </section>
+      )}
+
       {/* Secrets */}
       <section>
         <SectionHeader title="Secrets" />

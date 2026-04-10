@@ -57,34 +57,7 @@ export async function executeRunnerJob(
     throw forbidden("Only vm0/* runner groups are supported");
   }
 
-  // Encrypt secrets map (key-value pairs) before storing
-  const encryptedSecrets = encryptSecretsMap(
-    context.secrets ?? null,
-    globalThis.services.env.SECRETS_ENCRYPTION_KEY,
-  );
-
-  // Build stored execution context with encrypted secrets
-  // Storage manifest is already prepared in PreparedContext
-  const storedContext: StoredExecutionContext = {
-    workingDir: context.workingDir,
-    storageManifest: context.storageManifest,
-    environment: context.environment,
-    resumeSession: context.resumeSession,
-    encryptedSecrets,
-    secretConnectorMap: context.secretConnectorMap,
-    cliAgentType: context.cliAgentType,
-    firewalls: context.firewalls ?? undefined,
-    networkPolicies: context.networkPolicies ?? undefined,
-    disallowedTools: context.disallowedTools ?? undefined,
-    tools: context.tools ?? undefined,
-    settings: context.settings ?? undefined,
-    experimentalProfile: profile,
-    debugNoMockClaude: context.debugNoMockClaude || undefined,
-    captureNetworkBodies: context.captureNetworkBodies || undefined,
-    apiStartTime: context.apiStartTime ?? undefined,
-    userTimezone: context.userTimezone ?? undefined,
-    memoryName: context.memoryName ?? undefined,
-  };
+  const storedContext = buildStoredContext(context, profile);
 
   // Ingest sanitized context snapshot to Axiom for debugging
   ingestRunContext(buildRunContextSnapshot(context));
@@ -156,6 +129,41 @@ async function notifyRunners(
 }
 
 /**
+ * Build stored execution context with encrypted secrets for the runner job queue.
+ */
+function buildStoredContext(
+  context: PreparedContext,
+  profile: string,
+): StoredExecutionContext {
+  const encryptedSecrets = encryptSecretsMap(
+    context.secrets ?? null,
+    globalThis.services.env.SECRETS_ENCRYPTION_KEY,
+  );
+
+  return {
+    workingDir: context.workingDir,
+    storageManifest: context.storageManifest,
+    environment: context.environment,
+    resumeSession: context.resumeSession,
+    encryptedSecrets,
+    secretConnectorMap: context.secretConnectorMap,
+    cliAgentType: context.cliAgentType,
+    firewalls: context.firewalls ?? undefined,
+    networkPolicies: context.networkPolicies ?? undefined,
+    disallowedTools: context.disallowedTools ?? undefined,
+    tools: context.tools ?? undefined,
+    settings: context.settings ?? undefined,
+    experimentalProfile: profile,
+    debugNoMockClaude: context.debugNoMockClaude || undefined,
+    captureNetworkBodies: context.captureNetworkBodies || undefined,
+    apiStartTime: context.apiStartTime ?? undefined,
+    userTimezone: context.userTimezone ?? undefined,
+    memoryName: context.memoryName ?? undefined,
+    featureFlags: context.featureFlags ?? undefined,
+  };
+}
+
+/**
  * Build a sanitized context snapshot for Axiom ingestion.
  * - Secret values in environment are masked as "***"
  * - Firewall auth headers are stripped entirely
@@ -212,6 +220,7 @@ function buildRunContextSnapshot(context: PreparedContext): RunContextSnapshot {
           vasVersionId: manifest.memory.vasVersionId,
         }
       : null,
+    featureFlags: context.featureFlags,
   };
 }
 

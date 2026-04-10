@@ -87,6 +87,9 @@ pub struct ExecutionContext {
     #[allow(dead_code)]
     #[serde(default)]
     pub experimental_profile: Option<String>,
+    // Feature flags evaluated at job creation time (all switch states for user/org)
+    #[serde(default)]
+    pub feature_flags: Option<HashMap<String, bool>>,
 }
 
 /// A single firewall config with its name, ref key, and API entries.
@@ -336,7 +339,8 @@ mod tests {
             "disallowedTools": ["CronCreate"],
             "tools": ["Bash", "Read"],
             "settings": "{\"hooks\":{}}",
-            "experimentalProfile": "browser"
+            "experimentalProfile": "browser",
+            "featureFlags": {"computerUse": true, "voiceChat": false}
         });
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
         assert_eq!(ctx.append_system_prompt.as_deref(), Some("be concise"));
@@ -351,6 +355,9 @@ mod tests {
         assert_eq!(ctx.tools.as_ref().unwrap(), &["Bash", "Read"]);
         assert_eq!(ctx.settings.as_deref(), Some("{\"hooks\":{}}"));
         assert!(ctx.storage_manifest.is_some());
+        let flags = ctx.feature_flags.as_ref().unwrap();
+        assert_eq!(flags.get("computerUse"), Some(&true));
+        assert_eq!(flags.get("voiceChat"), Some(&false));
     }
 
     #[test]

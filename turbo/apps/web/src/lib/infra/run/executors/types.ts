@@ -80,6 +80,9 @@ export interface PreparedContext {
   // User's timezone preference (IANA format, e.g., "Asia/Shanghai")
   // Injected as TZ environment variable in sandbox if not already set in environment
   userTimezone: string | null;
+
+  // Feature flags evaluated at job creation time (all switch states for user/org)
+  featureFlags: Record<string, boolean> | null;
 }
 
 /**

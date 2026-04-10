@@ -254,6 +254,7 @@ impl JobProvider for LocalProvider {
             tools: None,
             settings: None,
             experimental_profile: req.profile,
+            feature_flags: None,
         })
     }
 

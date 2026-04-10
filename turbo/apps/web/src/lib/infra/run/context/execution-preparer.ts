@@ -7,7 +7,7 @@ import {
   ensureStorageExists,
 } from "../../../infra/storage/storage-service";
 import type { StorageManifest } from "../../../infra/storage/types";
-import { DEFAULT_PROFILE } from "@vm0/core";
+import { DEFAULT_PROFILE, getAllFeatureStates } from "@vm0/core";
 import { badRequest } from "../../../shared/errors";
 import { logger } from "../../../shared/logger";
 import { extractWorkingDir } from "../utils/extract-working-dir";
@@ -254,6 +254,12 @@ function buildPreparedContext(
 
     // Routing
     runnerGroup,
+
+    // Feature flags (evaluated once at preparation time)
+    featureFlags: getAllFeatureStates({
+      userId: context.userId,
+      orgId: context.orgId,
+    }),
 
     // Metadata
     ...metadata,

@@ -1221,6 +1221,14 @@ fn build_env_json(context: &ExecutionContext, api_url: &str) -> HashMap<String, 
         env.insert("VM0_SETTINGS".into(), settings.clone());
     }
 
+    // Feature flags (JSON-encoded map of flag name → enabled)
+    if let Some(flags) = &context.feature_flags
+        && !flags.is_empty()
+        && let Ok(json) = serde_json::to_string(flags)
+    {
+        env.insert("VM0_FEATURE_FLAGS".into(), json);
+    }
+
     env
 }
 
@@ -1259,6 +1267,7 @@ mod tests {
             tools: None,
             settings: None,
             experimental_profile: None,
+            feature_flags: None,
         }
     }
 
@@ -1753,6 +1762,37 @@ mod tests {
         let ctx = minimal_context();
         let env = build_env_json(&ctx, "http://localhost");
         assert!(!env.contains_key("VM0_SETTINGS"));
+    }
+
+    #[test]
+    fn build_env_json_with_feature_flags() {
+        let mut ctx = minimal_context();
+        let mut flags = HashMap::new();
+        flags.insert("computerUse".into(), true);
+        flags.insert("voiceChat".into(), false);
+        ctx.feature_flags = Some(flags);
+        let env = build_env_json(&ctx, "http://localhost");
+        let raw = env
+            .get("VM0_FEATURE_FLAGS")
+            .expect("VM0_FEATURE_FLAGS should be set");
+        let parsed: HashMap<String, bool> = serde_json::from_str(raw).unwrap();
+        assert_eq!(parsed.get("computerUse"), Some(&true));
+        assert_eq!(parsed.get("voiceChat"), Some(&false));
+    }
+
+    #[test]
+    fn build_env_json_empty_feature_flags_omitted() {
+        let mut ctx = minimal_context();
+        ctx.feature_flags = Some(HashMap::new());
+        let env = build_env_json(&ctx, "http://localhost");
+        assert!(!env.contains_key("VM0_FEATURE_FLAGS"));
+    }
+
+    #[test]
+    fn build_env_json_no_feature_flags() {
+        let ctx = minimal_context();
+        let env = build_env_json(&ctx, "http://localhost");
+        assert!(!env.contains_key("VM0_FEATURE_FLAGS"));
     }
 
     // -----------------------------------------------------------------------
