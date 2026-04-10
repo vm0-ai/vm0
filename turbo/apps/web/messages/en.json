@@ -288,5 +288,33 @@
     "label": "New",
     "message": "Meet Zero, your AI teammate. Now in public beta.",
     "link": "Get started"
+  },
+  "useCases": {
+    "title": "Use Cases",
+    "metaDescription": "Real workflows from teams using Zero as their AI teammate. See the exact prompts, outputs, and integrations.",
+    "heroTitle": "See what Zero can do for your team",
+    "heroSubtitle": "Real workflows from teams using Zero as their AI teammate. Each use case includes the exact prompt, Zero's output, and how to extend it.",
+    "role": "Role",
+    "capability": "Capability",
+    "all": "All",
+    "seeHow": "See how",
+    "comingSoon": "Coming soon",
+    "moreComingSoon": "More use cases coming",
+    "noResults": "No use cases match these filters.",
+    "whenThisHappens": "When this happens",
+    "whatYouSay": "What you say to Zero",
+    "whatZeroDoes": "What Zero does",
+    "whatsNext": "What's next",
+    "whatYouNeed": "What you need",
+    "required": "Required",
+    "optional": "Optional",
+    "tips": "Tips and best practices",
+    "relatedUseCases": "Related use cases",
+    "backToAll": "All use cases",
+    "zeroConnects": "Zero connects:",
+    "ctaTitle": "Zero works where your team works",
+    "ctaSubtitle": "Add Zero to Slack and start delegating in plain language. No setup wizards. No workflow builders. Just ask.",
+    "addToSlack": "Add Zero to Slack",
+    "bookDemo": "Book a demo"
   }
 }

@@ -80,6 +80,9 @@ export default function Navbar() {
             <Link href="/security" className="nav-link">
               Security
             </Link>
+            <Link href="/use-cases" className="nav-link">
+              Use Cases
+            </Link>
             {isBlogEnabled() && (
               <Link href="/blog" className="nav-link">
                 {t("blog")}
@@ -170,6 +173,15 @@ export default function Navbar() {
               }}
             >
               Security
+            </Link>
+            <Link
+              href="/use-cases"
+              className="mobile-menu-link"
+              onClick={() => {
+                return setMobileMenuOpen(false);
+              }}
+            >
+              Use Cases
             </Link>
             {isBlogEnabled() && (
               <Link

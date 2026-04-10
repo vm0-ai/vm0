@@ -1,0 +1,623 @@
+/* ===== USE CASES PAGE STYLES ===== */
+/* Uses the same design tokens as landing.css: hsl(var(--gray-*)), hsl(var(--foreground)), etc. */
+
+/*
+  Typography scale:
+  - H2 section titles: 24px / 500
+  - Sub-headings (step, action, integration): 16px / 500
+  - Body text: 16px / 300
+  - Prompt (serif italic): 16px
+  - Small labels (tags, tabs, back): 13–14px
+*/
+
+/* ---------------------------------------------------------------------------
+   Filter bar
+   --------------------------------------------------------------------------- */
+
+.uc-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 48px;
+}
+
+.uc-filter-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.uc-filter-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: hsl(var(--muted-foreground));
+  margin-right: 4px;
+  display: flex;
+  align-items: center;
+}
+
+.uc-pill {
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  border: 0.7px solid hsl(var(--gray-200));
+  border-radius: 999px;
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.uc-pill:hover {
+  border-color: #ed4e01;
+  color: #ed4e01;
+}
+
+.uc-pill--active {
+  background: #ed4e01;
+  color: #ffffff;
+  border-color: #ed4e01;
+}
+
+.uc-pill--active:hover {
+  background: #ff6a1f;
+  border-color: #ff6a1f;
+  color: #ffffff;
+}
+
+/* ---------------------------------------------------------------------------
+   Card grid
+   --------------------------------------------------------------------------- */
+
+.uc-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+@media (max-width: 768px) {
+  .uc-grid {
+    grid-template-columns: 1fr;
+    padding: 0 16px;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Use case card (legacy — unused, kept for reference)
+   --------------------------------------------------------------------------- */
+
+.uc-card {
+  border: 1px solid hsl(var(--gray-200));
+  border-radius: 16px;
+  padding: 28px;
+  background: hsl(var(--gray-0));
+  transition: all 0.3s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  position: relative;
+  overflow: hidden;
+}
+
+.uc-card:hover {
+  transform: translateY(-2px);
+  border-color: hsl(var(--gray-300));
+}
+
+.uc-card--teaser {
+  opacity: 0.55;
+}
+
+.uc-card--teaser:hover {
+  transform: none;
+  border-color: hsl(var(--gray-200));
+}
+
+/* ---------------------------------------------------------------------------
+   Slack preview inside card
+   --------------------------------------------------------------------------- */
+
+.uc-slack-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 12px;
+  background: hsl(var(--gray-50));
+  border: 0.7px solid hsl(var(--gray-200));
+}
+
+.uc-slack-msg {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.uc-slack-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.uc-slack-avatar--user {
+  background: #6366f1;
+}
+
+.uc-slack-avatar--zero {
+  background: #ed4e01;
+}
+
+.uc-slack-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.uc-slack-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+  margin-bottom: 2px;
+}
+
+.uc-slack-text {
+  font-size: 13px;
+  line-height: 1.5;
+  color: hsl(var(--muted-foreground));
+  white-space: pre-line;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ---------------------------------------------------------------------------
+   Card meta (tags)
+   --------------------------------------------------------------------------- */
+
+.uc-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.uc-tag {
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  border-radius: 999px;
+  background: rgba(237, 78, 1, 0.08);
+  color: #ed4e01;
+}
+
+.uc-tag--role {
+  background: rgba(99, 102, 241, 0.08);
+  color: #818cf8;
+}
+
+[data-theme="light"] .uc-tag--role {
+  color: #6366f1;
+}
+
+.uc-tag--time {
+  background: rgba(34, 197, 94, 0.08);
+  color: #4ade80;
+}
+
+[data-theme="light"] .uc-tag--time {
+  color: #16a34a;
+}
+
+.uc-tag--model {
+  background: hsl(var(--gray-100));
+  color: hsl(var(--muted-foreground));
+}
+
+.uc-tag--coming-soon {
+  background: hsl(var(--gray-100));
+  color: hsl(var(--muted-foreground));
+}
+
+/* ---------------------------------------------------------------------------
+   Card footer
+   --------------------------------------------------------------------------- */
+
+.uc-card-title {
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: hsl(var(--foreground));
+  letter-spacing: -0.2px;
+}
+
+.uc-card-desc {
+  font-size: 16px;
+  font-weight: 300;
+  line-height: 1.5;
+  color: hsl(var(--muted-foreground));
+  margin-top: -8px;
+}
+
+.uc-connectors {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.uc-connector-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: hsl(var(--gray-50));
+  border: 0.7px solid hsl(var(--gray-200));
+}
+
+.uc-connector-icon {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+}
+
+[data-theme="dark"] .uc-connector-icon--invert {
+  filter: invert(1) brightness(2);
+}
+
+.uc-see-how {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #ed4e01;
+  text-decoration: none;
+  margin-top: auto;
+  transition: gap 0.2s;
+}
+
+.uc-see-how:hover {
+  gap: 8px;
+  color: #ff6a1f;
+}
+
+/* ---------------------------------------------------------------------------
+   Empty filter state
+   --------------------------------------------------------------------------- */
+
+.uc-empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 64px 24px;
+  color: hsl(var(--muted-foreground));
+  font-size: 16px;
+}
+
+/* ---------------------------------------------------------------------------
+   Detail page — back link
+   --------------------------------------------------------------------------- */
+
+.uc-detail-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: hsl(var(--muted-foreground));
+  text-decoration: none;
+  margin-bottom: 32px;
+  transition: color 0.2s;
+}
+
+.uc-detail-back:hover {
+  color: #ed4e01;
+}
+
+/* ---------------------------------------------------------------------------
+   Detail sections
+   --------------------------------------------------------------------------- */
+
+.uc-section {
+  margin-bottom: 48px;
+}
+
+.uc-section-title {
+  font-size: 24px;
+  font-weight: 500;
+  color: hsl(var(--foreground));
+  letter-spacing: -0.3px;
+}
+
+.uc-section-body {
+  font-size: 16px;
+  font-weight: 300;
+  line-height: 1.7;
+  color: hsl(var(--muted-foreground));
+}
+
+/* ---------------------------------------------------------------------------
+   Prompt variants (tabs)
+   --------------------------------------------------------------------------- */
+
+.uc-prompt-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 0.7px solid hsl(var(--gray-200));
+  margin-bottom: 16px;
+}
+
+.uc-prompt-tab {
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  color: hsl(var(--muted-foreground));
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.uc-prompt-tab:hover {
+  color: hsl(var(--foreground));
+}
+
+.uc-prompt-tab--active {
+  color: #ed4e01;
+  border-bottom-color: #ed4e01;
+}
+
+.uc-prompt-block {
+  padding: 20px;
+  border-radius: 12px;
+  background: hsl(var(--gray-50));
+  border: 0.7px solid hsl(var(--gray-200));
+  font-size: 16px;
+  line-height: 1.7;
+  color: hsl(var(--foreground));
+  white-space: pre-wrap;
+  font-family: Georgia, "Times New Roman", "Noto Serif", serif;
+  font-style: italic;
+}
+
+/* ---------------------------------------------------------------------------
+   Steps
+   --------------------------------------------------------------------------- */
+
+.uc-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.uc-step {
+  padding: 20px 0;
+  border-bottom: 0.7px solid hsl(var(--gray-200));
+}
+
+.uc-step:last-child {
+  border-bottom: none;
+}
+
+.uc-step-title {
+  font-size: 16px;
+  font-weight: 500;
+  color: hsl(var(--foreground));
+  margin-bottom: 6px;
+}
+
+.uc-step-desc {
+  font-size: 16px;
+  font-weight: 300;
+  line-height: 1.6;
+  color: hsl(var(--muted-foreground));
+}
+
+/* ---------------------------------------------------------------------------
+   Next actions
+   --------------------------------------------------------------------------- */
+
+.uc-next-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.uc-next-action {
+  padding: 20px 0;
+  border-bottom: 0.7px solid hsl(var(--gray-200));
+}
+
+.uc-next-action:last-child {
+  border-bottom: none;
+}
+
+.uc-next-action-title {
+  font-size: 16px;
+  font-weight: 500;
+  color: #ed4e01;
+  margin-bottom: 4px;
+}
+
+.uc-next-action-desc {
+  font-size: 16px;
+  font-weight: 300;
+  color: hsl(var(--muted-foreground));
+  margin-bottom: 12px;
+}
+
+.uc-next-action-prompt {
+  padding: 12px 16px;
+  border-radius: 8px;
+  background: hsl(var(--gray-50));
+  border: 0.7px solid hsl(var(--gray-200));
+  font-size: 16px;
+  line-height: 1.6;
+  color: hsl(var(--muted-foreground));
+  font-family: Georgia, "Times New Roman", "Noto Serif", serif;
+  font-style: italic;
+  white-space: pre-wrap;
+}
+
+/* ---------------------------------------------------------------------------
+   Integrations
+   --------------------------------------------------------------------------- */
+
+.uc-integrations {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.uc-integration {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  padding: 12px 0;
+}
+
+.uc-integration-icon {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.uc-integration-info {
+  flex: 1;
+}
+
+.uc-integration-name {
+  font-size: 16px;
+  font-weight: 500;
+  color: hsl(var(--foreground));
+  margin-bottom: 2px;
+}
+
+.uc-integration-desc {
+  font-size: 16px;
+  font-weight: 300;
+  line-height: 1.5;
+  color: hsl(var(--muted-foreground));
+}
+
+.uc-integration-required {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.uc-integration-required--yes {
+  background: hsl(var(--foreground));
+  color: hsl(var(--gray-0));
+}
+
+.uc-integration-required--no {
+  background: hsl(var(--gray-200));
+  color: hsl(var(--muted-foreground));
+}
+
+/* ---------------------------------------------------------------------------
+   Tips
+   --------------------------------------------------------------------------- */
+
+.uc-tips {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.uc-tip {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  font-size: 16px;
+  font-weight: 300;
+  line-height: 1.6;
+  color: hsl(var(--muted-foreground));
+  padding: 10px 0;
+}
+
+.uc-tip-icon {
+  color: #ed4e01;
+  flex-shrink: 0;
+  font-size: 10px;
+  line-height: 1.6;
+  margin-top: 6px;
+}
+
+/* ---------------------------------------------------------------------------
+   Related use cases
+   --------------------------------------------------------------------------- */
+
+.uc-related {
+  margin-top: 64px;
+  padding-top: 48px;
+  border-top: 0.7px solid hsl(var(--gray-200));
+}
+
+.uc-related-title {
+  font-size: 24px;
+  font-weight: 500;
+  color: hsl(var(--foreground));
+  margin-bottom: 24px;
+  letter-spacing: -0.3px;
+}
+
+.uc-related-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+@media (max-width: 768px) {
+  .uc-related-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.uc-related-card {
+  padding: 20px;
+  border-radius: 12px;
+  border: 1px solid hsl(var(--gray-200));
+  background: hsl(var(--gray-0));
+  text-decoration: none;
+  transition: all 0.3s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.uc-related-card:hover {
+  border-color: hsl(var(--gray-300));
+  transform: translateY(-1px);
+}
+
+.uc-related-card-title {
+  font-size: 16px;
+  font-weight: 500;
+  color: hsl(var(--foreground));
+}
+
+.uc-related-card-desc {
+  font-size: 16px;
+  font-weight: 300;
+  line-height: 1.5;
+  color: hsl(var(--muted-foreground));
+}
