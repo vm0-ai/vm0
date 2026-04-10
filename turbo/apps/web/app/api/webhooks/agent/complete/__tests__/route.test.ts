@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { http, HttpResponse } from "msw";
 import { Resend } from "resend";
+import { server } from "../../../../../../src/mocks/server";
 import { POST } from "../route";
 import {
   createTestRequest,
@@ -566,7 +568,18 @@ describe("POST /api/webhooks/agent/complete", () => {
     });
 
     it("should dispatch callback with report-error link in error field", async () => {
-      const fetchSpy = vi.spyOn(global, "fetch");
+      let capturedBody: { error?: string } | undefined;
+
+      // Intercept the callback request with MSW
+      server.use(
+        http.post(
+          "http://localhost/api/internal/callbacks/test",
+          async ({ request }) => {
+            capturedBody = (await request.json()) as { error?: string };
+            return HttpResponse.json({ success: true });
+          },
+        ),
+      );
 
       // Register a callback for this run
       await createTestCallback({
@@ -595,16 +608,9 @@ describe("POST /api/webhooks/agent/complete", () => {
 
       await context.mocks.flushAfter();
 
-      // Find the callback fetch call
-      const callbackCall = fetchSpy.mock.calls.find(([url]) => {
-        return String(url).includes("/api/internal/callbacks/test");
-      });
-      expect(callbackCall).toBeDefined();
-
-      const body = JSON.parse(callbackCall![1]!.body as string);
-      expect(body.error).toContain(`/runs/${testRunId}/report-error`);
-
-      fetchSpy.mockRestore();
+      // Verify the callback received the error with report-error link
+      expect(capturedBody).toBeDefined();
+      expect(capturedBody!.error).toContain(`/runs/${testRunId}/report-error`);
     });
 
     it("should register only one after() callback for dispatch", async () => {
