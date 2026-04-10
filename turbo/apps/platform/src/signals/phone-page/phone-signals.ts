@@ -1,15 +1,14 @@
 import { command, computed, state } from "ccstate";
-import { apiBase$ } from "../fetch.ts";
-import { clerk$ } from "../auth.ts";
-
-interface PhoneStatus {
-  userPhone: string | null;
-  userPhonePending: string | null;
-  orgPhone: string | null;
-}
+import {
+  zeroPhoneStatusContract,
+  zeroPhoneLinkContract,
+  zeroPhoneSetupContract,
+  type PhoneStatusResponse,
+} from "@vm0/core";
+import { zeroClient$ } from "../api-client.ts";
 
 // Internal state
-const internalPhoneStatus$ = state<PhoneStatus | null>(null);
+const internalPhoneStatus$ = state<PhoneStatusResponse | null>(null);
 const internalPhoneError$ = state<string | null>(null);
 const internalPhoneInput$ = state("");
 const internalSmsConsent$ = state(false);
@@ -39,21 +38,12 @@ export const setSmsConsent$ = command(({ set }, value: boolean) => {
 
 export const fetchPhoneStatus$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const base = get(apiBase$);
-    const clerk = await get(clerk$);
+    const client = get(zeroClient$)(zeroPhoneStatusContract);
     signal.throwIfAborted();
-    const token = await clerk.session?.getToken();
+    const result = await client.getStatus({ fetchOptions: { signal } });
     signal.throwIfAborted();
-    const headers: Record<string, string> = token
-      ? { Authorization: `Bearer ${token}` }
-      : {};
-    const res = await globalThis.fetch(`${base}/api/zero/phone/status`, {
-      headers,
-      signal,
-    });
-    if (res.ok) {
-      const data = (await res.json()) as PhoneStatus;
-      set(internalPhoneStatus$, data);
+    if (result.status === 200) {
+      set(internalPhoneStatus$, result.body);
     }
   },
 );
@@ -61,26 +51,18 @@ export const fetchPhoneStatus$ = command(
 export const savePhoneLink$ = command(
   async ({ get, set }, phoneNumber: string, signal: AbortSignal) => {
     set(internalPhoneError$, null);
-    const base = get(apiBase$);
-    const clerk = await get(clerk$);
+    const client = get(zeroClient$)(zeroPhoneLinkContract);
     signal.throwIfAborted();
-    const token = await clerk.session?.getToken();
-    signal.throwIfAborted();
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    };
-    const res = await globalThis.fetch(`${base}/api/zero/phone/link`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ phoneNumber }),
-      signal,
+    const result = await client.link({
+      body: { phoneNumber },
+      fetchOptions: { signal },
     });
-    if (res.ok) {
+    signal.throwIfAborted();
+    if (result.status === 200) {
       set(internalPhoneInput$, "");
       await set(fetchPhoneStatus$, signal);
     } else {
-      const data = (await res.json()) as { error?: string };
+      const data = result.body as { error?: string };
       set(internalPhoneError$, data.error ?? "Failed to save phone number");
     }
   },
@@ -89,23 +71,14 @@ export const savePhoneLink$ = command(
 export const removePhoneLink$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     set(internalPhoneError$, null);
-    const base = get(apiBase$);
-    const clerk = await get(clerk$);
+    const client = get(zeroClient$)(zeroPhoneLinkContract);
     signal.throwIfAborted();
-    const token = await clerk.session?.getToken();
+    const result = await client.unlink({ fetchOptions: { signal } });
     signal.throwIfAborted();
-    const headers: Record<string, string> = token
-      ? { Authorization: `Bearer ${token}` }
-      : {};
-    const res = await globalThis.fetch(`${base}/api/zero/phone/link`, {
-      method: "DELETE",
-      headers,
-      signal,
-    });
-    if (res.ok) {
+    if (result.status === 200) {
       await set(fetchPhoneStatus$, signal);
     } else {
-      const data = (await res.json()) as { error?: string };
+      const data = result.body as { error?: string };
       set(internalPhoneError$, data.error ?? "Failed to remove phone number");
     }
   },
@@ -114,23 +87,14 @@ export const removePhoneLink$ = command(
 export const requestOrgPhoneSetup$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     set(internalPhoneError$, null);
-    const base = get(apiBase$);
-    const clerk = await get(clerk$);
+    const client = get(zeroClient$)(zeroPhoneSetupContract);
     signal.throwIfAborted();
-    const token = await clerk.session?.getToken();
+    const result = await client.setup({ fetchOptions: { signal } });
     signal.throwIfAborted();
-    const headers: Record<string, string> = token
-      ? { Authorization: `Bearer ${token}` }
-      : {};
-    const res = await globalThis.fetch(`${base}/api/zero/phone/setup`, {
-      method: "POST",
-      headers,
-      signal,
-    });
-    if (res.ok) {
+    if (result.status === 200) {
       await set(fetchPhoneStatus$, signal);
     } else {
-      const data = (await res.json()) as { error?: string };
+      const data = result.body as { error?: string };
       set(internalPhoneError$, data.error ?? "Failed to set up phone");
     }
   },

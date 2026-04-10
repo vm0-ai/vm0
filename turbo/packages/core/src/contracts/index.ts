@@ -806,3 +806,13 @@ export {
   type TaskType,
   type TaskAgent,
 } from "./tasks";
+export {
+  zeroPhoneStatusContract,
+  zeroPhoneLinkContract,
+  zeroPhoneSetupContract,
+  type ZeroPhoneStatusContract,
+  type ZeroPhoneLinkContract,
+  type ZeroPhoneSetupContract,
+  type PhoneStatusResponse,
+  type PhoneSetupResponse,
+} from "./zero-phone";
