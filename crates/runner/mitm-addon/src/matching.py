@@ -536,6 +536,11 @@ def match_firewall_request(
                 # No permissions defined — handled by unknown logic below
                 continue
 
+            # Lazy cache for GraphQL field coverage check.  The inputs
+            # (body, permissions, upper_method) are constant within an
+            # api_entry, so we compute at most once and reuse.
+            gql_uncovered: list[str] | None = None
+
             for perm in permissions:
                 perm_name = perm.get("name", "")
                 for rule_str in perm.get("rules", []):
@@ -573,10 +578,11 @@ def match_firewall_request(
                         # permissions. Blocks queries that mix authorized
                         # and unauthorized fields.
                         if field_filters is not None and body is not None:
-                            uncovered = _find_uncovered_graphql_fields(
-                                body, permissions, upper_method
-                            )
-                            if uncovered:
+                            if gql_uncovered is None:
+                                gql_uncovered = _find_uncovered_graphql_fields(
+                                    body, permissions, upper_method
+                                )
+                            if gql_uncovered:
                                 return FirewallBlock(
                                     base,
                                     fw_ref,
