@@ -13,7 +13,7 @@ import {
   navigateToTask$,
 } from "../../signals/mission-control-page/mission-control.ts";
 import { StatusBadge } from "../zero-page/components/log-views/status-badge.tsx";
-import { AgentAvatarImg } from "../zero-page/zero-sidebar-shared.tsx";
+import { AvatarFromUrl } from "../zero-page/zero-sidebar-shared.tsx";
 
 function getTaskTypeConfig(type: TaskType): {
   label: string;
@@ -166,26 +166,34 @@ function TaskCard({
       }`}
     >
       <div className="flex items-start gap-3">
-        <AgentAvatarImg
-          name={task.agent.name}
-          alt={task.agent.displayName ?? task.agent.name}
-          className="h-8 w-8 rounded-full object-cover object-top shrink-0"
-        />
+        <div className="flex flex-col items-center shrink-0 gap-1">
+          <AvatarFromUrl
+            avatarUrl={task.agent.avatarUrl}
+            alt={task.agent.displayName ?? task.agent.name}
+            className="h-8 w-8 rounded-full object-cover object-top"
+          />
+          <span className="text-[10px] text-muted-foreground truncate max-w-[4rem] leading-tight">
+            {task.agent.displayName ?? task.agent.name}
+          </span>
+        </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
+            <TypeIcon size={14} stroke={1.5} className={config.iconClassName} />
             <span className="text-sm font-medium truncate">
               {task.title ?? task.agent.displayName ?? task.agent.name}
             </span>
-            {task.status && <StatusBadge status={task.status} zeroStyle />}
+            <div className="ml-auto flex items-center gap-2 shrink-0">
+              <span className="text-xs text-muted-foreground">
+                last activity {formatRelativeTime(task.updatedAt)}
+              </span>
+              {task.status && <StatusBadge status={task.status} zeroStyle />}
+            </div>
           </div>
-          <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
-            <TypeIcon size={13} stroke={1.5} className={config.iconClassName} />
-            <span>{config.label}</span>
-            <span className="text-border">·</span>
-            <span>{task.agent.displayName ?? task.agent.name}</span>
-            <span className="text-border">·</span>
-            <span>{formatRelativeTime(task.updatedAt)}</span>
-          </div>
+          {task.summary && (
+            <p className="text-xs text-muted-foreground mt-1 truncate">
+              {task.summary}
+            </p>
+          )}
         </div>
       </div>
     </Card>

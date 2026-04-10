@@ -1730,6 +1730,13 @@
       "when": 1775900700000,
       "tag": "0246_wonderful_sauron",
       "breakpoints": true
+    },
+    {
+      "idx": 247,
+      "version": "7",
+      "when": 1775833193604,
+      "tag": "0247_odd_tusk",
+      "breakpoints": true
     }
   ]
 }

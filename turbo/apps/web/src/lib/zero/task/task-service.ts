@@ -8,6 +8,7 @@ import { slackOrgInstallations } from "../../../db/schema/slack-org-installation
 import { emailThreadSessions } from "../../../db/schema/email-thread-session";
 import { agentSessions } from "../../../db/schema/agent-session";
 import { agentRuns } from "../../../db/schema/agent-run";
+import { zeroRuns } from "../../../db/schema/zero-run";
 import { zeroAgents } from "../../../db/schema/zero-agent";
 
 const TASKS_LIMIT = 25;
@@ -62,7 +63,10 @@ export async function listTasks(
       return id !== null;
     });
 
-  const runInfoMap = new Map<string, { status: string; createdAt: Date }>();
+  const runInfoMap = new Map<
+    string,
+    { status: string; createdAt: Date; summary: string | null }
+  >();
 
   if (runIds.length > 0) {
     const runs = await db
@@ -70,12 +74,18 @@ export async function listTasks(
         id: agentRuns.id,
         status: agentRuns.status,
         createdAt: agentRuns.createdAt,
+        summary: zeroRuns.summary,
       })
       .from(agentRuns)
+      .leftJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
       .where(inArray(agentRuns.id, runIds));
 
     for (const run of runs) {
-      runInfoMap.set(run.id, { status: run.status, createdAt: run.createdAt });
+      runInfoMap.set(run.id, {
+        status: run.status,
+        createdAt: run.createdAt,
+        summary: run.summary,
+      });
     }
   }
 
@@ -90,6 +100,7 @@ export async function listTasks(
       id: raw.id,
       type: raw.type,
       title: raw.title,
+      summary: runInfo?.summary ?? null,
       agent: raw.agent,
       latestRunId: raw.latestRunId,
       status: runInfo ? (runInfo.status as TaskItem["status"]) : null,
