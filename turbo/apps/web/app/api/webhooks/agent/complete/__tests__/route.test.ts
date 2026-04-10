@@ -565,6 +565,48 @@ describe("POST /api/webhooks/agent/complete", () => {
       expect(callbacks[0]!.attempts).toBe(1);
     });
 
+    it("should dispatch callback with report-error link in error field", async () => {
+      const fetchSpy = vi.spyOn(global, "fetch");
+
+      // Register a callback for this run
+      await createTestCallback({
+        runId: testRunId,
+        url: "http://localhost/api/internal/callbacks/test",
+        payload: { testKey: "testValue" },
+      });
+
+      // Fail the run
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/complete",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            exitCode: 1,
+          }),
+        },
+      );
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      await context.mocks.flushAfter();
+
+      // Find the callback fetch call
+      const callbackCall = fetchSpy.mock.calls.find(([url]) => {
+        return String(url).includes("/api/internal/callbacks/test");
+      });
+      expect(callbackCall).toBeDefined();
+
+      const body = JSON.parse(callbackCall![1]!.body as string);
+      expect(body.error).toContain(`/runs/${testRunId}/report-error`);
+
+      fetchSpy.mockRestore();
+    });
+
     it("should register only one after() callback for dispatch", async () => {
       // When a non-scheduled run completes (testRunId has no callbacks)
       const request = createTestRequest(
