@@ -1,7 +1,6 @@
-import {
-  type AvatarSvgConfig,
-  compositeAvatarSvgInner,
-} from "./avatar-svg-utils.ts";
+import { useLastResolved } from "ccstate-react";
+import type { AvatarSvgConfig } from "./avatar-svg-utils.ts";
+import { compositeAvatarSvg$ } from "../../signals/zero-page/avatar-svg-cache.ts";
 
 interface AvatarSvgPreviewProps {
   config: AvatarSvgConfig;
@@ -12,8 +11,8 @@ interface AvatarSvgPreviewProps {
 }
 
 /**
- * Renders a composite avatar by stacking head, face, and hair SVG layers
- * into a single inline `<svg>` element (zero network requests).
+ * Renders a composite avatar by lazily loading head, face, and hair SVG chunks
+ * and stacking them into a single inline `<svg>` element.
  */
 export function AvatarSvgPreview({
   config,
@@ -22,6 +21,8 @@ export function AvatarSvgPreview({
   alt,
   "data-testid": testId,
 }: AvatarSvgPreviewProps) {
+  const inner = useLastResolved(compositeAvatarSvg$(config));
+
   return (
     <div
       className={`relative overflow-hidden ${className ?? ""}`}
@@ -29,15 +30,17 @@ export function AvatarSvgPreview({
       {...(alt ? { role: "img", "aria-label": alt } : undefined)}
       data-testid={testId}
     >
-      <div className="absolute inset-0 scale-[1.25]">
-        <svg
-          viewBox="0 0 480 480"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-          className="h-full w-full"
-          dangerouslySetInnerHTML={{ __html: compositeAvatarSvgInner(config) }}
-        />
-      </div>
+      {inner !== undefined && (
+        <div className="absolute inset-0 scale-[1.25]">
+          <svg
+            viewBox="0 0 480 480"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+            className="h-full w-full"
+            dangerouslySetInnerHTML={{ __html: inner }}
+          />
+        </div>
+      )}
     </div>
   );
 }

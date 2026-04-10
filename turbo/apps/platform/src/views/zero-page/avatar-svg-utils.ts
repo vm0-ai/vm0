@@ -47,21 +47,21 @@ export function parseAvatarSvgConfig(
   };
 }
 
-const SVG_RAW_ASSETS = Object.freeze(
+const SVG_RAW_CHUNKS = Object.freeze(
   import.meta.glob<string>("./assets/avatar-svg/*.svg", {
-    eager: true,
+    eager: false,
     query: "?raw",
     import: "default",
   }),
 );
 
-function resolveRawAsset(filename: string): string {
+function loadRawAsset(filename: string): Promise<string> {
   const key = `./assets/avatar-svg/${filename}`;
-  const raw = SVG_RAW_ASSETS[key];
-  if (!raw) {
+  const loader = SVG_RAW_CHUNKS[key];
+  if (!loader) {
     throw new Error(`Missing avatar SVG asset: ${filename}`);
   }
-  return raw;
+  return loader();
 }
 
 /** Extract the inner content of an SVG string (everything between <svg> and </svg>). */
@@ -75,18 +75,20 @@ function extractSvgInner(raw: string): string {
 }
 
 /**
- * Build the combined inner SVG markup for a composite avatar (head + face + hair).
- * All three layers share viewBox 0 0 480 480 and their clip-path IDs are unique,
- * so they can be safely merged into a single `<svg>` element.
+ * Load the 3 SVG layers for a config and return the combined inner markup.
  */
-export function compositeAvatarSvgInner(config: AvatarSvgConfig): string {
-  const head = resolveRawAsset(`head-r${config.rotation}-s${config.skin}.svg`);
-  const face = resolveRawAsset(
-    `face-r${config.rotation}-f${config.expression}-${config.intensity}.svg`,
-  );
-  const hair = resolveRawAsset(
-    `hair-r${config.rotation}-h${config.hairStyle}-c${config.hairColor}.svg`,
-  );
+export async function loadCompositeAvatarSvg(
+  config: AvatarSvgConfig,
+): Promise<string> {
+  const [head, face, hair] = await Promise.all([
+    loadRawAsset(`head-r${config.rotation}-s${config.skin}.svg`),
+    loadRawAsset(
+      `face-r${config.rotation}-f${config.expression}-${config.intensity}.svg`,
+    ),
+    loadRawAsset(
+      `hair-r${config.rotation}-h${config.hairStyle}-c${config.hairColor}.svg`,
+    ),
+  ]);
   return extractSvgInner(head) + extractSvgInner(face) + extractSvgInner(hair);
 }
 
