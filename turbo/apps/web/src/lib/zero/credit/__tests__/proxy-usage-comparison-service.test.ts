@@ -18,6 +18,23 @@ import { logger } from "../../../shared/logger";
 
 const context = testContext();
 
+/** Filter logSpy calls to only those matching a specific orgId. */
+function callsForOrg(
+  spy: MockInstance,
+  orgId: string,
+): Array<Record<string, unknown>> {
+  return spy.mock.calls
+    .filter((call) => {
+      return call[0] === "Proxy usage mismatch";
+    })
+    .map((call) => {
+      return call[1] as Record<string, unknown>;
+    })
+    .filter((meta) => {
+      return meta.orgId === orgId;
+    });
+}
+
 describe("compareRecentRunsProxyUsage", () => {
   let logSpy: MockInstance;
 
@@ -31,7 +48,9 @@ describe("compareRecentRunsProxyUsage", () => {
   });
 
   it("does nothing when no runs in window", async () => {
+    const { orgId } = await context.setupUser({ prefix: "empty" });
     await compareRecentRunsProxyUsage();
+    expect(callsForOrg(logSpy, orgId)).toHaveLength(0);
   });
 
   it("skips runs completed less than 30s ago", async () => {
@@ -57,7 +76,7 @@ describe("compareRecentRunsProxyUsage", () => {
 
     await compareRecentRunsProxyUsage();
 
-    expect(logSpy).not.toHaveBeenCalled();
+    expect(callsForOrg(logSpy, orgId)).toHaveLength(0);
   });
 
   it("skips runs completed more than 5m30s ago", async () => {
@@ -83,7 +102,7 @@ describe("compareRecentRunsProxyUsage", () => {
 
     await compareRecentRunsProxyUsage();
 
-    expect(logSpy).not.toHaveBeenCalled();
+    expect(callsForOrg(logSpy, orgId)).toHaveLength(0);
   });
 
   it("logs error for mismatching usage within window", async () => {
@@ -110,20 +129,14 @@ describe("compareRecentRunsProxyUsage", () => {
 
     await compareRecentRunsProxyUsage();
 
-    expect(logSpy).toHaveBeenCalledWith(
-      "Proxy usage mismatch",
-      expect.objectContaining({
-        runId,
-        field: "inputTokens",
-        clientValue: 100,
-        proxyValue: 200,
-      }),
-    );
-    const outputCalls = logSpy.mock.calls.filter((call) => {
-      const meta = call[1] as Record<string, unknown>;
-      return meta.field === "outputTokens";
+    const calls = callsForOrg(logSpy, orgId);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({
+      runId,
+      field: "inputTokens",
+      clientValue: 100,
+      proxyValue: 200,
     });
-    expect(outputCalls).toHaveLength(0);
   });
 
   it("does not log when usage matches", async () => {
@@ -144,7 +157,7 @@ describe("compareRecentRunsProxyUsage", () => {
 
     await compareRecentRunsProxyUsage();
 
-    expect(logSpy).not.toHaveBeenCalled();
+    expect(callsForOrg(logSpy, orgId)).toHaveLength(0);
   });
 
   it("skips run with client data but no proxy data", async () => {
@@ -164,7 +177,7 @@ describe("compareRecentRunsProxyUsage", () => {
 
     await compareRecentRunsProxyUsage();
 
-    expect(logSpy).not.toHaveBeenCalled();
+    expect(callsForOrg(logSpy, orgId)).toHaveLength(0);
   });
 
   it("handles multiple orgs in one window", async () => {
@@ -210,10 +223,7 @@ describe("compareRecentRunsProxyUsage", () => {
 
     await compareRecentRunsProxyUsage();
 
-    const calls = logSpy.mock.calls.filter((call) => {
-      return call[0] === "Proxy usage mismatch";
-    });
-    expect(calls).toHaveLength(1);
-    expect((calls[0]![1] as Record<string, unknown>).orgId).toBe(user2.orgId);
+    expect(callsForOrg(logSpy, user1.orgId)).toHaveLength(0);
+    expect(callsForOrg(logSpy, user2.orgId)).toHaveLength(1);
   });
 });
