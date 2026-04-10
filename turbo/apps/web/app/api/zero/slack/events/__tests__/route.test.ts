@@ -717,8 +717,31 @@ describe("POST /api/zero/slack/events", () => {
     });
   });
 
-  describe("event_id deduplication", () => {
-    it("skips processing when the same event_id is delivered twice (DM)", async () => {
+  describe("x-slack-retry-num header", () => {
+    /** Create a Slack event request with X-Slack-Retry-Num header set */
+    function createSlackRetryRequest(
+      payload: Record<string, unknown>,
+      retryNum = "1",
+    ): Request {
+      const { createHmac } = require("crypto");
+      const body = JSON.stringify(payload);
+      const timestamp = Math.floor(Date.now() / 1000).toString();
+      const baseString = `v0:${timestamp}:${body}`;
+      const signature = `v0=${createHmac("sha256", SIGNING_SECRET).update(baseString).digest("hex")}`;
+
+      return new Request("http://localhost:3000/api/zero/slack/events", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-slack-request-timestamp": timestamp,
+          "x-slack-signature": signature,
+          "x-slack-retry-num": retryNum,
+        },
+        body,
+      });
+    }
+
+    it("ignores DM retry requests without processing", async () => {
       const workspaceId = uniqueId("T-ws");
       const slackUserId = uniqueId("U-slack");
 
@@ -738,10 +761,7 @@ describe("POST /api/zero/slack/events", () => {
       });
       await updateOrgDefaultAgent(user.orgId, agentId);
 
-      const sharedEventId = uniqueId("evt");
-
-      // First delivery — should be processed
-      const request1 = createSlackEventRequest({
+      const request = createSlackRetryRequest({
         type: "event_callback",
         team_id: workspaceId,
         event: {
@@ -750,54 +770,22 @@ describe("POST /api/zero/slack/events", () => {
           user: slackUserId,
           text: "Hello agent",
           ts: "3000.001",
-          channel: "D-dedup",
+          channel: "D-retry",
           event_ts: "3000.001",
         },
-        event_id: sharedEventId,
         event_time: Date.now(),
       });
 
-      const response1 = await POST(request1);
-      expect(response1.status).toBe(200);
+      const response = await POST(request);
+      expect(response.status).toBe(200);
       await context.mocks.flushAfter();
 
       const { WebClient } = await import("@slack/web-api");
       const mockClient = new WebClient();
-      // First delivery triggers assistant status
-      const statusCallCount = (
-        mockClient.assistant.threads.setStatus as ReturnType<typeof vi.fn>
-      ).mock.calls.length;
-      expect(statusCallCount).toBeGreaterThan(0);
-
-      // Reset mock call counts
-      vi.mocked(mockClient.assistant.threads.setStatus).mockClear();
-
-      // Second delivery (retry) with same event_id — should be skipped
-      const request2 = createSlackEventRequest({
-        type: "event_callback",
-        team_id: workspaceId,
-        event: {
-          type: "message",
-          channel_type: "im",
-          user: slackUserId,
-          text: "Hello agent",
-          ts: "3000.001",
-          channel: "D-dedup",
-          event_ts: "3000.001",
-        },
-        event_id: sharedEventId,
-        event_time: Date.now(),
-      });
-
-      const response2 = await POST(request2);
-      expect(response2.status).toBe(200);
-      await context.mocks.flushAfter();
-
-      // Second delivery should NOT trigger any processing
       expect(mockClient.assistant.threads.setStatus).not.toHaveBeenCalled();
     });
 
-    it("skips processing when the same event_id is delivered twice (mention)", async () => {
+    it("ignores mention retry requests without processing", async () => {
       const workspaceId = uniqueId("T-ws");
       const slackUserId = uniqueId("U-slack");
 
@@ -817,10 +805,7 @@ describe("POST /api/zero/slack/events", () => {
       });
       await updateOrgDefaultAgent(user.orgId, agentId);
 
-      const sharedEventId = uniqueId("evt");
-
-      // First delivery — should be processed
-      const request1 = createSlackEventRequest({
+      const request = createSlackRetryRequest({
         type: "event_callback",
         team_id: workspaceId,
         event: {
@@ -828,46 +813,18 @@ describe("POST /api/zero/slack/events", () => {
           user: slackUserId,
           text: "<@U-bot> Hello",
           ts: "3000.002",
-          channel: "C-dedup",
+          channel: "C-retry",
           event_ts: "3000.002",
         },
-        event_id: sharedEventId,
         event_time: Date.now(),
       });
 
-      const response1 = await POST(request1);
-      expect(response1.status).toBe(200);
+      const response = await POST(request);
+      expect(response.status).toBe(200);
       await context.mocks.flushAfter();
 
       const { WebClient } = await import("@slack/web-api");
       const mockClient = new WebClient();
-      const statusCallCount = (
-        mockClient.assistant.threads.setStatus as ReturnType<typeof vi.fn>
-      ).mock.calls.length;
-      expect(statusCallCount).toBeGreaterThan(0);
-
-      vi.mocked(mockClient.assistant.threads.setStatus).mockClear();
-
-      // Second delivery (retry) with same event_id — should be skipped
-      const request2 = createSlackEventRequest({
-        type: "event_callback",
-        team_id: workspaceId,
-        event: {
-          type: "app_mention",
-          user: slackUserId,
-          text: "<@U-bot> Hello",
-          ts: "3000.002",
-          channel: "C-dedup",
-          event_ts: "3000.002",
-        },
-        event_id: sharedEventId,
-        event_time: Date.now(),
-      });
-
-      const response2 = await POST(request2);
-      expect(response2.status).toBe(200);
-      await context.mocks.flushAfter();
-
       expect(mockClient.assistant.threads.setStatus).not.toHaveBeenCalled();
     });
   });
