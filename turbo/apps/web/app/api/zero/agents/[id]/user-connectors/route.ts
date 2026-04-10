@@ -167,7 +167,9 @@ const router = tsr.router(zeroUserConnectorsContract, {
         return { name };
       }),
     );
-    const newVersionId = computeComposeVersionId(content as AgentComposeYaml);
+    const newVersionId = computeComposeVersionId(
+      content as unknown as AgentComposeYaml,
+    );
     if (newVersionId !== agent.headVersionId) {
       const composeResult = await serverSideCompose({
         userId,
