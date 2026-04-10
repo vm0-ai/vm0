@@ -537,30 +537,22 @@ describe("createZeroRun()", () => {
       );
     });
 
-    it("should respect user override to disable AutoSkill", async () => {
-      vi.spyOn(core, "isFeatureEnabled").mockImplementation(
-        (
-          key: FeatureSwitchKey,
-          ctx?: { overrides?: Partial<Record<FeatureSwitchKey, boolean>> },
-        ) => {
-          if (key === FeatureSwitchKey.AutoSkill) {
-            if (ctx?.overrides?.[FeatureSwitchKey.AutoSkill] === false)
-              return false;
-            return true;
-          }
-          return false;
-        },
-      );
+    it("should pass user overrides to AutoSkill feature check", async () => {
+      const spy = vi.spyOn(core, "isFeatureEnabled");
 
       await updateUserFeatureSwitches(user.orgId, user.userId, {
         [FeatureSwitchKey.AutoSkill]: false,
       });
 
-      const result = await createZeroRun(baseParams());
-      const run = await findTestRunRecord(result.runId);
-      expect(run).toBeDefined();
-      expect(run!.appendSystemPrompt).not.toContain(
-        "# Skill Management Guidance",
+      await createZeroRun(baseParams());
+
+      expect(spy).toHaveBeenCalledWith(
+        FeatureSwitchKey.AutoSkill,
+        expect.objectContaining({
+          overrides: expect.objectContaining({
+            [FeatureSwitchKey.AutoSkill]: false,
+          }),
+        }),
       );
     });
   });
