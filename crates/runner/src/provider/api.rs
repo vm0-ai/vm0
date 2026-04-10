@@ -288,12 +288,13 @@ impl JobProvider for ApiProvider {
     /// # Ordering requirement
     ///
     /// `discover()` holds the discovery Mutex for its entire loop.
-    /// Callers must cancel the `CancellationToken` *before* calling
-    /// `shutdown()` so that `discover()` observes the cancellation,
-    /// returns `None`, and releases the lock. The main loop in
-    /// `start.rs` guarantees this: the signal handler cancels the
-    /// token, `discover()` returns `None` breaking the loop, and
-    /// then `shutdown()` is called.
+    /// The caller must ensure the `discover()` future is no longer
+    /// alive before calling `shutdown()`. Two paths accomplish this:
+    ///
+    /// 1. `discover()` observes the cancelled token and returns `None`,
+    ///    releasing the lock naturally.
+    /// 2. The main loop breaks (e.g. on `Draining` mode) and explicitly
+    ///    drops the pinned future, which releases the lock.
     async fn shutdown(&self) {
         let mut state = self.discovery.lock().await;
         // Drop Ably subscription to close WebSocket
