@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -90,11 +90,13 @@ pub async fn create_snapshot(
 
     // Remove stale snapshot artifacts individually instead of rm -rf on the
     // entire output directory.
+    let cow_bitmap = PathBuf::from(format!("{}.bitmap", output.cow().display()));
     for stale in [
         output.work_dir(),
         output.snapshot(),
         output.memory(),
         output.cow(),
+        cow_bitmap,
     ] {
         let path_str = stale.display().to_string();
         command::exec_ignore_errors("rm", &["-rf", &path_str]).await;
