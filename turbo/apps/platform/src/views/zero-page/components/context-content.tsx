@@ -107,6 +107,40 @@ function StorageTable({
   );
 }
 
+function FeatureFlagsSection({
+  flags,
+}: {
+  flags: Record<string, boolean> | null | undefined;
+}) {
+  if (!flags || Object.keys(flags).length === 0) {
+    return null;
+  }
+  const sorted = Object.entries(flags).sort(([, a], [, b]) => {
+    return a === b ? 0 : a ? -1 : 1;
+  });
+  return (
+    <section>
+      <SectionHeader title="Feature Flags" />
+      <div className="flex flex-wrap gap-1.5">
+        {sorted.map(([name, enabled]) => {
+          return (
+            <span
+              key={name}
+              className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-mono ${
+                enabled
+                  ? "bg-muted/50"
+                  : "bg-transparent text-muted-foreground line-through"
+              }`}
+            >
+              {name}
+            </span>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 export function ContextContent({ context }: { context: RunContextResponse }) {
   return (
     <div className="flex flex-col gap-6 pb-8">
@@ -135,31 +169,7 @@ export function ContextContent({ context }: { context: RunContextResponse }) {
       )}
 
       {/* Feature Flags */}
-      {context.featureFlags && Object.keys(context.featureFlags).length > 0 && (
-        <section>
-          <SectionHeader title="Feature Flags" />
-          <div className="flex flex-wrap gap-1.5">
-            {Object.entries(context.featureFlags)
-              .sort(([, a], [, b]) => {
-                return a === b ? 0 : a ? -1 : 1;
-              })
-              .map(([name, enabled]) => {
-                return (
-                  <span
-                    key={name}
-                    className={`inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-mono ${
-                      enabled
-                        ? "bg-muted/50"
-                        : "bg-transparent text-muted-foreground line-through"
-                    }`}
-                  >
-                    {name}
-                  </span>
-                );
-              })}
-          </div>
-        </section>
-      )}
+      <FeatureFlagsSection flags={context.featureFlags} />
 
       {/* Secrets */}
       <section>
