@@ -215,14 +215,14 @@ function UnknownEndpointsToggle({
   onChange: (p: PermissionPolicy) => void;
 }) {
   return (
-    <div className="border-t border-border/40 mx-3 mt-2 pt-3 pb-1">
+    <div className="border-t border-border/40 -mx-6 px-3 pt-3 pb-1">
       <div className="flex items-center justify-between px-3">
         <div className="min-w-0 flex-1">
           <span className="text-xs font-medium text-foreground">
-            Unknown endpoints
+            Other endpoints
           </span>
           <p className="mt-0.5 text-xs text-muted-foreground leading-relaxed">
-            Endpoints not matching any permission rule above
+            API endpoints not matched by any rule above
           </p>
         </div>
         <PolicyPill policy={policy} disabled={disabled} onChange={onChange} />
