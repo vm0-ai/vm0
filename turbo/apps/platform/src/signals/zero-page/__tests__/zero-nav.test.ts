@@ -96,7 +96,7 @@ describe("zero-nav", () => {
         [
           { path: "/", setup: noop$ },
           { path: "/agents/:id/chat", setup: noop$ },
-          { path: "/chats/:id", setup: noop$ },
+          { path: "/chats/:threadId", setup: noop$ },
           { path: "{/*path}", setup: noop$ },
         ],
         context.signal,
@@ -113,7 +113,7 @@ describe("zero-nav", () => {
       expect(context.store.get(currentChatThreadId$)).toBeNull();
     });
 
-    it("should extract thread ID from /chats/:id", async () => {
+    it("should extract thread ID from /chats/:threadId", async () => {
       await setupRoutes("/chats/thread-abc-123");
       expect(context.store.get(currentChatThreadId$)).toBe("thread-abc-123");
     });

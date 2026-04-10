@@ -5,8 +5,8 @@ import { localStorageSignals } from "../external/local-storage.ts";
 import { openQueueDrawer$ } from "../queue-page/queue-drawer-state.ts";
 
 export const navigateToChat$ = command(({ set }, chatThreadId: string) => {
-  set(detachedNavigateTo$, "/chats/:id", {
-    pathParams: { id: chatThreadId },
+  set(detachedNavigateTo$, "/chats/:threadId", {
+    pathParams: { threadId: chatThreadId },
   });
 });
 

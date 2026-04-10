@@ -21,8 +21,8 @@ import { agentById } from "../agent.ts";
 
 export const permissionAllowAgentId$ = computed((get) => {
   const params = get(pathParams$);
-  const id = params?.id;
-  return typeof id === "string" ? id : null;
+  const agentId = params?.agentId;
+  return typeof agentId === "string" ? agentId : null;
 });
 
 export const permissionAllowRef$ = computed((get) => {

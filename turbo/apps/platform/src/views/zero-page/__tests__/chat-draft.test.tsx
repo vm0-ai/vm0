@@ -49,8 +49,8 @@ describe("chat draft persistence across thread navigation", () => {
     expect(getTextarea().value).toBe("draft for thread 1");
 
     // Navigate to thread-2
-    context.store.set(detachedNavigateTo$, "/chats/:id", {
-      pathParams: { id: "thread-2" },
+    context.store.set(detachedNavigateTo$, "/chats/:threadId", {
+      pathParams: { threadId: "thread-2" },
     });
 
     // thread-2 textarea should be empty
@@ -62,8 +62,8 @@ describe("chat draft persistence across thread navigation", () => {
     await fill(getTextarea(), "draft for thread 2");
 
     // Navigate back to thread-1 — draft restored
-    context.store.set(detachedNavigateTo$, "/chats/:id", {
-      pathParams: { id: "thread-1" },
+    context.store.set(detachedNavigateTo$, "/chats/:threadId", {
+      pathParams: { threadId: "thread-1" },
     });
 
     await waitFor(() => {
@@ -71,8 +71,8 @@ describe("chat draft persistence across thread navigation", () => {
     });
 
     // Navigate back to thread-2 — draft restored
-    context.store.set(detachedNavigateTo$, "/chats/:id", {
-      pathParams: { id: "thread-2" },
+    context.store.set(detachedNavigateTo$, "/chats/:threadId", {
+      pathParams: { threadId: "thread-2" },
     });
 
     await waitFor(() => {
@@ -90,8 +90,8 @@ describe("chat draft persistence across thread navigation", () => {
 
     await fill(getTextarea(), "only for thread-a");
 
-    context.store.set(detachedNavigateTo$, "/chats/:id", {
-      pathParams: { id: "thread-b" },
+    context.store.set(detachedNavigateTo$, "/chats/:threadId", {
+      pathParams: { threadId: "thread-b" },
     });
 
     await waitFor(() => {
@@ -163,8 +163,8 @@ describe("chat draft persistence across thread navigation", () => {
     });
 
     // Navigate to thread-2 while upload is in-flight
-    context.store.set(detachedNavigateTo$, "/chats/:id", {
-      pathParams: { id: "thread-2" },
+    context.store.set(detachedNavigateTo$, "/chats/:threadId", {
+      pathParams: { threadId: "thread-2" },
     });
 
     // thread-2 should have no attachment chips
@@ -184,8 +184,8 @@ describe("chat draft persistence across thread navigation", () => {
     );
 
     // Navigate back to thread-1
-    context.store.set(detachedNavigateTo$, "/chats/:id", {
-      pathParams: { id: "thread-1" },
+    context.store.set(detachedNavigateTo$, "/chats/:threadId", {
+      pathParams: { threadId: "thread-1" },
     });
 
     // The upload should now be complete — "Remove" instead of "Cancel upload"

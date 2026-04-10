@@ -37,12 +37,12 @@ export const currentChatAgentDisplayName$ = computed(async (get) => {
 
 export const currentChatThreadId$ = computed((get): string | null => {
   const params = get(pathParams$);
-  const id = params?.id;
+  const threadId = params?.threadId;
   const route = get(activeRoute$);
   if (route !== "chat") {
     return null;
   }
-  return typeof id === "string" ? id : null;
+  return typeof threadId === "string" ? threadId : null;
 });
 
 const internalReloadCurrentThread$ = state(0);

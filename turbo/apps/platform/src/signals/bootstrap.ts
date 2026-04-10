@@ -68,13 +68,16 @@ function redirectTo(target: RoutePath) {
 
 /**
  * Create a redirect setup command for parameterized routes.
- * Reads pathParams$ and forwards the id param to the target route.
+ * Reads the `id` param from the source URL and maps it to `targetParam` on the target route.
  */
-function redirectWithId(target: RoutePath) {
+function redirectWithId(target: RoutePath, targetParam: string) {
   return command(({ get, set }) => {
     const params = get(pathParams$) ?? {};
     set(detachedNavigateTo$, target, {
-      pathParams: { id: String(params.id) },
+      pathParams: { [targetParam]: String(params.id) } as Record<
+        string,
+        string
+      >,
       replace: true,
     });
   });
@@ -217,26 +220,35 @@ const ROUTE_CONFIG = [
 
   // --- Redirect routes (backward compatibility) ---
   { path: "/team", setup: redirectTo(ROUTES.agents) },
-  { path: "/team/:id", setup: redirectWithId(ROUTES.agentDetail) },
-  { path: "/talk/:id", setup: redirectWithId(ROUTES.agentChat) },
-  { path: "/talk/:id/ideas", setup: redirectWithId(ROUTES.agentIdeas) },
+  { path: "/team/:id", setup: redirectWithId(ROUTES.agentDetail, "agentId") },
+  { path: "/talk/:id", setup: redirectWithId(ROUTES.agentChat, "agentId") },
+  {
+    path: "/talk/:id/ideas",
+    setup: redirectWithId(ROUTES.agentIdeas, "agentId"),
+  },
   {
     path: "/firewall-allow/:id",
-    setup: redirectWithId(ROUTES.agentPermissions),
+    setup: redirectWithId(ROUTES.agentPermissions, "agentId"),
   },
   { path: "/activity", setup: redirectTo(ROUTES.activities) },
-  { path: "/activity/:id", setup: redirectWithId(ROUTES.activityDetail) },
+  {
+    path: "/activity/:id",
+    setup: redirectWithId(ROUTES.activityDetail, "runId"),
+  },
   {
     path: "/activity/:id/context",
-    setup: redirectWithId(ROUTES.activityDetail),
+    setup: redirectWithId(ROUTES.activityDetail, "runId"),
   },
   {
     path: "/activity/:id/network",
-    setup: redirectWithId(ROUTES.activityDetail),
+    setup: redirectWithId(ROUTES.activityDetail, "runId"),
   },
-  { path: "/chat/:id", setup: redirectWithId(ROUTES.chat) },
+  { path: "/chat/:id", setup: redirectWithId(ROUTES.chat, "threadId") },
   { path: "/schedule", setup: redirectTo(ROUTES.schedules) },
-  { path: "/schedule/:id", setup: redirectWithId(ROUTES.scheduleDetail) },
+  {
+    path: "/schedule/:id",
+    setup: redirectWithId(ROUTES.scheduleDetail, "scheduleId"),
+  },
   { path: "/queue", setup: redirectTo(ROUTES.queues) },
   { path: "/preferences", setup: redirectTo(ROUTES.settings) },
   { path: "/usage", setup: redirectTo(ROUTES.settingsUsage) },

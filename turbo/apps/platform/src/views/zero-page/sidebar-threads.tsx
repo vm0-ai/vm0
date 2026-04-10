@@ -78,8 +78,8 @@ function ChatThreadItem({
   return (
     <div className="group relative">
       <Link
-        pathname="/chats/:id"
-        options={{ pathParams: { id: session.id } }}
+        pathname="/chats/:threadId"
+        options={{ pathParams: { threadId: session.id } }}
         onClick={(e) => {
           if (e.metaKey || e.ctrlKey || e.shiftKey) {
             return;

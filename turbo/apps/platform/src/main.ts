@@ -89,8 +89,8 @@ navigator.serviceWorker?.addEventListener("message", (event: MessageEvent) => {
   if (event.data?.type === "NOTIFICATION_CLICK" && event.data.url) {
     const match = /^\/chats\/(.+)$/.exec(event.data.url as string);
     if (match) {
-      appStore.set(detachedNavigateTo$, "/chats/:id", {
-        pathParams: { id: match[1] },
+      appStore.set(detachedNavigateTo$, "/chats/:threadId", {
+        pathParams: { threadId: match[1] },
       });
     }
   }

@@ -186,8 +186,8 @@ function AgentGridView() {
         return (
           <Link
             key={agent.id}
-            pathname="/agents/:id"
-            options={{ pathParams: { id: agent.id } }}
+            pathname="/agents/:agentId"
+            options={{ pathParams: { agentId: agent.id } }}
             className="block no-underline text-inherit"
           >
             <AgentCard agent={agent} />
@@ -229,8 +229,8 @@ function AgentListView() {
         return (
           <Link
             key={agent.id}
-            pathname="/agents/:id"
-            options={{ pathParams: { id: agent.id } }}
+            pathname="/agents/:agentId"
+            options={{ pathParams: { agentId: agent.id } }}
             className="block no-underline text-inherit"
           >
             <AgentListRow agent={agent} isLast={idx === agents.length - 1} />

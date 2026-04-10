@@ -154,8 +154,8 @@ export function PinnedAgentListSection() {
                   data-testid="pinned-agent-card"
                 >
                   <Link
-                    pathname="/agents/:id/chat"
-                    options={{ pathParams: { id: agent.id } }}
+                    pathname="/agents/:agentId/chat"
+                    options={{ pathParams: { agentId: agent.id } }}
                     className={`flex w-full h-8 shrink-0 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 no-underline transition-colors duration-200 ${
                       isPrimarySelected
                         ? "bg-gray-200 text-gray-900 font-medium"

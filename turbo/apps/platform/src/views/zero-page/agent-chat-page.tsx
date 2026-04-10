@@ -247,8 +247,10 @@ export function AgentChatPage() {
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Link
-                        pathname="/agents/:id"
-                        options={{ pathParams: { id: currentChatAgentId } }}
+                        pathname="/agents/:agentId"
+                        options={{
+                          pathParams: { agentId: currentChatAgentId },
+                        }}
                         aria-label="View agent profile"
                         className="h-14 w-14 shrink-0 sm:h-16 sm:w-16 flex items-center justify-center overflow-hidden rounded-xl transition-colors duration-150 hover:bg-accent cursor-pointer"
                       >
@@ -361,8 +363,8 @@ export function AgentChatPage() {
               className="zero-card cursor-pointer p-4 text-left flex flex-col relative group hover:bg-muted/30 transition-colors"
               onClick={() => {
                 if (currentChatAgentId) {
-                  navigate("/agents/:id/ideas", {
-                    pathParams: { id: currentChatAgentId },
+                  navigate("/agents/:agentId/ideas", {
+                    pathParams: { agentId: currentChatAgentId },
                   });
                 }
               }}

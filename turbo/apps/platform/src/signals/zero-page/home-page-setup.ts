@@ -18,8 +18,8 @@ export const setupHomePage$ = command(
     if (defaultAgentId) {
       const params = get(searchParams$);
       const prompt = params.get("prompt");
-      set(detachedNavigateTo$, "/agents/:id/chat", {
-        pathParams: { id: defaultAgentId },
+      set(detachedNavigateTo$, "/agents/:agentId/chat", {
+        pathParams: { agentId: defaultAgentId },
         searchParams: prompt ? new URLSearchParams({ prompt }) : undefined,
         replace: true,
       });

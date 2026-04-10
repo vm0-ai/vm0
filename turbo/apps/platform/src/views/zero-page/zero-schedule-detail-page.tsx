@@ -961,8 +961,8 @@ function ScheduleDetailView({
 export function ZeroScheduleDetailPage() {
   const params = useGet(pathParams$);
   const scheduleId =
-    params && typeof params === "object" && "id" in params
-      ? String(params.id)
+    params && typeof params === "object" && "scheduleId" in params
+      ? String(params.scheduleId)
       : null;
 
   const entriesLoadable = useLastLoadable(allOrgScheduleEntries$);

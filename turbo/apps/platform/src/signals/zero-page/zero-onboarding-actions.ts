@@ -281,8 +281,8 @@ export const onboardingContinueWeb$ = command(
       return;
     }
 
-    set(detachedNavigateTo$, "/agents/:id/chat", {
-      pathParams: { id: agentId },
+    set(detachedNavigateTo$, "/agents/:agentId/chat", {
+      pathParams: { agentId: agentId },
     });
   },
 );

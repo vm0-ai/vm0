@@ -53,8 +53,8 @@ function LogRow({
 
   return (
     <Link
-      pathname="/activities/:id"
-      options={{ pathParams: { id: entry.id } }}
+      pathname="/activities/:runId"
+      options={{ pathParams: { runId: entry.id } }}
       className="block px-5 py-3 transition-colors hover:bg-muted/50 cursor-pointer border-b border-border/40 last:border-b-0 no-underline text-inherit"
     >
       <div className={cn(gridClassName)}>

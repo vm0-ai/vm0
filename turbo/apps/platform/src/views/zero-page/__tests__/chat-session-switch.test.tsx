@@ -110,8 +110,8 @@ describe("chat session switch", () => {
     expect(screen.queryByLabelText("Stop")).toBeNull();
 
     // Navigate to the running thread
-    context.store.set(detachedNavigateTo$, "/chats/:id", {
-      pathParams: { id: "thread-running" },
+    context.store.set(detachedNavigateTo$, "/chats/:threadId", {
+      pathParams: { threadId: "thread-running" },
     });
 
     // The running thread should show the thinking/shimmer state
@@ -162,8 +162,8 @@ describe("chat session switch", () => {
     });
 
     // Switch to session-beta
-    context.store.set(detachedNavigateTo$, "/chats/:id", {
-      pathParams: { id: "session-beta" },
+    context.store.set(detachedNavigateTo$, "/chats/:threadId", {
+      pathParams: { threadId: "session-beta" },
     });
 
     await waitFor(() => {
@@ -174,8 +174,8 @@ describe("chat session switch", () => {
     expect(screen.queryByText("Answer for session-alpha")).toBeNull();
 
     // Switch to session-gamma
-    context.store.set(detachedNavigateTo$, "/chats/:id", {
-      pathParams: { id: "session-gamma" },
+    context.store.set(detachedNavigateTo$, "/chats/:threadId", {
+      pathParams: { threadId: "session-gamma" },
     });
 
     await waitFor(() => {

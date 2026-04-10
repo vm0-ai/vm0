@@ -78,7 +78,7 @@ function scheduleEntryLabel(entry: {
 const teamDetailBreadcrumb$ = computed(
   async (get): Promise<MobileBreadcrumb> => {
     const params = get(pathParams$) as Params;
-    const agentId = getStringParam(params, "id");
+    const agentId = getStringParam(params, "agentId");
     if (agentId) {
       const agentsList = await get(agents$);
       const agent = agentsList.find((a) => {
@@ -103,7 +103,7 @@ const activityDetailBreadcrumb$ = computed(
       return null;
     }
     const params = get(pathParams$) as Params;
-    const runId = getStringParam(params, "id");
+    const runId = getStringParam(params, "runId");
     if (runId) {
       const detail = await get(zeroActivityDetail$);
       if (detail && detail.id === runId) {
@@ -120,7 +120,7 @@ const activityDetailBreadcrumb$ = computed(
 
 const scheduleBreadcrumb$ = computed((get): MobileBreadcrumb => {
   const params = get(pathParams$) as Params;
-  const scheduleId = getStringParam(params, "id");
+  const scheduleId = getStringParam(params, "scheduleId");
   if (scheduleId) {
     const entries = get(allOrgScheduleEntries$);
     const entry = entries.find((e) => {
@@ -142,7 +142,7 @@ const chatBreadcrumb$ = computed(async (get): Promise<MobileBreadcrumb> => {
   const displayName = await get(currentChatAgentDisplayName$);
   const defaultId = await get(defaultAgentId$);
   const threadId = get(currentChatThreadId$);
-  const urlAgentId = getStringParam(params, "id");
+  const urlAgentId = getStringParam(params, "agentId");
 
   if (threadId !== null || urlAgentId !== null) {
     const subagentId = await get(currentChatAgentId$);

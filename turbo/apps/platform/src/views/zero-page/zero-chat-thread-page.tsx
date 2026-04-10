@@ -82,8 +82,8 @@ function HeaderAgentAvatar() {
         <Tooltip>
           <TooltipTrigger asChild>
             <Link
-              pathname="/agents/:id"
-              options={{ pathParams: { id: currentChatAgentId } }}
+              pathname="/agents/:agentId"
+              options={{ pathParams: { agentId: currentChatAgentId } }}
               className="h-8 w-8 shrink-0 overflow-hidden rounded-xl transition-colors duration-150 hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               aria-label="View agent profile"
             >
@@ -739,8 +739,8 @@ function AssistantMessageActions({
           <Tooltip>
             <TooltipTrigger asChild>
               <Link
-                pathname="/activities/:id"
-                options={{ pathParams: { id: message.legacyRunId } }}
+                pathname="/activities/:runId"
+                options={{ pathParams: { runId: message.legacyRunId } }}
                 className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
                 aria-label="View run logs"
               >

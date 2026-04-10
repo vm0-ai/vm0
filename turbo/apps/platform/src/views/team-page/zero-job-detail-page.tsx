@@ -202,8 +202,8 @@ function DetailError({ error, agentId }: { error: string; agentId: string }) {
             <CardContent className="px-6 py-6 text-center space-y-3">
               <p className="text-sm text-destructive">{error}</p>
               <Link
-                pathname="/agents/:id"
-                options={{ pathParams: { id: agentId } }}
+                pathname="/agents/:agentId"
+                options={{ pathParams: { agentId: agentId } }}
                 className="zero-btn-morandi inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium no-underline text-inherit hover:bg-accent"
               >
                 Retry
@@ -646,7 +646,7 @@ function JobScheduleTab({ displayName }: { displayName: string }) {
   };
 
   const handleOpenDetails = (entry: ScheduleEntry) => {
-    nav("/schedules/:id", { pathParams: { id: entry.id } });
+    nav("/schedules/:scheduleId", { pathParams: { scheduleId: entry.id } });
   };
 
   return (
@@ -763,7 +763,9 @@ function AgentHeader({
             size="sm"
             className="shrink-0 zero-btn-morandi gap-1.5"
             onClick={() => {
-              nav("/agents/:id/chat", { pathParams: { id: agentId } });
+              nav("/agents/:agentId/chat", {
+                pathParams: { agentId: agentId },
+              });
             }}
             aria-label={`Chat with ${displayName}`}
           >

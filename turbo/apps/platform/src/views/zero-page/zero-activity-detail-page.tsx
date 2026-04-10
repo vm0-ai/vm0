@@ -226,9 +226,9 @@ export function ActivityHeaderCard({
                 <span className="text-muted-foreground shrink-0">Source</span>
                 {triggerSource === "schedule" && detail.scheduleId ? (
                   <Link
-                    pathname="/schedules/:id"
+                    pathname="/schedules/:scheduleId"
                     options={{
-                      pathParams: { id: detail.scheduleId },
+                      pathParams: { scheduleId: detail.scheduleId },
                     }}
                     className="text-foreground whitespace-nowrap underline decoration-foreground/40 hover:decoration-foreground transition-colors"
                   >

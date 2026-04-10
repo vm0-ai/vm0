@@ -28,7 +28,7 @@ export function ZeroIdeationPage() {
 
   const navigateToChat = () => {
     if (agentId) {
-      navigate("/agents/:id/chat", { pathParams: { id: agentId } });
+      navigate("/agents/:agentId/chat", { pathParams: { agentId: agentId } });
     } else {
       navigate("/");
     }
@@ -63,8 +63,8 @@ export function ZeroIdeationPage() {
   const handleSelectPrompt = (prompt: string) => {
     const searchParams = new URLSearchParams({ prompt });
     if (agentId) {
-      navigate("/agents/:id/chat", {
-        pathParams: { id: agentId },
+      navigate("/agents/:agentId/chat", {
+        pathParams: { agentId: agentId },
         searchParams,
       });
     } else {
