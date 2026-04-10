@@ -56,7 +56,7 @@ export const voiceChatSessions = pgTable(
  *
  * Sources: system | user | fast-brain | slow-brain
  * Types: session-start | session-end | speech | request-slow-brain | response |
- *        directive | thinking | observation
+ *        directive | thinking | observation | preparation-ready | meeting-prompt
  */
 export const voiceChatEvents = pgTable(
   "voice_chat_events",

@@ -138,6 +138,28 @@ describe("GET /api/zero/voice-chat/[id]/context", () => {
     expect(body.events[1].seq).toBeLessThan(body.events[2].seq);
   });
 
+  it("should return 400 for non-numeric after parameter", async () => {
+    const session = await createSession(orgId, userId);
+    const response = await GET(
+      createTestRequest(contextUrl(session.id, "after=abc")),
+      paramsFor(session.id),
+    );
+    const body = await response.json();
+    expect(response.status).toBe(400);
+    expect(body.error.code).toBe("BAD_REQUEST");
+  });
+
+  it("should return 400 for negative after parameter", async () => {
+    const session = await createSession(orgId, userId);
+    const response = await GET(
+      createTestRequest(contextUrl(session.id, "after=-1")),
+      paramsFor(session.id),
+    );
+    const body = await response.json();
+    expect(response.status).toBe(400);
+    expect(body.error.code).toBe("BAD_REQUEST");
+  });
+
   it("should filter events with ?after=seq", async () => {
     const session = await createSession(orgId, userId);
 
@@ -241,6 +263,26 @@ describe("POST /api/zero/voice-chat/[id]/context", () => {
     expect(body.event.content).toBe("hello world");
     expect(typeof body.event.seq).toBe("number");
     expect(body.event.id).toBeDefined();
+  });
+
+  it("should accept meeting-prompt event type", async () => {
+    const session = await createSession(orgId, userId);
+    const response = await POST(
+      createTestRequest(contextUrl(session.id), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          source: "user",
+          type: "meeting-prompt",
+          content: "discuss Q3 roadmap",
+        }),
+      }),
+      paramsFor(session.id),
+    );
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.event.type).toBe("meeting-prompt");
+    expect(body.event.source).toBe("user");
   });
 
   it("should reject invalid source", async () => {

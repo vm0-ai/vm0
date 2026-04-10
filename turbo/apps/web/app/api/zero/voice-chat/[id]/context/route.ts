@@ -22,6 +22,7 @@ const VALID_TYPES = [
   "thinking",
   "observation",
   "preparation-ready",
+  "meeting-prompt",
 ] as const;
 
 const appendEventBodySchema = z.object({
@@ -77,6 +78,13 @@ export async function GET(
   const url = new URL(request.url);
   const afterParam = url.searchParams.get("after");
   const afterSeq = afterParam ? parseInt(afterParam, 10) : undefined;
+
+  if (afterSeq !== undefined && (Number.isNaN(afterSeq) || afterSeq < 0)) {
+    return NextResponse.json(
+      { error: { message: "Invalid after parameter", code: "BAD_REQUEST" } },
+      { status: 400 },
+    );
+  }
 
   const events = await readEvents(id, afterSeq);
 
