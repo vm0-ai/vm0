@@ -222,7 +222,7 @@ function UnknownEndpointsToggle({
             Other endpoints
           </span>
           <p className="mt-0.5 text-xs text-muted-foreground leading-relaxed">
-            API endpoints not matched by any rule above
+            API endpoints not matched by any permission above
           </p>
         </div>
         <PolicyPill policy={policy} disabled={disabled} onChange={onChange} />
