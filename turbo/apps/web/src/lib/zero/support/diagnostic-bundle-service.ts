@@ -115,11 +115,15 @@ export async function submitDiagnosticBundle(
     collectSessionRuns(db, runId, sessionId),
   ]);
 
-  // Query Axiom for agent events
+  // Query Axiom for agent events, system log, and network log in parallel
   const sessionRunIds = sessionRuns.map((r) => {
     return r.id;
   });
-  const agentEvents = await collectAgentEvents(sessionRunIds);
+  const [agentEvents, systemLogText, networkLogEntries] = await Promise.all([
+    collectAgentEvents(sessionRunIds),
+    collectSystemLog(sessionRunIds),
+    collectNetworkLog(sessionRunIds),
+  ]);
 
   // Synthesize user_prompt events
   const promptEvents: ChatHistoryEvent[] = sessionRuns.map((r) => {
@@ -221,6 +225,21 @@ export async function submitDiagnosticBundle(
       content: JSON.stringify(activityLog),
     },
   ];
+
+  if (systemLogText) {
+    zipEntries.push({ path: "system-log.txt", content: systemLogText });
+  }
+
+  if (networkLogEntries.length > 0) {
+    zipEntries.push({
+      path: "network-log.jsonl",
+      content: networkLogEntries
+        .map((e) => {
+          return JSON.stringify(e);
+        })
+        .join("\n"),
+    });
+  }
 
   const zipBuffer = await assembleZip(zipEntries);
 
@@ -374,6 +393,51 @@ async function collectSessionRuns(
     .from(agentRuns)
     .where(eq(agentRuns.id, runId))
     .limit(1);
+}
+
+async function collectSystemLog(sessionRunIds: string[]): Promise<string> {
+  if (sessionRunIds.length === 0) return "";
+  const runIdList = sessionRunIds
+    .map((id) => {
+      return `"${id}"`;
+    })
+    .join(", ");
+  const dataset = getDatasetName(DATASETS.SANDBOX_TELEMETRY_SYSTEM);
+  const apl = `['${dataset}']
+| where runId in (${runIdList})
+| order by _time asc`;
+  const events = await queryAxiom<{ log: string }>(apl).catch((err) => {
+    log.warn("Failed to collect system log from Axiom", {
+      error: String(err),
+    });
+    return [] as { log: string }[];
+  });
+  return events
+    .map((e) => {
+      return e.log;
+    })
+    .join("");
+}
+
+async function collectNetworkLog(
+  sessionRunIds: string[],
+): Promise<Record<string, unknown>[]> {
+  if (sessionRunIds.length === 0) return [];
+  const runIdList = sessionRunIds
+    .map((id) => {
+      return `"${id}"`;
+    })
+    .join(", ");
+  const dataset = getDatasetName(DATASETS.SANDBOX_TELEMETRY_NETWORK);
+  const apl = `['${dataset}']
+| where runId in (${runIdList})
+| order by _time asc`;
+  return queryAxiom<Record<string, unknown>>(apl).catch((err) => {
+    log.warn("Failed to collect network log from Axiom", {
+      error: String(err),
+    });
+    return [] as Record<string, unknown>[];
+  });
 }
 
 async function collectAgentEvents(
