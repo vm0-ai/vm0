@@ -88,9 +88,8 @@ pub async fn create_snapshot(
         .to_string();
     command::exec_ignore_errors("umount", &[stale_bind.as_str()]).await;
 
-    // Remove stale snapshot artifacts individually instead of rm -rf on the
-    // entire output directory.
-    // Remove work directory tree, then stale files.
+    // Remove stale snapshot artifacts individually (not rm -rf on the
+    // entire output directory) — work dir tree first, then individual files.
     let _ = tokio::fs::remove_dir_all(&output.work_dir()).await;
     for stale in [
         output.snapshot(),
