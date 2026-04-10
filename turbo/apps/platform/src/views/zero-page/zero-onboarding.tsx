@@ -53,8 +53,6 @@ import {
   IconCircleCheckFilled,
   IconLoader,
   IconSearch,
-  IconShieldCheck,
-  IconLock,
 } from "@tabler/icons-react";
 import { detach, Reason } from "../../signals/utils.ts";
 import { AccountDropdown } from "./zero-sidebar.tsx";
