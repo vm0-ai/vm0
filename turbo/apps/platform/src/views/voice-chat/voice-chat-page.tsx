@@ -8,6 +8,7 @@ import {
   IconPhoneOff,
   IconLoader2,
   IconRefresh,
+  IconUsers,
 } from "@tabler/icons-react";
 import type { TouchEvent as ReactTouchEvent } from "react";
 import { defaultAgentName$ } from "../../signals/agent.ts";
@@ -256,27 +257,24 @@ export function VoiceChatPage() {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-6 p-8">
         <h1 className="text-2xl font-bold">Voice Chat</h1>
-        <p className="text-muted-foreground max-w-md text-center">
-          Start a voice conversation with the AI agent, or prepare a meeting
-          with a specific topic.
-        </p>
         {error && (
           <p className="text-sm text-destructive max-w-md text-center">
             {error}
           </p>
         )}
-        <textarea
-          className="w-full max-w-md rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          rows={3}
-          placeholder="What would you like to discuss? (required for meetings)"
-          value={meetingPrompt}
-          onChange={(e) => {
-            setMeetingPrompt(e.target.value);
-          }}
-        />
-        <div className="flex gap-3">
+        {!agentId && (
+          <p className="text-xs text-muted-foreground">
+            No agent selected. Please select an agent first.
+          </p>
+        )}
+        <div className="w-full max-w-md rounded-lg border border-input p-5 flex flex-col gap-3">
+          <h2 className="text-lg font-semibold">Quick Chat</h2>
+          <p className="text-sm text-muted-foreground">
+            Jump into a voice conversation with the AI agent.
+          </p>
           <Button
             size="lg"
+            className="w-full"
             onClick={() => {
               detach(startSession(pageSignal), Reason.DomCallback);
             }}
@@ -285,9 +283,25 @@ export function VoiceChatPage() {
             <IconMicrophone size={18} className="mr-2" />
             Start Voice Chat
           </Button>
+        </div>
+        <div className="w-full max-w-md rounded-lg border border-input p-5 flex flex-col gap-3">
+          <h2 className="text-lg font-semibold">Voice Meeting</h2>
+          <p className="text-sm text-muted-foreground">
+            Set a topic to guide a structured conversation.
+          </p>
+          <textarea
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            rows={3}
+            placeholder="What would you like to discuss?"
+            value={meetingPrompt}
+            onChange={(e) => {
+              setMeetingPrompt(e.target.value);
+            }}
+          />
           <Button
             size="lg"
             variant="secondary"
+            className="w-full"
             onClick={() => {
               detach(
                 startMeeting(meetingPrompt, pageSignal),
@@ -296,15 +310,10 @@ export function VoiceChatPage() {
             }}
             disabled={!agentId || !meetingPrompt.trim()}
           >
-            <IconLoader2 size={18} className="mr-2" />
+            <IconUsers size={18} className="mr-2" />
             Start Voice Meeting
           </Button>
         </div>
-        {!agentId && (
-          <p className="text-xs text-muted-foreground">
-            No agent selected. Please select an agent first.
-          </p>
-        )}
       </div>
     );
   }
