@@ -723,7 +723,6 @@ describe("POST /api/zero/slack/events", () => {
       payload: Record<string, unknown>,
       retryNum = "1",
     ): Request {
-      const { createHmac } = require("crypto");
       const body = JSON.stringify(payload);
       const timestamp = Math.floor(Date.now() / 1000).toString();
       const baseString = `v0:${timestamp}:${body}`;
