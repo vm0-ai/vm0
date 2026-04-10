@@ -187,6 +187,8 @@ const internalPrepStartTime$ = state<number | null>(null);
 const internalPrepElapsedMs$ = state(0);
 const internalReconnectAttempt$ = state(0);
 
+const internalParentSignal$ = state<AbortSignal | null>(null);
+
 const meetingPromptInput$ = state("");
 
 const resetSessionSignal$ = resetSignal();
@@ -740,7 +742,13 @@ const reconnectVoiceSession$ = command(
       if (ok) {
         // Success — restart heartbeat and poll loops
         set(internalReconnectAttempt$, 0);
-        const sessionSignal = set(resetSessionSignal$, signal);
+        const parentSignal = get(internalParentSignal$);
+        if (!parentSignal) {
+          set(internalError$, "No parent signal for reconnect");
+          set(internalStatus$, "error");
+          return;
+        }
+        const sessionSignal = set(resetSessionSignal$, parentSignal);
         await Promise.allSettled([
           set(startHeartbeat$, sessionSignal),
           set(startPoll$, sessionSignal),
@@ -960,6 +968,7 @@ export const startVoiceChat$ = command(
     set(internalCurrentAssistant$, null);
     set(internalPrompt$, null);
     set(internalPrepStartTime$, Date.now());
+    set(internalParentSignal$, signal);
 
     const sessionSignal = set(resetSessionSignal$, signal);
 
@@ -1027,6 +1036,7 @@ export const startVoiceMeeting$ = command(
     set(internalCurrentAssistant$, null);
     set(internalPrompt$, prompt);
     set(internalPrepStartTime$, Date.now());
+    set(internalParentSignal$, signal);
 
     const sessionSignal = set(resetSessionSignal$, signal);
 
@@ -1123,6 +1133,7 @@ export const endVoiceChat$ = command(({ get, set }) => {
   set(internalPrepStartTime$, null);
   set(internalPrepElapsedMs$, 0);
   set(internalReconnectAttempt$, 0);
+  set(internalParentSignal$, null);
   set(internalStatus$, "idle");
 });
 
