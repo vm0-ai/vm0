@@ -84,6 +84,17 @@ export async function upsertCreditUsage(
   const model = selectedModel ?? extractModel(events) ?? "unknown";
 
   for (const result of results) {
+    if (!result.uuid) {
+      log.error(
+        "Result event missing uuid — deduplication disabled for this row",
+        {
+          runId,
+          inputTokens: result.inputTokens,
+          outputTokens: result.outputTokens,
+        },
+      );
+    }
+
     await db
       .insert(creditUsage)
       .values({
