@@ -497,6 +497,12 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         provider: &*provider,
     };
 
+    // Pin the discover future so it survives cancellation by other select!
+    // branches (heartbeat, idle cleanup, etc.). Without pinning, heartbeat
+    // (10s) cancels discover() on every tick, restarting its internal poll
+    // sleep (30s) from scratch — so poll never fires. See #8747.
+    let mut discover_fut = Box::pin(provider.discover());
+
     let mut current_mode = RunnerMode::Running;
     let mut spawn_ctx = SpawnContext {
         provider: Arc::clone(&provider),
@@ -579,9 +585,12 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
 
         tokio::select! {
             // Job discovery via provider (Ably push + poll).
-            // discover() has no server-side side effects — safe to cancel.
-            discovered = provider.discover() => {
+            // The future is pinned outside the loop so heartbeat/cleanup ticks
+            // don't cancel and restart its internal poll timer. See #8747.
+            discovered = &mut discover_fut => {
                 let Some((run_id, profile_name)) = discovered else { break };
+                // Future completed — create a new one for the next discovery.
+                discover_fut = Box::pin(provider.discover());
                 // Look up profile config for resource requirements.
                 let Some(profile_config) = profiles.get(&profile_name) else {
                     warn!(run_id = %run_id, profile = %profile_name, "unknown profile, skipping");
