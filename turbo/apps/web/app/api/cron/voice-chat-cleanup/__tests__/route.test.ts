@@ -4,6 +4,7 @@ import { testContext } from "../../../../../src/__tests__/test-helpers";
 import {
   insertTestVoiceChatSession,
   getTestVoiceChatSessionStatus,
+  getTestVoiceChatEvents,
 } from "../../../../../src/__tests__/api-test-helpers";
 import { reloadEnv } from "../../../../../src/env";
 
@@ -97,6 +98,49 @@ describe("GET /api/cron/voice-chat-cleanup", () => {
     expect(response.status).toBe(200);
     expect(body.cleaned).toBe(0);
     expect(await getTestVoiceChatSessionStatus(sessionId)).toBe("active");
+  });
+
+  it("should write session-end event for each timed-out session", async () => {
+    const staleTime = new Date(Date.now() - 3 * 60 * 1000);
+    const sessionId = await insertTestVoiceChatSession({
+      orgId: "org_test",
+      userId: "user_test",
+      lastHeartbeatAt: staleTime,
+    });
+
+    await GET(cronRequest("test-cron-secret"));
+
+    const events = await getTestVoiceChatEvents(sessionId);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      type: "session-end",
+      source: "system",
+    });
+  });
+
+  it("should write session-end events for multiple timed-out sessions", async () => {
+    const staleTime = new Date(Date.now() - 3 * 60 * 1000);
+    const sessionId1 = await insertTestVoiceChatSession({
+      orgId: "org_test",
+      userId: "user_test1",
+      lastHeartbeatAt: staleTime,
+    });
+    const sessionId2 = await insertTestVoiceChatSession({
+      orgId: "org_test",
+      userId: "user_test2",
+      lastHeartbeatAt: staleTime,
+    });
+
+    const response = await GET(cronRequest("test-cron-secret"));
+    const body = await response.json();
+    expect(body.cleaned).toBe(2);
+
+    const events1 = await getTestVoiceChatEvents(sessionId1);
+    const events2 = await getTestVoiceChatEvents(sessionId2);
+    expect(events1).toHaveLength(1);
+    expect(events1[0]).toMatchObject({ type: "session-end", source: "system" });
+    expect(events2).toHaveLength(1);
+    expect(events2[0]).toMatchObject({ type: "session-end", source: "system" });
   });
 
   it("should not clean up already-ended sessions", async () => {

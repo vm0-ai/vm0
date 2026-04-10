@@ -3,7 +3,10 @@ import { inArray, and, or, lt } from "drizzle-orm";
 import { initServices } from "../../../../src/lib/init-services";
 import { logger } from "../../../../src/lib/shared/logger";
 import { env } from "../../../../src/env";
-import { voiceChatSessions } from "../../../../src/db/schema/voice-chat";
+import {
+  voiceChatSessions,
+  voiceChatEvents,
+} from "../../../../src/db/schema/voice-chat";
 
 const log = logger("cron:voice-chat-cleanup");
 
@@ -41,6 +44,15 @@ export async function GET(request: Request): Promise<Response> {
     .returning({ id: voiceChatSessions.id });
 
   if (result.length > 0) {
+    await globalThis.services.db.insert(voiceChatEvents).values(
+      result.map((r) => {
+        return {
+          sessionId: r.id,
+          source: "system" as const,
+          type: "session-end" as const,
+        };
+      }),
+    );
     log.info("Voice chat cleanup completed", { cleaned: result.length });
   }
 
