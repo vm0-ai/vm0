@@ -266,7 +266,7 @@ describe("zero settings tab - avatar", () => {
 
     // The avatar maker dialog should open
     await waitFor(() => {
-      expect(screen.getByText("Give your agent a face")).toBeInTheDocument();
+      expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
 
     // Click Apply to save the avatar

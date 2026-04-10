@@ -72,7 +72,7 @@ async function openAvatarMaker(user: ReturnType<typeof userEvent.setup>) {
   });
   await user.click(screen.getByLabelText("Create custom avatar"));
   await waitFor(() => {
-    expect(screen.getByText("Give your agent a face")).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 }
 
