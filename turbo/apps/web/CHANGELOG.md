@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.215.1](https://github.com/vm0-ai/vm0/compare/web-v12.215.0...web-v12.215.1) (2026-04-10)
+
+
+### Refactoring
+
+* inject db feature switch overrides into backend call sites ([#8842](https://github.com/vm0-ai/vm0/issues/8842)) ([f27a863](https://github.com/vm0-ai/vm0/commit/f27a8630db18aa0da76526ed4107f8f7ddff8b82)), closes [#8820](https://github.com/vm0-ai/vm0/issues/8820)
+
 ## [12.215.0](https://github.com/vm0-ai/vm0/compare/web-v12.214.0...web-v12.215.0) (2026-04-10)
 
 

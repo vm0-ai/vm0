@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.211.1](https://github.com/vm0-ai/vm0/compare/app-v0.211.0...app-v0.211.1) (2026-04-10)
+
+
+### Bug Fixes
+
+* use defaultAgent displayName for footer nav labels ([#8795](https://github.com/vm0-ai/vm0/issues/8795)) ([8d3b1db](https://github.com/vm0-ai/vm0/commit/8d3b1dbd57782a322a9594b9b9fecf44585c2269))
+
 ## [0.211.0](https://github.com/vm0-ai/vm0/compare/app-v0.210.0...app-v0.211.0) (2026-04-10)
 
 
