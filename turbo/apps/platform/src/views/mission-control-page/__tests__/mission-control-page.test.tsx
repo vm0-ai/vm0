@@ -23,6 +23,7 @@ function mockTasksAPI(
     id: string;
     type: "chat" | "schedule" | "slack" | "email";
     title: string | null;
+    summary: string | null;
     agent: {
       id: string;
       name: string;
@@ -53,6 +54,7 @@ describe("mission control page", () => {
         id: "task-1",
         type: "chat",
         title: "Help with code review",
+        summary: null,
         agent: createAgent(),
         latestRunId: null,
         status: null,
@@ -64,6 +66,7 @@ describe("mission control page", () => {
         id: "task-2",
         type: "schedule",
         title: "Daily report",
+        summary: null,
         agent: createAgent(),
         latestRunId: "run-1",
         status: "completed",
@@ -100,6 +103,7 @@ describe("mission control page", () => {
         id: "task-chat",
         type: "chat",
         title: "Chat task",
+        summary: null,
         agent: createAgent(),
         latestRunId: null,
         status: null,
@@ -130,6 +134,7 @@ describe("mission control page", () => {
         id: "task-sched",
         type: "schedule",
         title: "Scheduled task",
+        summary: null,
         agent: createAgent(),
         latestRunId: "run-xyz",
         status: "completed",
@@ -160,6 +165,7 @@ describe("mission control page", () => {
         id: "task-email",
         type: "email",
         title: "Email task",
+        summary: null,
         agent: createAgent(),
         latestRunId: "run-email-1",
         status: "running",
@@ -190,6 +196,7 @@ describe("mission control page", () => {
         id: "task-slack",
         type: "slack",
         title: "Slack task",
+        summary: null,
         agent: createAgent(),
         latestRunId: "run-slack-1",
         status: "running",
