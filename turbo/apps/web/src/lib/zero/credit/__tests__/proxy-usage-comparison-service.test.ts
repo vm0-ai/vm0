@@ -1,12 +1,18 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import {
+  describe,
+  it,
+  expect,
+  beforeEach,
+  afterEach,
+  vi,
+  type MockInstance,
+} from "vitest";
 import { randomBytes } from "crypto";
-import { eq } from "drizzle-orm";
-import { testContext, uniqueId } from "../../../../__tests__/test-helpers";
+import { testContext } from "../../../../__tests__/test-helpers";
 import { initServices } from "../../../init-services";
 import { compareRecentRunsProxyUsage } from "../proxy-usage-comparison-service";
 import { creditUsage } from "../../../../db/schema/credit-usage";
 import { proxyCreditUsage } from "../../../../db/schema/proxy-credit-usage";
-import { agentRuns } from "../../../../db/schema/agent-run";
 import {
   agentComposes,
   agentComposeVersions,
@@ -91,9 +97,14 @@ async function insertProxyUsage(
 }
 
 describe("compareRecentRunsProxyUsage", () => {
+  let logSpy: MockInstance;
+
   beforeEach(() => {
     context.setupMocks();
+    logSpy = vi.spyOn(logger("service:proxy-usage-comparison"), "error");
   });
+
+  afterEach(() => {});
 
   it("does nothing when no runs in window", async () => {
     // No runs at all — should not throw
@@ -102,7 +113,6 @@ describe("compareRecentRunsProxyUsage", () => {
 
   it("skips runs completed less than 30s ago", async () => {
     const { orgId, userId } = await context.setupUser({ prefix: "recent" });
-    const logSpy = vi.spyOn(logger("service:proxy-usage-comparison"), "error");
 
     // Run completed 10 seconds ago — inside the 30s floor
     const runId = await createRun(orgId, userId, new Date(Date.now() - 10_000));
@@ -113,12 +123,10 @@ describe("compareRecentRunsProxyUsage", () => {
 
     // Should NOT be compared (too recent)
     expect(logSpy).not.toHaveBeenCalled();
-    logSpy.mockRestore();
   });
 
   it("skips runs completed more than 5m30s ago", async () => {
     const { orgId, userId } = await context.setupUser({ prefix: "old" });
-    const logSpy = vi.spyOn(logger("service:proxy-usage-comparison"), "error");
 
     // Run completed 6 minutes ago — outside the 5m30s ceiling
     const runId = await createRun(
@@ -132,12 +140,10 @@ describe("compareRecentRunsProxyUsage", () => {
     await compareRecentRunsProxyUsage();
 
     expect(logSpy).not.toHaveBeenCalled();
-    logSpy.mockRestore();
   });
 
   it("logs error for mismatching usage within window", async () => {
     const { orgId, userId } = await context.setupUser({ prefix: "mismatch" });
-    const logSpy = vi.spyOn(logger("service:proxy-usage-comparison"), "error");
 
     // Run completed 2 minutes ago — inside window
     const runId = await createRun(
@@ -166,13 +172,10 @@ describe("compareRecentRunsProxyUsage", () => {
       return meta.field === "outputTokens";
     });
     expect(outputCalls).toHaveLength(0);
-
-    logSpy.mockRestore();
   });
 
   it("does not log when usage matches", async () => {
     const { orgId, userId } = await context.setupUser({ prefix: "match" });
-    const logSpy = vi.spyOn(logger("service:proxy-usage-comparison"), "error");
 
     const runId = await createRun(
       orgId,
@@ -185,12 +188,10 @@ describe("compareRecentRunsProxyUsage", () => {
     await compareRecentRunsProxyUsage();
 
     expect(logSpy).not.toHaveBeenCalled();
-    logSpy.mockRestore();
   });
 
   it("skips run with client data but no proxy data", async () => {
     const { orgId, userId } = await context.setupUser({ prefix: "no-proxy" });
-    const logSpy = vi.spyOn(logger("service:proxy-usage-comparison"), "error");
 
     const runId = await createRun(
       orgId,
@@ -203,13 +204,11 @@ describe("compareRecentRunsProxyUsage", () => {
     await compareRecentRunsProxyUsage();
 
     expect(logSpy).not.toHaveBeenCalled();
-    logSpy.mockRestore();
   });
 
   it("handles multiple orgs in one window", async () => {
     const user1 = await context.setupUser({ prefix: "org1" });
     const user2 = await context.setupUser({ prefix: "org2" });
-    const logSpy = vi.spyOn(logger("service:proxy-usage-comparison"), "error");
 
     const completedAt = new Date(Date.now() - 120_000);
 
@@ -241,7 +240,5 @@ describe("compareRecentRunsProxyUsage", () => {
     });
     expect(calls).toHaveLength(1);
     expect((calls[0]![1] as Record<string, unknown>).orgId).toBe(user2.orgId);
-
-    logSpy.mockRestore();
   });
 });
