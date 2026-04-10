@@ -109,6 +109,33 @@ describe("POST /api/zero/voice-chat/[id]/end", () => {
     expect(body.error.code).toBe("BAD_REQUEST");
   });
 
+  it("should end session in preparing state", async () => {
+    const sessionId = await insertTestVoiceChatSession({
+      orgId,
+      userId,
+      status: "preparing",
+    });
+
+    const response = await POST(
+      createTestRequest(endUrl(sessionId), { method: "POST" }),
+      paramsFor(sessionId),
+    );
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+
+    // Verify session status updated to "ended"
+    const status = await getTestVoiceChatSessionStatus(sessionId);
+    expect(status).toBe("ended");
+
+    // Verify session-end event written
+    const events = await getTestVoiceChatEvents(sessionId);
+    expect(events).toHaveLength(1);
+    const event = events[0]!;
+    expect(event.type).toBe("session-end");
+    expect(event.source).toBe("system");
+  });
+
   it("should end active session, write event, and cancel run", async () => {
     // Create a run record for FK constraint
     const compose = await createTestCompose(uniqueId("vc-agent"));

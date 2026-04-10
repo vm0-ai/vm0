@@ -104,6 +104,28 @@ describe("POST /api/zero/voice-chat/[id]/heartbeat", () => {
     expect(body.error.code).toBe("NOT_FOUND");
   });
 
+  it("should update lastHeartbeatAt for preparing session", async () => {
+    const pastDate = new Date("2024-01-01T00:00:00Z");
+    const sessionId = await insertTestVoiceChatSession({
+      orgId,
+      userId,
+      status: "preparing",
+      lastHeartbeatAt: pastDate,
+    });
+
+    const response = await POST(
+      createTestRequest(heartbeatUrl(sessionId), { method: "POST" }),
+      paramsFor(sessionId),
+    );
+    const body = await response.json();
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+
+    // Verify lastHeartbeatAt was updated
+    const heartbeatAt = await getTestVoiceChatSessionHeartbeat(sessionId);
+    expect(heartbeatAt!.getTime()).toBeGreaterThan(pastDate.getTime());
+  });
+
   it("should update lastHeartbeatAt for active session", async () => {
     const pastDate = new Date("2024-01-01T00:00:00Z");
     const sessionId = await insertTestVoiceChatSession({

@@ -326,6 +326,28 @@ describe("POST /api/zero/voice-chat/[id]/context", () => {
     },
   );
 
+  it.each(["preparation-ready", "request-slow-brain"] as const)(
+    "should accept system event type: %s",
+    async (type) => {
+      const session = await createSession(orgId, userId);
+      const response = await POST(
+        createTestRequest(contextUrl(session.id), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            source: "system",
+            type,
+          }),
+        }),
+        paramsFor(session.id),
+      );
+      const body = await response.json();
+      expect(response.status).toBe(200);
+      expect(body.event.type).toBe(type);
+      expect(body.event.source).toBe("system");
+    },
+  );
+
   it("should produce incrementing seq numbers", async () => {
     const session = await createSession(orgId, userId);
 
