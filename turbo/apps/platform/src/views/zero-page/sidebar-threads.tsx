@@ -106,8 +106,8 @@ function ChatThreadItem({
                 onClick={handleDeleteClick}
                 className={`flex h-6 w-6 cursor-pointer items-center justify-center rounded-md invisible group-hover:visible transition-opacity duration-150 ${
                   isSelected
-                    ? "text-slate-500 hover:text-slate-900 hover:bg-slate-300"
-                    : "text-sidebar-foreground/80 hover:text-foreground hover:bg-sidebar-foreground/10"
+                    ? "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-300))]"
+                    : "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-200))]"
                 }`}
                 aria-label="Delete chat"
               >
@@ -266,7 +266,7 @@ function ChatThreadsTitle() {
     </div>
   ) : (
     <div
-      className="zero-nav-recent-label group flex h-8 shrink-0 cursor-pointer items-center justify-between rounded-lg pl-2 pr-0 hover:bg-sidebar-accent/50 transition-colors"
+      className="zero-nav-recent-label group flex h-8 shrink-0 cursor-pointer items-center justify-between rounded-lg pl-2 pr-0 hover:bg-sidebar-accent transition-colors"
       onClick={() => {
         return setCollapsed(!collapsed);
       }}
@@ -292,7 +292,7 @@ function ChatThreadsTitle() {
                   e.stopPropagation();
                   setSearchOpen(true);
                 }}
-                className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+                className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-[hsl(var(--gray-200))] transition-colors"
                 aria-label="Search chats"
               >
                 <IconSearch size={15} stroke={2.5} />
@@ -313,7 +313,7 @@ function ChatThreadsTitle() {
                   onNewChat();
                 }}
                 disabled={newChatDisabled}
-                className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors disabled:opacity-50 disabled:pointer-events-none"
+                className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-[hsl(var(--gray-200))] transition-colors disabled:opacity-50 disabled:pointer-events-none"
                 aria-label={`New chat with ${agentDisplayName}`}
               >
                 <IconPlus size={15} stroke={2.5} />

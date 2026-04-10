@@ -196,7 +196,7 @@
 }
 :where([data-theme="dark"]) .zero-nav {
   --color-sidebar: hsl(240 5% 8%);
-  --color-sidebar-accent: hsl(var(--gray-50));
+  --color-sidebar-accent: hsl(var(--gray-100));
   --color-sidebar-primary: #ffffff;
 }
 
@@ -315,6 +315,9 @@
 .zero-app .zero-chat-bubble-user {
   background-color: hsl(var(--gray-100));
   color: hsl(var(--foreground));
+}
+:where([data-theme="dark"]) .zero-app .zero-chat-bubble-user {
+  background-color: hsl(var(--gray-200));
 }
 
 /* Chat: assistant (Zero) message bubble */

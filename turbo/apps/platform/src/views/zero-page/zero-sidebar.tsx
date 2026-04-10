@@ -264,7 +264,7 @@ export function ZeroSidebar() {
               <TooltipTrigger asChild>
                 <button
                   type="button"
-                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/70 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/70 transition-colors hover:bg-[hsl(var(--gray-200))] hover:text-sidebar-foreground"
                   onClick={onCollapse}
                   aria-label="Expand sidebar"
                 >
@@ -380,7 +380,7 @@ export function ZeroSidebar() {
                 <TooltipTrigger asChild>
                   <button
                     type="button"
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-[hsl(var(--gray-200))] transition-colors"
                     onClick={onCollapse}
                     aria-label="Collapse sidebar"
                   >
@@ -402,7 +402,7 @@ export function ZeroSidebar() {
           {/* Manage section */}
           <div className="shrink-0">
             <div
-              className="group flex h-8 shrink-0 cursor-pointer items-center justify-between rounded-lg pl-2 pr-0 hover:bg-sidebar-accent/50 transition-colors"
+              className="group flex h-8 shrink-0 cursor-pointer items-center justify-between rounded-lg pl-2 pr-0 hover:bg-sidebar-accent transition-colors"
               onClick={() => {
                 return setManageCollapsed(!manageCollapsed);
               }}

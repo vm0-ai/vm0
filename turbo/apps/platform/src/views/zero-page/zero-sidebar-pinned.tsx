@@ -88,7 +88,7 @@ export function PinnedAgentListSection() {
   return (
     <div className="shrink-0">
       <div
-        className="group flex h-8 cursor-pointer items-center justify-between rounded-lg pl-2 pr-0 hover:bg-sidebar-accent/50 transition-colors"
+        className="group flex h-8 cursor-pointer items-center justify-between rounded-lg pl-2 pr-0 hover:bg-sidebar-accent transition-colors"
         data-testid="pinned-section-header"
         onClick={() => {
           return setCollapsed(!collapsed);
@@ -114,7 +114,7 @@ export function PinnedAgentListSection() {
                   setChatListOpenFn(true);
                   reloadAgents();
                 }}
-                className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
+                className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-[hsl(var(--gray-200))] transition-colors"
                 aria-label="Open a conversation"
               >
                 <IconPlus size={15} stroke={2.5} />
@@ -158,7 +158,7 @@ export function PinnedAgentListSection() {
                     options={{ pathParams: { id: agent.id } }}
                     className={`flex w-full h-8 shrink-0 items-center gap-2 rounded-lg px-2 text-left text-sm leading-5 no-underline transition-colors duration-200 ${
                       isPrimarySelected
-                        ? "bg-gray-200 text-gray-900 font-medium"
+                        ? "bg-gray-200 text-foreground font-medium"
                         : isFromChat
                           ? "border-l-2 border-[hsl(var(--gray-400))] bg-sidebar-accent/50"
                           : "text-sidebar-foreground hover:bg-sidebar-accent"
@@ -191,8 +191,8 @@ export function PinnedAgentListSection() {
                               disabled={savingPinned}
                               className={`flex h-6 w-6 cursor-pointer items-center justify-center rounded-md invisible group-hover:visible transition-opacity duration-150 disabled:cursor-not-allowed disabled:opacity-50 ${
                                 isPrimarySelected
-                                  ? "text-slate-500 hover:text-slate-900 hover:bg-slate-300"
-                                  : "text-sidebar-foreground/80 hover:text-foreground hover:bg-sidebar-foreground/10"
+                                  ? "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-300))]"
+                                  : "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-200))]"
                               }`}
                               aria-label="Remove from list"
                             >

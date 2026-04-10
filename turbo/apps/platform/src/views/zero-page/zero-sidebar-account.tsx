@@ -157,8 +157,8 @@ export function AccountDropdown({
           type="button"
           className={`rounded-lg transition-colors duration-200 ${
             collapsed
-              ? "inline-flex h-8 w-8 shrink-0 items-center justify-center p-0 hover:bg-sidebar-accent/50"
-              : "flex w-full items-center gap-2 p-2 text-left hover:bg-sidebar-accent/50"
+              ? "inline-flex h-8 w-8 shrink-0 items-center justify-center p-0 hover:bg-sidebar-accent"
+              : "flex w-full items-center gap-2 p-2 text-left hover:bg-sidebar-accent"
           }`}
         >
           <AccountAvatar

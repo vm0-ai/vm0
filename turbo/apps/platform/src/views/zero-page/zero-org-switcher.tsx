@@ -241,7 +241,7 @@ function OrgDropdownContent() {
         <button
           type="button"
           onClick={handleManage}
-          className="shrink-0 flex items-center gap-1 px-2 h-7 rounded-md text-xs font-medium text-muted-foreground border border-border hover:text-foreground hover:bg-accent transition-colors"
+          className="shrink-0 flex items-center gap-1 px-2 h-7 rounded-md text-xs font-medium text-muted-foreground border border-[hsl(var(--gray-400))] hover:text-foreground hover:bg-accent transition-colors"
         >
           <IconSettings size={13} />
           Manage
@@ -284,7 +284,7 @@ export function ZeroOrgSwitcher() {
         <DropdownMenuTrigger asChild>
           <button
             type="button"
-            className="w-full flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-sidebar-accent/50 text-sidebar-foreground transition-colors"
+            className="w-full flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-sidebar-accent text-sidebar-foreground transition-colors"
           >
             <span className="relative shrink-0">
               <OrgAvatar name={orgName} imageUrl={currentOrg?.imageUrl} />

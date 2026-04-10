@@ -253,21 +253,21 @@
     --primary-950: 16 100% 90%; /* #FED5C7 */
 
     /* Background/Gray Color Scale (Neutral - Dark) */
-    --gray-0: 240 3% 7%; /* #111113 */
-    --gray-50: 240 3% 10%; /* #19191B */
-    --gray-100: 240 3% 14%; /* #222325 */
-    --gray-200: 240 3% 17%; /* #292A2E */
-    --gray-300: 240 3% 19%; /* #303136 */
-    --gray-400: 228 4% 22%; /* #363840 - subtle border, softer against dark cards */
-    --gray-500: 228 4% 28%; /* #46484F */
-    --gray-600: 228 6% 39%; /* #5F606A */
-    --gray-700: 228 7% 45%; /* #6C6E79 */
-    --gray-800: 228 7% 50%; /* #797B86 */
-    --gray-900: 228 7% 71%; /* #B2B3BD */
-    --gray-950: 230 8% 85%; /* #D5D6DC */
+    --gray-0: 240 3% 7%; /* #111113 - deepest page bg */
+    --gray-50: 240 3% 10%; /* #19191B - page bg */
+    --gray-100: 240 3% 15%; /* #252527 - sidebar, popover */
+    --gray-200: 240 3% 19%; /* #2F2F32 - border, input */
+    --gray-300: 240 3% 23%; /* #393A3D - accent hover */
+    --gray-400: 228 4% 27%; /* #434550 - stronger border */
+    --gray-500: 228 4% 33%; /* #525460 */
+    --gray-600: 228 6% 42%; /* #686A74 */
+    --gray-700: 228 7% 49%; /* #787A85 */
+    --gray-800: 228 7% 58%; /* #8C8E9A */
+    --gray-900: 228 7% 78%; /* #C5C6CF */
+    --gray-950: 230 8% 92%; /* #E8E9ED */
 
     /* Divider Color (Dark) */
-    --divider: 240 3% 19%; /* #2F2F32 */
+    --divider: 240 3% 22%; /* #373739 */
 
     /* Theme-aware Colors (Dark - inverted) */
     --white: 240 3% 10%; /* #19191B */
@@ -279,7 +279,7 @@
     --background: var(--gray-50); /* gray-50 */
     --foreground: var(--gray-950); /* gray-950 */
 
-    --card: 240 4% 12%; /* between gray-50 and gray-100 - deeper card surface */
+    --card: 240 4% 14%; /* between gray-50 and gray-100 - card surface */
     --card-foreground: var(--gray-950); /* gray-950 */
 
     --popover: var(--gray-100); /* gray-100 - dark background */
@@ -322,8 +322,12 @@
     --sidebar-primary: var(--primary-800); /* primary-800 */
     --sidebar-primary-foreground: var(--gray-50); /* gray-50 */
     --sidebar-accent: var(
-      --gray-200
-    ); /* gray-200 - lighter than sidebar for hover */
+      --gray-300
+    ); /* gray-300 - visible hover against sidebar */
+
+    --tooltip-bg: hsl(
+      var(--gray-300)
+    ); /* tooltip - visible against dark surfaces */
 
     --semantic-foreground: var(--gray-0); /* gray-0 */
 
