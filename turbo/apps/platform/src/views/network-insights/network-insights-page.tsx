@@ -431,8 +431,8 @@ function SummaryCard({ day }: { day: DayInsight }) {
     { bg: "bg-[#E1C43C]", dark: false }, // mustard gold
   ];
   const v = variants[dayHash(day.date, variants.length)] ?? variants[0];
-  const textMain = v.dark ? "text-white/90" : "text-foreground/90";
-  const textSub = v.dark ? "text-white/50" : "text-foreground/50";
+  const textMain = v.dark ? "text-white/90" : "text-[rgba(0,0,0,0.8)]";
+  const textSub = v.dark ? "text-white/50" : "text-[rgba(0,0,0,0.4)]";
 
   return (
     <div
@@ -861,7 +861,7 @@ function PermissionsAllowedCard({
               className={`transition-opacity duration-150 ${isActive ? "opacity-100" : "opacity-30"}`}
             >
               <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-medium decoration-dotted underline decoration-foreground/40 decoration-[1px] underline-offset-2">
+                <span className="text-sm font-medium">
                   {connectorLabel(p.connectorType ?? p.label)}
                 </span>
                 <span className="text-xs opacity-60 tabular-nums shrink-0">
