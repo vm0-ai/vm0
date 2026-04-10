@@ -104,12 +104,8 @@ async function handleCompleted(
     await updateThreadSessionId(threadId, sessionId);
   }
 
-  // Generate run summary (best-effort)
-  try {
-    await saveRunSummary(runId, "chat", prompt, resultText ?? "");
-  } catch (err) {
-    log.warn("Failed to generate run summary", { runId, err });
-  }
+  // Generate run summary (best-effort — errors handled internally)
+  await saveRunSummary(runId, "chat", prompt, resultText ?? "");
 
   // Generate and update chat thread title (best-effort — title is non-critical)
   try {

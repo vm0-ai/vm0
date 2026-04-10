@@ -212,19 +212,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     });
   }
 
-  // Generate run summary (best-effort)
+  // Generate run summary (best-effort — errors handled internally)
   if (runContext?.prompt) {
-    try {
-      const combinedOutput = allOutputs
-        .map((o) => {
-          return o.result;
-        })
-        .filter(Boolean)
-        .join("\n");
-      await saveRunSummary(runId, "slack", runContext.prompt, combinedOutput);
-    } catch (err) {
-      log.warn("Failed to generate run summary", { runId, err });
-    }
+    const combinedOutput = allOutputs
+      .map((o) => {
+        return o.result;
+      })
+      .filter(Boolean)
+      .join("\n");
+    await saveRunSummary(runId, "slack", runContext.prompt, combinedOutput);
   }
 
   // Clear assistant thinking status

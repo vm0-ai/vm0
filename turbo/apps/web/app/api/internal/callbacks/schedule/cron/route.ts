@@ -112,22 +112,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     });
   }
 
-  // Generate run summary (best-effort)
+  // Generate run summary (best-effort — errors handled internally)
   if (status === "completed" && schedule.prompt) {
-    try {
-      const resultText = (await getRunOutputText(result.data.runId)) ?? "";
-      await saveRunSummary(
-        result.data.runId,
-        "schedule",
-        schedule.prompt,
-        resultText,
-      );
-    } catch (err) {
-      log.warn("Failed to generate run summary", {
-        runId: result.data.runId,
-        err,
-      });
-    }
+    const resultText = await getRunOutputText(result.data.runId).catch(() => {
+      return undefined;
+    });
+    await saveRunSummary(
+      result.data.runId,
+      "schedule",
+      schedule.prompt,
+      resultText ?? "",
+    );
   }
 
   return NextResponse.json({ success: true });

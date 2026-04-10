@@ -206,13 +206,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       : undefined,
   });
 
-  // Generate run summary (best-effort)
+  // Generate run summary (best-effort — errors handled internally)
   if (run?.prompt) {
-    try {
-      await saveRunSummary(runId, "email", run.prompt, rawOutput ?? "");
-    } catch (err) {
-      log.warn("Failed to generate run summary", { runId, err });
-    }
+    await saveRunSummary(runId, "email", run.prompt, rawOutput ?? "");
   }
 
   log.info("Sent email trigger response", {
