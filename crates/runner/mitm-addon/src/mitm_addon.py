@@ -557,7 +557,7 @@ def _create_stream_decompressor(headers: http.Headers):
             try:
                 return obj.decompress(chunk)
             except zlib.error:
-                return chunk
+                return b""
 
         return decompress_zlib
     if encoding == "br":
@@ -567,7 +567,7 @@ def _create_stream_decompressor(headers: http.Headers):
             try:
                 return dec.process(chunk)
             except brotli.error:
-                return chunk
+                return b""
 
         return decompress_br
     if encoding == "zstd":
@@ -577,7 +577,7 @@ def _create_stream_decompressor(headers: http.Headers):
             try:
                 return obj.decompress(chunk)
             except zstandard.ZstdError:
-                return chunk
+                return b""
 
         return decompress_zstd
     return None
