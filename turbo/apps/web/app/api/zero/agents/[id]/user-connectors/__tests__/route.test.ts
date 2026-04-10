@@ -10,6 +10,8 @@ import {
   type UserContext,
 } from "../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
+import { eq } from "drizzle-orm";
+import { agentComposes } from "../../../../../../../src/db/schema/agent-compose";
 
 const context = testContext();
 
@@ -201,6 +203,64 @@ describe("User Connectors API", () => {
       );
 
       expect(res.status).toBe(401);
+    });
+
+    it("should recompose when compose version is stale", async () => {
+      const agentId = await createAgent();
+
+      // Simulate a stale compose by pointing headVersionId to a fake hash
+      const staleVersionId = "f".repeat(64);
+      await globalThis.services.db
+        .update(agentComposes)
+        .set({ headVersionId: staleVersionId })
+        .where(eq(agentComposes.id, agentId));
+
+      // PUT user-connectors should trigger recompose since hash differs
+      const res = await putUserConnectors(
+        agentId,
+        { enabledTypes: ["github"] },
+        testCliToken,
+      );
+      expect(res.status).toBe(200);
+
+      // Verify compose was updated back to a fresh version
+      const [after] = await globalThis.services.db
+        .select({ headVersionId: agentComposes.headVersionId })
+        .from(agentComposes)
+        .where(eq(agentComposes.id, agentId))
+        .limit(1);
+      expect(after!.headVersionId).not.toBe(staleVersionId);
+    });
+
+    it("should skip recompose when compose version is current", async () => {
+      const agentId = await createAgent();
+
+      // Record the current head version (freshly built)
+      const [before] = await globalThis.services.db
+        .select({
+          headVersionId: agentComposes.headVersionId,
+          updatedAt: agentComposes.updatedAt,
+        })
+        .from(agentComposes)
+        .where(eq(agentComposes.id, agentId))
+        .limit(1);
+      expect(before).toBeDefined();
+
+      // PUT user-connectors — compose is already up to date, should skip recompose
+      const res = await putUserConnectors(
+        agentId,
+        { enabledTypes: ["github"] },
+        testCliToken,
+      );
+      expect(res.status).toBe(200);
+
+      // Verify compose version unchanged
+      const [after] = await globalThis.services.db
+        .select({ headVersionId: agentComposes.headVersionId })
+        .from(agentComposes)
+        .where(eq(agentComposes.id, agentId))
+        .limit(1);
+      expect(after!.headVersionId).toBe(before!.headVersionId);
     });
 
     it("should isolate permissions between users", async () => {
