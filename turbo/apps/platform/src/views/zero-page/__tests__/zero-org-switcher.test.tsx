@@ -214,6 +214,7 @@ describe("zero org switcher - dropdown opens (SIDEBAR-D-059)", () => {
         memberships: [{ id: "org_1" }],
       },
     });
+    mockedClerk.user!.createOrganizationEnabled = true;
 
     const user = userEvent.setup();
 
@@ -434,6 +435,7 @@ describe("zero org switcher - create workspace item starts creation flow (SIDEBA
         memberships: [{ id: "org_1" }],
       },
     });
+    mockedClerk.user!.createOrganizationEnabled = true;
 
     const user = userEvent.setup();
 
