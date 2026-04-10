@@ -427,14 +427,18 @@ const injectSlowBrainEvents$ = command(
       return;
     }
 
-    // Interrupt if model is mid-speech
+    const needsResponse = slowBrainEvents.some((e) => {
+      return e.type === "directive" || e.type === "observation";
+    });
+
+    // Interrupt if model is mid-speech and we need a response
     const current = get(internalCurrentAssistant$);
-    if (current) {
+    if (current && needsResponse) {
       dc.send(JSON.stringify({ type: "response.cancel" }));
       set(internalCurrentAssistant$, null);
     }
 
-    // Inject each event as a user message
+    // Inject each event as a user message (all types, for context)
     for (const event of slowBrainEvents) {
       dc.send(
         JSON.stringify({
@@ -450,8 +454,10 @@ const injectSlowBrainEvents$ = command(
       );
     }
 
-    // Trigger model to respond to injected content
-    dc.send(JSON.stringify({ type: "response.create" }));
+    // Only trigger response for actionable events
+    if (needsResponse) {
+      dc.send(JSON.stringify({ type: "response.create" }));
+    }
   },
 );
 
