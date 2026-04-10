@@ -45,34 +45,13 @@ import {
   TooltipTrigger,
 } from "@vm0/ui";
 
-const GOOGLE_CONNECTOR_TYPES = new Set([
-  "gmail",
-  "google-sheets",
-  "google-docs",
-  "google-drive",
-  "google-calendar",
-]);
-
-const GOOGLE_OAUTH_NOTE =
-  "Google OAuth is under verification review — a standard compliance step that doesn't affect functionality.";
-
-function GoogleEarlyAccessIndicator() {
+function isGoogleConnector(type: string) {
   return (
-    <TooltipProvider delayDuration={200}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span className="shrink-0 inline-flex items-center gap-0.5 text-[11px] text-muted-foreground cursor-default">
-            <span className="inline-block h-1.5 w-1.5 rounded-full bg-muted-foreground/40" />
-            Early Access
-          </span>
-        </TooltipTrigger>
-        <TooltipContent side="top" className="max-w-xs text-xs leading-relaxed">
-          Our Google OAuth is under Google&apos;s verification review. This is a
-          standard compliance step and does not affect vm0&apos;s functionality
-          or security. You can safely proceed by clicking &quot;Continue&quot;.
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    type === "gmail" ||
+    type === "google-sheets" ||
+    type === "google-docs" ||
+    type === "google-drive" ||
+    type === "google-calendar"
   );
 }
 
@@ -258,7 +237,7 @@ function AvailableConnectorCard({
           data-testid="connector-help-text"
           className="text-xs text-muted-foreground line-clamp-2"
         >
-          {GOOGLE_CONNECTOR_TYPES.has(connector.type) ? (
+          {isGoogleConnector(connector.type) ? (
             <>
               <TooltipProvider delayDuration={200}>
                 <Tooltip>
