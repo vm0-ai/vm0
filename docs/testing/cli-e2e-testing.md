@@ -419,5 +419,5 @@ Before committing E2E tests:
 ## Reference
 
 - BATS documentation: https://bats-core.readthedocs.io/en/stable/writing-tests.html
-- Test timeout: `BATS_TEST_TIMEOUT=30` (serial) / `BATS_TEST_TIMEOUT=60` (parallel/runner)
+- Test timeout: `BATS_TEST_TIMEOUT=30` (serial) / `BATS_TEST_TIMEOUT=120` (parallel/runner)
 - Parallelization: `-j 10 --no-parallelize-within-files`
