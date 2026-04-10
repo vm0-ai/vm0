@@ -73,6 +73,7 @@ function makeBaseContext(
     volumes: [],
     artifact: null,
     memory: null,
+    featureFlags: null,
     ...overrides,
   };
 }

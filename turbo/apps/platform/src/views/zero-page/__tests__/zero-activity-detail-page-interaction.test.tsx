@@ -189,6 +189,7 @@ describe("zeroActivityDetailPageInteraction", () => {
       volumes: [],
       artifact: null,
       memory: null,
+      featureFlags: null,
     };
 
     server.use(
