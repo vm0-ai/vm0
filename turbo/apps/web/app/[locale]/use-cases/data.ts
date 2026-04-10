@@ -63,6 +63,7 @@ export interface UseCase {
   capability: Capability;
   timeSaved: string;
   model: string;
+  videoId?: string;
   connectors: ConnectorRef[];
   slackPreview: SlackMessage[];
   headings: UseCaseSectionHeadings;
@@ -186,6 +187,7 @@ export const USE_CASES: UseCase[] = [
     description:
       "Ask Zero to pull your top unresolved Sentry errors, ranked by frequency. Zero reads the stack traces, explains the root cause in plain language, and tells you which file to fix first.",
     color: "#d4a96a",
+    videoId: "iTYhvVp5z5k",
     avatar: {
       rotation: 1,
       skin: 1,
@@ -306,6 +308,7 @@ export const USE_CASES: UseCase[] = [
     description:
       "Zero pulls from calendar, email, and Linear, then writes a shareable summary you can paste straight into the team thread.",
     color: "#c89090",
+    videoId: "0D7ScfH4fwk",
     avatar: {
       rotation: 2,
       skin: 3,
@@ -431,6 +434,7 @@ export const USE_CASES: UseCase[] = [
     description:
       "Give Zero an X handle. It reads their last 30 posts, understands their style and interests, writes a personalized outreach email under 150 words, and saves it as a Gmail draft.",
     color: "#c4a08a",
+    videoId: "aignt_fZSVo",
     avatar: {
       rotation: 1,
       skin: 2,
@@ -552,6 +556,7 @@ export const USE_CASES: UseCase[] = [
     description:
       "Describe the issue in plain language. Zero creates a formatted GitHub issue, labels it, and assigns the right person.",
     color: "#c08050",
+    videoId: "E08Bc02tDIM",
     avatar: {
       rotation: 4,
       skin: 4,
@@ -668,6 +673,7 @@ export const USE_CASES: UseCase[] = [
     description:
       "Zero scans your unread Slack messages, filters out bots and noise, and shows you only the messages that actually need your action today, sorted by urgency.",
     color: "#7c9885",
+    videoId: "XcqnMX1U0xY",
     avatar: {
       rotation: 3,
       skin: 2,
@@ -783,6 +789,7 @@ export const USE_CASES: UseCase[] = [
     description:
       "Tell Zero who's joining and when. It creates their Notion onboarding page, schedules welcome meetings on Google Calendar, posts a Slack intro, and DMs them their first-week agenda.",
     color: "#6b8cae",
+    videoId: "2YA7Iff4XHs",
     avatar: {
       rotation: 5,
       skin: 5,

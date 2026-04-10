@@ -102,6 +102,20 @@ export default function UseCaseDetailClient({ useCase }: { useCase: UseCase }) {
             </div>
           </header>
 
+          {/* Video preview */}
+          {useCase.videoId && (
+            <div className="uc-video-embed" style={{ marginBottom: 48 }}>
+              <iframe
+                src={`https://www.youtube.com/embed/${useCase.videoId}`}
+                title={useCase.title}
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+                className="aspect-video w-full rounded-[12px]"
+                style={{ border: "none" }}
+              />
+            </div>
+          )}
+
           {/* Scenario */}
           <Section title={useCase.headings.scenario}>
             <p className="uc-section-body">{useCase.scenario}</p>
