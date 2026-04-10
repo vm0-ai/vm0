@@ -215,9 +215,7 @@ const router = tsr.router(webhookCompleteContract, {
     } else {
       // Failure: store error in run table
       const reportUrl = `${env().NEXT_PUBLIC_APP_URL}/runs/${body.runId}/report-error`;
-      const errorMessage =
-        body.error ||
-        `An unexpected error occurred. [Report this issue](${reportUrl})`;
+      const errorMessage = `An unexpected error occurred. [Report this issue](${reportUrl})`;
 
       const transitioned = await transitionRunStatus(
         body.runId,
@@ -246,7 +244,7 @@ const router = tsr.router(webhookCompleteContract, {
     // Dispatch all registered callbacks and drain run queue (non-blocking)
     const errorMsg =
       finalStatus === "failed"
-        ? (body.error ?? `Agent exited with code ${body.exitCode}`)
+        ? `Agent exited with code ${body.exitCode}`
         : undefined;
     scheduleTerminalSideEffects(body.runId, finalStatus, run.orgId, errorMsg);
 

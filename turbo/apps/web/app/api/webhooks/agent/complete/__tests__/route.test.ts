@@ -5,6 +5,7 @@ import {
   createTestRequest,
   createTestCompose,
   createTestRun,
+  createTestRunInDb,
   createTestSandboxToken,
   completeTestRun,
   createTestSchedule,
@@ -352,19 +353,25 @@ describe("POST /api/webhooks/agent/complete", () => {
       expect(session!.memoryName).toBe("persist-memory");
     });
 
-    it("should handle failed completion (exitCode≠0)", async () => {
+    it("should store error with report URL on failed completion", async () => {
+      // Create run directly in DB in running state to avoid runner_job_queue issues
+      const { runId } = await createTestRunInDb(user.userId, testComposeId, {
+        status: "running",
+        prompt: "Test prompt",
+      });
+      const token = await createTestSandboxToken(user.userId, runId);
+
       const request = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/complete",
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${testToken}`,
+            Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({
-            runId: testRunId,
+            runId,
             exitCode: 1,
-            error: "Agent crashed",
           }),
         },
       );
@@ -375,21 +382,32 @@ describe("POST /api/webhooks/agent/complete", () => {
       const data = await response.json();
       expect(data.success).toBe(true);
       expect(data.status).toBe("failed");
+
+      // Verify stored error contains report URL
+      const run = await findTestRunRecord(runId);
+      expect(run!.error).toContain(`/runs/${runId}/report-error`);
     });
 
-    it("should use default error message when exitCode≠0 and no error provided", async () => {
+    it("should ignore body.error and always use report URL", async () => {
+      // Create run directly in DB in running state to avoid runner_job_queue issues
+      const { runId } = await createTestRunInDb(user.userId, testComposeId, {
+        status: "running",
+        prompt: "Test prompt",
+      });
+      const token = await createTestSandboxToken(user.userId, runId);
+
       const request = createTestRequest(
         "http://localhost:3000/api/webhooks/agent/complete",
         {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${testToken}`,
+            Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({
-            runId: testRunId,
+            runId,
             exitCode: 127,
-            // no error provided
+            error: "Agent crashed with custom message",
           }),
         },
       );
@@ -400,6 +418,11 @@ describe("POST /api/webhooks/agent/complete", () => {
       const data = await response.json();
       expect(data.success).toBe(true);
       expect(data.status).toBe("failed");
+
+      // body.error should be ignored; stored error should contain report URL
+      const run = await findTestRunRecord(runId);
+      expect(run!.error).not.toContain("Agent crashed with custom message");
+      expect(run!.error).toContain(`/runs/${runId}/report-error`);
     });
   });
 
