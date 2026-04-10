@@ -461,8 +461,8 @@ def _get_unknown_policy(
     """
     ref_grant = network_policies.get(fw_ref)
     if ref_grant is None:
-        return "deny"
-    return ref_grant.get("unknownPolicy", "deny")
+        return "allow"
+    return ref_grant.get("unknownPolicy", "allow")
 
 
 def match_firewall_request(
