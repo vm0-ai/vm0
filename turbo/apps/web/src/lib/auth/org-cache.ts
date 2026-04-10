@@ -12,6 +12,7 @@ interface OrgIdentity {
   orgId: string;
   slug: string;
   name: string;
+  createdBy: string | undefined;
 }
 
 /**
@@ -33,7 +34,12 @@ export async function getOrgNameAndSlug(orgId: string): Promise<OrgIdentity> {
     .limit(1);
 
   if (cached && Date.now() - cached.cachedAt.getTime() < CACHE_TTL_MS) {
-    return { orgId, slug: cached.slug, name: cached.name };
+    return {
+      orgId,
+      slug: cached.slug,
+      name: cached.name,
+      createdBy: cached.createdBy ?? undefined,
+    };
   }
 
   // Cache miss — fetch from Clerk (source of truth for slug)
@@ -47,20 +53,21 @@ export async function getOrgNameAndSlug(orgId: string): Promise<OrgIdentity> {
   }
   const slug = clerkOrg.slug;
   const name = clerkOrg.name;
+  const createdBy = clerkOrg.createdBy ?? undefined;
 
   // Upsert slug cache
   const now = new Date();
   await db
     .insert(orgCache)
-    .values({ orgId, slug, name, cachedAt: now })
+    .values({ orgId, slug, name, createdBy: createdBy ?? null, cachedAt: now })
     .onConflictDoUpdate({
       target: orgCache.orgId,
-      set: { slug, name, cachedAt: now },
+      set: { slug, name, createdBy: createdBy ?? null, cachedAt: now },
     });
 
   log.debug("org cache refreshed", { orgId, slug });
 
-  return { orgId, slug, name };
+  return { orgId, slug, name, createdBy };
 }
 
 /**

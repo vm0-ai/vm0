@@ -1,5 +1,3 @@
-// TODO(#8609): split large components to comply with max-lines-per-function (128)
-// oxlint-disable max-lines-per-function
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import {
   DropdownMenu,
@@ -63,39 +61,22 @@ function OrgAvatar({
   );
 }
 
-export function ZeroOrgSwitcher() {
-  const openManage = useSet(setOrgManageDialogOpen$);
-  const pageSignal = useGet(pageSignal$);
-  const clerkLoadable = useLoadable(clerk$);
-  const orgData = useLastResolved(org$);
-  const pendingInvitations = useLastResolved(userInvitations$);
-  const refreshInvitations = useSet(refreshUserInvitations$);
-
-  const clerk = clerkLoadable.state === "hasData" ? clerkLoadable.data : null;
-  const memberships = clerk?.user?.organizationMemberships ?? [];
-  const currentOrgId = clerk?.organization?.id;
-  const currentOrg = clerk?.organization;
-  const orgName = currentOrg?.name ?? "Organization";
-  const orgSlug = orgData?.slug;
-
-  const otherMemberships = memberships.filter((m) => {
-    return m.organization && m.organization.id !== currentOrgId;
-  });
-
-  const creatingOrg = useGet(creatingOrg$);
-  const setCreatingOrg = useSet(setCreatingOrg$);
-  const acceptingInvitationId = useGet(acceptingInvitationId$);
-  const setAcceptingInvitationId = useSet(setAcceptingInvitationId$);
-
-  const handleSwitchOrg = (orgId: string) => {
-    detach(clerk?.setActive({ organization: orgId }), Reason.DomCallback);
-  };
-
-  const handleAcceptInvitation = (invitation: {
+function InvitationRow({
+  invitation,
+}: {
+  invitation: {
     id: string;
+    publicOrganizationData: { name: string; imageUrl: string };
     accept: () => Promise<unknown>;
-  }) => {
-    setAcceptingInvitationId(invitation.id);
+  };
+}) {
+  const acceptingId = useGet(acceptingInvitationId$);
+  const setAcceptingId = useSet(setAcceptingInvitationId$);
+  const refreshInvitations = useSet(refreshUserInvitations$);
+  const isAccepting = acceptingId === invitation.id;
+
+  const handleAccept = () => {
+    setAcceptingId(invitation.id);
     detach(
       invitation
         .accept()
@@ -103,21 +84,45 @@ export function ZeroOrgSwitcher() {
           refreshInvitations();
         })
         .finally(() => {
-          setAcceptingInvitationId(null);
+          setAcceptingId(null);
         }),
       Reason.DomCallback,
     );
   };
 
-  const handleManage = () => {
-    detach(openManage(true, pageSignal), Reason.DomCallback);
-  };
+  return (
+    <div className="flex items-center gap-3 px-3 py-2.5">
+      <OrgAvatar
+        name={invitation.publicOrganizationData.name}
+        imageUrl={invitation.publicOrganizationData.imageUrl}
+      />
+      <span className="min-w-0 flex-1 text-sm truncate">
+        {invitation.publicOrganizationData.name}
+      </span>
+      <button
+        type="button"
+        disabled={isAccepting}
+        onClick={handleAccept}
+        className="shrink-0 flex items-center gap-1 px-2 h-7 rounded-md text-xs font-medium text-muted-foreground border border-border hover:text-foreground hover:bg-accent transition-colors disabled:opacity-50 disabled:pointer-events-none"
+      >
+        <IconMail size={13} />
+        {isAccepting ? "Joining…" : "Join"}
+      </button>
+    </div>
+  );
+}
+
+function CreateWorkspaceItem() {
+  const clerkLoadable = useLoadable(clerk$);
+  const clerk = clerkLoadable.state === "hasData" ? clerkLoadable.data : null;
+  const creatingOrg = useGet(creatingOrg$);
+  const setCreating = useSet(setCreatingOrg$);
 
   const handleCreateOrg = () => {
     if (!clerk) {
       return;
     }
-    setCreatingOrg(true);
+    setCreating(true);
     const slug = `workspace-${crypto.randomUUID().slice(0, 8)}`;
     detach(
       clerk
@@ -126,13 +131,150 @@ export function ZeroOrgSwitcher() {
           return clerk.setActive({ organization: org.id });
         })
         .finally(() => {
-          setCreatingOrg(false);
+          setCreating(false);
         }),
       Reason.DomCallback,
     );
   };
 
-  const isClerkReady = clerk !== null;
+  return (
+    <>
+      <DropdownMenuSeparator />
+      <DropdownMenuItem
+        onClick={handleCreateOrg}
+        disabled={clerk === null || creatingOrg}
+        className="gap-3 px-3 py-2.5 rounded-lg"
+      >
+        <IconPlus
+          size={18}
+          stroke={1.5}
+          className="shrink-0 text-muted-foreground"
+        />
+        <span>{creatingOrg ? "Creating…" : "Create workspace"}</span>
+      </DropdownMenuItem>
+    </>
+  );
+}
+
+function OtherMembershipsList() {
+  const clerkLoadable = useLoadable(clerk$);
+  const clerk = clerkLoadable.state === "hasData" ? clerkLoadable.data : null;
+  const memberships = clerk?.user?.organizationMemberships ?? [];
+  const currentOrgId = clerk?.organization?.id;
+
+  const otherMemberships = memberships.filter((m) => {
+    return m.organization && m.organization.id !== currentOrgId;
+  });
+
+  if (otherMemberships.length === 0) {
+    return null;
+  }
+
+  const handleSwitchOrg = (orgId: string) => {
+    detach(clerk?.setActive({ organization: orgId }), Reason.DomCallback);
+  };
+
+  return (
+    <>
+      <DropdownMenuSeparator />
+      {otherMemberships.map((membership) => {
+        return (
+          <DropdownMenuItem
+            key={membership.organization.id}
+            onClick={() => {
+              handleSwitchOrg(membership.organization.id);
+            }}
+            className="gap-3 px-3 py-2.5 rounded-lg"
+          >
+            <OrgAvatar
+              name={membership.organization.name}
+              imageUrl={membership.organization.imageUrl}
+            />
+            <span className="truncate flex-1">
+              {membership.organization.name}
+            </span>
+          </DropdownMenuItem>
+        );
+      })}
+    </>
+  );
+}
+
+function OrgDropdownContent() {
+  const openManage = useSet(setOrgManageDialogOpen$);
+  const pageSignal = useGet(pageSignal$);
+  const clerkLoadable = useLoadable(clerk$);
+  const orgData = useLastResolved(org$);
+  const pendingInvitations = useLastResolved(userInvitations$);
+
+  const clerk = clerkLoadable.state === "hasData" ? clerkLoadable.data : null;
+  const currentOrg = clerk?.organization;
+  const orgName = currentOrg?.name ?? "Organization";
+  const orgSlug = orgData?.slug;
+
+  const handleManage = () => {
+    detach(openManage(true, pageSignal), Reason.DomCallback);
+  };
+
+  const hasPendingInvitations =
+    pendingInvitations !== undefined && pendingInvitations.length > 0;
+  const isProduction = !!import.meta.env.VITE_VERCEL_ENV;
+  const currentUserId = clerk?.user?.id;
+  const hasOwnOrg =
+    isProduction && !!currentUserId && orgData?.createdBy === currentUserId;
+
+  return (
+    <DropdownMenuContent align="start" className="w-72">
+      {/* Header: current org info + manage button */}
+      <div className="flex items-center gap-3 px-2 py-1.5">
+        <OrgAvatar name={orgName} imageUrl={currentOrg?.imageUrl} size="lg" />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-semibold leading-tight truncate text-foreground">
+            {orgName}
+          </p>
+          {orgSlug && (
+            <p className="text-xs text-muted-foreground truncate mt-0.5">
+              {orgSlug}
+            </p>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={handleManage}
+          className="shrink-0 flex items-center gap-1 px-2 h-7 rounded-md text-xs font-medium text-muted-foreground border border-border hover:text-foreground hover:bg-accent transition-colors"
+        >
+          <IconSettings size={13} />
+          Manage
+        </button>
+      </div>
+
+      <OtherMembershipsList />
+
+      {/* Pending invitations */}
+      {hasPendingInvitations && (
+        <>
+          <DropdownMenuSeparator />
+          {pendingInvitations.map((invitation) => {
+            return (
+              <InvitationRow key={invitation.id} invitation={invitation} />
+            );
+          })}
+        </>
+      )}
+
+      {/* Create workspace — hidden in production when user already owns an org */}
+      {!hasOwnOrg && <CreateWorkspaceItem />}
+    </DropdownMenuContent>
+  );
+}
+
+export function ZeroOrgSwitcher() {
+  const clerkLoadable = useLoadable(clerk$);
+  const pendingInvitations = useLastResolved(userInvitations$);
+
+  const clerk = clerkLoadable.state === "hasData" ? clerkLoadable.data : null;
+  const currentOrg = clerk?.organization;
+  const orgName = currentOrg?.name ?? "Organization";
   const hasPendingInvitations =
     pendingInvitations !== undefined && pendingInvitations.length > 0;
 
@@ -162,111 +304,7 @@ export function ZeroOrgSwitcher() {
             />
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-72">
-          {/* Header: current org info + manage button */}
-          <div className="flex items-center gap-3 px-2 py-1.5">
-            <OrgAvatar
-              name={orgName}
-              imageUrl={currentOrg?.imageUrl}
-              size="lg"
-            />
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold leading-tight truncate text-foreground">
-                {orgName}
-              </p>
-              {orgSlug && (
-                <p className="text-xs text-muted-foreground truncate mt-0.5">
-                  {orgSlug}
-                </p>
-              )}
-            </div>
-            <button
-              type="button"
-              onClick={handleManage}
-              className="shrink-0 flex items-center gap-1 px-2 h-7 rounded-md text-xs font-medium text-muted-foreground border border-border hover:text-foreground hover:bg-accent transition-colors"
-            >
-              <IconSettings size={13} />
-              Manage
-            </button>
-          </div>
-
-          {/* Switch to other orgs */}
-          {otherMemberships.length > 0 && (
-            <>
-              <DropdownMenuSeparator />
-              {otherMemberships.map((membership) => {
-                return (
-                  <DropdownMenuItem
-                    key={membership.organization.id}
-                    onClick={() => {
-                      handleSwitchOrg(membership.organization.id);
-                    }}
-                    className="gap-3 px-3 py-2.5 rounded-lg"
-                  >
-                    <OrgAvatar
-                      name={membership.organization.name}
-                      imageUrl={membership.organization.imageUrl}
-                    />
-                    <span className="truncate flex-1">
-                      {membership.organization.name}
-                    </span>
-                  </DropdownMenuItem>
-                );
-              })}
-            </>
-          )}
-
-          {/* Pending invitations */}
-          {hasPendingInvitations && (
-            <>
-              <DropdownMenuSeparator />
-              {pendingInvitations.map((invitation) => {
-                return (
-                  <div
-                    key={invitation.id}
-                    className="flex items-center gap-3 px-3 py-2.5"
-                  >
-                    <OrgAvatar
-                      name={invitation.publicOrganizationData.name}
-                      imageUrl={invitation.publicOrganizationData.imageUrl}
-                    />
-                    <span className="min-w-0 flex-1 text-sm truncate">
-                      {invitation.publicOrganizationData.name}
-                    </span>
-                    <button
-                      type="button"
-                      disabled={acceptingInvitationId === invitation.id}
-                      onClick={() => {
-                        handleAcceptInvitation(invitation);
-                      }}
-                      className="shrink-0 flex items-center gap-1 px-2 h-7 rounded-md text-xs font-medium text-muted-foreground border border-border hover:text-foreground hover:bg-accent transition-colors disabled:opacity-50 disabled:pointer-events-none"
-                    >
-                      <IconMail size={13} />
-                      {acceptingInvitationId === invitation.id
-                        ? "Joining…"
-                        : "Join"}
-                    </button>
-                  </div>
-                );
-              })}
-            </>
-          )}
-
-          {/* Create workspace */}
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            onClick={handleCreateOrg}
-            disabled={!isClerkReady || creatingOrg}
-            className="gap-3 px-3 py-2.5 rounded-lg"
-          >
-            <IconPlus
-              size={18}
-              stroke={1.5}
-              className="shrink-0 text-muted-foreground"
-            />
-            <span>{creatingOrg ? "Creating…" : "Create workspace"}</span>
-          </DropdownMenuItem>
-        </DropdownMenuContent>
+        <OrgDropdownContent />
       </DropdownMenu>
     </div>
   );

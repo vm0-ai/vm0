@@ -12,6 +12,7 @@ export interface MockedInvitation {
 
 export interface MockedMembership {
   id: string;
+  role?: string;
   organization?: {
     id: string;
     name: string;

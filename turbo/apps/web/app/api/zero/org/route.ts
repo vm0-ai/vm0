@@ -39,6 +39,7 @@ const router = tsr.router(zeroOrgContract, {
           name: orgData.name,
           tier: resolvedOrg.tier,
           role: member.role,
+          createdBy: orgData.createdBy,
         },
       };
     } catch (error) {

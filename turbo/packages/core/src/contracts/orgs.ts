@@ -38,6 +38,7 @@ export const orgResponseSchema = z.object({
   name: z.string(),
   tier: z.string().optional(),
   role: orgRoleSchema.optional(),
+  createdBy: z.string().optional(),
 });
 
 export type OrgResponse = z.infer<typeof orgResponseSchema>;

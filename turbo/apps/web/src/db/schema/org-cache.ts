@@ -12,6 +12,7 @@ export const orgCache = pgTable(
     orgId: text("org_id").primaryKey(),
     slug: text("slug").notNull(),
     name: text("name").notNull().default(""),
+    createdBy: text("created_by"),
     cachedAt: timestamp("cached_at").defaultNow().notNull(),
   },
   (table) => {

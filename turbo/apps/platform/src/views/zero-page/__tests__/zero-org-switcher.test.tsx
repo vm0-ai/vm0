@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -473,5 +473,163 @@ describe("zero org switcher - pending invitations badge hidden when none (SIDEBA
     expect(
       screen.queryByTestId("pending-invitations-badge"),
     ).not.toBeInTheDocument();
+  });
+});
+
+describe("zero org switcher - hide create workspace for org owner in production", () => {
+  afterEach(() => {
+    // Only delete the env we stub — vi.unstubAllEnvs() would remove
+    // Vite-loaded vars like VITE_CLERK_PUBLISHABLE_KEY.
+    delete import.meta.env.VITE_VERCEL_ENV;
+  });
+
+  it("hides create workspace in production when user created the org", async () => {
+    vi.stubEnv("VITE_VERCEL_ENV", "production");
+    server.use(
+      http.get("*/api/zero/org", () => {
+        return HttpResponse.json({
+          id: "org_1",
+          slug: "my-org",
+          name: "My Org",
+          role: "admin",
+          createdBy: "test-user-123",
+        });
+      }),
+      http.get("*/api/zero/team", () => {
+        return HttpResponse.json([
+          {
+            id: "c0000000-0000-4000-a000-000000000001",
+            displayName: null,
+            description: null,
+            sound: null,
+            avatarUrl: null,
+            headVersionId: "version_1",
+            updatedAt: "2024-01-01T00:00:00Z",
+          },
+        ]);
+      }),
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/",
+      org: {
+        activeOrg: { id: "org_1", name: "My Org" },
+        memberships: [{ id: "org_1" }],
+      },
+    });
+
+    const user = userEvent.setup();
+    await waitFor(() => {
+      expect(screen.getByText("My Org")).toBeInTheDocument();
+    });
+    await user.click(screen.getByText("My Org"));
+
+    await waitFor(() => {
+      expect(screen.getAllByText("Manage").length).toBeGreaterThan(0);
+    });
+    expect(screen.queryByText("Create workspace")).not.toBeInTheDocument();
+  });
+
+  it("shows create workspace in production when user did not create the org", async () => {
+    vi.stubEnv("VITE_VERCEL_ENV", "production");
+    server.use(
+      http.get("*/api/zero/org", () => {
+        return HttpResponse.json({
+          id: "org_1",
+          slug: "team-org",
+          name: "Team Org",
+          role: "member",
+          createdBy: "other-user-456",
+        });
+      }),
+      http.get("*/api/zero/team", () => {
+        return HttpResponse.json([
+          {
+            id: "c0000000-0000-4000-a000-000000000001",
+            displayName: null,
+            description: null,
+            sound: null,
+            avatarUrl: null,
+            headVersionId: "version_1",
+            updatedAt: "2024-01-01T00:00:00Z",
+          },
+        ]);
+      }),
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/",
+      org: {
+        activeOrg: { id: "org_1", name: "Team Org" },
+        memberships: [{ id: "org_1" }],
+      },
+    });
+
+    const user = userEvent.setup();
+    await waitFor(() => {
+      expect(screen.getByText("Team Org")).toBeInTheDocument();
+    });
+    await user.click(screen.getByText("Team Org"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Create workspace")).toBeInTheDocument();
+    });
+  });
+
+  it("shows create workspace in dev mode even when user created the org", async () => {
+    server.use(
+      http.get("*/api/zero/org", () => {
+        return HttpResponse.json({
+          id: "org_1",
+          slug: "dev-org",
+          name: "Dev Org",
+          role: "admin",
+          createdBy: "test-user-123",
+        });
+      }),
+      http.get("*/api/zero/team", () => {
+        return HttpResponse.json([
+          {
+            id: "c0000000-0000-4000-a000-000000000001",
+            displayName: null,
+            description: null,
+            sound: null,
+            avatarUrl: null,
+            headVersionId: "version_1",
+            updatedAt: "2024-01-01T00:00:00Z",
+          },
+        ]);
+      }),
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/",
+      org: {
+        activeOrg: { id: "org_1", name: "Dev Org" },
+        memberships: [{ id: "org_1" }],
+      },
+    });
+
+    const user = userEvent.setup();
+    await waitFor(() => {
+      expect(screen.getByText("Dev Org")).toBeInTheDocument();
+    });
+    await user.click(screen.getByText("Dev Org"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Create workspace")).toBeInTheDocument();
+    });
   });
 });
