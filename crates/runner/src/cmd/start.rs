@@ -740,6 +740,11 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     // Shutdown — drain idle pool, release discovery resources, then drain running jobs
     // -----------------------------------------------------------------------
 
+    // Drop the pinned discover future so it releases the discovery Mutex.
+    // Without this, provider.shutdown() deadlocks trying to acquire the
+    // same Mutex that the still-alive discover_fut holds.
+    drop(discover_fut);
+
     // Drain idle pool first — these VMs hold budget reservations.
     let idle_entries = idle_pool.lock().await.drain();
     if !idle_entries.is_empty() {
