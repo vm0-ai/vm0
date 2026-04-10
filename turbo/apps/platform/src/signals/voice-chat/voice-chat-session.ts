@@ -646,6 +646,12 @@ const connectVoiceSession$ = command(
       return;
     }
 
+    // Inject slow-brain events collected during preparation phase
+    const existingEvents = get(internalEvents$);
+    if (existingEvents.length > 0) {
+      set(injectSlowBrainEvents$, existingEvents);
+    }
+
     await Promise.allSettled([
       set(startHeartbeat$, sessionSignal),
       set(startPoll$, sessionSignal),
