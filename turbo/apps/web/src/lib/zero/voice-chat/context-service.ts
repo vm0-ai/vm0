@@ -39,7 +39,7 @@ export async function appendEvent(
   if (!session) {
     throw Object.assign(new Error("Session not found"), { code: "NOT_FOUND" });
   }
-  if (session.status !== "active") {
+  if (session.status !== "active" && session.status !== "preparing") {
     throw Object.assign(new Error("Session is not active"), {
       code: "BAD_REQUEST",
     });

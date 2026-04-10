@@ -1,4 +1,4 @@
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import {
   voiceChatSessions,
   voiceChatEvents,
@@ -19,6 +19,7 @@ export async function createSession(
   orgId: string,
   userId: string,
   agentId: string,
+  options?: { mode?: "chat" | "meeting"; prompt?: string },
 ) {
   const db = globalThis.services.db;
 
@@ -29,7 +30,7 @@ export async function createSession(
       and(
         eq(voiceChatSessions.userId, userId),
         eq(voiceChatSessions.orgId, orgId),
-        eq(voiceChatSessions.status, "active"),
+        inArray(voiceChatSessions.status, ["active", "preparing"]),
       ),
     )
     .limit(1);
@@ -38,9 +39,19 @@ export async function createSession(
     throw conflict("User already has an active voice-chat session");
   }
 
+  const mode = options?.mode ?? "chat";
+  const status = mode === "meeting" ? "preparing" : "active";
+
   const [session] = await db
     .insert(voiceChatSessions)
-    .values({ orgId, userId, agentId, status: "active" })
+    .values({
+      orgId,
+      userId,
+      agentId,
+      mode,
+      prompt: options?.prompt ?? null,
+      status,
+    })
     .returning();
 
   // Insert always returns the inserted row
@@ -71,7 +82,7 @@ export async function heartbeat(
         eq(voiceChatSessions.id, sessionId),
         eq(voiceChatSessions.orgId, orgId),
         eq(voiceChatSessions.userId, userId),
-        eq(voiceChatSessions.status, "active"),
+        inArray(voiceChatSessions.status, ["active", "preparing"]),
       ),
     )
     .returning({ id: voiceChatSessions.id });
@@ -92,7 +103,7 @@ export async function endSession(
   if (session.orgId !== orgId || session.userId !== userId) {
     throw forbidden("Not authorized to end this session");
   }
-  if (session.status !== "active") {
+  if (session.status !== "active" && session.status !== "preparing") {
     throw badRequest("Session is not active");
   }
 
@@ -154,4 +165,35 @@ export async function dispatchSlowBrain(
   });
 
   return result;
+}
+
+// ---------------------------------------------------------------------------
+// Session Activation (meeting mode: preparing → active)
+// ---------------------------------------------------------------------------
+
+export async function activateSession(
+  sessionId: string,
+  orgId: string,
+  userId: string,
+) {
+  const db = globalThis.services.db;
+
+  const session = await getSession(sessionId);
+  if (!session) {
+    throw notFound("Voice-chat session not found");
+  }
+  if (session.orgId !== orgId || session.userId !== userId) {
+    throw forbidden("Not authorized to activate this session");
+  }
+  if (session.status !== "preparing") {
+    throw badRequest("Session is not in preparing status");
+  }
+
+  const [updated] = await db
+    .update(voiceChatSessions)
+    .set({ status: "active" })
+    .where(eq(voiceChatSessions.id, sessionId))
+    .returning();
+
+  return updated!;
 }

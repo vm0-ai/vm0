@@ -11,9 +11,21 @@ import {
 import { isApiError } from "../../../../src/lib/shared/errors";
 import { logger } from "../../../../src/lib/shared/logger";
 
-const bodySchema = z.object({
-  agentId: z.string().min(1),
-});
+const bodySchema = z
+  .object({
+    agentId: z.string().min(1),
+    mode: z.enum(["chat", "meeting"]).default("chat"),
+    prompt: z.string().min(1).optional(),
+  })
+  .refine(
+    (data) => {
+      return data.mode !== "meeting" || data.prompt;
+    },
+    {
+      message: "prompt is required for meeting mode",
+      path: ["prompt"],
+    },
+  );
 
 const log = logger("api:zero:voice-chat");
 
@@ -46,20 +58,30 @@ export async function POST(request: Request) {
 
   const parsed = bodySchema.safeParse(await request.json());
   if (!parsed.success) {
+    const issue = parsed.error.issues[0];
     return NextResponse.json(
-      { error: { message: "agentId is required", code: "BAD_REQUEST" } },
+      {
+        error: {
+          message: issue?.message ?? "Invalid request body",
+          code: "BAD_REQUEST",
+        },
+      },
       { status: 400 },
     );
   }
-  const { agentId } = parsed.data;
+  const { agentId, mode, prompt } = parsed.data;
 
   try {
-    const session = await createSession(org.orgId, userId, agentId);
+    const session = await createSession(org.orgId, userId, agentId, {
+      mode,
+      prompt,
+    });
     const run = await dispatchSlowBrain(session, org.orgId, userId, agentId);
 
     return NextResponse.json({
       session: {
         id: session.id,
+        mode: session.mode,
         status: session.status,
         runId: run.runId,
         createdAt: session.createdAt,

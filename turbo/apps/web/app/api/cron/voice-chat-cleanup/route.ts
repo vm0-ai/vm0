@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { eq, and, or, lt } from "drizzle-orm";
+import { inArray, and, or, lt } from "drizzle-orm";
 import { initServices } from "../../../../src/lib/init-services";
 import { logger } from "../../../../src/lib/shared/logger";
 import { env } from "../../../../src/env";
@@ -31,7 +31,7 @@ export async function GET(request: Request): Promise<Response> {
     .set({ status: "timeout", endedAt: now })
     .where(
       and(
-        eq(voiceChatSessions.status, "active"),
+        inArray(voiceChatSessions.status, ["active", "preparing"]),
         or(
           lt(voiceChatSessions.lastHeartbeatAt, staleThreshold),
           lt(voiceChatSessions.createdAt, timeoutThreshold),

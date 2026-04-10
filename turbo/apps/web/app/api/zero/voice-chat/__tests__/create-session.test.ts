@@ -118,6 +118,7 @@ describe("POST /api/zero/voice-chat (create session)", () => {
     expect(body.session).toBeDefined();
     expect(body.session.id).toBeDefined();
     expect(body.session.status).toBe("active");
+    expect(body.session.mode).toBe("chat");
     expect(body.session.runId).toBeDefined();
     expect(body.session.createdAt).toBeDefined();
 
@@ -135,5 +136,40 @@ describe("POST /api/zero/voice-chat (create session)", () => {
     expect(ctxBody.events).toHaveLength(1);
     expect(ctxBody.events[0].source).toBe("system");
     expect(ctxBody.events[0].type).toBe("session-start");
+  });
+
+  it("should create meeting session with preparing status", async () => {
+    const { agentId } = await createTestCompose(uniqueId("vc-meeting"));
+
+    const response = await POST(
+      createRequest({
+        agentId,
+        mode: "meeting",
+        prompt: "Review PR #123 before standup",
+      }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.session.status).toBe("preparing");
+    expect(body.session.mode).toBe("meeting");
+    expect(body.session.runId).toBeDefined();
+  });
+
+  it("should return 400 when meeting mode has no prompt", async () => {
+    const response = await POST(
+      createRequest({ agentId: "any-agent-id", mode: "meeting" }),
+    );
+    const body = await response.json();
+    expect(response.status).toBe(400);
+    expect(body.error.code).toBe("BAD_REQUEST");
+  });
+
+  it("should return 409 when user has a preparing session", async () => {
+    await createTestVoiceChatSession(orgId, userId, "preparing");
+    const response = await POST(createRequest({ agentId: "any-agent-id" }));
+    const body = await response.json();
+    expect(response.status).toBe(409);
+    expect(body.error.code).toBe("CONFLICT");
   });
 });

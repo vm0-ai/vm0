@@ -1,5 +1,5 @@
 {
-  "id": "37de7da5-4ba2-4d92-a806-8baa184dace7",
+  "id": "1740be67-8476-49d5-b033-50ded042393f",
   "prevId": "68e583c3-78f1-4958-85e3-3a7786548899",
   "version": "7",
   "dialect": "postgresql",
@@ -5019,32 +5019,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.slack_event_dedup": {
-      "name": "slack_event_dedup",
-      "schema": "",
-      "columns": {
-        "event_id": {
-          "name": "event_id",
-          "type": "varchar(50)",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.slack_org_connections": {
       "name": "slack_org_connections",
       "schema": "",
@@ -6787,6 +6761,19 @@
         "run_id": {
           "name": "run_id",
           "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "mode": {
+          "name": "mode",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'chat'"
+        },
+        "prompt": {
+          "name": "prompt",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },

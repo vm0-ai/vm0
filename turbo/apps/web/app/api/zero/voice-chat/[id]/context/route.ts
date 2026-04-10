@@ -21,6 +21,7 @@ const VALID_TYPES = [
   "directive",
   "thinking",
   "observation",
+  "preparation-ready",
 ] as const;
 
 const appendEventBodySchema = z.object({
