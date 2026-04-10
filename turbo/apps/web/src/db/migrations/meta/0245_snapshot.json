@@ -1,6 +1,6 @@
 {
-  "id": "37de7da5-4ba2-4d92-a806-8baa184dace7",
-  "prevId": "68e583c3-78f1-4958-85e3-3a7786548899",
+  "id": "adf850a4-d046-468b-86b7-f35b341fb9f5",
+  "prevId": "37de7da5-4ba2-4d92-a806-8baa184dace7",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -6787,6 +6787,19 @@
         "run_id": {
           "name": "run_id",
           "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "mode": {
+          "name": "mode",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'chat'"
+        },
+        "prompt": {
+          "name": "prompt",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
