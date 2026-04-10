@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   buildIntegrationPrompt,
-  buildVoiceChatWorkerPrompt,
+  buildVoiceChatSlowBrainPrompt,
   buildSlackPrompt,
   buildPhonePrompt,
   buildTelegramPrompt,
@@ -81,16 +81,16 @@ describe("buildIntegrationPrompt", () => {
   });
 });
 
-describe("buildVoiceChatWorkerPrompt", () => {
+describe("buildVoiceChatSlowBrainPrompt", () => {
   it("should combine integration header with worker prompt", () => {
-    const result = buildVoiceChatWorkerPrompt("session-123");
+    const result = buildVoiceChatSlowBrainPrompt("session-123");
 
     expect(result).toContain("You are currently running inside: Voice-Chat");
-    expect(result).toContain("# Zero — Slow-Thinking Mode");
+    expect(result).toContain("# Zero — Slow-Brain Mode");
   });
 
   it("should replace session ID placeholder", () => {
-    const result = buildVoiceChatWorkerPrompt("session-456");
+    const result = buildVoiceChatSlowBrainPrompt("session-456");
 
     expect(result).toContain("context get session-456");
     expect(result).toContain("context append session-456");

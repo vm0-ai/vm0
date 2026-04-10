@@ -5,7 +5,7 @@ import {
 } from "../../../db/schema/voice-chat";
 import { createZeroRun } from "../zero-run-service";
 import { cancelRun } from "../zero-run-cancel";
-import { buildVoiceChatWorkerPrompt } from "../integration-prompt";
+import { buildVoiceChatSlowBrainPrompt } from "../integration-prompt";
 import { conflict, notFound, badRequest, forbidden } from "../../shared/errors";
 import { logger } from "../../shared/logger";
 
@@ -109,7 +109,7 @@ export async function endSession(
     .set({ status: "ended", endedAt: new Date() })
     .where(eq(voiceChatSessions.id, sessionId));
 
-  // Cancel worker run if active (ignore errors if already terminated)
+  // Cancel slow-brain run if active (ignore errors if already terminated)
   if (session.runId) {
     try {
       await cancelRun(session.runId, userId, orgId);
@@ -120,21 +120,21 @@ export async function endSession(
 }
 
 // ---------------------------------------------------------------------------
-// Worker Dispatch
+// Slow-Brain Dispatch
 // ---------------------------------------------------------------------------
 
-export async function dispatchWorker(
+export async function dispatchSlowBrain(
   session: { id: string },
   orgId: string,
   userId: string,
   agentId: string,
 ) {
-  const appendSystemPrompt = buildVoiceChatWorkerPrompt(session.id);
+  const appendSystemPrompt = buildVoiceChatSlowBrainPrompt(session.id);
 
   const result = await createZeroRun({
     userId,
     agentId,
-    prompt: `You are Zero's slow-thinking mode for voice-chat session ${session.id}. Start by reading the shared context to observe the conversation.`,
+    prompt: `You are Zero's slow-brain for voice-chat session ${session.id}. Start by reading the shared context to observe the conversation.`,
     appendSystemPrompt,
     triggerSource: "voice-chat",
   });

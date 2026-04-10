@@ -33,8 +33,8 @@ describe("zero voice-chat context append command", () => {
       let capturedBody: Record<string, unknown> | undefined;
       const createdEvent = {
         seq: 1,
-        source: "worker",
-        type: "result",
+        source: "slow-brain",
+        type: "directive",
         content: "Done",
         createdAt: "2026-01-01T00:00:00Z",
       };
@@ -51,16 +51,16 @@ describe("zero voice-chat context append command", () => {
         "cli",
         "session-123",
         "--source",
-        "worker",
+        "slow-brain",
         "--type",
-        "result",
+        "directive",
         "--content",
         "Done",
       ]);
 
       expect(capturedBody).toMatchObject({
-        source: "worker",
-        type: "result",
+        source: "slow-brain",
+        type: "directive",
         content: "Done",
       });
 
@@ -78,7 +78,7 @@ describe("zero voice-chat context append command", () => {
           return HttpResponse.json(
             {
               seq: 1,
-              source: "worker",
+              source: "slow-brain",
               type: "heartbeat",
               createdAt: "2026-01-01T00:00:00Z",
             },
@@ -92,13 +92,13 @@ describe("zero voice-chat context append command", () => {
         "cli",
         "session-123",
         "--source",
-        "worker",
+        "slow-brain",
         "--type",
         "heartbeat",
       ]);
 
       expect(capturedBody).toMatchObject({
-        source: "worker",
+        source: "slow-brain",
         type: "heartbeat",
       });
     });
@@ -121,9 +121,9 @@ describe("zero voice-chat context append command", () => {
           "cli",
           "session-123",
           "--source",
-          "worker",
+          "slow-brain",
           "--type",
-          "result",
+          "directive",
           "--content",
           "Done",
         ]);
@@ -155,9 +155,9 @@ describe("zero voice-chat context append command", () => {
           "cli",
           "session-123",
           "--source",
-          "worker",
+          "slow-brain",
           "--type",
-          "result",
+          "directive",
           "--content",
           "Done",
         ]);

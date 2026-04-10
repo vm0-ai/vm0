@@ -159,7 +159,7 @@ describe("GET /api/zero/voice-chat/[id]/context", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          source: "worker",
+          source: "slow-brain",
           type: "response",
           content: "second",
         }),
@@ -226,7 +226,7 @@ describe("POST /api/zero/voice-chat/[id]/context", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          source: "talker",
+          source: "fast-brain",
           type: "speech",
           content: "hello world",
         }),
@@ -236,7 +236,7 @@ describe("POST /api/zero/voice-chat/[id]/context", () => {
     const body = await response.json();
     expect(response.status).toBe(200);
     expect(body.event).toBeDefined();
-    expect(body.event.source).toBe("talker");
+    expect(body.event.source).toBe("fast-brain");
     expect(body.event.type).toBe("speech");
     expect(body.event.content).toBe("hello world");
     expect(typeof body.event.seq).toBe("number");
@@ -303,30 +303,28 @@ describe("POST /api/zero/voice-chat/[id]/context", () => {
     expect(body.error.message).toContain("not active");
   });
 
-  it.each([
-    "directive",
-    "thinking-progress",
-    "thinking-result",
-    "observation",
-  ] as const)("should accept slow brain event type: %s", async (type) => {
-    const session = await createSession(orgId, userId);
-    const response = await POST(
-      createTestRequest(contextUrl(session.id), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          source: "slow-brain",
-          type,
-          content: "test content",
+  it.each(["directive", "thinking", "observation"] as const)(
+    "should accept slow brain event type: %s",
+    async (type) => {
+      const session = await createSession(orgId, userId);
+      const response = await POST(
+        createTestRequest(contextUrl(session.id), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            source: "slow-brain",
+            type,
+            content: "test content",
+          }),
         }),
-      }),
-      paramsFor(session.id),
-    );
-    const body = await response.json();
-    expect(response.status).toBe(200);
-    expect(body.event.type).toBe(type);
-    expect(body.event.source).toBe("slow-brain");
-  });
+        paramsFor(session.id),
+      );
+      const body = await response.json();
+      expect(response.status).toBe(200);
+      expect(body.event.type).toBe(type);
+      expect(body.event.source).toBe("slow-brain");
+    },
+  );
 
   it("should produce incrementing seq numbers", async () => {
     const session = await createSession(orgId, userId);

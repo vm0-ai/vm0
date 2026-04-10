@@ -9,7 +9,7 @@ export const voiceChatContextAppendCommand = new Command()
   .argument("<session-id>", "Voice-chat session ID")
   .requiredOption(
     "--source <source>",
-    "Event source (system|user|talker|worker)",
+    "Event source (system|user|fast-brain|slow-brain)",
   )
   .requiredOption("--type <type>", "Event type")
   .option(
@@ -20,8 +20,8 @@ export const voiceChatContextAppendCommand = new Command()
     "after",
     `
 Examples:
-  Append with content:   zero voice-chat context append <session-id> --source worker --type result --content "Done"
-  Pipe from stdin:       echo "Done" | zero voice-chat context append <session-id> --source worker --type result`,
+  Append with content:   zero voice-chat context append <session-id> --source slow-brain --type directive --content "Done"
+  Pipe from stdin:       echo "Done" | zero voice-chat context append <session-id> --source slow-brain --type directive`,
   )
   .action(
     withErrorHandler(

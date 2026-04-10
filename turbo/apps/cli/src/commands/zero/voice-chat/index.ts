@@ -11,5 +11,5 @@ export const zeroVoiceChatCommand = new Command()
 Examples:
   Read all events:       zero voice-chat context get <session-id>
   Read new events:       zero voice-chat context get <session-id> --after 5
-  Append an event:       zero voice-chat context append <session-id> --source worker --type result --content "Done"`,
+  Append an event:       zero voice-chat context append <session-id> --source slow-brain --type directive --content "Done"`,
   );

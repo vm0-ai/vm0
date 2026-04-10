@@ -12,7 +12,7 @@ import { agentComposes } from "./agent-compose";
 
 /**
  * Voice-chat sessions track active voice conversations.
- * Each session has one WebRTC connection (talker) and one zero agent run (worker).
+ * Each session has one WebRTC connection (fast-brain) and one zero agent run (slow-brain).
  */
 export const voiceChatSessions = pgTable(
   "voice_chat_sessions",
@@ -47,11 +47,11 @@ export const voiceChatSessions = pgTable(
 
 /**
  * Append-only event log for voice-chat shared context (blackboard pattern).
- * Both talker (browser) and worker (sandbox agent) read and append events.
+ * Both fast-brain (browser) and slow-brain (sandbox agent) read and append events.
  *
- * Sources: system | user | talker | worker
- * Types: session-start | session-end | speech | acknowledgement |
- *        worker-request | progress | result | response
+ * Sources: system | user | fast-brain | slow-brain
+ * Types: session-start | session-end | speech | request-slow-brain | response |
+ *        directive | thinking | observation
  */
 export const voiceChatEvents = pgTable(
   "voice_chat_events",

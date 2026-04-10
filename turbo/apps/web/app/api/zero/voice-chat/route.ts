@@ -6,7 +6,7 @@ import { resolveOrg } from "../../../../src/lib/zero/org/resolve-org";
 import { isFeatureEnabled, FeatureSwitchKey } from "@vm0/core";
 import {
   createSession,
-  dispatchWorker,
+  dispatchSlowBrain,
 } from "../../../../src/lib/zero/voice-chat/session-service";
 import { isApiError } from "../../../../src/lib/shared/errors";
 import { logger } from "../../../../src/lib/shared/logger";
@@ -55,7 +55,7 @@ export async function POST(request: Request) {
 
   try {
     const session = await createSession(org.orgId, userId, agentId);
-    const run = await dispatchWorker(session, org.orgId, userId, agentId);
+    const run = await dispatchSlowBrain(session, org.orgId, userId, agentId);
 
     return NextResponse.json({
       session: {

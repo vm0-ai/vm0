@@ -64,7 +64,7 @@ const SESSION_TOOLS = [
     type: "function",
     name: "request_slow_brain",
     description:
-      "Send a task to your background self for deep thinking, tool use, or execution. Use this when the user asks for something that requires code, data, APIs, file access, or any action beyond conversation. Your background self will work on it and the result will be delivered to you automatically.",
+      "Send a task to your slow-brain for deep thinking, tool use, or execution. Use this when the user asks for something that requires code, data, APIs, file access, or any action beyond conversation. Your slow-brain will work on it and the result will be delivered to you automatically.",
     parameters: {
       type: "object",
       properties: {
@@ -79,10 +79,10 @@ const SESSION_TOOLS = [
   },
 ] as const;
 
-const TALKER_INSTRUCTIONS = `
+const FAST_BRAIN_INSTRUCTIONS = `
 You are Zero, vm0's AI workspace assistant. You are speaking with the user in real time through voice.
 
-You can do everything. Some things you handle instantly — conversation, knowledge, opinions, brainstorming. Other things need a moment of deeper thinking — code, tools, data lookups, file access, external systems like GitHub, Slack, or APIs. For those, you delegate to your background self using the request_slow_brain tool.
+You can do everything. Some things you handle instantly — conversation, knowledge, opinions, brainstorming. Other things need a moment of deeper thinking — code, tools, data lookups, file access, external systems like GitHub, Slack, or APIs. For those, you delegate to your slow-brain using the request_slow_brain tool.
 
 ## When to delegate
 
@@ -102,11 +102,11 @@ After calling request_slow_brain, acknowledge naturally:
 - "I'll check on that for you."
 - "Give me a moment to work on that."
 
-Do NOT say "I can't do that" or "I don't have access to that." You CAN do it — it just takes a moment of background thinking.
+Do NOT say "I can't do that" or "I don't have access to that." You CAN do it — it just takes a moment.
 
 ## Receiving results
 
-When you receive a message starting with [Background...], it is from your background self. Incorporate that information naturally into your response. Use your own voice — do not read it verbatim. The background message provides the substance; you provide the delivery.
+When you receive a message starting with [Slow-brain...], it is from your slow-brain. Incorporate that information naturally into your response. Use your own voice — do not read it verbatim. The slow-brain message provides the substance; you provide the delivery.
 
 ## Communication style
 
@@ -142,12 +142,11 @@ function logContextEvent(
 
 function formatInjectionMessage(event: ContextEvent): string {
   const prefixes: Record<string, string> = {
-    directive: "[Your background thinking completed]",
-    "thinking-progress": "[Your background self is working]",
-    "thinking-result": "[Background result]",
-    observation: "[Background observation]",
+    directive: "[Slow-brain directive]",
+    thinking: "[Slow-brain thinking]",
+    observation: "[Slow-brain observation]",
   };
-  const label = prefixes[event.type] ?? `[Background update - ${event.type}]`;
+  const label = prefixes[event.type] ?? `[Slow-brain update - ${event.type}]`;
   return `${label} ${event.content ?? ""}`.trim();
 }
 
@@ -217,9 +216,15 @@ const handleFnCall$ = command(
 
     if (name === "request_slow_brain") {
       const parsed = JSON.parse(args) as { task: string };
-      logContextEvent(fetchFn, sid, "talker", "worker-request", parsed.task);
+      logContextEvent(
+        fetchFn,
+        sid,
+        "fast-brain",
+        "request-slow-brain",
+        parsed.task,
+      );
       result =
-        "Request sent to your background self. The result will be delivered to you automatically — no need to check.";
+        "Request sent to your slow-brain. The result will be delivered to you automatically — no need to check.";
     } else {
       result = JSON.stringify({ error: `Unknown function: ${name}` });
     }
@@ -332,11 +337,11 @@ const handleDCMessage$ = command(
             return updated;
           });
 
-          // Auto-log talker response to shared context (fire-and-forget)
+          // Auto-log fast-brain response to shared context (fire-and-forget)
           logContextEvent(
             get(fetch$),
             get(internalSessionId$),
-            "talker",
+            "fast-brain",
             "response",
             finalText,
           );
@@ -435,7 +440,7 @@ const setupWebRTC$ = command(
           type: "session.update",
           session: {
             modalities: ["text", "audio"],
-            instructions: TALKER_INSTRUCTIONS,
+            instructions: FAST_BRAIN_INSTRUCTIONS,
             input_audio_transcription: { model: "whisper-1" },
             turn_detection: {
               type: "server_vad",

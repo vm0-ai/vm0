@@ -107,7 +107,7 @@ describe("POST /api/zero/voice-chat (create session)", () => {
     expect(body.error.code).toBe("CONFLICT");
   });
 
-  it("should create session and dispatch worker on success", async () => {
+  it("should create session and dispatch slow-brain on success", async () => {
     const { agentId } = await createTestCompose(uniqueId("vc-agent"));
 
     const response = await POST(createRequest({ agentId }));
