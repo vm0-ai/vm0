@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.214.1](https://github.com/vm0-ai/vm0/compare/app-v0.214.0...app-v0.214.1) (2026-04-10)
+
+
+### Bug Fixes
+
+* **voice-chat:** send response.create after ptt commit to trigger agent response ([#8905](https://github.com/vm0-ai/vm0/issues/8905)) ([6d4323b](https://github.com/vm0-ai/vm0/commit/6d4323b2983580b940f54b76cbfba2cf217a8a87)), closes [#8904](https://github.com/vm0-ai/vm0/issues/8904)
+
 ## [0.214.0](https://github.com/vm0-ai/vm0/compare/app-v0.213.0...app-v0.214.0) (2026-04-10)
 
 
