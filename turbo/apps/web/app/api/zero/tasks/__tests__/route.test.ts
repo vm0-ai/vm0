@@ -214,6 +214,79 @@ describe("GET /api/zero/tasks", () => {
     expect(data.tasks[0].agent.id).toBe(agent1);
   });
 
+  it("should return 401 when no org is selected", async () => {
+    mockClerk({ userId: user.userId, orgId: null });
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/tasks",
+    );
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(data.error.code).toBe("UNAUTHORIZED");
+  });
+
+  it("should not return tasks belonging to another user", async () => {
+    const { composeId } = await createTestCompose(uniqueId("user1-agent"));
+    await insertTestChatThread(user.userId, composeId, "User1 Thread");
+
+    const otherUser = await context.setupUser({ prefix: "other-user" });
+    const { composeId: otherComposeId } = await createTestCompose(
+      uniqueId("user2-agent"),
+    );
+    await insertTestChatThread(
+      otherUser.userId,
+      otherComposeId,
+      "User2 Thread",
+    );
+
+    mockClerk({ userId: user.userId });
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/tasks",
+    );
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(
+      data.tasks.some(
+        (t: Record<string, unknown>) => t.title === "User1 Thread",
+      ),
+    ).toBe(true);
+    expect(
+      data.tasks.some(
+        (t: Record<string, unknown>) => t.title === "User2 Thread",
+      ),
+    ).toBe(false);
+  });
+
+  it("should filter schedule tasks by agentId", async () => {
+    const { composeId: agent1 } = await createTestCompose(
+      uniqueId("sched-filter-1"),
+    );
+    const { composeId: agent2 } = await createTestCompose(
+      uniqueId("sched-filter-2"),
+    );
+
+    await createTestSchedule(agent1, "agent1-schedule");
+    await createTestSchedule(agent2, "agent2-schedule");
+
+    const request = createTestRequest(
+      `http://localhost:3000/api/zero/tasks?agentId=${agent1}`,
+    );
+    const response = await GET(request);
+    const data = await response.json();
+
+    expect(response.status).toBe(200);
+    const scheduleTasks = data.tasks.filter(
+      (t: Record<string, unknown>) => t.type === "schedule",
+    );
+    expect(scheduleTasks).toHaveLength(1);
+    expect(scheduleTasks[0].title).toBe("agent1-schedule");
+  });
+
   it("should sort by latest run time DESC and limit to 25", async () => {
     const { composeId } = await createTestCompose(uniqueId("sort-test"));
 
