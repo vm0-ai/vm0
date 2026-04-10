@@ -4,14 +4,14 @@ import { POST as postAgentRoute } from "../../../route";
 import {
   createTestRequest,
   createTestCliToken,
+  setComposeHeadVersion,
+  getComposeHeadVersion,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
   type UserContext,
 } from "../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
-import { eq } from "drizzle-orm";
-import { agentComposes } from "../../../../../../../src/db/schema/agent-compose";
 
 const context = testContext();
 
@@ -210,10 +210,7 @@ describe("User Connectors API", () => {
 
       // Simulate a stale compose by pointing headVersionId to a fake hash
       const staleVersionId = "f".repeat(64);
-      await globalThis.services.db
-        .update(agentComposes)
-        .set({ headVersionId: staleVersionId })
-        .where(eq(agentComposes.id, agentId));
+      await setComposeHeadVersion(agentId, staleVersionId);
 
       // PUT user-connectors should trigger recompose since hash differs
       const res = await putUserConnectors(
@@ -224,11 +221,7 @@ describe("User Connectors API", () => {
       expect(res.status).toBe(200);
 
       // Verify compose was updated back to a fresh version
-      const [after] = await globalThis.services.db
-        .select({ headVersionId: agentComposes.headVersionId })
-        .from(agentComposes)
-        .where(eq(agentComposes.id, agentId))
-        .limit(1);
+      const after = await getComposeHeadVersion(agentId);
       expect(after!.headVersionId).not.toBe(staleVersionId);
     });
 
@@ -236,14 +229,7 @@ describe("User Connectors API", () => {
       const agentId = await createAgent();
 
       // Record the current head version (freshly built)
-      const [before] = await globalThis.services.db
-        .select({
-          headVersionId: agentComposes.headVersionId,
-          updatedAt: agentComposes.updatedAt,
-        })
-        .from(agentComposes)
-        .where(eq(agentComposes.id, agentId))
-        .limit(1);
+      const before = await getComposeHeadVersion(agentId);
       expect(before).toBeDefined();
 
       // PUT user-connectors — compose is already up to date, should skip recompose
@@ -255,11 +241,7 @@ describe("User Connectors API", () => {
       expect(res.status).toBe(200);
 
       // Verify compose version unchanged
-      const [after] = await globalThis.services.db
-        .select({ headVersionId: agentComposes.headVersionId })
-        .from(agentComposes)
-        .where(eq(agentComposes.id, agentId))
-        .limit(1);
+      const after = await getComposeHeadVersion(agentId);
       expect(after!.headVersionId).toBe(before!.headVersionId);
     });
 
