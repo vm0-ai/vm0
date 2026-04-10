@@ -11,8 +11,8 @@ interface AvatarSvgPreviewProps {
 }
 
 /**
- * Renders a composite avatar by lazily loading head, face, and hair SVG chunks
- * and stacking them into a single inline `<svg>` element.
+ * Renders a composite avatar by lazily loading head, face, and hair SVG layers
+ * and displaying the combined result as a single `<img>` with a data-URL src.
  */
 export function AvatarSvgPreview({
   config,
@@ -21,7 +21,7 @@ export function AvatarSvgPreview({
   alt,
   "data-testid": testId,
 }: AvatarSvgPreviewProps) {
-  const inner = useLastResolved(compositeAvatarSvg$(config));
+  const dataUrl = useLastResolved(compositeAvatarSvg$(config));
 
   return (
     <div
@@ -30,15 +30,9 @@ export function AvatarSvgPreview({
       {...(alt ? { role: "img", "aria-label": alt } : undefined)}
       data-testid={testId}
     >
-      {inner !== undefined && (
+      {dataUrl !== undefined && (
         <div className="absolute inset-0 scale-[1.25]">
-          <svg
-            viewBox="0 0 480 480"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-full w-full"
-            dangerouslySetInnerHTML={{ __html: inner }}
-          />
+          <img alt="" src={dataUrl} className="h-full w-full object-cover" />
         </div>
       )}
     </div>

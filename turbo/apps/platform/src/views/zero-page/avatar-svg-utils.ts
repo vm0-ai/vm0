@@ -75,7 +75,7 @@ function extractSvgInner(raw: string): string {
 }
 
 /**
- * Load the 3 SVG layers for a config and return the combined inner markup.
+ * Load the 3 SVG layers for a config and return a data-URL of the combined SVG.
  */
 export async function loadCompositeAvatarSvg(
   config: AvatarSvgConfig,
@@ -89,7 +89,10 @@ export async function loadCompositeAvatarSvg(
       `hair-r${config.rotation}-h${config.hairStyle}-c${config.hairColor}.svg`,
     ),
   ]);
-  return extractSvgInner(head) + extractSvgInner(face) + extractSvgInner(hair);
+  const inner =
+    extractSvgInner(head) + extractSvgInner(face) + extractSvgInner(hair);
+  const svg = `<svg viewBox="0 0 480 480" fill="none" xmlns="http://www.w3.org/2000/svg">${inner}</svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
 
 export function randomAvatarSvgConfig(): AvatarSvgConfig {
