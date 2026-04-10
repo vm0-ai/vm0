@@ -840,7 +840,16 @@ jobs:
           SVC="${JOB_REF}-balloon"
           GROUP="vm0/balloon-${JOB_REF}"
 
-          fail() { echo "FAIL: $1"; exit 1; }
+          fail() {
+            echo "FAIL: $1"
+            echo "--- Diagnostics ---"
+            echo "Balloon stats:"
+            sudo curl -sf --unix-socket "$API_SOCK" http://localhost/balloon/statistics 2>/dev/null \
+              | jq . 2>/dev/null || echo "(unavailable)"
+            echo "Host dmesg (last 10 lines):"
+            sudo dmesg | tail -10 2>/dev/null || true
+            exit 1
+          }
 
           cleanup() {
             echo "--- Cleanup ---"
@@ -874,16 +883,25 @@ jobs:
 
           API_SOCK="/run/vm0/sock/$RUN_ID/api.sock"
 
-          # Helper: read current balloon actual_mib
+          # Helper: read current balloon actual_mib (returns 0 if VM is dead)
           balloon_mib() {
-            sudo curl -sf --unix-socket "$API_SOCK" http://localhost/balloon/statistics \
-              | jq '.actual_mib // 0' 2>/dev/null || echo 0
+            local val
+            val=$(sudo curl -sf --unix-socket "$API_SOCK" http://localhost/balloon/statistics \
+              | jq -r '.actual_mib // 0' 2>/dev/null)
+            echo "${val:-0}"
           }
 
-          # Helper: read guest MemAvailable in kB
+          # Helper: read guest MemAvailable in kB (returns 0 if exec fails)
           guest_avail_kb() {
-            sudo "$BIN_DIR/runner" exec "$RUN_ID" -- grep MemAvailable /proc/meminfo \
-              | tr -s ' ' | cut -d' ' -f2
+            local val
+            val=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" -- grep MemAvailable /proc/meminfo 2>/dev/null \
+              | tr -s ' ' | cut -d' ' -f2)
+            echo "${val:-0}"
+          }
+
+          # Helper: check if VM is still alive
+          vm_alive() {
+            sudo curl -sf --unix-socket "$API_SOCK" http://localhost/ >/dev/null 2>&1
           }
 
           # Test 1: idle inflate — balloon controller gradually reclaims idle guest memory
@@ -947,13 +965,20 @@ jobs:
           DEFLATE_MIB=$ACTUAL
           echo "PASS: balloon deflated from ${INFLATE_MIB} to ${DEFLATE_MIB} MiB"
 
-          # Test 3: re-inflate after pressure released — kill python3 in guest,
-          # then kill host-side exec. The pkill may fail with "Operation not permitted"
-          # but the host-side kill terminates the vsock session which kills the process.
+          # Test 3: re-inflate after pressure released — kill the host-side
+          # exec first (prevents further output), then kill the guest-side
+          # allocator. The host kill does NOT propagate to the guest process
+          # because vsock-guest spawns it independently.
           echo "--- Test 3: balloon re-inflate after pressure release ---"
-          sudo "$BIN_DIR/runner" exec "$RUN_ID" -- "pkill -f alloc.py" 2>/dev/null || true
           kill $ALLOC_PID 2>/dev/null || true
           wait $ALLOC_PID 2>/dev/null || true
+
+          # Verify VM survived the memory pressure test
+          vm_alive || fail "VM crashed during memory pressure test"
+
+          # Kill guest-side allocator — balloon has already deflated (Test 2
+          # passed), so guest has ~250 MiB available, enough for pkill exec.
+          sudo "$BIN_DIR/runner" exec "$RUN_ID" -- "pkill -f alloc.py" 2>/dev/null || true
 
           # Wait for balloon to re-inflate past midpoint between deflate and original inflate
           MIDPOINT=$(( (INFLATE_MIB + DEFLATE_MIB) / 2 ))
