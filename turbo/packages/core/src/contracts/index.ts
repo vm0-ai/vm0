@@ -786,3 +786,13 @@ export {
   type ContextEventsResponse,
   type AppendContextEventBody,
 } from "./zero-voice-chat-context";
+export {
+  tasksContract,
+  taskItemSchema,
+  taskTypeSchema,
+  taskAgentSchema,
+  type TasksContract,
+  type TaskItem,
+  type TaskType,
+  type TaskAgent,
+} from "./tasks";

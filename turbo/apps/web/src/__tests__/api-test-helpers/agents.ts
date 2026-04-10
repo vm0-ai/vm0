@@ -1,4 +1,5 @@
 import { and, eq } from "drizzle-orm";
+import { chatThreads } from "../../db/schema/chat-thread";
 import type { RawPermissionPolicies } from "@vm0/core";
 import { initServices } from "../../lib/init-services";
 import {
@@ -717,4 +718,36 @@ export async function updateTestChatThreadTitle(
   title: string,
 ): Promise<void> {
   return updateChatThreadTitle(threadId, title);
+}
+
+/**
+ * Insert a chat thread directly in the database.
+ * Returns the thread ID.
+ */
+export async function insertTestChatThread(
+  userId: string,
+  agentComposeId: string,
+  title: string,
+): Promise<string> {
+  initServices();
+  const [thread] = await globalThis.services.db
+    .insert(chatThreads)
+    .values({ userId, agentComposeId, title })
+    .returning({ id: chatThreads.id });
+  return thread!.id;
+}
+
+/**
+ * Get the agent compose name by compose ID.
+ */
+export async function getTestAgentComposeName(
+  composeId: string,
+): Promise<string> {
+  initServices();
+  const [row] = await globalThis.services.db
+    .select({ name: agentComposes.name })
+    .from(agentComposes)
+    .where(eq(agentComposes.id, composeId))
+    .limit(1);
+  return row!.name;
 }

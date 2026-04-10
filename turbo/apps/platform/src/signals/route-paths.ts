@@ -32,6 +32,7 @@ export const ROUTES = {
   reportError: "/runs/:runId/report-error",
   skeleton: "/_/skeleton",
   error: "/_/error",
+  missionControl: "/_/mission-control",
 } as const;
 
 export type RouteKey = keyof typeof ROUTES;

@@ -46,6 +46,7 @@ import { setupSkeletonPage$, setupErrorPage$ } from "./skeleton-page-setup.ts";
 import { startSkeletonCycling$ } from "./app-skeleton.ts";
 import { throwIfNotAbort } from "./utils.ts";
 import { pollUserInvitations$ } from "./user-invitations.ts";
+import { setupMissionControlPage$ } from "./mission-control-page/mission-control-page.ts";
 
 /**
  * Catch-all fallback — redirects unknown paths to /.
@@ -201,6 +202,10 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.internalConnectorLogos,
     setup: setupInternalConnectorLogos$,
+  },
+  {
+    path: ROUTES.missionControl,
+    setup: setupAuthPageWrapper(setupMissionControlPage$),
   },
   {
     path: ROUTES.skeleton,

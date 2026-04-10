@@ -218,13 +218,17 @@ export async function insertTestSlackOrgConnection(params: {
 export async function insertTestSlackOrgThreadSession(params: {
   connectionId: string;
   agentSessionId?: string;
-}): Promise<void> {
-  await globalThis.services.db.insert(slackOrgThreadSessions).values({
-    connectionId: params.connectionId,
-    slackChannelId: "C-test",
-    slackThreadTs: uniqueId("ts"),
-    ...(params.agentSessionId && { agentSessionId: params.agentSessionId }),
-  });
+}): Promise<{ id: string }> {
+  const [row] = await globalThis.services.db
+    .insert(slackOrgThreadSessions)
+    .values({
+      connectionId: params.connectionId,
+      slackChannelId: "C-test",
+      slackThreadTs: uniqueId("ts"),
+      ...(params.agentSessionId && { agentSessionId: params.agentSessionId }),
+    })
+    .returning({ id: slackOrgThreadSessions.id });
+  return row!;
 }
 
 /**
