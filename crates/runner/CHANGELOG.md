@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.74.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.74.0...runner-rs-v0.74.1) (2026-04-10)
+
+
+### Refactoring
+
+* **firewalls:** cache graphql field coverage check per api entry ([#8839](https://github.com/vm0-ai/vm0/issues/8839)) ([f716aef](https://github.com/vm0-ai/vm0/commit/f716aefcfd219856adf314b1fa836771760624f5)), closes [#8816](https://github.com/vm0-ai/vm0/issues/8816)
+
 ## [0.74.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.73.0...runner-rs-v0.74.0) (2026-04-10)
 
 

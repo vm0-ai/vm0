@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.213.0](https://github.com/vm0-ai/vm0/compare/app-v0.212.0...app-v0.213.0) (2026-04-10)
+
+
+### Features
+
+* **mission-control:** implement tasks list with keyboard navigation ([#8866](https://github.com/vm0-ai/vm0/issues/8866)) ([d5906b2](https://github.com/vm0-ai/vm0/commit/d5906b228a9505d1115ff1dac66e0df76110423f))
+* **voice-chat:** add preparation timeout with auto-cancel and elapsed time ([#8862](https://github.com/vm0-ai/vm0/issues/8862)) ([f7ecffa](https://github.com/vm0-ai/vm0/commit/f7ecffa00c570e4ff05e6db007c6c1d8c60f73fa)), closes [#8848](https://github.com/vm0-ai/vm0/issues/8848)
+* **voice-chat:** add webrtc disconnect recovery with auto-reconnect ([#8861](https://github.com/vm0-ai/vm0/issues/8861)) ([d93cfc7](https://github.com/vm0-ai/vm0/commit/d93cfc7e4168467a15b835391fe1979340a6dfe2))
+
+
+### Bug Fixes
+
+* **voice-chat:** move prep event injection into dc open handler ([#8868](https://github.com/vm0-ai/vm0/issues/8868)) ([90a655c](https://github.com/vm0-ai/vm0/commit/90a655c89b2876cb773dfbdbfe95e089dd661bdb)), closes [#8867](https://github.com/vm0-ai/vm0/issues/8867)
+* **voice-chat:** wrap end-session in transaction and surface polling errors ([#8860](https://github.com/vm0-ai/vm0/issues/8860)) ([cd28f27](https://github.com/vm0-ai/vm0/commit/cd28f276104f0174b3c53fedbbe3f53605d73590))
+
 ## [0.212.0](https://github.com/vm0-ai/vm0/compare/app-v0.211.1...app-v0.212.0) (2026-04-10)
 
 

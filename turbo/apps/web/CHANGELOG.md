@@ -1,5 +1,14 @@
 # Changelog
 
+## [12.215.2](https://github.com/vm0-ai/vm0/compare/web-v12.215.1...web-v12.215.2) (2026-04-10)
+
+
+### Bug Fixes
+
+* **credit:** decouple proxy usage comparison from credit processing ([#8838](https://github.com/vm0-ai/vm0/issues/8838)) ([e86e4a7](https://github.com/vm0-ai/vm0/commit/e86e4a7c4140d7a0c0a18f8993b0638d693c8003))
+* **voice-chat:** wrap end-session in transaction and surface polling errors ([#8860](https://github.com/vm0-ai/vm0/issues/8860)) ([cd28f27](https://github.com/vm0-ai/vm0/commit/cd28f276104f0174b3c53fedbbe3f53605d73590))
+* **web:** remove benefit icons and fix blurry permission svg on mobile ([#8834](https://github.com/vm0-ai/vm0/issues/8834)) ([38b75b4](https://github.com/vm0-ai/vm0/commit/38b75b47f065c00d9686f985ee2fc908785cfbee))
+
 ## [12.215.1](https://github.com/vm0-ai/vm0/compare/web-v12.215.0...web-v12.215.1) (2026-04-10)
 
 
