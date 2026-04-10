@@ -502,6 +502,53 @@ profiles:
     }
 
     #[tokio::test]
+    async fn load_rejects_incomplete_image() {
+        let dir = tempfile::tempdir().unwrap();
+        let fc = dir.path().join("firecracker");
+        let kernel = dir.path().join("vmlinux");
+        for f in [&fc, &kernel] {
+            tokio::fs::write(f, b"").await.unwrap();
+        }
+
+        // Create image directory with only rootfs.ext4 (missing snapshot files).
+        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
+        let image = ImagePaths::new(&home, "abc");
+        tokio::fs::create_dir_all(image.dir()).await.unwrap();
+        tokio::fs::write(image.rootfs(), b"").await.unwrap();
+
+        let yaml = format!(
+            r#"
+name: test
+group: test/group
+base_dir: {base_dir}
+ca_dir: {ca_dir}
+firecracker:
+  binary: {fc}
+  kernel: {kernel}
+profiles:
+  vm0/default:
+    image_hash: abc
+    vcpu: 2
+    memory_mb: 4096
+    disk_mb: 16384
+"#,
+            base_dir = dir.path().display(),
+            ca_dir = dir.path().display(),
+            fc = fc.display(),
+            kernel = kernel.display(),
+        );
+
+        let config_path = dir.path().join("runner.yaml");
+        tokio::fs::write(&config_path, &yaml).await.unwrap();
+
+        let err = load_with_home(&config_path, &home).await.unwrap_err();
+        assert!(
+            err.to_string().contains("not found"),
+            "expected missing file error, got: {err}"
+        );
+    }
+
+    #[tokio::test]
     async fn load_rejects_invalid_concurrency_factor() {
         let dir = tempfile::tempdir().unwrap();
         let fc = dir.path().join("firecracker");
