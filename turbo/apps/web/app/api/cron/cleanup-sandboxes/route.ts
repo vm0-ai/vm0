@@ -20,6 +20,7 @@ import {
   dispatchQueuedZeroRun,
 } from "../../../../src/lib/zero/zero-run-queue-service";
 import { processOrgCredits } from "../../../../src/lib/zero/credit/credit-service";
+import { cleanupExpiredSlackEvents } from "../../../../src/lib/zero/slack-org/event-dedup";
 import { logger } from "../../../../src/lib/shared/logger";
 import { env } from "../../../../src/env";
 
@@ -36,6 +37,9 @@ const DEBUG_COMPOSE_PREFIX = "debug-";
 
 // Export job timeout: 10 minutes
 const EXPORT_JOB_TIMEOUT_MS = 10 * 60 * 1000;
+// Slack event dedup: 24 hours (events only need dedup for ~5 minutes,
+// but keeping 24h is a safe margin)
+const SLACK_EVENT_DEDUP_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Clean up expired export jobs (delete R2 objects) and fail stuck jobs.
@@ -277,6 +281,16 @@ const router = tsr.router(cronCleanupSandboxesContract, {
 
     // Export job cleanup
     const { exportJobsCleaned, exportJobsStuck } = await cleanupExportJobs(now);
+
+    // Slack event dedup cleanup
+    const slackEventsExpired = await cleanupExpiredSlackEvents(
+      SLACK_EVENT_DEDUP_MAX_AGE_MS,
+    );
+    if (slackEventsExpired > 0) {
+      log.debug(
+        `Cleaned up ${slackEventsExpired} expired Slack event dedup records`,
+      );
+    }
 
     return {
       status: 200 as const,

@@ -12,6 +12,7 @@ import {
   handleOrgMessagesTabOpened,
 } from "../../../../../src/lib/zero/slack-org/handlers/app-home";
 import { cleanupWorkspaceInstallation } from "../../../../../src/lib/zero/slack-org/connect-service";
+import { claimSlackEvent } from "../../../../../src/lib/zero/slack-org/event-dedup";
 import type { SlackFile } from "../../../../../src/lib/zero/slack/context";
 import { logger } from "../../../../../src/lib/shared/logger";
 
@@ -91,18 +92,23 @@ function handleEventCallback(payload: SlackEventCallback) {
   if (event.type === "app_mention") {
     initServices();
     after(
-      handleOrgMention({
-        workspaceId: payload.team_id,
-        channelId: event.channel,
-        channelType: event.channel_type,
-        userId: event.user,
-        messageText: event.text,
-        messageTs: event.ts,
-        threadTs: event.thread_ts,
-        files: event.files,
-      }).catch((error) => {
-        log.error("Error handling org app_mention", { error });
-      }),
+      claimSlackEvent(payload.event_id)
+        .then((claimed) => {
+          if (!claimed) return;
+          return handleOrgMention({
+            workspaceId: payload.team_id,
+            channelId: event.channel,
+            channelType: event.channel_type,
+            userId: event.user,
+            messageText: event.text,
+            messageTs: event.ts,
+            threadTs: event.thread_ts,
+            files: event.files,
+          });
+        })
+        .catch((error) => {
+          log.error("Error handling org app_mention", { error });
+        }),
     );
   }
 
@@ -114,17 +120,22 @@ function handleEventCallback(payload: SlackEventCallback) {
   ) {
     initServices();
     after(
-      handleOrgDirectMessage({
-        workspaceId: payload.team_id,
-        channelId: event.channel,
-        userId: event.user,
-        messageText: event.text,
-        files: event.files,
-        messageTs: event.ts,
-        threadTs: event.thread_ts,
-      }).catch((error) => {
-        log.error("Error handling org direct_message", { error });
-      }),
+      claimSlackEvent(payload.event_id)
+        .then((claimed) => {
+          if (!claimed) return;
+          return handleOrgDirectMessage({
+            workspaceId: payload.team_id,
+            channelId: event.channel,
+            userId: event.user,
+            messageText: event.text,
+            files: event.files,
+            messageTs: event.ts,
+            threadTs: event.thread_ts,
+          });
+        })
+        .catch((error) => {
+          log.error("Error handling org direct_message", { error });
+        }),
     );
   }
 

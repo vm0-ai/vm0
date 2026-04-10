@@ -1,5 +1,5 @@
 import { createHmac } from "crypto";
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   testContext,
   uniqueId,
@@ -714,6 +714,161 @@ describe("POST /api/zero/slack/events", () => {
       const { WebClient } = await import("@slack/web-api");
       const mockClient = new WebClient();
       expect(mockClient.chat.postMessage).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe("event_id deduplication", () => {
+    it("skips processing when the same event_id is delivered twice (DM)", async () => {
+      const workspaceId = uniqueId("T-ws");
+      const slackUserId = uniqueId("U-slack");
+
+      await createTestSlackOrgInstallation({
+        workspaceId,
+        orgId: user.orgId,
+      });
+      await seedTestSlackOrgConnection({
+        slackUserId,
+        slackWorkspaceId: workspaceId,
+        vm0UserId: user.userId,
+      });
+      const { agentId } = await seedTestCompose({
+        userId: user.userId,
+        name: uniqueId("agent"),
+        orgId: user.orgId,
+      });
+      await updateOrgDefaultAgent(user.orgId, agentId);
+
+      const sharedEventId = uniqueId("evt");
+
+      // First delivery — should be processed
+      const request1 = createSlackEventRequest({
+        type: "event_callback",
+        team_id: workspaceId,
+        event: {
+          type: "message",
+          channel_type: "im",
+          user: slackUserId,
+          text: "Hello agent",
+          ts: "3000.001",
+          channel: "D-dedup",
+          event_ts: "3000.001",
+        },
+        event_id: sharedEventId,
+        event_time: Date.now(),
+      });
+
+      const response1 = await POST(request1);
+      expect(response1.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      const { WebClient } = await import("@slack/web-api");
+      const mockClient = new WebClient();
+      // First delivery triggers assistant status
+      const statusCallCount = (
+        mockClient.assistant.threads.setStatus as ReturnType<typeof vi.fn>
+      ).mock.calls.length;
+      expect(statusCallCount).toBeGreaterThan(0);
+
+      // Reset mock call counts
+      vi.mocked(mockClient.assistant.threads.setStatus).mockClear();
+
+      // Second delivery (retry) with same event_id — should be skipped
+      const request2 = createSlackEventRequest({
+        type: "event_callback",
+        team_id: workspaceId,
+        event: {
+          type: "message",
+          channel_type: "im",
+          user: slackUserId,
+          text: "Hello agent",
+          ts: "3000.001",
+          channel: "D-dedup",
+          event_ts: "3000.001",
+        },
+        event_id: sharedEventId,
+        event_time: Date.now(),
+      });
+
+      const response2 = await POST(request2);
+      expect(response2.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      // Second delivery should NOT trigger any processing
+      expect(mockClient.assistant.threads.setStatus).not.toHaveBeenCalled();
+    });
+
+    it("skips processing when the same event_id is delivered twice (mention)", async () => {
+      const workspaceId = uniqueId("T-ws");
+      const slackUserId = uniqueId("U-slack");
+
+      await createTestSlackOrgInstallation({
+        workspaceId,
+        orgId: user.orgId,
+      });
+      await seedTestSlackOrgConnection({
+        slackUserId,
+        slackWorkspaceId: workspaceId,
+        vm0UserId: user.userId,
+      });
+      const { agentId } = await seedTestCompose({
+        userId: user.userId,
+        name: uniqueId("agent"),
+        orgId: user.orgId,
+      });
+      await updateOrgDefaultAgent(user.orgId, agentId);
+
+      const sharedEventId = uniqueId("evt");
+
+      // First delivery — should be processed
+      const request1 = createSlackEventRequest({
+        type: "event_callback",
+        team_id: workspaceId,
+        event: {
+          type: "app_mention",
+          user: slackUserId,
+          text: "<@U-bot> Hello",
+          ts: "3000.002",
+          channel: "C-dedup",
+          event_ts: "3000.002",
+        },
+        event_id: sharedEventId,
+        event_time: Date.now(),
+      });
+
+      const response1 = await POST(request1);
+      expect(response1.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      const { WebClient } = await import("@slack/web-api");
+      const mockClient = new WebClient();
+      const statusCallCount = (
+        mockClient.assistant.threads.setStatus as ReturnType<typeof vi.fn>
+      ).mock.calls.length;
+      expect(statusCallCount).toBeGreaterThan(0);
+
+      vi.mocked(mockClient.assistant.threads.setStatus).mockClear();
+
+      // Second delivery (retry) with same event_id — should be skipped
+      const request2 = createSlackEventRequest({
+        type: "event_callback",
+        team_id: workspaceId,
+        event: {
+          type: "app_mention",
+          user: slackUserId,
+          text: "<@U-bot> Hello",
+          ts: "3000.002",
+          channel: "C-dedup",
+          event_ts: "3000.002",
+        },
+        event_id: sharedEventId,
+        event_time: Date.now(),
+      });
+
+      const response2 = await POST(request2);
+      expect(response2.status).toBe(200);
+      await context.mocks.flushAfter();
+
+      expect(mockClient.assistant.threads.setStatus).not.toHaveBeenCalled();
     });
   });
 
