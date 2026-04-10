@@ -196,7 +196,7 @@ const runContextResponseSchema = z.object({
   vars: z.record(z.string(), z.string()).nullable(),
   environment: z.record(z.string(), z.string()),
   firewalls: z.array(runContextFirewallSchema),
-  networkPolicies: networkPoliciesSchema.nullable().optional(),
+  networkPolicies: networkPoliciesSchema.nullable(),
   volumes: z.array(runContextVolumeSchema),
   artifact: runContextArtifactSchema.nullable(),
   memory: runContextArtifactSchema.nullable(),

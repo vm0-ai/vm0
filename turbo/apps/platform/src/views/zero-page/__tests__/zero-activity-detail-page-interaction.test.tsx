@@ -189,6 +189,7 @@ describe("zeroActivityDetailPageInteraction", () => {
       volumes: [],
       artifact: null,
       memory: null,
+      networkPolicies: null,
       featureFlags: null,
     };
 

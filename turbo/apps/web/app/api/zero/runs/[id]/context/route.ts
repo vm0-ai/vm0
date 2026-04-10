@@ -58,11 +58,11 @@ const router = tsr.router(zeroRunContextContract, {
         vars: (run.vars as Record<string, string> | undefined) ?? null,
         environment: snapshot.environment,
         firewalls: snapshot.firewalls,
-        networkPolicies: snapshot.networkPolicies,
+        networkPolicies: snapshot.networkPolicies ?? null,
         volumes: snapshot.volumes,
         artifact: snapshot.artifact,
         memory: snapshot.memory,
-        featureFlags: snapshot.featureFlags ?? null,
+        featureFlags: snapshot.featureFlags,
       },
     };
   },
