@@ -5,7 +5,10 @@ import {
 } from "../../../db/schema/voice-chat";
 import { createZeroRun } from "../zero-run-service";
 import { cancelRun } from "../zero-run-cancel";
-import { buildVoiceChatSlowBrainPrompt } from "../integration-prompt";
+import {
+  buildVoiceChatSlowBrainPrompt,
+  buildVoiceChatMeetingPrompt,
+} from "../integration-prompt";
 import { conflict, notFound, badRequest, forbidden } from "../../shared/errors";
 import { logger } from "../../shared/logger";
 
@@ -139,19 +142,39 @@ export async function dispatchSlowBrain(
   orgId: string,
   userId: string,
   agentId: string,
+  options?: { mode?: "chat" | "meeting"; prompt?: string },
 ) {
-  const appendSystemPrompt = buildVoiceChatSlowBrainPrompt(session.id);
+  const db = globalThis.services.db;
+  const meetingPrompt =
+    options?.mode === "meeting" ? options.prompt : undefined;
+
+  const appendSystemPrompt = meetingPrompt
+    ? buildVoiceChatMeetingPrompt(session.id, meetingPrompt)
+    : buildVoiceChatSlowBrainPrompt(session.id);
+
+  const prompt = meetingPrompt
+    ? `You are Zero's slow-brain for voice-chat session ${session.id}. A meeting has been requested. Read the shared context for the meeting prompt and begin preparation.`
+    : `You are Zero's slow-brain for voice-chat session ${session.id}. Start by reading the shared context to observe the conversation.`;
+
+  // Write meeting-prompt event before session-start (meeting mode only)
+  if (meetingPrompt) {
+    await db.insert(voiceChatEvents).values({
+      sessionId: session.id,
+      source: "user",
+      type: "meeting-prompt",
+      content: meetingPrompt,
+    });
+  }
 
   const result = await createZeroRun({
     userId,
     agentId,
-    prompt: `You are Zero's slow-brain for voice-chat session ${session.id}. Start by reading the shared context to observe the conversation.`,
+    prompt,
     appendSystemPrompt,
     triggerSource: "voice-chat",
   });
 
   // Update session with runId
-  const db = globalThis.services.db;
   await db
     .update(voiceChatSessions)
     .set({ runId: result.runId })

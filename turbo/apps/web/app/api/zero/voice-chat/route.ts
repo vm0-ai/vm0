@@ -76,7 +76,10 @@ export async function POST(request: Request) {
       mode,
       prompt,
     });
-    const run = await dispatchSlowBrain(session, org.orgId, userId, agentId);
+    const run = await dispatchSlowBrain(session, org.orgId, userId, agentId, {
+      mode,
+      prompt,
+    });
 
     return NextResponse.json({
       session: {

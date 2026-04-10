@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   buildIntegrationPrompt,
   buildVoiceChatSlowBrainPrompt,
+  buildVoiceChatMeetingPrompt,
   buildSlackPrompt,
   buildPhonePrompt,
   buildTelegramPrompt,
@@ -95,6 +96,53 @@ describe("buildVoiceChatSlowBrainPrompt", () => {
     expect(result).toContain("context get session-456");
     expect(result).toContain("context append session-456");
     expect(result).not.toContain("<SESSION_ID>");
+  });
+});
+
+describe("buildVoiceChatMeetingPrompt", () => {
+  it("should combine integration header with meeting preparation prompt", () => {
+    const result = buildVoiceChatMeetingPrompt("session-789", "Review PR #123");
+
+    expect(result).toContain("You are currently running inside: Voice-Chat");
+    expect(result).toContain("# Zero — Slow-Brain Meeting Preparation Mode");
+  });
+
+  it("should replace session ID placeholder", () => {
+    const result = buildVoiceChatMeetingPrompt("session-789", "Review PR #123");
+
+    expect(result).toContain("context get session-789");
+    expect(result).toContain("context append session-789");
+    expect(result).not.toContain("<SESSION_ID>");
+  });
+
+  it("should replace meeting prompt placeholder", () => {
+    const result = buildVoiceChatMeetingPrompt(
+      "session-789",
+      "Review PR #123 before standup",
+    );
+
+    expect(result).toContain("Review PR #123 before standup");
+    expect(result).not.toContain("<MEETING_PROMPT>");
+  });
+
+  it("should contain preparation-ready instruction", () => {
+    const result = buildVoiceChatMeetingPrompt("session-789", "Review PR #123");
+
+    expect(result).toContain("preparation-ready");
+  });
+
+  it("should contain thinking event instruction", () => {
+    const result = buildVoiceChatMeetingPrompt("session-789", "Review PR #123");
+
+    expect(result).toContain("thinking");
+    expect(result).toContain("directive");
+  });
+
+  it("should contain observation mode instructions for after preparation", () => {
+    const result = buildVoiceChatMeetingPrompt("session-789", "Review PR #123");
+
+    expect(result).toContain("Phase 2: Live Observation");
+    expect(result).toContain("session-end");
   });
 });
 

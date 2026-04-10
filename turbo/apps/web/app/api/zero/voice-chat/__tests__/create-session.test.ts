@@ -138,14 +138,15 @@ describe("POST /api/zero/voice-chat (create session)", () => {
     expect(ctxBody.events[0].type).toBe("session-start");
   });
 
-  it("should create meeting session with preparing status", async () => {
+  it("should create meeting session with preparing status and meeting-prompt event", async () => {
     const { agentId } = await createTestCompose(uniqueId("vc-meeting"));
+    const meetingPrompt = "Review PR #123 before standup";
 
     const response = await POST(
       createRequest({
         agentId,
         mode: "meeting",
-        prompt: "Review PR #123 before standup",
+        prompt: meetingPrompt,
       }),
     );
     const body = await response.json();
@@ -154,6 +155,19 @@ describe("POST /api/zero/voice-chat (create session)", () => {
     expect(body.session.status).toBe("preparing");
     expect(body.session.mode).toBe("meeting");
     expect(body.session.runId).toBeDefined();
+
+    // Verify meeting-prompt event was written before session-start
+    const ctxResponse = await getContext(
+      contextRequest(body.session.id),
+      paramsFor(body.session.id),
+    );
+    const ctxBody = await ctxResponse.json();
+    expect(ctxBody.events).toHaveLength(2);
+    expect(ctxBody.events[0].source).toBe("user");
+    expect(ctxBody.events[0].type).toBe("meeting-prompt");
+    expect(ctxBody.events[0].content).toBe(meetingPrompt);
+    expect(ctxBody.events[1].source).toBe("system");
+    expect(ctxBody.events[1].type).toBe("session-start");
   });
 
   it("should return 400 when meeting mode has no prompt", async () => {
