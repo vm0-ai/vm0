@@ -112,6 +112,7 @@ import { generate as generateSlackWebhook } from "./slack-webhook";
 import { generate as generateSpotify } from "./spotify";
 import { generate as generateStrava } from "./strava";
 import { generate as generateStreak } from "./streak";
+import { generate as generateStrapi } from "./strapi";
 import { generate as generateStripe } from "./stripe";
 import { generate as generateSupabase } from "./supabase";
 import { generate as generateSupadata } from "./supadata";
@@ -238,6 +239,7 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   "slack-webhook": generateSlackWebhook,
   spotify: generateSpotify,
   strava: generateStrava,
+  strapi: generateStrapi,
   streak: generateStreak,
   stripe: generateStripe,
   supabase: generateSupabase,

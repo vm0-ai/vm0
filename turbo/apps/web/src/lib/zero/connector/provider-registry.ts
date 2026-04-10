@@ -90,6 +90,7 @@ import { serpapiHandler } from "./providers/serpapi-handler";
 import { runwayHandler } from "./providers/runway-handler";
 import { salesforceHandler } from "./providers/salesforce-handler";
 import { shortioHandler } from "./providers/shortio-handler";
+import { strapiHandler } from "./providers/strapi-handler";
 import { streakHandler } from "./providers/streak-handler";
 import { supadataHandler } from "./providers/supadata-handler";
 import { tavilyHandler } from "./providers/tavily-handler";
@@ -232,6 +233,7 @@ export const PROVIDER_HANDLERS: Record<
   "intervals-icu": intervalsIcuHandler,
   sentry: sentryHandler,
   slack: slackHandler,
+  strapi: strapiHandler,
   strava: stravaHandler,
   stripe: stripeHandler,
   todoist: todoistHandler,

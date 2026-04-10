@@ -138,6 +138,7 @@ import { slackFirewall } from "./slack.generated";
 import { slackWebhookFirewall } from "./slack-webhook.generated";
 import { spotifyFirewall } from "./spotify.generated";
 import { stravaFirewall } from "./strava.generated";
+import { strapiFirewall } from "./strapi.generated";
 import { streakFirewall } from "./streak.generated";
 import { stripeFirewall } from "./stripe.generated";
 import { supabaseFirewall } from "./supabase.generated";
@@ -270,6 +271,7 @@ const CONNECTOR_FIREWALLS = {
   "slack-webhook": slackWebhookFirewall,
   spotify: spotifyFirewall,
   strava: stravaFirewall,
+  strapi: strapiFirewall,
   streak: streakFirewall,
   stripe: stripeFirewall,
   supabase: supabaseFirewall,
