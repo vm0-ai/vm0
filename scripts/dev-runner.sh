@@ -86,10 +86,10 @@ cmd_deploy() {
   log "Running setup..."
   ssh_cmd "$RUNNER_BIN setup"
 
-  # Clean up old rootfs/snapshots (keep 3 most recent deploys)
+  # Clean up old images (keep 3 most recent deploys)
   ssh_cmd "$RUNNER_BIN gc --keep-latest 3"
 
-  # Build rootfs + snapshot
+  # Build unified image (rootfs + snapshot)
   PROFILES=("vm0/default")
   CONFIG_ARGS=""
 
@@ -97,17 +97,16 @@ cmd_deploy() {
     log "Building $PROFILE..."
     BUILD_LOG=$(mktemp)
     ssh_cmd "$RUNNER_BIN build --profile $PROFILE" | tee "$BUILD_LOG"
-    ROOTFS_HASH=$(grep '^rootfs_hash=' "$BUILD_LOG" | cut -d= -f2)
-    SNAPSHOT_HASH=$(grep '^snapshot_hash=' "$BUILD_LOG" | cut -d= -f2)
+    IMAGE_HASH=$(grep '^image_hash=' "$BUILD_LOG" | cut -d= -f2)
     rm -f "$BUILD_LOG"
 
-    if [[ -z "$ROOTFS_HASH" || -z "$SNAPSHOT_HASH" ]]; then
-      log "Error: failed to extract build hashes for $PROFILE"
+    if [[ -z "$IMAGE_HASH" ]]; then
+      log "Error: failed to extract image hash for $PROFILE"
       exit 1
     fi
-    log "$PROFILE: rootfs=$ROOTFS_HASH snapshot=$SNAPSHOT_HASH"
+    log "$PROFILE: image=$IMAGE_HASH"
 
-    CONFIG_ARGS+=" --profile $PROFILE --rootfs-hash $ROOTFS_HASH --snapshot-hash $SNAPSHOT_HASH"
+    CONFIG_ARGS+=" --profile $PROFILE --image-hash $IMAGE_HASH"
   done
 
   # Generate config
