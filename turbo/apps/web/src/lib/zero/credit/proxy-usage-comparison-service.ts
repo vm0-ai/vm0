@@ -2,7 +2,6 @@ import { eq, and, inArray, sum, lte, gte } from "drizzle-orm";
 import { creditUsage } from "../../../db/schema/credit-usage";
 import { proxyCreditUsage } from "../../../db/schema/proxy-credit-usage";
 import { agentRuns } from "../../../db/schema/agent-run";
-import { initServices } from "../../init-services";
 import { logger } from "../../shared/logger";
 
 const log = logger("service:proxy-usage-comparison");
@@ -18,7 +17,6 @@ const log = logger("service:proxy-usage-comparison");
  * consecutive runs cover adjacent, non-overlapping windows.
  */
 export async function compareRecentRunsProxyUsage(): Promise<void> {
-  initServices();
   const db = globalThis.services.db;
   const now = Date.now();
   const windowStart = new Date(now - 330_000); // 5m30s ago (oldest)
