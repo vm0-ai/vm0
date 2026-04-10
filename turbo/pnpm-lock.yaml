@@ -23,6 +23,7 @@ overrides:
   yaml: '>=2.8.3'
   smol-toml: '>=1.6.1'
   '@opentelemetry/instrumentation': '>=0.213.0'
+  zod: 4.3.6
 
 importers:
 
@@ -135,7 +136,7 @@ importers:
         specifier: '>=2.8.3'
         version: 2.8.3
       zod:
-        specifier: ^4.3.6
+        specifier: 4.3.6
         version: 4.3.6
 
   apps/platform:
@@ -418,7 +419,7 @@ importers:
         specifier: ^3.6.7
         version: 3.6.7
       zod:
-        specifier: ^4.3.6
+        specifier: 4.3.6
         version: 4.3.6
     devDependencies:
       '@tailwindcss/postcss':
@@ -512,7 +513,7 @@ importers:
         specifier: '>=2.8.3'
         version: 2.8.3
       zod:
-        specifier: ^4.3.6
+        specifier: 4.3.6
         version: 4.3.6
     devDependencies:
       '@vm0/eslint-config':
@@ -3908,7 +3909,7 @@ packages:
       arktype: ^2.1.0
       typescript: '>=5.0.0'
       valibot: ^1.0.0-beta.7 || ^1.0.0
-      zod: ^3.24.0 || ^4.0.0
+      zod: 4.3.6
     peerDependenciesMeta:
       arktype:
         optional: true
@@ -3925,7 +3926,7 @@ packages:
       arktype: ^2.1.0
       typescript: '>=5.0.0'
       valibot: ^1.0.0-beta.7 || ^1.0.0
-      zod: ^3.24.0 || ^4.0.0
+      zod: 4.3.6
     peerDependenciesMeta:
       arktype:
         optional: true
@@ -4590,7 +4591,7 @@ packages:
     resolution: {integrity: sha512-Ofer5QUnuUdTFsBRwARMoWKOH1ND5ehwYhJ3OJ/BQO+StkwQjHw0XyVh4vDttzHB7QOFhPHa/o413PJ82gU/Tg==}
     peerDependencies:
       typescript: '>=5.0.4'
-      zod: ^3.22.0 || ^4.0.0
+      zod: 4.3.6
     peerDependenciesMeta:
       typescript:
         optional: true
@@ -8261,10 +8262,7 @@ packages:
     resolution: {integrity: sha512-Q6/nZLe6jxuU80qb/4uJ4t5v2VEZ44lzQjPDhYJNztRQ4wyWc6VF3D3Kb/fAuPetZQnhS3hnajCf9CsWesghLQ==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
-      zod: ^3.25.0 || ^4.0.0
-
-  zod@3.22.4:
-    resolution: {integrity: sha512-iC+8Io04lddc+mVqQ9AZ7OQ2MrUKGN+oIQyq1vemgt46jwCwLfhq7/pwnBnNXXXZb8VTVLKwp9EDkx+ryxIWmg==}
+      zod: 4.3.6
 
   zod@4.3.6:
     resolution: {integrity: sha512-rftlrkhHZOcjDwkGlnUtZZkvaPHCsDATp4pGpuOOMDaTdDDXF91wuVDJoWoPsKX/3YPQ5fHuF3STjcYyKr+Qhg==}
@@ -11892,7 +11890,7 @@ snapshots:
       ajv-formats: 2.1.1
       graphql: 16.13.2
       lodash.get: 4.4.2
-      zod: 3.22.4
+      zod: 4.3.6
 
   '@testing-library/dom@10.4.1':
     dependencies:
@@ -16755,8 +16753,6 @@ snapshots:
   zod-validation-error@4.0.2(zod@4.3.6):
     dependencies:
       zod: 4.3.6
-
-  zod@3.22.4: {}
 
   zod@4.3.6: {}
 

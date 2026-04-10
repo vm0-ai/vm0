@@ -30,9 +30,9 @@ export const ROUTES = {
   insights: "/insights",
   internalConnectorLogos: "/__internal-connector-logos",
   reportError: "/runs/:runId/report-error",
+  missionControl: "/_/mission-control",
   skeleton: "/_/skeleton",
   error: "/_/error",
-  missionControl: "/_/mission-control",
 } as const;
 
 export type RouteKey = keyof typeof ROUTES;
