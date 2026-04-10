@@ -7,6 +7,7 @@ import {
   IconMicrophoneOff,
   IconPhoneOff,
   IconLoader2,
+  IconRefresh,
 } from "@tabler/icons-react";
 import { defaultAgentName$ } from "../../signals/agent.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -21,11 +22,13 @@ import {
   vcAgentId$,
   vcPrompt$,
   vcPrepElapsedMs$,
+  vcReconnectAttempt$,
   vcMeetingPromptInput$,
   setMeetingPromptInput$,
   startVoiceChat$,
   startVoiceMeeting$,
   endVoiceChat$,
+  retryVoiceChat$,
   toggleVoiceChatMute$,
 } from "../../signals/voice-chat/voice-chat-session.ts";
 import {
@@ -42,15 +45,23 @@ type ConnectionStatus =
   | "preparing"
   | "connecting"
   | "connected"
+  | "reconnecting"
   | "disconnected"
   | "error";
 
-function StatusBadge({ status }: { status: ConnectionStatus }) {
+function StatusBadge({
+  status,
+  reconnectAttempt,
+}: {
+  status: ConnectionStatus;
+  reconnectAttempt?: number;
+}) {
   const label: Record<ConnectionStatus, string> = {
     idle: "Ready",
     preparing: "Preparing...",
     connecting: "Connecting...",
     connected: "Connected",
+    reconnecting: "Reconnecting...",
     disconnected: "Disconnected",
     error: "Error",
   };
@@ -61,9 +72,15 @@ function StatusBadge({ status }: { status: ConnectionStatus }) {
       "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
     connected:
       "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
+    reconnecting:
+      "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200",
     disconnected: "bg-muted text-muted-foreground",
     error: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
   };
+  const displayLabel =
+    status === "reconnecting" && reconnectAttempt
+      ? `Reconnecting (${reconnectAttempt}/5)...`
+      : label[status];
   return (
     <span
       className={cn(
@@ -71,13 +88,15 @@ function StatusBadge({ status }: { status: ConnectionStatus }) {
         color[status],
       )}
     >
-      {(status === "connecting" || status === "preparing") && (
+      {(status === "connecting" ||
+        status === "preparing" ||
+        status === "reconnecting") && (
         <IconLoader2 size={12} className="animate-spin" />
       )}
       {status === "connected" && (
         <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
       )}
-      {label[status]}
+      {displayLabel}
     </span>
   );
 }
@@ -95,6 +114,8 @@ export function VoiceChatPage() {
   const startMeeting = useSet(startVoiceMeeting$);
   const endSession = useSet(endVoiceChat$);
   const toggleMute = useSet(toggleVoiceChatMute$);
+  const reconnectAttempt = useGet(vcReconnectAttempt$);
+  const retrySession = useSet(retryVoiceChat$);
   const prompt = useGet(vcPrompt$);
   const prepElapsedMs = useGet(vcPrepElapsedMs$);
   const meetingPrompt = useGet(vcMeetingPromptInput$);
@@ -255,7 +276,7 @@ export function VoiceChatPage() {
       <div className="flex items-center justify-between border-b px-4 py-3">
         <div className="flex items-center gap-3">
           <h1 className="text-lg font-semibold">Voice Chat</h1>
-          <StatusBadge status={status} />
+          <StatusBadge status={status} reconnectAttempt={reconnectAttempt} />
         </div>
         <Button
           variant="destructive"
@@ -263,7 +284,6 @@ export function VoiceChatPage() {
           onClick={() => {
             endSession();
           }}
-          disabled={status === "disconnected"}
         >
           <IconPhoneOff size={16} className="mr-1.5" />
           End Session
@@ -373,6 +393,18 @@ export function VoiceChatPage() {
             <IconMicrophone size={20} />
           )}
         </Button>
+        {status === "disconnected" && (
+          <Button
+            variant="secondary"
+            size="icon"
+            className="h-12 w-12 rounded-full"
+            onClick={() => {
+              detach(retrySession(pageSignal), Reason.DomCallback);
+            }}
+          >
+            <IconRefresh size={20} />
+          </Button>
+        )}
         <Button
           variant="destructive"
           size="icon"
@@ -380,7 +412,6 @@ export function VoiceChatPage() {
           onClick={() => {
             endSession();
           }}
-          disabled={status === "disconnected"}
         >
           <IconPhoneOff size={20} />
         </Button>
