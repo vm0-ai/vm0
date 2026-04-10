@@ -82,4 +82,56 @@ describe("getAllFeatureStates", () => {
     });
     expect(states[FeatureSwitchKey.Lab]).toBe(false);
   });
+
+  it("should apply overrides to enable disabled features", () => {
+    const states = getAllFeatureStates({
+      overrides: { [FeatureSwitchKey.AhrefsConnector]: true },
+    });
+    expect(states[FeatureSwitchKey.AhrefsConnector]).toBe(true);
+    // Non-overridden disabled feature stays false
+    expect(states[FeatureSwitchKey.Secrets]).toBe(false);
+  });
+
+  it("should apply overrides to disable enabled features", () => {
+    const states = getAllFeatureStates({
+      overrides: { [FeatureSwitchKey.Dummy]: false },
+    });
+    expect(states[FeatureSwitchKey.Dummy]).toBe(false);
+    // Other enabled features stay true
+    expect(states[FeatureSwitchKey.Pricing]).toBe(true);
+  });
+});
+
+describe("overrides", () => {
+  it("should enable a disabled feature when override is true", () => {
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.AhrefsConnector, {
+        overrides: { [FeatureSwitchKey.AhrefsConnector]: true },
+      }),
+    ).toBe(true);
+  });
+
+  it("should disable an enabled feature when override is false", () => {
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.Dummy, {
+        overrides: { [FeatureSwitchKey.Dummy]: false },
+      }),
+    ).toBe(false);
+  });
+
+  it("should not affect keys without overrides", () => {
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.Secrets, {
+        overrides: { [FeatureSwitchKey.AhrefsConnector]: true },
+      }),
+    ).toBe(false);
+  });
+
+  it("should behave identically when no overrides provided", () => {
+    expect(isFeatureEnabled(FeatureSwitchKey.Dummy)).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.AhrefsConnector)).toBe(false);
+    expect(
+      isFeatureEnabled(FeatureSwitchKey.Dummy, { userId: "any-user" }),
+    ).toBe(true);
+  });
 });

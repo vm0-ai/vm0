@@ -55,6 +55,7 @@ import * as insightsDailySchema from "./schema/insights-daily";
 import * as phoneUserLinkSchema from "./schema/phone-user-link";
 import * as phoneThreadSessionSchema from "./schema/phone-thread-session";
 import * as voiceChatSchema from "./schema/voice-chat";
+import * as userFeatureSwitchesSchema from "./schema/user-feature-switches";
 
 export const schema = {
   ...userSchema,
@@ -114,4 +115,5 @@ export const schema = {
   ...phoneUserLinkSchema,
   ...phoneThreadSessionSchema,
   ...voiceChatSchema,
+  ...userFeatureSwitchesSchema,
 };

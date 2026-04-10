@@ -452,6 +452,12 @@ export {
   type SendMode,
 } from "./zero-user-preferences";
 export {
+  featureSwitchesResponseSchema,
+  updateFeatureSwitchesRequestSchema,
+  type FeatureSwitchesResponse,
+  type UpdateFeatureSwitchesRequest,
+} from "./zero-feature-switches";
+export {
   orgListItemSchema,
   orgListResponseSchema,
   type OrgListItem,
@@ -658,6 +664,10 @@ export {
   zeroUserPreferencesContract,
   type ZeroUserPreferencesContract,
 } from "./zero-user-preferences";
+export {
+  zeroFeatureSwitchesContract,
+  type ZeroFeatureSwitchesContract,
+} from "./zero-feature-switches";
 export {
   zeroSecretsContract,
   zeroSecretsByNameContract,

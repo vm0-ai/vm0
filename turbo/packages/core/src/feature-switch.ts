@@ -19,6 +19,7 @@ export interface FeatureSwitchContext {
   readonly userId?: string;
   readonly email?: string;
   readonly orgId?: string;
+  readonly overrides?: Partial<Record<FeatureSwitchKey, boolean>>;
 }
 
 /**
@@ -279,6 +280,15 @@ export function getAllFeatureStates(
   for (const key of Object.values(FeatureSwitchKey)) {
     result[key] = evaluateSwitch(FEATURE_SWITCHES[key], hashes);
   }
+
+  if (ctx?.overrides) {
+    for (const [key, value] of Object.entries(ctx.overrides)) {
+      if (value !== undefined) {
+        result[key as FeatureSwitchKey] = value;
+      }
+    }
+  }
+
   return result;
 }
 
@@ -289,6 +299,11 @@ export function isFeatureEnabled(
   key: FeatureSwitchKey,
   ctx?: FeatureSwitchContext,
 ): boolean {
+  const override = ctx?.overrides?.[key];
+  if (override !== undefined) {
+    return override;
+  }
+
   const featureSwitch = FEATURE_SWITCHES[key];
   if (featureSwitch.enabled) {
     return true;
