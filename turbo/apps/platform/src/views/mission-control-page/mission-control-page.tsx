@@ -10,39 +10,46 @@ import type { TaskItem, TaskType } from "@vm0/core";
 import {
   tasks$,
   selectedTaskIndex$,
-  navigateToSelectedTask$,
+  navigateToTask$,
 } from "../../signals/mission-control-page/mission-control.ts";
 import { StatusBadge } from "../zero-page/components/log-views/status-badge.tsx";
 import { AgentAvatarImg } from "../zero-page/zero-sidebar-shared.tsx";
-import { pageSignal$ } from "../../signals/page-signal.ts";
-import { detach, Reason } from "../../signals/utils.ts";
 
-function getTaskTypeConfig(): Record<
-  TaskType,
-  { label: string; icon: typeof IconMessageCircle; iconClassName: string }
-> {
-  return {
-    chat: {
-      label: "Chat",
-      icon: IconMessageCircle,
-      iconClassName: "text-sky-500",
-    },
-    schedule: {
-      label: "Schedule",
-      icon: IconCalendar,
-      iconClassName: "text-violet-500",
-    },
-    slack: {
-      label: "Slack",
-      icon: IconBrandSlack,
-      iconClassName: "text-emerald-500",
-    },
-    email: {
-      label: "Email",
-      icon: IconMail,
-      iconClassName: "text-amber-500",
-    },
-  };
+function getTaskTypeConfig(type: TaskType): {
+  label: string;
+  icon: typeof IconMessageCircle;
+  iconClassName: string;
+} {
+  switch (type) {
+    case "chat": {
+      return {
+        label: "Chat",
+        icon: IconMessageCircle,
+        iconClassName: "text-sky-500",
+      };
+    }
+    case "schedule": {
+      return {
+        label: "Schedule",
+        icon: IconCalendar,
+        iconClassName: "text-violet-500",
+      };
+    }
+    case "slack": {
+      return {
+        label: "Slack",
+        icon: IconBrandSlack,
+        iconClassName: "text-emerald-500",
+      };
+    }
+    case "email": {
+      return {
+        label: "Email",
+        icon: IconMail,
+        iconClassName: "text-amber-500",
+      };
+    }
+  }
 }
 
 export function MissionControlPage() {
@@ -129,14 +136,13 @@ function TaskCard({
   task: TaskItem;
   isSelected: boolean;
 }) {
-  const navigateToTask = useSet(navigateToSelectedTask$);
-  const pageSignal = useGet(pageSignal$);
+  const navigate = useSet(navigateToTask$);
 
   const onClick = () => {
-    detach(navigateToTask(pageSignal), Reason.DomCallback);
+    navigate(task);
   };
 
-  const config = getTaskTypeConfig()[task.type];
+  const config = getTaskTypeConfig(task.type);
   const TypeIcon = config.icon;
 
   return (

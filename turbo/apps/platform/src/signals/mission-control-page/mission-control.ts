@@ -1,6 +1,6 @@
 import { command, computed, state } from "ccstate";
+import { tasksContract, type TaskItem } from "@vm0/core";
 import { zeroClient$ } from "../api-client";
-import { tasksContract } from "@vm0/core";
 import { accept } from "../../lib/accept";
 import { detachedNavigateTo$ } from "../route.ts";
 import { onDomEventFn, setLoop } from "../utils.ts";
@@ -43,7 +43,30 @@ const selectNextTask$ = command(async ({ get, set }, signal: AbortSignal) => {
   });
 });
 
-export const navigateToSelectedTask$ = command(
+export const navigateToTask$ = command(({ set }, task: TaskItem) => {
+  switch (task.type) {
+    case "chat": {
+      if (task.chatThreadId) {
+        set(detachedNavigateTo$, "/chats/:threadId", {
+          pathParams: { threadId: task.chatThreadId },
+        });
+      }
+      break;
+    }
+    case "email":
+    case "schedule":
+    case "slack": {
+      if (task.latestRunId) {
+        set(detachedNavigateTo$, "/activities/:runId", {
+          pathParams: { runId: task.latestRunId },
+        });
+      }
+      break;
+    }
+  }
+});
+
+const navigateToSelectedTask$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const tasks = await get(tasks$);
     signal.throwIfAborted();
@@ -54,26 +77,7 @@ export const navigateToSelectedTask$ = command(
       return;
     }
 
-    switch (task.type) {
-      case "chat": {
-        if (task.chatThreadId) {
-          set(detachedNavigateTo$, "/chats/:threadId", {
-            pathParams: { threadId: task.chatThreadId },
-          });
-        }
-        break;
-      }
-      case "email":
-      case "schedule":
-      case "slack": {
-        if (task.latestRunId) {
-          set(detachedNavigateTo$, "/activities/:runId", {
-            pathParams: { runId: task.latestRunId },
-          });
-        }
-        break;
-      }
-    }
+    set(navigateToTask$, task);
   },
 );
 
@@ -82,8 +86,15 @@ export const setupMissionControlKeyboard$ = command(
     document.addEventListener(
       "keydown",
       onDomEventFn(async (e: KeyboardEvent) => {
-        const target = e.target as HTMLElement;
-        if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") {
+        const target = e.target;
+        if (!(target instanceof HTMLElement)) {
+          return;
+        }
+        if (
+          target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable
+        ) {
           return;
         }
 
