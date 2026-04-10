@@ -247,14 +247,14 @@ describe("GET /api/zero/tasks", () => {
 
     expect(response.status).toBe(200);
     expect(
-      data.tasks.some(
-        (t: Record<string, unknown>) => t.title === "User1 Thread",
-      ),
+      data.tasks.some((t: Record<string, unknown>) => {
+        return t.title === "User1 Thread";
+      }),
     ).toBe(true);
     expect(
-      data.tasks.some(
-        (t: Record<string, unknown>) => t.title === "User2 Thread",
-      ),
+      data.tasks.some((t: Record<string, unknown>) => {
+        return t.title === "User2 Thread";
+      }),
     ).toBe(false);
   });
 
@@ -276,9 +276,9 @@ describe("GET /api/zero/tasks", () => {
     const data = await response.json();
 
     expect(response.status).toBe(200);
-    const scheduleTasks = data.tasks.filter(
-      (t: Record<string, unknown>) => t.type === "schedule",
-    );
+    const scheduleTasks = data.tasks.filter((t: Record<string, unknown>) => {
+      return t.type === "schedule";
+    });
     expect(scheduleTasks).toHaveLength(1);
     expect(scheduleTasks[0].title).toBe("agent1-schedule");
   });
