@@ -12,6 +12,7 @@ interface PhoneStatus {
 const internalPhoneStatus$ = state<PhoneStatus | null>(null);
 const internalPhoneError$ = state<string | null>(null);
 const internalPhoneInput$ = state("");
+const internalSmsConsent$ = state(false);
 
 // Exported computed (read-only)
 export const phoneStatus$ = computed((get) => {
@@ -23,10 +24,17 @@ export const phoneError$ = computed((get) => {
 export const phoneInput$ = computed((get) => {
   return get(internalPhoneInput$);
 });
+export const smsConsent$ = computed((get) => {
+  return get(internalSmsConsent$);
+});
 
 // Exported commands (write)
 export const setPhoneInput$ = command(({ set }, value: string) => {
   set(internalPhoneInput$, value);
+});
+
+export const setSmsConsent$ = command(({ set }, value: boolean) => {
+  set(internalSmsConsent$, value);
 });
 
 export const fetchPhoneStatus$ = command(
