@@ -22,6 +22,7 @@ import { verifyZeroToken } from "../../auth/sandbox-token";
 import { decryptSecretsMap } from "../../shared/crypto/secrets-encryption";
 import { reloadEnv } from "../../../env";
 import { updateUserPreferences } from "../user/user-preferences-service";
+import { updateUserFeatureSwitches } from "../user/feature-switches-service";
 import { FeatureSwitchKey, type TriggerSource } from "@vm0/core";
 import * as core from "@vm0/core";
 
@@ -528,6 +529,33 @@ describe("createZeroRun()", () => {
     });
 
     it("should not inject skill guidance when AutoSkill feature switch is disabled", async () => {
+      const result = await createZeroRun(baseParams());
+      const run = await findTestRunRecord(result.runId);
+      expect(run).toBeDefined();
+      expect(run!.appendSystemPrompt).not.toContain(
+        "# Skill Management Guidance",
+      );
+    });
+
+    it("should respect user override to disable AutoSkill", async () => {
+      vi.spyOn(core, "isFeatureEnabled").mockImplementation(
+        (
+          key: FeatureSwitchKey,
+          ctx?: { overrides?: Partial<Record<FeatureSwitchKey, boolean>> },
+        ) => {
+          if (key === FeatureSwitchKey.AutoSkill) {
+            if (ctx?.overrides?.[FeatureSwitchKey.AutoSkill] === false)
+              return false;
+            return true;
+          }
+          return false;
+        },
+      );
+
+      await updateUserFeatureSwitches(user.orgId, user.userId, {
+        [FeatureSwitchKey.AutoSkill]: false,
+      });
+
       const result = await createZeroRun(baseParams());
       const run = await findTestRunRecord(result.runId);
       expect(run).toBeDefined();

@@ -340,7 +340,16 @@ export async function createZeroRunRecord(
   });
   let { appendSystemPrompt } = params;
   const systemParts = [agentPrompt, userInfo];
-  if (isFeatureEnabled(FeatureSwitchKey.AutoSkill, { orgId: resolved.orgId })) {
+  const featureOverrides = await loadFeatureSwitchOverrides(
+    resolved.orgId,
+    params.userId,
+  );
+  if (
+    isFeatureEnabled(FeatureSwitchKey.AutoSkill, {
+      orgId: resolved.orgId,
+      overrides: featureOverrides,
+    })
+  ) {
     systemParts.push(buildAutoSkillGuidance());
   }
   if (appendSystemPrompt) {
