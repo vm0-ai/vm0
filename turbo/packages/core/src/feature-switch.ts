@@ -54,6 +54,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   },
   [FeatureSwitchKey.Agents]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable multi-agent orchestration in runs",
     enabled: true,
   },
   [FeatureSwitchKey.Secrets]: {
@@ -62,34 +63,42 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   },
   [FeatureSwitchKey.Artifacts]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable artifact storage and management",
     enabled: false,
   },
   [FeatureSwitchKey.ApiKeys]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable platform-managed API key pool",
     enabled: false,
   },
   [FeatureSwitchKey.AhrefsConnector]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the Ahrefs SEO connector",
     enabled: false,
   },
   [FeatureSwitchKey.CanvaConnector]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the Canva design connector",
     enabled: false,
   },
   [FeatureSwitchKey.ComputerConnector]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the Computer connector for local service tunneling",
     enabled: false,
   },
   [FeatureSwitchKey.DeelConnector]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the Deel HR connector",
     enabled: false,
   },
   [FeatureSwitchKey.DocuSignConnector]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the DocuSign e-signature connector",
     enabled: false,
   },
   [FeatureSwitchKey.DropboxConnector]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the Dropbox file storage connector",
     enabled: false,
   },
   [FeatureSwitchKey.FigmaConnector]: {
@@ -118,6 +127,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   },
   [FeatureSwitchKey.CloseConnector]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the Close CRM connector",
     enabled: false,
   },
   [FeatureSwitchKey.WebflowConnector]: {
@@ -166,6 +176,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   },
   [FeatureSwitchKey.DataExport]: {
     maintainer: "ethan@vm0.ai",
+    description: "Show the data export option in account menu",
     enabled: false,
   },
   [FeatureSwitchKey.ShowSystemPrompt]: {
@@ -178,10 +189,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   },
   [FeatureSwitchKey.ConcurrentAddOn]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the concurrent agent add-on purchase option",
     enabled: false,
   },
   [FeatureSwitchKey.CreditAddOn]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the credit add-on purchase option",
     enabled: false,
   },
   [FeatureSwitchKey.ModelDetail]: {
@@ -198,6 +211,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   },
   [FeatureSwitchKey.ComputerUse]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable remote desktop host registration",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -212,6 +226,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   },
   [FeatureSwitchKey.AuditLink]: {
     maintainer: "ethan@vm0.ai",
+    description: "Show audit log links in Slack messages",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -227,6 +242,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   },
   [FeatureSwitchKey.AutoSkill]: {
     maintainer: "lancy@vm0.ai",
+    description: "Enable automatic skill creation in agent prompts",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
