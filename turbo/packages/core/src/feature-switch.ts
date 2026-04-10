@@ -46,6 +46,7 @@ const STAFF_ORG_ID_HASHES: readonly string[] = [
 const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.Pricing]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable access to billing plans and pricing page",
     enabled: true,
   },
   [FeatureSwitchKey.Dummy]: {
@@ -59,6 +60,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   },
   [FeatureSwitchKey.Secrets]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the encrypted secrets store for agent runs",
     enabled: false,
   },
   [FeatureSwitchKey.Artifacts]: {
@@ -119,10 +121,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   },
   [FeatureSwitchKey.RedditConnector]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the Reddit connector integration",
     enabled: false,
   },
   [FeatureSwitchKey.SupabaseConnector]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the Supabase database connector integration",
     enabled: false,
   },
   [FeatureSwitchKey.CloseConnector]: {
@@ -132,6 +136,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   },
   [FeatureSwitchKey.WebflowConnector]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the Webflow site management connector",
     enabled: false,
   },
   [FeatureSwitchKey.OutlookMailConnector]: {
@@ -148,6 +153,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   },
   [FeatureSwitchKey.StripeConnector]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the Stripe payment connector integration",
     enabled: false,
   },
   [FeatureSwitchKey.PosthogConnector]: {
@@ -160,10 +166,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   },
   [FeatureSwitchKey.ResendConnector]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the Resend email service connector",
     enabled: false,
   },
   [FeatureSwitchKey.SpotifyConnector]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the Spotify connector integration",
     enabled: false,
   },
   [FeatureSwitchKey.GitHubIntegration]: {
@@ -172,6 +180,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   },
   [FeatureSwitchKey.TelegramIntegration]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the Telegram bot integration for message handling",
     enabled: false,
   },
   [FeatureSwitchKey.DataExport]: {
@@ -181,10 +190,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   },
   [FeatureSwitchKey.ShowSystemPrompt]: {
     maintainer: "ethan@vm0.ai",
+    description: "Show the appended system prompt in activity detail steps",
     enabled: false,
   },
   [FeatureSwitchKey.Usage]: {
     maintainer: "ethan@vm0.ai",
+    description:
+      "Show the Usage page with per-member credit and token consumption",
     enabled: false,
   },
   [FeatureSwitchKey.ConcurrentAddOn]: {
@@ -203,10 +215,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   },
   [FeatureSwitchKey.ActivityLogList]: {
     maintainer: "ethan@vm0.ai",
+    description: "Show the Activities list page and breadcrumb navigation",
     enabled: false,
   },
   [FeatureSwitchKey.ZeroDebug]: {
     maintainer: "ethan@vm0.ai",
+    description: "Reveal debug tabs in activity pages and Debug preferences",
     enabled: false,
   },
   [FeatureSwitchKey.ComputerUse]: {
@@ -217,6 +231,8 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   },
   [FeatureSwitchKey.MobileChatListPage]: {
     maintainer: "ethan@vm0.ai",
+    description:
+      "Navigate to /chats list page from mobile menu instead of sidebar drawer",
     enabled: false,
   },
   [FeatureSwitchKey.Lab]: {
@@ -237,6 +253,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   },
   [FeatureSwitchKey.VoiceChat]: {
     maintainer: "lancy@vm0.ai",
+    description: "Enable the Voice Chat feature and API endpoints",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
