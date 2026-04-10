@@ -114,9 +114,11 @@ describe("getFeatureSwitchDescriptions", () => {
     }
   });
 
-  it("should return undefined for switches without description", () => {
+  it("should return a description string for every switch", () => {
     const descriptions = getFeatureSwitchDescriptions();
-    expect(descriptions[FeatureSwitchKey.Dummy]).toBeUndefined();
+    for (const key of Object.values(FeatureSwitchKey)) {
+      expect(descriptions[key]).toEqual(expect.any(String));
+    }
   });
 });
 

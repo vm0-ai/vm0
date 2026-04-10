@@ -51,6 +51,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   },
   [FeatureSwitchKey.Dummy]: {
     maintainer: "ethan@vm0.ai",
+    description: "Test-only feature switch for flag system validation",
     enabled: true,
   },
   [FeatureSwitchKey.Agents]: {
@@ -105,18 +106,22 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   },
   [FeatureSwitchKey.FigmaConnector]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the Figma design connector",
     enabled: false,
   },
   [FeatureSwitchKey.MercuryConnector]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the Mercury banking connector",
     enabled: false,
   },
   [FeatureSwitchKey.NeonConnector]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the Neon serverless Postgres connector",
     enabled: false,
   },
   [FeatureSwitchKey.GarminConnectConnector]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the Garmin Connect wellness connector",
     enabled: false,
   },
   [FeatureSwitchKey.RedditConnector]: {
@@ -141,14 +146,17 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   },
   [FeatureSwitchKey.OutlookMailConnector]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the Outlook Mail connector",
     enabled: false,
   },
   [FeatureSwitchKey.OutlookCalendarConnector]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the Outlook Calendar connector",
     enabled: false,
   },
   [FeatureSwitchKey.MetaAdsConnector]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the Meta Ads Manager connector",
     enabled: false,
   },
   [FeatureSwitchKey.StripeConnector]: {
@@ -158,10 +166,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   },
   [FeatureSwitchKey.PosthogConnector]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the PostHog analytics connector",
     enabled: false,
   },
   [FeatureSwitchKey.MailchimpConnector]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the Mailchimp email marketing connector",
     enabled: false,
   },
   [FeatureSwitchKey.ResendConnector]: {
@@ -176,6 +186,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   },
   [FeatureSwitchKey.GitHubIntegration]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the GitHub App installation integration",
     enabled: false,
   },
   [FeatureSwitchKey.TelegramIntegration]: {
@@ -211,6 +222,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   },
   [FeatureSwitchKey.ModelDetail]: {
     maintainer: "ethan@vm0.ai",
+    description: "Show the selected model name in activity details",
     enabled: false,
   },
   [FeatureSwitchKey.ActivityLogList]: {
@@ -237,6 +249,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   },
   [FeatureSwitchKey.Lab]: {
     maintainer: "ethan@vm0.ai",
+    description: "Show the Lab page for toggling experimental features",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -248,6 +261,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   },
   [FeatureSwitchKey.PhoneIntegration]: {
     maintainer: "ethan@vm0.ai",
+    description: "Show the Phone page for voice call integration",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
