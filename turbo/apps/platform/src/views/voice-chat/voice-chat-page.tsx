@@ -19,13 +19,18 @@ import {
   vcError$,
   vcEnabled$,
   vcAgentId$,
+  vcPrompt$,
+  vcMeetingPromptInput$,
+  setMeetingPromptInput$,
   startVoiceChat$,
+  startVoiceMeeting$,
   endVoiceChat$,
   toggleVoiceChatMute$,
 } from "../../signals/voice-chat/voice-chat-session.ts";
 
 type ConnectionStatus =
   | "idle"
+  | "preparing"
   | "connecting"
   | "connected"
   | "disconnected"
@@ -34,6 +39,7 @@ type ConnectionStatus =
 function StatusBadge({ status }: { status: ConnectionStatus }) {
   const label: Record<ConnectionStatus, string> = {
     idle: "Ready",
+    preparing: "Preparing...",
     connecting: "Connecting...",
     connected: "Connected",
     disconnected: "Disconnected",
@@ -41,6 +47,7 @@ function StatusBadge({ status }: { status: ConnectionStatus }) {
   };
   const color: Record<ConnectionStatus, string> = {
     idle: "bg-muted text-muted-foreground",
+    preparing: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
     connecting:
       "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
     connected:
@@ -55,7 +62,7 @@ function StatusBadge({ status }: { status: ConnectionStatus }) {
         color[status],
       )}
     >
-      {status === "connecting" && (
+      {(status === "connecting" || status === "preparing") && (
         <IconLoader2 size={12} className="animate-spin" />
       )}
       {status === "connected" && (
@@ -76,8 +83,12 @@ export function VoiceChatPage() {
   const muted = useGet(vcMuted$);
   const error = useGet(vcError$);
   const startSession = useSet(startVoiceChat$);
+  const startMeeting = useSet(startVoiceMeeting$);
   const endSession = useSet(endVoiceChat$);
   const toggleMute = useSet(toggleVoiceChatMute$);
+  const prompt = useGet(vcPrompt$);
+  const meetingPrompt = useGet(vcMeetingPromptInput$);
+  const setMeetingPrompt = useSet(setMeetingPromptInput$);
   const agentName = useLastResolved(defaultAgentName$) ?? "Zero";
 
   if (enabled === false) {
@@ -96,29 +107,116 @@ export function VoiceChatPage() {
       <div className="flex flex-col items-center justify-center h-full gap-6 p-8">
         <h1 className="text-2xl font-bold">Voice Chat</h1>
         <p className="text-muted-foreground max-w-md text-center">
-          Start a voice conversation with the AI agent. Your microphone will be
-          used to capture audio.
+          Start a voice conversation with the AI agent, or prepare a meeting
+          with a specific topic.
         </p>
         {error && (
           <p className="text-sm text-destructive max-w-md text-center">
             {error}
           </p>
         )}
-        <Button
-          size="lg"
-          onClick={() => {
-            detach(startSession(pageSignal), Reason.DomCallback);
+        <textarea
+          className="w-full max-w-md rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          rows={3}
+          placeholder="What would you like to discuss? (required for meetings)"
+          value={meetingPrompt}
+          onChange={(e) => {
+            setMeetingPrompt(e.target.value);
           }}
-          disabled={!agentId}
-        >
-          <IconMicrophone size={18} className="mr-2" />
-          Start Voice Chat
-        </Button>
+        />
+        <div className="flex gap-3">
+          <Button
+            size="lg"
+            onClick={() => {
+              detach(startSession(pageSignal), Reason.DomCallback);
+            }}
+            disabled={!agentId}
+          >
+            <IconMicrophone size={18} className="mr-2" />
+            Start Voice Chat
+          </Button>
+          <Button
+            size="lg"
+            variant="secondary"
+            onClick={() => {
+              detach(
+                startMeeting(meetingPrompt, pageSignal),
+                Reason.DomCallback,
+              );
+            }}
+            disabled={!agentId || !meetingPrompt.trim()}
+          >
+            <IconLoader2 size={18} className="mr-2" />
+            Start Voice Meeting
+          </Button>
+        </div>
         {!agentId && (
           <p className="text-xs text-muted-foreground">
             No agent selected. Please select an agent first.
           </p>
         )}
+      </div>
+    );
+  }
+
+  if (status === "preparing") {
+    return (
+      <div className="flex flex-col h-full">
+        <div className="flex items-center justify-between border-b px-4 py-3">
+          <div className="flex items-center gap-3">
+            <h1 className="text-lg font-semibold">Preparing Meeting</h1>
+            <StatusBadge status={status} />
+          </div>
+          <Button
+            variant="destructive"
+            size="sm"
+            onClick={() => {
+              endSession();
+            }}
+          >
+            <IconPhoneOff size={16} className="mr-1.5" />
+            Cancel
+          </Button>
+        </div>
+
+        {prompt && (
+          <div className="border-b px-4 py-3">
+            <p className="text-sm text-muted-foreground">Your prompt:</p>
+            <p className="text-sm mt-1">{prompt}</p>
+          </div>
+        )}
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-2">
+          <h2 className="text-sm font-medium text-muted-foreground mb-3">
+            Slow Brain Activity
+          </h2>
+          {events.filter((e) => {
+            return e.source === "slow-brain";
+          }).length === 0 && (
+            <p className="text-sm text-muted-foreground text-center py-8">
+              Waiting for slow brain to start preparation...
+            </p>
+          )}
+          {events
+            .filter((e) => {
+              return e.source === "slow-brain";
+            })
+            .map((event) => {
+              return (
+                <div
+                  key={event.seq}
+                  className="text-sm py-1.5 border-b border-border/50 last:border-0"
+                >
+                  <span className="text-muted-foreground font-mono text-xs">
+                    [{event.type}]
+                  </span>{" "}
+                  {event.content && (
+                    <span className="whitespace-pre-wrap">{event.content}</span>
+                  )}
+                </div>
+              );
+            })}
+        </div>
       </div>
     );
   }

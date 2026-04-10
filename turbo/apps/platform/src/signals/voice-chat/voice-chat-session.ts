@@ -7,6 +7,7 @@ import { resetSignal, throwIfAbort, onDomEventFn, setLoop } from "../utils.ts";
 
 type ConnectionStatus =
   | "idle"
+  | "preparing"
   | "connecting"
   | "connected"
   | "disconnected"
@@ -175,6 +176,9 @@ const internalPc$ = state<RTCPeerConnection | null>(null);
 const internalDc$ = state<RTCDataChannel | null>(null);
 const internalStream$ = state<MediaStream | null>(null);
 const internalAudioEl$ = state<HTMLAudioElement | null>(null);
+const internalPrompt$ = state<string | null>(null);
+
+const meetingPromptInput$ = state("");
 
 const resetSessionSignal$ = resetSignal();
 
@@ -201,6 +205,15 @@ export const vcEnabled$ = computed(async (get) => {
 });
 export const vcAgentId$ = computed(async (get) => {
   return await get(currentChatAgentId$);
+});
+export const vcPrompt$ = computed((get) => {
+  return get(internalPrompt$);
+});
+export const vcMeetingPromptInput$ = computed((get) => {
+  return get(meetingPromptInput$);
+});
+export const setMeetingPromptInput$ = command(({ set }, value: string) => {
+  set(meetingPromptInput$, value);
 });
 
 // --- Internal commands ---
@@ -578,12 +591,76 @@ const startPoll$ = command(async ({ get, set }, signal: AbortSignal) => {
   );
 });
 
+// --- Shared connection logic ---
+
+const connectVoiceSession$ = command(
+  async ({ get, set }, sessionSignal: AbortSignal) => {
+    const fetchFn = get(fetch$);
+
+    set(internalStatus$, "connecting");
+
+    const tokenRes = await fetchFn("/api/zero/voice-chat/token", {
+      method: "POST",
+    });
+    sessionSignal.throwIfAborted();
+
+    if (!tokenRes.ok) {
+      const body = (await tokenRes.json()) as {
+        error: { message: string };
+      };
+      sessionSignal.throwIfAborted();
+      set(internalError$, body.error.message);
+      set(internalStatus$, "error");
+      return;
+    }
+
+    const { client_secret: clientSecret } = (await tokenRes.json()) as {
+      client_secret: { value: string; expires_at: number };
+    };
+    sessionSignal.throwIfAborted();
+
+    let stream: MediaStream;
+    // eslint-disable-next-line no-restricted-syntax -- getUserMedia can fail due to permission denial or missing hardware
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (error) {
+      throwIfAbort(error);
+      set(
+        internalError$,
+        "Microphone access denied. Please allow microphone access.",
+      );
+      set(internalStatus$, "error");
+      return;
+    }
+    sessionSignal.throwIfAborted();
+    set(internalStream$, stream);
+
+    const ok = await set(
+      setupWebRTC$,
+      stream,
+      clientSecret.value,
+      sessionSignal,
+    );
+    sessionSignal.throwIfAborted();
+    if (!ok) {
+      return;
+    }
+
+    await Promise.allSettled([
+      set(startHeartbeat$, sessionSignal),
+      set(startPoll$, sessionSignal),
+    ]);
+  },
+);
+
 // --- Exported commands ---
+
 export const startVoiceChat$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     if (
       get(internalStatus$) === "connecting" ||
-      get(internalStatus$) === "connected"
+      get(internalStatus$) === "connected" ||
+      get(internalStatus$) === "preparing"
     ) {
       return;
     }
@@ -596,6 +673,7 @@ export const startVoiceChat$ = command(
     set(internalSessionId$, null);
     set(internalLastSeq$, 0);
     set(internalCurrentAssistant$, null);
+    set(internalPrompt$, null);
 
     const sessionSignal = set(resetSessionSignal$, signal);
 
@@ -632,13 +710,51 @@ export const startVoiceChat$ = command(
     signal.throwIfAborted();
     set(internalSessionId$, session.id);
 
-    const tokenRes = await fetchFn("/api/zero/voice-chat/token", {
+    await set(connectVoiceSession$, sessionSignal);
+  },
+);
+
+export const startVoiceMeeting$ = command(
+  async ({ get, set }, prompt: string, signal: AbortSignal) => {
+    if (
+      get(internalStatus$) === "connecting" ||
+      get(internalStatus$) === "connected" ||
+      get(internalStatus$) === "preparing"
+    ) {
+      return;
+    }
+
+    set(internalStatus$, "preparing");
+    set(internalError$, null);
+    set(internalTranscript$, []);
+    set(internalEvents$, []);
+    set(internalMuted$, false);
+    set(internalSessionId$, null);
+    set(internalLastSeq$, 0);
+    set(internalCurrentAssistant$, null);
+    set(internalPrompt$, prompt);
+
+    const sessionSignal = set(resetSessionSignal$, signal);
+
+    const fetchFn = get(fetch$);
+    const agentId = await get(currentChatAgentId$);
+    signal.throwIfAborted();
+
+    if (!agentId) {
+      set(internalError$, "No agent selected");
+      set(internalStatus$, "error");
+      return;
+    }
+
+    const sessionRes = await fetchFn("/api/zero/voice-chat", {
       method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ agentId, mode: "meeting", prompt }),
     });
     signal.throwIfAborted();
 
-    if (!tokenRes.ok) {
-      const body = (await tokenRes.json()) as {
+    if (!sessionRes.ok) {
+      const body = (await sessionRes.json()) as {
         error: { message: string };
       };
       signal.throwIfAborted();
@@ -647,41 +763,77 @@ export const startVoiceChat$ = command(
       return;
     }
 
-    const { client_secret: clientSecret } = (await tokenRes.json()) as {
-      client_secret: { value: string; expires_at: number };
+    const { session } = (await sessionRes.json()) as {
+      session: { id: string };
     };
     signal.throwIfAborted();
+    set(internalSessionId$, session.id);
 
-    let stream: MediaStream;
-    // eslint-disable-next-line no-restricted-syntax -- getUserMedia can fail due to permission denial or missing hardware
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    } catch (error) {
-      throwIfAbort(error);
-      set(
-        internalError$,
-        "Microphone access denied. Please allow microphone access.",
-      );
-      set(internalStatus$, "error");
-      return;
-    }
-    signal.throwIfAborted();
-    set(internalStream$, stream);
+    // Start heartbeat during preparation to prevent session timeout
+    const heartbeatPromise = set(startHeartbeat$, sessionSignal);
 
-    const ok = await set(
-      setupWebRTC$,
-      stream,
-      clientSecret.value,
+    // Poll for preparation-ready event
+    await setLoop(
+      async (loopSignal: AbortSignal) => {
+        const sid = get(internalSessionId$);
+        if (!sid) {
+          return true;
+        }
+
+        const lastSeq = get(internalLastSeq$);
+        const res = await fetchFn(
+          `/api/zero/voice-chat/${sid}/context?after=${lastSeq}`,
+          { signal: loopSignal },
+        );
+
+        if (!res.ok) {
+          return false;
+        }
+
+        const data = (await res.json()) as { events: ContextEvent[] };
+        loopSignal.throwIfAborted();
+
+        if (data.events.length > 0) {
+          set(internalEvents$, (prev) => {
+            return [...prev, ...data.events];
+          });
+          const lastEvent = data.events[data.events.length - 1];
+          if (lastEvent) {
+            set(internalLastSeq$, lastEvent.seq);
+          }
+
+          if (
+            data.events.some((e) => {
+              return e.type === "preparation-ready";
+            })
+          ) {
+            return true;
+          }
+        }
+        return false;
+      },
+      POLL_INTERVAL_MS,
       sessionSignal,
     );
     signal.throwIfAborted();
-    if (!ok) {
+
+    // Activate session (preparing → active)
+    const activateRes = await fetchFn(
+      `/api/zero/voice-chat/${session.id}/activate`,
+      { method: "POST" },
+    );
+    signal.throwIfAborted();
+
+    if (!activateRes.ok) {
+      set(internalError$, "Failed to activate meeting session");
+      set(internalStatus$, "error");
       return;
     }
 
+    // Connect voice (token → mic → WebRTC → poll/heartbeat)
     await Promise.allSettled([
-      set(startHeartbeat$, sessionSignal),
-      set(startPoll$, sessionSignal),
+      heartbeatPromise,
+      set(connectVoiceSession$, sessionSignal),
     ]);
   },
 );
@@ -732,6 +884,7 @@ export const endVoiceChat$ = command(({ get, set }) => {
   }
 
   set(internalSessionId$, null);
+  set(internalPrompt$, null);
   set(internalStatus$, "idle");
 });
 
