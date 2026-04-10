@@ -2,7 +2,6 @@
 
 import asyncio
 import json
-import os
 import time
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -925,6 +924,7 @@ class TestDoReportUsage:
         assert req.full_url == "https://api.vm0.ai/api/webhooks/agent/usage"
         assert req.get_header("Content-type") == "application/json"
         assert req.get_header("Authorization") == "Bearer tok-123"
+        assert req.get_header("User-agent") == "vm0-mitm-addon/1.0"
         body = json.loads(req.data)
         assert body["runId"] == "run-1"
         assert body["usage"]["model"] == "claude-sonnet-4-6"
@@ -959,10 +959,7 @@ class TestDoReportUsage:
     def test_adds_vercel_bypass_header(self):
         with (
             patch.object(mitm_addon, "_opener") as mock_opener,
-            patch.dict(
-                os.environ,
-                {"VERCEL_AUTOMATION_BYPASS_SECRET": "bypass-secret"},
-            ),
+            patch.object(auth, "VERCEL_BYPASS", "bypass-secret"),
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon._do_report_usage("https://api.vm0.ai", "tok", "run-1", {})

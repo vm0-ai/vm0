@@ -15,7 +15,6 @@ import os
 import time
 import urllib.error
 import urllib.parse
-import urllib.request
 import zlib
 from concurrent.futures import ThreadPoolExecutor
 
@@ -25,7 +24,13 @@ from mitmproxy import ctx, http, tcp, tls
 from mitmproxy.addonmanager import Loader
 
 # --- Sub-module imports (only symbols used in this file's own code) ---
-from auth import _firewall_header_cache, _opener, evict_stale_cache_keys, handle_firewall_request
+from auth import (
+    _firewall_header_cache,
+    _opener,
+    evict_stale_cache_keys,
+    handle_firewall_request,
+    make_api_request,
+)
 from logging_utils import add_firewall_metadata, log_network_entry
 from matching import FirewallAllow, FirewallBlock, match_firewall_request
 from url_utils import get_original_url
@@ -390,17 +395,7 @@ def _do_report_usage(api_url: str, sandbox_token: str, run_id: str, usage: dict)
     """POST extracted usage to the platform webhook.  Raises on failure."""
     url = f"{api_url}/api/webhooks/agent/usage"
     payload = json.dumps({"runId": run_id, "usage": usage}).encode()
-    req = urllib.request.Request(
-        url,
-        data=payload,
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {sandbox_token}",
-        },
-    )
-    vercel_bypass = os.environ.get("VERCEL_AUTOMATION_BYPASS_SECRET", "")
-    if vercel_bypass:
-        req.add_header("x-vercel-protection-bypass", vercel_bypass)
+    req = make_api_request(url, payload, sandbox_token)
     try:
         resp = _opener.open(req, timeout=10)
         resp.close()
