@@ -862,6 +862,90 @@ class TestSseUsageExtractor:
         assert usage["output_tokens"] == 100
         assert usage["web_search_requests"] == 3
 
+    def test_message_delta_zero_does_not_overwrite_message_start(self):
+        """message_delta sending 0 for cache fields must not overwrite message_start values.
+
+        The Anthropic API includes all usage fields in message_delta, but cache
+        fields may be 0 even when message_start reported non-zero values.
+        """
+        parse, usage = mitm_addon._create_sse_usage_extractor()
+        parse(
+            b"event: message_start\n"
+            b'data: {"type":"message_start","message":{"model":"claude-sonnet-4-6",'
+            b'"usage":{"input_tokens":150,"cache_read_input_tokens":80000,'
+            b'"cache_creation_input_tokens":5000,"output_tokens":0}}}\n\n'
+        )
+        assert usage["cache_read_input_tokens"] == 80000
+        assert usage["cache_creation_input_tokens"] == 5000
+
+        # message_delta sends 0 for cache fields — must NOT overwrite
+        parse(
+            b"event: message_delta\n"
+            b'data: {"type":"message_delta",'
+            b'"usage":{"output_tokens":500,'
+            b'"input_tokens":0,"cache_read_input_tokens":0,'
+            b'"cache_creation_input_tokens":0}}\n\n'
+        )
+        assert usage["output_tokens"] == 500
+        assert usage["input_tokens"] == 150  # preserved from message_start
+        assert usage["cache_read_input_tokens"] == 80000  # preserved
+        assert usage["cache_creation_input_tokens"] == 5000  # preserved
+
+    def test_message_delta_positive_values_do_overwrite(self):
+        """message_delta with positive values should update the usage dict."""
+        parse, usage = mitm_addon._create_sse_usage_extractor()
+        parse(
+            b"event: message_start\n"
+            b'data: {"type":"message_start","message":{"model":"m",'
+            b'"usage":{"input_tokens":100,"cache_read_input_tokens":5000}}}\n\n'
+        )
+        # message_delta with higher positive values should overwrite
+        parse(
+            b"event: message_delta\n"
+            b'data: {"type":"message_delta",'
+            b'"usage":{"output_tokens":300,'
+            b'"cache_read_input_tokens":6000}}\n\n'
+        )
+        assert usage["output_tokens"] == 300
+        assert usage["cache_read_input_tokens"] == 6000  # updated
+        assert usage["input_tokens"] == 100  # unchanged (not in delta)
+
+
+class TestExtractBillingUsage:
+    """Tests for _extract_billing_usage zero-overwrite protection."""
+
+    def test_first_call_sets_zero_values(self):
+        """First extraction into empty target should set even zero values."""
+        target = {}
+        mitm_addon._extract_billing_usage(
+            {"input_tokens": 0, "cache_read_input_tokens": 50000}, target
+        )
+        assert target["input_tokens"] == 0
+        assert target["cache_read_input_tokens"] == 50000
+
+    def test_zero_does_not_overwrite_positive(self):
+        """A second extraction with 0 must not overwrite a positive value."""
+        target = {"input_tokens": 100, "cache_read_input_tokens": 50000}
+        mitm_addon._extract_billing_usage(
+            {"input_tokens": 0, "cache_read_input_tokens": 0, "output_tokens": 500},
+            target,
+        )
+        assert target["input_tokens"] == 100  # preserved
+        assert target["cache_read_input_tokens"] == 50000  # preserved
+        assert target["output_tokens"] == 500  # new field, set correctly
+
+    def test_positive_overwrites_positive(self):
+        """A second extraction with a positive value should overwrite."""
+        target = {"input_tokens": 100}
+        mitm_addon._extract_billing_usage({"input_tokens": 200}, target)
+        assert target["input_tokens"] == 200
+
+    def test_web_search_zero_does_not_overwrite(self):
+        """web_search_requests 0 must not overwrite a positive value."""
+        target = {"web_search_requests": 5}
+        mitm_addon._extract_billing_usage({"server_tool_use": {"web_search_requests": 0}}, target)
+        assert target["web_search_requests"] == 5
+
 
 class TestDoReportUsage:
     """Tests for _do_report_usage HTTP request construction."""

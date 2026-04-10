@@ -255,17 +255,22 @@ def _extract_billing_usage(raw_usage, target: dict) -> None:
 
     Handles both flat fields (input_tokens, etc.) and the nested
     ``server_tool_use.web_search_requests`` field.
+
+    Only positive values overwrite existing entries — ``message_delta`` may
+    send ``0`` for fields already set correctly by ``message_start``.
     """
     if not raw_usage or not isinstance(raw_usage, dict):
         return
     for k, v in raw_usage.items():
         if k in _BILLING_FIELDS and isinstance(v, (int, float)):
-            target[k] = v
+            if v > 0 or k not in target:
+                target[k] = v
     stu = raw_usage.get("server_tool_use")
     if isinstance(stu, dict):
         wsr = stu.get("web_search_requests")
         if isinstance(wsr, (int, float)):
-            target["web_search_requests"] = wsr
+            if wsr > 0 or "web_search_requests" not in target:
+                target["web_search_requests"] = wsr
 
 
 def _create_sse_usage_extractor():
