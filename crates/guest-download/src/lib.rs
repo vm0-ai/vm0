@@ -326,17 +326,6 @@ fn download_with_retry(url: &str, target_path: &str) -> Result<(), DownloadError
 }
 
 fn download_and_extract(url: &str, target_path: &str) -> Result<(), DownloadError> {
-    // Remove existing contents so stale files from a previous turn on a
-    // reused VM don't leak into the new extraction.
-    let target = Path::new(target_path);
-    if target.exists() {
-        fs::remove_dir_all(target).map_err(|e| DownloadError {
-            message: format!("Failed to clean directory {target_path}: {e}"),
-            retriable: false,
-            status_code: None,
-        })?;
-    }
-
     // Create target directory
     fs::create_dir_all(target_path).map_err(|e| DownloadError {
         message: format!("Failed to create directory {target_path}: {e}"),
