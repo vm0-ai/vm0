@@ -1,14 +1,28 @@
 import { command, computed, state } from "ccstate";
 import { logger } from "../log";
-import { FeatureSwitchKey, getAllFeatureStates } from "@vm0/core";
+import {
+  FeatureSwitchKey,
+  getAllFeatureStates,
+  zeroFeatureSwitchesContract,
+} from "@vm0/core";
 import { localStorageSignals } from "./local-storage";
 import { jsonParseOr } from "../utils";
 import { clerk$, user$ } from "../auth";
+import { zeroClient$ } from "../api-client.ts";
+import { accept } from "../../lib/accept.ts";
 
 const L = logger("FeatureSwitch");
 const { get$, set$, clear$ } = localStorageSignals("featureSwitch");
 
 const internalReload$ = state(0);
+
+const dbFeatureSwitches$ = computed(async (get) => {
+  get(internalReload$);
+  const createClient = get(zeroClient$);
+  const client = createClient(zeroFeatureSwitchesContract);
+  const result = await accept(client.get(), [200], { toast: false });
+  return result.body.switches;
+});
 
 function applyOverrides(
   result: Record<FeatureSwitchKey, boolean>,
@@ -42,14 +56,9 @@ export const featureSwitch$ = computed(async (get) => {
 
   const result = getAllFeatureStates({ userId, email, orgId });
 
-  // Layer 2: Clerk unsafeMetadata overrides (lower priority than localStorage)
-  const unsafeMeta = user?.unsafeMetadata as
-    | Record<string, unknown>
-    | undefined;
-  applyOverrides(
-    result,
-    unsafeMeta?.featureSwitches as Partial<Record<string, boolean>> | undefined,
-  );
+  // Layer 2: DB overrides (lower priority than localStorage)
+  const dbOverrides = await get(dbFeatureSwitches$);
+  applyOverrides(result, dbOverrides);
 
   // Layer 3: localStorage overrides (highest priority)
   const override = get(get$);
@@ -80,28 +89,16 @@ export const overrideFeatureSwitch$ = command(
   },
 );
 
-export const syncFeatureSwitchToClerk$ = command(
+export const syncFeatureSwitchToDB$ = command(
   async (
     { get, set },
     overrides: Partial<Record<FeatureSwitchKey, boolean>>,
     signal: AbortSignal,
   ) => {
-    const user = await get(user$);
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroFeatureSwitchesContract);
     signal.throwIfAborted();
-    if (!user) {
-      return;
-    }
-
-    const existing = (user.unsafeMetadata ?? {}) as Record<string, unknown>;
-    const currentSwitches = (existing.featureSwitches ?? {}) as Record<
-      string,
-      boolean
-    >;
-    const merged = { ...currentSwitches, ...overrides };
-
-    await user.update({
-      unsafeMetadata: { ...existing, featureSwitches: merged },
-    });
+    await accept(client.update({ body: { switches: overrides } }), [200]);
     signal.throwIfAborted();
     set(internalReload$, (v) => {
       return v + 1;
@@ -114,14 +111,12 @@ export const resetFeatureSwitchOverrides$ = command(
     // Clear localStorage
     set(clear$);
 
-    // Clear Clerk unsafeMetadata.featureSwitches
-    const user = await get(user$);
+    // Clear DB overrides by writing empty switches (no-op merge — DB overrides persist)
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroFeatureSwitchesContract);
     signal.throwIfAborted();
-    if (user) {
-      const existing = (user.unsafeMetadata ?? {}) as Record<string, unknown>;
-      const { featureSwitches: _removed, ...rest } = existing;
-      await user.update({ unsafeMetadata: rest });
-    }
+    await accept(client.update({ body: { switches: {} } }), [200]);
+    signal.throwIfAborted();
 
     set(internalReload$, (v) => {
       return v + 1;

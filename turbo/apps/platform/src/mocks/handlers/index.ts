@@ -28,6 +28,10 @@ import {
 } from "./api-integrations-telegram.ts";
 import { apiAgentsHandlers } from "./api-agents.ts";
 import {
+  apiFeatureSwitchesHandlers,
+  resetMockFeatureSwitches,
+} from "./api-feature-switches.ts";
+import {
   apiUserPreferencesHandlers,
   resetMockUserPreferences,
 } from "./api-user-preferences.ts";
@@ -53,6 +57,7 @@ export const handlers = [
   ...apiOnboardingHandlers,
   ...apiBillingHandlers,
   ...apiIntegrationsSlackConnectHandlers,
+  ...apiFeatureSwitchesHandlers,
 ];
 
 export function resetAllMockHandlers(): void {
@@ -65,4 +70,5 @@ export function resetAllMockHandlers(): void {
   resetMockOrgModelProviders();
   resetMockBilling();
   resetMockSlackConnect();
+  resetMockFeatureSwitches();
 }

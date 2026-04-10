@@ -5,7 +5,7 @@ import { Switch, Button } from "@vm0/ui";
 import {
   featureSwitch$,
   overrideFeatureSwitch$,
-  syncFeatureSwitchToClerk$,
+  syncFeatureSwitchToDB$,
   resetFeatureSwitchOverrides$,
 } from "../../signals/external/feature-switch.ts";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -14,7 +14,7 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 export function LabPage() {
   const features = useLastResolved(featureSwitch$);
   const overrideLocal = useSet(overrideFeatureSwitch$);
-  const syncClerk = useSet(syncFeatureSwitchToClerk$);
+  const syncDB = useSet(syncFeatureSwitchToDB$);
   const [resetLoadable, reset] = useLoadableSet(resetFeatureSwitchOverrides$);
   const resetting = resetLoadable.state === "loading";
   const pageSignal = useGet(pageSignal$);
@@ -25,9 +25,9 @@ export function LabPage() {
     >;
     overrideLocal(override);
     detach(
-      syncClerk(override, pageSignal),
+      syncDB(override, pageSignal),
       Reason.DomCallback,
-      "syncFeatureSwitchToClerk",
+      "syncFeatureSwitchToDB",
     );
   };
 
