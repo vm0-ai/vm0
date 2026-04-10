@@ -44,35 +44,10 @@ const STAFF_ORG_ID_HASHES: readonly string[] = [
  * Registry of all feature switches
  */
 const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
-  [FeatureSwitchKey.Pricing]: {
-    maintainer: "ethan@vm0.ai",
-    description: "Enable access to billing plans and pricing page",
-    enabled: true,
-  },
   [FeatureSwitchKey.Dummy]: {
     maintainer: "ethan@vm0.ai",
     description: "Test-only feature switch for flag system validation",
     enabled: true,
-  },
-  [FeatureSwitchKey.Agents]: {
-    maintainer: "ethan@vm0.ai",
-    description: "Enable multi-agent orchestration in runs",
-    enabled: true,
-  },
-  [FeatureSwitchKey.Secrets]: {
-    maintainer: "ethan@vm0.ai",
-    description: "Enable the encrypted secrets store for agent runs",
-    enabled: false,
-  },
-  [FeatureSwitchKey.Artifacts]: {
-    maintainer: "ethan@vm0.ai",
-    description: "Enable artifact storage and management",
-    enabled: false,
-  },
-  [FeatureSwitchKey.ApiKeys]: {
-    maintainer: "ethan@vm0.ai",
-    description: "Enable platform-managed API key pool",
-    enabled: false,
   },
   [FeatureSwitchKey.AhrefsConnector]: {
     maintainer: "ethan@vm0.ai",
@@ -184,16 +159,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Spotify connector integration",
     enabled: false,
   },
-  [FeatureSwitchKey.GitHubIntegration]: {
-    maintainer: "ethan@vm0.ai",
-    description: "Enable the GitHub App installation integration",
-    enabled: false,
-  },
-  [FeatureSwitchKey.TelegramIntegration]: {
-    maintainer: "ethan@vm0.ai",
-    description: "Enable the Telegram bot integration for message handling",
-    enabled: false,
-  },
   [FeatureSwitchKey.DataExport]: {
     maintainer: "ethan@vm0.ai",
     description: "Show the data export option in account menu",
@@ -208,16 +173,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Show the Usage page with per-member credit and token consumption",
-    enabled: false,
-  },
-  [FeatureSwitchKey.ConcurrentAddOn]: {
-    maintainer: "ethan@vm0.ai",
-    description: "Enable the concurrent agent add-on purchase option",
-    enabled: false,
-  },
-  [FeatureSwitchKey.CreditAddOn]: {
-    maintainer: "ethan@vm0.ai",
-    description: "Enable the credit add-on purchase option",
     enabled: false,
   },
   [FeatureSwitchKey.ModelDetail]: {

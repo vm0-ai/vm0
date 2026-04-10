@@ -65,7 +65,6 @@ describe("getAllFeatureStates", () => {
     const states = getAllFeatureStates();
     // Globally enabled switches should be true
     expect(states[FeatureSwitchKey.Dummy]).toBe(true);
-    expect(states[FeatureSwitchKey.Pricing]).toBe(true);
   });
 
   it("should enable switches when orgId matches enabledOrgIdHashes", () => {
@@ -77,7 +76,7 @@ describe("getAllFeatureStates", () => {
     // Globally enabled should still be true
     expect(states[FeatureSwitchKey.Dummy]).toBe(true);
     // Switches without org hashes should remain false
-    expect(states[FeatureSwitchKey.Secrets]).toBe(false);
+    expect(states[FeatureSwitchKey.AhrefsConnector]).toBe(false);
   });
 
   it("should return false for switches with orgId hashes when orgId does not match", () => {
@@ -93,7 +92,7 @@ describe("getAllFeatureStates", () => {
     });
     expect(states[FeatureSwitchKey.AhrefsConnector]).toBe(true);
     // Non-overridden disabled feature stays false
-    expect(states[FeatureSwitchKey.Secrets]).toBe(false);
+    expect(states[FeatureSwitchKey.DropboxConnector]).toBe(false);
   });
 
   it("should apply overrides to disable enabled features", () => {
@@ -102,7 +101,7 @@ describe("getAllFeatureStates", () => {
     });
     expect(states[FeatureSwitchKey.Dummy]).toBe(false);
     // Other enabled features stay true
-    expect(states[FeatureSwitchKey.Pricing]).toBe(true);
+    expect(states[FeatureSwitchKey.Dummy]).toBe(true);
   });
 });
 
@@ -141,7 +140,7 @@ describe("overrides", () => {
 
   it("should not affect keys without overrides", () => {
     expect(
-      isFeatureEnabled(FeatureSwitchKey.Secrets, {
+      isFeatureEnabled(FeatureSwitchKey.DropboxConnector, {
         overrides: { [FeatureSwitchKey.AhrefsConnector]: true },
       }),
     ).toBe(false);
