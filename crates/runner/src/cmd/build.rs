@@ -590,6 +590,42 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn is_image_complete_requires_all_four_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
+        let image = ImagePaths::new(&home, "test-hash");
+        tokio::fs::create_dir_all(image.dir()).await.unwrap();
+
+        // Empty directory → incomplete
+        assert!(!is_image_complete(&image).await.unwrap());
+
+        // Only rootfs → incomplete
+        tokio::fs::write(image.rootfs(), b"").await.unwrap();
+        assert!(!is_image_complete(&image).await.unwrap());
+
+        // rootfs + snapshot.bin → incomplete
+        tokio::fs::write(image.snapshot_bin(), b"").await.unwrap();
+        assert!(!is_image_complete(&image).await.unwrap());
+
+        // rootfs + snapshot.bin + memory.bin → incomplete
+        tokio::fs::write(image.memory_bin(), b"").await.unwrap();
+        assert!(!is_image_complete(&image).await.unwrap());
+
+        // All four files → complete
+        tokio::fs::write(image.cow_img(), b"").await.unwrap();
+        assert!(is_image_complete(&image).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn is_image_complete_nonexistent_dir() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = crate::paths::HomePaths::with_root(dir.path().to_path_buf());
+        let image = ImagePaths::new(&home, "does-not-exist");
+
+        assert!(!is_image_complete(&image).await.unwrap());
+    }
+
+    #[tokio::test]
     async fn file_sizes_existing_file() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("test.bin");
