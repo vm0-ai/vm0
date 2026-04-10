@@ -1,6 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { FeatureSwitchKey } from "../feature-switch-key";
-import { isFeatureEnabled, getAllFeatureStates } from "../feature-switch";
+import {
+  isFeatureEnabled,
+  getAllFeatureStates,
+  getFeatureSwitchDescriptions,
+} from "../feature-switch";
 
 describe("isFeatureEnabled", () => {
   it("should return true for globally enabled switch", () => {
@@ -99,6 +103,20 @@ describe("getAllFeatureStates", () => {
     expect(states[FeatureSwitchKey.Dummy]).toBe(false);
     // Other enabled features stay true
     expect(states[FeatureSwitchKey.Pricing]).toBe(true);
+  });
+});
+
+describe("getFeatureSwitchDescriptions", () => {
+  it("should return a record with all feature switch keys", () => {
+    const descriptions = getFeatureSwitchDescriptions();
+    for (const key of Object.values(FeatureSwitchKey)) {
+      expect(descriptions).toHaveProperty(key);
+    }
+  });
+
+  it("should return undefined for switches without description", () => {
+    const descriptions = getFeatureSwitchDescriptions();
+    expect(descriptions[FeatureSwitchKey.Dummy]).toBeUndefined();
   });
 });
 

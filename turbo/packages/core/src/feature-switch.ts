@@ -9,6 +9,7 @@ import { FeatureSwitchKey } from "./feature-switch-key";
 
 export interface FeatureSwitch {
   readonly maintainer: string;
+  readonly description?: string;
   readonly enabled: boolean;
   readonly enabledUserHashes?: readonly string[];
   readonly enabledEmailHashes?: readonly string[];
@@ -294,6 +295,20 @@ export function getAllFeatureStates(
     }
   }
 
+  return result;
+}
+
+/**
+ * Return the description for every feature switch.
+ */
+export function getFeatureSwitchDescriptions(): Record<
+  FeatureSwitchKey,
+  string | undefined
+> {
+  const result = {} as Record<FeatureSwitchKey, string | undefined>;
+  for (const key of Object.values(FeatureSwitchKey)) {
+    result[key] = FEATURE_SWITCHES[key].description;
+  }
   return result;
 }
 

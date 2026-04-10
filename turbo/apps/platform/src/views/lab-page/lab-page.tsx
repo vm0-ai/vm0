@@ -1,6 +1,6 @@
 import { useGet, useLastResolved, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import { FeatureSwitchKey } from "@vm0/core";
+import { FeatureSwitchKey, getFeatureSwitchDescriptions } from "@vm0/core";
 import { Switch, Button } from "@vm0/ui";
 import {
   featureSwitch$,
@@ -18,6 +18,7 @@ export function LabPage() {
   const [resetLoadable, reset] = useLoadableSet(resetFeatureSwitchOverrides$);
   const resetting = resetLoadable.state === "loading";
   const pageSignal = useGet(pageSignal$);
+  const descriptions = getFeatureSwitchDescriptions();
 
   const handleToggle = (key: FeatureSwitchKey, checked: boolean) => {
     const override = { [key]: checked } as Partial<
@@ -76,7 +77,14 @@ export function LabPage() {
                     key={key}
                     className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-muted/50 transition-colors"
                   >
-                    <span className="text-sm text-foreground">{key}</span>
+                    <div className="flex flex-col">
+                      <span className="text-sm text-foreground">{key}</span>
+                      {descriptions[key] && (
+                        <span className="text-xs text-muted-foreground">
+                          {descriptions[key]}
+                        </span>
+                      )}
+                    </div>
                     <Switch
                       checked={enabled}
                       onCheckedChange={(checked) => {
