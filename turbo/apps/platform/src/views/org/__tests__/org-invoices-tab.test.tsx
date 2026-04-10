@@ -112,7 +112,7 @@ describe("invoice list display", () => {
 // ORG-D-060
 it("formats date and amount correctly", async () => {
   const timestamp = 1_700_000_000;
-  const expectedDate = new Date(timestamp * 1000).toLocaleDateString();
+  const expectedDate = new Date(timestamp * 1000).toLocaleDateString("en-US");
   mockAPIs();
   server.use(
     http.get("*/api/zero/billing/invoices", () => {

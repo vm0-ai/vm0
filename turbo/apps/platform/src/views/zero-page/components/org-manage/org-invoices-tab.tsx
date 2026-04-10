@@ -14,7 +14,7 @@ const cardBorder = { border: "0.7px solid hsl(var(--gray-400))" } as const;
 const ROW_GRID = "grid grid-cols-[1fr_8rem_6rem_3rem] gap-x-6 items-center";
 
 function formatDate(unixTimestamp: number): string {
-  return new Date(unixTimestamp * 1000).toLocaleDateString();
+  return new Date(unixTimestamp * 1000).toLocaleDateString("en-US");
 }
 
 function formatAmount(cents: number): string {

@@ -153,7 +153,9 @@ function CreditUsageBar({
                 />
                 <span className="text-orange-600 dark:text-orange-400">
                   Expiring on{" "}
-                  {new Date(creditExpiry.nextExpiryDate).toLocaleDateString()}
+                  {new Date(creditExpiry.nextExpiryDate).toLocaleDateString(
+                    "en-US",
+                  )}
                 </span>
                 <span className="tabular-nums text-orange-600 dark:text-orange-400">
                   {creditExpiry.expiringNextCycle.toLocaleString()}

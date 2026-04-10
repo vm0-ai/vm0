@@ -498,8 +498,8 @@ export function OrgBillingTab() {
   const periodLabel =
     periodEnd !== undefined && periodEnd !== null && periodEnd !== ""
       ? isCancelling
-        ? `Ends on ${new Date(periodEnd).toLocaleDateString()}`
-        : `Renews ${new Date(periodEnd).toLocaleDateString()}`
+        ? `Ends on ${new Date(periodEnd).toLocaleDateString("en-US")}`
+        : `Renews ${new Date(periodEnd).toLocaleDateString("en-US")}`
       : null;
 
   const handleDowngrade = () => {
@@ -577,7 +577,7 @@ export function OrgBillingTab() {
                     <p className="text-[13px] text-amber-600 dark:text-amber-400">
                       Your {formatTierLabel(currentTier)} plan has been
                       cancelled and will end on{" "}
-                      {new Date(periodEnd).toLocaleDateString()}.
+                      {new Date(periodEnd).toLocaleDateString("en-US")}.
                     </p>
                   </div>
                 </>
