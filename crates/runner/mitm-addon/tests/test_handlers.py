@@ -987,7 +987,9 @@ class TestResponseUsageReporting:
         _reset()
 
     def teardown_method(self):
-        if mitm_addon._usage_executor._shutdown:
+        try:
+            mitm_addon._usage_executor.submit(lambda: None)
+        except RuntimeError:
             mitm_addon._usage_executor = mitm_addon.ThreadPoolExecutor(
                 max_workers=4, thread_name_prefix="usage"
             )
@@ -1383,6 +1385,43 @@ class TestMaybeReportProxyUsage:
 
         mock_enqueue.assert_not_called()
 
+    def test_warns_when_missing_sandbox_token(self):
+        """Should log warning and skip when sandbox_token is empty."""
+        flow = _make_http_flow(host="api.anthropic.com")
+        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["vm_sandbox_token"] = ""
+        flow.metadata["proxy_usage"] = {"input_tokens": 50}
+
+        mock_log = MagicMock()
+        with (
+            patch.object(mitm_addon, "get_api_url", return_value="https://api.vm0.ai"),
+            patch.object(mitm_addon.ctx, "log", mock_log, create=True),
+            patch.object(mitm_addon, "_enqueue_usage") as mock_enqueue,
+        ):
+            mitm_addon._maybe_report_proxy_usage(flow, "run-abc-123")
+
+        mock_enqueue.assert_not_called()
+        mock_log.warn.assert_called_once()
+        assert "missing sandbox_token or api_url" in mock_log.warn.call_args[0][0]
+
+    def test_warns_when_missing_api_url(self):
+        """Should log warning and skip when api_url is empty."""
+        flow = _make_http_flow(host="api.anthropic.com")
+        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+        flow.metadata["vm_sandbox_token"] = "tok-xyz"
+        flow.metadata["proxy_usage"] = {"input_tokens": 50}
+
+        mock_log = MagicMock()
+        with (
+            patch.object(mitm_addon, "get_api_url", return_value=""),
+            patch.object(mitm_addon.ctx, "log", mock_log, create=True),
+            patch.object(mitm_addon, "_enqueue_usage") as mock_enqueue,
+        ):
+            mitm_addon._maybe_report_proxy_usage(flow, "run-abc-123")
+
+        mock_enqueue.assert_not_called()
+        mock_log.warn.assert_called_once()
+
 
 class TestErrorUsageReporting:
     """Tests that error() hook calls _maybe_report_proxy_usage."""
@@ -1461,7 +1500,9 @@ class TestEnqueueUsage:
 
     def teardown_method(self):
         """Ensure executor is always restored even if a test fails mid-way."""
-        if mitm_addon._usage_executor._shutdown:
+        try:
+            mitm_addon._usage_executor.submit(lambda: None)
+        except RuntimeError:
             mitm_addon._usage_executor = mitm_addon.ThreadPoolExecutor(
                 max_workers=4, thread_name_prefix="usage"
             )

@@ -456,8 +456,13 @@ def _maybe_report_proxy_usage(flow: http.HTTPFlow, run_id: str) -> None:
         return
     sandbox_token = flow.metadata.get("vm_sandbox_token", "")
     api_url = get_api_url()
-    if sandbox_token and api_url:
-        _enqueue_usage(api_url, sandbox_token, run_id, proxy_usage)
+    if not sandbox_token or not api_url:
+        try:
+            ctx.log.warn(f"[{run_id}] Cannot report usage: missing sandbox_token or api_url")
+        except AttributeError:
+            pass
+        return
+    _enqueue_usage(api_url, sandbox_token, run_id, proxy_usage)
 
 
 def responseheaders(flow: http.HTTPFlow) -> None:
