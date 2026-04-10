@@ -280,10 +280,10 @@ describe("permissions dialog - grouped connector (Slack)", () => {
     detachedSetupPage({ context, path: "/agents/my-agent" });
     await openPermissionsDrawer();
 
-    expect(screen.getByText("Unknown endpoints")).toBeInTheDocument();
+    expect(screen.getByText("Other endpoints")).toBeInTheDocument();
 
     // Find the unknown endpoints row
-    const unknownLabel = screen.getByText("Unknown endpoints");
+    const unknownLabel = screen.getByText("Other endpoints");
     const unknownRow = unknownLabel.closest(
       ".flex.items-center.justify-between",
     ) as HTMLElement;
@@ -301,7 +301,7 @@ describe("permissions dialog - grouped connector (Slack)", () => {
     detachedSetupPage({ context, path: "/agents/my-agent" });
     await openPermissionsDrawer();
 
-    const unknownLabel = screen.getByText("Unknown endpoints");
+    const unknownLabel = screen.getByText("Other endpoints");
     const unknownRow = unknownLabel.closest(
       ".flex.items-center.justify-between",
     ) as HTMLElement;
