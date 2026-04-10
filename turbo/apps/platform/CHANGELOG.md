@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.210.0](https://github.com/vm0-ai/vm0/compare/app-v0.209.2...app-v0.210.0) (2026-04-10)
+
+
+### Features
+
+* add unified tasks endpoint for mission control ([#8769](https://github.com/vm0-ai/vm0/issues/8769)) ([ed14070](https://github.com/vm0-ai/vm0/commit/ed14070c5c7bb8510d23a2f1c603cf4db2e2ef91))
+* **runner:** pass feature switch states through execution context ([#8778](https://github.com/vm0-ai/vm0/issues/8778)) ([edbe85c](https://github.com/vm0-ai/vm0/commit/edbe85ca3f0fb81821aeeb609a0a700fcbd137e8))
+
+
+### Bug Fixes
+
+* **insights:** fix summary card text color in dark mode and remove connector underlines ([#8774](https://github.com/vm0-ai/vm0/issues/8774)) ([1032823](https://github.com/vm0-ai/vm0/commit/10328238f353aeff6b95679adafbc3d4a0796a34))
+* **platform:** align permissions dialog unknown endpoints section ([#8786](https://github.com/vm0-ai/vm0/issues/8786)) ([17d1250](https://github.com/vm0-ai/vm0/commit/17d125015c0c47cb936a3044197e1ec4508efbce))
+* **runner:** address feature switch review findings ([#8801](https://github.com/vm0-ai/vm0/issues/8801)) ([ae7eaba](https://github.com/vm0-ai/vm0/commit/ae7eabad66b72d38d16a4a01b97437bd5d962b3b))
+
+
+### Refactoring
+
+* normalize network policies schema from nullable optional to nullable ([#8808](https://github.com/vm0-ai/vm0/issues/8808)) ([3252b28](https://github.com/vm0-ai/vm0/commit/3252b282e66b6fd82bfbc767397a5e4d9359ae89))
+* **voice-chat:** unify shared context naming to slow-brain/fast-brain ([#8784](https://github.com/vm0-ai/vm0/issues/8784)) ([c6c7fc2](https://github.com/vm0-ai/vm0/commit/c6c7fc2612a44b6cc52728d25838960168b27cb4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.169.0
+
 ## [0.209.2](https://github.com/vm0-ai/vm0/compare/app-v0.209.1...app-v0.209.2) (2026-04-10)
 
 

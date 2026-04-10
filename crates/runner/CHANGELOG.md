@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.73.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.72.1...runner-rs-v0.73.0) (2026-04-10)
+
+
+### Features
+
+* **runner:** clean stale files on vm reuse before downloading storages ([#8800](https://github.com/vm0-ai/vm0/issues/8800)) ([4725751](https://github.com/vm0-ai/vm0/commit/4725751f5ff9b6f4b7b1c1294b6efbc48bc005b1)), closes [#8757](https://github.com/vm0-ai/vm0/issues/8757)
+* **runner:** pass feature switch states through execution context ([#8778](https://github.com/vm0-ai/vm0/issues/8778)) ([edbe85c](https://github.com/vm0-ai/vm0/commit/edbe85ca3f0fb81821aeeb609a0a700fcbd137e8))
+
+
+### Bug Fixes
+
+* **runner:** pin discover future to prevent heartbeat cancellation ([#8747](https://github.com/vm0-ai/vm0/issues/8747)) ([#8783](https://github.com/vm0-ai/vm0/issues/8783)) ([31603cd](https://github.com/vm0-ai/vm0/commit/31603cd3db27475a94d2cdd2f4272e8cc5ed403b))
+* **runner:** prevent message_delta from overwriting proxy usage with zeros ([#8805](https://github.com/vm0-ai/vm0/issues/8805)) ([3e143a4](https://github.com/vm0-ai/vm0/commit/3e143a476b31ae972fb3079316a3c28855ac79e5)), closes [#8796](https://github.com/vm0-ai/vm0/issues/8796)
+* **runner:** prevent proxy billing data loss from error flows and shutdown ([#8772](https://github.com/vm0-ai/vm0/issues/8772)) ([4fd963d](https://github.com/vm0-ai/vm0/commit/4fd963d88add04850674522f635e2540dbad3953))
+
 ## [0.72.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.72.0...runner-rs-v0.72.1) (2026-04-10)
 
 ## [0.72.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.71.0...runner-rs-v0.72.0) (2026-04-09)

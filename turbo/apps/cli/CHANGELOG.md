@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.111.4](https://github.com/vm0-ai/vm0/compare/cli-v9.111.3...cli-v9.111.4) (2026-04-10)
+
+
+### Refactoring
+
+* **voice-chat:** unify shared context naming to slow-brain/fast-brain ([#8784](https://github.com/vm0-ai/vm0/issues/8784)) ([c6c7fc2](https://github.com/vm0-ai/vm0/commit/c6c7fc2612a44b6cc52728d25838960168b27cb4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.169.0
+
 ## [9.111.3](https://github.com/vm0-ai/vm0/compare/cli-v9.111.2...cli-v9.111.3) (2026-04-10)
 
 

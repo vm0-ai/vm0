@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.21.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.20.0...guest-agent-v0.21.0) (2026-04-10)
+
+
+### Features
+
+* **runner:** pass feature switch states through execution context ([#8778](https://github.com/vm0-ai/vm0/issues/8778)) ([edbe85c](https://github.com/vm0-ai/vm0/commit/edbe85ca3f0fb81821aeeb609a0a700fcbd137e8))
+
+
+### Bug Fixes
+
+* **runner:** address feature switch review findings ([#8801](https://github.com/vm0-ai/vm0/issues/8801)) ([ae7eaba](https://github.com/vm0-ai/vm0/commit/ae7eabad66b72d38d16a4a01b97437bd5d962b3b))
+
 ## [0.20.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.19.5...guest-agent-v0.20.0) (2026-04-09)
 
 

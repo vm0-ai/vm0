@@ -1,5 +1,41 @@
 # Changelog
 
+## [12.214.0](https://github.com/vm0-ai/vm0/compare/web-v12.213.0...web-v12.214.0) (2026-04-10)
+
+
+### Features
+
+* add unified tasks endpoint for mission control ([#8769](https://github.com/vm0-ai/vm0/issues/8769)) ([ed14070](https://github.com/vm0-ai/vm0/commit/ed14070c5c7bb8510d23a2f1c603cf4db2e2ef91))
+* **runner:** pass feature switch states through execution context ([#8778](https://github.com/vm0-ai/vm0/issues/8778)) ([edbe85c](https://github.com/vm0-ai/vm0/commit/edbe85ca3f0fb81821aeeb609a0a700fcbd137e8))
+* **voice-chat:** add meeting mode backend support ([#8802](https://github.com/vm0-ai/vm0/issues/8802)) ([20f17fb](https://github.com/vm0-ai/vm0/commit/20f17fbd58d5f49ad7f077c266ac8544a6bb6186))
+* **voice-chat:** add slow brain meeting preparation prompt ([#8810](https://github.com/vm0-ai/vm0/issues/8810)) ([74db76a](https://github.com/vm0-ai/vm0/commit/74db76a1f1c7c5f5c2fd9eebf1752a6093c00ea6)), closes [#8792](https://github.com/vm0-ai/vm0/issues/8792)
+* **web:** enrich diagnostic bundle with system log and full network log ([#8804](https://github.com/vm0-ai/vm0/issues/8804)) ([846d008](https://github.com/vm0-ai/vm0/commit/846d0082f4ac4fdef16d78ce04f1f2d26af8199c))
+
+
+### Bug Fixes
+
+* **auth:** correct dark mode text colors on login interface ([#8650](https://github.com/vm0-ai/vm0/issues/8650)) ([544929e](https://github.com/vm0-ai/vm0/commit/544929eee6cd4ad5f57c9413549157a7f074a6bd))
+* **billing:** log error when result event lacks uuid for deduplication ([#8781](https://github.com/vm0-ai/vm0/issues/8781)) ([db72b9a](https://github.com/vm0-ai/vm0/commit/db72b9ab67a4acc11ed8356cc493ec1cdf62d821)), closes [#8771](https://github.com/vm0-ai/vm0/issues/8771)
+* **runner:** address feature switch review findings ([#8801](https://github.com/vm0-ai/vm0/issues/8801)) ([ae7eaba](https://github.com/vm0-ai/vm0/commit/ae7eabad66b72d38d16a4a01b97437bd5d962b3b))
+* **slack:** always send full thread context in continuous sessions ([#8782](https://github.com/vm0-ai/vm0/issues/8782)) ([44829b8](https://github.com/vm0-ai/vm0/commit/44829b841915f8589723ce6284d0ba3ac6bda1b1))
+* **slack:** deduplicate events by event_id to prevent duplicate agent runs ([#8776](https://github.com/vm0-ai/vm0/issues/8776)) ([57179c5](https://github.com/vm0-ai/vm0/commit/57179c55210a1f10345ba80033d68ed902f3e212)), closes [#8773](https://github.com/vm0-ai/vm0/issues/8773)
+* **web:** improve SEO with homepage metadata, sitemap images, pricing schema, and breadcrumbs ([#8667](https://github.com/vm0-ai/vm0/issues/8667)) ([5b47815](https://github.com/vm0-ai/vm0/commit/5b478154aa8e207f28039c8e067c3b9ff6d0f631))
+* **web:** pass report-error link to callbacks on run failure ([#8788](https://github.com/vm0-ai/vm0/issues/8788)) ([f2d03dc](https://github.com/vm0-ai/vm0/commit/f2d03dc971fa39e2b59cd1c0b3cf189bb16d950c))
+* **web:** use primary color for legal consent links in dark mode ([#8790](https://github.com/vm0-ai/vm0/issues/8790)) ([32153b8](https://github.com/vm0-ai/vm0/commit/32153b848acce78d464431802c6dd3bb0f1fa9f4))
+
+
+### Refactoring
+
+* normalize network policies schema from nullable optional to nullable ([#8808](https://github.com/vm0-ai/vm0/issues/8808)) ([3252b28](https://github.com/vm0-ai/vm0/commit/3252b282e66b6fd82bfbc767397a5e4d9359ae89))
+* **voice-chat:** unify shared context naming to slow-brain/fast-brain ([#8784](https://github.com/vm0-ai/vm0/issues/8784)) ([c6c7fc2](https://github.com/vm0-ai/vm0/commit/c6c7fc2612a44b6cc52728d25838960168b27cb4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.169.0
+
 ## [12.213.0](https://github.com/vm0-ai/vm0/compare/web-v12.212.1...web-v12.213.0) (2026-04-10)
 
 

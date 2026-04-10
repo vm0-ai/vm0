@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.0](https://github.com/vm0-ai/vm0/compare/guest-download-v0.17.1...guest-download-v0.18.0) (2026-04-10)
+
+
+### Features
+
+* **runner:** clean stale files on vm reuse before downloading storages ([#8800](https://github.com/vm0-ai/vm0/issues/8800)) ([4725751](https://github.com/vm0-ai/vm0/commit/4725751f5ff9b6f4b7b1c1294b6efbc48bc005b1)), closes [#8757](https://github.com/vm0-ai/vm0/issues/8757)
+
 ## [0.17.1](https://github.com/vm0-ai/vm0/compare/guest-download-v0.17.0...guest-download-v0.17.1) (2026-04-10)
 
 

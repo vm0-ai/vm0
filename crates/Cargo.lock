@@ -709,7 +709,7 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "guest-agent"
-version = "0.20.0"
+version = "0.21.0"
 dependencies = [
  "base64",
  "bytes",
@@ -738,7 +738,7 @@ dependencies = [
 
 [[package]]
 name = "guest-download"
-version = "0.17.1"
+version = "0.18.0"
 dependencies = [
  "flate2",
  "guest-common",
@@ -1699,7 +1699,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.72.1"
+version = "0.73.0"
 dependencies = [
  "ably-subscriber",
  "async-trait",
