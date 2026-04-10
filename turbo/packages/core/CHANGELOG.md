@@ -1,5 +1,15 @@
 # Changelog
 
+## [8.171.0](https://github.com/vm0-ai/vm0/compare/core-v8.170.0...core-v8.171.0) (2026-04-10)
+
+
+### Features
+
+* add description infrastructure to feature switch system ([#8874](https://github.com/vm0-ai/vm0/issues/8874)) ([af2170e](https://github.com/vm0-ai/vm0/commit/af2170e63e9655b71b4b4523621ea24a857d9a04))
+* add descriptions for feature switches batch a ([#8879](https://github.com/vm0-ai/vm0/issues/8879)) ([19e9bb2](https://github.com/vm0-ai/vm0/commit/19e9bb2bdcbdc0021fe6421beb47f2581ac627d9)), closes [#8871](https://github.com/vm0-ai/vm0/issues/8871)
+* add descriptions for feature switches batch b ([#8887](https://github.com/vm0-ai/vm0/issues/8887)) ([b3ec759](https://github.com/vm0-ai/vm0/commit/b3ec759c4e626fde0647c905beec1d4fa511470a)), closes [#8872](https://github.com/vm0-ai/vm0/issues/8872)
+* add descriptions for feature switches batch c ([#8888](https://github.com/vm0-ai/vm0/issues/8888)) ([b9c4898](https://github.com/vm0-ai/vm0/commit/b9c489863e50c2bea08712d5215d5fee9eea5fc1)), closes [#8873](https://github.com/vm0-ai/vm0/issues/8873)
+
 ## [8.170.0](https://github.com/vm0-ai/vm0/compare/core-v8.169.0...core-v8.170.0) (2026-04-10)
 
 

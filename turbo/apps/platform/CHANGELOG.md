@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.214.0](https://github.com/vm0-ai/vm0/compare/app-v0.213.0...app-v0.214.0) (2026-04-10)
+
+
+### Features
+
+* add description infrastructure to feature switch system ([#8874](https://github.com/vm0-ai/vm0/issues/8874)) ([af2170e](https://github.com/vm0-ai/vm0/commit/af2170e63e9655b71b4b4523621ea24a857d9a04))
+* **platform:** add compliance trust badges to onboarding ([#8824](https://github.com/vm0-ai/vm0/issues/8824)) ([6d57b08](https://github.com/vm0-ai/vm0/commit/6d57b0804bfaa675aafbe26452efca90e126dbfa))
+
+
+### Bug Fixes
+
+* **platform:** redesign avatar and create-agent dialogs ([#8806](https://github.com/vm0-ai/vm0/issues/8806)) ([5009fde](https://github.com/vm0-ai/vm0/commit/5009fde6284b09052c770d9ef23ce756337755c5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.171.0
+
 ## [0.213.0](https://github.com/vm0-ai/vm0/compare/app-v0.212.0...app-v0.213.0) (2026-04-10)
 
 

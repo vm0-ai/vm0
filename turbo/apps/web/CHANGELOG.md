@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.216.0](https://github.com/vm0-ai/vm0/compare/web-v12.215.2...web-v12.216.0) (2026-04-10)
+
+
+### Features
+
+* **web:** add youtube video previews to use case detail pages ([#8895](https://github.com/vm0-ai/vm0/issues/8895)) ([572a154](https://github.com/vm0-ai/vm0/commit/572a154d5ae2a462a21fe315513e299238c98d5b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.171.0
+
 ## [12.215.2](https://github.com/vm0-ai/vm0/compare/web-v12.215.1...web-v12.215.2) (2026-04-10)
 
 
