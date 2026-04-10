@@ -84,8 +84,4 @@ export const zeroPhoneSetupContract = c.router({
   },
 });
 
-export type ZeroPhoneStatusContract = typeof zeroPhoneStatusContract;
-export type ZeroPhoneLinkContract = typeof zeroPhoneLinkContract;
-export type ZeroPhoneSetupContract = typeof zeroPhoneSetupContract;
 export type PhoneStatusResponse = z.infer<typeof phoneStatusResponseSchema>;
-export type PhoneSetupResponse = z.infer<typeof phoneSetupResponseSchema>;
