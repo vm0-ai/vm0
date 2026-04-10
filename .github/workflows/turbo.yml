@@ -1365,8 +1365,7 @@ jobs:
       runner-dir: ${{ steps.host.outputs.runner-dir }}
       runner-matrix: ${{ steps.runner-matrix.outputs.matrix }}
       chunk-count: ${{ steps.runner-matrix.outputs.chunk-count }}
-      default-rootfs-hash: ${{ steps.deploy.outputs.default-rootfs-hash }}
-      default-snapshot-hash: ${{ steps.deploy.outputs.default-snapshot-hash }}
+      default-image-hash: ${{ steps.deploy.outputs.default-image-hash }}
     steps:
       - uses: actions/checkout@v6
 
@@ -1547,18 +1546,16 @@ jobs:
 
           # Extract build hashes from any host's log (all hosts produce identical hashes).
           FIRST_LOG=$(find "$LOG_DIR" -name '*.log' | head -1)
-          DEFAULT_ROOTFS_HASH=$(grep '^rootfs_hash=' "$FIRST_LOG" | cut -d= -f2)
-          DEFAULT_SNAPSHOT_HASH=$(grep '^snapshot_hash=' "$FIRST_LOG" | cut -d= -f2)
+          DEFAULT_IMAGE_HASH=$(grep '^image_hash=' "$FIRST_LOG" | cut -d= -f2)
           rm -rf "$LOG_DIR"
-          if [ -z "$DEFAULT_ROOTFS_HASH" ] || [ -z "$DEFAULT_SNAPSHOT_HASH" ]; then
-            echo "::error::Failed to extract default build hashes from log"
+          if [ -z "$DEFAULT_IMAGE_HASH" ]; then
+            echo "::error::Failed to extract default image hash from log"
             exit 1
           fi
-          echo "default-rootfs-hash=${DEFAULT_ROOTFS_HASH}" >> "$GITHUB_OUTPUT"
-          echo "default-snapshot-hash=${DEFAULT_SNAPSHOT_HASH}" >> "$GITHUB_OUTPUT"
+          echo "default-image-hash=${DEFAULT_IMAGE_HASH}" >> "$GITHUB_OUTPUT"
 
   # Deploy runner start: generate config with real preview URL and start service
-  # Waits for both deploy-runner-prepare (binaries + rootfs/snapshot) and deploy-web (preview URL)
+  # Waits for both deploy-runner-prepare (binaries + image) and deploy-web (preview URL)
   deploy-runner-start:
     runs-on: ubuntu-latest
     concurrency:
@@ -1597,8 +1594,7 @@ jobs:
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           BIN_DIR: ${{ needs.deploy-runner-prepare.outputs.bin-dir }}
           RUNNER_DIR: ${{ needs.deploy-runner-prepare.outputs.runner-dir }}
-          DEFAULT_ROOTFS_HASH: ${{ needs.deploy-runner-prepare.outputs.default-rootfs-hash }}
-          DEFAULT_SNAPSHOT_HASH: ${{ needs.deploy-runner-prepare.outputs.default-snapshot-hash }}
+          DEFAULT_IMAGE_HASH: ${{ needs.deploy-runner-prepare.outputs.default-image-hash }}
           PREVIEW_URL: ${{ needs.deploy-web.outputs.preview-url }}
           VERCEL_BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
@@ -1620,8 +1616,7 @@ jobs:
             # shellcheck disable=SC2029
             ssh "$REMOTE" "sudo ${BIN_DIR}/runner config \
               --profile vm0/default \
-              --rootfs-hash ${DEFAULT_ROOTFS_HASH} \
-              --snapshot-hash ${DEFAULT_SNAPSHOT_HASH} \
+              --image-hash ${DEFAULT_IMAGE_HASH} \
               --name ${RUNNER_NAME} \
               --group vm0/development-${JOB_REF} \
               --runner-dirname ${JOB_REF} \

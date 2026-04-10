@@ -62,11 +62,14 @@ pub async fn run_benchmark(
             RunnerError::Config(format!("profile '{}' not found in config", args.profile))
         })?
         .clone();
-    let is_snapshot = default_profile.snapshot_hash.is_some();
+    let is_snapshot = true; // images always contain snapshot
 
     // Block until memory.bin is in page cache so benchmark numbers are stable.
-    if let Some(hash) = &default_profile.snapshot_hash {
-        let path = home.snapshots_dir().join(hash).join("memory.bin");
+    {
+        let path = home
+            .images_dir()
+            .join(&default_profile.image_hash)
+            .join("memory.bin");
         let _ = tokio::task::spawn_blocking(move || prefetch::prefetch_memory(&path)).await;
     }
 

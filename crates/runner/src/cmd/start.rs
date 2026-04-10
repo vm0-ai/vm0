@@ -131,17 +131,12 @@ pub async fn run_start(
     let runner_id = load_or_generate_runner_id(&runner_config.base_dir).await?;
     info!(runner_id = %runner_id, runner_name = %runner_config.name, "runner identity");
 
-    // Shared locks on rootfs/snapshot per profile — allows `runner gc` to detect in-use resources.
+    // Shared lock on image per profile — allows `runner gc` to detect in-use resources.
     let mut _resource_locks = Vec::new();
     for profile in runner_config.profiles.values() {
-        let lock = lock::acquire_shared(home.rootfs_lock(&profile.rootfs_hash)).await?;
-        touch_mtime(&home.rootfs_dir().join(&profile.rootfs_hash));
+        let lock = lock::acquire_shared(home.image_lock(&profile.image_hash)).await?;
+        touch_mtime(&home.images_dir().join(&profile.image_hash));
         _resource_locks.push(lock);
-        if let Some(hash) = &profile.snapshot_hash {
-            let lock = lock::acquire_shared(home.snapshot_lock(hash)).await?;
-            touch_mtime(&home.snapshots_dir().join(hash));
-            _resource_locks.push(lock);
-        }
     }
 
     let log_paths = LogPaths::new(home.logs_dir());
@@ -156,10 +151,11 @@ pub async fn run_start(
 
     // Start background prefetch of snapshot memory for all profiles.
     for profile in runner_config.profiles.values() {
-        if let Some(hash) = &profile.snapshot_hash {
-            let path = home.snapshots_dir().join(hash).join("memory.bin");
-            tokio::task::spawn_blocking(move || prefetch::prefetch_memory(&path));
-        }
+        let path = home
+            .images_dir()
+            .join(&profile.image_hash)
+            .join("memory.bin");
+        tokio::task::spawn_blocking(move || prefetch::prefetch_memory(&path));
     }
 
     // Compute the smallest profile resources for budget pre-check.
@@ -1415,8 +1411,7 @@ mod tests {
         m.insert(
             "vm0/default".to_string(),
             config::ProfileConfig {
-                rootfs_hash: "hash".into(),
-                snapshot_hash: None,
+                image_hash: "hash".into(),
                 vcpu: 2,
                 memory_mb: 4096,
                 disk_mb: 10240,
