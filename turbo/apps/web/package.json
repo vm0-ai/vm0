@@ -44,7 +44,7 @@
     "drizzle-orm": "^0.45.2",
     "html-to-text": "^9.0.5",
     "import-in-the-middle": "^3.0.0",
-    "next": "^16.1.7",
+    "next": "^16.2.3",
     "next-intl": "^4.6.1",
     "pg": "^8.16.3",
     "postgres": "^3.4.7",
