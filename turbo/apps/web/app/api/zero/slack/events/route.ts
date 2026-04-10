@@ -79,7 +79,6 @@ interface SlackEventCallback {
     | SlackAppHomeOpenedEvent
     | SlackAppUninstalledEvent
     | SlackTokensRevokedEvent;
-  event_id: string;
   event_time: number;
 }
 
@@ -147,7 +146,7 @@ function handleEventCallback(payload: SlackEventCallback) {
         workspaceId: payload.team_id,
         userId: event.user,
         channelId: event.channel,
-        }).catch((error) => {
+      }).catch((error) => {
         log.error("Error handling org messages_tab_opened", { error });
       }),
     );
@@ -238,3 +237,4 @@ export async function POST(request: Request) {
 
   return new Response("OK", { status: 200 });
 }
+
