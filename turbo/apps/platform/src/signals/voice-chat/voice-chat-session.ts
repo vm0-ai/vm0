@@ -186,6 +186,7 @@ const internalPrompt$ = state<string | null>(null);
 const internalPrepStartTime$ = state<number | null>(null);
 const internalPrepElapsedMs$ = state(0);
 const internalReconnectAttempt$ = state(0);
+const internalInputMode$ = state<"hands-free" | "push-to-talk">("hands-free");
 
 const internalParentSignal$ = state<AbortSignal | null>(null);
 
@@ -225,6 +226,9 @@ export const vcPrepElapsedMs$ = computed((get) => {
 });
 export const vcReconnectAttempt$ = computed((get) => {
   return get(internalReconnectAttempt$);
+});
+export const vcInputMode$ = computed((get) => {
+  return get(internalInputMode$);
 });
 export const vcMeetingPromptInput$ = computed((get) => {
   return get(meetingPromptInput$);
@@ -473,6 +477,17 @@ const setupWebRTC$ = command(
     set(internalDc$, dc);
 
     dc.addEventListener("open", () => {
+      const inputMode = get(internalInputMode$);
+      const turnDetection =
+        inputMode === "hands-free"
+          ? {
+              type: "server_vad",
+              threshold: 0.8,
+              prefix_padding_ms: 300,
+              silence_duration_ms: 600,
+            }
+          : null;
+
       dc.send(
         JSON.stringify({
           type: "session.update",
@@ -480,12 +495,7 @@ const setupWebRTC$ = command(
             modalities: ["text", "audio"],
             instructions: FAST_BRAIN_INSTRUCTIONS,
             input_audio_transcription: { model: "whisper-1" },
-            turn_detection: {
-              type: "server_vad",
-              threshold: 0.8,
-              prefix_padding_ms: 300,
-              silence_duration_ms: 600,
-            },
+            turn_detection: turnDetection,
             tools: SESSION_TOOLS,
           },
         }),
@@ -1133,6 +1143,7 @@ export const endVoiceChat$ = command(({ get, set }) => {
   set(internalPrepStartTime$, null);
   set(internalPrepElapsedMs$, 0);
   set(internalReconnectAttempt$, 0);
+  set(internalInputMode$, "hands-free");
   set(internalParentSignal$, null);
   set(internalStatus$, "idle");
 });
@@ -1159,4 +1170,81 @@ export const toggleVoiceChatMute$ = command(({ get, set }) => {
   const wasMuted = get(internalMuted$);
   track.enabled = wasMuted;
   set(internalMuted$, !wasMuted);
+});
+
+export const switchInputMode$ = command(
+  ({ get, set }, mode: "hands-free" | "push-to-talk") => {
+    const dc = get(internalDc$);
+    if (!dc || dc.readyState !== "open") {
+      return;
+    }
+
+    set(internalInputMode$, mode);
+
+    const turnDetection =
+      mode === "hands-free"
+        ? {
+            type: "server_vad",
+            threshold: 0.8,
+            prefix_padding_ms: 300,
+            silence_duration_ms: 600,
+          }
+        : null;
+
+    dc.send(
+      JSON.stringify({
+        type: "session.update",
+        session: { turn_detection: turnDetection },
+      }),
+    );
+
+    // PTT starts muted, hands-free starts unmuted
+    const stream = get(internalStream$);
+    if (!stream) {
+      return;
+    }
+    const track = stream.getAudioTracks()[0];
+    if (!track) {
+      return;
+    }
+
+    if (mode === "push-to-talk") {
+      track.enabled = false;
+      set(internalMuted$, true);
+    } else {
+      track.enabled = true;
+      set(internalMuted$, false);
+    }
+  },
+);
+
+export const startPTT$ = command(({ get, set }) => {
+  const stream = get(internalStream$);
+  if (!stream) {
+    return;
+  }
+  const track = stream.getAudioTracks()[0];
+  if (!track) {
+    return;
+  }
+  track.enabled = true;
+  set(internalMuted$, false);
+});
+
+export const stopPTT$ = command(({ get, set }) => {
+  const stream = get(internalStream$);
+  if (!stream) {
+    return;
+  }
+  const track = stream.getAudioTracks()[0];
+  if (!track) {
+    return;
+  }
+  track.enabled = false;
+  set(internalMuted$, true);
+
+  const dc = get(internalDc$);
+  if (dc && dc.readyState === "open") {
+    dc.send(JSON.stringify({ type: "input_audio_buffer.commit" }));
+  }
 });

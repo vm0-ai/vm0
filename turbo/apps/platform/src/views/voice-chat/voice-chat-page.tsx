@@ -1,7 +1,7 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
 import { useGet, useLastResolved, useSet } from "ccstate-react";
-import { Button, cn } from "@vm0/ui";
+import { Button, Tabs, TabsList, TabsTrigger, cn } from "@vm0/ui";
 import {
   IconMicrophone,
   IconMicrophoneOff,
@@ -9,6 +9,7 @@ import {
   IconLoader2,
   IconRefresh,
 } from "@tabler/icons-react";
+import type { TouchEvent as ReactTouchEvent } from "react";
 import { defaultAgentName$ } from "../../signals/agent.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -30,6 +31,10 @@ import {
   endVoiceChat$,
   retryVoiceChat$,
   toggleVoiceChatMute$,
+  vcInputMode$,
+  switchInputMode$,
+  startPTT$,
+  stopPTT$,
 } from "../../signals/voice-chat/voice-chat-session.ts";
 import {
   setTranscriptScrollContainer$,
@@ -101,6 +106,105 @@ function StatusBadge({
   );
 }
 
+function VoiceChatFooter({
+  status,
+  inputMode,
+  muted,
+  switchMode,
+  toggleMute,
+  pttStart,
+  pttStop,
+  onRetry,
+}: {
+  status: string;
+  inputMode: "hands-free" | "push-to-talk";
+  muted: boolean;
+  switchMode: (mode: "hands-free" | "push-to-talk") => void;
+  toggleMute: () => void;
+  pttStart: () => void;
+  pttStop: () => void;
+  onRetry: () => void;
+}) {
+  return (
+    <div className="border-t px-4 py-3 flex items-center justify-between gap-4">
+      {/* Left: Segmented Control */}
+      <Tabs
+        value={inputMode}
+        onValueChange={(v) => {
+          if (status === "connected") {
+            switchMode(v as "hands-free" | "push-to-talk");
+          }
+        }}
+      >
+        <TabsList
+          className={cn(
+            status !== "connected" && "pointer-events-none opacity-50",
+          )}
+        >
+          <TabsTrigger value="hands-free">Hands-free</TabsTrigger>
+          <TabsTrigger value="push-to-talk">Push to Talk</TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      {/* Right: Context-Sensitive Action Button */}
+      {status === "disconnected" ? (
+        <Button
+          variant="secondary"
+          className="h-12 px-6 rounded-full"
+          onClick={onRetry}
+        >
+          <IconRefresh size={20} className="mr-2" />
+          Retry
+        </Button>
+      ) : inputMode === "push-to-talk" ? (
+        <Button
+          variant={muted ? "secondary" : "default"}
+          className="h-12 px-6 rounded-full select-none"
+          disabled={status !== "connected"}
+          onMouseDown={() => {
+            pttStart();
+          }}
+          onMouseUp={() => {
+            pttStop();
+          }}
+          onMouseLeave={() => {
+            if (!muted) {
+              pttStop();
+            }
+          }}
+          onTouchStart={(e: ReactTouchEvent) => {
+            e.preventDefault();
+            pttStart();
+          }}
+          onTouchEnd={(e: ReactTouchEvent) => {
+            e.preventDefault();
+            pttStop();
+          }}
+        >
+          <IconMicrophone size={20} className="mr-2" />
+          {muted ? "Hold to Talk" : "Recording..."}
+        </Button>
+      ) : (
+        <Button
+          variant={muted ? "destructive" : "secondary"}
+          className="h-12 px-6 rounded-full"
+          disabled={status !== "connected"}
+          onClick={() => {
+            toggleMute();
+          }}
+        >
+          {muted ? (
+            <IconMicrophoneOff size={20} className="mr-2" />
+          ) : (
+            <IconMicrophone size={20} className="mr-2" />
+          )}
+          {muted ? "Unmute" : "Mute"}
+        </Button>
+      )}
+    </div>
+  );
+}
+
 export function VoiceChatPage() {
   const pageSignal = useGet(pageSignal$);
   const enabled = useLastResolved(vcEnabled$);
@@ -116,6 +220,10 @@ export function VoiceChatPage() {
   const toggleMute = useSet(toggleVoiceChatMute$);
   const reconnectAttempt = useGet(vcReconnectAttempt$);
   const retrySession = useSet(retryVoiceChat$);
+  const inputMode = useGet(vcInputMode$);
+  const switchMode = useSet(switchInputMode$);
+  const pttStart = useSet(startPTT$);
+  const pttStop = useSet(stopPTT$);
   const prompt = useGet(vcPrompt$);
   const prepElapsedMs = useGet(vcPrepElapsedMs$);
   const meetingPrompt = useGet(vcMeetingPromptInput$);
@@ -376,46 +484,18 @@ export function VoiceChatPage() {
         </div>
       </div>
 
-      {/* Audio controls footer */}
-      <div className="border-t px-4 py-3 flex items-center justify-center gap-4">
-        <Button
-          variant={muted ? "destructive" : "secondary"}
-          size="icon"
-          className="h-12 w-12 rounded-full"
-          onClick={() => {
-            toggleMute();
-          }}
-          disabled={status !== "connected"}
-        >
-          {muted ? (
-            <IconMicrophoneOff size={20} />
-          ) : (
-            <IconMicrophone size={20} />
-          )}
-        </Button>
-        {status === "disconnected" && (
-          <Button
-            variant="secondary"
-            size="icon"
-            className="h-12 w-12 rounded-full"
-            onClick={() => {
-              detach(retrySession(pageSignal), Reason.DomCallback);
-            }}
-          >
-            <IconRefresh size={20} />
-          </Button>
-        )}
-        <Button
-          variant="destructive"
-          size="icon"
-          className="h-12 w-12 rounded-full"
-          onClick={() => {
-            endSession();
-          }}
-        >
-          <IconPhoneOff size={20} />
-        </Button>
-      </div>
+      <VoiceChatFooter
+        status={status}
+        inputMode={inputMode}
+        muted={muted}
+        switchMode={switchMode}
+        toggleMute={toggleMute}
+        pttStart={pttStart}
+        pttStop={pttStop}
+        onRetry={() => {
+          detach(retrySession(pageSignal), Reason.DomCallback);
+        }}
+      />
     </div>
   );
 }
