@@ -71,6 +71,7 @@ function makeSnapshot(runId: string, userId: string): RunContextSnapshot {
       vasVersionId: "art-ver-1",
     },
     memory: null,
+    featureFlags: { computerUse: true, voiceChat: false },
   };
 }
 
@@ -107,6 +108,7 @@ describe("GET /api/zero/runs/:id/context", () => {
     expect(data.volumes).toHaveLength(1);
     expect(data.artifact).toBeDefined();
     expect(data.memory).toBeNull();
+    expect(data.featureFlags).toEqual({ computerUse: true, voiceChat: false });
   });
 
   it("should return 404 when run not found", async () => {

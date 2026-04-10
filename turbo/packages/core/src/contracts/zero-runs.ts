@@ -200,7 +200,7 @@ const runContextResponseSchema = z.object({
   volumes: z.array(runContextVolumeSchema),
   artifact: runContextArtifactSchema.nullable(),
   memory: runContextArtifactSchema.nullable(),
-  featureFlags: z.record(z.string(), z.boolean()).nullable().optional(),
+  featureFlags: z.record(z.string(), z.boolean()).nullable(),
 });
 
 /**
