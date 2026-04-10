@@ -240,6 +240,102 @@ describe("POST /api/zero/report-error", () => {
     expect(entryNames).toContain("activity-log.json");
   });
 
+  it("should include system-log.txt when Axiom returns system log data", async () => {
+    const { runId } = await setupFailedRun(userId);
+
+    context.mocks.axiom.queryAxiom
+      .mockResolvedValueOnce([]) // agentEvents
+      .mockResolvedValueOnce([{ log: "booting sandbox\n" }, { log: "ready\n" }]) // systemLog
+      .mockResolvedValueOnce([]); // networkLog
+
+    await postReportError({ runId, title: "Bug" });
+
+    const zipBuffer = context.mocks.s3.uploadS3Buffer.mock
+      .calls[0]![2] as Buffer;
+    const zip = new AdmZip(zipBuffer);
+    const systemLog = zip
+      .getEntry("system-log.txt")
+      ?.getData()
+      .toString("utf-8");
+
+    expect(systemLog).toBe("booting sandbox\nready\n");
+  });
+
+  it("should include network-log.jsonl when Axiom returns network log data", async () => {
+    const { runId } = await setupFailedRun(userId);
+
+    const networkEntry = {
+      _time: "2024-01-01T00:00:01Z",
+      runId,
+      method: "GET",
+      url: "https://api.github.com/repos",
+      status: 200,
+      firewall_action: "allow",
+    };
+
+    context.mocks.axiom.queryAxiom
+      .mockResolvedValueOnce([]) // agentEvents
+      .mockResolvedValueOnce([]) // systemLog
+      .mockResolvedValueOnce([networkEntry]); // networkLog
+
+    await postReportError({ runId, title: "Bug" });
+
+    const zipBuffer = context.mocks.s3.uploadS3Buffer.mock
+      .calls[0]![2] as Buffer;
+    const zip = new AdmZip(zipBuffer);
+    const networkLog = zip
+      .getEntry("network-log.jsonl")
+      ?.getData()
+      .toString("utf-8");
+
+    expect(networkLog).toBeDefined();
+    const parsed = JSON.parse(networkLog!);
+    expect(parsed.method).toBe("GET");
+    expect(parsed.firewall_action).toBe("allow");
+  });
+
+  it("should exclude system-log.txt and network-log.jsonl when data is empty", async () => {
+    const { runId } = await setupFailedRun(userId);
+
+    await postReportError({ runId, title: "Bug" });
+
+    const zipBuffer = context.mocks.s3.uploadS3Buffer.mock
+      .calls[0]![2] as Buffer;
+    const zip = new AdmZip(zipBuffer);
+    const entryNames = zip.getEntries().map((e) => {
+      return e.entryName;
+    });
+
+    expect(entryNames).not.toContain("system-log.txt");
+    expect(entryNames).not.toContain("network-log.jsonl");
+  });
+
+  it("should succeed when system log or network log query fails", async () => {
+    const { runId } = await setupFailedRun(userId);
+
+    context.mocks.axiom.queryAxiom
+      .mockResolvedValueOnce([]) // agentEvents succeeds
+      .mockRejectedValueOnce(new Error("system log timeout")) // systemLog fails
+      .mockRejectedValueOnce(new Error("network log timeout")); // networkLog fails
+
+    const response = await postReportError({ runId, title: "Bug" });
+    expect(response.status).toBe(200);
+
+    const zipBuffer = context.mocks.s3.uploadS3Buffer.mock
+      .calls[0]![2] as Buffer;
+    const zip = new AdmZip(zipBuffer);
+    const entryNames = zip.getEntries().map((e) => {
+      return e.entryName;
+    });
+
+    // Core files still present
+    expect(entryNames).toContain("manifest.json");
+    expect(entryNames).toContain("chat-history.jsonl");
+    // Failed logs excluded gracefully
+    expect(entryNames).not.toContain("system-log.txt");
+    expect(entryNames).not.toContain("network-log.jsonl");
+  });
+
   it("should include run metadata in manifest.json", async () => {
     const { runId } = await setupFailedRun(userId);
 
