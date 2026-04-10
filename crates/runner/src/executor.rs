@@ -416,7 +416,8 @@ async fn run_in_sandbox(
             }
             None => manifest,
         };
-        // Short-circuit: skip the vsock exec if every entry was filtered out.
+        // Short-circuit: skip the vsock exec if every entry was filtered out
+        // and there are no paths to clean up.
         let has_work = effective.storages.iter().any(|s| s.archive_url.is_some())
             || effective
                 .artifact
@@ -425,7 +426,8 @@ async fn run_in_sandbox(
             || effective
                 .memory
                 .as_ref()
-                .is_some_and(|m| m.archive_url.is_some());
+                .is_some_and(|m| m.archive_url.is_some())
+            || !effective.cleanup_paths.is_empty();
         if !has_work {
             info!(run_id = %context.run_id, "all storages unchanged, skipping download");
         }
@@ -921,8 +923,9 @@ fn filter_unchanged_storages(
     prev: &crate::idle_pool::StorageFingerprints,
 ) -> StorageManifest {
     let mut skipped: usize = 0;
+    let mut cleanup_paths: Vec<String> = Vec::new();
 
-    let storages = manifest
+    let storages: Vec<StorageEntry> = manifest
         .storages
         .iter()
         .map(|s| {
@@ -935,6 +938,8 @@ fn filter_unchanged_storages(
             };
             if unchanged {
                 skipped += 1;
+            } else if s.archive_url.is_some() {
+                cleanup_paths.push(s.mount_path.clone());
             }
             StorageEntry {
                 mount_path: s.mount_path.clone(),
@@ -949,28 +954,44 @@ fn filter_unchanged_storages(
         })
         .collect();
 
-    let filter_artifact =
-        |a: &ArtifactEntry, prev_ver: &Option<(String, String)>, skipped: &mut usize| {
-            let same = prev_ver
-                .as_ref()
-                .is_some_and(|(name, ver)| *name == a.vas_storage_name && *ver == a.vas_version_id);
-            if same {
-                *skipped += 1;
-            }
-            ArtifactEntry {
-                archive_url: if same { None } else { a.archive_url.clone() },
-                ..a.clone()
-            }
-        };
+    // Detect removed storages: paths in previous fingerprints not in current manifest.
+    let current_paths: std::collections::HashSet<&str> = manifest
+        .storages
+        .iter()
+        .map(|s| s.mount_path.as_str())
+        .collect();
+    for prev_path in prev.storages.keys() {
+        if !current_paths.contains(prev_path.as_str()) {
+            cleanup_paths.push(prev_path.clone());
+        }
+    }
+
+    let filter_artifact = |a: &ArtifactEntry,
+                           prev_ver: &Option<(String, String)>,
+                           skipped: &mut usize,
+                           cleanup: &mut Vec<String>| {
+        let same = prev_ver
+            .as_ref()
+            .is_some_and(|(name, ver)| *name == a.vas_storage_name && *ver == a.vas_version_id);
+        if same {
+            *skipped += 1;
+        } else if a.archive_url.is_some() {
+            cleanup.push(a.mount_path.clone());
+        }
+        ArtifactEntry {
+            archive_url: if same { None } else { a.archive_url.clone() },
+            ..a.clone()
+        }
+    };
 
     let artifact = manifest
         .artifact
         .as_ref()
-        .map(|a| filter_artifact(a, &prev.artifact, &mut skipped));
+        .map(|a| filter_artifact(a, &prev.artifact, &mut skipped, &mut cleanup_paths));
     let memory = manifest
         .memory
         .as_ref()
-        .map(|m| filter_artifact(m, &prev.memory, &mut skipped));
+        .map(|m| filter_artifact(m, &prev.memory, &mut skipped, &mut cleanup_paths));
 
     if skipped > 0 {
         let total = manifest.storages.len()
@@ -979,10 +1000,18 @@ fn filter_unchanged_storages(
         info!(skipped, total, "filtered unchanged storage entries");
     }
 
+    if !cleanup_paths.is_empty() {
+        info!(
+            count = cleanup_paths.len(),
+            "computed cleanup paths for stale file removal"
+        );
+    }
+
     StorageManifest {
         storages,
         artifact,
         memory,
+        cleanup_paths,
     }
 }
 
@@ -1306,6 +1335,7 @@ mod tests {
                 vas_version_id: "v1".into(),
             }),
             memory: None,
+            cleanup_paths: vec![],
         });
 
         let env = build_env_json(&ctx, "http://localhost");
@@ -1904,6 +1934,7 @@ mod tests {
             }],
             artifact: None,
             memory: None,
+            cleanup_paths: vec![],
         };
         download_storages(&sandbox, &ctx, &manifest, "/tmp/log")
             .await
@@ -1924,6 +1955,7 @@ mod tests {
             storages: vec![],
             artifact: None,
             memory: None,
+            cleanup_paths: vec![],
         };
         let err = download_storages(&sandbox, &ctx, &manifest, "/tmp/log")
             .await
@@ -1996,6 +2028,7 @@ mod tests {
                 vas_storage_name: "project-mem".into(),
                 vas_version_id: "v2".into(),
             }),
+            cleanup_paths: vec![],
         });
         let env = build_env_json(&ctx, "http://localhost");
         assert_eq!(env.get("VM0_MEMORY_DRIVER").unwrap(), "vas");
@@ -2137,6 +2170,7 @@ mod tests {
             storages: vec![],
             artifact: None,
             memory: None,
+            cleanup_paths: vec![],
         };
         let err = download_storages(&sandbox, &ctx, &manifest, "/tmp/log")
             .await
@@ -2273,6 +2307,7 @@ mod tests {
             }],
             artifact: None,
             memory: None,
+            cleanup_paths: vec![],
         });
         let (exit_code, _) = run_execute_inner(&factory, &ctx, &config, &default_params())
             .await
@@ -2714,6 +2749,7 @@ mod tests {
             storages: vec![],
             artifact: Some(art("my-art", "v1", "https://s3/v1")),
             memory: None,
+            cleanup_paths: vec![],
         };
         let prev = crate::idle_pool::StorageFingerprints {
             storages: HashMap::new(),
@@ -2730,6 +2766,7 @@ mod tests {
             storages: vec![],
             artifact: Some(art("my-art", "v2", "https://s3/v2")),
             memory: None,
+            cleanup_paths: vec![],
         };
         let prev = crate::idle_pool::StorageFingerprints {
             storages: HashMap::new(),
@@ -2749,6 +2786,7 @@ mod tests {
             storages: vec![],
             artifact: Some(art("other-art", "v1", "https://s3/v1")),
             memory: None,
+            cleanup_paths: vec![],
         };
         let prev = crate::idle_pool::StorageFingerprints {
             storages: HashMap::new(),
@@ -2765,6 +2803,7 @@ mod tests {
             storages: vec![],
             artifact: Some(art("my-art", "v1", "https://s3/v1")),
             memory: None,
+            cleanup_paths: vec![],
         };
         let prev = crate::idle_pool::StorageFingerprints::default();
         let result = filter_unchanged_storages(&manifest, &prev);
@@ -2782,6 +2821,7 @@ mod tests {
             }],
             artifact: Some(art("my-art", "v1", "https://s3/v1")),
             memory: Some(art("mem", "m1", "https://s3/m1")),
+            cleanup_paths: vec![],
         };
         let prev = crate::idle_pool::StorageFingerprints::default();
         let result = filter_unchanged_storages(&manifest, &prev);
@@ -2801,6 +2841,7 @@ mod tests {
             }],
             artifact: Some(art("my-art", "v1", "https://s3/v1")),
             memory: Some(art("mem", "m1", "https://s3/m1")),
+            cleanup_paths: vec![],
         };
         let mut storages = HashMap::new();
         storages.insert("/data".into(), ("vol-1".into(), "v1".into()));
@@ -2813,5 +2854,107 @@ mod tests {
         assert!(result.storages[0].archive_url.is_none());
         assert!(result.artifact.as_ref().unwrap().archive_url.is_none());
         assert!(result.memory.as_ref().unwrap().archive_url.is_none());
+    }
+
+    #[test]
+    fn filter_computes_cleanup_for_changed_storages() {
+        let manifest = StorageManifest {
+            storages: vec![
+                StorageEntry {
+                    mount_path: "/home/user/.claude".into(),
+                    archive_url: Some("https://s3/instructions".into()),
+                    vas_storage_name: Some("instructions".into()),
+                    vas_version_id: Some("v2".into()),
+                },
+                StorageEntry {
+                    mount_path: "/home/user/.claude/skills/foo".into(),
+                    archive_url: Some("https://s3/foo".into()),
+                    vas_storage_name: Some("skill-foo".into()),
+                    vas_version_id: Some("v1".into()),
+                },
+            ],
+            artifact: None,
+            memory: None,
+            cleanup_paths: vec![],
+        };
+        let mut storages = HashMap::new();
+        storages.insert(
+            "/home/user/.claude".into(),
+            ("instructions".into(), "v1".into()),
+        );
+        storages.insert(
+            "/home/user/.claude/skills/foo".into(),
+            ("skill-foo".into(), "v1".into()),
+        );
+        let prev = crate::idle_pool::StorageFingerprints {
+            storages,
+            artifact: None,
+            memory: None,
+        };
+        let result = filter_unchanged_storages(&manifest, &prev);
+        // Instructions changed (v1→v2), skill-foo unchanged
+        assert!(result.storages[0].archive_url.is_some());
+        assert!(result.storages[1].archive_url.is_none());
+        // Only changed storage in cleanup_paths
+        assert_eq!(result.cleanup_paths, vec!["/home/user/.claude"]);
+    }
+
+    #[test]
+    fn filter_detects_removed_storages() {
+        let manifest = StorageManifest {
+            storages: vec![StorageEntry {
+                mount_path: "/home/user/.claude".into(),
+                archive_url: Some("https://s3/instructions".into()),
+                vas_storage_name: Some("instructions".into()),
+                vas_version_id: Some("v1".into()),
+            }],
+            artifact: None,
+            memory: None,
+            cleanup_paths: vec![],
+        };
+        let mut storages = HashMap::new();
+        storages.insert(
+            "/home/user/.claude".into(),
+            ("instructions".into(), "v1".into()),
+        );
+        storages.insert(
+            "/home/user/.claude/skills/old-skill".into(),
+            ("old-skill".into(), "v1".into()),
+        );
+        let prev = crate::idle_pool::StorageFingerprints {
+            storages,
+            artifact: None,
+            memory: None,
+        };
+        let result = filter_unchanged_storages(&manifest, &prev);
+        // instructions unchanged, old-skill removed
+        assert!(result.storages[0].archive_url.is_none());
+        assert!(
+            result
+                .cleanup_paths
+                .contains(&"/home/user/.claude/skills/old-skill".to_string())
+        );
+    }
+
+    #[test]
+    fn filter_changed_artifact_adds_cleanup_path() {
+        let manifest = StorageManifest {
+            storages: vec![],
+            artifact: Some(art("my-art", "v2", "https://s3/v2")),
+            memory: None,
+            cleanup_paths: vec![],
+        };
+        let prev = crate::idle_pool::StorageFingerprints {
+            storages: HashMap::new(),
+            artifact: Some(("my-art".into(), "v1".into())),
+            memory: None,
+        };
+        let result = filter_unchanged_storages(&manifest, &prev);
+        assert!(result.artifact.as_ref().unwrap().archive_url.is_some());
+        assert!(
+            result
+                .cleanup_paths
+                .contains(&result.artifact.as_ref().unwrap().mount_path)
+        );
     }
 }

@@ -157,6 +157,10 @@ pub struct StorageManifest {
     pub artifact: Option<ArtifactEntry>,
     #[serde(default)]
     pub memory: Option<ArtifactEntry>,
+    /// Paths to clean before downloading (computed from previous fingerprints).
+    /// Used on VM reuse to remove stale files from changed/removed storages.
+    #[serde(default)]
+    pub cleanup_paths: Vec<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]

@@ -69,12 +69,16 @@ const LOG_TAG: &str = "sandbox:download";
 
 /// Storage manifest format (matches TypeScript StorageManifest).
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct Manifest {
     #[serde(default)]
     storages: Vec<Storage>,
     artifact: Option<Artifact>,
     #[serde(default)]
     memory: Option<Artifact>,
+    /// Paths to clean before downloading (stale file cleanup on VM reuse).
+    #[serde(default)]
+    cleanup_paths: Vec<String>,
 }
 
 /// Check if archive URL is valid (not None and not string "null").
@@ -137,6 +141,32 @@ pub fn run(manifest_path: &str) -> bool {
         }
     };
 
+    // Clean stale files from changed/removed storages before downloading.
+    // This must run before parallel downloads to avoid race conditions with
+    // parent-child mount path overlaps.
+    if !manifest.cleanup_paths.is_empty() {
+        // Collect all mount paths that should be preserved (unchanged storages,
+        // artifact, and memory).
+        let mut preserved: Vec<&str> = manifest
+            .storages
+            .iter()
+            .filter(|s| !is_valid_url(&s.archive_url))
+            .map(|s| s.mount_path.as_str())
+            .collect();
+        if let Some(a) = &manifest.artifact
+            && !is_valid_url(&a.archive_url)
+        {
+            preserved.push(a.mount_path.as_str());
+        }
+        if let Some(m) = &manifest.memory
+            && !is_valid_url(&m.archive_url)
+        {
+            preserved.push(m.mount_path.as_str());
+        }
+
+        cleanup_stale_paths(&manifest.cleanup_paths, &preserved);
+    }
+
     // Build unified task list: storages + artifact + memory, all downloaded in parallel.
     let mut tasks: Vec<DownloadTask> = Vec::new();
 
@@ -184,6 +214,77 @@ pub fn run(manifest_path: &str) -> bool {
     }
 
     download_all_parallel(tasks)
+}
+
+/// Remove stale files from cleanup paths, preserving directories that belong
+/// to unchanged storages.
+///
+/// For each path in `cleanup_paths`:
+/// - If no `preserved` path is a child of it: `remove_dir_all` (clean slate).
+/// - If a preserved path is a child: remove only top-level entries that don't
+///   overlap with any preserved child path.
+fn cleanup_stale_paths(cleanup_paths: &[String], preserved: &[&str]) {
+    // Sort cleanup paths shortest-first so parents are cleaned before children.
+    let mut sorted: Vec<&str> = cleanup_paths.iter().map(|s| s.as_str()).collect();
+    sorted.sort_by_key(|p| p.len());
+
+    for path in sorted {
+        let path_with_slash = format!("{path}/");
+
+        // Find preserved paths that are children of this cleanup path.
+        let has_preserved_children = preserved.iter().any(|p| p.starts_with(&path_with_slash));
+
+        if !has_preserved_children {
+            // No unchanged children — safe to remove everything.
+            if let Err(e) = fs::remove_dir_all(path) {
+                if e.kind() != std::io::ErrorKind::NotFound {
+                    log_warn!(LOG_TAG, "Failed to clean {path}: {e}");
+                }
+            } else {
+                log_info!(LOG_TAG, "Cleaned stale path: {path}");
+            }
+        } else {
+            // Has unchanged children — selectively remove entries that don't
+            // overlap with preserved paths.
+            let entries = match fs::read_dir(path) {
+                Ok(entries) => entries,
+                Err(e) => {
+                    if e.kind() != std::io::ErrorKind::NotFound {
+                        log_warn!(LOG_TAG, "Failed to read dir {path}: {e}");
+                    }
+                    continue;
+                }
+            };
+            for entry in entries.flatten() {
+                let entry_path = entry.path();
+                let entry_str = entry_path.to_string_lossy();
+                let entry_prefix = format!("{entry_str}/");
+
+                // Check if this entry is or contains a preserved path.
+                let is_preserved = preserved
+                    .iter()
+                    .any(|p| *p == entry_str.as_ref() || p.starts_with(&entry_prefix));
+
+                if !is_preserved {
+                    if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                        if let Err(e) = fs::remove_dir_all(&entry_path) {
+                            log_warn!(LOG_TAG, "Failed to remove {}: {e}", entry_str);
+                        }
+                    } else if let Err(e) = fs::remove_file(&entry_path) {
+                        log_warn!(LOG_TAG, "Failed to remove {}: {e}", entry_str);
+                    }
+                }
+            }
+            log_info!(
+                LOG_TAG,
+                "Selectively cleaned {path} (preserved {} children)",
+                preserved
+                    .iter()
+                    .filter(|p| p.starts_with(&path_with_slash))
+                    .count()
+            );
+        }
+    }
 }
 
 struct DownloadTask {
@@ -609,5 +710,64 @@ mod tests {
         assert!(is_valid_url(&Some(
             "https://example.com/archive.tar.gz".to_string()
         )));
+    }
+
+    // -- cleanup_stale_paths tests --
+
+    #[test]
+    fn cleanup_removes_path_without_preserved_children() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("mount");
+        fs::create_dir_all(&path).unwrap();
+        fs::write(path.join("stale.txt"), "old").unwrap();
+
+        cleanup_stale_paths(&[path.to_string_lossy().into()], &[]);
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn cleanup_preserves_unchanged_children() {
+        let dir = tempfile::tempdir().unwrap();
+        let parent = dir.path().join("claude");
+        let child = parent.join("skills").join("foo");
+        fs::create_dir_all(&child).unwrap();
+        fs::write(parent.join("CLAUDE.md"), "old instructions").unwrap();
+        fs::write(child.join("skill.md"), "keep me").unwrap();
+
+        let parent_str = parent.to_string_lossy().to_string();
+        let child_str = child.to_string_lossy().to_string();
+
+        cleanup_stale_paths(&[parent_str], &[&child_str]);
+
+        // Parent dir still exists (not fully removed)
+        assert!(parent.exists());
+        // Child preserved
+        assert!(child.join("skill.md").exists());
+        // Stale file at parent level removed
+        assert!(!parent.join("CLAUDE.md").exists());
+    }
+
+    #[test]
+    fn cleanup_handles_nonexistent_path() {
+        // Should not panic
+        cleanup_stale_paths(&["/nonexistent/path/12345".into()], &[]);
+    }
+
+    #[test]
+    fn manifest_deserializes_camel_case_cleanup_paths() {
+        let json = r#"{
+            "storages": [],
+            "cleanupPaths": ["/home/user/.claude", "/home/user/.claude/skills/old"]
+        }"#;
+        let manifest: Manifest = serde_json::from_str(json).unwrap();
+        assert_eq!(manifest.cleanup_paths.len(), 2);
+        assert_eq!(manifest.cleanup_paths[0], "/home/user/.claude");
+    }
+
+    #[test]
+    fn manifest_defaults_cleanup_paths_when_absent() {
+        let json = r#"{"storages": []}"#;
+        let manifest: Manifest = serde_json::from_str(json).unwrap();
+        assert!(manifest.cleanup_paths.is_empty());
     }
 }
