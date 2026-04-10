@@ -154,6 +154,11 @@
   }
 }
 
+/* Termly embed — dark mode color inversion (cross-origin iframe) */
+[data-theme="dark"] .termly-embed-wrapper {
+  filter: invert(1) hue-rotate(180deg);
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;

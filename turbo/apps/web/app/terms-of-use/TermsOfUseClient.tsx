@@ -1,6 +1,10 @@
 "use client";
 
 import { useEffect } from "react";
+import { NextIntlClientProvider } from "next-intl";
+import Navbar from "../components/Navbar";
+import Footer from "../components/Footer";
+import enMessages from "../../messages/en.json";
 
 export default function TermsOfUseClient() {
   useEffect(() => {
@@ -12,14 +16,25 @@ export default function TermsOfUseClient() {
   }, []);
 
   return (
-    <div
-      className="container"
-      style={{ padding: "40px 20px", minHeight: "600px" }}
-    >
-      <div
-        {...({ name: "termly-embed" } as React.HTMLAttributes<HTMLDivElement>)}
-        data-id="2d4a38d0-0baf-410c-a39d-86976b13052d"
-      />
-    </div>
+    <NextIntlClientProvider locale="en" messages={enMessages}>
+      <div className="landing-page min-h-screen bg-[hsl(var(--gray-0))] text-[hsl(var(--foreground))]">
+        <div className="header-container">
+          <Navbar />
+        </div>
+
+        <main className="px-6 pb-20 pt-[calc(var(--total-header-height)+48px)] md:pb-28 md:pt-[calc(var(--total-header-height)+72px)]">
+          <div className="termly-embed-wrapper mx-auto max-w-2xl">
+            <div
+              {...({
+                name: "termly-embed",
+              } as React.HTMLAttributes<HTMLDivElement>)}
+              data-id="2d4a38d0-0baf-410c-a39d-86976b13052d"
+            />
+          </div>
+        </main>
+
+        <Footer />
+      </div>
+    </NextIntlClientProvider>
   );
 }

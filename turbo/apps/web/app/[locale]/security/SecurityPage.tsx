@@ -49,7 +49,7 @@ export default function SecurityPage() {
       </div>
 
       <main className="px-6 pb-20 pt-[calc(var(--total-header-height)+48px)] md:pb-28 md:pt-[calc(var(--total-header-height)+72px)]">
-        <div className="mx-auto max-w-xl">
+        <div className="mx-auto max-w-2xl">
           <h1 className="text-[32px] font-semibold leading-[1.2] tracking-tight sm:text-[40px]">
             Security
           </h1>
