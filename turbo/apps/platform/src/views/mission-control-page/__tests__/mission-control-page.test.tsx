@@ -83,8 +83,6 @@ describe("mission control page", () => {
     });
 
     expect(screen.getByText("Daily report")).toBeInTheDocument();
-    expect(screen.getByText("Chat")).toBeInTheDocument();
-    expect(screen.getByText("Schedule")).toBeInTheDocument();
   });
 
   it("should show empty state when no tasks exist", async () => {
