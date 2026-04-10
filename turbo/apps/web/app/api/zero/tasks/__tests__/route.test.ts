@@ -217,9 +217,7 @@ describe("GET /api/zero/tasks", () => {
   it("should return 401 when no org is selected", async () => {
     mockClerk({ userId: user.userId, orgId: null });
 
-    const request = createTestRequest(
-      "http://localhost:3000/api/zero/tasks",
-    );
+    const request = createTestRequest("http://localhost:3000/api/zero/tasks");
     const response = await GET(request);
     const data = await response.json();
 
@@ -243,9 +241,7 @@ describe("GET /api/zero/tasks", () => {
 
     mockClerk({ userId: user.userId });
 
-    const request = createTestRequest(
-      "http://localhost:3000/api/zero/tasks",
-    );
+    const request = createTestRequest("http://localhost:3000/api/zero/tasks");
     const response = await GET(request);
     const data = await response.json();
 
