@@ -65,14 +65,8 @@ async function saveOrgThreadSession(
   runId: string,
   status: string,
 ): Promise<string | undefined> {
-  const {
-    connectionId,
-    channelId,
-    threadTs,
-    messageTs,
-    agentId,
-    existingSessionId,
-  } = payload;
+  const { connectionId, channelId, threadTs, agentId, existingSessionId } =
+    payload;
 
   const [run] = await globalThis.services.db
     .select({ userId: agentRuns.userId, createdAt: agentRuns.createdAt })
@@ -94,7 +88,6 @@ async function saveOrgThreadSession(
     threadTs,
     existingSessionId,
     newSessionId,
-    messageTs,
     runStatus: status,
   });
 

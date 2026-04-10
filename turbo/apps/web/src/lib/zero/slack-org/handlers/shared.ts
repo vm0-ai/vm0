@@ -83,7 +83,7 @@ export async function resolveDefaultComposeId(
 }
 
 /**
- * Look up an existing thread session for deduplication.
+ * Look up an existing thread session.
  */
 export async function lookupThreadSession(
   channelId: string,
@@ -91,12 +91,10 @@ export async function lookupThreadSession(
   connectionId: string,
 ): Promise<{
   existingSessionId: string | undefined;
-  lastProcessedMessageTs: string | undefined;
 }> {
   const [session] = await globalThis.services.db
     .select({
       agentSessionId: slackOrgThreadSessions.agentSessionId,
-      lastProcessedMessageTs: slackOrgThreadSessions.lastProcessedMessageTs,
     })
     .from(slackOrgThreadSessions)
     .where(
@@ -110,7 +108,6 @@ export async function lookupThreadSession(
 
   return {
     existingSessionId: session?.agentSessionId ?? undefined,
-    lastProcessedMessageTs: session?.lastProcessedMessageTs ?? undefined,
   };
 }
 
@@ -123,7 +120,6 @@ export async function saveThreadSession(opts: {
   threadTs: string;
   existingSessionId: string | undefined;
   newSessionId: string | undefined;
-  messageTs: string;
   runStatus: string;
 }): Promise<void> {
   const {
@@ -132,7 +128,6 @@ export async function saveThreadSession(opts: {
     threadTs,
     existingSessionId,
     newSessionId,
-    messageTs,
     runStatus,
   } = opts;
 
@@ -152,7 +147,6 @@ export async function saveThreadSession(opts: {
         slackChannelId: channelId,
         slackThreadTs: threadTs,
         agentSessionId,
-        lastProcessedMessageTs: messageTs,
       })
       .onConflictDoUpdate({
         target: [
@@ -162,25 +156,9 @@ export async function saveThreadSession(opts: {
         ],
         set: {
           agentSessionId,
-          lastProcessedMessageTs: messageTs,
           updatedAt: new Date(),
         },
       });
-  } else if (existingSessionId) {
-    // Update existing mapping
-    await globalThis.services.db
-      .update(slackOrgThreadSessions)
-      .set({
-        lastProcessedMessageTs: messageTs,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(slackOrgThreadSessions.connectionId, connectionId),
-          eq(slackOrgThreadSessions.slackChannelId, channelId),
-          eq(slackOrgThreadSessions.slackThreadTs, threadTs),
-        ),
-      );
   }
 }
 
@@ -223,10 +201,11 @@ const log = logger("slack:shared");
 type SlackClient = ReturnType<typeof createSlackClient>;
 
 /**
- * Fetch conversation context with deduplication support.
- * Returns execution context (with images, only new messages since lastProcessedMessageTs).
+ * Fetch conversation context for the agent.
+ * Always returns the full thread context so the agent has complete awareness
+ * of the Slack conversation, even when resuming an existing session.
  *
- * Single Slack API call — messages are fetched once and filtered in-memory.
+ * Single Slack API call — messages are fetched once.
  */
 export async function fetchConversationContexts(
   client: SlackClient,
@@ -234,17 +213,11 @@ export async function fetchConversationContexts(
   threadTs: string | undefined,
   botUserId: string,
   botToken: string,
-  lastProcessedMessageTs?: string,
   currentMessageTs?: string,
-  existingSessionId?: string,
 ): Promise<{ executionContext: string }> {
   const imageSessionId = `${channelId}-${threadTs ?? "channel"}`;
   const isDm = channelId.startsWith("D");
   const contextType = threadTs ? "thread" : "channel";
-
-  // First session in a thread (no existing session) — fetch channel messages
-  // around the thread start so the agent has background context.
-  const isFirstThreadSession = Boolean(threadTs && !existingSessionId);
 
   // Fetch all messages once (single Slack API call)
   // DMs without a thread don't need channel context — the current message is
@@ -255,11 +228,11 @@ export async function fetchConversationContexts(
       ? []
       : await fetchChannelContext(client, channelId, 10);
 
-  // For first thread mention in a non-DM channel, fetch the 10 channel messages
+  // For thread mentions in a non-DM channel, fetch the 10 channel messages
   // before the thread so the agent has background context.
   // DMs don't need channel history — the thread already contains the full conversation.
   const channelMessages =
-    isFirstThreadSession && !isDm
+    threadTs && !isDm
       ? await fetchChannelContext(client, channelId, 10, threadTs)
       : [];
 
@@ -279,7 +252,7 @@ export async function fetchConversationContexts(
   const userIds = [...senderIds, ...mentionedIds];
   const userInfoMap = await fetchSlackUserInfoMap(client, userIds);
 
-  // Format channel context prefix (for first thread mention only, with image upload)
+  // Format channel context prefix (with image upload)
   const channelContextPrefix =
     channelMessages.length > 0
       ? await formatContextForAgentWithImages(
@@ -292,18 +265,11 @@ export async function fetchConversationContexts(
         )
       : "";
 
-  // Filter to only new messages for execution context
-  const executionMessages = lastProcessedMessageTs
-    ? contextMessages.filter((m) => {
-        return !m.ts || m.ts > lastProcessedMessageTs;
-      })
-    : contextMessages;
-
-  // Format execution context with images (only uploads images for new messages)
+  // Format thread/channel context with images
   const threadExecContext =
-    executionMessages.length > 0
+    contextMessages.length > 0
       ? await formatContextForAgentWithImages(
-          executionMessages,
+          contextMessages,
           botToken,
           imageSessionId,
           botUserId,

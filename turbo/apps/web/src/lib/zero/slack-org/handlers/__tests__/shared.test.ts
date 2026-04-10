@@ -209,7 +209,7 @@ function createMockConversationClient(opts: {
 }
 
 describe("fetchConversationContexts", () => {
-  it("should include channel messages for first session in thread", async () => {
+  it("should include channel messages for thread", async () => {
     const client = createMockConversationClient({
       threadMessages: [
         { user: "U100", text: "Thread parent", ts: "100.0" },
@@ -227,9 +227,7 @@ describe("fetchConversationContexts", () => {
       "100.0", // threadTs
       "BBOT",
       "xoxb-token",
-      undefined, // lastProcessedMessageTs
       "100.1", // currentMessageTs excluded from context
-      undefined, // no existingSessionId → first session
     );
 
     // Should contain both channel and thread sections
@@ -254,9 +252,6 @@ describe("fetchConversationContexts", () => {
       "100.0",
       "BBOT",
       "xoxb-token",
-      undefined, // lastProcessedMessageTs
-      undefined, // currentMessageTs
-      undefined, // no existingSessionId → first session
     );
 
     // conversations.history should be called with latest=threadTs
@@ -268,16 +263,14 @@ describe("fetchConversationContexts", () => {
     );
   });
 
-  it("should NOT include channel messages when session exists", async () => {
+  it("should always include full thread context and channel messages", async () => {
     const client = createMockConversationClient({
       threadMessages: [
         { user: "U100", text: "Parent", ts: "100.0" },
         { user: "U200", text: "Old reply", ts: "100.1" },
         { user: "U200", text: "New reply", ts: "100.2" },
       ],
-      channelMessages: [
-        { user: "U300", text: "Should not appear", ts: "99.0" },
-      ],
+      channelMessages: [{ user: "U300", text: "Channel context", ts: "99.0" }],
     });
 
     const { executionContext } = await fetchConversationContexts(
@@ -286,39 +279,15 @@ describe("fetchConversationContexts", () => {
       "100.0",
       "BBOT",
       "xoxb-token",
-      "100.1", // lastProcessedMessageTs
       "100.2", // currentMessageTs
-      "session-abc", // existingSessionId → continuing session
     );
 
-    // Only incremental thread messages, no channel context
-    expect(executionContext).not.toContain("# Recent Channel Messages");
-    expect(executionContext).not.toContain("Should not appear");
-    // conversations.history should not be called at all
-    expect(client.conversations.history).not.toHaveBeenCalled();
-  });
-
-  it("should NOT include channel messages even without lastProcessedMessageTs if session exists", async () => {
-    const client = createMockConversationClient({
-      threadMessages: [{ user: "U100", text: "Parent", ts: "100.0" }],
-      channelMessages: [
-        { user: "U300", text: "Should not appear", ts: "99.0" },
-      ],
-    });
-
-    const { executionContext } = await fetchConversationContexts(
-      client,
-      "C-chan",
-      "100.0",
-      "BBOT",
-      "xoxb-token",
-      undefined, // no lastProcessedMessageTs
-      undefined, // currentMessageTs
-      "session-abc", // existingSessionId → not first session
-    );
-
-    expect(executionContext).not.toContain("# Recent Channel Messages");
-    expect(client.conversations.history).not.toHaveBeenCalled();
+    // All thread messages included (no dedup filtering)
+    expect(executionContext).toContain("Parent");
+    expect(executionContext).toContain("Old reply");
+    // Channel context always included
+    expect(executionContext).toContain("# Recent Channel Messages");
+    expect(executionContext).toContain("Channel context");
   });
 
   it("should NOT include channel messages for channel @mention", async () => {
@@ -335,7 +304,6 @@ describe("fetchConversationContexts", () => {
       undefined, // no threadTs → channel mention
       "BBOT",
       "xoxb-token",
-      undefined,
       "2.0",
     );
 
@@ -358,15 +326,13 @@ describe("fetchConversationContexts", () => {
       undefined, // no threadTs
       "BBOT",
       "xoxb-token",
-      undefined,
-      undefined,
     );
 
     expect(executionContext).toBe("");
     expect(client.conversations.history).not.toHaveBeenCalled();
   });
 
-  it("should NOT fetch channel context for DM first thread session", async () => {
+  it("should NOT fetch channel context for DM thread", async () => {
     const client = createMockConversationClient({
       threadMessages: [
         { user: "U100", text: "DM thread parent", ts: "100.0" },
@@ -383,9 +349,7 @@ describe("fetchConversationContexts", () => {
       "100.0", // threadTs
       "BBOT",
       "xoxb-token",
-      undefined, // lastProcessedMessageTs
       "100.1", // currentMessageTs
-      undefined, // no existingSessionId → first session
     );
 
     // Thread context should be present, but no channel context
@@ -399,7 +363,7 @@ describe("fetchConversationContexts", () => {
   describe("image upload in channel context prefix", () => {
     const context = testContext();
 
-    it("should upload images in channel messages to S3 on first thread session", async () => {
+    it("should upload images in channel messages to S3 for thread", async () => {
       context.setupMocks();
 
       const downloadHandler = http.get(
@@ -443,9 +407,6 @@ describe("fetchConversationContexts", () => {
         "100.0",
         "BBOT",
         "xoxb-token",
-        undefined,
-        undefined,
-        undefined, // first session
       );
 
       // S3 upload should have been triggered for the channel message image

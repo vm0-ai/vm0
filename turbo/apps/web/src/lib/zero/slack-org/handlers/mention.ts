@@ -128,7 +128,6 @@ export async function handleOrgMention(
 
   // 6. Look up existing thread session
   let existingSessionId: string | undefined;
-  let lastProcessedMessageTs: string | undefined;
   if (threadTs) {
     const session = await lookupThreadSession(
       context.channelId,
@@ -136,7 +135,6 @@ export async function handleOrgMention(
       connection.id,
     );
     existingSessionId = session.existingSessionId;
-    lastProcessedMessageTs = session.lastProcessedMessageTs;
   }
 
   // 6b. Validate session agent matches current default
@@ -148,7 +146,6 @@ export async function handleOrgMention(
     if (sessionCompose && sessionCompose.composeId !== composeId) {
       log.debug("Agent changed, starting new session");
       existingSessionId = undefined;
-      lastProcessedMessageTs = undefined;
     }
   }
 
@@ -159,9 +156,7 @@ export async function handleOrgMention(
     context.threadTs,
     botUserId,
     botToken,
-    lastProcessedMessageTs,
     context.messageTs,
-    existingSessionId,
   );
 
   // 8. Dispatch agent run

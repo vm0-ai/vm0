@@ -131,7 +131,6 @@ export async function handleOrgDirectMessage(
 
   // 6. Look up existing thread session
   let existingSessionId: string | undefined;
-  let lastProcessedMessageTs: string | undefined;
   if (threadTs) {
     const session = await lookupThreadSession(
       context.channelId,
@@ -139,7 +138,6 @@ export async function handleOrgDirectMessage(
       connection.id,
     );
     existingSessionId = session.existingSessionId;
-    lastProcessedMessageTs = session.lastProcessedMessageTs;
   }
 
   if (existingSessionId) {
@@ -149,7 +147,6 @@ export async function handleOrgDirectMessage(
     );
     if (sessionCompose && sessionCompose.composeId !== composeId) {
       existingSessionId = undefined;
-      lastProcessedMessageTs = undefined;
     }
   }
 
@@ -160,9 +157,7 @@ export async function handleOrgDirectMessage(
     context.threadTs,
     botUserId,
     botToken,
-    lastProcessedMessageTs,
     context.messageTs,
-    existingSessionId,
   );
 
   // 8. Dispatch agent run
