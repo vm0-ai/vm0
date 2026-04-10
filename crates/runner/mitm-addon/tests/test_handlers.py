@@ -245,6 +245,7 @@ class TestRequestHandler:
         assert body["error"] == "permission_denied"
         assert body["method"] == "GET"
         assert body["path"] == "/orgs"
+        assert body["ref"] == "github"
         assert body["permissions"] == []
         assert body["base"] == "https://api.github.com"
 
