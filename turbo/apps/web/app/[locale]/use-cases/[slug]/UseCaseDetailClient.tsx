@@ -25,7 +25,7 @@ function ConnectorBadge({ connector }: { connector: ConnectorRef }) {
         alt={connector.label}
         width={20}
         height={20}
-        className="uc-connector-icon"
+        className={`uc-connector-icon${connector.dark ? " landing-icon-invert" : ""}`}
       />
     </span>
   );
@@ -239,7 +239,7 @@ export default function UseCaseDetailClient({ useCase }: { useCase: UseCase }) {
                         alt={integration.connector.label}
                         width={32}
                         height={32}
-                        className="uc-integration-icon"
+                        className={`uc-integration-icon${integration.connector.dark ? " landing-icon-invert" : ""}`}
                       />
                     ) : (
                       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[hsl(var(--gray-100))] text-sm font-medium text-[hsl(var(--muted-foreground))]">
