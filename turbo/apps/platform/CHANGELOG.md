@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.209.1](https://github.com/vm0-ai/vm0/compare/app-v0.209.0...app-v0.209.1) (2026-04-10)
+
+
+### Bug Fixes
+
+* **platform:** pass explicit locale to all date formatting calls ([#8754](https://github.com/vm0-ai/vm0/issues/8754)) ([781908c](https://github.com/vm0-ai/vm0/commit/781908cf5445b1fb304a1dec7c4cb0e3e2b76df1)), closes [#8751](https://github.com/vm0-ai/vm0/issues/8751)
+
+
+### Refactoring
+
+* render avatar as single inline svg instead of 3 img requests ([#8718](https://github.com/vm0-ai/vm0/issues/8718)) ([f3bb8e6](https://github.com/vm0-ai/vm0/commit/f3bb8e621807fdeefeee0ff24dd4b856c2c32029))
+
 ## [0.209.0](https://github.com/vm0-ai/vm0/compare/app-v0.208.0...app-v0.209.0) (2026-04-09)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.1](https://github.com/vm0-ai/vm0/compare/guest-download-v0.17.0...guest-download-v0.17.1) (2026-04-10)
+
+
+### Bug Fixes
+
+* **guest-download:** remove pre-extraction remove_dir_all to fix parallel race ([#8755](https://github.com/vm0-ai/vm0/issues/8755)) ([ede79e4](https://github.com/vm0-ai/vm0/commit/ede79e420f62288655b8c687789fbb0e3ab6444e))
+
 ## [0.17.0](https://github.com/vm0-ai/vm0/compare/guest-download-v0.16.0...guest-download-v0.17.0) (2026-04-09)
 
 

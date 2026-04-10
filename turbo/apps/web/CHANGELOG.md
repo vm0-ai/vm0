@@ -1,5 +1,14 @@
 # Changelog
 
+## [12.212.1](https://github.com/vm0-ai/vm0/compare/web-v12.212.0...web-v12.212.1) (2026-04-10)
+
+
+### Bug Fixes
+
+* **ci:** pass plain api key in ci workflows and env template ([#8749](https://github.com/vm0-ai/vm0/issues/8749)) ([5ed5cc6](https://github.com/vm0-ai/vm0/commit/5ed5cc6b2372cc088196f715022315431749ab48))
+* **insights:** backfill user id in old team usage data ([#8753](https://github.com/vm0-ai/vm0/issues/8753)) ([03124d3](https://github.com/vm0-ai/vm0/commit/03124d324a301b56fe16e592bf9d8b8b2d8180ee))
+* **web:** always include error-report url in failed run error message ([#8756](https://github.com/vm0-ai/vm0/issues/8756)) ([28e4999](https://github.com/vm0-ai/vm0/commit/28e49999dc44cb1f5afd044e5e6af7e2fc2f077f))
+
 ## [12.212.0](https://github.com/vm0-ai/vm0/compare/web-v12.211.0...web-v12.212.0) (2026-04-09)
 
 
