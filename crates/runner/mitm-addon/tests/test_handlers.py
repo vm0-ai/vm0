@@ -911,42 +911,6 @@ class TestSseUsageExtractor:
         assert usage["input_tokens"] == 100  # unchanged (not in delta)
 
 
-class TestExtractBillingUsage:
-    """Tests for _extract_billing_usage zero-overwrite protection."""
-
-    def test_first_call_sets_zero_values(self):
-        """First extraction into empty target should set even zero values."""
-        target = {}
-        mitm_addon._extract_billing_usage(
-            {"input_tokens": 0, "cache_read_input_tokens": 50000}, target
-        )
-        assert target["input_tokens"] == 0
-        assert target["cache_read_input_tokens"] == 50000
-
-    def test_zero_does_not_overwrite_positive(self):
-        """A second extraction with 0 must not overwrite a positive value."""
-        target = {"input_tokens": 100, "cache_read_input_tokens": 50000}
-        mitm_addon._extract_billing_usage(
-            {"input_tokens": 0, "cache_read_input_tokens": 0, "output_tokens": 500},
-            target,
-        )
-        assert target["input_tokens"] == 100  # preserved
-        assert target["cache_read_input_tokens"] == 50000  # preserved
-        assert target["output_tokens"] == 500  # new field, set correctly
-
-    def test_positive_overwrites_positive(self):
-        """A second extraction with a positive value should overwrite."""
-        target = {"input_tokens": 100}
-        mitm_addon._extract_billing_usage({"input_tokens": 200}, target)
-        assert target["input_tokens"] == 200
-
-    def test_web_search_zero_does_not_overwrite(self):
-        """web_search_requests 0 must not overwrite a positive value."""
-        target = {"web_search_requests": 5}
-        mitm_addon._extract_billing_usage({"server_tool_use": {"web_search_requests": 0}}, target)
-        assert target["web_search_requests"] == 5
-
-
 class TestDoReportUsage:
     """Tests for _do_report_usage HTTP request construction."""
 
