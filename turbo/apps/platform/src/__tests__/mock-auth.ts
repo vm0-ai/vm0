@@ -26,6 +26,7 @@ interface MockedUser {
   firstName?: string;
   primaryEmailAddress: { emailAddress: string } | null;
   unsafeMetadata: Record<string, unknown>;
+  createOrganizationEnabled: boolean;
   organizationMemberships: MockedMembership[];
   getOrganizationInvitations: (params?: {
     status?: string;
@@ -59,6 +60,7 @@ export function mockUser(
       ...user,
       primaryEmailAddress: user.email ? { emailAddress: user.email } : null,
       unsafeMetadata: {},
+      createOrganizationEnabled: false,
       get organizationMemberships() {
         return internalMockedMemberships;
       },

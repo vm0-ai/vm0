@@ -218,10 +218,7 @@ function OrgDropdownContent() {
 
   const hasPendingInvitations =
     pendingInvitations !== undefined && pendingInvitations.length > 0;
-  const isProduction = !!import.meta.env.VITE_VERCEL_ENV;
-  const currentUserId = clerk?.user?.id;
-  const hasOwnOrg =
-    isProduction && !!currentUserId && orgData?.createdBy === currentUserId;
+  const canCreateOrg = clerk?.user?.createOrganizationEnabled ?? false;
 
   return (
     <DropdownMenuContent align="start" className="w-72">
@@ -262,8 +259,7 @@ function OrgDropdownContent() {
         </>
       )}
 
-      {/* Create workspace — hidden in production when user already owns an org */}
-      {!hasOwnOrg && <CreateWorkspaceItem />}
+      {canCreateOrg && <CreateWorkspaceItem />}
     </DropdownMenuContent>
   );
 }
