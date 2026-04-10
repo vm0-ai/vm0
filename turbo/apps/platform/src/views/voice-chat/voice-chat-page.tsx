@@ -164,7 +164,9 @@ export function VoiceChatPage() {
       <div className="flex flex-col h-full">
         <div className="flex items-center justify-between border-b px-4 py-3">
           <div className="flex items-center gap-3">
-            <h1 className="text-lg font-semibold">Preparing Meeting</h1>
+            <h1 className="text-lg font-semibold">
+              {prompt ? "Preparing Meeting" : "Preparing..."}
+            </h1>
             <StatusBadge status={status} />
           </div>
           <Button

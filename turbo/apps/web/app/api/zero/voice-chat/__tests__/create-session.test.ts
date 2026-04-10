@@ -117,7 +117,7 @@ describe("POST /api/zero/voice-chat (create session)", () => {
     expect(response.status).toBe(200);
     expect(body.session).toBeDefined();
     expect(body.session.id).toBeDefined();
-    expect(body.session.status).toBe("active");
+    expect(body.session.status).toBe("preparing");
     expect(body.session.mode).toBe("chat");
     expect(body.session.runId).toBeDefined();
     expect(body.session.createdAt).toBeDefined();

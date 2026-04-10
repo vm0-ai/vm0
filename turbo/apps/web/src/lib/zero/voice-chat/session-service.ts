@@ -6,7 +6,7 @@ import {
 import { createZeroRun } from "../zero-run-service";
 import { cancelRun } from "../zero-run-cancel";
 import {
-  buildVoiceChatSlowBrainPrompt,
+  buildVoiceChatQuickPrepPrompt,
   buildVoiceChatMeetingPrompt,
 } from "../integration-prompt";
 import { conflict, notFound, badRequest, forbidden } from "../../shared/errors";
@@ -43,7 +43,7 @@ export async function createSession(
   }
 
   const mode = options?.mode ?? "chat";
-  const status = mode === "meeting" ? "preparing" : "active";
+  const status = "preparing";
 
   const [session] = await db
     .insert(voiceChatSessions)
@@ -150,11 +150,11 @@ export async function dispatchSlowBrain(
 
   const appendSystemPrompt = meetingPrompt
     ? buildVoiceChatMeetingPrompt(session.id, meetingPrompt)
-    : buildVoiceChatSlowBrainPrompt(session.id);
+    : buildVoiceChatQuickPrepPrompt(session.id);
 
   const prompt = meetingPrompt
     ? `You are Zero's slow-brain for voice-chat session ${session.id}. A meeting has been requested. Read the shared context for the meeting prompt and begin preparation.`
-    : `You are Zero's slow-brain for voice-chat session ${session.id}. Start by reading the shared context to observe the conversation.`;
+    : `You are Zero's slow-brain for voice-chat session ${session.id}. Review the agent configuration and user context, then prepare an initial directive before the conversation begins.`;
 
   // Write meeting-prompt event before session-start (meeting mode only)
   if (meetingPrompt) {

@@ -653,6 +653,86 @@ const connectVoiceSession$ = command(
   },
 );
 
+// --- Shared preparation → activate → connect flow ---
+
+const prepareActivateConnect$ = command(
+  async (
+    { get, set },
+    sessionId: string,
+    sessionSignal: AbortSignal,
+    signal: AbortSignal,
+  ) => {
+    const fetchFn = get(fetch$);
+
+    // Start heartbeat during preparation to prevent session timeout
+    const heartbeatPromise = set(startHeartbeat$, sessionSignal);
+
+    // Poll for preparation-ready event
+    await setLoop(
+      async (loopSignal: AbortSignal) => {
+        const sid = get(internalSessionId$);
+        if (!sid) {
+          return true;
+        }
+
+        const lastSeq = get(internalLastSeq$);
+        const res = await fetchFn(
+          `/api/zero/voice-chat/${sid}/context?after=${lastSeq}`,
+          { signal: loopSignal },
+        );
+
+        if (!res.ok) {
+          return false;
+        }
+
+        const data = (await res.json()) as { events: ContextEvent[] };
+        loopSignal.throwIfAborted();
+
+        if (data.events.length > 0) {
+          set(internalEvents$, (prev) => {
+            return [...prev, ...data.events];
+          });
+          const lastEvent = data.events[data.events.length - 1];
+          if (lastEvent) {
+            set(internalLastSeq$, lastEvent.seq);
+          }
+
+          if (
+            data.events.some((e) => {
+              return e.type === "preparation-ready";
+            })
+          ) {
+            return true;
+          }
+        }
+        return false;
+      },
+      POLL_INTERVAL_MS,
+      sessionSignal,
+    );
+    signal.throwIfAborted();
+
+    // Activate session (preparing → active)
+    const activateRes = await fetchFn(
+      `/api/zero/voice-chat/${sessionId}/activate`,
+      { method: "POST" },
+    );
+    signal.throwIfAborted();
+
+    if (!activateRes.ok) {
+      set(internalError$, "Failed to activate session");
+      set(internalStatus$, "error");
+      return;
+    }
+
+    // Connect voice (token → mic → WebRTC → poll/heartbeat)
+    await Promise.allSettled([
+      heartbeatPromise,
+      set(connectVoiceSession$, sessionSignal),
+    ]);
+  },
+);
+
 // --- Exported commands ---
 
 export const startVoiceChat$ = command(
@@ -665,7 +745,7 @@ export const startVoiceChat$ = command(
       return;
     }
 
-    set(internalStatus$, "connecting");
+    set(internalStatus$, "preparing");
     set(internalError$, null);
     set(internalTranscript$, []);
     set(internalEvents$, []);
@@ -710,7 +790,7 @@ export const startVoiceChat$ = command(
     signal.throwIfAborted();
     set(internalSessionId$, session.id);
 
-    await set(connectVoiceSession$, sessionSignal);
+    await set(prepareActivateConnect$, session.id, sessionSignal, signal);
   },
 );
 
@@ -769,72 +849,7 @@ export const startVoiceMeeting$ = command(
     signal.throwIfAborted();
     set(internalSessionId$, session.id);
 
-    // Start heartbeat during preparation to prevent session timeout
-    const heartbeatPromise = set(startHeartbeat$, sessionSignal);
-
-    // Poll for preparation-ready event
-    await setLoop(
-      async (loopSignal: AbortSignal) => {
-        const sid = get(internalSessionId$);
-        if (!sid) {
-          return true;
-        }
-
-        const lastSeq = get(internalLastSeq$);
-        const res = await fetchFn(
-          `/api/zero/voice-chat/${sid}/context?after=${lastSeq}`,
-          { signal: loopSignal },
-        );
-
-        if (!res.ok) {
-          return false;
-        }
-
-        const data = (await res.json()) as { events: ContextEvent[] };
-        loopSignal.throwIfAborted();
-
-        if (data.events.length > 0) {
-          set(internalEvents$, (prev) => {
-            return [...prev, ...data.events];
-          });
-          const lastEvent = data.events[data.events.length - 1];
-          if (lastEvent) {
-            set(internalLastSeq$, lastEvent.seq);
-          }
-
-          if (
-            data.events.some((e) => {
-              return e.type === "preparation-ready";
-            })
-          ) {
-            return true;
-          }
-        }
-        return false;
-      },
-      POLL_INTERVAL_MS,
-      sessionSignal,
-    );
-    signal.throwIfAborted();
-
-    // Activate session (preparing → active)
-    const activateRes = await fetchFn(
-      `/api/zero/voice-chat/${session.id}/activate`,
-      { method: "POST" },
-    );
-    signal.throwIfAborted();
-
-    if (!activateRes.ok) {
-      set(internalError$, "Failed to activate meeting session");
-      set(internalStatus$, "error");
-      return;
-    }
-
-    // Connect voice (token → mic → WebRTC → poll/heartbeat)
-    await Promise.allSettled([
-      heartbeatPromise,
-      set(connectVoiceSession$, sessionSignal),
-    ]);
+    await set(prepareActivateConnect$, session.id, sessionSignal, signal);
   },
 );
 
