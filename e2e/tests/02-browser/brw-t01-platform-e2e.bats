@@ -68,6 +68,7 @@ teardown_file() {
   agent-browser wait 500
   agent-browser find label "Password" fill "$SIGNUP_PASSWORD"
   agent-browser wait 500
+  accept_legal_consent
   click_continue
   agent-browser wait 5000
   step_screenshot "after-sign-up-continue"

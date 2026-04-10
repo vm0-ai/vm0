@@ -100,6 +100,21 @@ full_snapshot() {
 }
 
 # ---------------------------------------------------------------------------
+# accept_legal_consent — Check legal consent checkbox if present
+# Clerk renders this when legal_consent_enabled is on. Safe to call always.
+# ---------------------------------------------------------------------------
+accept_legal_consent() {
+  local snap_i
+  snap_i=$(agent-browser snapshot -i 2>/dev/null || true)
+  local ref
+  ref=$(echo "$snap_i" | grep -iE 'checkbox.*(terms|legal|agree|privacy|consent)' | grep -oE '\[ref=e[0-9]+\]' | head -1 | sed 's/\[ref=/@/; s/\]//')
+  if [[ -n "$ref" ]]; then
+    agent-browser click "$ref" 2>/dev/null || true
+    agent-browser wait 300
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # click_continue — Click form "Continue" button (not "Continue with Google")
 # ---------------------------------------------------------------------------
 click_continue() {
