@@ -163,6 +163,7 @@ class TestMatchFirewallRequest:
         assert result.ref == "github"
         assert result.method == "GET"
         assert result.path == "/repos"
+        assert result.permissions == ()
 
     def test_permission_match_allows(self):
         fw_configs = _wrap_firewalls(
@@ -3794,6 +3795,7 @@ class TestThreeLevelMatching:
             network_policies=granted,
         )
         assert isinstance(result, FirewallBlock)
+        assert result.permissions == ("repo-read", "repo-admin")
 
     def test_multi_firewall_different_refs(self):
         """Two firewalls with different refs, each with own grants."""
@@ -3919,6 +3921,38 @@ class TestThreeLevelMatching:
         )
         # repo-write rule matches but is not granted → DENY, not overridden by unknownPolicy
         assert isinstance(result, FirewallBlock)
+        assert result.permissions == ("repo-write",)
+
+    def test_denied_permission_deduped_across_rules(self):
+        """Same permission with multiple matching rules appears once in permissions."""
+        fws = _wrap_firewalls(
+            [
+                {
+                    "base": "https://api.github.com",
+                    "auth": {"headers": {"Authorization": "Bearer token"}},
+                    "permissions": [
+                        {
+                            "name": "repo-read",
+                            "rules": [
+                                "GET /repos/{owner}/{repo}",
+                                "ANY /repos/{owner}/{repo}",
+                            ],
+                        },
+                    ],
+                }
+            ],
+            name="github",
+            ref="github",
+        )
+        granted = {"github": {"allow": [], "unknownPolicy": "deny"}}
+        result = matching.match_firewall_request(
+            "https://api.github.com/repos/org/repo",
+            "GET",
+            fws,
+            network_policies=granted,
+        )
+        assert isinstance(result, FirewallBlock)
+        assert result.permissions == ("repo-read",)
 
     def test_empty_permissions_list_denies_all_known(self):
         """permissions: [] means nothing is granted — all known endpoints denied."""

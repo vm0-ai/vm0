@@ -218,6 +218,7 @@ class FirewallBlock(NamedTuple):
     name: str
     method: str
     path: str
+    permissions: tuple[str, ...]  # denied permission names; empty for unknown-endpoint blocks
 
 
 def parse_graphql_rule(rest: str) -> tuple[str, str | None, str | None, list[str] | None] | None:
@@ -503,6 +504,7 @@ def match_firewall_request(
     # granted permission matches.  We record it instead of returning immediately
     # because a later permission may be granted for the same endpoint.
     denied_match: tuple[str, str, str, str, str] | None = None  # (base, ref, name, method, path)
+    denied_perm_names: list[str] = []
 
     for fw_entry in vm_firewalls:
         fw_name = fw_entry.get("name", "")
@@ -581,6 +583,7 @@ def match_firewall_request(
                                     fw_name,
                                     upper_method,
                                     rel_path,
+                                    (),
                                 )
 
                         # Merge base params with rule params
@@ -601,13 +604,15 @@ def match_firewall_request(
                             )
                         # Permission exists but not granted — record for
                         # DENY but keep checking other permissions.
+                        if perm_name not in denied_perm_names:
+                            denied_perm_names.append(perm_name)
                         if denied_match is None:
                             denied_match = (base, fw_ref, fw_name, upper_method, rel_path)
 
     if blocked_base is not None:
         # A non-granted permission matched — DENY takes priority over unknown.
         if denied_match is not None:
-            return FirewallBlock(*denied_match)
+            return FirewallBlock(*denied_match, tuple(denied_perm_names))
         # No permission rule matched — this is an "unknown" endpoint.
         # "ask" is treated as "deny" at the proxy level (same as ask permissions).
         if _get_unknown_policy(blocked_ref, network_policies) == "allow":
@@ -623,6 +628,6 @@ def match_firewall_request(
                 },
             )
         return FirewallBlock(
-            blocked_base, blocked_ref, blocked_name, upper_method, blocked_rel_path
+            blocked_base, blocked_ref, blocked_name, upper_method, blocked_rel_path, ()
         )
     return None

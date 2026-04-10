@@ -245,7 +245,7 @@ class TestRequestHandler:
         assert body["error"] == "permission_denied"
         assert body["method"] == "GET"
         assert body["path"] == "/orgs"
-        assert body["permission"] == "github"
+        assert body["permissions"] == []
         assert body["base"] == "https://api.github.com"
 
     async def test_firewall_permission_allows_matched(self, tmp_path):
