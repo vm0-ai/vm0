@@ -87,14 +87,14 @@ describe("avatar maker - saving state", () => {
     );
     await openAvatarMaker(user);
 
-    const applyBtn = screen.getByText(/Apply/i);
+    const applyBtn = screen.getByText(/Use this avatar/i);
     expect(applyBtn.closest("button")).not.toBeDisabled();
 
     await user.click(applyBtn);
 
     // After the error, the button should become clickable again
     await waitFor(() => {
-      const btn = screen.getByText(/Apply/i);
+      const btn = screen.getByText(/Use this avatar/i);
       expect(btn.closest("button")).not.toBeDisabled();
     });
   });

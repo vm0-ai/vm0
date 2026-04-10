@@ -269,8 +269,8 @@ describe("zero settings tab - avatar", () => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
 
-    // Click Apply to save the avatar
-    await user.click(screen.getByText("Apply"));
+    // Click "Use this avatar" to save
+    await user.click(screen.getByText("Use this avatar"));
 
     await waitFor(() => {
       expect(capturedPayload).toBeTruthy();
