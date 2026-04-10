@@ -601,6 +601,5 @@ describe("POST /api/zero/report-error", () => {
 
     // Plain was called (4 steps)
     expect(plainCallCount).toBe(4);
-
   });
 });
