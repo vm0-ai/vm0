@@ -1,5 +1,24 @@
 # Changelog
 
+## [12.213.0](https://github.com/vm0-ai/vm0/compare/web-v12.212.1...web-v12.213.0) (2026-04-10)
+
+
+### Features
+
+* **web:** add use cases gallery and detail pages ([#8761](https://github.com/vm0-ai/vm0/issues/8761)) ([86c6260](https://github.com/vm0-ai/vm0/commit/86c6260e1333ef0156dea48e96bf80fa20056799))
+
+
+### Bug Fixes
+
+* **platform:** hide create workspace when user already owns an org ([#8717](https://github.com/vm0-ai/vm0/issues/8717)) ([e697645](https://github.com/vm0-ai/vm0/commit/e69764522f9e3dbd4397fe7c16ea712bb429d0b5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.168.1
+
 ## [12.212.1](https://github.com/vm0-ai/vm0/compare/web-v12.212.0...web-v12.212.1) (2026-04-10)
 
 

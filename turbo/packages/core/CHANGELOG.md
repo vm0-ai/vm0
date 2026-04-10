@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.168.1](https://github.com/vm0-ai/vm0/compare/core-v8.168.0...core-v8.168.1) (2026-04-10)
+
+
+### Bug Fixes
+
+* **platform:** hide create workspace when user already owns an org ([#8717](https://github.com/vm0-ai/vm0/issues/8717)) ([e697645](https://github.com/vm0-ai/vm0/commit/e69764522f9e3dbd4397fe7c16ea712bb429d0b5))
+
 ## [8.168.0](https://github.com/vm0-ai/vm0/compare/core-v8.167.0...core-v8.168.0) (2026-04-09)
 
 

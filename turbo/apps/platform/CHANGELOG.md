@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.209.2](https://github.com/vm0-ai/vm0/compare/app-v0.209.1...app-v0.209.2) (2026-04-10)
+
+
+### Bug Fixes
+
+* **platform:** hide create workspace when user already owns an org ([#8717](https://github.com/vm0-ai/vm0/issues/8717)) ([e697645](https://github.com/vm0-ai/vm0/commit/e69764522f9e3dbd4397fe7c16ea712bb429d0b5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.168.1
+
 ## [0.209.1](https://github.com/vm0-ai/vm0/compare/app-v0.209.0...app-v0.209.1) (2026-04-10)
 
 
