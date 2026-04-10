@@ -552,7 +552,11 @@ const startHeartbeat$ = command(async ({ get }, signal: AbortSignal) => {
   );
 });
 
+const POLL_FAILURE_THRESHOLD = 3;
+
 const startPoll$ = command(async ({ get, set }, signal: AbortSignal) => {
+  let consecutiveFailures = 0;
+
   await setLoop(
     async (signal: AbortSignal) => {
       const sid = get(internalSessionId$);
@@ -568,8 +572,17 @@ const startPoll$ = command(async ({ get, set }, signal: AbortSignal) => {
       );
 
       if (!res.ok) {
+        consecutiveFailures++;
+        if (consecutiveFailures >= POLL_FAILURE_THRESHOLD) {
+          set(internalError$, "Connection issues — retrying…");
+        }
         return false;
       }
+
+      if (consecutiveFailures >= POLL_FAILURE_THRESHOLD) {
+        set(internalError$, null);
+      }
+      consecutiveFailures = 0;
 
       const data = (await res.json()) as { events: ContextEvent[] };
       signal.throwIfAborted();

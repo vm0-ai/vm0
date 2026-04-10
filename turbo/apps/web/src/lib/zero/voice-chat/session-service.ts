@@ -110,18 +110,18 @@ export async function endSession(
     throw badRequest("Session is not active");
   }
 
-  // Write session-end event
-  await db.insert(voiceChatEvents).values({
-    sessionId,
-    source: "system",
-    type: "session-end",
+  // Write session-end event and update status atomically
+  await db.transaction(async (tx) => {
+    await tx.insert(voiceChatEvents).values({
+      sessionId,
+      source: "system",
+      type: "session-end",
+    });
+    await tx
+      .update(voiceChatSessions)
+      .set({ status: "ended", endedAt: new Date() })
+      .where(eq(voiceChatSessions.id, sessionId));
   });
-
-  // Update session status
-  await db
-    .update(voiceChatSessions)
-    .set({ status: "ended", endedAt: new Date() })
-    .where(eq(voiceChatSessions.id, sessionId));
 
   // Cancel slow-brain run if active (ignore errors if already terminated)
   if (session.runId) {
