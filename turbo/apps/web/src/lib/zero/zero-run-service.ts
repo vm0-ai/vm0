@@ -3,6 +3,8 @@ import {
   resolveFirewallPolicies,
   toFirewallPolicies,
   orgTierSchema,
+  isFeatureEnabled,
+  FeatureSwitchKey,
   type TriggerSource,
   type FirewallPolicies,
   type ConnectorType,
@@ -46,7 +48,11 @@ import { orgMetadata } from "../../db/schema/org-metadata";
 import { orgMembersMetadata } from "../../db/schema/org-members-metadata";
 import { ORG_SENTINEL_USER_ID } from "./org/org-sentinel";
 import type { AgentComposeYaml } from "../infra/agent-compose/types";
-import { DISALLOWED_TOOLS, buildAgentPrompt } from "./agent-prompt";
+import {
+  DISALLOWED_TOOLS,
+  buildAgentPrompt,
+  buildAutoSkillGuidance,
+} from "./agent-prompt";
 import type { CallbackPayload } from "../infra/callback/callback-payloads";
 import { zeroAgents } from "../../db/schema/zero-agent";
 import { zeroRuns } from "../../db/schema/zero-run";
@@ -333,6 +339,9 @@ export async function createZeroRunRecord(
   });
   let { appendSystemPrompt } = params;
   const systemParts = [agentPrompt, userInfo];
+  if (isFeatureEnabled(FeatureSwitchKey.AutoSkill, { orgId: resolved.orgId })) {
+    systemParts.push(buildAutoSkillGuidance());
+  }
   if (appendSystemPrompt) {
     systemParts.push(appendSystemPrompt);
   }

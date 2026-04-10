@@ -22,7 +22,8 @@ import { verifyZeroToken } from "../../auth/sandbox-token";
 import { decryptSecretsMap } from "../../shared/crypto/secrets-encryption";
 import { reloadEnv } from "../../../env";
 import { updateUserPreferences } from "../user/user-preferences-service";
-import type { TriggerSource } from "@vm0/core";
+import { FeatureSwitchKey, type TriggerSource } from "@vm0/core";
+import * as core from "@vm0/core";
 
 const context = testContext();
 
@@ -503,6 +504,34 @@ describe("createZeroRun()", () => {
       });
       expect(ghFw).toBeDefined();
       expect(slackFw).toBeDefined();
+    });
+  });
+
+  describe("AutoSkill guidance injection", () => {
+    it("should inject skill guidance when AutoSkill feature switch is enabled", async () => {
+      const spy = vi
+        .spyOn(core, "isFeatureEnabled")
+        .mockImplementation((key: FeatureSwitchKey) => {
+          if (key === FeatureSwitchKey.AutoSkill) return true;
+          return false;
+        });
+
+      const result = await createZeroRun(baseParams());
+      const run = await findTestRunRecord(result.runId);
+      expect(run).toBeDefined();
+      expect(run!.appendSystemPrompt).toContain("# Skill Management Guidance");
+      expect(run!.appendSystemPrompt).toContain("zero skill create");
+
+      spy.mockRestore();
+    });
+
+    it("should not inject skill guidance when AutoSkill feature switch is disabled", async () => {
+      const result = await createZeroRun(baseParams());
+      const run = await findTestRunRecord(result.runId);
+      expect(run).toBeDefined();
+      expect(run!.appendSystemPrompt).not.toContain(
+        "# Skill Management Guidance",
+      );
     });
   });
 });

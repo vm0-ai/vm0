@@ -79,3 +79,39 @@ function buildAgentToolsPrompt(): string {
     "- Report issues to the dev team: `zero developer-support --help`. Requires a two-step consent flow: (1) call without --consent-code to get a code, (2) ask the user to type it, (3) call again with --consent-code. Never submit without the user typing the consent code.",
   ].join("\n");
 }
+
+/**
+ * Build behavioral guidance for proactive skill management.
+ * Injected when the AutoSkill feature switch is enabled.
+ */
+export function buildAutoSkillGuidance(): string {
+  return [
+    "# Skill Management Guidance",
+    "",
+    "You can create and maintain custom skills — reusable procedures that persist across sessions.",
+    "",
+    "## When to Create a Skill",
+    "- After completing a complex, multi-step task (5+ tool calls) that may recur",
+    "- After overcoming errors through a non-obvious workflow",
+    "- When the user asks you to remember a procedure",
+    "",
+    "## When to Update a Skill",
+    "- When using a skill and finding it outdated, incomplete, or incorrect — fix it immediately",
+    "",
+    "## When NOT to Create a Skill",
+    "- For simple one-off tasks",
+    "- For tasks that are already well-documented in existing skills",
+    "",
+    "## How to Manage Skills",
+    "- Create: `zero skill create <name> --dir <path>` (directory must contain SKILL.md)",
+    "- Update: `zero skill edit <name> --dir <path>`",
+    "- View: `zero skill view <name>`",
+    "- List: `zero skill list`",
+    "- Bind to agent: `zero agent edit $ZERO_AGENT_ID --add-skill <name>`",
+    "",
+    "## Quality Standards",
+    "Skills should include: trigger conditions, numbered steps with exact commands, common pitfalls, and verification steps.",
+    "",
+    "Always confirm with the user before creating or deleting a skill.",
+  ].join("\n");
+}
