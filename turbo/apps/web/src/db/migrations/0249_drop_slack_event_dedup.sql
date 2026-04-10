@@ -1,1 +1,1 @@
-DROP TABLE "slack_event_dedup";
+DROP TABLE IF EXISTS "slack_event_dedup";
