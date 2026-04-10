@@ -10,6 +10,7 @@ import {
 } from "../../../../src/lib/zero/voice-chat/session-service";
 import { isApiError } from "../../../../src/lib/shared/errors";
 import { logger } from "../../../../src/lib/shared/logger";
+import { loadFeatureSwitchOverrides } from "../../../../src/lib/zero/user/feature-switches-service";
 
 const bodySchema = z
   .object({
@@ -45,9 +46,11 @@ export async function POST(request: Request) {
   const { org } = await resolveOrg(authCtx);
   const { userId } = authCtx;
 
+  const overrides = await loadFeatureSwitchOverrides(org.orgId, userId);
   const enabled = isFeatureEnabled(FeatureSwitchKey.VoiceChat, {
     orgId: org.orgId,
     userId,
+    overrides,
   });
   if (!enabled) {
     return NextResponse.json(

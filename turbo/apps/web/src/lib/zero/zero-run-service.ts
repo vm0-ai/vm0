@@ -31,6 +31,7 @@ import {
   dispatchQueuedZeroRun,
 } from "./zero-run-queue-service";
 import { generateZeroToken, generateSandboxToken } from "../auth/sandbox-token";
+import { loadFeatureSwitchOverrides } from "./user/feature-switches-service";
 import {
   buildZeroExecutionContext,
   MODEL_PROVIDER_ENV_VARS,
@@ -463,8 +464,12 @@ export async function dispatchZeroRun(
     }
 
     // 6. Generate ZERO_TOKEN + sandbox token (now we have runId)
+    const overrides = await loadFeatureSwitchOverrides(
+      orgId,
+      zeroParams.userId,
+    );
     const [zeroToken, sandboxToken] = await Promise.all([
-      generateZeroToken(zeroParams.userId, record.run.id, orgId),
+      generateZeroToken(zeroParams.userId, record.run.id, orgId, overrides),
       generateSandboxToken(zeroParams.userId, record.run.id),
     ]);
     const tokenTime = Date.now();

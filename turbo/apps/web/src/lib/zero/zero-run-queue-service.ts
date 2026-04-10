@@ -42,6 +42,7 @@ import type {
   CreateRunResult,
 } from "../infra/run/run-service";
 import { generateZeroToken, generateSandboxToken } from "../auth/sandbox-token";
+import { loadFeatureSwitchOverrides } from "./user/feature-switches-service";
 import { buildZeroExecutionContext } from "./build-zero-context";
 import { buildInfraExecutionContext } from "../infra/run/context/build-context";
 import {
@@ -446,10 +447,15 @@ export async function dispatchQueuedZeroRun(
     const apiStartTime = Date.now();
 
     // Generate fresh ZERO_TOKEN for queued dispatch
+    const overrides = await loadFeatureSwitchOverrides(
+      params.orgId,
+      params.userId,
+    );
     const zeroToken = await generateZeroToken(
       params.userId,
       runId,
       params.orgId,
+      overrides,
     );
     const updatedParams: CreateRunParams = {
       ...params,

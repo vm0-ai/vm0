@@ -332,6 +332,7 @@ export async function generateZeroToken(
   userId: string,
   runId: string,
   orgId: string,
+  overrides?: Partial<Record<FeatureSwitchKey, boolean>>,
 ): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
   const expiresIn = 2 * 60 * 60; // 2 hours
@@ -344,7 +345,7 @@ export async function generateZeroToken(
     }
     const flag = CONDITIONAL_CAPABILITIES.get(cap);
     if (flag) {
-      if (isFeatureEnabled(flag, { userId, orgId })) {
+      if (isFeatureEnabled(flag, { userId, orgId, overrides })) {
         capabilities.push(cap);
       }
     } else {

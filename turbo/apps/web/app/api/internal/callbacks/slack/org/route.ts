@@ -6,6 +6,7 @@ import { decryptSecretValue } from "../../../../../../src/lib/shared/crypto/secr
 import { slackOrgInstallations } from "../../../../../../src/db/schema/slack-org-installation";
 import { agentRuns } from "../../../../../../src/db/schema/agent-run";
 import { isFeatureEnabled, FeatureSwitchKey } from "@vm0/core";
+import { loadFeatureSwitchOverrides } from "../../../../../../src/lib/zero/user/feature-switches-service";
 import { findNewSessionId } from "../../../../../../src/lib/infra/session/find-new-session";
 import {
   createSlackClient,
@@ -177,9 +178,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     .where(eq(agentRuns.id, runId))
     .limit(1);
 
+  const overrides = await loadFeatureSwitchOverrides(
+    runContext?.orgId,
+    runContext?.userId,
+  );
   const auditLinkEnabled = isFeatureEnabled(FeatureSwitchKey.AuditLink, {
     userId: runContext?.userId,
     orgId: runContext?.orgId,
+    overrides,
   });
 
   // Resolve session

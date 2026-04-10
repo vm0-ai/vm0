@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { FeatureSwitchKey, isFeatureEnabled } from "@vm0/core";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { initServices } from "../../../../../src/lib/init-services";
+import { loadFeatureSwitchOverrides } from "../../../../../src/lib/zero/user/feature-switches-service";
 import { env } from "../../../../../src/env";
 import { createEphemeralToken } from "../../../../../src/lib/zero/voice-chat/openai-token";
 import { logger } from "../../../../../src/lib/shared/logger";
@@ -20,9 +21,14 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
+  const overrides = await loadFeatureSwitchOverrides(
+    authCtx.orgId,
+    authCtx.userId,
+  );
   const enabled = isFeatureEnabled(FeatureSwitchKey.VoiceChat, {
     orgId: authCtx.orgId,
     userId: authCtx.userId,
+    overrides,
   });
   if (!enabled) {
     return NextResponse.json(

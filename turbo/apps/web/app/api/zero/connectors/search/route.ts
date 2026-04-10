@@ -13,6 +13,7 @@ import {
 } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
+import { loadFeatureSwitchOverrides } from "../../../../../src/lib/zero/user/feature-switches-service";
 
 const router = tsr.router(zeroConnectorsSearchContract, {
   search: async ({ headers, query }) => {
@@ -23,9 +24,14 @@ const router = tsr.router(zeroConnectorsSearchContract, {
       return createErrorResponse("UNAUTHORIZED", "Not authenticated");
     }
 
+    const overrides = await loadFeatureSwitchOverrides(
+      authCtx.orgId,
+      authCtx.userId,
+    );
     const featureStates = getAllFeatureStates({
       userId: authCtx.userId,
       orgId: authCtx.orgId,
+      overrides,
     });
     const keyword = query.keyword?.toLowerCase();
 

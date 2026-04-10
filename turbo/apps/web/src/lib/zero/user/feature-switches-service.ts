@@ -1,4 +1,5 @@
 import { eq, and } from "drizzle-orm";
+import { FeatureSwitchKey } from "@vm0/core";
 import { userFeatureSwitches } from "../../../db/schema/user-feature-switches";
 
 /**
@@ -23,6 +24,21 @@ export async function getUserFeatureSwitches(
     .limit(1);
 
   return row ? (row.switches as Record<string, boolean>) : {};
+}
+
+/**
+ * Load per-user feature switch overrides from the database.
+ * Returns undefined if orgId/userId is missing or no overrides exist.
+ */
+export async function loadFeatureSwitchOverrides(
+  orgId: string | undefined,
+  userId: string | undefined,
+): Promise<Partial<Record<FeatureSwitchKey, boolean>> | undefined> {
+  if (!orgId || !userId) return undefined;
+  const switches = await getUserFeatureSwitches(orgId, userId);
+  return Object.keys(switches).length > 0
+    ? (switches as Partial<Record<FeatureSwitchKey, boolean>>)
+    : undefined;
 }
 
 /**

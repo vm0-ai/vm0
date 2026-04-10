@@ -16,6 +16,7 @@ import {
 } from "../../../../../src/lib/auth/require-auth";
 import { resolveOrg } from "../../../../../src/lib/zero/org/resolve-org";
 import { getHost } from "../../../../../src/lib/zero/computer-use/computer-use-service";
+import { loadFeatureSwitchOverrides } from "../../../../../src/lib/zero/user/feature-switches-service";
 
 const router = tsr.router(zeroComputerUseHostContract, {
   getHost: async ({ headers }) => {
@@ -30,9 +31,11 @@ const router = tsr.router(zeroComputerUseHostContract, {
 
     const { org } = await resolveOrg(authCtx);
 
+    const overrides = await loadFeatureSwitchOverrides(org.orgId, userId);
     const enabled = isFeatureEnabled(FeatureSwitchKey.ComputerUse, {
       orgId: org.orgId,
       userId,
+      overrides,
     });
     if (!enabled) {
       return createErrorResponse("FORBIDDEN", "Computer use is not enabled");

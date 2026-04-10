@@ -5,6 +5,7 @@ import { getAuthContext } from "../../../../../../src/lib/auth/get-auth-context"
 import { resolveOrg } from "../../../../../../src/lib/zero/org/resolve-org";
 import { isFeatureEnabled, FeatureSwitchKey } from "@vm0/core";
 import { eq } from "drizzle-orm";
+import { loadFeatureSwitchOverrides } from "../../../../../../src/lib/zero/user/feature-switches-service";
 import { voiceChatSessions } from "../../../../../../src/db/schema/voice-chat";
 import {
   readEvents,
@@ -48,9 +49,14 @@ export async function GET(
     );
   }
 
+  const overrides = await loadFeatureSwitchOverrides(
+    authCtx.orgId,
+    authCtx.userId,
+  );
   const enabled = isFeatureEnabled(FeatureSwitchKey.VoiceChat, {
     orgId: authCtx.orgId,
     userId: authCtx.userId,
+    overrides,
   });
   if (!enabled) {
     return NextResponse.json(
@@ -101,9 +107,14 @@ export async function POST(
     );
   }
 
+  const overrides = await loadFeatureSwitchOverrides(
+    authCtx.orgId,
+    authCtx.userId,
+  );
   const enabled = isFeatureEnabled(FeatureSwitchKey.VoiceChat, {
     orgId: authCtx.orgId,
     userId: authCtx.userId,
+    overrides,
   });
   if (!enabled) {
     return NextResponse.json(

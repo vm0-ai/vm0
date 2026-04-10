@@ -1,4 +1,5 @@
 import { isFeatureEnabled, FeatureSwitchKey } from "@vm0/core";
+import { loadFeatureSwitchOverrides } from "../../user/feature-switches-service";
 import { decryptSecretValue } from "../../../shared/crypto/secrets-encryption";
 import { env } from "../../../../env";
 import {
@@ -221,9 +222,14 @@ export async function handleOrgDirectMessage(
     if (!runId) {
       const errorText =
         response ?? "Sorry, an error occurred. Please try again.";
+      const overrides = await loadFeatureSwitchOverrides(
+        orgId,
+        connection.vm0UserId,
+      );
       const logsUrl = isFeatureEnabled(FeatureSwitchKey.AuditLink, {
         userId: connection.vm0UserId,
         orgId,
+        overrides,
       })
         ? buildAgentLogsUrl()
         : undefined;
