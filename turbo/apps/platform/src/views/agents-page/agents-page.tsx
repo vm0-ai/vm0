@@ -341,7 +341,7 @@ function CreateTeammateDialogContent({
       {/* Content */}
       <div className="flex flex-col items-center gap-4 px-6 py-6">
         <div className="text-center">
-          <h2 className="text-base font-semibold">Create a new agent</h2>
+          <p className="text-base font-semibold">Create a new agent</p>
           <p className="text-sm text-muted-foreground mt-0.5">
             Name your agent to get started.
           </p>
