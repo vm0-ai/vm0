@@ -147,7 +147,8 @@ pub async fn run_build(args: BuildArgs, provider: &dyn SnapshotProvider) -> Runn
         resolve_guest(args.guest_mock_claude, "guest-mock-claude", tmp_dir.path()).await?;
     let guest_reseed = resolve_guest(args.guest_reseed, "guest-reseed", tmp_dir.path()).await?;
 
-    // Sorted by dest name for deterministic hashing.
+    // Fixed order for deterministic hashing — do NOT reorder without
+    // updating the expected value in `image_hash_is_stable`.
     let bins: [(&Path, &str); 5] = [
         (guest_agent.as_path(), "/usr/local/bin/guest-agent"),
         (guest_download.as_path(), "/usr/local/bin/guest-download"),
@@ -222,12 +223,13 @@ pub async fn run_build(args: BuildArgs, provider: &dyn SnapshotProvider) -> Runn
     let guest_init_str = guest_init.to_string_lossy();
     let guest_mock_claude_str = guest_mock_claude.to_string_lossy();
     let guest_reseed_str = guest_reseed.to_string_lossy();
-    let ca_dir_str = paths.ca_dir().to_string_lossy().to_string();
+    let ca_dir = paths.ca_dir();
+    let ca_dir_str = ca_dir.to_string_lossy();
     let debootstrap_dir = paths.debootstrap_dir();
     tokio::fs::create_dir_all(&debootstrap_dir)
         .await
         .map_err(|e| RunnerError::Internal(format!("create {}: {e}", debootstrap_dir.display())))?;
-    let debootstrap_dir_str = debootstrap_dir.to_string_lossy().to_string();
+    let debootstrap_dir_str = debootstrap_dir.to_string_lossy();
     let disk_mb_str = def.disk_mb.to_string();
 
     let status = tokio::process::Command::new("bash")

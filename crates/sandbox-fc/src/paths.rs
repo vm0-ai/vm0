@@ -163,6 +163,10 @@ impl SnapshotOutputPaths {
         self.output_dir.join("cow.img")
     }
 
+    pub fn cow_bitmap(&self) -> PathBuf {
+        self.output_dir.join("cow.img.bitmap")
+    }
+
     /// Work directory used during snapshot creation.
     /// Its layout is preserved as bind-mount targets during restore.
     pub fn work_dir(&self) -> PathBuf {

@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -90,16 +90,15 @@ pub async fn create_snapshot(
 
     // Remove stale snapshot artifacts individually instead of rm -rf on the
     // entire output directory.
-    let cow_bitmap = PathBuf::from(format!("{}.bitmap", output.cow().display()));
+    // Remove work directory tree, then stale files.
+    let _ = tokio::fs::remove_dir_all(&output.work_dir()).await;
     for stale in [
-        output.work_dir(),
         output.snapshot(),
         output.memory(),
         output.cow(),
-        cow_bitmap,
+        output.cow_bitmap(),
     ] {
-        let path_str = stale.display().to_string();
-        command::exec_ignore_errors("rm", &["-rf", &path_str]).await;
+        let _ = tokio::fs::remove_file(&stale).await;
     }
     tokio::fs::create_dir_all(&work).await?;
 
@@ -300,7 +299,7 @@ async fn run_snapshot_workflow(
         // Also move the bitmap sidecar if it exists (for snapshot restore).
         let bitmap_src = std::path::PathBuf::from(format!("{}.bitmap", cow_file.display()));
         if tokio::fs::try_exists(&bitmap_src).await.unwrap_or(false) {
-            let bitmap_dst = std::path::PathBuf::from(format!("{}.bitmap", output.cow().display()));
+            let bitmap_dst = output.cow_bitmap();
             tokio::fs::rename(&bitmap_src, &bitmap_dst).await?;
         }
     } else {
