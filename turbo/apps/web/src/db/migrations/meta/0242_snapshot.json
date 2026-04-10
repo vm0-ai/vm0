@@ -1,6 +1,6 @@
 {
-  "id": "7933b1e9-389a-4424-b8d0-9f5a03df12a6",
-  "prevId": "766581d0-3c3b-49c3-8db0-20581905b301",
+  "id": "b29dc707-e6df-4e22-a283-ae9d9b581d14",
+  "prevId": "80d74ed5-f46d-4aa5-b989-f6d0624b35ea",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -3509,18 +3509,18 @@
           "notNull": true,
           "default": "''"
         },
+        "created_by": {
+          "name": "created_by",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "cached_at": {
           "name": "cached_at",
           "type": "timestamp",
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
-        },
-        "created_by": {
-          "name": "created_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
         }
       },
       "indexes": {
