@@ -213,6 +213,20 @@ pub fn run(manifest_path: &str) -> bool {
         });
     }
 
+    // Pre-create all target directories before parallel downloads.
+    // This avoids races between parent-child mount paths (e.g. /home/user/.claude
+    // and /home/user/.claude/skills/foo) when they land in the same concurrent chunk.
+    for task in &tasks {
+        if let Err(e) = fs::create_dir_all(&task.mount_path) {
+            log_error!(
+                LOG_TAG,
+                "Failed to create directory {}: {e}",
+                task.mount_path
+            );
+            return false;
+        }
+    }
+
     download_all_parallel(tasks)
 }
 
@@ -427,7 +441,6 @@ fn download_with_retry(url: &str, target_path: &str) -> Result<(), DownloadError
 }
 
 fn download_and_extract(url: &str, target_path: &str) -> Result<(), DownloadError> {
-    // Create target directory
     fs::create_dir_all(target_path).map_err(|e| DownloadError {
         message: format!("Failed to create directory {target_path}: {e}"),
         retriable: false,

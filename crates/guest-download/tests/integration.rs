@@ -193,6 +193,92 @@ fn six_storages_parallel() {
 }
 
 // ---------------------------------------------------------------------------
+// Test 2b: parent-child mount paths in same concurrent chunk
+// Regression test: storages with overlapping paths (e.g. /home/user/.claude and
+// /home/user/.claude/skills/foo) must not race on directory creation.
+// ---------------------------------------------------------------------------
+#[test]
+fn parent_child_mount_paths_parallel() {
+    let server = MockServer::start();
+    let dir = tempfile::tempdir().unwrap();
+
+    let parent_tar = create_tar_gz(&[("config.json", b"parent config")]).unwrap();
+    let child_a_tar = create_tar_gz(&[("skill.json", b"skill a")]).unwrap();
+    let child_b_tar = create_tar_gz(&[("skill.json", b"skill b")]).unwrap();
+    let child_c_tar = create_tar_gz(&[("skill.json", b"skill c")]).unwrap();
+
+    let m_parent = server.mock(|when, then| {
+        when.method(GET).path("/parent.tar.gz");
+        then.status(200)
+            .header("content-type", "application/gzip")
+            .body(&parent_tar);
+    });
+    let m_child_a = server.mock(|when, then| {
+        when.method(GET).path("/child_a.tar.gz");
+        then.status(200)
+            .header("content-type", "application/gzip")
+            .body(&child_a_tar);
+    });
+    let m_child_b = server.mock(|when, then| {
+        when.method(GET).path("/child_b.tar.gz");
+        then.status(200)
+            .header("content-type", "application/gzip")
+            .body(&child_b_tar);
+    });
+    let m_child_c = server.mock(|when, then| {
+        when.method(GET).path("/child_c.tar.gz");
+        then.status(200)
+            .header("content-type", "application/gzip")
+            .body(&child_c_tar);
+    });
+
+    // 4 tasks fill one concurrent chunk (MAX_CONCURRENT=4), ensuring parent
+    // and children are truly downloaded in parallel.
+    let parent_mount = dir.path().join("claude");
+    let child_a_mount = dir.path().join("claude/skills/alpha");
+    let child_b_mount = dir.path().join("claude/skills/beta");
+    let child_c_mount = dir.path().join("claude/skills/gamma");
+
+    let url_parent = server.url("/parent.tar.gz");
+    let url_child_a = server.url("/child_a.tar.gz");
+    let url_child_b = server.url("/child_b.tar.gz");
+    let url_child_c = server.url("/child_c.tar.gz");
+
+    let storages: Vec<(&str, Option<&str>)> = vec![
+        (parent_mount.to_str().unwrap(), Some(&url_parent)),
+        (child_a_mount.to_str().unwrap(), Some(&url_child_a)),
+        (child_b_mount.to_str().unwrap(), Some(&url_child_b)),
+        (child_c_mount.to_str().unwrap(), Some(&url_child_c)),
+    ];
+
+    let manifest = write_manifest(&dir, &storages, None).unwrap();
+    let result = guest_download::run(manifest.to_str().unwrap());
+
+    assert!(result);
+    m_parent.assert();
+    m_child_a.assert();
+    m_child_b.assert();
+    m_child_c.assert();
+
+    assert_eq!(
+        std::fs::read_to_string(parent_mount.join("config.json")).unwrap(),
+        "parent config"
+    );
+    assert_eq!(
+        std::fs::read_to_string(child_a_mount.join("skill.json")).unwrap(),
+        "skill a"
+    );
+    assert_eq!(
+        std::fs::read_to_string(child_b_mount.join("skill.json")).unwrap(),
+        "skill b"
+    );
+    assert_eq!(
+        std::fs::read_to_string(child_c_mount.join("skill.json")).unwrap(),
+        "skill c"
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Test 3: artifact download succeeds
 // ---------------------------------------------------------------------------
 #[test]
