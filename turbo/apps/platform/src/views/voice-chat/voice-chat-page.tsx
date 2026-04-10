@@ -141,8 +141,12 @@ function VoiceChatFooter({
             status !== "connected" && "pointer-events-none opacity-50",
           )}
         >
-          <TabsTrigger value="hands-free">Hands-free</TabsTrigger>
-          <TabsTrigger value="push-to-talk">Push to Talk</TabsTrigger>
+          <TabsTrigger value="hands-free" className="text-xs px-2">
+            Hands-free
+          </TabsTrigger>
+          <TabsTrigger value="push-to-talk" className="text-xs px-2">
+            Push to Talk
+          </TabsTrigger>
         </TabsList>
       </Tabs>
 

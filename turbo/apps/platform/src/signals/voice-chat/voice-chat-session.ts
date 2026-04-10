@@ -1237,5 +1237,6 @@ export const stopPTT$ = command(({ get, set }) => {
   const dc = get(internalDc$);
   if (dc && dc.readyState === "open") {
     dc.send(JSON.stringify({ type: "input_audio_buffer.commit" }));
+    dc.send(JSON.stringify({ type: "response.create" }));
   }
 });
