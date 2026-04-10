@@ -1,5 +1,13 @@
 # Changelog
 
+## [8.172.0](https://github.com/vm0-ai/vm0/compare/core-v8.171.0...core-v8.172.0) (2026-04-10)
+
+
+### Features
+
+* add ai-generated run summaries to mission control ([#8902](https://github.com/vm0-ai/vm0/issues/8902)) ([b12fe2d](https://github.com/vm0-ai/vm0/commit/b12fe2d55a362c0470d62f4191a7b1ddff9424e5))
+* **credit:** record anthropic message id in proxy_credit_usage ([#8919](https://github.com/vm0-ai/vm0/issues/8919)) ([7bfe376](https://github.com/vm0-ai/vm0/commit/7bfe376274a4702cb116c90c9fa816307fee6f02)), closes [#8909](https://github.com/vm0-ai/vm0/issues/8909)
+
 ## [8.171.0](https://github.com/vm0-ai/vm0/compare/core-v8.170.0...core-v8.171.0) (2026-04-10)
 
 

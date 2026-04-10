@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.215.0](https://github.com/vm0-ai/vm0/compare/app-v0.214.1...app-v0.215.0) (2026-04-10)
+
+
+### Features
+
+* add ai-generated run summaries to mission control ([#8902](https://github.com/vm0-ai/vm0/issues/8902)) ([b12fe2d](https://github.com/vm0-ai/vm0/commit/b12fe2d55a362c0470d62f4191a7b1ddff9424e5))
+* **voice-chat:** split idle page into quick chat and voice meeting sections ([#8918](https://github.com/vm0-ai/vm0/issues/8918)) ([c0ecbd6](https://github.com/vm0-ai/vm0/commit/c0ecbd6d7a671f65bed06b37bba9ec3e4f422648))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.172.0
+
 ## [0.214.1](https://github.com/vm0-ai/vm0/compare/app-v0.214.0...app-v0.214.1) (2026-04-10)
 
 

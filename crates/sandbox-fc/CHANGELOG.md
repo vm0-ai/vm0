@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.1](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.23.0...sandbox-fc-v0.23.1) (2026-04-10)
+
+
+### Refactoring
+
+* **runner:** unify rootfs and snapshot into single image artifact ([#8821](https://github.com/vm0-ai/vm0/issues/8821)) ([a549299](https://github.com/vm0-ai/vm0/commit/a549299c1c10179b49783288e869f82739b58033))
+
 ## [0.23.0](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.22.2...sandbox-fc-v0.23.0) (2026-04-09)
 
 

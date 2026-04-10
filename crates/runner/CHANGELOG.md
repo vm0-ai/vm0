@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.75.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.74.2...runner-rs-v0.75.0) (2026-04-10)
+
+
+### Features
+
+* **credit:** record anthropic message id in proxy_credit_usage ([#8919](https://github.com/vm0-ai/vm0/issues/8919)) ([7bfe376](https://github.com/vm0-ai/vm0/commit/7bfe376274a4702cb116c90c9fa816307fee6f02)), closes [#8909](https://github.com/vm0-ai/vm0/issues/8909)
+
+
+### Refactoring
+
+* **mitm-addon:** extract shared api request builder for platform calls ([#8913](https://github.com/vm0-ai/vm0/issues/8913)) ([dd9a683](https://github.com/vm0-ai/vm0/commit/dd9a68382a4f012ab532838e4bdce931fab13cb8)), closes [#8885](https://github.com/vm0-ai/vm0/issues/8885)
+* **runner:** unify rootfs and snapshot into single image artifact ([#8821](https://github.com/vm0-ai/vm0/issues/8821)) ([a549299](https://github.com/vm0-ai/vm0/commit/a549299c1c10179b49783288e869f82739b58033))
+
 ## [0.74.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.74.1...runner-rs-v0.74.2) (2026-04-10)
 
 

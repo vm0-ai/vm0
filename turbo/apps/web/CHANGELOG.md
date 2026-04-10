@@ -1,5 +1,26 @@
 # Changelog
 
+## [12.217.0](https://github.com/vm0-ai/vm0/compare/web-v12.216.0...web-v12.217.0) (2026-04-10)
+
+
+### Features
+
+* add ai-generated run summaries to mission control ([#8902](https://github.com/vm0-ai/vm0/issues/8902)) ([b12fe2d](https://github.com/vm0-ai/vm0/commit/b12fe2d55a362c0470d62f4191a7b1ddff9424e5))
+* **credit:** record anthropic message id in proxy_credit_usage ([#8919](https://github.com/vm0-ai/vm0/issues/8919)) ([7bfe376](https://github.com/vm0-ai/vm0/commit/7bfe376274a4702cb116c90c9fa816307fee6f02)), closes [#8909](https://github.com/vm0-ai/vm0/issues/8909)
+
+
+### Bug Fixes
+
+* **credit:** only flag proxy usage undercount, not overcount ([#8906](https://github.com/vm0-ai/vm0/issues/8906)) ([cfcfb50](https://github.com/vm0-ai/vm0/commit/cfcfb50654695191cf697011863f87354f5b7747))
+* **web:** upgrade next.js to 16.2.3 for dos vulnerability ([#8917](https://github.com/vm0-ai/vm0/issues/8917)) ([1ae3c4e](https://github.com/vm0-ai/vm0/commit/1ae3c4e660b6b76cc1eaf39ee781e9783063fb92))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.172.0
+
 ## [12.216.0](https://github.com/vm0-ai/vm0/compare/web-v12.215.2...web-v12.216.0) (2026-04-10)
 
 
