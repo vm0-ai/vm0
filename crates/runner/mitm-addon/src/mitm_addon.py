@@ -478,6 +478,7 @@ def responseheaders(flow: http.HTTPFlow) -> None:
     # For non-SSE model provider responses, disable buffer truncation so the
     # full JSON body is available for usage extraction in response().
     sse_parser = None
+    sse_decompressor = None
     is_model_provider = flow.metadata.get("firewall_name", "").startswith("model-provider:")
     if is_model_provider:
         content_type = flow.response.headers.get("content-type", "")
@@ -485,6 +486,7 @@ def responseheaders(flow: http.HTTPFlow) -> None:
             parser_fn, usage_dict = _create_sse_usage_extractor()
             sse_parser = parser_fn
             flow.metadata["proxy_usage"] = usage_dict
+            sse_decompressor = _create_stream_decompressor(flow.response.headers)
 
     # Model provider responses are never truncated so usage extraction
     # always has the complete body.  Other responses use the 64 KB limit.
@@ -502,7 +504,8 @@ def responseheaders(flow: http.HTTPFlow) -> None:
                     buf.extend(chunk[:remaining])
                     state["truncated"] = True
         if sse_parser is not None:
-            sse_parser(chunk)
+            plaintext = sse_decompressor(chunk) if sse_decompressor else chunk
+            sse_parser(plaintext)
         return chunk
 
     flow.response.stream = stream_and_buffer
@@ -535,6 +538,49 @@ _SENSITIVE_HEADER_KEYWORDS = (
     "password",
     "cookie",
 )
+
+
+def _create_stream_decompressor(headers: http.Headers):
+    """Create an incremental decompressor for streaming chunks.
+
+    Returns a callable that decompresses each chunk, maintaining state
+    across calls.  Returns None if the response is not compressed.
+    """
+    encoding = headers.get("content-encoding", "").strip().lower()
+    if not encoding or encoding == "identity":
+        return None
+    if encoding in ("gzip", "deflate"):
+        wbits = 16 + zlib.MAX_WBITS if encoding == "gzip" else zlib.MAX_WBITS
+        obj = zlib.decompressobj(wbits)
+
+        def decompress_zlib(chunk: bytes) -> bytes:
+            try:
+                return obj.decompress(chunk)
+            except zlib.error:
+                return chunk
+
+        return decompress_zlib
+    if encoding == "br":
+        dec = brotli.Decompressor()
+
+        def decompress_br(chunk: bytes) -> bytes:
+            try:
+                return dec.process(chunk)
+            except brotli.error:
+                return chunk
+
+        return decompress_br
+    if encoding == "zstd":
+        obj = zstandard.ZstdDecompressor().decompressobj()
+
+        def decompress_zstd(chunk: bytes) -> bytes:
+            try:
+                return obj.decompress(chunk)
+            except zstandard.ZstdError:
+                return chunk
+
+        return decompress_zstd
+    return None
 
 
 def _decompress_body(

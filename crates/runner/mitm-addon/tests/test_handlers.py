@@ -995,6 +995,37 @@ class TestResponseHeadersSseParser:
         assert flow.metadata["proxy_usage"]["model"] == "claude-sonnet-4-6"
         assert flow.metadata["proxy_usage"]["input_tokens"] == 42
 
+    def test_decompresses_gzip_sse_before_parsing(self):
+        """Compressed SSE streams must be decompressed before usage extraction."""
+        import gzip
+
+        flow = _make_http_flow(host="api.anthropic.com")
+        flow.response = MagicMock()
+        flow.response.headers = {
+            "content-type": "text/event-stream; charset=utf-8",
+            "content-encoding": "gzip",
+        }
+        flow.response.stream = False
+        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+
+        mitm_addon.responseheaders(flow)
+
+        assert "proxy_usage" in flow.metadata
+        callback = flow.response.stream
+        plaintext = (
+            b"event: message_start\n"
+            b'data: {"type":"message_start","message":'
+            b'{"model":"claude-sonnet-4-6",'
+            b'"usage":{"input_tokens":99}}}\n\n'
+        )
+        compressed = gzip.compress(plaintext)
+        # Callback returns original compressed bytes to client
+        result = callback(compressed)
+        assert result == compressed
+        # But parser receives decompressed data
+        assert flow.metadata["proxy_usage"]["model"] == "claude-sonnet-4-6"
+        assert flow.metadata["proxy_usage"]["input_tokens"] == 99
+
     def test_no_sse_parser_for_non_model_provider(self):
         flow = _make_http_flow(host="api.github.com")
         flow.response = MagicMock()
