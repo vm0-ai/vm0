@@ -407,7 +407,6 @@ export function AuthLayout({ children }: AuthLayoutProps) {
             priority
             className="hidden dark:block"
           />
-          <span className="text-2xl text-foreground">Platform</span>
         </Link>
 
         {children}
