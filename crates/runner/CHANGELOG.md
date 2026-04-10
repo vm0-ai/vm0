@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.74.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.73.0...runner-rs-v0.74.0) (2026-04-10)
+
+
+### Features
+
+* **firewalls:** include denied permission names in firewall block response ([#8815](https://github.com/vm0-ai/vm0/issues/8815)) ([b276ebf](https://github.com/vm0-ai/vm0/commit/b276ebfc0b06bf816d6b3ba250e400ba574182b0))
+
 ## [0.73.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.72.1...runner-rs-v0.73.0) (2026-04-10)
 
 

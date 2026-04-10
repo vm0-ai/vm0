@@ -1,5 +1,14 @@
 # Changelog
 
+## [8.170.0](https://github.com/vm0-ai/vm0/compare/core-v8.169.0...core-v8.170.0) (2026-04-10)
+
+
+### Features
+
+* add auto-skill feature switch and guidance injection ([#8833](https://github.com/vm0-ai/vm0/issues/8833)) ([43d3f8e](https://github.com/vm0-ai/vm0/commit/43d3f8e4b4c9f872ea743fe9cee6d04e1a40ea5e))
+* add strapi connector with variable base url ([#8765](https://github.com/vm0-ai/vm0/issues/8765)) ([818b050](https://github.com/vm0-ai/vm0/commit/818b050be41e84c34f4bda89e32294f2de01c75f))
+* add user feature switches table, endpoint, and core override support ([#8830](https://github.com/vm0-ai/vm0/issues/8830)) ([eadae9f](https://github.com/vm0-ai/vm0/commit/eadae9ffdba53718449c46f513abaf54989144c8))
+
 ## [8.169.0](https://github.com/vm0-ai/vm0/compare/core-v8.168.1...core-v8.169.0) (2026-04-10)
 
 

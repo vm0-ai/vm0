@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.1](https://github.com/vm0-ai/vm0/compare/guest-download-v0.18.0...guest-download-v0.18.1) (2026-04-10)
+
+
+### Bug Fixes
+
+* **guest-download:** pre-create target directories before parallel downloads ([#8823](https://github.com/vm0-ai/vm0/issues/8823)) ([6a7d48d](https://github.com/vm0-ai/vm0/commit/6a7d48dd6465677872ce921b4de01fd8b5f1c68c))
+
 ## [0.18.0](https://github.com/vm0-ai/vm0/compare/guest-download-v0.17.1...guest-download-v0.18.0) (2026-04-10)
 
 

@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.211.0](https://github.com/vm0-ai/vm0/compare/app-v0.210.0...app-v0.211.0) (2026-04-10)
+
+
+### Features
+
+* add strapi connector with variable base url ([#8765](https://github.com/vm0-ai/vm0/issues/8765)) ([818b050](https://github.com/vm0-ai/vm0/commit/818b050be41e84c34f4bda89e32294f2de01c75f))
+* **platform:** add early access indicator to Google connectors ([#8789](https://github.com/vm0-ai/vm0/issues/8789)) ([3dc866b](https://github.com/vm0-ai/vm0/commit/3dc866b370d1c7080dade48a53410cbd0e1e03b6))
+* **voice-chat:** add auto-scroll to transcript and events panels ([#8836](https://github.com/vm0-ai/vm0/issues/8836)) ([a6bd8b1](https://github.com/vm0-ai/vm0/commit/a6bd8b1b5c4427886939e425190be024fbd330b0)), closes [#8832](https://github.com/vm0-ai/vm0/issues/8832)
+* **voice-chat:** add quick preparation phase to voice chat mode ([#8831](https://github.com/vm0-ai/vm0/issues/8831)) ([b016f19](https://github.com/vm0-ai/vm0/commit/b016f19d2c7692fca7e74ffbdc6baad2b843e552))
+* **voice-chat:** add voice meeting frontend ui and signals ([#8822](https://github.com/vm0-ai/vm0/issues/8822)) ([ceca9a4](https://github.com/vm0-ai/vm0/commit/ceca9a4c0f252b095e5cdb10be5d8e3545d79ca8)), closes [#8793](https://github.com/vm0-ai/vm0/issues/8793)
+
+
+### Bug Fixes
+
+* **ui:** improve dark mode contrast and layer hierarchy ([#8798](https://github.com/vm0-ai/vm0/issues/8798)) ([56e0bee](https://github.com/vm0-ai/vm0/commit/56e0beec7d02be00472c49c327a794245e0234eb))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.170.0
+
 ## [0.210.0](https://github.com/vm0-ai/vm0/compare/app-v0.209.2...app-v0.210.0) (2026-04-10)
 
 
