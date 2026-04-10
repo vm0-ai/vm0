@@ -671,6 +671,7 @@ class TestSseUsageExtractor:
         )
         parse(chunk)
         assert usage["model"] == "claude-sonnet-4-6"
+        assert usage["message_id"] == "msg_1"
         assert usage["input_tokens"] == 100
         assert usage["cache_read_input_tokens"] == 50
         assert usage["cache_creation_input_tokens"] == 0

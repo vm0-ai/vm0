@@ -4,6 +4,7 @@ import {
   integer,
   pgTable,
   timestamp,
+  uniqueIndex,
   uuid,
   varchar,
   text,
@@ -47,6 +48,7 @@ export const proxyCreditUsage = pgTable(
       .notNull()
       .default(0),
     webSearchRequests: integer("web_search_requests").notNull().default(0),
+    messageId: varchar("message_id", { length: 100 }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => {
@@ -55,6 +57,10 @@ export const proxyCreditUsage = pgTable(
       index("idx_proxy_credit_usage_org_created").on(
         table.orgId,
         table.createdAt,
+      ),
+      uniqueIndex("idx_proxy_credit_usage_run_id_message_id").on(
+        table.runId,
+        table.messageId,
       ),
     ];
   },

@@ -356,6 +356,9 @@ def _create_sse_usage_extractor():
                         model = msg.get("model")
                         if model:
                             usage["model"] = model
+                        message_id = msg.get("id")
+                        if message_id:
+                            usage["message_id"] = message_id
                         _extract_billing_usage(msg.get("usage"), usage)
                     except (json.JSONDecodeError, AttributeError, TypeError):
                         pass  # SSE data lines may be partial/malformed; best-effort extraction
@@ -388,7 +391,12 @@ def _extract_usage_from_json(body: bytes, headers) -> dict | None:
     if model:
         usage["model"] = model
     _extract_billing_usage(data.get("usage"), usage)
-    return usage if usage else None
+    if not usage:
+        return None
+    message_id = data.get("id")
+    if message_id:
+        usage["message_id"] = message_id
+    return usage
 
 
 def _do_report_usage(api_url: str, sandbox_token: str, run_id: str, usage: dict) -> None:

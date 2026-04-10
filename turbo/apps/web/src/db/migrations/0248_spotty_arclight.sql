@@ -1,0 +1,2 @@
+ALTER TABLE "proxy_credit_usage" ADD COLUMN "message_id" varchar(100);--> statement-breakpoint
+CREATE UNIQUE INDEX "idx_proxy_credit_usage_run_id_message_id" ON "proxy_credit_usage" USING btree ("run_id","message_id");

@@ -1737,6 +1737,13 @@
       "when": 1775900800000,
       "tag": "0247_nebulous_micromacro",
       "breakpoints": true
+    },
+    {
+      "idx": 248,
+      "version": "7",
+      "when": 1775900800001,
+      "tag": "0248_spotty_arclight",
+      "breakpoints": true
     }
   ]
 }
