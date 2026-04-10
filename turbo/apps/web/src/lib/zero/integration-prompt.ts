@@ -162,16 +162,16 @@ When you have something for the user, write to the shared context:
 `.trim();
 
 /**
- * Build the full appendSystemPrompt for Voice-Chat worker mode.
- * Combines the integration header with the slow-thinking worker prompt.
+ * Build the full appendSystemPrompt for Voice-Chat slow-brain mode.
+ * Combines the integration header with the slow-brain prompt.
  */
 export function buildVoiceChatSlowBrainPrompt(sessionId: string): string {
   const header = buildIntegrationPrompt("Voice-Chat");
-  const workerPrompt = VOICE_CHAT_SLOW_BRAIN_PROMPT.replaceAll(
+  const slowBrainPrompt = VOICE_CHAT_SLOW_BRAIN_PROMPT.replaceAll(
     "<SESSION_ID>",
     sessionId,
   );
-  return [header, workerPrompt].join("\n\n");
+  return [header, slowBrainPrompt].join("\n\n");
 }
 
 /**

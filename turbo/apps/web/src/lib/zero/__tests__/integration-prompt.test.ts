@@ -82,7 +82,7 @@ describe("buildIntegrationPrompt", () => {
 });
 
 describe("buildVoiceChatSlowBrainPrompt", () => {
-  it("should combine integration header with worker prompt", () => {
+  it("should combine integration header with slow-brain prompt", () => {
     const result = buildVoiceChatSlowBrainPrompt("session-123");
 
     expect(result).toContain("You are currently running inside: Voice-Chat");
