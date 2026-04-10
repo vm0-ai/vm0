@@ -12,12 +12,12 @@ This addon runs on the runner HOST (not inside VMs) and:
 import base64
 import json
 import os
-import threading
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 import zlib
+from concurrent.futures import ThreadPoolExecutor
 
 import brotli  # type: ignore[import-untyped]
 import zstandard
@@ -383,8 +383,8 @@ def _extract_usage_from_json(body: bytes, headers) -> dict | None:
     return usage if usage else None
 
 
-def _report_usage(api_url: str, sandbox_token: str, run_id: str, usage: dict) -> None:
-    """POST extracted usage to the platform webhook (fire-and-forget in a daemon thread)."""
+def _do_report_usage(api_url: str, sandbox_token: str, run_id: str, usage: dict) -> None:
+    """POST extracted usage to the platform webhook.  Raises on failure."""
     url = f"{api_url}/api/webhooks/agent/usage"
     payload = json.dumps({"runId": run_id, "usage": usage}).encode()
     req = urllib.request.Request(
@@ -403,15 +403,59 @@ def _report_usage(api_url: str, sandbox_token: str, run_id: str, usage: dict) ->
         resp.close()
     except urllib.error.HTTPError as exc:
         exc.close()  # HTTPError holds an open socket
+        raise
+
+
+def _report_usage_with_retry(
+    api_url: str,
+    sandbox_token: str,
+    run_id: str,
+    usage: dict,
+    max_retries: int = 1,
+) -> None:
+    """Report usage with retry.  Swallows all exceptions after final attempt."""
+    for attempt in range(max_retries + 1):
         try:
-            ctx.log.warn(f"[{run_id}] Usage report failed: HTTP {exc.code}")
-        except AttributeError:
-            pass  # ctx.log unavailable outside mitmproxy runtime
-    except Exception as exc:
-        try:
-            ctx.log.warn(f"[{run_id}] Usage report failed: {exc}")
-        except AttributeError:
-            pass  # ctx.log unavailable outside mitmproxy runtime
+            _do_report_usage(api_url, sandbox_token, run_id, usage)
+            return
+        except Exception as exc:
+            if attempt < max_retries:
+                time.sleep(0.5)
+            else:
+                try:
+                    ctx.log.warn(
+                        f"[{run_id}] Usage report failed after {attempt + 1} attempts: {exc}"
+                    )
+                except AttributeError:
+                    pass  # ctx.log unavailable outside mitmproxy runtime
+
+
+# ---------------------------------------------------------------------------
+# Usage reporting thread pool — replaces fire-and-forget daemon threads.
+# ThreadPoolExecutor processes reports in parallel; done() flushes pending
+# items before mitmproxy exits (SIGKILL at 3 s is the hard stop).
+# ---------------------------------------------------------------------------
+
+_usage_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="usage")
+
+
+def _enqueue_usage(api_url: str, sandbox_token: str, run_id: str, usage: dict) -> None:
+    """Submit usage report to the thread pool.  Copies the dict to avoid mutation."""
+    _usage_executor.submit(_report_usage_with_retry, api_url, sandbox_token, run_id, dict(usage))
+
+
+def _maybe_report_proxy_usage(flow: http.HTTPFlow, run_id: str) -> None:
+    """Enqueue proxy-extracted usage for model provider responses if available."""
+    firewall_name = flow.metadata.get("firewall_name", "")
+    if not (firewall_name.startswith("model-provider:") and run_id):
+        return
+    proxy_usage = flow.metadata.get("proxy_usage")
+    if not proxy_usage:
+        return
+    sandbox_token = flow.metadata.get("vm_sandbox_token", "")
+    api_url = get_api_url()
+    if sandbox_token and api_url:
+        _enqueue_usage(api_url, sandbox_token, run_id, proxy_usage)
 
 
 def responseheaders(flow: http.HTTPFlow) -> None:
@@ -729,26 +773,19 @@ def response(flow: http.HTTPFlow) -> None:
 
         log_network_entry(network_log_path, log_entry)
 
-    # Report proxy-extracted usage for model provider responses
-    firewall_name = flow.metadata.get("firewall_name", "")
-    if firewall_name.startswith("model-provider:") and run_id:
-        proxy_usage = flow.metadata.get("proxy_usage")
-        if not proxy_usage and stream_buf:
-            # Non-streaming fallback: buffer is never truncated for model
-            # provider responses (buf_limit=None in responseheaders).
-            proxy_usage = _extract_usage_from_json(
+    # Report proxy-extracted usage for model provider responses.
+    # For non-streaming responses, fall back to extracting usage from the
+    # buffered JSON body (buffer is never truncated for model providers).
+    if not flow.metadata.get("proxy_usage") and stream_buf and run_id:
+        firewall_name = flow.metadata.get("firewall_name", "")
+        if firewall_name.startswith("model-provider:"):
+            json_usage = _extract_usage_from_json(
                 bytes(stream_buf),
                 flow.response.headers if flow.response else None,
             )
-        if proxy_usage:
-            sandbox_token = flow.metadata.get("vm_sandbox_token", "")
-            api_url = get_api_url()
-            if sandbox_token and api_url:
-                threading.Thread(
-                    target=_report_usage,
-                    args=(api_url, sandbox_token, run_id, proxy_usage),
-                    daemon=True,
-                ).start()
+            if json_usage:
+                flow.metadata["proxy_usage"] = json_usage
+    _maybe_report_proxy_usage(flow, run_id)
 
     # Invalidate firewall header cache on 401 so next request gets fresh headers
     if flow.response and flow.response.status_code == 401 and flow.metadata.get("firewall_base"):
@@ -814,7 +851,27 @@ def error(flow: http.HTTPFlow) -> None:
 
     log_network_entry(network_log_path, log_entry)
 
+    # Report proxy-extracted usage for model provider responses.
+    # The SSE parser may have partially populated proxy_usage before the
+    # connection error occurred.  Partial data is better than none.
+    _maybe_report_proxy_usage(flow, run_id)
+
     ctx.log.warn(f"[{run_id}] Error: {error_msg}: {original_url}")
+
+
+# ============================================================================
+# Graceful Shutdown
+# ============================================================================
+
+
+def done():
+    """Flush pending usage reports before mitmproxy exits.
+
+    The runner sends SIGTERM then waits 3 seconds before SIGKILL.
+    ``shutdown(wait=True)`` blocks until all submitted futures complete;
+    SIGKILL is the hard stop if any report takes too long.
+    """
+    _usage_executor.shutdown(wait=True)
 
 
 # ============================================================================
