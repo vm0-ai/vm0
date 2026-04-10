@@ -270,7 +270,10 @@ pub(crate) async fn spawn_mitmdump(
         ))
         .arg("--scripts")
         .arg(config.addon_dir.join("mitm_addon.py"))
-        .arg("--quiet")
+        .arg("--set")
+        .arg("flow_detail=0")
+        .arg("--set")
+        .arg("termlog_verbosity=warn")
         .arg("--set")
         .arg(format!(
             "ssl_verify_upstream_trusted_ca={}",

@@ -154,7 +154,6 @@ async def request(flow: http.HTTPFlow) -> None:
 
     if not vm_info:
         # Not a registered VM, pass through without proxying
-        ctx.log.info(f"No VM registration for {client_ip}, passing through")
         return
 
     run_id = vm_info.get("runId", "")
@@ -182,7 +181,6 @@ async def request(flow: http.HTTPFlow) -> None:
         parsed_api = urllib.parse.urlparse(api_url)
         api_hostname = parsed_api.hostname.lower() if parsed_api.hostname else ""
         if api_hostname and (hostname == api_hostname or hostname.endswith(f".{api_hostname}")):
-            ctx.log.info(f"[{run_id}] Auto-allow VM0 API: {hostname}")
             flow.metadata["firewall_action"] = "ALLOW"
             return
 
@@ -230,7 +228,6 @@ async def request(flow: http.HTTPFlow) -> None:
 
     # No firewall match — pass through directly
     flow.metadata["firewall_action"] = "ALLOW"
-    ctx.log.info(f"[{run_id}] ALLOW: {hostname}")
 
 
 _STREAM_BUFFER_LIMIT = 64 * 1024  # 64 KB
@@ -795,8 +792,7 @@ def response(flow: http.HTTPFlow) -> None:
         api_id = flow.metadata.get("firewall_api_id", "")
         if api_id:
             cache_key = (run_id, api_id)
-            if _firewall_header_cache.pop(cache_key, None):
-                ctx.log.info(f"[{run_id}] Firewall {api_id}: 401 - cleared header cache")
+            _firewall_header_cache.pop(cache_key, None)
 
     # Log errors to mitmproxy console
     if flow.response and flow.response.status_code >= 400:
