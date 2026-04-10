@@ -1129,6 +1129,496 @@ export const USE_CASES: UseCase[] = [
   },
 
   {
+    slug: "integration-error-forensics",
+    title: "Diagnose API integration failures without opening 5 tabs",
+    description:
+      "Give Zero an error message or connector name. It reads the relevant code in GitHub, cross-references request logs in Axiom, and explains exactly what broke, why, and what to fix.",
+    color: "#7a8fa8",
+    avatar: {
+      rotation: 3,
+      skin: 2,
+      hairStyle: 1,
+      hairColor: 3,
+      expression: 4,
+      intensity: "h",
+    },
+    roles: ["engineering"],
+    capability: "multi-tool",
+    timeSaved: "~30 min saved",
+    model: "Claude 4 Sonnet",
+    connectors: [GITHUB, AXIOM, SLACK],
+    slackPreview: [
+      {
+        role: "user",
+        name: "Lancy",
+        text: "@Zero we're still getting 'Plain upsertTenant failed | forbidden' errors. I thought we fixed the PLAIN_API_KEY scope. Why is it still failing?",
+      },
+      {
+        role: "zero",
+        name: "Zero",
+        text: "Root cause found. The fix in api/connectors/plain.ts only re-scopes tokens on reconnect. Axiom shows 3 errors in the last hour — all from accounts connected before the deploy.\n\nFix: force a token refresh for pre-deploy tenants.",
+      },
+    ],
+    headings: {
+      scenario: "Why integration errors are hard to debug without context",
+      prompt: "How to ask Zero to diagnose a connector or API failure",
+      steps: "How Zero correlates code, logs, and error traces to find root cause",
+      nextActions: "Create a fix PR, open an issue, or set up an error alert",
+      integrations: "Required integrations: GitHub, Axiom, and Slack",
+      tips: "Best practices for AI-assisted integration debugging",
+    },
+    scenario:
+      "You get an error report: a connector is failing in production, and you've already shipped what you thought was a fix. You ask Zero to investigate. It reads the relevant code, checks Axiom for real error patterns, and comes back with a precise explanation — not a guess, but a root-cause analysis based on what's actually happening in your logs.",
+    promptVariants: [
+      {
+        label: "Detailed",
+        prompt:
+          "@Zero investigate the Plain connector 'forbidden' errors. Check the connector code in GitHub, look at Axiom logs for the past 2 hours, and explain why the fix we shipped didn't resolve it. Tell me exactly what needs to change.",
+      },
+      {
+        label: "Quick",
+        prompt:
+          "@Zero why is the Plain connector still failing? Check GitHub and Axiom logs.",
+      },
+      {
+        label: "Alert",
+        prompt:
+          "@Zero whenever Axiom shows more than 5 errors from the same connector in an hour, post a diagnostic summary to #dev.",
+      },
+    ],
+    steps: [
+      {
+        title: "Zero reads the relevant code",
+        description:
+          "Zero searches the GitHub repository for the connector or integration code related to the error, reads the implementation, and understands how the integration is supposed to work.",
+      },
+      {
+        title: "Zero checks Axiom logs",
+        description:
+          "Zero queries Axiom for recent error events matching the connector or endpoint, identifies patterns — timing, affected accounts, error codes — and cross-references them with the code.",
+      },
+      {
+        title: "Root cause explained",
+        description:
+          "Zero delivers a plain-language explanation of why the error is happening, which code path is responsible, and what the precise fix should be — including the file and line if relevant.",
+      },
+    ],
+    nextActions: [
+      {
+        title: "Create a fix PR",
+        description: "Turn the diagnosis into a pull request",
+        examplePrompt:
+          "@Zero based on the analysis, create a PR that forces token refresh for pre-deploy tenants. Assign to me.",
+      },
+      {
+        title: "Open a tracked issue",
+        description: "File a GitHub issue from the findings",
+        examplePrompt:
+          "@Zero create a GitHub issue documenting this root cause, the affected accounts, and the fix approach. Label as bug, priority high.",
+      },
+      {
+        title: "Set up an error alert",
+        description: "Get notified when similar errors spike",
+        examplePrompt:
+          "@Zero set up a daily Axiom check: if any connector shows more than 10 errors in 24h, post a summary to #dev.",
+      },
+    ],
+    integrations: [
+      {
+        connector: GITHUB,
+        description:
+          "Zero reads connector and integration code to understand implementation context.",
+        required: true,
+      },
+      {
+        connector: AXIOM,
+        description:
+          "Zero queries logs for error patterns, timing, and affected accounts.",
+        required: true,
+      },
+      {
+        connector: SLACK,
+        description:
+          "Zero delivers the diagnostic report in the thread where you asked.",
+        required: true,
+      },
+    ],
+    tips: [
+      "Give Zero the exact error message or connector name. The more specific, the faster the diagnosis.",
+      "Ask Zero to compare log patterns before and after a deploy to isolate regression causes.",
+      "Combine with Sentry triage for a full picture: Sentry for stack traces, Axiom for request-level context.",
+    ],
+    relatedSlugs: ["sentry-triage", "file-bugs-from-slack", "pr-auto-review"],
+  },
+
+  {
+    slug: "content-performance-digest",
+    title: "Turn last week's social posts into next week's content strategy",
+    description:
+      "Zero pulls your published posts from Notion, fetches engagement data from X, scores which content themes resonated, and logs the findings to Google Sheets for trend tracking.",
+    color: "#c4936a",
+    avatar: {
+      rotation: 2,
+      skin: 5,
+      hairStyle: 3,
+      hairColor: 1,
+      expression: 2,
+      intensity: "m",
+    },
+    roles: ["product"],
+    capability: "scheduled",
+    timeSaved: "~20 min saved",
+    model: "Claude 4 Sonnet",
+    connectors: [X_TWITTER, NOTION, GOOGLE_SHEETS],
+    slackPreview: [
+      {
+        role: "user",
+        name: "Scarlett",
+        text: "@Zero every Monday, pull last week's X posts from the Notion content queue, get their engagement data, and log top performers to the Content Performance sheet.",
+      },
+      {
+        role: "zero",
+        name: "Zero",
+        text: "Content Performance — Week of Apr 7:\n• 5 posts analyzed\n• Top performer: 'AI agents vs assistants' thread — 847 impressions, 4.2% engagement\n• Underperformed: product screenshots — avg 1.1%\n• Recommendation: double down on opinion posts\n\u2705 Logged to Google Sheets",
+      },
+    ],
+    headings: {
+      scenario: "Why content strategy guesswork costs growth",
+      prompt: "How to ask Zero to analyze your social content performance",
+      steps: "How Zero connects Notion, X, and Google Sheets to close the content loop",
+      nextActions: "Refine your content calendar or A/B test formats",
+      integrations: "Required integrations: X, Notion, and Google Sheets",
+      tips: "Best practices for data-driven social content strategy",
+    },
+    scenario:
+      "Your team publishes content every week, but nobody knows what's actually working. Some posts get traction, others get ignored, and the team keeps producing similar content without knowing why. Zero connects your Notion content queue to X's engagement data and logs the results weekly, so next week's strategy is based on evidence, not instinct.",
+    promptVariants: [
+      {
+        label: "Detailed",
+        prompt:
+          "@Zero every Monday at 9am, pull last week's published posts from the Notion Content Queue database. Fetch their X engagement metrics (impressions, likes, replies, reposts). Score each by engagement rate. Group by content theme. Log results to the Content Performance Google Sheet and post the top 3 and bottom 3 to #marketing.",
+      },
+      {
+        label: "Quick",
+        prompt:
+          "@Zero which X posts from last week performed best? Check the Notion content queue.",
+      },
+      {
+        label: "On-demand",
+        prompt:
+          "@Zero analyze the last 30 days of X posts from our Notion queue. What themes consistently outperform? What should we cut?",
+      },
+    ],
+    steps: [
+      {
+        title: "Zero reads your content queue",
+        description:
+          "Zero connects to Notion and reads your published posts database, pulling titles, publish dates, content themes, and post URLs from last week.",
+      },
+      {
+        title: "Engagement data fetched from X",
+        description:
+          "For each post URL, Zero fetches impressions, likes, reposts, replies, and profile clicks from X, then calculates engagement rate and ranks posts by performance.",
+      },
+      {
+        title: "Findings logged and posted",
+        description:
+          "Zero appends a new row to your Google Sheets performance tracker with this week's data, and posts a summary to Slack highlighting what worked and what themes to try next week.",
+      },
+    ],
+    nextActions: [
+      {
+        title: "Inform next week's calendar",
+        description: "Ask Zero to suggest content based on top performers",
+        examplePrompt:
+          "@Zero based on last week's performance data, suggest 5 content ideas for this week that match the top-performing themes.",
+      },
+      {
+        title: "Identify best posting times",
+        description: "Find when your audience is most engaged",
+        examplePrompt:
+          "@Zero look at the last 4 weeks of data in the Google Sheet. Is there a correlation between posting time and engagement rate?",
+      },
+    ],
+    integrations: [
+      {
+        connector: X_TWITTER,
+        description:
+          "Zero reads engagement metrics for your published posts.",
+        required: true,
+      },
+      {
+        connector: NOTION,
+        description:
+          "Zero reads your published content from the Notion content queue database.",
+        required: true,
+      },
+      {
+        connector: GOOGLE_SHEETS,
+        description:
+          "Zero logs weekly performance data for trend tracking over time.",
+        required: true,
+      },
+    ],
+    tips: [
+      "Keep your Notion content queue consistent: a URL field and a Theme tag are all Zero needs to get started.",
+      "Ask Zero to track relative performance, not just raw numbers — a 5% engagement rate means something different at 500 vs 50,000 followers.",
+      "Run this for at least 8 weeks before drawing conclusions. Short data windows can be misleading.",
+    ],
+    relatedSlugs: ["kol-cold-outreach", "standup-summary", "employee-onboarding"],
+  },
+
+  {
+    slug: "compliance-deadline-tracker",
+    title: "Never miss a tax filing or compliance deadline again",
+    description:
+      "Zero scans your compliance schedule in Google Sheets and flags anything due in the next 7 days, posting structured reminders to Slack with owner, action steps, and due date.",
+    color: "#7a9e8a",
+    avatar: {
+      rotation: 5,
+      skin: 3,
+      hairStyle: 4,
+      hairColor: 5,
+      expression: 1,
+      intensity: "m",
+    },
+    roles: ["ops"],
+    capability: "scheduled",
+    timeSaved: "~15 min saved",
+    model: "Claude 4 Sonnet",
+    connectors: [GOOGLE_CALENDAR, GOOGLE_SHEETS, SLACK],
+    slackPreview: [
+      {
+        role: "user",
+        name: "Lancy",
+        text: "@Zero every Monday, check our Compliance Deadlines sheet. Post anything due in the next 7 days to #all-vm0 with owner and action steps.",
+      },
+      {
+        role: "zero",
+        name: "Zero",
+        text: "\u26a0\ufe0f Compliance Reminder \u2014 week of Apr 10:\n\n\u2022 Monthly tax filing (\u5185\u8d44\u516c\u53f8) \u2014 due Apr 15 \u00b7 Owner: Finance\n\u2022 Payroll run \u2014 due Apr 14 \u00b7 Owner: HR\n\u2022 Google OAuth consent renewal \u2014 due Apr 18 \u00b7 Owner: Engineering\n\n3 items due this week.",
+      },
+    ],
+    headings: {
+      scenario: "Why compliance deadlines fall through the cracks",
+      prompt: "How to ask Zero to track and remind you of compliance deadlines",
+      steps: "How Zero scans your schedule and delivers structured reminders",
+      nextActions: "Mark items complete, escalate overdue items, or add new deadlines",
+      integrations: "Required integrations: Google Sheets, Google Calendar, and Slack",
+      tips: "Best practices for automated compliance tracking",
+    },
+    scenario:
+      "Monthly tax filings, payroll runs, OAuth consent renewals, contractor agreement renewals — your ops calendar has dozens of recurring deadlines that are easy to miss when everyone is heads-down on product. Someone finds out too late, usually right before or after the due date. Zero checks the schedule every week and posts what's coming up, so nothing gets missed.",
+    promptVariants: [
+      {
+        label: "Detailed",
+        prompt:
+          "@Zero every Monday at 9am, check the Compliance Deadlines sheet. For anything due in the next 7 days, post to #all-vm0 with: deadline name, due date, owner, and required action steps. If anything is already overdue, flag it as urgent.",
+      },
+      {
+        label: "Quick",
+        prompt:
+          "@Zero what compliance deadlines are coming up this week? Check the deadlines sheet.",
+      },
+      {
+        label: "On-demand",
+        prompt:
+          "@Zero check the compliance calendar and tell me everything due in April, grouped by owner.",
+      },
+    ],
+    steps: [
+      {
+        title: "Zero reads the compliance schedule",
+        description:
+          "Zero connects to your Google Sheets compliance tracker and reads all upcoming deadlines, including due date, owner, action required, and current status.",
+      },
+      {
+        title: "Deadlines filtered by urgency",
+        description:
+          "Zero identifies items due in the next 7 days and flags any that are already overdue. Items are sorted by due date and grouped by owner for easy action.",
+      },
+      {
+        title: "Reminder posted to Slack",
+        description:
+          "Zero posts a structured reminder to the designated Slack channel with each item's name, due date, owner, and action steps — no calendar-hunting required.",
+      },
+    ],
+    nextActions: [
+      {
+        title: "Mark items complete",
+        description: "Update the sheet when a filing is done",
+        examplePrompt:
+          "@Zero mark the April monthly tax filing as complete in the Compliance Deadlines sheet.",
+      },
+      {
+        title: "Escalate overdue items",
+        description: "Alert owners when something is past due",
+        examplePrompt:
+          "@Zero if any compliance item is more than 2 days overdue, DM the owner directly on Slack.",
+      },
+      {
+        title: "Add new deadlines",
+        description: "Keep the schedule current",
+        examplePrompt:
+          "@Zero add a new row to the Compliance Deadlines sheet: 'Annual business license renewal', due June 30, owner Finance.",
+      },
+    ],
+    integrations: [
+      {
+        connector: GOOGLE_SHEETS,
+        description:
+          "Zero reads your compliance deadlines from a shared spreadsheet.",
+        required: true,
+      },
+      {
+        connector: GOOGLE_CALENDAR,
+        description:
+          "Optional, Zero also checks for compliance-tagged calendar events to catch deadlines not in the sheet.",
+        required: false,
+      },
+      {
+        connector: SLACK,
+        description:
+          "Zero posts the weekly reminder to the team channel and DMs overdue alerts to owners.",
+        required: true,
+      },
+    ],
+    tips: [
+      "Keep a standard Google Sheet with columns: Deadline Name, Due Date, Owner, Action Required, Status. Zero works with any layout but consistency helps.",
+      "Tag compliance events in Google Calendar too — Zero can cross-reference both sources to catch anything missing from the sheet.",
+      "Set the reminder for Monday mornings so the team can plan the week around what's coming up.",
+    ],
+    relatedSlugs: ["employee-onboarding", "standup-summary", "slack-triage"],
+  },
+
+  {
+    slug: "activation-health-check",
+    title: "Spot stuck new users before they churn",
+    description:
+      "Zero checks HubSpot for new signups, cross-references Intercom for activation activity, and flags users who haven't connected their first integration — giving your team a head start on proactive outreach.",
+    color: "#9b7ab8",
+    avatar: {
+      rotation: 1,
+      skin: 4,
+      hairStyle: 5,
+      hairColor: 2,
+      expression: 3,
+      intensity: "d",
+    },
+    roles: ["ops", "product"],
+    capability: "multi-tool",
+    timeSaved: "~25 min saved",
+    model: "Claude 4 Sonnet",
+    connectors: [HUBSPOT, INTERCOM, SLACK],
+    slackPreview: [
+      {
+        role: "user",
+        name: "Alex",
+        text: "@Zero check new signups from the last 48h in HubSpot. Flag anyone in Intercom who hasn't connected a connector yet. Post at-risk users to #product.",
+      },
+      {
+        role: "zero",
+        name: "Zero",
+        text: "New User Health Check \u2014 Apr 10:\n\n5 new signups in the last 48h\n\ud83d\udd34 At risk (2) \u2014 no connector connected:\n\u2022 user@acme.com (signed up 38h ago)\n\u2022 dev@startup.io (signed up 44h ago)\n\u2705 Activated (3) \u2014 connected Slack + GitHub\n\nRecommend: send onboarding nudge to at-risk users.",
+      },
+    ],
+    headings: {
+      scenario: "Why new users go dark in the first 48 hours",
+      prompt: "How to ask Zero to identify stuck new users",
+      steps: "How Zero correlates HubSpot signups with Intercom activation data",
+      nextActions: "Send a nudge, open a support conversation, or track activation trends",
+      integrations: "Required integrations: HubSpot, Intercom, and Slack",
+      tips: "Best practices for proactive new user activation",
+    },
+    scenario:
+      "A new user signs up but never connects their first integration. Nobody notices for a week — by which point they've already lost interest. Zero checks HubSpot for recent signups, looks at Intercom to see who's stuck at zero activations, and flags the at-risk users daily so your team can reach out before they churn.",
+    promptVariants: [
+      {
+        label: "Detailed",
+        prompt:
+          "@Zero check HubSpot for signups in the last 48 hours. For each new user, check Intercom to see if they've connected at least one integration. Flag anyone who hasn't. Post to #product with their email, signup time, and current activation status. Suggest a personalized nudge for each at-risk user.",
+      },
+      {
+        label: "Quick",
+        prompt:
+          "@Zero which new users from the last 2 days haven't activated yet? Check HubSpot and Intercom.",
+      },
+      {
+        label: "Scheduled",
+        prompt:
+          "@Zero every morning at 10am, run the new user activation check and post at-risk users to #product.",
+      },
+    ],
+    steps: [
+      {
+        title: "Zero pulls new signups from HubSpot",
+        description:
+          "Zero queries HubSpot for contacts created in the past 48 hours, extracting their email, signup time, and plan type.",
+      },
+      {
+        title: "Activation status checked in Intercom",
+        description:
+          "For each new user, Zero checks Intercom to see their session activity and whether they've completed the first activation step — connecting an integration. Users are classified as activated or at-risk.",
+      },
+      {
+        title: "At-risk users posted to Slack",
+        description:
+          "Zero posts a structured list of at-risk users to the designated channel, with enough context for your team to reach out personally: signup time, company, and what they haven't done yet.",
+      },
+    ],
+    nextActions: [
+      {
+        title: "Send a personal nudge",
+        description: "Have Zero draft an outreach email for stuck users",
+        examplePrompt:
+          "@Zero draft a short, friendly email to user@acme.com who signed up 38 hours ago but hasn't connected anything. Keep it under 80 words. Save as Gmail draft.",
+      },
+      {
+        title: "Open an Intercom conversation",
+        description: "Reach out directly inside the product",
+        examplePrompt:
+          "@Zero send a proactive Intercom message to the 2 at-risk users from today's check. Use the standard activation nudge template.",
+      },
+      {
+        title: "Track activation trends",
+        description: "Monitor your activation rate over time",
+        examplePrompt:
+          "@Zero compare this week's new user activation rate to last week's. Are we improving?",
+      },
+    ],
+    integrations: [
+      {
+        connector: HUBSPOT,
+        description:
+          "Zero queries new contacts and their signup details from your HubSpot CRM.",
+        required: true,
+      },
+      {
+        connector: INTERCOM,
+        description:
+          "Zero checks session activity and activation events for each new user.",
+        required: true,
+      },
+      {
+        connector: SLACK,
+        description:
+          "Zero posts the at-risk user list to your product or growth channel.",
+        required: true,
+      },
+    ],
+    tips: [
+      "Define your activation threshold clearly. 'Connected at least one integration' is easier to check than vague engagement metrics.",
+      "Run this daily, not weekly. Users decide in the first 48 hours whether to invest time in a product.",
+      "Combine with customer feedback triage — if stuck users also sent a support message, that context helps your outreach.",
+    ],
+    relatedSlugs: [
+      "customer-feedback-triage",
+      "employee-onboarding",
+      "slack-triage",
+    ],
+  },
+
+  {
     slug: "deployment-changelog",
     title: "Auto-generate a changelog when you deploy to production",
     description:
