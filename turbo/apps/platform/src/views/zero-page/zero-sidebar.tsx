@@ -45,7 +45,7 @@ import {
 } from "../../signals/zero-page/zero-nav.ts";
 import { activeRoute$ } from "../../signals/active-route.ts";
 import type { RouteKey } from "../../signals/route-paths.ts";
-import { subagents$ } from "../../signals/agent.ts";
+import { subagents$, defaultAgentName$ } from "../../signals/agent.ts";
 import {
   currentChatAgentDisplayName$,
   currentChatAgentId$,
@@ -204,6 +204,7 @@ export function ZeroSidebar() {
   const onAccountAction = useSet(handleZeroAccountAction$);
   const pageSignal = useGet(pageSignal$);
   const displayName = displayNameRaw || "Zero";
+  const defaultDisplayName = useLastResolved(defaultAgentName$) ?? "Zero";
   const [pinLoadable, savePinnedIds] = useLoadableSet(updatePinnedAgentIds$);
   const savingPinned = pinLoadable.state === "loading";
   const setPinnedIds = (ids: string[]) => {
@@ -231,7 +232,7 @@ export function ZeroSidebar() {
   }).map((item) => {
     return {
       ...item,
-      label: item.label.replace("Zero", displayName),
+      label: item.label.replace("Zero", defaultDisplayName),
     };
   });
 
