@@ -27,6 +27,14 @@ import {
   endVoiceChat$,
   toggleVoiceChatMute$,
 } from "../../signals/voice-chat/voice-chat-session.ts";
+import {
+  setTranscriptScrollContainer$,
+  setEventsScrollContainer$,
+} from "../../signals/voice-chat/voice-chat-auto-scroll.ts";
+import {
+  useTranscriptAutoScroll,
+  useEventsAutoScroll,
+} from "./use-voice-chat-auto-scroll.ts";
 
 type ConnectionStatus =
   | "idle"
@@ -90,6 +98,11 @@ export function VoiceChatPage() {
   const meetingPrompt = useGet(vcMeetingPromptInput$);
   const setMeetingPrompt = useSet(setMeetingPromptInput$);
   const agentName = useLastResolved(defaultAgentName$) ?? "Zero";
+  const setTranscriptContainer = useSet(setTranscriptScrollContainer$);
+  const setEventsContainer = useSet(setEventsScrollContainer$);
+
+  useTranscriptAutoScroll(transcript.length);
+  useEventsAutoScroll(events.length);
 
   if (enabled === false) {
     return (
@@ -186,7 +199,10 @@ export function VoiceChatPage() {
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-2">
+        <div
+          ref={setEventsContainer}
+          className="flex-1 overflow-y-auto p-4 space-y-2"
+        >
           <h2 className="text-sm font-medium text-muted-foreground mb-3">
             Slow Brain Activity
           </h2>
@@ -258,7 +274,10 @@ export function VoiceChatPage() {
               Live Transcript
             </h2>
           </div>
-          <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          <div
+            ref={setTranscriptContainer}
+            className="flex-1 overflow-y-auto p-4 space-y-3"
+          >
             {transcript.length === 0 && (
               <p className="text-sm text-muted-foreground text-center py-8">
                 {status === "connecting"
@@ -294,7 +313,10 @@ export function VoiceChatPage() {
               Shared Context Events
             </h2>
           </div>
-          <div className="flex-1 overflow-y-auto p-4 space-y-1">
+          <div
+            ref={setEventsContainer}
+            className="flex-1 overflow-y-auto p-4 space-y-1"
+          >
             {events.length === 0 && (
               <p className="text-sm text-muted-foreground text-center py-8">
                 No events yet.
