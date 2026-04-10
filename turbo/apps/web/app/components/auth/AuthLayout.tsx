@@ -305,6 +305,11 @@ button[class*="alternativeMethodsBlockButton"] {
 a[class*="resendCode"] {
   color: hsl(var(--primary)) !important;
 }
+
+/* Legal consent checkbox label links (Terms of Service, Privacy Policy) */
+.cl-formFieldCheckboxLabel a {
+  color: hsl(var(--primary)) !important;
+}
 `;
 
 interface AuthLayoutProps {
