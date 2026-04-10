@@ -1,6 +1,5 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
-import { useState } from "react";
 import { useGet, useSet, useLastResolved } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { Button, Checkbox, Input } from "@vm0/ui";
@@ -11,6 +10,8 @@ import {
   phoneError$,
   phoneInput$,
   setPhoneInput$,
+  smsConsent$,
+  setSmsConsent$,
   savePhoneLink$,
   removePhoneLink$,
   requestOrgPhoneSetup$,
@@ -24,13 +25,13 @@ export function PhonePage() {
   const phoneInput = useGet(phoneInput$);
   const pageSignal = useGet(pageSignal$);
   const agentName = useLastResolved(defaultAgentName$) ?? "Zero";
+  const smsConsent = useGet(smsConsent$);
 
   const setPhoneInput = useSet(setPhoneInput$);
+  const setSmsConsent = useSet(setSmsConsent$);
   const [saveLinkLoadable, saveLink] = useLoadableSet(savePhoneLink$);
   const [removeLinkLoadable, removeLink] = useLoadableSet(removePhoneLink$);
   const [setupLoadable, requestSetup] = useLoadableSet(requestOrgPhoneSetup$);
-
-  const [smsConsent, setSmsConsent] = useState(false);
 
   const saving =
     saveLinkLoadable.state === "loading" ||
