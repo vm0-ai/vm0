@@ -449,7 +449,6 @@ jobs:
             --name ${JOB_REF}-bench \
             --group vm0/development-${JOB_REF} \
             --runner-dirname ${JOB_REF}-bench \
-            --keep-alive \
             --api-url https://not-a-real-server.test \
             --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
 
@@ -506,7 +505,6 @@ jobs:
             --group vm0/exec-${JOB_REF} \
             --runner-dirname ${JOB_REF}-exec \
             --max-concurrent 2 \
-            --keep-alive \
             --api-url https://not-a-real-server.test \
             --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
 
@@ -723,7 +721,6 @@ jobs:
             --group vm0/cancel-${JOB_REF} \
             --runner-dirname ${JOB_REF}-cancel \
             --max-concurrent 2 \
-            --keep-alive \
             --api-url https://not-a-real-server.test \
             --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
 
@@ -829,7 +826,6 @@ jobs:
             --group vm0/balloon-${JOB_REF} \
             --runner-dirname ${JOB_REF}-balloon \
             --max-concurrent 2 \
-            --keep-alive \
             --api-url https://not-a-real-server.test \
             --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
 
@@ -1015,7 +1011,6 @@ jobs:
               --group ${GROUP} \
               --runner-dirname ${JOB_REF}-${SUFFIX} \
               --max-concurrent 2 \
-              --keep-alive \
               --api-url https://not-a-real-server.test \
               --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
           done

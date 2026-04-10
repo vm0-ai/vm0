@@ -84,9 +84,7 @@ teardown_file() {
 # continues session and verifies it picks up the latest artifact version.
 # =============================================================================
 
-# TODO: Re-enable after #8757 adds proper stale file cleanup for VM reuse
 @test "t06-2: continue-latest uses updated artifact version" {
-    skip "stale files not cleaned on re-download (#8757)"
     local artifact_name="$ARTIFACT_NAME"
     local artifact_dir="$TEST_ARTIFACT_DIR/$artifact_name"
 
