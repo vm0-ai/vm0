@@ -183,21 +183,10 @@ export const talkDraft$ = computed((get) => {
   return get(internalTalkDraft$);
 });
 
-const ensureDraft$ = command(({ get, set }, threadId: string): DraftSignals => {
-  const map = get(internalDraftMap$);
-  const existing = map[threadId];
-  if (existing) {
-    return existing;
-  }
-  const draft = createDraftSignals();
-  set(internalDraftMap$, { ...map, [threadId]: draft });
-  return draft;
-});
-
 /**
  * The current draft for the active route.
  * Returns `talkDraft$` when there is no chatThreadId (talk page / landing),
- * or the thread's draft from the map (null if `ensureDraft$` hasn't been called yet).
+ * or the thread's draft from the map.
  */
 export const currentDraft$ = computed((get) => {
   const threadId = get(currentChatThreadId$);

@@ -50,7 +50,10 @@ import type {
   UserChatMessage,
   AssistantChatMessage,
 } from "../../signals/chat-page/chat-message.ts";
-import type { ChatThreadSignals } from "../../signals/chat-page/create-chat-thread.ts";
+import {
+  currentChatThreadSignals$,
+  type ChatThreadSignals,
+} from "../../signals/chat-page/create-chat-thread.ts";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
 import { useAutoScroll } from "./use-auto-scroll.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
@@ -170,7 +173,8 @@ function ChatThreadHeader() {
 // ZeroSessionChatPage — real conversation backed by agent runs
 // ---------------------------------------------------------------------------
 
-export function ZeroChatThreadPage({ thread }: { thread: ChatThreadSignals }) {
+export function ZeroChatThreadPage() {
+  const thread = useGet(currentChatThreadSignals$)!;
   const messagesLoadable = useLastLoadable(thread.messages$);
   const messages =
     messagesLoadable.state === "hasData" ? messagesLoadable.data : [];

@@ -17,15 +17,12 @@ export const setupChatPage$ = command(
       throw new Error("threadId is required to load chat page");
     }
 
-    // threadId is guaranteed non-null here, so the computed always returns non-null
-    const thread = get(currentChatThreadSignals$)!;
-
     set(
       updatePage$,
       createElement(
         SidebarLayout,
         null,
-        createElement(ZeroChatThreadPage, { key: threadId, thread }),
+        createElement(ZeroChatThreadPage, { key: threadId }),
       ),
     );
     set(updateDocumentTitle$, "Chat");
@@ -44,6 +41,7 @@ export const setupChatPage$ = command(
     const sessionTitle = session?.title ?? "New chat";
     set(updateDocumentTitle$, sessionTitle);
 
+    const thread = get(currentChatThreadSignals$)!;
     const threadData = await get(thread.threadData$);
     signal.throwIfAborted();
     set(setChatAgentId$, threadData?.agentId ?? null);
