@@ -4,7 +4,6 @@ import {
   useLoadable,
   useLastLoadable,
   useLastResolved,
-  useResolved,
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -57,7 +56,7 @@ import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-ma
 import { setActiveOrgManageTab$ } from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
 
 function HeaderAgentAvatar({ thread }: { thread: ChatThreadSignals }) {
-  const agentId = useResolved(thread.agentId$) ?? null;
+  const agentId = useLastResolved(thread.agentId$) ?? null;
 
   if (agentId) {
     return (
@@ -103,7 +102,7 @@ function PinPillButton({ thread }: { thread: ChatThreadSignals }) {
   const showPinPill = pinnedStatus === false;
   const [pinLoadable, savePinnedIds] = useLoadableSet(updatePinnedAgentIds$);
   const pinSaving = pinLoadable.state === "loading";
-  const agentId = useResolved(thread.agentId$) ?? null;
+  const agentId = useLastResolved(thread.agentId$) ?? null;
 
   if (!showPinPill) {
     return null;
@@ -142,7 +141,7 @@ function PinPillButton({ thread }: { thread: ChatThreadSignals }) {
 }
 
 function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
-  const displayName = useResolved(thread.agentDisplayName$);
+  const displayName = useLastResolved(thread.agentDisplayName$);
 
   return (
     <header className="hidden sm:flex shrink-0 bg-transparent px-6 py-3 items-center justify-between">
@@ -245,7 +244,7 @@ function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
   const messagesLoadable = useLastLoadable(thread.messages$);
   const hasMessages =
     messagesLoadable.state === "hasData" && messagesLoadable.data.length > 0;
-  const displayName = useResolved(thread.agentDisplayName$) ?? "Zero";
+  const displayName = useLastResolved(thread.agentDisplayName$) ?? "Zero";
   const allFinishedLoadable = useLoadable(thread.allFinished$);
   const sending =
     allFinishedLoadable.state === "hasData" ? !allFinishedLoadable.data : true;
@@ -875,7 +874,7 @@ function AssistantErrorContent({ error }: { error: string }) {
 }
 
 function AssistantBubbleAvatar({ thread }: { thread: ChatThreadSignals }) {
-  const agentId = useResolved(thread.agentId$) ?? "";
+  const agentId = useLastResolved(thread.agentId$) ?? "";
   return (
     <div className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 shrink-0 @[900px]:mt-0.5 overflow-hidden rounded-xl">
       <AgentAvatarImg
