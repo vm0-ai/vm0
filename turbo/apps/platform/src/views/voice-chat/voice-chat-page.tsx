@@ -127,7 +127,7 @@ function VoiceChatFooter({
   onRetry: () => void;
 }) {
   return (
-    <div className="border-t px-4 py-3 flex items-center justify-between gap-4">
+    <div className="border-t px-4 py-3 flex flex-col items-center gap-3 md:flex-row md:justify-between md:gap-4">
       {/* Left: Segmented Control */}
       <Tabs
         value={inputMode}
@@ -155,7 +155,7 @@ function VoiceChatFooter({
       {status === "disconnected" ? (
         <Button
           variant="secondary"
-          className="h-12 px-6 rounded-full"
+          className="h-12 w-full rounded-full md:w-auto md:px-6"
           onClick={onRetry}
         >
           <IconRefresh size={20} className="mr-2" />
@@ -164,7 +164,7 @@ function VoiceChatFooter({
       ) : inputMode === "push-to-talk" ? (
         <Button
           variant={muted ? "secondary" : "default"}
-          className="h-12 px-6 rounded-full select-none"
+          className="h-12 w-full rounded-full select-none md:w-auto md:px-6"
           disabled={status !== "connected"}
           onMouseDown={() => {
             pttStart();
@@ -192,7 +192,7 @@ function VoiceChatFooter({
       ) : (
         <Button
           variant={muted ? "destructive" : "secondary"}
-          className="h-12 px-6 rounded-full"
+          className="h-12 w-full rounded-full md:w-auto md:px-6"
           disabled={status !== "connected"}
           onClick={() => {
             toggleMute();
