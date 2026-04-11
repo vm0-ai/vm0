@@ -35,12 +35,7 @@ export async function getPost(
   locale: string = "en",
 ): Promise<BlogPost | null> {
   assertStrapiDataSource();
-  try {
-    return await getPostBySlugFromStrapi(slug, locale);
-  } catch (error) {
-    console.error("[blog] Failed to fetch post by slug:", error);
-    return null;
-  }
+  return getPostBySlugFromStrapi(slug, locale);
 }
 
 export async function getFeatured(

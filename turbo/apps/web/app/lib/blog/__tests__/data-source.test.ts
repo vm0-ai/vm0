@@ -197,19 +197,6 @@ describe("blog/data-source", () => {
       errorSpy.mockRestore();
     });
 
-    it("getPost returns null on Strapi error", async () => {
-      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-
-      const post = await getPost("test-post", "en");
-
-      expect(post).toBeNull();
-      expect(errorSpy).toHaveBeenCalledWith(
-        "[blog] Failed to fetch post by slug:",
-        expect.any(Error),
-      );
-      errorSpy.mockRestore();
-    });
-
     it("getFeatured returns null on Strapi error", async () => {
       const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
