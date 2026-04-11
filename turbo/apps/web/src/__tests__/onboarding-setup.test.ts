@@ -238,6 +238,35 @@ describe("POST /api/zero/onboarding/setup", () => {
     expect(lastCall![1]).toEqual({ name: "My Workspace" });
   });
 
+  it("should succeed when Clerk org update fails with non-slug-conflict error", async () => {
+    const { userId, orgId } = await context.setupUser();
+    mockClerk({ userId, orgId, orgRole: "org:admin" });
+
+    const client = await clerkClient();
+    client.organizations.updateOrganization = vi.fn().mockRejectedValue(
+      Object.assign(new Error("Unprocessable Entity"), {
+        status: 422,
+        errors: [
+          {
+            code: "form_param_value_invalid",
+            message: "Name is invalid",
+            meta: { paramName: "name" },
+          },
+        ],
+      }),
+    ) as unknown as typeof client.organizations.updateOrganization;
+
+    const response = await postSetup({
+      displayName: "Zero",
+      workspaceName: "Test Workspace",
+    });
+
+    // Onboarding should still succeed — org rename is non-blocking
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.agentId).toBeTruthy();
+  });
+
   it("should update name and slug for valid Latin workspace names", async () => {
     const { userId, orgId } = await context.setupUser();
     mockClerk({ userId, orgId, orgRole: "org:admin" });

@@ -171,7 +171,14 @@ const router = tsr.router(onboardingSetupContract, {
         instructions: SEED_INSTRUCTIONS,
       }),
       body.workspaceName?.trim()
-        ? updateOrgNameAndSlug(org.orgId, body.workspaceName)
+        ? updateOrgNameAndSlug(org.orgId, body.workspaceName).catch(
+            (error: unknown) => {
+              log.warn("Failed to update org name/slug (non-blocking)", {
+                orgId: org.orgId,
+                error,
+              });
+            },
+          )
         : Promise.resolve(),
     ]);
 
