@@ -41,7 +41,7 @@ pub struct MockSandboxOverrides {
     /// consumed (one-shot).
     exec_matchers: Mutex<Vec<ExecMatcher>>,
     /// When `Some`, `wait_exit` returns this exit code instead of 0.
-    wait_exit_code: Mutex<Option<i32>>,
+    wait_exit_code: Option<i32>,
     /// When set, `wait_exit` awaits this [`tokio::sync::Notify`] before
     /// returning — giving the test a window to cancel the job.
     wait_exit_gate: Option<Arc<tokio::sync::Notify>>,
@@ -51,7 +51,7 @@ impl MockSandboxOverrides {
     pub fn new() -> Self {
         Self {
             exec_matchers: Mutex::new(Vec::new()),
-            wait_exit_code: Mutex::new(None),
+            wait_exit_code: None,
             wait_exit_gate: None,
         }
     }
@@ -60,7 +60,7 @@ impl MockSandboxOverrides {
     pub fn with_wait_exit_code(code: i32) -> Self {
         Self {
             exec_matchers: Mutex::new(Vec::new()),
-            wait_exit_code: Mutex::new(Some(code)),
+            wait_exit_code: Some(code),
             wait_exit_gate: None,
         }
     }
@@ -69,7 +69,7 @@ impl MockSandboxOverrides {
     pub fn with_wait_exit_gate(gate: Arc<tokio::sync::Notify>) -> Self {
         Self {
             exec_matchers: Mutex::new(Vec::new()),
-            wait_exit_code: Mutex::new(None),
+            wait_exit_code: None,
             wait_exit_gate: Some(gate),
         }
     }
@@ -233,11 +233,7 @@ impl Sandbox for MockSandbox {
                 gate.notified().await;
             }
             // Return override exit code when configured.
-            if let Some(code) = *overrides
-                .wait_exit_code
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-            {
+            if let Some(code) = overrides.wait_exit_code {
                 return Ok(ProcessExit {
                     pid: handle.pid,
                     exit_code: code,
