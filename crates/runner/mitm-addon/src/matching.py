@@ -437,18 +437,20 @@ def _find_uncovered_graphql_fields(
     ]
 
 
-def _build_allow_set(
+def _build_block_set(
     fw_ref: str,
     network_policies: dict,
 ) -> set:
-    """Build a set of granted permission names for a firewall ref.
+    """Build a set of denied/asked permission names for a firewall ref.
 
-    Returns empty set when ref is absent from the map (fail-closed).
+    Returns empty set when ref is absent from the map (fully permissive —
+    consistent with the frontend contract where absent refs are treated
+    as all-granted + allow-unknown).
     """
     ref_grant = network_policies.get(fw_ref)
     if ref_grant is None:
         return set()
-    return set(ref_grant.get("allow", []))
+    return set(ref_grant.get("deny", [])) | set(ref_grant.get("ask", []))
 
 
 def _get_unknown_policy(
@@ -461,8 +463,8 @@ def _get_unknown_policy(
     """
     ref_grant = network_policies.get(fw_ref)
     if ref_grant is None:
-        return "deny"
-    return ref_grant.get("unknownPolicy", "deny")
+        return "allow"
+    return ref_grant.get("unknownPolicy", "allow")
 
 
 def match_firewall_request(
@@ -509,7 +511,7 @@ def match_firewall_request(
     for fw_entry in vm_firewalls:
         fw_name = fw_entry.get("name", "")
         fw_ref = fw_entry.get("ref", "")
-        allow_set = _build_allow_set(fw_ref, network_policies)
+        block_set = _build_block_set(fw_ref, network_policies)
 
         for api_entry in fw_entry.get("apis", []):
             base = api_entry.get("base", "").rstrip("/")
@@ -595,8 +597,8 @@ def match_firewall_request(
                         # Merge base params with rule params
                         all_params = {**base_params, **params}
 
-                        # Three-level: check if this permission is granted
-                        if perm_name in allow_set:
+                        # Three-level: not in deny/ask → allowed
+                        if perm_name not in block_set:
                             return FirewallAllow(
                                 api_entry,
                                 {
