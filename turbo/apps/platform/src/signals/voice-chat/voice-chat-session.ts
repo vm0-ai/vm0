@@ -65,11 +65,9 @@ const PREP_TIMEOUT_MEETING_MS = 300_000;
 const MAX_RECONNECT_ATTEMPTS = 5;
 const RECONNECT_BASE_DELAY_MS = 1000;
 const REALTIME_MODEL = "gpt-realtime-1.5";
-const SERVER_VAD_CONFIG = {
-  type: "server_vad",
-  threshold: 0.8,
-  prefix_padding_ms: 300,
-  silence_duration_ms: 600,
+const HANDS_FREE_VAD_CONFIG = {
+  type: "semantic_vad",
+  eagerness: "medium",
 } as const;
 
 const SESSION_TOOLS = [
@@ -491,7 +489,7 @@ const setupWebRTC$ = command(
     dc.addEventListener("open", () => {
       const inputMode = get(internalInputMode$);
       const turnDetection =
-        inputMode === "hands-free" ? SERVER_VAD_CONFIG : null;
+        inputMode === "hands-free" ? HANDS_FREE_VAD_CONFIG : null;
 
       dc.send(
         JSON.stringify({
@@ -500,6 +498,7 @@ const setupWebRTC$ = command(
             modalities: ["text", "audio"],
             instructions: FAST_BRAIN_INSTRUCTIONS,
             input_audio_transcription: { model: "whisper-1" },
+            input_audio_noise_reduction: { type: "far_field" },
             turn_detection: turnDetection,
             tools: SESSION_TOOLS,
           },
@@ -747,7 +746,13 @@ const reconnectVoiceSession$ = command(
       ) {
         // eslint-disable-next-line no-restricted-syntax -- getUserMedia can fail due to permission denial
         try {
-          stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+            },
+          });
           set(internalStream$, stream);
         } catch (error) {
           throwIfAbort(error);
@@ -818,7 +823,13 @@ const connectVoiceSession$ = command(
     let stream: MediaStream;
     // eslint-disable-next-line no-restricted-syntax -- getUserMedia can fail due to permission denial or missing hardware
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
     } catch (error) {
       throwIfAbort(error);
       set(
@@ -1186,7 +1197,7 @@ export const switchInputMode$ = command(
 
     set(internalInputMode$, mode);
 
-    const turnDetection = mode === "hands-free" ? SERVER_VAD_CONFIG : null;
+    const turnDetection = mode === "hands-free" ? HANDS_FREE_VAD_CONFIG : null;
 
     dc.send(
       JSON.stringify({
