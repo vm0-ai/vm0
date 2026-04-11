@@ -91,6 +91,8 @@ fn is_valid_url(url: &Option<String>) -> bool {
 struct Storage {
     mount_path: String,
     archive_url: Option<String>,
+    #[serde(default)]
+    cached: bool,
 }
 
 #[derive(Deserialize)]
@@ -98,6 +100,8 @@ struct Storage {
 struct Artifact {
     mount_path: String,
     archive_url: Option<String>,
+    #[serde(default)]
+    cached: bool,
 }
 
 const MAX_RETRIES: u32 = 3;
@@ -150,16 +154,16 @@ pub fn run(manifest_path: &str) -> bool {
         let mut preserved: Vec<&str> = manifest
             .storages
             .iter()
-            .filter(|s| !is_valid_url(&s.archive_url))
+            .filter(|s| s.cached)
             .map(|s| s.mount_path.as_str())
             .collect();
         if let Some(a) = &manifest.artifact
-            && !is_valid_url(&a.archive_url)
+            && a.cached
         {
             preserved.push(a.mount_path.as_str());
         }
         if let Some(m) = &manifest.memory
-            && !is_valid_url(&m.archive_url)
+            && m.cached
         {
             preserved.push(m.mount_path.as_str());
         }
@@ -782,5 +786,29 @@ mod tests {
         let json = r#"{"storages": []}"#;
         let manifest: Manifest = serde_json::from_str(json).unwrap();
         assert!(manifest.cleanup_paths.is_empty());
+    }
+
+    #[test]
+    fn manifest_deserializes_cached_field() {
+        let json = r#"{
+            "storages": [
+                {"mountPath": "/data", "archiveUrl": null, "cached": true},
+                {"mountPath": "/other", "archiveUrl": "https://s3/v1", "cached": false}
+            ],
+            "artifact": {"mountPath": "/workspace", "archiveUrl": null, "cached": true},
+            "memory": {"mountPath": "/memory", "archiveUrl": "https://s3/mem", "cached": false}
+        }"#;
+        let manifest: Manifest = serde_json::from_str(json).unwrap();
+        assert!(manifest.storages[0].cached);
+        assert!(!manifest.storages[1].cached);
+        assert!(manifest.artifact.as_ref().unwrap().cached);
+        assert!(!manifest.memory.as_ref().unwrap().cached);
+    }
+
+    #[test]
+    fn manifest_defaults_cached_to_false() {
+        let json = r#"{"storages": [{"mountPath": "/data"}]}"#;
+        let manifest: Manifest = serde_json::from_str(json).unwrap();
+        assert!(!manifest.storages[0].cached);
     }
 }

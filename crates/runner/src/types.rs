@@ -172,6 +172,11 @@ pub struct StorageEntry {
     pub mount_path: String,
     #[serde(default)]
     pub archive_url: Option<String>,
+    /// Whether this entry is cached from a previous turn (fingerprint matched).
+    /// When true, `archive_url` is intentionally `None` — the guest should
+    /// preserve existing files at this mount path during cleanup.
+    #[serde(default)]
+    pub cached: bool,
     #[serde(default)]
     pub vas_storage_name: Option<String>,
     #[serde(default)]
@@ -184,6 +189,9 @@ pub struct ArtifactEntry {
     pub mount_path: String,
     #[serde(default)]
     pub archive_url: Option<String>,
+    /// Whether this entry is cached from a previous turn (fingerprint matched).
+    #[serde(default)]
+    pub cached: bool,
     pub vas_storage_name: String,
     pub vas_version_id: String,
 }

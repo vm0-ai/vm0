@@ -938,7 +938,7 @@ fn filter_unchanged_storages(
             };
             if unchanged {
                 skipped += 1;
-            } else if s.archive_url.is_some() {
+            } else {
                 cleanup_paths.push(s.mount_path.clone());
             }
             StorageEntry {
@@ -948,6 +948,7 @@ fn filter_unchanged_storages(
                 } else {
                     s.archive_url.clone()
                 },
+                cached: unchanged,
                 vas_storage_name: s.vas_storage_name.clone(),
                 vas_version_id: s.vas_version_id.clone(),
             }
@@ -975,11 +976,12 @@ fn filter_unchanged_storages(
             .is_some_and(|(name, ver)| *name == a.vas_storage_name && *ver == a.vas_version_id);
         if same {
             *skipped += 1;
-        } else if a.archive_url.is_some() {
+        } else {
             cleanup.push(a.mount_path.clone());
         }
         ArtifactEntry {
             archive_url: if same { None } else { a.archive_url.clone() },
+            cached: same,
             ..a.clone()
         }
     };
@@ -1334,12 +1336,14 @@ mod tests {
             storages: vec![StorageEntry {
                 mount_path: "/data".into(),
                 archive_url: None,
+                cached: false,
                 vas_storage_name: None,
                 vas_version_id: None,
             }],
             artifact: Some(ArtifactEntry {
                 mount_path: "/artifacts".into(),
                 archive_url: None,
+                cached: false,
                 vas_storage_name: "my-vol".into(),
                 vas_version_id: "v1".into(),
             }),
@@ -1969,6 +1973,7 @@ mod tests {
             storages: vec![StorageEntry {
                 mount_path: "/data".into(),
                 archive_url: Some("https://s3/archive.tar.gz".into()),
+                cached: false,
                 vas_storage_name: None,
                 vas_version_id: None,
             }],
@@ -2065,6 +2070,7 @@ mod tests {
             memory: Some(ArtifactEntry {
                 mount_path: "/memory".into(),
                 archive_url: None,
+                cached: false,
                 vas_storage_name: "project-mem".into(),
                 vas_version_id: "v2".into(),
             }),
@@ -2342,6 +2348,7 @@ mod tests {
             storages: vec![StorageEntry {
                 mount_path: "/data".into(),
                 archive_url: Some("https://example.com/data.tar.gz".into()),
+                cached: false,
                 vas_storage_name: None,
                 vas_version_id: None,
             }],
@@ -2778,6 +2785,7 @@ mod tests {
         ArtifactEntry {
             mount_path: "/workspace".into(),
             archive_url: Some(url.into()),
+            cached: false,
             vas_storage_name: name.into(),
             vas_version_id: ver.into(),
         }
@@ -2856,6 +2864,7 @@ mod tests {
             storages: vec![StorageEntry {
                 mount_path: "/data".into(),
                 archive_url: Some("https://s3/data".into()),
+                cached: false,
                 vas_storage_name: Some("vol-1".into()),
                 vas_version_id: Some("v1".into()),
             }],
@@ -2876,6 +2885,7 @@ mod tests {
             storages: vec![StorageEntry {
                 mount_path: "/data".into(),
                 archive_url: Some("https://s3/same-url".into()),
+                cached: false,
                 vas_storage_name: Some("vol-1".into()),
                 vas_version_id: Some("v1".into()),
             }],
@@ -2892,8 +2902,11 @@ mod tests {
         };
         let result = filter_unchanged_storages(&manifest, &prev);
         assert!(result.storages[0].archive_url.is_none());
+        assert!(result.storages[0].cached);
         assert!(result.artifact.as_ref().unwrap().archive_url.is_none());
+        assert!(result.artifact.as_ref().unwrap().cached);
         assert!(result.memory.as_ref().unwrap().archive_url.is_none());
+        assert!(result.memory.as_ref().unwrap().cached);
     }
 
     #[test]
@@ -2903,12 +2916,14 @@ mod tests {
                 StorageEntry {
                     mount_path: "/home/user/.claude".into(),
                     archive_url: Some("https://s3/instructions".into()),
+                    cached: false,
                     vas_storage_name: Some("instructions".into()),
                     vas_version_id: Some("v2".into()),
                 },
                 StorageEntry {
                     mount_path: "/home/user/.claude/skills/foo".into(),
                     archive_url: Some("https://s3/foo".into()),
+                    cached: false,
                     vas_storage_name: Some("skill-foo".into()),
                     vas_version_id: Some("v1".into()),
                 },
@@ -2934,7 +2949,9 @@ mod tests {
         let result = filter_unchanged_storages(&manifest, &prev);
         // Instructions changed (v1→v2), skill-foo unchanged
         assert!(result.storages[0].archive_url.is_some());
+        assert!(!result.storages[0].cached);
         assert!(result.storages[1].archive_url.is_none());
+        assert!(result.storages[1].cached);
         // Only changed storage in cleanup_paths
         assert_eq!(result.cleanup_paths, vec!["/home/user/.claude"]);
     }
@@ -2945,6 +2962,7 @@ mod tests {
             storages: vec![StorageEntry {
                 mount_path: "/home/user/.claude".into(),
                 archive_url: Some("https://s3/instructions".into()),
+                cached: false,
                 vas_storage_name: Some("instructions".into()),
                 vas_version_id: Some("v1".into()),
             }],
@@ -2996,5 +3014,83 @@ mod tests {
                 .cleanup_paths
                 .contains(&result.artifact.as_ref().unwrap().mount_path)
         );
+    }
+
+    #[test]
+    fn filter_changed_artifact_with_null_url_adds_cleanup_path() {
+        let manifest = StorageManifest {
+            storages: vec![],
+            artifact: Some(ArtifactEntry {
+                mount_path: "/workspace".into(),
+                archive_url: None, // API returned null
+                cached: false,
+                vas_storage_name: "my-art".into(),
+                vas_version_id: "v2".into(),
+            }),
+            memory: None,
+            cleanup_paths: vec![],
+        };
+        let prev = crate::idle_pool::StorageFingerprints {
+            storages: HashMap::new(),
+            artifact: Some(("my-art".into(), "v1".into())),
+            memory: None,
+        };
+        let result = filter_unchanged_storages(&manifest, &prev);
+        // Version changed → must be in cleanup_paths even though URL is null.
+        assert!(result.cleanup_paths.contains(&"/workspace".to_string()));
+        assert!(!result.artifact.as_ref().unwrap().cached);
+    }
+
+    #[test]
+    fn filter_changed_storage_with_null_url_adds_cleanup_path() {
+        let manifest = StorageManifest {
+            storages: vec![StorageEntry {
+                mount_path: "/data".into(),
+                archive_url: None, // API returned null
+                cached: false,
+                vas_storage_name: Some("vol-1".into()),
+                vas_version_id: Some("v2".into()),
+            }],
+            artifact: None,
+            memory: None,
+            cleanup_paths: vec![],
+        };
+        let mut storages = HashMap::new();
+        storages.insert("/data".into(), ("vol-1".into(), "v1".into()));
+        let prev = crate::idle_pool::StorageFingerprints {
+            storages,
+            artifact: None,
+            memory: None,
+        };
+        let result = filter_unchanged_storages(&manifest, &prev);
+        // Version changed → must be in cleanup_paths even though URL is null.
+        assert!(result.cleanup_paths.contains(&"/data".to_string()));
+        assert!(!result.storages[0].cached);
+    }
+
+    #[test]
+    fn filter_unchanged_storage_sets_cached_true() {
+        let manifest = StorageManifest {
+            storages: vec![StorageEntry {
+                mount_path: "/data".into(),
+                archive_url: Some("https://s3/data".into()),
+                cached: false,
+                vas_storage_name: Some("vol-1".into()),
+                vas_version_id: Some("v1".into()),
+            }],
+            artifact: None,
+            memory: None,
+            cleanup_paths: vec![],
+        };
+        let mut storages = HashMap::new();
+        storages.insert("/data".into(), ("vol-1".into(), "v1".into()));
+        let prev = crate::idle_pool::StorageFingerprints {
+            storages,
+            artifact: None,
+            memory: None,
+        };
+        let result = filter_unchanged_storages(&manifest, &prev);
+        assert!(result.storages[0].cached);
+        assert!(result.storages[0].archive_url.is_none());
     }
 }
