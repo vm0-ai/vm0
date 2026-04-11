@@ -262,15 +262,12 @@ function aggregateNetworkDataPerUser(
 
     if (row.firewall_permission || row.action === "DENY") {
       const hasPerm = !!row.firewall_permission;
-      const isUnrestricted = row.firewall_permission === "unrestricted";
-      const permKey =
-        !hasPerm || isUnrestricted
-          ? row.firewall_ref
-          : `${row.firewall_ref}:${row.firewall_permission}`;
-      const label =
-        !hasPerm || isUnrestricted
-          ? row.firewall_ref
-          : getPermissionLabel(row.firewall_ref, row.firewall_permission);
+      const permKey = hasPerm
+        ? `${row.firewall_ref}:${row.firewall_permission}`
+        : row.firewall_ref;
+      const label = hasPerm
+        ? getPermissionLabel(row.firewall_ref, row.firewall_permission)
+        : row.firewall_ref;
       const perm = userData.permMap.get(permKey) ?? {
         label,
         connectorType: row.firewall_ref,
