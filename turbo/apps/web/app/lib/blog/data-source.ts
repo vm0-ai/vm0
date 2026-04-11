@@ -42,20 +42,10 @@ export async function getFeatured(
   locale: string = "en",
 ): Promise<BlogPost | null> {
   assertStrapiDataSource();
-  try {
-    return await getFeaturedPostFromStrapi(locale);
-  } catch (error) {
-    console.error("[blog] Failed to fetch featured post:", error);
-    return null;
-  }
+  return getFeaturedPostFromStrapi(locale);
 }
 
 export async function getCategories(locale: string = "en"): Promise<string[]> {
   assertStrapiDataSource();
-  try {
-    return await getAllCategoriesFromStrapi(locale);
-  } catch (error) {
-    console.error("[blog] Failed to fetch categories:", error);
-    return [];
-  }
+  return getAllCategoriesFromStrapi(locale);
 }

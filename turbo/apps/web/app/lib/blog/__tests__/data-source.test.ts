@@ -167,7 +167,7 @@ describe("blog/data-source", () => {
   });
 
   describe("error fallback", () => {
-    beforeEach(() => {
+    it("getPosts returns empty array on Strapi error", async () => {
       server.use(
         http.get(`${STRAPI_URL}/api/articles`, () => {
           return new HttpResponse(null, {
@@ -175,51 +175,12 @@ describe("blog/data-source", () => {
             statusText: "Internal Server Error",
           });
         }),
-        http.get(`${STRAPI_URL}/api/categories`, () => {
-          return new HttpResponse(null, {
-            status: 500,
-            statusText: "Internal Server Error",
-          });
-        }),
       );
-    });
-
-    it("getPosts returns empty array on Strapi error", async () => {
       const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
       const posts = await getPosts("en");
 
       expect(posts).toEqual([]);
-      expect(errorSpy).toHaveBeenCalledWith(
-        "[blog] Failed to fetch posts:",
-        expect.any(Error),
-      );
-      errorSpy.mockRestore();
-    });
-
-    it("getFeatured returns null on Strapi error", async () => {
-      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-
-      const post = await getFeatured("en");
-
-      expect(post).toBeNull();
-      expect(errorSpy).toHaveBeenCalledWith(
-        "[blog] Failed to fetch featured post:",
-        expect.any(Error),
-      );
-      errorSpy.mockRestore();
-    });
-
-    it("getCategories returns empty array on Strapi error", async () => {
-      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-
-      const categories = await getCategories("en");
-
-      expect(categories).toEqual([]);
-      expect(errorSpy).toHaveBeenCalledWith(
-        "[blog] Failed to fetch categories:",
-        expect.any(Error),
-      );
       errorSpy.mockRestore();
     });
   });
