@@ -1,5 +1,13 @@
 # Changelog
 
+## [8.172.1](https://github.com/vm0-ai/vm0/compare/core-v8.172.0...core-v8.172.1) (2026-04-11)
+
+
+### Refactoring
+
+* **phone:** migrate phone-signals to typed zeroClient$ contracts ([#8863](https://github.com/vm0-ai/vm0/issues/8863)) ([53375cd](https://github.com/vm0-ai/vm0/commit/53375cda524b7e025cc566aa6b027805cb805510))
+* remove unused feature switches ([#8911](https://github.com/vm0-ai/vm0/issues/8911)) ([630ec6d](https://github.com/vm0-ai/vm0/commit/630ec6dc7e0ecfa04c5bb9b5184f6834bced3efa))
+
 ## [8.172.0](https://github.com/vm0-ai/vm0/compare/core-v8.171.0...core-v8.172.0) (2026-04-10)
 
 

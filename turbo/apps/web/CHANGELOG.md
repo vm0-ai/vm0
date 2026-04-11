@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.217.2](https://github.com/vm0-ai/vm0/compare/web-v12.217.1...web-v12.217.2) (2026-04-11)
+
+
+### Refactoring
+
+* remove support@vm0.ai email fallback ([#8886](https://github.com/vm0-ai/vm0/issues/8886)) ([3de68d1](https://github.com/vm0-ai/vm0/commit/3de68d1c31a9d8e2ca2495ea431b34584e2700a3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.172.1
+
 ## [12.217.1](https://github.com/vm0-ai/vm0/compare/web-v12.217.0...web-v12.217.1) (2026-04-11)
 
 

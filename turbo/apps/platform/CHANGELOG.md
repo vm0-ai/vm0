@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.216.0](https://github.com/vm0-ai/vm0/compare/app-v0.215.1...app-v0.216.0) (2026-04-11)
+
+
+### Features
+
+* acquire screen wake lock during voice chat sessions ([#8936](https://github.com/vm0-ai/vm0/issues/8936)) ([5d64f98](https://github.com/vm0-ai/vm0/commit/5d64f98d26b40d976c8e068fa1307826f6a7f642))
+
+
+### Refactoring
+
+* **phone:** migrate phone-signals to typed zeroClient$ contracts ([#8863](https://github.com/vm0-ai/vm0/issues/8863)) ([53375cd](https://github.com/vm0-ai/vm0/commit/53375cda524b7e025cc566aa6b027805cb805510))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.172.1
+
 ## [0.215.1](https://github.com/vm0-ai/vm0/compare/app-v0.215.0...app-v0.215.1) (2026-04-11)
 
 
