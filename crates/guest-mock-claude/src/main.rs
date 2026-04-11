@@ -318,35 +318,40 @@ fn main() -> ExitCode {
     if parsed.prompt.starts_with("@orphan-pipe") {
         if parsed.output_format == "stream-json" {
             let session_id = generate_session_id();
+            let cwd = std::env::current_dir()
+                .map(|p| p.to_string_lossy().into_owned())
+                .unwrap_or_else(|_| "/".to_string());
 
-            // Init event
-            println!(
-                "{}",
-                json!({
-                    "type": "system",
-                    "subtype": "init",
-                    "cwd": "/tmp",
-                    "session_id": session_id,
-                    "tools": ["Bash"],
-                    "model": "mock-claude"
-                })
-            );
+            let init_event = json!({
+                "type": "system",
+                "subtype": "init",
+                "cwd": cwd,
+                "session_id": session_id,
+                "tools": ["Bash"],
+                "model": "mock-claude"
+            });
+            println!("{}", init_event);
 
-            // Result event
-            println!(
-                "{}",
-                json!({
-                    "type": "result",
-                    "subtype": "success",
-                    "session_id": session_id,
-                    "is_error": false,
-                    "duration_ms": 100,
-                    "num_turns": 1,
-                    "result": "Done.",
-                    "total_cost_usd": 0,
-                    "usage": {"input_tokens": 0, "output_tokens": 0}
-                })
-            );
+            let result_event = json!({
+                "type": "result",
+                "subtype": "success",
+                "session_id": session_id,
+                "is_error": false,
+                "duration_ms": 100,
+                "num_turns": 1,
+                "result": "Done.",
+                "total_cost_usd": 0,
+                "usage": {"input_tokens": 0, "output_tokens": 0}
+            });
+            println!("{}", result_event);
+
+            // Write session history file — checkpoint requires it.
+            if let Some(path) = create_session_history(&session_id, &cwd)
+                && let Ok(mut file) = std::fs::File::create(&path)
+            {
+                let _ = writeln!(file, "{init_event}");
+                let _ = writeln!(file, "{result_event}");
+            }
 
             let _ = std::io::stdout().flush();
 
