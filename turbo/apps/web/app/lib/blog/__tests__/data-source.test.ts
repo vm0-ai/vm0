@@ -176,12 +176,12 @@ describe("blog/data-source", () => {
           });
         }),
       );
-      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      vi.spyOn(console, "error").mockImplementation(() => {});
 
       const posts = await getPosts("en");
 
       expect(posts).toEqual([]);
-      errorSpy.mockRestore();
+      vi.restoreAllMocks();
     });
   });
 });
