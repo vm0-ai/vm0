@@ -12,11 +12,82 @@
 
 use std::collections::VecDeque;
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
 use sandbox::*;
+
+// ---------------------------------------------------------------------------
+// MockSandboxOverrides
+// ---------------------------------------------------------------------------
+
+/// Behavior override applied to exec calls whose command contains the pattern.
+pub struct ExecMatcher {
+    /// Substring to match against `ExecRequest.cmd`.
+    pub pattern: String,
+    pub exit_code: i32,
+    pub stdout: Vec<u8>,
+    pub stderr: Vec<u8>,
+}
+
+/// Shared behavior overrides propagated from runtime → factory → sandbox.
+///
+/// Tests create this via [`MockSandboxRuntime::with_overrides`] so every
+/// sandbox produced by the factory checks these overrides before falling
+/// back to the default FIFO-queue behaviour.
+pub struct MockSandboxOverrides {
+    /// Pattern-matched exec results. First matching pattern wins and is
+    /// consumed (one-shot).
+    exec_matchers: Mutex<Vec<ExecMatcher>>,
+    /// When `Some`, `wait_exit` returns this exit code instead of 0.
+    wait_exit_code: Mutex<Option<i32>>,
+    /// When set, `wait_exit` awaits this [`tokio::sync::Notify`] before
+    /// returning — giving the test a window to cancel the job.
+    wait_exit_gate: Option<Arc<tokio::sync::Notify>>,
+}
+
+impl MockSandboxOverrides {
+    pub fn new() -> Self {
+        Self {
+            exec_matchers: Mutex::new(Vec::new()),
+            wait_exit_code: Mutex::new(None),
+            wait_exit_gate: None,
+        }
+    }
+
+    /// Create overrides that make `wait_exit` return a custom exit code.
+    pub fn with_wait_exit_code(code: i32) -> Self {
+        Self {
+            exec_matchers: Mutex::new(Vec::new()),
+            wait_exit_code: Mutex::new(Some(code)),
+            wait_exit_gate: None,
+        }
+    }
+
+    /// Create overrides that block `wait_exit` until the gate is notified.
+    pub fn with_wait_exit_gate(gate: Arc<tokio::sync::Notify>) -> Self {
+        Self {
+            exec_matchers: Mutex::new(Vec::new()),
+            wait_exit_code: Mutex::new(None),
+            wait_exit_gate: Some(gate),
+        }
+    }
+
+    /// Register a pattern matcher consumed on first match.
+    pub fn add_exec_matcher(&self, matcher: ExecMatcher) {
+        self.exec_matchers
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(matcher);
+    }
+}
+
+impl Default for MockSandboxOverrides {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 // ---------------------------------------------------------------------------
 // MockSandbox
@@ -32,6 +103,7 @@ pub struct MockSandbox {
     source_ip: String,
     exec_results: Mutex<VecDeque<Result<ExecResult>>>,
     write_file_results: Mutex<VecDeque<Result<()>>>,
+    overrides: Option<Arc<MockSandboxOverrides>>,
 }
 
 impl MockSandbox {
@@ -41,6 +113,17 @@ impl MockSandbox {
             source_ip: "10.0.0.1".into(),
             exec_results: Mutex::new(VecDeque::new()),
             write_file_results: Mutex::new(VecDeque::new()),
+            overrides: None,
+        }
+    }
+
+    fn with_overrides(id: impl Into<String>, overrides: Arc<MockSandboxOverrides>) -> Self {
+        Self {
+            id: id.into(),
+            source_ip: "10.0.0.1".into(),
+            exec_results: Mutex::new(VecDeque::new()),
+            write_file_results: Mutex::new(VecDeque::new()),
+            overrides: Some(overrides),
         }
     }
 
@@ -97,7 +180,25 @@ impl Sandbox for MockSandbox {
         Ok(())
     }
 
-    async fn exec(&self, _request: &ExecRequest<'_>) -> Result<ExecResult> {
+    async fn exec(&self, request: &ExecRequest<'_>) -> Result<ExecResult> {
+        // Check pattern matchers before the FIFO queue.
+        if let Some(overrides) = &self.overrides {
+            let mut matchers = overrides
+                .exec_matchers
+                .lock()
+                .unwrap_or_else(|e| e.into_inner());
+            if let Some(idx) = matchers
+                .iter()
+                .position(|m| request.cmd.contains(&m.pattern))
+            {
+                let m = matchers.remove(idx);
+                return Ok(ExecResult {
+                    exit_code: m.exit_code,
+                    stdout: m.stdout,
+                    stderr: m.stderr,
+                });
+            }
+        }
         self.exec_results
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -126,6 +227,25 @@ impl Sandbox for MockSandbox {
     }
 
     async fn wait_exit(&self, handle: SpawnHandle, _timeout: Duration) -> Result<ProcessExit> {
+        if let Some(overrides) = &self.overrides {
+            // Block until the test signals (gives a window for cancellation).
+            if let Some(gate) = &overrides.wait_exit_gate {
+                gate.notified().await;
+            }
+            // Return override exit code when configured.
+            if let Some(code) = *overrides
+                .wait_exit_code
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+            {
+                return Ok(ProcessExit {
+                    pid: handle.pid,
+                    exit_code: code,
+                    stdout: Vec::new(),
+                    stderr: Vec::new(),
+                });
+            }
+        }
         Ok(ProcessExit {
             pid: handle.pid,
             exit_code: 0,
@@ -145,12 +265,21 @@ impl Sandbox for MockSandbox {
 /// When the queue is empty, `create` returns a default `MockSandbox`.
 pub struct MockSandboxFactory {
     create_results: Mutex<VecDeque<Result<()>>>,
+    overrides: Option<Arc<MockSandboxOverrides>>,
 }
 
 impl MockSandboxFactory {
     pub fn new() -> Self {
         Self {
             create_results: Mutex::new(VecDeque::new()),
+            overrides: None,
+        }
+    }
+
+    pub fn with_overrides(overrides: Arc<MockSandboxOverrides>) -> Self {
+        Self {
+            create_results: Mutex::new(VecDeque::new()),
+            overrides: Some(overrides),
         }
     }
 
@@ -194,7 +323,11 @@ impl SandboxFactory for MockSandboxFactory {
         {
             result?;
         }
-        Ok(Box::new(MockSandbox::new(config.id.to_string())))
+        let sandbox = match &self.overrides {
+            Some(o) => MockSandbox::with_overrides(config.id.to_string(), Arc::clone(o)),
+            None => MockSandbox::new(config.id.to_string()),
+        };
+        Ok(Box::new(sandbox))
     }
 
     async fn destroy(&self, _sandbox: Box<dyn Sandbox>) {}
@@ -207,12 +340,36 @@ impl SandboxFactory for MockSandboxFactory {
 // ---------------------------------------------------------------------------
 
 /// A mock [`SandboxRuntime`] that creates [`MockSandboxFactory`] instances.
-pub struct MockSandboxRuntime;
+pub struct MockSandboxRuntime {
+    overrides: Option<Arc<MockSandboxOverrides>>,
+}
+
+impl MockSandboxRuntime {
+    pub fn new() -> Self {
+        Self { overrides: None }
+    }
+
+    pub fn with_overrides(overrides: Arc<MockSandboxOverrides>) -> Self {
+        Self {
+            overrides: Some(overrides),
+        }
+    }
+}
+
+impl Default for MockSandboxRuntime {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 #[async_trait]
 impl SandboxRuntime for MockSandboxRuntime {
     async fn create_factory(&self, _config: FactoryConfig) -> Result<Box<dyn SandboxFactory>> {
-        Ok(Box::new(MockSandboxFactory::new()))
+        let factory = match &self.overrides {
+            Some(o) => MockSandboxFactory::with_overrides(Arc::clone(o)),
+            None => MockSandboxFactory::new(),
+        };
+        Ok(Box::new(factory))
     }
 
     async fn shutdown(&mut self) {}
@@ -228,7 +385,7 @@ pub struct MockRuntimeProvider;
 #[async_trait]
 impl RuntimeProvider for MockRuntimeProvider {
     async fn create_runtime(&self, _config: RuntimeConfig) -> Result<Box<dyn SandboxRuntime>> {
-        Ok(Box::new(MockSandboxRuntime))
+        Ok(Box::new(MockSandboxRuntime::new()))
     }
 }
 
@@ -402,7 +559,7 @@ mod tests {
 
     #[tokio::test]
     async fn runtime_creates_factory() {
-        let mut runtime = MockSandboxRuntime;
+        let mut runtime = MockSandboxRuntime::new();
         let factory_config = FactoryConfig {
             profile: "test".into(),
             binary_path: "/bin/test".into(),

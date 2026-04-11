@@ -1646,7 +1646,7 @@ mod tests {
             name: "test".into(),
             group: "test-group".into(),
             profiles,
-            runtime: Box::new(MockSandboxRuntime),
+            runtime: Box::new(MockSandboxRuntime::new()),
             home,
             budget: Arc::new(ResourceBudget::new(
                 budget_vcpu,
@@ -2650,6 +2650,191 @@ mod tests {
             "pool should have 1 entry after two sequential jobs"
         );
         assert_eq!(budget.allocated().2, 1, "only one VM should hold budget");
+
+        shutdown(&env, run_handle).await;
+    }
+
+    // =======================================================================
+    // Tests 20-22: Edge cases requiring MockSandboxOverrides
+    // =======================================================================
+
+    fn mock_run_config_with_overrides(
+        profiles: BTreeMap<String, config::ProfileConfig>,
+        budget_vcpu: u32,
+        budget_memory_mb: u32,
+        max_concurrent: usize,
+        keep_alive: bool,
+        overrides: Arc<sandbox_mock::MockSandboxOverrides>,
+    ) -> (RunConfig, MockRunEnv) {
+        let make_provider = |cancel: CancellationToken| MockJobProvider::new(cancel.clone());
+        let (mut config, env) = build_mock_run_config(
+            profiles,
+            budget_vcpu,
+            budget_memory_mb,
+            max_concurrent,
+            keep_alive,
+            make_provider,
+        );
+        config.runtime = Box::new(MockSandboxRuntime::with_overrides(overrides));
+        (config, env)
+    }
+
+    async fn wait_cancel_token(
+        tokens: &Arc<tokio::sync::Mutex<HashMap<Uuid, CancellationToken>>>,
+        run_id: Uuid,
+        timeout: Duration,
+    ) -> CancellationToken {
+        let deadline = tokio::time::Instant::now() + timeout;
+        loop {
+            if let Some(token) = tokens.lock().await.get(&run_id).cloned() {
+                return token;
+            }
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "cancel token for {run_id} not found within {timeout:?}",
+            );
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    }
+
+    /// Test 20: Failed job with session context is not parked.
+    ///
+    /// When `wait_exit` returns a non-zero exit code, `spawn_job()` skips
+    /// parking (because `exit_code == 0` is false) and destroys the sandbox.
+    #[tokio::test(start_paused = true)]
+    async fn failed_job_with_session_not_parked() {
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_exit_code(1));
+        let (config, env) = mock_run_config_with_overrides(
+            test_profiles(),
+            4,
+            8192,
+            4,
+            true, // keep_alive enabled
+            overrides,
+        );
+        let budget = Arc::clone(&config.budget);
+        let idle_pool = Arc::clone(&config.idle_pool);
+        let run_handle = tokio::spawn(run(config));
+
+        let run_id = Uuid::new_v4();
+        push_job(
+            &env,
+            run_id,
+            "vm0/default",
+            Some(context_with_session(run_id, "sess-fail")),
+        );
+
+        let c = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await;
+        assert!(c.is_some(), "job should complete");
+        assert_eq!(c.unwrap().exit_code, 1);
+
+        wait_budget_count(&budget, 0, Duration::from_secs(2)).await;
+        assert_eq!(idle_pool.lock().await.len(), 0, "failed job must not park");
+
+        shutdown(&env, run_handle).await;
+    }
+
+    /// Test 21: Cancelled job is not parked.
+    ///
+    /// `wait_exit_gate` blocks the agent execution. The test cancels the job
+    /// via the cancel token, causing `select!` in the executor to take the
+    /// cancellation branch. `job_cancel.is_cancelled()` is true, so
+    /// `parkable_session` is `None` → sandbox destroyed.
+    #[tokio::test(start_paused = true)]
+    async fn cancelled_job_not_parked() {
+        let gate = Arc::new(tokio::sync::Notify::new());
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_exit_gate(
+            gate,
+        ));
+        let (config, env) =
+            mock_run_config_with_overrides(test_profiles(), 4, 8192, 4, true, overrides);
+        let budget = Arc::clone(&config.budget);
+        let idle_pool = Arc::clone(&config.idle_pool);
+        let cancel_tokens = Arc::clone(&config.cancel_tokens);
+        let run_handle = tokio::spawn(run(config));
+
+        let run_id = Uuid::new_v4();
+        push_job(
+            &env,
+            run_id,
+            "vm0/default",
+            Some(context_with_session(run_id, "sess-cancel")),
+        );
+
+        // Wait for the job to be claimed (cancel token inserted).
+        let token = wait_cancel_token(&cancel_tokens, run_id, Duration::from_secs(5)).await;
+        // Cancel the job — executor's select! takes the cancelled branch.
+        token.cancel();
+
+        let c = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await;
+        assert!(c.is_some(), "cancelled job should still complete");
+        let c = c.unwrap();
+        assert_eq!(c.exit_code, 137, "cancellation yields synthetic SIGKILL");
+        assert_eq!(c.error.as_deref(), Some("cancelled by user"));
+
+        wait_budget_count(&budget, 0, Duration::from_secs(2)).await;
+        assert_eq!(
+            idle_pool.lock().await.len(),
+            0,
+            "cancelled job must not park"
+        );
+
+        shutdown(&env, run_handle).await;
+    }
+
+    /// Test 22: `ParkResult::Evicted` via `guest_session_id`.
+    ///
+    /// A first-run job (no `resume_session`) reads a CLI-generated session ID
+    /// from the guest filesystem. When that session already has an entry in
+    /// the idle pool, `pool.park()` returns `Evicted(old)`, the old VM is
+    /// destroyed, and the new VM takes its place.
+    #[tokio::test(start_paused = true)]
+    async fn park_evicts_via_guest_session_id() {
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        overrides.add_exec_matcher(sandbox_mock::ExecMatcher {
+            pattern: "cat /tmp/vm0-session-".into(),
+            exit_code: 0,
+            stdout: b"sess-evict".to_vec(),
+            stderr: Vec::new(),
+        });
+        let (config, env) =
+            mock_run_config_with_overrides(test_profiles(), 8, 16384, 4, true, overrides);
+        let budget = Arc::clone(&config.budget);
+        let idle_pool = Arc::clone(&config.idle_pool);
+
+        // Pre-seed idle pool with session "sess-evict".
+        seed_idle_pool(&idle_pool, &budget, "sess-evict", "vm0/default", 2, 4096).await;
+        assert_eq!(budget.allocated().2, 1, "pre-seeded entry holds budget");
+
+        let run_handle = tokio::spawn(run(config));
+
+        // Push job WITHOUT resume_session — first run, no session context.
+        // read_guest_session_id() will be called and return "sess-evict"
+        // via the exec matcher.
+        let run_id = Uuid::new_v4();
+        push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
+
+        let c = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await;
+        assert!(c.is_some(), "job should complete");
+        assert_eq!(c.unwrap().exit_code, 0);
+
+        // After eviction: old entry destroyed + old budget released,
+        // new entry parked + new budget held → net count = 1.
+        wait_budget_count(&budget, 1, Duration::from_secs(2)).await;
+        assert_eq!(
+            idle_pool.lock().await.len(),
+            1,
+            "pool should have the newly parked entry"
+        );
 
         shutdown(&env, run_handle).await;
     }
