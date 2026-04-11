@@ -817,7 +817,9 @@ const acquireWakeLock$ = command(async ({ set }, signal: AbortSignal) => {
 const releaseWakeLock$ = command(({ get, set }) => {
   const lock = get(internalWakeLock$);
   if (lock) {
-    lock.release().catch(() => undefined);
+    lock.release().catch(() => {
+      return undefined;
+    });
     set(internalWakeLock$, null);
   }
 });
