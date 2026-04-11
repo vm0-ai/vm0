@@ -2554,7 +2554,6 @@ mod tests {
 
         // Park in idle pool
         let mut pool = IdlePool::new(IdlePoolConfig {
-            enabled: true,
             default_timeout: std::time::Duration::from_secs(300),
             max_idle: 0,
         });
@@ -2596,7 +2595,6 @@ mod tests {
         use crate::idle_pool::{IdlePool, IdlePoolConfig};
 
         let mut pool = IdlePool::new(IdlePoolConfig {
-            enabled: true,
             default_timeout: std::time::Duration::from_secs(300),
             max_idle: 0,
         });

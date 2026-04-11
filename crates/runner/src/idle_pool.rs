@@ -47,8 +47,6 @@ impl StorageFingerprints {
 /// Configuration for the idle sandbox pool.
 #[derive(Debug, Clone)]
 pub struct IdlePoolConfig {
-    /// Whether VM keep-alive is enabled.
-    pub enabled: bool,
     /// Default idle timeout for parked VMs.
     pub default_timeout: Duration,
     /// Maximum number of idle VMs (0 = unlimited).
@@ -58,7 +56,6 @@ pub struct IdlePoolConfig {
 impl Default for IdlePoolConfig {
     fn default() -> Self {
         Self {
-            enabled: false,
             default_timeout: Duration::from_secs(DEFAULT_IDLE_TIMEOUT_SECS),
             max_idle: 0,
         }
@@ -100,6 +97,8 @@ impl IdleEntry {
 pub struct IdlePool {
     entries: HashMap<String, IdleEntry>,
     config: IdlePoolConfig,
+    /// Set by `drain()` to reject park attempts after shutdown.
+    drained: bool,
 }
 
 impl IdlePool {
@@ -107,6 +106,7 @@ impl IdlePool {
         Self {
             entries: HashMap::new(),
             config,
+            drained: false,
         }
     }
 
@@ -115,7 +115,7 @@ impl IdlePool {
     ///
     /// Returns `PoolFull(entry)` if the pool is disabled or at capacity.
     pub fn park(&mut self, session_id: String, entry: IdleEntry) -> ParkResult {
-        if !self.config.enabled {
+        if self.drained {
             return ParkResult::PoolFull(entry);
         }
         if self.config.max_idle > 0 && self.entries.len() >= self.config.max_idle {
@@ -173,10 +173,10 @@ impl IdlePool {
         self.entries.len()
     }
 
-    /// Whether keep-alive is enabled.
+    /// Whether the pool has been drained (rejects new park calls).
     #[cfg(test)]
-    pub fn is_enabled(&self) -> bool {
-        self.config.enabled
+    pub fn is_drained(&self) -> bool {
+        self.drained
     }
 
     /// The default idle timeout.
@@ -189,7 +189,7 @@ impl IdlePool {
     /// Also disables the pool so that concurrent job tasks that still hold
     /// a stale `mode == Running` snapshot cannot park new entries after drain.
     pub fn drain(&mut self) -> Vec<IdleEntry> {
-        self.config.enabled = false;
+        self.drained = true;
         self.entries.drain().map(|(_, v)| v).collect()
     }
 }
@@ -250,7 +250,6 @@ mod tests {
 
     fn pool_config(max_idle: usize) -> IdlePoolConfig {
         IdlePoolConfig {
-            enabled: true,
             default_timeout: Duration::from_secs(300),
             max_idle,
         }
@@ -393,31 +392,17 @@ mod tests {
         let drained = pool.drain();
         assert_eq!(drained.len(), 2);
         assert_eq!(pool.len(), 0);
-        // drain disables the pool to prevent post-shutdown parking
-        assert!(!pool.is_enabled());
-    }
-
-    #[test]
-    fn disabled_pool() {
-        let pool = IdlePool::new(IdlePoolConfig::default());
-        assert!(!pool.is_enabled());
-    }
-
-    #[test]
-    fn disabled_pool_rejects_park() {
-        let mut pool = IdlePool::new(IdlePoolConfig::default());
-        let result = pool.park("s1".into(), make_entry(2, 2048));
-        assert!(matches!(result, ParkResult::PoolFull(_)));
-        assert_eq!(pool.len(), 0);
+        // drain marks the pool as drained to prevent post-shutdown parking
+        assert!(pool.is_drained());
     }
 
     #[test]
     fn park_after_drain_rejected() {
-        // drain() disables the pool — subsequent park() calls are rejected.
+        // drain() marks pool as drained — subsequent park() calls are rejected.
         let mut pool = IdlePool::new(pool_config(0));
         let _ = pool.park("s1".into(), make_entry(2, 2048));
         pool.drain();
-        assert!(!pool.is_enabled());
+        assert!(pool.is_drained());
 
         let result = pool.park("s2".into(), make_entry(4, 4096));
         assert!(matches!(result, ParkResult::PoolFull(_)));
@@ -442,7 +427,7 @@ mod tests {
         let mut pool = IdlePool::new(pool_config(0));
         let drained = pool.drain();
         assert!(drained.is_empty());
-        assert!(!pool.is_enabled());
+        assert!(pool.is_drained());
     }
 
     #[test]

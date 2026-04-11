@@ -44,12 +44,10 @@ pub struct SandboxConfig {
     pub max_concurrent: usize,
     /// Overcommit factor applied to both CPU and memory budgets (default: 1.0).
     pub concurrency_factor: f64,
-    /// Keep VMs alive between conversation turns for session reuse (default: false).
-    pub keep_alive: bool,
-    /// Idle timeout in seconds for kept-alive VMs (default: 300).
-    pub keep_alive_timeout_secs: u64,
+    /// Idle timeout in seconds for reusable VMs (default: 300).
+    pub idle_timeout_secs: u64,
     /// Maximum number of idle VMs to keep (0 = no limit, default: 0).
-    pub keep_alive_max_idle: usize,
+    pub max_idle: usize,
 }
 
 impl Default for SandboxConfig {
@@ -57,9 +55,8 @@ impl Default for SandboxConfig {
         Self {
             max_concurrent: DEFAULT_MAX_CONCURRENT,
             concurrency_factor: DEFAULT_CONCURRENCY_FACTOR,
-            keep_alive: false,
-            keep_alive_timeout_secs: 300,
-            keep_alive_max_idle: 0,
+            idle_timeout_secs: 300,
+            max_idle: 0,
         }
     }
 }
@@ -706,7 +703,7 @@ profiles:
     }
 
     #[tokio::test]
-    async fn keep_alive_config_round_trip() {
+    async fn idle_pool_config_round_trip() {
         let dir = tempfile::tempdir().unwrap();
         let fc = dir.path().join("firecracker");
         let kernel = dir.path().join("vmlinux");
@@ -726,9 +723,8 @@ profiles:
             sandbox: SandboxConfig {
                 max_concurrent: 4,
                 concurrency_factor: 1.5,
-                keep_alive: true,
-                keep_alive_timeout_secs: 600,
-                keep_alive_max_idle: 10,
+                idle_timeout_secs: 600,
+                max_idle: 10,
             },
             server: None,
         };
@@ -738,14 +734,13 @@ profiles:
         let loaded = load_with_home(&runner_dir.join("runner.yaml"), &home)
             .await
             .unwrap();
-        assert!(loaded.sandbox.keep_alive);
-        assert_eq!(loaded.sandbox.keep_alive_timeout_secs, 600);
-        assert_eq!(loaded.sandbox.keep_alive_max_idle, 10);
+        assert_eq!(loaded.sandbox.idle_timeout_secs, 600);
+        assert_eq!(loaded.sandbox.max_idle, 10);
         assert_eq!(loaded, config);
     }
 
     #[tokio::test]
-    async fn keep_alive_defaults_when_omitted() {
+    async fn idle_pool_defaults_when_omitted() {
         let dir = tempfile::tempdir().unwrap();
         let fc = dir.path().join("firecracker");
         let kernel = dir.path().join("vmlinux");
@@ -754,7 +749,7 @@ profiles:
         }
         let home = test_home_with_artifacts(dir.path(), &["abc"]).await;
 
-        // YAML without any keep_alive fields
+        // YAML without any idle pool fields
         let yaml = format!(
             r#"
 name: test
@@ -781,8 +776,7 @@ profiles:
         tokio::fs::write(&config_path, &yaml).await.unwrap();
 
         let config = load_with_home(&config_path, &home).await.unwrap();
-        assert!(!config.sandbox.keep_alive);
-        assert_eq!(config.sandbox.keep_alive_timeout_secs, 300);
-        assert_eq!(config.sandbox.keep_alive_max_idle, 0);
+        assert_eq!(config.sandbox.idle_timeout_secs, 300);
+        assert_eq!(config.sandbox.max_idle, 0);
     }
 }

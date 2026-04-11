@@ -38,10 +38,6 @@ pub struct ConfigArgs {
     #[arg(long, default_value_t = DEFAULT_CONCURRENCY_FACTOR)]
     concurrency_factor: f64,
 
-    /// Keep VMs alive between conversation turns for session reuse
-    #[arg(long)]
-    keep_alive: bool,
-
     /// vm0 API URL
     #[arg(long, env = "VM0_API_URL")]
     api_url: String,
@@ -113,7 +109,6 @@ pub async fn run_config(args: ConfigArgs) -> RunnerResult<()> {
         sandbox: SandboxConfig {
             max_concurrent: args.max_concurrent,
             concurrency_factor: args.concurrency_factor,
-            keep_alive: args.keep_alive,
             ..SandboxConfig::default()
         },
         server: Some(ServerConfig {

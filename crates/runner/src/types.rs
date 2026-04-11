@@ -195,14 +195,27 @@ pub struct ResumeSession {
     pub session_history: String,
 }
 
+/// Feature flag keys (must match TypeScript `FeatureSwitchKey` values).
+pub mod feature_flags {
+    pub const SANDBOX_REUSE: &str = "sandboxReuse";
+}
+
 impl ExecutionContext {
-    /// Extract the session ID from `resume_session` for keep-alive VM reuse.
+    /// Extract the session ID from `resume_session` for sandbox reuse.
     ///
     /// Returns `Some` for continued sessions. For first runs this returns
     /// `None`; the executor reads the CLI-generated session ID from the
     /// guest filesystem post-execution (see `read_guest_session_id`).
     pub fn session_id(&self) -> Option<&str> {
         self.resume_session.as_ref().map(|r| r.session_id.as_str())
+    }
+
+    /// Check whether a feature flag is enabled for this job.
+    pub fn feature_enabled(&self, flag: &str) -> bool {
+        self.feature_flags
+            .as_ref()
+            .and_then(|f| f.get(flag).copied())
+            .unwrap_or(false)
     }
 }
 

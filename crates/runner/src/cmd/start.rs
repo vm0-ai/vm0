@@ -204,9 +204,8 @@ pub async fn run_start(
     let config::SandboxConfig {
         max_concurrent,
         concurrency_factor,
-        keep_alive,
-        keep_alive_timeout_secs,
-        keep_alive_max_idle,
+        idle_timeout_secs,
+        max_idle,
     } = runner_config.sandbox;
     let host_cpus = host::cpu_count()?;
     let host_memory_mb = host::memory_mb()?;
@@ -227,18 +226,13 @@ pub async fn run_start(
         "resource budget initialized"
     );
 
-    // Idle sandbox pool for VM keep-alive across conversation turns.
+    // Idle sandbox pool for VM reuse across conversation turns.
+    // Whether individual jobs use the pool is controlled by the per-job
+    // `sandboxReuse` feature flag; the pool itself is always available.
     let idle_pool = Arc::new(tokio::sync::Mutex::new(IdlePool::new(IdlePoolConfig {
-        enabled: keep_alive,
-        default_timeout: Duration::from_secs(keep_alive_timeout_secs),
-        max_idle: keep_alive_max_idle,
+        default_timeout: Duration::from_secs(idle_timeout_secs),
+        max_idle,
     })));
-    if keep_alive {
-        info!(
-            keep_alive_timeout_secs,
-            keep_alive_max_idle, "VM keep-alive enabled"
-        );
-    }
 
     // Estimated capacity for status reporting.
     // Derived from the smallest profile to cover the worst case.
@@ -612,7 +606,11 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 status.add_run(run_id).await;
 
                 // Check idle pool for a reusable VM (same session + same profile).
-                let reuse_entry = if let Some(session_id) = context.session_id() {
+                // Only attempt reuse when the per-job sandboxReuse flag is on.
+                let reuse_enabled = context.feature_enabled(crate::types::feature_flags::SANDBOX_REUSE);
+                let reuse_entry = if reuse_enabled
+                    && let Some(session_id) = context.session_id()
+                {
                     let mut pool = idle_pool.lock().await;
                     match pool.take(session_id) {
                         Some(entry) if entry.profile_name == profile_name => {
@@ -869,8 +867,9 @@ struct SpawnContext {
 /// If `reuse_entry` is `Some`, the job reuses an existing idle sandbox.
 /// Otherwise it creates a new one via the factory.
 ///
-/// After execution, if keep-alive is enabled and the job succeeded,
-/// the sandbox is parked in the idle pool instead of being destroyed.
+/// After execution, if the per-job `sandboxReuse` feature flag is enabled
+/// and the job succeeded, the sandbox is parked in the idle pool instead
+/// of being destroyed.
 fn spawn_job(
     context: ExecutionContext,
     job_profile: JobProfile,
@@ -880,6 +879,7 @@ fn spawn_job(
 ) {
     let run_id = context.run_id;
     let session_id = context.session_id().map(String::from);
+    let reuse_enabled = context.feature_enabled(crate::types::feature_flags::SANDBOX_REUSE);
     let vcpu = job_profile.vcpu;
     let memory_mb = job_profile.memory_mb;
     let profile_name = job_profile.profile_name;
@@ -946,16 +946,19 @@ fn spawn_job(
             }
         };
 
-        // Decide: park sandbox for keep-alive, or stop + destroy.
+        // Decide: park sandbox for reuse, or stop + destroy.
         let parked = if let Some(sandbox) = sandbox {
-            let parkable_session =
-                if exit_code == 0 && !job_cancel.is_cancelled() && mode == RunnerMode::Running {
-                    // Prefer context session_id (from resume_session), fall back to
-                    // guest-reported session ID (first run — CLI generated it).
-                    session_id.as_deref().or(guest_session_id.as_deref())
-                } else {
-                    None
-                };
+            let parkable_session = if reuse_enabled
+                && exit_code == 0
+                && !job_cancel.is_cancelled()
+                && mode == RunnerMode::Running
+            {
+                // Prefer context session_id (from resume_session), fall back to
+                // guest-reported session ID (first run — CLI generated it).
+                session_id.as_deref().or(guest_session_id.as_deref())
+            } else {
+                None
+            };
 
             if let Some(session_id) = parkable_session {
                 let mut pool = idle_pool.lock().await;
@@ -974,7 +977,7 @@ fn spawn_job(
                 };
                 match pool.park(session_id.to_string(), entry) {
                     ParkResult::Parked => {
-                        info!(run_id = %run_id, session_id, "VM parked for keep-alive");
+                        info!(run_id = %run_id, session_id, "VM parked for reuse");
                         drop(pool);
                         park_notify.notify_one();
                         true
@@ -1454,7 +1457,6 @@ mod tests {
         budget.try_reserve(2, 4096);
         budget.try_reserve(2, 4096);
         let pool = IdlePool::new(IdlePoolConfig {
-            enabled: true,
             default_timeout: Duration::from_secs(300),
             max_idle: 0,
         });
@@ -1481,7 +1483,6 @@ mod tests {
         budget.try_reserve(2, 4096);
         budget.try_reserve(2, 4096);
         let mut pool = IdlePool::new(IdlePoolConfig {
-            enabled: true,
             default_timeout: Duration::from_secs(300),
             max_idle: 0,
         });
@@ -1512,7 +1513,6 @@ mod tests {
         budget.try_reserve(2, 4096);
         budget.try_reserve(2, 4096);
         let mut pool = IdlePool::new(IdlePoolConfig {
-            enabled: true,
             default_timeout: Duration::from_secs(300),
             max_idle: 0,
         });
@@ -1539,7 +1539,6 @@ mod tests {
         let budget = ResourceBudget::new(8, 32768, 1.0, 4);
         // budget_running = 0 but pool has 1 entry (inconsistent)
         let mut pool = IdlePool::new(IdlePoolConfig {
-            enabled: true,
             default_timeout: Duration::from_secs(300),
             max_idle: 0,
         });
@@ -1581,14 +1580,12 @@ mod tests {
         budget_vcpu: u32,
         budget_memory_mb: u32,
         max_concurrent: usize,
-        keep_alive: bool,
     ) -> (RunConfig, MockRunEnv) {
         build_mock_run_config(
             profiles,
             budget_vcpu,
             budget_memory_mb,
             max_concurrent,
-            keep_alive,
             MockJobProvider::new,
         )
     }
@@ -1599,7 +1596,6 @@ mod tests {
         budget_vcpu: u32,
         budget_memory_mb: u32,
         max_concurrent: usize,
-        keep_alive: bool,
         poll_delay: Duration,
     ) -> (RunConfig, MockRunEnv) {
         build_mock_run_config(
@@ -1607,7 +1603,6 @@ mod tests {
             budget_vcpu,
             budget_memory_mb,
             max_concurrent,
-            keep_alive,
             |cancel| MockJobProvider::with_poll_delay(cancel, Some(poll_delay)),
         )
     }
@@ -1617,7 +1612,6 @@ mod tests {
         budget_vcpu: u32,
         budget_memory_mb: u32,
         max_concurrent: usize,
-        keep_alive: bool,
         make_provider: impl FnOnce(CancellationToken) -> (Arc<MockJobProvider>, MockProviderHandle),
     ) -> (RunConfig, MockRunEnv) {
         build_mock_run_config_with_runtime(
@@ -1675,7 +1669,6 @@ mod tests {
                 max_concurrent,
             )),
             idle_pool: Arc::new(tokio::sync::Mutex::new(IdlePool::new(IdlePoolConfig {
-                enabled: keep_alive,
                 default_timeout: Duration::from_secs(300),
                 max_idle: 10,
             }))),
@@ -1788,7 +1781,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn main_loop_discover_claim_execute_complete() {
-        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4, false);
+        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
         let run_handle = tokio::spawn(run(config));
 
         let run_id = Uuid::new_v4();
@@ -1825,7 +1818,6 @@ mod tests {
             8,
             32768,
             4,
-            false,
             Duration::from_secs(20), // poll delay: 20s
         );
         let run_handle = tokio::spawn(run(config));
@@ -1876,7 +1868,7 @@ mod tests {
 
     #[tokio::test]
     async fn shutdown_completes_without_deadlock() {
-        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4, false);
+        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
         let run_handle = tokio::spawn(run(config));
 
         // Let the main loop start and enter select!.
@@ -1905,7 +1897,7 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn claim_failure_rolls_back_budget() {
         // Budget for exactly 1 job (2 vcpu, 4096 MB matches the test profile).
-        let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1, false);
+        let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
         let run_handle = tokio::spawn(run(config));
 
         // First job: claim returns None (409 conflict)
@@ -1943,7 +1935,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn shutdown_drains_running_jobs() {
-        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4, false);
+        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
         let run_handle = tokio::spawn(run(config));
 
         let run_id = Uuid::new_v4();
@@ -1965,7 +1957,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn unknown_profile_skipped() {
-        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4, false);
+        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
         let run_handle = tokio::spawn(run(config));
 
         // Push a job with a profile that doesn't exist in the profiles map.
@@ -2014,7 +2006,7 @@ mod tests {
     async fn duplicate_discovery_deduplicated() {
         // Budget for 2 jobs — enough for the duplicate to pass the budget
         // check and reach the cancel_tokens dedup logic.
-        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4, false);
+        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
         let run_handle = tokio::spawn(run(config));
 
         let run_id = Uuid::new_v4();
@@ -2061,7 +2053,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn two_sequential_jobs_complete() {
-        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4, false);
+        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
         let run_handle = tokio::spawn(run(config));
 
         // First job
@@ -2102,7 +2094,7 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn budget_full_skips_then_resumes() {
         // Budget for exactly 1 job (2 vcpu, 4096 MB).
-        let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1, false);
+        let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1);
         let run_handle = tokio::spawn(run(config));
 
         // First job: claims the entire budget.
