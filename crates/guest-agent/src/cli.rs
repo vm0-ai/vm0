@@ -178,6 +178,12 @@ pub async fn execute_cli(
 
     let mut cli_status: Option<std::process::ExitStatus> = None;
 
+    // Drain deadline: after child.wait() fires, allow up to N seconds for
+    // stdout EOF before breaking the loop.  Prevents indefinite hangs when
+    // orphaned child processes hold the stdout fd open.
+    let drain_deadline = tokio::time::sleep(Duration::MAX);
+    tokio::pin!(drain_deadline);
+
     // Stuck-tool watchdog: workaround for Claude Code bug where
     // WebSearch/WebFetch hang indefinitely. Track all in-flight tool calls;
     // if a network tool exceeds STUCK_TOOL_TIMEOUT_SECS without producing
@@ -260,9 +266,21 @@ pub async fn execute_cli(
                     Ok(s) => {
                         log_info!(LOG_TAG, "CLI process exited (status: {s}), draining stdout");
                         cli_status = Some(s);
+                        drain_deadline.as_mut().reset(
+                            tokio::time::Instant::now()
+                                + Duration::from_secs(constants::STDOUT_DRAIN_DEADLINE_SECS),
+                        );
                     }
                     Err(e) => break Err(AgentError::Io(e)),
                 }
+            }
+            () = &mut drain_deadline, if cli_status.is_some() => {
+                log_warn!(
+                    LOG_TAG,
+                    "Stdout drain deadline reached after {}s, possible orphaned child process",
+                    constants::STDOUT_DRAIN_DEADLINE_SECS,
+                );
+                break Ok(());
             }
             _ = stuck_tool_check.tick() => {
                 let timeout_secs = env::stuck_tool_timeout_secs();
@@ -343,7 +361,27 @@ pub async fn execute_cli(
         }
     };
 
-    let stderr_lines = stderr_handle.await.unwrap_or_default();
+    // Apply the same drain deadline to stderr — orphaned child processes
+    // may hold the stderr fd open just like stdout.
+    let stderr_lines = match tokio::time::timeout(
+        Duration::from_secs(constants::STDOUT_DRAIN_DEADLINE_SECS),
+        stderr_handle,
+    )
+    .await
+    {
+        Ok(Ok(lines)) => lines,
+        Ok(Err(e)) => {
+            log_warn!(LOG_TAG, "stderr collector panicked: {e}");
+            Vec::new()
+        }
+        Err(_) => {
+            log_warn!(
+                LOG_TAG,
+                "stderr drain timeout, possible orphaned child process"
+            );
+            Vec::new()
+        }
+    };
 
     // If event loop had an error, propagate it
     event_result?;

@@ -6,7 +6,9 @@
 //! Usage: mock-claude [options] <prompt>
 //!
 //! Special test prefixes:
-//!   @fail:<message> - Output message to stderr and exit with code 1
+//!   @fail:<message>  - Output message to stderr and exit with code 1
+//!   @stuck-tool      - Emit WebFetch tool_use then hang (test stuck-tool watchdog)
+//!   @orphan-pipe     - Emit events, spawn child holding stdout, then exit
 
 use serde_json::{Value, json};
 use std::io::Write;
@@ -308,6 +310,51 @@ fn main() -> ExitCode {
             std::thread::sleep(std::time::Duration::from_secs(3600));
         }
         return ExitCode::from(1);
+    }
+
+    // Special test prefix: @orphan-pipe — emit events, spawn child that holds
+    // stdout open, then exit.  Simulates orphaned child processes that prevent
+    // guest-agent from seeing EOF on the CLI's stdout pipe.
+    if parsed.prompt.starts_with("@orphan-pipe") {
+        if parsed.output_format == "stream-json" {
+            let session_id = generate_session_id();
+
+            // Init event
+            println!(
+                "{}",
+                json!({
+                    "type": "system",
+                    "subtype": "init",
+                    "cwd": "/tmp",
+                    "session_id": session_id,
+                    "tools": ["Bash"],
+                    "model": "mock-claude"
+                })
+            );
+
+            // Result event
+            println!(
+                "{}",
+                json!({
+                    "type": "result",
+                    "subtype": "success",
+                    "session_id": session_id,
+                    "is_error": false,
+                    "duration_ms": 100,
+                    "num_turns": 1,
+                    "result": "Done.",
+                    "total_cost_usd": 0,
+                    "usage": {"input_tokens": 0, "output_tokens": 0}
+                })
+            );
+
+            let _ = std::io::stdout().flush();
+
+            // Spawn a child that inherits stdout and sleeps forever.
+            // This keeps the stdout pipe open after this process exits.
+            let _ = Command::new("sleep").arg("3600").spawn();
+        }
+        return ExitCode::SUCCESS;
     }
 
     let session_id = generate_session_id();

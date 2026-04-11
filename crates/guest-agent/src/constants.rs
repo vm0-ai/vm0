@@ -33,3 +33,8 @@ pub const STUCK_TOOL_TIMEOUT_SECS: u64 = 60;
 
 /// How often (in seconds) to check for stuck tools in the select loop.
 pub const STUCK_TOOL_CHECK_INTERVAL_SECS: u64 = 5;
+
+/// After the CLI process exits, continue reading stdout for this many seconds.
+/// If EOF is not received within this deadline, break the loop to prevent
+/// hanging on orphaned child processes that inherited the stdout fd.
+pub const STDOUT_DRAIN_DEADLINE_SECS: u64 = 5;
