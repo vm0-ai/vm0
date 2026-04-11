@@ -204,6 +204,7 @@ export function ZeroSidebar() {
   const expanded = useGet(sidebarExpanded$);
   const setExpanded = useSet(setSidebarExpanded$);
   const onCollapse = () => {
+    setExpanded(false);
     return toggleOff();
   };
   const rawOnSelect = useSet(handleZeroNavSelect$);
