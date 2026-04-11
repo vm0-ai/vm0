@@ -14,6 +14,9 @@ import {
 import { chatMessagesContract, chatThreadByIdContract } from "@vm0/core";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
+import { agentById } from "../agent.ts";
+import { pinnedAgentIds$ } from "../zero-page/zero-pinned-agents.ts";
+import { writeToClipboard } from "../zero-page/clipboard.ts";
 import {
   createActiveRunMessage,
   unsavedRunsToMessages,
@@ -35,6 +38,7 @@ const L = logger("ChatThread");
 // ---------------------------------------------------------------------------
 
 export interface ChatThreadSignals {
+  // ── Data signals ──────────────────────────────────────────────────────────
   threadData$: Computed<Promise<ChatThread | null>>;
   reloadThread$: Command<void, []>;
   messages$: Computed<Promise<ZeroChatMessage[]>>;
@@ -49,6 +53,15 @@ export interface ChatThreadSignals {
   draft: DraftSignals;
   composerFileInput$: Computed<HTMLElement | null>;
   setComposerFileInput$: Command<void, [HTMLElement | null]>;
+  // ── Agent info (derived from threadData$.agentId) ─────────────────────────
+  agentId$: Computed<Promise<string | null>>;
+  agentDisplayName$: Computed<Promise<string | null>>;
+  agentPinned$: Computed<Promise<boolean | null>>;
+  // ── Per-thread UI state ───────────────────────────────────────────────────
+  timelineExpandedIds$: Computed<Set<string>>;
+  toggleTimelineExpanded$: Command<void, [string]>;
+  copiedMessageId$: Computed<string | null>;
+  copyMessage$: Command<Promise<void>, [string, string, AbortSignal]>;
 }
 
 // ---------------------------------------------------------------------------
@@ -489,6 +502,105 @@ function createMessageCommands(deps: MessageCommandsDeps) {
 }
 
 // ---------------------------------------------------------------------------
+// Sub-factory: agent info
+// ---------------------------------------------------------------------------
+
+function createAgentInfoSignals(
+  threadData$: Computed<Promise<ChatThread | null>>,
+) {
+  const agentId$ = computed(async (get): Promise<string | null> => {
+    const thread = await get(threadData$);
+    return thread?.agentId ?? null;
+  });
+
+  const agentDisplayName$ = computed(async (get): Promise<string | null> => {
+    const agentId = await get(agentId$);
+    if (!agentId) {
+      return null;
+    }
+    const agent = await get(agentById(agentId));
+    return agent?.displayName ?? null;
+  });
+
+  const agentPinned$ = computed(async (get): Promise<boolean | null> => {
+    const agentId = await get(agentId$);
+    if (!agentId) {
+      return null;
+    }
+    const ids = await get(pinnedAgentIds$);
+    return ids.includes(agentId);
+  });
+
+  return { agentId$, agentDisplayName$, agentPinned$ };
+}
+
+// ---------------------------------------------------------------------------
+// Sub-factory: per-thread UI state (timeline expansion, copy)
+// ---------------------------------------------------------------------------
+
+function createThreadUIState() {
+  // Timeline expansion
+  const internalExpandedIds$ = state(new Set<string>());
+
+  const timelineExpandedIds$ = computed((get) => {
+    return get(internalExpandedIds$);
+  });
+
+  const toggleTimelineExpanded$ = command(
+    ({ get, set }, messageId: string) => {
+      const current = get(internalExpandedIds$);
+      const next = new Set(current);
+      if (next.has(messageId)) {
+        next.delete(messageId);
+      } else {
+        next.add(messageId);
+      }
+      set(internalExpandedIds$, next);
+    },
+  );
+
+  // Copy state with 2s auto-clear
+  const internalCopiedId$ = state<string | null>(null);
+  const internalCopiedTimerId$ = state<number | null>(null);
+
+  const copiedMessageId$ = computed((get) => {
+    return get(internalCopiedId$);
+  });
+
+  const copyMessage$ = command(
+    async (
+      { get, set },
+      messageId: string,
+      content: string,
+      signal: AbortSignal,
+    ) => {
+      const ok = await writeToClipboard(content);
+      signal.throwIfAborted();
+      if (!ok) {
+        return;
+      }
+      const existingTimerId = get(internalCopiedTimerId$);
+      if (existingTimerId !== null) {
+        window.clearTimeout(existingTimerId);
+      }
+      set(internalCopiedId$, messageId);
+      const timerId = window.setTimeout(() => {
+        set(internalCopiedId$, null);
+        set(internalCopiedTimerId$, null);
+      }, 2000);
+      set(internalCopiedTimerId$, timerId);
+    },
+  );
+
+  return {
+    timelineExpandedIds$,
+    toggleTimelineExpanded$,
+    copiedMessageId$,
+    copyMessage$,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Factory
 // ---------------------------------------------------------------------------
 
@@ -524,7 +636,7 @@ export const ensureDraft$ = command(({ get, set }, threadId: string) => {
   return draft;
 });
 
-function createChatThreadSignals(
+export function createChatThreadSignals(
   threadId: string,
   draft: DraftSignals,
 ): ChatThreadSignals {
@@ -539,6 +651,14 @@ function createChatThreadSignals(
   const { setScrollContainer$, autoScroll$ } = createScrollSignals();
   const { composerFileInput$, setComposerFileInput$ } =
     createComposerFileInput();
+  const { agentId$, agentDisplayName$, agentPinned$ } =
+    createAgentInfoSignals(threadData$);
+  const {
+    timelineExpandedIds$,
+    toggleTimelineExpanded$,
+    copiedMessageId$,
+    copyMessage$,
+  } = createThreadUIState();
 
   const internalThinkingMessage$ = state(
     THINKING_MESSAGES[Math.floor(Math.random() * THINKING_MESSAGES.length)],
@@ -578,6 +698,13 @@ function createChatThreadSignals(
     draft,
     composerFileInput$,
     setComposerFileInput$,
+    agentId$,
+    agentDisplayName$,
+    agentPinned$,
+    timelineExpandedIds$,
+    toggleTimelineExpanded$,
+    copiedMessageId$,
+    copyMessage$,
   };
 }
 

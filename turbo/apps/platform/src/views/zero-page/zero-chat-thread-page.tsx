@@ -36,13 +36,8 @@ import {
   setLightboxUrl$ as setAttachmentLightboxUrl$,
 } from "../../signals/zero-page/zero-attachment-chips.ts";
 import {
-  currentChatAgentId$,
-  currentChatAgentDisplayName$,
-} from "../../signals/agent-chat.ts";
-import {
   pinnedAgentIds$,
   updatePinnedAgentIds$,
-  currentChatAgentPinned$,
 } from "../../signals/zero-page/zero-pinned-agents.ts";
 
 import type {
@@ -60,29 +55,23 @@ import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
 import { setActiveOrgManageTab$ } from "../../signals/zero-page/settings/org-manage-tabs-state.ts";
-import {
-  timelineExpandedIds$,
-  toggleTimelineExpanded$,
-  copiedMessageIdValue$,
-  copyMessageContent$,
-} from "../../signals/zero-page/zero-session-chat-ui.ts";
 
-function HeaderAgentAvatar() {
-  const currentChatAgentId = useResolved(currentChatAgentId$) ?? null;
+function HeaderAgentAvatar({ thread }: { thread: ChatThreadSignals }) {
+  const agentId = useResolved(thread.agentId$) ?? null;
 
-  if (currentChatAgentId) {
+  if (agentId) {
     return (
       <TooltipProvider delayDuration={200}>
         <Tooltip>
           <TooltipTrigger asChild>
             <Link
               pathname="/agents/:agentId"
-              options={{ pathParams: { agentId: currentChatAgentId } }}
+              options={{ pathParams: { agentId } }}
               className="h-8 w-8 shrink-0 overflow-hidden rounded-xl transition-colors duration-150 hover:bg-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               aria-label="View agent profile"
             >
               <AgentAvatarImg
-                name={currentChatAgentId}
+                name={agentId}
                 alt=""
                 className="h-8 w-8 rounded-full object-cover object-top"
               />
@@ -107,25 +96,25 @@ function HeaderAgentAvatar() {
   );
 }
 
-function PinPillButton() {
+function PinPillButton({ thread }: { thread: ChatThreadSignals }) {
   const pageSignal = useGet(pageSignal$);
   const pinnedIds = useLastResolved(pinnedAgentIds$) ?? [];
-  const pinnedStatus = useLastResolved(currentChatAgentPinned$);
+  const pinnedStatus = useLastResolved(thread.agentPinned$);
   const showPinPill = pinnedStatus === false;
   const [pinLoadable, savePinnedIds] = useLoadableSet(updatePinnedAgentIds$);
   const pinSaving = pinLoadable.state === "loading";
-  const currentChatAgentId = useResolved(currentChatAgentId$) ?? null;
+  const agentId = useResolved(thread.agentId$) ?? null;
 
   if (!showPinPill) {
     return null;
   }
 
   const handlePin = () => {
-    if (!currentChatAgentId) {
+    if (!agentId) {
       return;
     }
     detach(
-      savePinnedIds([...pinnedIds, currentChatAgentId], pageSignal),
+      savePinnedIds([...pinnedIds, agentId], pageSignal),
       Reason.DomCallback,
     );
   };
@@ -152,15 +141,15 @@ function PinPillButton() {
   );
 }
 
-function ChatThreadHeader() {
-  const displayName = useResolved(currentChatAgentDisplayName$);
+function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
+  const displayName = useResolved(thread.agentDisplayName$);
 
   return (
     <header className="hidden sm:flex shrink-0 bg-transparent px-6 py-3 items-center justify-between">
       <div className="flex items-center gap-3">
         <div className="relative shrink-0">
-          <HeaderAgentAvatar />
-          <PinPillButton />
+          <HeaderAgentAvatar thread={thread} />
+          <PinPillButton thread={thread} />
         </div>
         <span className="font-semibold text-foreground">{displayName}</span>
       </div>
@@ -183,7 +172,7 @@ export function ZeroChatThreadPage() {
   return <ZeroChatThreadPageInner thread={thread} />;
 }
 
-function ZeroChatThreadPageInner({ thread }: { thread: ChatThreadSignals }) {
+export function ZeroChatThreadPageInner({ thread }: { thread: ChatThreadSignals }) {
   const messagesLoadable = useLastLoadable(thread.messages$);
   const messages =
     messagesLoadable.state === "hasData" ? messagesLoadable.data : [];
@@ -198,7 +187,7 @@ function ZeroChatThreadPageInner({ thread }: { thread: ChatThreadSignals }) {
 
   return (
     <div className="flex flex-1 flex-col min-h-0 bg-transparent">
-      <ChatThreadHeader />
+      <ChatThreadHeader thread={thread} />
 
       {/* Scrollable area — messages + sticky composer share the same scroll context */}
       <div
@@ -252,7 +241,7 @@ function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
   const messagesLoadable = useLastLoadable(thread.messages$);
   const hasMessages =
     messagesLoadable.state === "hasData" && messagesLoadable.data.length > 0;
-  const displayName = useResolved(currentChatAgentDisplayName$) ?? "Zero";
+  const displayName = useResolved(thread.agentDisplayName$) ?? "Zero";
   const allFinishedLoadable = useLoadable(thread.allFinished$);
   const sending =
     allFinishedLoadable.state === "hasData" ? !allFinishedLoadable.data : true;
@@ -592,10 +581,16 @@ function queueLabel(position: number): string {
   return `In queue, ${position - 1} task${position - 1 === 1 ? "" : "s"} ahead...`;
 }
 
-function CollapsibleTimeline({ message }: { message: AssistantChatMessage }) {
-  const expandedIds = useGet(timelineExpandedIds$);
+function CollapsibleTimeline({
+  message,
+  thread,
+}: {
+  message: AssistantChatMessage;
+  thread: ChatThreadSignals;
+}) {
+  const expandedIds = useGet(thread.timelineExpandedIds$);
   const expanded = expandedIds.has(message.id);
-  const toggleExpanded = useSet(toggleTimelineExpanded$);
+  const toggleExpanded = useSet(thread.toggleTimelineExpanded$);
   const summaries = message.summaries ?? [];
 
   if (summaries.length === 0) {
@@ -735,14 +730,16 @@ function isRunActive(message: AssistantChatMessage): boolean {
 function AssistantMessageActions({
   message,
   content,
+  thread,
 }: {
   message: AssistantChatMessage;
   content: string;
+  thread: ChatThreadSignals;
 }) {
   const pageSignal = useGet(pageSignal$);
-  const copiedId = useGet(copiedMessageIdValue$);
+  const copiedId = useGet(thread.copiedMessageId$);
   const copied = copiedId === message.id;
-  const copyMessage = useSet(copyMessageContent$);
+  const copyMessage = useSet(thread.copyMessage$);
 
   if (!message.legacyRunId) {
     return null;
@@ -873,12 +870,12 @@ function AssistantErrorContent({ error }: { error: string }) {
   );
 }
 
-function AssistantBubbleAvatar() {
-  const currentChatAgentId = useResolved(currentChatAgentId$) ?? "";
+function AssistantBubbleAvatar({ thread }: { thread: ChatThreadSignals }) {
+  const agentId = useResolved(thread.agentId$) ?? "";
   return (
     <div className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 shrink-0 @[900px]:mt-0.5 overflow-hidden rounded-xl">
       <AgentAvatarImg
-        name={currentChatAgentId}
+        name={agentId}
         alt=""
         className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 rounded-full object-cover object-top"
       />
@@ -907,13 +904,13 @@ function StaticAssistantMessage({
         className="group flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300"
       >
         <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
-          <AssistantBubbleAvatar />
+          <AssistantBubbleAvatar thread={thread} />
           <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-sm leading-relaxed min-w-0 break-words">
-            {hasSummaries && <CollapsibleTimeline message={message} />}
+            {hasSummaries && <CollapsibleTimeline message={message} thread={thread} />}
             <AssistantErrorContent error={message.error} />
           </div>
         </div>
-        <AssistantMessageActions message={message} content={content} />
+        <AssistantMessageActions message={message} content={content} thread={thread} />
       </div>
     );
   }
@@ -922,9 +919,9 @@ function StaticAssistantMessage({
     return (
       <div className="group flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300">
         <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
-          <AssistantBubbleAvatar />
+          <AssistantBubbleAvatar thread={thread} />
           <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-sm leading-relaxed min-w-0 break-words">
-            {hasSummaries && <CollapsibleTimeline message={message} />}
+            {hasSummaries && <CollapsibleTimeline message={message} thread={thread} />}
             <Markdown source={content} />
             {message.cancelled && (
               <div className="mt-3 pt-3 border-t flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -934,7 +931,7 @@ function StaticAssistantMessage({
             )}
           </div>
         </div>
-        <AssistantMessageActions message={message} content={content} />
+        <AssistantMessageActions message={message} content={content} thread={thread} />
       </div>
     );
   }
@@ -946,7 +943,7 @@ function StaticAssistantMessage({
       className="flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300"
     >
       <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
-        <AssistantBubbleAvatar />
+        <AssistantBubbleAvatar thread={thread} />
         <div className="zero-chat-bubble-assistant rounded-xl py-4 text-sm leading-relaxed min-w-0 overflow-hidden">
           {showActivityLine ? (
             <MessageRunActivityLine message={message} thread={thread} />
@@ -961,7 +958,7 @@ function StaticAssistantMessage({
           )}
         </div>
       </div>
-      <AssistantMessageActions message={message} content={content} />
+      <AssistantMessageActions message={message} content={content} thread={thread} />
     </div>
   );
 }
