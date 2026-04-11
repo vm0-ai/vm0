@@ -92,13 +92,6 @@ pub async fn run_submit(args: SubmitArgs) -> RunnerResult<ExitCode> {
         )));
     }
 
-    let home = HomePaths::new()?;
-    let group_dir = home.groups_dir().join(&args.group);
-
-    std::fs::create_dir_all(&group_dir).map_err(|e| {
-        RunnerError::Config(format!("create group dir {}: {e}", group_dir.display()))
-    })?;
-
     let feature_flags = if args.feature_flags.is_empty() {
         None
     } else {
@@ -116,6 +109,13 @@ pub async fn run_submit(args: SubmitArgs) -> RunnerResult<ExitCode> {
         }
         Some(map)
     };
+
+    let home = HomePaths::new()?;
+    let group_dir = home.groups_dir().join(&args.group);
+
+    std::fs::create_dir_all(&group_dir).map_err(|e| {
+        RunnerError::Config(format!("create group dir {}: {e}", group_dir.display()))
+    })?;
 
     let job_id = Uuid::new_v4();
     let request = JobRequest {
@@ -327,5 +327,40 @@ mod tests {
         if let Err(e) = &result {
             assert!(!e.to_string().contains("invalid profile name"), "got: {e}");
         }
+    }
+
+    #[tokio::test]
+    async fn rejects_feature_flag_missing_equals() {
+        let args = SubmitArgs {
+            group: "test/group".into(),
+            prompt: "hello".into(),
+            working_dir: "/workspace".into(),
+            cli_agent_type: "claude-code".into(),
+            profile: None,
+            session_id: None,
+            feature_flags: vec!["sandboxReuse".into()],
+            timeout: 1,
+        };
+        let err = run_submit(args).await.unwrap_err();
+        assert!(err.to_string().contains("expected key=value"), "got: {err}");
+    }
+
+    #[tokio::test]
+    async fn rejects_feature_flag_non_boolean() {
+        let args = SubmitArgs {
+            group: "test/group".into(),
+            prompt: "hello".into(),
+            working_dir: "/workspace".into(),
+            cli_agent_type: "claude-code".into(),
+            profile: None,
+            session_id: None,
+            feature_flags: vec!["sandboxReuse=yes".into()],
+            timeout: 1,
+        };
+        let err = run_submit(args).await.unwrap_err();
+        assert!(
+            err.to_string().contains("expected true/false"),
+            "got: {err}"
+        );
     }
 }

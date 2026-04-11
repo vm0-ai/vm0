@@ -2164,6 +2164,34 @@ mod tests {
         shutdown(&env, run_handle).await;
     }
 
+    #[tokio::test(start_paused = true)]
+    async fn sandbox_reuse_flag_on_without_session_does_not_park() {
+        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
+        let run_handle = tokio::spawn(run(config));
+
+        let run_id = Uuid::new_v4();
+        // Flag ON but no session — parking requires a session ID.
+        let ctx = context_with_reuse(run_id, true, None);
+        push_job(&env, run_id, "vm0/default", Some(ctx));
+
+        let c = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await;
+        assert!(c.is_some(), "job should complete");
+        assert_eq!(c.unwrap().exit_code, 0);
+
+        let pool = env.idle_pool.lock().await;
+        assert_eq!(
+            pool.len(),
+            0,
+            "VM should NOT be parked without a session ID"
+        );
+        drop(pool);
+
+        shutdown(&env, run_handle).await;
+    }
+
     // -----------------------------------------------------------------------
     // Test 11: Budget full → job skipped (not claimed) → budget freed → next job succeeds
     //
