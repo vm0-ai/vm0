@@ -2116,4 +2116,422 @@ mod tests {
 
         shutdown(&env, run_handle).await;
     }
+
+    // =======================================================================
+    // Subsystem integration tests — Phase 3
+    //
+    // Tests 10-17 cover job lifecycle (park/destroy), idle pool integration
+    // (session affinity, profile mismatch, expiry), budget exhaustion
+    // (eviction), and shutdown drain.
+    // =======================================================================
+
+    /// ExecutionContext with a resume_session for idle pool reuse testing.
+    fn context_with_session(run_id: Uuid, session_id: &str) -> crate::types::ExecutionContext {
+        let mut ctx = minimal_context(run_id);
+        ctx.resume_session = Some(crate::types::ResumeSession {
+            session_id: session_id.into(),
+            session_history: String::new(),
+        });
+        ctx
+    }
+
+    /// Two profiles with different resource requirements for mismatch tests.
+    fn two_profiles() -> BTreeMap<String, config::ProfileConfig> {
+        let mut m = BTreeMap::new();
+        m.insert(
+            "vm0/default".to_string(),
+            config::ProfileConfig {
+                image_hash: "hash".into(),
+                vcpu: 2,
+                memory_mb: 4096,
+                disk_mb: 10240,
+            },
+        );
+        m.insert(
+            "vm0/large".to_string(),
+            config::ProfileConfig {
+                image_hash: "hash2".into(),
+                vcpu: 4,
+                memory_mb: 8192,
+                disk_mb: 20480,
+            },
+        );
+        m
+    }
+
+    /// Build an idle entry with all fields configurable.
+    fn make_test_idle_entry(
+        session_id: &str,
+        profile_name: &str,
+        vcpu: u32,
+        memory_mb: u32,
+        parked_at: std::time::Instant,
+        idle_timeout: Duration,
+    ) -> IdleEntry {
+        IdleEntry {
+            sandbox: Box::new(MockSandbox::new("idle-test")),
+            factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
+            session_id: session_id.into(),
+            profile_name: profile_name.into(),
+            vcpu,
+            memory_mb,
+            source_ip: "10.0.0.1".into(),
+            parked_at,
+            idle_timeout,
+            storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
+        }
+    }
+
+    /// Pre-populate idle pool with an entry and reserve its budget.
+    async fn seed_idle_pool(
+        pool: &SharedIdlePool,
+        budget: &ResourceBudget,
+        session_id: &str,
+        profile_name: &str,
+        vcpu: u32,
+        memory_mb: u32,
+    ) {
+        assert!(budget.try_reserve(vcpu, memory_mb));
+        let entry = make_test_idle_entry(
+            session_id,
+            profile_name,
+            vcpu,
+            memory_mb,
+            std::time::Instant::now(),
+            Duration::from_secs(300),
+        );
+        let mut guard = pool.lock().await;
+        let result = guard.park(session_id.into(), entry);
+        assert!(matches!(result, ParkResult::Parked));
+    }
+
+    /// Pre-populate idle pool with an expired entry (parked 400s ago, timeout 300s).
+    async fn seed_idle_pool_expired(
+        pool: &SharedIdlePool,
+        budget: &ResourceBudget,
+        session_id: &str,
+        profile_name: &str,
+        vcpu: u32,
+        memory_mb: u32,
+    ) {
+        assert!(budget.try_reserve(vcpu, memory_mb));
+        let entry = make_test_idle_entry(
+            session_id,
+            profile_name,
+            vcpu,
+            memory_mb,
+            std::time::Instant::now() - Duration::from_secs(400),
+            Duration::from_secs(300),
+        );
+        let mut guard = pool.lock().await;
+        let result = guard.park(session_id.into(), entry);
+        assert!(matches!(result, ParkResult::Parked));
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 10: Successful job parks VM in idle pool
+    // -----------------------------------------------------------------------
+
+    #[tokio::test(start_paused = true)]
+    async fn successful_job_parks_in_idle_pool() {
+        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4, true);
+        let idle_pool = Arc::clone(&config.idle_pool);
+        let budget = Arc::clone(&config.budget);
+        let run_handle = tokio::spawn(run(config));
+
+        let run_id = Uuid::new_v4();
+        push_job(
+            &env,
+            run_id,
+            "vm0/default",
+            Some(context_with_session(run_id, "sess-park")),
+        );
+
+        let completion = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await;
+        assert!(completion.is_some(), "job should complete");
+        assert_eq!(completion.unwrap().exit_code, 0);
+
+        // Give park notification time to propagate.
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // VM should be parked in idle pool, holding budget.
+        {
+            let pool = idle_pool.lock().await;
+            assert_eq!(pool.len(), 1, "VM should be parked");
+            assert!(
+                pool.held_sessions().contains(&"sess-park".to_string()),
+                "parked session should be sess-park"
+            );
+        }
+        let (_, _, count) = budget.allocated();
+        assert_eq!(count, 1, "parked VM should hold budget");
+
+        shutdown(&env, run_handle).await;
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 11: Job without session destroys sandbox (no parking)
+    // -----------------------------------------------------------------------
+
+    #[tokio::test(start_paused = true)]
+    async fn job_without_session_destroys_sandbox() {
+        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4, true);
+        let idle_pool = Arc::clone(&config.idle_pool);
+        let budget = Arc::clone(&config.budget);
+        let run_handle = tokio::spawn(run(config));
+
+        let run_id = Uuid::new_v4();
+        // No resume_session → no session_id → no parking.
+        push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
+
+        let completion = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await;
+        assert!(completion.is_some(), "job should complete");
+        assert_eq!(completion.unwrap().exit_code, 0);
+
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // No parking — pool empty, budget fully released.
+        assert_eq!(idle_pool.lock().await.len(), 0, "pool should be empty");
+        let (_, _, count) = budget.allocated();
+        assert_eq!(count, 0, "budget should be fully released");
+
+        shutdown(&env, run_handle).await;
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 12: Park notification triggers immediate heartbeat
+    // -----------------------------------------------------------------------
+
+    #[tokio::test(start_paused = true)]
+    async fn park_triggers_immediate_heartbeat() {
+        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4, true);
+        let run_handle = tokio::spawn(run(config));
+
+        // Wait for the first heartbeat tick to fire (initial interval fires
+        // immediately, but give the loop time to process it).
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        let before = env.handle.heartbeat_count();
+
+        let run_id = Uuid::new_v4();
+        push_job(
+            &env,
+            run_id,
+            "vm0/default",
+            Some(context_with_session(run_id, "sess-hb")),
+        );
+
+        let completion = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await;
+        assert!(completion.is_some(), "job should complete");
+
+        // Give park notification time to trigger heartbeat.
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        let after = env.handle.heartbeat_count();
+        assert!(
+            after > before,
+            "park should trigger at least one heartbeat (before={before}, after={after})"
+        );
+
+        shutdown(&env, run_handle).await;
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 13: Session affinity reuses idle VM
+    // -----------------------------------------------------------------------
+
+    #[tokio::test(start_paused = true)]
+    async fn session_affinity_reuses_idle_vm() {
+        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4, true);
+        let idle_pool = Arc::clone(&config.idle_pool);
+        let budget = Arc::clone(&config.budget);
+
+        // Pre-seed: park a VM for session "sess-reuse" with matching profile.
+        seed_idle_pool(&idle_pool, &budget, "sess-reuse", "vm0/default", 2, 4096).await;
+        assert_eq!(budget.allocated().2, 1, "seeded entry holds budget");
+
+        let run_handle = tokio::spawn(run(config));
+
+        // Push job for same session — should reuse the idle VM.
+        let run_id = Uuid::new_v4();
+        push_job(
+            &env,
+            run_id,
+            "vm0/default",
+            Some(context_with_session(run_id, "sess-reuse")),
+        );
+
+        let completion = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await;
+        assert!(completion.is_some(), "job should complete");
+        assert_eq!(completion.unwrap().exit_code, 0);
+
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // After reuse + re-park: pool should still have 1 entry, budget count=1.
+        {
+            let pool = idle_pool.lock().await;
+            assert_eq!(pool.len(), 1, "VM should be re-parked after reuse");
+        }
+        assert_eq!(
+            budget.allocated().2,
+            1,
+            "budget should remain at 1 (reused, not additive)"
+        );
+
+        shutdown(&env, run_handle).await;
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 14: Profile mismatch destroys stale and creates new
+    // -----------------------------------------------------------------------
+
+    #[tokio::test(start_paused = true)]
+    async fn profile_mismatch_destroys_stale_vm() {
+        let (config, env) = mock_run_config(two_profiles(), 16, 32768, 4, true);
+        let idle_pool = Arc::clone(&config.idle_pool);
+        let budget = Arc::clone(&config.budget);
+
+        // Pre-seed: park a "vm0/default" (2vcpu) VM for session "sess-mm".
+        seed_idle_pool(&idle_pool, &budget, "sess-mm", "vm0/default", 2, 4096).await;
+
+        let run_handle = tokio::spawn(run(config));
+
+        // Push job for "vm0/large" (4vcpu) with same session — profile mismatch.
+        let run_id = Uuid::new_v4();
+        push_job(
+            &env,
+            run_id,
+            "vm0/large",
+            Some(context_with_session(run_id, "sess-mm")),
+        );
+
+        let completion = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await;
+        assert!(completion.is_some(), "job should complete");
+        assert_eq!(completion.unwrap().exit_code, 0);
+
+        // Allow destroy_tasks to complete and budget to be released.
+        tokio::time::sleep(Duration::from_millis(200)).await;
+
+        // Stale VM destroyed (budget released), new VM parked (budget held).
+        // Net: pool has 1 entry with the new profile.
+        {
+            let pool = idle_pool.lock().await;
+            assert_eq!(pool.len(), 1, "new VM should be parked");
+        }
+
+        shutdown(&env, run_handle).await;
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 15: Cleanup tick evicts expired idle entries
+    // -----------------------------------------------------------------------
+
+    #[tokio::test(start_paused = true)]
+    async fn cleanup_tick_evicts_expired_entries() {
+        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4, true);
+        let idle_pool = Arc::clone(&config.idle_pool);
+        let budget = Arc::clone(&config.budget);
+
+        // Pre-seed: park an entry that is already expired (400s old, 300s timeout).
+        seed_idle_pool_expired(&idle_pool, &budget, "sess-exp", "vm0/default", 2, 4096).await;
+        assert_eq!(
+            idle_pool.lock().await.len(),
+            1,
+            "should have 1 seeded entry"
+        );
+        assert_eq!(budget.allocated().2, 1, "seeded entry holds budget");
+
+        let run_handle = tokio::spawn(run(config));
+
+        // Advance past the first cleanup tick (every 10s).
+        // The tick interval fires once immediately (at t=0), but the entry
+        // was just inserted so it may not be expired yet from Instant::now()'s
+        // perspective. Advance 11s to ensure at least one full tick fires.
+        tokio::time::sleep(Duration::from_secs(11)).await;
+
+        // Expired entry should be evicted and destroyed, budget released.
+        let pool_len = idle_pool.lock().await.len();
+        assert_eq!(pool_len, 0, "expired entry should be evicted");
+        let (_, _, count) = budget.allocated();
+        assert_eq!(count, 0, "budget should be released after eviction");
+
+        shutdown(&env, run_handle).await;
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 16: Budget exhausted → evict idle VM → admit new job
+    // -----------------------------------------------------------------------
+
+    #[tokio::test(start_paused = true)]
+    async fn budget_exhausted_evicts_idle_and_admits_job() {
+        // Budget: exactly 1 default job (2 vcpu, 4096 MB).
+        let (config, env) = mock_run_config(test_profiles(), 2, 4096, 2, true);
+        let idle_pool = Arc::clone(&config.idle_pool);
+        let budget = Arc::clone(&config.budget);
+
+        // Pre-seed: idle VM fills the entire budget.
+        seed_idle_pool(&idle_pool, &budget, "sess-evict", "vm0/default", 2, 4096).await;
+        assert!(
+            !budget.can_afford(2, 4096),
+            "budget should be exhausted after seeding"
+        );
+
+        let run_handle = tokio::spawn(run(config));
+
+        // Push new job — budget is full, but idle pool has an entry to evict.
+        let run_id = Uuid::new_v4();
+        push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
+
+        let completion = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await;
+        assert!(
+            completion.is_some(),
+            "job should complete after idle VM eviction frees budget"
+        );
+        assert_eq!(completion.unwrap().exit_code, 0);
+
+        shutdown(&env, run_handle).await;
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 17: Shutdown drains idle pool and releases budget
+    // -----------------------------------------------------------------------
+
+    #[tokio::test(start_paused = true)]
+    async fn shutdown_drains_idle_pool() {
+        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4, true);
+        let idle_pool = Arc::clone(&config.idle_pool);
+        let budget = Arc::clone(&config.budget);
+
+        // Pre-seed: two idle entries holding budget.
+        seed_idle_pool(&idle_pool, &budget, "sess-drain-1", "vm0/default", 2, 4096).await;
+        seed_idle_pool(&idle_pool, &budget, "sess-drain-2", "vm0/default", 2, 4096).await;
+        assert_eq!(idle_pool.lock().await.len(), 2);
+        assert_eq!(budget.allocated().2, 2);
+
+        let run_handle = tokio::spawn(run(config));
+
+        // Immediately shutdown — drain should destroy all idle entries.
+        shutdown(&env, run_handle).await;
+
+        // After shutdown: pool empty, budget fully released.
+        assert_eq!(idle_pool.lock().await.len(), 0, "pool should be drained");
+        let (_, _, count) = budget.allocated();
+        assert_eq!(count, 0, "all budget should be released after drain");
+    }
 }
