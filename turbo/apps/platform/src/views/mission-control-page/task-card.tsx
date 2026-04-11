@@ -11,7 +11,7 @@ import {
   IconClockExclamation,
   IconBan,
 } from "@tabler/icons-react";
-import { Card } from "@vm0/ui";
+import { Card, Shortcut } from "@vm0/ui";
 import type { TaskItem, TaskType, RunStatus } from "@vm0/core";
 import type { TaskSignals } from "../../signals/mission-control-page/mission-control-tasks.ts";
 import { StatusBadge } from "../zero-page/components/log-views/status-badge.tsx";
@@ -102,62 +102,77 @@ export function TaskCard({
   const config = getTaskTypeConfig(task.type);
   const TypeIcon = config.icon;
 
+  const focusInput = useSet(taskSignals.focusInput$);
+
   return (
-    <Card
-      ref={(el) => {
-        if (isSelected && el) {
-          el.scrollIntoView({ block: "nearest" });
-        }
-      }}
-      role="button"
-      tabIndex={0}
-      onClick={onClick}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
+    <Shortcut
+      binding={{
+        enter: () => {
+          if (isOpen) {
+            focusInput();
+          }
+        },
+        " ": () => {
           onClick();
-        }
+        },
       }}
-      className={`p-4 cursor-pointer transition-colors ${
-        isOpen
-          ? "ring-2 ring-primary bg-accent"
-          : isSelected
-            ? "ring-1 ring-primary/50 bg-accent/50"
-            : "hover:bg-accent/50"
-      }`}
     >
-      <div className="flex items-start gap-3">
-        <div className="flex flex-col items-center shrink-0 gap-1">
-          <AvatarFromUrl
-            avatarUrl={task.agent.avatarUrl}
-            alt={task.agent.displayName ?? task.agent.name}
-            className="h-8 w-8 rounded-full object-cover object-top"
-          />
-          <span className="text-[10px] text-muted-foreground truncate max-w-[4rem] leading-tight">
-            {task.agent.displayName ?? task.agent.name}
-          </span>
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <TypeIcon size={14} stroke={1.5} className={config.iconClassName} />
-            <span className="text-sm font-medium truncate">
-              {task.title ?? task.agent.displayName ?? task.agent.name}
+      <Card
+        ref={(el) => {
+          if (isSelected && el) {
+            el.scrollIntoView({ block: "nearest" });
+          }
+        }}
+        role="button"
+        tabIndex={0}
+        onClick={onClick}
+        className={`p-4 cursor-pointer transition-colors ${
+          isOpen ? "bg-accent" : ""
+        } ${isSelected ? "ring-2 ring-primary" : ""} ${
+          !isOpen ? "hover:bg-accent/50" : ""
+        }`}
+      >
+        <div className="flex items-start gap-3">
+          <div className="flex flex-col items-center shrink-0 gap-1">
+            <AvatarFromUrl
+              avatarUrl={task.agent.avatarUrl}
+              alt={task.agent.displayName ?? task.agent.name}
+              className="h-8 w-8 rounded-full object-cover object-top"
+            />
+            <span className="text-[10px] text-muted-foreground truncate max-w-[4rem] leading-tight">
+              {task.agent.displayName ?? task.agent.name}
             </span>
-            <div className="ml-auto flex items-center gap-2 shrink-0">
-              <span className="text-xs text-muted-foreground">
-                last activity {formatRelativeTime(task.updatedAt)}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <TypeIcon
+                size={14}
+                stroke={1.5}
+                className={config.iconClassName}
+              />
+              <span className="text-sm font-medium truncate">
+                {task.title ?? task.agent.displayName ?? task.agent.name}
               </span>
-              {task.status && <StatusBadge status={task.status} zeroStyle />}
+              {task.status && (
+                <div className="ml-auto shrink-0">
+                  <StatusBadge status={task.status} zeroStyle />
+                </div>
+              )}
+            </div>
+            {task.summary && (
+              <p className="text-xs text-muted-foreground mt-1 line-clamp-3">
+                {task.summary}
+              </p>
+            )}
+            <div className="flex justify-end mt-1">
+              <span className="text-xs text-muted-foreground">
+                {formatRelativeTime(task.updatedAt)}
+              </span>
             </div>
           </div>
-          {task.summary && (
-            <p className="text-xs text-muted-foreground mt-1 truncate">
-              {task.summary}
-            </p>
-          )}
         </div>
-      </div>
-    </Card>
+      </Card>
+    </Shortcut>
   );
 }
 

@@ -1,5 +1,5 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
-import { setLoop } from "../utils.ts";
+import { onRef, setLoop } from "../utils.ts";
 import { logger } from "../log.ts";
 import {
   createDraftSignals,
@@ -62,6 +62,9 @@ export interface ChatThreadSignals {
   toggleTimelineExpanded$: Command<void, [string]>;
   copiedMessageId$: Computed<string | null>;
   copyMessage$: Command<Promise<void>, [string, string, AbortSignal]>;
+  // ── Focus ─────────────────────────────────────────────────────────────────
+  setInputRef$: Command<(() => void) | undefined, [HTMLElement | null]>;
+  focusInput$: Command<void, []>;
 }
 
 // ---------------------------------------------------------------------------
@@ -671,6 +674,19 @@ export function createChatThreadSignals(
     );
   });
 
+  const internalInputRef$ = state<HTMLElement | null>(null);
+  const setInputRef$ = onRef(
+    command(({ set }, el: HTMLElement, signal: AbortSignal) => {
+      signal.addEventListener("abort", () => {
+        set(internalInputRef$, null);
+      });
+      set(internalInputRef$, el);
+    }),
+  );
+  const focusInput$ = command(({ get }) => {
+    get(internalInputRef$)?.focus();
+  });
+
   const { sendMessage$, loadMessages$, cancelRun$ } = createMessageCommands({
     threadId,
     threadData$,
@@ -703,6 +719,8 @@ export function createChatThreadSignals(
     toggleTimelineExpanded$,
     copiedMessageId$,
     copyMessage$,
+    setInputRef$,
+    focusInput$,
   };
 }
 

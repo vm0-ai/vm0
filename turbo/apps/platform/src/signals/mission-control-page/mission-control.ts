@@ -1,7 +1,7 @@
 import { command, computed, state } from "ccstate";
-import { onDomEventFn } from "../utils.ts";
 import { toggleTaskList$ } from "./mission-control-panels.ts";
 import { taskSignals$, setupTasksLoop$ } from "./mission-control-tasks.ts";
+import { setupGlobalShortcut } from "../../lib/setup-global-shortcut.ts";
 
 // ---------------------------------------------------------------------------
 // Selection — id-based
@@ -53,20 +53,26 @@ const selectNextTask$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 });
 
-const openSelectedTask$ = command(async ({ get, set }, signal: AbortSignal) => {
-  const tasks = await get(taskSignals$);
-  signal.throwIfAborted();
+const toggleSelectedTask$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const tasks = await get(taskSignals$);
+    signal.throwIfAborted();
 
-  const selectedId = get(internalSelectedTaskId$);
-  const ts = tasks.find((t) => {
-    return t.task.id === selectedId;
-  });
-  if (!ts) {
-    return;
-  }
+    const selectedId = get(internalSelectedTaskId$);
+    const ts = tasks.find((t) => {
+      return t.task.id === selectedId;
+    });
+    if (!ts) {
+      return;
+    }
 
-  await set(ts.openTask$, signal);
-});
+    if (get(ts.open$)) {
+      set(ts.closeTask$);
+    } else {
+      await set(ts.openTask$, signal);
+    }
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Keyboard shortcuts
@@ -74,39 +80,22 @@ const openSelectedTask$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 export const setupMissionControlKeyboard$ = command(
   ({ set }, signal: AbortSignal) => {
-    document.addEventListener(
-      "keydown",
-      onDomEventFn(async (e: KeyboardEvent) => {
-        const target = e.target;
-        if (!(target instanceof HTMLElement)) {
-          return;
-        }
-        if (
-          target.tagName === "INPUT" ||
-          target.tagName === "TEXTAREA" ||
-          target.isContentEditable
-        ) {
-          return;
-        }
-
-        if ((e.metaKey || e.ctrlKey) && e.key === "b") {
-          e.preventDefault();
-          set(toggleTaskList$);
-          return;
-        }
-
-        if (e.key === "k") {
-          e.preventDefault();
+    setupGlobalShortcut(
+      {
+        k: async () => {
           await set(selectPrevTask$, signal);
-        } else if (e.key === "j") {
-          e.preventDefault();
+        },
+        j: async () => {
           await set(selectNextTask$, signal);
-        } else if (e.key === "Enter") {
-          e.preventDefault();
-          await set(openSelectedTask$, signal);
-        }
-      }),
-      { signal },
+        },
+        " ": async () => {
+          await set(toggleSelectedTask$, signal);
+        },
+        "mod+b": () => {
+          set(toggleTaskList$);
+        },
+      },
+      signal,
     );
   },
 );

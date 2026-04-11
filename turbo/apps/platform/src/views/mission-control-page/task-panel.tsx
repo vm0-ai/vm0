@@ -5,6 +5,7 @@ import {
   IconArrowsMinimize,
 } from "@tabler/icons-react";
 import { Group, Panel, Separator } from "react-resizable-panels";
+import { processShortcut } from "@vm0/ui";
 import {
   visibleTasks$,
   type TaskSignals,
@@ -52,7 +53,19 @@ function TaskPanelCard({ taskSignals }: { taskSignals: TaskSignals }) {
   const isMaximized = maximizedId === taskId;
 
   return (
-    <div className="flex flex-col h-full min-h-0">
+    <div
+      className="flex flex-col h-full min-h-0"
+      onKeyDown={(e) => {
+        processShortcut(
+          {
+            "mod+shift+enter": () => {
+              toggleMaximize(taskId);
+            },
+          },
+          e,
+        );
+      }}
+    >
       <div className="shrink-0 flex items-center justify-between gap-2 px-4 py-2 border-b bg-muted/30">
         <TaskPanelTitle taskSignals={taskSignals} />
         <div className="flex items-center gap-0.5 shrink-0">
@@ -124,7 +137,9 @@ function TaskPanelContent({ taskSignals }: { taskSignals: TaskSignals }) {
 function TaskPanelEntryContent({ entry }: { entry: TaskPanelEntry }) {
   switch (entry.kind) {
     case "chat": {
-      return <ZeroChatThreadPageInner thread={entry.signals} />;
+      return (
+        <ZeroChatThreadPageInner thread={entry.signals} autoFocus={false} />
+      );
     }
     case "activity": {
       return <ActivityPanelContent signals={entry.signals} />;

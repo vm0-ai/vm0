@@ -32,6 +32,7 @@ export interface TaskSignals {
   panelEntry$: Computed<TaskPanelEntry | null>;
   openTask$: Command<Promise<void>, [AbortSignal]>;
   closeTask$: Command<void, []>;
+  focusInput$: Command<void, []>;
 }
 
 // ---------------------------------------------------------------------------
@@ -84,6 +85,13 @@ function createTaskSignals(initialTask: TaskItem): TaskSignals {
     },
   );
 
+  const focusInput$ = command(({ get, set }) => {
+    const entry = get(internalPanelEntry$);
+    if (entry) {
+      set(entry.signals.focusInput$);
+    }
+  });
+
   return {
     get task() {
       return taskRef.value;
@@ -95,6 +103,7 @@ function createTaskSignals(initialTask: TaskItem): TaskSignals {
     panelEntry$,
     openTask$,
     closeTask$,
+    focusInput$,
   };
 }
 

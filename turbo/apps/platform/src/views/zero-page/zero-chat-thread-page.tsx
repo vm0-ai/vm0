@@ -173,8 +173,10 @@ export function ZeroChatThreadPage() {
 
 export function ZeroChatThreadPageInner({
   thread,
+  autoFocus = true,
 }: {
   thread: ChatThreadSignals;
+  autoFocus?: boolean;
 }) {
   const messagesLoadable = useLastLoadable(thread.messages$);
   const messages =
@@ -230,7 +232,7 @@ export function ZeroChatThreadPageInner({
         </main>
 
         {/* Composer — sticky inside the scroll container so it aligns with messages */}
-        <ChatThreadComposer thread={thread} />
+        <ChatThreadComposer thread={thread} autoFocus={autoFocus} />
       </div>
     </div>
   );
@@ -240,7 +242,13 @@ export function ZeroChatThreadPageInner({
 // Composer wrapper — reads chat signals from thread prop
 // ---------------------------------------------------------------------------
 
-function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
+function ChatThreadComposer({
+  thread,
+  autoFocus: autoFocusProp = true,
+}: {
+  thread: ChatThreadSignals;
+  autoFocus?: boolean;
+}) {
   const messagesLoadable = useLastLoadable(thread.messages$);
   const hasMessages =
     messagesLoadable.state === "hasData" && messagesLoadable.data.length > 0;
@@ -252,6 +260,7 @@ function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
   const setInput = useSet(thread.draft.setInput$);
   const send = useSet(thread.sendMessage$);
   const cancelRun = useSet(thread.cancelRun$);
+  const setInputRef = useSet(thread.setInputRef$);
   const pageSignal = useGet(pageSignal$);
   const attachments = useGet(thread.draft.attachments$);
 
@@ -280,11 +289,14 @@ function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
           }}
           displayName={displayName}
           autoFocus={
-            !hasMessages && !window.matchMedia("(pointer: coarse)").matches
+            autoFocusProp &&
+            !hasMessages &&
+            !window.matchMedia("(pointer: coarse)").matches
           }
           draft={thread.draft}
           composerFileInput$={thread.composerFileInput$}
           setComposerFileInput$={thread.setComposerFileInput$}
+          setInputRef={setInputRef}
         />
       </div>
     </footer>

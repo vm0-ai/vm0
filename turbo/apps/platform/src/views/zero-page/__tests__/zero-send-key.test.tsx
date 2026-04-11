@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, vi } from "vitest";
-// eslint-disable-next-line ccstate/prefer-user-event -- fireEvent needed for compositionStart/End which have no userEvent equivalent; confirmed by ethan@vm0.ai
+// eslint-disable-next-line ccstate/prefer-user-event -- fireEvent needed for simulating IME keydown with isComposing; confirmed by ethan@vm0.ai
 import { screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
@@ -104,7 +104,8 @@ describe("send-key behavior — cmd-enter mode", () => {
     const textarea = await getTextarea();
     await fill(textarea, "Hello");
 
-    await user.keyboard("{Meta>}{Enter}{/Meta}");
+    // In test env (Linux), mod maps to Ctrl, not Meta
+    await user.keyboard("{Control>}{Enter}{/Control}");
 
     await waitFor(() => {
       expect(api.wasMessageSent()).toBeTruthy();
@@ -126,21 +127,17 @@ describe("send-key behavior — cmd-enter mode", () => {
 
 describe("send-key behavior — IME composition", () => {
   it("should not send during IME composition even when Enter is pressed", async () => {
-    const user = userEvent.setup();
     const api = await renderChatPage("enter");
 
     const textarea = await getTextarea();
     await fill(textarea, "Hello");
 
-    // Start IME composition
-    fireEvent.compositionStart(textarea);
-
-    await user.keyboard("{Enter}");
+    // Simulate an Enter keydown during IME composition (keyCode 229).
+    // jsdom does not link compositionStart to KeyboardEvent.isComposing,
+    // so we fire a raw keydown with the IME keyCode directly.
+    fireEvent.keyDown(textarea, { key: "Enter", keyCode: 229 });
 
     expect(api.wasMessageSent()).toBeFalsy();
-
-    // End IME composition
-    fireEvent.compositionEnd(textarea);
   });
 });
 
@@ -190,7 +187,7 @@ describe("send-key behavior — mobile (pointer: coarse)", () => {
     const textarea = await getTextarea();
     await fill(textarea, "Hello");
 
-    await user.keyboard("{Meta>}{Enter}{/Meta}");
+    await user.keyboard("{Control>}{Enter}{/Control}");
 
     expect(api.wasMessageSent()).toBeFalsy();
   });

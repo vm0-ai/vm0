@@ -18,3 +18,14 @@ export * from "./components/ui/tooltip";
 
 // Utilities
 export { cn } from "./lib/utils";
+
+// Keyboard shortcuts
+export {
+  matchShortcut,
+  processShortcut,
+  getShortcutLabel,
+  isEditableTarget,
+  type KeyboardEventLike,
+} from "./lib/keyboard-shortcuts";
+export { useCompositionState } from "./lib/use-composition-state";
+export { Shortcut } from "./lib/keyboard-shortcut";

@@ -13,6 +13,7 @@ export interface ActivitySignals {
   stepSearch$: Computed<string>;
   setStepSearch$: Command<void, [string]>;
   startPolling$: Command<Promise<void>, [AbortSignal]>;
+  focusInput$: Command<void, []>;
 }
 
 // ---------------------------------------------------------------------------
@@ -59,5 +60,14 @@ export function createActivitySignals(runId: string): ActivitySignals {
     );
   });
 
-  return { detail$, events$, stepSearch$, setStepSearch$, startPolling$ };
+  const focusInput$ = command(() => {});
+
+  return {
+    detail$,
+    events$,
+    stepSearch$,
+    setStepSearch$,
+    startPolling$,
+    focusInput$,
+  };
 }

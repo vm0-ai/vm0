@@ -1,5 +1,6 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
+import type React from "react";
 import type { ChangeEvent, ClipboardEvent, DragEvent } from "react";
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import { ensurePushSubscription } from "../../lib/push-notifications.ts";
@@ -30,8 +31,10 @@ import {
   TooltipProvider,
   TooltipTrigger,
   cn,
+  processShortcut,
 } from "@vm0/ui";
 import { detach, Reason } from "../../signals/utils.ts";
+import { sendMode$ } from "../../signals/send-mode.ts";
 import type { DraftSignals } from "../../signals/chat-page/create-chat-thread.ts";
 import type { Command, Computed } from "ccstate";
 import {
@@ -45,7 +48,6 @@ import {
   setComposerFileInput$ as singletonSetComposerFileInput$,
 } from "../../signals/chat-page/chat-message.ts";
 import { AttachmentChips } from "./zero-attachment-chips.tsx";
-import { useSendKeyHandler } from "./zero-send-key.ts";
 import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
@@ -102,6 +104,8 @@ interface ZeroChatComposerProps {
   composerFileInput$?: Computed<HTMLElement | null>;
   /** Set the composer file input element. When omitted, falls back to singleton. */
   setComposerFileInput$?: Command<void, [HTMLElement | null]>;
+  /** Register the textarea element for external focus control. */
+  setInputRef?: (el: HTMLElement | null) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -484,6 +488,7 @@ export function ZeroChatComposer({
   draft,
   composerFileInput$: composerFileInputProp$,
   setComposerFileInput$: setComposerFileInputProp$,
+  setInputRef,
 }: ZeroChatComposerProps) {
   const showAddDialog = useGet(showAddDialog$);
   const setShowAddDialog = useSet(setShowAddDialog$);
@@ -633,11 +638,27 @@ export function ZeroChatComposer({
     onSend(input.trim());
   };
 
-  const {
-    onKeyDown: handleKeyDown,
-    onCompositionStart,
-    onCompositionEnd,
-  } = useSendKeyHandler(handleSend);
+  const sendModeLoadable = useLastLoadable(sendMode$);
+  const sendMode =
+    sendModeLoadable.state === "hasData" ? sendModeLoadable.data : "enter";
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (window.matchMedia("(pointer: coarse)").matches) {
+      return;
+    }
+    const send = () => {
+      handleSend();
+    };
+    processShortcut(
+      {
+        ...(sendMode === "enter" ? { enter: send } : { "mod+enter": send }),
+        escape: () => {
+          (e.target as HTMLElement).blur();
+        },
+      },
+      e,
+    );
+  };
 
   const handleFileSelect = () => {
     fileInputEl?.click();
@@ -689,6 +710,7 @@ export function ZeroChatComposer({
                 if (el && autoFocus) {
                   el.focus();
                 }
+                setInputRef?.(el);
               }}
               className="w-full resize-none bg-transparent px-5 pt-4 pb-2 text-sm text-foreground placeholder:text-muted-foreground border-0 min-h-[88px] focus:outline-none focus:ring-0"
               rows={3}
@@ -703,8 +725,6 @@ export function ZeroChatComposer({
               }}
               enterKeyHint="enter"
               onKeyDown={handleKeyDown}
-              onCompositionStart={onCompositionStart}
-              onCompositionEnd={onCompositionEnd}
               onPaste={handlePaste}
             />
             <div className="flex items-center justify-between gap-2 px-4 py-3">
