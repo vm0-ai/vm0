@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.23.2](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.23.1...sandbox-fc-v0.23.2) (2026-04-11)
+
+
+### Bug Fixes
+
+* **sandbox-fc:** add drop impl to firecracker factory ([#8962](https://github.com/vm0-ai/vm0/issues/8962)) ([c641d97](https://github.com/vm0-ai/vm0/commit/c641d97b49d70427b977a2228a053d862efd78e3))
+
 ## [0.23.1](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.23.0...sandbox-fc-v0.23.1) (2026-04-10)
 
 

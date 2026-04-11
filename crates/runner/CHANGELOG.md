@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.75.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.75.1...runner-rs-v0.75.2) (2026-04-11)
+
+
+### Bug Fixes
+
+* **runner:** add drop impl to kmsg handle to prevent task leak on early return ([#8958](https://github.com/vm0-ai/vm0/issues/8958)) ([64c26e6](https://github.com/vm0-ai/vm0/commit/64c26e6adf0785f74ff9217bfde1267a721d3b83))
+
 ## [0.75.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.75.0...runner-rs-v0.75.1) (2026-04-11)
 
 

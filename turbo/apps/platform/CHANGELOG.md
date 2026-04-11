@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.219.0](https://github.com/vm0-ai/vm0/compare/app-v0.218.0...app-v0.219.0) (2026-04-11)
+
+
+### Features
+
+* mission control resizable panels with enriched panel titles ([#8964](https://github.com/vm0-ai/vm0/issues/8964)) ([0d5dbee](https://github.com/vm0-ai/vm0/commit/0d5dbee5332cd3afedde025accba4103038d3f7e))
+
 ## [0.218.0](https://github.com/vm0-ai/vm0/compare/app-v0.217.0...app-v0.218.0) (2026-04-11)
 
 
