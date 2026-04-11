@@ -797,21 +797,22 @@ const reconnectVoiceSession$ = command(
 
 // --- Wake lock ---
 
-const acquireWakeLock$ = command(
-  async ({ set }, signal: AbortSignal) => {
-    if (!("wakeLock" in navigator)) {
-      return;
-    }
-    // eslint-disable-next-line no-restricted-syntax -- wakeLock.request can fail if document is not visible
-    try {
-      const lock = await navigator.wakeLock.request("screen");
-      signal.throwIfAborted();
-      set(internalWakeLock$, lock);
-    } catch {
-      // Wake lock request failed or aborted — non-critical, ignore
-    }
-  },
-);
+const acquireWakeLock$ = command(async ({ set }, signal: AbortSignal) => {
+  if (!("wakeLock" in navigator)) {
+    return;
+  }
+  let lock: WakeLockSentinel | undefined;
+  // eslint-disable-next-line no-restricted-syntax -- wakeLock.request can fail if document is not visible
+  try {
+    lock = await navigator.wakeLock.request("screen");
+  } catch {
+    // Wake lock request failed — non-critical, ignore
+  }
+  signal.throwIfAborted();
+  if (lock) {
+    set(internalWakeLock$, lock);
+  }
+});
 
 const releaseWakeLock$ = command(({ get, set }) => {
   const lock = get(internalWakeLock$);
