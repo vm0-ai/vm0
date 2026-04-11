@@ -2120,9 +2120,9 @@ mod tests {
     // =======================================================================
     // Subsystem integration tests — Phase 3
     //
-    // Tests 10-17 cover job lifecycle (park/destroy), idle pool integration
+    // Tests 10-19 cover job lifecycle (park/destroy), idle pool integration
     // (session affinity, profile mismatch, expiry), budget exhaustion
-    // (eviction), and shutdown drain.
+    // (eviction), shutdown drain, and edge cases (pool-full, reuse cycle).
     // =======================================================================
 
     /// ExecutionContext with a resume_session for idle pool reuse testing.
