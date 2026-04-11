@@ -211,7 +211,7 @@ impl ExecutionContext {
 // ---------------------------------------------------------------------------
 
 /// Runner state snapshot sent to the server via heartbeat.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HeartbeatState {
     pub runner_id: String,

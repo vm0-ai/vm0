@@ -329,6 +329,7 @@ pub async fn run_start(
         min_memory_mb,
         kmsg_handle,
         dns_handle,
+        mode_rx: None,
     };
 
     run(config).await
@@ -358,6 +359,9 @@ struct RunConfig {
     min_memory_mb: u32,
     kmsg_handle: kmsg_log::KmsgHandle,
     dns_handle: dns::DnsProxy,
+    /// External mode channel. When `Some`, the signal handler is not spawned
+    /// and the caller controls mode transitions directly.
+    mode_rx: Option<tokio::sync::watch::Receiver<RunnerMode>>,
 }
 
 type MitmRestartHandle = tokio::task::JoinHandle<RunnerResult<tokio::process::Child>>;
@@ -385,6 +389,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         min_memory_mb,
         kmsg_handle,
         dns_handle,
+        mode_rx: external_mode_rx,
     } = config;
 
     // Build per-profile factories via the sandbox runtime.
@@ -436,32 +441,9 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     );
 
     // -----------------------------------------------------------------------
-    // Signal handling
+    // Signal handling / mode channel
     // -----------------------------------------------------------------------
-    let (mode_tx, mut mode_rx) = tokio::sync::watch::channel(RunnerMode::Running);
-    let signal_cancel = cancel.clone();
-
-    tokio::spawn(async move {
-        use tokio::signal::unix::{SignalKind, signal};
-
-        let mut sigterm = signal(SignalKind::terminate()).ok();
-        let mut sigint = signal(SignalKind::interrupt()).ok();
-        let mut sigusr1 = signal(SignalKind::user_defined1()).ok();
-
-        tokio::select! {
-            _ = recv_signal(&mut sigterm) => {
-                info!("received SIGTERM, draining");
-            }
-            _ = recv_signal(&mut sigint) => {
-                info!("received SIGINT, draining");
-            }
-            _ = recv_signal(&mut sigusr1) => {
-                info!("received SIGUSR1, draining");
-            }
-        }
-        let _ = mode_tx.send(RunnerMode::Draining);
-        signal_cancel.cancel();
-    });
+    let mut mode_rx = external_mode_rx.unwrap_or_else(|| setup_signal_handler(cancel.clone()));
 
     // -----------------------------------------------------------------------
     // Idle pool cleanup interval (every 10 seconds)
@@ -1069,6 +1051,36 @@ async fn handle_job_result(
     }
 }
 
+/// Spawn a signal-handler task and return the mode-change receiver.
+///
+/// When SIGTERM, SIGINT, or SIGUSR1 arrives the handler sends
+/// [`RunnerMode::Draining`] and cancels the shared token.
+fn setup_signal_handler(cancel: CancellationToken) -> tokio::sync::watch::Receiver<RunnerMode> {
+    let (mode_tx, mode_rx) = tokio::sync::watch::channel(RunnerMode::Running);
+    tokio::spawn(async move {
+        use tokio::signal::unix::{SignalKind, signal};
+
+        let mut sigterm = signal(SignalKind::terminate()).ok();
+        let mut sigint = signal(SignalKind::interrupt()).ok();
+        let mut sigusr1 = signal(SignalKind::user_defined1()).ok();
+
+        tokio::select! {
+            _ = recv_signal(&mut sigterm) => {
+                info!("received SIGTERM, draining");
+            }
+            _ = recv_signal(&mut sigint) => {
+                info!("received SIGINT, draining");
+            }
+            _ = recv_signal(&mut sigusr1) => {
+                info!("received SIGUSR1, draining");
+            }
+        }
+        let _ = mode_tx.send(RunnerMode::Draining);
+        cancel.cancel();
+    });
+    mode_rx
+}
+
 /// Await a signal if registered, or pend forever if registration failed.
 async fn recv_signal(sig: &mut Option<tokio::signal::unix::Signal>) {
     match sig {
@@ -1544,5 +1556,564 @@ mod tests {
         );
         // saturating_sub prevents underflow: 0 - 1 → 0
         assert_eq!(state.running_count, 0);
+    }
+
+    // =======================================================================
+    // Main loop integration tests
+    // =======================================================================
+
+    use crate::provider::mock::{MockJobProvider, MockProviderHandle};
+    use sandbox_mock::MockSandboxRuntime;
+
+    /// Everything a test needs to drive the main loop.
+    struct MockRunEnv {
+        handle: MockProviderHandle,
+        provider: Arc<MockJobProvider>,
+        mode_tx: tokio::sync::watch::Sender<RunnerMode>,
+        cancel: CancellationToken,
+        _temp_dir: tempfile::TempDir,
+    }
+
+    /// Assemble a complete `RunConfig` with all mock/noop dependencies.
+    fn mock_run_config(
+        profiles: BTreeMap<String, config::ProfileConfig>,
+        budget_vcpu: u32,
+        budget_memory_mb: u32,
+        max_concurrent: usize,
+        keep_alive: bool,
+    ) -> (RunConfig, MockRunEnv) {
+        build_mock_run_config(
+            profiles,
+            budget_vcpu,
+            budget_memory_mb,
+            max_concurrent,
+            keep_alive,
+            MockJobProvider::new,
+        )
+    }
+
+    /// Variant with an explicit poll delay for regression testing.
+    fn mock_run_config_with_delay(
+        profiles: BTreeMap<String, config::ProfileConfig>,
+        budget_vcpu: u32,
+        budget_memory_mb: u32,
+        max_concurrent: usize,
+        keep_alive: bool,
+        poll_delay: Duration,
+    ) -> (RunConfig, MockRunEnv) {
+        build_mock_run_config(
+            profiles,
+            budget_vcpu,
+            budget_memory_mb,
+            max_concurrent,
+            keep_alive,
+            |cancel| MockJobProvider::with_poll_delay(cancel, Some(poll_delay)),
+        )
+    }
+
+    fn build_mock_run_config(
+        profiles: BTreeMap<String, config::ProfileConfig>,
+        budget_vcpu: u32,
+        budget_memory_mb: u32,
+        max_concurrent: usize,
+        keep_alive: bool,
+        make_provider: impl FnOnce(CancellationToken) -> (Arc<MockJobProvider>, MockProviderHandle),
+    ) -> (RunConfig, MockRunEnv) {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let cancel = CancellationToken::new();
+        let (provider, handle) = make_provider(cancel.clone());
+        let provider_ref = Arc::clone(&provider);
+
+        let (mode_tx, mode_rx) = tokio::sync::watch::channel(RunnerMode::Running);
+
+        let home = HomePaths::with_root(temp_dir.path().to_path_buf());
+        let registry_path = temp_dir.path().join("registry.json");
+        let lock_path = temp_dir.path().join("registry.lock");
+        // Write empty registry file so ProxyRegistryHandle can read it.
+        std::fs::write(&registry_path, r#"{"vms":{},"updatedAt":0}"#).unwrap();
+        let registry = proxy::ProxyRegistryHandle::new(registry_path, lock_path);
+
+        let log_dir = temp_dir.path().join("logs");
+        std::fs::create_dir_all(&log_dir).unwrap();
+
+        let (mitm, mitm_crash_rx) = proxy::MitmProxy::noop();
+        let min_vcpu = profiles_min_vcpu(&profiles);
+        let min_memory_mb = profiles_min_memory(&profiles);
+
+        let config = RunConfig {
+            id: "test-runner".into(),
+            name: "test".into(),
+            group: "test-group".into(),
+            profiles,
+            runtime: Box::new(MockSandboxRuntime),
+            home,
+            budget: Arc::new(ResourceBudget::new(
+                budget_vcpu,
+                budget_memory_mb,
+                1.0,
+                max_concurrent,
+            )),
+            idle_pool: Arc::new(tokio::sync::Mutex::new(IdlePool::new(IdlePoolConfig {
+                enabled: keep_alive,
+                default_timeout: Duration::from_secs(300),
+                max_idle: 10,
+            }))),
+            status: Arc::new(StatusTracker::new(
+                temp_dir.path().join("status.json"),
+                max_concurrent,
+            )),
+            mitm,
+            mitm_crash_rx,
+            provider,
+            cancel_tokens: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
+            cancel: cancel.clone(),
+            exec_config: Arc::new(executor::ExecutorConfig {
+                api_url: "http://localhost:0".into(),
+                registry,
+                http: crate::http::HttpClient::new("http://localhost:0".into()).unwrap(),
+                log_paths: crate::paths::LogPaths::new(log_dir),
+                ip_log_map: kmsg_log::new_ip_log_map(),
+            }),
+            firecracker: config::FirecrackerConfig {
+                binary: PathBuf::new(),
+                kernel: PathBuf::new(),
+            },
+            base_dir: temp_dir.path().to_path_buf(),
+            min_vcpu,
+            min_memory_mb,
+            kmsg_handle: kmsg_log::KmsgHandle::noop(),
+            dns_handle: crate::dns::DnsProxy::noop(),
+            mode_rx: Some(mode_rx),
+        };
+
+        let env = MockRunEnv {
+            handle,
+            provider: provider_ref,
+            mode_tx,
+            cancel,
+            _temp_dir: temp_dir,
+        };
+        (config, env)
+    }
+
+    fn profiles_min_vcpu(profiles: &BTreeMap<String, config::ProfileConfig>) -> u32 {
+        profiles.values().map(|p| p.vcpu).min().unwrap_or(1)
+    }
+
+    fn profiles_min_memory(profiles: &BTreeMap<String, config::ProfileConfig>) -> u32 {
+        profiles.values().map(|p| p.memory_mb).min().unwrap_or(1)
+    }
+
+    fn minimal_context(run_id: Uuid) -> crate::types::ExecutionContext {
+        crate::types::ExecutionContext {
+            run_id,
+            prompt: "test".into(),
+            append_system_prompt: None,
+            _agent_compose_version_id: None,
+            vars: None,
+            checkpoint_id: None,
+            sandbox_token: "tok".into(),
+            working_dir: "/workspace".into(),
+            storage_manifest: None,
+            environment: None,
+            resume_session: None,
+            secret_values: None,
+            encrypted_secrets: None,
+            secret_connector_map: None,
+            cli_agent_type: String::new(),
+            debug_no_mock_claude: None,
+            api_start_time: None,
+            user_timezone: None,
+            memory_name: None,
+            capture_network_bodies: None,
+            firewalls: None,
+            network_policies: None,
+            disallowed_tools: None,
+            tools: None,
+            settings: None,
+            experimental_profile: None,
+            feature_flags: None,
+        }
+    }
+
+    /// Push a job to the mock provider and pre-configure its claim result.
+    fn push_job(
+        env: &MockRunEnv,
+        run_id: Uuid,
+        profile: &str,
+        ctx: Option<crate::types::ExecutionContext>,
+    ) {
+        env.provider.set_claim_result(run_id, ctx);
+        env.handle
+            .discover_tx
+            .send((run_id, profile.into()))
+            .unwrap();
+    }
+
+    /// Trigger graceful shutdown and wait for run() to exit.
+    async fn shutdown(env: &MockRunEnv, run_handle: tokio::task::JoinHandle<RunnerResult<()>>) {
+        let _ = env.mode_tx.send(RunnerMode::Draining);
+        env.cancel.cancel();
+        let result = tokio::time::timeout(Duration::from_secs(10), run_handle)
+            .await
+            .expect("run should finish within 10s")
+            .expect("task should not panic");
+        assert!(result.is_ok());
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 1: Normal discover → claim → execute → complete
+    // -----------------------------------------------------------------------
+
+    #[tokio::test(start_paused = true)]
+    async fn main_loop_discover_claim_execute_complete() {
+        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4, false);
+        let run_handle = tokio::spawn(run(config));
+
+        let run_id = Uuid::new_v4();
+        push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
+
+        let completion = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await;
+        assert!(completion.is_some(), "job should complete");
+        let c = completion.unwrap();
+        assert_eq!(c.exit_code, 0);
+        assert!(c.error.is_none());
+
+        shutdown(&env, run_handle).await;
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 2: Discover survives heartbeat ticks (regression #8783)
+    //
+    // ApiProvider's discover() has an internal poll timer (30s) that must
+    // survive heartbeat ticks (10s). Without pinning, `select!` cancels
+    // and recreates discover() each tick, restarting the timer from scratch.
+    //
+    // We use poll_delay=20s to simulate this: if the future is pinned, the
+    // delay completes at t=20s and the job is discovered. If not pinned,
+    // heartbeat at t=10s restarts the delay → it won't complete until t=30s.
+    // -----------------------------------------------------------------------
+
+    #[tokio::test(start_paused = true)]
+    async fn discover_survives_heartbeat_ticks() {
+        let (config, env) = mock_run_config_with_delay(
+            test_profiles(),
+            8,
+            32768,
+            4,
+            false,
+            Duration::from_secs(20), // poll delay: 20s
+        );
+        let run_handle = tokio::spawn(run(config));
+
+        // Push job immediately — it's in the channel, waiting for
+        // discover to finish its poll delay and read it.
+        let run_id = Uuid::new_v4();
+        push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
+
+        // Advance past the 20s poll delay. Heartbeat fires at 10s but
+        // must NOT restart the delay (because discover_fut is pinned).
+        tokio::time::sleep(Duration::from_secs(25)).await;
+
+        // Heartbeat should have fired during the wait.
+        assert!(
+            env.handle.heartbeat_count() > 0,
+            "heartbeat should fire while discover poll delay is running"
+        );
+
+        // Job should have been discovered and completed.
+        // If discover was cancelled and recreated at t=10s, the 20s delay
+        // restarts → at t=25s only 15s of the second delay has elapsed →
+        // job not discovered yet → this assertion fails.
+        let completion = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(10))
+            .await;
+        assert!(
+            completion.is_some(),
+            "job should complete — discover must survive heartbeat ticks (regression #8783)"
+        );
+
+        shutdown(&env, run_handle).await;
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 3: Shutdown completes without deadlock (regression #8898)
+    //
+    // Uses REAL time (not paused) because a Mutex deadlock blocks the
+    // tokio runtime — paused time can't advance past a non-timer await.
+    //
+    // Only sends Draining (does NOT cancel the token). This forces the
+    // worst-case race: mode_rx.changed() wins the select!, loop breaks
+    // at the top-of-loop check, and discover_fut is never polled again.
+    // The explicit `drop(discover_fut)` releases the Mutex so shutdown()
+    // can proceed. Without that drop, shutdown() deadlocks on the Mutex.
+    // -----------------------------------------------------------------------
+
+    #[tokio::test]
+    async fn shutdown_completes_without_deadlock() {
+        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4, false);
+        let run_handle = tokio::spawn(run(config));
+
+        // Let the main loop start and enter select!.
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        // Only send Draining — do NOT cancel. discover_fut remains suspended
+        // holding the discovery Mutex. The main loop breaks at the top-of-loop
+        // mode check, then `drop(discover_fut)` releases the Mutex before
+        // `provider.shutdown()`. Without that drop → deadlock.
+        let _ = env.mode_tx.send(RunnerMode::Draining);
+
+        match tokio::time::timeout(Duration::from_secs(2), run_handle).await {
+            Ok(Ok(Ok(()))) => {}
+            Ok(Ok(Err(e))) => panic!("run() returned error: {e}"),
+            Ok(Err(e)) => panic!("task panicked: {e}"),
+            Err(_) => {
+                panic!("deadlock detected: run() did not finish within 2s (regression #8898)")
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 4: Claim failure (409) rolls back budget
+    // -----------------------------------------------------------------------
+
+    #[tokio::test(start_paused = true)]
+    async fn claim_failure_rolls_back_budget() {
+        // Budget for exactly 1 job (2 vcpu, 4096 MB matches the test profile).
+        let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1, false);
+        let run_handle = tokio::spawn(run(config));
+
+        // First job: claim returns None (409 conflict)
+        let run_id_1 = Uuid::new_v4();
+        push_job(&env, run_id_1, "vm0/default", None);
+
+        // Give main loop time to process the failed claim and release budget.
+        tokio::time::advance(Duration::from_millis(100)).await;
+        tokio::task::yield_now().await;
+
+        // Second job: claim succeeds — budget should have been freed.
+        let run_id_2 = Uuid::new_v4();
+        push_job(
+            &env,
+            run_id_2,
+            "vm0/default",
+            Some(minimal_context(run_id_2)),
+        );
+
+        let completion = env
+            .handle
+            .wait_completion(run_id_2, Duration::from_secs(5))
+            .await;
+        assert!(
+            completion.is_some(),
+            "second job should complete (budget freed after first 409)"
+        );
+
+        shutdown(&env, run_handle).await;
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 5: Shutdown drains running jobs before exiting
+    // -----------------------------------------------------------------------
+
+    #[tokio::test(start_paused = true)]
+    async fn shutdown_drains_running_jobs() {
+        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4, false);
+        let run_handle = tokio::spawn(run(config));
+
+        let run_id = Uuid::new_v4();
+        push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
+
+        // Wait for completion before draining.
+        let completion = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await;
+        assert!(completion.is_some());
+
+        shutdown(&env, run_handle).await;
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 6: Unknown profile is skipped without affecting subsequent jobs
+    // -----------------------------------------------------------------------
+
+    #[tokio::test(start_paused = true)]
+    async fn unknown_profile_skipped() {
+        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4, false);
+        let run_handle = tokio::spawn(run(config));
+
+        // Push a job with a profile that doesn't exist in the profiles map.
+        // The main loop should log a warning and continue without claiming.
+        let bad_id = Uuid::new_v4();
+        push_job(
+            &env,
+            bad_id,
+            "vm0/nonexistent",
+            Some(minimal_context(bad_id)),
+        );
+
+        // Give main loop time to skip the bad job.
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // Push a valid job — it should succeed despite the earlier bad one.
+        let good_id = Uuid::new_v4();
+        push_job(&env, good_id, "vm0/default", Some(minimal_context(good_id)));
+
+        let completion = env
+            .handle
+            .wait_completion(good_id, Duration::from_secs(5))
+            .await;
+        assert!(
+            completion.is_some(),
+            "valid job should complete after unknown profile is skipped"
+        );
+
+        // The bad job should never have been claimed (no completion recorded).
+        {
+            let comps = env.handle.completions.lock().unwrap();
+            assert!(
+                !comps.iter().any(|c| c.run_id == bad_id),
+                "unknown-profile job should not produce a completion"
+            );
+        }
+
+        shutdown(&env, run_handle).await;
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 7: Duplicate discovery (same run_id) is deduplicated
+    // -----------------------------------------------------------------------
+
+    #[tokio::test(start_paused = true)]
+    async fn duplicate_discovery_deduplicated() {
+        // Budget for 2 jobs — enough for the duplicate to pass the budget
+        // check and reach the cancel_tokens dedup logic.
+        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4, false);
+        let run_handle = tokio::spawn(run(config));
+
+        let run_id = Uuid::new_v4();
+        push_job(&env, run_id, "vm0/default", Some(minimal_context(run_id)));
+
+        // Wait for job to be claimed and executing (cancel_tokens now has run_id).
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // Push the same run_id again (simulates Ably push + poll race).
+        // Budget has room, but cancel_tokens already contains this run_id →
+        // the duplicate is rejected and budget is released.
+        env.handle
+            .discover_tx
+            .send((run_id, "vm0/default".into()))
+            .unwrap();
+
+        // Wait for the original job to complete.
+        let completion = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await;
+        assert!(completion.is_some(), "original job should complete");
+
+        // Only one completion should exist for this run_id.
+        {
+            let comps = env.handle.completions.lock().unwrap();
+            let count = comps.iter().filter(|c| c.run_id == run_id).count();
+            assert_eq!(
+                count, 1,
+                "duplicate discovery should not produce a second completion"
+            );
+        }
+
+        shutdown(&env, run_handle).await;
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 8: Two successful jobs in sequence
+    //
+    // After the first job completes, discover_fut is recreated
+    // (Box::pin(provider.discover())). The second job must be discovered,
+    // claimed, executed, and completed through the recreated future.
+    // -----------------------------------------------------------------------
+
+    #[tokio::test(start_paused = true)]
+    async fn two_sequential_jobs_complete() {
+        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4, false);
+        let run_handle = tokio::spawn(run(config));
+
+        // First job
+        let id1 = Uuid::new_v4();
+        push_job(&env, id1, "vm0/default", Some(minimal_context(id1)));
+        let c1 = env
+            .handle
+            .wait_completion(id1, Duration::from_secs(5))
+            .await;
+        assert!(c1.is_some(), "first job should complete");
+        assert_eq!(c1.unwrap().exit_code, 0);
+
+        // Second job — exercises the recreated discover_fut path
+        let id2 = Uuid::new_v4();
+        push_job(&env, id2, "vm0/default", Some(minimal_context(id2)));
+        let c2 = env
+            .handle
+            .wait_completion(id2, Duration::from_secs(5))
+            .await;
+        assert!(
+            c2.is_some(),
+            "second job should complete via recreated discover_fut"
+        );
+        assert_eq!(c2.unwrap().exit_code, 0);
+
+        shutdown(&env, run_handle).await;
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 9: Budget full → job skipped (not claimed) → budget freed → next job succeeds
+    //
+    // Different from test 4 (claim failure): here try_reserve returns false
+    // so claim() is never called. The job stays in the channel but the main
+    // loop moves on. After the running job completes and frees budget, the
+    // next discover picks up the waiting job.
+    // -----------------------------------------------------------------------
+
+    #[tokio::test(start_paused = true)]
+    async fn budget_full_skips_then_resumes() {
+        // Budget for exactly 1 job (2 vcpu, 4096 MB).
+        let (config, env) = mock_run_config(test_profiles(), 2, 4096, 1, false);
+        let run_handle = tokio::spawn(run(config));
+
+        // First job: claims the entire budget.
+        let id1 = Uuid::new_v4();
+        push_job(&env, id1, "vm0/default", Some(minimal_context(id1)));
+
+        // Wait for job 1 to be claimed (budget now full).
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // Second job: pushed while budget is full. try_reserve fails →
+        // the job is skipped without claim. But it remains in the channel.
+        let id2 = Uuid::new_v4();
+        push_job(&env, id2, "vm0/default", Some(minimal_context(id2)));
+
+        // Job 1 completes (MockSandbox is instant) → budget freed.
+        let c1 = env
+            .handle
+            .wait_completion(id1, Duration::from_secs(5))
+            .await;
+        assert!(c1.is_some(), "first job should complete");
+
+        // After budget is freed, the main loop re-enters the normal select!
+        // and discovers job 2 from the channel.
+        let c2 = env
+            .handle
+            .wait_completion(id2, Duration::from_secs(5))
+            .await;
+        assert!(
+            c2.is_some(),
+            "second job should complete after budget is freed"
+        );
+
+        shutdown(&env, run_handle).await;
     }
 }

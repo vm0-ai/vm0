@@ -29,7 +29,7 @@ use crate::kmsg_log::IpLogMap;
 pub struct DnsProxy {
     cancel: CancellationToken,
     task: tokio::task::JoinHandle<()>,
-    child: tokio::process::Child,
+    child: Option<tokio::process::Child>,
     port: u16,
 }
 
@@ -37,8 +37,10 @@ impl DnsProxy {
     /// Stop the DNS proxy and wait for cleanup.
     pub async fn stop(mut self) {
         self.cancel.cancel();
-        let _ = self.child.start_kill();
-        let _ = self.child.wait().await;
+        if let Some(ref mut child) = self.child {
+            let _ = child.start_kill();
+            let _ = child.wait().await;
+        }
         let _ = (&mut self.task).await;
         info!("dns proxy stopped");
     }
@@ -46,6 +48,19 @@ impl DnsProxy {
     /// Return the port dnsmasq is listening on.
     pub fn port(&self) -> u16 {
         self.port
+    }
+
+    /// Create a noop handle for testing. No `dnsmasq` process is spawned.
+    #[cfg(test)]
+    pub fn noop() -> Self {
+        let cancel = CancellationToken::new();
+        let token = cancel.clone();
+        Self {
+            cancel,
+            task: tokio::spawn(async move { token.cancelled().await }),
+            child: None,
+            port: 0,
+        }
     }
 }
 
@@ -56,7 +71,9 @@ impl Drop for DnsProxy {
     /// `dns::start()` (e.g., runtime creation error). Harmless if `stop()`
     /// already ran — `start_kill` on an exited child is a no-op.
     fn drop(&mut self) {
-        let _ = self.child.start_kill();
+        if let Some(ref mut child) = self.child {
+            let _ = child.start_kill();
+        }
         self.cancel.cancel();
         self.task.abort();
     }
@@ -127,7 +144,7 @@ pub async fn start(ip_log_map: IpLogMap) -> std::io::Result<DnsProxy> {
     Ok(DnsProxy {
         cancel,
         task,
-        child,
+        child: Some(child),
         port,
     })
 }

@@ -43,6 +43,18 @@ impl KmsgHandle {
         let _ = self.task.await;
         info!("kmsg monitor stopped");
     }
+
+    /// Create a noop handle for testing. The background task simply waits
+    /// for cancellation — no `dmesg` process is spawned.
+    #[cfg(test)]
+    pub fn noop() -> Self {
+        let cancel = CancellationToken::new();
+        let token = cancel.clone();
+        Self {
+            cancel,
+            task: tokio::spawn(async move { token.cancelled().await }),
+        }
+    }
 }
 
 /// Spawn a background async task that tails `dmesg -w` and writes

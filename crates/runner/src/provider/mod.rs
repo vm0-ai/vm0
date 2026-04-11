@@ -6,6 +6,8 @@
 
 mod api;
 mod local;
+#[cfg(test)]
+pub mod mock;
 
 pub use api::ApiProvider;
 pub use local::LocalProvider;

@@ -220,6 +220,35 @@ impl MitmProxy {
     }
 }
 
+#[cfg(test)]
+impl MitmProxy {
+    /// Create a noop proxy for testing. No real process is spawned.
+    ///
+    /// `stop()` already handles `child: None` (returns immediately),
+    /// and `begin_restart()` is never triggered because the test holds
+    /// the crash channel sender and never sends on it.
+    pub fn noop() -> (Self, mpsc::Receiver<()>) {
+        let (crash_tx, crash_rx) = mpsc::channel(1);
+        (
+            Self {
+                port: 0,
+                config: ProxyConfig {
+                    mitmdump_bin: std::path::PathBuf::new(),
+                    ca_dir: std::path::PathBuf::new(),
+                    addon_dir: std::path::PathBuf::new(),
+                    registry_path: std::path::PathBuf::new(),
+                    registry_lock_path: std::path::PathBuf::new(),
+                    api_url: None,
+                },
+                child: None,
+                crash_tx,
+                stopping: Arc::new(AtomicBool::new(false)),
+            },
+            crash_rx,
+        )
+    }
+}
+
 impl Drop for MitmProxy {
     fn drop(&mut self) {
         self.stopping.store(true, Ordering::Release);
