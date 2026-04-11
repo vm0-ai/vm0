@@ -191,7 +191,8 @@ pub async fn run_start(
 
     // Start background kmsg monitor for non-TCP traffic logging.
     let ip_log_map = kmsg_log::new_ip_log_map();
-    let kmsg_handle = kmsg_log::spawn(ip_log_map.clone());
+    let kmsg_handle = kmsg_log::spawn(ip_log_map.clone())
+        .map_err(|e| RunnerError::Internal(format!("kmsg monitor: {e}")))?;
 
     // Start DNS proxy (dnsmasq) for domain-level DNS interception and logging.
     // Shares ip_log_map with kmsg — both use source IP (peer veth) as key.
