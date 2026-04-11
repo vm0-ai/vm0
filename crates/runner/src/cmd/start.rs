@@ -1620,7 +1620,6 @@ mod tests {
             budget_vcpu,
             budget_memory_mb,
             max_concurrent,
-            keep_alive,
             make_provider,
             Box::new(MockSandboxRuntime::new()),
         )
@@ -1631,7 +1630,6 @@ mod tests {
         budget_vcpu: u32,
         budget_memory_mb: u32,
         max_concurrent: usize,
-        keep_alive: bool,
         make_provider: impl FnOnce(CancellationToken) -> (Arc<MockJobProvider>, MockProviderHandle),
         runtime: Box<dyn sandbox::SandboxRuntime>,
     ) -> (RunConfig, MockRunEnv) {
@@ -2222,9 +2220,13 @@ mod tests {
     // (eviction), shutdown drain, and edge cases (pool-full, reuse cycle).
     // =======================================================================
 
-    /// ExecutionContext with a resume_session for idle pool reuse testing.
+    /// ExecutionContext with a resume_session and sandboxReuse flag for idle pool testing.
     fn context_with_session(run_id: Uuid, session_id: &str) -> crate::types::ExecutionContext {
         let mut ctx = minimal_context(run_id);
+        ctx.feature_flags = Some(HashMap::from([(
+            crate::types::feature_flags::SANDBOX_REUSE.to_string(),
+            true,
+        )]));
         ctx.resume_session = Some(crate::types::ResumeSession {
             session_id: session_id.into(),
             session_history: String::new(),
@@ -2351,7 +2353,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn successful_job_parks_in_idle_pool() {
-        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4, true);
+        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
         let idle_pool = Arc::clone(&config.idle_pool);
         let budget = Arc::clone(&config.budget);
         let run_handle = tokio::spawn(run(config));
@@ -2395,7 +2397,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn job_without_session_destroys_sandbox() {
-        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4, true);
+        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
         let idle_pool = Arc::clone(&config.idle_pool);
         let budget = Arc::clone(&config.budget);
         let run_handle = tokio::spawn(run(config));
@@ -2428,7 +2430,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn park_triggers_immediate_heartbeat() {
-        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4, true);
+        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
         let run_handle = tokio::spawn(run(config));
 
         // Wait for the first heartbeat tick to fire (initial interval fires
@@ -2467,7 +2469,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn session_affinity_reuses_idle_vm() {
-        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4, true);
+        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
         let idle_pool = Arc::clone(&config.idle_pool);
         let budget = Arc::clone(&config.budget);
 
@@ -2515,7 +2517,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn profile_mismatch_destroys_stale_vm() {
-        let (config, env) = mock_run_config(two_profiles(), 16, 32768, 4, true);
+        let (config, env) = mock_run_config(two_profiles(), 16, 32768, 4);
         let idle_pool = Arc::clone(&config.idle_pool);
         let budget = Arc::clone(&config.budget);
 
@@ -2563,7 +2565,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn cleanup_tick_evicts_expired_entries() {
-        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4, true);
+        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
         let idle_pool = Arc::clone(&config.idle_pool);
         let budget = Arc::clone(&config.budget);
 
@@ -2601,7 +2603,7 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn budget_exhausted_evicts_idle_and_admits_job() {
         // Budget: exactly 1 default job (2 vcpu, 4096 MB).
-        let (config, env) = mock_run_config(test_profiles(), 2, 4096, 2, true);
+        let (config, env) = mock_run_config(test_profiles(), 2, 4096, 2);
         let idle_pool = Arc::clone(&config.idle_pool);
         let budget = Arc::clone(&config.budget);
 
@@ -2637,7 +2639,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn shutdown_drains_idle_pool() {
-        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4, true);
+        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
         let idle_pool = Arc::clone(&config.idle_pool);
         let budget = Arc::clone(&config.budget);
 
@@ -2659,27 +2661,22 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // Test 18: Pool disabled (keep_alive=false) → PoolFull → budget released
+    // Test 18: sandboxReuse flag OFF → VM destroyed, budget released
     //
-    // When keep_alive is disabled, park() returns PoolFull. The sandbox must
-    // be destroyed and the budget released (not leaked).
+    // When the feature flag is off, park is skipped even with a session.
+    // The sandbox must be destroyed and the budget released (not leaked).
     // -----------------------------------------------------------------------
 
     #[tokio::test(start_paused = true)]
-    async fn pool_disabled_rejects_park_and_releases_budget() {
-        // keep_alive=false → IdlePoolConfig.enabled=false → park always PoolFull
-        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4, false);
+    async fn reuse_flag_off_destroys_and_releases_budget() {
+        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
         let budget = Arc::clone(&config.budget);
         let run_handle = tokio::spawn(run(config));
 
         let run_id = Uuid::new_v4();
-        // Job has a session, so parking IS attempted — but pool rejects it.
-        push_job(
-            &env,
-            run_id,
-            "vm0/default",
-            Some(context_with_session(run_id, "sess-rejected")),
-        );
+        // Job has a session but flag is OFF — parking is skipped.
+        let ctx = context_with_reuse(run_id, false, Some("sess-rejected"));
+        push_job(&env, run_id, "vm0/default", Some(ctx));
 
         let completion = env
             .handle
@@ -2688,7 +2685,7 @@ mod tests {
         assert!(completion.is_some(), "job should complete");
         assert_eq!(completion.unwrap().exit_code, 0);
 
-        // PoolFull path: sandbox destroyed, budget must be released.
+        // Flag OFF: sandbox destroyed, budget must be released.
         wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
 
         shutdown(&env, run_handle).await;
@@ -2704,7 +2701,7 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn sequential_same_session_reuse_cycle() {
-        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4, true);
+        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
         let idle_pool = Arc::clone(&config.idle_pool);
         let budget = Arc::clone(&config.budget);
         let run_handle = tokio::spawn(run(config));
@@ -2759,7 +2756,6 @@ mod tests {
         budget_vcpu: u32,
         budget_memory_mb: u32,
         max_concurrent: usize,
-        keep_alive: bool,
         overrides: Arc<sandbox_mock::MockSandboxOverrides>,
     ) -> (RunConfig, MockRunEnv) {
         build_mock_run_config_with_runtime(
@@ -2767,7 +2763,6 @@ mod tests {
             budget_vcpu,
             budget_memory_mb,
             max_concurrent,
-            keep_alive,
             MockJobProvider::new,
             Box::new(MockSandboxRuntime::with_overrides(overrides)),
         )
@@ -2798,14 +2793,7 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn failed_job_with_session_not_parked() {
         let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_exit_code(1));
-        let (config, env) = mock_run_config_with_overrides(
-            test_profiles(),
-            4,
-            8192,
-            4,
-            true, // keep_alive enabled
-            overrides,
-        );
+        let (config, env) = mock_run_config_with_overrides(test_profiles(), 4, 8192, 4, overrides);
         let budget = Arc::clone(&config.budget);
         let idle_pool = Arc::clone(&config.idle_pool);
         let run_handle = tokio::spawn(run(config));
@@ -2843,8 +2831,7 @@ mod tests {
         let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_exit_gate(
             gate,
         ));
-        let (config, env) =
-            mock_run_config_with_overrides(test_profiles(), 4, 8192, 4, true, overrides);
+        let (config, env) = mock_run_config_with_overrides(test_profiles(), 4, 8192, 4, overrides);
         let budget = Arc::clone(&config.budget);
         let idle_pool = Arc::clone(&config.idle_pool);
         let cancel_tokens = Arc::clone(&config.cancel_tokens);
@@ -2897,8 +2884,7 @@ mod tests {
             stdout: b"sess-evict".to_vec(),
             stderr: Vec::new(),
         });
-        let (config, env) =
-            mock_run_config_with_overrides(test_profiles(), 8, 16384, 4, true, overrides);
+        let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 16384, 4, overrides);
         let budget = Arc::clone(&config.budget);
         let idle_pool = Arc::clone(&config.idle_pool);
 
