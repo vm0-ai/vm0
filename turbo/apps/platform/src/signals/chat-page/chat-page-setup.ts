@@ -7,9 +7,8 @@ import { updatePage$ } from "../react-router.ts";
 import { chatThreads$ } from "./chat-message.ts";
 import { setChatAgentId$, currentChatThreadId$ } from "../agent-chat.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
-import { ensureDraft$ } from "../zero-page/chat-draft.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
-import { createChatThreadSignals } from "./create-chat-thread.ts";
+import { currentChatThreadSignals$ } from "./create-chat-thread.ts";
 
 export const setupChatPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -18,8 +17,8 @@ export const setupChatPage$ = command(
       throw new Error("threadId is required to load chat page");
     }
 
-    const draft = set(ensureDraft$, threadId);
-    const thread = createChatThreadSignals(threadId, draft);
+    // threadId is guaranteed non-null here, so the computed always returns non-null
+    const thread = get(currentChatThreadSignals$)!;
 
     set(
       updatePage$,

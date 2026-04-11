@@ -6,7 +6,11 @@ import {
   type DraftSignals,
   type ZeroChatAttachment,
 } from "../zero-page/chat-draft.ts";
-import { reloadChatThreads$, type ChatThread } from "../agent-chat.ts";
+import {
+  currentChatThreadId$,
+  reloadChatThreads$,
+  type ChatThread,
+} from "../agent-chat.ts";
 import { chatMessagesContract, chatThreadByIdContract } from "@vm0/core";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
@@ -490,7 +494,7 @@ function createMessageCommands(deps: MessageCommandsDeps) {
 // Factory
 // ---------------------------------------------------------------------------
 
-export function createChatThreadSignals(
+function createChatThreadSignals(
   threadId: string,
   existingDraft?: DraftSignals,
 ): ChatThreadSignals {
@@ -542,3 +546,23 @@ export function createChatThreadSignals(
     setComposerFileInput$,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Package-scope computed: derives ChatThreadSignals from the current route
+// ---------------------------------------------------------------------------
+
+/**
+ * Singleton computed that produces ChatThreadSignals for the current
+ * route's thread ID. ccstate memoizes the last result — if
+ * `currentChatThreadId$` hasn't changed, the same signals object is
+ * returned without re-creation.
+ */
+export const currentChatThreadSignals$ = computed(
+  (get): ChatThreadSignals | null => {
+    const threadId = get(currentChatThreadId$);
+    if (!threadId) {
+      return null;
+    }
+    return createChatThreadSignals(threadId);
+  },
+);

@@ -183,18 +183,16 @@ export const talkDraft$ = computed((get) => {
   return get(internalTalkDraft$);
 });
 
-export const ensureDraft$ = command(
-  ({ get, set }, threadId: string): DraftSignals => {
-    const map = get(internalDraftMap$);
-    const existing = map[threadId];
-    if (existing) {
-      return existing;
-    }
-    const draft = createDraftSignals();
-    set(internalDraftMap$, { ...map, [threadId]: draft });
-    return draft;
-  },
-);
+const ensureDraft$ = command(({ get, set }, threadId: string): DraftSignals => {
+  const map = get(internalDraftMap$);
+  const existing = map[threadId];
+  if (existing) {
+    return existing;
+  }
+  const draft = createDraftSignals();
+  set(internalDraftMap$, { ...map, [threadId]: draft });
+  return draft;
+});
 
 /**
  * The current draft for the active route.

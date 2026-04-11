@@ -94,6 +94,30 @@ const ROUTE_CONFIG = [
 
 **Never manually set pageSignal$ in setup commands** — the wrapper does it for you.
 
+## Computed Memoization — No Manual Cache Needed
+
+ccstate `computed` automatically memoizes the last result. If none of the dependencies have changed, reading the computed returns the cached value without re-executing the callback. **Do not add a manual `Map` or cache layer on top.**
+
+```typescript
+// ❌ Redundant cache — computed already memoizes
+const cache = new Map<string, Result>();
+export const result$ = computed((get) => {
+  const key = get(someKey$);
+  if (cache.has(key)) return cache.get(key)!;
+  const value = expensiveCreate(key);
+  cache.set(key, value);
+  return value;
+});
+
+// ✅ Just create — computed won't re-run if someKey$ hasn't changed
+export const result$ = computed((get) => {
+  const key = get(someKey$);
+  return expensiveCreate(key);
+});
+```
+
+This is especially relevant for signal factories: a `computed` that calls `createSomeSignals(id)` won't re-create the signals unless `id` actually changes.
+
 ## Reactive Async Computed vs Imperative Fetch Commands
 
 Prefer reactive `computed(async ...)` over imperative fetch-and-store commands.
@@ -178,7 +202,10 @@ import { accept } from "../../lib/accept.ts";
 export const inviteMember$ = command(
   async ({ get, set }, email: string, role: OrgRole, signal: AbortSignal) => {
     const client = get(zeroClient$)(zeroOrgInviteContract);
-    const result = await accept(client.invite({ body: { email, role } }), [200]);
+    const result = await accept(
+      client.invite({ body: { email, role } }),
+      [200],
+    );
     // result type is narrowed to { status: 200, body: OrgMessageResponse }
     // If status was 400/401/403/500 → toast + throw already happened, we never reach here
     toast.success(`Invitation sent to ${email}`);
@@ -216,11 +243,9 @@ When a specific error code has business meaning, include it in the accept list:
 ```typescript
 export const getAgent$ = computed(async (get) => {
   const client = get(zeroClient$)(zeroAgentsByIdContract);
-  const result = await accept(
-    client.get({ params: { id } }),
-    [200, 404],
-    { toast: false },
-  );
+  const result = await accept(client.get({ params: { id } }), [200, 404], {
+    toast: false,
+  });
   if (result.status === 404) return null;
   return result.body;
 });
@@ -428,11 +453,17 @@ If the promise has a `.then()` chain before it, wrap the entire chain:
 
 ```typescript
 // ❌ Empty catch at the end
-saveData(signal).then(() => { toast.success("Saved"); }).catch(() => {});
+saveData(signal)
+  .then(() => {
+    toast.success("Saved");
+  })
+  .catch(() => {});
 
 // ✅ Wrap entire chain in detach
 detach(
-  saveData(signal).then(() => { toast.success("Saved"); }),
+  saveData(signal).then(() => {
+    toast.success("Saved");
+  }),
   Reason.DomCallback,
 );
 ```
@@ -592,32 +623,50 @@ const example$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 **Rule of thumb:** If the awaited operation receives your signal, it will throw on abort itself. If it doesn't, check manually after.
 
-## Signal Factory Pattern (Avoiding Global Singletons)
+## Signal Factory Pattern
 
-When a set of signals represents per-instance state (e.g., per chat thread, per editor tab), use a **factory function** instead of module-level singletons. Each factory call returns fresh `state()`/`computed()`/`command()` instances, so multiple instances can coexist without sharing state.
+Refactored the signal handling to avoid global singletons when multiple signals exist within a single page.
 
-### Anti-pattern: Module-level singletons
+In previous requirements, we only needed a single chat session per page, so we used global singleton signals. This was not an issue at the time.
+
+However, as we refactor the code to support multiple chat sessions within a single page, we must implement the Signal Factory pattern to prevent global singleton conflicts.
+
+Each factory call returns fresh `state()`/`computed()`/`command()` instances, so multiple instances can coexist without sharing state.
+
+### Module-level singletons
 
 ```typescript
-// ❌ Only one chat thread can exist at a time — shared global state
 // chat-message.ts
 const internalLocalMessages$ = state<ZeroChatMessage[]>([]);
 export const resetLocalMessages$ = command(({ set }) => {
   set(internalLocalMessages$, []);
 });
-export const messages$ = computed(async (get) => { /* ... */ });
-export const allFinished$ = computed(async (get) => { /* ... */ });
-export const sendMessage$ = command(async ({ get, set }, prompt, signal) => { /* ... */ });
+export const messages$ = computed(async (get) => {
+  /* ... */
+});
+export const allFinished$ = computed(async (get) => {
+  /* ... */
+});
+export const sendMessage$ = command(async ({ get, set }, prompt, signal) => {
+  /* ... */
+});
 
 // chat-auto-scroll.ts
 const chatScrollContainer$ = state<HTMLElement | null>(null);
-export const setChatScrollContainer$ = command(({ set }, el) => { set(chatScrollContainer$, el); });
-export const autoScroll$ = command(({ get }) => { /* ... */ });
+export const setChatScrollContainer$ = command(({ set }, el) => {
+  set(chatScrollContainer$, el);
+});
+export const autoScroll$ = command(({ get }) => {
+  /* ... */
+});
 ```
 
 ```typescript
-// ❌ View imports singletons directly — can't have two threads on screen
-import { messages$, sendMessage$ } from "../../signals/chat-page/chat-message.ts";
+// View imports singletons directly — can't have two threads on screen
+import {
+  messages$,
+  sendMessage$,
+} from "../../signals/chat-page/chat-message.ts";
 import { setChatScrollContainer$ } from "../../signals/chat-page/chat-auto-scroll.ts";
 
 export function ChatPage() {
@@ -626,7 +675,11 @@ export function ChatPage() {
 }
 ```
 
-### Preferred: Factory function returning a signals interface
+### Factory function returning a signals interface
+
+The Signals Factory allows a single page to contain multiple sets of Signals.
+
+While this approach is more complex than using a singleton, it provides a viable solution for managing multiple distinct page instances within a single view.
 
 **Step 1 — Define the interface and factory:**
 
@@ -661,9 +714,16 @@ function createMessageState(threadData$: Computed<Promise<ThreadData | null>>) {
     return [...transformServerMessages(serverMsgs), ...localMsgs];
   });
 
-  const allFinished$ = computed(async (get) => { /* ... */ });
+  const allFinished$ = computed(async (get) => {
+    /* ... */
+  });
 
-  return { internalLocalMessages$, resetLocalMessages$, messages$, allFinished$ };
+  return {
+    internalLocalMessages$,
+    resetLocalMessages$,
+    messages$,
+    allFinished$,
+  };
 }
 
 function createScrollSignals() {
@@ -690,36 +750,64 @@ export function createChatThreadSignals(
   existingDraft?: DraftSignals,
 ): ChatThreadSignals {
   const { threadData$, reloadThread$ } = createThreadData(threadId);
-  const { internalLocalMessages$, resetLocalMessages$, messages$, allFinished$ } =
-    createMessageState(threadData$);
+  const {
+    internalLocalMessages$,
+    resetLocalMessages$,
+    messages$,
+    allFinished$,
+  } = createMessageState(threadData$);
   const { setScrollContainer$, autoScroll$ } = createScrollSignals();
   const draft = existingDraft ?? createDraftSignals();
 
   const { sendMessage$ } = createMessageCommands({
-    threadId, threadData$, reloadThread$, internalLocalMessages$, draft,
+    threadId,
+    threadData$,
+    reloadThread$,
+    internalLocalMessages$,
+    draft,
   });
 
   return {
-    messages$, allFinished$, sendMessage$, resetLocalMessages$,
-    setScrollContainer$, autoScroll$, draft,
+    messages$,
+    allFinished$,
+    sendMessage$,
+    resetLocalMessages$,
+    setScrollContainer$,
+    autoScroll$,
+    draft,
   };
 }
 ```
 
-**Step 4 — Create in page setup, pass as prop:**
+**Step 4 — Derive from route via package-scope computed, pass as prop:**
 
 ```typescript
-// chat-page-setup.ts
-export const setupChatPage$ = command(async ({ get, set }, signal: AbortSignal) => {
-  const threadId = get(currentChatThreadId$);
-  const draft = set(ensureDraft$, threadId);
-  const thread = createChatThreadSignals(threadId, draft);
+// create-chat-thread.ts
+export const currentChatThreadSignals$ = computed(
+  (get): ChatThreadSignals | null => {
+    const threadId = get(currentChatThreadId$);
+    if (!threadId) return null;
+    return createChatThreadSignals(threadId);
+  },
+);
 
-  set(updatePage$, createElement(ZeroChatThreadPage, { key: threadId, thread }));
-  // ...
-  await set(thread.loadMessages$, signal);
-});
+// chat-page-setup.ts
+export const setupChatPage$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const threadId = get(currentChatThreadId$);
+    const thread = get(currentChatThreadSignals$)!;
+
+    set(
+      updatePage$,
+      createElement(ZeroChatThreadPage, { key: threadId, thread }),
+    );
+    // ...
+    await set(thread.loadMessages$, signal);
+  },
+);
 ```
+
+No manual cache needed — ccstate `computed` memoizes the last result. As long as `currentChatThreadId$` hasn't changed, the same `ChatThreadSignals` object is returned without re-creation.
 
 **Step 5 — Components consume via props:**
 
