@@ -197,11 +197,11 @@ export async function generateRunSummary(
     [
       {
         role: "system",
-        content: `Summarize this ${triggerSource} agent run in at most 50 words as plain text. No markdown, no quotes. Focus on what the user asked and what the agent did.`,
+        content: `Summarize the result of this ${triggerSource} agent run in at most 50 words as plain text. No markdown, no quotes. Focus on what was accomplished or produced — the user's original request is provided only for context.`,
       },
       {
         role: "user",
-        content: `User prompt:\n${promptSnippet}\n\nAgent result:\n${resultSnippet}`,
+        content: `Context (user request):\n${promptSnippet}\n\nResult:\n${resultSnippet}`,
       },
     ],
     80,
