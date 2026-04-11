@@ -1,5 +1,14 @@
 # Changelog
 
+## [12.217.1](https://github.com/vm0-ai/vm0/compare/web-v12.217.0...web-v12.217.1) (2026-04-11)
+
+
+### Bug Fixes
+
+* **voice-chat:** add echo cancellation for hands-free speaker mode ([#8932](https://github.com/vm0-ai/vm0/issues/8932)) ([cbaf14e](https://github.com/vm0-ai/vm0/commit/cbaf14e92602a03afb5ad8765698303a7850c60b))
+* **voice-chat:** mobile-friendly footer layout for voice chat controls ([#8933](https://github.com/vm0-ai/vm0/issues/8933)) ([110f808](https://github.com/vm0-ai/vm0/commit/110f808810ab41965ac9d24aaffb73b88b904fde))
+* **zero:** load user feature switch overrides for auto-skill check ([#8928](https://github.com/vm0-ai/vm0/issues/8928)) ([08a6ca1](https://github.com/vm0-ai/vm0/commit/08a6ca19eb82dada7874255a0ea128101d41dc17))
+
 ## [12.217.0](https://github.com/vm0-ai/vm0/compare/web-v12.216.0...web-v12.217.0) (2026-04-10)
 
 
