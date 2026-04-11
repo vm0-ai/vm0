@@ -769,7 +769,8 @@ const reconnectVoiceSession$ = command(
       if (ok) {
         // Success — restart heartbeat and poll loops
         set(internalReconnectAttempt$, 0);
-        await set(acquireWakeLock$);
+        await set(acquireWakeLock$, signal);
+        signal.throwIfAborted();
         const parentSignal = get(internalParentSignal$);
         if (!parentSignal) {
           set(internalError$, "No parent signal for reconnect");
@@ -796,23 +797,26 @@ const reconnectVoiceSession$ = command(
 
 // --- Wake lock ---
 
-const acquireWakeLock$ = command(async ({ set }) => {
-  if (!("wakeLock" in navigator)) {
-    return;
-  }
-  // eslint-disable-next-line no-restricted-syntax -- wakeLock.request can fail if document is not visible
-  try {
-    const lock = await navigator.wakeLock.request("screen");
-    set(internalWakeLock$, lock);
-  } catch {
-    // Wake lock request failed — non-critical, ignore
-  }
-});
+const acquireWakeLock$ = command(
+  async ({ set }, signal: AbortSignal) => {
+    if (!("wakeLock" in navigator)) {
+      return;
+    }
+    // eslint-disable-next-line no-restricted-syntax -- wakeLock.request can fail if document is not visible
+    try {
+      const lock = await navigator.wakeLock.request("screen");
+      signal.throwIfAborted();
+      set(internalWakeLock$, lock);
+    } catch {
+      // Wake lock request failed or aborted — non-critical, ignore
+    }
+  },
+);
 
 const releaseWakeLock$ = command(({ get, set }) => {
   const lock = get(internalWakeLock$);
   if (lock) {
-    void lock.release();
+    lock.release().catch(() => undefined);
     set(internalWakeLock$, null);
   }
 });
@@ -878,7 +882,8 @@ const connectVoiceSession$ = command(
       return;
     }
 
-    await set(acquireWakeLock$);
+    await set(acquireWakeLock$, sessionSignal);
+    sessionSignal.throwIfAborted();
 
     await Promise.allSettled([
       set(startHeartbeat$, sessionSignal),
