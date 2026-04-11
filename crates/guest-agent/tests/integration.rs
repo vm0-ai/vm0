@@ -372,14 +372,13 @@ async fn heartbeat_first_failure_fatal() {
     mock.delete_async().await;
 }
 
-#[tokio::test(start_paused = true)]
+#[tokio::test]
 async fn heartbeat_consecutive_failures_fatal() {
     let _guard = TEST_MUTEX.lock().unwrap();
     let server = &*MOCK_SERVER;
 
-    // Tokio time is paused (start_paused = true): timer futures auto-advance
-    // instantly while real I/O (httpmock TCP) still completes normally.
-    // The 60s heartbeat interval costs zero wall-clock time.
+    // Use a 1s heartbeat interval so the test completes in ~3s (3 failures).
+    const TEST_INTERVAL: u64 = 1;
 
     // First heartbeat succeeds.
     let success_mock = server.mock(|when, then| {
@@ -389,8 +388,9 @@ async fn heartbeat_consecutive_failures_fatal() {
 
     let shutdown = CancellationToken::new();
     let shutdown_clone = shutdown.clone();
-    let handle =
-        tokio::spawn(async move { guest_agent::heartbeat::heartbeat_loop(shutdown_clone).await });
+    let handle = tokio::spawn(async move {
+        guest_agent::heartbeat::heartbeat_loop_with_interval(shutdown_clone, TEST_INTERVAL).await
+    });
 
     // Wait for first successful heartbeat.
     loop {
@@ -409,8 +409,7 @@ async fn heartbeat_consecutive_failures_fatal() {
     });
 
     // heartbeat_loop should exit after MAX_CONSECUTIVE_HEARTBEAT_FAILURES.
-    // Timeout is generous (300s tokio time) but costs no wall-clock time.
-    let result = tokio::time::timeout(Duration::from_secs(300), handle)
+    let result = tokio::time::timeout(Duration::from_secs(30), handle)
         .await
         .expect("heartbeat_loop should exit within timeout")
         .expect("task should not panic");
@@ -432,12 +431,15 @@ async fn heartbeat_consecutive_failures_fatal() {
     assert_eq!(fail_calls, 3);
 }
 
-#[tokio::test(start_paused = true)]
+#[tokio::test]
 async fn heartbeat_recovery_resets_counter() {
     let _guard = TEST_MUTEX.lock().unwrap();
     let server = &*MOCK_SERVER;
 
-    // Sequence: success → 2 failures → success (reset) → 2 failures → success (reset)
+    // Use a 1s heartbeat interval so the test completes quickly.
+    const TEST_INTERVAL: u64 = 1;
+
+    // Sequence: success → 2 failures → success (reset)
     // The loop should NOT exit because failures never reach 3 consecutive.
 
     let mock = server.mock(|when, then| {
@@ -447,8 +449,9 @@ async fn heartbeat_recovery_resets_counter() {
 
     let shutdown = CancellationToken::new();
     let shutdown_clone = shutdown.clone();
-    let handle =
-        tokio::spawn(async move { guest_agent::heartbeat::heartbeat_loop(shutdown_clone).await });
+    let handle = tokio::spawn(async move {
+        guest_agent::heartbeat::heartbeat_loop_with_interval(shutdown_clone, TEST_INTERVAL).await
+    });
 
     // Wait for first successful heartbeat.
     loop {
@@ -497,7 +500,7 @@ async fn heartbeat_recovery_resets_counter() {
 
     // The loop should still be running — shut it down gracefully.
     shutdown.cancel();
-    let result = tokio::time::timeout(Duration::from_secs(300), handle)
+    let result = tokio::time::timeout(Duration::from_secs(30), handle)
         .await
         .expect("heartbeat_loop should exit within timeout")
         .expect("task should not panic");

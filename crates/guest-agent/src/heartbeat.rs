@@ -24,14 +24,21 @@ const LOG_TAG: &str = "sandbox:guest-agent";
 /// The caller should race this against CLI execution so that a network
 /// failure terminates the run early.
 pub async fn heartbeat_loop(shutdown: CancellationToken) -> Result<(), AgentError> {
+    heartbeat_loop_with_interval(shutdown, constants::HEARTBEAT_INTERVAL_SECS).await
+}
+
+/// Like [`heartbeat_loop`] but with a configurable interval (for testing).
+pub async fn heartbeat_loop_with_interval(
+    shutdown: CancellationToken,
+    interval_secs: u64,
+) -> Result<(), AgentError> {
     // No API token → local/test mode; heartbeat has no server to reach.
     if !env::has_api() {
         shutdown.cancelled().await;
         return Ok(());
     }
 
-    let mut interval =
-        tokio::time::interval(Duration::from_secs(constants::HEARTBEAT_INTERVAL_SECS));
+    let mut interval = tokio::time::interval(Duration::from_secs(interval_secs));
     let mut is_first = true;
     let mut consecutive_failures: u32 = 0;
 

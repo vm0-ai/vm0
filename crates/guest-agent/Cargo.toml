@@ -20,7 +20,6 @@ tokio-util.workspace = true
 
 [dev-dependencies]
 httpmock.workspace = true
-tokio = { workspace = true, features = ["test-util"] }
 
 [lints]
 workspace = true
