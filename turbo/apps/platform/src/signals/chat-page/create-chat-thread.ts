@@ -546,18 +546,16 @@ function createThreadUIState() {
     return get(internalExpandedIds$);
   });
 
-  const toggleTimelineExpanded$ = command(
-    ({ get, set }, messageId: string) => {
-      const current = get(internalExpandedIds$);
-      const next = new Set(current);
-      if (next.has(messageId)) {
-        next.delete(messageId);
-      } else {
-        next.add(messageId);
-      }
-      set(internalExpandedIds$, next);
-    },
-  );
+  const toggleTimelineExpanded$ = command(({ get, set }, messageId: string) => {
+    const current = get(internalExpandedIds$);
+    const next = new Set(current);
+    if (next.has(messageId)) {
+      next.delete(messageId);
+    } else {
+      next.add(messageId);
+    }
+    set(internalExpandedIds$, next);
+  });
 
   // Copy state with 2s auto-clear
   const internalCopiedId$ = state<string | null>(null);

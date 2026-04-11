@@ -172,7 +172,11 @@ export function ZeroChatThreadPage() {
   return <ZeroChatThreadPageInner thread={thread} />;
 }
 
-export function ZeroChatThreadPageInner({ thread }: { thread: ChatThreadSignals }) {
+export function ZeroChatThreadPageInner({
+  thread,
+}: {
+  thread: ChatThreadSignals;
+}) {
   const messagesLoadable = useLastLoadable(thread.messages$);
   const messages =
     messagesLoadable.state === "hasData" ? messagesLoadable.data : [];
@@ -906,11 +910,17 @@ function StaticAssistantMessage({
         <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
           <AssistantBubbleAvatar thread={thread} />
           <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-sm leading-relaxed min-w-0 break-words">
-            {hasSummaries && <CollapsibleTimeline message={message} thread={thread} />}
+            {hasSummaries && (
+              <CollapsibleTimeline message={message} thread={thread} />
+            )}
             <AssistantErrorContent error={message.error} />
           </div>
         </div>
-        <AssistantMessageActions message={message} content={content} thread={thread} />
+        <AssistantMessageActions
+          message={message}
+          content={content}
+          thread={thread}
+        />
       </div>
     );
   }
@@ -921,7 +931,9 @@ function StaticAssistantMessage({
         <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
           <AssistantBubbleAvatar thread={thread} />
           <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-sm leading-relaxed min-w-0 break-words">
-            {hasSummaries && <CollapsibleTimeline message={message} thread={thread} />}
+            {hasSummaries && (
+              <CollapsibleTimeline message={message} thread={thread} />
+            )}
             <Markdown source={content} />
             {message.cancelled && (
               <div className="mt-3 pt-3 border-t flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -931,7 +943,11 @@ function StaticAssistantMessage({
             )}
           </div>
         </div>
-        <AssistantMessageActions message={message} content={content} thread={thread} />
+        <AssistantMessageActions
+          message={message}
+          content={content}
+          thread={thread}
+        />
       </div>
     );
   }
@@ -958,7 +974,11 @@ function StaticAssistantMessage({
           )}
         </div>
       </div>
-      <AssistantMessageActions message={message} content={content} thread={thread} />
+      <AssistantMessageActions
+        message={message}
+        content={content}
+        thread={thread}
+      />
     </div>
   );
 }

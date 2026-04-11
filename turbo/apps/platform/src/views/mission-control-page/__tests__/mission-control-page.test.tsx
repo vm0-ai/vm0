@@ -112,17 +112,20 @@ describe("mission control page", () => {
     ]);
 
     server.use(
-      http.get("*/api/zero/chat-threads/thread-abc", () => {
+      http.get("*/api/zero/chat-threads/:id", () => {
         return HttpResponse.json({
           id: "thread-abc",
           title: null,
-          agentId: null,
+          agentId: "00000000-0000-4000-a000-000000000000",
           chatMessages: [],
           latestSessionId: null,
           unsavedRuns: [],
           createdAt: "2026-04-10T10:00:00Z",
           updatedAt: "2026-04-10T10:00:00Z",
         });
+      }),
+      http.get("*/api/zero/chat-threads", () => {
+        return HttpResponse.json({ threads: [] });
       }),
     );
 

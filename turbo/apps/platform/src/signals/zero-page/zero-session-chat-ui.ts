@@ -2,29 +2,6 @@ import { state, computed, command } from "ccstate";
 import { writeToClipboard } from "./clipboard.ts";
 
 // ---------------------------------------------------------------------------
-// Collapsible timeline expanded state
-// ---------------------------------------------------------------------------
-
-const expandedTimelineIds$ = state(new Set<string>());
-
-export const timelineExpandedIds$ = computed((get) => {
-  return get(expandedTimelineIds$);
-});
-
-export const toggleTimelineExpanded$ = command(
-  ({ get, set }, messageId: string) => {
-    const current = get(expandedTimelineIds$);
-    const next = new Set(current);
-    if (next.has(messageId)) {
-      next.delete(messageId);
-    } else {
-      next.add(messageId);
-    }
-    set(expandedTimelineIds$, next);
-  },
-);
-
-// ---------------------------------------------------------------------------
 // Copy message state
 // ---------------------------------------------------------------------------
 
