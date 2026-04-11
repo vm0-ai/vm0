@@ -35,7 +35,9 @@ export function detach<T>(
     silencePromise = Promise.resolve(promise).then(
       () => {},
       (error: unknown) => {
-        throwIfNotAbort(error);
+        if (!isAbortError(error)) {
+          L.error(`Detached promise rejected [${reason}]`, error);
+        }
       },
     );
   }
