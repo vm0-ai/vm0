@@ -1128,7 +1128,7 @@ jobs:
           # shellcheck disable=SC2088
           BIN_DIR="/var/lib/vm0-runner/bin/${JOB_REF}"
 
-          echo "=== Generating config (keep-alive enabled) ==="
+          echo "=== Generating config ==="
           # shellcheck disable=SC2029
           ssh "$REMOTE" "sudo ${BIN_DIR}/runner config \
             --profile vm0/default \
@@ -1137,7 +1137,6 @@ jobs:
             --group vm0/keepalive-${JOB_REF} \
             --runner-dirname ${JOB_REF}-keepalive \
             --max-concurrent 2 \
-            --keep-alive \
             --api-url https://not-a-real-server.test \
             --token vm0_official_${OFFICIAL_RUNNER_SECRET}"
 
@@ -1160,24 +1159,26 @@ jobs:
           # Clean up any residual transient unit from a previous CI run
           sudo "$BIN_DIR/runner" service stop --name "$SVC" 2>/dev/null || true
 
-          # Start transient runner service with keep-alive
-          echo "--- Starting runner (keep-alive enabled) ---"
+          # Start transient runner service
+          echo "--- Starting runner ---"
           sudo "$BIN_DIR/runner" service start --name "$SVC" \
             --config "$RUNNER_DIR/runner.yaml" --local --env USE_MOCK_CLAUDE=true
 
-          # Turn 1: submit job with session ID — creates a marker file in guest
+          # Turn 1: submit job with session ID and sandboxReuse flag — creates a marker file in guest
           echo "--- Turn 1: create marker file ---"
           sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
             --session-id "$SESSION_ID" \
+            --feature-flag sandboxReuse=true \
             --prompt 'touch /tmp/keepalive-marker && echo turn1-done' \
             || fail "Turn 1 failed"
 
-          # Turn 2: submit job with same session ID — should reuse the VM.
+          # Turn 2: submit job with same session ID and flag — should reuse the VM.
           # If VM was reused, the marker file from turn 1 still exists (exit 0).
           # If a new VM was created, the file is missing and test exits non-zero.
           echo "--- Turn 2: verify marker file persists (VM reused) ---"
           sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
             --session-id "$SESSION_ID" \
+            --feature-flag sandboxReuse=true \
             --prompt 'test -f /tmp/keepalive-marker' \
             || fail "Turn 2: marker file not found — VM was not reused"
           echo "PASS: Turn 2 completed (VM reused, filesystem persisted)"
@@ -1187,6 +1188,7 @@ jobs:
           echo "--- Turn 3: different session creates new VM ---"
           sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
             --session-id "different-session" \
+            --feature-flag sandboxReuse=true \
             --prompt 'test ! -f /tmp/keepalive-marker' \
             || fail "Turn 3: marker file found — session isolation broken"
           echo "PASS: Turn 3 completed (new VM for different session)"

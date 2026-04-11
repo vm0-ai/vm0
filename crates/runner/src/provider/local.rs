@@ -35,9 +35,11 @@ pub(crate) struct JobRequest {
     pub(crate) user_timezone: Option<String>,
     #[serde(default)]
     pub(crate) profile: Option<String>,
-    /// Session ID for keep-alive VM reuse across conversation turns.
+    /// Session ID for sandbox reuse across conversation turns.
     #[serde(default)]
     pub(crate) session_id: Option<String>,
+    #[serde(default)]
+    pub(crate) feature_flags: Option<HashMap<String, bool>>,
 }
 
 /// Job response written by the runner as a `{job_id}.result` file.
@@ -254,7 +256,7 @@ impl JobProvider for LocalProvider {
             tools: None,
             settings: None,
             experimental_profile: req.profile,
-            feature_flags: None,
+            feature_flags: req.feature_flags,
         })
     }
 
@@ -323,6 +325,7 @@ mod tests {
             user_timezone: None,
             profile: profile.map(String::from),
             session_id: None,
+            feature_flags: None,
         };
         let json = serde_json::to_vec(&req).unwrap();
         std::fs::write(dir.join(format!("{job_id}.job")), &json).unwrap();
