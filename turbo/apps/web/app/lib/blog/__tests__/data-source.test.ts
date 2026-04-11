@@ -165,4 +165,75 @@ describe("blog/data-source", () => {
       expect(categories).toEqual([]);
     });
   });
+
+  describe("error fallback", () => {
+    beforeEach(() => {
+      server.use(
+        http.get(`${STRAPI_URL}/api/articles`, () => {
+          return new HttpResponse(null, {
+            status: 500,
+            statusText: "Internal Server Error",
+          });
+        }),
+        http.get(`${STRAPI_URL}/api/categories`, () => {
+          return new HttpResponse(null, {
+            status: 500,
+            statusText: "Internal Server Error",
+          });
+        }),
+      );
+    });
+
+    it("getPosts returns empty array on Strapi error", async () => {
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+      const posts = await getPosts("en");
+
+      expect(posts).toEqual([]);
+      expect(errorSpy).toHaveBeenCalledWith(
+        "[blog] Failed to fetch posts:",
+        expect.any(Error),
+      );
+      errorSpy.mockRestore();
+    });
+
+    it("getPost returns null on Strapi error", async () => {
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+      const post = await getPost("test-post", "en");
+
+      expect(post).toBeNull();
+      expect(errorSpy).toHaveBeenCalledWith(
+        "[blog] Failed to fetch post by slug:",
+        expect.any(Error),
+      );
+      errorSpy.mockRestore();
+    });
+
+    it("getFeatured returns null on Strapi error", async () => {
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+      const post = await getFeatured("en");
+
+      expect(post).toBeNull();
+      expect(errorSpy).toHaveBeenCalledWith(
+        "[blog] Failed to fetch featured post:",
+        expect.any(Error),
+      );
+      errorSpy.mockRestore();
+    });
+
+    it("getCategories returns empty array on Strapi error", async () => {
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+      const categories = await getCategories("en");
+
+      expect(categories).toEqual([]);
+      expect(errorSpy).toHaveBeenCalledWith(
+        "[blog] Failed to fetch categories:",
+        expect.any(Error),
+      );
+      errorSpy.mockRestore();
+    });
+  });
 });
