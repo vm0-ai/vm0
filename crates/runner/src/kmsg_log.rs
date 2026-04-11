@@ -34,34 +34,30 @@ pub fn new_ip_log_map() -> IpLogMap {
 pub struct KmsgHandle {
     cancel: CancellationToken,
     task: tokio::task::JoinHandle<()>,
-    child: tokio::process::Child,
+    child: Option<tokio::process::Child>,
 }
 
 impl KmsgHandle {
     /// Stop the kmsg monitor and wait for cleanup.
     pub async fn stop(mut self) {
         self.cancel.cancel();
-        let _ = self.child.start_kill();
-        let _ = self.child.wait().await;
+        if let Some(ref mut child) = self.child {
+            let _ = child.start_kill();
+            let _ = child.wait().await;
+        }
         let _ = (&mut self.task).await;
         info!("kmsg monitor stopped");
     }
 
-    /// Create a noop handle for testing. The background task simply waits
-    /// for cancellation — no `dmesg` process is spawned.
+    /// Create a noop handle for testing. No `dmesg` process is spawned.
     #[cfg(test)]
     pub fn noop() -> Self {
         let cancel = CancellationToken::new();
         let token = cancel.clone();
-        // Spawn a trivial child that exits immediately — satisfies the `child`
-        // field without needing root or `/dev/kmsg`.
-        let child = tokio::process::Command::new("true")
-            .spawn()
-            .expect("failed to spawn `true`");
         Self {
             cancel,
             task: tokio::spawn(async move { token.cancelled().await }),
-            child,
+            child: None,
         }
     }
 }
@@ -73,7 +69,9 @@ impl Drop for KmsgHandle {
     /// (e.g., factory creation failure). Harmless if `stop()` already ran —
     /// `start_kill` on an exited child is a no-op.
     fn drop(&mut self) {
-        let _ = self.child.start_kill();
+        if let Some(ref mut child) = self.child {
+            let _ = child.start_kill();
+        }
         self.cancel.cancel();
         self.task.abort();
     }
@@ -126,7 +124,7 @@ pub fn spawn(ip_log_map: IpLogMap) -> std::io::Result<KmsgHandle> {
     Ok(KmsgHandle {
         cancel,
         task,
-        child,
+        child: Some(child),
     })
 }
 
