@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.75.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.75.0...runner-rs-v0.75.1) (2026-04-11)
+
+
+### Bug Fixes
+
+* align mitmproxy permission matching with frontend contract ([#8943](https://github.com/vm0-ai/vm0/issues/8943)) ([e4273a0](https://github.com/vm0-ai/vm0/commit/e4273a0fa8b7a06ffd1ef208ed15bd164e15bf31))
+
 ## [0.75.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.74.2...runner-rs-v0.75.0) (2026-04-10)
 
 

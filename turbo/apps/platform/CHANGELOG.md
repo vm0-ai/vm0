@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.217.0](https://github.com/vm0-ai/vm0/compare/app-v0.216.0...app-v0.217.0) (2026-04-11)
+
+
+### Features
+
+* Mission Control multi-thread panel ([#8944](https://github.com/vm0-ai/vm0/issues/8944)) ([965bbb2](https://github.com/vm0-ai/vm0/commit/965bbb27afd8a526a87eab419a12048fd66dc3ce))
+
+
+### Refactoring
+
+* extract chat thread signal factory for multi-instance support ([#8938](https://github.com/vm0-ai/vm0/issues/8938)) ([ad67e05](https://github.com/vm0-ai/vm0/commit/ad67e05f54d76dbfa99917c0702507d03bc87236))
+
 ## [0.216.0](https://github.com/vm0-ai/vm0/compare/app-v0.215.1...app-v0.216.0) (2026-04-11)
 
 
