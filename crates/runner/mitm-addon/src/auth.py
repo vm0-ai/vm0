@@ -39,6 +39,26 @@ def get_api_url() -> str:
     return ctx.options.vm0_api_url
 
 
+def make_api_request(url: str, data: bytes, sandbox_token: str) -> urllib.request.Request:
+    """Build a Request with standard platform API headers.
+
+    Centralises User-Agent, Authorization, Content-Type, and the optional
+    Vercel bypass header so that callers cannot accidentally omit them.
+    """
+    req = urllib.request.Request(
+        url,
+        data=data,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {sandbox_token}",
+            "User-Agent": "vm0-mitm-addon/1.0",
+        },
+    )
+    if VERCEL_BYPASS:
+        req.add_header("x-vercel-protection-bypass", VERCEL_BYPASS)
+    return req
+
+
 def _fetch_firewall_headers_sync(
     encrypted_secrets: str,
     auth_headers: dict,
@@ -62,17 +82,7 @@ def _fetch_firewall_headers_sync(
     if vars_map:
         body["vars"] = vars_map
     data = json.dumps(body).encode()
-    req = urllib.request.Request(
-        url,
-        data=data,
-        headers={
-            "Authorization": f"Bearer {sandbox_token}",
-            "Content-Type": "application/json",
-            "User-Agent": "vm0-mitm-addon/1.0",
-        },
-    )
-    if VERCEL_BYPASS:
-        req.add_header("x-vercel-protection-bypass", VERCEL_BYPASS)
+    req = make_api_request(url, data, sandbox_token)
     resp = urllib.request.urlopen(req, timeout=10)
     return json.loads(resp.read())
 

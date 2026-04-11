@@ -158,6 +158,57 @@ export async function generateChatNotificationSummary(
 }
 
 /**
+ * Truncate text to the first N lines, each capped at maxCharsPerLine.
+ */
+function truncateSnippet(
+  text: string,
+  maxLines = 3,
+  maxCharsPerLine = 80,
+): string {
+  return text
+    .split("\n")
+    .slice(0, maxLines)
+    .map((line) => {
+      return line.length > maxCharsPerLine
+        ? `${line.slice(0, maxCharsPerLine)}…`
+        : line;
+    })
+    .join("\n");
+}
+
+/**
+ * Generate a brief summary (≤50 words) for a completed run.
+ *
+ * Accepts the trigger source (chat, slack, email, schedule) to provide
+ * context-aware summaries. Input is automatically truncated to first 3 lines
+ * × 80 chars each for both prompt and result.
+ *
+ * Returns null if the lightweight model is unavailable.
+ */
+export async function generateRunSummary(
+  triggerSource: string,
+  prompt: string,
+  resultText: string,
+): Promise<string | null> {
+  const promptSnippet = truncateSnippet(prompt);
+  const resultSnippet = truncateSnippet(resultText);
+
+  return generateText(
+    [
+      {
+        role: "system",
+        content: `Summarize this ${triggerSource} agent run in at most 50 words as plain text. No markdown, no quotes. Focus on what the user asked and what the agent did.`,
+      },
+      {
+        role: "user",
+        content: `User prompt:\n${promptSnippet}\n\nAgent result:\n${resultSnippet}`,
+      },
+    ],
+    80,
+  );
+}
+
+/**
  * Generate a one-sentence description for a scheduled task.
  *
  * Returns null if the lightweight model is unavailable.

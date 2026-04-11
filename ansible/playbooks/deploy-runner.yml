@@ -55,10 +55,9 @@
         --profile vm0/default
       register: default_build_output
 
-    - name: Parse default build hashes
+    - name: Parse default build hash
       set_fact:
-        default_rootfs_hash: "{{ default_build_output.stdout_lines | select('match', '^rootfs_hash=') | first | regex_replace('^rootfs_hash=', '') }}"
-        default_snapshot_hash: "{{ default_build_output.stdout_lines | select('match', '^snapshot_hash=') | first | regex_replace('^snapshot_hash=', '') }}"
+        default_image_hash: "{{ default_build_output.stdout_lines | select('match', '^image_hash=') | first | regex_replace('^image_hash=', '') }}"
 
     # ========================================
     # Phase 3: Configure + Install
@@ -67,8 +66,7 @@
       command: >
         {{ bin_dir }}/runner config
         --profile vm0/default
-        --rootfs-hash {{ default_rootfs_hash }}
-        --snapshot-hash {{ default_snapshot_hash }}
+        --image-hash {{ default_image_hash }}
         --name {{ runner_name }}
         --group {{ runner_group }}
         --runner-dirname {{ runner_name }}

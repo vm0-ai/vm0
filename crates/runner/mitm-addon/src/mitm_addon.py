@@ -15,7 +15,6 @@ import os
 import time
 import urllib.error
 import urllib.parse
-import urllib.request
 import zlib
 from concurrent.futures import ThreadPoolExecutor
 
@@ -25,7 +24,13 @@ from mitmproxy import ctx, http, tcp, tls
 from mitmproxy.addonmanager import Loader
 
 # --- Sub-module imports (only symbols used in this file's own code) ---
-from auth import _firewall_header_cache, _opener, evict_stale_cache_keys, handle_firewall_request
+from auth import (
+    _firewall_header_cache,
+    _opener,
+    evict_stale_cache_keys,
+    handle_firewall_request,
+    make_api_request,
+)
 from logging_utils import add_firewall_metadata, log_network_entry
 from matching import FirewallAllow, FirewallBlock, match_firewall_request
 from url_utils import get_original_url
@@ -154,7 +159,6 @@ async def request(flow: http.HTTPFlow) -> None:
 
     if not vm_info:
         # Not a registered VM, pass through without proxying
-        ctx.log.info(f"No VM registration for {client_ip}, passing through")
         return
 
     run_id = vm_info.get("runId", "")
@@ -182,7 +186,6 @@ async def request(flow: http.HTTPFlow) -> None:
         parsed_api = urllib.parse.urlparse(api_url)
         api_hostname = parsed_api.hostname.lower() if parsed_api.hostname else ""
         if api_hostname and (hostname == api_hostname or hostname.endswith(f".{api_hostname}")):
-            ctx.log.info(f"[{run_id}] Auto-allow VM0 API: {hostname}")
             flow.metadata["firewall_action"] = "ALLOW"
             return
 
@@ -230,7 +233,6 @@ async def request(flow: http.HTTPFlow) -> None:
 
     # No firewall match — pass through directly
     flow.metadata["firewall_action"] = "ALLOW"
-    ctx.log.info(f"[{run_id}] ALLOW: {hostname}")
 
 
 _STREAM_BUFFER_LIMIT = 64 * 1024  # 64 KB
@@ -354,6 +356,9 @@ def _create_sse_usage_extractor():
                         model = msg.get("model")
                         if model:
                             usage["model"] = model
+                        message_id = msg.get("id")
+                        if message_id:
+                            usage["message_id"] = message_id
                         _extract_billing_usage(msg.get("usage"), usage)
                     except (json.JSONDecodeError, AttributeError, TypeError):
                         pass  # SSE data lines may be partial/malformed; best-effort extraction
@@ -386,24 +391,19 @@ def _extract_usage_from_json(body: bytes, headers) -> dict | None:
     if model:
         usage["model"] = model
     _extract_billing_usage(data.get("usage"), usage)
-    return usage if usage else None
+    if not usage:
+        return None
+    message_id = data.get("id")
+    if message_id:
+        usage["message_id"] = message_id
+    return usage
 
 
 def _do_report_usage(api_url: str, sandbox_token: str, run_id: str, usage: dict) -> None:
     """POST extracted usage to the platform webhook.  Raises on failure."""
     url = f"{api_url}/api/webhooks/agent/usage"
     payload = json.dumps({"runId": run_id, "usage": usage}).encode()
-    req = urllib.request.Request(
-        url,
-        data=payload,
-        headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {sandbox_token}",
-        },
-    )
-    vercel_bypass = os.environ.get("VERCEL_AUTOMATION_BYPASS_SECRET", "")
-    if vercel_bypass:
-        req.add_header("x-vercel-protection-bypass", vercel_bypass)
+    req = make_api_request(url, payload, sandbox_token)
     try:
         resp = _opener.open(req, timeout=10)
         resp.close()
@@ -481,6 +481,7 @@ def responseheaders(flow: http.HTTPFlow) -> None:
     # For non-SSE model provider responses, disable buffer truncation so the
     # full JSON body is available for usage extraction in response().
     sse_parser = None
+    sse_decompressor = None
     is_model_provider = flow.metadata.get("firewall_name", "").startswith("model-provider:")
     if is_model_provider:
         content_type = flow.response.headers.get("content-type", "")
@@ -488,6 +489,7 @@ def responseheaders(flow: http.HTTPFlow) -> None:
             parser_fn, usage_dict = _create_sse_usage_extractor()
             sse_parser = parser_fn
             flow.metadata["proxy_usage"] = usage_dict
+            sse_decompressor = _create_stream_decompressor(flow.response.headers)
 
     # Model provider responses are never truncated so usage extraction
     # always has the complete body.  Other responses use the 64 KB limit.
@@ -505,7 +507,8 @@ def responseheaders(flow: http.HTTPFlow) -> None:
                     buf.extend(chunk[:remaining])
                     state["truncated"] = True
         if sse_parser is not None:
-            sse_parser(chunk)
+            plaintext = sse_decompressor(chunk) if sse_decompressor else chunk
+            sse_parser(plaintext)
         return chunk
 
     flow.response.stream = stream_and_buffer
@@ -538,6 +541,49 @@ _SENSITIVE_HEADER_KEYWORDS = (
     "password",
     "cookie",
 )
+
+
+def _create_stream_decompressor(headers: http.Headers):
+    """Create an incremental decompressor for streaming chunks.
+
+    Returns a callable that decompresses each chunk, maintaining state
+    across calls.  Returns None if the response is not compressed.
+    """
+    encoding = headers.get("content-encoding", "").strip().lower()
+    if not encoding or encoding == "identity":
+        return None
+    if encoding in ("gzip", "deflate"):
+        wbits = 16 + zlib.MAX_WBITS if encoding == "gzip" else zlib.MAX_WBITS
+        obj = zlib.decompressobj(wbits)
+
+        def decompress_zlib(chunk: bytes) -> bytes:
+            try:
+                return obj.decompress(chunk)
+            except zlib.error:
+                return b""
+
+        return decompress_zlib
+    if encoding == "br":
+        dec = brotli.Decompressor()
+
+        def decompress_br(chunk: bytes) -> bytes:
+            try:
+                return dec.process(chunk)
+            except brotli.error:
+                return b""
+
+        return decompress_br
+    if encoding == "zstd":
+        obj = zstandard.ZstdDecompressor().decompressobj()
+
+        def decompress_zstd(chunk: bytes) -> bytes:
+            try:
+                return obj.decompress(chunk)
+            except zstandard.ZstdError:
+                return b""
+
+        return decompress_zstd
+    return None
 
 
 def _decompress_body(
@@ -795,8 +841,7 @@ def response(flow: http.HTTPFlow) -> None:
         api_id = flow.metadata.get("firewall_api_id", "")
         if api_id:
             cache_key = (run_id, api_id)
-            if _firewall_header_cache.pop(cache_key, None):
-                ctx.log.info(f"[{run_id}] Firewall {api_id}: 401 - cleared header cache")
+            _firewall_header_cache.pop(cache_key, None)
 
     # Log errors to mitmproxy console
     if flow.response and flow.response.status_code >= 400:

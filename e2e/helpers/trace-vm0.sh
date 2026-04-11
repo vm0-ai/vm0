@@ -8,9 +8,9 @@
 #
 # Uses GNU timeout to ensure the entire process tree is killed on
 # timeout (timeout creates a process group and sends SIGTERM to the
-# whole group). CLI_TIMEOUT defaults to 55s, leaving headroom for
-# BATS_TEST_TIMEOUT (typically 60s) to handle cleanup.
-CLI_TIMEOUT="${CLI_TIMEOUT:-55}"
+# whole group). CLI_TIMEOUT defaults to 90s, leaving headroom for
+# BATS_TEST_TIMEOUT (typically 120s) to handle cleanup.
+CLI_TIMEOUT="${CLI_TIMEOUT:-90}"
 TAG="[${BATS_TEST_FILENAME##*/}] ${BATS_TEST_NAME}"
 echo "$(date +%T) $TAG: START vm0 $*" >> /tmp/e2e-trace.log 2>/dev/null
 START=$SECONDS

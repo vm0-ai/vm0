@@ -13,16 +13,13 @@ use crate::profile;
 
 #[derive(Args)]
 pub struct ConfigArgs {
-    /// Profile entries: --profile vm0/default --rootfs-hash abc --snapshot-hash def
+    /// Profile entries: --profile vm0/default --image-hash abc123
     /// Can be repeated for multiple profiles. Each --profile starts a new entry.
     #[arg(long, required = true)]
     profile: Vec<String>,
-    /// Rootfs hash for the preceding --profile (one per profile, in order)
+    /// Image hash for the preceding --profile (one per profile, in order)
     #[arg(long, required = true)]
-    rootfs_hash: Vec<String>,
-    /// Snapshot hash for the preceding --profile (one per profile, in order)
-    #[arg(long, required = true)]
-    snapshot_hash: Vec<String>,
+    image_hash: Vec<String>,
 
     /// Runner logical name
     #[arg(long)]
@@ -55,11 +52,9 @@ pub struct ConfigArgs {
 
 pub async fn run_config(args: ConfigArgs) -> RunnerResult<()> {
     // Validate parallel arrays have same length.
-    if args.profile.len() != args.rootfs_hash.len()
-        || args.profile.len() != args.snapshot_hash.len()
-    {
+    if args.profile.len() != args.image_hash.len() {
         return Err(RunnerError::Config(
-            "--profile, --rootfs-hash, and --snapshot-hash must be specified the same number of times".into(),
+            "--profile and --image-hash must be specified the same number of times".into(),
         ));
     }
 
@@ -75,41 +70,27 @@ pub async fn run_config(args: ConfigArgs) -> RunnerResult<()> {
         }
 
         let def = profile::get(profile_name)?;
-        // Length equality is validated above, so these indices are safe.
-        let rootfs_hash = args
-            .rootfs_hash
+        // Length equality is validated above, so this index is safe.
+        let image_hash = args
+            .image_hash
             .get(i)
-            .ok_or_else(|| RunnerError::Internal(format!("missing rootfs_hash at index {i}")))?;
-        let snapshot_hash = args
-            .snapshot_hash
-            .get(i)
-            .ok_or_else(|| RunnerError::Internal(format!("missing snapshot_hash at index {i}")))?;
+            .ok_or_else(|| RunnerError::Internal(format!("missing image_hash at index {i}")))?;
 
-        // Verify artifacts exist on disk.
-        let rootfs_dir = paths.rootfs_dir().join(rootfs_hash);
-        if !tokio::fs::try_exists(&rootfs_dir)
+        // Verify image directory exists on disk.
+        let image_dir = paths.images_dir().join(image_hash);
+        if !tokio::fs::try_exists(&image_dir)
             .await
-            .map_err(|e| RunnerError::Internal(format!("check rootfs dir: {e}")))?
+            .map_err(|e| RunnerError::Internal(format!("check image dir: {e}")))?
         {
             return Err(RunnerError::Config(format!(
-                "rootfs not found for hash {rootfs_hash}; run `build --profile {profile_name}` first"
-            )));
-        }
-        let snapshot_dir = paths.snapshots_dir().join(snapshot_hash);
-        if !tokio::fs::try_exists(&snapshot_dir)
-            .await
-            .map_err(|e| RunnerError::Internal(format!("check snapshot dir: {e}")))?
-        {
-            return Err(RunnerError::Config(format!(
-                "snapshot not found for hash {snapshot_hash}; run `build --profile {profile_name}` first"
+                "image not found for hash {image_hash}; run `build --profile {profile_name}` first"
             )));
         }
 
         profiles.insert(
             profile_name.clone(),
             ProfileConfig {
-                rootfs_hash: rootfs_hash.clone(),
-                snapshot_hash: Some(snapshot_hash.clone()),
+                image_hash: image_hash.clone(),
                 vcpu: def.vcpu,
                 memory_mb: def.memory_mb,
                 disk_mb: def.disk_mb,

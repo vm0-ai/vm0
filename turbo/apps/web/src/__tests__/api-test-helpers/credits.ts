@@ -461,6 +461,69 @@ export async function seedInsightsDaily(
 }
 
 // ---------------------------------------------------------------------------
+// Proxy usage comparison helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Create a completed run with a specific completedAt timestamp.
+ * Used by proxy usage comparison tests that need to control the time window.
+ */
+export async function createCompletedRun(
+  orgId: string,
+  userId: string,
+  completedAt: Date,
+): Promise<string> {
+  initServices();
+  const composeName = `compose-${randomBytes(4).toString("hex")}`;
+  const [compose] = await globalThis.services.db
+    .insert(agentComposes)
+    .values({ userId, orgId, name: composeName })
+    .returning();
+  const versionId = randomBytes(32).toString("hex");
+  await globalThis.services.db.insert(agentComposeVersions).values({
+    id: versionId,
+    composeId: compose!.id,
+    content: {},
+    createdBy: userId,
+  });
+  const [run] = await globalThis.services.db
+    .insert(agentRuns)
+    .values({
+      userId,
+      orgId,
+      agentComposeVersionId: versionId,
+      prompt: "test",
+      status: "completed",
+      completedAt,
+    })
+    .returning();
+  return run!.id;
+}
+
+/**
+ * Insert a proxy_credit_usage row for testing.
+ */
+export async function insertTestProxyCreditUsage(params: {
+  runId: string;
+  orgId: string;
+  userId: string;
+  inputTokens?: number;
+  outputTokens?: number;
+}): Promise<void> {
+  const { proxyCreditUsage } =
+    await import("../../db/schema/proxy-credit-usage");
+  await globalThis.services.db.insert(proxyCreditUsage).values({
+    runId: params.runId,
+    orgId: params.orgId,
+    userId: params.userId,
+    model: "claude-sonnet-4-20250514",
+    modelProvider: "anthropic",
+    inputTokens: params.inputTokens ?? 100,
+    outputTokens: params.outputTokens ?? 50,
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Credit expires record helpers
 // ---------------------------------------------------------------------------
 

@@ -33,19 +33,10 @@ pub struct GcArgs {
 pub async fn run_gc(args: GcArgs) -> RunnerResult<()> {
     let home = HomePaths::new()?;
 
-    let rootfs_freed = gc_dir(
-        "rootfs",
-        &home.rootfs_dir(),
-        |hash| home.rootfs_lock(hash),
-        args.keep_latest,
-        args.dry_run,
-    )
-    .await?;
-
-    let snapshot_freed = gc_dir(
-        "snapshots",
-        &home.snapshots_dir(),
-        |hash| home.snapshot_lock(hash),
+    let images_freed = gc_dir(
+        "images",
+        &home.images_dir(),
+        |hash| home.image_lock(hash),
         args.keep_latest,
         args.dry_run,
     )
@@ -64,8 +55,7 @@ pub async fn run_gc(args: GcArgs) -> RunnerResult<()> {
 
     let debootstrap_freed = gc_debootstrap(&home, args.keep_latest, args.dry_run).await?;
 
-    let total =
-        rootfs_freed + snapshot_freed + job_logs_freed + debootstrap_freed + workspace_freed;
+    let total = images_freed + job_logs_freed + debootstrap_freed + workspace_freed;
     if total == 0
         && locks_removed == 0
         && job_logs_removed == 0
@@ -105,7 +95,7 @@ struct GcCandidate {
     _lock: Flock<std::fs::File>,
 }
 
-/// GC a single artifact directory (rootfs/ or snapshots/).
+/// GC a single artifact directory (e.g. images/).
 ///
 /// Each subdirectory is named by its content hash. We try an exclusive nonblocking
 /// flock on the corresponding lock file — if it succeeds the resource is unused.

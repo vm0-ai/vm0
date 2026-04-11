@@ -6,13 +6,13 @@ import {
   IconList,
   IconLoader2,
   IconPlus,
+  IconWand,
 } from "@tabler/icons-react";
 import {
   Card,
   CardContent,
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
   Button,
@@ -20,6 +20,10 @@ import {
   Tabs,
   TabsList,
   TabsTrigger,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
 } from "@vm0/ui";
 import { createSubagent$ } from "../../signals/zero-page/zero-agents.ts";
 import {
@@ -291,41 +295,57 @@ function CreateTeammateDialogContent({
   const setAvatarUrl = useSet(setJobsAvatarUrl$);
 
   return (
-    <DialogContent className="sm:max-w-[420px]">
-      <DialogHeader className="flex flex-col items-center text-center pt-4">
-        <div className="mb-2">
-          <AvatarMaker
-            onConfirm={(cfg) => {
-              setAvatarUrl(serializeAvatarSvgConfig(cfg));
-              return Promise.resolve();
-            }}
-            trigger={(openMaker) => {
-              return (
-                <button
-                  type="button"
-                  onClick={openMaker}
-                  className="rounded-full transition-transform duration-200 hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                  aria-label="Customize avatar"
-                >
-                  <AvatarFromUrl
-                    avatarUrl={avatarUrl}
-                    alt="New agent"
-                    className="h-14 w-14 rounded-full object-cover object-top"
-                  />
-                </button>
-              );
-            }}
-          />
-        </div>
-        <DialogTitle className="text-base font-semibold">
-          Create a new agent
-        </DialogTitle>
-        <DialogDescription className="text-sm text-muted-foreground">
-          Name your agent to get started.
-        </DialogDescription>
+    <DialogContent className="sm:max-w-[480px] p-0 gap-0 overflow-hidden">
+      <DialogHeader className="sr-only">
+        <DialogTitle>Create a new agent</DialogTitle>
       </DialogHeader>
 
-      <div className="py-2">
+      {/* Avatar preview */}
+      <div className="flex flex-col items-center pt-10 pb-6 bg-muted/30">
+        <AvatarMaker
+          onConfirm={(cfg) => {
+            setAvatarUrl(serializeAvatarSvgConfig(cfg));
+            return Promise.resolve();
+          }}
+          trigger={(openMaker) => {
+            return (
+              <button
+                type="button"
+                onClick={openMaker}
+                className="relative rounded-full transition-transform duration-200 hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                aria-label="Customize avatar"
+              >
+                <AvatarFromUrl
+                  avatarUrl={avatarUrl}
+                  alt="New agent"
+                  className="h-16 w-16 rounded-full object-cover object-top"
+                />
+                <TooltipProvider delayDuration={200}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="absolute -right-0.5 -bottom-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm border border-border">
+                        <IconWand size={10} stroke={1.5} />
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">
+                      <p className="text-xs">Customize avatar</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </button>
+            );
+          }}
+        />
+      </div>
+
+      {/* Content */}
+      <div className="flex flex-col items-center gap-4 px-6 py-6">
+        <div className="text-center">
+          <p className="text-base font-semibold">Create a new agent</p>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Name your agent to get started.
+          </p>
+        </div>
         <Input
           value={newName}
           onChange={(e) => {
@@ -342,17 +362,12 @@ function CreateTeammateDialogContent({
         />
       </div>
 
-      <div className="flex justify-end gap-2 pt-2">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onCancel}
-          disabled={creating}
-        >
+      {/* Footer */}
+      <div className="flex justify-center gap-3 px-6 pt-4 pb-8">
+        <Button variant="outline" onClick={onCancel} disabled={creating}>
           Cancel
         </Button>
         <Button
-          size="sm"
           onClick={() => {
             return onConfirm(avatarUrl);
           }}

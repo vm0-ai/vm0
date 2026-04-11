@@ -21,6 +21,7 @@ import {
 } from "../../../../../../src/lib/zero/slack-org/handlers/shared";
 import { env } from "../../../../../../src/env";
 import type { SlackOrgCallbackPayload } from "../../../../../../src/lib/infra/callback/callback-payloads";
+import { saveRunSummary } from "../../../../../../src/lib/zero/run-summary";
 import { logger } from "../../../../../../src/lib/shared/logger";
 import type { RunOutput } from "../../../../../../src/lib/infra/run/extract-run-output";
 
@@ -173,7 +174,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const allOutputs = await extractAllRunOutputs(runId, error);
 
   const [runContext] = await globalThis.services.db
-    .select({ userId: agentRuns.userId, orgId: agentRuns.orgId })
+    .select({
+      userId: agentRuns.userId,
+      orgId: agentRuns.orgId,
+      prompt: agentRuns.prompt,
+    })
     .from(agentRuns)
     .where(eq(agentRuns.id, runId))
     .limit(1);
@@ -205,6 +210,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       threadTs: payload.threadTs,
       blocks: buildAgentResponseMessage(responseText, logsUrl),
     });
+  }
+
+  // Generate run summary (best-effort — errors handled internally)
+  if (runContext?.prompt) {
+    const combinedOutput = allOutputs
+      .map((o) => {
+        return o.result;
+      })
+      .filter(Boolean)
+      .join("\n");
+    await saveRunSummary(runId, "slack", runContext.prompt, combinedOutput);
   }
 
   // Clear assistant thinking status

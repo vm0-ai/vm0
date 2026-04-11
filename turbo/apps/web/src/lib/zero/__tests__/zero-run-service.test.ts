@@ -22,6 +22,7 @@ import { verifyZeroToken } from "../../auth/sandbox-token";
 import { decryptSecretsMap } from "../../shared/crypto/secrets-encryption";
 import { reloadEnv } from "../../../env";
 import { updateUserPreferences } from "../user/user-preferences-service";
+import { updateUserFeatureSwitches } from "../user/feature-switches-service";
 import { FeatureSwitchKey, type TriggerSource } from "@vm0/core";
 import * as core from "@vm0/core";
 
@@ -533,6 +534,25 @@ describe("createZeroRun()", () => {
       expect(run).toBeDefined();
       expect(run!.appendSystemPrompt).not.toContain(
         "# Skill Management Guidance",
+      );
+    });
+
+    it("should pass user overrides to AutoSkill feature check", async () => {
+      const spy = vi.spyOn(core, "isFeatureEnabled");
+
+      await updateUserFeatureSwitches(user.orgId, user.userId, {
+        [FeatureSwitchKey.AutoSkill]: false,
+      });
+
+      await createZeroRun(baseParams());
+
+      expect(spy).toHaveBeenCalledWith(
+        FeatureSwitchKey.AutoSkill,
+        expect.objectContaining({
+          overrides: expect.objectContaining({
+            [FeatureSwitchKey.AutoSkill]: false,
+          }),
+        }),
       );
     });
   });

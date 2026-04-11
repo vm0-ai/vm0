@@ -62,11 +62,12 @@ pub async fn run_benchmark(
             RunnerError::Config(format!("profile '{}' not found in config", args.profile))
         })?
         .clone();
-    let is_snapshot = default_profile.snapshot_hash.is_some();
-
     // Block until memory.bin is in page cache so benchmark numbers are stable.
-    if let Some(hash) = &default_profile.snapshot_hash {
-        let path = home.snapshots_dir().join(hash).join("memory.bin");
+    {
+        let path = home
+            .images_dir()
+            .join(&default_profile.image_hash)
+            .join("memory.bin");
         let _ = tokio::task::spawn_blocking(move || prefetch::prefetch_memory(&path)).await;
     }
 
@@ -109,7 +110,7 @@ pub async fn run_benchmark(
             memory_mb: default_profile.memory_mb,
         },
     };
-    let (result, timing) = run_sandbox(&args, &*factory, &mitm, sandbox_config, is_snapshot).await;
+    let (result, timing) = run_sandbox(&args, &*factory, &mitm, sandbox_config).await;
     let total_ms = total.elapsed().as_millis();
     // Shutdown factory first (releases COW pool, base loop handle), then runtime.
     factory.shutdown().await;
@@ -176,7 +177,6 @@ async fn run_sandbox(
     factory: &dyn SandboxFactory,
     mitm: &proxy::MitmProxy,
     sandbox_config: SandboxConfig,
-    is_snapshot: bool,
 ) -> (RunnerResult<ExecResult>, Timing) {
     let zero = Timing {
         boot_ms: 0,
@@ -206,7 +206,7 @@ async fn run_sandbox(
         warn!(error = %e, "failed to register VM in proxy");
     }
 
-    let (result, timing) = run_in_sandbox(args, sandbox.as_mut(), is_snapshot).await;
+    let (result, timing) = run_in_sandbox(args, sandbox.as_mut()).await;
 
     if let Err(e) = mitm.unregister_vm(&source_ip).await {
         warn!(error = %e, "failed to unregister VM from proxy");
@@ -223,7 +223,6 @@ async fn run_sandbox(
 async fn run_in_sandbox(
     args: &BenchmarkArgs,
     sandbox: &mut dyn sandbox::Sandbox,
-    is_snapshot: bool,
 ) -> (RunnerResult<ExecResult>, Timing) {
     let t = Instant::now();
     if let Err(e) = sandbox.start().await {
@@ -237,24 +236,23 @@ async fn run_in_sandbox(
     let boot_ms = t.elapsed().as_millis();
     info!(boot_ms, "sandbox started");
 
+    // Images always contain a snapshot — fix guest clock drift and reseed entropy.
     let t = Instant::now();
-    if is_snapshot {
-        if let Err(e) = executor::fix_guest_clock(sandbox).await {
-            let timing = Timing {
-                boot_ms,
-                clock_ms: t.elapsed().as_millis(),
-                exec_ms: 0,
-            };
-            return (Err(e), timing);
-        }
-        if let Err(e) = executor::reseed_guest_entropy(sandbox).await {
-            let timing = Timing {
-                boot_ms,
-                clock_ms: t.elapsed().as_millis(),
-                exec_ms: 0,
-            };
-            return (Err(e), timing);
-        }
+    if let Err(e) = executor::fix_guest_clock(sandbox).await {
+        let timing = Timing {
+            boot_ms,
+            clock_ms: t.elapsed().as_millis(),
+            exec_ms: 0,
+        };
+        return (Err(e), timing);
+    }
+    if let Err(e) = executor::reseed_guest_entropy(sandbox).await {
+        let timing = Timing {
+            boot_ms,
+            clock_ms: t.elapsed().as_millis(),
+            exec_ms: 0,
+        };
+        return (Err(e), timing);
     }
     let clock_ms = t.elapsed().as_millis();
 

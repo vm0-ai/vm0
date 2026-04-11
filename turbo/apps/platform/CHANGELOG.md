@@ -1,5 +1,71 @@
 # Changelog
 
+## [0.215.1](https://github.com/vm0-ai/vm0/compare/app-v0.215.0...app-v0.215.1) (2026-04-11)
+
+
+### Bug Fixes
+
+* **voice-chat:** add echo cancellation for hands-free speaker mode ([#8932](https://github.com/vm0-ai/vm0/issues/8932)) ([cbaf14e](https://github.com/vm0-ai/vm0/commit/cbaf14e92602a03afb5ad8765698303a7850c60b))
+* **voice-chat:** mobile-friendly footer layout for voice chat controls ([#8933](https://github.com/vm0-ai/vm0/issues/8933)) ([110f808](https://github.com/vm0-ai/vm0/commit/110f808810ab41965ac9d24aaffb73b88b904fde))
+* **voice-chat:** skip response.create for slow-brain thinking events ([#8921](https://github.com/vm0-ai/vm0/issues/8921)) ([c5c2b0c](https://github.com/vm0-ai/vm0/commit/c5c2b0ca407b63ecd9caaf61ce9969c45bd43313)), closes [#8920](https://github.com/vm0-ai/vm0/issues/8920)
+
+## [0.215.0](https://github.com/vm0-ai/vm0/compare/app-v0.214.1...app-v0.215.0) (2026-04-10)
+
+
+### Features
+
+* add ai-generated run summaries to mission control ([#8902](https://github.com/vm0-ai/vm0/issues/8902)) ([b12fe2d](https://github.com/vm0-ai/vm0/commit/b12fe2d55a362c0470d62f4191a7b1ddff9424e5))
+* **voice-chat:** split idle page into quick chat and voice meeting sections ([#8918](https://github.com/vm0-ai/vm0/issues/8918)) ([c0ecbd6](https://github.com/vm0-ai/vm0/commit/c0ecbd6d7a671f65bed06b37bba9ec3e4f422648))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.172.0
+
+## [0.214.1](https://github.com/vm0-ai/vm0/compare/app-v0.214.0...app-v0.214.1) (2026-04-10)
+
+
+### Bug Fixes
+
+* **voice-chat:** send response.create after ptt commit to trigger agent response ([#8905](https://github.com/vm0-ai/vm0/issues/8905)) ([6d4323b](https://github.com/vm0-ai/vm0/commit/6d4323b2983580b940f54b76cbfba2cf217a8a87)), closes [#8904](https://github.com/vm0-ai/vm0/issues/8904)
+
+## [0.214.0](https://github.com/vm0-ai/vm0/compare/app-v0.213.0...app-v0.214.0) (2026-04-10)
+
+
+### Features
+
+* add description infrastructure to feature switch system ([#8874](https://github.com/vm0-ai/vm0/issues/8874)) ([af2170e](https://github.com/vm0-ai/vm0/commit/af2170e63e9655b71b4b4523621ea24a857d9a04))
+* **platform:** add compliance trust badges to onboarding ([#8824](https://github.com/vm0-ai/vm0/issues/8824)) ([6d57b08](https://github.com/vm0-ai/vm0/commit/6d57b0804bfaa675aafbe26452efca90e126dbfa))
+
+
+### Bug Fixes
+
+* **platform:** redesign avatar and create-agent dialogs ([#8806](https://github.com/vm0-ai/vm0/issues/8806)) ([5009fde](https://github.com/vm0-ai/vm0/commit/5009fde6284b09052c770d9ef23ce756337755c5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.171.0
+
+## [0.213.0](https://github.com/vm0-ai/vm0/compare/app-v0.212.0...app-v0.213.0) (2026-04-10)
+
+
+### Features
+
+* **mission-control:** implement tasks list with keyboard navigation ([#8866](https://github.com/vm0-ai/vm0/issues/8866)) ([d5906b2](https://github.com/vm0-ai/vm0/commit/d5906b228a9505d1115ff1dac66e0df76110423f))
+* **voice-chat:** add preparation timeout with auto-cancel and elapsed time ([#8862](https://github.com/vm0-ai/vm0/issues/8862)) ([f7ecffa](https://github.com/vm0-ai/vm0/commit/f7ecffa00c570e4ff05e6db007c6c1d8c60f73fa)), closes [#8848](https://github.com/vm0-ai/vm0/issues/8848)
+* **voice-chat:** add webrtc disconnect recovery with auto-reconnect ([#8861](https://github.com/vm0-ai/vm0/issues/8861)) ([d93cfc7](https://github.com/vm0-ai/vm0/commit/d93cfc7e4168467a15b835391fe1979340a6dfe2))
+
+
+### Bug Fixes
+
+* **voice-chat:** move prep event injection into dc open handler ([#8868](https://github.com/vm0-ai/vm0/issues/8868)) ([90a655c](https://github.com/vm0-ai/vm0/commit/90a655c89b2876cb773dfbdbfe95e089dd661bdb)), closes [#8867](https://github.com/vm0-ai/vm0/issues/8867)
+* **voice-chat:** wrap end-session in transaction and surface polling errors ([#8860](https://github.com/vm0-ai/vm0/issues/8860)) ([cd28f27](https://github.com/vm0-ai/vm0/commit/cd28f276104f0174b3c53fedbbe3f53605d73590))
+
 ## [0.212.0](https://github.com/vm0-ai/vm0/compare/app-v0.211.1...app-v0.212.0) (2026-04-10)
 
 

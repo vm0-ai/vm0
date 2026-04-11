@@ -9,6 +9,7 @@ import { FeatureSwitchKey } from "./feature-switch-key";
 
 export interface FeatureSwitch {
   readonly maintainer: string;
+  readonly description?: string;
   readonly enabled: boolean;
   readonly enabledUserHashes?: readonly string[];
   readonly enabledEmailHashes?: readonly string[];
@@ -45,187 +46,234 @@ const STAFF_ORG_ID_HASHES: readonly string[] = [
 const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.Pricing]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable access to billing plans and pricing page",
     enabled: true,
   },
   [FeatureSwitchKey.Dummy]: {
     maintainer: "ethan@vm0.ai",
+    description: "Test-only feature switch for flag system validation",
     enabled: true,
   },
   [FeatureSwitchKey.Agents]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable multi-agent orchestration in runs",
     enabled: true,
   },
   [FeatureSwitchKey.Secrets]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the encrypted secrets store for agent runs",
     enabled: false,
   },
   [FeatureSwitchKey.Artifacts]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable artifact storage and management",
     enabled: false,
   },
   [FeatureSwitchKey.ApiKeys]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable platform-managed API key pool",
     enabled: false,
   },
   [FeatureSwitchKey.AhrefsConnector]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the Ahrefs SEO connector",
     enabled: false,
   },
   [FeatureSwitchKey.CanvaConnector]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the Canva design connector",
     enabled: false,
   },
   [FeatureSwitchKey.ComputerConnector]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the Computer connector for local service tunneling",
     enabled: false,
   },
   [FeatureSwitchKey.DeelConnector]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the Deel HR connector",
     enabled: false,
   },
   [FeatureSwitchKey.DocuSignConnector]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the DocuSign e-signature connector",
     enabled: false,
   },
   [FeatureSwitchKey.DropboxConnector]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the Dropbox file storage connector",
     enabled: false,
   },
   [FeatureSwitchKey.FigmaConnector]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the Figma design connector",
     enabled: false,
   },
   [FeatureSwitchKey.MercuryConnector]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the Mercury banking connector",
     enabled: false,
   },
   [FeatureSwitchKey.NeonConnector]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the Neon serverless Postgres connector",
     enabled: false,
   },
   [FeatureSwitchKey.GarminConnectConnector]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the Garmin Connect wellness connector",
     enabled: false,
   },
   [FeatureSwitchKey.RedditConnector]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the Reddit connector integration",
     enabled: false,
   },
   [FeatureSwitchKey.SupabaseConnector]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the Supabase database connector integration",
     enabled: false,
   },
   [FeatureSwitchKey.CloseConnector]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the Close CRM connector",
     enabled: false,
   },
   [FeatureSwitchKey.WebflowConnector]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the Webflow site management connector",
     enabled: false,
   },
   [FeatureSwitchKey.OutlookMailConnector]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the Outlook Mail connector",
     enabled: false,
   },
   [FeatureSwitchKey.OutlookCalendarConnector]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the Outlook Calendar connector",
     enabled: false,
   },
   [FeatureSwitchKey.MetaAdsConnector]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the Meta Ads Manager connector",
     enabled: false,
   },
   [FeatureSwitchKey.StripeConnector]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the Stripe payment connector integration",
     enabled: false,
   },
   [FeatureSwitchKey.PosthogConnector]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the PostHog analytics connector",
     enabled: false,
   },
   [FeatureSwitchKey.MailchimpConnector]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the Mailchimp email marketing connector",
     enabled: false,
   },
   [FeatureSwitchKey.ResendConnector]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the Resend email service connector",
     enabled: false,
   },
   [FeatureSwitchKey.SpotifyConnector]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the Spotify connector integration",
     enabled: false,
   },
   [FeatureSwitchKey.GitHubIntegration]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the GitHub App installation integration",
     enabled: false,
   },
   [FeatureSwitchKey.TelegramIntegration]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the Telegram bot integration for message handling",
     enabled: false,
   },
   [FeatureSwitchKey.DataExport]: {
     maintainer: "ethan@vm0.ai",
+    description: "Show the data export option in account menu",
     enabled: false,
   },
   [FeatureSwitchKey.ShowSystemPrompt]: {
     maintainer: "ethan@vm0.ai",
+    description: "Show the appended system prompt in activity detail steps",
     enabled: false,
   },
   [FeatureSwitchKey.Usage]: {
     maintainer: "ethan@vm0.ai",
+    description:
+      "Show the Usage page with per-member credit and token consumption",
     enabled: false,
   },
   [FeatureSwitchKey.ConcurrentAddOn]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the concurrent agent add-on purchase option",
     enabled: false,
   },
   [FeatureSwitchKey.CreditAddOn]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable the credit add-on purchase option",
     enabled: false,
   },
   [FeatureSwitchKey.ModelDetail]: {
     maintainer: "ethan@vm0.ai",
+    description: "Show the selected model name in activity details",
     enabled: false,
   },
   [FeatureSwitchKey.ActivityLogList]: {
     maintainer: "ethan@vm0.ai",
+    description: "Show the Activities list page and breadcrumb navigation",
     enabled: false,
   },
   [FeatureSwitchKey.ZeroDebug]: {
     maintainer: "ethan@vm0.ai",
+    description: "Reveal debug tabs in activity pages and Debug preferences",
     enabled: false,
   },
   [FeatureSwitchKey.ComputerUse]: {
     maintainer: "ethan@vm0.ai",
+    description: "Enable remote desktop host registration",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.MobileChatListPage]: {
     maintainer: "ethan@vm0.ai",
+    description:
+      "Navigate to /chats list page from mobile menu instead of sidebar drawer",
     enabled: false,
   },
   [FeatureSwitchKey.Lab]: {
     maintainer: "ethan@vm0.ai",
+    description: "Show the Lab page for toggling experimental features",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.AuditLink]: {
     maintainer: "ethan@vm0.ai",
+    description: "Show audit log links in Slack messages",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.PhoneIntegration]: {
     maintainer: "ethan@vm0.ai",
+    description: "Show the Phone page for voice call integration",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.VoiceChat]: {
     maintainer: "lancy@vm0.ai",
+    description: "Enable the Voice Chat feature and API endpoints",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.AutoSkill]: {
     maintainer: "lancy@vm0.ai",
+    description: "Enable automatic skill creation in agent prompts",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -294,6 +342,20 @@ export function getAllFeatureStates(
     }
   }
 
+  return result;
+}
+
+/**
+ * Return the description for every feature switch.
+ */
+export function getFeatureSwitchDescriptions(): Record<
+  FeatureSwitchKey,
+  string | undefined
+> {
+  const result = {} as Record<FeatureSwitchKey, string | undefined>;
+  for (const key of Object.values(FeatureSwitchKey)) {
+    result[key] = FEATURE_SWITCHES[key].description;
+  }
   return result;
 }
 

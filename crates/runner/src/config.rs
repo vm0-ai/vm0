@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{RunnerError, RunnerResult};
-use crate::paths::{HomePaths, RootfsPaths};
+use crate::paths::{HomePaths, ImagePaths};
 use crate::profile;
 
 /// 0 means auto-detect from host CPU and memory at startup.
@@ -32,9 +32,7 @@ pub struct FirecrackerConfig {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ProfileConfig {
-    pub rootfs_hash: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub snapshot_hash: Option<String>,
+    pub image_hash: String,
     pub vcpu: u32,
     pub memory_mb: u32,
     pub disk_mb: u32,
@@ -142,27 +140,10 @@ async fn validate(config: &RunnerConfig, home: &HomePaths) -> RunnerResult<()> {
                 "profile {name}: vcpu, memory_mb, and disk_mb must be non-zero"
             )));
         }
-        // Validate rootfs exists on disk.
-        let rootfs_path = RootfsPaths::new(home, &profile.rootfs_hash).rootfs();
-        check_path_exists(&rootfs_path, &format!("profile {name} rootfs")).await?;
-        // Validate snapshot files exist if snapshot_hash is set.
-        if let Some(hash) = &profile.snapshot_hash {
-            let snap_dir = home.snapshots_dir().join(hash);
-            check_path_exists(
-                &snap_dir.join("snapshot.bin"),
-                &format!("profile {name} snapshot"),
-            )
-            .await?;
-            check_path_exists(
-                &snap_dir.join("memory.bin"),
-                &format!("profile {name} snapshot memory"),
-            )
-            .await?;
-            check_path_exists(
-                &snap_dir.join("cow.img"),
-                &format!("profile {name} snapshot cow"),
-            )
-            .await?;
+        // Validate all image files exist on disk.
+        let image_paths = ImagePaths::new(home, &profile.image_hash);
+        for path in image_paths.expected_files() {
+            check_path_exists(&path, &format!("profile {name} image")).await?;
         }
     }
 
@@ -190,7 +171,7 @@ impl RunnerConfig {
 
     /// Build a [`sandbox::FactoryConfig`] for a given profile.
     ///
-    /// Resolves rootfs and snapshot paths from the profile's hashes
+    /// Resolves rootfs and snapshot paths from the profile's image hash
     /// using the standard content-addressed storage layout.
     pub fn factory_config(
         &self,
@@ -218,21 +199,17 @@ impl RunnerConfig {
         profile: &ProfileConfig,
         home: &HomePaths,
     ) -> sandbox::FactoryConfig {
-        let rootfs_paths = RootfsPaths::new(home, &profile.rootfs_hash);
-        let snapshot = profile
-            .snapshot_hash
-            .as_ref()
-            .map(|hash| sandbox::SnapshotRef {
-                output_dir: home.snapshots_dir().join(hash),
-                hash: hash.clone(),
-            });
+        let image_paths = ImagePaths::new(home, &profile.image_hash);
         sandbox::FactoryConfig {
             profile: profile_name.to_string(),
             binary_path: firecracker.binary.clone(),
             kernel_path: firecracker.kernel.clone(),
-            rootfs_path: rootfs_paths.rootfs(),
+            rootfs_path: image_paths.rootfs(),
             base_dir: base_dir.to_path_buf(),
-            snapshot,
+            snapshot: Some(sandbox::SnapshotRef {
+                output_dir: image_paths.dir().to_path_buf(),
+                hash: profile.image_hash.clone(),
+            }),
         }
     }
 }
@@ -241,25 +218,15 @@ impl RunnerConfig {
 mod tests {
     use super::*;
 
-    /// Create a HomePaths rooted in a temp dir and populate fake rootfs/snapshot
-    /// files for the given profile hashes so config validation passes.
-    async fn test_home_with_artifacts(
-        dir: &std::path::Path,
-        profiles: &[(&str, Option<&str>)], // (rootfs_hash, snapshot_hash)
-    ) -> HomePaths {
+    /// Create a HomePaths rooted in a temp dir and populate fake image files
+    /// for the given image hashes so config validation passes.
+    async fn test_home_with_artifacts(dir: &std::path::Path, image_hashes: &[&str]) -> HomePaths {
         let home = HomePaths::with_root(dir.join("vm0-runner"));
-        for &(rootfs_hash, snapshot_hash) in profiles {
-            let rootfs = RootfsPaths::new(&home, rootfs_hash).rootfs();
-            tokio::fs::create_dir_all(rootfs.parent().unwrap())
-                .await
-                .unwrap();
-            tokio::fs::write(&rootfs, b"").await.unwrap();
-            if let Some(hash) = snapshot_hash {
-                let snap_dir = home.snapshots_dir().join(hash);
-                tokio::fs::create_dir_all(&snap_dir).await.unwrap();
-                for name in ["snapshot.bin", "memory.bin", "cow.img"] {
-                    tokio::fs::write(snap_dir.join(name), b"").await.unwrap();
-                }
+        for &hash in image_hashes {
+            let image = ImagePaths::new(&home, hash);
+            tokio::fs::create_dir_all(image.dir()).await.unwrap();
+            for path in image.expected_files() {
+                tokio::fs::write(&path, b"").await.unwrap();
             }
         }
         home
@@ -270,8 +237,7 @@ mod tests {
         profiles.insert(
             "vm0/default".into(),
             ProfileConfig {
-                rootfs_hash: "abc123".into(),
-                snapshot_hash: Some("def456".into()),
+                image_hash: "abc123".into(),
                 vcpu: 2,
                 memory_mb: 4096,
                 disk_mb: 16384,
@@ -300,8 +266,7 @@ firecracker:
   kernel: {kernel}
 profiles:
   vm0/default:
-    rootfs_hash: abc123
-    snapshot_hash: def456
+    image_hash: abc123
     vcpu: 2
     memory_mb: 4096
     disk_mb: 16384
@@ -318,7 +283,7 @@ server:
             kernel = kernel.display(),
         );
 
-        let home = test_home_with_artifacts(dir.path(), &[("abc123", Some("def456"))]).await;
+        let home = test_home_with_artifacts(dir.path(), &["abc123"]).await;
 
         let config_path = dir.path().join("runner.yaml");
         tokio::fs::write(&config_path, &yaml).await.unwrap();
@@ -328,7 +293,7 @@ server:
         assert_eq!(config.profiles.len(), 1);
         let default = &config.profiles["vm0/default"];
         assert_eq!(default.vcpu, 2);
-        assert_eq!(default.rootfs_hash, "abc123");
+        assert_eq!(default.image_hash, "abc123");
         assert_eq!(config.sandbox.max_concurrent, 8);
         assert!((config.sandbox.concurrency_factor - 2.0).abs() < f64::EPSILON);
         let server = config.server.unwrap();
@@ -344,7 +309,7 @@ server:
         for f in [&fc, &kernel] {
             tokio::fs::write(f, b"").await.unwrap();
         }
-        let home = test_home_with_artifacts(dir.path(), &[("abc", None)]).await;
+        let home = test_home_with_artifacts(dir.path(), &["abc"]).await;
 
         let yaml = format!(
             r#"
@@ -357,7 +322,7 @@ firecracker:
   kernel: {kernel}
 profiles:
   vm0/default:
-    rootfs_hash: abc
+    image_hash: abc
     vcpu: 2
     memory_mb: 4096
     disk_mb: 16384
@@ -387,7 +352,7 @@ profiles:
         for f in [&fc, &kernel] {
             tokio::fs::write(f, b"").await.unwrap();
         }
-        let home = test_home_with_artifacts(dir.path(), &[]).await;
+        let home = test_home_with_artifacts(dir.path(), &[] as &[&str]).await;
 
         let yaml = format!(
             r#"
@@ -424,7 +389,7 @@ profiles: {{}}
         for f in [&fc, &kernel] {
             tokio::fs::write(f, b"").await.unwrap();
         }
-        let home = test_home_with_artifacts(dir.path(), &[]).await;
+        let home = test_home_with_artifacts(dir.path(), &[] as &[&str]).await;
 
         let yaml = format!(
             r#"
@@ -437,7 +402,7 @@ firecracker:
   kernel: {kernel}
 profiles:
   bad-name:
-    rootfs_hash: abc
+    image_hash: abc
     vcpu: 2
     memory_mb: 4096
     disk_mb: 16384
@@ -466,7 +431,7 @@ profiles:
         for f in [&fc, &kernel] {
             tokio::fs::write(f, b"").await.unwrap();
         }
-        let home = test_home_with_artifacts(dir.path(), &[]).await;
+        let home = test_home_with_artifacts(dir.path(), &[] as &[&str]).await;
 
         let yaml = format!(
             r#"
@@ -479,7 +444,7 @@ firecracker:
   kernel: {kernel}
 profiles:
   vm0/default:
-    rootfs_hash: abc
+    image_hash: abc
     vcpu: 0
     memory_mb: 4096
     disk_mb: 16384
@@ -505,7 +470,7 @@ profiles:
         for f in [&fc, &kernel] {
             tokio::fs::write(f, b"").await.unwrap();
         }
-        let home = test_home_with_artifacts(dir.path(), &[]).await;
+        let home = test_home_with_artifacts(dir.path(), &[] as &[&str]).await;
 
         let yaml = format!(
             r#"
@@ -518,7 +483,7 @@ firecracker:
   kernel: {kernel}
 profiles:
   vm0/default:
-    rootfs_hash: abc
+    image_hash: abc
     vcpu: 2
     memory_mb: 4096
     disk_mb: 0
@@ -537,6 +502,53 @@ profiles:
     }
 
     #[tokio::test]
+    async fn load_rejects_incomplete_image() {
+        let dir = tempfile::tempdir().unwrap();
+        let fc = dir.path().join("firecracker");
+        let kernel = dir.path().join("vmlinux");
+        for f in [&fc, &kernel] {
+            tokio::fs::write(f, b"").await.unwrap();
+        }
+
+        // Create image directory with only rootfs.ext4 (missing snapshot files).
+        let home = HomePaths::with_root(dir.path().join("vm0-runner"));
+        let image = ImagePaths::new(&home, "abc");
+        tokio::fs::create_dir_all(image.dir()).await.unwrap();
+        tokio::fs::write(image.rootfs(), b"").await.unwrap();
+
+        let yaml = format!(
+            r#"
+name: test
+group: test/group
+base_dir: {base_dir}
+ca_dir: {ca_dir}
+firecracker:
+  binary: {fc}
+  kernel: {kernel}
+profiles:
+  vm0/default:
+    image_hash: abc
+    vcpu: 2
+    memory_mb: 4096
+    disk_mb: 16384
+"#,
+            base_dir = dir.path().display(),
+            ca_dir = dir.path().display(),
+            fc = fc.display(),
+            kernel = kernel.display(),
+        );
+
+        let config_path = dir.path().join("runner.yaml");
+        tokio::fs::write(&config_path, &yaml).await.unwrap();
+
+        let err = load_with_home(&config_path, &home).await.unwrap_err();
+        assert!(
+            err.to_string().contains("not found"),
+            "expected missing file error, got: {err}"
+        );
+    }
+
+    #[tokio::test]
     async fn load_rejects_invalid_concurrency_factor() {
         let dir = tempfile::tempdir().unwrap();
         let fc = dir.path().join("firecracker");
@@ -545,7 +557,7 @@ profiles:
             tokio::fs::write(f, b"").await.unwrap();
         }
 
-        let home = test_home_with_artifacts(dir.path(), &[("abc", None)]).await;
+        let home = test_home_with_artifacts(dir.path(), &["abc"]).await;
 
         for bad_value in ["0.0", "-1.0", ".nan", ".inf", "-.inf"] {
             let yaml = format!(
@@ -559,7 +571,7 @@ firecracker:
   kernel: {kernel}
 profiles:
   vm0/default:
-    rootfs_hash: abc
+    image_hash: abc
     vcpu: 2
     memory_mb: 4096
     disk_mb: 16384
@@ -591,7 +603,7 @@ sandbox:
         for f in [&fc, &kernel] {
             tokio::fs::write(f, b"").await.unwrap();
         }
-        let home = test_home_with_artifacts(dir.path(), &[("abc123", Some("def456"))]).await;
+        let home = test_home_with_artifacts(dir.path(), &["abc123"]).await;
 
         let runner_dir = dir.path().join("my-runner");
         let config = RunnerConfig {
@@ -629,7 +641,7 @@ sandbox:
         for name in ["firecracker", "vmlinux"] {
             tokio::fs::write(sub.join(name), b"").await.unwrap();
         }
-        let home = test_home_with_artifacts(dir.path(), &[("abc", None)]).await;
+        let home = test_home_with_artifacts(dir.path(), &["abc"]).await;
 
         let yaml = r#"
 name: test
@@ -641,7 +653,7 @@ firecracker:
   kernel: artifacts/vmlinux
 profiles:
   vm0/default:
-    rootfs_hash: abc
+    image_hash: abc
     vcpu: 2
     memory_mb: 4096
     disk_mb: 16384
@@ -685,12 +697,12 @@ profiles:
         assert_eq!(fc.kernel_path, dir.path().join("vmlinux"));
         assert_eq!(
             fc.rootfs_path,
-            home.rootfs_dir().join("abc123").join("rootfs.ext4")
+            home.images_dir().join("abc123").join("rootfs.ext4")
         );
         assert_eq!(fc.profile, "vm0/default");
         let snap = fc.snapshot.unwrap();
-        assert_eq!(snap.hash, "def456");
-        assert_eq!(snap.output_dir, home.snapshots_dir().join("def456"));
+        assert_eq!(snap.hash, "abc123");
+        assert_eq!(snap.output_dir, home.images_dir().join("abc123"));
     }
 
     #[tokio::test]
@@ -701,7 +713,7 @@ profiles:
         for f in [&fc, &kernel] {
             tokio::fs::write(f, b"").await.unwrap();
         }
-        let home = test_home_with_artifacts(dir.path(), &[("abc123", Some("def456"))]).await;
+        let home = test_home_with_artifacts(dir.path(), &["abc123"]).await;
 
         let runner_dir = dir.path().join("my-runner");
         let config = RunnerConfig {
@@ -740,7 +752,7 @@ profiles:
         for f in [&fc, &kernel] {
             tokio::fs::write(f, b"").await.unwrap();
         }
-        let home = test_home_with_artifacts(dir.path(), &[("abc", None)]).await;
+        let home = test_home_with_artifacts(dir.path(), &["abc"]).await;
 
         // YAML without any keep_alive fields
         let yaml = format!(
@@ -754,7 +766,7 @@ firecracker:
   kernel: {kernel}
 profiles:
   vm0/default:
-    rootfs_hash: abc
+    image_hash: abc
     vcpu: 2
     memory_mb: 4096
     disk_mb: 16384

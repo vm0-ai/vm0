@@ -456,6 +456,7 @@ export const webhookUsageContract = c.router({
       usage: z
         .object({
           model: z.string().optional(),
+          message_id: z.string().optional(),
           input_tokens: z.number().optional(),
           output_tokens: z.number().optional(),
           cache_read_input_tokens: z.number().optional(),

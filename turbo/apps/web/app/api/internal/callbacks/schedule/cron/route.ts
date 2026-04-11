@@ -3,6 +3,8 @@ import { eq } from "drizzle-orm";
 import { initServices } from "../../../../../../src/lib/init-services";
 import { verifyCallback } from "../../../../../../src/lib/infra/callback";
 import { zeroAgentSchedules } from "../../../../../../src/db/schema/zero-agent-schedule";
+import { getRunOutputText } from "../../../../../../src/lib/infra/run/extract-run-output";
+import { saveRunSummary } from "../../../../../../src/lib/zero/run-summary";
 import type { ScheduleCronCallbackPayload } from "../../../../../../src/lib/infra/callback/callback-payloads";
 import { calculateNextRun } from "../../../../../../src/lib/zero/schedule/schedule-service";
 import { logger } from "../../../../../../src/lib/shared/logger";
@@ -108,6 +110,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       consecutiveFailures: newFailureCount,
       nextRunAt: nextRunAt?.toISOString(),
     });
+  }
+
+  // Generate run summary (best-effort — errors handled internally)
+  if (status === "completed" && schedule.prompt) {
+    const resultText = await getRunOutputText(result.data.runId).catch(() => {
+      return undefined;
+    });
+    await saveRunSummary(
+      result.data.runId,
+      "schedule",
+      schedule.prompt,
+      resultText ?? "",
+    );
   }
 
   return NextResponse.json({ success: true });

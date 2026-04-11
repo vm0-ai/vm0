@@ -61,7 +61,8 @@
       "picomatch": ">=4.0.4",
       "yaml": ">=2.8.3",
       "smol-toml": ">=1.6.1",
-      "@opentelemetry/instrumentation": ">=0.213.0"
+      "@opentelemetry/instrumentation": ">=0.213.0",
+      "zod": "4.3.6"
     }
   },
   "packageManager": "pnpm@10.15.0",

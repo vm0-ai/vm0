@@ -651,44 +651,5 @@ describe("POST /api/zero/developer-support", () => {
 
     // Plain was called (4 steps)
     expect(plainCallCount).toBe(4);
-
-    // No email was enqueued for support@vm0.ai
-    const outbox = await findTestOutboxItems();
-    const supportEmail = outbox.find((item) => {
-      return (
-        item.subject.includes("Plain test") &&
-        item.toAddresses === "support@vm0.ai"
-      );
-    });
-    expect(supportEmail).toBeUndefined();
-  });
-
-  it("falls back to email when PLAIN_API_KEY is not set", async () => {
-    // PLAIN_API_KEY is not set in default test environment (setup.ts does not stub it)
-    const { token } = await setupRunContext(user);
-    const title = `Email fallback test ${uniqueId("ds")}`;
-
-    // Step 1: get consent code
-    const step1 = await postDeveloperSupport(
-      { title, description: "desc" },
-      token,
-    );
-    const { consentCode } = await step1.json();
-
-    // Step 2: submit with consent code
-    const step2 = await postDeveloperSupport(
-      { title, description: "desc", consentCode },
-      token,
-    );
-    expect(step2.status).toBe(200);
-
-    // Email was enqueued for support@vm0.ai
-    const outbox = await findTestOutboxItems();
-    const supportEmail = outbox.find((item) => {
-      return (
-        item.subject.includes(title) && item.toAddresses === "support@vm0.ai"
-      );
-    });
-    expect(supportEmail).toBeDefined();
   });
 });

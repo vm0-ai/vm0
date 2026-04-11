@@ -72,7 +72,7 @@ async function openAvatarMaker(user: ReturnType<typeof userEvent.setup>) {
   });
   await user.click(screen.getByLabelText("Create custom avatar"));
   await waitFor(() => {
-    expect(screen.getByText("Create Avatar")).toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 }
 
@@ -87,14 +87,14 @@ describe("avatar maker - saving state", () => {
     );
     await openAvatarMaker(user);
 
-    const applyBtn = screen.getByText(/Apply/i);
+    const applyBtn = screen.getByText(/Use this avatar/i);
     expect(applyBtn.closest("button")).not.toBeDisabled();
 
     await user.click(applyBtn);
 
     // After the error, the button should become clickable again
     await waitFor(() => {
-      const btn = screen.getByText(/Apply/i);
+      const btn = screen.getByText(/Use this avatar/i);
       expect(btn.closest("button")).not.toBeDisabled();
     });
   });

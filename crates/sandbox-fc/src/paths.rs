@@ -163,6 +163,10 @@ impl SnapshotOutputPaths {
         self.output_dir.join("cow.img")
     }
 
+    pub fn cow_bitmap(&self) -> PathBuf {
+        self.output_dir.join("cow.img.bitmap")
+    }
+
     /// Work directory used during snapshot creation.
     /// Its layout is preserved as bind-mount targets during restore.
     pub fn work_dir(&self) -> PathBuf {
@@ -252,6 +256,17 @@ mod tests {
             "snapshot vsock.sock path too long: {} bytes ({})",
             vsock.as_os_str().len(),
             vsock.display()
+        );
+    }
+
+    #[test]
+    fn cow_bitmap_consistent_with_cow() {
+        let output = SnapshotOutputPaths::new(PathBuf::from("/data/images/abc123"));
+        let expected = PathBuf::from(format!("{}.bitmap", output.cow().display()));
+        assert_eq!(
+            output.cow_bitmap(),
+            expected,
+            "cow_bitmap() must be cow() + \".bitmap\" suffix"
         );
     }
 }

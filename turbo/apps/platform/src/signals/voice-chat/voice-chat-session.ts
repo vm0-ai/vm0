@@ -3,6 +3,7 @@ import { FeatureSwitchKey } from "@vm0/core";
 import { fetch$ } from "../fetch.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import { currentChatAgentId$ } from "../agent-chat.ts";
+import { delay } from "signal-timers";
 import { resetSignal, throwIfAbort, onDomEventFn, setLoop } from "../utils.ts";
 
 type ConnectionStatus =
@@ -10,6 +11,7 @@ type ConnectionStatus =
   | "preparing"
   | "connecting"
   | "connected"
+  | "reconnecting"
   | "disconnected"
   | "error";
 
@@ -60,7 +62,13 @@ const HEARTBEAT_INTERVAL_MS = 30_000;
 const POLL_INTERVAL_MS = 2000;
 const PREP_TIMEOUT_CHAT_MS = 60_000;
 const PREP_TIMEOUT_MEETING_MS = 300_000;
+const MAX_RECONNECT_ATTEMPTS = 5;
+const RECONNECT_BASE_DELAY_MS = 1000;
 const REALTIME_MODEL = "gpt-realtime-1.5";
+const HANDS_FREE_VAD_CONFIG = {
+  type: "semantic_vad",
+  eagerness: "medium",
+} as const;
 
 const SESSION_TOOLS = [
   {
@@ -181,6 +189,10 @@ const internalAudioEl$ = state<HTMLAudioElement | null>(null);
 const internalPrompt$ = state<string | null>(null);
 const internalPrepStartTime$ = state<number | null>(null);
 const internalPrepElapsedMs$ = state(0);
+const internalReconnectAttempt$ = state(0);
+const internalInputMode$ = state<"hands-free" | "push-to-talk">("hands-free");
+
+const internalParentSignal$ = state<AbortSignal | null>(null);
 
 const meetingPromptInput$ = state("");
 
@@ -215,6 +227,12 @@ export const vcPrompt$ = computed((get) => {
 });
 export const vcPrepElapsedMs$ = computed((get) => {
   return get(internalPrepElapsedMs$);
+});
+export const vcReconnectAttempt$ = computed((get) => {
+  return get(internalReconnectAttempt$);
+});
+export const vcInputMode$ = computed((get) => {
+  return get(internalInputMode$);
 });
 export const vcMeetingPromptInput$ = computed((get) => {
   return get(meetingPromptInput$);
@@ -407,14 +425,18 @@ const injectSlowBrainEvents$ = command(
       return;
     }
 
-    // Interrupt if model is mid-speech
+    const needsResponse = slowBrainEvents.some((e) => {
+      return e.type === "directive" || e.type === "observation";
+    });
+
+    // Interrupt if model is mid-speech and we need a response
     const current = get(internalCurrentAssistant$);
-    if (current) {
+    if (current && needsResponse) {
       dc.send(JSON.stringify({ type: "response.cancel" }));
       set(internalCurrentAssistant$, null);
     }
 
-    // Inject each event as a user message
+    // Inject each event as a user message (all types, for context)
     for (const event of slowBrainEvents) {
       dc.send(
         JSON.stringify({
@@ -430,8 +452,10 @@ const injectSlowBrainEvents$ = command(
       );
     }
 
-    // Trigger model to respond to injected content
-    dc.send(JSON.stringify({ type: "response.create" }));
+    // Only trigger response for actionable events
+    if (needsResponse) {
+      dc.send(JSON.stringify({ type: "response.create" }));
+    }
   },
 );
 
@@ -463,6 +487,10 @@ const setupWebRTC$ = command(
     set(internalDc$, dc);
 
     dc.addEventListener("open", () => {
+      const inputMode = get(internalInputMode$);
+      const turnDetection =
+        inputMode === "hands-free" ? HANDS_FREE_VAD_CONFIG : null;
+
       dc.send(
         JSON.stringify({
           type: "session.update",
@@ -470,17 +498,19 @@ const setupWebRTC$ = command(
             modalities: ["text", "audio"],
             instructions: FAST_BRAIN_INSTRUCTIONS,
             input_audio_transcription: { model: "whisper-1" },
-            turn_detection: {
-              type: "server_vad",
-              threshold: 0.8,
-              prefix_padding_ms: 300,
-              silence_duration_ms: 600,
-            },
+            input_audio_noise_reduction: { type: "far_field" },
+            turn_detection: turnDetection,
             tools: SESSION_TOOLS,
           },
         }),
       );
       set(internalStatus$, "connected");
+
+      // Inject slow-brain events collected during preparation phase
+      const prepEvents = get(internalEvents$);
+      if (prepEvents.length > 0) {
+        set(injectSlowBrainEvents$, prepEvents);
+      }
     });
 
     dc.addEventListener(
@@ -490,22 +520,28 @@ const setupWebRTC$ = command(
       }),
     );
 
-    dc.addEventListener("close", () => {
-      if (get(internalStatus$) === "connected") {
-        set(internalStatus$, "disconnected");
-      }
-    });
-
-    pc.addEventListener("iceconnectionstatechange", () => {
-      if (
-        pc.iceConnectionState === "failed" ||
-        pc.iceConnectionState === "disconnected"
-      ) {
+    dc.addEventListener(
+      "close",
+      onDomEventFn((): void | Promise<void> => {
         if (get(internalStatus$) === "connected") {
-          set(internalStatus$, "disconnected");
+          return set(reconnectVoiceSession$, signal);
         }
-      }
-    });
+      }),
+    );
+
+    pc.addEventListener(
+      "iceconnectionstatechange",
+      onDomEventFn((): void | Promise<void> => {
+        if (
+          pc.iceConnectionState === "failed" ||
+          pc.iceConnectionState === "disconnected"
+        ) {
+          if (get(internalStatus$) === "connected") {
+            return set(reconnectVoiceSession$, signal);
+          }
+        }
+      }),
+    );
 
     const offer = await pc.createOffer();
     signal.throwIfAborted();
@@ -611,6 +647,151 @@ const startPoll$ = command(async ({ get, set }, signal: AbortSignal) => {
   );
 });
 
+// --- WebRTC cleanup (preserves session state) ---
+
+const cleanupWebRTC$ = command(({ get, set }) => {
+  const dc = get(internalDc$);
+  if (dc) {
+    dc.close();
+    set(internalDc$, null);
+  }
+
+  const pc = get(internalPc$);
+  if (pc) {
+    pc.close();
+    set(internalPc$, null);
+  }
+
+  const audioEl = get(internalAudioEl$);
+  if (audioEl) {
+    audioEl.pause();
+    audioEl.srcObject = null;
+    set(internalAudioEl$, null);
+  }
+});
+
+// --- Reconnect logic ---
+
+const reconnectVoiceSession$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    set(internalStatus$, "reconnecting");
+    set(internalError$, null);
+    set(internalReconnectAttempt$, 0);
+
+    const fetchFn = get(fetch$);
+    const sid = get(internalSessionId$);
+    if (!sid) {
+      set(internalError$, "No session to reconnect");
+      set(internalStatus$, "error");
+      return;
+    }
+
+    for (let attempt = 1; attempt <= MAX_RECONNECT_ATTEMPTS; attempt++) {
+      signal.throwIfAborted();
+      set(internalReconnectAttempt$, attempt);
+
+      // Exponential backoff delay (skip on first attempt)
+      if (attempt > 1) {
+        const backoff = Math.min(
+          RECONNECT_BASE_DELAY_MS * Math.pow(2, attempt - 2),
+          30_000,
+        );
+        await delay(backoff, { signal });
+      }
+
+      // Check if session is still alive via heartbeat
+      const heartbeatRes = await fetchFn(
+        `/api/zero/voice-chat/${sid}/heartbeat`,
+        { method: "POST", signal },
+      );
+      if (!heartbeatRes.ok) {
+        set(internalError$, "Session is no longer active");
+        set(internalStatus$, "error");
+        return;
+      }
+
+      // Clean up old WebRTC resources
+      set(cleanupWebRTC$);
+
+      // Fetch new token
+      const tokenRes = await fetchFn("/api/zero/voice-chat/token", {
+        method: "POST",
+        signal,
+      });
+      if (!tokenRes.ok) {
+        if (tokenRes.status === 401 || tokenRes.status === 403) {
+          const body = (await tokenRes.json()) as {
+            error?: { message?: string };
+          };
+          set(internalError$, body.error?.message ?? "Authentication failed");
+          set(internalStatus$, "error");
+          return;
+        }
+        // Transient failure — retry
+        continue;
+      }
+
+      const { client_secret: clientSecret } = (await tokenRes.json()) as {
+        client_secret: { value: string; expires_at: number };
+      };
+      signal.throwIfAborted();
+
+      // Check if existing mic stream is still active
+      let stream = get(internalStream$);
+      if (
+        !stream ||
+        stream.getAudioTracks().every((t) => {
+          return !t.enabled || t.readyState === "ended";
+        })
+      ) {
+        // eslint-disable-next-line no-restricted-syntax -- getUserMedia can fail due to permission denial
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+            },
+          });
+          set(internalStream$, stream);
+        } catch (error) {
+          throwIfAbort(error);
+          set(internalError$, "Microphone access denied");
+          set(internalStatus$, "error");
+          return;
+        }
+      }
+      signal.throwIfAborted();
+
+      // Setup new WebRTC connection
+      const ok = await set(setupWebRTC$, stream, clientSecret.value, signal);
+      if (ok) {
+        // Success — restart heartbeat and poll loops
+        set(internalReconnectAttempt$, 0);
+        const parentSignal = get(internalParentSignal$);
+        if (!parentSignal) {
+          set(internalError$, "No parent signal for reconnect");
+          set(internalStatus$, "error");
+          return;
+        }
+        const sessionSignal = set(resetSessionSignal$, parentSignal);
+        await Promise.allSettled([
+          set(startHeartbeat$, sessionSignal),
+          set(startPoll$, sessionSignal),
+        ]);
+        signal.throwIfAborted();
+        return;
+      }
+
+      // setupWebRTC$ failed — will retry on next iteration
+    }
+
+    // Max retries exhausted
+    set(internalReconnectAttempt$, 0);
+    set(internalStatus$, "disconnected");
+  },
+);
+
 // --- Shared connection logic ---
 
 const connectVoiceSession$ = command(
@@ -642,7 +823,13 @@ const connectVoiceSession$ = command(
     let stream: MediaStream;
     // eslint-disable-next-line no-restricted-syntax -- getUserMedia can fail due to permission denial or missing hardware
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
     } catch (error) {
       throwIfAbort(error);
       set(
@@ -664,12 +851,6 @@ const connectVoiceSession$ = command(
     sessionSignal.throwIfAborted();
     if (!ok) {
       return;
-    }
-
-    // Inject slow-brain events collected during preparation phase
-    const existingEvents = get(internalEvents$);
-    if (existingEvents.length > 0) {
-      set(injectSlowBrainEvents$, existingEvents);
     }
 
     await Promise.allSettled([
@@ -797,7 +978,8 @@ export const startVoiceChat$ = command(
     if (
       get(internalStatus$) === "connecting" ||
       get(internalStatus$) === "connected" ||
-      get(internalStatus$) === "preparing"
+      get(internalStatus$) === "preparing" ||
+      get(internalStatus$) === "reconnecting"
     ) {
       return;
     }
@@ -812,6 +994,7 @@ export const startVoiceChat$ = command(
     set(internalCurrentAssistant$, null);
     set(internalPrompt$, null);
     set(internalPrepStartTime$, Date.now());
+    set(internalParentSignal$, signal);
 
     const sessionSignal = set(resetSessionSignal$, signal);
 
@@ -863,7 +1046,8 @@ export const startVoiceMeeting$ = command(
     if (
       get(internalStatus$) === "connecting" ||
       get(internalStatus$) === "connected" ||
-      get(internalStatus$) === "preparing"
+      get(internalStatus$) === "preparing" ||
+      get(internalStatus$) === "reconnecting"
     ) {
       return;
     }
@@ -878,6 +1062,7 @@ export const startVoiceMeeting$ = command(
     set(internalCurrentAssistant$, null);
     set(internalPrompt$, prompt);
     set(internalPrepStartTime$, Date.now());
+    set(internalParentSignal$, signal);
 
     const sessionSignal = set(resetSessionSignal$, signal);
 
@@ -973,8 +1158,21 @@ export const endVoiceChat$ = command(({ get, set }) => {
   set(internalPrompt$, null);
   set(internalPrepStartTime$, null);
   set(internalPrepElapsedMs$, 0);
+  set(internalReconnectAttempt$, 0);
+  set(internalInputMode$, "hands-free");
+  set(internalParentSignal$, null);
   set(internalStatus$, "idle");
 });
+
+export const retryVoiceChat$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const status = get(internalStatus$);
+    if (status !== "disconnected") {
+      return;
+    }
+    await set(reconnectVoiceSession$, signal);
+  },
+);
 
 export const toggleVoiceChatMute$ = command(({ get, set }) => {
   const stream = get(internalStream$);
@@ -988,4 +1186,74 @@ export const toggleVoiceChatMute$ = command(({ get, set }) => {
   const wasMuted = get(internalMuted$);
   track.enabled = wasMuted;
   set(internalMuted$, !wasMuted);
+});
+
+export const switchInputMode$ = command(
+  ({ get, set }, mode: "hands-free" | "push-to-talk") => {
+    const dc = get(internalDc$);
+    if (!dc || dc.readyState !== "open") {
+      return;
+    }
+
+    set(internalInputMode$, mode);
+
+    const turnDetection = mode === "hands-free" ? HANDS_FREE_VAD_CONFIG : null;
+
+    dc.send(
+      JSON.stringify({
+        type: "session.update",
+        session: { turn_detection: turnDetection },
+      }),
+    );
+
+    // PTT starts muted, hands-free starts unmuted
+    const stream = get(internalStream$);
+    if (!stream) {
+      return;
+    }
+    const track = stream.getAudioTracks()[0];
+    if (!track) {
+      return;
+    }
+
+    if (mode === "push-to-talk") {
+      track.enabled = false;
+      set(internalMuted$, true);
+    } else {
+      track.enabled = true;
+      set(internalMuted$, false);
+    }
+  },
+);
+
+export const startPTT$ = command(({ get, set }) => {
+  const stream = get(internalStream$);
+  if (!stream) {
+    return;
+  }
+  const track = stream.getAudioTracks()[0];
+  if (!track) {
+    return;
+  }
+  track.enabled = true;
+  set(internalMuted$, false);
+});
+
+export const stopPTT$ = command(({ get, set }) => {
+  const stream = get(internalStream$);
+  if (!stream) {
+    return;
+  }
+  const track = stream.getAudioTracks()[0];
+  if (!track) {
+    return;
+  }
+  track.enabled = false;
+  set(internalMuted$, true);
+
+  const dc = get(internalDc$);
+  if (dc && dc.readyState === "open") {
+    dc.send(JSON.stringify({ type: "input_audio_buffer.commit" }));
+    dc.send(JSON.stringify({ type: "response.create" }));
+  }
 });

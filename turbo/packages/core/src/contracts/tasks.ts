@@ -18,6 +18,7 @@ const taskItemSchema = z.object({
   id: z.string(),
   type: taskTypeSchema,
   title: z.string().nullable(),
+  summary: z.string().nullable(),
   agent: taskAgentSchema,
   latestRunId: z.string().nullable(),
   status: runStatusSchema.nullable(),

@@ -3,9 +3,12 @@ import {
   Button,
   Dialog,
   DialogContent,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
   cn,
 } from "@vm0/ui";
 import {
@@ -13,7 +16,6 @@ import {
   IconChevronLeft,
   IconChevronRight,
   IconDice,
-  IconCheck,
 } from "@tabler/icons-react";
 import type { AvatarSvgConfig } from "./avatar-svg-utils.ts";
 import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
@@ -209,25 +211,32 @@ function AvatarPreviewWithShuffle() {
     >
       <AvatarSvgPreview config={config} size={96} />
       <Sparkles active={showSparkles} />
-      <button
-        type="button"
-        className={cn(
-          "absolute -right-1 -bottom-1 flex h-7 w-7 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm border border-border transition-opacity hover:text-foreground",
-          shuffling ? "opacity-100" : "opacity-0 group-hover:opacity-100",
-        )}
-        onClick={shuffle}
-        aria-label="Randomize avatar"
-      >
-        <IconDice
-          size={14}
-          stroke={1.5}
-          style={
-            shuffling
-              ? { animation: "avatar-dice-spin 0.6s ease-out" }
-              : undefined
-          }
-        />
-      </button>
+      <TooltipProvider delayDuration={800} skipDelayDuration={0}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              tabIndex={-1}
+              className="absolute -right-1 -bottom-1 flex h-7 w-7 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm border border-border hover:text-foreground transition-colors"
+              onClick={shuffle}
+              aria-label="Randomize avatar"
+            >
+              <IconDice
+                size={14}
+                stroke={1.5}
+                style={
+                  shuffling
+                    ? { animation: "avatar-dice-spin 0.6s ease-out" }
+                    : undefined
+                }
+              />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            <p className="text-xs">Shuffle — try a random look!</p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
     </div>
   );
 }
@@ -324,13 +333,24 @@ function AvatarMakerDialogBody({
   };
 
   return (
-    <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-md">
-      <DialogHeader>
-        <DialogTitle>Create Avatar</DialogTitle>
+    <DialogContent className="w-[calc(100vw-2rem)] sm:max-w-lg p-0 gap-0 overflow-hidden">
+      <DialogHeader className="sr-only">
+        <DialogTitle>Give your agent a face</DialogTitle>
       </DialogHeader>
 
-      <div className="flex flex-col items-center gap-4 py-2">
+      {/* Preview section */}
+      <div className="flex flex-col items-center gap-3 px-6 pt-8 pb-5 bg-muted/30">
         <AvatarPreviewWithShuffle />
+      </div>
+
+      {/* Controls section */}
+      <div className="flex flex-col items-center gap-4 px-6 py-5">
+        <div className="text-center">
+          <h2 className="text-base font-semibold">Give your agent a face</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Pick a style or hit shuffle for a surprise.
+          </p>
+        </div>
         <StepNavigator />
         <div className="flex gap-3 flex-wrap justify-center">
           <StepOptions
@@ -342,15 +362,15 @@ function AvatarMakerDialogBody({
         </div>
       </div>
 
-      <DialogFooter>
+      {/* Footer */}
+      <div className="flex justify-center gap-3 px-6 pt-6 pb-6">
         <Button variant="outline" onClick={closeMaker} disabled={saving}>
           Cancel
         </Button>
         <Button onClick={handleConfirm} disabled={saving}>
-          <IconCheck size={16} className="mr-1" />
-          {saving ? "Saving…" : "Apply"}
+          {saving ? "Saving…" : "Use this avatar"}
         </Button>
-      </DialogFooter>
+      </div>
     </DialogContent>
   );
 }
@@ -387,16 +407,25 @@ export function AvatarMaker({ onConfirm, trigger }: AvatarMakerProps) {
       {trigger ? (
         trigger(openMaker)
       ) : (
-        <button
-          type="button"
-          onClick={() => {
-            return openMaker();
-          }}
-          className="h-12 w-12 shrink-0 rounded-full border-2 border-dashed border-muted-foreground/30 flex items-center justify-center text-muted-foreground hover:border-muted-foreground/50 hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-          aria-label="Create custom avatar"
-        >
-          <IconWand size={16} stroke={1.5} />
-        </button>
+        <TooltipProvider delayDuration={200}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={() => {
+                  return openMaker();
+                }}
+                className="h-12 w-12 shrink-0 rounded-full border-2 border-dashed border-muted-foreground/30 flex items-center justify-center text-muted-foreground hover:border-muted-foreground/50 hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                aria-label="Create custom avatar"
+              >
+                <IconWand size={16} stroke={1.5} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              <p className="text-xs">Customize avatar</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       )}
       <Dialog
         open={open}

@@ -601,32 +601,5 @@ describe("POST /api/zero/report-error", () => {
 
     // Plain was called (4 steps)
     expect(plainCallCount).toBe(4);
-
-    // No email was enqueued for support@vm0.ai
-    const outbox = await findTestOutboxItems();
-    const supportEmail = outbox.find((item) => {
-      return (
-        item.subject.includes(title) && item.toAddresses === "support@vm0.ai"
-      );
-    });
-    expect(supportEmail).toBeUndefined();
-  });
-
-  it("should fall back to email when PLAIN_API_KEY is not set", async () => {
-    // PLAIN_API_KEY is not set in default test environment
-    const { runId } = await setupFailedRun(userId);
-    const title = `Email fallback test ${uniqueId("er")}`;
-
-    const response = await postReportError({ runId, title });
-    expect(response.status).toBe(200);
-
-    // Email was enqueued for support@vm0.ai
-    const outbox = await findTestOutboxItems();
-    const supportEmail = outbox.find((item) => {
-      return (
-        item.subject.includes(title) && item.toAddresses === "support@vm0.ai"
-      );
-    });
-    expect(supportEmail).toBeDefined();
   });
 });

@@ -3,6 +3,7 @@ import {
   pgTable,
   uuid,
   varchar,
+  text,
   index,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
@@ -44,6 +45,8 @@ export const zeroRuns = pgTable(
     // Model provider and selected model — zero-layer concerns moved from agent_runs
     modelProvider: varchar("model_provider", { length: 100 }),
     selectedModel: varchar("selected_model", { length: 255 }),
+    // Brief AI-generated summary of what the run did (≤50 words)
+    summary: text("summary"),
   },
   (table) => {
     return [

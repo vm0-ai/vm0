@@ -16,6 +16,7 @@ import {
 import { env } from "../../../../../../src/env";
 import { getOrgNameAndSlug } from "../../../../../../src/lib/auth/org-cache";
 import type { EmailTriggerCallbackPayload } from "../../../../../../src/lib/infra/callback/callback-payloads";
+import { saveRunSummary } from "../../../../../../src/lib/zero/run-summary";
 import { logger } from "../../../../../../src/lib/shared/logger";
 
 const log = logger("callback:email:trigger");
@@ -151,7 +152,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const output = formatOutput(status, rawOutput, error);
 
   const [run] = await globalThis.services.db
-    .select({ result: agentRuns.result })
+    .select({ result: agentRuns.result, prompt: agentRuns.prompt })
     .from(agentRuns)
     .where(eq(agentRuns.id, runId))
     .limit(1);
@@ -204,6 +205,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         }
       : undefined,
   });
+
+  // Generate run summary (best-effort — errors handled internally)
+  if (run?.prompt) {
+    await saveRunSummary(runId, "email", run.prompt, rawOutput ?? "");
+  }
 
   log.info("Sent email trigger response", {
     runId,

@@ -65,18 +65,24 @@ const router = tsr.router(webhookUsageContract, {
     // are acceptable for this verification-only table.
     const u = body.usage;
     try {
-      await globalThis.services.db.insert(proxyCreditUsage).values({
-        runId: body.runId,
-        orgId: run.orgId,
-        userId,
-        model: run.selectedModel ?? u.model ?? "unknown",
-        modelProvider: run.modelProvider ?? "",
-        inputTokens: u.input_tokens ?? 0,
-        outputTokens: u.output_tokens ?? 0,
-        cacheReadInputTokens: u.cache_read_input_tokens ?? 0,
-        cacheCreationInputTokens: u.cache_creation_input_tokens ?? 0,
-        webSearchRequests: u.web_search_requests ?? 0,
-      });
+      await globalThis.services.db
+        .insert(proxyCreditUsage)
+        .values({
+          runId: body.runId,
+          orgId: run.orgId,
+          userId,
+          model: run.selectedModel ?? u.model ?? "unknown",
+          modelProvider: run.modelProvider ?? "",
+          inputTokens: u.input_tokens ?? 0,
+          outputTokens: u.output_tokens ?? 0,
+          cacheReadInputTokens: u.cache_read_input_tokens ?? 0,
+          cacheCreationInputTokens: u.cache_creation_input_tokens ?? 0,
+          webSearchRequests: u.web_search_requests ?? 0,
+          messageId: u.message_id ?? null,
+        })
+        .onConflictDoNothing({
+          target: [proxyCreditUsage.runId, proxyCreditUsage.messageId],
+        });
     } catch (err) {
       log.error("Failed to insert proxy credit usage", {
         runId: body.runId,

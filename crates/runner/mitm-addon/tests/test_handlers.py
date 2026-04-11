@@ -2,7 +2,6 @@
 
 import asyncio
 import json
-import os
 import time
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -672,6 +671,7 @@ class TestSseUsageExtractor:
         )
         parse(chunk)
         assert usage["model"] == "claude-sonnet-4-6"
+        assert usage["message_id"] == "msg_1"
         assert usage["input_tokens"] == 100
         assert usage["cache_read_input_tokens"] == 50
         assert usage["cache_creation_input_tokens"] == 0
@@ -925,6 +925,7 @@ class TestDoReportUsage:
         assert req.full_url == "https://api.vm0.ai/api/webhooks/agent/usage"
         assert req.get_header("Content-type") == "application/json"
         assert req.get_header("Authorization") == "Bearer tok-123"
+        assert req.get_header("User-agent") == "vm0-mitm-addon/1.0"
         body = json.loads(req.data)
         assert body["runId"] == "run-1"
         assert body["usage"]["model"] == "claude-sonnet-4-6"
@@ -959,10 +960,7 @@ class TestDoReportUsage:
     def test_adds_vercel_bypass_header(self):
         with (
             patch.object(mitm_addon, "_opener") as mock_opener,
-            patch.dict(
-                os.environ,
-                {"VERCEL_AUTOMATION_BYPASS_SECRET": "bypass-secret"},
-            ),
+            patch.object(auth, "VERCEL_BYPASS", "bypass-secret"),
         ):
             mock_opener.open.return_value = MagicMock()
             mitm_addon._do_report_usage("https://api.vm0.ai", "tok", "run-1", {})
@@ -994,6 +992,37 @@ class TestResponseHeadersSseParser:
         )
         assert flow.metadata["proxy_usage"]["model"] == "claude-sonnet-4-6"
         assert flow.metadata["proxy_usage"]["input_tokens"] == 42
+
+    def test_decompresses_gzip_sse_before_parsing(self):
+        """Compressed SSE streams must be decompressed before usage extraction."""
+        import gzip
+
+        flow = _make_http_flow(host="api.anthropic.com")
+        flow.response = MagicMock()
+        flow.response.headers = {
+            "content-type": "text/event-stream; charset=utf-8",
+            "content-encoding": "gzip",
+        }
+        flow.response.stream = False
+        flow.metadata["firewall_name"] = "model-provider:anthropic-api-key"
+
+        mitm_addon.responseheaders(flow)
+
+        assert "proxy_usage" in flow.metadata
+        callback = flow.response.stream
+        plaintext = (
+            b"event: message_start\n"
+            b'data: {"type":"message_start","message":'
+            b'{"model":"claude-sonnet-4-6",'
+            b'"usage":{"input_tokens":99}}}\n\n'
+        )
+        compressed = gzip.compress(plaintext)
+        # Callback returns original compressed bytes to client
+        result = callback(compressed)
+        assert result == compressed
+        # But parser receives decompressed data
+        assert flow.metadata["proxy_usage"]["model"] == "claude-sonnet-4-6"
+        assert flow.metadata["proxy_usage"]["input_tokens"] == 99
 
     def test_no_sse_parser_for_non_model_provider(self):
         flow = _make_http_flow(host="api.github.com")

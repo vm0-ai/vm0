@@ -1,13 +1,16 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
 import { useGet, useLastResolved, useSet } from "ccstate-react";
-import { Button, cn } from "@vm0/ui";
+import { Button, Tabs, TabsList, TabsTrigger, cn } from "@vm0/ui";
 import {
   IconMicrophone,
   IconMicrophoneOff,
   IconPhoneOff,
   IconLoader2,
+  IconRefresh,
+  IconUsers,
 } from "@tabler/icons-react";
+import type { TouchEvent as ReactTouchEvent } from "react";
 import { defaultAgentName$ } from "../../signals/agent.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -21,12 +24,18 @@ import {
   vcAgentId$,
   vcPrompt$,
   vcPrepElapsedMs$,
+  vcReconnectAttempt$,
   vcMeetingPromptInput$,
   setMeetingPromptInput$,
   startVoiceChat$,
   startVoiceMeeting$,
   endVoiceChat$,
+  retryVoiceChat$,
   toggleVoiceChatMute$,
+  vcInputMode$,
+  switchInputMode$,
+  startPTT$,
+  stopPTT$,
 } from "../../signals/voice-chat/voice-chat-session.ts";
 import {
   setTranscriptScrollContainer$,
@@ -42,15 +51,23 @@ type ConnectionStatus =
   | "preparing"
   | "connecting"
   | "connected"
+  | "reconnecting"
   | "disconnected"
   | "error";
 
-function StatusBadge({ status }: { status: ConnectionStatus }) {
+function StatusBadge({
+  status,
+  reconnectAttempt,
+}: {
+  status: ConnectionStatus;
+  reconnectAttempt?: number;
+}) {
   const label: Record<ConnectionStatus, string> = {
     idle: "Ready",
     preparing: "Preparing...",
     connecting: "Connecting...",
     connected: "Connected",
+    reconnecting: "Reconnecting...",
     disconnected: "Disconnected",
     error: "Error",
   };
@@ -61,9 +78,15 @@ function StatusBadge({ status }: { status: ConnectionStatus }) {
       "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
     connected:
       "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
+    reconnecting:
+      "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200",
     disconnected: "bg-muted text-muted-foreground",
     error: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
   };
+  const displayLabel =
+    status === "reconnecting" && reconnectAttempt
+      ? `Reconnecting (${reconnectAttempt}/5)...`
+      : label[status];
   return (
     <span
       className={cn(
@@ -71,14 +94,119 @@ function StatusBadge({ status }: { status: ConnectionStatus }) {
         color[status],
       )}
     >
-      {(status === "connecting" || status === "preparing") && (
+      {(status === "connecting" ||
+        status === "preparing" ||
+        status === "reconnecting") && (
         <IconLoader2 size={12} className="animate-spin" />
       )}
       {status === "connected" && (
         <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
       )}
-      {label[status]}
+      {displayLabel}
     </span>
+  );
+}
+
+function VoiceChatFooter({
+  status,
+  inputMode,
+  muted,
+  switchMode,
+  toggleMute,
+  pttStart,
+  pttStop,
+  onRetry,
+}: {
+  status: string;
+  inputMode: "hands-free" | "push-to-talk";
+  muted: boolean;
+  switchMode: (mode: "hands-free" | "push-to-talk") => void;
+  toggleMute: () => void;
+  pttStart: () => void;
+  pttStop: () => void;
+  onRetry: () => void;
+}) {
+  return (
+    <div className="border-t px-4 py-3 flex flex-col items-center gap-3 md:flex-row md:justify-between md:gap-4">
+      {/* Left: Segmented Control */}
+      <Tabs
+        value={inputMode}
+        onValueChange={(v) => {
+          if (status === "connected") {
+            switchMode(v as "hands-free" | "push-to-talk");
+          }
+        }}
+      >
+        <TabsList
+          className={cn(
+            status !== "connected" && "pointer-events-none opacity-50",
+          )}
+        >
+          <TabsTrigger value="hands-free" className="text-xs px-2">
+            Hands-free
+          </TabsTrigger>
+          <TabsTrigger value="push-to-talk" className="text-xs px-2">
+            Push to Talk
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
+
+      {/* Right: Context-Sensitive Action Button */}
+      {status === "disconnected" ? (
+        <Button
+          variant="secondary"
+          className="h-12 w-full rounded-full md:w-auto md:px-6"
+          onClick={onRetry}
+        >
+          <IconRefresh size={20} className="mr-2" />
+          Retry
+        </Button>
+      ) : inputMode === "push-to-talk" ? (
+        <Button
+          variant={muted ? "secondary" : "default"}
+          className="h-12 w-full rounded-full select-none md:w-auto md:px-6"
+          disabled={status !== "connected"}
+          onMouseDown={() => {
+            pttStart();
+          }}
+          onMouseUp={() => {
+            pttStop();
+          }}
+          onMouseLeave={() => {
+            if (!muted) {
+              pttStop();
+            }
+          }}
+          onTouchStart={(e: ReactTouchEvent) => {
+            e.preventDefault();
+            pttStart();
+          }}
+          onTouchEnd={(e: ReactTouchEvent) => {
+            e.preventDefault();
+            pttStop();
+          }}
+        >
+          <IconMicrophone size={20} className="mr-2" />
+          {muted ? "Hold to Talk" : "Recording..."}
+        </Button>
+      ) : (
+        <Button
+          variant={muted ? "destructive" : "secondary"}
+          className="h-12 w-full rounded-full md:w-auto md:px-6"
+          disabled={status !== "connected"}
+          onClick={() => {
+            toggleMute();
+          }}
+        >
+          {muted ? (
+            <IconMicrophoneOff size={20} className="mr-2" />
+          ) : (
+            <IconMicrophone size={20} className="mr-2" />
+          )}
+          {muted ? "Unmute" : "Mute"}
+        </Button>
+      )}
+    </div>
   );
 }
 
@@ -95,6 +223,12 @@ export function VoiceChatPage() {
   const startMeeting = useSet(startVoiceMeeting$);
   const endSession = useSet(endVoiceChat$);
   const toggleMute = useSet(toggleVoiceChatMute$);
+  const reconnectAttempt = useGet(vcReconnectAttempt$);
+  const retrySession = useSet(retryVoiceChat$);
+  const inputMode = useGet(vcInputMode$);
+  const switchMode = useSet(switchInputMode$);
+  const pttStart = useSet(startPTT$);
+  const pttStop = useSet(stopPTT$);
   const prompt = useGet(vcPrompt$);
   const prepElapsedMs = useGet(vcPrepElapsedMs$);
   const meetingPrompt = useGet(vcMeetingPromptInput$);
@@ -123,27 +257,24 @@ export function VoiceChatPage() {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-6 p-8">
         <h1 className="text-2xl font-bold">Voice Chat</h1>
-        <p className="text-muted-foreground max-w-md text-center">
-          Start a voice conversation with the AI agent, or prepare a meeting
-          with a specific topic.
-        </p>
         {error && (
           <p className="text-sm text-destructive max-w-md text-center">
             {error}
           </p>
         )}
-        <textarea
-          className="w-full max-w-md rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          rows={3}
-          placeholder="What would you like to discuss? (required for meetings)"
-          value={meetingPrompt}
-          onChange={(e) => {
-            setMeetingPrompt(e.target.value);
-          }}
-        />
-        <div className="flex gap-3">
+        {!agentId && (
+          <p className="text-xs text-muted-foreground">
+            No agent selected. Please select an agent first.
+          </p>
+        )}
+        <div className="w-full max-w-md rounded-lg border border-input p-5 flex flex-col gap-3">
+          <h2 className="text-lg font-semibold">Quick Chat</h2>
+          <p className="text-sm text-muted-foreground">
+            Jump into a voice conversation with the AI agent.
+          </p>
           <Button
             size="lg"
+            className="w-full"
             onClick={() => {
               detach(startSession(pageSignal), Reason.DomCallback);
             }}
@@ -152,9 +283,25 @@ export function VoiceChatPage() {
             <IconMicrophone size={18} className="mr-2" />
             Start Voice Chat
           </Button>
+        </div>
+        <div className="w-full max-w-md rounded-lg border border-input p-5 flex flex-col gap-3">
+          <h2 className="text-lg font-semibold">Voice Meeting</h2>
+          <p className="text-sm text-muted-foreground">
+            Set a topic to guide a structured conversation.
+          </p>
+          <textarea
+            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            rows={3}
+            placeholder="What would you like to discuss?"
+            value={meetingPrompt}
+            onChange={(e) => {
+              setMeetingPrompt(e.target.value);
+            }}
+          />
           <Button
             size="lg"
             variant="secondary"
+            className="w-full"
             onClick={() => {
               detach(
                 startMeeting(meetingPrompt, pageSignal),
@@ -163,15 +310,10 @@ export function VoiceChatPage() {
             }}
             disabled={!agentId || !meetingPrompt.trim()}
           >
-            <IconLoader2 size={18} className="mr-2" />
+            <IconUsers size={18} className="mr-2" />
             Start Voice Meeting
           </Button>
         </div>
-        {!agentId && (
-          <p className="text-xs text-muted-foreground">
-            No agent selected. Please select an agent first.
-          </p>
-        )}
       </div>
     );
   }
@@ -255,7 +397,7 @@ export function VoiceChatPage() {
       <div className="flex items-center justify-between border-b px-4 py-3">
         <div className="flex items-center gap-3">
           <h1 className="text-lg font-semibold">Voice Chat</h1>
-          <StatusBadge status={status} />
+          <StatusBadge status={status} reconnectAttempt={reconnectAttempt} />
         </div>
         <Button
           variant="destructive"
@@ -263,7 +405,6 @@ export function VoiceChatPage() {
           onClick={() => {
             endSession();
           }}
-          disabled={status === "disconnected"}
         >
           <IconPhoneOff size={16} className="mr-1.5" />
           End Session
@@ -356,35 +497,18 @@ export function VoiceChatPage() {
         </div>
       </div>
 
-      {/* Audio controls footer */}
-      <div className="border-t px-4 py-3 flex items-center justify-center gap-4">
-        <Button
-          variant={muted ? "destructive" : "secondary"}
-          size="icon"
-          className="h-12 w-12 rounded-full"
-          onClick={() => {
-            toggleMute();
-          }}
-          disabled={status !== "connected"}
-        >
-          {muted ? (
-            <IconMicrophoneOff size={20} />
-          ) : (
-            <IconMicrophone size={20} />
-          )}
-        </Button>
-        <Button
-          variant="destructive"
-          size="icon"
-          className="h-12 w-12 rounded-full"
-          onClick={() => {
-            endSession();
-          }}
-          disabled={status === "disconnected"}
-        >
-          <IconPhoneOff size={20} />
-        </Button>
-      </div>
+      <VoiceChatFooter
+        status={status}
+        inputMode={inputMode}
+        muted={muted}
+        switchMode={switchMode}
+        toggleMute={toggleMute}
+        pttStart={pttStart}
+        pttStop={pttStop}
+        onRetry={() => {
+          detach(retrySession(pageSignal), Reason.DomCallback);
+        }}
+      />
     </div>
   );
 }

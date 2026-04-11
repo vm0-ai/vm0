@@ -181,6 +181,99 @@ describe("generateChatTitle", () => {
   });
 });
 
+describe("generateRunSummary", () => {
+  it("should return null when OPENROUTER_API_KEY is not configured", async () => {
+    const { generateRunSummary } = await import("../lightweight-model");
+
+    const result = await generateRunSummary("chat", "hello", "world");
+
+    expect(result).toBeNull();
+  });
+
+  it("should return a summary on successful response", async () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    reloadEnv();
+
+    const handler = http.post(OPENROUTER_URL, () => {
+      return HttpResponse.json(
+        openRouterResponse(
+          "User asked about project setup. Agent provided step-by-step instructions.",
+        ),
+      );
+    });
+    server.use(handler.handler);
+
+    const { generateRunSummary } = await import("../lightweight-model");
+
+    const result = await generateRunSummary(
+      "chat",
+      "How do I set up this project?",
+      "First install dependencies with pnpm install, then run pnpm dev.",
+    );
+
+    expect(result).toBe(
+      "User asked about project setup. Agent provided step-by-step instructions.",
+    );
+    expect(handler.mocked).toHaveBeenCalledTimes(1);
+  });
+
+  it("should include triggerSource in the system prompt", async () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    reloadEnv();
+
+    let capturedBody: unknown;
+    const handler = http.post(OPENROUTER_URL, async ({ request }) => {
+      capturedBody = await request.json();
+      return HttpResponse.json(openRouterResponse("Summary text"));
+    });
+    server.use(handler.handler);
+
+    const { generateRunSummary } = await import("../lightweight-model");
+
+    await generateRunSummary("slack", "prompt", "result");
+
+    const body = capturedBody as {
+      messages: Array<{ role: string; content: string }>;
+    };
+    expect(body.messages[0]!.content).toContain("slack");
+  });
+
+  it("should truncate long input to 3 lines of 80 chars each", async () => {
+    vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    reloadEnv();
+
+    let capturedBody: unknown;
+    const handler = http.post(OPENROUTER_URL, async ({ request }) => {
+      capturedBody = await request.json();
+      return HttpResponse.json(openRouterResponse("Summary"));
+    });
+    server.use(handler.handler);
+
+    const { generateRunSummary } = await import("../lightweight-model");
+
+    const longLine = "x".repeat(200);
+    const manyLines = Array.from({ length: 10 }, (_, i) => {
+      return `Line ${i}`;
+    }).join("\n");
+
+    await generateRunSummary("chat", longLine, manyLines);
+
+    const body = capturedBody as {
+      messages: Array<{ role: string; content: string }>;
+    };
+    const userContent = body.messages[1]!.content;
+
+    // Prompt should be truncated to 80 chars + ellipsis (single line)
+    expect(userContent).toContain("x".repeat(80) + "…");
+    expect(userContent).not.toContain("x".repeat(81));
+
+    // Result should only have first 3 lines
+    expect(userContent).toContain("Line 0");
+    expect(userContent).toContain("Line 2");
+    expect(userContent).not.toContain("Line 3");
+  });
+});
+
 describe("generateScheduleDescription", () => {
   it("should return a description on successful response", async () => {
     vi.stubEnv("OPENROUTER_API_KEY", "test-openrouter-key");

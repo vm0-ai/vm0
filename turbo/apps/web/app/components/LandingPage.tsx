@@ -1551,6 +1551,7 @@ export default function LandingPage() {
                     height={300}
                     className="w-full max-w-[448px]"
                     draggable={false}
+                    unoptimized
                   />
                 </div>
               </div>
@@ -1641,19 +1642,16 @@ export default function LandingPage() {
             <div className="reveal grid w-full gap-8 sm:grid-cols-3">
               {[
                 {
-                  icon: "/assets/agent-intelligence/delegation-icon.svg",
                   title: "Delegation to specialized agents",
                   description:
                     "Zero spins up sub-agents that act like dedicated teammates, a researcher Lisa, a designer Lucy, each with their own expertise, working in parallel on your behalf.",
                 },
                 {
-                  icon: "/assets/agent-intelligence/tool-orchestration-icon.svg",
                   title: "Tool orchestration",
                   description:
                     "Zero selects and chains the right tools from 100+ available integrations. You describe the goal; Zero figures out the steps.",
                 },
                 {
-                  icon: "/assets/agent-intelligence/identity-resolution-icon.svg",
                   title: "Identity resolution",
                   description:
                     'When you say "my PRs" or "assign to me," Zero queries GitHub/Slack/Linear to figure out who you are, no assumptions, no hardcoded names.',
@@ -1661,20 +1659,9 @@ export default function LandingPage() {
               ].map((item) => {
                 return (
                   <div key={item.title} className="flex flex-col gap-2">
-                    <div className="flex items-center gap-2">
-                      <div className="flex size-[30px] items-center justify-center overflow-hidden rounded-full">
-                        <Image
-                          alt=""
-                          src={item.icon}
-                          width={22}
-                          height={22}
-                          className="size-[22px]"
-                        />
-                      </div>
-                      <h3 className="text-base font-bold leading-6 text-[hsl(var(--foreground))]">
-                        {item.title}
-                      </h3>
-                    </div>
+                    <h3 className="text-base font-bold leading-6 text-[hsl(var(--foreground))]">
+                      {item.title}
+                    </h3>
                     <p className="text-base leading-6 text-[hsl(var(--muted-foreground))]">
                       {item.description}
                     </p>

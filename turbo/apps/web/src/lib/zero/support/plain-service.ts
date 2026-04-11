@@ -40,17 +40,16 @@ interface CreateSupportThreadParams {
  *  3. createThread   — open the support thread
  *  4. createThreadEvent — attach description, metadata, and download link
  *
- * Returns true if the thread was created successfully, false if Plain is
- * unconfigured (PLAIN_API_KEY absent) or any step returns an API-level error.
- * Unexpected exceptions are not caught here — they propagate to the caller.
+ * Throws if PLAIN_API_KEY is not configured or any API step returns an error.
+ * Unexpected exceptions propagate to the caller.
  */
 export async function createPlainSupportThread(
   params: CreateSupportThreadParams,
-): Promise<boolean> {
+): Promise<void> {
   const client = getPlainClient();
   if (!client) {
-    log.debug("PLAIN_API_KEY not configured, skipping Plain thread creation");
-    return false;
+    log.warn("PLAIN_API_KEY not configured, skipping Plain support thread");
+    return;
   }
 
   const {
@@ -74,12 +73,9 @@ export async function createPlainSupportThread(
     externalId: orgId,
   });
   if (tenantRes.error) {
-    log.warn("Plain upsertTenant failed", {
-      reference,
-      code: tenantRes.error.type,
-      message: tenantRes.error.message,
-    });
-    return false;
+    throw new Error(
+      `Plain upsertTenant failed: [${tenantRes.error.type}] ${tenantRes.error.message}`,
+    );
   }
 
   // 2. Upsert the customer (user), associated with the tenant
@@ -97,12 +93,9 @@ export async function createPlainSupportThread(
     },
   });
   if (customerRes.error) {
-    log.warn("Plain upsertCustomer failed", {
-      reference,
-      code: customerRes.error.type,
-      message: customerRes.error.message,
-    });
-    return false;
+    throw new Error(
+      `Plain upsertCustomer failed: [${customerRes.error.type}] ${customerRes.error.message}`,
+    );
   }
 
   // 3. Create the thread
@@ -114,12 +107,9 @@ export async function createPlainSupportThread(
     priority: 2,
   });
   if (threadRes.error) {
-    log.warn("Plain createThread failed", {
-      reference,
-      code: threadRes.error.type,
-      message: threadRes.error.message,
-    });
-    return false;
+    throw new Error(
+      `Plain createThread failed: [${threadRes.error.type}] ${threadRes.error.message}`,
+    );
   }
 
   const threadId = threadRes.data.id;
@@ -140,17 +130,12 @@ export async function createPlainSupportThread(
     }),
   });
   if (eventRes.error) {
-    log.warn("Plain createThreadEvent failed", {
-      reference,
-      threadId,
-      code: eventRes.error.type,
-      message: eventRes.error.message,
-    });
-    return false;
+    throw new Error(
+      `Plain createThreadEvent failed: [${eventRes.error.type}] ${eventRes.error.message}`,
+    );
   }
 
   log.info("Plain support thread created", { reference, threadId });
-  return true;
 }
 
 function buildEventComponents(p: {

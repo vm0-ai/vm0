@@ -1,5 +1,58 @@
 # Changelog
 
+## [12.217.1](https://github.com/vm0-ai/vm0/compare/web-v12.217.0...web-v12.217.1) (2026-04-11)
+
+
+### Bug Fixes
+
+* **voice-chat:** add echo cancellation for hands-free speaker mode ([#8932](https://github.com/vm0-ai/vm0/issues/8932)) ([cbaf14e](https://github.com/vm0-ai/vm0/commit/cbaf14e92602a03afb5ad8765698303a7850c60b))
+* **voice-chat:** mobile-friendly footer layout for voice chat controls ([#8933](https://github.com/vm0-ai/vm0/issues/8933)) ([110f808](https://github.com/vm0-ai/vm0/commit/110f808810ab41965ac9d24aaffb73b88b904fde))
+* **zero:** load user feature switch overrides for auto-skill check ([#8928](https://github.com/vm0-ai/vm0/issues/8928)) ([08a6ca1](https://github.com/vm0-ai/vm0/commit/08a6ca19eb82dada7874255a0ea128101d41dc17))
+
+## [12.217.0](https://github.com/vm0-ai/vm0/compare/web-v12.216.0...web-v12.217.0) (2026-04-10)
+
+
+### Features
+
+* add ai-generated run summaries to mission control ([#8902](https://github.com/vm0-ai/vm0/issues/8902)) ([b12fe2d](https://github.com/vm0-ai/vm0/commit/b12fe2d55a362c0470d62f4191a7b1ddff9424e5))
+* **credit:** record anthropic message id in proxy_credit_usage ([#8919](https://github.com/vm0-ai/vm0/issues/8919)) ([7bfe376](https://github.com/vm0-ai/vm0/commit/7bfe376274a4702cb116c90c9fa816307fee6f02)), closes [#8909](https://github.com/vm0-ai/vm0/issues/8909)
+
+
+### Bug Fixes
+
+* **credit:** only flag proxy usage undercount, not overcount ([#8906](https://github.com/vm0-ai/vm0/issues/8906)) ([cfcfb50](https://github.com/vm0-ai/vm0/commit/cfcfb50654695191cf697011863f87354f5b7747))
+* **web:** upgrade next.js to 16.2.3 for dos vulnerability ([#8917](https://github.com/vm0-ai/vm0/issues/8917)) ([1ae3c4e](https://github.com/vm0-ai/vm0/commit/1ae3c4e660b6b76cc1eaf39ee781e9783063fb92))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.172.0
+
+## [12.216.0](https://github.com/vm0-ai/vm0/compare/web-v12.215.2...web-v12.216.0) (2026-04-10)
+
+
+### Features
+
+* **web:** add youtube video previews to use case detail pages ([#8895](https://github.com/vm0-ai/vm0/issues/8895)) ([572a154](https://github.com/vm0-ai/vm0/commit/572a154d5ae2a462a21fe315513e299238c98d5b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.171.0
+
+## [12.215.2](https://github.com/vm0-ai/vm0/compare/web-v12.215.1...web-v12.215.2) (2026-04-10)
+
+
+### Bug Fixes
+
+* **credit:** decouple proxy usage comparison from credit processing ([#8838](https://github.com/vm0-ai/vm0/issues/8838)) ([e86e4a7](https://github.com/vm0-ai/vm0/commit/e86e4a7c4140d7a0c0a18f8993b0638d693c8003))
+* **voice-chat:** wrap end-session in transaction and surface polling errors ([#8860](https://github.com/vm0-ai/vm0/issues/8860)) ([cd28f27](https://github.com/vm0-ai/vm0/commit/cd28f276104f0174b3c53fedbbe3f53605d73590))
+* **web:** remove benefit icons and fix blurry permission svg on mobile ([#8834](https://github.com/vm0-ai/vm0/issues/8834)) ([38b75b4](https://github.com/vm0-ai/vm0/commit/38b75b47f065c00d9686f985ee2fc908785cfbee))
+
 ## [12.215.1](https://github.com/vm0-ai/vm0/compare/web-v12.215.0...web-v12.215.1) (2026-04-10)
 
 

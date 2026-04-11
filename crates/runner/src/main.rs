@@ -56,13 +56,9 @@ struct Cli {
 enum Command {
     /// Download Firecracker, kernel, and verify host prerequisites
     Setup,
-    /// Build rootfs and snapshot in one step
+    /// Build rootfs and snapshot into a unified image
     Build(cmd::BuildArgs),
-    /// Build ext4 rootfs only (without snapshot)
-    Rootfs(cmd::RootfsArgs),
-    /// Create a Firecracker VM snapshot for fast sandbox boot
-    Snapshot(cmd::SnapshotArgs),
-    /// Generate runner.yaml from pre-built rootfs and snapshot hashes
+    /// Generate runner.yaml from a pre-built image hash
     Config(cmd::ConfigArgs),
     /// Run a single bash command in a VM for benchmarking
     Benchmark(cmd::BenchmarkArgs),
@@ -74,7 +70,7 @@ enum Command {
     Service(cmd::ServiceArgs),
     /// Kill a running sandbox
     Kill(cmd::KillArgs),
-    /// Clean up unused rootfs and snapshot directories
+    /// Clean up unused image directories
     Gc(cmd::GcArgs),
     /// Runtime health diagnostics for all runners on the host
     Doctor(cmd::DoctorArgs),
@@ -215,12 +211,6 @@ async fn main() -> ExitCode {
         Command::Build(args) => cmd::run_build(args, &sandbox_fc::FirecrackerSnapshotProvider)
             .await
             .map(|()| ExitCode::SUCCESS),
-        Command::Rootfs(args) => cmd::run_rootfs(args).await.map(|_| ExitCode::SUCCESS),
-        Command::Snapshot(args) => {
-            cmd::run_snapshot(args, &sandbox_fc::FirecrackerSnapshotProvider)
-                .await
-                .map(|_| ExitCode::SUCCESS)
-        }
         Command::Config(args) => cmd::run_config(args).await.map(|()| ExitCode::SUCCESS),
         Command::Benchmark(args) => {
             cmd::run_benchmark(args, &sandbox_fc::FirecrackerRuntimeProvider).await

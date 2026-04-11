@@ -15,6 +15,7 @@ import {
 } from "../../../../../src/lib/zero/ai/lightweight-model";
 import { updateChatThreadTitle } from "../../../../../src/lib/zero/chat-thread";
 import { sendUserPushNotifications } from "../../../../../src/lib/push/send-push";
+import { saveRunSummary } from "../../../../../src/lib/zero/run-summary";
 import type { ChatCallbackPayload } from "../../../../../src/lib/infra/callback/callback-payloads";
 import { logger } from "../../../../../src/lib/shared/logger";
 
@@ -102,6 +103,9 @@ async function handleCompleted(
     await persistMessages(sessionId, userId, messages, runId);
     await updateThreadSessionId(threadId, sessionId);
   }
+
+  // Generate run summary (best-effort — errors handled internally)
+  await saveRunSummary(runId, "chat", prompt, resultText ?? "");
 
   // Generate and update chat thread title (best-effort — title is non-critical)
   try {

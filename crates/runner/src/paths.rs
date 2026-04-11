@@ -93,12 +93,8 @@ impl HomePaths {
         self.mitmproxy_dir(version).join("mitmdump")
     }
 
-    pub fn rootfs_dir(&self) -> PathBuf {
-        self.root.join("rootfs")
-    }
-
-    pub fn snapshots_dir(&self) -> PathBuf {
-        self.root.join("snapshots")
+    pub fn images_dir(&self) -> PathBuf {
+        self.root.join("images")
     }
 
     pub fn logs_dir(&self) -> PathBuf {
@@ -130,24 +126,20 @@ impl HomePaths {
         self.locks_dir().join(format!("base-dir-{hash}.lock"))
     }
 
-    pub fn rootfs_lock(&self, hash: &str) -> PathBuf {
-        self.locks_dir().join(format!("rootfs-{hash}.lock"))
-    }
-
-    pub fn snapshot_lock(&self, hash: &str) -> PathBuf {
-        self.locks_dir().join(format!("snapshot-{hash}.lock"))
+    pub fn image_lock(&self, hash: &str) -> PathBuf {
+        self.locks_dir().join(format!("image-{hash}.lock"))
     }
 }
 
-/// Paths for a rootfs build output directory (keyed by input hash).
-pub struct RootfsPaths {
+/// Paths for a unified image build output (rootfs + snapshot, keyed by image hash).
+pub struct ImagePaths {
     dir: PathBuf,
 }
 
-impl RootfsPaths {
+impl ImagePaths {
     pub fn new(home: &HomePaths, hash: &str) -> Self {
         Self {
-            dir: home.rootfs_dir().join(hash),
+            dir: home.images_dir().join(hash),
         }
     }
 
@@ -159,9 +151,26 @@ impl RootfsPaths {
         self.dir.join("rootfs.ext4")
     }
 
-    /// All files that must exist for the build to be considered complete.
-    pub fn expected_files(&self) -> [PathBuf; 1] {
-        [self.rootfs()]
+    pub fn snapshot_bin(&self) -> PathBuf {
+        self.dir.join("snapshot.bin")
+    }
+
+    pub fn memory_bin(&self) -> PathBuf {
+        self.dir.join("memory.bin")
+    }
+
+    pub fn cow_img(&self) -> PathBuf {
+        self.dir.join("cow.img")
+    }
+
+    /// All files that must exist for the image to be considered complete.
+    pub fn expected_files(&self) -> [PathBuf; 4] {
+        [
+            self.rootfs(),
+            self.snapshot_bin(),
+            self.memory_bin(),
+            self.cow_img(),
+        ]
     }
 }
 
@@ -212,8 +221,7 @@ mod tests {
     fn home_paths_structure() {
         let home = HomePaths::with_root(PathBuf::from("/test"));
         assert_eq!(home.bin_dir(), PathBuf::from("/test/bin"));
-        assert_eq!(home.rootfs_dir(), PathBuf::from("/test/rootfs"));
-        assert_eq!(home.snapshots_dir(), PathBuf::from("/test/snapshots"));
+        assert_eq!(home.images_dir(), PathBuf::from("/test/images"));
         assert_eq!(home.logs_dir(), PathBuf::from("/test/logs"));
         assert_eq!(home.runners_dir(), PathBuf::from("/test/runners"));
         assert_eq!(home.groups_dir(), PathBuf::from("/test/groups"));
@@ -247,12 +255,9 @@ mod tests {
     #[test]
     fn lock_paths() {
         let home = HomePaths::with_root(PathBuf::from("/test"));
-        let rootfs_lock = home.rootfs_lock("abc123");
-        assert!(rootfs_lock.starts_with("/test/locks/"));
-        assert!(rootfs_lock.to_string_lossy().contains("rootfs-abc123"));
-
-        let snapshot_lock = home.snapshot_lock("def456");
-        assert!(snapshot_lock.to_string_lossy().contains("snapshot-def456"));
+        let image_lock = home.image_lock("abc123");
+        assert!(image_lock.starts_with("/test/locks/"));
+        assert!(image_lock.to_string_lossy().contains("image-abc123"));
     }
 
     #[test]
@@ -283,14 +288,24 @@ mod tests {
     }
 
     #[test]
-    fn rootfs_paths_structure() {
+    fn image_paths_structure() {
         let home = HomePaths::with_root(PathBuf::from("/test"));
-        let rp = RootfsPaths::new(&home, "abc123");
-        assert_eq!(rp.dir(), Path::new("/test/rootfs/abc123"));
+        let ip = ImagePaths::new(&home, "abc123");
+        assert_eq!(ip.dir(), Path::new("/test/images/abc123"));
         assert_eq!(
-            rp.rootfs(),
-            PathBuf::from("/test/rootfs/abc123/rootfs.ext4")
+            ip.rootfs(),
+            PathBuf::from("/test/images/abc123/rootfs.ext4")
         );
+        assert_eq!(
+            ip.snapshot_bin(),
+            PathBuf::from("/test/images/abc123/snapshot.bin")
+        );
+        assert_eq!(
+            ip.memory_bin(),
+            PathBuf::from("/test/images/abc123/memory.bin")
+        );
+        assert_eq!(ip.cow_img(), PathBuf::from("/test/images/abc123/cow.img"));
+        assert_eq!(ip.expected_files().len(), 4);
     }
 
     #[test]

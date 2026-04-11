@@ -71,12 +71,16 @@ pub async fn create_snapshot(
 
     let output = SnapshotOutputPaths::new(config.output_dir.clone());
 
-    // 1. Clean stale output from a previous failed attempt and create work dir.
+    // 1. Clean stale snapshot output from a previous failed attempt and create work dir.
     //    Paths inside work_dir get baked into the snapshot and are used
     //    as bind-mount targets during restore, so they must be deterministic.
     //
+    //    Only remove snapshot-specific artifacts (work/, snapshot.bin, memory.bin,
+    //    cow.img) — the output directory may contain other files (e.g. rootfs.ext4
+    //    in unified image builds) that must not be deleted.
+    //
     //    A failed run may leave stale bind mounts (cow-device-bind) that
-    //    cause rm -rf to fail with EBUSY — umount them first.
+    //    cause rm to fail with EBUSY — umount them first.
     let work = output.work_dir();
     let stale_bind = SandboxPaths::new(work.clone())
         .cow_device_bind()
@@ -84,8 +88,17 @@ pub async fn create_snapshot(
         .to_string();
     command::exec_ignore_errors("umount", &[stale_bind.as_str()]).await;
 
-    let output_str = config.output_dir.display().to_string();
-    command::exec_ignore_errors("rm", &["-rf", &output_str]).await;
+    // Remove stale snapshot artifacts individually (not rm -rf on the
+    // entire output directory) — work dir tree first, then individual files.
+    let _ = tokio::fs::remove_dir_all(&output.work_dir()).await;
+    for stale in [
+        output.snapshot(),
+        output.memory(),
+        output.cow(),
+        output.cow_bitmap(),
+    ] {
+        let _ = tokio::fs::remove_file(&stale).await;
+    }
     tokio::fs::create_dir_all(&work).await?;
 
     // Socket directory under /run, keyed by config id so concurrent builds don't collide.
@@ -285,7 +298,7 @@ async fn run_snapshot_workflow(
         // Also move the bitmap sidecar if it exists (for snapshot restore).
         let bitmap_src = std::path::PathBuf::from(format!("{}.bitmap", cow_file.display()));
         if tokio::fs::try_exists(&bitmap_src).await.unwrap_or(false) {
-            let bitmap_dst = std::path::PathBuf::from(format!("{}.bitmap", output.cow().display()));
+            let bitmap_dst = output.cow_bitmap();
             tokio::fs::rename(&bitmap_src, &bitmap_dst).await?;
         }
     } else {

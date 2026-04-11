@@ -272,7 +272,7 @@ function ConnectStepContent() {
       </h2>
       <p className="text-sm text-muted-foreground leading-relaxed mt-2 mb-6">
         Authorize each app so Zero can work with it. You can always add more
-        later.
+        later. Credentials are encrypted and never exposed.
       </p>
       {selectedEntries.length === 0 ? (
         <p
@@ -495,6 +495,35 @@ function ChatPreview() {
             🔄
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Compliance trust badges — shown in the left panel
+// ---------------------------------------------------------------------------
+
+function ComplianceTrustBadges() {
+  return (
+    <div className="grid grid-cols-2 gap-3 w-full max-w-[420px] mt-6">
+      <div className="rounded-lg bg-muted/40 px-3.5 py-2.5">
+        <p className="text-[11px] font-medium text-muted-foreground mb-1">
+          SOC 2 Type 2
+        </p>
+        <p className="text-[10px] text-muted-foreground/60 leading-relaxed">
+          Robust internal controls aligned with Trust Services Criteria. Active
+          attestation phase with external advisors.
+        </p>
+      </div>
+      <div className="rounded-lg bg-muted/30 px-3.5 py-2.5">
+        <p className="text-[11px] font-medium text-muted-foreground mb-1">
+          GDPR &amp; CCPA
+        </p>
+        <p className="text-[10px] text-muted-foreground/60 leading-relaxed">
+          Privacy framework fully integrated. Compliance validations in progress
+          for global data sovereignty.
+        </p>
       </div>
     </div>
   );
@@ -737,15 +766,16 @@ function OnboardingPageLayout({ children }: { children: React.ReactNode }) {
           ) : showOrbit ? (
             <>
               <OrbitIllustration />
-              <p className="text-sm text-muted-foreground text-center leading-relaxed mt-6 max-w-[300px]">
+              <p className="text-sm text-foreground text-center leading-relaxed mt-6 max-w-[300px]">
                 {effectiveConnectors.length === 0
                   ? "Pick your tools and Zero will handle the rest, securely."
                   : `${effectiveConnectors.length} app${effectiveConnectors.length === 1 ? "" : "s"} selected. Zero will securely manage ${effectiveConnectors.length === 1 ? "it" : "them"} for you so you don\u2019t have to.`}
               </p>
-              <p className="text-[11px] text-muted-foreground/50 text-center mt-4">
+              <p className="text-[11px] text-muted-foreground text-center mt-4">
                 Sandboxed VMs&ensp;|&ensp;No credential
                 exposure&ensp;|&ensp;Full audit trail&ensp;|&ensp;Open source
               </p>
+              <ComplianceTrustBadges />
             </>
           ) : (
             <>

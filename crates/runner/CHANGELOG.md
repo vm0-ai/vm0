@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.75.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.74.2...runner-rs-v0.75.0) (2026-04-10)
+
+
+### Features
+
+* **credit:** record anthropic message id in proxy_credit_usage ([#8919](https://github.com/vm0-ai/vm0/issues/8919)) ([7bfe376](https://github.com/vm0-ai/vm0/commit/7bfe376274a4702cb116c90c9fa816307fee6f02)), closes [#8909](https://github.com/vm0-ai/vm0/issues/8909)
+
+
+### Refactoring
+
+* **mitm-addon:** extract shared api request builder for platform calls ([#8913](https://github.com/vm0-ai/vm0/issues/8913)) ([dd9a683](https://github.com/vm0-ai/vm0/commit/dd9a68382a4f012ab532838e4bdce931fab13cb8)), closes [#8885](https://github.com/vm0-ai/vm0/issues/8885)
+* **runner:** unify rootfs and snapshot into single image artifact ([#8821](https://github.com/vm0-ai/vm0/issues/8821)) ([a549299](https://github.com/vm0-ai/vm0/commit/a549299c1c10179b49783288e869f82739b58033))
+
+## [0.74.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.74.1...runner-rs-v0.74.2) (2026-04-10)
+
+
+### Bug Fixes
+
+* **mitm-addon:** decompress sse stream before usage extraction ([#8903](https://github.com/vm0-ai/vm0/issues/8903)) ([28fd00c](https://github.com/vm0-ai/vm0/commit/28fd00ce66339d0b50854628dd4b5049a5b02ce5))
+* **mitm-addon:** replace --quiet with flow_detail=0 + termlog_verbosity=warn ([#8896](https://github.com/vm0-ai/vm0/issues/8896)) ([7d95d9c](https://github.com/vm0-ai/vm0/commit/7d95d9cb6672d579b7b76710b899c0a79a53607a)), closes [#8882](https://github.com/vm0-ai/vm0/issues/8882)
+* **runner:** drop discover future before shutdown to prevent mutex deadlock ([#8898](https://github.com/vm0-ai/vm0/issues/8898)) ([54460c1](https://github.com/vm0-ai/vm0/commit/54460c11249d009b06e50ced82ce45b5086932c5))
+
+## [0.74.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.74.0...runner-rs-v0.74.1) (2026-04-10)
+
+
+### Refactoring
+
+* **firewalls:** cache graphql field coverage check per api entry ([#8839](https://github.com/vm0-ai/vm0/issues/8839)) ([f716aef](https://github.com/vm0-ai/vm0/commit/f716aefcfd219856adf314b1fa836771760624f5)), closes [#8816](https://github.com/vm0-ai/vm0/issues/8816)
+
 ## [0.74.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.73.0...runner-rs-v0.74.0) (2026-04-10)
 
 
