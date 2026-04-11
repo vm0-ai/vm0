@@ -8,7 +8,10 @@ import { chatThreads$ } from "./chat-message.ts";
 import { setChatAgentId$, currentChatThreadId$ } from "../agent-chat.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
-import { currentChatThreadSignals$ } from "./create-chat-thread.ts";
+import {
+  currentChatThreadSignals$,
+  ensureDraft$,
+} from "./create-chat-thread.ts";
 
 export const setupChatPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -16,6 +19,10 @@ export const setupChatPage$ = command(
     if (!threadId) {
       throw new Error("threadId is required to load chat page");
     }
+
+    // Provision draft before rendering so currentChatThreadSignals$ is
+    // available on first render.
+    set(ensureDraft$, threadId);
 
     set(
       updatePage$,
