@@ -2205,6 +2205,26 @@ mod tests {
         assert!(matches!(result, ParkResult::Parked));
     }
 
+    /// Poll until `budget.allocated().2` (running_count) reaches `expected`.
+    ///
+    /// `budget.release()` runs after `provider.complete()` in the spawned job
+    /// task, so `wait_completion()` returning does NOT guarantee the budget has
+    /// been released yet. This helper avoids fixed sleeps as synchronization.
+    async fn wait_budget_count(budget: &ResourceBudget, expected: usize, timeout: Duration) {
+        let deadline = tokio::time::Instant::now() + timeout;
+        loop {
+            if budget.allocated().2 == expected {
+                return;
+            }
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "budget count did not reach {expected} within {timeout:?} (actual: {})",
+                budget.allocated().2,
+            );
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    }
+
     /// Pre-populate idle pool with an expired entry (parked 400s ago, timeout 300s).
     async fn seed_idle_pool_expired(
         pool: &SharedIdlePool,
@@ -2294,12 +2314,13 @@ mod tests {
         assert!(completion.is_some(), "job should complete");
         assert_eq!(completion.unwrap().exit_code, 0);
 
-        tokio::time::sleep(Duration::from_millis(100)).await;
+        // budget.release() runs after provider.complete() in the spawned task,
+        // so wait_completion returning doesn't guarantee it has executed yet.
+        // Poll until budget is fully released rather than using a fixed sleep.
+        wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
 
         // No parking — pool empty, budget fully released.
         assert_eq!(idle_pool.lock().await.len(), 0, "pool should be empty");
-        let (_, _, count) = budget.allocated();
-        assert_eq!(count, 0, "budget should be fully released");
 
         shutdown(&env, run_handle).await;
     }
@@ -2422,11 +2443,11 @@ mod tests {
         assert!(completion.is_some(), "job should complete");
         assert_eq!(completion.unwrap().exit_code, 0);
 
-        // Allow destroy_tasks to complete and budget to be released.
-        tokio::time::sleep(Duration::from_millis(200)).await;
+        // Stale VM destruction runs in a background destroy_task. Poll until
+        // its budget is released rather than using a fixed sleep.
+        // Expected: stale 2vcpu released, new 4vcpu held → count=1.
+        wait_budget_count(&budget, 1, Duration::from_secs(5)).await;
 
-        // Stale VM destroyed (budget released), new VM parked (budget held).
-        // Budget: stale 2vcpu released, new 4vcpu held → net (4, 8192, 1).
         {
             let pool = idle_pool.lock().await;
             assert_eq!(pool.len(), 1, "new VM should be parked");
@@ -2466,11 +2487,12 @@ mod tests {
         // perspective. Advance 11s to ensure at least one full tick fires.
         tokio::time::sleep(Duration::from_secs(11)).await;
 
-        // Expired entry should be evicted and destroyed, budget released.
+        // Eviction spawns a destroy_task that calls budget.release() async.
+        // Poll until it completes.
+        wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
+
         let pool_len = idle_pool.lock().await.len();
         assert_eq!(pool_len, 0, "expired entry should be evicted");
-        let (_, _, count) = budget.allocated();
-        assert_eq!(count, 0, "budget should be released after eviction");
 
         shutdown(&env, run_handle).await;
     }
