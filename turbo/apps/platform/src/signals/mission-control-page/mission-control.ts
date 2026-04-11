@@ -4,6 +4,7 @@ import { zeroClient$ } from "../api-client";
 import { accept } from "../../lib/accept";
 import { detachedNavigateTo$ } from "../route.ts";
 import { onDomEventFn, setLoop } from "../utils.ts";
+import { toggleTaskList$ } from "./mission-control-panels.ts";
 
 const internalReloadTasks$ = state(0);
 
@@ -95,6 +96,12 @@ export const setupMissionControlKeyboard$ = command(
           target.tagName === "TEXTAREA" ||
           target.isContentEditable
         ) {
+          return;
+        }
+
+        if ((e.metaKey || e.ctrlKey) && e.key === "b") {
+          e.preventDefault();
+          set(toggleTaskList$);
           return;
         }
 
