@@ -494,10 +494,24 @@ function createMessageCommands(deps: MessageCommandsDeps) {
 // Factory
 // ---------------------------------------------------------------------------
 
-function createChatThreadSignals(
-  threadId: string,
-  existingDraft?: DraftSignals,
-): ChatThreadSignals {
+/**
+ * Per-thread draft cache. Drafts survive navigation (thread-1 → thread-2 →
+ * thread-1) because they are stored here rather than inside the factory's
+ * ephemeral signals.
+ */
+const draftCache = new Map<string, DraftSignals>();
+
+function ensureDraft(threadId: string): DraftSignals {
+  const existing = draftCache.get(threadId);
+  if (existing) {
+    return existing;
+  }
+  const draft = createDraftSignals();
+  draftCache.set(threadId, draft);
+  return draft;
+}
+
+function createChatThreadSignals(threadId: string): ChatThreadSignals {
   const { threadData$, reloadThread$ } = createThreadData(threadId);
   const {
     internalLocalMessages$,
@@ -509,7 +523,7 @@ function createChatThreadSignals(
   const { setScrollContainer$, autoScroll$ } = createScrollSignals();
   const { composerFileInput$, setComposerFileInput$ } =
     createComposerFileInput();
-  const draft = existingDraft ?? createDraftSignals();
+  const draft = ensureDraft(threadId);
 
   const internalReloadThinking$ = state(0);
   const thinkingMessage$ = computed((get) => {

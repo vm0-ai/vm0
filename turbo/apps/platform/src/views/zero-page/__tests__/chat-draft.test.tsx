@@ -61,23 +61,22 @@ describe("chat draft persistence across thread navigation", () => {
     // Type on thread-2
     await fill(getTextarea(), "draft for thread 2");
 
-    // Navigate back to thread-1 — factory creates fresh signals per thread,
-    // so the draft starts empty (no cross-thread persistence)
+    // Navigate back to thread-1 — draft restored from per-thread cache
     context.store.set(detachedNavigateTo$, "/chats/:threadId", {
       pathParams: { threadId: "thread-1" },
     });
 
     await waitFor(() => {
-      expect(getTextarea().value).toBe("");
+      expect(getTextarea().value).toBe("draft for thread 1");
     });
 
-    // Navigate back to thread-2 — fresh draft (no cross-thread persistence)
+    // Navigate back to thread-2 — draft restored
     context.store.set(detachedNavigateTo$, "/chats/:threadId", {
       pathParams: { threadId: "thread-2" },
     });
 
     await waitFor(() => {
-      expect(getTextarea().value).toBe("");
+      expect(getTextarea().value).toBe("draft for thread 2");
     });
   });
 
@@ -184,14 +183,14 @@ describe("chat draft persistence across thread navigation", () => {
       }),
     );
 
-    // Navigate back to thread-1 — factory creates fresh signals per thread,
-    // so the in-flight upload from the previous visit is not preserved
+    // Navigate back to thread-1 — draft restored from per-thread cache,
+    // upload should now be complete
     context.store.set(detachedNavigateTo$, "/chats/:threadId", {
       pathParams: { threadId: "thread-1" },
     });
 
     await waitFor(() => {
-      expect(screen.queryByLabelText(/photo\.png/)).toBeNull();
+      expect(screen.getByLabelText("Remove photo.png")).toBeInTheDocument();
     });
   });
 });
