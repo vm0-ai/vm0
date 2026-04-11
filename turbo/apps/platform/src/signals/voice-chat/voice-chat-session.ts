@@ -769,6 +769,7 @@ const reconnectVoiceSession$ = command(
       if (ok) {
         // Success — restart heartbeat and poll loops
         set(internalReconnectAttempt$, 0);
+        await set(acquireWakeLock$);
         const parentSignal = get(internalParentSignal$);
         if (!parentSignal) {
           set(internalError$, "No parent signal for reconnect");
