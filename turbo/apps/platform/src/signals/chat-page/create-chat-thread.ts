@@ -495,23 +495,34 @@ function createMessageCommands(deps: MessageCommandsDeps) {
 // ---------------------------------------------------------------------------
 
 /**
- * Per-thread draft cache. Drafts survive navigation (thread-1 → thread-2 →
+ * Per-thread draft cache. Drafts survive navigation (thread-1 -> thread-2 ->
  * thread-1) because they are stored here rather than inside the factory's
  * ephemeral signals.
+ *
+ * Wrapped in `state` to satisfy the ccstate/no-package-variable lint rule.
+ * The Map is mutated in-place inside `ensureDraft` which is called from the
+ * `currentChatThreadSignals$` computed -- this is safe because the mutation
+ * is idempotent (same key always produces the same draft object).
  */
-const draftCache = new Map<string, DraftSignals>();
+const draftCache$ = state(new Map<string, DraftSignals>());
 
-function ensureDraft(threadId: string): DraftSignals {
-  const existing = draftCache.get(threadId);
+function ensureDraft(
+  cache: Map<string, DraftSignals>,
+  threadId: string,
+): DraftSignals {
+  const existing = cache.get(threadId);
   if (existing) {
     return existing;
   }
   const draft = createDraftSignals();
-  draftCache.set(threadId, draft);
+  cache.set(threadId, draft);
   return draft;
 }
 
-function createChatThreadSignals(threadId: string): ChatThreadSignals {
+function createChatThreadSignals(
+  cache: Map<string, DraftSignals>,
+  threadId: string,
+): ChatThreadSignals {
   const { threadData$, reloadThread$ } = createThreadData(threadId);
   const {
     internalLocalMessages$,
@@ -523,7 +534,7 @@ function createChatThreadSignals(threadId: string): ChatThreadSignals {
   const { setScrollContainer$, autoScroll$ } = createScrollSignals();
   const { composerFileInput$, setComposerFileInput$ } =
     createComposerFileInput();
-  const draft = ensureDraft(threadId);
+  const draft = ensureDraft(cache, threadId);
 
   const internalReloadThinking$ = state(0);
   const thinkingMessage$ = computed((get) => {
@@ -577,6 +588,7 @@ export const currentChatThreadSignals$ = computed(
     if (!threadId) {
       return null;
     }
-    return createChatThreadSignals(threadId);
+    const cache = get(draftCache$);
+    return createChatThreadSignals(cache, threadId);
   },
 );

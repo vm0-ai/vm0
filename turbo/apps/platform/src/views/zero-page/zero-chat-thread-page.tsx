@@ -174,7 +174,16 @@ function ChatThreadHeader() {
 // ---------------------------------------------------------------------------
 
 export function ZeroChatThreadPage() {
-  const thread = useGet(currentChatThreadSignals$)!;
+  const thread = useGet(currentChatThreadSignals$);
+
+  if (!thread) {
+    return null;
+  }
+
+  return <ZeroChatThreadPageInner thread={thread} />;
+}
+
+function ZeroChatThreadPageInner({ thread }: { thread: ChatThreadSignals }) {
   const messagesLoadable = useLastLoadable(thread.messages$);
   const messages =
     messagesLoadable.state === "hasData" ? messagesLoadable.data : [];
