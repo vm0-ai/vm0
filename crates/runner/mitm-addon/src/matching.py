@@ -443,6 +443,9 @@ def _build_block_set(
 ) -> set:
     """Build a set of denied/asked permission names for a firewall ref.
 
+    Only reads ``deny`` and ``ask`` fields — the ``allow`` field is not
+    consumed by the proxy (it exists for frontend display only).
+
     Returns empty set when ref is absent from the map (fully permissive —
     consistent with the frontend contract where absent refs are treated
     as all-granted + allow-unknown).
