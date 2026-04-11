@@ -45,23 +45,14 @@ import {
   currentChatAgentPinned$,
 } from "../../signals/zero-page/zero-pinned-agents.ts";
 
-import {
-  zeroChatMessages$,
-  allFinished$,
-  zeroChatInput$,
-  setZeroChatInput$,
-  clearZeroChatInput$,
-  sendExistingThreadMessage$,
-  type ZeroChatMessage,
-  type UserChatMessage,
-  type AssistantChatMessage,
-  cancelActiveRun$,
-  thinkingMessage$,
-  zeroChatAttachments$,
+import type {
+  ZeroChatMessage,
+  UserChatMessage,
+  AssistantChatMessage,
 } from "../../signals/chat-page/chat-message.ts";
+import type { ChatThreadSignals } from "../../signals/chat-page/create-chat-thread.ts";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
 import { useAutoScroll } from "./use-auto-scroll.ts";
-import { setChatScrollContainer$ } from "../../signals/chat-page/chat-auto-scroll.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
@@ -179,8 +170,8 @@ function ChatThreadHeader() {
 // ZeroSessionChatPage — real conversation backed by agent runs
 // ---------------------------------------------------------------------------
 
-export function ZeroChatThreadPage() {
-  const messagesLoadable = useLastLoadable(zeroChatMessages$);
+export function ZeroChatThreadPage({ thread }: { thread: ChatThreadSignals }) {
+  const messagesLoadable = useLastLoadable(thread.messages$);
   const messages =
     messagesLoadable.state === "hasData" ? messagesLoadable.data : [];
   const sessionError =
@@ -190,7 +181,7 @@ export function ZeroChatThreadPage() {
         : "Failed to load chat"
       : null;
   const messagesLoading = messagesLoadable.state === "loading";
-  const setScrollContainer = useSet(setChatScrollContainer$);
+  const setScrollContainer = useSet(thread.setScrollContainer$);
 
   return (
     <div className="flex flex-1 flex-col min-h-0 bg-transparent">
@@ -226,42 +217,43 @@ export function ZeroChatThreadPage() {
               </div>
             )}
             {messages.map((msg) => {
-              return <ChatMessageRow key={msg.id} message={msg} />;
+              return (
+                <ChatMessageRow key={msg.id} message={msg} thread={thread} />
+              );
             })}
           </div>
         </main>
 
         {/* Composer — sticky inside the scroll container so it aligns with messages */}
-        <ChatThreadComposer />
+        <ChatThreadComposer thread={thread} />
       </div>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Composer wrapper — reads chat signals directly
+// Composer wrapper — reads chat signals from thread prop
 // ---------------------------------------------------------------------------
 
-function ChatThreadComposer() {
-  const messagesLoadable = useLastLoadable(zeroChatMessages$);
+function ChatThreadComposer({ thread }: { thread: ChatThreadSignals }) {
+  const messagesLoadable = useLastLoadable(thread.messages$);
   const hasMessages =
     messagesLoadable.state === "hasData" && messagesLoadable.data.length > 0;
   const displayName = useResolved(currentChatAgentDisplayName$) ?? "Zero";
-  const allFinishedLoadable = useLoadable(allFinished$);
+  const allFinishedLoadable = useLoadable(thread.allFinished$);
   const sending =
     allFinishedLoadable.state === "hasData" ? !allFinishedLoadable.data : true;
-  const input = useGet(zeroChatInput$);
-  const setInput = useSet(setZeroChatInput$);
-  const clearInput = useSet(clearZeroChatInput$);
-  const send = useSet(sendExistingThreadMessage$);
-  const cancelRun = useSet(cancelActiveRun$);
+  const input = useGet(thread.draft.input$);
+  const setInput = useSet(thread.draft.setInput$);
+  const send = useSet(thread.sendMessage$);
+  const cancelRun = useSet(thread.cancelRun$);
   const pageSignal = useGet(pageSignal$);
-  const attachments = useGet(zeroChatAttachments$);
+  const attachments = useGet(thread.draft.attachments$);
 
-  useAutoScroll(attachments.length);
+  useAutoScroll(attachments.length, thread.autoScroll$);
 
   const handleSend = (text: string) => {
-    clearInput();
+    setInput("");
     detach(send(text, pageSignal), Reason.DomCallback);
   };
 
@@ -285,6 +277,9 @@ function ChatThreadComposer() {
           autoFocus={
             !hasMessages && !window.matchMedia("(pointer: coarse)").matches
           }
+          draft={thread.draft}
+          composerFileInput$={thread.composerFileInput$}
+          setComposerFileInput$={thread.setComposerFileInput$}
         />
       </div>
     </footer>
@@ -331,13 +326,19 @@ function ChatSkeleton() {
 // Chat message components
 // ---------------------------------------------------------------------------
 
-function ChatMessageRow({ message }: { message: ZeroChatMessage }) {
+function ChatMessageRow({
+  message,
+  thread,
+}: {
+  message: ZeroChatMessage;
+  thread: ChatThreadSignals;
+}) {
   return (
     <div data-role={message.role}>
       {message.role === "user" ? (
         <UserMessage message={message} />
       ) : (
-        <AssistantMessage message={message} />
+        <AssistantMessage message={message} thread={thread} />
       )}
     </div>
   );
@@ -465,8 +466,10 @@ function deduplicateSummaries(summaries: string[]): string[] {
 /** Live run activity rendered from a message's own runLoop signals. */
 function MessageRunActivityLine({
   message,
+  thread,
 }: {
   message: AssistantChatMessage;
+  thread: ChatThreadSignals;
 }) {
   const summariesLoadable = useLastLoadable(message.summaries$!);
   const rawSummaries =
@@ -478,7 +481,7 @@ function MessageRunActivityLine({
   const queuePosition =
     queueLoadable.state === "hasData" ? queueLoadable.data : 0;
   const isQueued = runStatus === "queued";
-  const thinkingMsg = useGet(thinkingMessage$);
+  const thinkingMsg = useGet(thread.thinkingMessage$);
   const openDrawer = useSet(openQueueDrawer$);
 
   if (isQueued) {
@@ -646,12 +649,18 @@ function CollapsibleTimeline({ message }: { message: AssistantChatMessage }) {
   );
 }
 
-function AssistantMessage({ message }: { message: AssistantChatMessage }) {
+function AssistantMessage({
+  message,
+  thread,
+}: {
+  message: AssistantChatMessage;
+  thread: ChatThreadSignals;
+}) {
   // Delegate to reactive variant when the message carries its own runLoop signals
   if (message.runLoop) {
-    return <ReactiveAssistantMessage message={message} />;
+    return <ReactiveAssistantMessage message={message} thread={thread} />;
   }
-  return <StaticAssistantMessage message={message} />;
+  return <StaticAssistantMessage message={message} thread={thread} />;
 }
 
 function failedRunErrorMessage(
@@ -673,8 +682,10 @@ function failedRunErrorMessage(
 /** Assistant message with reactive result$/summaries$/detail$ from runLoop. */
 function ReactiveAssistantMessage({
   message,
+  thread,
 }: {
   message: AssistantChatMessage;
+  thread: ChatThreadSignals;
 }) {
   const summariesLoadable = useLastLoadable(message.summaries$!);
   const summaries =
@@ -695,7 +706,7 @@ function ReactiveAssistantMessage({
       ? failedRunErrorMessage(detail?.status, detail?.error)
       : undefined,
   };
-  return <StaticAssistantMessage message={enrichedMessage} />;
+  return <StaticAssistantMessage message={enrichedMessage} thread={thread} />;
 }
 
 function isRunActive(message: AssistantChatMessage): boolean {
@@ -864,12 +875,14 @@ function AssistantBubbleAvatar() {
 
 function StaticAssistantMessage({
   message,
+  thread,
 }: {
   message: AssistantChatMessage;
+  thread: ChatThreadSignals;
 }) {
   const content = useLastResolved(message.result$) ?? "";
 
-  useAutoScroll(content);
+  useAutoScroll(content, thread.autoScroll$);
 
   const showActivityLine = isRunActive(message);
   const hasSummaries = message.summaries && message.summaries.length > 0;
@@ -923,7 +936,7 @@ function StaticAssistantMessage({
         <AssistantBubbleAvatar />
         <div className="zero-chat-bubble-assistant rounded-xl py-4 text-sm leading-relaxed min-w-0 overflow-hidden">
           {showActivityLine ? (
-            <MessageRunActivityLine message={message} />
+            <MessageRunActivityLine message={message} thread={thread} />
           ) : (
             <div className="flex items-center gap-2 min-w-0">
               <IconLoader2

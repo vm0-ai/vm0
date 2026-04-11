@@ -103,10 +103,6 @@ export type ZeroChatMessage = UserChatMessage | AssistantChatMessage;
 
 const internalLocalMessages$ = state<ZeroChatMessage[]>([]);
 
-export const resetLocalMessages$ = command(({ set }) => {
-  set(internalLocalMessages$, []);
-});
-
 /**
  * Derive a deterministic placeholder ID from a user message ID by appending a
  * fixed suffix.  This avoids BigInt arithmetic and the edge-case overflow that
@@ -136,7 +132,7 @@ const neverResolve$ = computed((): Promise<never> => {
  * resolve and all commands are no-ops, so the placeholder is completely
  * inert — it exists only to give the UI something to render immediately.
  */
-function createPlaceholderAssistantMessage(
+export function createPlaceholderAssistantMessage(
   userMessageId: string,
 ): AssistantChatMessage {
   const noopAsyncCommand$ = command(async (_store, _signal: AbortSignal) => {});
@@ -227,24 +223,6 @@ export const allFinished$ = computed(async (get) => {
   ).every(Boolean);
 });
 
-/** Cancel the currently active run. */
-export const cancelActiveRun$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    // Find the active assistant message with a runLoop
-    const local = get(internalLocalMessages$);
-    const activeMsg = [...local]
-      .reverse()
-      .find((m): m is AssistantChatMessage => {
-        return m.role === "assistant" && !!m.runLoop;
-      });
-    if (!activeMsg?.runLoop) {
-      return;
-    }
-
-    await set(activeMsg.runLoop.cancel$, signal);
-  },
-);
-
 interface EventContent {
   type: string;
   text?: string;
@@ -282,7 +260,7 @@ function domainFromUrl(url: string): string {
   return new URL(url).hostname.replace(/^www\./, "");
 }
 
-const THINKING_MESSAGES = [
+export const THINKING_MESSAGES = [
   "On it, grab a coffee",
   "Thinking hard...",
   "Cooking up something good...",
@@ -296,12 +274,6 @@ const THINKING_MESSAGES = [
 ] as const;
 
 const reloadThinkingMessage$ = state(0);
-export const thinkingMessage$ = computed((get) => {
-  get(reloadThinkingMessage$);
-  return THINKING_MESSAGES[
-    Math.floor(Math.random() * THINKING_MESSAGES.length)
-  ];
-});
 
 const TOOL_LABELS: Readonly<
   Record<string, (input: Record<string, unknown> | undefined) => string>
@@ -471,7 +443,7 @@ function extractSummaries(events: AgentEvent[]): string[] {
   return summaries;
 }
 
-function createActiveRunMessage(
+export function createActiveRunMessage(
   runId: string,
   prompt: string,
 ): { userMessage: UserChatMessage; assistantMessage: AssistantChatMessage } {
@@ -506,7 +478,7 @@ function createActiveRunMessage(
   };
 }
 
-function unsavedRunsToMessages(unsavedRuns: ChatThread["unsavedRuns"]): {
+export function unsavedRunsToMessages(unsavedRuns: ChatThread["unsavedRuns"]): {
   messages: ZeroChatMessage[];
   activeRunMessages: ZeroChatMessage[];
   lastActiveRunId: string | null;
@@ -554,56 +526,65 @@ function unsavedRunsToMessages(unsavedRuns: ChatThread["unsavedRuns"]): {
   return { messages, activeRunMessages, lastActiveRunId };
 }
 
-interface ChatMessages {
+export interface ChatMessages {
   messages: ZeroChatMessage[];
   activeRunMessages: ZeroChatMessage[];
   agentId?: string;
   lastActiveRunId: string | null;
 }
 
+/**
+ * Transform raw server chat messages into ZeroChatMessage[].
+ * Extracted as a standalone function so the factory can reuse it.
+ */
+export function transformServerMessages(
+  rawMessages: ChatThread["chatMessages"],
+): ZeroChatMessage[] {
+  return rawMessages.map((m) => {
+    const summaries =
+      m.summaries && m.summaries.length > 0
+        ? m.summaries.map((s) => {
+            if (typeof s === "string") {
+              return TOOL_LABELS[s] ? humanizeToolUse(s, undefined) : s;
+            }
+            if (s.kind === "tool") {
+              return humanizeToolUse(s.name, s.input);
+            }
+            return s.text;
+          })
+        : undefined;
+
+    const base = {
+      id: crypto.randomUUID(),
+      ...(summaries && summaries.length > 0 ? { summaries } : {}),
+    };
+
+    if (m.role === "user") {
+      return {
+        ...base,
+        role: "user" as const,
+        content: m.content,
+        createdAt: m.createdAt,
+      };
+    }
+
+    return {
+      ...base,
+      role: "assistant" as const,
+      result$: computed(() => {
+        return Promise.resolve(m.content);
+      }),
+      legacyRunId: m.runId,
+      ...(m.error ? { status: "failed" as const, error: m.error } : {}),
+      createdAt: m.createdAt,
+    };
+  });
+}
+
 const currentChatMessages$ = computed(
   async (get): Promise<ZeroChatMessage[]> => {
     const messages = (await get(currentChatThread$))?.chatMessages ?? [];
-
-    return messages.map((m) => {
-      const summaries =
-        m.summaries && m.summaries.length > 0
-          ? m.summaries.map((s) => {
-              if (typeof s === "string") {
-                return TOOL_LABELS[s] ? humanizeToolUse(s, undefined) : s;
-              }
-              if (s.kind === "tool") {
-                return humanizeToolUse(s.name, s.input);
-              }
-              return s.text;
-            })
-          : undefined;
-
-      const base = {
-        id: crypto.randomUUID(),
-        ...(summaries && summaries.length > 0 ? { summaries } : {}),
-      };
-
-      if (m.role === "user") {
-        return {
-          ...base,
-          role: "user" as const,
-          content: m.content,
-          createdAt: m.createdAt,
-        };
-      }
-
-      return {
-        ...base,
-        role: "assistant" as const,
-        result$: computed(() => {
-          return Promise.resolve(m.content);
-        }),
-        legacyRunId: m.runId,
-        ...(m.error ? { status: "failed" as const, error: m.error } : {}),
-        createdAt: m.createdAt,
-      };
-    });
+    return transformServerMessages(messages);
   },
 );
 

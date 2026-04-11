@@ -92,7 +92,7 @@ function createChatAttachment(file: File): ZeroChatAttachment {
 // DraftSignals — encapsulates per-thread composer state
 // ---------------------------------------------------------------------------
 
-interface DraftSignals {
+export interface DraftSignals {
   input$: Computed<string>;
   setInput$: Command<void, [string]>;
   attachments$: Computed<ZeroChatAttachment[]>;
@@ -104,7 +104,7 @@ interface DraftSignals {
   clear$: Command<void, []>;
 }
 
-function createDraftSignals(): DraftSignals {
+export function createDraftSignals(): DraftSignals {
   const internalInput$ = state("");
   const internalAttachments$ = state<ZeroChatAttachment[]>([]);
   const internalDragOver$ = state(false);

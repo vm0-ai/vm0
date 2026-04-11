@@ -591,3 +591,152 @@ const example$ = command(async ({ get, set }, signal: AbortSignal) => {
 ```
 
 **Rule of thumb:** If the awaited operation receives your signal, it will throw on abort itself. If it doesn't, check manually after.
+
+## Signal Factory Pattern (Avoiding Global Singletons)
+
+When a set of signals represents per-instance state (e.g., per chat thread, per editor tab), use a **factory function** instead of module-level singletons. Each factory call returns fresh `state()`/`computed()`/`command()` instances, so multiple instances can coexist without sharing state.
+
+### Anti-pattern: Module-level singletons
+
+```typescript
+// ❌ Only one chat thread can exist at a time — shared global state
+// chat-message.ts
+const internalLocalMessages$ = state<ZeroChatMessage[]>([]);
+export const resetLocalMessages$ = command(({ set }) => {
+  set(internalLocalMessages$, []);
+});
+export const messages$ = computed(async (get) => { /* ... */ });
+export const allFinished$ = computed(async (get) => { /* ... */ });
+export const sendMessage$ = command(async ({ get, set }, prompt, signal) => { /* ... */ });
+
+// chat-auto-scroll.ts
+const chatScrollContainer$ = state<HTMLElement | null>(null);
+export const setChatScrollContainer$ = command(({ set }, el) => { set(chatScrollContainer$, el); });
+export const autoScroll$ = command(({ get }) => { /* ... */ });
+```
+
+```typescript
+// ❌ View imports singletons directly — can't have two threads on screen
+import { messages$, sendMessage$ } from "../../signals/chat-page/chat-message.ts";
+import { setChatScrollContainer$ } from "../../signals/chat-page/chat-auto-scroll.ts";
+
+export function ChatPage() {
+  const msgs = useLastLoadable(messages$);
+  // ...
+}
+```
+
+### Preferred: Factory function returning a signals interface
+
+**Step 1 — Define the interface and factory:**
+
+```typescript
+// create-chat-thread.ts
+import { command, computed, state, type Command, type Computed } from "ccstate";
+
+export interface ChatThreadSignals {
+  messages$: Computed<Promise<ZeroChatMessage[]>>;
+  allFinished$: Computed<Promise<boolean>>;
+  sendMessage$: Command<Promise<void>, [string, AbortSignal]>;
+  resetLocalMessages$: Command<void, []>;
+  setScrollContainer$: Command<void, [HTMLElement | null]>;
+  autoScroll$: Command<void, []>;
+  draft: DraftSignals;
+}
+```
+
+**Step 2 — Break into sub-factories for each concern:**
+
+```typescript
+function createMessageState(threadData$: Computed<Promise<ThreadData | null>>) {
+  const internalLocalMessages$ = state<ZeroChatMessage[]>([]);
+
+  const resetLocalMessages$ = command(({ set }) => {
+    set(internalLocalMessages$, []);
+  });
+
+  const messages$ = computed(async (get) => {
+    const serverMsgs = (await get(threadData$))?.chatMessages ?? [];
+    const localMsgs = get(internalLocalMessages$);
+    return [...transformServerMessages(serverMsgs), ...localMsgs];
+  });
+
+  const allFinished$ = computed(async (get) => { /* ... */ });
+
+  return { internalLocalMessages$, resetLocalMessages$, messages$, allFinished$ };
+}
+
+function createScrollSignals() {
+  const container$ = state<HTMLElement | null>(null);
+
+  const setScrollContainer$ = command(({ set }, el: HTMLElement | null) => {
+    set(container$, el);
+  });
+
+  const autoScroll$ = command(({ get }) => {
+    const scrollEl = get(container$);
+    // ... scroll logic ...
+  });
+
+  return { setScrollContainer$, autoScroll$ };
+}
+```
+
+**Step 3 — Compose sub-factories in the main factory:**
+
+```typescript
+export function createChatThreadSignals(
+  threadId: string,
+  existingDraft?: DraftSignals,
+): ChatThreadSignals {
+  const { threadData$, reloadThread$ } = createThreadData(threadId);
+  const { internalLocalMessages$, resetLocalMessages$, messages$, allFinished$ } =
+    createMessageState(threadData$);
+  const { setScrollContainer$, autoScroll$ } = createScrollSignals();
+  const draft = existingDraft ?? createDraftSignals();
+
+  const { sendMessage$ } = createMessageCommands({
+    threadId, threadData$, reloadThread$, internalLocalMessages$, draft,
+  });
+
+  return {
+    messages$, allFinished$, sendMessage$, resetLocalMessages$,
+    setScrollContainer$, autoScroll$, draft,
+  };
+}
+```
+
+**Step 4 — Create in page setup, pass as prop:**
+
+```typescript
+// chat-page-setup.ts
+export const setupChatPage$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const threadId = get(currentChatThreadId$);
+  const draft = set(ensureDraft$, threadId);
+  const thread = createChatThreadSignals(threadId, draft);
+
+  set(updatePage$, createElement(ZeroChatThreadPage, { key: threadId, thread }));
+  // ...
+  await set(thread.loadMessages$, signal);
+});
+```
+
+**Step 5 — Components consume via props:**
+
+```typescript
+export function ZeroChatThreadPage({ thread }: { thread: ChatThreadSignals }) {
+  const messagesLoadable = useLastLoadable(thread.messages$);
+  const setScrollContainer = useSet(thread.setScrollContainer$);
+  // ... pass thread down to children ...
+}
+```
+
+### Key rules
+
+1. **Interface first** — define a `Signals` interface listing only the public signals. Keep internal `state()` atoms private to the factory.
+2. **Sub-factories for each concern** — split message state, scroll, draft, commands, etc. into separate functions. The main factory composes them.
+3. **Dependencies via parameters** — sub-factories receive the signals they depend on as arguments, not module-level imports.
+4. **Pass as React props** — the factory result is a plain object, so pass it as a prop. Use `useGet(thread.someSignal$)` / `useSet(thread.someCommand$)` in components.
+5. **`key` prop for remount** — when creating the component element, use `key: threadId` so React remounts when the thread changes, avoiding stale hook state.
+6. **Allow dependency injection** — accept optional existing signal groups (e.g., `existingDraft?: DraftSignals`) so the caller can share state across factories when needed.
+7. **Helpers that were only used by singletons can be inlined** — if a hook or utility existed only to wrap singleton signals (e.g., `useFileUploadHandlers`), inline its logic directly into the component once signals are injected via props.

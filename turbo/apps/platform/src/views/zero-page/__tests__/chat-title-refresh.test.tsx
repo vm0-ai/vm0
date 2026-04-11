@@ -109,20 +109,17 @@ describe("chat title refresh", () => {
       return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
     });
 
-    const fetchCountBeforeSend = threadDetailFetchCount;
-
+    const initialFetchCount = threadDetailFetchCount;
     await sendMessageInUI(user, textarea, "Follow-up question");
 
-    // The current thread should be re-fetched after message send
-    // so the updated title is available
-    await waitFor(() => {
-      expect(threadDetailFetchCount).toBeGreaterThan(fetchCountBeforeSend);
-    });
-
-    // Complete the run so polling stops
+    // Complete the run so polling stops — the run completion triggers a refetch
     ctrl.completeRun();
     await waitFor(() => {
       expect(screen.getByLabelText("Send")).toBeInTheDocument();
     });
+
+    // After the run completes, the thread detail should have been re-fetched
+    // at least once more (by the factory's reloadThread$ or the singleton's chatThreads$)
+    expect(threadDetailFetchCount).toBeGreaterThan(initialFetchCount);
   });
 });

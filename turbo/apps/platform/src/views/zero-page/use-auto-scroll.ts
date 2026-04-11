@@ -3,12 +3,15 @@
 // oxlint-disable-next-line no-restricted-imports
 import { useLayoutEffect } from "react";
 import { useSet } from "ccstate-react";
-import { autoScroll$ } from "../../signals/chat-page/chat-auto-scroll.ts";
+import type { Command } from "ccstate";
 
 /**
  * Trigger auto-scroll synchronously (before paint) whenever `trigger` changes.
  */
-export function useAutoScroll(trigger: unknown) {
+export function useAutoScroll(
+  trigger: unknown,
+  autoScroll$: Command<void, []>,
+) {
   const scroll = useSet(autoScroll$);
   useLayoutEffect(() => {
     scroll();

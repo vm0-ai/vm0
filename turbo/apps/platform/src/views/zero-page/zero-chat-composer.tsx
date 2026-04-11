@@ -1,6 +1,6 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
-import type { ChangeEvent } from "react";
+import type { ChangeEvent, ClipboardEvent, DragEvent } from "react";
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import { ensurePushSubscription } from "../../lib/push-notifications.ts";
 import {
@@ -32,16 +32,19 @@ import {
   cn,
 } from "@vm0/ui";
 import { detach, Reason } from "../../signals/utils.ts";
+import type { DraftSignals } from "../../signals/chat-page/create-chat-thread.ts";
+import type { Command, Computed } from "ccstate";
 import {
-  zeroChatAttachments$,
-  uploadZeroAttachment$,
-  removeZeroAttachment$,
-  composerFileInput$,
-  setComposerFileInput$,
-  canSendZeroChat$,
+  zeroChatAttachments$ as singletonAttachments$,
+  uploadZeroAttachment$ as singletonUpload$,
+  removeZeroAttachment$ as singletonRemove$,
+  canSendZeroChat$ as singletonCanSend$,
+  zeroDragOver$ as singletonDragOver$,
+  setZeroDragOver$ as singletonSetDragOver$,
+  composerFileInput$ as singletonComposerFileInput$,
+  setComposerFileInput$ as singletonSetComposerFileInput$,
 } from "../../signals/chat-page/chat-message.ts";
 import { AttachmentChips } from "./zero-attachment-chips.tsx";
-import { useFileUploadHandlers } from "./use-file-upload-handlers.ts";
 import { useSendKeyHandler } from "./zero-send-key.ts";
 import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
@@ -93,6 +96,12 @@ interface ZeroChatComposerProps {
   className?: string;
   /** Auto-focus the textarea when mounted. */
   autoFocus?: boolean;
+  /** Per-instance draft signals (from ChatThreadSignals factory). When omitted, falls back to singleton signals. */
+  draft?: DraftSignals;
+  /** Composer file input element reference. When omitted, falls back to singleton. */
+  composerFileInput$?: Computed<HTMLElement | null>;
+  /** Set the composer file input element. When omitted, falls back to singleton. */
+  setComposerFileInput$?: Command<void, [HTMLElement | null]>;
 }
 
 // ---------------------------------------------------------------------------
@@ -414,6 +423,52 @@ function ConnectorsPopoverButton({
 }
 
 // ---------------------------------------------------------------------------
+// Signal resolution — resolves draft/file-input with singleton fallback
+// ---------------------------------------------------------------------------
+
+function useResolvedComposerSignals(
+  input: string,
+  draft: DraftSignals | undefined,
+  composerFileInputProp$: Computed<HTMLElement | null> | undefined,
+  setComposerFileInputProp$: Command<void, [HTMLElement | null]> | undefined,
+) {
+  const attachments = useGet(
+    draft ? draft.attachments$ : singletonAttachments$,
+  );
+  const canSendSingleton = useGet(singletonCanSend$);
+  const canSend = draft
+    ? input.trim() !== "" || attachments.length > 0
+    : canSendSingleton;
+  const uploadAttachment = useSet(
+    draft ? draft.uploadAttachment$ : singletonUpload$,
+  );
+  const removeAttachment = useSet(
+    draft ? draft.removeAttachment$ : singletonRemove$,
+  );
+  const fileInputEl = useGet(
+    composerFileInputProp$ ?? singletonComposerFileInput$,
+  );
+  const setFileInputEl = useSet(
+    setComposerFileInputProp$ ?? singletonSetComposerFileInput$,
+  );
+  const dragOver = useGet(draft ? draft.dragOver$ : singletonDragOver$);
+  const setDragOver = useSet(
+    draft ? draft.setDragOver$ : singletonSetDragOver$,
+  );
+
+  return {
+    canSend,
+    attachments,
+    uploadAttachment,
+    removeAttachment,
+    fileInputEl,
+    setFileInputEl,
+    dragOver,
+    setDragOver,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Main composer
 // ---------------------------------------------------------------------------
 
@@ -426,27 +481,71 @@ export function ZeroChatComposer({
   displayName,
   className,
   autoFocus,
+  draft,
+  composerFileInput$: composerFileInputProp$,
+  setComposerFileInput$: setComposerFileInputProp$,
 }: ZeroChatComposerProps) {
   const showAddDialog = useGet(showAddDialog$);
   const setShowAddDialog = useSet(setShowAddDialog$);
 
-  const canSend = useGet(canSendZeroChat$);
+  const resolved = useResolvedComposerSignals(
+    input,
+    draft,
+    composerFileInputProp$,
+    setComposerFileInputProp$,
+  );
+  const {
+    canSend,
+    attachments,
+    uploadAttachment,
+    removeAttachment,
+    fileInputEl,
+    setFileInputEl,
+    dragOver,
+    setDragOver,
+  } = resolved;
 
-  // Attachments
-  const attachments = useGet(zeroChatAttachments$);
-  const uploadAttachment = useSet(uploadZeroAttachment$);
-  const removeAttachment = useSet(removeZeroAttachment$);
-
-  // File picker
-  const fileInputEl = useGet(composerFileInput$);
-  const setFileInputEl = useSet(setComposerFileInput$);
-
-  // File upload (paste / drag-drop)
-  const { dragOver, handlePaste, handleDrop, handleDragOver, handleDragLeave } =
-    useFileUploadHandlers();
-
-  // Upload signal — uses rootSignal so uploads survive page navigation
   const { signal: rootSignal } = useGet(rootSignal$);
+
+  // File upload handlers (paste / drag-drop)
+  const handlePaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = e.clipboardData?.items;
+    if (!items) {
+      return;
+    }
+    for (const item of items) {
+      if (item.kind === "file") {
+        const file = item.getAsFile();
+        if (file) {
+          e.preventDefault();
+          detach(uploadAttachment(file, rootSignal), Reason.DomCallback);
+        }
+      }
+    }
+  };
+
+  const handleDrop = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setDragOver(false);
+    const files = e.dataTransfer?.files;
+    if (!files) {
+      return;
+    }
+    for (const file of files) {
+      detach(uploadAttachment(file, rootSignal), Reason.DomCallback);
+    }
+  };
+
+  const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setDragOver(true);
+  };
+
+  const handleDragLeave = (e: DragEvent<HTMLDivElement>) => {
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+      setDragOver(false);
+    }
+  };
 
   // Connectors
   const allTypesLoadable = useLastLoadable(allConnectorTypes$);
