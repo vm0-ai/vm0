@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import { onDomEventFn, setLoop } from "../utils.ts";
+import { onDomEventFn } from "../utils.ts";
 import { toggleTaskList$ } from "./mission-control-panels.ts";
 import { taskSignals$, setupTasksLoop$ } from "./mission-control-tasks.ts";
 
