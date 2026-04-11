@@ -5,6 +5,11 @@
 //! or [`MockSandboxControl::push_exec_remote_result`] to queue custom responses
 //! consumed in FIFO order.
 //!
+//! For advanced control, create [`MockSandboxOverrides`] and pass it via
+//! [`MockSandboxRuntime::with_overrides`]. This enables pattern-matched exec
+//! results, custom `wait_exit` exit codes, and blocking gates for
+//! cancellation testing.
+//!
 //! ```toml
 //! [dev-dependencies]
 //! sandbox-mock = { workspace = true }

@@ -1620,6 +1620,26 @@ mod tests {
         keep_alive: bool,
         make_provider: impl FnOnce(CancellationToken) -> (Arc<MockJobProvider>, MockProviderHandle),
     ) -> (RunConfig, MockRunEnv) {
+        build_mock_run_config_with_runtime(
+            profiles,
+            budget_vcpu,
+            budget_memory_mb,
+            max_concurrent,
+            keep_alive,
+            make_provider,
+            Box::new(MockSandboxRuntime::new()),
+        )
+    }
+
+    fn build_mock_run_config_with_runtime(
+        profiles: BTreeMap<String, config::ProfileConfig>,
+        budget_vcpu: u32,
+        budget_memory_mb: u32,
+        max_concurrent: usize,
+        keep_alive: bool,
+        make_provider: impl FnOnce(CancellationToken) -> (Arc<MockJobProvider>, MockProviderHandle),
+        runtime: Box<dyn sandbox::SandboxRuntime>,
+    ) -> (RunConfig, MockRunEnv) {
         let temp_dir = tempfile::tempdir().unwrap();
         let cancel = CancellationToken::new();
         let (provider, handle) = make_provider(cancel.clone());
@@ -1646,7 +1666,7 @@ mod tests {
             name: "test".into(),
             group: "test-group".into(),
             profiles,
-            runtime: Box::new(MockSandboxRuntime::new()),
+            runtime,
             home,
             budget: Arc::new(ResourceBudget::new(
                 budget_vcpu,
@@ -2666,17 +2686,15 @@ mod tests {
         keep_alive: bool,
         overrides: Arc<sandbox_mock::MockSandboxOverrides>,
     ) -> (RunConfig, MockRunEnv) {
-        let make_provider = |cancel: CancellationToken| MockJobProvider::new(cancel.clone());
-        let (mut config, env) = build_mock_run_config(
+        build_mock_run_config_with_runtime(
             profiles,
             budget_vcpu,
             budget_memory_mb,
             max_concurrent,
             keep_alive,
-            make_provider,
-        );
-        config.runtime = Box::new(MockSandboxRuntime::with_overrides(overrides));
-        (config, env)
+            MockJobProvider::new,
+            Box::new(MockSandboxRuntime::with_overrides(overrides)),
+        )
     }
 
     async fn wait_cancel_token(
@@ -2830,11 +2848,14 @@ mod tests {
         // After eviction: old entry destroyed + old budget released,
         // new entry parked + new budget held → net count = 1.
         wait_budget_count(&budget, 1, Duration::from_secs(2)).await;
+        let pool = idle_pool.lock().await;
+        assert_eq!(pool.len(), 1, "pool should have the newly parked entry");
         assert_eq!(
-            idle_pool.lock().await.len(),
-            1,
-            "pool should have the newly parked entry"
+            pool.held_sessions(),
+            vec!["sess-evict"],
+            "parked session should match guest_session_id"
         );
+        drop(pool);
 
         shutdown(&env, run_handle).await;
     }
