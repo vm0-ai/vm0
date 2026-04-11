@@ -1,10 +1,10 @@
 import { useLastLoadable, useSet } from "ccstate-react";
 import { IconChevronRight } from "@tabler/icons-react";
-import { tasks$ } from "../../signals/mission-control-page/mission-control.ts";
+import { taskSignals$ } from "../../signals/mission-control-page/mission-control-tasks.ts";
 import { toggleTaskList$ } from "../../signals/mission-control-page/mission-control-panels.ts";
 
 export function CollapsedTaskListBar() {
-  const tasksLoadable = useLastLoadable(tasks$);
+  const tasksLoadable = useLastLoadable(taskSignals$);
   const taskCount =
     tasksLoadable.state === "hasData" ? tasksLoadable.data.length : 0;
   const toggle = useSet(toggleTaskList$);

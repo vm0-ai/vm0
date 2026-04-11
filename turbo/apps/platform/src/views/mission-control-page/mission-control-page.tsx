@@ -1,4 +1,4 @@
-import { useGet, useSet } from "ccstate-react";
+import { useGet, useSet, useLastResolved } from "ccstate-react";
 import {
   Group,
   Panel,
@@ -16,7 +16,7 @@ import { TaskPanel } from "./task-panel.tsx";
 import { CollapsedTaskListBar } from "./collapsed-task-list-bar.tsx";
 
 export function MissionControlPage() {
-  const panelVisible = useGet(missionControlPanelVisible$);
+  const panelVisible = useLastResolved(missionControlPanelVisible$) ?? false;
   const collapsed = useGet(taskListCollapsed$);
   const setCollapsed = useSet(setTaskListCollapsed$);
   const setPanelRef = useSet(setTaskListPanelRef$);
