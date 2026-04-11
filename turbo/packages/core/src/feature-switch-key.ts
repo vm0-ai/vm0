@@ -40,4 +40,5 @@ export enum FeatureSwitchKey {
   PhoneIntegration = "phoneIntegration",
   VoiceChat = "voiceChat",
   AutoSkill = "autoSkill",
+  SandboxReuse = "sandboxReuse",
 }
