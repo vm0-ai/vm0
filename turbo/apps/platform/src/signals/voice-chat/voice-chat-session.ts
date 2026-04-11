@@ -193,6 +193,7 @@ const internalReconnectAttempt$ = state(0);
 const internalInputMode$ = state<"hands-free" | "push-to-talk">("hands-free");
 
 const internalParentSignal$ = state<AbortSignal | null>(null);
+const internalWakeLock$ = state<WakeLockSentinel | null>(null);
 
 const meetingPromptInput$ = state("");
 
@@ -792,6 +793,29 @@ const reconnectVoiceSession$ = command(
   },
 );
 
+// --- Wake lock ---
+
+const acquireWakeLock$ = command(async ({ set }) => {
+  if (!("wakeLock" in navigator)) {
+    return;
+  }
+  // eslint-disable-next-line no-restricted-syntax -- wakeLock.request can fail if document is not visible
+  try {
+    const lock = await navigator.wakeLock.request("screen");
+    set(internalWakeLock$, lock);
+  } catch {
+    // Wake lock request failed — non-critical, ignore
+  }
+});
+
+const releaseWakeLock$ = command(({ get, set }) => {
+  const lock = get(internalWakeLock$);
+  if (lock) {
+    void lock.release();
+    set(internalWakeLock$, null);
+  }
+});
+
 // --- Shared connection logic ---
 
 const connectVoiceSession$ = command(
@@ -852,6 +876,8 @@ const connectVoiceSession$ = command(
     if (!ok) {
       return;
     }
+
+    await set(acquireWakeLock$);
 
     await Promise.allSettled([
       set(startHeartbeat$, sessionSignal),
@@ -1126,6 +1152,7 @@ export const endVoiceChat$ = command(({ get, set }) => {
   }
 
   set(resetSessionSignal$);
+  set(releaseWakeLock$);
 
   const dc = get(internalDc$);
   if (dc) {
