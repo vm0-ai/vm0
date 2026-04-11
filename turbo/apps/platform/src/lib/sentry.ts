@@ -52,6 +52,18 @@ export function initSentry(): void {
       // Expected API errors surfaced as toasts — not actionable in Sentry
       "Credits depleted",
       "Insufficient credits",
+      // Third-party scripts (we don't use axios — any AxiosError is external noise)
+      "AxiosError",
+    ],
+
+    // Filter out errors from browser extension and third-party scripts
+    denyUrls: [
+      /inpage\.js/,
+      /chrome-extension:\/\//,
+      /moz-extension:\/\//,
+      // Termly compliance/cookie consent script
+      /app\.termly\.io/,
+      /resource-blocker/,
     ],
   });
 }

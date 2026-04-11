@@ -45,8 +45,17 @@ Sentry.init({
     "ResizeObserver loop",
     "func sseError not found",
     "Failed to connect to MetaMask",
+    // Third-party scripts (we don't use axios — any AxiosError is external noise)
+    "AxiosError",
   ],
 
   // Filter out errors from browser extension scripts
-  denyUrls: [/inpage\.js/, /chrome-extension:\/\//, /moz-extension:\/\//],
+  denyUrls: [
+    /inpage\.js/,
+    /chrome-extension:\/\//,
+    /moz-extension:\/\//,
+    // Termly compliance/cookie consent script
+    /app\.termly\.io/,
+    /resource-blocker/,
+  ],
 });
