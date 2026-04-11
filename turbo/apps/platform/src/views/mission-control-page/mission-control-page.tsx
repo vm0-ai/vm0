@@ -1,4 +1,4 @@
-import { useGet, useSet, useLastLoadable } from "ccstate-react";
+import { useGet, useSet, useLastLoadable, useResolved } from "ccstate-react";
 import {
   IconMessageCircle,
   IconCalendar,
@@ -22,6 +22,9 @@ import {
 import { ZeroChatThreadPageInner } from "../zero-page/zero-chat-thread-page.tsx";
 import { StatusBadge } from "../zero-page/components/log-views/status-badge.tsx";
 import { AvatarFromUrl } from "../zero-page/zero-sidebar-shared.tsx";
+import { detach, Reason } from "../../signals/utils.ts";
+import { pageSignal$ } from "../../signals/page-signal.ts";
+import type { ChatThreadSignals } from "../../signals/chat-page/create-chat-thread.ts";
 
 function getTaskTypeConfig(type: TaskType): {
   label: string;
@@ -90,34 +93,48 @@ export function MissionControlPage() {
 
 function MissionControlThreadPanel() {
   const entries = useGet(openThreadEntries$);
-  const closeThread = useSet(closeMissionControlThread$);
 
   return (
     <div className="flex flex-col flex-1 min-h-0 divide-y">
       {entries.map(([threadId, signals]) => {
         return (
-          <div key={threadId} className="flex flex-col flex-1 min-h-0">
-            <div className="shrink-0 flex items-center justify-between px-4 py-2 border-b bg-muted/30">
-              <span className="text-xs text-muted-foreground font-medium truncate">
-                Thread
-              </span>
-              <button
-                type="button"
-                onClick={() => {
-                  closeThread(threadId);
-                }}
-                className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
-                aria-label="Close thread"
-              >
-                <IconX size={14} stroke={1.5} />
-              </button>
-            </div>
-            <div className="flex-1 min-h-0 overflow-hidden">
-              <ZeroChatThreadPageInner thread={signals} />
-            </div>
-          </div>
+          <ThreadCard key={threadId} threadId={threadId} signals={signals} />
         );
       })}
+    </div>
+  );
+}
+
+function ThreadCard({
+  threadId,
+  signals,
+}: {
+  threadId: string;
+  signals: ChatThreadSignals;
+}) {
+  const closeThread = useSet(closeMissionControlThread$);
+  const displayName = useResolved(signals.agentDisplayName$);
+
+  return (
+    <div className="flex flex-col flex-1 min-h-0">
+      <div className="shrink-0 flex items-center justify-between px-4 py-2 border-b bg-muted/30">
+        <span className="text-xs text-muted-foreground font-medium truncate">
+          {displayName ?? threadId}
+        </span>
+        <button
+          type="button"
+          onClick={() => {
+            closeThread(threadId);
+          }}
+          className="p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+          aria-label="Close thread"
+        >
+          <IconX size={14} stroke={1.5} />
+        </button>
+      </div>
+      <div className="flex-1 min-h-0 overflow-hidden">
+        <ZeroChatThreadPageInner thread={signals} />
+      </div>
     </div>
   );
 }
@@ -191,10 +208,11 @@ function TaskCard({
 }) {
   const navigate = useSet(navigateToTask$);
   const openThread = useSet(openMissionControlThread$);
+  const pageSignal = useGet(pageSignal$);
 
   const onClick = () => {
     if (task.type === "chat" && task.chatThreadId) {
-      openThread(task.chatThreadId);
+      detach(openThread(task.chatThreadId, pageSignal), Reason.DomCallback);
     } else {
       navigate(task);
     }

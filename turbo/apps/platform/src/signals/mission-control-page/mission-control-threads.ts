@@ -31,9 +31,14 @@ export const openThreadEntries$ = computed(
 /**
  * Open a chat thread in the Mission Control panel.
  * If the thread is already open, this is a no-op.
+ * Callers should detach with Reason.DomCallback.
  */
 export const openMissionControlThread$ = command(
-  ({ get, set }, threadId: string) => {
+  async (
+    { get, set },
+    threadId: string,
+    signal: AbortSignal,
+  ): Promise<void> => {
     const map = get(openThreadsMap$);
     if (map.has(threadId)) {
       return;
@@ -41,6 +46,7 @@ export const openMissionControlThread$ = command(
     const draft = set(ensureDraft$, threadId);
     const signals = createChatThreadSignals(threadId, draft);
     set(openThreadsMap$, new Map(map).set(threadId, signals));
+    await set(signals.loadMessages$, signal);
   },
 );
 

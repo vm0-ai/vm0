@@ -95,7 +95,7 @@ describe("mission control page", () => {
     });
   });
 
-  it("should navigate to chat thread when clicking a chat task", async () => {
+  it("should open thread panel when clicking a chat task", async () => {
     mockTasksAPI([
       {
         id: "task-chat",
@@ -111,6 +111,21 @@ describe("mission control page", () => {
       },
     ]);
 
+    server.use(
+      http.get("*/api/zero/chat-threads/thread-abc", () => {
+        return HttpResponse.json({
+          id: "thread-abc",
+          title: null,
+          agentId: null,
+          chatMessages: [],
+          latestSessionId: null,
+          unsavedRuns: [],
+          createdAt: "2026-04-10T10:00:00Z",
+          updatedAt: "2026-04-10T10:00:00Z",
+        });
+      }),
+    );
+
     const user = userEvent.setup();
 
     detachedSetupPage({ context, path: "/_/mission-control" });
@@ -122,8 +137,10 @@ describe("mission control page", () => {
     await user.click(title);
 
     await waitFor(() => {
-      expect(pathname()).toBe("/chats/thread-abc");
+      expect(screen.getByLabelText("Close thread")).toBeInTheDocument();
     });
+
+    expect(pathname()).toBe("/_/mission-control");
   });
 
   it("should navigate to activity when clicking a schedule task", async () => {
