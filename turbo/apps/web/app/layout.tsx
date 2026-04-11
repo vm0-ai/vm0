@@ -3,7 +3,6 @@ import type { Metadata } from "next";
 import Script from "next/script";
 import {
   Noto_Sans,
-  Instrument_Sans,
   Fira_Code,
   Fira_Mono,
   JetBrains_Mono,
@@ -25,14 +24,6 @@ const notoSans = Noto_Sans({
   variable: "--font-noto-sans",
   display: "swap",
   preload: true,
-});
-
-const instrumentSans = Instrument_Sans({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-  variable: "--font-instrument-sans",
-  display: "swap",
-  preload: false,
 });
 
 const firaCode = Fira_Code({
@@ -184,7 +175,7 @@ export default function RootLayout({
           )}
         </head>
         <body
-          className={`${notoSans.variable} ${instrumentSans.variable} ${firaCode.variable} ${firaMono.variable} ${jetBrainsMono.variable}`}
+          className={`${notoSans.variable} ${firaCode.variable} ${firaMono.variable} ${jetBrainsMono.variable}`}
         >
           <Script
             id="json-ld"
