@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.218.0](https://github.com/vm0-ai/vm0/compare/app-v0.217.0...app-v0.218.0) (2026-04-11)
+
+
+### Features
+
+* redesign mission control panels from thread-centric to task-centric ([#8948](https://github.com/vm0-ai/vm0/issues/8948)) ([7fbd704](https://github.com/vm0-ai/vm0/commit/7fbd7041e549e8944f21ec1ed6c38f7c39eb36b6))
+
+
+### Bug Fixes
+
+* **platform:** use useLastResolved for thread avatar/name signals to prevent flicker ([#8954](https://github.com/vm0-ai/vm0/issues/8954)) ([d2d0f1e](https://github.com/vm0-ai/vm0/commit/d2d0f1e55bf39f633ddac05e94f3fc6acfb98961))
+
+
+### Refactoring
+
+* split mission-control-page into task-card, task-list, and thread-panel modules ([#8945](https://github.com/vm0-ai/vm0/issues/8945)) ([f3d806e](https://github.com/vm0-ai/vm0/commit/f3d806eccc74bf4a3c7fc5cf28fcf3497bebf587))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.172.2
+
 ## [0.217.0](https://github.com/vm0-ai/vm0/compare/app-v0.216.0...app-v0.217.0) (2026-04-11)
 
 

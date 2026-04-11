@@ -1,5 +1,24 @@
 # Changelog
 
+## [12.218.0](https://github.com/vm0-ai/vm0/compare/web-v12.217.2...web-v12.218.0) (2026-04-11)
+
+
+### Features
+
+* redesign mission control panels from thread-centric to task-centric ([#8948](https://github.com/vm0-ai/vm0/issues/8948)) ([7fbd704](https://github.com/vm0-ai/vm0/commit/7fbd7041e549e8944f21ec1ed6c38f7c39eb36b6))
+
+
+### Refactoring
+
+* remove unrestricted permission from model-provider firewalls ([#8950](https://github.com/vm0-ai/vm0/issues/8950)) ([2a585cc](https://github.com/vm0-ai/vm0/commit/2a585cce5e0051985743ee69037d39366dbcb3c6)), closes [#8925](https://github.com/vm0-ai/vm0/issues/8925)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.172.2
+
 ## [12.217.2](https://github.com/vm0-ai/vm0/compare/web-v12.217.1...web-v12.217.2) (2026-04-11)
 
 

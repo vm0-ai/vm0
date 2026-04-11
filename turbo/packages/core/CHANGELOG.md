@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.172.2](https://github.com/vm0-ai/vm0/compare/core-v8.172.1...core-v8.172.2) (2026-04-11)
+
+
+### Refactoring
+
+* remove unrestricted permission from model-provider firewalls ([#8950](https://github.com/vm0-ai/vm0/issues/8950)) ([2a585cc](https://github.com/vm0-ai/vm0/commit/2a585cce5e0051985743ee69037d39366dbcb3c6)), closes [#8925](https://github.com/vm0-ai/vm0/issues/8925)
+
 ## [8.172.1](https://github.com/vm0-ai/vm0/compare/core-v8.172.0...core-v8.172.1) (2026-04-11)
 
 
