@@ -5,14 +5,14 @@ import {
   Separator,
   useDefaultLayout,
 } from "react-resizable-panels";
-import { missionControlPanelVisible$ } from "../../signals/mission-control-page/mission-control-threads.ts";
+import { missionControlPanelVisible$ } from "../../signals/mission-control-page/mission-control-tasks.ts";
 import {
   taskListCollapsed$,
   setTaskListPanelRef$,
   setTaskListCollapsed$,
 } from "../../signals/mission-control-page/mission-control-panels.ts";
 import { TaskList } from "./task-list.tsx";
-import { ThreadPanel } from "./task-panel.tsx";
+import { TaskPanel } from "./task-panel.tsx";
 import { CollapsedTaskListBar } from "./collapsed-task-list-bar.tsx";
 
 export function MissionControlPage() {
@@ -66,8 +66,8 @@ export function MissionControlPage() {
       {panelVisible && (
         <>
           <Separator className="w-px bg-border" />
-          <Panel id="thread-area" minSize="30%">
-            <ThreadPanel />
+          <Panel id="task-area" minSize="30%">
+            <TaskPanel />
           </Panel>
         </>
       )}

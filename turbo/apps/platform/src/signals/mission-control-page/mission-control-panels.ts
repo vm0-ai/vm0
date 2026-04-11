@@ -10,9 +10,9 @@ import type {
 // ---------------------------------------------------------------------------
 
 const internalTaskListCollapsed$ = state(false);
-const internalMaximizedThreadId$ = state<string | null>(null);
+const internalMaximizedTaskId$ = state<string | null>(null);
 const internalTaskListPanelRef$ = state<PanelImperativeHandle | null>(null);
-const internalThreadGroupRef$ = state<GroupImperativeHandle | null>(null);
+const internalTaskGroupRef$ = state<GroupImperativeHandle | null>(null);
 const internalPreMaximizeLayout$ = state<Layout | null>(null);
 
 // ---------------------------------------------------------------------------
@@ -23,8 +23,8 @@ export const taskListCollapsed$ = computed((get) => {
   return get(internalTaskListCollapsed$);
 });
 
-export const maximizedThreadId$ = computed((get) => {
-  return get(internalMaximizedThreadId$);
+export const maximizedTaskId$ = computed((get) => {
+  return get(internalMaximizedTaskId$);
 });
 
 // ---------------------------------------------------------------------------
@@ -37,9 +37,9 @@ export const setTaskListPanelRef$ = command(
   },
 );
 
-export const setThreadGroupRef$ = command(
+export const setTaskGroupRef$ = command(
   ({ set }, ref: GroupImperativeHandle | null) => {
-    set(internalThreadGroupRef$, ref);
+    set(internalTaskGroupRef$, ref);
   },
 );
 
@@ -64,11 +64,11 @@ export const toggleTaskList$ = command(({ get }) => {
 });
 
 // ---------------------------------------------------------------------------
-// Commands — thread maximize/restore
+// Commands — task maximize/restore
 // ---------------------------------------------------------------------------
 
-const maximizeThread$ = command(({ get, set }, threadId: string) => {
-  const groupRef = get(internalThreadGroupRef$);
+const maximizeTask$ = command(({ get, set }, taskId: string) => {
+  const groupRef = get(internalTaskGroupRef$);
   if (!groupRef) {
     return;
   }
@@ -78,29 +78,27 @@ const maximizeThread$ = command(({ get, set }, threadId: string) => {
 
   const newLayout: Layout = {};
   for (const panelId of Object.keys(currentLayout)) {
-    newLayout[panelId] = panelId === `thread-${threadId}` ? 100 : 0;
+    newLayout[panelId] = panelId === `task-${taskId}` ? 100 : 0;
   }
   groupRef.setLayout(newLayout);
-  set(internalMaximizedThreadId$, threadId);
+  set(internalMaximizedTaskId$, taskId);
 });
 
-const restoreThreadLayout$ = command(({ get, set }) => {
-  const groupRef = get(internalThreadGroupRef$);
+const restoreTaskLayout$ = command(({ get, set }) => {
+  const groupRef = get(internalTaskGroupRef$);
   const savedLayout = get(internalPreMaximizeLayout$);
   if (!groupRef || !savedLayout) {
     return;
   }
   groupRef.setLayout(savedLayout);
-  set(internalMaximizedThreadId$, null);
+  set(internalMaximizedTaskId$, null);
   set(internalPreMaximizeLayout$, null);
 });
 
-export const toggleMaximizeThread$ = command(
-  ({ get, set }, threadId: string) => {
-    if (get(internalMaximizedThreadId$) === threadId) {
-      set(restoreThreadLayout$);
-    } else {
-      set(maximizeThread$, threadId);
-    }
-  },
-);
+export const toggleMaximizeTask$ = command(({ get, set }, taskId: string) => {
+  if (get(internalMaximizedTaskId$) === taskId) {
+    set(restoreTaskLayout$);
+  } else {
+    set(maximizeTask$, taskId);
+  }
+});

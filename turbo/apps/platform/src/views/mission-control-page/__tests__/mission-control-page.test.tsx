@@ -47,6 +47,35 @@ function mockTasksAPI(
   );
 }
 
+function mockActivityAPIs(runId: string) {
+  server.use(
+    http.get(`*/api/zero/logs/${runId}`, () => {
+      return HttpResponse.json({
+        id: runId,
+        displayName: "Test Agent",
+        status: "completed",
+        agentId: "agent-1",
+        sessionId: null,
+        triggerSource: null,
+        triggerAgentName: null,
+        modelProvider: null,
+        selectedModel: null,
+        framework: null,
+        prompt: null,
+        appendSystemPrompt: null,
+        error: null,
+        createdAt: "2026-04-10T10:00:00Z",
+        startedAt: "2026-04-10T10:00:01Z",
+        completedAt: "2026-04-10T10:00:05Z",
+        artifact: null,
+      });
+    }),
+    http.get(`*/api/zero/runs/${runId}/telemetry/agent`, () => {
+      return HttpResponse.json({ events: [], hasMore: false });
+    }),
+  );
+}
+
 describe("mission control page", () => {
   it("should render tasks list with task cards", async () => {
     mockTasksAPI([
@@ -95,7 +124,7 @@ describe("mission control page", () => {
     });
   });
 
-  it("should open thread panel when clicking a chat task", async () => {
+  it("should open task panel when clicking a chat task", async () => {
     mockTasksAPI([
       {
         id: "task-chat",
@@ -140,13 +169,13 @@ describe("mission control page", () => {
     await user.click(title);
 
     await waitFor(() => {
-      expect(screen.getByLabelText("Close thread")).toBeInTheDocument();
+      expect(screen.getByLabelText("Close task")).toBeInTheDocument();
     });
 
     expect(pathname()).toBe("/_/mission-control");
   });
 
-  it("should navigate to activity when clicking a schedule task", async () => {
+  it("should open task panel when clicking a schedule task", async () => {
     mockTasksAPI([
       {
         id: "task-sched",
@@ -162,6 +191,8 @@ describe("mission control page", () => {
       },
     ]);
 
+    mockActivityAPIs("run-xyz");
+
     const user = userEvent.setup();
 
     detachedSetupPage({ context, path: "/_/mission-control" });
@@ -173,11 +204,13 @@ describe("mission control page", () => {
     await user.click(title);
 
     await waitFor(() => {
-      expect(pathname()).toBe("/activities/run-xyz");
+      expect(screen.getByLabelText("Close task")).toBeInTheDocument();
     });
+
+    expect(pathname()).toBe("/_/mission-control");
   });
 
-  it("should navigate to activity when clicking an email task", async () => {
+  it("should open task panel when clicking an email task", async () => {
     mockTasksAPI([
       {
         id: "task-email",
@@ -193,6 +226,8 @@ describe("mission control page", () => {
       },
     ]);
 
+    mockActivityAPIs("run-email-1");
+
     const user = userEvent.setup();
 
     detachedSetupPage({ context, path: "/_/mission-control" });
@@ -204,11 +239,13 @@ describe("mission control page", () => {
     await user.click(title);
 
     await waitFor(() => {
-      expect(pathname()).toBe("/activities/run-email-1");
+      expect(screen.getByLabelText("Close task")).toBeInTheDocument();
     });
+
+    expect(pathname()).toBe("/_/mission-control");
   });
 
-  it("should navigate to activity when clicking a slack task", async () => {
+  it("should open task panel when clicking a slack task", async () => {
     mockTasksAPI([
       {
         id: "task-slack",
@@ -224,6 +261,8 @@ describe("mission control page", () => {
       },
     ]);
 
+    mockActivityAPIs("run-slack-1");
+
     const user = userEvent.setup();
 
     detachedSetupPage({ context, path: "/_/mission-control" });
@@ -235,7 +274,9 @@ describe("mission control page", () => {
     await user.click(title);
 
     await waitFor(() => {
-      expect(pathname()).toBe("/activities/run-slack-1");
+      expect(screen.getByLabelText("Close task")).toBeInTheDocument();
     });
+
+    expect(pathname()).toBe("/_/mission-control");
   });
 });

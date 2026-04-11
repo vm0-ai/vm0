@@ -7,8 +7,7 @@ import {
 } from "@tabler/icons-react";
 import { Card } from "@vm0/ui";
 import type { TaskItem, TaskType } from "@vm0/core";
-import { navigateToTask$ } from "../../signals/mission-control-page/mission-control.ts";
-import { openMissionControlThread$ } from "../../signals/mission-control-page/mission-control-threads.ts";
+import { openMissionControlTask$ } from "../../signals/mission-control-page/mission-control-tasks.ts";
 import { StatusBadge } from "../zero-page/components/log-views/status-badge.tsx";
 import { AvatarFromUrl } from "../zero-page/zero-sidebar-shared.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -78,16 +77,11 @@ export function TaskCard({
   task: TaskItem;
   isSelected: boolean;
 }) {
-  const navigate = useSet(navigateToTask$);
-  const openThread = useSet(openMissionControlThread$);
+  const openTask = useSet(openMissionControlTask$);
   const pageSignal = useGet(pageSignal$);
 
   const onClick = () => {
-    if (task.type === "chat" && task.chatThreadId) {
-      detach(openThread(task.chatThreadId, pageSignal), Reason.DomCallback);
-    } else {
-      navigate(task);
-    }
+    detach(openTask(task, pageSignal), Reason.DomCallback);
   };
 
   const config = getTaskTypeConfig(task.type);

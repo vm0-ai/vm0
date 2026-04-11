@@ -1,10 +1,10 @@
 import { command, computed, state } from "ccstate";
-import { tasksContract, type TaskItem } from "@vm0/core";
+import { tasksContract } from "@vm0/core";
 import { zeroClient$ } from "../api-client";
 import { accept } from "../../lib/accept";
-import { detachedNavigateTo$ } from "../route.ts";
 import { onDomEventFn, setLoop } from "../utils.ts";
 import { toggleTaskList$ } from "./mission-control-panels.ts";
+import { openMissionControlTask$ } from "./mission-control-tasks.ts";
 
 const internalReloadTasks$ = state(0);
 
@@ -44,43 +44,18 @@ const selectNextTask$ = command(async ({ get, set }, signal: AbortSignal) => {
   });
 });
 
-export const navigateToTask$ = command(({ set }, task: TaskItem) => {
-  switch (task.type) {
-    case "chat": {
-      if (task.chatThreadId) {
-        set(detachedNavigateTo$, "/chats/:threadId", {
-          pathParams: { threadId: task.chatThreadId },
-        });
-      }
-      break;
-    }
-    case "email":
-    case "schedule":
-    case "slack": {
-      if (task.latestRunId) {
-        set(detachedNavigateTo$, "/activities/:runId", {
-          pathParams: { runId: task.latestRunId },
-        });
-      }
-      break;
-    }
+const openSelectedTask$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const tasks = await get(tasks$);
+  signal.throwIfAborted();
+
+  const index = get(selectedTaskIndex$);
+  const task = tasks[index];
+  if (!task) {
+    return;
   }
+
+  await set(openMissionControlTask$, task, signal);
 });
-
-const navigateToSelectedTask$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const tasks = await get(tasks$);
-    signal.throwIfAborted();
-
-    const index = get(selectedTaskIndex$);
-    const task = tasks[index];
-    if (!task) {
-      return;
-    }
-
-    set(navigateToTask$, task);
-  },
-);
 
 export const setupMissionControlKeyboard$ = command(
   ({ set }, signal: AbortSignal) => {
@@ -113,7 +88,7 @@ export const setupMissionControlKeyboard$ = command(
           await set(selectNextTask$, signal);
         } else if (e.key === "Enter") {
           e.preventDefault();
-          await set(navigateToSelectedTask$, signal);
+          await set(openSelectedTask$, signal);
         }
       }),
       { signal },
