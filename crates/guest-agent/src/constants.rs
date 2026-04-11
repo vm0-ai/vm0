@@ -38,3 +38,8 @@ pub const STUCK_TOOL_CHECK_INTERVAL_SECS: u64 = 5;
 /// If EOF is not received within this deadline, break the loop to prevent
 /// hanging on orphaned child processes that inherited the stdout fd.
 pub const STDOUT_DRAIN_DEADLINE_SECS: u64 = 5;
+
+/// Maximum consecutive heartbeat failures before terminating the run.
+/// Each heartbeat attempt already retries `HTTP_MAX_RETRIES` times internally,
+/// so 3 consecutive failures = 9 total HTTP attempts over ~3 minutes.
+pub const MAX_CONSECUTIVE_HEARTBEAT_FAILURES: u32 = 3;

@@ -18,6 +18,7 @@ const LOG_TAG: &str = "sandbox:guest-agent";
 
 /// Run the heartbeat loop. Returns when:
 /// - The first heartbeat fails (returns `Err`)
+/// - Consecutive heartbeat failures exceed `MAX_CONSECUTIVE_HEARTBEAT_FAILURES` (returns `Err`)
 /// - The shutdown token is cancelled (returns `Ok(())`)
 ///
 /// The caller should race this against CLI execution so that a network
@@ -32,6 +33,7 @@ pub async fn heartbeat_loop(shutdown: CancellationToken) -> Result<(), AgentErro
     let mut interval =
         tokio::time::interval(Duration::from_secs(constants::HEARTBEAT_INTERVAL_SECS));
     let mut is_first = true;
+    let mut consecutive_failures: u32 = 0;
 
     loop {
         tokio::select! {
@@ -42,10 +44,13 @@ pub async fn heartbeat_loop(shutdown: CancellationToken) -> Result<(), AgentErro
                     Ok(_) => {
                         if is_first {
                             log_info!(LOG_TAG, "Heartbeat sent (initial)");
+                        } else if consecutive_failures > 0 {
+                            log_info!(LOG_TAG, "Heartbeat recovered after {consecutive_failures} failure(s)");
                         } else {
                             log_info!(LOG_TAG, "Heartbeat sent");
                         }
                         is_first = false;
+                        consecutive_failures = 0;
                     }
                     Err(e) if is_first => {
                         log_error!(LOG_TAG, "Network connectivity check failed: {e}");
@@ -55,7 +60,17 @@ pub async fn heartbeat_loop(shutdown: CancellationToken) -> Result<(), AgentErro
                         )));
                     }
                     Err(e) => {
-                        log_warn!(LOG_TAG, "Heartbeat failed: {e}");
+                        consecutive_failures += 1;
+                        log_warn!(
+                            LOG_TAG,
+                            "Heartbeat failed ({consecutive_failures}/{}): {e}",
+                            constants::MAX_CONSECUTIVE_HEARTBEAT_FAILURES,
+                        );
+                        if consecutive_failures >= constants::MAX_CONSECUTIVE_HEARTBEAT_FAILURES {
+                            return Err(AgentError::Execution(format!(
+                                "Heartbeat failed {consecutive_failures} consecutive times, terminating",
+                            )));
+                        }
                     }
                 }
             }

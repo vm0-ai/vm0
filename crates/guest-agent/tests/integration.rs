@@ -372,6 +372,144 @@ async fn heartbeat_first_failure_fatal() {
     mock.delete_async().await;
 }
 
+#[tokio::test(start_paused = true)]
+async fn heartbeat_consecutive_failures_fatal() {
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let server = &*MOCK_SERVER;
+
+    // Tokio time is paused (start_paused = true): timer futures auto-advance
+    // instantly while real I/O (httpmock TCP) still completes normally.
+    // The 60s heartbeat interval costs zero wall-clock time.
+
+    // First heartbeat succeeds.
+    let success_mock = server.mock(|when, then| {
+        when.method(POST).path("/api/webhooks/agent/heartbeat");
+        then.status(200);
+    });
+
+    let shutdown = CancellationToken::new();
+    let shutdown_clone = shutdown.clone();
+    let handle =
+        tokio::spawn(async move { guest_agent::heartbeat::heartbeat_loop(shutdown_clone).await });
+
+    // Wait for first successful heartbeat.
+    loop {
+        if success_mock.calls_async().await >= 1 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+
+    // Switch to 401 responses — simulates server invalidating the runId.
+    success_mock.delete_async().await;
+    let fail_mock = server.mock(|when, then| {
+        when.method(POST).path("/api/webhooks/agent/heartbeat");
+        then.status(401)
+            .json_body(json!({"error": {"message": "Run expired"}}));
+    });
+
+    // heartbeat_loop should exit after MAX_CONSECUTIVE_HEARTBEAT_FAILURES.
+    // Timeout is generous (300s tokio time) but costs no wall-clock time.
+    let result = tokio::time::timeout(Duration::from_secs(300), handle)
+        .await
+        .expect("heartbeat_loop should exit within timeout")
+        .expect("task should not panic");
+
+    // Clean up mocks before assertions to avoid leaks on panic.
+    let fail_calls = fail_mock.calls_async().await;
+    fail_mock.delete_async().await;
+    shutdown.cancel();
+
+    assert!(result.is_err());
+    let err = result.unwrap_err().to_string();
+    assert!(
+        err.contains("consecutive"),
+        "error should mention consecutive failures: {err}"
+    );
+
+    // 401 is a 4xx error → post_json returns immediately (no internal retries),
+    // so fail_mock should be called exactly MAX_CONSECUTIVE_HEARTBEAT_FAILURES times.
+    assert_eq!(fail_calls, 3);
+}
+
+#[tokio::test(start_paused = true)]
+async fn heartbeat_recovery_resets_counter() {
+    let _guard = TEST_MUTEX.lock().unwrap();
+    let server = &*MOCK_SERVER;
+
+    // Sequence: success → 2 failures → success (reset) → 2 failures → success (reset)
+    // The loop should NOT exit because failures never reach 3 consecutive.
+
+    let mock = server.mock(|when, then| {
+        when.method(POST).path("/api/webhooks/agent/heartbeat");
+        then.status(200);
+    });
+
+    let shutdown = CancellationToken::new();
+    let shutdown_clone = shutdown.clone();
+    let handle =
+        tokio::spawn(async move { guest_agent::heartbeat::heartbeat_loop(shutdown_clone).await });
+
+    // Wait for first successful heartbeat.
+    loop {
+        if mock.calls_async().await >= 1 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+
+    // Switch to failures (2 consecutive — below threshold).
+    mock.delete_async().await;
+    let fail_mock = server.mock(|when, then| {
+        when.method(POST).path("/api/webhooks/agent/heartbeat");
+        then.status(401)
+            .json_body(json!({"error": {"message": "Run expired"}}));
+    });
+
+    // Wait for 2 failed heartbeats.
+    loop {
+        if fail_mock.calls_async().await >= 2 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+
+    // Capture fail count before deleting (can't query after delete).
+    let fail_total = fail_mock.calls_async().await;
+
+    // Recover — switch back to success.  This should reset the counter.
+    fail_mock.delete_async().await;
+    let recovery_mock = server.mock(|when, then| {
+        when.method(POST).path("/api/webhooks/agent/heartbeat");
+        then.status(200);
+    });
+
+    // Wait for a successful heartbeat after recovery.
+    loop {
+        if recovery_mock.calls_async().await >= 1 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+
+    // Clean up mocks before assertions.
+    recovery_mock.delete_async().await;
+
+    // The loop should still be running — shut it down gracefully.
+    shutdown.cancel();
+    let result = tokio::time::timeout(Duration::from_secs(300), handle)
+        .await
+        .expect("heartbeat_loop should exit within timeout")
+        .expect("task should not panic");
+
+    assert!(
+        result.is_ok(),
+        "heartbeat_loop should exit Ok after shutdown, not Err"
+    );
+    // Exactly 2 failures before recovery (401 = no internal retry).
+    assert_eq!(fail_total, 2);
+}
+
 // =========================================================================
 // Group 5: Events
 // =========================================================================
