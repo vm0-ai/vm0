@@ -113,7 +113,7 @@ impl IdlePool {
     /// Park a sandbox in the pool. Returns the previously parked entry
     /// for this session if one existed (caller must destroy it).
     ///
-    /// Returns `PoolFull(entry)` if the pool is disabled or at capacity.
+    /// Returns `PoolFull(entry)` if the pool is drained or at capacity.
     pub fn park(&mut self, session_id: String, entry: IdleEntry) -> ParkResult {
         if self.drained {
             return ParkResult::PoolFull(entry);

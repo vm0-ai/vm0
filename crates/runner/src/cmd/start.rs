@@ -1569,6 +1569,7 @@ mod tests {
     struct MockRunEnv {
         handle: MockProviderHandle,
         provider: Arc<MockJobProvider>,
+        idle_pool: SharedIdlePool,
         mode_tx: tokio::sync::watch::Sender<RunnerMode>,
         cancel: CancellationToken,
         _temp_dir: tempfile::TempDir,
@@ -1654,6 +1655,11 @@ mod tests {
         let (mitm, mitm_crash_rx) = proxy::MitmProxy::noop();
         let min_vcpu = profiles_min_vcpu(&profiles);
         let min_memory_mb = profiles_min_memory(&profiles);
+        let idle_pool: SharedIdlePool =
+            Arc::new(tokio::sync::Mutex::new(IdlePool::new(IdlePoolConfig {
+                default_timeout: Duration::from_secs(300),
+                max_idle: 10,
+            })));
 
         let config = RunConfig {
             id: "test-runner".into(),
@@ -1668,10 +1674,7 @@ mod tests {
                 1.0,
                 max_concurrent,
             )),
-            idle_pool: Arc::new(tokio::sync::Mutex::new(IdlePool::new(IdlePoolConfig {
-                default_timeout: Duration::from_secs(300),
-                max_idle: 10,
-            }))),
+            idle_pool: Arc::clone(&idle_pool),
             status: Arc::new(StatusTracker::new(
                 temp_dir.path().join("status.json"),
                 max_concurrent,
@@ -1703,6 +1706,7 @@ mod tests {
         let env = MockRunEnv {
             handle,
             provider: provider_ref,
+            idle_pool,
             mode_tx,
             cancel,
             _temp_dir: temp_dir,
@@ -2083,7 +2087,87 @@ mod tests {
     }
 
     // -----------------------------------------------------------------------
-    // Test 9: Budget full → job skipped (not claimed) → budget freed → next job succeeds
+    // Test 9: sandboxReuse feature flag gates idle pool park/take
+    //
+    // With the flag ON and a session ID, the VM is parked after execution.
+    // With the flag OFF (default), the VM is destroyed.
+    // -----------------------------------------------------------------------
+
+    fn context_with_reuse(
+        run_id: Uuid,
+        reuse: bool,
+        session_id: Option<&str>,
+    ) -> crate::types::ExecutionContext {
+        let mut ctx = minimal_context(run_id);
+        if reuse {
+            ctx.feature_flags = Some(HashMap::from([(
+                crate::types::feature_flags::SANDBOX_REUSE.to_string(),
+                true,
+            )]));
+        }
+        if let Some(sid) = session_id {
+            ctx.resume_session = Some(crate::types::ResumeSession {
+                session_id: sid.to_string(),
+                session_history: String::new(),
+            });
+        }
+        ctx
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn sandbox_reuse_flag_on_parks_vm() {
+        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
+        let run_handle = tokio::spawn(run(config));
+
+        let run_id = Uuid::new_v4();
+        let ctx = context_with_reuse(run_id, true, Some("sess-1"));
+        push_job(&env, run_id, "vm0/default", Some(ctx));
+
+        let c = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await;
+        assert!(c.is_some(), "job should complete");
+        assert_eq!(c.unwrap().exit_code, 0);
+
+        let pool = env.idle_pool.lock().await;
+        assert_eq!(pool.len(), 1, "VM should be parked when sandboxReuse is on");
+        assert!(pool.held_sessions().contains(&"sess-1".to_string()));
+        drop(pool);
+
+        shutdown(&env, run_handle).await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn sandbox_reuse_flag_off_destroys_vm() {
+        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
+        let run_handle = tokio::spawn(run(config));
+
+        let run_id = Uuid::new_v4();
+        // Flag OFF (default) — even with a session ID, VM should not be parked.
+        let ctx = context_with_reuse(run_id, false, Some("sess-1"));
+        push_job(&env, run_id, "vm0/default", Some(ctx));
+
+        let c = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await;
+        assert!(c.is_some(), "job should complete");
+        assert_eq!(c.unwrap().exit_code, 0);
+
+        let pool = env.idle_pool.lock().await;
+        assert_eq!(
+            pool.len(),
+            0,
+            "VM should NOT be parked when sandboxReuse is off"
+        );
+        drop(pool);
+
+        shutdown(&env, run_handle).await;
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 11: Budget full → job skipped (not claimed) → budget freed → next job succeeds
     //
     // Different from test 4 (claim failure): here try_reserve returns false
     // so claim() is never called. The job stays in the channel but the main
