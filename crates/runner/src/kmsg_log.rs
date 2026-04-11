@@ -53,9 +53,15 @@ impl KmsgHandle {
     pub fn noop() -> Self {
         let cancel = CancellationToken::new();
         let token = cancel.clone();
+        // Spawn a trivial child that exits immediately — satisfies the `child`
+        // field without needing root or `/dev/kmsg`.
+        let child = tokio::process::Command::new("true")
+            .spawn()
+            .expect("failed to spawn `true`");
         Self {
             cancel,
             task: tokio::spawn(async move { token.cancelled().await }),
+            child,
         }
     }
 }
