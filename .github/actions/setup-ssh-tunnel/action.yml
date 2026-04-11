@@ -68,6 +68,7 @@ runs:
           "  StrictHostKeyChecking no" \
           "  UserKnownHostsFile /dev/null" \
           "  ConnectTimeout 10" \
+          "  ConnectionAttempts 3" \
           "  IdentityFile $HOME/.ssh/runner.pem" \
           "  ProxyCommand $HOME/.ssh/cf-proxy.sh %h")"
 
