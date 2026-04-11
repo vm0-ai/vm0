@@ -2560,4 +2560,96 @@ mod tests {
         let (_, _, count) = budget.allocated();
         assert_eq!(count, 0, "all budget should be released after drain");
     }
+
+    // -----------------------------------------------------------------------
+    // Test 18: Pool disabled (keep_alive=false) → PoolFull → budget released
+    //
+    // When keep_alive is disabled, park() returns PoolFull. The sandbox must
+    // be destroyed and the budget released (not leaked).
+    // -----------------------------------------------------------------------
+
+    #[tokio::test(start_paused = true)]
+    async fn pool_disabled_rejects_park_and_releases_budget() {
+        // keep_alive=false → IdlePoolConfig.enabled=false → park always PoolFull
+        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4, false);
+        let budget = Arc::clone(&config.budget);
+        let run_handle = tokio::spawn(run(config));
+
+        let run_id = Uuid::new_v4();
+        // Job has a session, so parking IS attempted — but pool rejects it.
+        push_job(
+            &env,
+            run_id,
+            "vm0/default",
+            Some(context_with_session(run_id, "sess-rejected")),
+        );
+
+        let completion = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await;
+        assert!(completion.is_some(), "job should complete");
+        assert_eq!(completion.unwrap().exit_code, 0);
+
+        // PoolFull path: sandbox destroyed, budget must be released.
+        wait_budget_count(&budget, 0, Duration::from_secs(5)).await;
+
+        shutdown(&env, run_handle).await;
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 19: Two sequential jobs for same session → take + reuse + re-park
+    //
+    // Exercises the full session affinity cycle: park → take → reuse → park.
+    // After two jobs the pool should have exactly 1 entry (the second job's
+    // VM) and the budget count should be 1.
+    // -----------------------------------------------------------------------
+
+    #[tokio::test(start_paused = true)]
+    async fn sequential_same_session_reuse_cycle() {
+        let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4, true);
+        let idle_pool = Arc::clone(&config.idle_pool);
+        let budget = Arc::clone(&config.budget);
+        let run_handle = tokio::spawn(run(config));
+
+        // Job 1: parks VM for session "sess-seq".
+        let id1 = Uuid::new_v4();
+        push_job(
+            &env,
+            id1,
+            "vm0/default",
+            Some(context_with_session(id1, "sess-seq")),
+        );
+        let c1 = env
+            .handle
+            .wait_completion(id1, Duration::from_secs(5))
+            .await;
+        assert!(c1.is_some(), "job 1 should complete");
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert_eq!(idle_pool.lock().await.len(), 1, "job 1 VM should be parked");
+
+        // Job 2: same session → take → reuse → re-park.
+        let id2 = Uuid::new_v4();
+        push_job(
+            &env,
+            id2,
+            "vm0/default",
+            Some(context_with_session(id2, "sess-seq")),
+        );
+        let c2 = env
+            .handle
+            .wait_completion(id2, Duration::from_secs(5))
+            .await;
+        assert!(c2.is_some(), "job 2 should complete");
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        assert_eq!(
+            idle_pool.lock().await.len(),
+            1,
+            "pool should have 1 entry after two sequential jobs"
+        );
+        assert_eq!(budget.allocated().2, 1, "only one VM should hold budget");
+
+        shutdown(&env, run_handle).await;
+    }
 }
