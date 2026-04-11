@@ -100,8 +100,8 @@ describe("getAllFeatureStates", () => {
       overrides: { [FeatureSwitchKey.Dummy]: false },
     });
     expect(states[FeatureSwitchKey.Dummy]).toBe(false);
-    // Other enabled features stay true
-    expect(states[FeatureSwitchKey.Dummy]).toBe(true);
+    // Non-overridden disabled feature stays false
+    expect(states[FeatureSwitchKey.AhrefsConnector]).toBe(false);
   });
 });
 
