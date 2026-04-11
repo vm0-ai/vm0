@@ -2426,11 +2426,15 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(200)).await;
 
         // Stale VM destroyed (budget released), new VM parked (budget held).
-        // Net: pool has 1 entry with the new profile.
+        // Budget: stale 2vcpu released, new 4vcpu held → net (4, 8192, 1).
         {
             let pool = idle_pool.lock().await;
             assert_eq!(pool.len(), 1, "new VM should be parked");
         }
+        let (alloc_vcpu, alloc_mem, alloc_count) = budget.allocated();
+        assert_eq!(alloc_count, 1, "only new VM should hold budget");
+        assert_eq!(alloc_vcpu, 4, "new VM is vm0/large (4 vcpu)");
+        assert_eq!(alloc_mem, 8192, "new VM is vm0/large (8192 MB)");
 
         shutdown(&env, run_handle).await;
     }
