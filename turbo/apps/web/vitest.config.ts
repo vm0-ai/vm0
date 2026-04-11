@@ -13,9 +13,12 @@ export default defineConfig({
     // Automatically restore all env stubs after each test (prevents cross-test leakage)
     unstubEnvs: true,
   },
-  esbuild: {
+  oxc: {
     // Use automatic JSX runtime so .tsx files don't require `import React`
-    jsx: "automatic",
+    // (Vite 8 uses oxc transformer by default; esbuild config is ignored)
+    jsx: {
+      runtime: "automatic",
+    },
   },
   resolve: {
     alias: {
