@@ -134,6 +134,18 @@ const AXIOM: ConnectorRef = {
   icon: "/assets/connectors/axiom.svg",
 };
 
+const V0: ConnectorRef = {
+  id: "v0",
+  label: "v0",
+  icon: "/assets/connectors/v0.svg",
+};
+
+const VERCEL: ConnectorRef = {
+  id: "vercel",
+  label: "Vercel",
+  icon: "/assets/connectors/vercel.svg",
+};
+
 // ---------------------------------------------------------------------------
 // Full use cases
 // ---------------------------------------------------------------------------
@@ -856,6 +868,133 @@ export const USE_CASES: UseCase[] = [
       "Works for contractors and interns too, just adjust the template and meeting list.",
     ],
     relatedSlugs: ["slack-triage", "standup-summary", "file-bugs-from-slack"],
+  },
+
+  {
+    slug: "build-with-v0",
+    title: "Turn a design brief into a live web page using v0",
+    description:
+      "Describe the page you need in Slack. Zero sends the brief to v0, iterates on the generated React component with your feedback, and pushes the final code to your GitHub repo with a live Vercel preview.",
+    color: "#7c8cbe",
+    avatar: {
+      rotation: 3,
+      skin: 1,
+      hairStyle: 4,
+      hairColor: 5,
+      expression: 4,
+      intensity: "h",
+    },
+    roles: ["engineering", "product"],
+    capability: "multi-tool",
+    timeSaved: "~2 hrs saved",
+    model: "Claude 4 Sonnet",
+    connectors: [SLACK, V0, GITHUB, VERCEL],
+    slackPreview: [
+      {
+        role: "user",
+        name: "Ethan",
+        text: "@Zero build a landing page for our v0 connector launch. Hero with headline, 3 feature cards, and a CTA. Push to the website repo.",
+      },
+      {
+        role: "zero",
+        name: "Zero",
+        text: "Done. v0 generated the landing page component.\n\n• Hero section with headline and subhead\n• 3 feature cards (Generate, Preview, Deploy)\n• CTA button wired to sign-up\n\nPR #6841 opened on vm0-ai/vm0 · Vercel preview: https://vm0-pr-6841.vercel.app",
+      },
+    ],
+    headings: {
+      scenario: "Why scaffolding a new page takes longer than it should",
+      prompt: "How to ask Zero to build a page with v0",
+      steps: "How Zero generates, refines, and ships your page end-to-end",
+      nextActions: "Iterate on the design, add copy, or wire up analytics",
+      integrations: "Required integrations: v0, GitHub, and Vercel",
+      tips: "Best practices for AI-generated web pages with v0",
+    },
+    scenario:
+      "Product launch next week and you need a new feature page. A designer has a rough wireframe, but nobody has time to scaffold a Next.js component, get the Tailwind styles right, and push it into the repo. You paste the brief into Slack. Zero calls v0 to generate the React component, returns a preview link within seconds, and opens a PR on your repo once you approve. No local dev environment needed.",
+    promptVariants: [
+      {
+        label: "Landing page",
+        prompt:
+          "@Zero build a landing page for our v0 connector launch. Hero section with headline and subhead, three feature cards (Generate, Preview, Deploy), and a CTA button. Use our brand colors. Push to turbo/apps/web and open a PR.",
+      },
+      {
+        label: "Component only",
+        prompt:
+          "@Zero use v0 to generate a pricing table component: 3 tiers (Free, Pro, Team), feature checkmarks, and a highlighted recommended tier. Return the code for review.",
+      },
+      {
+        label: "Iterate",
+        prompt:
+          "@Zero update the v0-generated hero: change the headline to 'Ship pages in seconds', add an email capture input next to the CTA, and regenerate.",
+      },
+    ],
+    steps: [
+      {
+        title: "Zero sends the brief to v0",
+        description:
+          "Zero translates your natural-language description into a structured v0 prompt, specifying layout, components, and constraints like brand colors or existing design tokens.",
+      },
+      {
+        title: "Preview link returned instantly",
+        description:
+          "v0 generates a React component with Tailwind styling. Zero posts the v0 preview URL directly in Slack so you can review the output in seconds without setting up a local environment.",
+      },
+      {
+        title: "Code pushed to GitHub",
+        description:
+          "Once you approve, Zero places the generated component into the correct location in your repo, opens a PR, and Vercel auto-deploys a branch preview so the team can sign off before merging.",
+      },
+    ],
+    nextActions: [
+      {
+        title: "Iterate on the design",
+        description: "Refine the generated component with follow-up prompts",
+        examplePrompt:
+          "@Zero update the hero: make the headline larger, add a product screenshot below the subhead, and swap the CTA color to orange. Regenerate via v0.",
+      },
+      {
+        title: "Add copy from Notion",
+        description: "Pull approved marketing copy into the page",
+        examplePrompt:
+          "@Zero read the 'v0 Connector Launch Copy' Notion doc and fill in the headline, subhead, and feature card descriptions in the generated component.",
+      },
+      {
+        title: "Wire up analytics",
+        description: "Add PostHog or Plausible event tracking",
+        examplePrompt:
+          "@Zero add PostHog click tracking to the CTA button and each feature card in the v0-generated component. Use our existing posthog instance.",
+      },
+    ],
+    integrations: [
+      {
+        connector: V0,
+        description:
+          "Zero sends generation prompts to v0 and retrieves the React component code and preview URL.",
+        required: true,
+      },
+      {
+        connector: GITHUB,
+        description:
+          "Zero opens a PR with the generated component placed in the correct directory. Read/write access to your web repo required.",
+        required: true,
+      },
+      {
+        connector: VERCEL,
+        description:
+          "Vercel auto-deploys a branch preview on every PR so you can review the live page before merging.",
+        required: false,
+      },
+    ],
+    tips: [
+      "Be specific about layout structure upfront — hero, features, CTA — to get a closer first-pass from v0 and reduce iteration rounds.",
+      "Reference your design system. Mention Tailwind class names or color tokens (e.g., 'use bg-orange-500 for the CTA') for on-brand output.",
+      "Pair with the file-bugs-from-slack use case: once the page is live, Zero can triage any reported visual bugs directly from Slack.",
+    ],
+    relatedSlugs: [
+      "file-bugs-from-slack",
+      "standup-summary",
+      "employee-onboarding",
+    ],
   },
 ];
 
