@@ -84,7 +84,7 @@ jobs:
       pull-requests: read
     steps:
       - name: Cleanup Stale Deployments
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const dryRun = '${{ env.DRY_RUN }}' === 'true';
@@ -228,7 +228,7 @@ jobs:
       - name: Find recently closed PRs
         if: steps.check.outputs.should-cleanup == 'true'
         id: prs
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const since = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
@@ -325,7 +325,7 @@ jobs:
     steps:
       - name: Find recently closed PRs
         id: prs
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const since = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
@@ -467,7 +467,7 @@ jobs:
       pull-requests: read
     steps:
       - name: Cleanup Stale Git Branches
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         with:
           script: |
             const dryRun = '${{ env.DRY_RUN }}' === 'true';
