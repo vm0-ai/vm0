@@ -872,9 +872,9 @@ export const USE_CASES: UseCase[] = [
 
   {
     slug: "build-with-v0",
-    title: "Turn a design brief into a live web page using v0",
+    title: "Turn a Slack idea into an interactive prototype instantly",
     description:
-      "Describe the page you need in Slack. Zero sends the brief to v0, iterates on the generated React component with your feedback, and pushes the final code to your GitHub repo with a live Vercel preview.",
+      "When an idea sparks mid-conversation, describe it to Zero. It uses v0 to generate a clickable React prototype and posts the live preview link back in the thread — before the discussion moves on.",
     color: "#7c8cbe",
     avatar: {
       rotation: 3,
@@ -885,110 +885,104 @@ export const USE_CASES: UseCase[] = [
       intensity: "h",
     },
     roles: ["engineering", "product"],
-    capability: "multi-tool",
-    timeSaved: "~2 hrs saved",
+    capability: "instant",
+    timeSaved: "Hours → seconds",
     model: "Claude 4 Sonnet",
-    connectors: [SLACK, V0, GITHUB, VERCEL],
+    connectors: [SLACK, V0],
     slackPreview: [
       {
         role: "user",
         name: "Ethan",
-        text: "@Zero build a landing page for our v0 connector launch. Hero with headline, 3 feature cards, and a CTA. Push to the website repo.",
+        text: "@Zero prototype this: a command palette that lets users search agents, recent runs, and connectors. Keyboard-navigable, fuzzy search, shows a preview on the right.",
       },
       {
         role: "zero",
         name: "Zero",
-        text: "Done. v0 generated the landing page component.\n\n• Hero section with headline and subhead\n• 3 feature cards (Generate, Preview, Deploy)\n• CTA button wired to sign-up\n\nPR #6841 opened on vm0-ai/vm0 · Vercel preview: https://vm0-pr-6841.vercel.app",
+        text: "Here's the interactive prototype:\nv0.dev/r/cmd-palette-preview\n\nIncludes fuzzy search across agents, runs, and connectors. Arrow-key navigation. Right-side preview panel updates on hover. Click to open.",
       },
     ],
     headings: {
-      scenario: "Why scaffolding a new page takes longer than it should",
-      prompt: "How to ask Zero to build a page with v0",
-      steps: "How Zero generates, refines, and ships your page end-to-end",
-      nextActions: "Iterate on the design, add copy, or wire up analytics",
-      integrations: "Required integrations: v0, GitHub, and Vercel",
-      tips: "Best practices for AI-generated web pages with v0",
+      scenario: "Why ideas get lost before anyone can see them",
+      prompt: "How to turn a Slack idea into a prototype with Zero",
+      steps: "How Zero goes from your description to a live, clickable UI",
+      nextActions: "Refine, share, or hand off to engineering",
+      integrations: "Required integrations: v0",
+      tips: "Best practices for rapid idea prototyping with v0",
     },
     scenario:
-      "Product launch next week and you need a new feature page. A designer has a rough wireframe, but nobody has time to scaffold a Next.js component, get the Tailwind styles right, and push it into the repo. You paste the brief into Slack. Zero calls v0 to generate the React component, returns a preview link within seconds, and opens a PR on your repo once you approve. No local dev environment needed.",
+      "You're in a Slack thread debating how a feature should work. Someone proposes a new UI pattern — a command palette, a settings panel, a multi-step wizard. Words aren't landing. Sketching on a whiteboard isn't an option. Scheduling a Figma session pushes the decision to next week. You describe the idea to Zero in plain language. It calls v0, generates a fully interactive React prototype, and posts the live preview link right back in the thread — in under a minute. Everyone can click through it before the conversation moves on.",
     promptVariants: [
       {
-        label: "Landing page",
+        label: "New UI idea",
         prompt:
-          "@Zero build a landing page for our v0 connector launch. Hero section with headline and subhead, three feature cards (Generate, Preview, Deploy), and a CTA button. Use our brand colors. Push to turbo/apps/web and open a PR.",
+          "@Zero prototype this: a command palette that lets users search agents, recent runs, and connectors. Keyboard-navigable, fuzzy search, shows a preview panel on the right side.",
       },
       {
-        label: "Component only",
+        label: "From thread context",
         prompt:
-          "@Zero use v0 to generate a pricing table component: 3 tiers (Free, Pro, Team), feature checkmarks, and a highlighted recommended tier. Return the code for review.",
+          "@Zero based on the flow we just described above, build a quick v0 prototype so the team can see it before we decide.",
       },
       {
         label: "Iterate",
         prompt:
-          "@Zero update the v0-generated hero: change the headline to 'Ship pages in seconds', add an email capture input next to the CTA, and regenerate.",
+          "@Zero update the prototype — add a filter tab at the top for 'Agents / Runs / Connectors' and highlight the active item in orange. Regenerate.",
       },
     ],
     steps: [
       {
-        title: "Zero sends the brief to v0",
+        title: "Describe the idea in plain language",
         description:
-          "Zero translates your natural-language description into a structured v0 prompt, specifying layout, components, and constraints like brand colors or existing design tokens.",
+          "No spec, no wireframe required. Tell Zero what the UI should do — the components, the interactions, the data it surfaces. Paste a rough sketch description or just riff from the thread.",
       },
       {
-        title: "Preview link returned instantly",
+        title: "Zero generates the prototype via v0",
         description:
-          "v0 generates a React component with Tailwind styling. Zero posts the v0 preview URL directly in Slack so you can review the output in seconds without setting up a local environment.",
+          "Zero translates your description into a structured v0 prompt and calls the v0 API. v0 produces a fully interactive React component — real buttons, real states, real navigation.",
       },
       {
-        title: "Code pushed to GitHub",
+        title: "Live preview link posted in Slack",
         description:
-          "Once you approve, Zero places the generated component into the correct location in your repo, opens a PR, and Vercel auto-deploys a branch preview so the team can sign off before merging.",
+          "Zero posts the v0 preview URL back in the same thread. Teammates can click through the prototype immediately, on any device, without installing anything or checking out code.",
       },
     ],
     nextActions: [
       {
-        title: "Iterate on the design",
-        description: "Refine the generated component with follow-up prompts",
+        title: "Refine in the thread",
+        description: "Keep iterating without leaving Slack",
         examplePrompt:
-          "@Zero update the hero: make the headline larger, add a product screenshot below the subhead, and swap the CTA color to orange. Regenerate via v0.",
+          "@Zero update the prototype — the search input should have an icon on the left, and empty state should show recent items instead of nothing.",
       },
       {
-        title: "Add copy from Notion",
-        description: "Pull approved marketing copy into the page",
+        title: "Share for async feedback",
+        description: "Post to a broader channel or DM stakeholders",
         examplePrompt:
-          "@Zero read the 'v0 Connector Launch Copy' Notion doc and fill in the headline, subhead, and feature card descriptions in the generated component.",
+          "@Zero share the v0 prototype link to #product with the message: 'Quick prototype of the command palette idea — feedback welcome before Thursday.'",
       },
       {
-        title: "Wire up analytics",
-        description: "Add PostHog or Plausible event tracking",
+        title: "Hand off to engineering",
+        description: "Export the generated code into the repo",
         examplePrompt:
-          "@Zero add PostHog click tracking to the CTA button and each feature card in the v0-generated component. Use our existing posthog instance.",
+          "@Zero take the v0 prototype code and open a PR in vm0-ai/vm0 under turbo/apps/platform/src/components/CommandPalette.tsx for the team to build on.",
       },
     ],
     integrations: [
       {
         connector: V0,
         description:
-          "Zero sends generation prompts to v0 and retrieves the React component code and preview URL.",
+          "Zero sends your idea as a generation prompt to v0 and retrieves the interactive prototype URL. Connect your v0 account to enable this.",
         required: true,
       },
       {
-        connector: GITHUB,
+        connector: SLACK,
         description:
-          "Zero opens a PR with the generated component placed in the correct directory. Read/write access to your web repo required.",
-        required: true,
-      },
-      {
-        connector: VERCEL,
-        description:
-          "Vercel auto-deploys a branch preview on every PR so you can review the live page before merging.",
+          "Zero reads your idea from the Slack thread and posts the prototype link back in the same conversation.",
         required: false,
       },
     ],
     tips: [
-      "Be specific about layout structure upfront — hero, features, CTA — to get a closer first-pass from v0 and reduce iteration rounds.",
-      "Reference your design system. Mention Tailwind class names or color tokens (e.g., 'use bg-orange-500 for the CTA') for on-brand output.",
-      "Pair with the file-bugs-from-slack use case: once the page is live, Zero can triage any reported visual bugs directly from Slack.",
+      "Describe behavior, not just appearance. 'Clicking a row expands details below it' gets a more accurate prototype than 'expandable rows'.",
+      "Reference existing UI patterns by name — 'like a VS Code command palette' or 'like Notion's slash menu' — to anchor v0's generation.",
+      "Use the iterate prompt immediately after the first result. One round of refinement usually gets you 90% of the way there.",
     ],
     relatedSlugs: [
       "file-bugs-from-slack",
