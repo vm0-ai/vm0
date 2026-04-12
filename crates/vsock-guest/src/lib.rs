@@ -42,6 +42,12 @@ const COMMAND_PREVIEW_MAX_LEN: usize = 100;
 /// Buffer size for reading stdout chunks from a spawned process.
 const STDOUT_CHUNK_SIZE: usize = 8 * 1024;
 
+/// After the child process exits, continue draining stdout/stderr for this
+/// many seconds. If EOF is not received within this deadline, proceed to
+/// `send_process_exit()` anyway to prevent indefinite hangs when orphaned
+/// child processes hold pipe fds open.
+const STDOUT_DRAIN_DEADLINE_SECS: u64 = 5;
+
 /// Convert a ProtocolError to an io::Error
 fn to_io_error(e: ProtocolError) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, e.to_string())
@@ -456,12 +462,18 @@ fn handle_spawn_watch(
     }
 }
 
-/// Streaming monitor: reads stdout in chunks, tees to file + vsock, then waits for exit.
+/// Streaming monitor: reads stdout in chunks (tees to file + vsock), races
+/// stdout/stderr reading against child exit, then sends process_exit.
 ///
-/// The timeout killer is spawned BEFORE the stdout read loop so that a process
-/// producing output past the deadline is still killed. When the process is
-/// killed, the stdout pipe returns EOF (broken pipe), the loop exits, and we
-/// proceed to collect the exit status.
+/// Architecture:
+/// - Timeout killer thread: kills process group after deadline
+/// - Stderr reader thread: drains stderr, sends result via channel
+/// - Stdout reader thread: streams chunks to log + vsock, signals via channel
+/// - Monitor thread: waits for `child.wait()`, then applies drain deadline
+///
+/// If the child exits but orphaned processes hold pipe fds open, stdout/stderr
+/// threads may block past the drain deadline. The monitor thread proceeds to
+/// `send_process_exit()` regardless after `STDOUT_DRAIN_DEADLINE_SECS`.
 fn spawn_streaming_monitor(
     pid: u32,
     mut child: std::process::Child,
@@ -493,72 +505,84 @@ fn spawn_streaming_monitor(
             None
         };
 
-        // Drain stderr in a background thread BEFORE the stdout loop.
+        // Drain stderr in a background thread BEFORE the stdout reader.
         // If we waited until after, a child producing >64KB of stderr could
         // fill the pipe buffer and block — preventing further stdout writes
         // and causing our stdout read loop to hang (deadlock).
-        let stderr_handle = child.stderr.take().map(|stderr| {
+        // Uses a channel instead of JoinHandle::join() for timed drain.
+        let (stderr_tx, stderr_rx) = std::sync::mpsc::channel::<Vec<u8>>();
+        if let Some(stderr) = child.stderr.take() {
             thread::spawn(move || {
                 let mut buf = Vec::new();
-                let mut reader = io::BufReader::new(stderr);
-                let _ = reader.read_to_end(&mut buf);
-                buf
-            })
-        });
-
-        // Stream stdout to file + vsock
-        if let Some(mut stdout) = stdout_pipe {
-            let log_file = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(&log_path);
-            let mut log_file = match log_file {
-                Ok(f) => Some(f),
-                Err(e) => {
-                    log(
-                        "WARN",
-                        &format!("spawn_watch: failed to open log file {}: {}", log_path, e),
-                    );
-                    None
-                }
-            };
-
-            let mut buf = [0u8; STDOUT_CHUNK_SIZE];
-            loop {
-                let n = match stdout.read(&mut buf) {
-                    Ok(0) => break, // EOF
-                    Ok(n) => n,
-                    Err(e) => {
-                        log("WARN", &format!("spawn_watch: stdout read error: {}", e));
-                        break;
-                    }
-                };
-                let chunk = match buf.get(..n) {
-                    Some(c) => c,
-                    None => break,
-                };
-
-                // Write to log file (best-effort)
-                if let Some(ref mut f) = log_file {
-                    let _ = f.write_all(chunk);
-                }
-
-                // Send chunk via vsock (best-effort)
-                let payload = vsock_proto::encode_stdout_chunk(pid, chunk);
-                if let Ok(msg) = vsock_proto::encode(MSG_STDOUT_CHUNK, 0, &payload) {
-                    let mut w = writer.lock().unwrap_or_else(|e| e.into_inner());
-                    if let Err(e) = w.write_all(&msg) {
-                        log(
-                            "WARN",
-                            &format!("spawn_watch: failed to send stdout chunk: {}", e),
-                        );
-                        break;
-                    }
-                }
-            }
+                let _ = io::BufReader::new(stderr).read_to_end(&mut buf);
+                let _ = stderr_tx.send(buf);
+            });
+        } else {
+            drop(stderr_tx);
         }
 
-        // Wait for process exit (stdout + stderr already being drained)
+        // Stream stdout to file + vsock in a dedicated thread.
+        // Previously this was an inline loop that blocked child.wait() —
+        // if orphaned processes held the stdout fd, the monitor hung forever.
+        let (stdout_tx, stdout_rx) = std::sync::mpsc::channel::<()>();
+        if let Some(mut stdout) = stdout_pipe {
+            let stdout_writer = Arc::clone(&writer);
+            thread::spawn(move || {
+                let log_file = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&log_path);
+                let mut log_file = match log_file {
+                    Ok(f) => Some(f),
+                    Err(e) => {
+                        log(
+                            "WARN",
+                            &format!("spawn_watch: failed to open log file {}: {}", log_path, e),
+                        );
+                        None
+                    }
+                };
+
+                let mut buf = [0u8; STDOUT_CHUNK_SIZE];
+                loop {
+                    let n = match stdout.read(&mut buf) {
+                        Ok(0) => break, // EOF
+                        Ok(n) => n,
+                        Err(e) => {
+                            log("WARN", &format!("spawn_watch: stdout read error: {}", e));
+                            break;
+                        }
+                    };
+                    let chunk = match buf.get(..n) {
+                        Some(c) => c,
+                        None => break,
+                    };
+
+                    // Write to log file (best-effort)
+                    if let Some(ref mut f) = log_file {
+                        let _ = f.write_all(chunk);
+                    }
+
+                    // Send chunk via vsock (best-effort)
+                    let payload = vsock_proto::encode_stdout_chunk(pid, chunk);
+                    if let Ok(msg) = vsock_proto::encode(MSG_STDOUT_CHUNK, 0, &payload) {
+                        let mut w = stdout_writer.lock().unwrap_or_else(|e| e.into_inner());
+                        if let Err(e) = w.write_all(&msg) {
+                            log(
+                                "WARN",
+                                &format!("spawn_watch: failed to send stdout chunk: {}", e),
+                            );
+                            break;
+                        }
+                    }
+                }
+                let _ = stdout_tx.send(());
+            });
+        } else {
+            drop(stdout_tx);
+        }
+
+        // child.wait() is now UNBLOCKED — no pipe fds held by this thread.
         let status = child.wait();
 
         // Signal timeout thread that process completed.
@@ -568,9 +592,25 @@ fn spawn_streaming_monitor(
             let _ = tx.send(());
         }
 
-        let stderr = stderr_handle
-            .and_then(|h| h.join().ok())
-            .unwrap_or_default();
+        // Shared drain deadline: stdout + stderr share a single budget.
+        // This matches guest-agent's 5s drain behavior.
+        let deadline = std::time::Instant::now() + Duration::from_secs(STDOUT_DRAIN_DEADLINE_SECS);
+
+        // Drain stdout — wait up to deadline
+        let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+        if stdout_rx.recv_timeout(remaining).is_err() {
+            log(
+                "WARN",
+                &format!(
+                    "spawn_watch: pid={pid} stdout drain deadline reached after \
+                     {STDOUT_DRAIN_DEADLINE_SECS}s, possible orphaned child process",
+                ),
+            );
+        }
+
+        // Drain stderr — use remaining time from same deadline
+        let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+        let stderr = stderr_rx.recv_timeout(remaining).unwrap_or_default();
 
         let (exit_code, stderr) = if killed_by_timeout.load(Ordering::SeqCst) {
             (EXIT_CODE_TIMEOUT, b"Timeout".to_vec())
@@ -1206,6 +1246,242 @@ mod tests {
 
         drop(host_writer);
         drop(host_reader);
+        let _ = handle.join();
+    }
+
+    // -----------------------------------------------------------------------
+    // Helpers for spawn_watch streaming tests
+    // -----------------------------------------------------------------------
+
+    /// Read one framed message from the stream and discard it.
+    fn read_and_discard_message(stream: &mut impl std::io::Read) {
+        let mut hdr = [0u8; 4];
+        stream.read_exact(&mut hdr).unwrap();
+        let body_len = u32::from_be_bytes(hdr) as usize;
+        let mut body = vec![0u8; body_len];
+        stream.read_exact(&mut body).unwrap();
+    }
+
+    /// Send a MSG_SPAWN_WATCH message with streaming enabled.
+    fn send_spawn_watch(
+        stream: &mut impl std::io::Write,
+        seq: u32,
+        command: &str,
+        log_path: &str,
+        timeout_ms: u32,
+    ) {
+        let payload =
+            vsock_proto::encode_spawn_watch(timeout_ms, command, &[], false, Some(log_path));
+        let msg = vsock_proto::encode(MSG_SPAWN_WATCH, seq, &payload).unwrap();
+        stream.write_all(&msg).unwrap();
+    }
+
+    /// Read messages until a MSG_SPAWN_WATCH_RESULT with matching seq is found.
+    /// Returns the spawned PID.
+    fn read_spawn_watch_result(stream: &mut impl std::io::Read, seq: u32) -> u32 {
+        let mut decoder = vsock_proto::Decoder::new();
+        let mut buf = [0u8; 4096];
+        loop {
+            let n = stream.read(&mut buf).unwrap();
+            assert!(n > 0, "unexpected EOF waiting for spawn_watch_result");
+            for msg in decoder.decode(buf.get(..n).unwrap_or_default()).unwrap() {
+                if msg.msg_type == MSG_SPAWN_WATCH_RESULT && msg.seq == seq {
+                    return vsock_proto::decode_spawn_watch_result(&msg.payload).unwrap();
+                }
+            }
+        }
+    }
+
+    /// Decoded streaming message from vsock.
+    enum StreamMsg {
+        StdoutChunk(u32, Vec<u8>),
+        ProcessExit(u32, i32, Vec<u8>),
+    }
+
+    /// Read messages until a MSG_PROCESS_EXIT for the given pid arrives.
+    /// Collects stdout chunks along the way.
+    fn read_until_process_exit(
+        stream: &mut impl std::io::Read,
+        expected_pid: u32,
+    ) -> (Vec<u8>, i32, Vec<u8>) {
+        let mut decoder = vsock_proto::Decoder::new();
+        let mut buf = [0u8; 4096];
+        let mut stdout_data = Vec::new();
+        loop {
+            let n = stream.read(&mut buf).unwrap();
+            assert!(n > 0, "unexpected EOF waiting for process_exit");
+            for msg in decoder.decode(buf.get(..n).unwrap_or_default()).unwrap() {
+                match decode_stream_msg(&msg) {
+                    Some(StreamMsg::StdoutChunk(pid, data)) if pid == expected_pid => {
+                        stdout_data.extend_from_slice(&data);
+                    }
+                    Some(StreamMsg::ProcessExit(pid, code, stderr)) if pid == expected_pid => {
+                        return (stdout_data, code, stderr);
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    fn decode_stream_msg(msg: &vsock_proto::RawMessage) -> Option<StreamMsg> {
+        match msg.msg_type {
+            MSG_STDOUT_CHUNK => {
+                let (pid, data) = vsock_proto::decode_stdout_chunk(&msg.payload).ok()?;
+                Some(StreamMsg::StdoutChunk(pid, data.to_vec()))
+            }
+            MSG_PROCESS_EXIT => {
+                let (pid, code, _stdout, stderr) =
+                    vsock_proto::decode_process_exit(&msg.payload).ok()?;
+                Some(StreamMsg::ProcessExit(pid, code, stderr.to_vec()))
+            }
+            _ => None,
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Streaming monitor integration tests
+    // -----------------------------------------------------------------------
+
+    /// Verify that streaming stdout works correctly for a normal command.
+    #[test]
+    fn streaming_monitor_normal_exit() {
+        use std::os::unix::net::UnixStream as StdUnixStream;
+
+        let (guest_stream, mut host_stream) = StdUnixStream::pair().unwrap();
+        let handle = thread::spawn(move || {
+            let _ = handle_connection(guest_stream);
+        });
+
+        // Discard MSG_READY
+        read_and_discard_message(&mut host_stream);
+
+        let log_path = format!("/tmp/vsock-test-normal-{}.log", std::process::id());
+        send_spawn_watch(&mut host_stream, 1, "echo hello", &log_path, 5000);
+
+        let pid = read_spawn_watch_result(&mut host_stream, 1);
+        assert!(pid > 0);
+
+        // Read stdout chunks + process_exit
+        host_stream
+            .set_read_timeout(Some(Duration::from_secs(10)))
+            .unwrap();
+        let (stdout_data, exit_code, _stderr) = read_until_process_exit(&mut host_stream, pid);
+
+        assert_eq!(exit_code, 0);
+        assert_eq!(String::from_utf8_lossy(&stdout_data).trim(), "hello");
+
+        // Cleanup
+        let _ = std::fs::remove_file(&log_path);
+        drop(host_stream);
+        let _ = handle.join();
+    }
+
+    /// Regression test: if the main child exits but an orphaned background
+    /// process holds the stdout fd open, `send_process_exit` must still arrive
+    /// within the drain deadline (STDOUT_DRAIN_DEADLINE_SECS).
+    ///
+    /// Before the fix, the monitor thread blocked forever on `stdout.read()`
+    /// because the orphaned process kept the pipe write end open.
+    #[test]
+    fn streaming_monitor_drains_on_orphaned_stdout() {
+        use std::os::unix::net::UnixStream as StdUnixStream;
+
+        let (guest_stream, mut host_stream) = StdUnixStream::pair().unwrap();
+        let handle = thread::spawn(move || {
+            let _ = handle_connection(guest_stream);
+        });
+
+        // Discard MSG_READY
+        read_and_discard_message(&mut host_stream);
+
+        // Command that writes to stdout, then spawns a background process
+        // that inherits (and holds open) the stdout fd. The main shell exits
+        // immediately but the backgrounded `sleep` keeps the pipe alive.
+        let log_path = format!("/tmp/vsock-test-orphan-{}.log", std::process::id());
+        send_spawn_watch(
+            &mut host_stream,
+            1,
+            "echo orphan-test; sleep 30 &",
+            &log_path,
+            0, // no timeout — relies entirely on drain deadline
+        );
+
+        let pid = read_spawn_watch_result(&mut host_stream, 1);
+        assert!(pid > 0);
+
+        // Set read timeout: drain deadline (5s) + generous margin (7s)
+        host_stream
+            .set_read_timeout(Some(Duration::from_secs(12)))
+            .unwrap();
+
+        let (stdout_data, exit_code, _stderr) = read_until_process_exit(&mut host_stream, pid);
+
+        assert_eq!(exit_code, 0);
+        assert!(
+            String::from_utf8_lossy(&stdout_data).contains("orphan-test"),
+            "expected stdout to contain 'orphan-test', got: {:?}",
+            String::from_utf8_lossy(&stdout_data),
+        );
+
+        // Cleanup: kill the orphaned sleep process (best-effort)
+        let _ = std::process::Command::new("pkill")
+            .args(["-f", "sleep 30"])
+            .status();
+        let _ = std::fs::remove_file(&log_path);
+        drop(host_stream);
+        let _ = handle.join();
+    }
+
+    /// Verify that a streaming process killed by timeout returns exit code 124
+    /// and delivers process_exit promptly.
+    ///
+    /// The timeout killer fires while the stdout thread is reading. SIGKILL
+    /// breaks the pipe (EOF), the stdout thread exits, and the monitor thread
+    /// reports exit_code = EXIT_CODE_TIMEOUT (124).
+    #[test]
+    fn streaming_monitor_timeout_kills_process() {
+        use std::os::unix::net::UnixStream as StdUnixStream;
+
+        let (guest_stream, mut host_stream) = StdUnixStream::pair().unwrap();
+        let handle = thread::spawn(move || {
+            let _ = handle_connection(guest_stream);
+        });
+
+        // Discard MSG_READY
+        read_and_discard_message(&mut host_stream);
+
+        // Command that runs longer than the timeout.
+        // timeout_ms = 1000 (1s), command sleeps 60s → killed after 1s.
+        let log_path = format!("/tmp/vsock-test-timeout-{}.log", std::process::id());
+        send_spawn_watch(
+            &mut host_stream,
+            1,
+            "echo timeout-test; sleep 60",
+            &log_path,
+            1000, // 1 second timeout
+        );
+
+        let pid = read_spawn_watch_result(&mut host_stream, 1);
+        assert!(pid > 0);
+
+        // Timeout (1s) + drain (5s) + margin (4s)
+        host_stream
+            .set_read_timeout(Some(Duration::from_secs(10)))
+            .unwrap();
+
+        let (stdout_data, exit_code, stderr) = read_until_process_exit(&mut host_stream, pid);
+
+        assert_eq!(exit_code, EXIT_CODE_TIMEOUT);
+        assert_eq!(String::from_utf8_lossy(&stderr), "Timeout");
+        assert!(
+            String::from_utf8_lossy(&stdout_data).contains("timeout-test"),
+            "expected stdout to contain 'timeout-test', got: {:?}",
+            String::from_utf8_lossy(&stdout_data),
+        );
+
+        let _ = std::fs::remove_file(&log_path);
+        drop(host_stream);
         let _ = handle.join();
     }
 }
