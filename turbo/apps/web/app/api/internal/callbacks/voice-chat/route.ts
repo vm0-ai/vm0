@@ -89,7 +89,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       .limit(1);
 
     if (run) {
-      const resultText = await getRunOutputText(runId).catch(() => {
+      const resultText = await getRunOutputText(runId).catch((err: unknown) => {
+        log.warn("Failed to extract run output text", { runId, err });
         return undefined;
       });
       await saveRunSummary(runId, "voice-chat", run.prompt, resultText ?? "");

@@ -471,7 +471,9 @@ async function listAgentTasks(
       eq(agentComposeVersions.id, agentRuns.agentComposeVersionId),
     )
     .innerJoin(zeroAgents, eq(zeroAgents.id, agentComposeVersions.composeId))
-    .where(and(...conditions));
+    .where(and(...conditions))
+    .orderBy(desc(agentRuns.createdAt))
+    .limit(TASKS_LIMIT);
 
   return rows.map((r) => {
     return {
