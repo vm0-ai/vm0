@@ -523,7 +523,9 @@ async function listVoiceChatTasks(
     .limit(1);
 
   return rows
-    .filter((r): r is typeof r & { agentId: string } => r.agentId !== null)
+    .filter((r): r is typeof r & { agentId: string } => {
+      return r.agentId !== null;
+    })
     .map((r) => {
       return {
         id: r.id,

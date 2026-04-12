@@ -89,7 +89,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       .limit(1);
 
     if (run) {
-      const resultText = await getRunOutputText(runId).catch(() => undefined);
+      const resultText = await getRunOutputText(runId).catch(() => {
+        return undefined;
+      });
       await saveRunSummary(runId, "voice-chat", run.prompt, resultText ?? "");
     }
   }
