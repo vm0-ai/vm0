@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql, desc } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql, desc } from "drizzle-orm";
 import type { TaskItem } from "@vm0/core";
 import { chatThreads, chatThreadRuns } from "../../../db/schema/chat-thread";
 import { zeroAgentSchedules } from "../../../db/schema/zero-agent-schedule";
@@ -8,6 +8,9 @@ import { slackOrgInstallations } from "../../../db/schema/slack-org-installation
 import { emailThreadSessions } from "../../../db/schema/email-thread-session";
 import { agentSessions } from "../../../db/schema/agent-session";
 import { agentRuns } from "../../../db/schema/agent-run";
+import {
+  agentComposeVersions,
+} from "../../../db/schema/agent-compose";
 import { zeroRuns } from "../../../db/schema/zero-run";
 import { zeroAgents } from "../../../db/schema/zero-agent";
 
@@ -40,11 +43,18 @@ export async function listTasks(
 ): Promise<TaskItem[]> {
   const db = globalThis.services.db;
 
-  const [chatTasks, scheduleTasks, slackTasks, emailTasks] = await Promise.all([
+  const [
+    chatTasks,
+    scheduleTasks,
+    slackTasks,
+    emailTasks,
+    inFlightEmailTasks,
+  ] = await Promise.all([
     listChatTasks(db, userId, orgId, agentId),
     listScheduleTasks(db, userId, orgId, agentId),
     listSlackTasks(db, userId, orgId, agentId),
     listEmailTasks(db, userId, orgId, agentId),
+    listInFlightEmailTasks(db, userId, orgId, agentId),
   ]);
 
   const allTasks = [
@@ -52,6 +62,7 @@ export async function listTasks(
     ...scheduleTasks,
     ...slackTasks,
     ...emailTasks,
+    ...inFlightEmailTasks,
   ];
 
   // Batch-fetch run info for all tasks with a latestRunId
@@ -346,6 +357,72 @@ async function listEmailTasks(
       },
       latestRunId: r.latestRunId,
       sourceUpdatedAt: r.updatedAt,
+    };
+  });
+}
+
+/**
+ * Find email-triggered runs that are still active (pending/running/paused)
+ * and have not yet produced an emailThreadSessions record. This covers the
+ * window between email arrival and run completion, where the thread session
+ * does not yet exist but the task should still appear in Mission Control.
+ *
+ * Only new-thread runs are included (continuedFromSessionId IS NULL).
+ * Reply runs are excluded because their parent emailThreadSession already
+ * surfaces the task via listEmailTasks.
+ */
+async function listInFlightEmailTasks(
+  db: DB,
+  userId: string,
+  orgId: string,
+  agentId?: string,
+): Promise<RawTask[]> {
+  const activeStatuses = ["pending", "running", "paused"];
+  const conditions = [
+    eq(agentRuns.userId, userId),
+    eq(agentRuns.orgId, orgId),
+    eq(zeroRuns.triggerSource, "email"),
+    inArray(agentRuns.status, activeStatuses),
+    isNull(agentRuns.continuedFromSessionId),
+  ];
+  if (agentId) {
+    conditions.push(eq(zeroAgents.id, agentId));
+  }
+
+  const rows = await db
+    .select({
+      id: agentRuns.id,
+      agentId: zeroAgents.id,
+      agentName: zeroAgents.name,
+      agentDisplayName: zeroAgents.displayName,
+      agentAvatarUrl: zeroAgents.avatarUrl,
+      createdAt: agentRuns.createdAt,
+    })
+    .from(agentRuns)
+    .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
+    .innerJoin(
+      agentComposeVersions,
+      eq(agentComposeVersions.id, agentRuns.agentComposeVersionId),
+    )
+    .innerJoin(
+      zeroAgents,
+      eq(zeroAgents.id, agentComposeVersions.composeId),
+    )
+    .where(and(...conditions));
+
+  return rows.map((r) => {
+    return {
+      id: r.id,
+      type: "email" as const,
+      title: null,
+      agent: {
+        id: r.agentId,
+        name: r.agentName,
+        displayName: r.agentDisplayName,
+        avatarUrl: r.agentAvatarUrl,
+      },
+      latestRunId: r.id,
+      sourceUpdatedAt: r.createdAt,
     };
   });
 }
