@@ -726,7 +726,7 @@ const internalCreateNewChatSession$ = command(
 );
 
 export const createNewChatThread$ = command(
-  async (
+  (
     { set },
     agentComposeId: string | null,
     signal: AbortSignal,

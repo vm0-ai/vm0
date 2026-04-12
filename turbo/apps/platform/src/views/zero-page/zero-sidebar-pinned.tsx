@@ -17,6 +17,7 @@ import {
 import {
   isChatRoute,
   setSidebarExpanded$,
+  navigateToChat$,
 } from "../../signals/zero-page/zero-nav.ts";
 import { activeRoute$ } from "../../signals/active-route.ts";
 import {
@@ -41,7 +42,6 @@ import {
   pinnedAgents$,
 } from "../../signals/zero-page/zero-pinned-agents.ts";
 import { createNewChatThread$ } from "../../signals/chat-page/chat-message.ts";
-import { navigateToChat$ } from "../../signals/zero-page/zero-nav.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
