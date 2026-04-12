@@ -2,7 +2,7 @@ import { command, computed, state, type Command, type Computed } from "ccstate";
 import { tasksContract, type TaskItem } from "@vm0/core";
 import { zeroClient$ } from "../api-client";
 import { accept } from "../../lib/accept";
-import { onRef } from "../utils.ts";
+import { onRef, setLoop } from "../utils.ts";
 import {
   createChatThreadSignals,
   ensureDraft$,
@@ -12,7 +12,6 @@ import {
   createActivitySignals,
   type ActivitySignals,
 } from "./create-activity-signals.ts";
-import { setLoop } from "../utils.ts";
 import { maximizedTaskId$ } from "./mission-control-panels.ts";
 
 // ---------------------------------------------------------------------------
@@ -237,7 +236,7 @@ export const taskSignals$ = computed(async (get) => {
 // ---------------------------------------------------------------------------
 
 export const closeAndFocusNextInput$ = command(
-  async ({ get, set }, taskId: string) => {
+  async ({ get, set }, taskId: string, _signal: AbortSignal) => {
     const tasks = await get(taskSignals$);
     const currentIndex = tasks.findIndex((ts) => {
       return ts.task.id === taskId;

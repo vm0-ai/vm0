@@ -1,4 +1,4 @@
-import { and, eq, inArray, sql, desc, isNotNull } from "drizzle-orm";
+import { and, eq, inArray, sql, desc } from "drizzle-orm";
 import type { TaskItem } from "@vm0/core";
 import { chatThreads, chatThreadRuns } from "../../../db/schema/chat-thread";
 import { zeroAgentSchedules } from "../../../db/schema/zero-agent-schedule";
@@ -200,7 +200,6 @@ async function listScheduleTasks(
   const conditions = [
     eq(zeroAgentSchedules.userId, userId),
     eq(zeroAgentSchedules.orgId, orgId),
-    isNotNull(zeroAgentSchedules.lastRunId),
   ];
   if (agentId) conditions.push(eq(zeroAgentSchedules.agentId, agentId));
 

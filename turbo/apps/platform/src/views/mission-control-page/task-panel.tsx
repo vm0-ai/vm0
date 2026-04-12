@@ -16,6 +16,7 @@ import {
   maximizedTaskId$,
   toggleMaximizeTask$,
 } from "../../signals/mission-control-page/mission-control-panels.ts";
+import { pageSignal$ } from "../../signals/page-signal.ts";
 import { ZeroChatThreadPageInner } from "../zero-page/zero-chat-thread-page.tsx";
 import { AvatarFromUrl } from "../zero-page/zero-sidebar-shared.tsx";
 import { ActivityPanelContent } from "./activity-panel-content.tsx";
@@ -52,6 +53,7 @@ function TaskPanelCard({ taskSignals }: { taskSignals: TaskSignals }) {
   const scrollCardIntoView = useSet(taskSignals.scrollCardIntoView$);
   const setInputFocused = useSet(taskSignals.setInputFocused$);
   const closeAndFocusNext = useSet(closeAndFocusNextInput$);
+  const pageSignal = useGet(pageSignal$);
   const maximizedId = useGet(maximizedTaskId$);
 
   const taskId = taskSignals.task.id;
@@ -82,7 +84,7 @@ function TaskPanelCard({ taskSignals }: { taskSignals: TaskSignals }) {
           e.target.value === ""
         ) {
           e.preventDefault();
-          detach(closeAndFocusNext(taskId), Reason.DomCallback);
+          detach(closeAndFocusNext(taskId, pageSignal), Reason.DomCallback);
           return;
         }
         processShortcut(
