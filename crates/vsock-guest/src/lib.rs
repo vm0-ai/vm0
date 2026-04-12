@@ -1276,66 +1276,44 @@ mod tests {
         stream.write_all(&msg).unwrap();
     }
 
-    /// Read messages until a MSG_SPAWN_WATCH_RESULT with matching seq is found.
-    /// Returns the spawned PID.
-    fn read_spawn_watch_result(stream: &mut impl std::io::Read, seq: u32) -> u32 {
-        let mut decoder = vsock_proto::Decoder::new();
-        let mut buf = [0u8; 4096];
-        loop {
-            let n = stream.read(&mut buf).unwrap();
-            assert!(n > 0, "unexpected EOF waiting for spawn_watch_result");
-            for msg in decoder.decode(buf.get(..n).unwrap_or_default()).unwrap() {
-                if msg.msg_type == MSG_SPAWN_WATCH_RESULT && msg.seq == seq {
-                    return vsock_proto::decode_spawn_watch_result(&msg.payload).unwrap();
-                }
-            }
-        }
-    }
-
-    /// Decoded streaming message from vsock.
-    enum StreamMsg {
-        StdoutChunk(u32, Vec<u8>),
-        ProcessExit(u32, i32, Vec<u8>),
-    }
-
-    /// Read messages until a MSG_PROCESS_EXIT for the given pid arrives.
-    /// Collects stdout chunks along the way.
-    fn read_until_process_exit(
+    /// Read all streaming messages for a spawn_watch command in a single loop.
+    /// Uses one decoder to avoid losing messages when the OS batches multiple
+    /// protocol frames into a single read buffer.
+    ///
+    /// Returns `(pid, stdout_data, exit_code, stderr)`.
+    fn read_streaming_result(
         stream: &mut impl std::io::Read,
-        expected_pid: u32,
-    ) -> (Vec<u8>, i32, Vec<u8>) {
+        seq: u32,
+    ) -> (u32, Vec<u8>, i32, Vec<u8>) {
         let mut decoder = vsock_proto::Decoder::new();
         let mut buf = [0u8; 4096];
+        let mut pid: Option<u32> = None;
         let mut stdout_data = Vec::new();
         loop {
             let n = stream.read(&mut buf).unwrap();
-            assert!(n > 0, "unexpected EOF waiting for process_exit");
+            assert!(n > 0, "unexpected EOF waiting for streaming result");
             for msg in decoder.decode(buf.get(..n).unwrap_or_default()).unwrap() {
-                match decode_stream_msg(&msg) {
-                    Some(StreamMsg::StdoutChunk(pid, data)) if pid == expected_pid => {
-                        stdout_data.extend_from_slice(&data);
-                    }
-                    Some(StreamMsg::ProcessExit(pid, code, stderr)) if pid == expected_pid => {
-                        return (stdout_data, code, stderr);
-                    }
-                    _ => {}
+                // Pick up the PID from spawn_watch_result
+                if msg.msg_type == MSG_SPAWN_WATCH_RESULT && msg.seq == seq {
+                    pid = Some(vsock_proto::decode_spawn_watch_result(&msg.payload).unwrap());
+                    continue;
+                }
+                let Some(p) = pid else { continue };
+
+                // Collect stdout chunks and return on process_exit
+                if msg.msg_type == MSG_STDOUT_CHUNK
+                    && let Ok((chunk_pid, data)) = vsock_proto::decode_stdout_chunk(&msg.payload)
+                    && chunk_pid == p
+                {
+                    stdout_data.extend_from_slice(data);
+                } else if msg.msg_type == MSG_PROCESS_EXIT
+                    && let Ok((exit_pid, code, _stdout, stderr)) =
+                        vsock_proto::decode_process_exit(&msg.payload)
+                    && exit_pid == p
+                {
+                    return (p, stdout_data, code, stderr.to_vec());
                 }
             }
-        }
-    }
-
-    fn decode_stream_msg(msg: &vsock_proto::RawMessage) -> Option<StreamMsg> {
-        match msg.msg_type {
-            MSG_STDOUT_CHUNK => {
-                let (pid, data) = vsock_proto::decode_stdout_chunk(&msg.payload).ok()?;
-                Some(StreamMsg::StdoutChunk(pid, data.to_vec()))
-            }
-            MSG_PROCESS_EXIT => {
-                let (pid, code, _stdout, stderr) =
-                    vsock_proto::decode_process_exit(&msg.payload).ok()?;
-                Some(StreamMsg::ProcessExit(pid, code, stderr.to_vec()))
-            }
-            _ => None,
         }
     }
 
@@ -1359,15 +1337,12 @@ mod tests {
         let log_path = format!("/tmp/vsock-test-normal-{}.log", std::process::id());
         send_spawn_watch(&mut host_stream, 1, "echo hello", &log_path, 5000);
 
-        let pid = read_spawn_watch_result(&mut host_stream, 1);
-        assert!(pid > 0);
-
-        // Read stdout chunks + process_exit
         host_stream
             .set_read_timeout(Some(Duration::from_secs(10)))
             .unwrap();
-        let (stdout_data, exit_code, _stderr) = read_until_process_exit(&mut host_stream, pid);
+        let (pid, stdout_data, exit_code, _stderr) = read_streaming_result(&mut host_stream, 1);
 
+        assert!(pid > 0);
         assert_eq!(exit_code, 0);
         assert_eq!(String::from_utf8_lossy(&stdout_data).trim(), "hello");
 
@@ -1407,16 +1382,14 @@ mod tests {
             0, // no timeout — relies entirely on drain deadline
         );
 
-        let pid = read_spawn_watch_result(&mut host_stream, 1);
-        assert!(pid > 0);
-
         // Set read timeout: drain deadline (5s) + generous margin (7s)
         host_stream
             .set_read_timeout(Some(Duration::from_secs(12)))
             .unwrap();
 
-        let (stdout_data, exit_code, _stderr) = read_until_process_exit(&mut host_stream, pid);
+        let (pid, stdout_data, exit_code, _stderr) = read_streaming_result(&mut host_stream, 1);
 
+        assert!(pid > 0);
         assert_eq!(exit_code, 0);
         assert!(
             String::from_utf8_lossy(&stdout_data).contains("orphan-test"),
@@ -1462,16 +1435,14 @@ mod tests {
             1000, // 1 second timeout
         );
 
-        let pid = read_spawn_watch_result(&mut host_stream, 1);
-        assert!(pid > 0);
-
         // Timeout (1s) + drain (5s) + margin (4s)
         host_stream
             .set_read_timeout(Some(Duration::from_secs(10)))
             .unwrap();
 
-        let (stdout_data, exit_code, stderr) = read_until_process_exit(&mut host_stream, pid);
+        let (pid, stdout_data, exit_code, stderr) = read_streaming_result(&mut host_stream, 1);
 
+        assert!(pid > 0);
         assert_eq!(exit_code, EXIT_CODE_TIMEOUT);
         assert_eq!(String::from_utf8_lossy(&stderr), "Timeout");
         assert!(
