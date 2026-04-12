@@ -12,7 +12,7 @@ import {
   vcTranscript$,
   vcMuted$,
   vcEnabled$,
-  startVoiceChat$,
+  startMissionControlVoiceChat$,
   endVoiceChat$,
   retryVoiceChat$,
   toggleVoiceChatMute$,
@@ -24,7 +24,7 @@ export function VoiceButton() {
   const enabled = useLastResolved(vcEnabled$) ?? false;
   const status = useGet(vcStatus$);
   const muted = useGet(vcMuted$);
-  const startChat = useSet(startVoiceChat$);
+  const startChat = useSet(startMissionControlVoiceChat$);
   const endChat = useSet(endVoiceChat$);
   const toggleMute = useSet(toggleVoiceChatMute$);
   const pageSignal = useGet(pageSignal$);
