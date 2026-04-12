@@ -120,11 +120,7 @@ async fn gc_dir(
 
     let mut candidates: Vec<GcCandidate> = Vec::new();
 
-    while let Some(entry) = entries
-        .next_entry()
-        .await
-        .map_err(|e| RunnerError::Internal(format!("read entry in {}: {e}", dir.display())))?
-    {
+    while let Some(entry) = next_entry_warn(&mut entries, label, dir).await {
         let path = entry.path();
         let Some(hash) = path.file_name().and_then(|n| n.to_str()).map(String::from) else {
             continue;
@@ -262,11 +258,7 @@ async fn gc_debootstrap(
     };
 
     let mut files: Vec<(PathBuf, u64, SystemTime)> = Vec::new();
-    while let Some(entry) = entries
-        .next_entry()
-        .await
-        .map_err(|e| RunnerError::Internal(format!("read entry in {}: {e}", dir.display())))?
-    {
+    while let Some(entry) = next_entry_warn(&mut entries, "gc_debootstrap", &dir).await {
         let path = entry.path();
         let meta = match tokio::fs::metadata(&path).await {
             Ok(m) => m,
@@ -503,11 +495,7 @@ async fn gc_versions(home: &HomePaths, dry_run: bool) -> RunnerResult<Vec<String
 
     let mut removed: Vec<String> = Vec::new();
 
-    while let Some(entry) = entries
-        .next_entry()
-        .await
-        .map_err(|e| RunnerError::Internal(format!("read entry in {}: {e}", bin_dir.display())))?
-    {
+    while let Some(entry) = next_entry_warn(&mut entries, "gc_versions", &bin_dir).await {
         let name = entry.file_name();
         let Some(name) = name.to_str() else { continue };
         if !is_semver_version(name) {
