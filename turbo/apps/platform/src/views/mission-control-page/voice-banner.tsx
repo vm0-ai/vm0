@@ -78,6 +78,7 @@ export function VoiceBanner() {
   const status = useGet(vcStatus$);
   const transcript = useGet(vcTranscript$);
   const retryChat = useSet(retryVoiceChat$);
+  const endChat = useSet(endVoiceChat$);
   const pageSignal = useGet(pageSignal$);
 
   if (status === "idle") {
@@ -98,7 +99,7 @@ export function VoiceBanner() {
     );
   }
 
-  if (status === "disconnected" || status === "error") {
+  if (status === "disconnected") {
     return (
       <div className="flex items-center gap-2 px-6 py-2 text-xs text-destructive bg-destructive/5 border-b">
         <span>Voice disconnected</span>
@@ -111,6 +112,21 @@ export function VoiceBanner() {
         >
           <IconRefresh size={12} />
           Retry
+        </button>
+      </div>
+    );
+  }
+
+  if (status === "error") {
+    return (
+      <div className="flex items-center gap-2 px-6 py-2 text-xs text-destructive bg-destructive/5 border-b">
+        <span>Voice error</span>
+        <button
+          type="button"
+          onClick={endChat}
+          className="inline-flex items-center gap-1 text-xs underline shrink-0"
+        >
+          Dismiss
         </button>
       </div>
     );
