@@ -11,6 +11,10 @@ use crate::profile;
 pub(crate) const DEFAULT_MAX_CONCURRENT: usize = 0;
 pub(crate) const DEFAULT_CONCURRENCY_FACTOR: f64 = 1.0;
 
+const MAX_VCPU: u32 = 1024;
+const MAX_MEMORY_MB: u32 = 1_048_576; // 1 TB
+const MAX_DISK_MB: u32 = 1_048_576; // 1 TB
+
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct RunnerConfig {
     pub name: String,
@@ -135,6 +139,24 @@ async fn validate(config: &RunnerConfig, home: &HomePaths) -> RunnerResult<()> {
         if profile.vcpu == 0 || profile.memory_mb == 0 || profile.disk_mb == 0 {
             return Err(RunnerError::Config(format!(
                 "profile {name}: vcpu, memory_mb, and disk_mb must be non-zero"
+            )));
+        }
+        if profile.vcpu > MAX_VCPU {
+            return Err(RunnerError::Config(format!(
+                "profile {name}: vcpu ({}) exceeds maximum ({MAX_VCPU})",
+                profile.vcpu
+            )));
+        }
+        if profile.memory_mb > MAX_MEMORY_MB {
+            return Err(RunnerError::Config(format!(
+                "profile {name}: memory_mb ({}) exceeds maximum ({MAX_MEMORY_MB})",
+                profile.memory_mb
+            )));
+        }
+        if profile.disk_mb > MAX_DISK_MB {
+            return Err(RunnerError::Config(format!(
+                "profile {name}: disk_mb ({}) exceeds maximum ({MAX_DISK_MB})",
+                profile.disk_mb
             )));
         }
         // Validate all image files exist on disk.
@@ -496,6 +518,163 @@ profiles:
 
         let err = load_with_home(&config_path, &home).await.unwrap_err();
         assert!(err.to_string().contains("non-zero"), "got: {err}");
+    }
+
+    #[tokio::test]
+    async fn load_accepts_vcpu_at_maximum() {
+        let dir = tempfile::tempdir().unwrap();
+        let fc = dir.path().join("firecracker");
+        let kernel = dir.path().join("vmlinux");
+        for f in [&fc, &kernel] {
+            tokio::fs::write(f, b"").await.unwrap();
+        }
+        let home = test_home_with_artifacts(dir.path(), &["abc"]).await;
+
+        let yaml = format!(
+            r#"
+name: test
+group: test/group
+base_dir: {base_dir}
+ca_dir: {ca_dir}
+firecracker:
+  binary: {fc}
+  kernel: {kernel}
+profiles:
+  vm0/default:
+    image_hash: abc
+    vcpu: 1024
+    memory_mb: 4096
+    disk_mb: 16384
+"#,
+            base_dir = dir.path().display(),
+            ca_dir = dir.path().display(),
+            fc = fc.display(),
+            kernel = kernel.display(),
+        );
+
+        let config_path = dir.path().join("runner.yaml");
+        tokio::fs::write(&config_path, &yaml).await.unwrap();
+
+        // vcpu == MAX_VCPU should be accepted (validation uses >, not >=)
+        let result = load_with_home(&config_path, &home).await;
+        assert!(result.is_ok(), "got: {}", result.unwrap_err());
+    }
+
+    #[tokio::test]
+    async fn load_rejects_excessive_vcpu_in_profile() {
+        let dir = tempfile::tempdir().unwrap();
+        let fc = dir.path().join("firecracker");
+        let kernel = dir.path().join("vmlinux");
+        for f in [&fc, &kernel] {
+            tokio::fs::write(f, b"").await.unwrap();
+        }
+        let home = test_home_with_artifacts(dir.path(), &[] as &[&str]).await;
+
+        let yaml = format!(
+            r#"
+name: test
+group: test/group
+base_dir: {base_dir}
+ca_dir: {ca_dir}
+firecracker:
+  binary: {fc}
+  kernel: {kernel}
+profiles:
+  vm0/default:
+    image_hash: abc
+    vcpu: 2048
+    memory_mb: 4096
+    disk_mb: 16384
+"#,
+            base_dir = dir.path().display(),
+            ca_dir = dir.path().display(),
+            fc = fc.display(),
+            kernel = kernel.display(),
+        );
+
+        let config_path = dir.path().join("runner.yaml");
+        tokio::fs::write(&config_path, &yaml).await.unwrap();
+
+        let err = load_with_home(&config_path, &home).await.unwrap_err();
+        assert!(err.to_string().contains("exceeds maximum"), "got: {err}");
+    }
+
+    #[tokio::test]
+    async fn load_rejects_excessive_memory_mb_in_profile() {
+        let dir = tempfile::tempdir().unwrap();
+        let fc = dir.path().join("firecracker");
+        let kernel = dir.path().join("vmlinux");
+        for f in [&fc, &kernel] {
+            tokio::fs::write(f, b"").await.unwrap();
+        }
+        let home = test_home_with_artifacts(dir.path(), &[] as &[&str]).await;
+
+        let yaml = format!(
+            r#"
+name: test
+group: test/group
+base_dir: {base_dir}
+ca_dir: {ca_dir}
+firecracker:
+  binary: {fc}
+  kernel: {kernel}
+profiles:
+  vm0/default:
+    image_hash: abc
+    vcpu: 2
+    memory_mb: 2000000
+    disk_mb: 16384
+"#,
+            base_dir = dir.path().display(),
+            ca_dir = dir.path().display(),
+            fc = fc.display(),
+            kernel = kernel.display(),
+        );
+
+        let config_path = dir.path().join("runner.yaml");
+        tokio::fs::write(&config_path, &yaml).await.unwrap();
+
+        let err = load_with_home(&config_path, &home).await.unwrap_err();
+        assert!(err.to_string().contains("exceeds maximum"), "got: {err}");
+    }
+
+    #[tokio::test]
+    async fn load_rejects_excessive_disk_mb_in_profile() {
+        let dir = tempfile::tempdir().unwrap();
+        let fc = dir.path().join("firecracker");
+        let kernel = dir.path().join("vmlinux");
+        for f in [&fc, &kernel] {
+            tokio::fs::write(f, b"").await.unwrap();
+        }
+        let home = test_home_with_artifacts(dir.path(), &[] as &[&str]).await;
+
+        let yaml = format!(
+            r#"
+name: test
+group: test/group
+base_dir: {base_dir}
+ca_dir: {ca_dir}
+firecracker:
+  binary: {fc}
+  kernel: {kernel}
+profiles:
+  vm0/default:
+    image_hash: abc
+    vcpu: 2
+    memory_mb: 4096
+    disk_mb: 2000000
+"#,
+            base_dir = dir.path().display(),
+            ca_dir = dir.path().display(),
+            fc = fc.display(),
+            kernel = kernel.display(),
+        );
+
+        let config_path = dir.path().join("runner.yaml");
+        tokio::fs::write(&config_path, &yaml).await.unwrap();
+
+        let err = load_with_home(&config_path, &home).await.unwrap_err();
+        assert!(err.to_string().contains("exceeds maximum"), "got: {err}");
     }
 
     #[tokio::test]
