@@ -8,9 +8,7 @@ import { slackOrgInstallations } from "../../../db/schema/slack-org-installation
 import { emailThreadSessions } from "../../../db/schema/email-thread-session";
 import { agentSessions } from "../../../db/schema/agent-session";
 import { agentRuns } from "../../../db/schema/agent-run";
-import {
-  agentComposeVersions,
-} from "../../../db/schema/agent-compose";
+import { agentComposeVersions } from "../../../db/schema/agent-compose";
 import { zeroRuns } from "../../../db/schema/zero-run";
 import { zeroAgents } from "../../../db/schema/zero-agent";
 
@@ -43,19 +41,14 @@ export async function listTasks(
 ): Promise<TaskItem[]> {
   const db = globalThis.services.db;
 
-  const [
-    chatTasks,
-    scheduleTasks,
-    slackTasks,
-    emailTasks,
-    inFlightEmailTasks,
-  ] = await Promise.all([
-    listChatTasks(db, userId, orgId, agentId),
-    listScheduleTasks(db, userId, orgId, agentId),
-    listSlackTasks(db, userId, orgId, agentId),
-    listEmailTasks(db, userId, orgId, agentId),
-    listInFlightEmailTasks(db, userId, orgId, agentId),
-  ]);
+  const [chatTasks, scheduleTasks, slackTasks, emailTasks, inFlightEmailTasks] =
+    await Promise.all([
+      listChatTasks(db, userId, orgId, agentId),
+      listScheduleTasks(db, userId, orgId, agentId),
+      listSlackTasks(db, userId, orgId, agentId),
+      listEmailTasks(db, userId, orgId, agentId),
+      listInFlightEmailTasks(db, userId, orgId, agentId),
+    ]);
 
   const allTasks = [
     ...chatTasks,
@@ -336,7 +329,7 @@ async function listEmailTasks(
         SELECT ${agentRuns.id}
         FROM ${agentRuns}
         WHERE ${agentRuns.continuedFromSessionId} = ${emailThreadSessions.agentSessionId}
-           OR ${agentRuns.result}->>'agentSessionId' = ${emailThreadSessions.agentSessionId}
+           OR ${agentRuns.result}->>'agentSessionId' = ${emailThreadSessions.agentSessionId}::text
         ORDER BY ${agentRuns.createdAt} DESC
         LIMIT 1
       )`,
@@ -405,10 +398,7 @@ async function listInFlightEmailTasks(
       agentComposeVersions,
       eq(agentComposeVersions.id, agentRuns.agentComposeVersionId),
     )
-    .innerJoin(
-      zeroAgents,
-      eq(zeroAgents.id, agentComposeVersions.composeId),
-    )
+    .innerJoin(zeroAgents, eq(zeroAgents.id, agentComposeVersions.composeId))
     .where(and(...conditions));
 
   return rows.map((r) => {
