@@ -192,13 +192,18 @@ fn wait_with_timeout(child: std::process::Child, timeout_ms: u32) -> (i32, Vec<u
     thread::spawn(move || {
         // Wait for either timeout or signal that process completed
         if rx.recv_timeout(timeout).is_err() {
-            // Timeout reached, mark and kill the entire process group
-            // Using negative pid kills all processes in the group (like tini does)
-            killed_by_timeout_clone.store(true, Ordering::SeqCst);
+            // Timeout reached — kill the entire process group.
             // SAFETY: child_id is a valid PID from Command::spawn (Linux PIDs < 4M,
             // so u32→i32 cast never overflows). Negative pid kills the process group.
-            unsafe {
-                libc::kill(-(child_id as i32), libc::SIGKILL);
+            let ret = unsafe { libc::kill(-(child_id as i32), libc::SIGKILL) };
+            if ret == 0 {
+                killed_by_timeout_clone.store(true, Ordering::SeqCst);
+            } else {
+                let err = std::io::Error::last_os_error();
+                log(
+                    "WARN",
+                    &format!("timeout kill(-{child_id}, SIGKILL) failed: {err}"),
+                );
             }
         }
     });
@@ -493,10 +498,16 @@ fn spawn_streaming_monitor(
             let (tx, rx) = std::sync::mpsc::channel::<()>();
             thread::spawn(move || {
                 if rx.recv_timeout(timeout).is_err() {
-                    killed_clone.store(true, Ordering::SeqCst);
                     // SAFETY: child_id is a valid PID. Negative pid kills the process group.
-                    unsafe {
-                        libc::kill(-(child_id as i32), libc::SIGKILL);
+                    let ret = unsafe { libc::kill(-(child_id as i32), libc::SIGKILL) };
+                    if ret == 0 {
+                        killed_clone.store(true, Ordering::SeqCst);
+                    } else {
+                        let err = std::io::Error::last_os_error();
+                        log(
+                            "WARN",
+                            &format!("timeout kill(-{child_id}, SIGKILL) failed: {err}"),
+                        );
                     }
                 }
             });
