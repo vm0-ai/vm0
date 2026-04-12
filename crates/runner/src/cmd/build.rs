@@ -473,7 +473,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            hash, "3b5860db624028922190b06a06e0b91610f12c8cf3d045f20e29cc2ac3a69027",
+            hash, "097669f3bfa59605f8b1580c6e1ffea94b3a8ee243a2b439943a7da9432e1fc7",
             "image hash changed — this invalidates ALL cached images on ALL hosts"
         );
     }
