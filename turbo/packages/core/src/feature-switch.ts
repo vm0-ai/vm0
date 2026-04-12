@@ -226,6 +226,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.MissionControlSidebar]: {
+    maintainer: "ethan@vm0.ai",
+    description: "Show the Mission Control page entry in the sidebar",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.AutoSkill]: {
     maintainer: "lancy@vm0.ai",
     description: "Enable automatic skill creation in agent prompts",

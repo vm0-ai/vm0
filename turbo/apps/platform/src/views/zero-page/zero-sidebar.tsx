@@ -24,6 +24,7 @@ import {
   IconPhone,
   IconMicrophone,
   IconSparkles,
+  IconLayoutDashboard,
 } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/core";
 import {
@@ -162,6 +163,15 @@ const FOOTER_NAV = [
     icon: IconMicrophone as NavIcon,
     iconImg: undefined,
     featureGate: FeatureSwitchKey.VoiceChat,
+  },
+  {
+    id: "missionControl",
+    activeKeys: ["missionControl"],
+    pathname: "/_/mission-control",
+    label: "Mission Control",
+    icon: IconLayoutDashboard as NavIcon,
+    iconImg: undefined,
+    featureGate: FeatureSwitchKey.MissionControlSidebar,
   },
   {
     id: "lab",
