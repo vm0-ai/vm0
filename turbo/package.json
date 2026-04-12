@@ -24,16 +24,16 @@
   },
   "devDependencies": {
     "@commitlint/cli": "^20.5.0",
-    "@vitest/coverage-v8": "^4.1.2",
-    "@vitest/ui": "^4.1.2",
+    "@vitest/coverage-v8": "^4.1.4",
+    "@vitest/ui": "^4.1.4",
     "dotenv-cli": "^7.4.2",
     "e2b": "^2.10.3",
     "knip": "^5.63.1",
     "prettier": "^3.6.2",
     "tsx": "^4.21.0",
-    "turbo": "^2.9.3",
+    "turbo": "^2.9.6",
     "typescript": "5.9.3",
-    "vitest": "^4.1.2"
+    "vitest": "^4.1.4"
   },
   "pnpm": {
     "peerDependencyRules": {
