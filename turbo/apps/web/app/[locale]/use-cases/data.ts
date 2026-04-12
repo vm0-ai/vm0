@@ -990,6 +990,139 @@ export const USE_CASES: UseCase[] = [
       "employee-onboarding",
     ],
   },
+
+  {
+    slug: "ai-agent-onboarding",
+    title: "Create an AI agent teammate — Zero handles the onboarding",
+    description:
+      "Describe your new AI agent in Slack. Zero creates them, schedules intro meetings with your team, posts a welcome, and sets up their Notion page — the same full onboarding it runs for any new hire.",
+    color: "#a07cb0",
+    avatar: {
+      rotation: 2,
+      skin: 3,
+      hairStyle: 1,
+      hairColor: 2,
+      expression: 4,
+      intensity: "m",
+    },
+    roles: ["ops", "product", "engineering"],
+    capability: "multi-tool",
+    timeSaved: "~40 min saved",
+    model: "Claude 4 Sonnet",
+    connectors: [SLACK, GOOGLE_CALENDAR, NOTION, GMAIL],
+    slackPreview: [
+      {
+        role: "user",
+        name: "Ethan",
+        text: "@Zero create a new agent named Sarah Chen, our product designer. She specializes in UI design and usability analysis.",
+      },
+      {
+        role: "zero",
+        name: "Zero",
+        text: "Sarah Chen is live.\n\n✔ Agent created with UI/UX design specialization\n✔ Week-1 intro meetings scheduled with teammates\n✔ Onboarding page created in Notion\n✔ Welcome posted to #general",
+      },
+    ],
+    headings: {
+      scenario: "Why adding a new AI agent is just like adding a new teammate",
+      prompt: "How to create and onboard an AI agent with Zero",
+      steps: "How Zero spins up the agent and sets up their first week",
+      nextActions: "Refine the agent's skills, assign first tasks, or customize their workflow",
+      integrations: "Required integrations: Slack, Google Calendar, Notion",
+      tips: "Best practices for onboarding AI agents into your team",
+    },
+    scenario:
+      "Your team is expanding — not just with humans. You need a new AI agent: a designer, a researcher, a support specialist. You tell Zero who to create and what they're good at. Zero doesn't just spin up the agent — it treats them like a real new hire. Intro meetings get scheduled, a Notion onboarding page is created, and a welcome goes out to the team. Your new AI teammate is set up and ready to collaborate from day one.",
+    promptVariants: [
+      {
+        label: "Detailed",
+        prompt:
+          "@Zero create a new agent named Sarah Chen, joining as Product Designer. She is highly skilled in UI design and usability analysis. Schedule week-1 intro meetings with Ethan, Lancy, and the product team. Create her onboarding page in Notion and post a welcome to #general.",
+      },
+      {
+        label: "Quick",
+        prompt:
+          "@Zero create agent Sarah Chen — product designer, UI/UX specialist. Full onboarding setup.",
+      },
+      {
+        label: "Trigger",
+        prompt:
+          '@Zero whenever someone posts in #team-expansion with format "Agent Name / Role / Specialization", auto-create the agent and run full onboarding.',
+      },
+    ],
+    steps: [
+      {
+        title: "Zero creates the agent",
+        description:
+          "Zero provisions the new AI agent with the role, skills, and specializations you described. The agent is immediately available in your workspace and ready to take on tasks.",
+      },
+      {
+        title: "Intro meetings scheduled",
+        description:
+          "Zero creates Week-1 intro meetings between the new agent and your key teammates on Google Calendar. Each invite includes context about the agent's role and what to discuss.",
+      },
+      {
+        title: "Notion page and Slack welcome",
+        description:
+          "Zero creates the agent's onboarding page in Notion using your team template and posts a welcome message to the team channel — so everyone knows there's a new collaborator to work with.",
+      },
+    ],
+    nextActions: [
+      {
+        title: "Assign the first task",
+        description: "Put the new agent to work immediately",
+        examplePrompt:
+          "@Zero ask Sarah Chen to review our staging site and give feedback on the UI — focus on clarity and visual hierarchy.",
+      },
+      {
+        title: "Refine their skills",
+        description: "Update the agent's specializations",
+        examplePrompt:
+          "@Zero update Sarah Chen's profile — add expertise in design systems and Figma component libraries.",
+      },
+      {
+        title: "Automate future additions",
+        description: "Trigger onboarding from a team channel",
+        examplePrompt:
+          '@Zero whenever someone posts in #team-expansion with "Agent Name / Role / Skills", auto-create the agent and run the full onboarding workflow.',
+      },
+    ],
+    integrations: [
+      {
+        connector: SLACK,
+        description:
+          "Zero reads your request and posts the welcome message in your team channel.",
+        required: true,
+      },
+      {
+        connector: GOOGLE_CALENDAR,
+        description:
+          "Zero schedules Week-1 intro meetings between the new agent and your teammates.",
+        required: true,
+      },
+      {
+        connector: NOTION,
+        description:
+          "Zero creates the agent's onboarding page from your team template.",
+        required: true,
+      },
+      {
+        connector: GMAIL,
+        description:
+          "Optional — send an onboarding summary email to relevant stakeholders.",
+        required: false,
+      },
+    ],
+    tips: [
+      "Describe the agent's specialization clearly — the more specific you are, the better Zero can configure their skills and frame the onboarding context for teammates.",
+      "Use the same Notion onboarding template you use for human hires. Zero fills in the details regardless of whether the new teammate is human or AI.",
+      "Chain with the build-with-v0 use case: once Sarah is onboarded, immediately ask her to prototype something to validate her setup.",
+    ],
+    relatedSlugs: [
+      "employee-onboarding",
+      "build-with-v0",
+      "slack-triage",
+    ],
+  },
 ];
 
 // ---------------------------------------------------------------------------
