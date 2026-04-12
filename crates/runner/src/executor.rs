@@ -523,10 +523,10 @@ async fn run_in_sandbox(
     };
 
     // Wait for streaming to finish (channel closes when process exits).
-    // On cancel the VM process is still running (stop happens in the caller),
-    // so the stream channel may not close yet — abort instead of blocking.
+    // On cancel/timeout/crash the stream channel may not close — abort to
+    // prevent blocking indefinitely on the drain task.
     if let Some(task) = stream_task {
-        if cancel.is_cancelled() {
+        if cancel.is_cancelled() || result.is_err() {
             task.abort();
             let _ = task.await;
         } else if let Err(e) = task.await {
@@ -1268,6 +1268,7 @@ mod tests {
     use super::*;
     use crate::types::{ArtifactEntry, ResumeSession, StorageEntry, StorageManifest};
     use sandbox_mock::MockSandboxFactory;
+    use std::sync::Arc;
     use uuid::Uuid;
 
     fn minimal_context() -> ExecutionContext {
@@ -2392,6 +2393,29 @@ mod tests {
             .await
             .unwrap_err();
         assert!(err.to_string().contains("no free devices"), "got: {err}");
+    }
+
+    #[tokio::test]
+    async fn execute_inner_aborts_drain_task_on_wait_exit_error() {
+        // Simulate wait_exit timeout: stdout channel stays open (sender held
+        // alive by MockSandbox), wait_exit returns error.
+        // Without the fix, task.await blocks forever → test times out.
+        // With the fix, task is aborted immediately → test completes.
+        let dir = tempfile::tempdir().unwrap();
+        let config = test_executor_config(dir.path()).await;
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_exit_error(
+            "wait timeout",
+        ));
+        let mut factory = sandbox_mock::MockSandboxFactory::with_overrides(overrides);
+        factory.startup().await.unwrap();
+
+        let (exit_code, error) =
+            run_execute_inner(&factory, &minimal_context(), &config, &default_params())
+                .await
+                .unwrap();
+        assert_eq!(exit_code, 1);
+        let error = error.unwrap();
+        assert!(error.contains("wait timeout"), "got: {error}");
     }
 
     #[tokio::test]

@@ -50,6 +50,10 @@ pub struct MockSandboxOverrides {
     /// When set, `wait_exit` awaits this [`tokio::sync::Notify`] before
     /// returning — giving the test a window to cancel the job.
     wait_exit_gate: Option<Arc<tokio::sync::Notify>>,
+    /// When `Some`, `wait_exit` returns `Err(SandboxError::ExecFailed(msg))`
+    /// to simulate timeout or crash. The stdout channel sender is also kept
+    /// alive in `MockSandbox` so the drain task would block without the fix.
+    wait_exit_error: Option<String>,
 }
 
 impl MockSandboxOverrides {
@@ -58,6 +62,7 @@ impl MockSandboxOverrides {
             exec_matchers: Mutex::new(Vec::new()),
             wait_exit_code: None,
             wait_exit_gate: None,
+            wait_exit_error: None,
         }
     }
 
@@ -67,6 +72,7 @@ impl MockSandboxOverrides {
             exec_matchers: Mutex::new(Vec::new()),
             wait_exit_code: Some(code),
             wait_exit_gate: None,
+            wait_exit_error: None,
         }
     }
 
@@ -76,6 +82,19 @@ impl MockSandboxOverrides {
             exec_matchers: Mutex::new(Vec::new()),
             wait_exit_code: None,
             wait_exit_gate: Some(gate),
+            wait_exit_error: None,
+        }
+    }
+
+    /// Create overrides that make `wait_exit` return an error (simulating
+    /// timeout or crash). The stdout channel sender is kept alive so the
+    /// drain task blocks unless the caller aborts it.
+    pub fn with_wait_exit_error(msg: impl Into<String>) -> Self {
+        Self {
+            exec_matchers: Mutex::new(Vec::new()),
+            wait_exit_code: None,
+            wait_exit_gate: None,
+            wait_exit_error: Some(msg.into()),
         }
     }
 
@@ -109,6 +128,10 @@ pub struct MockSandbox {
     exec_results: Mutex<VecDeque<Result<ExecResult>>>,
     write_file_results: Mutex<VecDeque<Result<()>>>,
     overrides: Option<Arc<MockSandboxOverrides>>,
+    /// Holds the stdout channel sender alive when simulating a non-closing
+    /// channel (e.g. wait_exit_error override). Without this, the sender is
+    /// dropped immediately in `spawn_watch` and the drain task exits.
+    stdout_tx: Mutex<Option<tokio::sync::mpsc::UnboundedSender<Vec<u8>>>>,
 }
 
 impl MockSandbox {
@@ -119,6 +142,7 @@ impl MockSandbox {
             exec_results: Mutex::new(VecDeque::new()),
             write_file_results: Mutex::new(VecDeque::new()),
             overrides: None,
+            stdout_tx: Mutex::new(None),
         }
     }
 
@@ -129,6 +153,7 @@ impl MockSandbox {
             exec_results: Mutex::new(VecDeque::new()),
             write_file_results: Mutex::new(VecDeque::new()),
             overrides: Some(overrides),
+            stdout_tx: Mutex::new(None),
         }
     }
 
@@ -224,7 +249,16 @@ impl Sandbox for MockSandbox {
         _request: &ExecRequest<'_>,
         _stdout_log_path: Option<&str>,
     ) -> Result<SpawnHandle> {
-        let (_tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        // When simulating wait_exit error (timeout/crash), keep the sender
+        // alive so the stdout channel never closes — reproducing the real bug.
+        if self
+            .overrides
+            .as_ref()
+            .is_some_and(|o| o.wait_exit_error.is_some())
+        {
+            *self.stdout_tx.lock().unwrap_or_else(|e| e.into_inner()) = Some(tx);
+        }
         Ok(SpawnHandle {
             pid: 1,
             stdout_rx: Some(rx),
@@ -236,6 +270,10 @@ impl Sandbox for MockSandbox {
             // Block until the test signals (gives a window for cancellation).
             if let Some(gate) = &overrides.wait_exit_gate {
                 gate.notified().await;
+            }
+            // Return error when configured (simulates timeout or crash).
+            if let Some(ref msg) = overrides.wait_exit_error {
+                return Err(SandboxError::ExecFailed(msg.clone()));
             }
             // Return override exit code when configured.
             if let Some(code) = overrides.wait_exit_code {
