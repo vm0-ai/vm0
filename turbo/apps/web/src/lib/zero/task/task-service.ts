@@ -336,6 +336,7 @@ async function listEmailTasks(
         SELECT ${agentRuns.id}
         FROM ${agentRuns}
         WHERE ${agentRuns.continuedFromSessionId} = ${emailThreadSessions.agentSessionId}
+           OR ${agentRuns.result}->>'agentSessionId' = ${emailThreadSessions.agentSessionId}
         ORDER BY ${agentRuns.createdAt} DESC
         LIMIT 1
       )`,
