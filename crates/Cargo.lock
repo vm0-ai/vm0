@@ -752,7 +752,7 @@ dependencies = [
 
 [[package]]
 name = "guest-init"
-version = "0.16.1"
+version = "0.16.2"
 dependencies = [
  "libc",
  "nix",
@@ -1333,7 +1333,7 @@ dependencies = [
 
 [[package]]
 name = "nbd-cow"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "bitvec",
  "libc",
@@ -1699,7 +1699,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.76.1"
+version = "0.76.2"
 dependencies = [
  "ably-subscriber",
  "async-trait",
@@ -1862,7 +1862,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.23.2"
+version = "0.23.3"
 dependencies = [
  "async-trait",
  "base64",
@@ -2661,7 +2661,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vsock-guest"
-version = "0.9.1"
+version = "0.9.2"
 dependencies = [
  "libc",
  "vsock-proto",
@@ -2682,7 +2682,7 @@ version = "0.8.0"
 
 [[package]]
 name = "vsock-test"
-version = "0.8.1"
+version = "0.8.2"
 dependencies = [
  "tokio",
  "vsock-guest",

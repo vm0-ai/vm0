@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.0...nbd-cow-v0.4.1) (2026-04-12)
+
+
+### Bug Fixes
+
+* **nbd-cow:** track in-flight device indices to prevent duplicate allocation ([#9033](https://github.com/vm0-ai/vm0/issues/9033)) ([4f43ab5](https://github.com/vm0-ai/vm0/commit/4f43ab5b5647d1c1ad61a37c3517b9419270259c)), closes [#9016](https://github.com/vm0-ai/vm0/issues/9016)
+
 ## [0.4.0](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.3.4...nbd-cow-v0.4.0) (2026-04-09)
 
 

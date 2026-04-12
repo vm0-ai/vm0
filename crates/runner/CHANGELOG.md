@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.76.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.76.1...runner-rs-v0.76.2) (2026-04-12)
+
+
+### Bug Fixes
+
+* log directory iteration errors in gc instead of silently swallowing ([#9036](https://github.com/vm0-ai/vm0/issues/9036)) ([da6af3c](https://github.com/vm0-ai/vm0/commit/da6af3c67e7beaf4e9fdef5d28958f09cba62e56))
+
 ## [0.76.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.76.0...runner-rs-v0.76.1) (2026-04-12)
 
 

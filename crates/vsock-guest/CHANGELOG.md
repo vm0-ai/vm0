@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.2](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.9.1...vsock-guest-v0.9.2) (2026-04-12)
+
+
+### Bug Fixes
+
+* **vsock-guest:** check kill() return value in timeout killer threads ([#9034](https://github.com/vm0-ai/vm0/issues/9034)) ([1574329](https://github.com/vm0-ai/vm0/commit/15743299bb6fb69c27377f2709cff59cce5805b4)), closes [#8971](https://github.com/vm0-ai/vm0/issues/8971)
+
 ## [0.9.1](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.9.0...vsock-guest-v0.9.1) (2026-04-12)
 
 
