@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.223.0](https://github.com/vm0-ai/vm0/compare/app-v0.222.0...app-v0.223.0) (2026-04-12)
+
+
+### Features
+
+* **mission-control:** add voice chat task to mission control ([#9031](https://github.com/vm0-ai/vm0/issues/9031)) ([366c655](https://github.com/vm0-ai/vm0/commit/366c655e8f1836b2f9fee778490fef0d7bb68f61))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.175.0
+
 ## [0.222.0](https://github.com/vm0-ai/vm0/compare/app-v0.221.0...app-v0.222.0) (2026-04-12)
 
 

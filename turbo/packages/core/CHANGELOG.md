@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.175.0](https://github.com/vm0-ai/vm0/compare/core-v8.174.0...core-v8.175.0) (2026-04-12)
+
+
+### Features
+
+* **mission-control:** add voice chat task to mission control ([#9031](https://github.com/vm0-ai/vm0/issues/9031)) ([366c655](https://github.com/vm0-ai/vm0/commit/366c655e8f1836b2f9fee778490fef0d7bb68f61))
+
 ## [8.174.0](https://github.com/vm0-ai/vm0/compare/core-v8.173.0...core-v8.174.0) (2026-04-12)
 
 

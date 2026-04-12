@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.76.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.76.0...runner-rs-v0.76.1) (2026-04-12)
+
+
+### Bug Fixes
+
+* **runner:** abort stdout drain task on wait_exit timeout or crash ([#9021](https://github.com/vm0-ai/vm0/issues/9021)) ([d6b021e](https://github.com/vm0-ai/vm0/commit/d6b021e5f97b432006e969efd45f3b29debb4909)), closes [#8970](https://github.com/vm0-ai/vm0/issues/8970)
+
 ## [0.76.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.75.2...runner-rs-v0.76.0) (2026-04-12)
 
 
