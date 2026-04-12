@@ -156,9 +156,12 @@ export async function dispatchSlowBrain(
         ? buildVoiceChatMeetingPrompt(session.id, meetingPrompt)
         : buildVoiceChatQuickPrepPrompt(session.id);
 
-  const prompt = meetingPrompt
-    ? `You are Zero's slow-brain for voice-chat session ${session.id}. A meeting has been requested. Read the shared context for the meeting prompt and begin preparation.`
-    : `You are Zero's slow-brain for voice-chat session ${session.id}. Review the agent configuration and user context, then prepare an initial directive before the conversation begins.`;
+  const prompt =
+    options?.mode === "mission_control"
+      ? `You are Zero's slow-brain for voice-chat session ${session.id}. You are in mission control mode — delegate all task execution to sub-agents via zero run instead of executing inline.`
+      : meetingPrompt
+        ? `You are Zero's slow-brain for voice-chat session ${session.id}. A meeting has been requested. Read the shared context for the meeting prompt and begin preparation.`
+        : `You are Zero's slow-brain for voice-chat session ${session.id}. Review the agent configuration and user context, then prepare an initial directive before the conversation begins.`;
 
   // Write meeting-prompt event before session-start (meeting mode only)
   if (meetingPrompt) {
