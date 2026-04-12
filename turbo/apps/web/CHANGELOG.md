@@ -1,5 +1,17 @@
 # Changelog
 
+## [12.220.0](https://github.com/vm0-ai/vm0/compare/web-v12.219.0...web-v12.220.0) (2026-04-12)
+
+
+### Features
+
+* add mission_control voice chat mode ([#9026](https://github.com/vm0-ai/vm0/issues/9026)) ([261147b](https://github.com/vm0-ai/vm0/commit/261147b9b38f4017ae33a4136045244c055ae1c9))
+
+
+### Bug Fixes
+
+* **tasks:** show email tasks in Mission Control during execution ([#9025](https://github.com/vm0-ai/vm0/issues/9025)) ([9dd123b](https://github.com/vm0-ai/vm0/commit/9dd123bb553ac4a5335e3172b73cce4020162654))
+
 ## [12.219.0](https://github.com/vm0-ai/vm0/compare/web-v12.218.0...web-v12.219.0) (2026-04-12)
 
 

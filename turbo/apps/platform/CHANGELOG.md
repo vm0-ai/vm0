@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.221.0](https://github.com/vm0-ai/vm0/compare/app-v0.220.0...app-v0.221.0) (2026-04-12)
+
+
+### Features
+
+* add mission_control voice chat mode ([#9026](https://github.com/vm0-ai/vm0/issues/9026)) ([261147b](https://github.com/vm0-ai/vm0/commit/261147b9b38f4017ae33a4136045244c055ae1c9))
+
+
+### Refactoring
+
+* **chat:** extract navigation from create new chat thread command ([#9024](https://github.com/vm0-ai/vm0/issues/9024)) ([8b9982f](https://github.com/vm0-ai/vm0/commit/8b9982fe52ae9c44e67b22ded25e47751d467382))
+
 ## [0.220.0](https://github.com/vm0-ai/vm0/compare/app-v0.219.0...app-v0.220.0) (2026-04-12)
 
 
