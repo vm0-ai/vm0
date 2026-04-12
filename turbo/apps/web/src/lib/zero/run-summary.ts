@@ -20,7 +20,13 @@ export async function saveRunSummary(
 ): Promise<void> {
   try {
     const summary = await generateRunSummary(triggerSource, prompt, resultText);
-    if (!summary) return;
+    if (!summary) {
+      log.warn("Run summary generation returned null (API key missing?)", {
+        runId,
+        triggerSource,
+      });
+      return;
+    }
 
     await globalThis.services.db
       .update(zeroRuns)

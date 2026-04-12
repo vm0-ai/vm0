@@ -17,11 +17,10 @@ const MAX_CONSECUTIVE_FAILURES = 3;
 function parsePayload(payload: unknown): ScheduleCronCallbackPayload | null {
   if (!payload || typeof payload !== "object") return null;
   const p = payload as Record<string, unknown>;
-  if (
-    typeof p.scheduleId !== "string" ||
-    typeof p.cronExpression !== "string" ||
-    typeof p.timezone !== "string"
-  ) {
+  if (typeof p.scheduleId !== "string" || typeof p.timezone !== "string") {
+    return null;
+  }
+  if (p.cronExpression !== undefined && typeof p.cronExpression !== "string") {
     return null;
   }
   return p as unknown as ScheduleCronCallbackPayload;
@@ -47,7 +46,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     return errorResponse("Invalid or missing payload", 400);
   }
 
-  const { scheduleId, cronExpression, timezone } = payload;
+  const { scheduleId, cronExpression } = payload;
 
   // Ignore progress notifications — only act on terminal states
   if (status === "progress") {
@@ -83,9 +82,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
   const newFailureCount =
     status === "completed" ? 0 : schedule.consecutiveFailures + 1;
   const shouldDisable = newFailureCount >= MAX_CONSECUTIVE_FAILURES;
-  const nextRunAt = shouldDisable
-    ? null
-    : calculateNextRun(cronExpression, timezone);
+  const nextRunAt =
+    shouldDisable || !cronExpression
+      ? null
+      : calculateNextRun(cronExpression, schedule.timezone);
 
   await globalThis.services.db
     .update(zeroAgentSchedules)

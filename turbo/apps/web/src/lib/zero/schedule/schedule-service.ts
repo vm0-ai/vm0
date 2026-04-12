@@ -869,11 +869,13 @@ export async function executeSchedule(
     });
   }
 
-  // Cron schedule completion callback (tracks failures and advances next run)
-  if (schedule.triggerType === "cron") {
+  // Cron/once schedule completion callback (tracks failures, advances next run, generates summary)
+  if (schedule.triggerType === "cron" || schedule.triggerType === "once") {
     const cronPayload: ScheduleCronCallbackPayload = {
       scheduleId: schedule.id,
-      cronExpression: schedule.cronExpression!,
+      ...(schedule.cronExpression && {
+        cronExpression: schedule.cronExpression,
+      }),
       timezone: schedule.timezone,
     };
     callbacks.push({

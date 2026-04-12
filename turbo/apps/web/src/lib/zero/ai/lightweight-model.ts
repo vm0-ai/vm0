@@ -1,5 +1,8 @@
 import "server-only";
 import { env } from "../../../env";
+import { logger } from "../../shared/logger";
+
+const log = logger("lightweight-model");
 
 const BASE_URL = "https://openrouter.ai/api/v1/chat/completions";
 const MODEL = "google/gemini-3.1-flash-lite-preview";
@@ -32,6 +35,7 @@ async function generateText(
   const { OPENROUTER_API_KEY } = env();
 
   if (!OPENROUTER_API_KEY) {
+    log.warn("OPENROUTER_API_KEY not configured, skipping text generation");
     return null;
   }
 

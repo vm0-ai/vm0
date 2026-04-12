@@ -58,7 +58,7 @@ export interface ScheduleLoopCallbackPayload {
 
 export interface ScheduleCronCallbackPayload {
   scheduleId: string;
-  cronExpression: string;
+  cronExpression?: string;
   timezone: string;
 }
 
