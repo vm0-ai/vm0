@@ -41,6 +41,7 @@ import {
   pinnedAgents$,
 } from "../../signals/zero-page/zero-pinned-agents.ts";
 import { createNewChatThread$ } from "../../signals/chat-page/chat-message.ts";
+import { navigateToChat$ } from "../../signals/zero-page/zero-nav.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
@@ -72,6 +73,7 @@ export function PinnedAgentListSection() {
   const [pinLoadable, savePinnedIds] = useLoadableSet(updatePinnedAgentIds$);
   const savingPinned = pinLoadable.state === "loading";
   const createNewChat = useSet(createNewChatThread$);
+  const navigateToChat = useSet(navigateToChat$);
   const setExpanded = useSet(setSidebarExpanded$);
   const pageSignal = useGet(pageSignal$);
 
@@ -80,7 +82,14 @@ export function PinnedAgentListSection() {
   };
 
   const onNewChat = (agentId: string | null) => {
-    detach(createNewChat(agentId, pageSignal), Reason.DomCallback);
+    detach(
+      createNewChat(agentId, pageSignal).then((threadId) => {
+        if (threadId) {
+          navigateToChat(threadId);
+        }
+      }),
+      Reason.DomCallback,
+    );
     setExpanded(false);
   };
   const defaultAgentId = useLastResolved(defaultAgentId$);

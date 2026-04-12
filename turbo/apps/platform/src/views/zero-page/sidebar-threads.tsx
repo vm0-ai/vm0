@@ -221,8 +221,16 @@ function ChatThreadsTitle() {
 
   const agentDisplayName = useLastResolved(currentChatAgentDisplayName$);
   const newChatDisabled = creatingLoadable.state === "loading";
+  const navigateToChat = useSet(navigateToChat$);
   const onNewChat = () => {
-    detach(createNewChat(currentChatAgentId, pageSignal), Reason.DomCallback);
+    detach(
+      createNewChat(currentChatAgentId, pageSignal).then((threadId) => {
+        if (threadId) {
+          navigateToChat(threadId);
+        }
+      }),
+      Reason.DomCallback,
+    );
     setExpanded(false);
   };
 

@@ -590,7 +590,7 @@ describe("zero-chat signals", () => {
   });
 
   describe("createNewChatThread$", () => {
-    it("should navigate to first thread when it has no title and matches agent", async () => {
+    it("should return first thread id when it has no title and matches agent", async () => {
       server.use(
         http.get("*/api/zero/chat-threads", () => {
           return HttpResponse.json({
@@ -616,10 +616,13 @@ describe("zero-chat signals", () => {
 
       await setup();
 
-      await context.store.set(createNewChatThread$, null, context.signal);
+      const threadId = await context.store.set(
+        createNewChatThread$,
+        null,
+        context.signal,
+      );
 
-      // Should navigate to the first empty thread, not the second
-      expect(context.store.get(currentChatThreadId$)).toBe("empty-thread-1");
+      expect(threadId).toBe("empty-thread-1");
     });
 
     it("should create new thread when first thread has a title", async () => {
@@ -652,11 +655,13 @@ describe("zero-chat signals", () => {
 
       await setup();
 
-      await context.store.set(createNewChatThread$, null, context.signal);
-
-      expect(context.store.get(currentChatThreadId$)).toBe(
-        "new-thread-created",
+      const threadId = await context.store.set(
+        createNewChatThread$,
+        null,
+        context.signal,
       );
+
+      expect(threadId).toBe("new-thread-created");
     });
 
     it("should create new thread when thread list is empty", async () => {
@@ -679,14 +684,16 @@ describe("zero-chat signals", () => {
 
       await setup();
 
-      await context.store.set(createNewChatThread$, null, context.signal);
-
-      expect(context.store.get(currentChatThreadId$)).toBe(
-        "new-thread-empty-list",
+      const threadId = await context.store.set(
+        createNewChatThread$,
+        null,
+        context.signal,
       );
+
+      expect(threadId).toBe("new-thread-empty-list");
     });
 
-    it("should not navigate to second thread when first has a title", async () => {
+    it("should not reuse second thread when first has a title", async () => {
       server.use(
         http.get("*/api/zero/chat-threads", () => {
           return HttpResponse.json({
@@ -723,10 +730,13 @@ describe("zero-chat signals", () => {
 
       await setup();
 
-      await context.store.set(createNewChatThread$, null, context.signal);
+      const threadId = await context.store.set(
+        createNewChatThread$,
+        null,
+        context.signal,
+      );
 
-      // Should NOT navigate to empty-second-thread; should create brand new
-      expect(context.store.get(currentChatThreadId$)).toBe("brand-new-thread");
+      expect(threadId).toBe("brand-new-thread");
     });
   });
 

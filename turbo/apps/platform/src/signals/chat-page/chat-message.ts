@@ -669,20 +669,26 @@ export const startNewZeroSession$ = command(({ set }) => {
   set(internalLocalMessages$, []);
 });
 
-const internalCreatingPromise$ = state<Promise<void> | undefined>(undefined);
+const internalCreatingPromise$ = state<Promise<string | null> | undefined>(
+  undefined,
+);
 
 export const creatingNewSession$ = computed(async (get) => {
   await get(internalCreatingPromise$);
 });
 
 const internalCreateNewChatSession$ = command(
-  async ({ get, set }, agentComposeId: string | null, _signal: AbortSignal) => {
+  async (
+    { get, set },
+    agentComposeId: string | null,
+    _signal: AbortSignal,
+  ): Promise<string | null> => {
     const resolvedComposeId =
       agentComposeId ?? (await get(zeroOnboardingStatus$)).defaultAgentId;
 
     if (!resolvedComposeId) {
       toast.error("No agent available for new chat session");
-      return;
+      return null;
     }
 
     // A1: If currently viewing an empty thread for this agent, reuse it
@@ -694,10 +700,10 @@ const internalCreateNewChatSession$ = command(
       currentThread.unsavedRuns.length === 0
     ) {
       set(startNewZeroSession$);
-      return;
+      return currentThread.id;
     }
 
-    // A2: If the first thread in the list is empty, navigate to it
+    // A2: If the first thread in the list is empty, reuse it
     const threads = await get(chatThreads$);
     const firstThread = threads[0];
     if (
@@ -705,8 +711,7 @@ const internalCreateNewChatSession$ = command(
       firstThread.agentId === resolvedComposeId
     ) {
       set(startNewZeroSession$);
-      set(navigateToChat$, firstThread.id);
-      return;
+      return firstThread.id;
     }
 
     // Fallback: create a new thread
@@ -716,12 +721,16 @@ const internalCreateNewChatSession$ = command(
     const thread = await createChatThread(createClient, resolvedComposeId);
 
     set(reloadChatThreads$);
-    set(navigateToChat$, thread.id);
+    return thread.id;
   },
 );
 
 export const createNewChatThread$ = command(
-  ({ set }, agentComposeId: string | null, signal: AbortSignal) => {
+  async (
+    { set },
+    agentComposeId: string | null,
+    signal: AbortSignal,
+  ): Promise<string | null> => {
     const promise = set(internalCreateNewChatSession$, agentComposeId, signal);
     set(internalCreatingPromise$, promise);
     return promise;

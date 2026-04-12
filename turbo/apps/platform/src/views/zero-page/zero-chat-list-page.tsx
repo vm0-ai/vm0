@@ -105,7 +105,11 @@ export function ZeroChatListPage() {
 
   const onNewChat = () => {
     detach(
-      createNewChat(currentChatAgentId ?? null, pageSignal),
+      createNewChat(currentChatAgentId ?? null, pageSignal).then((threadId) => {
+        if (threadId) {
+          navigateToChat(threadId);
+        }
+      }),
       Reason.DomCallback,
     );
   };
