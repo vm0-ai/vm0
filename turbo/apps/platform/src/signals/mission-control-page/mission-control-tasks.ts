@@ -60,6 +60,7 @@ function createTaskSignals(initialTask: TaskItem): TaskSignals {
   const closeTask$ = command(({ set }) => {
     set(internalOpen$, false);
     set(internalPanelEntry$, null);
+    set(internalInputFocused$, false);
   });
 
   // Mutable ref so openTask$ always reads the latest API data

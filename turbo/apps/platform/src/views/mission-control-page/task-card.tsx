@@ -119,13 +119,9 @@ export function TaskCard({ taskSignals }: { taskSignals: TaskSignals }) {
         role="button"
         tabIndex={0}
         onClick={openOrFocusInput}
-        className={`p-4 cursor-pointer transition-colors focus:outline focus:outline-2 focus:outline-primary ${
-          inputFocused
-            ? "bg-accent"
-            : isOpen
-              ? "bg-accent/50"
-              : "hover:bg-accent/50"
-        }`}
+        className={`p-4 cursor-pointer transition-colors hover:bg-accent/50 focus:outline focus:outline-2 focus:outline-primary ${
+          inputFocused ? "bg-accent" : ""
+        } ${isOpen ? "border-primary" : ""}`}
       >
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center gap-2">
