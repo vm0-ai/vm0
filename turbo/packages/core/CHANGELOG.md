@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.173.0](https://github.com/vm0-ai/vm0/compare/core-v8.172.2...core-v8.173.0) (2026-04-12)
+
+
+### Features
+
+* add feature flag to control sandbox reuse logic ([#8987](https://github.com/vm0-ai/vm0/issues/8987)) ([e77a8a0](https://github.com/vm0-ai/vm0/commit/e77a8a0c2974d91786f11d7119d87ba8fe07a6dd))
+
 ## [8.172.2](https://github.com/vm0-ai/vm0/compare/core-v8.172.1...core-v8.172.2) (2026-04-11)
 
 

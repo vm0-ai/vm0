@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.2](https://github.com/vm0-ai/vm0/compare/guest-download-v0.18.1...guest-download-v0.18.2) (2026-04-12)
+
+
+### Bug Fixes
+
+* **runner:** add cached field to storage manifest for correct cleanup preservation ([#8993](https://github.com/vm0-ai/vm0/issues/8993)) ([d9db456](https://github.com/vm0-ai/vm0/commit/d9db4569ef6f86fdf46063d65a9aad34ca7a6b2a)), closes [#8982](https://github.com/vm0-ai/vm0/issues/8982)
+
 ## [0.18.1](https://github.com/vm0-ai/vm0/compare/guest-download-v0.18.0...guest-download-v0.18.1) (2026-04-10)
 
 

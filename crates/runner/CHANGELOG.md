@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.76.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.75.2...runner-rs-v0.76.0) (2026-04-12)
+
+
+### Features
+
+* add feature flag to control sandbox reuse logic ([#8987](https://github.com/vm0-ai/vm0/issues/8987)) ([e77a8a0](https://github.com/vm0-ai/vm0/commit/e77a8a0c2974d91786f11d7119d87ba8fe07a6dd))
+
+
+### Bug Fixes
+
+* **runner:** add cached field to storage manifest for correct cleanup preservation ([#8993](https://github.com/vm0-ai/vm0/issues/8993)) ([d9db456](https://github.com/vm0-ai/vm0/commit/d9db4569ef6f86fdf46063d65a9aad34ca7a6b2a)), closes [#8982](https://github.com/vm0-ai/vm0/issues/8982)
+* **runner:** add upper-bound validation for profile resource limits ([#9015](https://github.com/vm0-ai/vm0/issues/9015)) ([d774aca](https://github.com/vm0-ai/vm0/commit/d774aca8bb1fa71635fdb15692378e634edc2d10)), closes [#9009](https://github.com/vm0-ai/vm0/issues/9009)
+
 ## [0.75.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.75.1...runner-rs-v0.75.2) (2026-04-11)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.1](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.9.0...vsock-guest-v0.9.1) (2026-04-12)
+
+
+### Bug Fixes
+
+* **vsock-guest:** race stdout reading against child exit with drain deadline ([#9014](https://github.com/vm0-ai/vm0/issues/9014)) ([5454140](https://github.com/vm0-ai/vm0/commit/5454140d4617defd741fb2bd536a63d1987c9c3e))
+
 ## [0.9.0](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.8.1...vsock-guest-v0.9.0) (2026-04-09)
 
 

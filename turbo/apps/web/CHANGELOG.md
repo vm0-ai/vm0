@@ -1,5 +1,29 @@
 # Changelog
 
+## [12.219.0](https://github.com/vm0-ai/vm0/compare/web-v12.218.0...web-v12.219.0) (2026-04-12)
+
+
+### Features
+
+* **mission-control:** replace selected task state with dom focus navigation ([#9022](https://github.com/vm0-ai/vm0/issues/9022)) ([4f68649](https://github.com/vm0-ai/vm0/commit/4f686490e888049940cbd3160ed3af77138dc7b1))
+* **web:** add use-case page — turn a Slack idea into an interactive prototype with v0 ([#8965](https://github.com/vm0-ai/vm0/issues/8965)) ([742459e](https://github.com/vm0-ai/vm0/commit/742459e0134432c6393e4dac195a5866ea87cdb4))
+
+
+### Bug Fixes
+
+* focus run summary generation on results rather than user input ([#8972](https://github.com/vm0-ai/vm0/issues/8972)) ([60744b6](https://github.com/vm0-ai/vm0/commit/60744b6152e65c9349aaf317a9fd784e1e8fbc31))
+* remove 'Platform' text from auth page logo ([#8912](https://github.com/vm0-ai/vm0/issues/8912)) ([2de3a0e](https://github.com/vm0-ai/vm0/commit/2de3a0e93149bafec515238193ed9fe793aa9e88))
+* **web:** filter axios errors from termly resource-blocker in sentry ([#8988](https://github.com/vm0-ai/vm0/issues/8988)) ([af94389](https://github.com/vm0-ai/vm0/commit/af94389088df0e7cf26ef6007e190be9cce49f13)), closes [#8983](https://github.com/vm0-ai/vm0/issues/8983)
+* **web:** handle non-slug-conflict clerk 422 in onboarding setup ([#8990](https://github.com/vm0-ai/vm0/issues/8990)) ([2cb2392](https://github.com/vm0-ai/vm0/commit/2cb2392cfbbea09f6b01d9fa3c1f1083bef1a024)), closes [#8986](https://github.com/vm0-ai/vm0/issues/8986)
+* **web:** handle strapi errors gracefully in blog data-source ([#8989](https://github.com/vm0-ai/vm0/issues/8989)) ([5cc96d8](https://github.com/vm0-ai/vm0/commit/5cc96d8a099f14bdc716b664e718f3a077c407d6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.173.0
+
 ## [12.218.0](https://github.com/vm0-ai/vm0/compare/web-v12.217.2...web-v12.218.0) (2026-04-11)
 
 

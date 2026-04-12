@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.21.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.21.0...guest-agent-v0.21.1) (2026-04-12)
+
+
+### Bug Fixes
+
+* **guest-agent:** add stdout drain deadline to prevent hanging on orphaned pipes ([#8980](https://github.com/vm0-ai/vm0/issues/8980)) ([8c7b8f1](https://github.com/vm0-ai/vm0/commit/8c7b8f15ea74fd95542568f15f6f0d0f7a9a0812))
+* **guest-agent:** terminate heartbeat loop after consecutive failures ([#8992](https://github.com/vm0-ai/vm0/issues/8992)) ([1c6b658](https://github.com/vm0-ai/vm0/commit/1c6b6588ed2c6e0ccebd2ed30dd28ff09a2ed873))
+
 ## [0.21.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.20.0...guest-agent-v0.21.0) (2026-04-10)
 
 

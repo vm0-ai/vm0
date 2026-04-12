@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.220.0](https://github.com/vm0-ai/vm0/compare/app-v0.219.0...app-v0.220.0) (2026-04-12)
+
+
+### Features
+
+* add cross-platform keyboard shortcut system ([#8966](https://github.com/vm0-ai/vm0/issues/8966)) ([7d5698c](https://github.com/vm0-ai/vm0/commit/7d5698cd86ff0b498ce5d40c2ba0f1ccac380c3d))
+* **mission-control:** replace selected task state with dom focus navigation ([#9022](https://github.com/vm0-ai/vm0/issues/9022)) ([4f68649](https://github.com/vm0-ai/vm0/commit/4f686490e888049940cbd3160ed3af77138dc7b1))
+
+
+### Bug Fixes
+
+* **platform:** log detached promise rejections instead of rethrowing ([#8991](https://github.com/vm0-ai/vm0/issues/8991)) ([57d5470](https://github.com/vm0-ai/vm0/commit/57d5470f398849337d2f60b31c2500a4bb216c6e)), closes [#8984](https://github.com/vm0-ai/vm0/issues/8984)
+* **web:** filter axios errors from termly resource-blocker in sentry ([#8988](https://github.com/vm0-ai/vm0/issues/8988)) ([af94389](https://github.com/vm0-ai/vm0/commit/af94389088df0e7cf26ef6007e190be9cce49f13)), closes [#8983](https://github.com/vm0-ai/vm0/issues/8983)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.173.0
+
 ## [0.219.0](https://github.com/vm0-ai/vm0/compare/app-v0.218.0...app-v0.219.0) (2026-04-11)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.1](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.17.0...guest-mock-claude-v0.17.1) (2026-04-12)
+
+
+### Bug Fixes
+
+* **guest-agent:** add stdout drain deadline to prevent hanging on orphaned pipes ([#8980](https://github.com/vm0-ai/vm0/issues/8980)) ([8c7b8f1](https://github.com/vm0-ai/vm0/commit/8c7b8f15ea74fd95542568f15f6f0d0f7a9a0812))
+
 ## [0.17.0](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.16.1...guest-mock-claude-v0.17.0) (2026-04-09)
 
 
