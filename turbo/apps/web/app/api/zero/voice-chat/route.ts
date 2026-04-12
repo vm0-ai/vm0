@@ -15,7 +15,7 @@ import { loadFeatureSwitchOverrides } from "../../../../src/lib/zero/user/featur
 const bodySchema = z
   .object({
     agentId: z.string().min(1),
-    mode: z.enum(["chat", "meeting"]).default("chat"),
+    mode: z.enum(["chat", "meeting", "mission_control"]).default("chat"),
     prompt: z.string().min(1).optional(),
   })
   .refine(
