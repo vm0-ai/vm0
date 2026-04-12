@@ -29,6 +29,7 @@ export type TaskPanelEntry =
 export interface TaskSignals {
   task: TaskItem;
   open$: Computed<boolean>;
+  openedAt$: Computed<number | null>;
   panelEntry$: Computed<TaskPanelEntry | null>;
   openTask$: Command<Promise<void>, [AbortSignal]>;
   closeTask$: Command<void, []>;
@@ -46,10 +47,15 @@ export interface TaskSignals {
 
 function createTaskSignals(initialTask: TaskItem): TaskSignals {
   const internalOpen$ = state(false);
+  const internalOpenedAt$ = state<number | null>(null);
   const internalPanelEntry$ = state<TaskPanelEntry | null>(null);
 
   const open$ = computed((get) => {
     return get(internalOpen$);
+  });
+
+  const openedAt$ = computed((get) => {
+    return get(internalOpenedAt$);
   });
 
   const panelEntry$ = computed((get) => {
@@ -58,6 +64,7 @@ function createTaskSignals(initialTask: TaskItem): TaskSignals {
 
   const closeTask$ = command(({ set }) => {
     set(internalOpen$, false);
+    set(internalOpenedAt$, null);
     set(internalPanelEntry$, null);
     set(internalInputFocused$, false);
   });
@@ -77,6 +84,7 @@ function createTaskSignals(initialTask: TaskItem): TaskSignals {
         const draft = set(ensureDraft$, task.chatThreadId);
         const signals = createChatThreadSignals(task.chatThreadId, draft);
         set(internalPanelEntry$, { kind: "chat", signals });
+        set(internalOpenedAt$, Date.now());
         set(internalOpen$, true);
         await set(signals.loadMessages$, signal);
         return;
@@ -85,6 +93,7 @@ function createTaskSignals(initialTask: TaskItem): TaskSignals {
       if (task.latestRunId) {
         const signals = createActivitySignals(task.latestRunId);
         set(internalPanelEntry$, { kind: "activity", signals });
+        set(internalOpenedAt$, Date.now());
         set(internalOpen$, true);
         await set(signals.startPolling$, signal);
       }
@@ -134,6 +143,7 @@ function createTaskSignals(initialTask: TaskItem): TaskSignals {
       taskRef.value = t;
     },
     open$,
+    openedAt$,
     panelEntry$,
     openTask$,
     closeTask$,
@@ -267,9 +277,13 @@ export const closeAndFocusNextInput$ = command(
  */
 export const visibleTasks$ = computed(async (get) => {
   const all = await get(taskSignals$);
-  const open = all.filter((ts) => {
-    return get(ts.open$);
-  });
+  const open = all
+    .filter((ts) => {
+      return get(ts.open$);
+    })
+    .sort((a, b) => {
+      return (get(a.openedAt$) ?? 0) - (get(b.openedAt$) ?? 0);
+    });
 
   const maximizedId = get(maximizedTaskId$);
   if (maximizedId !== null) {
