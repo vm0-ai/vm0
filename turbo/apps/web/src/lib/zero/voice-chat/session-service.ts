@@ -12,6 +12,8 @@ import {
 } from "../integration-prompt";
 import { conflict, notFound, badRequest, forbidden } from "../../shared/errors";
 import { logger } from "../../shared/logger";
+import { generateCallbackSecret, getApiUrl } from "../../infra/callback";
+import type { VoiceChatCallbackPayload } from "../../infra/callback/callback-payloads";
 
 const log = logger("zero:voice-chat:session");
 
@@ -173,12 +175,23 @@ export async function dispatchSlowBrain(
     });
   }
 
+  const callbackPayload: VoiceChatCallbackPayload = {
+    sessionId: session.id,
+  };
+
   const result = await createZeroRun({
     userId,
     agentId,
     prompt,
     appendSystemPrompt,
     triggerSource: "voice-chat",
+    callbacks: [
+      {
+        url: `${getApiUrl()}/api/internal/callbacks/voice-chat`,
+        secret: generateCallbackSecret(),
+        payload: callbackPayload,
+      },
+    ],
   });
 
   // Update session with runId

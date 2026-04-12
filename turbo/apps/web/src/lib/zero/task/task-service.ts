@@ -10,6 +10,7 @@ import { agentSessions } from "../../../db/schema/agent-session";
 import { agentRuns } from "../../../db/schema/agent-run";
 import { agentComposeVersions } from "../../../db/schema/agent-compose";
 import { zeroRuns } from "../../../db/schema/zero-run";
+import { voiceChatSessions } from "../../../db/schema/voice-chat";
 import { zeroAgents } from "../../../db/schema/zero-agent";
 
 const TASKS_LIMIT = 25;
@@ -41,14 +42,21 @@ export async function listTasks(
 ): Promise<TaskItem[]> {
   const db = globalThis.services.db;
 
-  const [chatTasks, scheduleTasks, slackTasks, emailTasks, inFlightEmailTasks] =
-    await Promise.all([
-      listChatTasks(db, userId, orgId, agentId),
-      listScheduleTasks(db, userId, orgId, agentId),
-      listSlackTasks(db, userId, orgId, agentId),
-      listEmailTasks(db, userId, orgId, agentId),
-      listInFlightEmailTasks(db, userId, orgId, agentId),
-    ]);
+  const [
+    chatTasks,
+    scheduleTasks,
+    slackTasks,
+    emailTasks,
+    inFlightEmailTasks,
+    voiceChatTasks,
+  ] = await Promise.all([
+    listChatTasks(db, userId, orgId, agentId),
+    listScheduleTasks(db, userId, orgId, agentId),
+    listSlackTasks(db, userId, orgId, agentId),
+    listEmailTasks(db, userId, orgId, agentId),
+    listInFlightEmailTasks(db, userId, orgId, agentId),
+    listVoiceChatTasks(db, userId, orgId, agentId),
+  ]);
 
   const allTasks = [
     ...chatTasks,
@@ -56,6 +64,7 @@ export async function listTasks(
     ...slackTasks,
     ...emailTasks,
     ...inFlightEmailTasks,
+    ...voiceChatTasks,
   ];
 
   // Batch-fetch run info for all tasks with a latestRunId
@@ -125,6 +134,9 @@ export async function listTasks(
         break;
       case "email":
         task.emailThreadSessionId = raw.id;
+        break;
+      case "voice_chat":
+        task.voiceChatSessionId = raw.id;
         break;
     }
 
@@ -416,4 +428,55 @@ async function listInFlightEmailTasks(
       sourceUpdatedAt: r.createdAt,
     };
   });
+}
+
+/**
+ * Return the most recent voice-chat session for this user/org as a single task.
+ * At most one voice-chat task is shown regardless of how many sessions exist.
+ */
+async function listVoiceChatTasks(
+  db: DB,
+  userId: string,
+  orgId: string,
+  agentId?: string,
+): Promise<RawTask[]> {
+  const conditions = [
+    eq(voiceChatSessions.userId, userId),
+    eq(voiceChatSessions.orgId, orgId),
+  ];
+  if (agentId) conditions.push(eq(voiceChatSessions.agentId, agentId));
+
+  const rows = await db
+    .select({
+      id: voiceChatSessions.id,
+      agentId: voiceChatSessions.agentId,
+      agentName: zeroAgents.name,
+      agentDisplayName: zeroAgents.displayName,
+      agentAvatarUrl: zeroAgents.avatarUrl,
+      runId: voiceChatSessions.runId,
+      createdAt: voiceChatSessions.createdAt,
+    })
+    .from(voiceChatSessions)
+    .innerJoin(zeroAgents, eq(voiceChatSessions.agentId, zeroAgents.id))
+    .where(and(...conditions))
+    .orderBy(desc(voiceChatSessions.createdAt))
+    .limit(1);
+
+  return rows
+    .filter((r): r is typeof r & { agentId: string } => r.agentId !== null)
+    .map((r) => {
+      return {
+        id: r.id,
+        type: "voice_chat" as const,
+        title: null,
+        agent: {
+          id: r.agentId,
+          name: r.agentName,
+          displayName: r.agentDisplayName,
+          avatarUrl: r.agentAvatarUrl,
+        },
+        latestRunId: r.runId,
+        sourceUpdatedAt: r.createdAt,
+      };
+    });
 }

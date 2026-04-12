@@ -78,6 +78,10 @@ export interface ChatCallbackPayload {
   agentId: string;
 }
 
+export interface VoiceChatCallbackPayload {
+  sessionId: string;
+}
+
 export interface PhoneCallbackPayload {
   callId: string;
   userId: string;
@@ -95,4 +99,5 @@ export type CallbackPayload =
   | ScheduleCronCallbackPayload
   | GitHubIssuesCallbackPayload
   | ChatCallbackPayload
-  | PhoneCallbackPayload;
+  | PhoneCallbackPayload
+  | VoiceChatCallbackPayload;
