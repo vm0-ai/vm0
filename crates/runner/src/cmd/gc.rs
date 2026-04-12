@@ -225,6 +225,9 @@ fn probe_lock(path: &Path) -> LockProbe {
 
 /// Like `next_entry()`, but logs a warning and returns `None` on I/O error
 /// instead of propagating — suitable for best-effort scans like GC.
+///
+/// Returning `None` terminates a `while let Some(entry)` loop, so an error
+/// stops iteration for the current directory (remaining entries are skipped).
 async fn next_entry_warn(
     entries: &mut tokio::fs::ReadDir,
     label: &str,
