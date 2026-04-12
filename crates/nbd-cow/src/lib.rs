@@ -155,10 +155,13 @@ impl NbdCowDevice {
                             handle.abort();
                         }
                         if ebusy_count > MAX_EBUSY_RETRIES {
+                            device_pool.lock().await.discard(device_index);
                             return Err(error::NbdCowError::NoFreeDevice);
                         }
-                        // Device is owned by another process — don't release
-                        // to pool. Background scan will rediscover if it frees.
+                        // Device is owned by another process — stop tracking
+                        // without cooldown. Background scan will rediscover
+                        // if it frees.
+                        device_pool.lock().await.discard(device_index);
                         continue;
                     }
                     Err(e) => {

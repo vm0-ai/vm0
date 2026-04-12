@@ -6,7 +6,7 @@
 //! preventing the "size stuck at 0" flake caused by reusing a device before
 //! the kernel finishes cleanup.
 
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 use std::time::{Duration, Instant};
 
 use crate::error::{NbdCowError, Result};
@@ -57,6 +57,9 @@ pub struct DevicePool {
     max_devices: u32,
     /// Pool configuration.
     config: DevicePoolConfig,
+    /// Indices returned by `acquire()` but not yet `release()`d or `discard()`ed.
+    /// Prevents background scans from rediscovering devices that are in use.
+    in_flight: HashSet<u32>,
 }
 
 impl DevicePool {
@@ -75,6 +78,7 @@ impl DevicePool {
             pending: tokio::task::JoinSet::new(),
             max_devices,
             config,
+            in_flight: HashSet::new(),
         }
     }
 
@@ -123,6 +127,7 @@ impl DevicePool {
 
         // Tier 1: instant pop from ready queue
         if let Some(index) = self.ready.pop_front() {
+            self.in_flight.insert(index);
             self.maybe_replenish();
             return Ok(index);
         }
@@ -131,6 +136,7 @@ impl DevicePool {
         while let Some(result) = self.pending.join_next().await {
             match result {
                 Ok(Ok(index)) => {
+                    self.in_flight.insert(index);
                     self.maybe_replenish();
                     return Ok(index);
                 }
@@ -147,6 +153,7 @@ impl DevicePool {
                 NbdCowError::Io(std::io::Error::other(format!("scan task panicked: {e}")))
             })??;
 
+        self.in_flight.insert(index);
         self.maybe_replenish();
         Ok(index)
     }
@@ -159,11 +166,21 @@ impl DevicePool {
         if !self.active {
             return;
         }
+        self.in_flight.remove(&index);
         self.cooldown.push_back(CooldownSlot {
             index,
             released_at: Instant::now(),
         });
         self.maybe_replenish();
+    }
+
+    /// Stop tracking an in-flight index without returning it to the pool.
+    ///
+    /// Used when `connect_device` fails with EBUSY — the device belongs to
+    /// another process and should not enter cooldown. Background scans will
+    /// rediscover it later if it becomes free.
+    pub fn discard(&mut self, index: u32) {
+        self.in_flight.remove(&index);
     }
 
     /// Clean up the pool: cancel pending tasks and clear queues.
@@ -173,6 +190,7 @@ impl DevicePool {
         while self.pending.join_next().await.is_some() {}
         self.ready.clear();
         self.cooldown.clear();
+        self.in_flight.clear();
         tracing::info!("device pool cleanup complete");
     }
 
@@ -204,7 +222,7 @@ impl DevicePool {
         while let Some(Ok(result)) = self.pending.try_join_next() {
             match result {
                 Ok(index) => {
-                    if !self.ready.contains(&index) {
+                    if !self.ready.contains(&index) && !self.in_flight.contains(&index) {
                         self.ready.push_back(index);
                     }
                 }
@@ -235,7 +253,7 @@ impl DevicePool {
         }
     }
 
-    /// Collect all indices currently tracked by the pool (ready + cooldown)
+    /// Collect all indices currently tracked by the pool (ready + cooldown + in-flight)
     /// to exclude from background scanning. Prevents duplicate indices in
     /// the ready queue from concurrent scan tasks.
     fn tracked_indices(&self) -> Vec<u32> {
@@ -243,6 +261,7 @@ impl DevicePool {
             .iter()
             .copied()
             .chain(self.cooldown.iter().map(|s| s.index))
+            .chain(self.in_flight.iter().copied())
             .collect()
     }
 }
