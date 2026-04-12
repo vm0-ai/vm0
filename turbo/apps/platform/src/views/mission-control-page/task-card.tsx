@@ -94,9 +94,9 @@ export function TaskCard({ taskSignals }: { taskSignals: TaskSignals }) {
     }
   };
 
-  const clickOrEnter = () => {
+  const openOrFocusInput = () => {
     if (isOpen) {
-      closeTask();
+      focusInput();
     } else {
       detach(
         openTask(pageSignal).then(() => {
@@ -110,7 +110,7 @@ export function TaskCard({ taskSignals }: { taskSignals: TaskSignals }) {
   return (
     <Shortcut
       binding={{
-        enter: clickOrEnter,
+        enter: openOrFocusInput,
         " ": toggle,
       }}
     >
@@ -118,7 +118,7 @@ export function TaskCard({ taskSignals }: { taskSignals: TaskSignals }) {
         ref={setCardRef}
         role="button"
         tabIndex={0}
-        onClick={clickOrEnter}
+        onClick={openOrFocusInput}
         className={`p-4 cursor-pointer transition-colors focus:outline focus:outline-2 focus:outline-primary ${
           inputFocused
             ? "bg-accent"

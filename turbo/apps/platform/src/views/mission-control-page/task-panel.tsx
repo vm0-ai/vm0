@@ -25,7 +25,7 @@ export function TaskPanel() {
   const entries = useLastResolved(visibleTasks$) ?? [];
 
   return (
-    <div className="flex flex-1 min-h-0">
+    <div className="flex h-full min-h-0">
       {entries.flatMap((ts, index) => {
         const taskId = ts.task.id;
         const elements = [];
@@ -35,7 +35,7 @@ export function TaskPanel() {
           );
         }
         elements.push(
-          <div key={taskId} className="flex-1 min-w-0">
+          <div key={taskId} className="flex-1 min-w-0 h-full">
             <TaskPanelCard taskSignals={ts} />
           </div>,
         );
@@ -127,7 +127,7 @@ function TaskPanelCard({ taskSignals }: { taskSignals: TaskSignals }) {
           </button>
         </div>
       </div>
-      <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+      <div className="flex flex-col flex-1 min-h-0 overflow-auto">
         <TaskPanelContent taskSignals={taskSignals} />
       </div>
     </div>
