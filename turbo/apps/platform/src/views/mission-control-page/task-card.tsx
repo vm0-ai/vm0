@@ -4,15 +4,9 @@ import {
   IconCalendar,
   IconBrandSlack,
   IconMail,
-  IconCircleCheck,
-  IconClock,
-  IconPlayerPlay,
-  IconCircleX,
-  IconClockExclamation,
-  IconBan,
 } from "@tabler/icons-react";
 import { Card, Shortcut } from "@vm0/ui";
-import type { TaskItem, TaskType, RunStatus } from "@vm0/core";
+import type { TaskItem, TaskType } from "@vm0/core";
 import type { TaskSignals } from "../../signals/mission-control-page/mission-control-tasks.ts";
 import { StatusBadge } from "../zero-page/components/log-views/status-badge.tsx";
 import { AvatarFromUrl } from "../zero-page/zero-sidebar-shared.tsx";
@@ -179,42 +173,4 @@ export function TaskTypeIcon({ task }: { task: TaskItem }) {
       className={`${config.iconClassName} shrink-0`}
     />
   );
-}
-
-function getStatusIconConfig(status: RunStatus): {
-  icon: typeof IconCircleCheck;
-  iconClassName: string;
-} {
-  switch (status) {
-    case "queued": {
-      return { icon: IconClock, iconClassName: "text-gray-400" };
-    }
-    case "pending": {
-      return { icon: IconClock, iconClassName: "text-yellow-600" };
-    }
-    case "running": {
-      return { icon: IconPlayerPlay, iconClassName: "text-sky-600" };
-    }
-    case "completed": {
-      return { icon: IconCircleCheck, iconClassName: "text-green-600" };
-    }
-    case "failed": {
-      return { icon: IconCircleX, iconClassName: "text-red-600" };
-    }
-    case "timeout": {
-      return { icon: IconClockExclamation, iconClassName: "text-orange-600" };
-    }
-    case "cancelled": {
-      return { icon: IconBan, iconClassName: "text-gray-600" };
-    }
-  }
-}
-
-export function TaskStatusIcon({ task }: { task: TaskItem }) {
-  if (!task.status) {
-    return null;
-  }
-  const config = getStatusIconConfig(task.status);
-  const Icon = config.icon;
-  return <Icon size={12} className={`${config.iconClassName} shrink-0`} />;
 }

@@ -4,7 +4,6 @@ import {
   IconArrowsMaximize,
   IconArrowsMinimize,
 } from "@tabler/icons-react";
-import { Group, Panel, Separator } from "react-resizable-panels";
 import { processShortcut } from "@vm0/ui";
 import {
   visibleTasks$,
@@ -20,29 +19,29 @@ import {
 import { ZeroChatThreadPageInner } from "../zero-page/zero-chat-thread-page.tsx";
 import { AvatarFromUrl } from "../zero-page/zero-sidebar-shared.tsx";
 import { ActivityPanelContent } from "./activity-panel-content.tsx";
-import { TaskTypeIcon, TaskStatusIcon } from "./task-card.tsx";
+import { TaskTypeIcon } from "./task-card.tsx";
 
 export function TaskPanel() {
   const entries = useLastResolved(visibleTasks$) ?? [];
 
   return (
-    <Group orientation="horizontal" id="mc-tasks" className="flex-1 min-h-0">
+    <div className="flex flex-1 min-h-0">
       {entries.flatMap((ts, index) => {
         const taskId = ts.task.id;
         const elements = [];
         if (index > 0) {
           elements.push(
-            <Separator key={`sep-${taskId}`} className="w-px bg-border" />,
+            <div key={`sep-${taskId}`} className="w-px bg-border shrink-0" />,
           );
         }
         elements.push(
-          <Panel key={taskId} id={`task-${taskId}`} minSize="60%">
+          <div key={taskId} className="flex-1 min-w-0">
             <TaskPanelCard taskSignals={ts} />
-          </Panel>,
+          </div>,
         );
         return elements;
       })}
-    </Group>
+    </div>
   );
 }
 
@@ -102,7 +101,6 @@ function TaskPanelCard({ taskSignals }: { taskSignals: TaskSignals }) {
       <div className="shrink-0 flex items-center justify-between gap-2 px-4 py-2 border-b bg-muted/30">
         <TaskPanelTitle taskSignals={taskSignals} />
         <div className="flex items-center gap-0.5 shrink-0">
-          <TaskStatusIcon task={taskSignals.task} />
           <button
             type="button"
             onClick={() => {
