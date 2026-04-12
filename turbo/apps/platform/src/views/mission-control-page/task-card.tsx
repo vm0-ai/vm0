@@ -76,13 +76,7 @@ function formatRelativeTime(iso: string): string {
   return `${diffDay}d ago`;
 }
 
-export function TaskCard({
-  taskSignals,
-  isSelected,
-}: {
-  taskSignals: TaskSignals;
-  isSelected: boolean;
-}) {
+export function TaskCard({ taskSignals }: { taskSignals: TaskSignals }) {
   const openTask = useSet(taskSignals.openTask$);
   const pageSignal = useGet(pageSignal$);
   const isOpen = useGet(taskSignals.open$);
@@ -91,7 +85,14 @@ export function TaskCard({
 
   const closeTask = useSet(taskSignals.closeTask$);
 
-  const onClick = () => {
+  const config = getTaskTypeConfig(task.type);
+  const TypeIcon = config.icon;
+
+  const focusInput = useSet(taskSignals.focusInput$);
+  const setCardRef = useSet(taskSignals.setCardRef$);
+  const inputFocused = useGet(taskSignals.inputFocused$);
+
+  const toggle = () => {
     if (isOpen) {
       closeTask();
     } else {
@@ -99,77 +100,69 @@ export function TaskCard({
     }
   };
 
-  const config = getTaskTypeConfig(task.type);
-  const TypeIcon = config.icon;
-
-  const focusInput = useSet(taskSignals.focusInput$);
+  const clickOrEnter = () => {
+    if (isOpen) {
+      closeTask();
+    } else {
+      detach(
+        openTask(pageSignal).then(() => {
+          focusInput();
+        }),
+        Reason.DomCallback,
+      );
+    }
+  };
 
   return (
     <Shortcut
       binding={{
-        enter: () => {
-          if (isOpen) {
-            focusInput();
-          }
-        },
-        " ": () => {
-          onClick();
-        },
+        enter: clickOrEnter,
+        " ": toggle,
       }}
     >
       <Card
-        ref={(el) => {
-          if (isSelected && el) {
-            el.scrollIntoView({ block: "nearest" });
-          }
-        }}
+        ref={setCardRef}
         role="button"
         tabIndex={0}
-        onClick={onClick}
-        className={`p-4 cursor-pointer transition-colors ${
-          isOpen ? "bg-accent" : ""
-        } ${isSelected ? "ring-2 ring-primary" : ""} ${
-          !isOpen ? "hover:bg-accent/50" : ""
+        onClick={clickOrEnter}
+        className={`p-4 cursor-pointer transition-colors focus:outline focus:outline-2 focus:outline-primary ${
+          inputFocused
+            ? "bg-accent"
+            : isOpen
+              ? "bg-accent/50"
+              : "hover:bg-accent/50"
         }`}
       >
-        <div className="flex items-start gap-3">
-          <div className="flex flex-col items-center shrink-0 gap-1">
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-center gap-2">
             <AvatarFromUrl
               avatarUrl={task.agent.avatarUrl}
               alt={task.agent.displayName ?? task.agent.name}
-              className="h-8 w-8 rounded-full object-cover object-top"
+              className="h-5 w-5 rounded-full object-cover object-top"
             />
-            <span className="text-[10px] text-muted-foreground truncate max-w-[4rem] leading-tight">
+            <span className="text-xs font-medium truncate">
               {task.agent.displayName ?? task.agent.name}
             </span>
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <TypeIcon
-                size={14}
-                stroke={1.5}
-                className={config.iconClassName}
-              />
-              <span className="text-sm font-medium truncate">
-                {task.title ?? task.agent.displayName ?? task.agent.name}
-              </span>
-              {task.status && (
-                <div className="ml-auto shrink-0">
-                  <StatusBadge status={task.status} zeroStyle />
-                </div>
-              )}
-            </div>
-            {task.summary && (
-              <p className="text-xs text-muted-foreground mt-1 line-clamp-3">
-                {task.summary}
-              </p>
+            {task.status && (
+              <div className="ml-auto shrink-0">
+                <StatusBadge status={task.status} zeroStyle />
+              </div>
             )}
-            <div className="flex justify-end mt-1">
-              <span className="text-xs text-muted-foreground">
-                {formatRelativeTime(task.updatedAt)}
-              </span>
-            </div>
           </div>
+          <div className="flex items-center gap-1.5">
+            <TypeIcon size={14} stroke={1.5} className={config.iconClassName} />
+            <span className="text-sm font-medium truncate">
+              {task.title ?? task.agent.displayName ?? task.agent.name}
+            </span>
+          </div>
+          {task.summary && (
+            <p className="text-xs text-muted-foreground line-clamp-2">
+              {task.summary}
+            </p>
+          )}
+          <span className="text-xs text-muted-foreground">
+            {formatRelativeTime(task.updatedAt)}
+          </span>
         </div>
       </Card>
     </Shortcut>

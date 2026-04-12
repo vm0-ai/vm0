@@ -1,7 +1,6 @@
-import { useGet, useLastLoadable } from "ccstate-react";
+import { useLastLoadable } from "ccstate-react";
 import { Skeleton, Card } from "@vm0/ui";
 import { taskSignals$ } from "../../signals/mission-control-page/mission-control-tasks.ts";
-import { selectedTaskId$ } from "../../signals/mission-control-page/mission-control.ts";
 import { TaskCard } from "./task-card.tsx";
 
 function TaskListSkeleton() {
@@ -39,8 +38,6 @@ export function TaskList() {
         : "Failed to load tasks"
       : null;
 
-  const selectedId = useGet(selectedTaskId$);
-
   if (loading && tasks.length === 0) {
     return <TaskListSkeleton />;
   }
@@ -60,13 +57,7 @@ export function TaskList() {
   return (
     <div className="flex flex-col gap-2 mt-2">
       {tasks.map((ts) => {
-        return (
-          <TaskCard
-            key={ts.task.id}
-            taskSignals={ts}
-            isSelected={ts.task.id === selectedId}
-          />
-        );
+        return <TaskCard key={ts.task.id} taskSignals={ts} />;
       })}
     </div>
   );

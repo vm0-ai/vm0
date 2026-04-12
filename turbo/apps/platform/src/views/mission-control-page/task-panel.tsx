@@ -8,9 +8,11 @@ import { Group, Panel, Separator } from "react-resizable-panels";
 import { processShortcut } from "@vm0/ui";
 import {
   visibleTasks$,
+  closeAndFocusNextInput$,
   type TaskSignals,
   type TaskPanelEntry,
 } from "../../signals/mission-control-page/mission-control-tasks.ts";
+import { detach, Reason } from "../../signals/utils.ts";
 import {
   maximizedTaskId$,
   toggleMaximizeTask$,
@@ -47,6 +49,10 @@ export function TaskPanel() {
 function TaskPanelCard({ taskSignals }: { taskSignals: TaskSignals }) {
   const closeTask = useSet(taskSignals.closeTask$);
   const toggleMaximize = useSet(toggleMaximizeTask$);
+  const focusCard = useSet(taskSignals.focusCard$);
+  const scrollCardIntoView = useSet(taskSignals.scrollCardIntoView$);
+  const setInputFocused = useSet(taskSignals.setInputFocused$);
+  const closeAndFocusNext = useSet(closeAndFocusNextInput$);
   const maximizedId = useGet(maximizedTaskId$);
 
   const taskId = taskSignals.task.id;
@@ -55,11 +61,38 @@ function TaskPanelCard({ taskSignals }: { taskSignals: TaskSignals }) {
   return (
     <div
       className="flex flex-col h-full min-h-0"
+      onFocus={(e) => {
+        if (e.target instanceof HTMLTextAreaElement) {
+          scrollCardIntoView();
+          setInputFocused(true);
+        }
+      }}
+      onBlur={(e) => {
+        if (e.target instanceof HTMLTextAreaElement) {
+          setInputFocused(false);
+        }
+      }}
       onKeyDown={(e) => {
+        if (
+          e.key === "d" &&
+          e.ctrlKey &&
+          !e.metaKey &&
+          !e.shiftKey &&
+          !e.altKey &&
+          e.target instanceof HTMLTextAreaElement &&
+          e.target.value === ""
+        ) {
+          e.preventDefault();
+          detach(closeAndFocusNext(taskId), Reason.DomCallback);
+          return;
+        }
         processShortcut(
           {
             "mod+shift+enter": () => {
               toggleMaximize(taskId);
+            },
+            escape: () => {
+              focusCard();
             },
           },
           e,

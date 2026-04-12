@@ -1,78 +1,82 @@
-import { command, computed, state } from "ccstate";
+import { command, state } from "ccstate";
 import { toggleTaskList$ } from "./mission-control-panels.ts";
-import { taskSignals$, setupTasksLoop$ } from "./mission-control-tasks.ts";
+import { setupTasksLoop$ } from "./mission-control-tasks.ts";
 import { setupGlobalShortcut } from "../../lib/setup-global-shortcut.ts";
+import { onRef } from "../utils.ts";
 
 // ---------------------------------------------------------------------------
-// Selection — id-based
+// Task list container ref
 // ---------------------------------------------------------------------------
 
-const internalSelectedTaskId$ = state<string | null>(null);
+const internalTaskListRef$ = state<HTMLElement | null>(null);
 
-export const selectedTaskId$ = computed((get) => {
-  return get(internalSelectedTaskId$);
-});
-
-const selectPrevTask$ = command(async ({ get, set }, signal: AbortSignal) => {
-  const tasks = await get(taskSignals$);
-  signal.throwIfAborted();
-
-  if (tasks.length === 0) {
-    return;
-  }
-
-  const currentId = get(internalSelectedTaskId$);
-  const currentIndex = tasks.findIndex((ts) => {
-    return ts.task.id === currentId;
-  });
-
-  if (currentIndex <= 0) {
-    set(internalSelectedTaskId$, tasks[0].task.id);
-  } else {
-    set(internalSelectedTaskId$, tasks[currentIndex - 1].task.id);
-  }
-});
-
-const selectNextTask$ = command(async ({ get, set }, signal: AbortSignal) => {
-  const tasks = await get(taskSignals$);
-  signal.throwIfAborted();
-
-  if (tasks.length === 0) {
-    return;
-  }
-
-  const currentId = get(internalSelectedTaskId$);
-  const currentIndex = tasks.findIndex((ts) => {
-    return ts.task.id === currentId;
-  });
-
-  if (currentIndex === -1 || currentIndex >= tasks.length - 1) {
-    set(internalSelectedTaskId$, tasks[tasks.length - 1].task.id);
-  } else {
-    set(internalSelectedTaskId$, tasks[currentIndex + 1].task.id);
-  }
-});
-
-const toggleSelectedTask$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const tasks = await get(taskSignals$);
-    signal.throwIfAborted();
-
-    const selectedId = get(internalSelectedTaskId$);
-    const ts = tasks.find((t) => {
-      return t.task.id === selectedId;
+export const setTaskListRef$ = onRef(
+  command(({ set }, el: HTMLElement, signal: AbortSignal) => {
+    signal.addEventListener("abort", () => {
+      set(internalTaskListRef$, null);
     });
-    if (!ts) {
-      return;
-    }
-
-    if (get(ts.open$)) {
-      set(ts.closeTask$);
-    } else {
-      await set(ts.openTask$, signal);
-    }
-  },
+    set(internalTaskListRef$, el);
+  }),
 );
+
+// ---------------------------------------------------------------------------
+// DOM-based task list navigation
+// ---------------------------------------------------------------------------
+
+function isFullyVisible(card: Element, container: Element): boolean {
+  const cr = card.getBoundingClientRect();
+  const vr = container.getBoundingClientRect();
+  return cr.top >= vr.top && cr.bottom <= vr.bottom;
+}
+
+const navigateTaskList$ = command(({ get }, direction: "next" | "prev") => {
+  const container = get(internalTaskListRef$);
+  if (!container) {
+    return;
+  }
+
+  const cards = Array.from(
+    container.querySelectorAll<HTMLElement>("[tabindex='0']"),
+  );
+  if (cards.length === 0) {
+    return;
+  }
+
+  const active = document.activeElement;
+  const currentIndex = active ? cards.indexOf(active as HTMLElement) : -1;
+
+  let target: HTMLElement | undefined;
+
+  if (currentIndex !== -1) {
+    // Already focused on a card — move to sibling, clamp at boundary
+    if (direction === "next" && currentIndex < cards.length - 1) {
+      target = cards[currentIndex + 1];
+    } else if (direction === "prev" && currentIndex > 0) {
+      target = cards[currentIndex - 1];
+    }
+  } else {
+    // No card focused — pick first/last fully visible
+    if (direction === "next") {
+      target = cards.find((c) => {
+        return isFullyVisible(c, container);
+      });
+    } else {
+      for (let i = cards.length - 1; i >= 0; i--) {
+        if (isFullyVisible(cards[i], container)) {
+          target = cards[i];
+          break;
+        }
+      }
+    }
+    // Fallback: first or last card if none fully visible
+    target ??= direction === "next" ? cards[0] : cards[cards.length - 1];
+  }
+
+  if (target) {
+    target.focus();
+    target.scrollIntoView({ block: "nearest" });
+  }
+});
 
 // ---------------------------------------------------------------------------
 // Keyboard shortcuts
@@ -82,14 +86,11 @@ export const setupMissionControlKeyboard$ = command(
   ({ set }, signal: AbortSignal) => {
     setupGlobalShortcut(
       {
-        k: async () => {
-          await set(selectPrevTask$, signal);
+        k: () => {
+          set(navigateTaskList$, "prev");
         },
-        j: async () => {
-          await set(selectNextTask$, signal);
-        },
-        " ": async () => {
-          await set(toggleSelectedTask$, signal);
+        j: () => {
+          set(navigateTaskList$, "next");
         },
         "mod+b": () => {
           set(toggleTaskList$);

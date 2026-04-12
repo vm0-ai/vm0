@@ -2,6 +2,7 @@ import { command, computed, state, type Command, type Computed } from "ccstate";
 import { tasksContract, type TaskItem } from "@vm0/core";
 import { zeroClient$ } from "../api-client";
 import { accept } from "../../lib/accept";
+import { onRef } from "../utils.ts";
 import {
   createChatThreadSignals,
   ensureDraft$,
@@ -33,6 +34,11 @@ export interface TaskSignals {
   openTask$: Command<Promise<void>, [AbortSignal]>;
   closeTask$: Command<void, []>;
   focusInput$: Command<void, []>;
+  setCardRef$: Command<void | (() => void), [HTMLElement | null]>;
+  focusCard$: Command<void, []>;
+  scrollCardIntoView$: Command<void, []>;
+  inputFocused$: Computed<boolean>;
+  setInputFocused$: Command<void, [boolean]>;
 }
 
 // ---------------------------------------------------------------------------
@@ -92,6 +98,34 @@ function createTaskSignals(initialTask: TaskItem): TaskSignals {
     }
   });
 
+  const internalCardRef$ = state<HTMLElement | null>(null);
+  const setCardRef$ = onRef(
+    command(({ set }, el: HTMLElement, signal: AbortSignal) => {
+      signal.addEventListener("abort", () => {
+        set(internalCardRef$, null);
+      });
+      set(internalCardRef$, el);
+    }),
+  );
+  const scrollCardIntoView$ = command(({ get }) => {
+    const el = get(internalCardRef$);
+    if (el) {
+      el.scrollIntoView({ block: "nearest" });
+    }
+  });
+  const focusCard$ = command(({ get, set }) => {
+    set(scrollCardIntoView$);
+    get(internalCardRef$)?.focus();
+  });
+
+  const internalInputFocused$ = state(false);
+  const inputFocused$ = computed((get) => {
+    return get(internalInputFocused$);
+  });
+  const setInputFocused$ = command(({ set }, focused: boolean) => {
+    set(internalInputFocused$, focused);
+  });
+
   return {
     get task() {
       return taskRef.value;
@@ -104,6 +138,11 @@ function createTaskSignals(initialTask: TaskItem): TaskSignals {
     openTask$,
     closeTask$,
     focusInput$,
+    setCardRef$,
+    focusCard$,
+    scrollCardIntoView$,
+    inputFocused$,
+    setInputFocused$,
   };
 }
 
@@ -191,6 +230,32 @@ export const taskSignals$ = computed(async (get) => {
       return ts !== undefined;
     });
 });
+
+// ---------------------------------------------------------------------------
+// Cross-task commands
+// ---------------------------------------------------------------------------
+
+export const closeAndFocusNextInput$ = command(
+  async ({ get, set }, taskId: string) => {
+    const tasks = await get(taskSignals$);
+    const currentIndex = tasks.findIndex((ts) => {
+      return ts.task.id === taskId;
+    });
+    if (currentIndex === -1) {
+      return;
+    }
+
+    set(tasks[currentIndex].closeTask$);
+
+    for (let i = 1; i < tasks.length; i++) {
+      const idx = (currentIndex + i) % tasks.length;
+      if (get(tasks[idx].open$)) {
+        set(tasks[idx].focusInput$);
+        return;
+      }
+    }
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Derived computeds

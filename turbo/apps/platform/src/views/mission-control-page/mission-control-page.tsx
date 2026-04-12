@@ -11,6 +11,7 @@ import {
   setTaskListPanelRef$,
   setTaskListCollapsed$,
 } from "../../signals/mission-control-page/mission-control-panels.ts";
+import { setTaskListRef$ } from "../../signals/mission-control-page/mission-control.ts";
 import { TaskList } from "./task-list.tsx";
 import { TaskPanel } from "./task-panel.tsx";
 import { CollapsedTaskListBar } from "./collapsed-task-list-bar.tsx";
@@ -20,6 +21,7 @@ export function MissionControlPage() {
   const collapsed = useGet(taskListCollapsed$);
   const setCollapsed = useSet(setTaskListCollapsed$);
   const setPanelRef = useSet(setTaskListPanelRef$);
+  const setListRef = useSet(setTaskListRef$);
 
   const { defaultLayout, onLayoutChanged } = useDefaultLayout({
     id: "mc-main",
@@ -56,7 +58,7 @@ export function MissionControlPage() {
                 Active tasks across all channels
               </p>
             </div>
-            <div className="flex-1 overflow-auto px-6 pb-6">
+            <div ref={setListRef} className="flex-1 overflow-auto px-6 pb-6">
               <TaskList />
             </div>
           </div>
