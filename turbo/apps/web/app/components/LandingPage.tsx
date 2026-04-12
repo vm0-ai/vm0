@@ -390,16 +390,17 @@ function SlackCard() {
         <div className="flex w-full flex-col justify-between gap-4 p-10 md:w-[421px] md:shrink-0">
           <div className="flex flex-col gap-4">
             <h3 className="text-2xl font-medium leading-8 text-[hsl(var(--foreground))]">
-              Natively integrated into Slack, just @
+              Ask in Slack, get answers from all your tools.
             </h3>
             <p className="text-base leading-6 text-[hsl(var(--muted-foreground))]">
-              One question. All your work, summarized. Keep your team in sync.
-              No dashboards needed.
+              @Zero in any channel. It pulls from your calendar, email, Linear,
+              GitHub — and replies with a summary your team can actually use. No
+              tab-switching, no dashboards.
             </p>
           </div>
           <div className="flex items-center gap-2">
             <span className="rounded-lg bg-[hsl(var(--gray-100))] px-4 py-1.5 text-sm font-medium text-[hsl(var(--muted-foreground))]">
-              Operations
+              Slack
             </span>
             <span className="rounded-lg bg-[hsl(var(--gray-100))] px-4 py-1.5 text-sm font-medium text-[hsl(var(--muted-foreground))]">
               Team Sync
@@ -568,74 +569,100 @@ function SyncedToolsCard() {
 
 /* ── App UI carousel for "Teammate" card ── */
 
-const WEB_UI_SLIDES = [
-  "/assets/mockup/web-ui-1.png",
-  "/assets/mockup/web-ui-2.png",
-  "/assets/mockup/web-ui-3.png",
+const WEB_UI_CASES = [
+  { label: "Summarize my work week", src: "/assets/mockup/web-ui-1.png" },
+  { label: "Find and email leads", src: "/assets/mockup/web-ui-2.png" },
+  { label: "Triage Sentry errors", src: "/assets/mockup/web-ui-3.png" },
 ];
 
 function AppMockupCarousel() {
   const [active, setActive] = useState(0);
   const ref = useInView();
-  // Sidebar is ~26% of 855px width
-  const sidebarPct = "26%";
 
   return (
-    <div ref={ref} className="relative w-full overflow-hidden rounded-t-xl">
-      {/* Full images — instant switch, no animation */}
-      {WEB_UI_SLIDES.map((src, i) => {
-        return (
-          <Image
-            key={src}
-            alt=""
-            src={src}
-            width={855}
-            height={600}
-            className={`webui-pop w-full select-none ${i === active ? "relative" : "absolute inset-0 opacity-0"}`}
-            draggable={false}
+    <div className="flex flex-col">
+      {/* Tabs */}
+      <div className="flex items-center gap-1 px-2 sm:px-6">
+        {WEB_UI_CASES.map((c, i) => {
+          const isActive = i === active;
+          return (
+            <button
+              key={c.label}
+              type="button"
+              onClick={() => {
+                return setActive(i);
+              }}
+              className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors sm:text-sm ${
+                isActive
+                  ? "bg-white/20 text-white"
+                  : "text-white/60 hover:text-white/90"
+              }`}
+            >
+              {c.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Screenshot */}
+      <div
+        ref={ref}
+        className="relative mt-2 w-full overflow-hidden rounded-t-xl sm:mt-3"
+      >
+        {WEB_UI_CASES.map((c, i) => {
+          return (
+            <Image
+              key={c.src}
+              alt={c.label}
+              src={c.src}
+              width={855}
+              height={600}
+              className={`webui-pop w-full select-none ${i === active ? "relative" : "absolute inset-0 opacity-0"}`}
+              draggable={false}
+            />
+          );
+        })}
+        {/* Clickable hotspots over sidebar chat items */}
+        <div className="absolute inset-0 z-20">
+          <button
+            type="button"
+            aria-label="Daily Report"
+            onClick={() => {
+              return setActive(0);
+            }}
+            className="absolute cursor-pointer"
+            style={{ left: "1%", top: "49%", width: "19%", height: "5%" }}
           />
-        );
-      })}
-      {/* Clickable hotspots over sidebar chat items */}
-      <div className="absolute inset-0 z-20">
-        <button
-          type="button"
-          aria-label="Daily Report"
-          onClick={() => {
-            return setActive(0);
-          }}
-          className="absolute cursor-pointer"
-          style={{ left: "1%", top: "49%", width: "19%", height: "5%" }}
-        />
-        <button
-          type="button"
-          aria-label="Email Leads"
-          onClick={() => {
-            return setActive(1);
-          }}
-          className="absolute cursor-pointer"
-          style={{ left: "1%", top: "54%", width: "19%", height: "5%" }}
-        />
-        <button
-          type="button"
-          aria-label="Sentry Report"
-          onClick={() => {
-            return setActive(2);
-          }}
-          className="absolute cursor-pointer"
-          style={{ left: "1%", top: "59%", width: "19%", height: "5%" }}
+          <button
+            type="button"
+            aria-label="Email Leads"
+            onClick={() => {
+              return setActive(1);
+            }}
+            className="absolute cursor-pointer"
+            style={{ left: "1%", top: "54%", width: "19%", height: "5%" }}
+          />
+          <button
+            type="button"
+            aria-label="Sentry Report"
+            onClick={() => {
+              return setActive(2);
+            }}
+            className="absolute cursor-pointer"
+            style={{ left: "1%", top: "59%", width: "19%", height: "5%" }}
+          />
+        </div>
+        {/* Hand-drawn arrow pointer */}
+        <Image
+          src="/assets/mockup/arrow-pointer.svg"
+          alt=""
+          width={80}
+          height={80}
+          className="pointer-events-none absolute z-20 w-[10%]"
+          style={{ left: "18%", top: "40%", transform: "none" }}
+          draggable={false}
         />
       </div>
-      {/* Hand-drawn arrow pointer */}
-      <Image
-        src="/assets/mockup/arrow-pointer.svg"
-        alt=""
-        width={80}
-        height={80}
-        className="pointer-events-none absolute z-20 w-[10%]"
-        style={{ left: "18%", top: "40%", transform: "none" }}
-        draggable={false}
-      />
     </div>
   );
 }
@@ -645,13 +672,12 @@ function TeammateCard() {
     <div className="overflow-hidden rounded-[20px] bg-white">
       <div className="flex flex-col gap-4 p-8 sm:p-10">
         <h3 className="text-2xl font-medium leading-8 text-[hsl(var(--foreground))]">
-          Your team, extended.
+          A teammate that reads, thinks, and delivers.
         </h3>
         <p className="text-sm leading-6 text-[hsl(var(--muted-foreground))] sm:text-base">
-          Zero is not a tool. It&apos;s the one using them. Zero comes with a
-          team of specialized sub-agents you configure yourself. They work
-          inside your existing tools, understand your context, and ship real
-          output.
+          &ldquo;Summarize my week from Calendar, Linear, and Slack.&rdquo; Zero
+          pulls context from your tools, connects the dots, and hands you a
+          finished report. Like briefing a colleague, except it takes seconds.
         </p>
       </div>
       <div className="bg-[#d58341] px-2 pb-0 pt-3 sm:px-6 sm:pt-6">
@@ -1370,20 +1396,25 @@ export default function LandingPage() {
                   for real work.
                 </h1>
                 <p className="max-w-2xl text-[16px] leading-7 text-[hsl(var(--muted-foreground))] sm:text-[18px]">
-                  For individuals and teams. AI handles the busywork, context,
-                  and noise. <span className="font-bold">Securely</span>. You
-                  focus on creating.
+                  Zero connects to 100+ tools and does the work. Reports,
+                  triage, outreach, research. In Slack or on the web.
                 </p>
               </div>
             </div>
 
-            {/* CTA Button — hero large */}
-            <div className="relative">
+            {/* CTA Buttons — hero large */}
+            <div className="relative flex items-center gap-4">
               <CtaButton
                 isSignedIn={isSignedIn ?? false}
                 ctaText={ctaText}
                 ctaHref={ctaHref}
               />
+              <NextLink
+                href="/use-cases"
+                className="inline-flex items-center justify-center rounded-xl px-8 py-3.5 text-base font-medium text-[hsl(var(--foreground))] transition-all border border-[hsl(var(--gray-300))] hover:bg-[hsl(var(--gray-100))]"
+              >
+                See use cases
+              </NextLink>
             </div>
           </div>
         </section>
@@ -1392,7 +1423,7 @@ export default function LandingPage() {
         <section className="px-5 py-10 sm:px-6 sm:py-12 md:py-16">
           <div className="mx-auto max-w-[1152px]">
             <div className="reveal">
-              <SectionHeading>Zero works for you and your team</SectionHeading>
+              <SectionHeading>What Zero actually does for you</SectionHeading>
             </div>
 
             <div className="mt-12 space-y-8 sm:mt-16">
@@ -1405,6 +1436,31 @@ export default function LandingPage() {
               <div className="reveal">
                 <SyncedToolsCard />
               </div>
+
+              {/* More use cases link */}
+              <div className="reveal flex justify-center pt-4">
+                <NextLink
+                  href="/use-cases"
+                  className="inline-flex items-center gap-2 rounded-xl px-6 py-3 text-base font-medium text-[hsl(var(--foreground))] transition-all border border-[hsl(var(--gray-300))] hover:bg-[hsl(var(--gray-100))]"
+                >
+                  Explore more use cases
+                  <svg
+                    width="16"
+                    height="16"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M3.33 8h9.34M8.67 4l4 4-4 4"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </NextLink>
+              </div>
             </div>
           </div>
         </section>
@@ -1415,11 +1471,11 @@ export default function LandingPage() {
             {/* Title block */}
             <div className="reveal flex flex-col items-center gap-4 rounded-[32px] px-2 pb-2 pt-6">
               <h2 className="landing-heading text-center text-[28px] font-medium leading-[1.2] tracking-[-0.88px] text-[hsl(var(--foreground))] sm:text-[34px] md:text-[40px]">
-                100+ prebuilt connectors
+                Works with 100+ tools you already use
               </h2>
               <p className="max-w-[856px] text-center text-base leading-6 text-[hsl(var(--muted-foreground))]">
-                100+ prebuilt connectors, making it easier for AI to help you
-                securely manage tasks across platforms and services.
+                Slack, GitHub, Gmail, Notion, Linear, Sentry, and more. Zero
+                connects to your stack so it can act, not just answer.
               </p>
             </div>
 
@@ -1526,21 +1582,20 @@ export default function LandingPage() {
           <div className="mx-auto max-w-[1152px]">
             <div className="reveal">
               <h2 className="landing-heading text-center text-[28px] font-medium leading-[1.2] tracking-[-0.88px] text-[hsl(var(--foreground))] sm:text-[34px] md:text-[40px]">
-                Zero is built with carefully designed security features
+                Your data stays yours
               </h2>
             </div>
 
             <div className="reveal mt-14 flex flex-col gap-6 md:flex-row">
               {/* Permission management card */}
               <div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-[20px] bg-white">
-                <div className="flex flex-col gap-4 p-10">
+                <div className="flex flex-1 flex-col gap-4 p-10">
                   <h3 className="text-2xl font-medium leading-8 text-[hsl(var(--foreground))]">
-                    Permission management
+                    You control what Zero can access
                   </h3>
                   <p className="text-base leading-6 text-[hsl(var(--muted-foreground))]">
-                    You decide what Zero can see and do. Set granular read and
-                    write permissions for each connected tool, so your agents
-                    only access what they need.
+                    Set read and write permissions per tool, per agent. Zero
+                    only touches what you explicitly allow.
                   </p>
                 </div>
                 <div className="flex h-[300px] items-center justify-center rounded-b-[20px] bg-[hsl(var(--gray-100))] px-10">
@@ -1560,11 +1615,11 @@ export default function LandingPage() {
               <div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-[20px] bg-white">
                 <div className="flex flex-col gap-4 p-10">
                   <h3 className="text-2xl font-medium leading-8 text-[hsl(var(--foreground))]">
-                    Secure by design
+                    Isolated execution, every time
                   </h3>
                   <p className="min-h-[72px] text-base leading-6 text-[hsl(var(--muted-foreground))]">
-                    Every action runs in an isolated microVM. Your credentials
-                    are never exposed. Millisecond execution. And yes, it{"'"}s{" "}
+                    Every task runs in its own microVM. Credentials never leave
+                    the sandbox. Fully auditable. And{" "}
                     <a
                       href="https://github.com/vm0-ai/vm0"
                       target="_blank"
@@ -1590,7 +1645,7 @@ export default function LandingPage() {
             {/* Section title */}
             <div className="reveal">
               <h2 className="landing-heading max-w-[740px] text-center text-[28px] font-medium leading-[1.2] tracking-[-0.88px] text-[hsl(var(--foreground))] sm:text-[34px] md:text-[40px]">
-                Agent intelligence is what makes Zero feel human-like
+                Gets smarter the more you use it
               </h2>
             </div>
 
@@ -1607,10 +1662,12 @@ export default function LandingPage() {
                     className="h-[22px] w-[24px] landing-icon-invert"
                   />
                   <h3 className="text-2xl font-medium leading-8 text-[hsl(var(--foreground))]">
-                    Persistent memory
+                    Remembers your context
                   </h3>
                   <p className="text-base leading-6 text-[hsl(var(--muted-foreground))]">
-                    {`Zero remembers context across conversations, past decisions, user preferences, project context, and behavioral corrections. You don't need to re-explain things every session.`}
+                    Past decisions, project context, your preferences — Zero
+                    carries it all forward. No re-explaining, no lost context
+                    between sessions.
                   </p>
                 </div>
                 <MemoryMockupArea />
@@ -1642,9 +1699,9 @@ export default function LandingPage() {
             <div className="reveal grid w-full gap-8 sm:grid-cols-3">
               {[
                 {
-                  title: "Delegation to specialized agents",
+                  title: "Specialized sub-agents",
                   description:
-                    "Zero spins up sub-agents that act like dedicated teammates, a researcher Lisa, a designer Lucy, each with their own expertise, working in parallel on your behalf.",
+                    "Create agents for specific jobs. One for research, one for triage, one for outreach. They work in parallel so you don't.",
                 },
                 {
                   title: "Tool orchestration",
@@ -1652,9 +1709,9 @@ export default function LandingPage() {
                     "Zero selects and chains the right tools from 100+ available integrations. You describe the goal; Zero figures out the steps.",
                 },
                 {
-                  title: "Identity resolution",
+                  title: "Knows who you are",
                   description:
-                    'When you say "my PRs" or "assign to me," Zero queries GitHub/Slack/Linear to figure out who you are, no assumptions, no hardcoded names.',
+                    '"My PRs," "assign to me." Zero resolves your identity across GitHub, Slack, and Linear automatically. No setup required.',
                 },
               ].map((item) => {
                 return (
@@ -1678,11 +1735,11 @@ export default function LandingPage() {
             <div className="flex flex-col items-start gap-6 rounded-[20px] bg-white px-6 py-8 sm:flex-row sm:items-center sm:justify-between sm:gap-8 sm:px-10">
               <div className="flex flex-col gap-2">
                 <h3 className="landing-heading text-[22px] font-medium leading-[1.3] tracking-[-0.5px] text-[hsl(var(--foreground))] sm:text-[26px]">
-                  People lead. Agents deliver. Together, they ship.
+                  You decide what matters. Zero handles the rest.
                 </h3>
                 <p className="text-base leading-6 text-[hsl(var(--muted-foreground))]">
-                  When humans and AI agents work as one team, your output
-                  multiplies.
+                  Start free. Use it in Slack or on the web. No credit card
+                  required.
                 </p>
               </div>
               <CtaButton
