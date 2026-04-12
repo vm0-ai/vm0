@@ -8,6 +8,7 @@ import { cancelRun } from "../zero-run-cancel";
 import {
   buildVoiceChatQuickPrepPrompt,
   buildVoiceChatMeetingPrompt,
+  buildVoiceChatMissionControlPrompt,
 } from "../integration-prompt";
 import { conflict, notFound, badRequest, forbidden } from "../../shared/errors";
 import { logger } from "../../shared/logger";
@@ -22,7 +23,7 @@ export async function createSession(
   orgId: string,
   userId: string,
   agentId: string,
-  options?: { mode?: "chat" | "meeting"; prompt?: string },
+  options?: { mode?: "chat" | "meeting" | "mission_control"; prompt?: string },
 ) {
   const db = globalThis.services.db;
 
@@ -142,15 +143,18 @@ export async function dispatchSlowBrain(
   orgId: string,
   userId: string,
   agentId: string,
-  options?: { mode?: "chat" | "meeting"; prompt?: string },
+  options?: { mode?: "chat" | "meeting" | "mission_control"; prompt?: string },
 ) {
   const db = globalThis.services.db;
   const meetingPrompt =
     options?.mode === "meeting" ? options.prompt : undefined;
 
-  const appendSystemPrompt = meetingPrompt
-    ? buildVoiceChatMeetingPrompt(session.id, meetingPrompt)
-    : buildVoiceChatQuickPrepPrompt(session.id);
+  const appendSystemPrompt =
+    options?.mode === "mission_control"
+      ? buildVoiceChatMissionControlPrompt(session.id)
+      : meetingPrompt
+        ? buildVoiceChatMeetingPrompt(session.id, meetingPrompt)
+        : buildVoiceChatQuickPrepPrompt(session.id);
 
   const prompt = meetingPrompt
     ? `You are Zero's slow-brain for voice-chat session ${session.id}. A meeting has been requested. Read the shared context for the meeting prompt and begin preparation.`
