@@ -146,6 +146,24 @@ const VERCEL: ConnectorRef = {
   icon: "/assets/connectors/vercel.svg",
 };
 
+const INTERCOM: ConnectorRef = {
+  id: "intercom",
+  label: "Intercom",
+  icon: "/assets/connectors/intercom.svg",
+};
+
+const GOOGLE_SHEETS: ConnectorRef = {
+  id: "google-sheets",
+  label: "Google Sheets",
+  icon: "/assets/connectors/google-sheets.svg",
+};
+
+const AIRTABLE: ConnectorRef = {
+  id: "airtable",
+  label: "Airtable",
+  icon: "/assets/connectors/airtable.svg",
+};
+
 // ---------------------------------------------------------------------------
 // Full use cases
 // ---------------------------------------------------------------------------
@@ -989,6 +1007,497 @@ export const USE_CASES: UseCase[] = [
       "standup-summary",
       "employee-onboarding",
     ],
+  },
+
+  {
+    slug: "pr-deploy-preview",
+    title: "Review any PR's live Vercel preview before you approve",
+    description:
+      "Point Zero at a pull request. It fetches the Vercel preview URL, screenshots the changed pages, and posts a visual summary in the review thread — so you can approve or request changes without leaving GitHub.",
+    color: "#7a9ea8",
+    avatar: {
+      rotation: 2,
+      skin: 3,
+      hairStyle: 1,
+      hairColor: 3,
+      expression: 2,
+      intensity: "d",
+    },
+    roles: ["engineering"],
+    capability: "instant",
+    timeSaved: "~15 min saved",
+    model: "Claude 4 Sonnet",
+    connectors: [VERCEL, GITHUB, SLACK],
+    slackPreview: [
+      {
+        role: "user",
+        name: "Ethan",
+        text: "@Zero review PR #8949 — check the Vercel preview and tell me if there are any visual regressions after the font removal.",
+      },
+      {
+        role: "zero",
+        name: "Zero",
+        text: "Checked the Vercel preview for PR #8949.\n\n✓ Hero section: no layout shift, text renders cleanly\n✓ Mid-page: consistent spacing, fallback font matches weight\n⚠ Footer: link color slightly off — #4a4a4a vs #333 in prod\n\nLighthouse: 96 accessibility · 100 SEO. Safe to merge.",
+      },
+    ],
+    headings: {
+      scenario: "Why visual PR reviews still require manual clicking",
+      prompt: "How to ask Zero to review a Vercel preview before merging",
+      steps: "How Zero fetches, screenshots, and analyzes your PR preview",
+      nextActions:
+        "Approve, request changes, or automate preview checks on every PR",
+      integrations: "Required integrations: Vercel and GitHub",
+      tips: "Best practices for automated PR visual review",
+    },
+    scenario:
+      "A teammate opens a PR that changes UI layout or removes a font. You need to confirm there are no visual regressions before merging, but opening the Vercel preview, navigating to the affected pages, and comparing them against production takes 15 minutes per PR. Multiply that across a busy sprint and visual review becomes the bottleneck that blocks every merge.",
+    promptVariants: [
+      {
+        label: "Detailed",
+        prompt:
+          "@Zero check the Vercel preview for PR #8949. Screenshot the hero, mid-page, and footer. Compare against production and report any visual regressions. Include Lighthouse scores.",
+      },
+      {
+        label: "Quick",
+        prompt: "@Zero any regressions in the PR #8949 Vercel preview?",
+      },
+      {
+        label: "Scheduled",
+        prompt:
+          "@Zero every time a PR is opened on vm0-ai/vm0, fetch the Vercel preview and post a visual summary to the PR thread automatically.",
+      },
+    ],
+    steps: [
+      {
+        title: "Zero finds the preview URL",
+        description:
+          "Zero reads the GitHub PR to find the Vercel preview deployment URL from the PR checks or comments, then fetches the live preview.",
+      },
+      {
+        title: "Screenshots and diff analysis",
+        description:
+          "Zero navigates the key changed pages in the preview, takes screenshots, and compares them against the production deployment to identify layout shifts, color changes, or missing elements.",
+      },
+      {
+        title: "Review summary posted",
+        description:
+          "Zero replies in the Slack thread or GitHub PR with a structured report: what passed, what looks off, and Lighthouse scores. One clear recommendation: safe to merge or needs a fix.",
+      },
+    ],
+    nextActions: [
+      {
+        title: "Approve or request changes",
+        description: "Act on the report without leaving Slack",
+        examplePrompt:
+          "@Zero approve PR #8949 on GitHub with comment: 'Visual review passed, footer color is minor, fine to merge.'",
+      },
+      {
+        title: "Inspect a flagged element",
+        description: "Ask Zero to dig into a specific regression",
+        examplePrompt:
+          "@Zero compare the footer link color between the PR #8949 preview and production. Show me both hex values and which file controls it.",
+      },
+      {
+        title: "Automate on every PR",
+        description: "Run visual checks automatically when PRs open",
+        examplePrompt:
+          "@Zero whenever a new PR is opened on vm0-ai/vm0, post a Vercel preview screenshot summary to the PR thread.",
+      },
+    ],
+    integrations: [
+      {
+        connector: VERCEL,
+        description:
+          "Zero reads preview deployment URLs and screenshots the live preview pages.",
+        required: true,
+      },
+      {
+        connector: GITHUB,
+        description:
+          "Zero reads PR metadata and can post review comments or approvals.",
+        required: true,
+      },
+      {
+        connector: SLACK,
+        description: "Zero posts the visual summary back in your Slack thread.",
+        required: false,
+      },
+    ],
+    tips: [
+      "Specify which pages to screenshot. 'Check the homepage, pricing, and the nav' gets more useful results than a generic scan.",
+      "Ask for a production comparison explicitly. Without it, Zero reports what it sees, not what changed.",
+      "Combine with the Sentry triage use case for a full post-deploy health check: visuals from Vercel, errors from Sentry.",
+    ],
+    relatedSlugs: ["sentry-triage", "file-bugs-from-slack", "build-with-v0"],
+  },
+
+  {
+    slug: "social-engagement-digest",
+    title: "Turn overnight X mentions into a ranked morning brief",
+    description:
+      "Zero monitors your brand's X mentions, quote tweets, and replies overnight, scores the most important interactions, and posts a ranked digest to #marketing every morning — with suggested response drafts for the top items.",
+    color: "#9e8ab0",
+    avatar: {
+      rotation: 4,
+      skin: 2,
+      hairStyle: 3,
+      hairColor: 1,
+      expression: 4,
+      intensity: "m",
+    },
+    roles: ["product"],
+    capability: "scheduled",
+    timeSaved: "~30 min saved",
+    model: "Claude 4 Sonnet",
+    connectors: [X_TWITTER, GOOGLE_SHEETS, SLACK],
+    slackPreview: [
+      {
+        role: "user",
+        name: "Scarlett",
+        text: "@Zero check @vm0_ai mentions from last night and give me the top 5, ranked by reach. Flag any partnership inquiries.",
+      },
+      {
+        role: "zero",
+        name: "Zero",
+        text: "X Mentions Digest — Apr 12\n\n1. @swyx (89k followers): 'Zero is the first agent tool that actually ships work' · 412 likes\n   → Suggested reply saved to Sheets\n2. @leerob: quote-tweet praising the permissions model · 287 likes\n3. Partnership inquiry from @buildspace (DM)\n\nFull report logged to Sheets.",
+      },
+    ],
+    headings: {
+      scenario: "Why monitoring brand mentions wastes marketing mornings",
+      prompt: "How to ask Zero to generate a daily X engagement digest",
+      steps: "How Zero monitors, scores, and briefs your brand's X activity",
+      nextActions:
+        "Reply through Zero, log to Sheets, or route top mentions to KOL outreach",
+      integrations: "Required integrations: X and Google Sheets",
+      tips: "Best practices for automated social media monitoring",
+    },
+    scenario:
+      "Every morning, someone on the marketing team spends 20–30 minutes opening X, searching the brand handle, reading through overnight mentions, and deciding which ones deserve a response. High-reach posts get missed because they came in at 3 AM. Partnership DMs sit unread until afternoon. Zero runs the watch overnight and hands you a ranked, actionable list before you've opened your second tab.",
+    promptVariants: [
+      {
+        label: "Detailed",
+        prompt:
+          "@Zero check @vm0_ai X mentions and DMs from the last 12 hours. Rank by reach. Flag partnership inquiries, tech influencers, and negative sentiment separately. Draft a suggested reply for the top 3. Log everything to our Engagement Tracker sheet.",
+      },
+      {
+        label: "Quick",
+        prompt:
+          "@Zero top 5 @vm0_ai X mentions from last night, ranked by reach.",
+      },
+      {
+        label: "Scheduled",
+        prompt:
+          "@Zero every weekday at 8:30am, check @vm0_ai X mentions from the past 12 hours and post a ranked digest to #marketing-and-community.",
+      },
+    ],
+    steps: [
+      {
+        title: "Zero scans X for brand activity",
+        description:
+          "Zero reads mentions, quote tweets, and DMs for your brand handle from the specified time window, pulling author follower counts and engagement metrics.",
+      },
+      {
+        title: "Ranked and categorized",
+        description:
+          "Zero scores each interaction by reach and intent, separating high-follower mentions, partnership inquiries, and negative sentiment into clear categories.",
+      },
+      {
+        title: "Digest posted and logged",
+        description:
+          "Zero posts a ranked summary to #marketing with suggested reply drafts for the top items, and appends the full data to your Google Sheets engagement tracker for trend analysis.",
+      },
+    ],
+    nextActions: [
+      {
+        title: "Reply through Zero",
+        description: "Respond to top mentions without opening X",
+        examplePrompt:
+          "@Zero reply to @swyx's mention with: 'Thanks for the kind words! We'd love to show you what's coming next — DM us?'",
+      },
+      {
+        title: "Weekly trend report",
+        description: "Pull engagement trends from Sheets",
+        examplePrompt:
+          "@Zero pull our @vm0_ai engagement data from the past 7 days in Sheets and summarize the trend: follower growth, top content types, reply rate.",
+      },
+      {
+        title: "Route to KOL outreach",
+        description: "Turn a high-reach mention into a personalized email",
+        examplePrompt:
+          "@Zero for the @swyx mention, research their X profile and draft a personalized partnership outreach email. Save as Gmail draft.",
+      },
+    ],
+    integrations: [
+      {
+        connector: X_TWITTER,
+        description:
+          "Zero reads brand mentions, quote tweets, and DMs for your X handle.",
+        required: true,
+      },
+      {
+        connector: GOOGLE_SHEETS,
+        description:
+          "Zero logs the full engagement data to a tracker sheet for trend analysis and archiving.",
+        required: false,
+      },
+      {
+        connector: SLACK,
+        description:
+          "Zero posts the ranked digest and suggested replies to your marketing channel.",
+        required: false,
+      },
+    ],
+    tips: [
+      "Tell Zero which accounts to prioritize — 'flag anyone with 10k+ followers' cuts noise immediately.",
+      "Connect Google Sheets early so you build a historical dataset. Weekly trend queries become much more useful after 30 days of data.",
+      "Combine with the KOL outreach use case: when Zero flags a high-reach mention, route it straight into a personalized cold email draft.",
+    ],
+    relatedSlugs: ["kol-cold-outreach", "slack-triage", "standup-summary"],
+  },
+
+  {
+    slug: "interview-loop-scheduler",
+    title: "Book a full interview loop with one Slack message",
+    description:
+      "Tell Zero the candidate's name, role, and panel members. It checks everyone's availability, books the sessions, sends calendar invites, and logs the schedule in Airtable — without a single email thread.",
+    color: "#8a9e80",
+    avatar: {
+      rotation: 1,
+      skin: 4,
+      hairStyle: 5,
+      hairColor: 4,
+      expression: 1,
+      intensity: "m",
+    },
+    roles: ["ops"],
+    capability: "multi-tool",
+    timeSaved: "~40 min saved",
+    model: "Claude 4 Sonnet",
+    connectors: [GOOGLE_CALENDAR, GMAIL, AIRTABLE],
+    slackPreview: [
+      {
+        role: "user",
+        name: "Chenguang",
+        text: "@Zero schedule an interview loop for Jordan Kim (Senior Engineer). Panelists: Ethan, Lancy, Qiqi. 45 min each, sometime this week. Log in Airtable.",
+      },
+      {
+        role: "zero",
+        name: "Zero",
+        text: "Interview loop scheduled for Jordan Kim:\n\n• Ethan — Tue Apr 15, 10:00–10:45 AM\n• Lancy — Tue Apr 15, 11:00–11:45 AM\n• Qiqi — Wed Apr 16, 2:00–2:45 PM\n\n✓ Invites sent to all panelists and Jordan\n✓ Logged in Airtable: Hiring / Senior Engineer pipeline",
+      },
+    ],
+    headings: {
+      scenario:
+        "Why scheduling interview loops takes longer than the interviews themselves",
+      prompt: "How to ask Zero to schedule a full interview panel",
+      steps:
+        "How Zero checks availability, books sessions, and logs the schedule",
+      nextActions:
+        "Send prep notes, collect panel feedback, or draft an offer letter",
+      integrations: "Required integrations: Google Calendar, Gmail, and Airtable",
+      tips: "Best practices for AI-assisted interview scheduling",
+    },
+    scenario:
+      "A promising candidate is ready to move to final interviews. Someone needs to check the availability of three panelists, find a slot that works across all their calendars, send individual calendar invites, email the candidate confirmation, and log the schedule in the hiring tracker. That's 6 separate actions, each requiring a different app. Zero handles the whole sequence from one Slack message.",
+    promptVariants: [
+      {
+        label: "Detailed",
+        prompt:
+          "@Zero schedule an interview loop for Jordan Kim applying for Senior Engineer. Panelists: Ethan (system design, 60 min), Lancy (culture fit, 45 min), Qiqi (coding, 45 min). Earliest slots this week. Send invites and log in Airtable under 'Hiring / Senior Engineer'.",
+      },
+      {
+        label: "Quick",
+        prompt:
+          "@Zero book interview loop for Jordan Kim this week — Ethan, Lancy, Qiqi, 45 min each.",
+      },
+      {
+        label: "On-demand",
+        prompt:
+          "@Zero pull Jordan Kim's interview schedule from Airtable and send them a reminder email with all session details and Zoom links.",
+      },
+    ],
+    steps: [
+      {
+        title: "Zero checks all panelist calendars",
+        description:
+          "Zero reads each interviewer's Google Calendar to find open slots within the requested window, avoiding existing meetings and blocked focus time.",
+      },
+      {
+        title: "Sessions booked and invites sent",
+        description:
+          "Zero creates individual Google Calendar events for each session and sends invites to both the panelist and the candidate, with a context note about the interview focus.",
+      },
+      {
+        title: "Schedule logged in Airtable",
+        description:
+          "Zero appends the full schedule to your hiring pipeline in Airtable, capturing the candidate name, role, panelists, times, and session types for tracking and review.",
+      },
+    ],
+    nextActions: [
+      {
+        title: "Send prep materials",
+        description: "Email the candidate their interview guide",
+        examplePrompt:
+          "@Zero email Jordan Kim with their interview schedule, what to expect in each session, and a link to our engineering handbook.",
+      },
+      {
+        title: "Collect panel feedback",
+        description: "Remind panelists to log feedback after each session",
+        examplePrompt:
+          "@Zero after each interview, send the panelist a Slack DM reminding them to complete the Airtable feedback form for Jordan Kim.",
+      },
+      {
+        title: "Draft an offer letter",
+        description: "Move to offer once all feedback is in",
+        examplePrompt:
+          "@Zero Jordan Kim passed all panels. Draft an offer letter email for the Senior Engineer role and save it as a Gmail draft for Chenguang to review.",
+      },
+    ],
+    integrations: [
+      {
+        connector: GOOGLE_CALENDAR,
+        description:
+          "Zero reads panelist availability and creates calendar events for each session.",
+        required: true,
+      },
+      {
+        connector: GMAIL,
+        description:
+          "Zero sends confirmation emails to the candidate and panelists with session details.",
+        required: true,
+      },
+      {
+        connector: AIRTABLE,
+        description:
+          "Zero logs the interview schedule to your hiring pipeline for visibility and follow-up.",
+        required: false,
+      },
+    ],
+    tips: [
+      "Specify the interview type per panelist ('system design', 'culture fit') so Zero includes context in each calendar invite.",
+      "Set your scheduling window explicitly — 'this week' or 'next Monday–Friday' — to avoid slots too far out.",
+      "Connect Airtable before your first hire so every loop is logged from day one. Retroactive data entry is the one thing Zero can't help with.",
+    ],
+    relatedSlugs: ["employee-onboarding", "standup-summary", "slack-triage"],
+  },
+
+  {
+    slug: "support-to-github",
+    title: "Connect customer support tickets to GitHub issues in seconds",
+    description:
+      "When a customer reports a bug in Intercom, Zero reads the ticket, searches GitHub for a matching open issue, and either links it in the support thread or creates a new one with full context — no copy-pasting, no tab-switching.",
+    color: "#c08890",
+    avatar: {
+      rotation: 3,
+      skin: 1,
+      hairStyle: 2,
+      hairColor: 5,
+      expression: 3,
+      intensity: "l",
+    },
+    roles: ["everyone"],
+    capability: "instant",
+    timeSaved: "Instant",
+    model: "GPT-4o mini",
+    connectors: [INTERCOM, GITHUB, SLACK],
+    slackPreview: [
+      {
+        role: "user",
+        name: "Lancy",
+        text: "@Zero a customer in Intercom just reported the back button in the sidebar isn't working on mobile. Check if we have a GitHub issue and file one if not.",
+      },
+      {
+        role: "zero",
+        name: "Zero",
+        text: "Checked GitHub — no existing issue found.\n\nCreated: #8976 bug: mobile sidebar back button unresponsive\nAssigned to Yuma · Labels: bug, mobile · Priority: High\n\nLinked in the Intercom thread so the customer sees it's being tracked.",
+      },
+    ],
+    headings: {
+      scenario: "Why customer bugs get lost between support and engineering",
+      prompt: "How to link Intercom tickets to GitHub issues with Zero",
+      steps:
+        "How Zero reads the ticket, deduplicates, and creates or links the issue",
+      nextActions:
+        "Update the customer when fixed, or watch Intercom for recurring patterns",
+      integrations: "Required integrations: Intercom and GitHub",
+      tips: "Best practices for bridging support and engineering with Zero",
+    },
+    scenario:
+      "A customer reports a bug in Intercom. The support rep knows it sounds familiar, but checking GitHub means opening a new tab, searching the right repo, and guessing the right keywords. If they can't find it in 30 seconds, they file a duplicate. Engineering closes the duplicates, but the customer never gets a status update. Zero closes this loop: it reads the customer report, searches GitHub, and either links the existing issue or creates a new one with a note back in the Intercom thread.",
+    promptVariants: [
+      {
+        label: "Detailed",
+        prompt:
+          "@Zero new Intercom ticket: customer says the back button in the mobile sidebar doesn't respond. Search GitHub for any matching open issue. If found, link it in the Intercom thread. If not, create a new issue with the customer's description, assign to Yuma, label bug and mobile, priority high.",
+      },
+      {
+        label: "Quick",
+        prompt:
+          "@Zero Intercom ticket: mobile back button broken. Find or file a GitHub issue.",
+      },
+      {
+        label: "Batch",
+        prompt:
+          "@Zero check the last 10 Intercom tickets marked 'bug'. For each, find or create a GitHub issue and post a summary to #bug-report.",
+      },
+    ],
+    steps: [
+      {
+        title: "Zero reads the support ticket",
+        description:
+          "Zero pulls the Intercom conversation and extracts the bug description, affected platform, and any reproduction steps the customer provided.",
+      },
+      {
+        title: "GitHub deduplication check",
+        description:
+          "Zero searches open GitHub issues for matching symptoms. If a match is found, it links the issue in the Intercom thread so the customer knows it's already tracked.",
+      },
+      {
+        title: "New issue created if needed",
+        description:
+          "If no match exists, Zero creates a well-formatted GitHub issue with the customer's description, inferred labels and priority, and links it back in the Intercom thread — keeping both sides in sync.",
+      },
+    ],
+    nextActions: [
+      {
+        title: "Notify the customer when fixed",
+        description: "Close the loop once the GitHub issue is resolved",
+        examplePrompt:
+          "@Zero GitHub issue #8976 was merged. Reply to the linked Intercom thread and tell the customer the fix will ship in the next release.",
+      },
+      {
+        title: "Spot recurring patterns",
+        description: "Find what customers report most often",
+        examplePrompt:
+          "@Zero look at the last 30 Intercom bug tickets and tell me which GitHub issues are most frequently linked. Surface any patterns that suggest a systemic problem.",
+      },
+    ],
+    integrations: [
+      {
+        connector: INTERCOM,
+        description:
+          "Zero reads customer tickets and posts status updates back in the support thread.",
+        required: true,
+      },
+      {
+        connector: GITHUB,
+        description:
+          "Zero searches for existing issues and creates new ones with full context and proper labels.",
+        required: true,
+      },
+      {
+        connector: SLACK,
+        description:
+          "Zero posts a summary to #bug-report whenever a new GitHub issue is created from a support ticket.",
+        required: false,
+      },
+    ],
+    tips: [
+      "Give Zero your default assignee rules — 'mobile bugs go to Yuma, billing bugs go to James' — so issues are routed correctly every time.",
+      "Ask Zero to search with synonyms. 'back button, sidebar navigation, mobile nav' finds more duplicates than an exact phrase match.",
+      "Use the batch variant weekly to catch any tickets handled manually and ensure they all have GitHub issues.",
+    ],
+    relatedSlugs: ["file-bugs-from-slack", "sentry-triage", "slack-triage"],
   },
 ];
 
