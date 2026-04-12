@@ -14,8 +14,11 @@ test("create a new schedule and verify it appears in the list", async ({
     page.getByRole("heading", { name: "Scheduled tasks" }),
   ).toBeVisible({ timeout: 20_000 });
 
-  // Click "Add schedule"
-  await page.getByRole("button", { name: "Add schedule" }).click();
+  // Click "Add schedule" in the page header (the list empty-state may show a second button)
+  await page
+    .getByRole("banner")
+    .getByRole("button", { name: "Add schedule" })
+    .click();
   await expect(page.getByLabel("Prompt")).toBeVisible({ timeout: 10_000 });
 
   // Fill prompt and submit
