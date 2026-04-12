@@ -49,6 +49,7 @@ export async function listTasks(
     emailTasks,
     inFlightEmailTasks,
     voiceChatTasks,
+    agentTasks,
   ] = await Promise.all([
     listChatTasks(db, userId, orgId, agentId),
     listScheduleTasks(db, userId, orgId, agentId),
@@ -56,6 +57,7 @@ export async function listTasks(
     listEmailTasks(db, userId, orgId, agentId),
     listInFlightEmailTasks(db, userId, orgId, agentId),
     listVoiceChatTasks(db, userId, orgId, agentId),
+    listAgentTasks(db, userId, orgId, agentId),
   ]);
 
   const allTasks = [
@@ -65,6 +67,7 @@ export async function listTasks(
     ...emailTasks,
     ...inFlightEmailTasks,
     ...voiceChatTasks,
+    ...agentTasks,
   ];
 
   // Batch-fetch run info for all tasks with a latestRunId
@@ -137,6 +140,9 @@ export async function listTasks(
         break;
       case "voice_chat":
         task.voiceChatSessionId = raw.id;
+        break;
+      case "agent":
+        task.agentRunId = raw.id;
         break;
     }
 
@@ -417,6 +423,60 @@ async function listInFlightEmailTasks(
     return {
       id: r.id,
       type: "email" as const,
+      title: null,
+      agent: {
+        id: r.agentId,
+        name: r.agentName,
+        displayName: r.agentDisplayName,
+        avatarUrl: r.agentAvatarUrl,
+      },
+      latestRunId: r.id,
+      sourceUpdatedAt: r.createdAt,
+    };
+  });
+}
+
+/**
+ * Return agent-triggered runs (triggerSource = 'agent') as individual tasks.
+ * Each delegation run becomes its own task showing the delegated agent's info.
+ */
+async function listAgentTasks(
+  db: DB,
+  userId: string,
+  orgId: string,
+  agentId?: string,
+): Promise<RawTask[]> {
+  const conditions = [
+    eq(agentRuns.userId, userId),
+    eq(agentRuns.orgId, orgId),
+    eq(zeroRuns.triggerSource, "agent"),
+  ];
+  if (agentId) {
+    conditions.push(eq(zeroAgents.id, agentId));
+  }
+
+  const rows = await db
+    .select({
+      id: agentRuns.id,
+      agentId: zeroAgents.id,
+      agentName: zeroAgents.name,
+      agentDisplayName: zeroAgents.displayName,
+      agentAvatarUrl: zeroAgents.avatarUrl,
+      createdAt: agentRuns.createdAt,
+    })
+    .from(agentRuns)
+    .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
+    .innerJoin(
+      agentComposeVersions,
+      eq(agentComposeVersions.id, agentRuns.agentComposeVersionId),
+    )
+    .innerJoin(zeroAgents, eq(zeroAgents.id, agentComposeVersions.composeId))
+    .where(and(...conditions));
+
+  return rows.map((r) => {
+    return {
+      id: r.id,
+      type: "agent" as const,
       title: null,
       agent: {
         id: r.agentId,

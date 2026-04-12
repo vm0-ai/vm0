@@ -5,6 +5,7 @@ import {
   IconBrandSlack,
   IconMail,
   IconMicrophone,
+  IconRobot,
 } from "@tabler/icons-react";
 import { Card, Shortcut } from "@vm0/ui";
 import type { TaskItem, TaskType } from "@vm0/core";
@@ -53,6 +54,13 @@ function getTaskTypeConfig(type: TaskType): {
         label: "Voice Chat",
         icon: IconMicrophone,
         iconClassName: "text-rose-500",
+      };
+    }
+    case "agent": {
+      return {
+        label: "Agent",
+        icon: IconRobot,
+        iconClassName: "text-cyan-500",
       };
     }
   }

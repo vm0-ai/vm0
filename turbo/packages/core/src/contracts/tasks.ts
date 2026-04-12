@@ -11,6 +11,7 @@ const taskTypeSchema = z.enum([
   "slack",
   "email",
   "voice_chat",
+  "agent",
 ]);
 
 const taskAgentSchema = z.object({
@@ -33,6 +34,7 @@ const taskItemSchema = z.object({
   slackThreadSessionId: z.string().optional(),
   emailThreadSessionId: z.string().optional(),
   voiceChatSessionId: z.string().optional(),
+  agentRunId: z.string().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
