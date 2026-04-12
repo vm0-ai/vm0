@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.222.0](https://github.com/vm0-ai/vm0/compare/app-v0.221.0...app-v0.222.0) (2026-04-12)
+
+
+### Features
+
+* add Mission Control sidebar entry behind feature flag ([#9029](https://github.com/vm0-ai/vm0/issues/9029)) ([c98fd7c](https://github.com/vm0-ai/vm0/commit/c98fd7caef80f5ed9a3625900203f24ef01ae4b0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.174.0
+
 ## [0.221.0](https://github.com/vm0-ai/vm0/compare/app-v0.220.0...app-v0.221.0) (2026-04-12)
 
 

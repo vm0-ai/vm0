@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.174.0](https://github.com/vm0-ai/vm0/compare/core-v8.173.0...core-v8.174.0) (2026-04-12)
+
+
+### Features
+
+* add Mission Control sidebar entry behind feature flag ([#9029](https://github.com/vm0-ai/vm0/issues/9029)) ([c98fd7c](https://github.com/vm0-ai/vm0/commit/c98fd7caef80f5ed9a3625900203f24ef01ae4b0))
+
 ## [8.173.0](https://github.com/vm0-ai/vm0/compare/core-v8.172.2...core-v8.173.0) (2026-04-12)
 
 
