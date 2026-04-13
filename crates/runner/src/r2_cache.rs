@@ -429,17 +429,27 @@ impl R2ImageCache {
             if !resp.is_truncated().unwrap_or(false) {
                 break;
             }
-            let next_token = match resp.next_continuation_token() {
-                Some(t) => t.to_string(),
-                None => break, // truncated but no token — defensive exit
-            };
-            // Defensive: detect a server returning the same token twice
-            // (would be an S3 bug, but cheap to guard against).
+            // Both branches below validate at the S3-API boundary. They
+            // surface as `R2Error::S3` (rather than silently breaking the
+            // loop) so operators see clear errors when S3 misbehaves
+            // instead of a quietly under-deleted GC cycle. `runner gc`
+            // already logs and swallows R2 errors at the outer call site
+            // (R2 errors never fail the deploy — see #9120).
+            let next_token = resp
+                .next_continuation_token()
+                .ok_or_else(|| {
+                    R2Error::S3(
+                        "list_objects_v2: is_truncated=true with no \
+                         next_continuation_token (R2/S3 spec violation)"
+                            .into(),
+                    )
+                })?
+                .to_string();
             if continuation_token.as_deref() == Some(next_token.as_str()) {
-                tracing::warn!(
-                    "r2: list_objects_v2 returned identical continuation_token; aborting paginated scan"
-                );
-                break;
+                return Err(R2Error::S3(format!(
+                    "list_objects_v2 returned identical continuation_token \
+                     twice ({next_token}) — pagination would loop indefinitely"
+                )));
             }
             continuation_token = Some(next_token);
         }
@@ -1963,5 +1973,77 @@ mod tests {
             freed, 40,
             "proportional attribution: batch_freed=60, actual/count=2/3 → 40"
         );
+    }
+
+    /// `gc_older_than` MUST surface (not silently break) when S3 returns
+    /// `is_truncated=true` with no `next_continuation_token` — a spec
+    /// violation that, if silently accepted, would silently under-delete.
+    /// Returning `Err` lets `runner gc` log a clear cause instead of a
+    /// quietly skipped page tail.
+    #[tokio::test]
+    async fn gc_errors_on_truncated_with_no_token() {
+        use aws_sdk_s3::Client;
+        use aws_sdk_s3::operation::list_objects_v2::ListObjectsV2Output;
+
+        // is_truncated=true but next_continuation_token absent.
+        let page = ListObjectsV2Output::builder().is_truncated(true).build();
+        let list = mock!(Client::list_objects_v2).then_output(move || page.clone());
+
+        let cache = mock_cache("test-bucket", &[&list]);
+        let err = cache
+            .gc_older_than(std::time::Duration::from_secs(1))
+            .await
+            .unwrap_err();
+
+        match err {
+            R2Error::S3(msg) => {
+                assert!(
+                    msg.contains("no next_continuation_token"),
+                    "want descriptive message: {msg}"
+                );
+            }
+            other => panic!("expected R2Error::S3 for missing token, got {other:?}"),
+        }
+    }
+
+    /// `gc_older_than` MUST surface (not silently break) when S3 returns
+    /// the same `next_continuation_token` twice. Without this guard, the
+    /// loop would re-issue list_objects_v2 with the repeated token forever.
+    #[tokio::test]
+    async fn gc_errors_on_repeated_continuation_token() {
+        use aws_sdk_s3::Client;
+        use aws_sdk_s3::operation::list_objects_v2::ListObjectsV2Output;
+
+        // Both calls return is_truncated=true with the same token "stuck-tok".
+        let page = ListObjectsV2Output::builder()
+            .is_truncated(true)
+            .next_continuation_token("stuck-tok")
+            .build();
+        let list = mock!(Client::list_objects_v2).then_output(move || page.clone());
+
+        let cache = mock_cache("test-bucket", &[&list]);
+        let err = cache
+            .gc_older_than(std::time::Duration::from_secs(1))
+            .await
+            .unwrap_err();
+
+        match err {
+            R2Error::S3(msg) => {
+                assert!(
+                    msg.contains("identical continuation_token"),
+                    "want descriptive message: {msg}"
+                );
+                assert!(
+                    msg.contains("stuck-tok"),
+                    "want offending token in message: {msg}"
+                );
+            }
+            other => panic!("expected R2Error::S3 for repeated token, got {other:?}"),
+        }
+        // Sanity: list was called at least twice — first sets
+        // `continuation_token`, second triggers the equality check.
+        // Use `>= 2` rather than strict equality to stay robust against
+        // any future SDK retry behavior on the list operation.
+        assert!(list.num_calls() >= 2, "got {}", list.num_calls());
     }
 }
