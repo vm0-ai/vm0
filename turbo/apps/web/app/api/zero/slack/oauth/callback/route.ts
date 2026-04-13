@@ -26,11 +26,22 @@ interface OAuthState {
   vm0UserId: string | null;
   flow: "install" | "connect";
   reinstall: boolean;
+  /**
+   * Optional prompt captured from the entry URL (e.g. a use-case CTA).
+   * When present, the DM greeting asks the user whether they want to run it.
+   */
+  prompt: string | null;
 }
 
 function parseOAuthState(state: string | null): OAuthState {
   if (!state) {
-    return { orgId: null, vm0UserId: null, flow: "install", reinstall: false };
+    return {
+      orgId: null,
+      vm0UserId: null,
+      flow: "install",
+      reinstall: false,
+      prompt: null,
+    };
   }
   try {
     const parsed = JSON.parse(state) as {
@@ -38,15 +49,23 @@ function parseOAuthState(state: string | null): OAuthState {
       vm0UserId?: string;
       flow?: string;
       reinstall?: boolean;
+      prompt?: string;
     };
     return {
       orgId: parsed.orgId ?? null,
       vm0UserId: parsed.vm0UserId ?? null,
       flow: parsed.flow === "connect" ? "connect" : "install",
       reinstall: parsed.reinstall === true,
+      prompt: typeof parsed.prompt === "string" ? parsed.prompt : null,
     };
   } catch {
-    return { orgId: null, vm0UserId: null, flow: "install", reinstall: false };
+    return {
+      orgId: null,
+      vm0UserId: null,
+      flow: "install",
+      reinstall: false,
+      prompt: null,
+    };
   }
 }
 
@@ -249,6 +268,7 @@ async function handleInstallCallback(params: {
         orgId: state.orgId,
         vm0UserId: state.vm0UserId,
         reinstall: state.reinstall,
+        prompt: state.prompt,
       },
       appUrl,
       isReinstall,
@@ -266,7 +286,12 @@ async function handleInstallCallback(params: {
  */
 async function handlePlatformInstall(
   oauthResult: { authedUserId: string; teamId: string; teamName: string },
-  platformState: { orgId: string; vm0UserId: string; reinstall: boolean },
+  platformState: {
+    orgId: string;
+    vm0UserId: string;
+    reinstall: boolean;
+    prompt: string | null;
+  },
   appUrl: string,
   isReinstall: boolean,
 ): Promise<NextResponse> {
@@ -302,6 +327,7 @@ async function handlePlatformInstall(
       installation: inst,
       slackUserId: oauthResult.authedUserId,
       orgId,
+      pendingPrompt: platformState.prompt,
     }).catch((err) => {
       return log.warn("Failed to notify connect success after install", {
         error: err,

@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
@@ -19,7 +19,7 @@ import {
   toggleZeroConnector$,
   zeroOnboardingStep$,
 } from "../zero-onboarding.ts";
-import { pathname } from "../../../signals/location.ts";
+import { pathname, search } from "../../../signals/location.ts";
 import { createDeferredPromise } from "../../utils.ts";
 
 const context = testContext();
@@ -255,6 +255,139 @@ describe("onboardingContinueWeb$", () => {
     await context.store.set(onboardingContinueWeb$, context.signal);
 
     expect(pathname()).toBe(`/agents/${MOCK_MEMBER_AGENT_ID}/chat`);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// ?prompt= forwarding
+// ---------------------------------------------------------------------------
+
+function mockAdminCompletes() {
+  let adminStatusCalls = 0;
+  server.use(
+    http.get("*/api/zero/onboarding/status", () => {
+      adminStatusCalls++;
+      if (adminStatusCalls <= 1) {
+        return HttpResponse.json({
+          needsOnboarding: true,
+          isAdmin: true,
+          hasOrg: true,
+          hasDefaultAgent: false,
+          defaultAgentId: null,
+          defaultAgentMetadata: null,
+          defaultAgentSkills: [],
+        });
+      }
+      return HttpResponse.json({
+        needsOnboarding: false,
+        isAdmin: true,
+        hasOrg: true,
+        hasDefaultAgent: true,
+        defaultAgentId: MOCK_AGENT_ID,
+        defaultAgentMetadata: null,
+        defaultAgentSkills: [],
+      });
+    }),
+  );
+}
+
+function mockSlackInstallReady() {
+  server.use(
+    http.get("*/api/zero/integrations/slack", () => {
+      return HttpResponse.json({
+        isConnected: false,
+        isInstalled: false,
+        isAdmin: true,
+        installUrl: "https://example.com/api/zero/slack/oauth/install?orgId=o1",
+        connectUrl: null,
+        reinstallUrl: null,
+        scopeMismatch: false,
+        workspaceName: null,
+        defaultAgentId: null,
+        agentOrgSlug: null,
+        environment: {
+          requiredSecrets: [],
+          requiredVars: [],
+          missingSecrets: [],
+          missingVars: [],
+        },
+      });
+    }),
+  );
+}
+
+describe("prompt param forwarding", () => {
+  it("onboardingContinueWeb$ forwards ?prompt= to the chat page", async () => {
+    mockAdminCompletes();
+    mockAdminCompletionApis();
+
+    detachedSetupPage({
+      context,
+      path: "/onboarding?prompt=hello%20world",
+      withoutRender: true,
+    });
+
+    await context.store.set(onboardingContinueWeb$, context.signal);
+
+    expect(pathname()).toBe(`/agents/${MOCK_AGENT_ID}/chat`);
+    const forwarded = new URLSearchParams(search());
+    expect(forwarded.get("prompt")).toBe("hello world");
+  });
+
+  it("onboardingContinueWeb$ navigates without ?prompt= when absent", async () => {
+    mockAdminCompletes();
+    mockAdminCompletionApis();
+
+    detachedSetupPage({ context, path: "/onboarding", withoutRender: true });
+
+    await context.store.set(onboardingContinueWeb$, context.signal);
+
+    expect(pathname()).toBe(`/agents/${MOCK_AGENT_ID}/chat`);
+    expect(search()).toBe("");
+  });
+
+  it("onboardingAddToSlack$ appends ?prompt= to the Slack install URL", async () => {
+    mockAdminOnboarding();
+    mockAdminCompletionApis();
+    mockSlackInstallReady();
+
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => {
+      return null;
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/onboarding?prompt=summarize%20inbox",
+      withoutRender: true,
+    });
+
+    await context.store.set(onboardingAddToSlack$, context.signal);
+
+    expect(openSpy).toHaveBeenCalledTimes(1);
+    const installed = openSpy.mock.calls[0]?.[0];
+    expect(typeof installed).toBe("string");
+    const openedUrl = new URL(installed as string);
+    expect(openedUrl.searchParams.get("prompt")).toBe("summarize inbox");
+    openSpy.mockRestore();
+  });
+
+  it("onboardingAddToSlack$ omits prompt param when absent", async () => {
+    mockAdminOnboarding();
+    mockAdminCompletionApis();
+    mockSlackInstallReady();
+
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => {
+      return null;
+    });
+
+    detachedSetupPage({ context, path: "/onboarding", withoutRender: true });
+
+    await context.store.set(onboardingAddToSlack$, context.signal);
+
+    expect(openSpy).toHaveBeenCalledTimes(1);
+    const openedUrl = new URL(openSpy.mock.calls[0]?.[0] as string);
+    expect(openedUrl.searchParams.get("prompt")).toBeNull();
+    openSpy.mockRestore();
   });
 });
 

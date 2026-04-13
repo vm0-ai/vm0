@@ -11,7 +11,7 @@ import {
   completeMemberOnboarding$,
 } from "./zero-onboarding.ts";
 import { currentChatAgentDisplayName$ } from "../agent-chat.ts";
-import { detachedNavigateTo$ } from "../route.ts";
+import { detachedNavigateTo$, searchParams$ } from "../route.ts";
 import { slackOrgData$ } from "./zero-slack.ts";
 import { reloadBillingStatus$ } from "./billing.ts";
 import { reloadAgents$ } from "../agent.ts";
@@ -228,6 +228,12 @@ export const onboardingAddToSlack$ = command(
       signal.throwIfAborted();
       if (slackData.isAdmin && slackData.installUrl) {
         const url = new URL(slackData.installUrl, window.location.origin);
+        // Carry ?prompt= through the Slack OAuth state so the DM greeting can
+        // reference it once install completes.
+        const prompt = get(searchParams$).get("prompt");
+        if (prompt) {
+          url.searchParams.set("prompt", prompt);
+        }
         url.searchParams.set("_t", String(Date.now()));
         window.open(url.toString(), "_blank");
       }
@@ -237,7 +243,7 @@ export const onboardingAddToSlack$ = command(
 );
 
 export const onboardingContinueWeb$ = command(
-  async ({ set }, signal: AbortSignal) => {
+  async ({ get, set }, signal: AbortSignal) => {
     set(showAppSkeleton$);
 
     const agentId = await set(completeOnboarding$, signal);
@@ -246,8 +252,13 @@ export const onboardingContinueWeb$ = command(
       return;
     }
 
+    // Forward ?prompt= to the chat page so the composer gets pre-filled with
+    // the prompt the user arrived with.
+    const prompt = get(searchParams$).get("prompt");
+
     set(detachedNavigateTo$, "/agents/:agentId/chat", {
       pathParams: { agentId: agentId },
+      searchParams: prompt ? new URLSearchParams({ prompt }) : undefined,
     });
   },
 );
