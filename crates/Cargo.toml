@@ -78,7 +78,7 @@ ureq = "3"
 url = "2"
 uuid = "1"
 which = "8"
-zstd = "0.13"
+zstd = { version = "0.13", default-features = false }
 
 [profile.release]
 lto = true
