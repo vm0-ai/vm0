@@ -22,9 +22,6 @@ function cell<T>(initial: T) {
 // Schedule page UI state
 // ---------------------------------------------------------------------------
 
-export const { get$: schedulePageViewMode$, set$: setSchedulePageViewMode$ } =
-  cell<"list" | "calendar">("list");
-
 export const { get$: createDialogOpen$, set$: setCreateDialogOpen$ } =
   cell(false);
 

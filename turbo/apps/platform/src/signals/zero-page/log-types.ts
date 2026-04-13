@@ -43,6 +43,7 @@ export interface LogEntry {
   triggerAgentName: string | null;
   scheduleId: string | null;
   status: LogStatus;
+  prompt: string;
   createdAt: string;
   startedAt: string | null;
   completedAt: string | null;

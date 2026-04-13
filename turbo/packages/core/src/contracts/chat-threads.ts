@@ -70,11 +70,13 @@ export const chatThreadsContract = c.router({
       agentId: z.string().min(1),
       title: z.string().optional(),
       /**
-       * Optional system prompt persisted on the thread and auto-applied to every
-       * run created in it. Used, for example, to seed a "continue-from-schedule"
-       * thread with context referencing the originating run.
+       * Optional ID of a previously scheduled agent run this thread is
+       * continuing. When set, the first run created in the thread is seeded
+       * with a system prompt that tells the agent to fetch the original run's
+       * telemetry via `zero logs <id>`. Later runs inherit the session context
+       * and do not get the prompt again.
        */
-      appendSystemPrompt: z.string().optional(),
+      sourceScheduleRunId: z.string().uuid().optional(),
     }),
     responses: {
       201: z.object({

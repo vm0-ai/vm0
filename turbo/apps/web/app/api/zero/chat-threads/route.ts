@@ -57,7 +57,7 @@ const router = tsr.router(chatThreadsContract, {
       userId,
       body.agentId,
       body.title,
-      body.appendSystemPrompt,
+      body.sourceScheduleRunId,
     );
 
     return {

@@ -35,6 +35,20 @@ const GRID_WITH_SOURCE =
 const GRID_WITHOUT_SOURCE =
   "grid grid-cols-[1fr_1fr_8rem_5rem_2.5rem] gap-x-6 items-center";
 
+/** Without source, with description column (cross-schedule run history) */
+const GRID_WITH_DESCRIPTION =
+  "grid grid-cols-[minmax(6rem,1fr)_minmax(8rem,2fr)_6rem_8rem_5rem_2.5rem] gap-x-6 items-center";
+
+function pickGrid(showSource: boolean, showDescription: boolean): string {
+  if (showSource) {
+    return GRID_WITH_SOURCE;
+  }
+  if (showDescription) {
+    return GRID_WITH_DESCRIPTION;
+  }
+  return GRID_WITHOUT_SOURCE;
+}
+
 // ---------------------------------------------------------------------------
 // Row
 // ---------------------------------------------------------------------------
@@ -42,10 +56,12 @@ const GRID_WITHOUT_SOURCE =
 function LogRow({
   entry,
   showSource,
+  showDescription,
   gridClassName,
 }: {
   entry: LogEntry;
   showSource: boolean;
+  showDescription: boolean;
   gridClassName: string;
 }) {
   const time = formatLogTime(entry.createdAt);
@@ -61,6 +77,14 @@ function LogRow({
         <div className="min-w-0 truncate text-left text-sm font-medium text-foreground">
           {agentName}
         </div>
+        {showDescription && (
+          <div
+            className="min-w-0 truncate text-left text-sm text-muted-foreground"
+            title={entry.prompt}
+          >
+            {entry.prompt.trim() || "\u2014"}
+          </div>
+        )}
         {showSource && (
           <div className="text-left text-sm text-muted-foreground truncate">
             {entry.triggerSource
@@ -126,10 +150,12 @@ function LogRow({
 function SkeletonRows({
   count,
   showSource,
+  showDescription,
   gridClassName,
 }: {
   count: number;
   showSource: boolean;
+  showDescription: boolean;
   gridClassName: string;
 }) {
   return (
@@ -138,6 +164,9 @@ function SkeletonRows({
         return (
           <div key={i} className={cn(gridClassName, "px-5 py-3")}>
             <div className="h-4 w-20 rounded bg-muted/50 animate-pulse" />
+            {showDescription && (
+              <div className="h-4 w-40 rounded bg-muted/50 animate-pulse" />
+            )}
             {showSource && (
               <div className="h-4 w-12 rounded bg-muted/50 animate-pulse" />
             )}
@@ -165,6 +194,8 @@ interface LogTableProps {
   rowsPerPage: number;
   /** Show the "Source" column. Default: false */
   showSource?: boolean;
+  /** Show the "Description" column (from the run's prompt). Default: false */
+  showDescription?: boolean;
   /** Empty state text when no filters active */
   emptyTitle?: string;
   emptyDescription?: string;
@@ -182,6 +213,7 @@ export function LogTable({
   isLoading,
   rowsPerPage,
   showSource = false,
+  showDescription = false,
   emptyTitle = "All quiet for now",
   emptyDescription = "When your agents start working, their activity will show up here.",
   filteredEmptyTitle = "Nothing matches those filters",
@@ -189,7 +221,7 @@ export function LogTable({
   hasActiveFilter = false,
   minWidth = "540px",
 }: LogTableProps) {
-  const gridClassName = showSource ? GRID_WITH_SOURCE : GRID_WITHOUT_SOURCE;
+  const gridClassName = pickGrid(showSource, showDescription);
 
   return (
     <div className="overflow-x-auto">
@@ -202,6 +234,7 @@ export function LogTable({
             )}
           >
             <div className="text-left">Agent</div>
+            {showDescription && <div className="text-left">Description</div>}
             {showSource && <div className="text-left">Source</div>}
             {showSource && <div className="text-left">Session</div>}
             <div className="text-left">Status</div>
@@ -214,6 +247,7 @@ export function LogTable({
           <SkeletonRows
             count={rowsPerPage}
             showSource={showSource}
+            showDescription={showDescription}
             gridClassName={gridClassName}
           />
         ) : logs.length === 0 ? (
@@ -245,6 +279,7 @@ export function LogTable({
                 key={entry.id}
                 entry={entry}
                 showSource={showSource}
+                showDescription={showDescription}
                 gridClassName={gridClassName}
               />
             );

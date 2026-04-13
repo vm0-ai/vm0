@@ -22,9 +22,12 @@ import {
   addRunToThread,
   updateChatThreadTitle,
   getChatThreadContext,
+  threadHasNoRuns,
 } from "../../../../../src/lib/zero/chat-thread/chat-thread-service";
 import { generateChatTitle } from "../../../../../src/lib/zero/ai/lightweight-model";
 import { zeroAgents } from "../../../../../src/db/schema/zero-agent";
+import { zeroRuns } from "../../../../../src/db/schema/zero-run";
+import { zeroAgentSchedules } from "../../../../../src/db/schema/zero-agent-schedule";
 import {
   getApiUrl,
   generateCallbackSecret,
@@ -33,6 +36,24 @@ import type { ChatCallbackPayload } from "../../../../../src/lib/infra/callback/
 import { logger } from "../../../../../src/lib/shared/logger";
 
 const log = logger("zero:chat-messages");
+
+/**
+ * System prompt seeded on the first run of a thread that was started from a
+ * previously scheduled run. The agent can pull the original run's full
+ * telemetry via the `zero logs <runId>` CLI command inside its sandbox.
+ */
+function buildContinueFromScheduleSystemPrompt(
+  runId: string,
+  scheduleName: string | null,
+): string {
+  const scheduleSuffix = scheduleName ? `(scheduleName: ${scheduleName})` : "";
+  return (
+    `You are continuing a previously scheduled runs${scheduleSuffix}. ` +
+    `Before replying, run \`zero logs ${runId}\` inside your sandbox to ` +
+    `fetch the full record of that run, then continue the conversation with ` +
+    `the user based on that context.`
+  );
+}
 
 const router = tsr.router(chatMessagesContract, {
   send: async ({ body, headers }) => {
@@ -66,17 +87,30 @@ const router = tsr.router(chatMessagesContract, {
       let sessionId: string | undefined;
       let previousContext: Awaited<ReturnType<typeof getChatThreadContext>> =
         [];
-      // Persisted on the thread at creation time — auto-applied to every run
-      // in this thread (used by "continue from schedule" threads to carry the
-      // source-run context forward).
-      let threadAppendSystemPrompt: string | undefined;
+      // Seeded once on the first run of a thread started from a scheduled run.
+      // Subsequent runs inherit the session context so we don't re-apply it.
+      let appendSystemPrompt: string | undefined;
 
       if (body.threadId) {
         const thread = await getChatThread(body.threadId, authCtx.userId);
         threadId = thread.id;
         sessionId = thread.sessionId ?? undefined;
-        threadAppendSystemPrompt = thread.appendSystemPrompt ?? undefined;
         previousContext = await getChatThreadContext(thread.id, authCtx.userId);
+        if (thread.sourceScheduleRunId && (await threadHasNoRuns(thread.id))) {
+          const [sourceSchedule] = await globalThis.services.db
+            .select({ name: zeroAgentSchedules.name })
+            .from(zeroRuns)
+            .innerJoin(
+              zeroAgentSchedules,
+              eq(zeroRuns.scheduleId, zeroAgentSchedules.id),
+            )
+            .where(eq(zeroRuns.id, thread.sourceScheduleRunId))
+            .limit(1);
+          appendSystemPrompt = buildContinueFromScheduleSystemPrompt(
+            thread.sourceScheduleRunId,
+            sourceSchedule?.name ?? null,
+          );
+        }
       } else {
         const thread = await createChatThread(authCtx.userId, body.agentId);
         threadId = thread.id;
@@ -128,7 +162,7 @@ const router = tsr.router(chatMessagesContract, {
         sessionId,
         triggerSource: "web",
         modelProvider,
-        appendSystemPrompt: threadAppendSystemPrompt,
+        appendSystemPrompt,
         callbacks: [chatCallback],
       });
 

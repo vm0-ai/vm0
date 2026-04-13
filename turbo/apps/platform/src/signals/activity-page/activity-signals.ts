@@ -316,24 +316,10 @@ export function formatLogTime(createdAt: string): string {
 }
 
 /**
- * Builds the system prompt persisted on a new chat thread seeded from a
- * scheduled run. The agent can fetch the original run's full telemetry via the
- * `zero logs <runId>` CLI command available inside its sandbox.
- */
-function buildContinueFromScheduleSystemPrompt(runId: string): string {
-  return (
-    `You are continuing a previously scheduled conversation. ` +
-    `The original scheduled run ID is \`${runId}\`. ` +
-    `Before replying, run \`zero logs ${runId}\` inside your sandbox to ` +
-    `fetch the full record of that run, then continue the conversation with ` +
-    `the user based on that context.`
-  );
-}
-
-/**
- * Create a new chat thread on the given agent, seeded with a system prompt
- * that instructs the agent to continue the scheduled conversation identified
- * by `runId`, then navigate to the new thread.
+ * Create a new chat thread on the given agent, tagged with the scheduled run
+ * it's continuing. The backend seeds a system prompt on the first message so
+ * the agent pulls the original run's telemetry; subsequent messages reuse the
+ * resulting session.
  */
 export const startChatFromScheduleRun$ = command(
   async (
@@ -346,7 +332,7 @@ export const startChatFromScheduleRun$ = command(
       client.create({
         body: {
           agentId: args.agentId,
-          appendSystemPrompt: buildContinueFromScheduleSystemPrompt(args.runId),
+          sourceScheduleRunId: args.runId,
         },
         fetchOptions: { signal },
       }),

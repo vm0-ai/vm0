@@ -166,6 +166,7 @@ describe("zero schedule detail page - run history table with pagination (SCHED-D
               triggerSource: "schedule",
               triggerAgentName: null,
               scheduleId: SCHEDULE_ID,
+              prompt: "Scheduled run prompt",
               createdAt: "2026-03-20T10:00:00Z",
               startedAt: "2026-03-20T10:00:01Z",
               completedAt: "2026-03-20T10:00:30Z",

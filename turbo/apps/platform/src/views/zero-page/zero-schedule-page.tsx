@@ -12,7 +12,6 @@ import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
-  IconCalendarTime,
   IconCircleDot,
   IconList,
   IconLayoutGrid,
@@ -67,8 +66,6 @@ import {
 import { zeroOnboardingStatus$ } from "../../signals/zero-page/zero-onboarding.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import {
-  schedulePageViewMode$,
-  setSchedulePageViewMode$,
   createDialogOpen$,
   setCreateDialogOpen$,
   pageTogglingIds$,
@@ -496,14 +493,17 @@ export function ZeroSchedulePage() {
   const pageSignal = useGet(pageSignal$);
   const navigate = useSet(detachedNavigateTo$);
 
-  const scheduleViewMode = useGet(schedulePageViewMode$);
-  const setScheduleViewMode = useSet(setSchedulePageViewMode$);
   const features = useLastResolved(featureSwitch$);
   const showRunHistoryTab =
     features?.[FeatureSwitchKey.ScheduleRunHistory] ?? false;
   const rawActiveListTab = useGet(scheduleListTab$);
   const setActiveListTab = useSet(setScheduleListTab$);
-  const activeListTab = showRunHistoryTab ? rawActiveListTab : "schedules";
+  // When the feature switch is off, collapse "history" back to the default list
+  // view so the page doesn't render an empty state for a hidden tab.
+  const activeListTab =
+    !showRunHistoryTab && rawActiveListTab === "history"
+      ? "list"
+      : rawActiveListTab;
   const createOpen = useGet(createDialogOpen$);
   const setCreateOpen = useSet(setCreateDialogOpen$);
   const togglingIds = useGet(pageTogglingIds$);
@@ -644,90 +644,68 @@ export function ZeroSchedulePage() {
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            {activeListTab === "schedules" && (
-              <>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="zero-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
-                  disabled={agents.length === 0}
-                  onClick={() => {
-                    return setCreateOpen(true);
-                  }}
-                >
-                  <IconPlus size={14} stroke={2} />
-                  Add schedule
-                </Button>
-                <Tabs
-                  value={scheduleViewMode}
-                  onValueChange={(v) => {
-                    return setScheduleViewMode(v as "list" | "calendar");
-                  }}
-                  className="shrink-0"
-                >
-                  <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
-                    <TabsTrigger
-                      value="list"
-                      className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
-                    >
-                      <IconList size={14} stroke={1.5} />
-                      List
-                    </TabsTrigger>
-                    <TabsTrigger
-                      value="calendar"
-                      className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
-                    >
-                      <IconLayoutGrid size={14} stroke={1.5} />
-                      Calendar
-                    </TabsTrigger>
-                  </TabsList>
-                </Tabs>
-              </>
-            )}
-          </div>
-        </div>
-        {showRunHistoryTab && (
-          <div className="mx-auto max-w-[900px] mt-3">
+            <Button
+              variant="outline"
+              size="sm"
+              className="zero-btn-morandi h-9 gap-2 shrink-0 rounded-lg border"
+              disabled={agents.length === 0}
+              onClick={() => {
+                return setCreateOpen(true);
+              }}
+            >
+              <IconPlus size={14} stroke={2} />
+              Add schedule
+            </Button>
             <Tabs
               value={activeListTab}
               onValueChange={(v) => {
-                if (v === "schedules" || v === "history") {
+                if (v === "list" || v === "calendar" || v === "history") {
                   setActiveListTab(v);
                 }
               }}
+              className="shrink-0"
             >
               <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
                 <TabsTrigger
-                  value="schedules"
+                  value="list"
                   className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
                 >
-                  <IconCalendarTime size={14} stroke={1.5} />
-                  Schedules
+                  <IconList size={14} stroke={1.5} />
+                  List
                 </TabsTrigger>
                 <TabsTrigger
-                  value="history"
+                  value="calendar"
                   className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
                 >
-                  <IconRotateClockwise2 size={14} stroke={1.5} />
-                  Run History
+                  <IconLayoutGrid size={14} stroke={1.5} />
+                  Calendar
                 </TabsTrigger>
+                {showRunHistoryTab && (
+                  <TabsTrigger
+                    value="history"
+                    className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
+                  >
+                    <IconRotateClockwise2 size={14} stroke={1.5} />
+                    Run History
+                  </TabsTrigger>
+                )}
               </TabsList>
             </Tabs>
           </div>
-        )}
+        </div>
       </header>
 
       <main className="flex-1 overflow-auto px-4 sm:px-6 pt-3 pb-8">
         <div className="mx-auto max-w-[900px]">
-          {activeListTab === "schedules" ? (
+          {activeListTab !== "history" ? (
             <div className="zero-card overflow-hidden pb-3">
               {isInitialLoading ? (
-                scheduleViewMode === "calendar" ? (
+                activeListTab === "calendar" ? (
                   <ScheduleCalendarSkeleton />
                 ) : (
                   <ScheduleListSkeleton />
                 )
-              ) : scheduleViewMode === "list" ? (
+              ) : activeListTab === "list" ? (
                 <ScheduleListView
                   entries={combinedSchedule}
                   togglingIds={togglingIds}
@@ -902,12 +880,13 @@ function AllScheduleRunHistoryTab() {
             logs={logs}
             isLoading={isLoading}
             rowsPerPage={rowsPerPage}
+            showDescription
             emptyTitle="No scheduled runs yet"
             emptyDescription="When any of your schedules runs, its history will show up here."
             filteredEmptyTitle="Nothing matches that filter"
             filteredEmptyDescription="Try a different status filter."
             hasActiveFilter={statusFilter !== "all"}
-            minWidth="440px"
+            minWidth="640px"
           />
         </CardContent>
       </Card>

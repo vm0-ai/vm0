@@ -254,23 +254,23 @@ describe("POST /api/zero/chat/messages", () => {
       expect(openRouterHandler.mocked).not.toHaveBeenCalled();
     });
 
-    it("should forward thread.appendSystemPrompt to newly created runs", async () => {
-      // Create a thread seeded with an appendSystemPrompt (e.g., a
-      // "continue-from-schedule" thread) and verify it is applied to every
-      // run created in the thread.
-      const appendSystemPrompt =
-        "You are continuing a previously scheduled conversation.";
+    it("seeds the source-schedule prompt on the first run only", async () => {
+      // A thread created with sourceScheduleRunId should apply a built-in
+      // continue-from-schedule system prompt to the FIRST run in the thread
+      // only. Subsequent runs inherit the session context and do not get the
+      // prompt appended again.
+      const sourceScheduleRunId = crypto.randomUUID();
       const createThreadResponse = await createChatThreadPOST(
         createTestRequest("http://localhost:3000/api/zero/chat-threads", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ agentId, appendSystemPrompt }),
+          body: JSON.stringify({ agentId, sourceScheduleRunId }),
         }),
       );
       expect(createThreadResponse.status).toBe(201);
       const { id: threadId } = await createThreadResponse.json();
 
-      const response = await POST(
+      const first = await POST(
         createTestRequest(URL, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -281,12 +281,32 @@ describe("POST /api/zero/chat/messages", () => {
           }),
         }),
       );
-      expect(response.status).toBe(201);
-      const data = await response.json();
+      expect(first.status).toBe(201);
+      const firstData = await first.json();
+      const firstRun = await findTestRunRecord(firstData.runId);
+      expect(firstRun?.appendSystemPrompt).toContain(sourceScheduleRunId);
+      expect(firstRun?.appendSystemPrompt).toContain("zero logs");
 
-      const run = await findTestRunRecord(data.runId);
-      expect(run).toBeDefined();
-      expect(run?.appendSystemPrompt).toContain(appendSystemPrompt);
+      const second = await POST(
+        createTestRequest(URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentId,
+            prompt: "follow-up question",
+            threadId,
+          }),
+        }),
+      );
+      expect(second.status).toBe(201);
+      const secondData = await second.json();
+      const secondRun = await findTestRunRecord(secondData.runId);
+      // The composed prompt still carries the default agent tools preamble,
+      // but the source-run reference must not leak into follow-up runs.
+      expect(secondRun?.appendSystemPrompt ?? "").not.toContain(
+        sourceScheduleRunId,
+      );
+      expect(secondRun?.appendSystemPrompt ?? "").not.toContain("zero logs");
     });
 
     it("should generate title when hasTextContent is true (text message)", async () => {

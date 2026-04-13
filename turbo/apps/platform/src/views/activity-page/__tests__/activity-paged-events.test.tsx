@@ -149,6 +149,7 @@ describe("activity paged events", () => {
               triggerSource: "web",
               triggerAgentName: null,
               scheduleId: null,
+              prompt: "Test prompt",
               createdAt: "2026-03-10T14:56:00Z",
               startedAt: "2026-03-10T14:56:01Z",
               completedAt: null,

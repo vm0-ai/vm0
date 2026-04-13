@@ -67,6 +67,8 @@ const logEntrySchema = z.object({
   triggerAgentName: z.string().nullable(),
   scheduleId: z.string().nullable(),
   status: logStatusSchema,
+  /** Prompt text the run was launched with. Used as a row description. */
+  prompt: z.string(),
   createdAt: z.string(),
   startedAt: z.string().nullable(),
   completedAt: z.string().nullable(),

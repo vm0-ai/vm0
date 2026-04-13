@@ -38,12 +38,13 @@ export const chatThreads = pgTable(
       },
     ),
     /**
-     * Auto-appended system prompt applied to every run created in this thread.
-     * Populated when the thread is created from a schedule-triggered run so the
-     * agent knows it's continuing the prior conversation and can fetch the
-     * original run's log via the `zero logs <id>` CLI inside the sandbox.
+     * ID of the scheduled agent run this thread was started from, if any.
+     * When set, the first run created in this thread is seeded with a system
+     * prompt that instructs the agent to fetch the original run's telemetry
+     * via `zero logs <id>` in its sandbox. Subsequent runs reuse the resulting
+     * session context, so the prompt is only applied once.
      */
-    appendSystemPrompt: text("append_system_prompt"),
+    sourceScheduleRunId: uuid("source_schedule_run_id"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
