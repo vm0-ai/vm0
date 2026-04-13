@@ -331,6 +331,42 @@ describe("mission control page", () => {
     });
   });
 
+  it("should show task card immediately after creating a new chat via the c shortcut", async () => {
+    // Start with empty task list
+    server.use(
+      http.get("*/api/zero/tasks", () => {
+        return HttpResponse.json({ tasks: [] });
+      }),
+    );
+
+    const user = userEvent.setup();
+    detachedSetupPage({ context, path: "/_/mission-control" });
+
+    // Wait for empty state to render
+    await waitFor(() => {
+      expect(screen.getByText("No active tasks")).toBeInTheDocument();
+    });
+
+    // Press 'c' to open new chat dialog
+    await user.keyboard("c");
+
+    // The dialog should show — click the lead agent button (displayed as "Zero")
+    const agentName = await waitFor(() => {
+      return screen.getByText("Zero");
+    });
+    await user.click(agentName);
+
+    // Optimistic task card should appear immediately (no polling needed)
+    await waitFor(() => {
+      expect(screen.queryByText("No active tasks")).not.toBeInTheDocument();
+    });
+
+    // Chat panel should be open
+    await waitFor(() => {
+      expect(screen.getByLabelText("Close task")).toBeInTheDocument();
+    });
+  });
+
   it("should remove task from list when archive button is clicked", async () => {
     let archiveRequestBody: unknown = null;
 

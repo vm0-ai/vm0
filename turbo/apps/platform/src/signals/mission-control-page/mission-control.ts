@@ -1,8 +1,15 @@
 import { command, computed, state } from "ccstate";
 import { toggleTaskList$ } from "./mission-control-panels.ts";
-import { archiveTask$, setupTasksLoop$ } from "./mission-control-tasks.ts";
+import {
+  addOptimisticTask$,
+  archiveTask$,
+  setupTasksLoop$,
+} from "./mission-control-tasks.ts";
 import { setupGlobalShortcut } from "../../lib/setup-global-shortcut.ts";
 import { onRef, throwIfNotAbort } from "../utils.ts";
+import { agents$ } from "../agent.ts";
+import { zeroOnboardingStatus$ } from "../zero-page/zero-onboarding.ts";
+import { createNewChatThread$ } from "../chat-page/chat-message.ts";
 
 // ---------------------------------------------------------------------------
 // Task list container ref
@@ -127,6 +134,54 @@ export const setupMissionControlKeyboard$ = command(
       },
       signal,
     );
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Create and show chat task (optimistic flow)
+// ---------------------------------------------------------------------------
+
+/**
+ * Full flow: create chat thread → insert optimistic task card → open panel → focus input.
+ */
+export const createAndShowChatTask$ = command(
+  async (
+    { get, set },
+    agentId: string | null,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    // Step 1: Create (or reuse) chat thread
+    const threadId = await set(createNewChatThread$, agentId, signal);
+    signal.throwIfAborted();
+    if (!threadId) {
+      return;
+    }
+
+    // Step 2: Resolve agent info for the optimistic entry
+    const allAgents = await get(agents$);
+    signal.throwIfAborted();
+    const resolvedAgentId =
+      agentId ??
+      (await get(zeroOnboardingStatus$)).defaultAgentId ??
+      allAgents[0]?.id ??
+      "";
+    const agentInfo = allAgents.find((a) => {
+      return a.id === resolvedAgentId;
+    });
+
+    // Step 3: Insert optimistic task signal (no-op if entry already exists)
+    const ts = set(
+      addOptimisticTask$,
+      resolvedAgentId,
+      threadId,
+      agentInfo?.displayName ?? null,
+      agentInfo?.avatarUrl ?? null,
+    );
+
+    // Step 4: Open the panel and focus input
+    await set(ts.openTask$, signal);
+    signal.throwIfAborted();
+    set(ts.focusInput$);
   },
 );
 

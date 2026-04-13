@@ -14,6 +14,8 @@ import {
 } from "./create-activity-signals.ts";
 import { maximizedTaskId$ } from "./mission-control-panels.ts";
 
+const OPTIMISTIC_TTL_MS = 30_000;
+
 // ---------------------------------------------------------------------------
 // TaskPanelEntry — discriminated union for open panels
 // ---------------------------------------------------------------------------
@@ -28,6 +30,8 @@ export type TaskPanelEntry =
 
 export interface TaskSignals {
   task: TaskItem;
+  optimistic: boolean;
+  optimisticInsertedAt: number | null;
   open$: Computed<boolean>;
   openedAt$: Computed<number | null>;
   panelEntry$: Computed<TaskPanelEntry | null>;
@@ -71,6 +75,8 @@ function createTaskSignals(initialTask: TaskItem): TaskSignals {
 
   // Mutable ref so openTask$ always reads the latest API data
   const taskRef = { value: initialTask };
+  const optimisticRef = { value: false };
+  const optimisticInsertedAtRef = { value: null as number | null };
 
   const openTask$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<void> => {
@@ -142,6 +148,18 @@ function createTaskSignals(initialTask: TaskItem): TaskSignals {
     set task(t: TaskItem) {
       taskRef.value = t;
     },
+    get optimistic() {
+      return optimisticRef.value;
+    },
+    set optimistic(v: boolean) {
+      optimisticRef.value = v;
+    },
+    get optimisticInsertedAt() {
+      return optimisticInsertedAtRef.value;
+    },
+    set optimisticInsertedAt(v: number | null) {
+      optimisticInsertedAtRef.value = v;
+    },
     open$,
     openedAt$,
     panelEntry$,
@@ -196,21 +214,40 @@ export const setupTasksLoop$ = command(
 
         const taskSignals = new Map(get(internalTaskSignals$));
 
-        // Prune stale entries
+        // Prune stale entries (skip optimistic entries — server hasn't confirmed yet)
         for (const [id, ts] of taskSignals) {
-          if (!taskIds.has(id)) {
-            set(ts.closeTask$);
-            taskSignals.delete(id);
+          if (taskIds.has(id)) {
+            continue;
           }
+          if (ts.optimistic) {
+            continue;
+          }
+          set(ts.closeTask$);
+          taskSignals.delete(id);
         }
 
-        // Add new entries
+        // Add new entries, clearing optimistic flag when server confirms
         for (const task of tasks) {
           const existing = taskSignals.get(task.id);
           if (existing) {
             existing.task = task;
+            existing.optimistic = false;
+            existing.optimisticInsertedAt = null;
           } else {
             taskSignals.set(task.id, createTaskSignals(task));
+          }
+        }
+
+        // TTL prune: remove stale optimistic entries that were never confirmed
+        const now = Date.now();
+        for (const [id, ts] of taskSignals) {
+          if (
+            ts.optimistic &&
+            ts.optimisticInsertedAt !== null &&
+            now - ts.optimisticInsertedAt > OPTIMISTIC_TTL_MS
+          ) {
+            set(ts.closeTask$);
+            taskSignals.delete(id);
           }
         }
 
@@ -226,19 +263,33 @@ export const setupTasksLoop$ = command(
 
 /**
  * Ordered list of TaskSignals derived from the reconciled cache.
- * Matches the order of the latest tasks$ fetch.
+ * Optimistic entries (not yet confirmed by server) are prepended at the top.
+ * Server-confirmed entries follow in server order.
  */
 export const taskSignals$ = computed(async (get) => {
   const tasks = await get(tasks$);
-  const taskSignals = get(internalTaskSignals$);
+  const signals = get(internalTaskSignals$);
+  const serverIds = new Set(
+    tasks.map((t) => {
+      return t.id;
+    }),
+  );
 
-  return tasks
+  // Optimistic entries not yet confirmed by server — prepend at top
+  const optimisticEntries = [...signals.values()].filter((ts) => {
+    return ts.optimistic && !serverIds.has(ts.task.id);
+  });
+
+  // Server-confirmed entries in server order
+  const serverEntries = tasks
     .map((task) => {
-      return taskSignals.get(task.id);
+      return signals.get(task.id);
     })
     .filter((ts): ts is TaskSignals => {
       return ts !== undefined;
     });
+
+  return [...optimisticEntries, ...serverEntries];
 });
 
 // ---------------------------------------------------------------------------
@@ -272,6 +323,59 @@ export const archiveTask$ = command(
     const updated = new Map(get(internalTaskSignals$));
     updated.delete(taskId);
     set(internalTaskSignals$, updated);
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Optimistic task insertion
+// ---------------------------------------------------------------------------
+
+/**
+ * Insert an optimistic task entry for a newly created chat thread.
+ * If an entry already exists for this threadId, returns the existing entry (no-op).
+ * The entry is protected from pruning until the server confirms it (or TTL expires).
+ */
+export const addOptimisticTask$ = command(
+  (
+    { get, set },
+    agentId: string,
+    threadId: string,
+    agentDisplayName: string | null,
+    agentAvatarUrl: string | null,
+  ): TaskSignals => {
+    const existing = get(internalTaskSignals$).get(threadId);
+    if (existing) {
+      return existing;
+    }
+
+    const now = new Date().toISOString();
+    const syntheticTask: TaskItem = {
+      id: threadId,
+      type: "chat",
+      title: null,
+      summary: null,
+      agent: {
+        id: agentId,
+        name: agentId,
+        displayName: agentDisplayName,
+        avatarUrl: agentAvatarUrl,
+      },
+      latestRunId: null,
+      status: null,
+      chatThreadId: threadId,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    const ts = createTaskSignals(syntheticTask);
+    ts.optimistic = true;
+    ts.optimisticInsertedAt = Date.now();
+
+    const updated = new Map(get(internalTaskSignals$));
+    updated.set(threadId, ts);
+    set(internalTaskSignals$, updated);
+
+    return ts;
   },
 );
 
