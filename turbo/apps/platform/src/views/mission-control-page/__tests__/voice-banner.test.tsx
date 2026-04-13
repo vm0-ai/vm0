@@ -12,21 +12,21 @@
  * - endVoiceChat$ (Dismiss) → verified by observing banner disappearance
  */
 
-import { describe, expect, it } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
-import { http, HttpResponse } from 'msw';
-import { server } from '../../../mocks/server.ts';
-import { testContext } from '../../../signals/__tests__/test-helpers.ts';
-import { detachedSetupPage } from '../../../__tests__/page-helper.ts';
-import { setMockFeatureSwitches } from '../../../mocks/handlers/api-feature-switches.ts';
-import { createDeferredPromise } from '../../../signals/utils.ts';
+import { describe, expect, it } from "vitest";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { http, HttpResponse } from "msw";
+import { server } from "../../../mocks/server.ts";
+import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { setMockFeatureSwitches } from "../../../mocks/handlers/api-feature-switches.ts";
+import { createDeferredPromise } from "../../../signals/utils.ts";
 
 const context = testContext();
 
 function mockEmptyTaskList() {
   server.use(
-    http.get('*/api/zero/tasks', () => {
+    http.get("*/api/zero/tasks", () => {
       return HttpResponse.json({ tasks: [] });
     }),
   );
@@ -36,28 +36,28 @@ function mockEmptyTaskList() {
 // VoiceButton visibility
 // ---------------------------------------------------------------------------
 
-describe('VoiceButton — feature switch off (MC-VC-001)', () => {
-  it('is not rendered when voiceChat feature switch is disabled', async () => {
+describe("voiceButton — feature switch off (MC-VC-001)", () => {
+  it("is not rendered when voiceChat feature switch is disabled", async () => {
     mockEmptyTaskList();
-    detachedSetupPage({ context, path: '/_/mission-control' });
+    detachedSetupPage({ context, path: "/_/mission-control" });
 
     await waitFor(() => {
-      expect(screen.getByText('No active tasks')).toBeInTheDocument();
+      expect(screen.getByText("No active tasks")).toBeInTheDocument();
     });
 
-    expect(screen.queryByRole('button', { name: /Voice On/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Voice On/i })).toBeNull();
   });
 });
 
-describe('VoiceButton — feature switch on, idle status (MC-VC-002)', () => {
+describe("voiceButton — feature switch on, idle status (MC-VC-002)", () => {
   it("renders 'Voice On' button when voiceChat feature switch is enabled", async () => {
     setMockFeatureSwitches({ voiceChat: true });
     mockEmptyTaskList();
-    detachedSetupPage({ context, path: '/_/mission-control' });
+    detachedSetupPage({ context, path: "/_/mission-control" });
 
     await waitFor(() => {
       expect(
-        screen.getByRole('button', { name: /Voice On/i }),
+        screen.getByRole("button", { name: /Voice On/i }),
       ).toBeInTheDocument();
     });
   });
@@ -67,36 +67,39 @@ describe('VoiceButton — feature switch on, idle status (MC-VC-002)', () => {
 // VoiceBanner — preparing state
 // ---------------------------------------------------------------------------
 
-describe('VoiceBanner — preparing state (MC-VC-003)', () => {
+describe("voiceBanner — preparing state (MC-VC-003)", () => {
   it("shows 'Enabling...' while session is being prepared", async () => {
     setMockFeatureSwitches({ voiceChat: true });
     const hangDeferred = createDeferredPromise<void>(context.signal);
 
     server.use(
-      http.get('*/api/zero/tasks', () => HttpResponse.json({ tasks: [] })),
-      http.post('*/api/zero/voice-chat', () => {
-        return HttpResponse.json({ session: { id: 'vc-prep-session' } });
+      http.get("*/api/zero/tasks", () => HttpResponse.json({ tasks: [] })),
+      http.post("*/api/zero/voice-chat", () => {
+        return HttpResponse.json({ session: { id: "vc-prep-session" } });
       }),
       // Hang the context poll so status stays "preparing"
-      http.get('*/api/zero/voice-chat/vc-prep-session/context', async () => {
-        await hangDeferred.promise;
-        return HttpResponse.json({ events: [] });
-      }),
+      http.get(
+        "*/api/zero/voice-chat/vc-prep-session/context",
+        async () => {
+          await hangDeferred.promise;
+          return HttpResponse.json({ events: [] });
+        },
+      ),
     );
 
     const user = userEvent.setup();
-    detachedSetupPage({ context, path: '/_/mission-control' });
+    detachedSetupPage({ context, path: "/_/mission-control" });
 
     await waitFor(() => {
       expect(
-        screen.getByRole('button', { name: /Voice On/i }),
+        screen.getByRole("button", { name: /Voice On/i }),
       ).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole('button', { name: /Voice On/i }));
+    await user.click(screen.getByRole("button", { name: /Voice On/i }));
 
     await waitFor(() => {
-      expect(screen.getByText('Enabling...')).toBeInTheDocument();
+      expect(screen.getByText("Enabling...")).toBeInTheDocument();
     });
 
     hangDeferred.resolve();
@@ -107,78 +110,80 @@ describe('VoiceBanner — preparing state (MC-VC-003)', () => {
 // VoiceBanner — error state
 // ---------------------------------------------------------------------------
 
-describe('VoiceBanner — error on session creation (MC-VC-004)', () => {
+describe("voiceBanner — error on session creation (MC-VC-004)", () => {
   it("shows 'Voice error' and Dismiss when the POST /api/zero/voice-chat fails", async () => {
     setMockFeatureSwitches({ voiceChat: true });
 
     server.use(
-      http.get('*/api/zero/tasks', () => HttpResponse.json({ tasks: [] })),
-      http.post('*/api/zero/voice-chat', () => {
+      http.get("*/api/zero/tasks", () => HttpResponse.json({ tasks: [] })),
+      http.post("*/api/zero/voice-chat", () => {
         return HttpResponse.json(
-          { error: { message: 'Service unavailable' } },
+          { error: { message: "Service unavailable" } },
           { status: 503 },
         );
       }),
     );
 
     const user = userEvent.setup();
-    detachedSetupPage({ context, path: '/_/mission-control' });
+    detachedSetupPage({ context, path: "/_/mission-control" });
 
     await waitFor(() => {
       expect(
-        screen.getByRole('button', { name: /Voice On/i }),
+        screen.getByRole("button", { name: /Voice On/i }),
       ).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole('button', { name: /Voice On/i }));
+    await user.click(screen.getByRole("button", { name: /Voice On/i }));
 
     await waitFor(() => {
-      expect(screen.getByText('Voice error')).toBeInTheDocument();
+      expect(screen.getByText("Voice error")).toBeInTheDocument();
     });
-    expect(screen.getByRole('button', { name: 'Dismiss' })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Dismiss" }),
+    ).toBeInTheDocument();
   });
 });
 
-describe('VoiceBanner — dismiss error restores idle (MC-VC-005)', () => {
-  it('hides error banner and shows Voice On again when Dismiss is clicked', async () => {
+describe("voiceBanner — dismiss error restores idle (MC-VC-005)", () => {
+  it("hides error banner and shows Voice On again when Dismiss is clicked", async () => {
     setMockFeatureSwitches({ voiceChat: true });
 
     server.use(
-      http.get('*/api/zero/tasks', () => HttpResponse.json({ tasks: [] })),
-      http.post('*/api/zero/voice-chat', () => {
+      http.get("*/api/zero/tasks", () => HttpResponse.json({ tasks: [] })),
+      http.post("*/api/zero/voice-chat", () => {
         return HttpResponse.json(
-          { error: { message: 'fail' } },
+          { error: { message: "fail" } },
           { status: 503 },
         );
       }),
       // endVoiceChat$ fires a best-effort POST to /end — let it succeed silently
-      http.post('*/api/zero/voice-chat/*/end', () => {
+      http.post("*/api/zero/voice-chat/*/end", () => {
         return HttpResponse.json({ ok: true });
       }),
     );
 
     const user = userEvent.setup();
-    detachedSetupPage({ context, path: '/_/mission-control' });
+    detachedSetupPage({ context, path: "/_/mission-control" });
 
     await waitFor(() => {
       expect(
-        screen.getByRole('button', { name: /Voice On/i }),
+        screen.getByRole("button", { name: /Voice On/i }),
       ).toBeInTheDocument();
     });
 
-    await user.click(screen.getByRole('button', { name: /Voice On/i }));
+    await user.click(screen.getByRole("button", { name: /Voice On/i }));
 
     const dismiss = await waitFor(() => {
-      return screen.getByRole('button', { name: 'Dismiss' });
+      return screen.getByRole("button", { name: "Dismiss" });
     });
     await user.click(dismiss);
 
     await waitFor(() => {
-      expect(screen.queryByText('Voice error')).toBeNull();
+      expect(screen.queryByText("Voice error")).toBeNull();
     });
     // Button restored to idle state
     expect(
-      screen.getByRole('button', { name: /Voice On/i }),
+      screen.getByRole("button", { name: /Voice On/i }),
     ).toBeInTheDocument();
   });
 });
