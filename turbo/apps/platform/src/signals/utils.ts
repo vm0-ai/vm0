@@ -195,7 +195,15 @@ export async function setLoop(
         return;
       }
       fibIndex = 0;
-      await (IN_VITEST ? Promise.resolve() : delay(interval, { signal }));
+      // In VITEST, yield to the macrotask queue via setTimeout so React can
+      // flush renders between iterations. Using Promise.resolve() only queues
+      // a microtask, which starves React's render cycle. We avoid
+      // delay(0, { signal }) because signal-timers' Promise.race leaves an
+      // abandoned promiseFromSignal that rejects as an unhandled rejection
+      // when the abort signal fires during afterEach cleanup.
+      await (IN_VITEST
+        ? new Promise<void>((resolve) => setTimeout(resolve, 0))
+        : delay(interval, { signal }));
     } catch (error) {
       throwIfAbort(error);
       const backoff =
@@ -205,7 +213,9 @@ export async function setLoop(
         error,
       );
       fibIndex++;
-      await (IN_VITEST ? Promise.resolve() : delay(backoff, { signal }));
+      await (IN_VITEST
+        ? new Promise<void>((resolve) => setTimeout(resolve, 0))
+        : delay(backoff, { signal }));
     }
   }
 }
