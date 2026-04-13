@@ -29,10 +29,14 @@ export function useAutoScrollOnce(
   const firedRef = useRef(false);
   const prevScrollRef = useRef(scroll);
 
-  if (prevScrollRef.current !== scroll) {
-    prevScrollRef.current = scroll;
-    firedRef.current = false;
-  }
+  // Reset fired flag inside a layout effect when the scroll command changes
+  // (i.e. a new thread is opened), so ref mutations never occur during render.
+  useLayoutEffect(() => {
+    if (prevScrollRef.current !== scroll) {
+      prevScrollRef.current = scroll;
+      firedRef.current = false;
+    }
+  }, [scroll]);
 
   useLayoutEffect(() => {
     if (!firedRef.current && trigger) {

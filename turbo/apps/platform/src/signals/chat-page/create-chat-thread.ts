@@ -233,7 +233,10 @@ function scrollToMessages(scrollEl: HTMLElement) {
   let lastUser: HTMLElement | null = null;
   let lastAssistant: HTMLElement | null = null;
   for (let i = container.children.length - 1; i >= 0; i--) {
-    const child = container.children[i] as HTMLElement;
+    const child = container.children[i];
+    if (!(child instanceof HTMLElement)) {
+      continue;
+    }
     const role = child.dataset.role;
     if (!lastAssistant && role === "assistant") {
       lastAssistant = child;
