@@ -1,5 +1,5 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
-import { onRef, setLoop } from "../utils.ts";
+import { onRef, setLoop, resetSignal, throwIfNotAbort } from "../utils.ts";
 import { logger } from "../log.ts";
 import {
   createDraftSignals,
@@ -11,7 +11,11 @@ import {
   reloadChatThreads$,
   type ChatThread,
 } from "../agent-chat.ts";
-import { chatMessagesContract, chatThreadByIdContract } from "@vm0/core";
+import {
+  chatMessagesContract,
+  chatThreadByIdContract,
+  type PersistedAttachment,
+} from "@vm0/core";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { agentById } from "../agent.ts";
@@ -66,6 +70,13 @@ export interface ChatThreadSignals {
   // ── Focus ─────────────────────────────────────────────────────────────────
   setInputRef$: Command<(() => void) | undefined, [HTMLElement | null]>;
   focusInput$: Command<void, []>;
+  // ── Draft sync ────────────────────────────────────────────────────────────
+  /** Schedule a 500ms debounced PATCH to persist the current draft to the server. */
+  scheduleDraftSync$: Command<void, [AbortSignal]>;
+  /** Cancel any pending debounced draft sync. */
+  cancelDraftSync$: Command<void, []>;
+  /** Immediately PATCH null draft values (called after message send). */
+  flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
 }
 
 // ---------------------------------------------------------------------------
@@ -91,6 +102,8 @@ function createThreadData(threadId: string) {
       latestSessionId: body.latestSessionId ?? null,
       unsavedRuns: body.unsavedRuns ?? [],
       isLegacySession: false,
+      draftContent: body.draftContent ?? null,
+      draftAttachments: body.draftAttachments ?? null,
     };
   });
 
@@ -331,6 +344,8 @@ interface MessageCommandsDeps {
   chatMessages$: Computed<Promise<ChatMessages | null>>;
   draft: DraftSignals;
   reloadThinkingMessage$: Command<void, []>;
+  cancelDraftSync$: Command<void, []>;
+  flushDraftClear$: Command<Promise<void>, [AbortSignal]>;
 }
 
 function createPrepareUserMessage(deps: MessageCommandsDeps) {
@@ -397,7 +412,10 @@ function createPrepareUserMessage(deps: MessageCommandsDeps) {
       set(deps.internalLocalMessages$, (prev) => {
         return [...prev, userMessage];
       });
+      set(deps.cancelDraftSync$);
       set(deps.draft.clear$);
+      await set(deps.flushDraftClear$, signal);
+      signal.throwIfAborted();
       return { fullPrompt };
     },
   );
@@ -626,6 +644,126 @@ function createThreadUIState() {
 // Factory
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Sub-factory: draft server sync (debounced PATCH)
+// ---------------------------------------------------------------------------
+
+function createDraftSync(threadId: string, draft: DraftSignals) {
+  // A reset signal is used to abort any in-flight debounced sync when a new
+  // change comes in or when the draft is cleared on send.
+  const draftSyncReset$ = resetSignal();
+
+  const syncWithContent$ = command(
+    async (
+      { get },
+      content: string | null,
+      attachments: PersistedAttachment[] | null,
+      signal: AbortSignal,
+    ) => {
+      const client = get(zeroClient$)(chatThreadByIdContract);
+      await accept(
+        client.patch({
+          params: { id: threadId },
+          body: { draftContent: content, draftAttachments: attachments },
+          fetchOptions: { signal },
+        }),
+        [204],
+      );
+    },
+  );
+
+  /**
+   * Debounced sync: waits 500ms, then reads the current draft state and PATCHes
+   * the server. Aborted when `scheduleDraftSync$` is called again (debounce
+   * reset) or when `cancelDraftSync$` fires (on send).
+   */
+  const debouncedSyncDraft$ = command(
+    async ({ get, set }, signal: AbortSignal) => {
+      // Wait 500ms — abort if a newer change comes in
+      await new Promise<void>((resolve) => {
+        const timerId = window.setTimeout(resolve, 500);
+        signal.addEventListener("abort", () => {
+          window.clearTimeout(timerId);
+        });
+      });
+      signal.throwIfAborted();
+
+      const input = get(draft.input$);
+      const content = input.trim() || null;
+      const attachments = get(draft.attachments$);
+
+      // Resolve attachment fileInfo to collect only completed uploads
+      const infos = await Promise.all(
+        attachments.map((a) => {
+          return get(a.fileInfo$);
+        }),
+      );
+      signal.throwIfAborted();
+      const persisted = attachments
+        .map((a, i) => {
+          return { a, info: infos[i] };
+        })
+        .filter(
+          (
+            r,
+          ): r is {
+            a: ZeroChatAttachment;
+            info: { id: string; url: string };
+          } => {
+            return r.info !== null;
+          },
+        )
+        .map((r) => {
+          return {
+            id: r.info.id,
+            url: r.info.url,
+            filename: r.a.filename,
+            contentType: r.a.contentType,
+            size: r.a.size,
+          };
+        });
+
+      await set(
+        syncWithContent$,
+        content,
+        persisted.length > 0 ? persisted : null,
+        signal,
+      );
+    },
+  );
+
+  /**
+   * Schedules a debounced draft sync. Each call aborts any prior in-flight
+   * debounced sync and restarts the 500ms timer. Called from the draft change
+   * watcher in setupChatPage$.
+   */
+  const scheduleDraftSync$ = command(({ set }, signal: AbortSignal) => {
+    const debouncedSignal = set(draftSyncReset$, signal);
+    // Start the debounced async sync. Abort errors are ignored (expected when
+    // the signal is reset on the next draft change). Other errors surface via
+    // accept()'s built-in toast error handling.
+    void set(debouncedSyncDraft$, debouncedSignal).catch(throwIfNotAbort);
+  });
+
+  const cancelDraftSync$ = command(({ set }) => {
+    // Abort the current debounced sync by resetting the signal
+    set(draftSyncReset$);
+  });
+
+  const flushDraftClear$ = command(async ({ set }, signal: AbortSignal) => {
+    // Cancel any pending debounced sync first
+    set(draftSyncReset$);
+    // Immediately PATCH null values
+    await set(syncWithContent$, null, null, signal);
+  });
+
+  return { scheduleDraftSync$, cancelDraftSync$, flushDraftClear$ };
+}
+
+// ---------------------------------------------------------------------------
+// Draft cache
+// ---------------------------------------------------------------------------
+
 /**
  * Per-thread draft cache. Drafts survive navigation (thread-1 -> thread-2 ->
  * thread-1) because they are stored here rather than inside the factory's
@@ -642,21 +780,27 @@ const draftCache$ = state(new Map<string, DraftSignals>());
  * cache, returns it. Otherwise creates a new one and immutably updates the
  * cache state.
  *
+ * Returns `{ draft, isNew }` where `isNew` is true when a fresh draft was
+ * created (i.e. this is the first visit to the thread in this session).
+ * Callers can use `isNew` to decide whether to seed draft from server data.
+ *
  * This is a command (not a plain function) so the cache mutation happens
  * outside of any computed derivation.
  */
-export const ensureDraft$ = command(({ get, set }, threadId: string) => {
-  const cache = get(draftCache$);
-  const existing = cache.get(threadId);
-  if (existing) {
-    return existing;
-  }
-  const draft = createDraftSignals();
-  const next = new Map(cache);
-  next.set(threadId, draft);
-  set(draftCache$, next);
-  return draft;
-});
+export const ensureDraft$ = command(
+  ({ get, set }, threadId: string): { draft: DraftSignals; isNew: boolean } => {
+    const cache = get(draftCache$);
+    const existing = cache.get(threadId);
+    if (existing) {
+      return { draft: existing, isNew: false };
+    }
+    const draft = createDraftSignals();
+    const next = new Map(cache);
+    next.set(threadId, draft);
+    set(draftCache$, next);
+    return { draft, isNew: true };
+  },
+);
 
 export function createChatThreadSignals(
   threadId: string,
@@ -709,6 +853,9 @@ export function createChatThreadSignals(
     get(internalInputRef$)?.focus();
   });
 
+  const { scheduleDraftSync$, cancelDraftSync$, flushDraftClear$ } =
+    createDraftSync(threadId, draft);
+
   const { sendMessage$, loadMessages$, cancelRun$ } = createMessageCommands({
     threadId,
     threadData$,
@@ -717,6 +864,8 @@ export function createChatThreadSignals(
     chatMessages$,
     draft,
     reloadThinkingMessage$,
+    cancelDraftSync$,
+    flushDraftClear$,
   });
 
   return {
@@ -744,6 +893,9 @@ export function createChatThreadSignals(
     copyMessage$,
     setInputRef$,
     focusInput$,
+    scheduleDraftSync$,
+    cancelDraftSync$,
+    flushDraftClear$,
   };
 }
 

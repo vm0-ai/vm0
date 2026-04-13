@@ -1,5 +1,9 @@
 import { eq, and, desc } from "drizzle-orm";
-import { chatThreads, chatThreadRuns } from "../../../db/schema/chat-thread";
+import {
+  chatThreads,
+  chatThreadRuns,
+  type PersistedAttachment,
+} from "../../../db/schema/chat-thread";
 import { agentRuns } from "../../../db/schema/agent-run";
 import { notFound } from "../../shared/errors";
 import {
@@ -86,6 +90,8 @@ export async function getChatThread(
   agentComposeId: string;
   sessionId: string | null;
   sourceScheduleRunId: string | null;
+  draftContent: string | null;
+  draftAttachments: PersistedAttachment[] | null;
   createdAt: Date;
   updatedAt: Date;
 }> {
@@ -105,9 +111,33 @@ export async function getChatThread(
     agentComposeId: thread.agentComposeId,
     sessionId: thread.sessionId ?? null,
     sourceScheduleRunId: thread.sourceScheduleRunId ?? null,
+    draftContent: thread.draftContent ?? null,
+    draftAttachments:
+      (thread.draftAttachments as PersistedAttachment[] | null) ?? null,
     createdAt: thread.createdAt,
     updatedAt: thread.updatedAt,
   };
+}
+
+/**
+ * Update a chat thread's draft content and attachments.
+ * Ownership check in WHERE clause ensures users can only update their own threads.
+ */
+export async function updateChatThreadDraft(
+  threadId: string,
+  userId: string,
+  draftContent: string | null,
+  draftAttachments: PersistedAttachment[] | null,
+): Promise<void> {
+  const updated = await globalThis.services.db
+    .update(chatThreads)
+    .set({ draftContent, draftAttachments })
+    .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)))
+    .returning({ id: chatThreads.id });
+
+  if (updated.length === 0) {
+    throw notFound("Chat thread not found");
+  }
 }
 
 /**

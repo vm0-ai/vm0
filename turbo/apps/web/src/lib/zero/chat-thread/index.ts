@@ -5,5 +5,6 @@ export {
   addRunToThread,
   getChatThreadMessages,
   updateChatThreadTitle,
+  updateChatThreadDraft,
   deleteChatThread,
 } from "./chat-thread-service";

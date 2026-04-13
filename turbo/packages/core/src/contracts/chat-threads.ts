@@ -5,6 +5,14 @@ import { runStatusSchema } from "./runs";
 
 const c = initContract();
 
+const persistedAttachmentSchema = z.object({
+  id: z.string(),
+  url: z.string(),
+  filename: z.string(),
+  contentType: z.string(),
+  size: z.number(),
+});
+
 const chatThreadListItemSchema = z.object({
   id: z.string(),
   title: z.string().nullable(),
@@ -56,6 +64,8 @@ const chatThreadDetailSchema = z.object({
   unsavedRuns: z.array(unsavedRunSchema),
   createdAt: z.string(),
   updatedAt: z.string(),
+  draftContent: z.string().nullable().optional(),
+  draftAttachments: z.array(persistedAttachmentSchema).nullable().optional(),
 });
 
 /**
@@ -120,6 +130,25 @@ export const chatThreadByIdContract = c.router({
     },
     summary: "Get chat thread detail with messages",
   },
+  patch: {
+    method: "PATCH",
+    path: "/api/zero/chat-threads/:id",
+    headers: authHeadersSchema,
+    pathParams: z.object({ id: z.string() }),
+    body: z.object({
+      draftContent: z.string().nullable().optional(),
+      draftAttachments: z
+        .array(persistedAttachmentSchema)
+        .nullable()
+        .optional(),
+    }),
+    responses: {
+      204: c.noBody(),
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Update chat thread draft content and attachments",
+  },
   delete: {
     method: "DELETE",
     path: "/api/zero/chat-threads/:id",
@@ -173,8 +202,14 @@ export type ChatThreadsContract = typeof chatThreadsContract;
 export type ChatThreadByIdContract = typeof chatThreadByIdContract;
 export type ChatMessagesContract = typeof chatMessagesContract;
 
-export { chatThreadListItemSchema, chatThreadDetailSchema, summaryEntrySchema };
+export {
+  chatThreadListItemSchema,
+  chatThreadDetailSchema,
+  summaryEntrySchema,
+  persistedAttachmentSchema,
+};
 
 export type SummaryEntry = z.infer<typeof summaryEntrySchema>;
 export type ChatThreadListItem = z.infer<typeof chatThreadListItemSchema>;
 export type ChatThreadDetail = z.infer<typeof chatThreadDetailSchema>;
+export type PersistedAttachment = z.infer<typeof persistedAttachmentSchema>;

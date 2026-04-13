@@ -2,6 +2,7 @@ import { command, computed, state, type Command, type Computed } from "ccstate";
 import { resetSignal, createDeferredPromise } from "../utils.ts";
 import { currentChatThreadId$ } from "../agent-chat.ts";
 import { fetch$ } from "../fetch.ts";
+import type { PersistedAttachment } from "@vm0/core";
 
 // ---------------------------------------------------------------------------
 // Attachment types (moved from zero-chat.ts)
@@ -102,6 +103,41 @@ export interface DraftSignals {
   setDragOver$: Command<void, [boolean]>;
   /** Reset all draft state (input, attachments). Called after send. */
   clear$: Command<void, []>;
+  /** Seed draft from persisted server data. Only called when local cache was empty. */
+  seed$: Command<void, [content: string, attachments: ZeroChatAttachment[]]>;
+}
+
+/**
+ * Reconstructs a ZeroChatAttachment from persisted attachment metadata.
+ * The fileInfo$ resolves immediately since the file was already uploaded.
+ */
+export function createRestoredAttachment(
+  persisted: PersistedAttachment,
+): ZeroChatAttachment {
+  const fileInfo$ = computed(
+    (): Promise<{ id: string; url: string } | null> => {
+      return Promise.resolve({ id: persisted.id, url: persisted.url });
+    },
+  );
+
+  const cancel$ = command(() => {
+    // no-op: already uploaded, nothing to cancel
+  });
+
+  // upload$ accepts a signal parameter to match the ZeroChatAttachment interface.
+  // The file is already uploaded, so this is a no-op.
+  const upload$ = command((_visitor, _signal: AbortSignal): Promise<void> => {
+    return Promise.resolve();
+  });
+
+  return {
+    filename: persisted.filename,
+    contentType: persisted.contentType,
+    size: persisted.size,
+    fileInfo$,
+    cancel$,
+    upload$,
+  };
 }
 
 export function createDraftSignals(): DraftSignals {
@@ -159,6 +195,13 @@ export function createDraftSignals(): DraftSignals {
     set(internalDragOver$, false);
   });
 
+  const seed$ = command(
+    ({ set }, content: string, attachments: ZeroChatAttachment[]) => {
+      set(internalInput$, content);
+      set(internalAttachments$, attachments);
+    },
+  );
+
   return {
     input$,
     setInput$,
@@ -168,6 +211,7 @@ export function createDraftSignals(): DraftSignals {
     dragOver$,
     setDragOver$,
     clear$,
+    seed$,
   };
 }
 

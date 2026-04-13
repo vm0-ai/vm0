@@ -3,6 +3,7 @@ import {
   chatThreadByIdContract,
   chatThreadsContract,
   type SummaryEntry,
+  type PersistedAttachment,
 } from "@vm0/core";
 import { agentById, defaultAgentId$ } from "./agent.ts";
 import { zeroClient$ } from "./api-client.ts";
@@ -74,6 +75,8 @@ export interface ChatThread {
     createdAt: string;
   }[];
   isLegacySession: boolean;
+  draftContent: string | null;
+  draftAttachments: PersistedAttachment[] | null;
 }
 
 export const currentChatThread$ = computed(
@@ -100,6 +103,8 @@ export const currentChatThread$ = computed(
       latestSessionId: body.latestSessionId ?? null,
       unsavedRuns: body.unsavedRuns ?? [],
       isLegacySession: false,
+      draftContent: body.draftContent ?? null,
+      draftAttachments: body.draftAttachments ?? null,
     };
   },
 );

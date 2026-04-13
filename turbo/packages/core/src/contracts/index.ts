@@ -293,12 +293,14 @@ export {
   chatThreadListItemSchema,
   chatThreadDetailSchema,
   summaryEntrySchema,
+  persistedAttachmentSchema,
   type SummaryEntry,
   type ChatThreadsContract,
   type ChatThreadByIdContract,
   type ChatMessagesContract,
   type ChatThreadListItem,
   type ChatThreadDetail,
+  type PersistedAttachment,
 } from "./chat-threads";
 export {
   runnersPollContract,

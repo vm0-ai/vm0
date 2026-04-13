@@ -133,6 +133,13 @@ export const apiAgentsHandlers = [
       unsavedRuns: [],
       createdAt: "2026-03-10T00:00:00Z",
       updatedAt: "2026-03-10T00:00:00Z",
+      draftContent: null,
+      draftAttachments: null,
     });
+  }),
+
+  // PATCH /api/zero/chat-threads/:id (update draft)
+  http.patch("*/api/zero/chat-threads/:id", () => {
+    return new HttpResponse(null, { status: 204 });
   }),
 ];
