@@ -11,11 +11,17 @@ import type { TitleContextMessage } from "../ai/lightweight-model";
 
 /**
  * Create a new chat thread.
+ *
+ * `appendSystemPrompt` is persisted on the thread row and auto-applied to every
+ * run created in this thread by the chat messages route. This is how
+ * "continue schedule conversation" threads carry the source-run context into
+ * subsequent agent runs without the client sending it on every message.
  */
 export async function createChatThread(
   userId: string,
   agentComposeId: string,
   title?: string | null,
+  appendSystemPrompt?: string | null,
 ): Promise<{ id: string; createdAt: Date }> {
   const [thread] = await globalThis.services.db
     .insert(chatThreads)
@@ -23,6 +29,7 @@ export async function createChatThread(
       userId,
       agentComposeId,
       title: title ?? null,
+      appendSystemPrompt: appendSystemPrompt ?? null,
     })
     .returning({ id: chatThreads.id, createdAt: chatThreads.createdAt });
 
@@ -77,6 +84,7 @@ export async function getChatThread(
   title: string | null;
   agentComposeId: string;
   sessionId: string | null;
+  appendSystemPrompt: string | null;
   createdAt: Date;
   updatedAt: Date;
 }> {
@@ -95,6 +103,7 @@ export async function getChatThread(
     title: thread.title,
     agentComposeId: thread.agentComposeId,
     sessionId: thread.sessionId ?? null,
+    appendSystemPrompt: thread.appendSystemPrompt ?? null,
     createdAt: thread.createdAt,
     updatedAt: thread.updatedAt,
   };

@@ -1,6 +1,10 @@
 import { command, computed, state } from "ccstate";
 import type { AgentEvent } from "../zero-page/log-types.ts";
-import { zeroComposesListContract, type ComposeListItem } from "@vm0/core";
+import {
+  zeroComposesListContract,
+  chatThreadsContract,
+  type ComposeListItem,
+} from "@vm0/core";
 import { pathParams$, searchParams$, updateSearchParams$ } from "../route.ts";
 import { createCursorPagination } from "../cursor-pagination.ts";
 import { zeroOnboardingStatus$ } from "../zero-page/zero-onboarding.ts";
@@ -8,6 +12,8 @@ import { zeroClient$ } from "../api-client.ts";
 import { createRunLoop } from "../zero-page/polling.ts";
 import { setLoop } from "../utils.ts";
 import { accept } from "../../lib/accept.ts";
+import { navigateToChat$ } from "../zero-page/zero-nav.ts";
+import { reloadChatThreads$ } from "../agent-chat.ts";
 
 // ---------------------------------------------------------------------------
 // Filters — URL-derived
@@ -308,6 +314,49 @@ export function formatLogTime(createdAt: string): string {
   const h12 = hours === 0 ? 12 : hours > 12 ? hours - 12 : hours;
   return `${month}/${day} ${String(h12).padStart(2, "0")}:${String(minutes).padStart(2, "0")} ${ampm}`;
 }
+
+/**
+ * Builds the system prompt persisted on a new chat thread seeded from a
+ * scheduled run. The agent can fetch the original run's full telemetry via the
+ * `zero logs <runId>` CLI command available inside its sandbox.
+ */
+function buildContinueFromScheduleSystemPrompt(runId: string): string {
+  return (
+    `You are continuing a previously scheduled conversation. ` +
+    `The original scheduled run ID is \`${runId}\`. ` +
+    `Before replying, run \`zero logs ${runId}\` inside your sandbox to ` +
+    `fetch the full record of that run, then continue the conversation with ` +
+    `the user based on that context.`
+  );
+}
+
+/**
+ * Create a new chat thread on the given agent, seeded with a system prompt
+ * that instructs the agent to continue the scheduled conversation identified
+ * by `runId`, then navigate to the new thread.
+ */
+export const startChatFromScheduleRun$ = command(
+  async (
+    { get, set },
+    args: { agentId: string; runId: string },
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(chatThreadsContract);
+    const result = await accept(
+      client.create({
+        body: {
+          agentId: args.agentId,
+          appendSystemPrompt: buildContinueFromScheduleSystemPrompt(args.runId),
+        },
+        fetchOptions: { signal },
+      }),
+      [201],
+    );
+    signal.throwIfAborted();
+    set(reloadChatThreads$);
+    set(navigateToChat$, result.body.id);
+  },
+);
 
 export function formatDuration(
   startedAt: string | null,

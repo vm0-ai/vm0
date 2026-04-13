@@ -69,6 +69,12 @@ export const chatThreadsContract = c.router({
     body: z.object({
       agentId: z.string().min(1),
       title: z.string().optional(),
+      /**
+       * Optional system prompt persisted on the thread and auto-applied to every
+       * run created in it. Used, for example, to seed a "continue-from-schedule"
+       * thread with context referencing the originating run.
+       */
+      appendSystemPrompt: z.string().optional(),
     }),
     responses: {
       201: z.object({
@@ -77,6 +83,7 @@ export const chatThreadsContract = c.router({
         createdAt: z.string(),
       }),
       401: apiErrorSchema,
+      404: apiErrorSchema,
     },
     summary: "Create a new chat thread",
   },

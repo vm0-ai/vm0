@@ -1,5 +1,5 @@
 {
-  "id": "3fd83209-cb2a-4a2f-b082-169921b894e2",
+  "id": "0b3a19dd-f70d-48bc-8e54-ea1c7813f477",
   "prevId": "9706e331-a337-4dd2-a265-7d192e384225",
   "version": "7",
   "dialect": "postgresql",
@@ -1028,6 +1028,12 @@
         "session_id": {
           "name": "session_id",
           "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "append_system_prompt": {
+          "name": "append_system_prompt",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
@@ -5042,6 +5048,32 @@
           "columns": ["url"]
         }
       },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.slack_event_dedup": {
+      "name": "slack_event_dedup",
+      "schema": "",
+      "columns": {
+        "event_id": {
+          "name": "event_id",
+          "type": "varchar(50)",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false

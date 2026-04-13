@@ -66,11 +66,16 @@ const router = tsr.router(chatMessagesContract, {
       let sessionId: string | undefined;
       let previousContext: Awaited<ReturnType<typeof getChatThreadContext>> =
         [];
+      // Persisted on the thread at creation time — auto-applied to every run
+      // in this thread (used by "continue from schedule" threads to carry the
+      // source-run context forward).
+      let threadAppendSystemPrompt: string | undefined;
 
       if (body.threadId) {
         const thread = await getChatThread(body.threadId, authCtx.userId);
         threadId = thread.id;
         sessionId = thread.sessionId ?? undefined;
+        threadAppendSystemPrompt = thread.appendSystemPrompt ?? undefined;
         previousContext = await getChatThreadContext(thread.id, authCtx.userId);
       } else {
         const thread = await createChatThread(authCtx.userId, body.agentId);
@@ -123,6 +128,7 @@ const router = tsr.router(chatMessagesContract, {
         sessionId,
         triggerSource: "web",
         modelProvider,
+        appendSystemPrompt: threadAppendSystemPrompt,
         callbacks: [chatCallback],
       });
 

@@ -37,6 +37,13 @@ export const chatThreads = pgTable(
         onDelete: "set null",
       },
     ),
+    /**
+     * Auto-appended system prompt applied to every run created in this thread.
+     * Populated when the thread is created from a schedule-triggered run so the
+     * agent knows it's continuing the prior conversation and can fetch the
+     * original run's log via the `zero logs <id>` CLI inside the sandbox.
+     */
+    appendSystemPrompt: text("append_system_prompt"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

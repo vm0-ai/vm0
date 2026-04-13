@@ -7,7 +7,9 @@ import {
   getTestZeroAgentId,
   insertOrgDefaultModelProvider,
   findTestCallbacksByRunId,
+  findTestRunRecord,
 } from "../../../../../../src/__tests__/api-test-helpers";
+import { POST as createChatThreadPOST } from "../../../chat-threads/route";
 import {
   testContext,
   uniqueId,
@@ -250,6 +252,41 @@ describe("POST /api/zero/chat/messages", () => {
       await context.mocks.flushAfter();
 
       expect(openRouterHandler.mocked).not.toHaveBeenCalled();
+    });
+
+    it("should forward thread.appendSystemPrompt to newly created runs", async () => {
+      // Create a thread seeded with an appendSystemPrompt (e.g., a
+      // "continue-from-schedule" thread) and verify it is applied to every
+      // run created in the thread.
+      const appendSystemPrompt =
+        "You are continuing a previously scheduled conversation.";
+      const createThreadResponse = await createChatThreadPOST(
+        createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ agentId, appendSystemPrompt }),
+        }),
+      );
+      expect(createThreadResponse.status).toBe(201);
+      const { id: threadId } = await createThreadResponse.json();
+
+      const response = await POST(
+        createTestRequest(URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentId,
+            prompt: "continue please",
+            threadId,
+          }),
+        }),
+      );
+      expect(response.status).toBe(201);
+      const data = await response.json();
+
+      const run = await findTestRunRecord(data.runId);
+      expect(run).toBeDefined();
+      expect(run?.appendSystemPrompt).toContain(appendSystemPrompt);
     });
 
     it("should generate title when hasTextContent is true (text message)", async () => {
