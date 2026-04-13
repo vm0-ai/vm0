@@ -458,6 +458,275 @@ describe("mission control page", () => {
     expect(signals).toHaveLength(0);
   });
 
+  it("should show user bubble with prompt for completed schedule task", async () => {
+    const runId = "run-chat-completed";
+    mockTasksAPI([
+      {
+        id: "task-sched-completed",
+        type: "schedule",
+        title: "Completed Schedule Task",
+        summary: null,
+        agent: createAgent(),
+        latestRunId: runId,
+        status: "completed",
+        scheduleId: "sched-done",
+        createdAt: "2026-04-10T10:00:00Z",
+        updatedAt: "2026-04-10T10:00:00Z",
+      },
+    ]);
+
+    server.use(
+      http.get(`*/api/zero/logs/${runId}`, () => {
+        return HttpResponse.json({
+          id: "00000000-0000-4000-a000-000000000001",
+          displayName: "Test Agent",
+          status: "completed",
+          agentId: "agent-1",
+          sessionId: null,
+          triggerSource: "schedule",
+          triggerAgentName: null,
+          modelProvider: null,
+          selectedModel: null,
+          framework: null,
+          scheduleId: null,
+          prompt: "Send the daily report",
+          appendSystemPrompt: null,
+          error: null,
+          createdAt: "2026-04-10T10:00:00Z",
+          startedAt: "2026-04-10T10:00:01Z",
+          completedAt: "2026-04-10T10:00:05Z",
+          artifact: { name: null, version: null },
+        });
+      }),
+      http.get(`*/api/zero/runs/${runId}/telemetry/agent`, () => {
+        return HttpResponse.json({
+          events: [],
+          hasMore: false,
+          framework: "anthropic",
+        });
+      }),
+    );
+
+    const user = userEvent.setup();
+    detachedSetupPage({ context, path: "/_/mission-control" });
+
+    const title = await waitFor(() => {
+      return screen.getByText("Completed Schedule Task");
+    });
+    await user.click(title);
+
+    await waitFor(() => {
+      expect(screen.getByText("Send the daily report")).toBeInTheDocument();
+    });
+  });
+
+  it("should show assistant result bubble for completed task with result event", async () => {
+    const runId = "run-with-result";
+    mockTasksAPI([
+      {
+        id: "task-sched-result",
+        type: "schedule",
+        title: "Schedule Task With Result",
+        summary: null,
+        agent: createAgent(),
+        latestRunId: runId,
+        status: "completed",
+        scheduleId: "sched-result",
+        createdAt: "2026-04-10T10:00:00Z",
+        updatedAt: "2026-04-10T10:00:00Z",
+      },
+    ]);
+
+    server.use(
+      http.get(`*/api/zero/logs/${runId}`, () => {
+        return HttpResponse.json({
+          id: "00000000-0000-4000-a000-000000000002",
+          displayName: "Test Agent",
+          status: "completed",
+          agentId: "agent-1",
+          sessionId: null,
+          triggerSource: "schedule",
+          triggerAgentName: null,
+          modelProvider: null,
+          selectedModel: null,
+          framework: null,
+          scheduleId: null,
+          prompt: "Generate a daily report",
+          appendSystemPrompt: null,
+          error: null,
+          createdAt: "2026-04-10T10:00:00Z",
+          startedAt: "2026-04-10T10:00:01Z",
+          completedAt: "2026-04-10T10:00:05Z",
+          artifact: { name: null, version: null },
+        });
+      }),
+      http.get(`*/api/zero/runs/${runId}/telemetry/agent`, () => {
+        return HttpResponse.json({
+          events: [
+            {
+              sequenceNumber: 1,
+              eventType: "result",
+              eventData: { result: "Here is your daily report" },
+              createdAt: "2026-04-10T10:00:05Z",
+            },
+          ],
+          hasMore: false,
+          framework: "anthropic",
+        });
+      }),
+    );
+
+    const user = userEvent.setup();
+    detachedSetupPage({ context, path: "/_/mission-control" });
+
+    const title = await waitFor(() => {
+      return screen.getByText("Schedule Task With Result");
+    });
+    await user.click(title);
+
+    await waitFor(() => {
+      expect(screen.getByText("Here is your daily report")).toBeInTheDocument();
+    });
+
+    expect(
+      screen.queryByPlaceholderText("Search steps"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("should show steps list for running email task, not assistant bubbles", async () => {
+    const runId = "run-running-email";
+    mockTasksAPI([
+      {
+        id: "task-running-email",
+        type: "email",
+        title: "Running Email Task",
+        summary: null,
+        agent: createAgent(),
+        latestRunId: runId,
+        status: "running",
+        emailThreadSessionId: "email-session-running",
+        createdAt: "2026-04-10T10:00:00Z",
+        updatedAt: "2026-04-10T10:00:00Z",
+      },
+    ]);
+
+    server.use(
+      http.get(`*/api/zero/logs/${runId}`, () => {
+        return HttpResponse.json({
+          id: "00000000-0000-4000-a000-000000000003",
+          displayName: "Test Agent",
+          status: "running",
+          agentId: "agent-1",
+          sessionId: null,
+          triggerSource: "email",
+          triggerAgentName: null,
+          modelProvider: null,
+          selectedModel: null,
+          framework: null,
+          scheduleId: null,
+          prompt: "Reply to customer inquiry",
+          appendSystemPrompt: null,
+          error: null,
+          createdAt: "2026-04-10T10:00:00Z",
+          startedAt: "2026-04-10T10:00:01Z",
+          completedAt: null,
+          artifact: { name: null, version: null },
+        });
+      }),
+      http.get(`*/api/zero/runs/${runId}/telemetry/agent`, () => {
+        return HttpResponse.json({
+          events: [],
+          hasMore: false,
+          framework: "anthropic",
+        });
+      }),
+    );
+
+    const user = userEvent.setup();
+    detachedSetupPage({ context, path: "/_/mission-control" });
+
+    const title = await waitFor(() => {
+      return screen.getByText("Running Email Task");
+    });
+    await user.click(title);
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByText("Reply to customer inquiry").length,
+      ).toBeGreaterThan(0);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText("Search steps")).toBeInTheDocument();
+    });
+  });
+
+  it("should show prompt bubble but no assistant bubble when completed task has no result events", async () => {
+    const runId = "run-no-result";
+    mockTasksAPI([
+      {
+        id: "task-no-result",
+        type: "schedule",
+        title: "Task With No Result",
+        summary: null,
+        agent: createAgent(),
+        latestRunId: runId,
+        status: "completed",
+        scheduleId: "sched-no-result",
+        createdAt: "2026-04-10T10:00:00Z",
+        updatedAt: "2026-04-10T10:00:00Z",
+      },
+    ]);
+
+    server.use(
+      http.get(`*/api/zero/logs/${runId}`, () => {
+        return HttpResponse.json({
+          id: "00000000-0000-4000-a000-000000000004",
+          displayName: "Test Agent",
+          status: "completed",
+          agentId: "agent-1",
+          sessionId: null,
+          triggerSource: "schedule",
+          triggerAgentName: null,
+          modelProvider: null,
+          selectedModel: null,
+          framework: null,
+          scheduleId: null,
+          prompt: "Fetch news summary",
+          appendSystemPrompt: null,
+          error: null,
+          createdAt: "2026-04-10T10:00:00Z",
+          startedAt: "2026-04-10T10:00:01Z",
+          completedAt: "2026-04-10T10:00:05Z",
+          artifact: { name: null, version: null },
+        });
+      }),
+      http.get(`*/api/zero/runs/${runId}/telemetry/agent`, () => {
+        return HttpResponse.json({
+          events: [],
+          hasMore: false,
+          framework: "anthropic",
+        });
+      }),
+    );
+
+    const user = userEvent.setup();
+    detachedSetupPage({ context, path: "/_/mission-control" });
+
+    const title = await waitFor(() => {
+      return screen.getByText("Task With No Result");
+    });
+    await user.click(title);
+
+    await waitFor(() => {
+      expect(screen.getByText("Fetch news summary")).toBeInTheDocument();
+    });
+
+    expect(
+      screen.queryByPlaceholderText("Search steps"),
+    ).not.toBeInTheDocument();
+  });
+
   it("should remove task from list when archive button is clicked", async () => {
     let archiveRequestBody: unknown = null;
 
