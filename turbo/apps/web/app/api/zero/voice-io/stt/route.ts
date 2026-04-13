@@ -105,10 +105,10 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  // 7. Call OpenAI Whisper API
+  // 7. Call OpenAI STT API
   const openaiForm = new FormData();
   openaiForm.append("file", file, file.name || "audio.webm");
-  openaiForm.append("model", "whisper-1");
+  openaiForm.append("model", "gpt-4o-mini-transcribe");
   openaiForm.append("response_format", "json");
 
   const openaiResponse = await fetch(
@@ -121,7 +121,7 @@ export async function POST(request: Request): Promise<Response> {
   );
 
   if (!openaiResponse.ok) {
-    log.error("OpenAI Whisper API error", {
+    log.error("OpenAI STT API error", {
       status: openaiResponse.status,
       statusText: openaiResponse.statusText,
     });

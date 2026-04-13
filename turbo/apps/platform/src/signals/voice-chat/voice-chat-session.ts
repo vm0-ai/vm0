@@ -507,7 +507,7 @@ const setupWebRTC$ = command(
           session: {
             modalities: ["text", "audio"],
             instructions: FAST_BRAIN_INSTRUCTIONS,
-            input_audio_transcription: { model: "whisper-1" },
+            input_audio_transcription: { model: "gpt-4o-mini-transcribe" },
             input_audio_noise_reduction: { type: "far_field" },
             turn_detection: turnDetection,
             tools: SESSION_TOOLS,
