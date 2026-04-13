@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.232.1](https://github.com/vm0-ai/vm0/compare/app-v0.232.0...app-v0.232.1) (2026-04-13)
+
+
+### Bug Fixes
+
+* **voice-chat:** pre-fetch cached preparation events before webrtc connection ([#9210](https://github.com/vm0-ai/vm0/issues/9210)) ([5d71c76](https://github.com/vm0-ai/vm0/commit/5d71c76b949b8f3f785c3227b4e7230cd515a639))
+
 ## [0.232.0](https://github.com/vm0-ai/vm0/compare/app-v0.231.0...app-v0.232.0) (2026-04-13)
 
 

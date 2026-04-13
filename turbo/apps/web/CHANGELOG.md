@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.228.2](https://github.com/vm0-ai/vm0/compare/web-v12.228.1...web-v12.228.2) (2026-04-13)
+
+
+### Bug Fixes
+
+* **web:** validate custom skill names against org skills and connectors ([#9207](https://github.com/vm0-ai/vm0/issues/9207)) ([635b27a](https://github.com/vm0-ai/vm0/commit/635b27a1b9841f8f307235d2d21f27e96a36ba64)), closes [#9205](https://github.com/vm0-ai/vm0/issues/9205)
+
 ## [12.228.1](https://github.com/vm0-ai/vm0/compare/web-v12.228.0...web-v12.228.1) (2026-04-13)
 
 
