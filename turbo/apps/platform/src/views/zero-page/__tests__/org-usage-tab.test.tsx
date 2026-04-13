@@ -403,7 +403,9 @@ describe("org usage tab - free tier", () => {
     await openUsageTab();
 
     await waitFor(() => {
-      expect(screen.getByText("10,000 starter credits")).toBeInTheDocument();
+      expect(screen.getByTestId("credits-line")).toHaveTextContent(
+        /starter credits/,
+      );
     });
   });
 

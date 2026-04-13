@@ -361,7 +361,10 @@ function OverviewSection() {
                 <p className="text-sm font-medium text-foreground">
                   {billing.credits.toLocaleString()} credits
                 </p>
-                <p className="text-[13px] text-muted-foreground mt-0.5">
+                <p
+                  className="text-[13px] text-muted-foreground mt-0.5"
+                  data-testid="credits-line"
+                >
                   {formatCreditsLine(currentTier, totalUsed)}
                 </p>
               </div>
