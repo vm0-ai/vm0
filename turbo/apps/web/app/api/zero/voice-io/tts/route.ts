@@ -118,13 +118,10 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  const audioBuffer = await response.arrayBuffer();
-
-  return new Response(audioBuffer, {
+  return new Response(response.body, {
     status: 200,
     headers: {
       "Content-Type": "audio/mpeg",
-      "Content-Length": String(audioBuffer.byteLength),
     },
   });
 }

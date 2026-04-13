@@ -9,7 +9,7 @@ export async function fetchTtsAudio(
   fetchFn: (url: string, init?: RequestInit) => Promise<Response>,
   text: string,
   signal?: AbortSignal,
-): Promise<Blob | null> {
+): Promise<Response | null> {
   const response = await fetchFn("/api/zero/voice-io/tts", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -21,5 +21,5 @@ export async function fetchTtsAudio(
     return null;
   }
 
-  return response.blob();
+  return response;
 }
