@@ -859,16 +859,21 @@ const sendChatMessageRequest$ = command(
 );
 
 export const sendNewThreadMessage$ = command(
-  async ({ set }, agentId: string, prompt: string, signal: AbortSignal) => {
+  async (
+    { set },
+    agentId: string,
+    prompt: string,
+    signal: AbortSignal,
+  ): Promise<string | null> => {
     const message = await set(prepareChatMessage$, agentId, prompt, signal);
     if (!message) {
-      return;
+      return null;
     }
 
     const { threadId } = await set(sendChatMessageRequest$, message, signal);
 
     set(reloadChatThreads$);
-    set(navigateToChat$, threadId);
+    return threadId;
   },
 );
 

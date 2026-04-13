@@ -52,6 +52,7 @@ import {
   sendNewThreadMessage$,
   startNewZeroSession$,
 } from "../../signals/chat-page/chat-message.ts";
+import { navigateToChat$ } from "../../signals/zero-page/zero-nav.ts";
 
 function getTagline(
   agentName: string,
@@ -181,6 +182,7 @@ export function AgentChatPage() {
   const sendNewThread = useSet(sendNewThreadMessage$);
   const startNewSession = useSet(startNewZeroSession$);
   const resetTalkSendSignal = useSet(resetTalkSendSignal$);
+  const navigateToChatFn = useSet(navigateToChat$);
 
   const handleSendMessage = (message: string) => {
     if (!currentChatAgentId) {
@@ -189,7 +191,11 @@ export function AgentChatPage() {
     startNewSession();
     const talkSignal = resetTalkSendSignal();
     detach(
-      sendNewThread(currentChatAgentId, message, talkSignal),
+      sendNewThread(currentChatAgentId, message, talkSignal).then((threadId) => {
+        if (threadId) {
+          navigateToChatFn(threadId);
+        }
+      }),
       Reason.DomCallback,
     );
   };
