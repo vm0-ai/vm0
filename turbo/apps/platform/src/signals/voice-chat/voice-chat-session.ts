@@ -1,10 +1,15 @@
 import { command, computed, state } from "ccstate";
-import { FeatureSwitchKey } from "@vm0/core";
+import {
+  FeatureSwitchKey,
+  zeroVoiceChatPrepareTriggerContract,
+} from "@vm0/core";
 import { fetch$ } from "../fetch.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import { currentChatAgentId$ } from "../agent-chat.ts";
 import { delay } from "signal-timers";
 import { resetSignal, throwIfAbort, onDomEventFn, setLoop } from "../utils.ts";
+import { zeroClient$ } from "../api-client.ts";
+import { accept } from "../../lib/accept.ts";
 
 type ConnectionStatus =
   | "idle"
@@ -1064,6 +1069,48 @@ export const startVoiceChat$ = command(
       set(internalStatus$, "error");
       return;
     }
+
+    // Ensure preparation cache is populated before session creation.
+    // If preparation is already cached ("ready"), this returns instantly.
+    // If preparation fails, we fall through to session creation which
+    // handles the unprepared case via inline slow-brain.
+    // eslint-disable-next-line no-restricted-syntax -- accept() throws on non-200; must catch to fall through gracefully
+    try {
+      const createClient = get(zeroClient$);
+      const prepClient = createClient(zeroVoiceChatPrepareTriggerContract);
+      const prepRes = await accept(
+        prepClient.trigger({ body: { agentId, mode: "chat" } }),
+        [200],
+        { toast: false },
+      );
+      signal.throwIfAborted();
+
+      if (prepRes.body.preparation.status !== "ready") {
+        // Preparation in progress — poll until ready or timeout
+        const prepStart = Date.now();
+        await setLoop(
+          async (loopSignal: AbortSignal) => {
+            if (Date.now() - prepStart > PREP_TIMEOUT_CHAT_MS) {
+              return true; // Timeout — proceed without cache
+            }
+            const pollRes = await accept(
+              prepClient.trigger({ body: { agentId, mode: "chat" } }),
+              [200],
+              { toast: false },
+            );
+            loopSignal.throwIfAborted();
+            const status = pollRes.body.preparation.status;
+            return status === "ready" || status === "failed";
+          },
+          POLL_INTERVAL_MS,
+          signal,
+        );
+      }
+    } catch (error) {
+      throwIfAbort(error);
+      // Preparation failed — fall through to session creation (graceful fallback)
+    }
+    signal.throwIfAborted();
 
     const sessionRes = await fetchFn("/api/zero/voice-chat", {
       method: "POST",
