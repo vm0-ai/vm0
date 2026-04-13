@@ -8,7 +8,10 @@ import { updatePage$ } from "../react-router.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { endVoiceChat$, vcStatus$ } from "./voice-chat-session.ts";
-import { clearPreparation$ } from "./voice-chat-preparation.ts";
+import {
+  clearPreparation$,
+  meetingPrepStatus$,
+} from "./voice-chat-preparation.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { currentChatAgentId$ } from "../agent-chat.ts";
 import { accept } from "../../lib/accept.ts";
@@ -55,7 +58,13 @@ export const setupVoiceChatPage$ = command(
       if (status === "connecting" || status === "connected") {
         set(endVoiceChat$);
       }
-      set(clearPreparation$);
+      // Only clear preparation if it's not in the "ready" state.
+      // "ready" preparations are backed by a 1-hour backend cache
+      // and should persist across same-session page navigation.
+      const prepStatus = get(meetingPrepStatus$);
+      if (prepStatus !== "ready") {
+        set(clearPreparation$);
+      }
     });
   },
 );

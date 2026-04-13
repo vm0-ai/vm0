@@ -11,6 +11,13 @@ import {
   triggerPreparation$,
   clearPreparation$,
 } from "../voice-chat-preparation.ts";
+import { setupVoiceChatPage$ } from "../voice-chat-setup.ts";
+import {
+  createDeferredPromise,
+  detach,
+  Reason,
+  resetSignal,
+} from "../../utils.ts";
 
 const context = testContext();
 
@@ -142,6 +149,109 @@ describe("voice-chat-preparation signals", () => {
 
     context.store.set(clearPreparation$);
 
+    expect(context.store.get(meetingPrepStatus$)).toBe("idle");
+    expect(context.store.get(meetingPrepPrompt$)).toBeNull();
+    expect(context.store.get(meetingPrepStartTime$)).toBeNull();
+  });
+});
+
+describe("voice-chat page navigation abort", () => {
+  // resetSignal$ creates a ccstate command that manages an AbortController.
+  // Each call to store.set(pageReset$) aborts the previous signal and returns
+  // a new one — simulating page navigation (old page aborted, new page started).
+  const pageReset$ = resetSignal();
+
+  /**
+   * Helper: bootstrap auth, set up the voice chat page with a controllable
+   * signal from resetSignal$. The abort handler in setupVoiceChatPage$ is
+   * registered after awaiting onboardGuard$ and hideAppSkeleton$, so we
+   * await the full setup to guarantee the handler exists before the test
+   * body runs.
+   */
+  async function setupPageWithAbort() {
+    detachedSetupPage({
+      context,
+      path: "/",
+      withoutRender: true,
+    });
+    context.store.set(setChatAgentId$, TEST_AGENT_ID);
+
+    const pageSignal = context.store.set(pageReset$, context.signal);
+    await context.store.set(setupVoiceChatPage$, pageSignal);
+
+    return pageSignal;
+  }
+
+  it("should NOT clear preparation state when status is ready on navigation abort", async () => {
+    await setupPageWithAbort();
+    const responses = [{ status: "ready" }];
+    mockPrepareEndpoint(responses);
+
+    await context.store.set(
+      triggerPreparation$,
+      "discuss quarterly goals",
+      context.signal,
+    );
+
+    expect(context.store.get(meetingPrepStatus$)).toBe("ready");
+    expect(context.store.get(meetingPrepPrompt$)).toBe(
+      "discuss quarterly goals",
+    );
+
+    // Simulate navigation away — resetSignal$ aborts the previous page signal
+    context.store.set(pageReset$, context.signal);
+
+    // "ready" preparation should persist
+    expect(context.store.get(meetingPrepStatus$)).toBe("ready");
+    expect(context.store.get(meetingPrepPrompt$)).toBe(
+      "discuss quarterly goals",
+    );
+    expect(context.store.get(meetingPrepStartTime$)).toBeTypeOf("number");
+  });
+
+  it("should clear preparation state when status is preparing on navigation abort", async () => {
+    // Gate to block poll calls so we stay in "preparing"
+    const prepBlock = createDeferredPromise<void>(context.signal);
+    const initialCallDone = createDeferredPromise<void>(context.signal);
+    let firstPrepCall = true;
+    server.use(
+      http.post("*/api/zero/voice-chat/prepare", async () => {
+        if (firstPrepCall) {
+          firstPrepCall = false;
+          initialCallDone.resolve();
+          return HttpResponse.json({
+            preparation: { id: "prep-1", status: "preparing" },
+          });
+        }
+        // Block all subsequent poll calls so we stay in "preparing"
+        await prepBlock.promise;
+        return HttpResponse.json({
+          preparation: { id: "prep-1", status: "preparing" },
+        });
+      }),
+    );
+
+    const pageSignal = await setupPageWithAbort();
+
+    // Fire triggerPreparation$ but don't await — it polls forever.
+    // Use pageSignal so the preparation poll is also aborted on navigation.
+    detach(
+      context.store.set(triggerPreparation$, "sprint review", pageSignal),
+      Reason.Entrance,
+      "test-trigger-prep",
+    );
+
+    // Wait for the initial API call to complete and status to become "preparing"
+    await initialCallDone.promise;
+    await Promise.resolve();
+
+    expect(context.store.get(meetingPrepStatus$)).toBe("preparing");
+
+    // Simulate navigation away — resetSignal$ aborts the page signal,
+    // firing the abort handler registered by setupVoiceChatPage$.
+    context.store.set(pageReset$, context.signal);
+
+    // "preparing" state should be cleared
     expect(context.store.get(meetingPrepStatus$)).toBe("idle");
     expect(context.store.get(meetingPrepPrompt$)).toBeNull();
     expect(context.store.get(meetingPrepStartTime$)).toBeNull();
