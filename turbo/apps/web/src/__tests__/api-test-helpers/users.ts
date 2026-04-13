@@ -357,6 +357,7 @@ export async function insertTestVoiceChatPreparation(overrides: {
   agentId?: string;
   mode?: string;
   prompt?: string;
+  runId?: string;
   status?: string;
   directiveContent?: string;
   createdAt?: Date;
@@ -370,6 +371,7 @@ export async function insertTestVoiceChatPreparation(overrides: {
       agentId: overrides.agentId,
       mode: overrides.mode ?? "chat",
       prompt: overrides.prompt ?? null,
+      runId: overrides.runId ?? null,
       status: overrides.status ?? "preparing",
       directiveContent: overrides.directiveContent ?? null,
       createdAt: overrides.createdAt ?? new Date(),

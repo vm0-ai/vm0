@@ -808,6 +808,12 @@ export {
   type AppendContextEventBody,
 } from "./zero-voice-chat-context";
 export {
+  zeroVoiceChatPrepareCompleteContract,
+  type ZeroVoiceChatPrepareCompleteContract,
+  type PrepareCompleteBody,
+  type PrepareCompleteResponse,
+} from "./zero-voice-chat-prepare";
+export {
   tasksContract,
   taskItemSchema,
   taskTypeSchema,
