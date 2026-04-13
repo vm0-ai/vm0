@@ -137,7 +137,7 @@ function VoiceChatFooter({
   onRetry: () => void;
 }) {
   return (
-    <div className="border-t px-4 py-3 flex flex-col items-center gap-3 md:flex-row md:justify-between md:gap-4">
+    <div className="border-t px-4 py-3 flex flex-col items-center gap-3 md:flex-row md:justify-center md:gap-4">
       {/* Left: Segmented Control */}
       <Tabs
         value={inputMode}
