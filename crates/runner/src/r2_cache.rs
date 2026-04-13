@@ -808,8 +808,28 @@ fn punch_hole(path: &Path, len: u64) -> Result<(), R2Error> {
 }
 
 #[cfg(test)]
+impl R2ImageCache {
+    /// Test-only constructor. Lets unit tests inject a mock `aws_sdk_s3::Client`
+    /// (built via `aws_smithy_mocks::mock_client!`) without going through
+    /// `from_env`, which reads process env vars. Production code MUST construct
+    /// via `from_env`.
+    pub(crate) fn with_client(client: aws_sdk_s3::Client, bucket: String) -> Self {
+        Self { client, bucket }
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
+    use aws_smithy_mocks::{Rule, RuleMode, mock, mock_client};
+
+    /// Build a mock `R2ImageCache` from a set of rules. Use `RuleMode::MatchAny`
+    /// (the issue's operations don't rely on ordered rule exhaustion; per-rule
+    /// `match_requests` filters disambiguate overlap when present).
+    fn mock_cache(bucket: &str, rules: &[&Rule]) -> R2ImageCache {
+        let client = mock_client!(aws_sdk_s3, RuleMode::MatchAny, rules);
+        R2ImageCache::with_client(client, bucket.to_string())
+    }
 
     #[test]
     fn key_format() {
@@ -1465,5 +1485,24 @@ mod tests {
             entries.is_empty(),
             "empty pack → empty unpack, got {entries:?}"
         );
+    }
+
+    // ---- S3 mock smoke test --------------------------------------------
+    //
+    // Proves that `R2ImageCache::with_client` + the `mock_client!` macro
+    // dispatch correctly through to a real `aws_sdk_s3::Client`. Detailed
+    // coverage of `exists`, `upload`, `try_download`, `gc_older_than` against
+    // mocked S3 responses lives in the test modules added by subsequent
+    // commits.
+
+    #[tokio::test]
+    async fn with_client_dispatches_through_mock() {
+        use aws_sdk_s3::Client;
+        use aws_sdk_s3::operation::head_object::HeadObjectOutput;
+
+        let head = mock!(Client::head_object).then_output(|| HeadObjectOutput::builder().build());
+        let cache = mock_cache("test-bucket", &[&head]);
+        assert!(cache.exists("any-hash").await.unwrap());
+        assert_eq!(head.num_calls(), 1);
     }
 }

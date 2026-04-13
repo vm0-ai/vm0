@@ -44,6 +44,7 @@ vsock-proto = { path = "vsock-proto" }
 # External dependencies
 async-trait = "0.1"
 aws-sdk-s3 = { version = "1", default-features = false }
+aws-smithy-mocks = "0.2"
 base64 = "0.22"
 bitvec = "1"
 bytes = "1"

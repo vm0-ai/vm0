@@ -40,6 +40,11 @@ zstd = { workspace = true, features = ["zstdmt"] }
 # cargo-workspace plugin includes dev-dependencies in its dependency graph,
 # so runner-rs gets auto-bumped when any guest crate version changes.
 [dev-dependencies]
+# `test-util` feature exposes `with_test_defaults_v2()` on `aws_sdk_s3::Config`,
+# which `aws_smithy_mocks::mock_client!` needs. Feature applies only to the
+# test build — no impact on the production binary.
+aws-sdk-s3 = { workspace = true, features = ["test-util"] }
+aws-smithy-mocks = { workspace = true }
 guest-agent = { workspace = true }
 guest-download = { workspace = true }
 guest-init = { workspace = true }
