@@ -686,6 +686,49 @@ describe("POST /api/zero/tasks/unarchive", () => {
     expect(res.status).toBe(401);
   });
 
+  it("archives a schedule task with no run and excludes it from the task list", async () => {
+    const { composeId } = await createTestCompose(uniqueId("arc-sched"));
+    const schedule = await createTestSchedule(composeId, "Scheduled Task");
+
+    // Confirm it appears before archiving (latestRunId is null)
+    const listRes = await GET(
+      createTestRequest("http://localhost:3000/api/zero/tasks"),
+    );
+    const listData = (await listRes.json()) as { tasks: Array<{ id: string }> };
+    expect(
+      listData.tasks.some((t) => {
+        return t.id === schedule.id;
+      }),
+    ).toBe(true);
+
+    // Archive with runId = null (schedule has no run yet)
+    const archiveRes = await POST(
+      createTestRequest("http://localhost:3000/api/zero/tasks/archive", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          taskId: schedule.id,
+          taskType: "schedule",
+          runId: null,
+        }),
+      }),
+    );
+    expect(archiveRes.status).toBe(200);
+
+    // Now it should be excluded
+    const listRes2 = await GET(
+      createTestRequest("http://localhost:3000/api/zero/tasks"),
+    );
+    const listData2 = (await listRes2.json()) as {
+      tasks: Array<{ id: string }>;
+    };
+    expect(
+      listData2.tasks.some((t) => {
+        return t.id === schedule.id;
+      }),
+    ).toBe(false);
+  });
+
   it("unarchiving a task restores it to the task list", async () => {
     const { composeId } = await createTestCompose(uniqueId("unarc"));
     const threadId = await insertTestChatThread(

@@ -64,7 +64,7 @@ export async function listTasks(
     inFlightEmailTasks,
     voiceChatTasks,
     agentTasks,
-    archivedRunIds,
+    archivedSets,
   ] = await Promise.all([
     listChatTasks(db, userId, orgId, agentId),
     listScheduleTasks(db, userId, orgId, agentId),
@@ -73,7 +73,7 @@ export async function listTasks(
     listInFlightEmailTasks(db, userId, orgId, agentId),
     listVoiceChatTasks(db, userId, orgId, agentId),
     listAgentTasks(db, userId, orgId, agentId),
-    getArchivedRunIds(db, userId, orgId),
+    getArchivedSets(db, userId, orgId),
   ]);
 
   const allTasks = [
@@ -85,8 +85,10 @@ export async function listTasks(
     ...voiceChatTasks,
     ...agentTasks,
   ].filter((t) => {
-    if (t.latestRunId === null) return t.type === "schedule";
-    return !archivedRunIds.has(t.latestRunId);
+    if (t.latestRunId === null) {
+      return !archivedSets.nullRunTaskIds.has(t.id);
+    }
+    return !archivedSets.runIds.has(t.latestRunId);
   });
 
   // Batch-fetch run info for all tasks with a latestRunId
@@ -188,16 +190,28 @@ export async function listTasks(
 
 type DB = typeof globalThis.services.db;
 
+interface ArchivedSets {
+  /** Run IDs that have been archived (for tasks with a latestRunId). */
+  runIds: Set<string>;
+  /** Task IDs archived with no run (e.g. schedules that never ran). */
+  nullRunTaskIds: Set<string>;
+}
+
 /**
- * Returns the set of archived run IDs for this user/org.
+ * Returns two sets for archive filtering:
+ * - runIds: archived run IDs (tasks hidden when latestRunId matches)
+ * - nullRunTaskIds: task IDs archived when they had no run yet (hidden when latestRunId is still null)
  */
-async function getArchivedRunIds(
+async function getArchivedSets(
   db: DB,
   userId: string,
   orgId: string,
-): Promise<Set<string>> {
+): Promise<ArchivedSets> {
   const rows = await db
-    .select({ archivedRunId: archivedTaskRuns.archivedRunId })
+    .select({
+      taskId: archivedTaskRuns.taskId,
+      archivedRunId: archivedTaskRuns.archivedRunId,
+    })
     .from(archivedTaskRuns)
     .where(
       and(
@@ -206,11 +220,16 @@ async function getArchivedRunIds(
       ),
     );
 
-  const set = new Set<string>();
+  const runIds = new Set<string>();
+  const nullRunTaskIds = new Set<string>();
   for (const row of rows) {
-    if (row.archivedRunId !== null) set.add(row.archivedRunId);
+    if (row.archivedRunId !== null) {
+      runIds.add(row.archivedRunId);
+    } else {
+      nullRunTaskIds.add(row.taskId);
+    }
   }
-  return set;
+  return { runIds, nullRunTaskIds };
 }
 
 export async function archiveTask(
@@ -469,7 +488,7 @@ async function listEmailTasks(
 }
 
 /**
- * Find email-triggered runs that are still active (pending/running/paused)
+ * Find email-triggered runs that are still active (pending/running)
  * and have not yet produced an emailThreadSessions record. This covers the
  * window between email arrival and run completion, where the thread session
  * does not yet exist but the task should still appear in Mission Control.
