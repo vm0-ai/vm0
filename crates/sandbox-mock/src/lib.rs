@@ -25,9 +25,8 @@ use sandbox::*;
 
 /// Ignore mutex poisoning and take the lock anyway.
 ///
-/// Tests do not care about poison state — if a previous test panicked while
-/// holding the lock, we still want to observe the inner state rather than
-/// surface the poison as a test failure.
+/// Callers here are test doubles; surfacing a poison error would appear as
+/// a spurious test failure rather than a real issue to propagate.
 trait LockIgnoringPoison<T> {
     fn lock_ignoring_poison(&self) -> MutexGuard<'_, T>;
 }
