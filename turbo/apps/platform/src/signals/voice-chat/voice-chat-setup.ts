@@ -12,6 +12,9 @@ import { clearPreparation$ } from "./voice-chat-preparation.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { currentChatAgentId$ } from "../agent-chat.ts";
 import { accept } from "../../lib/accept.ts";
+import { logger } from "../log.ts";
+
+const L = logger("VoiceChatSetup");
 
 export const setupVoiceChatPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -40,10 +43,10 @@ export const setupVoiceChatPage$ = command(
       await accept(client.trigger({ body: { agentId, mode: "chat" } }), [200], {
         toast: false,
       }).catch(() => {
-        return undefined; // Swallow errors — pre-warming is best-effort
+        return undefined; // Pre-warming is best-effort
       });
-    })().catch(() => {
-      return undefined;
+    })().catch((error: unknown) => {
+      L.warn("Preparation pre-warm failed", error);
     });
 
     // End voice chat session and clear preparation when navigating away

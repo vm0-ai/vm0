@@ -10,6 +10,9 @@ import { delay } from "signal-timers";
 import { resetSignal, throwIfAbort, onDomEventFn, setLoop } from "../utils.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
+import { logger } from "../log.ts";
+
+const L = logger("VoiceChat");
 
 type ConnectionStatus =
   | "idle"
@@ -1108,7 +1111,10 @@ export const startVoiceChat$ = command(
       }
     } catch (error) {
       throwIfAbort(error);
-      // Preparation failed — fall through to session creation (graceful fallback)
+      L.warn(
+        "Chat preparation failed, falling back to unprepared session",
+        error,
+      );
     }
     signal.throwIfAborted();
 
