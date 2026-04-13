@@ -105,41 +105,25 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   // 7. Call OpenAI Whisper API
-  try {
-    const openaiForm = new FormData();
-    openaiForm.append("file", file, file.name || "audio.webm");
-    openaiForm.append("model", "whisper-1");
-    openaiForm.append("response_format", "json");
+  const openaiForm = new FormData();
+  openaiForm.append("file", file, file.name || "audio.webm");
+  openaiForm.append("model", "whisper-1");
+  openaiForm.append("response_format", "json");
 
-    const openaiResponse = await fetch(
-      "https://api.openai.com/v1/audio/transcriptions",
-      {
-        method: "POST",
-        headers: { Authorization: `Bearer ${apiKey}` },
-        body: openaiForm,
-      },
-    );
+  const openaiResponse = await fetch(
+    "https://api.openai.com/v1/audio/transcriptions",
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}` },
+      body: openaiForm,
+    },
+  );
 
-    if (!openaiResponse.ok) {
-      log.error("OpenAI Whisper API error", {
-        status: openaiResponse.status,
-        statusText: openaiResponse.statusText,
-      });
-      return NextResponse.json(
-        {
-          error: {
-            message: "Transcription failed",
-            code: "INTERNAL_SERVER_ERROR",
-          },
-        },
-        { status: 500 },
-      );
-    }
-
-    const result = (await openaiResponse.json()) as { text: string };
-    return NextResponse.json({ text: result.text });
-  } catch (error) {
-    log.error("Failed to transcribe audio", { error });
+  if (!openaiResponse.ok) {
+    log.error("OpenAI Whisper API error", {
+      status: openaiResponse.status,
+      statusText: openaiResponse.statusText,
+    });
     return NextResponse.json(
       {
         error: {
@@ -150,4 +134,7 @@ export async function POST(request: Request): Promise<Response> {
       { status: 500 },
     );
   }
+
+  const result = (await openaiResponse.json()) as { text: string };
+  return NextResponse.json({ text: result.text });
 }
