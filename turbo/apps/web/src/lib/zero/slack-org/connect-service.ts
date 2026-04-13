@@ -324,10 +324,13 @@ export async function notifyConnectSuccess(params: {
     }
 
     if (pendingPrompt) {
+      // Wrap in a code block to prevent Slack mrkdwn injection
+      // (mentions, links, formatting) from user-controlled input.
+      const safePrompt = `\`\`\`${pendingPrompt.replaceAll("`", "\u2018")}\`\`\``;
       await postMessage(
         client,
         slackUserId,
-        `By the way, would you like me to run this for you?\n\n> ${pendingPrompt}\n\nJust paste it in a message and I'll get started!`,
+        `By the way, would you like me to run this for you?\n\n${safePrompt}\n\nJust paste it in a message and I'll get started!`,
       );
     }
 
