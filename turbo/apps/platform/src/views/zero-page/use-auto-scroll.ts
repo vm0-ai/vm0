@@ -1,6 +1,5 @@
 // useLayoutEffect runs synchronously before paint, ensuring the scroll
 // position is applied before the user sees the content.
-// oxlint-disable-next-line no-restricted-imports
 import { useLayoutEffect, useRef } from "react";
 import { useSet } from "ccstate-react";
 import type { Command } from "ccstate";
