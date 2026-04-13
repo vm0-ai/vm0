@@ -57,6 +57,9 @@ function tierCreditReference(tier: BillingTier): number {
 }
 
 function formatCreditsLine(tier: BillingTier, totalUsed: number): string {
+  if (tier === "free") {
+    return `${tierCreditReference(tier).toLocaleString()} starter credits`;
+  }
   const monthly = tierCreditReference(tier);
   if (monthly <= 0) {
     return `Used ${totalUsed.toLocaleString()} credits`;
@@ -362,14 +365,16 @@ function OverviewSection() {
                   {formatCreditsLine(currentTier, totalUsed)}
                 </p>
               </div>
-              <div className="px-5 pb-4 pt-1">
-                <CreditUsageBar
-                  used={totalUsed}
-                  balance={billing.credits}
-                  tier={currentTier}
-                  creditExpiry={billing.creditExpiry}
-                />
-              </div>
+              {currentTier !== "free" && (
+                <div className="px-5 pb-4 pt-1">
+                  <CreditUsageBar
+                    used={totalUsed}
+                    balance={billing.credits}
+                    tier={currentTier}
+                    creditExpiry={billing.creditExpiry}
+                  />
+                </div>
+              )}
             </>
           ) : (
             <div className="px-5 py-4">
@@ -381,44 +386,46 @@ function OverviewSection() {
         </div>
       </section>
 
-      {/* Members */}
-      <section className="flex flex-col gap-3">
-        <h3 className="text-sm font-medium text-foreground">Members</h3>
+      {/* Members — only for paid plans */}
+      {currentTier !== "free" && (
+        <section className="flex flex-col gap-3">
+          <h3 className="text-sm font-medium text-foreground">Members</h3>
 
-        {usageLoading && !usageData ? (
-          <LoadingSkeleton />
-        ) : usageError ? (
-          <div
-            className="rounded-xl bg-card px-5 py-8 text-center text-sm text-muted-foreground zero-border"
-            data-testid="usage-tab-error"
-            role="alert"
-          >
-            Failed to load usage. Please try again later.
-          </div>
-        ) : !period ? (
-          <div className="rounded-xl bg-card px-5 py-8 text-center text-sm text-muted-foreground zero-border">
-            No active billing period. Credit usage by member is available on
-            paid plans.
-          </div>
-        ) : members.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 rounded-xl bg-card px-5 py-10 text-center zero-border">
-            <IconUsers
-              size={20}
-              stroke={1.5}
-              className="text-muted-foreground"
+          {usageLoading && !usageData ? (
+            <LoadingSkeleton />
+          ) : usageError ? (
+            <div
+              className="rounded-xl bg-card px-5 py-8 text-center text-sm text-muted-foreground zero-border"
+              data-testid="usage-tab-error"
+              role="alert"
+            >
+              Failed to load usage. Please try again later.
+            </div>
+          ) : !period ? (
+            <div className="rounded-xl bg-card px-5 py-8 text-center text-sm text-muted-foreground zero-border">
+              No active billing period. Credit usage by member is available on
+              paid plans.
+            </div>
+          ) : members.length === 0 ? (
+            <div className="flex flex-col items-center gap-2 rounded-xl bg-card px-5 py-10 text-center zero-border">
+              <IconUsers
+                size={20}
+                stroke={1.5}
+                className="text-muted-foreground"
+              />
+              <p className="text-sm text-muted-foreground">
+                No usage yet this period
+              </p>
+            </div>
+          ) : (
+            <MembersTable
+              members={members}
+              memberMap={memberMap}
+              isAdmin={isAdmin}
             />
-            <p className="text-sm text-muted-foreground">
-              No usage yet this period
-            </p>
-          </div>
-        ) : (
-          <MembersTable
-            members={members}
-            memberMap={memberMap}
-            isAdmin={isAdmin}
-          />
-        )}
-      </section>
+          )}
+        </section>
+      )}
     </div>
   );
 }
