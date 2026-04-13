@@ -1,5 +1,17 @@
 # Changelog
 
+## [8.180.0](https://github.com/vm0-ai/vm0/compare/core-v8.179.0...core-v8.180.0) (2026-04-13)
+
+
+### Features
+
+* **voice-chat:** add meeting preparation frontend ([#9151](https://github.com/vm0-ai/vm0/issues/9151)) ([0f32dd5](https://github.com/vm0-ai/vm0/commit/0f32dd5d9f5b15ff3847e7f6f8fc313f4976e73a)), closes [#9087](https://github.com/vm0-ai/vm0/issues/9087)
+
+
+### Refactoring
+
+* unify member and admin onboarding connector flow ([#9129](https://github.com/vm0-ai/vm0/issues/9129)) ([#9140](https://github.com/vm0-ai/vm0/issues/9140)) ([fa03f61](https://github.com/vm0-ai/vm0/commit/fa03f61411c81522e2dd695d3bcbe08f6c952740))
+
 ## [8.179.0](https://github.com/vm0-ai/vm0/compare/core-v8.178.0...core-v8.179.0) (2026-04-13)
 
 

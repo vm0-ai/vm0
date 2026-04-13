@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.229.0](https://github.com/vm0-ai/vm0/compare/app-v0.228.0...app-v0.229.0) (2026-04-13)
+
+
+### Features
+
+* **insights:** abbreviate credit numbers with k/m suffix ([#9149](https://github.com/vm0-ai/vm0/issues/9149)) ([3b34b36](https://github.com/vm0-ai/vm0/commit/3b34b36bf5508e8d4d034915bc92961b923a1a40))
+* **platform:** redesign activity panel with chat-like layout for non-chat tasks ([#9139](https://github.com/vm0-ai/vm0/issues/9139)) ([bc73545](https://github.com/vm0-ai/vm0/commit/bc735456aa5b5d2512be5e96ee9a9b5503b8e1f6))
+* **voice-chat:** add meeting preparation frontend ([#9151](https://github.com/vm0-ai/vm0/issues/9151)) ([0f32dd5](https://github.com/vm0-ai/vm0/commit/0f32dd5d9f5b15ff3847e7f6f8fc313f4976e73a)), closes [#9087](https://github.com/vm0-ai/vm0/issues/9087)
+
+
+### Refactoring
+
+* unify member and admin onboarding connector flow ([#9129](https://github.com/vm0-ai/vm0/issues/9129)) ([#9140](https://github.com/vm0-ai/vm0/issues/9140)) ([fa03f61](https://github.com/vm0-ai/vm0/commit/fa03f61411c81522e2dd695d3bcbe08f6c952740))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.180.0
+
 ## [0.228.0](https://github.com/vm0-ai/vm0/compare/app-v0.227.0...app-v0.228.0) (2026-04-13)
 
 

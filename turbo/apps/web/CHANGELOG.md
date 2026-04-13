@@ -1,5 +1,24 @@
 # Changelog
 
+## [12.226.1](https://github.com/vm0-ai/vm0/compare/web-v12.226.0...web-v12.226.1) (2026-04-13)
+
+
+### Bug Fixes
+
+* **web:** use schedule prompt as fallback summary and filter tasks without runs ([#9142](https://github.com/vm0-ai/vm0/issues/9142)) ([97127ea](https://github.com/vm0-ai/vm0/commit/97127ea77027aad15c06fda156206da55962a9e2))
+
+
+### Refactoring
+
+* unify member and admin onboarding connector flow ([#9129](https://github.com/vm0-ai/vm0/issues/9129)) ([#9140](https://github.com/vm0-ai/vm0/issues/9140)) ([fa03f61](https://github.com/vm0-ai/vm0/commit/fa03f61411c81522e2dd695d3bcbe08f6c952740))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.180.0
+
 ## [12.226.0](https://github.com/vm0-ai/vm0/compare/web-v12.225.0...web-v12.226.0) (2026-04-13)
 
 
