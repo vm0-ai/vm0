@@ -24,8 +24,8 @@ use crate::error::{RunnerError, RunnerResult};
 pub fn validate_or_err(name: &str) -> RunnerResult<()> {
     if !validate_name(name) {
         return Err(RunnerError::Config(format!(
-            "invalid runner-dirname: {name} (must be a single path segment of \
-             lowercase alphanumeric, hyphens, and dots; cannot start with `.` or `-`)"
+            "invalid runner-dirname: {name} (must be a non-empty single path segment \
+             of lowercase alphanumeric, hyphens, and dots; cannot start with `.` or `-`)"
         )));
     }
     Ok(())
@@ -146,5 +146,16 @@ mod tests {
         let msg = err.to_string();
         assert!(msg.contains("invalid runner-dirname"), "got: {msg}");
         assert!(msg.contains("/etc"), "got: {msg}");
+    }
+
+    /// Empty input renders the `{name}` placeholder as blank in the error
+    /// message, so the generic "cannot start with `.` or `-`" hint does
+    /// not apply. Lock in that the message explicitly calls out the
+    /// non-empty requirement so empty-string bugs surface clearly.
+    #[test]
+    fn validate_or_err_empty_message_hints_non_empty() {
+        let err = validate_or_err("").unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("non-empty"), "got: {msg}");
     }
 }
