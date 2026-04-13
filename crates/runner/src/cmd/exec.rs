@@ -35,8 +35,20 @@ pub struct ExecArgs {
 // Entry point
 // ---------------------------------------------------------------------------
 
+/// POSIX shell-quote a single argument by wrapping it in single quotes and
+/// escaping any embedded `'` as `'\''`. This preserves argument boundaries
+/// when the resulting string is re-interpreted by `sh -c` on the guest.
+fn shell_quote(arg: &str) -> String {
+    format!("'{}'", arg.replace('\'', "'\\''"))
+}
+
 pub async fn run_exec(args: ExecArgs, control: &dyn SandboxControl) -> RunnerResult<ExitCode> {
-    let command = args.command.join(" ");
+    let command = args
+        .command
+        .iter()
+        .map(|a| shell_quote(a))
+        .collect::<Vec<_>>()
+        .join(" ");
     let timeout = Duration::from_secs(u64::from(args.timeout));
 
     match control
@@ -129,6 +141,60 @@ mod tests {
 
         let result = run_exec(make_args("test-id", "test"), &control).await;
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn arg_with_space_is_quoted_as_single_token() {
+        let control = MockSandboxControl::new("/tmp");
+        let args = ExecArgs {
+            run_id: "test-id".into(),
+            timeout: 5,
+            sudo: false,
+            command: vec!["cat".into(), "/var/log/some file.log".into()],
+        };
+
+        run_exec(args, &control).await.unwrap();
+
+        assert_eq!(
+            control.recorded_commands(),
+            vec!["'cat' '/var/log/some file.log'".to_string()],
+        );
+    }
+
+    #[tokio::test]
+    async fn arg_with_single_quote_is_escaped() {
+        let control = MockSandboxControl::new("/tmp");
+        let args = ExecArgs {
+            run_id: "id".into(),
+            timeout: 5,
+            sudo: false,
+            command: vec!["echo".into(), "it's".into()],
+        };
+
+        run_exec(args, &control).await.unwrap();
+
+        assert_eq!(
+            control.recorded_commands(),
+            vec!["'echo' 'it'\\''s'".to_string()],
+        );
+    }
+
+    #[tokio::test]
+    async fn pipeline_inside_quoted_arg_is_preserved() {
+        let control = MockSandboxControl::new("/tmp");
+        let args = ExecArgs {
+            run_id: "id".into(),
+            timeout: 5,
+            sudo: false,
+            command: vec!["bash".into(), "-c".into(), "echo a | tr a b".into()],
+        };
+
+        run_exec(args, &control).await.unwrap();
+
+        assert_eq!(
+            control.recorded_commands(),
+            vec!["'bash' '-c' 'echo a | tr a b'".to_string()],
+        );
     }
 
     #[tokio::test]
