@@ -661,30 +661,6 @@ describe("POST /api/zero/tasks/archive", () => {
       }),
     ).toBe(true);
   });
-});
-
-describe("POST /api/zero/tasks/unarchive", () => {
-  let user: UserContext;
-
-  beforeEach(async () => {
-    context.setupMocks();
-    user = await context.setupUser();
-  });
-
-  it("returns 401 for unauthenticated requests", async () => {
-    mockClerk({ userId: null });
-
-    const req = createTestRequest(
-      "http://localhost:3000/api/zero/tasks/unarchive",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ taskId: "x", taskType: "chat" }),
-      },
-    );
-    const res = await POST(req);
-    expect(res.status).toBe(401);
-  });
 
   it("archives a schedule task with no run and excludes it from the task list", async () => {
     const { composeId } = await createTestCompose(uniqueId("arc-sched"));
@@ -727,6 +703,30 @@ describe("POST /api/zero/tasks/unarchive", () => {
         return t.id === schedule.id;
       }),
     ).toBe(false);
+  });
+});
+
+describe("POST /api/zero/tasks/unarchive", () => {
+  let user: UserContext;
+
+  beforeEach(async () => {
+    context.setupMocks();
+    user = await context.setupUser();
+  });
+
+  it("returns 401 for unauthenticated requests", async () => {
+    mockClerk({ userId: null });
+
+    const req = createTestRequest(
+      "http://localhost:3000/api/zero/tasks/unarchive",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ taskId: "x", taskType: "chat" }),
+      },
+    );
+    const res = await POST(req);
+    expect(res.status).toBe(401);
   });
 
   it("unarchiving a task restores it to the task list", async () => {
