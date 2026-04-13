@@ -68,6 +68,20 @@ mod tests {
         assert!(validate_name("a")); // minimal
     }
 
+    /// The validator intentionally accepts some filename shapes that look
+    /// unusual but don't enable path traversal on Linux. Lock in the
+    /// contract so future tightening is an explicit decision, not a silent
+    /// regression.
+    #[test]
+    fn validate_name_accepts_unusual_but_safe_shapes() {
+        assert!(validate_name("foo-")); // trailing hyphen
+        assert!(validate_name("foo.")); // trailing dot
+        assert!(validate_name("foo--bar")); // consecutive hyphens
+        assert!(validate_name("foo..bar")); // consecutive dots (NOT traversal — no `/`)
+        assert!(validate_name("vm0..0")); // near-traversal shape, still safe
+        assert!(validate_name("0")); // single digit
+    }
+
     #[test]
     fn validate_name_rejects_empty_and_special_segments() {
         assert!(!validate_name(""));
@@ -81,6 +95,10 @@ mod tests {
         assert!(!validate_name(".env"));
         assert!(!validate_name("-flag"));
         assert!(!validate_name("-v0.3.0"));
+        // These look like traversal attempts but are rejected via the
+        // leading-dot rule — lock in that the rule catches them.
+        assert!(!validate_name("..."));
+        assert!(!validate_name("..foo"));
     }
 
     #[test]
@@ -89,6 +107,21 @@ mod tests {
         assert!(!validate_name("v0.3.0_dev")); // underscore
         assert!(!validate_name("v0 3 0")); // space
         assert!(!validate_name("v0.3.0!")); // punctuation
+    }
+
+    /// Security-sensitive inputs that are rejected by the charset check
+    /// rather than by a dedicated rule. If someone later relaxes the
+    /// charset (e.g. switches to `is_alphanumeric` which is Unicode-aware),
+    /// these assertions surface the behavior change immediately.
+    #[test]
+    fn validate_name_rejects_injection_and_unicode() {
+        assert!(!validate_name("foo\0bar")); // NUL byte
+        assert!(!validate_name("foo\nbar")); // newline (log/header injection)
+        assert!(!validate_name("foo\r\nbar")); // CRLF
+        assert!(!validate_name("foo\tbar")); // tab
+        assert!(!validate_name("v日本0")); // non-ASCII
+        assert!(!validate_name("vm0\u{200B}prod")); // zero-width space
+        assert!(!validate_name("vm0\u{2010}prod")); // Unicode hyphen lookalike
     }
 
     #[test]

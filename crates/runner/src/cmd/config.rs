@@ -157,4 +157,16 @@ mod tests {
         let msg = err.to_string();
         assert!(msg.contains("invalid runner-dirname"), "got: {msg}");
     }
+
+    /// Guards against a partial wiring: if someone ever splits the
+    /// validator into "leading-char only" and "charset only" halves and
+    /// only calls the first, the previous two tests would still pass.
+    /// This test covers a charset-only violation (uppercase) that has no
+    /// traversal intent, asserting the full validator is invoked.
+    #[tokio::test]
+    async fn run_config_rejects_charset_violation_runner_dirname() {
+        let err = run_config(args_with_dirname("V0.3.0")).await.unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("invalid runner-dirname"), "got: {msg}");
+    }
 }
