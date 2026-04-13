@@ -64,7 +64,8 @@ const PREP_TIMEOUT_CHAT_MS = 60_000;
 const PREP_TIMEOUT_MEETING_MS = 300_000;
 const MAX_RECONNECT_ATTEMPTS = 5;
 const RECONNECT_BASE_DELAY_MS = 1000;
-const REALTIME_MODEL = "gpt-realtime-1.5";
+export type RealtimeModel = "gpt-realtime" | "gpt-realtime-mini";
+
 const HANDS_FREE_VAD_CONFIG = {
   type: "semantic_vad",
   eagerness: "medium",
@@ -191,6 +192,7 @@ const internalPrepStartTime$ = state<number | null>(null);
 const internalPrepElapsedMs$ = state(0);
 const internalReconnectAttempt$ = state(0);
 const internalInputMode$ = state<"hands-free" | "push-to-talk">("hands-free");
+const internalModel$ = state<RealtimeModel>("gpt-realtime");
 
 const internalParentSignal$ = state<AbortSignal | null>(null);
 const internalWakeLock$ = state<WakeLockSentinel | null>(null);
@@ -240,6 +242,12 @@ export const vcMeetingPromptInput$ = computed((get) => {
 });
 export const setMeetingPromptInput$ = command(({ set }, value: string) => {
   set(meetingPromptInput$, value);
+});
+export const vcModel$ = computed((get) => {
+  return get(internalModel$);
+});
+export const setVcModel$ = command(({ set }, model: RealtimeModel) => {
+  set(internalModel$, model);
 });
 
 // --- Internal commands ---
@@ -465,6 +473,7 @@ const setupWebRTC$ = command(
     { get, set },
     stream: MediaStream,
     token: string,
+    model: RealtimeModel,
     signal: AbortSignal,
   ): Promise<boolean> => {
     const pc = new RTCPeerConnection();
@@ -550,7 +559,7 @@ const setupWebRTC$ = command(
     signal.throwIfAborted();
 
     const sdpRes = await globalThis.fetch(
-      `https://api.openai.com/v1/realtime?model=${REALTIME_MODEL}`,
+      `https://api.openai.com/v1/realtime?model=${model}`,
       {
         method: "POST",
         headers: {
@@ -714,9 +723,12 @@ const reconnectVoiceSession$ = command(
       // Clean up old WebRTC resources
       set(cleanupWebRTC$);
 
-      // Fetch new token
+      // Fetch new token with selected model
+      const model = get(internalModel$);
       const tokenRes = await fetchFn("/api/zero/voice-chat/token", {
         method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ model }),
         signal,
       });
       if (!tokenRes.ok) {
@@ -765,7 +777,13 @@ const reconnectVoiceSession$ = command(
       signal.throwIfAborted();
 
       // Setup new WebRTC connection
-      const ok = await set(setupWebRTC$, stream, clientSecret.value, signal);
+      const ok = await set(
+        setupWebRTC$,
+        stream,
+        clientSecret.value,
+        model,
+        signal,
+      );
       if (ok) {
         // Success — restart heartbeat and poll loops
         set(internalReconnectAttempt$, 0);
@@ -829,11 +847,14 @@ const releaseWakeLock$ = command(({ get, set }) => {
 const connectVoiceSession$ = command(
   async ({ get, set }, sessionSignal: AbortSignal) => {
     const fetchFn = get(fetch$);
+    const model = get(internalModel$);
 
     set(internalStatus$, "connecting");
 
     const tokenRes = await fetchFn("/api/zero/voice-chat/token", {
       method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model }),
     });
     sessionSignal.throwIfAborted();
 
@@ -878,6 +899,7 @@ const connectVoiceSession$ = command(
       setupWebRTC$,
       stream,
       clientSecret.value,
+      model,
       sessionSignal,
     );
     sessionSignal.throwIfAborted();
@@ -1264,6 +1286,7 @@ export const endVoiceChat$ = command(({ get, set }) => {
   set(internalPrepElapsedMs$, 0);
   set(internalReconnectAttempt$, 0);
   set(internalInputMode$, "hands-free");
+  set(internalModel$, "gpt-realtime");
   set(internalParentSignal$, null);
   set(internalStatus$, "idle");
 });

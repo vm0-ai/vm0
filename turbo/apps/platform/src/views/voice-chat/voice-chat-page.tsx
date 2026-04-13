@@ -36,6 +36,9 @@ import {
   switchInputMode$,
   startPTT$,
   stopPTT$,
+  vcModel$,
+  setVcModel$,
+  type RealtimeModel,
 } from "../../signals/voice-chat/voice-chat-session.ts";
 import {
   setTranscriptScrollContainer$,
@@ -233,6 +236,8 @@ export function VoiceChatPage() {
   const prepElapsedMs = useGet(vcPrepElapsedMs$);
   const meetingPrompt = useGet(vcMeetingPromptInput$);
   const setMeetingPrompt = useSet(setMeetingPromptInput$);
+  const model = useGet(vcModel$);
+  const setModel = useSet(setVcModel$);
   const agentName = useLastResolved(defaultAgentName$) ?? "Zero";
   const setTranscriptContainer = useSet(setTranscriptScrollContainer$);
   const setEventsContainer = useSet(setEventsScrollContainer$);
@@ -267,6 +272,21 @@ export function VoiceChatPage() {
             No agent selected. Please select an agent first.
           </p>
         )}
+        <Tabs
+          value={model}
+          onValueChange={(v) => {
+            setModel(v as RealtimeModel);
+          }}
+        >
+          <TabsList>
+            <TabsTrigger value="gpt-realtime" className="text-xs px-3">
+              GPT Realtime
+            </TabsTrigger>
+            <TabsTrigger value="gpt-realtime-mini" className="text-xs px-3">
+              GPT Realtime Mini
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
         <div className="w-full max-w-md rounded-lg border border-input p-5 flex flex-col gap-3">
           <h2 className="text-lg font-semibold">Quick Chat</h2>
           <p className="text-sm text-muted-foreground">

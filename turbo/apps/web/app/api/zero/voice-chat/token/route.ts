@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { z } from "zod";
 import { FeatureSwitchKey, isFeatureEnabled } from "@vm0/core";
 import { getAuthContext } from "../../../../../src/lib/auth/get-auth-context";
 import { initServices } from "../../../../../src/lib/init-services";
@@ -8,6 +9,8 @@ import { createEphemeralToken } from "../../../../../src/lib/zero/voice-chat/ope
 import { logger } from "../../../../../src/lib/shared/logger";
 
 const log = logger("api:zero:voice-chat:token");
+
+const bodySchema = z.object({ model: z.string().optional() }).optional();
 
 export async function POST(request: Request): Promise<Response> {
   initServices();
@@ -50,7 +53,11 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   try {
-    const result = await createEphemeralToken();
+    const raw = await request.json().catch(() => {
+      return undefined;
+    });
+    const body = bodySchema.parse(raw);
+    const result = await createEphemeralToken(body?.model);
     return NextResponse.json(result);
   } catch (error) {
     log.error("Failed to create ephemeral token", { error });
