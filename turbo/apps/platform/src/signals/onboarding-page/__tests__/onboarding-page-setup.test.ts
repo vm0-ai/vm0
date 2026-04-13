@@ -26,7 +26,7 @@ function mockAdminOnboarding() {
 }
 
 describe("setupOnboardingPage$ — ?connector= consumption", () => {
-  it("pre-selects valid connectors and strips ?connector= from the URL", async () => {
+  it("pre-selects valid connectors and preserves ?connector= on the URL", async () => {
     mockAdminOnboarding();
 
     detachedSetupPage({
@@ -44,7 +44,9 @@ describe("setupOnboardingPage$ — ?connector= consumption", () => {
 
     expect(pathname()).toBe("/onboarding");
     const remaining = new URLSearchParams(search());
-    expect(remaining.get("connector")).toBeNull();
+    // ?connector= stays on the URL so a refresh during onboarding restores
+    // the same pre-selection; it falls away naturally on step 4 navigation.
+    expect(remaining.get("connector")).toBe("gmail,slack,unknown_type");
     // ?prompt= must be preserved so it flows through to chat completion
     expect(remaining.get("prompt")).toBe("hello");
   });

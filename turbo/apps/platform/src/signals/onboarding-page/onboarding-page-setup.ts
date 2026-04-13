@@ -4,11 +4,7 @@ import { createElement } from "react";
 import { OnboardingPage } from "../../views/onboarding-page/onboarding-page.tsx";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
-import {
-  detachedNavigateTo$,
-  replaceSearchParams$,
-  searchParams$,
-} from "../route.ts";
+import { detachedNavigateTo$, searchParams$ } from "../route.ts";
 import {
   markConnectorsFromUrl$,
   resetOnboardingStep$,
@@ -38,9 +34,10 @@ export const setupOnboardingPage$ = command(
       return;
     }
 
-    // Consume ?connector= (comma-separated) to pre-select connectors, then
-    // strip the param from the URL. Keep ?prompt= intact so it survives
-    // through to the chat composer after onboarding completes.
+    // Consume ?connector= (comma-separated) to pre-select connectors. The
+    // param is left on the URL so a refresh during onboarding still pre-fills
+    // the same selection; it gets dropped naturally when step 4 navigates
+    // away to /agents/.../chat or /works.
     const params = get(searchParams$);
     const connectorParam = params.get("connector");
     if (connectorParam !== null) {
@@ -68,9 +65,6 @@ export const setupOnboardingPage$ = command(
       if (unique.length > 0) {
         set(markConnectorsFromUrl$);
       }
-      const next = new URLSearchParams(params);
-      next.delete("connector");
-      set(replaceSearchParams$, next);
     }
   },
 );
