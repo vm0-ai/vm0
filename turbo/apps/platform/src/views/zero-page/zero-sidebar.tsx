@@ -262,6 +262,27 @@ export function ZeroSidebar() {
     footerNavGated.some((item) => {
       return (item.activeKeys as readonly RouteKey[]).includes(activeId);
     });
+  const renderGatedDropdownItems = () => {
+    return footerNavGated.map(({ id, activeKeys, label, icon: Icon }) => {
+      const isActive =
+        activeId !== null &&
+        (activeKeys as readonly RouteKey[]).includes(activeId);
+      return (
+        <DropdownMenuItem
+          key={id}
+          onSelect={() => {
+            onSelect(id);
+          }}
+          className={`gap-2 px-2 py-1.5 rounded-md ${
+            isActive ? "bg-gray-200 text-gray-900" : ""
+          }`}
+        >
+          <Icon size={16} className="shrink-0" />
+          <span className="truncate flex-1">{label}</span>
+        </DropdownMenuItem>
+      );
+    });
+  };
 
   const allNavItems = [
     ...manageNav.map(({ id, activeKeys, pathname: p, label, icon }) => {
@@ -385,29 +406,7 @@ export function ZeroSidebar() {
                     sideOffset={8}
                     className="w-[220px]"
                   >
-                    {footerNavGated.map(
-                      ({ id, activeKeys, label, icon: Icon }) => {
-                        const isActive =
-                          activeId !== null &&
-                          (activeKeys as readonly RouteKey[]).includes(
-                            activeId,
-                          );
-                        return (
-                          <DropdownMenuItem
-                            key={id}
-                            onSelect={() => {
-                              onSelect(id);
-                            }}
-                            className={`gap-2 px-2 py-1.5 rounded-md ${
-                              isActive ? "bg-gray-200 text-gray-900" : ""
-                            }`}
-                          >
-                            <Icon size={16} className="shrink-0" />
-                            <span className="truncate flex-1">{label}</span>
-                          </DropdownMenuItem>
-                        );
-                      },
-                    )}
+                    {renderGatedDropdownItems()}
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
@@ -642,27 +641,7 @@ export function ZeroSidebar() {
                   sideOffset={8}
                   className="w-[220px]"
                 >
-                  {footerNavGated.map(
-                    ({ id, activeKeys, label, icon: Icon }) => {
-                      const isActive =
-                        activeId !== null &&
-                        (activeKeys as readonly RouteKey[]).includes(activeId);
-                      return (
-                        <DropdownMenuItem
-                          key={id}
-                          onSelect={() => {
-                            onSelect(id);
-                          }}
-                          className={`gap-2 px-2 py-1.5 rounded-md ${
-                            isActive ? "bg-gray-200 text-gray-900" : ""
-                          }`}
-                        >
-                          <Icon size={16} className="shrink-0" />
-                          <span className="truncate flex-1">{label}</span>
-                        </DropdownMenuItem>
-                      );
-                    },
-                  )}
+                  {renderGatedDropdownItems()}
                 </DropdownMenuContent>
               </DropdownMenu>
             )}
