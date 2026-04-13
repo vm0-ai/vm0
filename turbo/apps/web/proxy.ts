@@ -30,6 +30,8 @@ const isPublicRoute = createRouteMatcher([
   "/:locale/security",
   "/:locale/use-cases",
   "/:locale/use-cases/:slug",
+  "/blog",
+  "/blog/posts/:slug",
   "/:locale/blog",
   "/:locale/blog/posts/:slug",
   "/sign-in(.*)",
