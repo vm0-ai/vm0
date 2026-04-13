@@ -843,30 +843,51 @@ const reconnectVoiceSession$ = command(
 
 // --- Wake lock ---
 
+const MAX_WAKE_LOCK_REACQUIRE_ATTEMPTS = 3;
+
 const acquireWakeLock$ = command(async ({ set }, signal: AbortSignal) => {
   if (!("wakeLock" in navigator)) {
     return;
   }
 
+  let pending = false;
+  let reacquireCount = 0;
+
   const requestAndTrack = async (): Promise<void> => {
-    if (document.visibilityState !== "visible") return;
+    if (pending) {
+      return;
+    }
+    if (document.visibilityState !== "visible") {
+      return;
+    }
+    pending = true;
     let lock: WakeLockSentinel | undefined;
     // eslint-disable-next-line no-restricted-syntax -- wakeLock.request can fail if document is not visible
     try {
       lock = await navigator.wakeLock.request("screen");
     } catch {
       // Wake lock request failed — non-critical, ignore
+      pending = false;
       return;
     }
+    pending = false;
     if (signal.aborted) {
-      lock.release().catch(() => undefined);
+      lock.release().catch(() => {
+        return undefined;
+      });
       return;
     }
     set(internalWakeLock$, lock);
     // Re-acquire when the browser releases the lock (e.g. tab becomes hidden)
     lock.addEventListener("release", () => {
-      if (!signal.aborted) {
-        void requestAndTrack();
+      if (
+        !signal.aborted &&
+        reacquireCount < MAX_WAKE_LOCK_REACQUIRE_ATTEMPTS
+      ) {
+        reacquireCount++;
+        requestAndTrack().catch(() => {
+          return undefined;
+        });
       }
     });
   };
@@ -876,7 +897,11 @@ const acquireWakeLock$ = command(async ({ set }, signal: AbortSignal) => {
   // Re-acquire when the page becomes visible again after being hidden
   const onVisibilityChange = (): void => {
     if (document.visibilityState === "visible" && !signal.aborted) {
-      void requestAndTrack();
+      // Reset reacquire count on visibility change — this is user-initiated
+      reacquireCount = 0;
+      requestAndTrack().catch(() => {
+        return undefined;
+      });
     }
   };
   document.addEventListener("visibilitychange", onVisibilityChange);
