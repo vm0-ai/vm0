@@ -202,7 +202,9 @@ export async function setLoop(
       // abandoned promiseFromSignal that rejects as an unhandled rejection
       // when the abort signal fires during afterEach cleanup.
       await (IN_VITEST
-        ? new Promise<void>((resolve) => window.setTimeout(resolve, 0))
+        ? new Promise<void>((resolve) => {
+            window.setTimeout(resolve, 0);
+          })
         : delay(interval, { signal }));
     } catch (error) {
       throwIfAbort(error);
@@ -214,7 +216,9 @@ export async function setLoop(
       );
       fibIndex++;
       await (IN_VITEST
-        ? new Promise<void>((resolve) => window.setTimeout(resolve, 0))
+        ? new Promise<void>((resolve) => {
+            window.setTimeout(resolve, 0);
+          })
         : delay(backoff, { signal }));
     }
   }
