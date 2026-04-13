@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   createTestRequest,
   insertTestCreditUsage,
+  setTestCreditUsageCreatedAt,
   updateOrgStripeFields,
 } from "../../../../../../src/__tests__/api-test-helpers";
 import {
@@ -159,6 +160,62 @@ describe("GET /api/zero/usage/daily", () => {
     // Check that members are present in the breakdown
     const firstDay = data.dailyByMember[0];
     expect(firstDay.members.length).toBe(2);
+  });
+
+  it("filters by dateFrom and dateTo query params", async () => {
+    const { userId, orgId } = await context.user;
+    const periodEnd = new Date("2026-04-20T00:00:00Z");
+
+    await updateOrgStripeFields(orgId, {
+      stripeCustomerId: uniqueId("cus"),
+      stripeSubscriptionId: uniqueId("sub"),
+      subscriptionStatus: "active",
+      currentPeriodEnd: periodEnd,
+      tier: "pro",
+    });
+
+    // Insert three records, then back-date them to span a known range.
+    const oldId = await insertTestCreditUsage(orgId, {
+      userId,
+      creditsCharged: 10,
+      status: "processed",
+    });
+    const inRangeId = await insertTestCreditUsage(orgId, {
+      userId,
+      creditsCharged: 20,
+      status: "processed",
+    });
+    const newId = await insertTestCreditUsage(orgId, {
+      userId,
+      creditsCharged: 30,
+      status: "processed",
+    });
+
+    await setTestCreditUsageCreatedAt(oldId, new Date("2026-03-01T12:00:00Z"));
+    await setTestCreditUsageCreatedAt(
+      inRangeId,
+      new Date("2026-03-15T12:00:00Z"),
+    );
+    await setTestCreditUsageCreatedAt(newId, new Date("2026-04-01T12:00:00Z"));
+
+    const request = createTestRequest(
+      "http://localhost:3000/api/zero/usage/daily?mode=total&dateFrom=2026-03-10T00:00:00Z&dateTo=2026-03-20T00:00:00Z",
+    );
+    const response = await GET(request);
+
+    expect(response.status).toBe(200);
+    const data = await response.json();
+
+    // Only the in-range record (creditsCharged=20) should be aggregated.
+    const totalCredits = data.daily.reduce(
+      (sum: number, d: { creditsCharged: number }) => {
+        return sum + d.creditsCharged;
+      },
+      0,
+    );
+    expect(totalCredits).toBe(20);
+    expect(data.daily.length).toBe(1);
+    expect(data.daily[0].date).toBe("2026-03-15");
   });
 
   it("excludes pending records", async () => {

@@ -385,6 +385,21 @@ export async function findTestClientCreditUsagesByRunId(runId: string): Promise<
 }
 
 /**
+ * Back-date an existing credit_usage record's createdAt for testing
+ * date-range filtering.
+ */
+export async function setTestCreditUsageCreatedAt(
+  id: string,
+  createdAt: Date,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .update(creditUsage)
+    .set({ createdAt })
+    .where(eq(creditUsage.id, id));
+}
+
+/**
  * Read a credit_usage record by ID.
  */
 export async function findTestCreditUsage(id: string): Promise<
