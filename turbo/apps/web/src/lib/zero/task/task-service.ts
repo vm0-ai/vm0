@@ -64,7 +64,7 @@ export async function listTasks(
     inFlightEmailTasks,
     voiceChatTasks,
     agentTasks,
-    archiveSet,
+    archivedRunIds,
   ] = await Promise.all([
     listChatTasks(db, userId, orgId, agentId),
     listScheduleTasks(db, userId, orgId, agentId),
@@ -73,7 +73,7 @@ export async function listTasks(
     listInFlightEmailTasks(db, userId, orgId, agentId),
     listVoiceChatTasks(db, userId, orgId, agentId),
     listAgentTasks(db, userId, orgId, agentId),
-    getArchiveSet(db, userId, orgId),
+    getArchivedRunIds(db, userId, orgId),
   ]);
 
   const allTasks = [
@@ -85,10 +85,8 @@ export async function listTasks(
     ...voiceChatTasks,
     ...agentTasks,
   ].filter((t) => {
-    const key = `${t.id}:${t.type}`;
-    if (!archiveSet.has(key)) return true;
-    // Re-show if latestRunId has changed (new run arrived since archive)
-    return t.latestRunId !== archiveSet.get(key);
+    if (t.latestRunId === null) return t.type === "schedule";
+    return !archivedRunIds.has(t.latestRunId);
   });
 
   // Batch-fetch run info for all tasks with a latestRunId
@@ -191,19 +189,15 @@ export async function listTasks(
 type DB = typeof globalThis.services.db;
 
 /**
- * Returns a map of archived tasks: key = "taskId:taskType", value = archivedRunId (or null).
+ * Returns the set of archived run IDs for this user/org.
  */
-async function getArchiveSet(
+async function getArchivedRunIds(
   db: DB,
   userId: string,
   orgId: string,
-): Promise<Map<string, string | null>> {
+): Promise<Set<string>> {
   const rows = await db
-    .select({
-      taskId: archivedTaskRuns.taskId,
-      taskType: archivedTaskRuns.taskType,
-      archivedRunId: archivedTaskRuns.archivedRunId,
-    })
+    .select({ archivedRunId: archivedTaskRuns.archivedRunId })
     .from(archivedTaskRuns)
     .where(
       and(
@@ -212,11 +206,11 @@ async function getArchiveSet(
       ),
     );
 
-  const map = new Map<string, string | null>();
+  const set = new Set<string>();
   for (const row of rows) {
-    map.set(`${row.taskId}:${row.taskType}`, row.archivedRunId);
+    if (row.archivedRunId !== null) set.add(row.archivedRunId);
   }
-  return map;
+  return set;
 }
 
 export async function archiveTask(

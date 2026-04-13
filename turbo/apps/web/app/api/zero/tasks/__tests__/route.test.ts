@@ -198,8 +198,25 @@ describe("GET /api/zero/tasks", () => {
     const { composeId: agent1 } = await createTestCompose(uniqueId("agent-1"));
     const { composeId: agent2 } = await createTestCompose(uniqueId("agent-2"));
 
-    await insertTestChatThread(user.userId, agent1, "Agent 1 Thread");
-    await insertTestChatThread(user.userId, agent2, "Agent 2 Thread");
+    const thread1 = await insertTestChatThread(
+      user.userId,
+      agent1,
+      "Agent 1 Thread",
+    );
+    const { runId: run1 } = await createTestRunInDb(user.userId, agent1, {
+      status: "completed",
+    });
+    await addTestRunToThread(thread1, run1, user.userId);
+
+    const thread2 = await insertTestChatThread(
+      user.userId,
+      agent2,
+      "Agent 2 Thread",
+    );
+    const { runId: run2 } = await createTestRunInDb(user.userId, agent2, {
+      status: "completed",
+    });
+    await addTestRunToThread(thread2, run2, user.userId);
 
     // Filter by agent1
     const request = createTestRequest(
@@ -227,17 +244,31 @@ describe("GET /api/zero/tasks", () => {
 
   it("should not return tasks belonging to another user", async () => {
     const { composeId } = await createTestCompose(uniqueId("user1-agent"));
-    await insertTestChatThread(user.userId, composeId, "User1 Thread");
+    const thread1 = await insertTestChatThread(
+      user.userId,
+      composeId,
+      "User1 Thread",
+    );
+    const { runId: run1 } = await createTestRunInDb(user.userId, composeId, {
+      status: "completed",
+    });
+    await addTestRunToThread(thread1, run1, user.userId);
 
     const otherUser = await context.setupUser({ prefix: "other-user" });
     const { composeId: otherComposeId } = await createTestCompose(
       uniqueId("user2-agent"),
     );
-    await insertTestChatThread(
+    const thread2 = await insertTestChatThread(
       otherUser.userId,
       otherComposeId,
       "User2 Thread",
     );
+    const { runId: run2 } = await createTestRunInDb(
+      otherUser.userId,
+      otherComposeId,
+      { status: "completed" },
+    );
+    await addTestRunToThread(thread2, run2, otherUser.userId);
 
     mockClerk({ userId: user.userId });
 
