@@ -168,6 +168,26 @@ function logContextEvent(
   );
 }
 
+async function prefetchCachedEvents(
+  fetchFn: (url: string, init?: RequestInit) => Promise<Response>,
+  sessionId: string,
+  signal: AbortSignal,
+): Promise<ContextEvent[] | null> {
+  const ctxRes = await fetchFn(
+    `/api/zero/voice-chat/${sessionId}/context?after=0`,
+  );
+  signal.throwIfAborted();
+  if (!ctxRes.ok) {
+    L.warn("Failed to pre-fetch cached events", {
+      status: ctxRes.status,
+      sessionId,
+    });
+    return null;
+  }
+  const data = (await ctxRes.json()) as { events: ContextEvent[] };
+  return data.events;
+}
+
 function formatInjectionMessage(event: ContextEvent): string {
   const prefixes: Record<string, string> = {
     directive: "[Slow-brain directive]",
@@ -1157,18 +1177,16 @@ export const startVoiceChat$ = command(
       }
 
       // Pre-fetch cached preparation events so they're available when DC opens
-      const ctxRes = await fetchFn(
-        `/api/zero/voice-chat/${session.id}/context?after=0`,
+      const cachedEvents = await prefetchCachedEvents(
+        fetchFn,
+        session.id,
+        signal,
       );
-      signal.throwIfAborted();
-      if (ctxRes.ok) {
-        const data = (await ctxRes.json()) as { events: ContextEvent[] };
-        if (data.events.length > 0) {
-          set(internalEvents$, data.events);
-          const lastEvent = data.events[data.events.length - 1];
-          if (lastEvent) {
-            set(internalLastSeq$, lastEvent.seq);
-          }
+      if (cachedEvents && cachedEvents.length > 0) {
+        set(internalEvents$, cachedEvents);
+        const lastEvent = cachedEvents[cachedEvents.length - 1];
+        if (lastEvent) {
+          set(internalLastSeq$, lastEvent.seq);
         }
       }
 
@@ -1262,18 +1280,16 @@ export const startVoiceMeeting$ = command(
       }
 
       // Pre-fetch cached preparation events so they're available when DC opens
-      const ctxRes = await fetchFn(
-        `/api/zero/voice-chat/${session.id}/context?after=0`,
+      const cachedEvents = await prefetchCachedEvents(
+        fetchFn,
+        session.id,
+        signal,
       );
-      signal.throwIfAborted();
-      if (ctxRes.ok) {
-        const data = (await ctxRes.json()) as { events: ContextEvent[] };
-        if (data.events.length > 0) {
-          set(internalEvents$, data.events);
-          const lastEvent = data.events[data.events.length - 1];
-          if (lastEvent) {
-            set(internalLastSeq$, lastEvent.seq);
-          }
+      if (cachedEvents && cachedEvents.length > 0) {
+        set(internalEvents$, cachedEvents);
+        const lastEvent = cachedEvents[cachedEvents.length - 1];
+        if (lastEvent) {
+          set(internalLastSeq$, lastEvent.seq);
         }
       }
 
