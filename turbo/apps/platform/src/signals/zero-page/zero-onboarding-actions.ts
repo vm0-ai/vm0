@@ -247,7 +247,7 @@ export const onboardingAddToSlack$ = command(
     if (isAdmin) {
       const slackData = await get(slackOrgData$);
       signal.throwIfAborted();
-      if (slackData.isAdmin && slackData.installUrl) {
+      if (slackData.installUrl) {
         const url = new URL(slackData.installUrl, window.location.origin);
         // Carry ?prompt= through the Slack OAuth state so the DM greeting can
         // reference it once install completes.
