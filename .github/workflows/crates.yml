@@ -573,6 +573,15 @@ jobs:
           [ "$OUTPUT" = '$HOME' ] || fail "variable expanded: got '$OUTPUT'"
           OUTPUT=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" -- echo '*.nonexistent')
           [ "$OUTPUT" = '*.nonexistent' ] || fail "glob expanded: got '$OUTPUT'"
+          # Backtick command substitution must NOT be executed (injection guard)
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" -- echo '`date`')
+          [ "$OUTPUT" = '`date`' ] || fail "backtick expanded: got '$OUTPUT'"
+          # Double quote inside an argument survives the round-trip
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" -- echo 'say "hi"')
+          [ "$OUTPUT" = 'say "hi"' ] || fail "double quote in arg: got '$OUTPUT'"
+          # Non-ASCII UTF-8 in an argument
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" -- echo "你好")
+          [ "$OUTPUT" = "你好" ] || fail "utf-8 arg: got '$OUTPUT'"
           # Explicit shell: pipes and redirects work through `sh -c`
           OUTPUT=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" -- sh -c 'printf abc | wc -c')
           [ "$(echo "$OUTPUT" | tr -d ' ')" = '3' ] || fail "sh -c pipe: got '$OUTPUT'"
@@ -584,6 +593,9 @@ jobs:
           OUTPUT=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" -- cat "/tmp/spaced file.txt")
           [ "$OUTPUT" = 'content' ] || fail "space in path: got '$OUTPUT'"
           sudo "$BIN_DIR/runner" exec "$RUN_ID" -- rm "/tmp/spaced file.txt"
+          # --sudo flag must not bypass argv quoting
+          OUTPUT=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" --sudo -- echo "root with space")
+          [ "$OUTPUT" = "root with space" ] || fail "--sudo quoting: got '$OUTPUT'"
           echo "PASS: argv boundary preservation"
 
           # Test 5: verify pre-installed language runtimes and databases
