@@ -9,6 +9,7 @@
 import { command, computed } from "ccstate";
 import { createCursorPagination } from "../cursor-pagination.ts";
 import { searchParams$, updateSearchParams$ } from "../route.ts";
+import type { LogStatus } from "../zero-page/log-types.ts";
 
 // ---------------------------------------------------------------------------
 // Status filter — URL-derived
@@ -73,10 +74,12 @@ export const {
 // ---------------------------------------------------------------------------
 
 /** Available status values from the server response (for the filter dropdown). */
-export const allScheduleRunAvailableStatuses$ = computed(async (get) => {
-  const response = await get(allScheduleRunData$);
-  return response.filters.statuses;
-});
+export const allScheduleRunAvailableStatuses$ = computed(
+  async (get): Promise<LogStatus[]> => {
+    const response = await get(allScheduleRunData$);
+    return response.filters.statuses;
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Filter update command

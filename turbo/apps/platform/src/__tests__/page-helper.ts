@@ -161,8 +161,8 @@ export function createPushStateMock(signal: AbortSignal) {
     (_data: unknown, _unused: string, url?: string | URL | null) => {
       updateLocation(url);
     },
-  ) as unknown as typeof window.history.pushState;
-  mockPushState(fn, signal);
+  );
+  mockPushState(fn as unknown as typeof window.history.pushState, signal);
 
   const replaceFn = vi.fn(
     (_data: unknown, _unused: string, url?: string | URL | null) => {
