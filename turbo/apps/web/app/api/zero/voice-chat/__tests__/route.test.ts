@@ -158,7 +158,7 @@ describe("POST /api/zero/voice-chat/token", () => {
     expect(capturedModel).toBe("gpt-realtime-mini");
   });
 
-  it("should default to gpt-realtime when no model is provided", async () => {
+  it("should default to gpt-realtime-mini when no model is provided", async () => {
     const userId = uniqueId("zvc-nomodel");
     await setupOrg(userId);
 
@@ -182,10 +182,10 @@ describe("POST /api/zero/voice-chat/token", () => {
     const response = await POST(tokenRequest());
 
     expect(response.status).toBe(200);
-    expect(capturedModel).toBe("gpt-realtime");
+    expect(capturedModel).toBe("gpt-realtime-mini");
   });
 
-  it("should fall back to gpt-realtime for invalid model", async () => {
+  it("should fall back to gpt-realtime-mini for invalid model", async () => {
     const userId = uniqueId("zvc-invalid");
     await setupOrg(userId);
 
@@ -209,6 +209,6 @@ describe("POST /api/zero/voice-chat/token", () => {
     const response = await POST(tokenRequest({ model: "invalid-model" }));
 
     expect(response.status).toBe(200);
-    expect(capturedModel).toBe("gpt-realtime");
+    expect(capturedModel).toBe("gpt-realtime-mini");
   });
 });
