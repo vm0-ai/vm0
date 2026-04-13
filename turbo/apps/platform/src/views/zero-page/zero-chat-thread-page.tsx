@@ -190,6 +190,9 @@ export function ZeroChatThreadPageInner({
   const messagesLoading = messagesLoadable.state === "loading";
   const setScrollContainer = useSet(thread.setScrollContainer$);
 
+  // Force scroll to bottom once when messages first load
+  useAutoScroll(messages.length > 0, thread.forceScrollToBottom$);
+
   return (
     <div className="flex flex-1 flex-col min-h-0 bg-transparent">
       <ChatThreadHeader thread={thread} />
