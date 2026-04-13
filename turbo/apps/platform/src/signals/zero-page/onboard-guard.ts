@@ -1,11 +1,13 @@
 import { command } from "ccstate";
 import { clerk$, resolveWebOrigin } from "../auth.ts";
-import { detachedNavigateTo$ } from "../route.ts";
+import { detachedNavigateTo$, searchParams$ } from "../route.ts";
 import {
   zeroOnboardingStatus$,
   zeroNeedsOnboarding$,
   zeroNeedsMemberOnboarding$,
 } from "./zero-onboarding.ts";
+
+const FORWARDED_ONBOARDING_PARAMS = ["prompt", "connector"] as const;
 
 /**
  * Check whether the current user needs onboarding and redirect if so.
@@ -42,7 +44,21 @@ export const onboardGuard$ = command(
       }
     }
 
-    set(detachedNavigateTo$, "/onboarding", { replace: true });
+    // Forward `?prompt=` and `?connector=` from the entry URL so the
+    // onboarding page can pre-select connectors and the post-onboarding
+    // navigation can pre-fill the chat composer.
+    const incoming = get(searchParams$);
+    const forwarded = new URLSearchParams();
+    for (const key of FORWARDED_ONBOARDING_PARAMS) {
+      const value = incoming.get(key);
+      if (value !== null) {
+        forwarded.set(key, value);
+      }
+    }
+    set(detachedNavigateTo$, "/onboarding", {
+      replace: true,
+      searchParams: forwarded.toString().length > 0 ? forwarded : undefined,
+    });
     return true;
   },
 );

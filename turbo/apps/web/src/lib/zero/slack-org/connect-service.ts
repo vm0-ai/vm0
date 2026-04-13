@@ -262,8 +262,22 @@ export async function notifyConnectSuccess(params: {
   orgId: string;
   channelId?: string | null;
   threadTs?: string | null;
+  /**
+   * Optional prompt captured from the entry URL (e.g. a use-case CTA).
+   * When provided and the greeting goes to a DM (not an ephemeral channel
+   * message), an additional plain-text DM asks the user whether they want
+   * to run this prompt.
+   */
+  pendingPrompt?: string | null;
 }): Promise<void> {
-  const { installation, slackUserId, orgId, channelId, threadTs } = params;
+  const {
+    installation,
+    slackUserId,
+    orgId,
+    channelId,
+    threadTs,
+    pendingPrompt,
+  } = params;
   const { SECRETS_ENCRYPTION_KEY } = env();
   const botToken = decryptSecretValue(
     installation.encryptedBotToken,
@@ -307,6 +321,14 @@ export async function notifyConnectSuccess(params: {
         threadTs: connectMsg.ts,
         blocks: buildWelcomeMessage(agentName),
       });
+    }
+
+    if (pendingPrompt) {
+      await postMessage(
+        client,
+        slackUserId,
+        `By the way, would you like me to run this for you?\n\n> ${pendingPrompt}\n\nJust paste it in a message and I'll get started!`,
+      );
     }
 
     await globalThis.services.db
