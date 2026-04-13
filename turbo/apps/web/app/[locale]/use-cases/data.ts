@@ -146,6 +146,18 @@ const VERCEL: ConnectorRef = {
   icon: "/assets/connectors/vercel.svg",
 };
 
+const GOOGLE_SHEETS: ConnectorRef = {
+  id: "google-sheets",
+  label: "Google Sheets",
+  icon: "/assets/connectors/google-sheets.svg",
+};
+
+const INTERCOM: ConnectorRef = {
+  id: "intercom",
+  label: "Intercom",
+  icon: "/assets/connectors/intercom.svg",
+};
+
 // ---------------------------------------------------------------------------
 // Full use cases
 // ---------------------------------------------------------------------------
@@ -989,6 +1001,479 @@ export const USE_CASES: UseCase[] = [
       "standup-summary",
       "employee-onboarding",
     ],
+  },
+
+  {
+    slug: "feature-flag-audit",
+    title: "Audit Which Features Are Live in Any Environment",
+    description:
+      "Zero scans your GitHub repo for all feature flag definitions, maps which are enabled across staging and production, and posts a structured audit to Slack — so no one ships a half-finished feature by accident.",
+    color: "#6a8f7a",
+    avatar: {
+      rotation: 3,
+      skin: 2,
+      hairStyle: 1,
+      hairColor: 3,
+      expression: 4,
+      intensity: "m",
+    },
+    roles: ["engineering"],
+    capability: "instant",
+    timeSaved: "~30 min saved",
+    model: "Claude 4 Sonnet",
+    connectors: [GITHUB, SLACK],
+    slackPreview: [
+      {
+        role: "user",
+        name: "Lancy",
+        text: "@Zero what feature flags are currently enabled in production? I added a new one today and want to confirm it's off by default.",
+      },
+      {
+        role: "zero",
+        name: "Zero",
+        text: "Feature flag audit for vm0-ai/vm0:\n\nEnabled in production (3)\n• voice-chat — on\n• mission-control — on\n• concurrent-tasks — on\n\nDisabled / staged (5)\n• new-org-dashboard — off (added today, no env override found)\n• dark-mode-v2 — off\n• billing-v3 — off (staging only)\n\nNo orphaned flags detected.",
+      },
+    ],
+    headings: {
+      scenario: "Why hunting feature flags across the codebase wastes engineering time",
+      prompt: "How to ask Zero to audit your feature flags",
+      steps: "How Zero maps flag states across your repo and environments",
+      nextActions: "Turn the audit into a cleanup PR or automate it before every release",
+      integrations: "Required integrations: GitHub and Slack",
+      tips: "Best practices for feature flag audits with Zero",
+    },
+    scenario:
+      "Your team ships behind feature flags to keep production safe, but flags accumulate over time. Some are fully rolled out but never cleaned up. Some are enabled in staging and forgotten. Before a release, Lancy has to grep the codebase, cross-reference environment configs, and build a mental map of what's actually live. It takes 30 minutes, the result lives in someone's head, and it never makes it into the PR.",
+    promptVariants: [
+      {
+        label: "Detailed",
+        prompt:
+          "@Zero audit all feature flags in the repo. For each flag, show me: the constant name, where it's defined, which environments it's enabled in, and when it was last modified.",
+      },
+      {
+        label: "Quick",
+        prompt: "@Zero what feature flags are currently on in production?",
+      },
+      {
+        label: "Scheduled",
+        prompt:
+          "@Zero before every PR targeting main is merged with 'release' in the title, post a feature flag audit to #dev so we can confirm nothing unexpected is live.",
+      },
+    ],
+    steps: [
+      {
+        title: "Zero reads the codebase",
+        description:
+          "Zero searches the GitHub repo for feature flag definitions, environment config files, and any flag management utilities to compile a complete list of all gates.",
+      },
+      {
+        title: "Zero maps each flag's state",
+        description:
+          "For every flag found, Zero cross-references usage sites and environment overrides to determine which environments it's active in, and surfaces any flags that appear enabled but have no guarding UI.",
+      },
+      {
+        title: "Zero posts the audit to Slack",
+        description:
+          "The report lands in the same thread: flags grouped by state (on / off / staging-only), file locations, and a callout for any flags that look stale or ready to be cleaned up.",
+      },
+    ],
+    nextActions: [
+      {
+        title: "Clean up stale flags",
+        description: "Remove flags that have been fully rolled out",
+        examplePrompt:
+          "@Zero open a PR to remove the `voice-chat` feature flag — it's been fully on in production for three weeks. Remove all guard checks and the constant definition.",
+      },
+      {
+        title: "Schedule a pre-release check",
+        description: "Automate the audit before every release",
+        examplePrompt:
+          "@Zero every Monday at 9 AM, run a feature flag audit and post the results to #dev. Highlight any flag that has been enabled for more than 30 days.",
+      },
+      {
+        title: "Drill into a single flag",
+        description: "Understand every code path gated behind a flag",
+        examplePrompt:
+          "@Zero show me every code path gated behind `mission-control` — what breaks if I flip it off today?",
+      },
+    ],
+    integrations: [
+      {
+        connector: GITHUB,
+        description:
+          "Zero reads your repo to find feature flag constants, environment config files, and all usage sites. Read access to the codebase is required.",
+        required: true,
+      },
+      {
+        connector: SLACK,
+        description:
+          "Zero posts the audit back to your Slack thread. No additional scopes needed beyond standard bot messaging.",
+        required: false,
+      },
+    ],
+    tips: [
+      "Name your flags consistently — a constant like `FeatureSwitchKey.VoiceChat` is far easier for Zero to locate than a raw string scattered across files.",
+      "Run the audit after every sprint to keep flags from accumulating. A flag that has been 100% on for two weeks is ready to be removed.",
+      "Ask Zero to flag any feature gate with no corresponding test coverage — those are the ones most likely to surprise you on disable.",
+    ],
+    relatedSlugs: ["sentry-triage", "standup-summary", "file-bugs-from-slack"],
+  },
+
+  {
+    slug: "weekly-social-content-draft",
+    title: "Draft This Week's Social Posts from Your Content Calendar",
+    description:
+      "Every Monday, Zero reads your content calendar in Google Sheets, pulls brand guidelines from Notion, and delivers a full week of X and LinkedIn drafts — ready for a single approval click.",
+    color: "#8a7fa0",
+    avatar: {
+      rotation: 5,
+      skin: 4,
+      hairStyle: 2,
+      hairColor: 5,
+      expression: 2,
+      intensity: "h",
+    },
+    roles: ["product"],
+    capability: "scheduled",
+    timeSaved: "~2 hours saved",
+    model: "Claude 4 Sonnet",
+    connectors: [GOOGLE_SHEETS, NOTION, X_TWITTER],
+    slackPreview: [
+      {
+        role: "user",
+        name: "Scarlett",
+        text: "@Zero draft this week's social posts from the content calendar — theme is 'permission isolation' and we have a blog going live Wednesday.",
+      },
+      {
+        role: "zero",
+        name: "Zero",
+        text: "Here are this week's drafts — 5 X posts + 3 LinkedIn posts.\n\nMonday (warm-up)\nX: \"Your agent shouldn't read Stripe if it's only fixing a CSS bug. Permission isolation is why we built Zero differently.\"\n\nWednesday (blog launch)\nX: \"New post: why we think agent permissions are the next big platform problem — and what we did about it.\"\n\nAll drafts added to Notion Content Queue for review.",
+      },
+    ],
+    headings: {
+      scenario: "Why drafting weekly social content burns hours every Monday",
+      prompt: "How to ask Zero to draft your social content",
+      steps: "How Zero turns your content calendar into ready-to-post copy",
+      nextActions: "Schedule posts, iterate on drafts, or build a team approval flow",
+      integrations: "Required integrations: Google Sheets, Notion, and X (Twitter)",
+      tips: "Best practices for AI-generated social content drafts",
+    },
+    scenario:
+      "Scarlett's Monday starts with the content calendar in Google Sheets, last week's engagement numbers, the blog going live Wednesday, and a blank Notion doc waiting for this week's drafts. Writing five X posts and three LinkedIn posts from scratch takes most of the morning. By the time she's done, half the day is gone and none of the posts have been reviewed yet. The same routine repeats every week.",
+    promptVariants: [
+      {
+        label: "Detailed",
+        prompt:
+          "@Zero read this week's content calendar from Google Sheets and our brand guidelines in Notion, then draft 5 X posts and 3 LinkedIn posts. Theme: permission isolation. Blog launch is Wednesday. Match our voice: direct, technical, slightly opinionated.",
+      },
+      {
+        label: "Quick",
+        prompt:
+          "@Zero draft this week's social posts — theme is permission isolation, blog drops Wednesday.",
+      },
+      {
+        label: "Scheduled",
+        prompt:
+          "@Zero every Monday at 8 AM, read the content calendar and auto-draft the week's posts into the Notion Content Queue for review.",
+      },
+    ],
+    steps: [
+      {
+        title: "Zero reads the calendar",
+        description:
+          "Zero opens your Google Sheets content calendar, identifies the current week's themes, scheduled announcements, and any linked launch assets.",
+      },
+      {
+        title: "Zero loads your brand voice",
+        description:
+          "Zero reads your Notion brand guidelines or a set of approved past posts you've bookmarked to calibrate tone, vocabulary, and post structure before drafting.",
+      },
+      {
+        title: "Zero delivers ready-to-review drafts",
+        description:
+          "A full week of posts lands in your Notion Content Queue — or directly in Slack — with platform-specific formatting: X character limits, LinkedIn paragraph breaks, and hashtag suggestions.",
+      },
+    ],
+    nextActions: [
+      {
+        title: "Approve and schedule",
+        description: "Push approved posts to your publishing queue",
+        examplePrompt:
+          "@Zero the Monday and Wednesday posts are approved — schedule them on X for 9 AM UTC.",
+      },
+      {
+        title: "Iterate a specific post",
+        description: "Sharpen the messaging on one draft",
+        examplePrompt:
+          "@Zero rewrite the Wednesday launch post to lead with the customer benefit, not the feature name. Keep it under 240 characters.",
+      },
+      {
+        title: "Build an approval workflow",
+        description: "Route drafts to a reviewer before anything goes live",
+        examplePrompt:
+          "@Zero every Monday, draft the week's posts and DM them to Scarlett for approval. Only schedule after she replies with 'approved'.",
+      },
+    ],
+    integrations: [
+      {
+        connector: GOOGLE_SHEETS,
+        description:
+          "Zero reads your content calendar to extract this week's themes, scheduled posts, and linked launch events.",
+        required: true,
+      },
+      {
+        connector: NOTION,
+        description:
+          "Zero reads brand guidelines and past approved content to calibrate tone, then writes new drafts to the Notion Content Queue.",
+        required: true,
+      },
+      {
+        connector: X_TWITTER,
+        description:
+          "Zero can read recent post performance for context and schedule approved posts directly. Required only if you want auto-scheduling instead of copy-paste.",
+        required: false,
+      },
+    ],
+    tips: [
+      "Keep a 'tone examples' page in Notion with 5–10 approved posts you love. Zero uses them as style anchors and the drafts will sound much more like you.",
+      "Specify launch dates in the prompt — Zero will prioritize the calendar around hard announcements rather than spreading themes evenly across the week.",
+      "Run one iteration round immediately after the first draft: ask Zero to punch up the strongest post, then use that as the benchmark for the rest.",
+    ],
+    relatedSlugs: ["kol-cold-outreach", "standup-summary", "slack-triage"],
+  },
+
+  {
+    slug: "candidate-interview-scheduler",
+    title: "Schedule Interviews and Follow Up with Candidates Automatically",
+    description:
+      "When a candidate email arrives, Zero checks the team's calendar for open slots, sends the invite, and sets a follow-up reminder — without anyone logging into a scheduling tool.",
+    color: "#7a8fa0",
+    avatar: {
+      rotation: 2,
+      skin: 1,
+      hairStyle: 4,
+      hairColor: 1,
+      expression: 5,
+      intensity: "l",
+    },
+    roles: ["ops"],
+    capability: "multi-tool",
+    timeSaved: "~45 min saved per hire",
+    model: "Claude 4 Sonnet",
+    connectors: [GMAIL, GOOGLE_CALENDAR],
+    slackPreview: [
+      {
+        role: "user",
+        name: "Chenguang",
+        text: "@Zero the frontend candidate replied — available Tuesday or Wednesday next week after 1 PM CST. Check Ethan and Lancy's calendars and send them the invite.",
+      },
+      {
+        role: "zero",
+        name: "Zero",
+        text: "Done. Found a 1-hour opening: Tuesday April 15 at 2 PM CST — both Ethan and Lancy are free.\n\nInvite sent to the candidate. Event added to the team calendar with the standard interview agenda attached.\n\nReminder set for April 16 to send a follow-up note after the call.",
+      },
+    ],
+    headings: {
+      scenario: "Why candidate scheduling burns ops time that should go toward hiring",
+      prompt: "How to ask Zero to schedule a candidate interview",
+      steps: "How Zero coordinates calendars, sends invites, and sets reminders",
+      nextActions: "Collect interview feedback, advance the candidate, or automate the full loop",
+      integrations: "Required integrations: Gmail and Google Calendar",
+      tips: "Best practices for automated interview scheduling",
+    },
+    scenario:
+      "Chenguang handles hiring coordination for the whole team. Every candidate goes through three or four interview rounds, which means three or four rounds of email back-and-forth, calendar checking, invite sending, and follow-up reminders. For a single hire, that's easily two hours of pure coordination overhead. It's not hard work — but it's constant context-switching, and it scales linearly with every open role.",
+    promptVariants: [
+      {
+        label: "Detailed",
+        prompt:
+          "@Zero the frontend candidate replied and is available Tuesday or Wednesday next week, any time after 1 PM CST. Check Ethan and Lancy's Google Calendar for a free 1-hour slot and send the invite from my email with the standard interview agenda attached.",
+      },
+      {
+        label: "Quick",
+        prompt:
+          "@Zero schedule the frontend candidate interview — they're free Tuesday afternoon. Check Ethan and Lancy's calendar.",
+      },
+      {
+        label: "Template",
+        prompt:
+          "@Zero use the standard interview template: 45-min technical screen, 15-min Q&A. Send the candidate a preparation email the day before with what to expect.",
+      },
+    ],
+    steps: [
+      {
+        title: "Zero reads the candidate's availability",
+        description:
+          "Zero parses the Gmail thread to extract the candidate's available windows, time zone, and any constraints they mentioned.",
+      },
+      {
+        title: "Zero finds an open slot",
+        description:
+          "Zero checks the interviewers' Google Calendar for conflicts within the candidate's available windows and identifies the earliest mutual opening.",
+      },
+      {
+        title: "Zero sends the invite and sets reminders",
+        description:
+          "Zero creates the calendar event, sends a confirmation email to the candidate with the agenda, and schedules a follow-up reminder for the day after the interview.",
+      },
+    ],
+    nextActions: [
+      {
+        title: "Collect feedback after the call",
+        description: "Gather structured interview notes from each interviewer",
+        examplePrompt:
+          "@Zero the interview just ended — DM each interviewer asking for feedback using our rubric: technical skills, communication, culture fit. Compile the responses into a single doc.",
+      },
+      {
+        title: "Advance or decline the candidate",
+        description: "Draft the next-step email",
+        examplePrompt:
+          "@Zero draft an email to the frontend candidate letting them know we'd like to move forward to the offer stage. Warm but professional tone.",
+      },
+      {
+        title: "Automate the full scheduling loop",
+        description: "Let Zero handle end-to-end coordination",
+        examplePrompt:
+          "@Zero whenever a candidate emails back with availability, automatically find the best slot, send the invite, and DM me to confirm before anything goes out.",
+      },
+    ],
+    integrations: [
+      {
+        connector: GMAIL,
+        description:
+          "Zero reads the candidate email thread to extract availability, then sends scheduling confirmations and reminders from your connected account.",
+        required: true,
+      },
+      {
+        connector: GOOGLE_CALENDAR,
+        description:
+          "Zero checks interviewer availability and creates the interview event with the correct attendees, time, and agenda.",
+        required: true,
+      },
+    ],
+    tips: [
+      "Keep a standard interview agenda doc linked in your prompt — Zero will attach it to every invite automatically so candidates always arrive prepared.",
+      "Ask Zero to build in a buffer between interviews: 'no back-to-back slots for interviewers' eliminates 80% of scheduling headaches in one sentence.",
+      "After each interview, ask Zero to compile the feedback DMs into a shared doc before the debrief meeting — decisions go much faster when everyone has read the same summary.",
+    ],
+    relatedSlugs: ["standup-summary", "employee-onboarding", "slack-triage"],
+  },
+
+  {
+    slug: "intercom-ticket-to-github-issue",
+    title: "Turn Intercom Support Tickets into GitHub Issues with Codebase Context",
+    description:
+      "When a customer reports a bug in Intercom, Zero enriches it with codebase context, creates a labeled and assigned GitHub issue, and replies to the customer with a tracking link — in one step.",
+    color: "#9e8a6e",
+    avatar: {
+      rotation: 4,
+      skin: 3,
+      hairStyle: 3,
+      hairColor: 2,
+      expression: 3,
+      intensity: "d",
+    },
+    roles: ["product", "everyone"],
+    capability: "multi-tool",
+    timeSaved: "~25 min saved per ticket",
+    model: "Claude 4 Sonnet",
+    connectors: [INTERCOM, GITHUB],
+    slackPreview: [
+      {
+        role: "user",
+        name: "Scarlett",
+        text: "@Zero customer in Intercom says org names are invisible in Dark Mode on the Select Org screen — can you turn this into a bug?",
+      },
+      {
+        role: "zero",
+        name: "Zero",
+        text: "Done. Created vm0-ai/vm0#9038.\n\nBug: Org name text invisible in Dark Mode — Select Org dialog\n\nChecked the codebase: the org name uses `text-foreground` which inherits `--color-fg`, but the dark theme override in `org-selector.tsx` is missing the dark mode variant. Assigned to Ming, labeled `bug` + `dark-mode`.\n\nCustomer reply sent with issue link.",
+      },
+    ],
+    headings: {
+      scenario: "Why triaging customer bugs across Intercom and GitHub burns a full workday",
+      prompt: "How to ask Zero to convert a support ticket into a GitHub issue",
+      steps: "How Zero enriches the ticket and files it in one motion",
+      nextActions: "Batch-triage open tickets, follow up when issues close, or auto-route by severity",
+      integrations: "Required integrations: Intercom and GitHub",
+      tips: "Best practices for Zero-assisted customer bug triage",
+    },
+    scenario:
+      "A customer reports in Intercom that org names are invisible in Dark Mode. Someone has to copy the description, open GitHub, figure out which component owns that screen, write a useful bug title, assign it to the right engineer, and reply to the customer with a ticket link. That is 20 minutes per ticket. On a bad day there are eight of them, and they all arrive while you are trying to ship something else.",
+    promptVariants: [
+      {
+        label: "Detailed",
+        prompt:
+          "@Zero there's an Intercom ticket about org names being invisible in Dark Mode. Read the conversation, look up the relevant component in GitHub, create a bug issue with full reproduction context, assign it to the right engineer, and reply to the customer with the issue link.",
+      },
+      {
+        label: "Quick",
+        prompt:
+          "@Zero turn the Intercom ticket about Dark Mode org names into a GitHub bug.",
+      },
+      {
+        label: "Batch",
+        prompt:
+          "@Zero go through all unresolved Intercom tickets from the last 48 hours and create GitHub issues for anything that looks like a bug. Group by component and assign based on last modifier.",
+      },
+    ],
+    steps: [
+      {
+        title: "Zero reads the Intercom ticket",
+        description:
+          "Zero fetches the full conversation thread, extracts the bug description, affected user details, and any screenshots or reproduction steps the customer provided.",
+      },
+      {
+        title: "Zero looks up the codebase",
+        description:
+          "Zero searches GitHub for the relevant component or screen, identifies the likely cause based on the description, and surfaces the specific file and line range involved.",
+      },
+      {
+        title: "Zero files the issue and closes the loop",
+        description:
+          "Zero creates a structured GitHub issue with codebase context attached, assigns it to the right engineer, labels it, and sends a reply in Intercom so the customer knows their report is tracked.",
+      },
+    ],
+    nextActions: [
+      {
+        title: "Batch-triage a week of tickets",
+        description: "Process all open Intercom tickets at once",
+        examplePrompt:
+          "@Zero go through all open Intercom tickets from the last 7 days and create GitHub issues for bugs. Skip anything already filed. Group by severity.",
+      },
+      {
+        title: "Follow up with customers when issues close",
+        description: "Auto-notify customers when their bug is fixed",
+        examplePrompt:
+          "@Zero when GitHub issue #9038 is closed, reply to the original Intercom conversation letting the customer know it has been fixed and which release it ships in.",
+      },
+      {
+        title: "Route by severity",
+        description: "Set triage rules for critical vs. low-priority reports",
+        examplePrompt:
+          "@Zero if a customer says they cannot log in or cannot access billing, flag it as P0, DM Lancy immediately, and create the issue with a `priority: critical` label.",
+      },
+    ],
+    integrations: [
+      {
+        connector: INTERCOM,
+        description:
+          "Zero reads open customer conversations and support tickets, then sends replies on your behalf once the issue is filed.",
+        required: true,
+      },
+      {
+        connector: GITHUB,
+        description:
+          "Zero searches the codebase for context and creates labeled, assigned issues in your repo.",
+        required: true,
+      },
+    ],
+    tips: [
+      "Tell Zero your assignment rules upfront: 'auth issues go to Lancy, UI bugs go to Ming.' Zero will apply them consistently without you specifying each time.",
+      "Add 'check if a similar issue already exists' to the prompt before filing — one sentence prevents your issue tracker from filling up with duplicates.",
+      "Use the batch variant at the end of each week to catch any customer report that slipped through. One prompt handles the entire backlog.",
+    ],
+    relatedSlugs: ["sentry-triage", "file-bugs-from-slack", "slack-triage"],
   },
 ];
 
