@@ -2,8 +2,10 @@ use std::path::{Path, PathBuf};
 
 use clap::{Args, Subcommand};
 use tracing::{info, warn};
+use uuid::Uuid;
 
-use crate::error::{RunnerError, RunnerResult};
+use crate::error::{ActiveJobsError, RunnerError, RunnerResult};
+use crate::paths::HomePaths;
 
 #[derive(Args)]
 pub struct ServiceArgs {
@@ -16,13 +18,13 @@ enum ServiceCommand {
     /// Start runner as a transient systemd service (CI, does not survive reboot)
     Start(ServiceRunArgs),
     /// Stop the runner service
-    Stop(ServiceNameArgs),
+    Stop(ServiceStopArgs),
     /// Install runner as a persistent systemd service (production, survives reboot)
     Install(ServiceRunArgs),
     /// Uninstall the runner service (stop + disable + remove unit)
-    Uninstall(ServiceNameArgs),
+    Uninstall(ServiceUninstallArgs),
     /// Drain the runner (SIGUSR1, non-blocking — returns immediately)
-    Drain(ServiceNameArgs),
+    Drain(ServiceDrainArgs),
     /// Show service status (all runner services if --name is omitted)
     Status(ServiceStatusArgs),
     /// Show service logs
@@ -47,10 +49,37 @@ struct ServiceRunArgs {
 }
 
 #[derive(Args)]
-struct ServiceNameArgs {
+struct ServiceStopArgs {
     /// Service name suffix (e.g. v0.2.0 → unit vm0-runner-v0.2.0)
     #[arg(long)]
     name: String,
+    /// Skip active-jobs pre-check and force stop (active jobs will be killed).
+    #[arg(long)]
+    force: bool,
+}
+
+#[derive(Args)]
+struct ServiceUninstallArgs {
+    /// Service name suffix (e.g. v0.2.0 → unit vm0-runner-v0.2.0)
+    #[arg(long)]
+    name: String,
+    /// Skip active-jobs pre-check and force uninstall (active jobs will be killed).
+    #[arg(long)]
+    force: bool,
+}
+
+#[derive(Args)]
+struct ServiceDrainArgs {
+    /// Service name suffix (e.g. v0.2.0 → unit vm0-runner-v0.2.0)
+    #[arg(long)]
+    name: String,
+}
+
+#[derive(Args)]
+struct ServiceStatusArgs {
+    /// Service name suffix (omit to show all runner services)
+    #[arg(long)]
+    name: Option<String>,
 }
 
 #[derive(Args)]
@@ -64,13 +93,6 @@ struct ServiceLogsArgs {
     /// Number of lines to show
     #[arg(long, short, default_value = "100")]
     lines: u32,
-}
-
-#[derive(Args)]
-struct ServiceStatusArgs {
-    /// Service name suffix (omit to show all runner services)
-    #[arg(long)]
-    name: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -228,6 +250,203 @@ async fn get_service_pid(unit: &str) -> RunnerResult<Option<u32>> {
 }
 
 // ---------------------------------------------------------------------------
+// Active-jobs gate (shared by `service stop` and `service uninstall`)
+// ---------------------------------------------------------------------------
+
+/// Resolve the runner's base_dir from its service name suffix using the
+/// project-wide convention: `/var/lib/vm0-runner/runners/<suffix>/`.
+///
+/// This matches `ansible/playbooks/deploy-runner.yml` and the `--runner-dirname`
+/// default in `runner config`. Non-standard `base_dir` overrides (dev-only)
+/// will fail to locate status.json and fall through to forceful stop.
+fn runner_base_dir(suffix: &str) -> Option<PathBuf> {
+    let home = HomePaths::new().ok()?;
+    Some(home.runners_dir().join(suffix))
+}
+
+/// Parsed snapshot of the runner's status.json.
+struct RunnerStatusSnapshot {
+    /// Mode string sourced verbatim from status.json. Valid values are the
+    /// lowercase serialization of [`crate::status::RunnerMode`]: `"running"`,
+    /// `"draining"`, `"stopped"`. Unknown values (e.g. from a newer runner
+    /// writing a future variant) are preserved and routed to the normal
+    /// refuse branch by [`decide_gate`].
+    mode: String,
+    /// UUIDs of runs currently in flight.
+    run_ids: Vec<Uuid>,
+    /// How long the runner process itself has been up, derived from the
+    /// `started_at` timestamp. status.json does not record per-run start
+    /// times, so the error message surfaces this runner-level uptime
+    /// rather than a misleading per-job duration.
+    uptime: std::time::Duration,
+}
+
+/// Decision from [`decide_gate`] — pure function that maps a status
+/// snapshot to the gate outcome without performing any I/O.
+#[derive(Debug, PartialEq, Eq)]
+enum GateDecision {
+    /// Let the stop/uninstall proceed.
+    Bypass,
+    /// Refuse the operation; `draining` selects the UX variant.
+    Refuse { draining: bool },
+}
+
+/// Pure decision logic shared by the gate — testable without systemctl.
+///
+/// Short-circuit order:
+/// 1. `mode == "stopped"` — runner's own drain finished. Covers the brief
+///    window between the final status.json write and systemd marking the
+///    unit inactive.
+/// 2. `run_ids.is_empty()` — nothing to protect, regardless of mode.
+/// 3. Otherwise refuse; `draining=true` when `mode == "draining"` so the
+///    error message suggests waiting rather than re-running `drain`.
+///
+/// Mode strings mirror [`crate::status::RunnerMode`] (serde lowercase).
+fn decide_gate(status: &RunnerStatusSnapshot) -> GateDecision {
+    if status.mode == "stopped" {
+        return GateDecision::Bypass;
+    }
+    if status.run_ids.is_empty() {
+        return GateDecision::Bypass;
+    }
+    GateDecision::Refuse {
+        draining: status.mode == "draining",
+    }
+}
+
+/// Read status.json at `base_dir`.
+///
+/// Returns `None` on any I/O or parse failure — the caller should fall
+/// through to forceful stop (status unknown → cannot protect jobs).
+async fn read_runner_status(base_dir: &Path) -> Option<RunnerStatusSnapshot> {
+    #[derive(serde::Deserialize)]
+    struct StatusFile {
+        mode: String,
+        active_run_ids: Vec<Uuid>,
+        started_at: String,
+    }
+    let path = base_dir.join("status.json");
+    let content = tokio::fs::read_to_string(&path)
+        .await
+        .inspect_err(|e| {
+            tracing::debug!(path = %path.display(), error = %e, "read status.json failed");
+        })
+        .ok()?;
+    let file: StatusFile = serde_json::from_str(&content)
+        .inspect_err(|e| tracing::debug!(error = %e, "parse status.json failed"))
+        .ok()?;
+    let started = chrono::DateTime::parse_from_rfc3339(&file.started_at)
+        .inspect_err(|e| {
+            tracing::debug!(started_at = %file.started_at, error = %e, "parse started_at failed");
+        })
+        .ok()?;
+    let now = chrono::Utc::now();
+    let uptime = (now - started.with_timezone(&chrono::Utc))
+        .to_std()
+        .unwrap_or_default();
+    Some(RunnerStatusSnapshot {
+        mode: file.mode,
+        run_ids: file.active_run_ids,
+        uptime,
+    })
+}
+
+/// Gate for `service stop` / `service uninstall`: block the operation when
+/// the runner has active jobs unless `force` is set.
+///
+/// Returns `Ok(())` to proceed (either bypassed or confirmed safe). Returns
+/// `Err(RunnerError::ActiveJobs(_))` to refuse with a user-facing message.
+///
+/// ## Transient / race handling
+///
+/// Each of these conditions returns `Ok(())` to let the operator through,
+/// erring on the side of "stop is usable" over "gate is strict":
+///
+/// 1. **Dead / crashed runner** — if the systemd unit is inactive, the
+///    on-disk `active_run_ids` may be stale (runner was SIGKILLed before
+///    it could update status.json). Nothing alive to protect; skip the gate.
+/// 2. **Cleanly stopped runner** — `mode == "stopped"` indicates the
+///    runner's own drain finished. Covers the short window between
+///    status.json being rewritten with `"stopped"` (`start.rs` end of
+///    `run_with_config`) and systemd noticing the process has exited
+///    (marking the unit inactive). Without this, the gate could spuriously
+///    refuse a stop issued during that window.
+/// 3. **Base-dir unresolvable** — non-standard deployments that override
+///    `base_dir` away from the `/var/lib/vm0-runner/runners/<suffix>`
+///    convention fall here. Warn-log and fall through.
+/// 4. **Status file unreadable / malformed** — missing file, permission
+///    denied, JSON parse error, bad `started_at`: warn-log and fall
+///    through. Matches the acceptance criteria.
+///
+/// When the runner's `mode == "draining"`, we still refuse but flip the
+/// `draining` flag so the error renders a wait-or-force message (the
+/// operator already initiated drain, so re-suggesting drain would be
+/// noise).
+///
+/// ## TOCTOU (documented, not mitigated)
+///
+/// Between this gate reading status.json and `systemctl stop` killing the
+/// process, the runner may claim a new job via its API poll (seconds
+/// cadence). That job will be killed. This is *intentional*: `stop` is
+/// defined as forceful. Callers who need zero-race graceful shutdown
+/// should use `service drain`. Mitigating this race would require sending
+/// SIGUSR1 first and waiting — which is exactly what `drain` does.
+async fn check_active_jobs_gate(
+    unit: &str,
+    suffix: &str,
+    force: bool,
+    command_name: &'static str,
+) -> RunnerResult<()> {
+    if force {
+        // Leave an audit trail — --force is valid but destructive, so
+        // journalctl should show it was used if jobs later appear lost.
+        info!(
+            unit,
+            command = command_name,
+            "--force passed, bypassing active-jobs gate"
+        );
+        return Ok(());
+    }
+
+    // (1) Dead-runner short-circuit.
+    let active = is_unit_active(unit).await.unwrap_or_else(|e| {
+        warn!(unit, error = %e, "cannot check unit state — skipping active-jobs gate");
+        false
+    });
+    if !active {
+        return Ok(());
+    }
+
+    let Some(base_dir) = runner_base_dir(suffix) else {
+        warn!(
+            unit,
+            "cannot determine vm0-runner home — skipping active-jobs gate"
+        );
+        return Ok(());
+    };
+    let Some(status) = read_runner_status(&base_dir).await else {
+        warn!(
+            unit,
+            base_dir = %base_dir.display(),
+            "cannot read status.json — skipping active-jobs gate"
+        );
+        return Ok(());
+    };
+
+    match decide_gate(&status) {
+        GateDecision::Bypass => Ok(()),
+        GateDecision::Refuse { draining } => Err(RunnerError::ActiveJobs(ActiveJobsError {
+            unit: unit.to_string(),
+            suffix: suffix.to_string(),
+            run_ids: status.run_ids,
+            runner_uptime: status.uptime,
+            command_name,
+            draining,
+        })),
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Subcommand implementations
 // ---------------------------------------------------------------------------
 
@@ -291,8 +510,12 @@ async fn start(args: ServiceRunArgs) -> RunnerResult<()> {
 ///
 /// Also clears residual transient unit state so that a subsequent
 /// `service start` with the same name succeeds.
-async fn stop(args: ServiceNameArgs) -> RunnerResult<()> {
+///
+/// Refuses to stop a runner with active jobs unless `--force` is passed.
+/// See [`check_active_jobs_gate`] for the policy.
+async fn stop(args: ServiceStopArgs) -> RunnerResult<()> {
     let unit = unit_name(&args.name)?;
+    check_active_jobs_gate(&unit, &args.name, args.force, "stop").await?;
     let svc = format!("{unit}.service");
 
     if is_unit_active(&unit).await? {
@@ -363,12 +586,18 @@ pub(crate) async fn uninstall_service(suffix: &str) -> RunnerResult<()> {
 }
 
 /// `service uninstall` — stop + disable + remove unit file.
-async fn uninstall(args: ServiceNameArgs) -> RunnerResult<()> {
+///
+/// Refuses when the runner has active jobs unless `--force` is passed.
+/// The internal [`uninstall_service`] helper (called from GC) is not
+/// guarded — GC already pre-checks `is_unit_active=false`.
+async fn uninstall(args: ServiceUninstallArgs) -> RunnerResult<()> {
+    let unit = unit_name(&args.name)?;
+    check_active_jobs_gate(&unit, &args.name, args.force, "uninstall").await?;
     uninstall_service(&args.name).await
 }
 
 /// `service drain` — send SIGUSR1, disable unit, return immediately.
-async fn drain(args: ServiceNameArgs) -> RunnerResult<()> {
+async fn drain(args: ServiceDrainArgs) -> RunnerResult<()> {
     let unit = unit_name(&args.name)?;
     if !is_unit_active(&unit).await? {
         info!(unit = %unit, "no active service found");
@@ -549,5 +778,211 @@ mod tests {
         assert!(validate_env_vars(&["NOEQUALS".to_string()]).is_err());
         assert!(validate_env_vars(&["=VALUE".to_string()]).is_err());
         assert!(validate_env_vars(&["".to_string()]).is_err());
+    }
+
+    // -----------------------------------------------------------------
+    // status.json reader
+    // -----------------------------------------------------------------
+
+    #[tokio::test]
+    async fn read_runner_status_missing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(read_runner_status(dir.path()).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn read_runner_status_empty_json() {
+        let dir = tempfile::tempdir().unwrap();
+        tokio::fs::write(dir.path().join("status.json"), "{}")
+            .await
+            .unwrap();
+        // Missing required fields → None
+        assert!(read_runner_status(dir.path()).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn read_runner_status_malformed_started_at() {
+        let dir = tempfile::tempdir().unwrap();
+        let s = r#"{"mode":"running","active_run_ids":[],"started_at":"not-a-date"}"#;
+        tokio::fs::write(dir.path().join("status.json"), s)
+            .await
+            .unwrap();
+        assert!(read_runner_status(dir.path()).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn read_runner_status_running_no_jobs() {
+        let dir = tempfile::tempdir().unwrap();
+        let s = r#"{"mode":"running","active_run_ids":[],"started_at":"2026-04-13T00:00:00.000Z"}"#;
+        tokio::fs::write(dir.path().join("status.json"), s)
+            .await
+            .unwrap();
+        let status = read_runner_status(dir.path()).await.unwrap();
+        assert_eq!(status.mode, "running");
+        assert!(status.run_ids.is_empty());
+    }
+
+    #[tokio::test]
+    async fn read_runner_status_with_active_jobs() {
+        let dir = tempfile::tempdir().unwrap();
+        let s = r#"{
+            "mode":"running",
+            "active_run_ids":[
+                "0191c4e0-0000-7000-8000-000000000001",
+                "0191c4e0-0000-7000-8000-000000000002"
+            ],
+            "started_at":"2026-04-13T00:00:00.000Z"
+        }"#;
+        tokio::fs::write(dir.path().join("status.json"), s)
+            .await
+            .unwrap();
+        let status = read_runner_status(dir.path()).await.unwrap();
+        assert_eq!(status.mode, "running");
+        assert_eq!(status.run_ids.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn read_runner_status_draining_mode() {
+        let dir = tempfile::tempdir().unwrap();
+        let s = r#"{
+            "mode":"draining",
+            "active_run_ids":["0191c4e0-0000-7000-8000-000000000001"],
+            "started_at":"2026-04-13T00:00:00.000Z"
+        }"#;
+        tokio::fs::write(dir.path().join("status.json"), s)
+            .await
+            .unwrap();
+        let status = read_runner_status(dir.path()).await.unwrap();
+        assert_eq!(status.mode, "draining");
+        assert_eq!(status.run_ids.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn read_runner_status_full_runner_payload() {
+        // Guard against schema drift: status.json written by StatusTracker
+        // (crates/runner/src/status.rs) contains more fields than the ones
+        // we care about. The decoder must tolerate the full payload.
+        let dir = tempfile::tempdir().unwrap();
+        let s = r#"{
+            "mode": "running",
+            "max_concurrent": 4,
+            "active_runs": 2,
+            "active_run_ids": [
+                "0191c4e0-0000-7000-8000-000000000001",
+                "0191c4e0-0000-7000-8000-000000000002"
+            ],
+            "idle_vms": 1,
+            "idle_sessions": ["sess-1"],
+            "proxy_port": 8080,
+            "dns_port": 5300,
+            "started_at": "2026-04-13T00:00:00.000Z",
+            "updated_at": "2026-04-13T00:05:00.000Z"
+        }"#;
+        tokio::fs::write(dir.path().join("status.json"), s)
+            .await
+            .unwrap();
+        let status = read_runner_status(dir.path()).await.unwrap();
+        assert_eq!(status.mode, "running");
+        assert_eq!(status.run_ids.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn read_runner_status_future_started_at_yields_zero_uptime() {
+        // Clock skew guard: if started_at is in the future (NTP correction,
+        // misconfigured clock), `to_std()` fails and we fall back to
+        // Duration::ZERO rather than propagating an error.
+        let dir = tempfile::tempdir().unwrap();
+        let future = (chrono::Utc::now() + chrono::Duration::hours(1))
+            .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+            .to_string();
+        let s = format!(r#"{{"mode":"running","active_run_ids":[],"started_at":"{future}"}}"#);
+        tokio::fs::write(dir.path().join("status.json"), s)
+            .await
+            .unwrap();
+        let status = read_runner_status(dir.path()).await.unwrap();
+        assert_eq!(status.uptime, std::time::Duration::ZERO);
+    }
+
+    #[tokio::test]
+    async fn read_runner_status_started_at_without_millis() {
+        // StatusTracker writes millisecond precision today, but RFC 3339
+        // allows second-precision too. Make sure we accept both so a
+        // future format change won't silently break the gate.
+        let dir = tempfile::tempdir().unwrap();
+        let s = r#"{"mode":"running","active_run_ids":[],"started_at":"2026-04-13T00:00:00Z"}"#;
+        tokio::fs::write(dir.path().join("status.json"), s)
+            .await
+            .unwrap();
+        let status = read_runner_status(dir.path()).await.unwrap();
+        assert_eq!(status.mode, "running");
+    }
+
+    #[tokio::test]
+    async fn read_runner_status_stopped_preserves_ids() {
+        // Reader is unopinionated: it returns what's on disk, and the gate
+        // consults `mode` to decide whether to short-circuit.
+        let dir = tempfile::tempdir().unwrap();
+        let s = r#"{
+            "mode":"stopped",
+            "active_run_ids":["0191c4e0-0000-7000-8000-000000000001"],
+            "started_at":"2026-04-13T00:00:00.000Z"
+        }"#;
+        tokio::fs::write(dir.path().join("status.json"), s)
+            .await
+            .unwrap();
+        let status = read_runner_status(dir.path()).await.unwrap();
+        assert_eq!(status.mode, "stopped");
+        assert_eq!(status.run_ids.len(), 1);
+    }
+
+    // -----------------------------------------------------------------
+    // decide_gate — pure decision function
+    // -----------------------------------------------------------------
+
+    fn snapshot(mode: &str, run_count: usize) -> RunnerStatusSnapshot {
+        RunnerStatusSnapshot {
+            mode: mode.to_string(),
+            run_ids: (0..run_count).map(|_| Uuid::nil()).collect(),
+            uptime: std::time::Duration::from_secs(600),
+        }
+    }
+
+    #[test]
+    fn decide_gate_running_with_jobs_refuses_normal() {
+        assert_eq!(
+            decide_gate(&snapshot("running", 3)),
+            GateDecision::Refuse { draining: false }
+        );
+    }
+
+    #[test]
+    fn decide_gate_running_without_jobs_bypasses() {
+        assert_eq!(decide_gate(&snapshot("running", 0)), GateDecision::Bypass);
+    }
+
+    #[test]
+    fn decide_gate_stopped_bypasses_even_with_stale_ids() {
+        // Covers the narrow window between status.json being rewritten
+        // with "stopped" and systemd marking the unit inactive.
+        assert_eq!(decide_gate(&snapshot("stopped", 2)), GateDecision::Bypass);
+    }
+
+    #[test]
+    fn decide_gate_draining_with_jobs_refuses_draining_variant() {
+        assert_eq!(
+            decide_gate(&snapshot("draining", 1)),
+            GateDecision::Refuse { draining: true }
+        );
+    }
+
+    #[test]
+    fn decide_gate_unknown_mode_with_jobs_refuses_normal() {
+        // Forward-compat: a newer runner writing a mode string we don't
+        // recognize (e.g. "paused") gets the normal refuse branch —
+        // safer than bypassing, and does not impersonate "draining".
+        assert_eq!(
+            decide_gate(&snapshot("paused", 1)),
+            GateDecision::Refuse { draining: false }
+        );
     }
 }

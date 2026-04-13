@@ -14,10 +14,8 @@ import {
 } from "@ts-rest/core";
 import { clerk$ } from "./auth.ts";
 import { apiBase$ } from "./fetch.ts";
-import { logger } from "./log.ts";
+import { fetchFreshToken, handleUnauthorizedRedirect } from "./auth-retry.ts";
 import { IN_VITEST } from "../env.ts";
-
-const L = logger("ApiClient");
 
 /**
  * Type alias for the factory function returned by `get(zeroClient$)`.
@@ -56,25 +54,24 @@ export const zeroClient$ = computed((get) => {
       validateResponse: false,
       api: async (args: Parameters<typeof tsRestFetchApi>[0]) => {
         const clerk = await get(clerk$);
-        const token = await clerk.session?.getToken();
+        const initialToken = (await clerk.session?.getToken()) ?? null;
 
-        const headers = token
-          ? { ...args.headers, Authorization: `Bearer ${token}` }
-          : args.headers;
+        const requestWithToken = (token: string | null) => {
+          const headers = token
+            ? { ...args.headers, Authorization: `Bearer ${token}` }
+            : args.headers;
+          return tsRestFetchApi({ ...args, headers });
+        };
 
-        const response = await tsRestFetchApi({ ...args, headers });
+        let response = await requestWithToken(initialToken);
 
         if (response.status === 401) {
-          // Fire-and-forget: the redirect navigates the page away so the promise
-          // may never settle. We must not await — callers need the 401 response.
-          const redirectResult = clerk.redirectToSignIn();
-          if (redirectResult instanceof Promise) {
-            redirectResult.catch((error: unknown) => {
-              if (error instanceof Error && error.name === "AbortError") {
-                return;
-              }
-              L.error("Sign-in redirect failed", error);
-            });
+          const freshToken = await fetchFreshToken(clerk, initialToken);
+          if (freshToken) {
+            response = await requestWithToken(freshToken);
+          }
+          if (response.status === 401) {
+            handleUnauthorizedRedirect(clerk);
           }
         }
 

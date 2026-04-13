@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.226.0](https://github.com/vm0-ai/vm0/compare/app-v0.225.0...app-v0.226.0) (2026-04-13)
+
+
+### Features
+
+* **usage:** add daily credits chart and per-run records ([#9047](https://github.com/vm0-ai/vm0/issues/9047)) ([589df8c](https://github.com/vm0-ai/vm0/commit/589df8cbf8b8d5ee495279a3f6e51aed47305daa))
+* **voice-chat:** add realtime model selector ([#9082](https://github.com/vm0-ai/vm0/issues/9082)) ([b296034](https://github.com/vm0-ai/vm0/commit/b29603432ca146738da80d3f346bf714eb53ad2b)), closes [#9074](https://github.com/vm0-ai/vm0/issues/9074)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.178.0
+
 ## [0.225.0](https://github.com/vm0-ai/vm0/compare/app-v0.224.0...app-v0.225.0) (2026-04-13)
 
 

@@ -291,6 +291,195 @@ describe("401 redirect", () => {
   });
 });
 
+describe("401 refresh-and-retry", () => {
+  it("should refresh the token and retry once when API returns 401", async () => {
+    detachedSetupPage({
+      context,
+      path: "/",
+      session: { token: "stale-token" },
+      withoutRender: true,
+    });
+
+    mockedClerk.redirectToSignIn.mockClear();
+    mockedClerk.sessionGetToken.mockReset();
+    mockedClerk.sessionGetToken.mockImplementation((opts) => {
+      return Promise.resolve(opts?.skipCache ? "fresh-token" : "stale-token");
+    });
+
+    const authHeaders: string[] = [];
+    server.use(
+      http.get("http://localhost:3000/test", ({ request }) => {
+        authHeaders.push(request.headers.get("authorization") ?? "");
+        if (authHeaders.length === 1) {
+          return HttpResponse.json(
+            { error: { message: "Unauthorized", code: "UNAUTHORIZED" } },
+            { status: 401 },
+          );
+        }
+        return HttpResponse.json({ ok: true }, { status: 200 });
+      }),
+    );
+
+    const fch = context.store.get(fetch$);
+    const response = await fch("/test");
+
+    expect(response.status).toBe(200);
+    expect(authHeaders).toStrictEqual([
+      "Bearer stale-token",
+      "Bearer fresh-token",
+    ]);
+    expect(mockedClerk.sessionGetToken).toHaveBeenCalledWith({
+      skipCache: true,
+    });
+    expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
+  });
+
+  it("should redirect when retry also returns 401", async () => {
+    detachedSetupPage({
+      context,
+      path: "/",
+      session: { token: "stale-token" },
+      withoutRender: true,
+    });
+
+    mockedClerk.redirectToSignIn.mockClear();
+    mockedClerk.sessionGetToken.mockReset();
+    mockedClerk.sessionGetToken.mockImplementation((opts) => {
+      return Promise.resolve(opts?.skipCache ? "fresh-token" : "stale-token");
+    });
+
+    const authHeaders: string[] = [];
+    server.use(
+      http.get("http://localhost:3000/test", ({ request }) => {
+        authHeaders.push(request.headers.get("authorization") ?? "");
+        return HttpResponse.json(
+          { error: { message: "Unauthorized", code: "UNAUTHORIZED" } },
+          { status: 401 },
+        );
+      }),
+    );
+
+    const fch = context.store.get(fetch$);
+    const response = await fch("/test");
+
+    expect(response.status).toBe(401);
+    expect(authHeaders).toStrictEqual([
+      "Bearer stale-token",
+      "Bearer fresh-token",
+    ]);
+    expect(mockedClerk.redirectToSignIn).toHaveBeenCalledTimes(1);
+  });
+
+  it("should skip retry and redirect when refresh returns null", async () => {
+    detachedSetupPage({
+      context,
+      path: "/",
+      session: { token: "stale-token" },
+      withoutRender: true,
+    });
+
+    mockedClerk.redirectToSignIn.mockClear();
+    mockedClerk.sessionGetToken.mockReset();
+    mockedClerk.sessionGetToken.mockImplementation((opts) => {
+      return Promise.resolve(opts?.skipCache ? null : "stale-token");
+    });
+
+    const authHeaders: string[] = [];
+    server.use(
+      http.get("http://localhost:3000/test", ({ request }) => {
+        authHeaders.push(request.headers.get("authorization") ?? "");
+        return HttpResponse.json(
+          { error: { message: "Unauthorized", code: "UNAUTHORIZED" } },
+          { status: 401 },
+        );
+      }),
+    );
+
+    const fch = context.store.get(fetch$);
+    const response = await fch("/test");
+
+    expect(response.status).toBe(401);
+    expect(authHeaders).toStrictEqual(["Bearer stale-token"]);
+    expect(mockedClerk.redirectToSignIn).toHaveBeenCalledTimes(1);
+  });
+
+  it("should skip retry when refresh yields the same token", async () => {
+    detachedSetupPage({
+      context,
+      path: "/",
+      session: { token: "same-token" },
+      withoutRender: true,
+    });
+
+    mockedClerk.redirectToSignIn.mockClear();
+    mockedClerk.sessionGetToken.mockReset();
+    mockedClerk.sessionGetToken.mockResolvedValue("same-token");
+
+    const authHeaders: string[] = [];
+    server.use(
+      http.get("http://localhost:3000/test", ({ request }) => {
+        authHeaders.push(request.headers.get("authorization") ?? "");
+        return HttpResponse.json(
+          { error: { message: "Unauthorized", code: "UNAUTHORIZED" } },
+          { status: 401 },
+        );
+      }),
+    );
+
+    const fch = context.store.get(fetch$);
+    const response = await fch("/test");
+
+    expect(response.status).toBe(401);
+    expect(authHeaders).toStrictEqual(["Bearer same-token"]);
+    expect(mockedClerk.redirectToSignIn).toHaveBeenCalledTimes(1);
+  });
+
+  it("should replay Request body when retrying on 401", async () => {
+    detachedSetupPage({
+      context,
+      path: "/",
+      session: { token: "stale-token" },
+      withoutRender: true,
+    });
+
+    mockedClerk.redirectToSignIn.mockClear();
+    mockedClerk.sessionGetToken.mockReset();
+    mockedClerk.sessionGetToken.mockImplementation((opts) => {
+      return Promise.resolve(opts?.skipCache ? "fresh-token" : "stale-token");
+    });
+
+    const receivedBodies: string[] = [];
+    let calls = 0;
+    server.use(
+      http.post("http://localhost:3000/api/zero/items", async ({ request }) => {
+        calls += 1;
+        receivedBodies.push(await request.text());
+        if (calls === 1) {
+          return HttpResponse.json(
+            { error: { message: "Unauthorized", code: "UNAUTHORIZED" } },
+            { status: 401 },
+          );
+        }
+        return HttpResponse.json({ ok: true }, { status: 200 });
+      }),
+    );
+
+    const fch = context.store.get(fetch$);
+    const body = JSON.stringify({ name: "example" });
+    const response = await fch(
+      new Request("/api/zero/items", {
+        method: "POST",
+        body,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(receivedBodies).toStrictEqual([body, body]);
+    expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
+  });
+});
+
 describe("other fetch parameters", () => {
   it("should preserve other RequestInit parameters", async () => {
     const captured: { request: CapturedRequest | null } = { request: null };

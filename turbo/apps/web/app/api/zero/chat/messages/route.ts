@@ -15,6 +15,7 @@ import {
   createZeroRunRecord,
   dispatchZeroRun,
 } from "../../../../../src/lib/zero/zero-run-service";
+import { buildWebChatPrompt } from "../../../../../src/lib/zero/integration-prompt";
 import { isApiError } from "../../../../../src/lib/shared/errors";
 import {
   createChatThread,
@@ -123,6 +124,7 @@ const router = tsr.router(chatMessagesContract, {
         sessionId,
         triggerSource: "web",
         modelProvider,
+        appendSystemPrompt: buildWebChatPrompt(),
         callbacks: [chatCallback],
       });
 

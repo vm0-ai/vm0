@@ -1,6 +1,6 @@
 import { computed } from "ccstate";
 import { clerk$ } from "./auth.ts";
-import { logger } from "./log.ts";
+import { fetchFreshToken, handleUnauthorizedRedirect } from "./auth-retry.ts";
 
 function getConfiguredApiUrl(): string {
   const url = import.meta.env.VITE_API_URL as string | undefined;
@@ -9,8 +9,6 @@ function getConfiguredApiUrl(): string {
   }
   return url;
 }
-
-const L = logger("Fetch");
 
 const CONFIGURED_API_URL = getConfiguredApiUrl();
 
@@ -132,88 +130,79 @@ function rewriteRequestUrl(
 export const fetch$ = computed((get) => {
   return async (url: string | URL | Request, options?: RequestInit) => {
     const clerk = await get(clerk$);
-    const token = await clerk.session?.getToken();
-
+    const initialToken = (await clerk.session?.getToken()) ?? null;
     const apiBase = get(apiBase$);
 
-    let finalUrl: string | URL | Request = url;
-    let finalInit: RequestInit | undefined = undefined;
+    const performFetch = async (token: string | null): Promise<Response> => {
+      // Clone Request inputs so the body stream is available for retry.
+      const requestInput = url instanceof Request ? url.clone() : url;
 
-    const authHeaders: Record<string, string> = token
-      ? { Authorization: `Bearer ${token}` }
-      : {};
+      let finalUrl: string | URL | Request = requestInput;
+      let finalInit: RequestInit;
 
-    if (url instanceof Request) {
-      const combinedHeaders = new Headers(url.headers);
+      const authHeaders: Record<string, string> = token
+        ? { Authorization: `Bearer ${token}` }
+        : {};
+      const autoHeaders: Record<string, string> = {};
 
-      if (token) {
-        combinedHeaders.set("Authorization", `Bearer ${token}`);
+      if (requestInput instanceof Request) {
+        finalInit = {
+          credentials: "include",
+          headers: mergeHeadersWithAutoIds(
+            authHeaders,
+            options?.headers,
+            autoHeaders,
+          ),
+          ...options,
+        };
+      } else {
+        finalInit = {
+          credentials: "include",
+          method: "GET",
+          ...options,
+          headers: mergeHeadersWithAutoIds(
+            authHeaders,
+            options?.headers,
+            autoHeaders,
+          ),
+        };
       }
 
-      if (options?.headers) {
-        const optHeaders = new Headers(options.headers);
-        for (const [key, value] of optHeaders.entries()) {
-          combinedHeaders.set(key, value);
+      if (typeof requestInput === "string" && !requestInput.includes("://")) {
+        const baseUrl = apiBase.endsWith("/") ? apiBase.slice(0, -1) : apiBase;
+        const path = requestInput.startsWith("/")
+          ? requestInput
+          : `/${requestInput}`;
+        finalUrl = `${baseUrl}${path}`;
+      } else if (requestInput instanceof URL && !requestInput.host) {
+        finalUrl = new URL(
+          requestInput.pathname + requestInput.search + requestInput.hash,
+          apiBase,
+        );
+      } else if (requestInput instanceof Request) {
+        const rewritten = rewriteRequestUrl(
+          requestInput,
+          apiBase,
+          token,
+          finalInit.headers,
+        );
+        if (rewritten) {
+          finalUrl = rewritten;
         }
       }
 
-      const autoHeaders: Record<string, string> = {};
+      return await fetch(finalUrl, finalInit);
+    };
 
-      finalInit = {
-        credentials: "include",
-        headers: mergeHeadersWithAutoIds(
-          authHeaders,
-          options?.headers,
-          autoHeaders,
-        ),
-        ...options,
-      };
-    } else {
-      const autoHeaders: Record<string, string> = {};
-
-      finalInit = {
-        credentials: "include",
-        method: "GET",
-        ...options,
-        headers: mergeHeadersWithAutoIds(
-          authHeaders,
-          options?.headers,
-          autoHeaders,
-        ),
-      };
-    }
-
-    if (typeof url === "string" && !url.includes("://")) {
-      const baseUrl = apiBase.endsWith("/") ? apiBase.slice(0, -1) : apiBase;
-      const path = url.startsWith("/") ? url : `/${url}`;
-      finalUrl = `${baseUrl}${path}`;
-    } else if (url instanceof URL && !url.host) {
-      finalUrl = new URL(url.pathname + url.search + url.hash, apiBase);
-    } else if (url instanceof Request) {
-      const rewritten = rewriteRequestUrl(
-        url,
-        apiBase,
-        token,
-        finalInit.headers,
-      );
-      if (rewritten) {
-        finalUrl = rewritten;
-      }
-    }
-
-    const response = await fetch(finalUrl, finalInit);
+    let response = await performFetch(initialToken);
 
     if (response.status === 401) {
-      // Fire-and-forget: the redirect navigates the page away so the promise
-      // may never settle. We must not await — callers need the 401 response.
-      const redirectResult = clerk.redirectToSignIn();
-      if (redirectResult instanceof Promise) {
-        redirectResult.catch((error: unknown) => {
-          if (error instanceof Error && error.name === "AbortError") {
-            return;
-          }
-          L.error("Sign-in redirect failed", error);
-        });
+      const freshToken = await fetchFreshToken(clerk, initialToken);
+      if (freshToken) {
+        response = await performFetch(freshToken);
+      }
+      if (response.status === 401) {
+        handleUnauthorizedRedirect(clerk);
       }
     }
 

@@ -10,7 +10,11 @@ import { userCache } from "../../db/schema/user-cache";
 import { vm0ApiKeys } from "../../db/schema/vm0-api-key";
 import { orgMembersMetadata } from "../../db/schema/org-members-metadata";
 import { pushSubscriptions } from "../../db/schema/push-subscription";
-import { voiceChatSessions, voiceChatEvents } from "../../db/schema/voice-chat";
+import {
+  voiceChatSessions,
+  voiceChatEvents,
+  voiceChatPreparations,
+} from "../../db/schema/voice-chat";
 import { getVm0ApiKey } from "../../lib/zero/vm0-key/vm0-key-service";
 import { POST as registerPushSubscriptionRoute } from "../../../app/api/zero/push-subscriptions/route";
 import { randomUUID } from "crypto";
@@ -345,6 +349,43 @@ export async function getTestVoiceChatEvents(
     })
     .from(voiceChatEvents)
     .where(eq(voiceChatEvents.sessionId, sessionId));
+}
+
+export async function insertTestVoiceChatPreparation(overrides: {
+  orgId: string;
+  userId: string;
+  agentId?: string;
+  mode?: string;
+  prompt?: string;
+  status?: string;
+  directiveContent?: string;
+  createdAt?: Date;
+}): Promise<string> {
+  initServices();
+  const [row] = await globalThis.services.db
+    .insert(voiceChatPreparations)
+    .values({
+      orgId: overrides.orgId,
+      userId: overrides.userId,
+      agentId: overrides.agentId,
+      mode: overrides.mode ?? "chat",
+      prompt: overrides.prompt ?? null,
+      status: overrides.status ?? "preparing",
+      directiveContent: overrides.directiveContent ?? null,
+      createdAt: overrides.createdAt ?? new Date(),
+    })
+    .returning({ id: voiceChatPreparations.id });
+  return row!.id;
+}
+
+export async function getTestVoiceChatPreparation(id: string) {
+  initServices();
+  const [row] = await globalThis.services.db
+    .select()
+    .from(voiceChatPreparations)
+    .where(eq(voiceChatPreparations.id, id))
+    .limit(1);
+  return row;
 }
 
 /**

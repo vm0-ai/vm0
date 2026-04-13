@@ -714,19 +714,24 @@ impl NetnsPool {
             let mut plain_set = tokio::task::JoinSet::new();
             let mut proxy_set = tokio::task::JoinSet::new();
 
-            // Plain namespaces (connectivity only).
-            for _ in 0..BUFFER_SIZE {
-                let ns_index = pool.next_ns_index;
-                pool.next_ns_index += 1;
-                let pool_index = pool.pool_index;
-                let default_iface = pool.default_iface.clone();
-                plain_set.spawn(create_single_namespace(
-                    pool_index,
-                    ns_index,
-                    default_iface,
-                    None,
-                    None,
-                ));
+            // Plain namespaces (connectivity only). Only needed when proxy
+            // is disabled; with proxy configured, `acquire()` always routes
+            // to the proxy queue, so plain entries would be unreachable
+            // until `cleanup()`.
+            if pool.proxy_port.is_none() {
+                for _ in 0..BUFFER_SIZE {
+                    let ns_index = pool.next_ns_index;
+                    pool.next_ns_index += 1;
+                    let pool_index = pool.pool_index;
+                    let default_iface = pool.default_iface.clone();
+                    plain_set.spawn(create_single_namespace(
+                        pool_index,
+                        ns_index,
+                        default_iface,
+                        None,
+                        None,
+                    ));
+                }
             }
 
             // Proxy namespaces (connectivity + REDIRECT rules).

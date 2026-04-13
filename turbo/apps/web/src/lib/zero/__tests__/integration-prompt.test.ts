@@ -7,6 +7,7 @@ import {
   buildPhonePrompt,
   buildTelegramPrompt,
   buildGitHubPrompt,
+  buildWebChatPrompt,
 } from "../integration-prompt";
 
 describe("buildIntegrationPrompt", () => {
@@ -230,5 +231,20 @@ describe("buildGitHubPrompt", () => {
     const result = buildGitHubPrompt("");
 
     expect(result).toContain("You are currently running inside: GitHub");
+  });
+});
+
+describe("buildWebChatPrompt", () => {
+  it("should include web integration header", () => {
+    const result = buildWebChatPrompt();
+
+    expect(result).toContain("You are currently running inside: Web");
+  });
+
+  it("should include web chat description", () => {
+    const result = buildWebChatPrompt();
+
+    expect(result).toContain("web chat UI");
+    expect(result).toContain("displayed to the user directly");
   });
 });

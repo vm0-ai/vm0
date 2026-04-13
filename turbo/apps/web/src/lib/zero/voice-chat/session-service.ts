@@ -8,7 +8,6 @@ import { cancelRun } from "../zero-run-cancel";
 import {
   buildVoiceChatQuickPrepPrompt,
   buildVoiceChatMeetingPrompt,
-  buildVoiceChatMissionControlPrompt,
 } from "../integration-prompt";
 import { conflict, notFound, badRequest, forbidden } from "../../shared/errors";
 import { logger } from "../../shared/logger";
@@ -25,7 +24,7 @@ export async function createSession(
   orgId: string,
   userId: string,
   agentId: string,
-  options?: { mode?: "chat" | "meeting" | "mission_control"; prompt?: string },
+  options?: { mode?: "chat" | "meeting"; prompt?: string },
 ) {
   const db = globalThis.services.db;
 
@@ -145,25 +144,19 @@ export async function dispatchSlowBrain(
   orgId: string,
   userId: string,
   agentId: string,
-  options?: { mode?: "chat" | "meeting" | "mission_control"; prompt?: string },
+  options?: { mode?: "chat" | "meeting"; prompt?: string },
 ) {
   const db = globalThis.services.db;
   const meetingPrompt =
     options?.mode === "meeting" ? options.prompt : undefined;
 
-  const appendSystemPrompt =
-    options?.mode === "mission_control"
-      ? buildVoiceChatMissionControlPrompt(session.id)
-      : meetingPrompt
-        ? buildVoiceChatMeetingPrompt(session.id, meetingPrompt)
-        : buildVoiceChatQuickPrepPrompt(session.id);
+  const appendSystemPrompt = meetingPrompt
+    ? buildVoiceChatMeetingPrompt(session.id, meetingPrompt)
+    : buildVoiceChatQuickPrepPrompt(session.id);
 
-  const prompt =
-    options?.mode === "mission_control"
-      ? `You are Zero's slow-brain for voice-chat session ${session.id}. You are in mission control mode — delegate all task execution to sub-agents via zero run instead of executing inline.`
-      : meetingPrompt
-        ? `You are Zero's slow-brain for voice-chat session ${session.id}. A meeting has been requested. Read the shared context for the meeting prompt and begin preparation.`
-        : `You are Zero's slow-brain for voice-chat session ${session.id}. Review the agent configuration and user context, then prepare an initial directive before the conversation begins.`;
+  const prompt = meetingPrompt
+    ? `You are Zero's slow-brain for voice-chat session ${session.id}. A meeting has been requested. Read the shared context for the meeting prompt and begin preparation.`
+    : `You are Zero's slow-brain for voice-chat session ${session.id}. Review the agent configuration and user context, then prepare an initial directive before the conversation begins.`;
 
   // Write meeting-prompt event before session-start (meeting mode only)
   if (meetingPrompt) {

@@ -385,6 +385,21 @@ export async function findTestClientCreditUsagesByRunId(runId: string): Promise<
 }
 
 /**
+ * Back-date an existing credit_usage record's createdAt for testing
+ * date-range filtering.
+ */
+export async function setTestCreditUsageCreatedAt(
+  id: string,
+  createdAt: Date,
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .update(creditUsage)
+    .set({ createdAt })
+    .where(eq(creditUsage.id, id));
+}
+
+/**
  * Read a credit_usage record by ID.
  */
 export async function findTestCreditUsage(id: string): Promise<
@@ -626,29 +641,6 @@ export async function createCompletedRun(
     })
     .returning();
   return run!.id;
-}
-
-/**
- * Insert a proxy_credit_usage row for testing.
- */
-export async function insertTestProxyCreditUsage(params: {
-  runId: string;
-  orgId: string;
-  userId: string;
-  inputTokens?: number;
-  outputTokens?: number;
-}): Promise<void> {
-  const { proxyCreditUsage } =
-    await import("../../db/schema/proxy-credit-usage");
-  await globalThis.services.db.insert(proxyCreditUsage).values({
-    runId: params.runId,
-    orgId: params.orgId,
-    userId: params.userId,
-    model: "claude-sonnet-4-20250514",
-    modelProvider: "anthropic",
-    inputTokens: params.inputTokens ?? 100,
-    outputTokens: params.outputTokens ?? 50,
-  });
 }
 
 // ---------------------------------------------------------------------------
