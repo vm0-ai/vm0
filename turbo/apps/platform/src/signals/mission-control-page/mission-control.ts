@@ -2,7 +2,7 @@ import { command, computed, state } from "ccstate";
 import { toggleTaskList$ } from "./mission-control-panels.ts";
 import { archiveTask$, setupTasksLoop$ } from "./mission-control-tasks.ts";
 import { setupGlobalShortcut } from "../../lib/setup-global-shortcut.ts";
-import { onRef } from "../utils.ts";
+import { onRef, throwIfNotAbort } from "../utils.ts";
 
 // ---------------------------------------------------------------------------
 // Task list container ref
@@ -121,7 +121,7 @@ export const setupMissionControlKeyboard$ = command(
           }
           const taskId = active.dataset.taskId;
           if (taskId) {
-            void set(archiveTask$, taskId);
+            void set(archiveTask$, taskId, signal).catch(throwIfNotAbort);
           }
         },
       },

@@ -246,7 +246,7 @@ export const taskSignals$ = computed(async (get) => {
 // ---------------------------------------------------------------------------
 
 export const archiveTask$ = command(
-  async ({ get, set }, taskId: string): Promise<void> => {
+  async ({ get, set }, taskId: string, _signal: AbortSignal): Promise<void> => {
     const taskSignals = get(internalTaskSignals$);
     const ts = taskSignals.get(taskId);
     if (!ts) {

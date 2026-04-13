@@ -130,7 +130,7 @@ export function TaskCard({ taskSignals }: { taskSignals: TaskSignals }) {
 
   const handleArchive = (e: React.MouseEvent) => {
     e.stopPropagation();
-    detach(archiveTask(task.id), Reason.DomCallback);
+    detach(archiveTask(task.id, pageSignal), Reason.DomCallback);
   };
 
   return (
