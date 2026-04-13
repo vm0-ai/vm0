@@ -1,10 +1,11 @@
 //! Validation for runner directory names.
 //!
 //! Runner directory names are joined against `HomePaths::runners_dir()`
-//! to form on-disk paths (`/var/lib/vm0-runner/runners/<name>/`), so any
-//! input containing `..`, `/`, `\`, or a leading `.` could escape the
-//! intended directory. This module is the single source of truth for
-//! what counts as a safe runner directory name.
+//! to form on-disk paths (`/var/lib/vm0-runner/runners/<name>/`). Without
+//! validation, an absolute path (`/etc`) replaces the base via
+//! `Path::join`, and a bare `..` segment escapes once the kernel resolves
+//! it. This module is the single source of truth for what counts as a
+//! safe runner directory name.
 //!
 //! Unlike `group` and `profile`, runner directory names are not persisted
 //! in `runner.yaml` (only the resolved `RunnerConfig.base_dir: PathBuf`
@@ -34,18 +35,15 @@ pub fn validate_or_err(name: &str) -> RunnerResult<()> {
 ///
 /// Accepts `[a-z0-9.-]+` with these guards:
 /// - non-empty
-/// - not `.` or `..` (relative-path tokens)
-/// - does not start with `.` (avoids hidden files / traversal anchors)
+/// - does not start with `.` (rejects `.`, `..`, and hidden-file forms)
 /// - does not start with `-` (avoids being parsed as a flag downstream)
 ///
-/// Implicitly rejects `/` and `\` (not in charset). The dot allowance
-/// exists for production semver dirnames produced by
-/// `ansible/playbooks/deploy-runner.yml` (e.g. `v0.3.0`).
+/// Implicitly rejects `/` (not in charset), which means the name is always
+/// a single path segment. The dot allowance exists for production semver
+/// dirnames produced by `ansible/playbooks/deploy-runner.yml` (e.g.
+/// `v0.3.0`).
 fn validate_name(name: &str) -> bool {
-    if name.is_empty() || name == "." || name == ".." {
-        return false;
-    }
-    if name.starts_with('.') || name.starts_with('-') {
+    if name.is_empty() || name.starts_with('.') || name.starts_with('-') {
         return false;
     }
     name.chars()
