@@ -2,7 +2,7 @@ import { command, computed, state, type Command, type Computed } from "ccstate";
 import { tasksContract, type TaskItem } from "@vm0/core";
 import { zeroClient$ } from "../api-client";
 import { accept } from "../../lib/accept";
-import { onRef, setLoop } from "../utils.ts";
+import { jsonParseOr, onRef, setLoop } from "../utils.ts";
 import {
   createChatThreadSignals,
   ensureDraft$,
@@ -13,6 +13,23 @@ import {
   type ActivitySignals,
 } from "./create-activity-signals.ts";
 import { maximizedTaskId$ } from "./mission-control-panels.ts";
+import { localStorageSignals } from "../external/local-storage.ts";
+
+// ---------------------------------------------------------------------------
+// Unread tracking — localStorage-backed map of taskId → lastSeenRunId
+// ---------------------------------------------------------------------------
+
+const lastSeenRunIdsStorage = localStorageSignals(
+  "missionControlLastSeenRunIds",
+);
+
+const lastSeenRunIds$ = computed((get) => {
+  const raw = get(lastSeenRunIdsStorage.get$);
+  if (!raw) {
+    return {} as Record<string, string>;
+  }
+  return jsonParseOr<Record<string, string>>(raw, {});
+});
 
 const OPTIMISTIC_TTL_MS = 30_000;
 
@@ -29,7 +46,10 @@ export type TaskPanelEntry =
 // ---------------------------------------------------------------------------
 
 export interface TaskSignals {
-  task: TaskItem;
+  taskId: string;
+  task$: Computed<TaskItem>;
+  updateTask$: Command<void, [TaskItem]>;
+  unread$: Computed<boolean>;
   optimistic: boolean;
   optimisticInsertedAt: number | null;
   open$: Computed<boolean>;
@@ -49,7 +69,42 @@ export interface TaskSignals {
 // Factory
 // ---------------------------------------------------------------------------
 
+const markRead$ = command(
+  ({ get, set }, taskId: string, latestRunId: string | null) => {
+    if (!latestRunId) {
+      return;
+    }
+    const seen = get(lastSeenRunIds$);
+    if (seen[taskId] === latestRunId) {
+      return;
+    }
+    set(
+      lastSeenRunIdsStorage.set$,
+      JSON.stringify({ ...seen, [taskId]: latestRunId }),
+    );
+  },
+);
+
 function createTaskSignals(initialTask: TaskItem): TaskSignals {
+  const internalTask$ = state(initialTask);
+
+  const task$ = computed((get) => {
+    return get(internalTask$);
+  });
+
+  const updateTask$ = command(({ set }, task: TaskItem) => {
+    set(internalTask$, task);
+  });
+
+  const unread$ = computed((get) => {
+    const task = get(internalTask$);
+    if (!task.latestRunId) {
+      return false;
+    }
+    const seen = get(lastSeenRunIds$);
+    return seen[initialTask.id] !== task.latestRunId;
+  });
+
   const internalOpen$ = state(false);
   const internalOpenedAt$ = state<number | null>(null);
   const internalPanelEntry$ = state<TaskPanelEntry | null>(null);
@@ -73,8 +128,6 @@ function createTaskSignals(initialTask: TaskItem): TaskSignals {
     set(internalInputFocused$, false);
   });
 
-  // Mutable ref so openTask$ always reads the latest API data
-  const taskRef = { value: initialTask };
   const optimisticRef = { value: false };
   const optimisticInsertedAtRef = { value: null as number | null };
 
@@ -84,7 +137,10 @@ function createTaskSignals(initialTask: TaskItem): TaskSignals {
         return;
       }
 
-      const task = taskRef.value;
+      const task = get(internalTask$);
+
+      // Mark as read when opening
+      set(markRead$, initialTask.id, task.latestRunId);
 
       if (task.type === "chat" && task.chatThreadId) {
         const draft = set(ensureDraft$, task.chatThreadId);
@@ -142,12 +198,10 @@ function createTaskSignals(initialTask: TaskItem): TaskSignals {
   });
 
   return {
-    get task() {
-      return taskRef.value;
-    },
-    set task(t: TaskItem) {
-      taskRef.value = t;
-    },
+    taskId: initialTask.id,
+    task$,
+    updateTask$,
+    unread$,
     get optimistic() {
       return optimisticRef.value;
     },
@@ -230,9 +284,13 @@ export const setupTasksLoop$ = command(
         for (const task of tasks) {
           const existing = taskSignals.get(task.id);
           if (existing) {
-            existing.task = task;
+            set(existing.updateTask$, task);
             existing.optimistic = false;
             existing.optimisticInsertedAt = null;
+            // Auto-mark read when task panel is already open
+            if (get(existing.open$)) {
+              set(markRead$, task.id, task.latestRunId);
+            }
           } else {
             taskSignals.set(task.id, createTaskSignals(task));
           }
@@ -277,7 +335,7 @@ export const taskSignals$ = computed(async (get) => {
 
   // Optimistic entries not yet confirmed by server — prepend at top
   const optimisticEntries = [...signals.values()].filter((ts) => {
-    return ts.optimistic && !serverIds.has(ts.task.id);
+    return ts.optimistic && !serverIds.has(ts.taskId);
   });
 
   // Server-confirmed entries in server order
@@ -304,7 +362,7 @@ export const archiveTask$ = command(
       return;
     }
 
-    const { task } = ts;
+    const task = get(ts.task$);
     const client = get(zeroClient$)(tasksContract);
 
     await accept(
@@ -387,7 +445,7 @@ export const closeAndFocusNextInput$ = command(
   async ({ get, set }, taskId: string, _signal: AbortSignal) => {
     const tasks = await get(taskSignals$);
     const currentIndex = tasks.findIndex((ts) => {
-      return ts.task.id === taskId;
+      return ts.taskId === taskId;
     });
     if (currentIndex === -1) {
       return;
@@ -426,7 +484,7 @@ export const visibleTasks$ = computed(async (get) => {
   const maximizedId = get(maximizedTaskId$);
   if (maximizedId !== null) {
     const maximized = open.find((ts) => {
-      return ts.task.id === maximizedId;
+      return ts.taskId === maximizedId;
     });
     return maximized ? [maximized] : open;
   }
@@ -441,4 +499,40 @@ export const visibleTasks$ = computed(async (get) => {
 export const missionControlPanelVisible$ = computed(async (get) => {
   const visible = await get(visibleTasks$);
   return visible.length > 0;
+});
+
+// ---------------------------------------------------------------------------
+// Unread commands
+// ---------------------------------------------------------------------------
+
+/**
+ * Whether any task in the list is unread.
+ */
+export const hasUnreadTasks$ = computed(async (get) => {
+  const tasks = await get(taskSignals$);
+  return tasks.some((ts) => {
+    return get(ts.unread$);
+  });
+});
+
+/**
+ * Mark all current tasks as read.
+ */
+export const markAllTasksRead$ = command(({ get, set }) => {
+  const taskSignals = get(internalTaskSignals$);
+  const current = get(lastSeenRunIds$);
+  const updated = { ...current };
+  let changed = false;
+
+  for (const [id, ts] of taskSignals) {
+    const task = get(ts.task$);
+    if (task.latestRunId && updated[id] !== task.latestRunId) {
+      updated[id] = task.latestRunId;
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    set(lastSeenRunIdsStorage.set$, JSON.stringify(updated));
+  }
 });

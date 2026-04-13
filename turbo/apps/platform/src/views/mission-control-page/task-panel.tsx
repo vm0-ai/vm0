@@ -28,7 +28,7 @@ export function TaskPanel() {
   return (
     <div className="flex h-full min-h-0">
       {entries.flatMap((ts, index) => {
-        const taskId = ts.task.id;
+        const taskId = ts.taskId;
         const elements = [];
         if (index > 0) {
           elements.push(
@@ -56,7 +56,7 @@ function TaskPanelCard({ taskSignals }: { taskSignals: TaskSignals }) {
   const pageSignal = useGet(pageSignal$);
   const maximizedId = useGet(maximizedTaskId$);
 
-  const taskId = taskSignals.task.id;
+  const taskId = taskSignals.taskId;
   const isMaximized = maximizedId === taskId;
 
   return (
@@ -137,7 +137,7 @@ function TaskPanelCard({ taskSignals }: { taskSignals: TaskSignals }) {
 }
 
 function TaskPanelTitle({ taskSignals }: { taskSignals: TaskSignals }) {
-  const { task } = taskSignals;
+  const task = useGet(taskSignals.task$);
   const agentName = task.agent.displayName ?? task.agent.name;
 
   return (

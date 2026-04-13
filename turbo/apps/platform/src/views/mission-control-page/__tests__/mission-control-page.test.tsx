@@ -404,7 +404,7 @@ describe("mission control page", () => {
     const signalsBefore = await context.store.get(taskSignals$);
     expect(
       signalsBefore.some((ts) => {
-        return ts.task.id === "stale-thread-ttl";
+        return ts.taskId === "stale-thread-ttl";
       }),
     ).toBeTruthy();
 
@@ -417,7 +417,7 @@ describe("mission control page", () => {
       const signals = await context.store.get(taskSignals$);
       expect(
         signals.some((ts) => {
-          return ts.task.id === "stale-thread-ttl";
+          return ts.taskId === "stale-thread-ttl";
         }),
       ).toBeFalsy();
     });

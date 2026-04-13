@@ -94,8 +94,8 @@ export function TaskCard({ taskSignals }: { taskSignals: TaskSignals }) {
   const openTask = useSet(taskSignals.openTask$);
   const pageSignal = useGet(pageSignal$);
   const isOpen = useGet(taskSignals.open$);
-
-  const { task } = taskSignals;
+  const task = useGet(taskSignals.task$);
+  const unread = useGet(taskSignals.unread$);
 
   const closeTask = useSet(taskSignals.closeTask$);
   const archiveTask = useSet(archiveTask$);
@@ -147,7 +147,7 @@ export function TaskCard({ taskSignals }: { taskSignals: TaskSignals }) {
         data-task-id={task.id}
         onClick={openOrFocusInput}
         className={`group p-4 cursor-pointer transition-colors hover:bg-accent/50 focus:outline focus:outline-2 focus:outline-primary ${
-          inputFocused ? "bg-accent" : ""
+          inputFocused ? "bg-accent" : unread ? "bg-primary/5" : ""
         } ${isOpen ? "border-primary" : ""}`}
       >
         <div className="flex flex-col gap-1.5">
