@@ -84,12 +84,10 @@ fn cleanup_files(
 }
 
 pub async fn run_submit(args: SubmitArgs) -> RunnerResult<ExitCode> {
-    if let Some(ref profile) = args.profile
-        && !crate::profile::validate_name(profile)
-    {
-        return Err(RunnerError::Config(format!(
-            "invalid profile name: {profile} (must be org/name format, lowercase alphanumeric + hyphens)"
-        )));
+    crate::group::validate_or_err(&args.group)?;
+
+    if let Some(ref profile) = args.profile {
+        crate::profile::validate_or_err(profile)?;
     }
 
     let feature_flags = if args.feature_flags.is_empty() {

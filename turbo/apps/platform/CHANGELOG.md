@@ -1,5 +1,121 @@
 # Changelog
 
+## [0.229.0](https://github.com/vm0-ai/vm0/compare/app-v0.228.0...app-v0.229.0) (2026-04-13)
+
+
+### Features
+
+* **insights:** abbreviate credit numbers with k/m suffix ([#9149](https://github.com/vm0-ai/vm0/issues/9149)) ([3b34b36](https://github.com/vm0-ai/vm0/commit/3b34b36bf5508e8d4d034915bc92961b923a1a40))
+* **platform:** redesign activity panel with chat-like layout for non-chat tasks ([#9139](https://github.com/vm0-ai/vm0/issues/9139)) ([bc73545](https://github.com/vm0-ai/vm0/commit/bc735456aa5b5d2512be5e96ee9a9b5503b8e1f6))
+* **voice-chat:** add meeting preparation frontend ([#9151](https://github.com/vm0-ai/vm0/issues/9151)) ([0f32dd5](https://github.com/vm0-ai/vm0/commit/0f32dd5d9f5b15ff3847e7f6f8fc313f4976e73a)), closes [#9087](https://github.com/vm0-ai/vm0/issues/9087)
+
+
+### Refactoring
+
+* unify member and admin onboarding connector flow ([#9129](https://github.com/vm0-ai/vm0/issues/9129)) ([#9140](https://github.com/vm0-ai/vm0/issues/9140)) ([fa03f61](https://github.com/vm0-ai/vm0/commit/fa03f61411c81522e2dd695d3bcbe08f6c952740))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.180.0
+
+## [0.228.0](https://github.com/vm0-ai/vm0/compare/app-v0.227.0...app-v0.228.0) (2026-04-13)
+
+
+### Features
+
+* **voice-chat:** change default realtime model to gpt-realtime-mini ([#9124](https://github.com/vm0-ai/vm0/issues/9124)) ([b45eefe](https://github.com/vm0-ai/vm0/commit/b45eefeec61327ab7b22bd1afde9018204feb801)), closes [#9119](https://github.com/vm0-ai/vm0/issues/9119)
+
+
+### Bug Fixes
+
+* **voice-io:** wire abort signals and improve cleanup edge cases ([#9121](https://github.com/vm0-ai/vm0/issues/9121)) ([#9126](https://github.com/vm0-ai/vm0/issues/9126)) ([6f78c7b](https://github.com/vm0-ai/vm0/commit/6f78c7b1a8161c8fc7e1905a10ed91da2735ff9d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.179.0
+
+## [0.227.0](https://github.com/vm0-ai/vm0/compare/app-v0.226.0...app-v0.227.0) (2026-04-13)
+
+
+### Features
+
+* **mission-control:** optimistic task signal for instant chat thread visibility ([#9095](https://github.com/vm0-ai/vm0/issues/9095)) ([bd6ec8d](https://github.com/vm0-ai/vm0/commit/bd6ec8d1496a69d41c4bc78189494208cdc78fa2))
+* **platform:** add tts read-aloud button and auto-read toggle ([#9105](https://github.com/vm0-ai/vm0/issues/9105)) ([faa2c12](https://github.com/vm0-ai/vm0/commit/faa2c12a089887a5736265e8851adf328fd2f72e)), closes [#9080](https://github.com/vm0-ai/vm0/issues/9080)
+* **voice-chat:** integrate preparation cache into session creation ([#9112](https://github.com/vm0-ai/vm0/issues/9112)) ([856c342](https://github.com/vm0-ai/vm0/commit/856c3421897a2a3019d496b67ef7506760e33baa)), closes [#9086](https://github.com/vm0-ai/vm0/issues/9086)
+* **voice-io:** add microphone button to chat composer for voice input ([#9108](https://github.com/vm0-ai/vm0/issues/9108)) ([01dce7e](https://github.com/vm0-ai/vm0/commit/01dce7e1e61a38f00b945ff8865263e9f78115ab)), closes [#9081](https://github.com/vm0-ai/vm0/issues/9081)
+
+
+### Bug Fixes
+
+* **web:** refresh token and retry once before redirecting on 401 ([#9096](https://github.com/vm0-ai/vm0/issues/9096)) ([127e744](https://github.com/vm0-ai/vm0/commit/127e7443d7a66b08f6ed623876d1e4fc858ad451))
+
+## [0.226.0](https://github.com/vm0-ai/vm0/compare/app-v0.225.0...app-v0.226.0) (2026-04-13)
+
+
+### Features
+
+* **usage:** add daily credits chart and per-run records ([#9047](https://github.com/vm0-ai/vm0/issues/9047)) ([589df8c](https://github.com/vm0-ai/vm0/commit/589df8cbf8b8d5ee495279a3f6e51aed47305daa))
+* **voice-chat:** add realtime model selector ([#9082](https://github.com/vm0-ai/vm0/issues/9082)) ([b296034](https://github.com/vm0-ai/vm0/commit/b29603432ca146738da80d3f346bf714eb53ad2b)), closes [#9074](https://github.com/vm0-ai/vm0/issues/9074)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.178.0
+
+## [0.225.0](https://github.com/vm0-ai/vm0/compare/app-v0.224.0...app-v0.225.0) (2026-04-13)
+
+
+### Features
+
+* add archive status to mission control task list ([#9063](https://github.com/vm0-ai/vm0/issues/9063)) ([ca4d008](https://github.com/vm0-ai/vm0/commit/ca4d00838afb45f957c5a8d5fbc4dcde58265382))
+* **web:** group feature-gated sidebar footer items into more menu ([#9055](https://github.com/vm0-ai/vm0/issues/9055)) ([bfecba3](https://github.com/vm0-ai/vm0/commit/bfecba3b2c56267e129e8b645ed43b541568b1fd))
+
+
+### Bug Fixes
+
+* render schedule list items as real anchor links ([#8690](https://github.com/vm0-ai/vm0/issues/8690)) ([#9072](https://github.com/vm0-ai/vm0/issues/9072)) ([5dea27d](https://github.com/vm0-ai/vm0/commit/5dea27d5cc27223a1699f915f5dd3c51c697544d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.177.0
+
+## [0.224.0](https://github.com/vm0-ai/vm0/compare/app-v0.223.0...app-v0.224.0) (2026-04-13)
+
+
+### Features
+
+* Mission Control c shortcut opens new chat dialog (no navigation) ([#9041](https://github.com/vm0-ai/vm0/issues/9041)) ([fb2f799](https://github.com/vm0-ai/vm0/commit/fb2f7991d4a1a313bc50e54aef75959572388b23))
+* **web:** add no-duplicate-route-param lint rule and rename activity route param ([#8843](https://github.com/vm0-ai/vm0/issues/8843)) ([815090a](https://github.com/vm0-ai/vm0/commit/815090a2e82252dcea3b26bfda8c47cf4b53aa62))
+
+
+### Bug Fixes
+
+* **platform:** gate create workspace button on clerk user permission ([#8835](https://github.com/vm0-ai/vm0/issues/8835)) ([8098613](https://github.com/vm0-ai/vm0/commit/80986134b3bcd4ad84716d2770f6f9d2dba84754))
+* sidebar collapse button closes mobile overlay ([#8978](https://github.com/vm0-ai/vm0/issues/8978)) ([ee3d653](https://github.com/vm0-ai/vm0/commit/ee3d6539fcc58d3fcddfa848b3b78f5938155d86))
+
+
+### Refactoring
+
+* extract navigation out of sendNewThreadMessage$ ([#9040](https://github.com/vm0-ai/vm0/issues/9040)) ([054ff0c](https://github.com/vm0-ai/vm0/commit/054ff0c04115cd445ca12660e784bae13fb328d9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.176.0
+
 ## [0.223.0](https://github.com/vm0-ai/vm0/compare/app-v0.222.0...app-v0.223.0) (2026-04-12)
 
 

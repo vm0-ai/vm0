@@ -611,17 +611,44 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 let reuse_entry = if reuse_enabled
                     && let Some(session_id) = context.session_id()
                 {
-                    let mut pool = idle_pool.lock().await;
-                    match pool.take(session_id) {
-                        Some(entry) if entry.profile_name == profile_name => {
-                            info!(
-                                run_id = %run_id,
-                                session_id,
-                                "reusing idle VM for session"
-                            );
-                            // Idle entry already holds budget — release the new reservation.
-                            budget.release(job_vcpu, job_memory);
-                            Some(entry)
+                    // Take the entry under the pool lock, then drop the lock
+                    // before any awaits — the unpark HTTP call below must not
+                    // block other take/park operations.
+                    let taken = {
+                        let mut pool = idle_pool.lock().await;
+                        pool.take(session_id)
+                    };
+                    match taken {
+                        Some(mut entry) if entry.profile_name == profile_name => {
+                            // Deflate the balloon and respawn the reactive
+                            // controller before handing the sandbox to the
+                            // job. On failure, destroy the idle entry and
+                            // fall through to a fresh create — the run
+                            // budget reservation we made above stays in
+                            // place to cover the new sandbox.
+                            match entry.sandbox.unpark().await {
+                                Ok(()) => {
+                                    info!(
+                                        run_id = %run_id,
+                                        session_id,
+                                        "reusing idle VM for session"
+                                    );
+                                    // Idle entry already holds budget — release the new reservation.
+                                    budget.release(job_vcpu, job_memory);
+                                    Some(entry)
+                                }
+                                Err(e) => {
+                                    warn!(
+                                        run_id = %run_id,
+                                        session_id,
+                                        error = %e,
+                                        "unpark failed, destroying idle VM and falling through to fresh create"
+                                    );
+                                    let b = Arc::clone(&budget);
+                                    destroy_tasks.spawn(destroy_idle_entry(entry, b));
+                                    None
+                                }
+                            }
                         }
                         Some(stale) => {
                             // Profile mismatch — destroy the stale VM.
@@ -947,7 +974,7 @@ fn spawn_job(
         };
 
         // Decide: park sandbox for reuse, or stop + destroy.
-        let parked = if let Some(sandbox) = sandbox {
+        let parked = if let Some(mut sandbox) = sandbox {
             let parkable_session = if reuse_enabled
                 && exit_code == 0
                 && !job_cancel.is_cancelled()
@@ -961,44 +988,65 @@ fn spawn_job(
             };
 
             if let Some(session_id) = parkable_session {
-                let mut pool = idle_pool.lock().await;
-                let idle_timeout = pool.default_timeout();
-                let entry = IdleEntry {
-                    sandbox,
-                    factory: factory_for_cleanup,
-                    session_id: session_id.to_string(),
-                    profile_name,
-                    vcpu,
-                    memory_mb,
-                    source_ip,
-                    parked_at: std::time::Instant::now(),
-                    idle_timeout,
-                    storage_fingerprints,
-                };
-                match pool.park(session_id.to_string(), entry) {
-                    ParkResult::Parked => {
-                        info!(run_id = %run_id, session_id, "VM parked for reuse");
-                        drop(pool);
-                        park_notify.notify_one();
-                        true
-                    }
-                    ParkResult::Evicted(evicted) => {
-                        info!(run_id = %run_id, session_id, "VM parked, evicting previous");
-                        drop(pool);
-                        // Notify immediately — session is already in pool.
-                        // Don't wait for stop_and_destroy which can be slow.
-                        park_notify.notify_one();
-                        let evict_vcpu = evicted.vcpu;
-                        let evict_mem = evicted.memory_mb;
-                        evicted.stop_and_destroy().await;
-                        budget.release(evict_vcpu, evict_mem);
-                        true
-                    }
-                    ParkResult::PoolFull(rejected) => {
-                        info!(run_id = %run_id, session_id, "idle pool full, destroying VM");
-                        drop(pool);
-                        rejected.stop_and_destroy().await;
-                        false
+                // Inflate the guest balloon BEFORE acquiring the pool lock —
+                // the HTTP call to Firecracker can take milliseconds, and we
+                // must not block other take/park operations on it.
+                if let Err(e) = sandbox.park().await {
+                    warn!(
+                        run_id = %run_id,
+                        session_id,
+                        error = %e,
+                        "sandbox park failed, destroying instead of parking"
+                    );
+                    stop_and_destroy_sandbox(sandbox, &**factory_for_cleanup).await;
+                    false
+                } else {
+                    let mut pool = idle_pool.lock().await;
+                    let idle_timeout = pool.default_timeout();
+                    let entry = IdleEntry {
+                        sandbox,
+                        factory: factory_for_cleanup,
+                        session_id: session_id.to_string(),
+                        profile_name,
+                        vcpu,
+                        memory_mb,
+                        source_ip,
+                        parked_at: std::time::Instant::now(),
+                        idle_timeout,
+                        storage_fingerprints,
+                    };
+                    match pool.park(session_id.to_string(), entry) {
+                        ParkResult::Parked => {
+                            info!(run_id = %run_id, session_id, "VM parked for reuse");
+                            drop(pool);
+                            park_notify.notify_one();
+                            true
+                        }
+                        ParkResult::Evicted(evicted) => {
+                            info!(run_id = %run_id, session_id, "VM parked, evicting previous");
+                            drop(pool);
+                            // Notify immediately — session is already in pool.
+                            // Don't wait for stop_and_destroy which can be slow.
+                            park_notify.notify_one();
+                            let evict_vcpu = evicted.vcpu;
+                            let evict_mem = evicted.memory_mb;
+                            // The evicted entry was park()ed when it entered the
+                            // pool; destroying a parked sandbox is safe — Drop
+                            // aborts any leftover handles and the FC process is
+                            // killed regardless of balloon state.
+                            evicted.stop_and_destroy().await;
+                            budget.release(evict_vcpu, evict_mem);
+                            true
+                        }
+                        ParkResult::PoolFull(rejected) => {
+                            info!(run_id = %run_id, session_id, "idle pool full, destroying VM");
+                            drop(pool);
+                            // The rejected sandbox was just park()ed above;
+                            // destroying a parked sandbox is safe — see Evicted
+                            // arm for rationale.
+                            rejected.stop_and_destroy().await;
+                            false
+                        }
                     }
                 }
             } else {
@@ -2946,6 +2994,260 @@ mod tests {
             "parked session should match guest_session_id"
         );
         drop(pool);
+
+        shutdown(&env, run_handle).await;
+    }
+
+    // -----------------------------------------------------------------------
+    // Tests 23-25: park / unpark idle-transition orchestration (#9102)
+    // -----------------------------------------------------------------------
+
+    /// Two sequential jobs on the same session produce park=2 / unpark=1:
+    /// the first job's post-exit park, plus the second job's take (unpark)
+    /// and post-exit re-park. Verifies the full reuse cycle drives the
+    /// new trait hooks symmetrically.
+    #[tokio::test(start_paused = true)]
+    async fn reuse_cycle_invokes_park_and_unpark_symmetrically() {
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        let counter = Arc::clone(&overrides);
+        let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 32768, 4, overrides);
+        let idle_pool = Arc::clone(&config.idle_pool);
+        let run_handle = tokio::spawn(run(config));
+
+        // Job 1: fresh create → run → park.
+        let id1 = Uuid::new_v4();
+        push_job(
+            &env,
+            id1,
+            "vm0/default",
+            Some(context_with_session(id1, "sess-reuse-cycle")),
+        );
+        assert!(
+            env.handle
+                .wait_completion(id1, Duration::from_secs(5))
+                .await
+                .is_some()
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert_eq!(counter.park_call_count(), 1);
+        assert_eq!(counter.unpark_call_count(), 0);
+
+        // Job 2: same session → take (unpark) → run → re-park.
+        let id2 = Uuid::new_v4();
+        push_job(
+            &env,
+            id2,
+            "vm0/default",
+            Some(context_with_session(id2, "sess-reuse-cycle")),
+        );
+        assert!(
+            env.handle
+                .wait_completion(id2, Duration::from_secs(5))
+                .await
+                .is_some()
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert_eq!(
+            counter.park_call_count(),
+            2,
+            "park() should fire once per job"
+        );
+        assert_eq!(
+            counter.unpark_call_count(),
+            1,
+            "unpark() should fire only for the reused job"
+        );
+        assert_eq!(idle_pool.lock().await.len(), 1);
+
+        shutdown(&env, run_handle).await;
+    }
+
+    /// A successful job with a session triggers `Sandbox::park()` exactly once
+    /// when the VM is handed off to the idle pool.
+    #[tokio::test(start_paused = true)]
+    async fn park_called_when_vm_enters_idle_pool() {
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        let counter = Arc::clone(&overrides);
+        let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 16384, 4, overrides);
+        let idle_pool = Arc::clone(&config.idle_pool);
+        let run_handle = tokio::spawn(run(config));
+
+        let run_id = Uuid::new_v4();
+        push_job(
+            &env,
+            run_id,
+            "vm0/default",
+            Some(context_with_session(run_id, "sess-park-hook")),
+        );
+
+        let c = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await;
+        assert!(c.is_some(), "job should complete");
+
+        // Park notification + park() are called from the post-job task; give
+        // them a moment to run before asserting.
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        assert_eq!(
+            counter.park_call_count(),
+            1,
+            "park() should have been called exactly once"
+        );
+        assert_eq!(
+            counter.unpark_call_count(),
+            0,
+            "unpark() must not be called for a fresh park"
+        );
+        assert_eq!(idle_pool.lock().await.len(), 1, "VM should be parked");
+
+        shutdown(&env, run_handle).await;
+    }
+
+    /// When `Sandbox::park()` returns an error, the runner falls back to
+    /// `stop_and_destroy_sandbox` and does NOT insert into the idle pool.
+    #[tokio::test(start_paused = true)]
+    async fn park_failure_destroys_sandbox_and_skips_pool() {
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        overrides.push_park_result(Err(sandbox::SandboxError::IdleTransition(
+            "simulated balloon failure".into(),
+        )));
+        let counter = Arc::clone(&overrides);
+        let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 16384, 4, overrides);
+        let budget = Arc::clone(&config.budget);
+        let idle_pool = Arc::clone(&config.idle_pool);
+        let run_handle = tokio::spawn(run(config));
+
+        let run_id = Uuid::new_v4();
+        push_job(
+            &env,
+            run_id,
+            "vm0/default",
+            Some(context_with_session(run_id, "sess-park-fail")),
+        );
+
+        let c = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await;
+        assert!(c.is_some(), "job should complete normally");
+        assert_eq!(c.unwrap().exit_code, 0);
+
+        // park failure → destroy → budget fully released, pool empty.
+        wait_budget_count(&budget, 0, Duration::from_secs(2)).await;
+        assert_eq!(
+            idle_pool.lock().await.len(),
+            0,
+            "park failure must NOT insert into pool"
+        );
+        assert_eq!(
+            counter.park_call_count(),
+            1,
+            "park() should have been attempted exactly once"
+        );
+
+        shutdown(&env, run_handle).await;
+    }
+
+    /// When the runner takes a sandbox out of the idle pool for reuse and
+    /// `Sandbox::unpark()` returns an error, the idle entry is destroyed
+    /// and the runner falls through to a fresh sandbox create.
+    #[tokio::test(start_paused = true)]
+    async fn unpark_failure_destroys_idle_entry_and_falls_through() {
+        // Both the pre-seeded sandbox and the fresh-create sandbox share
+        // the same MockSandboxOverrides set, so the unpark error queued
+        // here is consumed by the FIRST unpark call — which is the take
+        // path's call against the pre-seeded sandbox.
+        let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+        let counter = Arc::clone(&overrides);
+        overrides.push_unpark_result(Err(sandbox::SandboxError::IdleTransition(
+            "simulated unpark failure".into(),
+        )));
+        let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 16384, 4, overrides);
+        let budget = Arc::clone(&config.budget);
+        let idle_pool = Arc::clone(&config.idle_pool);
+
+        // Pre-seed via the factory so the seeded MockSandbox shares the
+        // override set (and consumes the queued unpark error).
+        {
+            let mut pool = idle_pool.lock().await;
+            let runtime = sandbox_mock::MockSandboxRuntime::with_overrides(Arc::clone(&counter));
+            let mut factory = runtime
+                .create_factory(sandbox::FactoryConfig {
+                    profile: "vm0/default".into(),
+                    binary_path: PathBuf::new(),
+                    kernel_path: PathBuf::new(),
+                    rootfs_path: PathBuf::new(),
+                    base_dir: PathBuf::new(),
+                    snapshot: None,
+                })
+                .await
+                .expect("create factory");
+            factory.startup().await.expect("startup");
+            let factory_arc: Arc<Box<dyn sandbox::SandboxFactory>> = Arc::new(factory);
+            let sandbox = factory_arc
+                .create(sandbox::SandboxConfig {
+                    id: Uuid::new_v4(),
+                    resources: sandbox::ResourceLimits {
+                        cpu_count: 2,
+                        memory_mb: 4096,
+                    },
+                })
+                .await
+                .expect("create sandbox");
+            assert!(budget.try_reserve(2, 4096), "reserve seeded budget");
+            let _ = pool.park(
+                "sess-unpark-fail".to_string(),
+                IdleEntry {
+                    sandbox,
+                    factory: factory_arc,
+                    session_id: "sess-unpark-fail".to_string(),
+                    profile_name: "vm0/default".into(),
+                    vcpu: 2,
+                    memory_mb: 4096,
+                    source_ip: "10.0.0.1".into(),
+                    parked_at: std::time::Instant::now(),
+                    idle_timeout: Duration::from_secs(300),
+                    storage_fingerprints: crate::idle_pool::StorageFingerprints::default(),
+                },
+            );
+        }
+        assert_eq!(idle_pool.lock().await.len(), 1, "pool seeded");
+
+        let run_handle = tokio::spawn(run(config));
+
+        // Push a job for the same session — runner will try to reuse,
+        // unpark() will fail, idle entry gets destroyed, fresh create runs.
+        let run_id = Uuid::new_v4();
+        push_job(
+            &env,
+            run_id,
+            "vm0/default",
+            Some(context_with_session(run_id, "sess-unpark-fail")),
+        );
+
+        let c = env
+            .handle
+            .wait_completion(run_id, Duration::from_secs(5))
+            .await;
+        assert!(c.is_some(), "fresh-create job should still complete");
+        assert_eq!(c.unwrap().exit_code, 0);
+
+        // After the dust settles:
+        //   - unpark called exactly once (the failed take-side call);
+        //   - park called exactly once (the fresh-create's successful park).
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert_eq!(
+            counter.unpark_call_count(),
+            1,
+            "expected exactly one unpark attempt"
+        );
+        assert_eq!(
+            counter.park_call_count(),
+            1,
+            "expected exactly one park (the fresh-create's)"
+        );
 
         shutdown(&env, run_handle).await;
     }

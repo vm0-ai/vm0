@@ -453,6 +453,14 @@ def _maybe_report_proxy_usage(flow: http.HTTPFlow, run_id: str) -> None:
     proxy_usage = flow.metadata.get("proxy_usage")
     if not proxy_usage:
         return
+    # Fall back to flow.id when the upstream response did not carry an `id`
+    # field (non-Anthropic-shaped providers, malformed responses).  Without a
+    # stable per-flow key the server side cannot deduplicate retries, which
+    # would double-charge.  flow.id is unique per flow and stable across
+    # retries of the usage webhook (the usage dict is copied once in
+    # _enqueue_usage and reused).
+    if not proxy_usage.get("message_id"):
+        proxy_usage["message_id"] = flow.id
     sandbox_token = flow.metadata.get("vm_sandbox_token", "")
     api_url = get_api_url()
     if not sandbox_token or not api_url:

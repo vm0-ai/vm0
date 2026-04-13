@@ -193,3 +193,6 @@ export {
   getVoiceChatContextEvents,
   appendVoiceChatContextEvent,
 } from "./domains/zero-voice-chat-context";
+
+// Domain modules - Zero Voice Chat Prepare
+export { completeVoiceChatPreparation } from "./domains/zero-voice-chat-prepare";

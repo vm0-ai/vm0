@@ -1,7 +1,7 @@
-// useLayoutEffect needed for synchronous scroll-to-bottom before paint
-// when chat messages load. Confirmed by Ethan.
+// useLayoutEffect runs synchronously before paint, ensuring the scroll
+// position is applied before the user sees the content.
 // oxlint-disable-next-line no-restricted-imports
-import { useLayoutEffect } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { useSet } from "ccstate-react";
 import type { Command } from "ccstate";
 
@@ -15,5 +15,34 @@ export function useAutoScroll(
   const scroll = useSet(autoScroll$);
   useLayoutEffect(() => {
     scroll();
+  }, [scroll, trigger]);
+}
+
+/**
+ * Trigger auto-scroll once when `trigger` first becomes truthy.
+ * Resets when `autoScroll$` changes (e.g. a new thread is opened).
+ */
+export function useAutoScrollOnce(
+  trigger: unknown,
+  autoScroll$: Command<void, []>,
+) {
+  const scroll = useSet(autoScroll$);
+  const firedRef = useRef(false);
+  const prevScrollRef = useRef(scroll);
+
+  // Reset fired flag inside a layout effect when the scroll command changes
+  // (i.e. a new thread is opened), so ref mutations never occur during render.
+  useLayoutEffect(() => {
+    if (prevScrollRef.current !== scroll) {
+      prevScrollRef.current = scroll;
+      firedRef.current = false;
+    }
+  }, [scroll]);
+
+  useLayoutEffect(() => {
+    if (!firedRef.current && trigger) {
+      firedRef.current = true;
+      scroll();
+    }
   }, [scroll, trigger]);
 }

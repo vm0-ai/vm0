@@ -47,24 +47,23 @@ pub struct ConfigArgs {
 }
 
 pub async fn run_config(args: ConfigArgs) -> RunnerResult<()> {
-    // Validate parallel arrays have same length.
+    // Pure-CPU validation first — fail fast before any filesystem I/O.
+    crate::group::validate_or_err(&args.group)?;
+    crate::runner_dirname::validate_or_err(&args.runner_dirname)?;
     if args.profile.len() != args.image_hash.len() {
         return Err(RunnerError::Config(
             "--profile and --image-hash must be specified the same number of times".into(),
         ));
     }
+    for profile_name in &args.profile {
+        profile::validate_or_err(profile_name)?;
+    }
 
     let paths = HomePaths::new()?;
 
-    // Build profiles map, validating each entry.
+    // Build profiles map.
     let mut profiles = BTreeMap::new();
     for (i, profile_name) in args.profile.iter().enumerate() {
-        if !profile::validate_name(profile_name) {
-            return Err(RunnerError::Config(format!(
-                "invalid profile name: {profile_name}"
-            )));
-        }
-
         let def = profile::get(profile_name)?;
         // Length equality is validated above, so this index is safe.
         let image_hash = args
@@ -122,4 +121,64 @@ pub async fn run_config(args: ConfigArgs) -> RunnerResult<()> {
     tracing::info!("config written to {}", config_path.display());
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn args_with_dirname(dirname: &str) -> ConfigArgs {
+        ConfigArgs {
+            profile: vec!["vm0/default".into()],
+            image_hash: vec!["dummy".into()],
+            name: "test".into(),
+            group: "vm0/test".into(),
+            runner_dirname: dirname.into(),
+            max_concurrent: 0,
+            concurrency_factor: 1.0,
+            api_url: "http://localhost".into(),
+            token: "x".into(),
+        }
+    }
+
+    /// Asserts that `--runner-dirname` validation is wired into `run_config`.
+    /// Without the validator call at the top, a malicious dirname would
+    /// reach `paths.runners_dir().join(...)` and escape the base dir.
+    #[tokio::test]
+    async fn run_config_rejects_traversal_runner_dirname() {
+        let err = run_config(args_with_dirname("../etc")).await.unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("invalid runner-dirname"), "got: {msg}");
+    }
+
+    #[tokio::test]
+    async fn run_config_rejects_absolute_runner_dirname() {
+        let err = run_config(args_with_dirname("/etc")).await.unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("invalid runner-dirname"), "got: {msg}");
+    }
+
+    /// Guards against a partial wiring: if someone ever splits the
+    /// validator into "leading-char only" and "charset only" halves and
+    /// only calls the first, the previous two tests would still pass.
+    /// This test covers a charset-only violation (uppercase) that has no
+    /// traversal intent, asserting the full validator is invoked.
+    #[tokio::test]
+    async fn run_config_rejects_charset_violation_runner_dirname() {
+        let err = run_config(args_with_dirname("V0.3.0")).await.unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("invalid runner-dirname"), "got: {msg}");
+    }
+
+    /// Empty string is a common user bug (unset shell variable expanded
+    /// into `--runner-dirname ""`). It reaches the validator because
+    /// clap does not reject empty arg values on its own. Covers the
+    /// `is_empty()` branch, which is short-circuited before the other
+    /// rejection conditions.
+    #[tokio::test]
+    async fn run_config_rejects_empty_runner_dirname() {
+        let err = run_config(args_with_dirname("")).await.unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("invalid runner-dirname"), "got: {msg}");
+    }
 }

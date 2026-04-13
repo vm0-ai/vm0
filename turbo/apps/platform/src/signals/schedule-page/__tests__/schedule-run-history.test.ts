@@ -48,6 +48,7 @@ function logsResponse(
         triggerSource: "schedule",
         triggerAgentName: null,
         scheduleId: "sched-123",
+        prompt: "Scheduled run prompt",
         createdAt: "2026-03-20T10:00:00Z",
         startedAt: "2026-03-20T10:00:01Z",
         completedAt: "2026-03-20T10:00:30Z",

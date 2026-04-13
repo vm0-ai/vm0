@@ -3,6 +3,7 @@ import {
   onboardingStatusContract,
   onboardingCompleteContract,
   onboardingSetupContract,
+  type ConnectorType,
 } from "@vm0/core";
 import { clerk$ } from "../auth.ts";
 import { zeroClient$ } from "../api-client.ts";
@@ -40,7 +41,9 @@ export const zeroNeedsMemberOnboarding$ = computed(async (get) => {
 export const completeMemberOnboarding$ = command(
   async ({ get, set }, _signal: AbortSignal): Promise<string | undefined> => {
     const client = get(zeroClient$)(onboardingCompleteContract);
-    await accept(client.complete(), [200]);
+    const selectedConnectors = get(internalSelectedConnectors$);
+    const body = selectedConnectors.length > 0 ? { selectedConnectors } : {};
+    await accept(client.complete({ body }), [200]);
     set(internalReload$, (x) => {
       return x + 1;
     });
@@ -58,13 +61,13 @@ const initialOnboardingStep$ = computed(async (get) => {
   if (!status.needsOnboarding) {
     return "done" as const;
   }
-  return (status.hasDefaultAgent ? "3" : "1") as ZeroOnboardingStep;
+  return (status.hasDefaultAgent ? "2" : "1") as ZeroOnboardingStep;
 });
 
 const internalAgentName$ = state("Zero");
 const internalWorkspaceName$ = state("");
 
-const internalSelectedConnectors$ = state<string[]>([]);
+const internalSelectedConnectors$ = state<ConnectorType[]>([]);
 
 export const zeroOnboardingStep$ = computed(async (get) => {
   const userStep = get(userStep$);
@@ -113,7 +116,7 @@ export const setConnectorSearch$ = command(({ set }, value: string) => {
 });
 
 export const toggleZeroConnector$ = command(
-  ({ set }, connectorValue: string) => {
+  ({ set }, connectorValue: ConnectorType) => {
     set(internalSelectedConnectors$, (prev) => {
       return prev.includes(connectorValue)
         ? prev.filter((s) => {

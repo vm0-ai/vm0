@@ -2,6 +2,7 @@ import { ReactNode } from "react";
 import { NextIntlClientProvider } from "next-intl";
 import { notFound } from "next/navigation";
 import { locales, type Locale } from "../../i18n";
+import SiteHeader from "../components/SiteHeader";
 import type { Metadata } from "next";
 
 type Props = {
@@ -76,6 +77,7 @@ export default async function LocaleLayout(props: Props) {
 
   return (
     <NextIntlClientProvider locale={locale} messages={messages}>
+      <SiteHeader />
       {props.children}
     </NextIntlClientProvider>
   );

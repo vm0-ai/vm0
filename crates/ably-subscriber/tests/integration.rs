@@ -481,31 +481,40 @@ async fn token_renewal() {
 
     let now = now_ms();
     // First token: expires in 1 second (token renewal margin is 300s, so
-    // renewal fires almost immediately)
-    let short_token_body = serde_json::json!({
+    // renewal fires almost immediately).  Second token: 1 hour TTL, so
+    // after renewal the subscriber should stop calling the endpoint.
+    let short_body = serde_json::to_vec(&serde_json::json!({
         "token": "short-lived-token",
         "expires": now + 1_000,
         "issued": now,
-    });
-    let renewed_token_body = serde_json::json!({
+    }))
+    .unwrap();
+    let renewed_body = serde_json::to_vec(&serde_json::json!({
         "token": "renewed-token",
         "expires": now + 3_600_000,
         "issued": now,
-    });
-    // httpmock serves first call then second call
+    }))
+    .unwrap();
+
+    // Single mock with stateful response: first call returns the short
+    // token, subsequent calls return the renewed long-lived token.  This
+    // lets us assert via `calls()` that renewal stabilises at exactly 2
+    // calls — any more means the subscriber ignored the new TTL and kept
+    // renewing in a loop.
     let path = "/keys/testKey.testId/requestToken";
-    http.mock(|when, then| {
+    let call_count = std::sync::Mutex::new(0u32);
+    let token_mock = http.mock(|when, then| {
         when.method(POST).path(path);
-        then.status(201)
-            .header("content-type", "application/json")
-            .json_body(short_token_body);
-    });
-    // Second mock for renewal exchange
-    http.mock(|when, then| {
-        when.method(POST).path(path);
-        then.status(201)
-            .header("content-type", "application/json")
-            .json_body(renewed_token_body);
+        then.respond_with(move |_req: &HttpMockRequest| {
+            let mut n = call_count.lock().unwrap();
+            let body = if *n == 0 { &short_body } else { &renewed_body };
+            *n += 1;
+            HttpMockResponse::builder()
+                .status(201)
+                .header("content-type", "application/json")
+                .body(body.clone())
+                .build()
+        });
     });
 
     let ws_port = ws.port;
@@ -543,6 +552,17 @@ async fn token_renewal() {
         }
         other => panic!("expected Message, got {other:?}"),
     }
+
+    // Give the renewal timer a moment to misbehave if it's going to.
+    // Next legitimate renewal is ~3300s away (3_600_000ms TTL - 300s
+    // margin), so any further hits inside this window indicate the
+    // subscriber did not stabilise on the long-lived token.
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    assert_eq!(
+        token_mock.calls(),
+        2,
+        "subscriber should stop renewing after receiving the long-lived token",
+    );
 }
 
 // ---------------------------------------------------------------------------

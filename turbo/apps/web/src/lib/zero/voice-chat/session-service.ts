@@ -8,7 +8,7 @@ import { cancelRun } from "../zero-run-cancel";
 import {
   buildVoiceChatQuickPrepPrompt,
   buildVoiceChatMeetingPrompt,
-  buildVoiceChatMissionControlPrompt,
+  buildVoiceChatObservationOnlyPrompt,
 } from "../integration-prompt";
 import { conflict, notFound, badRequest, forbidden } from "../../shared/errors";
 import { logger } from "../../shared/logger";
@@ -25,7 +25,7 @@ export async function createSession(
   orgId: string,
   userId: string,
   agentId: string,
-  options?: { mode?: "chat" | "meeting" | "mission_control"; prompt?: string },
+  options?: { mode?: "chat" | "meeting"; prompt?: string },
 ) {
   const db = globalThis.services.db;
 
@@ -145,25 +145,19 @@ export async function dispatchSlowBrain(
   orgId: string,
   userId: string,
   agentId: string,
-  options?: { mode?: "chat" | "meeting" | "mission_control"; prompt?: string },
+  options?: { mode?: "chat" | "meeting"; prompt?: string },
 ) {
   const db = globalThis.services.db;
   const meetingPrompt =
     options?.mode === "meeting" ? options.prompt : undefined;
 
-  const appendSystemPrompt =
-    options?.mode === "mission_control"
-      ? buildVoiceChatMissionControlPrompt(session.id)
-      : meetingPrompt
-        ? buildVoiceChatMeetingPrompt(session.id, meetingPrompt)
-        : buildVoiceChatQuickPrepPrompt(session.id);
+  const appendSystemPrompt = meetingPrompt
+    ? buildVoiceChatMeetingPrompt(session.id, meetingPrompt)
+    : buildVoiceChatQuickPrepPrompt(session.id);
 
-  const prompt =
-    options?.mode === "mission_control"
-      ? `You are Zero's slow-brain for voice-chat session ${session.id}. You are in mission control mode — delegate all task execution to sub-agents via zero run instead of executing inline.`
-      : meetingPrompt
-        ? `You are Zero's slow-brain for voice-chat session ${session.id}. A meeting has been requested. Read the shared context for the meeting prompt and begin preparation.`
-        : `You are Zero's slow-brain for voice-chat session ${session.id}. Review the agent configuration and user context, then prepare an initial directive before the conversation begins.`;
+  const prompt = meetingPrompt
+    ? `You are Zero's slow-brain for voice-chat session ${session.id}. A meeting has been requested. Read the shared context for the meeting prompt and begin preparation.`
+    : `You are Zero's slow-brain for voice-chat session ${session.id}. Review the agent configuration and user context, then prepare an initial directive before the conversation begins.`;
 
   // Write meeting-prompt event before session-start (meeting mode only)
   if (meetingPrompt) {
@@ -201,6 +195,83 @@ export async function dispatchSlowBrain(
     .where(eq(voiceChatSessions.id, session.id));
 
   // Write session-start event
+  await db.insert(voiceChatEvents).values({
+    sessionId: session.id,
+    source: "system",
+    type: "session-start",
+  });
+
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// Cached Preparation Events
+// ---------------------------------------------------------------------------
+
+export async function writeCachedPreparationEvents(
+  sessionId: string,
+  directiveContent: string,
+) {
+  const db = globalThis.services.db;
+  await db.insert(voiceChatEvents).values([
+    {
+      sessionId,
+      source: "slow-brain",
+      type: "thinking",
+      content: "Reviewing agent context and preparing initial guidance...",
+    },
+    {
+      sessionId,
+      source: "slow-brain",
+      type: "directive",
+      content: directiveContent,
+    },
+    {
+      sessionId,
+      source: "slow-brain",
+      type: "preparation-ready",
+    },
+  ]);
+}
+
+// ---------------------------------------------------------------------------
+// Observation-Only Slow-Brain Dispatch
+// ---------------------------------------------------------------------------
+
+export async function dispatchObservationSlowBrain(
+  session: { id: string },
+  orgId: string,
+  userId: string,
+  agentId: string,
+) {
+  const db = globalThis.services.db;
+  const appendSystemPrompt = buildVoiceChatObservationOnlyPrompt(session.id);
+  const prompt = `You are Zero's slow-brain for voice-chat session ${session.id}. Preparation is complete. Start observing the conversation.`;
+
+  const callbackPayload: VoiceChatCallbackPayload = {
+    sessionId: session.id,
+  };
+
+  const result = await createZeroRun({
+    userId,
+    agentId,
+    prompt,
+    appendSystemPrompt,
+    triggerSource: "voice-chat",
+    callbacks: [
+      {
+        url: `${getApiUrl()}/api/internal/callbacks/voice-chat`,
+        secret: generateCallbackSecret(),
+        payload: callbackPayload,
+      },
+    ],
+  });
+
+  await db
+    .update(voiceChatSessions)
+    .set({ runId: result.runId })
+    .where(eq(voiceChatSessions.id, session.id));
+
   await db.insert(voiceChatEvents).values({
     sessionId: session.id,
     source: "system",

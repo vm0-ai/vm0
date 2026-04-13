@@ -114,9 +114,21 @@ export function clearMockedAuth() {
   clerkListeners.length = 0;
   mockedClerk.setActive.mockReset();
   mockedClerk.createOrganization.mockReset();
+  mockedClerk.sessionGetToken.mockReset();
+  mockedClerk.sessionGetToken.mockImplementation(defaultGetTokenImpl);
 }
 
 const clerkListeners: (() => void)[] = [];
+
+type GetTokenImpl = (options?: {
+  skipCache?: boolean;
+}) => Promise<string | null>;
+
+const defaultGetTokenImpl: GetTokenImpl = () => {
+  return Promise.resolve(internalMockedSession?.token ?? "");
+};
+
+const sessionGetToken = vi.fn<GetTokenImpl>(defaultGetTokenImpl);
 
 export const mockedClerk = {
   get user() {
@@ -128,11 +140,10 @@ export const mockedClerk = {
   get session() {
     return {
       id: "test-session-id",
-      getToken: () => {
-        return Promise.resolve(internalMockedSession?.token ?? "");
-      },
+      getToken: sessionGetToken,
     };
   },
+  sessionGetToken,
   signOut: vi.fn(() => {
     return Promise.resolve();
   }),

@@ -206,7 +206,6 @@ function renderTeamPageAsMember(
         hasDefaultAgent: true,
         defaultAgentId: "compose-1",
         defaultAgentMetadata: { displayName: "Zero" },
-        defaultAgentSkills: [],
       });
     }),
     http.get("*/api/zero/org", () => {

@@ -293,6 +293,7 @@ const router = tsr.router(logsListContract, {
       .select({
         id: agentRuns.id,
         status: agentRuns.status,
+        prompt: agentRuns.prompt,
         modelProvider: zeroRuns.modelProvider,
         createdAt: agentRuns.createdAt,
         startedAt: agentRuns.startedAt,
@@ -358,6 +359,7 @@ const router = tsr.router(logsListContract, {
             triggerAgentName: run.triggerAgentName ?? null,
             scheduleId: run.scheduleId ?? null,
             status: run.status as LogStatus,
+            prompt: run.prompt,
             createdAt: run.createdAt.toISOString(),
             startedAt: run.startedAt?.toISOString() ?? null,
             completedAt: run.completedAt?.toISOString() ?? null,

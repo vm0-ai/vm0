@@ -1,5 +1,52 @@
 # Changelog
 
+## [8.180.0](https://github.com/vm0-ai/vm0/compare/core-v8.179.0...core-v8.180.0) (2026-04-13)
+
+
+### Features
+
+* **voice-chat:** add meeting preparation frontend ([#9151](https://github.com/vm0-ai/vm0/issues/9151)) ([0f32dd5](https://github.com/vm0-ai/vm0/commit/0f32dd5d9f5b15ff3847e7f6f8fc313f4976e73a)), closes [#9087](https://github.com/vm0-ai/vm0/issues/9087)
+
+
+### Refactoring
+
+* unify member and admin onboarding connector flow ([#9129](https://github.com/vm0-ai/vm0/issues/9129)) ([#9140](https://github.com/vm0-ai/vm0/issues/9140)) ([fa03f61](https://github.com/vm0-ai/vm0/commit/fa03f61411c81522e2dd695d3bcbe08f6c952740))
+
+## [8.179.0](https://github.com/vm0-ai/vm0/compare/core-v8.178.0...core-v8.179.0) (2026-04-13)
+
+
+### Features
+
+* add schedule run history tab and continue-as-chat ([#9061](https://github.com/vm0-ai/vm0/issues/9061)) ([ba1772b](https://github.com/vm0-ai/vm0/commit/ba1772b2502dbf24fefeb5d15a358e75037db7c5))
+* **voice-chat:** add prepare pipeline, dispatch, and callback ([#9132](https://github.com/vm0-ai/vm0/issues/9132)) ([24fd18b](https://github.com/vm0-ai/vm0/commit/24fd18b851bab975120678713d0bdc82d31a7969)), closes [#9085](https://github.com/vm0-ai/vm0/issues/9085)
+
+## [8.178.0](https://github.com/vm0-ai/vm0/compare/core-v8.177.0...core-v8.178.0) (2026-04-13)
+
+
+### Features
+
+* add voice-io feature switch and tts backend endpoint ([#9088](https://github.com/vm0-ai/vm0/issues/9088)) ([c5e700a](https://github.com/vm0-ai/vm0/commit/c5e700ad22b92886495e030daf9e9dfd50ff2320)), closes [#9078](https://github.com/vm0-ai/vm0/issues/9078)
+* **usage:** add daily credits chart and per-run records ([#9047](https://github.com/vm0-ai/vm0/issues/9047)) ([589df8c](https://github.com/vm0-ai/vm0/commit/589df8cbf8b8d5ee495279a3f6e51aed47305daa))
+
+## [8.177.0](https://github.com/vm0-ai/vm0/compare/core-v8.176.0...core-v8.177.0) (2026-04-13)
+
+
+### Features
+
+* add archive status to mission control task list ([#9063](https://github.com/vm0-ai/vm0/issues/9063)) ([ca4d008](https://github.com/vm0-ai/vm0/commit/ca4d00838afb45f957c5a8d5fbc4dcde58265382))
+
+## [8.176.0](https://github.com/vm0-ai/vm0/compare/core-v8.175.0...core-v8.176.0) (2026-04-13)
+
+
+### Features
+
+* **core:** enable sandbox reuse for staff org ([#9046](https://github.com/vm0-ai/vm0/issues/9046)) ([8455c9b](https://github.com/vm0-ai/vm0/commit/8455c9b444c9773e37f7de7bbe65d25e52d5d23f))
+
+
+### Bug Fixes
+
+* **core:** make auto-skill feature switch opt-in for staff org ([#9051](https://github.com/vm0-ai/vm0/issues/9051)) ([671ec17](https://github.com/vm0-ai/vm0/commit/671ec17f33e5c48c88805f58f3e3532bf39556ca))
+
 ## [8.175.0](https://github.com/vm0-ai/vm0/compare/core-v8.174.0...core-v8.175.0) (2026-04-12)
 
 

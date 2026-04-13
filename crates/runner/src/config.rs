@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 
 use crate::error::{RunnerError, RunnerResult};
+use crate::idle_pool::DEFAULT_IDLE_TIMEOUT_SECS;
 use crate::paths::{HomePaths, ImagePaths};
 use crate::profile;
 
@@ -48,7 +49,8 @@ pub struct SandboxConfig {
     pub max_concurrent: usize,
     /// Overcommit factor applied to both CPU and memory budgets (default: 1.0).
     pub concurrency_factor: f64,
-    /// Idle timeout in seconds for reusable VMs (default: 300).
+    /// Idle timeout in seconds for reusable VMs
+    /// (default: [`DEFAULT_IDLE_TIMEOUT_SECS`]).
     pub idle_timeout_secs: u64,
     /// Maximum number of idle VMs to keep (0 = no limit, default: 0).
     pub max_idle: usize,
@@ -59,7 +61,7 @@ impl Default for SandboxConfig {
         Self {
             max_concurrent: DEFAULT_MAX_CONCURRENT,
             concurrency_factor: DEFAULT_CONCURRENCY_FACTOR,
-            idle_timeout_secs: 300,
+            idle_timeout_secs: DEFAULT_IDLE_TIMEOUT_SECS,
             max_idle: 0,
         }
     }
@@ -123,19 +125,20 @@ async fn check_path_exists(path: &Path, label: &str) -> RunnerResult<()> {
 }
 
 async fn validate(config: &RunnerConfig, home: &HomePaths) -> RunnerResult<()> {
+    // Pure-CPU checks first — fail fast before any filesystem I/O.
+    crate::group::validate_or_err(&config.group)?;
+    if config.profiles.is_empty() {
+        return Err(RunnerError::Config("profiles must not be empty".into()));
+    }
+    for name in config.profiles.keys() {
+        profile::validate_or_err(name)?;
+    }
+
     check_path_exists(&config.ca_dir, "ca_dir").await?;
     check_path_exists(&config.firecracker.binary, "firecracker binary").await?;
     check_path_exists(&config.firecracker.kernel, "kernel").await?;
 
-    if config.profiles.is_empty() {
-        return Err(RunnerError::Config("profiles must not be empty".into()));
-    }
     for (name, profile) in &config.profiles {
-        if !profile::validate_name(name) {
-            return Err(RunnerError::Config(format!(
-                "invalid profile name: {name} (must be org/name format, lowercase alphanumeric + hyphens)"
-            )));
-        }
         if profile.vcpu == 0 || profile.memory_mb == 0 || profile.disk_mb == 0 {
             return Err(RunnerError::Config(format!(
                 "profile {name}: vcpu, memory_mb, and disk_mb must be non-zero"
@@ -955,7 +958,7 @@ profiles:
         tokio::fs::write(&config_path, &yaml).await.unwrap();
 
         let config = load_with_home(&config_path, &home).await.unwrap();
-        assert_eq!(config.sandbox.idle_timeout_secs, 300);
+        assert_eq!(config.sandbox.idle_timeout_secs, DEFAULT_IDLE_TIMEOUT_SECS);
         assert_eq!(config.sandbox.max_idle, 0);
     }
 }

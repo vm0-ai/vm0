@@ -36,6 +36,7 @@ import {
 import { userPreferences$ } from "../../signals/zero-page/settings/user-preferences.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { user$ } from "../../signals/auth.ts";
+import { formatCredits } from "../../lib/format-credits.ts";
 import { CONNECTOR_TYPES, type ConnectorType } from "@vm0/core";
 
 // ---------------------------------------------------------------------------
@@ -407,8 +408,8 @@ function buildSummaryQuote(day: DayInsight): {
     quote = `${totalCalls} service calls across ${day.services.length} services. High traffic day.`;
     caption = `${totalCalls} calls · ${day.services.length} services`;
   } else if (day.agents.length >= 4) {
-    quote = `${day.agents.length} agents active, using ${day.creditsUsed} credits total. A well-distributed workload.`;
-    caption = `${day.agents.length} agents · ${day.creditsUsed} credits`;
+    quote = `${day.agents.length} agents active, using ${formatCredits(day.creditsUsed)} credits total. A well-distributed workload.`;
+    caption = `${day.agents.length} agents · ${formatCredits(day.creditsUsed)} credits`;
   } else if (totalRuns <= 2 && totalCalls < 30) {
     quote = `Light activity — ${totalRuns === 0 ? "no runs" : `only ${totalRuns} ${totalRuns === 1 ? "run" : "runs"}`} and ${totalCalls} calls. A quiet day.`;
     caption = `${totalRuns} ${totalRuns === 1 ? "run" : "runs"} · a quiet day`;
@@ -591,8 +592,11 @@ function TeamCreditUsageCard({
       >
         Team Credit Usage
       </p>
-      <p className="text-5xl font-black leading-none tabular-nums font-serif transition-all duration-150">
-        {displayCredits.toLocaleString()}
+      <p
+        className="text-5xl font-black leading-none tabular-nums font-serif transition-all duration-150"
+        title={displayCredits.toLocaleString()}
+      >
+        {formatCredits(displayCredits)}
       </p>
       <p className="text-sm opacity-60 mt-2">
         {hoveredAgentData
@@ -602,8 +606,11 @@ function TeamCreditUsageCard({
 
       <div className="flex items-center justify-between mt-4">
         <span className="text-sm opacity-60">Balance</span>
-        <span className="text-sm font-semibold tabular-nums">
-          {day.creditBalance.toLocaleString()}
+        <span
+          className="text-sm font-semibold tabular-nums"
+          title={day.creditBalance.toLocaleString()}
+        >
+          {formatCredits(day.creditBalance)}
         </span>
       </div>
 
@@ -643,8 +650,11 @@ function TeamCreditUsageCard({
                       }}
                     />
                   </div>
-                  <span className="text-xs opacity-60 w-10 text-right shrink-0 tabular-nums">
-                    {memberCredits}
+                  <span
+                    className="text-xs opacity-60 w-10 text-right shrink-0 tabular-nums"
+                    title={memberCredits.toLocaleString()}
+                  >
+                    {formatCredits(memberCredits)}
                   </span>
                 </div>
               );
@@ -695,8 +705,11 @@ function YourCreditUsageCard({
       >
         Your Credit Usage
       </p>
-      <p className="text-5xl font-black leading-none tabular-nums font-serif transition-all duration-150">
-        {displayCredits.toLocaleString()}
+      <p
+        className="text-5xl font-black leading-none tabular-nums font-serif transition-all duration-150"
+        title={displayCredits.toLocaleString()}
+      >
+        {formatCredits(displayCredits)}
       </p>
       <p className="text-sm opacity-60 mt-2">
         {hoveredAgentData

@@ -1,5 +1,55 @@
 # Changelog
 
+## [9.112.1](https://github.com/vm0-ai/vm0/compare/cli-v9.112.0...cli-v9.112.1) (2026-04-13)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.180.0
+
+## [9.112.0](https://github.com/vm0-ai/vm0/compare/cli-v9.111.15...cli-v9.112.0) (2026-04-13)
+
+
+### Features
+
+* **voice-chat:** add prepare pipeline, dispatch, and callback ([#9132](https://github.com/vm0-ai/vm0/issues/9132)) ([24fd18b](https://github.com/vm0-ai/vm0/commit/24fd18b851bab975120678713d0bdc82d31a7969)), closes [#9085](https://github.com/vm0-ai/vm0/issues/9085)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.179.0
+
+## [9.111.15](https://github.com/vm0-ai/vm0/compare/cli-v9.111.14...cli-v9.111.15) (2026-04-13)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.178.0
+
+## [9.111.14](https://github.com/vm0-ai/vm0/compare/cli-v9.111.13...cli-v9.111.14) (2026-04-13)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.177.0
+
+## [9.111.13](https://github.com/vm0-ai/vm0/compare/cli-v9.111.12...cli-v9.111.13) (2026-04-13)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.176.0
+
 ## [9.111.12](https://github.com/vm0-ai/vm0/compare/cli-v9.111.11...cli-v9.111.12) (2026-04-12)
 
 

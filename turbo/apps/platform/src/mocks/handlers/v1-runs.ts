@@ -90,6 +90,7 @@ export const appLogsHandlers = [
           triggerAgentName: null,
           scheduleId: null,
           status: log.status,
+          prompt: log.prompt,
           createdAt: log.createdAt,
           startedAt: log.startedAt,
           completedAt: log.completedAt,

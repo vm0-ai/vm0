@@ -22,6 +22,7 @@ function logDefaults() {
     triggerSource: "web" as const,
     triggerAgentName: null,
     scheduleId: null,
+    prompt: "Test prompt",
     startedAt: null,
     completedAt: null,
   };

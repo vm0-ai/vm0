@@ -6,6 +6,7 @@ import {
   IconMail,
   IconMicrophone,
   IconRobot,
+  IconArchive,
 } from "@tabler/icons-react";
 import { Card, Shortcut } from "@vm0/ui";
 import type { TaskItem, TaskType } from "@vm0/core";
@@ -127,7 +128,8 @@ export function TaskCard({ taskSignals }: { taskSignals: TaskSignals }) {
     }
   };
 
-  const archive = () => {
+  const archive = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
     detach(archiveAndFocusNext(task.id, pageSignal), Reason.DomCallback);
   };
 
@@ -143,8 +145,9 @@ export function TaskCard({ taskSignals }: { taskSignals: TaskSignals }) {
         ref={setCardRef}
         role="button"
         tabIndex={0}
+        data-task-id={task.id}
         onClick={openOrFocusInput}
-        className={`p-4 cursor-pointer transition-colors hover:bg-accent/50 focus:outline focus:outline-2 focus:outline-primary ${
+        className={`group p-4 cursor-pointer transition-colors hover:bg-accent/50 focus:outline focus:outline-2 focus:outline-primary ${
           inputFocused ? "bg-accent" : ""
         } ${isOpen ? "border-primary" : ""}`}
       >
@@ -158,11 +161,16 @@ export function TaskCard({ taskSignals }: { taskSignals: TaskSignals }) {
             <span className="text-xs font-medium truncate">
               {task.agent.displayName ?? task.agent.name}
             </span>
-            {task.status && (
-              <div className="ml-auto shrink-0">
-                <StatusBadge status={task.status} zeroStyle />
-              </div>
-            )}
+            <div className="ml-auto flex items-center gap-1 shrink-0">
+              {task.status && <StatusBadge status={task.status} zeroStyle />}
+              <button
+                aria-label="Archive task"
+                onClick={archive}
+                className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 transition-opacity p-0.5 rounded hover:bg-accent text-muted-foreground hover:text-foreground shrink-0"
+              >
+                <IconArchive size={14} stroke={1.5} />
+              </button>
+            </div>
           </div>
           <div className="flex items-center gap-1.5">
             <TypeIcon size={14} stroke={1.5} className={config.iconClassName} />

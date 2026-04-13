@@ -21,7 +21,6 @@ function mockOnboardingNeededAdmin() {
         hasDefaultAgent: false,
         defaultAgentId: null,
         defaultAgentMetadata: null,
-        defaultAgentSkills: [],
       });
     }),
     // Single setup endpoint replaces all individual onboarding API calls
@@ -45,7 +44,6 @@ function mockOnboardingNeededMember() {
         hasDefaultAgent: true,
         defaultAgentId: "c0000000-0000-4000-a000-000000000001",
         defaultAgentMetadata: { displayName: "Zero" },
-        defaultAgentSkills: [],
       });
     }),
     // Mock complete member onboarding
@@ -92,10 +90,11 @@ describe("onboarding navigation", () => {
     await fill(input, "Test Workspace");
     await user.click(screen.getByText("Next"));
 
-    // Step 2: Choose your tools → Next
+    // Step 2: Choose your tools — select a connector so step 3 is visible
     await waitFor(() => {
       expect(screen.getByText("Choose your tools")).toBeInTheDocument();
     });
+    await user.click(screen.getByTestId("connector-card-github"));
     await user.click(screen.getByText("Next"));
 
     // Step 3: Connect your apps → Next
@@ -121,7 +120,6 @@ describe("onboarding navigation", () => {
           hasDefaultAgent: true,
           defaultAgentId: MOCK_AGENT_ID,
           defaultAgentMetadata: null,
-          defaultAgentSkills: [],
         });
       }),
     );
@@ -146,11 +144,9 @@ describe("onboarding navigation", () => {
       expect(pathname()).toBe("/onboarding");
     });
 
-    // Member goes straight to step 4 (where-to-work) with no connectors
+    // Member lands on step 2 (Choose your tools) under the unified flow
     await waitFor(() => {
-      expect(
-        screen.getByText(/Where would you like to work with/),
-      ).toBeInTheDocument();
+      expect(screen.getByText("Choose your tools")).toBeInTheDocument();
     });
   });
 
@@ -160,7 +156,13 @@ describe("onboarding navigation", () => {
 
     detachedSetupPage({ context, path: "/onboarding" });
 
-    // Member with no connectors goes straight to step 4 (where-to-work)
+    // Member starts on step 2 — advance without selecting connectors to land
+    // on step 4 (where-to-work).
+    await waitFor(() => {
+      expect(screen.getByText("Choose your tools")).toBeInTheDocument();
+    });
+    await user.click(screen.getByText("Next"));
+
     await waitFor(() => {
       expect(
         screen.getByText(/Where would you like to work with/),
@@ -177,7 +179,6 @@ describe("onboarding navigation", () => {
           hasDefaultAgent: true,
           defaultAgentId: "c0000000-0000-4000-a000-000000000001",
           defaultAgentMetadata: { displayName: "Zero" },
-          defaultAgentSkills: [],
         });
       }),
     );

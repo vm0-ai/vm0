@@ -7,11 +7,13 @@ import {
   voiceChatSessions,
   voiceChatEvents,
 } from "../../../../src/db/schema/voice-chat";
+import { deleteExpiredPreparations } from "../../../../src/lib/zero/voice-chat/preparation-service";
 
 const log = logger("cron:voice-chat-cleanup");
 
 const STALE_HEARTBEAT_MS = 2 * 60 * 1000; // 2 minutes
 const MAX_SESSION_DURATION_MS = 60 * 60 * 1000; // 60 minutes
+const PREPARATION_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
 
 export async function GET(request: Request): Promise<Response> {
   initServices();
@@ -56,5 +58,12 @@ export async function GET(request: Request): Promise<Response> {
     log.info("Voice chat cleanup completed", { cleaned: result.length });
   }
 
-  return NextResponse.json({ success: true, cleaned: result.length });
+  // Clean up expired preparations (>24h)
+  const expiredPreps = await deleteExpiredPreparations(PREPARATION_TTL_MS);
+
+  return NextResponse.json({
+    success: true,
+    cleaned: result.length,
+    preparationsCleaned: expiredPreps.length,
+  });
 }

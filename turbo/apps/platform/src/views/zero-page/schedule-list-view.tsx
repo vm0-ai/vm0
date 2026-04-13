@@ -16,6 +16,7 @@ import {
   DropdownMenuItem,
 } from "@vm0/ui";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
+import { Link } from "../router/link.tsx";
 import type { ScheduleEntry } from "./schedule-utils";
 import emptyScheduleImg from "./assets/empty-schedule.webp";
 
@@ -53,27 +54,13 @@ function ScheduleListRow<T extends ScheduleEntry>({
     <tr
       className={cn(
         "border-b border-border/50 last:border-0 transition-colors",
-        clickable &&
-          "hover:bg-muted/25 cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring",
+        clickable && "hover:bg-muted/25 cursor-pointer",
         dimmed && "opacity-75",
       )}
-      role={clickable ? "link" : undefined}
-      tabIndex={clickable ? 0 : undefined}
-      aria-label={clickable ? `Open schedule ${entry.prompt}` : undefined}
       onClick={
         clickable
           ? () => {
               return onOpenDetails(entry);
-            }
-          : undefined
-      }
-      onKeyDown={
-        clickable
-          ? (e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                onOpenDetails(entry);
-              }
             }
           : undefined
       }
@@ -86,14 +73,31 @@ function ScheduleListRow<T extends ScheduleEntry>({
         </td>
       )}
       <td className="py-2.5 pr-4 align-middle min-w-0 max-w-[1px]">
-        <span
-          className={cn(
-            "text-sm text-foreground leading-snug block truncate whitespace-nowrap",
-            dimmed && "text-muted-foreground",
-          )}
-        >
-          {entry.description || entry.prompt}
-        </span>
+        {clickable ? (
+          <Link
+            pathname="/schedules/:scheduleId"
+            options={{ pathParams: { scheduleId: entry.id } }}
+            aria-label={`Open schedule ${entry.prompt}`}
+            onClick={(e) => {
+              e.stopPropagation();
+            }}
+            className={cn(
+              "text-sm text-foreground leading-snug block truncate whitespace-nowrap focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring rounded-sm",
+              dimmed && "text-muted-foreground",
+            )}
+          >
+            {entry.description || entry.prompt}
+          </Link>
+        ) : (
+          <span
+            className={cn(
+              "text-sm text-foreground leading-snug block truncate whitespace-nowrap",
+              dimmed && "text-muted-foreground",
+            )}
+          >
+            {entry.description || entry.prompt}
+          </span>
+        )}
       </td>
       <td
         className={cn(
@@ -251,33 +255,23 @@ function ScheduleListCard<T extends ScheduleEntry>({
   return (
     <div
       className={cn(
-        "flex items-center gap-2 px-5 py-3 border-b border-border/50 last:border-0 transition-colors",
-        clickable && "cursor-pointer hover:bg-muted/25",
+        "relative flex items-center gap-2 px-5 py-3 border-b border-border/50 last:border-0 transition-colors",
+        clickable && "hover:bg-muted/25",
         dimmed && "opacity-75",
       )}
-      role={clickable ? "button" : undefined}
-      tabIndex={clickable ? 0 : undefined}
-      aria-label={clickable ? `Open schedule ${entry.prompt}` : undefined}
-      onClick={
-        clickable
-          ? () => {
-              return onOpenDetails(entry);
-            }
-          : undefined
-      }
-      onKeyDown={
-        clickable
-          ? (e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                onOpenDetails(entry);
-              }
-            }
-          : undefined
-      }
     >
-      {/* Left: text content */}
-      <div className="min-w-0 flex-1 flex flex-col gap-0.5">
+      {clickable && (
+        <Link
+          pathname="/schedules/:scheduleId"
+          options={{ pathParams: { scheduleId: entry.id } }}
+          aria-label={`Open schedule ${entry.prompt}`}
+          className="absolute inset-0 z-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring rounded-sm"
+        >
+          <span className="sr-only">Open schedule {entry.prompt}</span>
+        </Link>
+      )}
+      {/* Left: text content — pointer-events disabled so clicks pass through to the Link overlay */}
+      <div className="min-w-0 flex-1 flex flex-col gap-0.5 pointer-events-none">
         {showAgent && (
           <span className="block text-sm font-medium text-foreground truncate">
             {agentLabel}
@@ -307,13 +301,8 @@ function ScheduleListCard<T extends ScheduleEntry>({
         </span>
       </div>
 
-      {/* Right: toggle + more button */}
-      <div
-        className="flex items-center gap-4 shrink-0"
-        onClick={(e) => {
-          return e.stopPropagation();
-        }}
-      >
+      {/* Right: toggle + more button — relative + z-10 so they sit above the link overlay */}
+      <div className="relative z-10 flex items-center gap-4 shrink-0">
         {onToggle && (
           <LoadingSwitch
             checked={entry.enabled !== false}

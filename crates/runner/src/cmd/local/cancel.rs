@@ -25,6 +25,7 @@ pub async fn run_cancel(args: CancelArgs) -> RunnerResult<ExitCode> {
     if args.run_id.is_empty() {
         return Err(RunnerError::Config("run_id must not be empty".into()));
     }
+    crate::group::validate_or_err(&args.group)?;
 
     let home = HomePaths::new()?;
     let group_dir = home.groups_dir().join(&args.group);

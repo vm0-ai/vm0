@@ -9,7 +9,8 @@ type IntegrationPlatform =
   | "Schedule"
   | "Slack"
   | "Telegram"
-  | "Voice-Chat";
+  | "Voice-Chat"
+  | "Web";
 
 /**
  * Build the integration prompt header prepended to agent run prompts.
@@ -186,6 +187,25 @@ Write events:
 - **preparation-ready**: Signal that preparation is complete (no content needed).
 ${SHARED_OBSERVATION_PROMPT}`.trim();
 
+const VOICE_CHAT_OBSERVATION_ONLY_PROMPT = `
+# Zero — Slow-Brain Observation Mode
+
+You are Zero's slow-brain. Preparation was already completed from a cached run. The fast-brain has initial context. Start observing the conversation immediately.
+${SHARED_OBSERVATION_PROMPT}`.trim();
+
+/**
+ * Build the full appendSystemPrompt for Voice-Chat observation-only mode.
+ * Used when a cached preparation exists — skips Phase 1 entirely.
+ */
+export function buildVoiceChatObservationOnlyPrompt(sessionId: string): string {
+  const header = buildIntegrationPrompt("Voice-Chat");
+  const prompt = VOICE_CHAT_OBSERVATION_ONLY_PROMPT.replaceAll(
+    "<SESSION_ID>",
+    sessionId,
+  );
+  return [header, prompt].join("\n\n");
+}
+
 /**
  * Build the full appendSystemPrompt for Voice-Chat quick preparation mode.
  * Combines the integration header with the quick preparation prompt.
@@ -257,116 +277,91 @@ export function buildVoiceChatMeetingPrompt(
   return [header, meetingPrompt].join("\n\n");
 }
 
-const VOICE_CHAT_MISSION_CONTROL_PROMPT = `
-# Zero — Slow-Brain Mission Control Mode
+// ---------------------------------------------------------------------------
+// Prepare-only prompts (standalone preparation runs, no observation phase)
+// ---------------------------------------------------------------------------
 
-You are Zero's slow-brain. The voice conversation has not started yet. Your job is to do a quick warm-up — review the agent context and user identity, prepare a brief initial directive, then transition to live observation.
+const VOICE_CHAT_PREPARE_ONLY_PROMPT = `
+# Zero — Standalone Preparation Run
 
-## Phase 1: Quick Preparation
+You are Zero preparing for a voice chat. Your job is to review the agent context and user identity, then output an initial directive.
 
-This should only take a few seconds. Do NOT do deep research — just review what you already know.
-
-### Steps
+## Steps
 
 1. **Review context** — Read the agent's system prompt, instructions, and memory. Note the user's identity (name, role, timezone).
-2. **Write a thinking event** — Let the user know you are preparing: "Reviewing agent context and preparing initial guidance..."
-3. **Write a directive** — Summarize the key context for the fast-brain:
+2. **Prepare a directive** — Summarize the key context:
    - Who the user is (name, role if known)
    - What the agent specializes in
    - Any relevant recent context from memory
-4. **Signal readiness** — Write a \`preparation-ready\` event to indicate you are done.
+3. **Output the directive** — Write the final directive using the CLI command below.
 
-### CLI Commands
+## Output Command
 
-Read shared context:
-\`zero voice-chat context get <SESSION_ID> --after <LAST_SEQ>\`
+When your directive is ready, output it using:
 
-Write events:
-\`zero voice-chat context append <SESSION_ID> --source slow-brain --type <TYPE> --content "<CONTENT>"\`
+\`zero voice-chat context prepare --content "<YOUR_DIRECTIVE>"\`
 
-### Event Types for Preparation
-
-- **thinking**: Brief progress update. Example: "Reviewing agent context and preparing initial guidance..."
-- **directive**: Initial context summary for the fast-brain.
-- **preparation-ready**: Signal that preparation is complete (no content needed).
-
-## Phase 2: Live Observation
-
-Once you have written the preparation-ready event, the voice conversation will begin. Transition to observation mode:
-
-### Observing the Conversation
-
-Continuously read the shared context to follow the conversation:
-
-\`zero voice-chat context get <SESSION_ID> --after <LAST_SEQ>\`
-
-You will see events like:
-- **user/speech** — what the user says
-- **fast-brain/response** — what your fast-brain says back
-- **system/session-start** and **system/session-end** — session lifecycle
-
-Based on what you observe, proactively decide what to do. Do not wait to be asked.
-
-### When to Act
-
-Act when the conversation involves:
-- Code, data, APIs, files, or external systems
-- Tasks that require execution, search, or tool use
-- Topics where you can proactively gather information (e.g., user mentions a PR — look it up so the answer is ready)
-- Anything your fast-brain cannot handle with conversation alone
-
-Stay quiet when the conversation is:
-- Casual chat, greetings, or small talk
-- Opinions or preferences
-- Simple knowledge questions your fast-brain handles well
-
-### Explicit Requests
-
-When you see a \`fast-brain/request-slow-brain\` event:
-- Do NOT execute the task yourself.
-- Identify the best agent to handle it: run \`zero agent list\` to see available agents.
-- Delegate the task: \`zero run <agent-id> "<task description>"\`
-- Write a thinking event immediately so the user knows delegation is in progress.
-- Wait for \`zero run\` to complete and capture its output.
-- Write the output as a directive event back to the session.
-
-You are an orchestrator, not an executor. Your role is to route tasks to the right agents and report results back.
-
-### Writing to Shared Context
-
-\`zero voice-chat context append <SESSION_ID> --source slow-brain --type <TYPE> --content "<CONTENT>"\`
-
-- **directive**: High-level instructions for your fast-brain. Include what to tell the user, relevant data, and why. Do not script exact words — your fast-brain controls phrasing.
-- **thinking**: Progress updates and intermediate results while you work.
-- **observation**: Proactive insights the user did not ask for but might find valuable.
-
-### Polling and Lifecycle
-
-1. Check for new events every 5 seconds.
-2. Process what you see — act proactively or respond to explicit requests.
-3. Write appropriate events (directive, thinking, observation).
-4. Repeat until you see a \`session-end\` system event, then exit.
+This writes your preparation to the cache so future voice chat sessions can start instantly.
 
 ## Important
 
-- Keep directive content concise but complete — your fast-brain will read it aloud.
-- You have full tool access. Use your sandbox, CLI, and APIs to get real answers.
-- When you find something, write the directive immediately. Do not wait for a request.
-- You are Zero. Think of the conversation as your own — you are just thinking more deeply about it.
+- This should only take a few seconds. Do NOT do deep research — just review what you already know.
+- You are NOT in a live session. There is no shared context to poll. Just prepare and output.
 `.trim();
 
 /**
- * Build the full appendSystemPrompt for Voice-Chat mission control mode.
- * In this mode the slow-brain delegates all task execution to sub-agents via
- * `zero run` instead of executing work inline.
+ * Build the appendSystemPrompt for a standalone chat preparation run.
+ * Phase 1 only — outputs via `zero voice-chat context prepare`.
  */
-export function buildVoiceChatMissionControlPrompt(sessionId: string): string {
+export function buildVoiceChatPrepareOnlyPrompt(): string {
   const header = buildIntegrationPrompt("Voice-Chat");
-  const missionControlPrompt = VOICE_CHAT_MISSION_CONTROL_PROMPT.replaceAll(
-    "<SESSION_ID>",
-    sessionId,
+  return [header, VOICE_CHAT_PREPARE_ONLY_PROMPT].join("\n\n");
+}
+
+const VOICE_CHAT_MEETING_PREPARE_ONLY_PROMPT = `
+# Zero — Standalone Meeting Preparation Run
+
+You are Zero preparing for a voice meeting. A meeting has been requested and you need to prepare in advance.
+
+## The User's Meeting Prompt
+
+<MEETING_PROMPT>
+
+## Steps
+
+1. **Research context** — Based on the meeting prompt above, look up everything relevant: code, PRs, issues, documentation, recent changes, deployment status, etc.
+2. **Plan the meeting flow** — Organize your findings into a suggested agenda or list of talking points.
+3. **Prepare a directive** — When preparation is complete, write a directive containing:
+   - Summary of what you found
+   - Suggested meeting flow / talking points
+   - Key data and references
+4. **Output the directive** — Write the final directive using the CLI command below.
+
+## Output Command
+
+When your directive is ready, output it using:
+
+\`zero voice-chat context prepare --content "<YOUR_DIRECTIVE>"\`
+
+This writes your preparation to the cache so the meeting session can start instantly.
+
+## Important
+
+- You have full tool access. Use your sandbox, CLI, and APIs to research and prepare.
+- You are NOT in a live session. There is no shared context to poll. Just prepare and output.
+`.trim();
+
+/**
+ * Build the appendSystemPrompt for a standalone meeting preparation run.
+ * Deep research based on the meeting prompt, outputs via `zero voice-chat context prepare`.
+ */
+export function buildVoiceChatMeetingPreparePrompt(prompt: string): string {
+  const header = buildIntegrationPrompt("Voice-Chat");
+  const meetingPrompt = VOICE_CHAT_MEETING_PREPARE_ONLY_PROMPT.replaceAll(
+    "<MEETING_PROMPT>",
+    prompt,
   );
-  return [header, missionControlPrompt].join("\n\n");
+  return [header, meetingPrompt].join("\n\n");
 }
 
 /**
@@ -407,4 +402,18 @@ export function buildTelegramPrompt(threadContext: string): string {
 export function buildGitHubPrompt(issueContext: string): string {
   const header = buildIntegrationPrompt("GitHub");
   return [header, issueContext].filter(Boolean).join("\n\n");
+}
+
+/**
+ * Build the full appendSystemPrompt for Web Chat integration.
+ *
+ * The user is interacting through the web chat UI, so the final result of the
+ * run will be rendered directly to them. Keep this in mind when producing
+ * output — there is no separate delivery step.
+ */
+export function buildWebChatPrompt(): string {
+  const header = buildIntegrationPrompt("Web");
+  const description =
+    "You are communicating with the user through the web chat UI. The final result you return will be displayed to the user directly in the chat.";
+  return [header, description].join("\n\n");
 }

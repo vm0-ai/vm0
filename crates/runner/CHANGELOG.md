@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.77.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.77.0...runner-rs-v0.77.1) (2026-04-13)
+
+
+### Bug Fixes
+
+* **runner:** validate --group name to prevent path traversal ([#9104](https://github.com/vm0-ai/vm0/issues/9104)) ([b7e75dc](https://github.com/vm0-ai/vm0/commit/b7e75dc2f74419c441c6e62eda3db1bd3cf93f87)), closes [#9099](https://github.com/vm0-ai/vm0/issues/9099)
+
+## [0.77.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.76.4...runner-rs-v0.77.0) (2026-04-13)
+
+
+### Features
+
+* **runner:** require --force for service stop/uninstall with active jobs ([#9093](https://github.com/vm0-ai/vm0/issues/9093)) ([399164e](https://github.com/vm0-ai/vm0/commit/399164e015d366fec791f1df7542387bb4c7c703))
+
+## [0.76.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.76.3...runner-rs-v0.76.4) (2026-04-13)
+
+
+### Bug Fixes
+
+* **runner:** shell-quote exec arguments before joining ([#9052](https://github.com/vm0-ai/vm0/issues/9052)) ([44e0d4d](https://github.com/vm0-ai/vm0/commit/44e0d4d0c29146259acce856c3d6642a90441f6c))
+
+
+### Refactoring
+
+* use proxy-reported usage as billing source of truth ([#9064](https://github.com/vm0-ai/vm0/issues/9064)) ([b655964](https://github.com/vm0-ai/vm0/commit/b65596423f8655117ebd67c38731eb5f35c332b7))
+
+## [0.76.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.76.2...runner-rs-v0.76.3) (2026-04-13)
+
 ## [0.76.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.76.1...runner-rs-v0.76.2) (2026-04-12)
 
 

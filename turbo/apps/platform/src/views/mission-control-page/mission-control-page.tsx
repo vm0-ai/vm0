@@ -15,9 +15,9 @@ import {
   setTaskListRef$,
   newChatDialogOpen$,
   setNewChatDialogOpen$,
+  createAndShowChatTask$,
 } from "../../signals/mission-control-page/mission-control.ts";
 import { subagents$, defaultAgentName$ } from "../../signals/agent.ts";
-import { createNewChatThread$ } from "../../signals/chat-page/chat-message.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { AgentListDialog } from "../zero-page/zero-sidebar-dialogs.tsx";
@@ -36,12 +36,12 @@ export function MissionControlPage() {
   const setNewChatOpen = useSet(setNewChatDialogOpen$);
   const subagents = useLastResolved(subagents$) ?? [];
   const displayName = useLastResolved(defaultAgentName$) ?? "Zero";
-  const createNewChat = useSet(createNewChatThread$);
+  const createAndShowChatTask = useSet(createAndShowChatTask$);
   const pageSignal = useGet(pageSignal$);
 
   const onNewChat = (agentId: string | null) => {
-    detach(createNewChat(agentId, pageSignal), Reason.DomCallback);
     setNewChatOpen(false);
+    detach(createAndShowChatTask(agentId, pageSignal), Reason.DomCallback);
   };
 
   const { defaultLayout, onLayoutChanged } = useDefaultLayout({

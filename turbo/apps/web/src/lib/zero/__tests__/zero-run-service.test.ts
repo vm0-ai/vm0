@@ -17,7 +17,7 @@ import {
   findTestRunnerJobEntry,
   insertUserCacheEntry,
 } from "../../../__tests__/api-test-helpers";
-import { createZeroRun } from "../zero-run-service";
+import { createZeroRun, createZeroRunRecord } from "../zero-run-service";
 import { verifyZeroToken } from "../../auth/sandbox-token";
 import { decryptSecretsMap } from "../../shared/crypto/secrets-encryption";
 import { reloadEnv } from "../../../env";
@@ -364,6 +364,38 @@ describe("createZeroRun()", () => {
       const triggerIdx = prompt.indexOf("Custom trigger context");
       expect(agentIdx).toBeLessThan(userInfoIdx);
       expect(userInfoIdx).toBeLessThan(triggerIdx);
+    });
+  });
+
+  describe("createZeroRunRecord early metadata persistence", () => {
+    it("should persist zero_runs row before dispatch so activity queries see correct triggerSource", async () => {
+      const result = await createZeroRunRecord({
+        userId: user.userId,
+        prompt: "test prompt",
+        agentId,
+        triggerSource: "web",
+      });
+
+      // Before dispatchZeroRun is called, the zero_runs row must already exist
+      const zeroRun = await findTestZeroRun(result.runId);
+      expect(zeroRun).toBeDefined();
+      expect(zeroRun!.triggerSource).toBe("web");
+    });
+
+    it("should persist triggerSource for all sources before dispatch", async () => {
+      const sources: TriggerSource[] = ["web", "slack", "schedule", "agent"];
+      for (const triggerSource of sources) {
+        const result = await createZeroRunRecord({
+          userId: user.userId,
+          prompt: "test",
+          agentId,
+          triggerSource,
+        });
+
+        const zeroRun = await findTestZeroRun(result.runId);
+        expect(zeroRun).toBeDefined();
+        expect(zeroRun!.triggerSource).toBe(triggerSource);
+      }
     });
   });
 

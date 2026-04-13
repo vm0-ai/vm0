@@ -8,7 +8,6 @@ import rehypeHighlight from "rehype-highlight";
 import { getTranslations } from "next-intl/server";
 import { Link } from "../../../../../navigation";
 import Particles from "../../../../components/Particles";
-import Navbar from "../../../../components/Navbar";
 import Footer from "../../../../components/Footer";
 import { ShareButtons } from "../../../../components/blog";
 import { getPost, getPosts, getBlogBaseUrl } from "../../../../lib/blog";
@@ -177,9 +176,6 @@ export default async function BlogPostPage({ params }: PageProps) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(articleJsonLd) }}
       />
-      <div className="header-container">
-        <Navbar />
-      </div>
       <Particles />
 
       {/* Post Header */}

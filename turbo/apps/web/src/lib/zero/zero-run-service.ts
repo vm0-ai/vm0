@@ -54,7 +54,6 @@ import {
   buildAgentPrompt,
   buildAutoSkillGuidance,
 } from "./agent-prompt";
-import type { CallbackPayload } from "../infra/callback/callback-payloads";
 import { zeroAgents } from "../../db/schema/zero-agent";
 import { zeroRuns } from "../../db/schema/zero-run";
 import { userConnectors } from "../../db/schema/user-connector";
@@ -81,7 +80,7 @@ interface ZeroRunParams {
   sessionId?: string;
   appendSystemPrompt?: string;
   modelProvider?: string;
-  callbacks?: Array<{ url: string; secret: string; payload: CallbackPayload }>;
+  callbacks?: Array<{ url: string; secret: string; payload: unknown }>;
   scheduleId?: string;
   triggerAgentId?: string;
   /** Extra user info fields merged into the base # Current User Info block. */
@@ -438,6 +437,11 @@ export async function createZeroRunRecord(
 
   const transactionTime = Date.now();
 
+  // Persist zero-layer metadata immediately so that activity queries
+  // (LEFT JOIN zero_runs) see the correct triggerSource before dispatch
+  // completes. Model fields are updated later in dispatchZeroRun().
+  await persistZeroRunMetadata(run.id, params);
+
   const record: CreateRunRecordResult = {
     run: { id: run.id, createdAt: run.createdAt },
     composeContent: preloadedCompose.composeContent,
@@ -519,8 +523,12 @@ export async function dispatchZeroRun(
       },
     });
 
-    // 9. Persist zero-layer metadata (triggerSource + schedule + trigger agent + model fields)
-    await persistZeroRunMetadata(record.run.id, zeroParams, contextResult);
+    // 9. Update zero-layer metadata with model fields resolved during dispatch.
+    // The base row (triggerSource, scheduleId, triggerAgentId) was already
+    // inserted in createZeroRunRecord; here we only backfill model info.
+    if (contextResult?.resolvedModelProvider || contextResult?.selectedModel) {
+      await updateZeroRunModelInfo(record.run.id, contextResult);
+    }
 
     return dispatchResult;
   } catch (error) {
@@ -569,23 +577,39 @@ export async function createZeroRun(
 
 /**
  * Persist zero-layer metadata to zero_runs table.
- * Extracted to keep createZeroRun within complexity limits.
+ * Called eagerly during createZeroRunRecord so that activity queries see the
+ * correct triggerSource immediately (before dispatch completes).
  */
 async function persistZeroRunMetadata(
   runId: string,
   params: ZeroRunParams,
-  contextResult?: {
-    resolvedModelProvider: string | undefined;
-    selectedModel: string | undefined;
-  },
 ): Promise<void> {
   await globalThis.services.db.insert(zeroRuns).values({
     id: runId,
     triggerSource: params.triggerSource,
     scheduleId: params.scheduleId ?? null,
     triggerAgentId: params.triggerAgentId ?? null,
-    modelProvider:
-      contextResult?.resolvedModelProvider ?? params.modelProvider ?? null,
-    selectedModel: contextResult?.selectedModel ?? null,
+    modelProvider: params.modelProvider ?? null,
+    selectedModel: null,
   });
+}
+
+/**
+ * Update model-related fields on an existing zero_runs row.
+ * Called during dispatchZeroRun after model resolution.
+ */
+async function updateZeroRunModelInfo(
+  runId: string,
+  contextResult: {
+    resolvedModelProvider: string | undefined;
+    selectedModel: string | undefined;
+  },
+): Promise<void> {
+  await globalThis.services.db
+    .update(zeroRuns)
+    .set({
+      modelProvider: contextResult.resolvedModelProvider ?? undefined,
+      selectedModel: contextResult.selectedModel ?? undefined,
+    })
+    .where(eq(zeroRuns.id, runId));
 }

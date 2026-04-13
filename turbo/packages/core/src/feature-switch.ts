@@ -175,6 +175,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show the Usage page with per-member credit and token consumption",
     enabled: false,
   },
+  [FeatureSwitchKey.UsageAnalytics]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show admin-only daily credits chart and per-run records on Usage page",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ModelDetail]: {
     maintainer: "ethan@vm0.ai",
     description: "Show the selected model name in activity details",
@@ -226,6 +233,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.VoiceIO]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Enable voice input/output features in chat (TTS read-aloud, auto-read, voice input)",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.MissionControlSidebar]: {
     maintainer: "ethan@vm0.ai",
     description: "Show the Mission Control page entry in the sidebar",
@@ -236,11 +250,17 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "lancy@vm0.ai",
     description: "Enable automatic skill creation in agent prompts",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.SandboxReuse]: {
     maintainer: "liangyou@vm0.ai",
     description: "Enable sandbox reuse (keep-alive) across conversation turns",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.ScheduleRunHistory]: {
+    maintainer: "linghan@vm0.ai",
+    description:
+      "Show Run History tab on schedules page and Chat-from-schedule button on activity detail",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

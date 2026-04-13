@@ -13,6 +13,7 @@ import {
   createTestRun,
   createTestRunInDb,
   createTestSandboxToken,
+  findTestClientCreditUsagesByRunId,
   findTestCreditUsagesByRunId,
   setTestRunModelProvider,
   setTestRunSelectedModel,
@@ -599,8 +600,49 @@ describe("POST /api/webhooks/agent/events", () => {
       const response = await POST(request);
       expect(response.status).toBe(200);
 
-      const records = await findTestCreditUsagesByRunId(testRunId);
+      const records = await findTestClientCreditUsagesByRunId(testRunId);
       expect(records).toHaveLength(0);
+    });
+
+    it("should NOT write to credit_usage (billing source) on result event", async () => {
+      // Regression guard: events webhook routes to client_credit_usage only;
+      // credit_usage is populated by the proxy usage webhook.
+      const resultUuid = randomUUID();
+      const request = createTestRequest(
+        "http://localhost:3000/api/webhooks/agent/events",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${testToken}`,
+          },
+          body: JSON.stringify({
+            runId: testRunId,
+            events: [
+              {
+                type: "result",
+                uuid: resultUuid,
+                sequenceNumber: 0,
+                timestamp: Date.now(),
+                usage: {
+                  input_tokens: 100,
+                  output_tokens: 50,
+                },
+                data: {},
+              },
+            ],
+          }),
+        },
+      );
+
+      const response = await POST(request);
+      expect(response.status).toBe(200);
+
+      const proxyRows = await findTestCreditUsagesByRunId(testRunId);
+      expect(proxyRows).toHaveLength(0);
+
+      const clientRows = await findTestClientCreditUsagesByRunId(testRunId);
+      expect(clientRows).toHaveLength(1);
     });
 
     it("should set token data on result event", async () => {
@@ -641,7 +683,7 @@ describe("POST /api/webhooks/agent/events", () => {
       const response = await POST(request);
       expect(response.status).toBe(200);
 
-      const records = await findTestCreditUsagesByRunId(testRunId);
+      const records = await findTestClientCreditUsagesByRunId(testRunId);
       expect(records).toHaveLength(1);
       const record = records[0]!;
       expect(record.resultUuid).toBe(resultUuid);
@@ -695,7 +737,7 @@ describe("POST /api/webhooks/agent/events", () => {
       const response = await POST(request);
       expect(response.status).toBe(200);
 
-      const records = await findTestCreditUsagesByRunId(zeroRunId);
+      const records = await findTestClientCreditUsagesByRunId(zeroRunId);
       expect(records).toHaveLength(1);
       const record = records[0]!;
       expect(record.model).toBe("claude-sonnet-4-6");
@@ -750,7 +792,7 @@ describe("POST /api/webhooks/agent/events", () => {
       const response = await POST(request);
       expect(response.status).toBe(200);
 
-      const records = await findTestCreditUsagesByRunId(zeroRunId);
+      const records = await findTestClientCreditUsagesByRunId(zeroRunId);
       expect(records).toHaveLength(1);
       expect(records[0]!.model).toBe("claude-sonnet-4-6");
     });
@@ -796,7 +838,7 @@ describe("POST /api/webhooks/agent/events", () => {
       const response = await POST(request);
       expect(response.status).toBe(200);
 
-      const records = await findTestCreditUsagesByRunId(testRunId);
+      const records = await findTestClientCreditUsagesByRunId(testRunId);
       expect(records).toHaveLength(1);
       expect(records[0]!.model).toBe("claude-sonnet-4-20250514");
     });
@@ -833,7 +875,7 @@ describe("POST /api/webhooks/agent/events", () => {
       const response = await POST(request);
       expect(response.status).toBe(200);
 
-      const records = await findTestCreditUsagesByRunId(testRunId);
+      const records = await findTestClientCreditUsagesByRunId(testRunId);
       expect(records).toHaveLength(1);
       expect(records[0]!.model).toBe("unknown");
     });
@@ -893,7 +935,7 @@ describe("POST /api/webhooks/agent/events", () => {
       const response = await POST(request);
       expect(response.status).toBe(200);
 
-      const records = await findTestCreditUsagesByRunId(testRunId);
+      const records = await findTestClientCreditUsagesByRunId(testRunId);
       expect(records).toHaveLength(2);
 
       const byUuid = new Map(
@@ -980,7 +1022,7 @@ describe("POST /api/webhooks/agent/events", () => {
       expect(response2.status).toBe(200);
 
       // Should have single row (deduplicated)
-      const records = await findTestCreditUsagesByRunId(testRunId);
+      const records = await findTestClientCreditUsagesByRunId(testRunId);
       expect(records).toHaveLength(1);
       expect(records[0]!.resultUuid).toBe(resultUuid);
     });
@@ -1027,7 +1069,7 @@ describe("POST /api/webhooks/agent/events", () => {
       expect(response2.status).toBe(200);
 
       // Should have a single record (deduplicated by runId + resultUuid)
-      const records = await findTestCreditUsagesByRunId(testRunId);
+      const records = await findTestClientCreditUsagesByRunId(testRunId);
       expect(records).toHaveLength(1);
     });
   });

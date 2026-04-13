@@ -1,15 +1,29 @@
-// TODO(#8609): split large components to comply with max-lines-per-function (128)
-// oxlint-disable max-lines-per-function
-import { useGet, useLoadable, useSet } from "ccstate-react";
+import { useGet, useLoadable, useSet, useLastResolved } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import type { OrgMember, MemberUsage } from "@vm0/core";
+import { FeatureSwitchKey, type OrgMember, type MemberUsage } from "@vm0/core";
 import { IconUsers } from "@tabler/icons-react";
-import { Input, Popover, PopoverAnchor, PopoverContent } from "@vm0/ui";
+import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
+import {
+  Input,
+  Popover,
+  PopoverAnchor,
+  PopoverContent,
+  Tabs,
+  TabsList,
+  TabsTrigger,
+} from "@vm0/ui";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
-import { usageMembersAsync$ } from "../../../../signals/usage-page/usage-signals.ts";
+import {
+  usageMembersAsync$,
+  usageTab$,
+  setUsageTab$,
+  type UsageTab,
+} from "../../../../signals/usage-page/usage-signals.ts";
 import { orgMembers$ } from "../../../../signals/external/org-members.ts";
 import { isOrgAdmin$ } from "../../../../signals/org.ts";
+import { CreditsChart } from "../../../usage-page/components/credits-chart.tsx";
+import { RunsTab } from "../../../usage-page/components/runs-tab.tsx";
 import {
   billingStatusAsync$,
   apiTierToBillingTier,
@@ -43,6 +57,9 @@ function tierCreditReference(tier: BillingTier): number {
 }
 
 function formatCreditsLine(tier: BillingTier, totalUsed: number): string {
+  if (tier === "free") {
+    return `${tierCreditReference(tier).toLocaleString()} starter credits`;
+  }
   const monthly = tierCreditReference(tier);
   if (monthly <= 0) {
     return `Used ${totalUsed.toLocaleString()} credits`;
@@ -286,10 +303,10 @@ function LoadingSkeleton() {
 }
 
 // ---------------------------------------------------------------------------
-// Main component
+// Overview section
 // ---------------------------------------------------------------------------
 
-export function OrgUsageTab() {
+function OverviewSection() {
   const usageLoadable = useLoadable(usageMembersAsync$);
   const membersLoadable = useLoadable(orgMembers$);
   const adminLoadable = useLoadable(isOrgAdmin$);
@@ -344,18 +361,23 @@ export function OrgUsageTab() {
                 <p className="text-sm font-medium text-foreground">
                   {billing.credits.toLocaleString()} credits
                 </p>
-                <p className="text-[13px] text-muted-foreground mt-0.5">
+                <p
+                  className="text-[13px] text-muted-foreground mt-0.5"
+                  data-testid="credits-line"
+                >
                   {formatCreditsLine(currentTier, totalUsed)}
                 </p>
               </div>
-              <div className="px-5 pb-4 pt-1">
-                <CreditUsageBar
-                  used={totalUsed}
-                  balance={billing.credits}
-                  tier={currentTier}
-                  creditExpiry={billing.creditExpiry}
-                />
-              </div>
+              {currentTier !== "free" && (
+                <div className="px-5 pb-4 pt-1">
+                  <CreditUsageBar
+                    used={totalUsed}
+                    balance={billing.credits}
+                    tier={currentTier}
+                    creditExpiry={billing.creditExpiry}
+                  />
+                </div>
+              )}
             </>
           ) : (
             <div className="px-5 py-4">
@@ -367,104 +389,177 @@ export function OrgUsageTab() {
         </div>
       </section>
 
-      {/* Members */}
-      <section className="flex flex-col gap-3">
-        <h3 className="text-sm font-medium text-foreground">Members</h3>
+      {/* Members — only for paid plans */}
+      {currentTier !== "free" && (
+        <section className="flex flex-col gap-3">
+          <h3 className="text-sm font-medium text-foreground">Members</h3>
 
-        {usageLoading && !usageData ? (
-          <LoadingSkeleton />
-        ) : usageError ? (
-          <div
-            className="rounded-xl bg-card px-5 py-8 text-center text-sm text-muted-foreground zero-border"
-            data-testid="usage-tab-error"
-            role="alert"
-          >
-            Failed to load usage. Please try again later.
-          </div>
-        ) : !period ? (
-          <div className="rounded-xl bg-card px-5 py-8 text-center text-sm text-muted-foreground zero-border">
-            No active billing period. Credit usage by member is available on
-            paid plans.
-          </div>
-        ) : members.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 rounded-xl bg-card px-5 py-10 text-center zero-border">
-            <IconUsers
-              size={20}
-              stroke={1.5}
-              className="text-muted-foreground"
-            />
-            <p className="text-sm text-muted-foreground">
-              No usage yet this period
-            </p>
-          </div>
-        ) : (
-          <div className="overflow-hidden rounded-xl bg-card zero-border">
-            {/* Header */}
-            <div className="grid grid-cols-[1fr_7rem_6rem_5.5rem] gap-x-4 items-center px-5 py-2.5 text-[13px] font-medium text-foreground">
-              <span>Member</span>
-              <span>Used</span>
-              <span>Remaining</span>
-              <span>Limit cap</span>
+          {usageLoading && !usageData ? (
+            <LoadingSkeleton />
+          ) : usageError ? (
+            <div
+              className="rounded-xl bg-card px-5 py-8 text-center text-sm text-muted-foreground zero-border"
+              data-testid="usage-tab-error"
+              role="alert"
+            >
+              Failed to load usage. Please try again later.
             </div>
-            {members.map((member) => {
-              const orgMember = memberMap.get(member.userId);
-              const name = orgMember ? displayName(orgMember) : "";
-              const label = name || member.email;
-              const initial = label.charAt(0).toUpperCase();
-              const remaining =
-                member.creditCap !== null
-                  ? Math.max(0, member.creditCap - member.creditsCharged)
-                  : null;
+          ) : !period ? (
+            <div className="rounded-xl bg-card px-5 py-8 text-center text-sm text-muted-foreground zero-border">
+              No active billing period. Credit usage by member is available on
+              paid plans.
+            </div>
+          ) : members.length === 0 ? (
+            <div className="flex flex-col items-center gap-2 rounded-xl bg-card px-5 py-10 text-center zero-border">
+              <IconUsers
+                size={20}
+                stroke={1.5}
+                className="text-muted-foreground"
+              />
+              <p className="text-sm text-muted-foreground">
+                No usage yet this period
+              </p>
+            </div>
+          ) : (
+            <MembersTable
+              members={members}
+              memberMap={memberMap}
+              isAdmin={isAdmin}
+            />
+          )}
+        </section>
+      )}
+    </div>
+  );
+}
 
-              return (
-                <div key={member.userId}>
-                  <div className="h-0 zero-border-t mx-5" />
-                  <div className="grid grid-cols-[1fr_7rem_6rem_5.5rem] gap-x-4 items-center px-5 py-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                      <MemberAvatar
-                        imageUrl={orgMember?.imageUrl ?? ""}
-                        initial={initial}
-                        name={label}
-                      />
-                      <div className="min-w-0">
-                        {name ? (
-                          <>
-                            <p className="truncate text-sm font-medium text-foreground">
-                              {name}
-                            </p>
-                            <p className="truncate text-[13px] text-muted-foreground">
-                              {member.email}
-                            </p>
-                          </>
-                        ) : (
-                          <p className="truncate text-sm font-medium text-foreground">
-                            {member.email}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                    <span className="text-[13px] tabular-nums text-foreground">
-                      {member.creditsCharged.toLocaleString()}
-                    </span>
-                    <span className="text-[13px] tabular-nums text-muted-foreground/50">
-                      {remaining !== null ? remaining.toLocaleString() : "–"}
-                    </span>
-                    {isAdmin ? (
-                      <InlineCapInput member={member} />
-                    ) : (
-                      <span className="text-[13px] tabular-nums text-muted-foreground">
-                        {member.creditCap !== null
-                          ? member.creditCap.toLocaleString()
-                          : "—"}
-                      </span>
-                    )}
-                  </div>
+function MembersTable({
+  members,
+  memberMap,
+  isAdmin,
+}: {
+  members: MemberUsage[];
+  memberMap: Map<string, OrgMember>;
+  isAdmin: boolean;
+}) {
+  return (
+    <div className="overflow-hidden rounded-xl bg-card zero-border">
+      {/* Header */}
+      <div className="grid grid-cols-[1fr_7rem_6rem_5.5rem] gap-x-4 items-center px-5 py-2.5 text-[13px] font-medium text-foreground">
+        <span>Member</span>
+        <span>Used</span>
+        <span>Remaining</span>
+        <span>Limit cap</span>
+      </div>
+      {members.map((member) => {
+        const orgMember = memberMap.get(member.userId);
+        const name = orgMember ? displayName(orgMember) : "";
+        const label = name || member.email;
+        const initial = label.charAt(0).toUpperCase();
+        const remaining =
+          member.creditCap !== null
+            ? Math.max(0, member.creditCap - member.creditsCharged)
+            : null;
+
+        return (
+          <div key={member.userId}>
+            <div className="h-0 zero-border-t mx-5" />
+            <div className="grid grid-cols-[1fr_7rem_6rem_5.5rem] gap-x-4 items-center px-5 py-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <MemberAvatar
+                  imageUrl={orgMember?.imageUrl ?? ""}
+                  initial={initial}
+                  name={label}
+                />
+                <div className="min-w-0">
+                  {name ? (
+                    <>
+                      <p className="truncate text-sm font-medium text-foreground">
+                        {name}
+                      </p>
+                      <p className="truncate text-[13px] text-muted-foreground">
+                        {member.email}
+                      </p>
+                    </>
+                  ) : (
+                    <p className="truncate text-sm font-medium text-foreground">
+                      {member.email}
+                    </p>
+                  )}
                 </div>
-              );
-            })}
+              </div>
+              <span className="text-[13px] tabular-nums text-foreground">
+                {member.creditsCharged.toLocaleString()}
+              </span>
+              <span className="text-[13px] tabular-nums text-muted-foreground/50">
+                {remaining !== null ? remaining.toLocaleString() : "–"}
+              </span>
+              {isAdmin ? (
+                <InlineCapInput member={member} />
+              ) : (
+                <span className="text-[13px] tabular-nums text-muted-foreground">
+                  {member.creditCap !== null
+                    ? member.creditCap.toLocaleString()
+                    : "—"}
+                </span>
+              )}
+            </div>
           </div>
-        )}
-      </section>
+        );
+      })}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Main component
+// ---------------------------------------------------------------------------
+
+export function OrgUsageTab() {
+  const adminLoadable = useLoadable(isOrgAdmin$);
+  const isAdmin =
+    adminLoadable.state === "hasData" ? adminLoadable.data : false;
+
+  const tab = useGet(usageTab$);
+  const setTab = useSet(setUsageTab$);
+  const handleTabChange = (value: string) => {
+    setTab(value as UsageTab);
+  };
+
+  const features = useLastResolved(featureSwitch$);
+  const analyticsEnabled = features?.[FeatureSwitchKey.UsageAnalytics] ?? false;
+
+  if (!isAdmin || !analyticsEnabled) {
+    return <OverviewSection />;
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <Tabs value={tab} onValueChange={handleTabChange}>
+        <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
+          <TabsTrigger
+            value="overview"
+            className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
+          >
+            Overview
+          </TabsTrigger>
+          <TabsTrigger
+            value="daily"
+            className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
+          >
+            Daily
+          </TabsTrigger>
+          <TabsTrigger
+            value="runs"
+            className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
+          >
+            Runs
+          </TabsTrigger>
+        </TabsList>
+      </Tabs>
+      {tab === "overview" && <OverviewSection />}
+      {tab === "daily" && <CreditsChart />}
+      {tab === "runs" && <RunsTab />}
     </div>
   );
 }

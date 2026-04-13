@@ -82,6 +82,10 @@ export interface VoiceChatCallbackPayload {
   sessionId: string;
 }
 
+export interface VoiceChatPrepareCallbackPayload {
+  preparationId: string;
+}
+
 export interface PhoneCallbackPayload {
   callId: string;
   userId: string;
@@ -89,15 +93,3 @@ export interface PhoneCallbackPayload {
   agentId: string;
   existingSessionId: string | null;
 }
-
-export type CallbackPayload =
-  | TelegramCallbackPayload
-  | SlackOrgCallbackPayload
-  | EmailTriggerCallbackPayload
-  | EmailReplyCallbackPayload
-  | ScheduleLoopCallbackPayload
-  | ScheduleCronCallbackPayload
-  | GitHubIssuesCallbackPayload
-  | ChatCallbackPayload
-  | PhoneCallbackPayload
-  | VoiceChatCallbackPayload;

@@ -5,6 +5,8 @@ import {
   createTestVoiceChatSession,
   createTestCompose,
   findTestZeroRun,
+  insertTestVoiceChatPreparation,
+  getTestVoiceChatEvents,
 } from "../../../../../src/__tests__/api-test-helpers";
 import {
   testContext,
@@ -185,5 +187,134 @@ describe("POST /api/zero/voice-chat (create session)", () => {
     const body = await response.json();
     expect(response.status).toBe(409);
     expect(body.error.code).toBe("CONFLICT");
+  });
+
+  it("should return prepared: true when fresh preparation cache exists", async () => {
+    const { agentId } = await createTestCompose(uniqueId("vc-cache-hit"));
+
+    await insertTestVoiceChatPreparation({
+      orgId,
+      userId,
+      agentId,
+      mode: "chat",
+      status: "ready",
+      directiveContent: "Cached directive for the fast-brain.",
+    });
+
+    const response = await POST(createRequest({ agentId }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.session.prepared).toBe(true);
+    expect(body.session.runId).toBeDefined();
+
+    // Verify cached events were written (thinking + directive + preparation-ready + session-start)
+    const events = await getTestVoiceChatEvents(body.session.id);
+    expect(events).toHaveLength(4);
+    expect(events[0]).toMatchObject({
+      source: "slow-brain",
+      type: "thinking",
+    });
+    expect(events[1]).toMatchObject({
+      source: "slow-brain",
+      type: "directive",
+      content: "Cached directive for the fast-brain.",
+    });
+    expect(events[2]).toMatchObject({
+      source: "slow-brain",
+      type: "preparation-ready",
+    });
+    expect(events[3]).toMatchObject({
+      source: "system",
+      type: "session-start",
+    });
+  });
+
+  it("should return prepared: false when no preparation cache exists", async () => {
+    const { agentId } = await createTestCompose(uniqueId("vc-cache-miss"));
+
+    const response = await POST(createRequest({ agentId }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.session.prepared).toBe(false);
+    expect(body.session.runId).toBeDefined();
+
+    // Verify only session-start event (normal flow)
+    const events = await getTestVoiceChatEvents(body.session.id);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      source: "system",
+      type: "session-start",
+    });
+  });
+
+  it("should return prepared: false when preparation is stale", async () => {
+    const { agentId } = await createTestCompose(uniqueId("vc-stale"));
+
+    await insertTestVoiceChatPreparation({
+      orgId,
+      userId,
+      agentId,
+      mode: "chat",
+      status: "ready",
+      directiveContent: "Old cached directive.",
+      createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000), // 2 hours ago
+    });
+
+    const response = await POST(createRequest({ agentId }));
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.session.prepared).toBe(false);
+  });
+
+  it("should return prepared: true for meeting mode with matching prompt", async () => {
+    const { agentId } = await createTestCompose(uniqueId("vc-meeting-hit"));
+    const meetingPrompt = "Review PR #456 changes";
+
+    await insertTestVoiceChatPreparation({
+      orgId,
+      userId,
+      agentId,
+      mode: "meeting",
+      prompt: meetingPrompt,
+      status: "ready",
+      directiveContent: "Meeting preparation summary.",
+    });
+
+    const response = await POST(
+      createRequest({ agentId, mode: "meeting", prompt: meetingPrompt }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.session.prepared).toBe(true);
+  });
+
+  it("should return prepared: false for meeting mode with different prompt", async () => {
+    const { agentId } = await createTestCompose(uniqueId("vc-meeting-miss"));
+
+    await insertTestVoiceChatPreparation({
+      orgId,
+      userId,
+      agentId,
+      mode: "meeting",
+      prompt: "Review PR #123",
+      status: "ready",
+      directiveContent: "Different meeting preparation.",
+    });
+
+    const response = await POST(
+      createRequest({
+        agentId,
+        mode: "meeting",
+        prompt: "Review PR #789",
+      }),
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.session.prepared).toBe(false);
   });
 });

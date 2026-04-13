@@ -56,7 +56,6 @@ describe("zero about page", () => {
           hasDefaultAgent: true,
           defaultAgentId: "c0000000-0000-4000-a000-000000000001",
           defaultAgentMetadata: { displayName: "MyAgent" },
-          defaultAgentSkills: [],
         });
       }),
       http.get("*/api/zero/agents/:id", () => {

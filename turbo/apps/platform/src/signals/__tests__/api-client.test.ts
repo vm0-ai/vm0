@@ -61,4 +61,153 @@ describe("zeroClient$ 401 redirect", () => {
     expect(result.status).toBe(403);
     expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
   });
+
+  it("refreshes the token and retries once on 401, returning success", async () => {
+    detachedSetupPage({
+      context,
+      path: "/",
+      session: { token: "stale-token" },
+      withoutRender: true,
+    });
+
+    mockedClerk.redirectToSignIn.mockClear();
+    mockedClerk.sessionGetToken.mockReset();
+    mockedClerk.sessionGetToken.mockImplementation((opts) => {
+      return Promise.resolve(opts?.skipCache ? "fresh-token" : "stale-token");
+    });
+
+    const authHeaders: string[] = [];
+    server.use(
+      http.get("http://localhost:3000/api/zero/org", ({ request }) => {
+        authHeaders.push(request.headers.get("authorization") ?? "");
+        if (authHeaders.length === 1) {
+          return HttpResponse.json(
+            { error: { message: "Unauthorized", code: "UNAUTHORIZED" } },
+            { status: 401 },
+          );
+        }
+        return HttpResponse.json(
+          { id: "org_1", name: "Org", slug: "org-1", imageUrl: "" },
+          { status: 200 },
+        );
+      }),
+    );
+
+    const createClient = context.store.get(zeroClient$);
+    const client = createClient(zeroOrgContract);
+    const result = await client.get();
+
+    expect(result.status).toBe(200);
+    expect(authHeaders).toStrictEqual([
+      "Bearer stale-token",
+      "Bearer fresh-token",
+    ]);
+    expect(mockedClerk.sessionGetToken).toHaveBeenCalledWith({
+      skipCache: true,
+    });
+    expect(mockedClerk.redirectToSignIn).not.toHaveBeenCalled();
+  });
+
+  it("redirects when retry also returns 401", async () => {
+    detachedSetupPage({
+      context,
+      path: "/",
+      session: { token: "stale-token" },
+      withoutRender: true,
+    });
+
+    mockedClerk.redirectToSignIn.mockClear();
+    mockedClerk.sessionGetToken.mockReset();
+    mockedClerk.sessionGetToken.mockImplementation((opts) => {
+      return Promise.resolve(opts?.skipCache ? "fresh-token" : "stale-token");
+    });
+
+    const authHeaders: string[] = [];
+    server.use(
+      http.get("http://localhost:3000/api/zero/org", ({ request }) => {
+        authHeaders.push(request.headers.get("authorization") ?? "");
+        return HttpResponse.json(
+          { error: { message: "Unauthorized", code: "UNAUTHORIZED" } },
+          { status: 401 },
+        );
+      }),
+    );
+
+    const createClient = context.store.get(zeroClient$);
+    const client = createClient(zeroOrgContract);
+    const result = await client.get();
+
+    expect(result.status).toBe(401);
+    expect(authHeaders).toStrictEqual([
+      "Bearer stale-token",
+      "Bearer fresh-token",
+    ]);
+    expect(mockedClerk.redirectToSignIn).toHaveBeenCalledTimes(1);
+  });
+
+  it("skips retry and redirects when the refreshed token is null", async () => {
+    detachedSetupPage({
+      context,
+      path: "/",
+      session: { token: "stale-token" },
+      withoutRender: true,
+    });
+
+    mockedClerk.redirectToSignIn.mockClear();
+    mockedClerk.sessionGetToken.mockReset();
+    mockedClerk.sessionGetToken.mockImplementation((opts) => {
+      return Promise.resolve(opts?.skipCache ? null : "stale-token");
+    });
+
+    const authHeaders: string[] = [];
+    server.use(
+      http.get("http://localhost:3000/api/zero/org", ({ request }) => {
+        authHeaders.push(request.headers.get("authorization") ?? "");
+        return HttpResponse.json(
+          { error: { message: "Unauthorized", code: "UNAUTHORIZED" } },
+          { status: 401 },
+        );
+      }),
+    );
+
+    const createClient = context.store.get(zeroClient$);
+    const client = createClient(zeroOrgContract);
+    const result = await client.get();
+
+    expect(result.status).toBe(401);
+    expect(authHeaders).toStrictEqual(["Bearer stale-token"]);
+    expect(mockedClerk.redirectToSignIn).toHaveBeenCalledTimes(1);
+  });
+
+  it("skips retry when the refreshed token equals the initial token", async () => {
+    detachedSetupPage({
+      context,
+      path: "/",
+      session: { token: "same-token" },
+      withoutRender: true,
+    });
+
+    mockedClerk.redirectToSignIn.mockClear();
+    mockedClerk.sessionGetToken.mockReset();
+    mockedClerk.sessionGetToken.mockResolvedValue("same-token");
+
+    const authHeaders: string[] = [];
+    server.use(
+      http.get("http://localhost:3000/api/zero/org", ({ request }) => {
+        authHeaders.push(request.headers.get("authorization") ?? "");
+        return HttpResponse.json(
+          { error: { message: "Unauthorized", code: "UNAUTHORIZED" } },
+          { status: 401 },
+        );
+      }),
+    );
+
+    const createClient = context.store.get(zeroClient$);
+    const client = createClient(zeroOrgContract);
+    const result = await client.get();
+
+    expect(result.status).toBe(401);
+    expect(authHeaders).toStrictEqual(["Bearer same-token"]);
+    expect(mockedClerk.redirectToSignIn).toHaveBeenCalledTimes(1);
+  });
 });

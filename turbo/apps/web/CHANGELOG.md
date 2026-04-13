@@ -1,5 +1,122 @@
 # Changelog
 
+## [12.226.1](https://github.com/vm0-ai/vm0/compare/web-v12.226.0...web-v12.226.1) (2026-04-13)
+
+
+### Bug Fixes
+
+* **web:** use schedule prompt as fallback summary and filter tasks without runs ([#9142](https://github.com/vm0-ai/vm0/issues/9142)) ([97127ea](https://github.com/vm0-ai/vm0/commit/97127ea77027aad15c06fda156206da55962a9e2))
+
+
+### Refactoring
+
+* unify member and admin onboarding connector flow ([#9129](https://github.com/vm0-ai/vm0/issues/9129)) ([#9140](https://github.com/vm0-ai/vm0/issues/9140)) ([fa03f61](https://github.com/vm0-ai/vm0/commit/fa03f61411c81522e2dd695d3bcbe08f6c952740))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.180.0
+
+## [12.226.0](https://github.com/vm0-ai/vm0/compare/web-v12.225.0...web-v12.226.0) (2026-04-13)
+
+
+### Features
+
+* sort mission control task list with active tasks before done tasks ([#9116](https://github.com/vm0-ai/vm0/issues/9116)) ([a7132d2](https://github.com/vm0-ai/vm0/commit/a7132d2e3751e2dfabaa6a46d9db577192084514))
+* **voice-chat:** add prepare pipeline, dispatch, and callback ([#9132](https://github.com/vm0-ai/vm0/issues/9132)) ([24fd18b](https://github.com/vm0-ai/vm0/commit/24fd18b851bab975120678713d0bdc82d31a7969)), closes [#9085](https://github.com/vm0-ai/vm0/issues/9085)
+* **voice-chat:** change default realtime model to gpt-realtime-mini ([#9124](https://github.com/vm0-ai/vm0/issues/9124)) ([b45eefe](https://github.com/vm0-ai/vm0/commit/b45eefeec61327ab7b22bd1afde9018204feb801)), closes [#9119](https://github.com/vm0-ai/vm0/issues/9119)
+
+
+### Bug Fixes
+
+* add missing route files for task archive/unarchive (404 on y key) ([#9113](https://github.com/vm0-ai/vm0/issues/9113)) ([df8b944](https://github.com/vm0-ai/vm0/commit/df8b944a484c11e557a4dbf0ccc8646dcd943e65))
+* **web:** render navbar auth state on the server to avoid refresh flicker ([#9117](https://github.com/vm0-ai/vm0/issues/9117)) ([a1dc115](https://github.com/vm0-ai/vm0/commit/a1dc115736d28c6695c1dada7f6573f572ca1f2b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.179.0
+
+## [12.225.0](https://github.com/vm0-ai/vm0/compare/web-v12.224.0...web-v12.225.0) (2026-04-13)
+
+
+### Features
+
+* add voice_chat_preparations table and preparation service ([#9092](https://github.com/vm0-ai/vm0/issues/9092)) ([a171c51](https://github.com/vm0-ai/vm0/commit/a171c51031a1718aa1d64a4161a17e12839d8639))
+* **voice-chat:** integrate preparation cache into session creation ([#9112](https://github.com/vm0-ai/vm0/issues/9112)) ([856c342](https://github.com/vm0-ai/vm0/commit/856c3421897a2a3019d496b67ef7506760e33baa)), closes [#9086](https://github.com/vm0-ai/vm0/issues/9086)
+
+## [12.224.0](https://github.com/vm0-ai/vm0/compare/web-v12.223.0...web-v12.224.0) (2026-04-13)
+
+
+### Features
+
+* add voice-io feature switch and tts backend endpoint ([#9088](https://github.com/vm0-ai/vm0/issues/9088)) ([c5e700a](https://github.com/vm0-ai/vm0/commit/c5e700ad22b92886495e030daf9e9dfd50ff2320)), closes [#9078](https://github.com/vm0-ai/vm0/issues/9078)
+* **usage:** add daily credits chart and per-run records ([#9047](https://github.com/vm0-ai/vm0/issues/9047)) ([589df8c](https://github.com/vm0-ai/vm0/commit/589df8cbf8b8d5ee495279a3f6e51aed47305daa))
+* **voice-chat:** add realtime model selector ([#9082](https://github.com/vm0-ai/vm0/issues/9082)) ([b296034](https://github.com/vm0-ai/vm0/commit/b29603432ca146738da80d3f346bf714eb53ad2b)), closes [#9074](https://github.com/vm0-ai/vm0/issues/9074)
+* **web:** add integration description for web chat runs ([#9090](https://github.com/vm0-ai/vm0/issues/9090)) ([7c0a09b](https://github.com/vm0-ai/vm0/commit/7c0a09bcf4e8c1066adef002e8ff3e877d1233cd))
+
+
+### Refactoring
+
+* drop proxy_credit_usage table now that billing uses credit_usage ([#9071](https://github.com/vm0-ai/vm0/issues/9071)) ([4920dc2](https://github.com/vm0-ai/vm0/commit/4920dc28d0913ed6238d94265b0725f2f12a4546))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.178.0
+
+## [12.223.0](https://github.com/vm0-ai/vm0/compare/web-v12.222.1...web-v12.223.0) (2026-04-13)
+
+
+### Features
+
+* add archive status to mission control task list ([#9063](https://github.com/vm0-ai/vm0/issues/9063)) ([ca4d008](https://github.com/vm0-ai/vm0/commit/ca4d00838afb45f957c5a8d5fbc4dcde58265382))
+
+
+### Refactoring
+
+* use proxy-reported usage as billing source of truth ([#9064](https://github.com/vm0-ai/vm0/issues/9064)) ([b655964](https://github.com/vm0-ai/vm0/commit/b65596423f8655117ebd67c38731eb5f35c332b7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.177.0
+
+## [12.222.1](https://github.com/vm0-ai/vm0/compare/web-v12.222.0...web-v12.222.1) (2026-04-13)
+
+
+### Bug Fixes
+
+* **web:** fall back to truncated prompt when task summary is missing ([#9058](https://github.com/vm0-ai/vm0/issues/9058)) ([3fff644](https://github.com/vm0-ai/vm0/commit/3fff644d1d36aba31af4d299c33b9d22d2abcf66))
+* **web:** persist zero_runs metadata before dispatch to fix activity source race ([#9045](https://github.com/vm0-ai/vm0/issues/9045)) ([bade6ac](https://github.com/vm0-ai/vm0/commit/bade6acb7a0b0759b1d28a460a622ee1c1ece381))
+
+## [12.222.0](https://github.com/vm0-ai/vm0/compare/web-v12.221.0...web-v12.222.0) (2026-04-13)
+
+
+### Features
+
+* **web:** revise landing page messaging for clearer value delivery ([#9006](https://github.com/vm0-ai/vm0/issues/9006)) ([101ac46](https://github.com/vm0-ai/vm0/commit/101ac46a533c280baf161f7d804299207abf570b))
+
+
+### Bug Fixes
+
+* ignore Slack retry deliveries to prevent duplicate agent runs ([#8889](https://github.com/vm0-ai/vm0/issues/8889)) ([05d5853](https://github.com/vm0-ai/vm0/commit/05d5853150720f008e15771eeca0bb33b0bda645))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.176.0
+
 ## [12.221.0](https://github.com/vm0-ai/vm0/compare/web-v12.220.1...web-v12.221.0) (2026-04-12)
 
 

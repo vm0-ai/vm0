@@ -20,7 +20,6 @@ function mockTwoAgents() {
         hasDefaultAgent: true,
         defaultAgentId: "agent-foo-id",
         defaultAgentMetadata: { displayName: "foo" },
-        defaultAgentSkills: [],
       });
     }),
     http.get("*/api/zero/team", () => {

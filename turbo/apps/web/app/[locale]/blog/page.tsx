@@ -10,7 +10,6 @@ import {
   getBlogBaseUrl,
 } from "../../lib/blog";
 import { BlogContent } from "../../components/blog";
-import Navbar from "../../components/Navbar";
 import Footer from "../../components/Footer";
 import { isBlogEnabled } from "../../../src/env";
 
@@ -101,9 +100,6 @@ export default async function BlogPage({ params }: BlogPageProps) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
       />
-      <div className="header-container">
-        <Navbar />
-      </div>
       <Suspense
         fallback={
           <div

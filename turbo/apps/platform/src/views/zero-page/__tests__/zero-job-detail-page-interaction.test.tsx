@@ -341,4 +341,61 @@ describe("zero job detail page - interaction and state", () => {
     // Resolve the pending request
     resolvePut?.();
   });
+
+  it("should keep connector list visible during post-toggle refetch (AGENT-D-036)", async () => {
+    // Regression test for #9141: toggling a connector triggers a refetch of
+    // the user-connectors endpoint. The list must NOT flicker to the skeleton
+    // during that refetch — the rows should stay visible the whole time.
+    const user = userEvent.setup();
+
+    mockAPIs();
+
+    // Hold the post-save GET so the refetch stays pending until we release it.
+    let resolveGet: (() => void) | undefined;
+    const getPromise = new Promise<void>((resolve) => {
+      resolveGet = resolve;
+    });
+    let getCallCount = 0;
+    server.use(
+      http.put("*/api/zero/agents/:id/user-connectors", () => {
+        return HttpResponse.json({ enabledTypes: [] });
+      }),
+      http.get("*/api/zero/agents/:id/user-connectors", async () => {
+        getCallCount += 1;
+        // First call (initial seed) resolves immediately with slack enabled;
+        // second call (the post-save refetch) blocks so we can observe the
+        // in-between UI without slack enabled.
+        if (getCallCount === 1) {
+          return HttpResponse.json({ enabledTypes: ["slack"] });
+        }
+        await getPromise;
+        return HttpResponse.json({ enabledTypes: [] });
+      }),
+    );
+    detachedSetupPage({ context, path: "/agents/my-agent" });
+    await waitForPageLoad();
+
+    // Wait for connectors to load initially.
+    await waitFor(() => {
+      expect(
+        screen.getByRole("switch", { name: /Revoke Slack access/i }),
+      ).toBeInTheDocument();
+    });
+
+    // Toggle Slack off — this triggers PUT then a GET refetch (which is held).
+    await user.click(
+      screen.getByRole("switch", { name: /Revoke Slack access/i }),
+    );
+
+    // While the refetch is in-flight, the connector rows must remain rendered
+    // (Slack and Linear are both visible — no skeleton swap).
+    await waitFor(() => {
+      expect(getCallCount).toBeGreaterThan(1);
+    });
+    expect(screen.getByText("Slack")).toBeInTheDocument();
+    expect(screen.getByText("Linear")).toBeInTheDocument();
+
+    // Release the held GET so the test cleans up.
+    resolveGet?.();
+  });
 });

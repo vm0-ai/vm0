@@ -50,6 +50,7 @@ export interface ChatThreadSignals {
   resetLocalMessages$: Command<void, []>;
   setScrollContainer$: Command<void, [HTMLElement | null]>;
   autoScroll$: Command<void, []>;
+  forceScrollToBottom$: Command<void, []>;
   draft: DraftSignals;
   composerFileInput$: Computed<HTMLElement | null>;
   setComposerFileInput$: Command<void, [HTMLElement | null]>;
@@ -219,6 +220,59 @@ function createMessageState(threadData$: Computed<Promise<ChatThread | null>>) {
 // Sub-factory: scroll
 // ---------------------------------------------------------------------------
 
+const NEAR_BOTTOM_THRESHOLD = 80;
+
+function scrollToMessages(scrollEl: HTMLElement) {
+  const container = scrollEl.querySelector<HTMLElement>(
+    "[data-message-container]",
+  );
+  if (!container || container.children.length === 0) {
+    return;
+  }
+
+  let lastUser: HTMLElement | null = null;
+  let lastAssistant: HTMLElement | null = null;
+  for (let i = container.children.length - 1; i >= 0; i--) {
+    const child = container.children[i];
+    if (!(child instanceof HTMLElement)) {
+      continue;
+    }
+    const role = child.dataset.role;
+    if (!lastAssistant && role === "assistant") {
+      lastAssistant = child;
+    }
+    if (!lastUser && role === "user") {
+      lastUser = child;
+    }
+    if (lastUser && lastAssistant) {
+      break;
+    }
+  }
+
+  if (!lastUser) {
+    return;
+  }
+
+  const composer = scrollEl.querySelector<HTMLElement>("[data-chat-composer]");
+  const composerHeight = composer ? composer.offsetHeight : 0;
+  const visibleHeight = scrollEl.clientHeight - composerHeight;
+  const userTop = lastUser.offsetTop - container.offsetTop;
+
+  if (lastAssistant && lastAssistant.offsetTop > lastUser.offsetTop) {
+    const assistantBottom =
+      lastAssistant.offsetTop -
+      container.offsetTop +
+      lastAssistant.offsetHeight;
+    if (assistantBottom - userTop <= visibleHeight) {
+      scrollEl.scrollTop = userTop;
+    } else {
+      scrollEl.scrollTop = scrollEl.scrollHeight;
+    }
+  } else {
+    scrollEl.scrollTop = userTop;
+  }
+}
+
 function createScrollSignals() {
   const internalScrollContainer$ = state<HTMLElement | null>(null);
 
@@ -226,61 +280,28 @@ function createScrollSignals() {
     set(internalScrollContainer$, el);
   });
 
+  const forceScrollToBottom$ = command(({ get }) => {
+    const scrollEl = get(internalScrollContainer$);
+    if (!scrollEl) {
+      return;
+    }
+    scrollToMessages(scrollEl);
+  });
+
   const autoScroll$ = command(({ get }) => {
     const scrollEl = get(internalScrollContainer$);
     if (!scrollEl) {
       return;
     }
-    const container = scrollEl.querySelector<HTMLElement>(
-      "[data-message-container]",
-    );
-    if (!container || container.children.length === 0) {
+    const distanceFromBottom =
+      scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight;
+    if (distanceFromBottom > NEAR_BOTTOM_THRESHOLD) {
       return;
     }
-
-    let lastUser: HTMLElement | null = null;
-    let lastAssistant: HTMLElement | null = null;
-    for (let i = container.children.length - 1; i >= 0; i--) {
-      const child = container.children[i] as HTMLElement;
-      const role = child.dataset.role;
-      if (!lastAssistant && role === "assistant") {
-        lastAssistant = child;
-      }
-      if (!lastUser && role === "user") {
-        lastUser = child;
-      }
-      if (lastUser && lastAssistant) {
-        break;
-      }
-    }
-
-    if (!lastUser) {
-      return;
-    }
-
-    const composer = scrollEl.querySelector<HTMLElement>(
-      "[data-chat-composer]",
-    );
-    const composerHeight = composer ? composer.offsetHeight : 0;
-    const visibleHeight = scrollEl.clientHeight - composerHeight;
-    const userTop = lastUser.offsetTop - container.offsetTop;
-
-    if (lastAssistant && lastAssistant.offsetTop > lastUser.offsetTop) {
-      const assistantBottom =
-        lastAssistant.offsetTop -
-        container.offsetTop +
-        lastAssistant.offsetHeight;
-      if (assistantBottom - userTop <= visibleHeight) {
-        scrollEl.scrollTop = userTop;
-      } else {
-        scrollEl.scrollTop = scrollEl.scrollHeight;
-      }
-    } else {
-      scrollEl.scrollTop = userTop;
-    }
+    scrollToMessages(scrollEl);
   });
 
-  return { setScrollContainer$, autoScroll$ };
+  return { setScrollContainer$, autoScroll$, forceScrollToBottom$ };
 }
 
 // ---------------------------------------------------------------------------
@@ -649,7 +670,8 @@ export function createChatThreadSignals(
     chatMessages$,
     allFinished$,
   } = createMessageState(threadData$);
-  const { setScrollContainer$, autoScroll$ } = createScrollSignals();
+  const { setScrollContainer$, autoScroll$, forceScrollToBottom$ } =
+    createScrollSignals();
   const { composerFileInput$, setComposerFileInput$ } =
     createComposerFileInput();
   const { agentId$, agentDisplayName$, agentPinned$ } =
@@ -709,6 +731,7 @@ export function createChatThreadSignals(
     resetLocalMessages$,
     setScrollContainer$,
     autoScroll$,
+    forceScrollToBottom$,
     draft,
     composerFileInput$,
     setComposerFileInput$,

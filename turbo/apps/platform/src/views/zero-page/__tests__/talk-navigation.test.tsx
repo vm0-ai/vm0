@@ -123,7 +123,6 @@ describe("talk navigation", () => {
             hasDefaultAgent: true,
             defaultAgentId: MOCK_AGENT_ID,
             defaultAgentMetadata: null,
-            defaultAgentSkills: [],
           });
         }
         return HttpResponse.json({
@@ -133,7 +132,6 @@ describe("talk navigation", () => {
           hasDefaultAgent: false,
           defaultAgentId: null,
           defaultAgentMetadata: null,
-          defaultAgentSkills: [],
         });
       }),
       // Single setup endpoint
@@ -158,10 +156,11 @@ describe("talk navigation", () => {
     await fill(input, "Test Workspace");
     await user.click(screen.getByText("Next"));
 
-    // Step 2: Choose your tools → Next
+    // Step 2: Choose your tools — select a connector so step 3 is reachable
     await waitFor(() => {
       expect(screen.getByText("Choose your tools")).toBeInTheDocument();
     });
+    await user.click(screen.getByTestId("connector-card-github"));
     await user.click(screen.getByText("Next"));
 
     // Step 3: Connect your apps → Next

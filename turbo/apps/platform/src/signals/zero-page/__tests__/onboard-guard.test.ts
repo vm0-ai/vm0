@@ -26,7 +26,6 @@ function mockOnboardingStatus(body: {
         defaultAgentMetadata: body.hasDefaultAgent
           ? { displayName: "Zero" }
           : null,
-        defaultAgentSkills: [],
       });
     }),
   );

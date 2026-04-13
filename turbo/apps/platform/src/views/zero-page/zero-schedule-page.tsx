@@ -1,10 +1,26 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
-import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
+import {
+  useGet,
+  useSet,
+  useLoadable,
+  useLastLoadable,
+  useLastResolved,
+} from "ccstate-react";
+import { FeatureSwitchKey } from "@vm0/core";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
-import { IconList, IconLayoutGrid, IconPlus } from "@tabler/icons-react";
 import {
+  IconCircleDot,
+  IconList,
+  IconLayoutGrid,
+  IconPlus,
+  IconRotateClockwise2,
+} from "@tabler/icons-react";
+import {
+  Card,
+  CardContent,
   Tabs,
   TabsList,
   TabsTrigger,
@@ -50,8 +66,6 @@ import {
 import { zeroOnboardingStatus$ } from "../../signals/zero-page/zero-onboarding.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import {
-  schedulePageViewMode$,
-  setSchedulePageViewMode$,
   createDialogOpen$,
   setCreateDialogOpen$,
   pageTogglingIds$,
@@ -61,6 +75,26 @@ import {
   pagePendingDelete$,
   setPagePendingDelete$,
 } from "../../signals/schedule-page/schedule-page-ui.ts";
+import {
+  scheduleListTab$,
+  setScheduleListTab$,
+} from "../../signals/schedule-page/schedule-list-tab.ts";
+import {
+  allScheduleRunData$,
+  allScheduleRunLimit$,
+  allScheduleRunHasPrev$,
+  allScheduleRunCurrentPage$,
+  goToNextAllScheduleRunPage$,
+  goToPrevAllScheduleRunPage$,
+  goForwardTwoAllScheduleRunPages$,
+  goBackTwoAllScheduleRunPages$,
+  setAllScheduleRunRowsPerPage$,
+  allScheduleRunStatusFilter$,
+  setAllScheduleRunStatusFilter$,
+  allScheduleRunAvailableStatuses$,
+} from "../../signals/schedule-page/all-schedule-run-history.ts";
+import { LogTable, STATUS_LABELS } from "./components/log-views/log-table.tsx";
+import { Pagination } from "../components/pagination.tsx";
 
 export type CombinedEntry = ScheduleEntry & {
   agentLabel: string;
@@ -459,8 +493,17 @@ export function ZeroSchedulePage() {
   const pageSignal = useGet(pageSignal$);
   const navigate = useSet(detachedNavigateTo$);
 
-  const scheduleViewMode = useGet(schedulePageViewMode$);
-  const setScheduleViewMode = useSet(setSchedulePageViewMode$);
+  const features = useLastResolved(featureSwitch$);
+  const showRunHistoryTab =
+    features?.[FeatureSwitchKey.ScheduleRunHistory] ?? false;
+  const rawActiveListTab = useGet(scheduleListTab$);
+  const setActiveListTab = useSet(setScheduleListTab$);
+  // When the feature switch is off, collapse "history" back to the default list
+  // view so the page doesn't render an empty state for a hidden tab.
+  const activeListTab =
+    !showRunHistoryTab && rawActiveListTab === "history"
+      ? "list"
+      : rawActiveListTab;
   const createOpen = useGet(createDialogOpen$);
   const setCreateOpen = useSet(setCreateDialogOpen$);
   const togglingIds = useGet(pageTogglingIds$);
@@ -614,9 +657,11 @@ export function ZeroSchedulePage() {
               Add schedule
             </Button>
             <Tabs
-              value={scheduleViewMode}
+              value={activeListTab}
               onValueChange={(v) => {
-                return setScheduleViewMode(v as "list" | "calendar");
+                if (v === "list" || v === "calendar" || v === "history") {
+                  setActiveListTab(v);
+                }
               }}
               className="shrink-0"
             >
@@ -635,6 +680,15 @@ export function ZeroSchedulePage() {
                   <IconLayoutGrid size={14} stroke={1.5} />
                   Calendar
                 </TabsTrigger>
+                {showRunHistoryTab && (
+                  <TabsTrigger
+                    value="history"
+                    className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
+                  >
+                    <IconRotateClockwise2 size={14} stroke={1.5} />
+                    Run History
+                  </TabsTrigger>
+                )}
               </TabsList>
             </Tabs>
           </div>
@@ -643,45 +697,49 @@ export function ZeroSchedulePage() {
 
       <main className="flex-1 overflow-auto px-4 sm:px-6 pt-3 pb-8">
         <div className="mx-auto max-w-[900px]">
-          <div className="zero-card overflow-hidden pb-3">
-            {isInitialLoading ? (
-              scheduleViewMode === "calendar" ? (
-                <ScheduleCalendarSkeleton />
+          {activeListTab !== "history" ? (
+            <div className="zero-card overflow-hidden pb-3">
+              {isInitialLoading ? (
+                activeListTab === "calendar" ? (
+                  <ScheduleCalendarSkeleton />
+                ) : (
+                  <ScheduleListSkeleton />
+                )
+              ) : activeListTab === "list" ? (
+                <ScheduleListView
+                  entries={combinedSchedule}
+                  togglingIds={togglingIds}
+                  runningIds={runningIds}
+                  getAgentLabel={(e) => {
+                    return e.agentLabel;
+                  }}
+                  onEdit={openScheduleDetail}
+                  onToggle={(entry, enabled) => {
+                    handleToggle(entry, enabled);
+                  }}
+                  onDelete={handleDelete}
+                  onNew={() => {
+                    return setCreateOpen(true);
+                  }}
+                  onRunNow={(entry) => {
+                    handleRunNow(entry);
+                  }}
+                  onOpenDetails={openScheduleDetail}
+                />
               ) : (
-                <ScheduleListSkeleton />
-              )
-            ) : scheduleViewMode === "list" ? (
-              <ScheduleListView
-                entries={combinedSchedule}
-                togglingIds={togglingIds}
-                runningIds={runningIds}
-                getAgentLabel={(e) => {
-                  return e.agentLabel;
-                }}
-                onEdit={openScheduleDetail}
-                onToggle={(entry, enabled) => {
-                  handleToggle(entry, enabled);
-                }}
-                onDelete={handleDelete}
-                onNew={() => {
-                  return setCreateOpen(true);
-                }}
-                onRunNow={(entry) => {
-                  handleRunNow(entry);
-                }}
-                onOpenDetails={openScheduleDetail}
-              />
-            ) : (
-              <ScheduleCalendarView
-                entries={combinedSchedule}
-                agentOrder={agentOrder}
-                getAgentLabel={(e) => {
-                  return e.agentLabel;
-                }}
-                onEdit={openScheduleDetail}
-              />
-            )}
-          </div>
+                <ScheduleCalendarView
+                  entries={combinedSchedule}
+                  agentOrder={agentOrder}
+                  getAgentLabel={(e) => {
+                    return e.agentLabel;
+                  }}
+                  onEdit={openScheduleDetail}
+                />
+              )}
+            </div>
+          ) : (
+            <AllScheduleRunHistoryTab />
+          )}
         </div>
       </main>
 
@@ -738,6 +796,128 @@ export function ZeroSchedulePage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Run History tab
+// ---------------------------------------------------------------------------
+// Cross-schedule run history for the current user in the active org.
+// Mirrors the single-schedule Run History tab on /schedules/:id, but sources
+// from /api/zero/logs?triggerSource=schedule (no scheduleId constraint).
+
+function AllScheduleRunHistoryTab() {
+  const pageSignal = useGet(pageSignal$);
+  const dataLoadable = useLoadable(allScheduleRunData$);
+  const hasPrev = useGet(allScheduleRunHasPrev$);
+  const currentPage = useGet(allScheduleRunCurrentPage$);
+  const rowsPerPage = useGet(allScheduleRunLimit$);
+  const goToNext = useSet(goToNextAllScheduleRunPage$);
+  const goToPrev = useSet(goToPrevAllScheduleRunPage$);
+  const goForwardTwo = useSet(goForwardTwoAllScheduleRunPages$);
+  const goBackTwo = useSet(goBackTwoAllScheduleRunPages$);
+  const setRowsPerPage = useSet(setAllScheduleRunRowsPerPage$);
+
+  const statusFilter = useGet(allScheduleRunStatusFilter$);
+  const setStatusFilter = useSet(setAllScheduleRunStatusFilter$);
+  const availableStatusesLoadable = useLoadable(
+    allScheduleRunAvailableStatuses$,
+  );
+
+  const logs = dataLoadable.state === "hasData" ? dataLoadable.data.data : [];
+  const hasNext =
+    dataLoadable.state === "hasData" && dataLoadable.data.pagination.hasMore;
+  const totalPages =
+    dataLoadable.state === "hasData"
+      ? dataLoadable.data.pagination.totalPages
+      : undefined;
+  const isLoading = dataLoadable.state === "loading";
+
+  const statusOptions = [
+    { value: "all", label: "All status" },
+    ...(availableStatusesLoadable.state === "hasData"
+      ? availableStatusesLoadable.data.map((s) => {
+          return {
+            value: s,
+            label: STATUS_LABELS[s],
+          };
+        })
+      : []),
+  ];
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center gap-2">
+        <Select
+          value={statusFilter}
+          onValueChange={(v) => {
+            return setStatusFilter(v);
+          }}
+        >
+          <SelectTrigger
+            aria-label="Status filter"
+            className="zero-btn-morandi h-9 w-auto gap-1.5 rounded-lg px-3.5 text-sm font-medium"
+          >
+            <IconCircleDot size={14} stroke={1.5} className="shrink-0" />
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {statusOptions.map((opt) => {
+              return (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              );
+            })}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <Card className="zero-card overflow-hidden">
+        <CardContent className="pb-3 pt-0 px-0">
+          <LogTable
+            logs={logs}
+            isLoading={isLoading}
+            rowsPerPage={rowsPerPage}
+            showDescription
+            emptyTitle="No scheduled runs yet"
+            emptyDescription="When any of your schedules runs, its history will show up here."
+            filteredEmptyTitle="Nothing matches that filter"
+            filteredEmptyDescription="Try a different status filter."
+            hasActiveFilter={statusFilter !== "all"}
+            minWidth="640px"
+          />
+        </CardContent>
+      </Card>
+
+      {(totalPages === undefined || totalPages > 1) && (
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          rowsPerPage={rowsPerPage}
+          hasNext={hasNext}
+          hasPrev={hasPrev}
+          isLoading={isLoading}
+          labelClassName="font-normal text-muted-foreground"
+          buttonClassName="bg-transparent border-border/70"
+          onNextPage={() => {
+            return detach(goToNext(pageSignal), Reason.DomCallback);
+          }}
+          onPrevPage={() => {
+            return goToPrev();
+          }}
+          onForwardTwoPages={() => {
+            return detach(goForwardTwo(pageSignal), Reason.DomCallback);
+          }}
+          onBackTwoPages={() => {
+            return goBackTwo();
+          }}
+          onRowsPerPageChange={(limit) => {
+            return setRowsPerPage(limit);
+          }}
+        />
+      )}
     </div>
   );
 }

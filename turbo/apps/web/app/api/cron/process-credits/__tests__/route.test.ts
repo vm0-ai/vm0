@@ -8,7 +8,10 @@ import {
 import {
   insertTestCreditPricing,
   insertTestCreditUsage,
+  insertTestCreditUsageForRun,
   findTestCreditUsage,
+  findTestCreditUsagesByRunId,
+  createCompletedRun,
   getOrgCredits,
   insertOrgCacheEntry,
   insertOrgMembersEntry,
@@ -121,6 +124,71 @@ describe("GET /api/cron/process-credits", () => {
 
       const credits = await getOrgCredits(user.orgId);
       expect(credits).toBe(9400);
+    });
+
+    it("charges each proxy row for a run separately (subagent scenario, fix for #8825)", async () => {
+      // One run with N proxy rows (main + 2 subagent API calls).
+      // Each row must be charged independently and the org debited by the sum.
+      // insertTestCreditUsageForRun defaults to model "claude-3-5-sonnet-20241022"
+      // with provider "anthropic"; seed matching pricing.
+      await insertTestCreditPricing("claude-3-5-sonnet-20241022", {
+        inputTokenPrice: 1_000_000,
+        outputTokenPrice: 1_000_000,
+        modelProvider: "anthropic",
+      });
+
+      const runId = await createCompletedRun(
+        user.orgId,
+        user.userId,
+        new Date(),
+      );
+      const main = await insertTestCreditUsageForRun({
+        runId,
+        orgId: user.orgId,
+        userId: user.userId,
+        messageId: "msg_main",
+        inputTokens: 100,
+        outputTokens: 100,
+      });
+      const sub1 = await insertTestCreditUsageForRun({
+        runId,
+        orgId: user.orgId,
+        userId: user.userId,
+        messageId: "msg_sub1",
+        inputTokens: 200,
+        outputTokens: 200,
+      });
+      const sub2 = await insertTestCreditUsageForRun({
+        runId,
+        orgId: user.orgId,
+        userId: user.userId,
+        messageId: "msg_sub2",
+        inputTokens: 50,
+        outputTokens: 50,
+      });
+
+      const response = await GET(cronRequest("test-cron-secret"));
+      expect(response.status).toBe(200);
+
+      const mainRec = await findTestCreditUsage(main.id);
+      expect(mainRec!.status).toBe("processed");
+      expect(mainRec!.creditsCharged).toBe(200); // 100 + 100
+
+      const sub1Rec = await findTestCreditUsage(sub1.id);
+      expect(sub1Rec!.status).toBe("processed");
+      expect(sub1Rec!.creditsCharged).toBe(400);
+
+      const sub2Rec = await findTestCreditUsage(sub2.id);
+      expect(sub2Rec!.status).toBe("processed");
+      expect(sub2Rec!.creditsCharged).toBe(100);
+
+      // All three rows belong to the same run
+      const rows = await findTestCreditUsagesByRunId(runId);
+      expect(rows).toHaveLength(3);
+
+      // Org debited by the sum (200 + 400 + 100 = 700)
+      const credits = await getOrgCredits(user.orgId);
+      expect(credits).toBe(10_000 - 700);
     });
 
     it("skips already-processed records", async () => {

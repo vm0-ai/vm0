@@ -6,7 +6,7 @@ import {
 } from "ccstate-react";
 import { IconSearch } from "@tabler/icons-react";
 import { Input } from "@vm0/ui";
-import { FeatureSwitchKey } from "@vm0/core";
+import { FeatureSwitchKey, type LogStatus } from "@vm0/core";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import type { ActivitySignals } from "../../signals/mission-control-page/create-activity-signals.ts";
 import type {
@@ -25,7 +25,19 @@ import {
 import {
   groupEventsIntoMessages,
   groupedMessageMatchesSearch,
+  type GroupingEventData,
 } from "../zero-page/components/log-views/log-detail-utils.ts";
+import { Markdown } from "../components/markdown.tsx";
+import { AgentAvatarImg } from "../zero-page/zero-sidebar-shared.tsx";
+
+function isTerminalStatus(status: LogStatus): boolean {
+  return (
+    status === "completed" ||
+    status === "failed" ||
+    status === "timeout" ||
+    status === "cancelled"
+  );
+}
 
 function ActivityPanelSkeleton() {
   return (
@@ -78,6 +90,7 @@ function prepareRenderData(
     (features?.[FeatureSwitchKey.ShowSystemPrompt] ?? false) &&
     appendSystemPrompt.trim().length > 0;
   return {
+    allMessages,
     visibleMessages,
     messages,
     showModelDetail,
@@ -85,6 +98,51 @@ function prepareRenderData(
     appendSystemPrompt,
     showSystemPrompt,
   };
+}
+
+function ActivityUserBubble({ prompt }: { prompt: string }) {
+  if (!prompt.trim()) {
+    return null;
+  }
+  return (
+    <div className="flex justify-end">
+      <div className="zero-chat-bubble-user rounded-xl max-w-[85%] px-4 py-3 text-sm leading-relaxed break-words overflow-hidden">
+        <Markdown source={prompt} />
+      </div>
+    </div>
+  );
+}
+
+function ActivityAssistantAvatar({ agentId }: { agentId: string | null }) {
+  return (
+    <div className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 shrink-0 @[900px]:mt-0.5 overflow-hidden rounded-xl">
+      <AgentAvatarImg
+        name={agentId ?? ""}
+        alt=""
+        className="h-7 w-7 @[900px]:h-9 @[900px]:w-9 rounded-full object-cover object-top"
+      />
+    </div>
+  );
+}
+
+function ActivityAssistantBubble({
+  content,
+  agentId,
+}: {
+  content: string;
+  agentId: string | null;
+}) {
+  if (!content.trim()) {
+    return null;
+  }
+  return (
+    <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_1fr] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
+      <ActivityAssistantAvatar agentId={agentId} />
+      <div className="zero-chat-bubble-assistant px-0 @[900px]:pt-2.5 text-sm leading-relaxed min-w-0 break-words">
+        <Markdown source={content} />
+      </div>
+    </div>
+  );
 }
 
 function ActivityPanelSteps({
@@ -109,7 +167,7 @@ function ActivityPanelSteps({
   } = prepareRenderData(detail, eventsData, stepSearch, features);
 
   return (
-    <div className="flex flex-col gap-4 pb-8 min-w-0">
+    <div className="flex flex-col gap-4 min-w-0">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="flex items-center gap-3">
           <span className="text-base font-medium text-foreground whitespace-nowrap">
@@ -143,6 +201,56 @@ function ActivityPanelSteps({
         stepSearch={stepSearch}
         isLoading={false}
       />
+    </div>
+  );
+}
+
+function ActivityChatLayout({
+  detail,
+  eventsData,
+  features,
+  signals,
+}: {
+  detail: LogDetail;
+  eventsData: AgentEvent[];
+  features: Record<FeatureSwitchKey, boolean> | undefined;
+  signals: ActivitySignals;
+}) {
+  const isTerminal = isTerminalStatus(detail.status);
+  const { allMessages, prompt } = prepareRenderData(
+    detail,
+    eventsData,
+    "",
+    features,
+  );
+  const resultMessages = isTerminal
+    ? allMessages.filter((m) => {
+        return m.type === "result";
+      })
+    : [];
+
+  return (
+    <div className="flex flex-col gap-6 pb-8 min-w-0">
+      <ActivityUserBubble prompt={prompt} />
+      {isTerminal ? (
+        resultMessages.map((msg) => {
+          const data = msg.eventData as GroupingEventData;
+          return (
+            <ActivityAssistantBubble
+              key={msg.sequenceNumber}
+              content={data.result ?? ""}
+              agentId={detail.agentId}
+            />
+          );
+        })
+      ) : (
+        <ActivityPanelSteps
+          detail={detail}
+          eventsData={eventsData}
+          features={features}
+          signals={signals}
+        />
+      )}
     </div>
   );
 }
@@ -184,7 +292,7 @@ export function ActivityPanelContent({
   );
 
   return (
-    <div className="h-full flex flex-col min-h-0 overflow-auto">
+    <div className="h-full flex flex-col min-h-0 overflow-auto @container">
       <div className="mx-auto w-full max-w-[900px] px-4 pt-4 pb-8">
         <ActivityHeaderCard
           displayName={displayName}
@@ -198,7 +306,7 @@ export function ActivityPanelContent({
           showModelDetail={showModelDetail}
         />
         <div className="mt-6">
-          <ActivityPanelSteps
+          <ActivityChatLayout
             detail={detail}
             eventsData={eventsLoadable.data ?? []}
             features={features}

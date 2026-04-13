@@ -724,6 +724,17 @@ export {
   type UsageMembersResponse,
 } from "./zero-usage";
 export {
+  zeroUsageDailyContract,
+  zeroUsageRunsContract,
+  type ZeroUsageDailyContract,
+  type ZeroUsageRunsContract,
+  type UsageDailyResponse,
+  type DailyCredit,
+  type DailyCreditByMember,
+  type UsageRun,
+  type UsageRunsResponse,
+} from "./zero-usage-daily";
+export {
   zeroTeamContract,
   teamComposeItemSchema,
   type ZeroTeamContract,
@@ -797,6 +808,13 @@ export {
   type AppendContextEventBody,
 } from "./zero-voice-chat-context";
 export {
+  zeroVoiceChatPrepareTriggerContract,
+  zeroVoiceChatPrepareCompleteContract,
+  type ZeroVoiceChatPrepareCompleteContract,
+  type PrepareCompleteBody,
+  type PrepareCompleteResponse,
+} from "./zero-voice-chat-prepare";
+export {
   tasksContract,
   taskItemSchema,
   taskTypeSchema,
@@ -805,6 +823,8 @@ export {
   type TaskItem,
   type TaskType,
   type TaskAgent,
+  type ArchiveTaskBody,
+  type UnarchiveTaskBody,
 } from "./tasks";
 export {
   zeroPhoneStatusContract,

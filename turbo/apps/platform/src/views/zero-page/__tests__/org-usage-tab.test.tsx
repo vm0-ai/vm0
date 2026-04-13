@@ -362,37 +362,77 @@ describe("org usage tab - expiring credits warning", () => {
     expect(screen.queryByText(/Expiring on/)).not.toBeInTheDocument();
   });
 
-  it("hides expiring credits warning for free org", async () => {
-    const user = userEvent.setup();
+  it("hides expiring credits warning for free org (no progress bar shown)", async () => {
     setMockBillingStatus({
       tier: "free",
       credits: 10_000,
       hasSubscription: false,
     });
 
-    mockAPIs([
-      {
-        userId: "user-a",
-        email: "alice@example.com",
-        inputTokens: 100,
-        outputTokens: 50,
-        cacheReadInputTokens: 0,
-        cacheCreationInputTokens: 0,
-        creditsCharged: 1000,
-        creditCap: null,
-      },
-    ]);
+    server.use(
+      http.get("*/api/zero/usage/members", () => {
+        return HttpResponse.json({ period: null, members: [] });
+      }),
+    );
 
     await openUsageTab();
 
-    // Hover over the progress bar to open the popover
-    const progressbar = screen.getByRole("progressbar");
-    await user.hover(progressbar.closest("[class*='group']")!);
-
     await waitFor(() => {
-      expect(screen.getByText("Credit breakdown")).toBeInTheDocument();
+      expect(screen.getByText("10,000 credits")).toBeInTheDocument();
     });
 
+    expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
     expect(screen.queryByText(/Expiring on/)).not.toBeInTheDocument();
+  });
+});
+
+describe("org usage tab - free tier", () => {
+  it("should show starter credits label for free tier", async () => {
+    setMockBillingStatus({
+      tier: "free",
+      credits: 8000,
+      hasSubscription: false,
+    });
+
+    server.use(
+      http.get("*/api/zero/usage/members", () => {
+        return HttpResponse.json({ period: null, members: [] });
+      }),
+    );
+
+    await openUsageTab();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("credits-line")).toHaveTextContent(
+        /starter credits/,
+      );
+    });
+  });
+
+  it("should not show members section for free tier", async () => {
+    setMockBillingStatus({
+      tier: "free",
+      credits: 10_000,
+      hasSubscription: false,
+    });
+
+    server.use(
+      http.get("*/api/zero/usage/members", () => {
+        return HttpResponse.json({ period: null, members: [] });
+      }),
+    );
+
+    await openUsageTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("10,000 credits")).toBeInTheDocument();
+    });
+
+    expect(
+      screen.queryByRole("heading", { name: "Members" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/No active billing period/),
+    ).not.toBeInTheDocument();
   });
 });

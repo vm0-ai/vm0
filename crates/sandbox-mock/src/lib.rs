@@ -17,11 +17,25 @@
 
 use std::collections::VecDeque;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
 use async_trait::async_trait;
 use sandbox::*;
+
+/// Ignore mutex poisoning and take the lock anyway.
+///
+/// Callers here are test doubles; surfacing a poison error would appear as
+/// a spurious test failure rather than a real issue to propagate.
+trait LockIgnoringPoison<T> {
+    fn lock_ignoring_poison(&self) -> MutexGuard<'_, T>;
+}
+
+impl<T> LockIgnoringPoison<T> for Mutex<T> {
+    fn lock_ignoring_poison(&self) -> MutexGuard<'_, T> {
+        self.lock().unwrap_or_else(|e| e.into_inner())
+    }
+}
 
 // ---------------------------------------------------------------------------
 // MockSandboxOverrides
@@ -54,6 +68,16 @@ pub struct MockSandboxOverrides {
     /// to simulate timeout or crash. The stdout channel sender is also kept
     /// alive in `MockSandbox` so the drain task would block without the fix.
     wait_exit_error: Option<String>,
+    /// FIFO queue of park results consumed by every sandbox built with
+    /// these overrides. Empty queue → default Ok(()).
+    park_results: Mutex<VecDeque<Result<()>>>,
+    /// FIFO queue of unpark results consumed by every sandbox built with
+    /// these overrides. Empty queue → default Ok(()).
+    unpark_results: Mutex<VecDeque<Result<()>>>,
+    /// Total `park()` calls across all sandboxes built from this override set.
+    park_calls: Mutex<u32>,
+    /// Total `unpark()` calls across all sandboxes built from this override set.
+    unpark_calls: Mutex<u32>,
 }
 
 impl MockSandboxOverrides {
@@ -63,26 +87,26 @@ impl MockSandboxOverrides {
             wait_exit_code: None,
             wait_exit_gate: None,
             wait_exit_error: None,
+            park_results: Mutex::new(VecDeque::new()),
+            unpark_results: Mutex::new(VecDeque::new()),
+            park_calls: Mutex::new(0),
+            unpark_calls: Mutex::new(0),
         }
     }
 
     /// Create overrides that make `wait_exit` return a custom exit code.
     pub fn with_wait_exit_code(code: i32) -> Self {
         Self {
-            exec_matchers: Mutex::new(Vec::new()),
             wait_exit_code: Some(code),
-            wait_exit_gate: None,
-            wait_exit_error: None,
+            ..Self::new()
         }
     }
 
     /// Create overrides that block `wait_exit` until the gate is notified.
     pub fn with_wait_exit_gate(gate: Arc<tokio::sync::Notify>) -> Self {
         Self {
-            exec_matchers: Mutex::new(Vec::new()),
-            wait_exit_code: None,
             wait_exit_gate: Some(gate),
-            wait_exit_error: None,
+            ..Self::new()
         }
     }
 
@@ -91,19 +115,36 @@ impl MockSandboxOverrides {
     /// drain task blocks unless the caller aborts it.
     pub fn with_wait_exit_error(msg: impl Into<String>) -> Self {
         Self {
-            exec_matchers: Mutex::new(Vec::new()),
-            wait_exit_code: None,
-            wait_exit_gate: None,
             wait_exit_error: Some(msg.into()),
+            ..Self::new()
         }
     }
 
     /// Register a pattern matcher consumed on first match.
     pub fn add_exec_matcher(&self, matcher: ExecMatcher) {
-        self.exec_matchers
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .push(matcher);
+        self.exec_matchers.lock_ignoring_poison().push(matcher);
+    }
+
+    /// Queue a `park()` result applied to the next factory-created sandbox.
+    /// Consumed FIFO across all sandboxes; empty queue → default Ok(()).
+    pub fn push_park_result(&self, result: Result<()>) {
+        self.park_results.lock_ignoring_poison().push_back(result);
+    }
+
+    /// Queue an `unpark()` result applied to the next factory-created sandbox.
+    /// Consumed FIFO across all sandboxes; empty queue → default Ok(()).
+    pub fn push_unpark_result(&self, result: Result<()>) {
+        self.unpark_results.lock_ignoring_poison().push_back(result);
+    }
+
+    /// Total `park()` calls across all sandboxes built from this override set.
+    pub fn park_call_count(&self) -> u32 {
+        *self.park_calls.lock_ignoring_poison()
+    }
+
+    /// Total `unpark()` calls across all sandboxes built from this override set.
+    pub fn unpark_call_count(&self) -> u32 {
+        *self.unpark_calls.lock_ignoring_poison()
     }
 }
 
@@ -164,18 +205,14 @@ impl MockSandbox {
 
     /// Queue an exec result. Results are consumed in FIFO order.
     pub fn push_exec_result(&self, result: Result<ExecResult>) {
-        self.exec_results
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .push_back(result);
+        self.exec_results.lock_ignoring_poison().push_back(result);
     }
 
     /// Queue a write_file result. Results are consumed in FIFO order.
     /// When the queue is empty, write_file returns `Ok(())`.
     pub fn push_write_file_result(&self, result: Result<()>) {
         self.write_file_results
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
+            .lock_ignoring_poison()
             .push_back(result);
     }
 }
@@ -210,13 +247,42 @@ impl Sandbox for MockSandbox {
         Ok(())
     }
 
+    /// Mock park: bumps the override `park_calls` counter on every call (so
+    /// tests can assert exact invocation counts) and consumes one queued
+    /// result (FIFO). Empty queue → `Ok(())`. The trait's idempotency
+    /// requirement is satisfied in practice because the default-Ok behavior
+    /// is side-effect-free; tests that need to exercise non-idempotent
+    /// scenarios queue explicit results.
+    async fn park(&mut self) -> Result<()> {
+        let Some(o) = &self.overrides else {
+            return Ok(());
+        };
+        *o.park_calls.lock_ignoring_poison() += 1;
+        o.park_results
+            .lock_ignoring_poison()
+            .pop_front()
+            .unwrap_or(Ok(()))
+    }
+
+    /// Mock unpark: counter + queued-result semantics mirror [`park`]
+    /// exactly. See [`park`] for details.
+    ///
+    /// [`park`]: Self::park
+    async fn unpark(&mut self) -> Result<()> {
+        let Some(o) = &self.overrides else {
+            return Ok(());
+        };
+        *o.unpark_calls.lock_ignoring_poison() += 1;
+        o.unpark_results
+            .lock_ignoring_poison()
+            .pop_front()
+            .unwrap_or(Ok(()))
+    }
+
     async fn exec(&self, request: &ExecRequest<'_>) -> Result<ExecResult> {
         // Check pattern matchers before the FIFO queue.
         if let Some(overrides) = &self.overrides {
-            let mut matchers = overrides
-                .exec_matchers
-                .lock()
-                .unwrap_or_else(|e| e.into_inner());
+            let mut matchers = overrides.exec_matchers.lock_ignoring_poison();
             if let Some(idx) = matchers
                 .iter()
                 .position(|m| request.cmd.contains(&m.pattern))
@@ -230,16 +296,14 @@ impl Sandbox for MockSandbox {
             }
         }
         self.exec_results
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
+            .lock_ignoring_poison()
             .pop_front()
             .unwrap_or_else(|| Ok(default_exec_result()))
     }
 
     async fn write_file(&self, _path: &str, _content: &[u8]) -> Result<()> {
         self.write_file_results
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
+            .lock_ignoring_poison()
             .pop_front()
             .unwrap_or(Ok(()))
     }
@@ -257,7 +321,7 @@ impl Sandbox for MockSandbox {
             .as_ref()
             .is_some_and(|o| o.wait_exit_error.is_some())
         {
-            *self.stdout_tx.lock().unwrap_or_else(|e| e.into_inner()) = Some(tx);
+            *self.stdout_tx.lock_ignoring_poison() = Some(tx);
         }
         Ok(SpawnHandle {
             pid: 1,
@@ -326,10 +390,7 @@ impl MockSandboxFactory {
     /// `Err(...)` makes `create` return that error.
     /// Results are consumed in FIFO order.
     pub fn push_create_result(&self, result: Result<()>) {
-        self.create_results
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .push_back(result);
+        self.create_results.lock_ignoring_poison().push_back(result);
     }
 }
 
@@ -354,12 +415,7 @@ impl SandboxFactory for MockSandboxFactory {
     }
 
     async fn create(&self, config: SandboxConfig) -> Result<Box<dyn Sandbox>> {
-        if let Some(result) = self
-            .create_results
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .pop_front()
-        {
+        if let Some(result) = self.create_results.lock_ignoring_poison().pop_front() {
             result?;
         }
         let sandbox = match &self.overrides {
@@ -471,6 +527,7 @@ impl SnapshotProvider for MockSnapshotProvider {
 pub struct MockSandboxControl {
     base_dir: PathBuf,
     exec_results: Mutex<VecDeque<std::result::Result<RemoteExecResult, SandboxControlError>>>,
+    recorded_commands: Mutex<Vec<String>>,
 }
 
 impl MockSandboxControl {
@@ -478,6 +535,7 @@ impl MockSandboxControl {
         Self {
             base_dir: base_dir.into(),
             exec_results: Mutex::new(VecDeque::new()),
+            recorded_commands: Mutex::new(Vec::new()),
         }
     }
 
@@ -486,10 +544,12 @@ impl MockSandboxControl {
         &self,
         result: std::result::Result<RemoteExecResult, SandboxControlError>,
     ) {
-        self.exec_results
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .push_back(result);
+        self.exec_results.lock_ignoring_poison().push_back(result);
+    }
+
+    /// Return every command string passed to `exec_remote`, in call order.
+    pub fn recorded_commands(&self) -> Vec<String> {
+        self.recorded_commands.lock_ignoring_poison().clone()
     }
 }
 
@@ -498,13 +558,15 @@ impl SandboxControl for MockSandboxControl {
     async fn exec_remote(
         &self,
         _sandbox_id: &str,
-        _command: &str,
+        command: &str,
         _timeout: Duration,
         _sudo: bool,
     ) -> std::result::Result<RemoteExecResult, SandboxControlError> {
+        self.recorded_commands
+            .lock_ignoring_poison()
+            .push(command.to_string());
         self.exec_results
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
+            .lock_ignoring_poison()
             .pop_front()
             .unwrap_or_else(|| {
                 Ok(RemoteExecResult {
@@ -683,6 +745,24 @@ mod tests {
             },
         };
         factory.create(config2).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn sandbox_control_records_commands() {
+        let control = MockSandboxControl::new("/tmp/test");
+        control
+            .exec_remote("sandbox-1", "echo one", Duration::from_secs(5), false)
+            .await
+            .unwrap();
+        control
+            .exec_remote("sandbox-1", "echo two", Duration::from_secs(5), true)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            control.recorded_commands(),
+            vec!["echo one".to_string(), "echo two".to_string()],
+        );
     }
 
     #[tokio::test]

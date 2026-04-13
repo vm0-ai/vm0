@@ -1,6 +1,5 @@
 "use client";
 
-import Navbar from "../../components/Navbar";
 import Footer from "../../components/Footer";
 
 const SECTIONS = [
@@ -44,10 +43,6 @@ const SECTIONS = [
 export default function SecurityPage() {
   return (
     <div className="landing-page min-h-screen bg-[hsl(var(--gray-0))] text-[hsl(var(--foreground))]">
-      <div className="header-container">
-        <Navbar />
-      </div>
-
       <main className="px-6 pb-20 pt-[calc(var(--total-header-height)+48px)] md:pb-28 md:pt-[calc(var(--total-header-height)+72px)]">
         <div className="mx-auto max-w-2xl">
           <h1 className="text-[32px] font-semibold leading-[1.2] tracking-tight sm:text-[40px]">

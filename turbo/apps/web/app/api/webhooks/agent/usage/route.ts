@@ -7,7 +7,7 @@ import { webhookUsageContract } from "@vm0/core";
 import { initServices } from "../../../../../src/lib/init-services";
 import { agentRuns } from "../../../../../src/db/schema/agent-run";
 import { zeroRuns } from "../../../../../src/db/schema/zero-run";
-import { proxyCreditUsage } from "../../../../../src/db/schema/proxy-credit-usage";
+import { creditUsage } from "../../../../../src/db/schema/credit-usage";
 import { eq, and } from "drizzle-orm";
 import { getSandboxAuthForRun } from "../../../../../src/lib/auth/get-sandbox-auth";
 import { logger } from "../../../../../src/lib/shared/logger";
@@ -60,35 +60,36 @@ const router = tsr.router(webhookUsageContract, {
       };
     }
 
-    // Insert proxy-reported usage into proxy_credit_usage table.
-    // Errors are caught so the webhook still returns 200 — lost records
-    // are acceptable for this verification-only table.
+    // Insert proxy-reported usage into credit_usage (the billing source).
+    // Rows are charged later by processOrgCredits().  Insertion errors
+    // propagate so the handler returns 5xx and mitmproxy retries via
+    // `_report_usage_with_retry`; swallowing them would silently lose
+    // billing records.
+    //
+    // Model precedence: `run.selectedModel` (the user's run selection) wins
+    // because it is guaranteed to match a row in credit_pricing; `u.model`
+    // (proxy-observed) may carry a variant string that has no pricing entry
+    // and would silently charge zero credits.
     const u = body.usage;
-    try {
-      await globalThis.services.db
-        .insert(proxyCreditUsage)
-        .values({
-          runId: body.runId,
-          orgId: run.orgId,
-          userId,
-          model: run.selectedModel ?? u.model ?? "unknown",
-          modelProvider: run.modelProvider ?? "",
-          inputTokens: u.input_tokens ?? 0,
-          outputTokens: u.output_tokens ?? 0,
-          cacheReadInputTokens: u.cache_read_input_tokens ?? 0,
-          cacheCreationInputTokens: u.cache_creation_input_tokens ?? 0,
-          webSearchRequests: u.web_search_requests ?? 0,
-          messageId: u.message_id ?? null,
-        })
-        .onConflictDoNothing({
-          target: [proxyCreditUsage.runId, proxyCreditUsage.messageId],
-        });
-    } catch (err) {
-      log.error("Failed to insert proxy credit usage", {
+    await globalThis.services.db
+      .insert(creditUsage)
+      .values({
         runId: body.runId,
-        error: err instanceof Error ? err.message : String(err),
+        orgId: run.orgId,
+        userId,
+        model: run.selectedModel ?? u.model ?? "unknown",
+        modelProvider: run.modelProvider ?? "",
+        inputTokens: u.input_tokens ?? 0,
+        outputTokens: u.output_tokens ?? 0,
+        cacheReadInputTokens: u.cache_read_input_tokens ?? 0,
+        cacheCreationInputTokens: u.cache_creation_input_tokens ?? 0,
+        webSearchRequests: u.web_search_requests ?? 0,
+        messageId: u.message_id ?? null,
+        // status defaults to "pending" via schema default
+      })
+      .onConflictDoNothing({
+        target: [creditUsage.runId, creditUsage.messageId],
       });
-    }
 
     log.debug("Proxy usage recorded", {
       runId: body.runId,
