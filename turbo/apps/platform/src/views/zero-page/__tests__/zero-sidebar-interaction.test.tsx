@@ -12,7 +12,10 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { screen, waitFor, within } from "@testing-library/react";
-import { sidebarExpanded$, setSidebarExpanded$ } from "../../../signals/zero-page/zero-nav.ts";
+import {
+  sidebarExpanded$,
+  setSidebarExpanded$,
+} from "../../../signals/zero-page/zero-nav.ts";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
@@ -444,12 +447,12 @@ describe("zero sidebar - collapse button closes mobile overlay (SIDEBAR-M-023)",
     // Simulate mobile sidebar expanded state (as if "Open menu" was tapped)
     context.store.set(setSidebarExpanded$, true);
 
-    expect(context.store.get(sidebarExpanded$)).toBe(true);
+    expect(context.store.get(sidebarExpanded$)).toBeTruthy();
 
     const collapseBtn = screen.getByLabelText("Collapse sidebar");
     await user.click(collapseBtn);
 
-    expect(context.store.get(sidebarExpanded$)).toBe(false);
+    expect(context.store.get(sidebarExpanded$)).toBeFalsy();
   });
 });
 
