@@ -95,31 +95,29 @@
 //! revoked or transiently failing (which a `delete + retry-upload`
 //! sequence would not be).
 //!
-//! ## Tar entry security boundary
+//! ## Tar entry security
 //!
-//! `tar::Archive::unpack` (0.4) silently drops entries with `..` path
-//! components but **accepts symlink and hardlink entries**. An attacker
-//! with R2 write access could craft a tar where each expected filename
-//! (`rootfs.ext4`, `snapshot.bin`, etc.) is a symlink to a host path
-//! (e.g. `/etc/passwd`); `is_image_complete` would pass and Firecracker
-//! would consume the linked content.
+//! `tar::Archive::unpack` (0.4) has two relevant behaviors when consuming an
+//! attacker-influenced archive:
 //!
-//! Defense currently relies on the trust boundary at R2 IAM credentials.
-//! Hardening (rejecting non-regular-file tar entries) is tracked as a
-//! follow-up — out of scope for this PR.
+//! 1. **Path traversal (`..` components) is silently dropped**. Verified by
+//!    `unpack_rejects_path_traversal`. The malicious entry is skipped; the
+//!    staging dir ends up missing one or more expected files;
+//!    `is_image_complete()` (in `cmd::build`) rejects the partial result; the
+//!    caller falls back to local build. Safe.
 //!
-//! ## Security boundary: tar path traversal
+//! 2. **Symlink and hardlink entries are accepted**. An attacker with R2
+//!    write access could craft a tar where each expected filename is a
+//!    symlink to a host path (e.g. `rootfs.ext4 -> /etc/shadow`);
+//!    `is_image_complete` would pass and Firecracker would consume the
+//!    linked content. Currently relies on the R2 IAM trust boundary;
+//!    defense-in-depth (rejecting non-regular-file entries) is tracked as a
+//!    follow-up — out of scope for this PR.
 //!
-//! `tar` 0.4 silently drops entries with `..` path components from
-//! `Archive::unpack` (verified by `unpack_rejects_path_traversal`). The
-//! defense chain that turns this into a safe failure mode:
-//! 1. unpack drops the malicious entry → staging dir ends up incomplete
-//! 2. `is_image_complete()` (in `cmd::build`) rejects the partial result
-//! 3. caller falls back to a local build
-//!
-//! **If you add a new file to the image, you MUST also extend
-//! `is_image_complete()` — otherwise an attacker-controlled tar that omits
-//! the new file would still pass the completeness check.**
+//! **Maintenance note**: `is_image_complete()` is the structural check that
+//! catches case (1). If you add a new file to the image, you MUST extend
+//! `is_image_complete()` accordingly — otherwise an attacker-controlled tar
+//! that omits the new file would still pass the completeness check.
 
 use std::path::{Path, PathBuf};
 
@@ -387,7 +385,10 @@ impl R2ImageCache {
             let (to_delete, batch_freed) = select_expired_in_page(resp.contents(), cutoff)?;
 
             if !to_delete.is_empty() {
-                let count = to_delete.len() as u64;
+                // S3 bounds list/delete pages at 1000 each, so usize→u64 never
+                // saturates in practice; saturating-cast for style consistency
+                // with the `u64::try_from(obj.size()...)` pattern elsewhere.
+                let count = u64::try_from(to_delete.len()).unwrap_or(u64::MAX);
                 let delete = Delete::builder()
                     .set_objects(Some(to_delete))
                     .quiet(true)
@@ -405,7 +406,7 @@ impl R2ImageCache {
                 // successful deletes are NOT echoed, only failures are. Real
                 // failures here = AccessDenied / quota / etc. — never
                 // NoSuchKey, which the spec treats as success.
-                let err_count = del_resp.errors().len() as u64;
+                let err_count = u64::try_from(del_resp.errors().len()).unwrap_or(u64::MAX);
                 if err_count > 0 {
                     tracing::warn!(
                         "r2: delete_objects had {err_count} per-key failure(s); first: {:?}",
@@ -724,9 +725,11 @@ async fn finalize_staging(staging: &Path, final_dir: &Path) -> Result<(), R2Erro
     }
 
     if let Err(e) = tokio::fs::rename(staging, final_dir).await {
-        tracing::warn!(
-            "rename {} -> {}: {e}; retrying after remove",
-            staging.display(),
+        // Expected recovery path: a previous `runner build` for this hash
+        // crashed after creating final_dir but before is_image_complete
+        // would pass. Wipe the stale directory and retry the rename.
+        tracing::info!(
+            "{} already exists (likely stale from a partial run: {e}); replacing",
             final_dir.display()
         );
         let _ = tokio::fs::remove_dir_all(final_dir).await;
