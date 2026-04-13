@@ -873,6 +873,499 @@
           "Referenzieren Sie bestehende UI-Muster beim Namen – ‚wie die VS Code Befehlspalette‘ oder ‚wie Notions Slash-Menü‘ – um v0s Generierung zu verankern.",
           "Nutzen Sie den Iterieren-Prompt direkt nach dem ersten Ergebnis. Eine Runde Verfeinerung bringt Sie meistens 90 % ans Ziel."
         ]
+      },
+      "slack-decision-docs": {
+        "title": "Document every key decision made in Slack — automatically",
+        "description": "Ask Zero to monitor your Slack channels and capture decisions as they happen. Zero scans threads, identifies key decisions, and writes them to your knowledge base with context, links, and categorization — so nothing gets lost in the noise.",
+        "timeSaved": "~30 min saved",
+        "headings": {
+          "scenario": "Why key decisions disappear into Slack threads",
+          "prompt": "How to ask Zero to document Slack decisions",
+          "steps": "How Zero identifies and logs decisions from Slack threads",
+          "nextActions": "Search your decision log, run on a schedule, or notify stakeholders",
+          "integrations": "Required integrations: Slack and Notion",
+          "tips": "Best practices for automated decision documentation"
+        },
+        "scenario": "Your team makes decisions in Slack every day. Someone approves a direction in a product thread. An engineering call gets made in a dev channel. A pricing decision lands in a DM. By Friday, nobody remembers where the call was made or why. You have to scroll back through 18 channels, dig through thread replies, and piece together what was decided and by whom. Zero scans those channels continuously, identifies the moments where a decision was made, and writes each one to Notion — with the context, the thread link, and the category.",
+        "promptVariants": [
+          {
+            "label": "Scheduled",
+            "prompt": "@Zero every day at 6pm, scan #product, #engineering, and #general for any key decisions made today. For each one, write a Notion entry with: the decision, who made it, the channel and thread link, and a category tag."
+          },
+          {
+            "label": "On-demand",
+            "prompt": "@Zero scan #product from the past week and document any key decisions to our Notion decision log."
+          },
+          {
+            "label": "Full audit",
+            "prompt": "@Zero do a full audit of the last 30 days across all channels. Find every significant decision and add them to Notion, grouped by category."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Scarlett",
+            "text": "@Zero scan #product and #engineering from today and document any key decisions to our Notion decision log."
+          },
+          {
+            "name": "Zero",
+            "text": "Done. Scanned 18 channels, analyzed 6 threads, added 5 decisions to Notion:\n\n1. Pricing page redesign approved — #product\n2. Remove legacy auth middleware — #engineering\n3. Launch date moved to May 1 — #product\n4. Assign error triage to on-call rotation — #engineering\n5. Pause LinkedIn ads this quarter — #marketing"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero reads specified channels",
+            "description": "Zero scans the Slack channels you specify for the given time window, reading thread replies and context to understand the full conversation."
+          },
+          {
+            "title": "Decisions identified and categorized",
+            "description": "Zero identifies moments where a clear decision was made — not just discussion — and tags each with a category: product, engineering, marketing, ops, or inferred from context."
+          },
+          {
+            "title": "Entries written to Notion",
+            "description": "Each decision is logged as a Notion entry with the decision text, who made it, the date, the channel and direct thread link, and the category tag. Nothing is paraphrased — the original context is preserved."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Query the decision log",
+            "description": "Ask Zero to find past decisions by topic",
+            "examplePrompt": "@Zero search our Notion decision log for any decisions made about the pricing page in the last 60 days."
+          },
+          {
+            "title": "Notify stakeholders",
+            "description": "Send a digest of today's decisions to leadership",
+            "examplePrompt": "@Zero post a summary of today's logged decisions to #leadership-updates."
+          },
+          {
+            "title": "Make it automatic",
+            "description": "Run daily without prompting",
+            "examplePrompt": "@Zero every weekday at 6pm, scan all product and engineering channels and add new decisions to our Notion log."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Zero reads the specified channels and threads to identify decisions. No messages are deleted or modified."
+          },
+          {
+            "description": "Zero writes each decision as a new entry in your designated Notion database, with structured fields for category, channel, date, and source link."
+          }
+        ],
+        "tips": [
+          "Specify which channels matter. Start with 2–3 high-signal channels like #product and #engineering before expanding.",
+          "Create a Notion database with fields for Decision, Category, Channel, Date, and Thread Link. Zero will map to these automatically.",
+          "Run it daily rather than in one big retroactive sweep — decisions are harder to contextualize weeks later."
+        ]
+      },
+      "product-health-briefing": {
+        "title": "Get a full product health briefing delivered before standup",
+        "description": "Tell Zero what to watch. Every morning, it pulls system status, engineering progress, and industry news, then posts a summary to Slack and generates a ready-to-share standup deck — before anyone opens their laptop.",
+        "timeSaved": "~30 min saved",
+        "headings": {
+          "scenario": "Why product health takes 30 minutes to assemble every morning",
+          "prompt": "How to ask Zero to compile your daily product health briefing",
+          "steps": "How Zero pulls and compiles your morning briefing",
+          "nextActions": "Share the deck, drill into incidents, or add more data sources",
+          "integrations": "Required integrations: Slack, GitHub, Linear, and Google Calendar",
+          "tips": "Best practices for automated morning briefings"
+        },
+        "scenario": "Standup starts at 10. By 9:45, someone is scrambling to check Linear for sprint status, someone else is looking at GitHub for overnight PRs, and a third person is trying to remember if anything broke in production. Nobody has a clear picture. Zero runs automatically every morning — pulling product health, system status, engineering progress, and industry news — and posts a compiled briefing to Slack with a ready-to-share deck. Everyone walks into standup already informed.",
+        "promptVariants": [
+          {
+            "label": "Scheduled",
+            "prompt": "@Zero every weekday at 9am, compile a morning product health briefing. Pull: open PRs and recent merges from GitHub, in-progress Linear tasks, any calendar meetings today, and top AI/tech news from the past 24 hours. Post to #standup and generate a shareable deck."
+          },
+          {
+            "label": "On-demand",
+            "prompt": "@Zero give me a product health briefing for today. Pull GitHub, Linear, and my calendar."
+          },
+          {
+            "label": "Executive version",
+            "prompt": "@Zero compile a weekly product health summary for leadership. Include sprint progress, shipped features, open incidents, and team availability. Post to #leadership every Monday at 8am."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ethan",
+            "text": "@Zero give me today's product health briefing — GitHub, Linear, calendar, and any important news."
+          },
+          {
+            "name": "Zero",
+            "text": "Morning briefing for Apr 13\n\nEngineering\n• 3 PRs merged overnight (#6312, #6318, #6321)\n• 2 PRs awaiting review\n• 1 flaky test on main (known issue)\n\nProduct\n• Sprint 14: 7/12 tasks done, on track\n• 2 items blocked (waiting on design)\n\nToday\n• Standup 10am, Product sync 3pm\n\nIndustry\n• Anthropic released Claude 4.6"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero pulls from your connected tools",
+            "description": "Zero reads your GitHub repos for overnight activity (merged PRs, open reviews, CI failures), your Linear project for sprint status, and your Google Calendar for today's schedule."
+          },
+          {
+            "title": "News and context added",
+            "description": "Zero optionally pulls relevant industry headlines and any Slack alerts from overnight channels to round out the briefing with external context."
+          },
+          {
+            "title": "Briefing posted and deck generated",
+            "description": "Zero posts a formatted summary to your designated Slack channel and generates a shareable presentation deck. Both are ready before standup starts."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Drill into an incident",
+            "description": "Ask Zero to investigate something flagged in the briefing",
+            "examplePrompt": "@Zero the flaky test on main — what's causing it? Check CI logs and tell me if it's blocking anything."
+          },
+          {
+            "title": "Share the deck",
+            "description": "Post the generated deck to a stakeholder channel",
+            "examplePrompt": "@Zero share today's briefing deck to #leadership with a note that the sprint is on track."
+          },
+          {
+            "title": "Add more data sources",
+            "description": "Include Sentry errors or customer feedback",
+            "examplePrompt": "@Zero add unresolved Sentry errors to the morning briefing. Include count and top issue by frequency."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Zero posts the compiled briefing and replies in the thread with the deck link."
+          },
+          {
+            "description": "Zero reads recent commits, merged PRs, open reviews, and CI status. Read-only access to repos."
+          },
+          {
+            "description": "Zero reads your active sprint, in-progress and blocked tasks. Read-only access to your Linear project."
+          },
+          {
+            "description": "Zero reads your calendar to include today's key meetings in the briefing."
+          }
+        ],
+        "tips": [
+          "Specify your standup time and set Zero to run 30–45 minutes before it, so everyone has time to read the briefing first.",
+          "Start with 2–3 sources (GitHub + Linear + Calendar) before adding more — a focused briefing is more useful than an exhaustive one.",
+          "Tell Zero which channels to monitor for overnight alerts. #incidents and #alerts are good starting points."
+        ]
+      },
+      "agent-upgrades-agent": {
+        "title": "Let one agent upgrade another with a single message",
+        "description": "Tell Zero to research a technology and update a teammate agent's config. It reads the docs, rewrites the configuration, and deploys the new version — no manual steps required.",
+        "timeSaved": "~45 min saved",
+        "headings": {
+          "scenario": "Why updating agent configurations is a manual bottleneck",
+          "prompt": "How to ask Zero to research and update another agent",
+          "steps": "How Zero researches, rewrites, and deploys an agent update",
+          "nextActions": "Roll back or verify the update",
+          "integrations": "Required integrations: Slack",
+          "tips": "Best practices for agent-to-agent upgrades"
+        },
+        "scenario": "Your monitoring agent needs to support a new Deno sandbox API. Normally this means: find the right docs, read through the changelog, understand what changed in the configuration format, edit the agent's config, test it, and deploy. That's 45 minutes minimum. Instead, you send one message: \"@Zero research Deno and Docker sandbox docs, then update our monitoring agent config and deploy.\" Zero finds the docs, understands what changed, updates the config, and deploys a new version of the agent — without you touching a file.",
+        "promptVariants": [
+          {
+            "label": "Research and update",
+            "prompt": "@Zero research the latest Deno and Docker sandbox docs, then update our monitoring agent config to use the new sandbox API. Deploy when ready."
+          },
+          {
+            "label": "Add a new capability",
+            "prompt": "@Zero read the Sentry API docs and update our triage agent to support filtering by environment. Deploy the new version."
+          },
+          {
+            "label": "Batch update",
+            "prompt": "@Zero review the changelog for Linear's API v3 and update any of our agents that use Linear connectors to use the new endpoints."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ethan",
+            "text": "@Zero research Deno and Docker sandbox docs, then update our monitoring agent config and deploy."
+          },
+          {
+            "name": "Zero",
+            "text": "Done.\n\n• Read Deno 2.1 docs + Docker sandbox changelog\n• Updated monitoring agent config: replaced deprecated runInSandbox() with sandbox.exec()\n• Deployed new version (v1.4.0 → v1.5.0)\n\nNo breaking changes. Agent is live."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero researches the relevant docs",
+            "description": "Zero reads the documentation, changelogs, or API references you specify — understanding what changed, what's deprecated, and what the new configuration format requires."
+          },
+          {
+            "title": "Agent config updated",
+            "description": "Zero opens the target agent's configuration, makes the necessary changes based on what it learned from the docs, and validates the updated config before deploying."
+          },
+          {
+            "title": "New version deployed",
+            "description": "Zero deploys the updated agent to the vm0 platform and confirms the new version is live. It reports the version change and a summary of what was updated in the same Slack thread."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Verify the update",
+            "description": "Ask Zero to run a test prompt on the updated agent",
+            "examplePrompt": "@Zero run a test prompt on the monitoring agent — make sure the new sandbox config is working correctly."
+          },
+          {
+            "title": "Roll back if needed",
+            "description": "Revert to the previous version",
+            "examplePrompt": "@Zero roll back the monitoring agent to the previous version."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Zero receives your instruction and reports back in the same thread once the update is complete."
+          }
+        ],
+        "tips": [
+          "Point Zero at specific docs or changelog URLs rather than just naming the technology — it gets to the right section faster.",
+          "Ask Zero to summarize the changes it made before deploying, especially for production agents.",
+          "Works best for config-level changes. For major logic rewrites, review the diff before deploying."
+        ]
+      },
+      "tech-debt-scan": {
+        "title": "Scan your entire codebase for tech debt and file a GitHub issue",
+        "description": "Give Zero a repo. It clones it, runs a full tech debt scan, triages every finding by severity, and files a structured GitHub issue with the complete breakdown — all from one message.",
+        "timeSaved": "Hours saved",
+        "headings": {
+          "scenario": "Why tech debt never gets properly triaged",
+          "prompt": "How to ask Zero to scan a codebase for tech debt",
+          "steps": "How Zero clones, scans, triages, and files the report",
+          "nextActions": "Assign issues, create a sprint, or schedule regular scans",
+          "integrations": "Required integrations: GitHub",
+          "tips": "Best practices for automated tech debt scanning"
+        },
+        "scenario": "Tech debt is everywhere, but nobody has time to find it systematically. Engineers know the rough areas but can never justify the time to do a full audit. You end up with vague \"we should clean this up\" comments in Slack and no actual action items. You give Zero the repo. It clones it, runs a full scan across every file, triages 100+ findings by severity — critical, high, medium, low — and files a structured GitHub issue with the full breakdown. From scan to filed issue, all from one message.",
+        "promptVariants": [
+          {
+            "label": "Full scan",
+            "prompt": "@Zero clone vm0-ai/vm0, run a full tech debt scan, triage findings by severity, and file a GitHub issue with the complete breakdown."
+          },
+          {
+            "label": "Targeted",
+            "prompt": "@Zero scan the turbo/apps/platform directory for tech debt. Focus on files over 500 lines, circular dependencies, and duplicate logic. File a GitHub issue."
+          },
+          {
+            "label": "Scheduled",
+            "prompt": "@Zero every first Monday of the month, run a tech debt scan on vm0-ai/vm0 and update our ongoing GitHub issue with the latest findings."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ethan",
+            "text": "@Zero clone vm0-ai/vm0, run a tech-debt-scan, and file a GitHub issue with the full breakdown."
+          },
+          {
+            "name": "Zero",
+            "text": "Scan complete. Filed GitHub issue #7012.\n\n150,000+ lines scanned. 145 findings:\n• Critical: 3 (hardcoded secrets, SQL injection risk)\n• High: 12 (circular deps, 4k+ line files)\n• Medium: 67 (dead code, inconsistent error handling)\n• Low: 63 (naming, formatting)\n\nLargest file: auth/legacy.ts at 4,115 lines."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero clones the repo",
+            "description": "Zero clones the specified repository and scans the full codebase — across all directories, all languages, and all file sizes. No file is skipped."
+          },
+          {
+            "title": "Findings triaged by severity",
+            "description": "Zero categorizes every finding: critical (security risks, data integrity issues), high (architectural problems, oversized files), medium (dead code, duplicated logic), and low (naming, formatting). Each finding includes the file path and line number."
+          },
+          {
+            "title": "GitHub issue filed with full report",
+            "description": "Zero creates a structured GitHub issue with the total finding count, severity breakdown, the top issues with file paths, and recommended priority order. The issue is ready to assign and sprint-plan against."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Assign the critical findings",
+            "description": "Turn the top issues into assigned tasks",
+            "examplePrompt": "@Zero from the tech debt issue, create separate GitHub issues for each critical finding and assign them to the relevant engineers."
+          },
+          {
+            "title": "Plan a debt sprint",
+            "description": "Pull the high-severity items into a sprint",
+            "examplePrompt": "@Zero take the high-severity findings from the tech debt issue and add them to our next sprint in Linear."
+          },
+          {
+            "title": "Schedule recurring scans",
+            "description": "Track debt over time automatically",
+            "examplePrompt": "@Zero run this scan every first Monday of the month and update the same GitHub issue with the delta from the previous scan."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Zero clones the repo for local analysis, then creates the issue with findings. Read/write access to issues required."
+          }
+        ],
+        "tips": [
+          "Run the first scan on your full repo to establish a baseline, then target high-risk directories for follow-up scans.",
+          "Ask Zero to include file paths and line numbers for every critical and high finding — it makes assigning and fixing them much faster.",
+          "Combine with the daily error triage use case: track debt alongside live production issues for a complete engineering health picture."
+        ]
+      },
+      "competitor-audit": {
+        "title": "Run a weekly competitor audit across X and the web",
+        "description": "Give Zero a list of competitors. It monitors their X accounts, scrapes their websites for updates, saves all findings to Notion, and posts a digest to Slack every week — on schedule, without prompting.",
+        "timeSaved": "~2 hours saved",
+        "headings": {
+          "scenario": "Why keeping up with competitors falls through the cracks",
+          "prompt": "How to ask Zero to run a competitor audit",
+          "steps": "How Zero monitors X, scrapes websites, and compiles the digest",
+          "nextActions": "Dig into a competitor, adjust strategy, or expand your source list",
+          "integrations": "Required integrations: X, Notion, and Slack",
+          "tips": "Best practices for automated competitor monitoring"
+        },
+        "scenario": "You have 9 competitors worth watching. Every week, someone on the team is supposed to check their X accounts, look at product updates, and report back. In practice, it happens inconsistently, covers maybe 2 or 3 accounts, and the findings live in someone's notes rather than a shared doc. You give Zero a list of competitors and a weekly schedule. Every Monday, it reads their X posts from the past week, scrapes their product pages and changelogs, saves everything to a Notion database, and posts a digest to Slack — all before your team meeting.",
+        "promptVariants": [
+          {
+            "label": "Weekly scheduled",
+            "prompt": "@Zero every Monday at 8am, fetch last week's posts from these competitor X accounts: @e2b_dev, @daytonaio, @cursor_ai, @replit. Also check their websites for product updates. Save findings to our Notion Competitor Intelligence database and post a digest to #marketing."
+          },
+          {
+            "label": "On-demand",
+            "prompt": "@Zero do a competitor audit for this week. Check the X accounts and websites for @e2b_dev and @cursor_ai. What are they shipping?"
+          },
+          {
+            "label": "Focused",
+            "prompt": "@Zero track any mentions of 'sandbox' or 'isolated execution' across competitor X accounts this week. Flag anything that looks like a direct response to our positioning."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Scarlett",
+            "text": "@Zero run the weekly competitor audit. Check X posts and websites for our 9 tracked accounts. Save to Notion and post the digest here."
+          },
+          {
+            "name": "Zero",
+            "text": "Competitor digest — week of Apr 7\n\n@e2b_dev — launched new firewall docs, 3 posts about Python SDK\n@daytonaio — announced workspace templates, 2 posts about CLI improvements\n@cursor_ai — released v0.44, added terminal agent\n@replit — pushed a blog post on multiplayer agents\n\nFull findings saved to Notion → Competitor Intelligence."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero monitors X accounts",
+            "description": "Zero reads the last week of posts from each competitor's X account, identifying product announcements, positioning language, and notable engagement patterns."
+          },
+          {
+            "title": "Websites scraped for updates",
+            "description": "Zero scrapes the specified competitors' product pages, changelogs, and blogs for any updates published in the past week."
+          },
+          {
+            "title": "Findings saved and digest posted",
+            "description": "Zero writes structured entries to your Notion Competitor Intelligence database — one entry per competitor per week — and posts a formatted digest summary to Slack."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Dig into a specific competitor",
+            "description": "Get a deeper read on one account",
+            "examplePrompt": "@Zero give me a full breakdown of what @cursor_ai has shipped in the last 30 days. Include X posts, blog posts, and any changelog entries."
+          },
+          {
+            "title": "Flag positioning changes",
+            "description": "Watch for messaging shifts",
+            "examplePrompt": "@Zero compare last week's competitor digest with the previous two weeks. Flag any accounts that changed their positioning language."
+          },
+          {
+            "title": "Expand the source list",
+            "description": "Add more accounts or channels to monitor",
+            "examplePrompt": "@Zero add @n8n_io and @windsurf_ai to the weekly competitor audit."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Zero reads public posts from monitored competitor accounts to track announcements and positioning."
+          },
+          {
+            "description": "Zero writes structured competitor findings to your designated Notion database for searchable, long-term tracking."
+          },
+          {
+            "description": "Zero posts the weekly digest to your specified channel and can send alerts for high-signal competitor moves."
+          }
+        ],
+        "tips": [
+          "Start with 5–9 accounts. Too many and the digest becomes noise rather than signal.",
+          "Tell Zero which Notion database to write to and what fields to fill — a structured schema (competitor, date, type, summary, link) makes it easy to search later.",
+          "Ask Zero to flag posts that mention your product name or directly respond to your positioning — those need faster reactions than routine updates."
+        ]
+      },
+      "daily-error-triage": {
+        "title": "Triage production errors every morning without touching Sentry",
+        "description": "Schedule Zero to run daily. It pulls unresolved errors from Sentry and Axiom, deduplicates across sources, opens a GitHub issue with the full stack trace, and assigns it to the right engineer — automatically.",
+        "timeSaved": "~20 min saved",
+        "headings": {
+          "scenario": "Why production error triage gets skipped on busy mornings",
+          "prompt": "How to set up Zero for daily error triage",
+          "steps": "How Zero pulls, deduplicates, and files errors from Sentry and Axiom",
+          "nextActions": "Investigate an error, adjust thresholds, or add Slack alerts",
+          "integrations": "Required integrations: Sentry, Axiom, and GitHub",
+          "tips": "Best practices for automated production error triage"
+        },
+        "scenario": "Every morning, someone should open Sentry, check Axiom, compare the two, figure out which errors are new versus recurring, and file issues for the ones that need fixing. In practice, this gets skipped on busy days, done inconsistently, or left to whoever happens to remember. Errors pile up. Nothing gets assigned. Zero runs automatically every morning: it pulls unresolved errors from the last 24 hours across Sentry and Axiom, deduplicates across both sources, opens a GitHub issue with the full stack trace and bug label, and assigns it to the right engineer. You walk into the office and the triage is already done.",
+        "promptVariants": [
+          {
+            "label": "Scheduled",
+            "prompt": "@Zero every morning at 10am, pull unresolved errors from the last 24h from Sentry and Axiom. Deduplicate across sources. For each new error, open a GitHub issue with the full stack trace, label as bug, and assign to the on-call engineer."
+          },
+          {
+            "label": "On-demand",
+            "prompt": "@Zero check Sentry and Axiom for unresolved errors from the last 24 hours. File GitHub issues for anything new."
+          },
+          {
+            "label": "With Slack alert",
+            "prompt": "@Zero every morning at 9:30am, run the error triage. If there are any critical or high-severity new errors, post a Slack alert to #incidents before filing the GitHub issues."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ethan",
+            "text": "@Zero pull unresolved errors from Sentry and Axiom for the last 24h. Deduplicate and file GitHub issues for anything new."
+          },
+          {
+            "name": "Zero",
+            "text": "Triage complete. 3 new GitHub issues filed:\n\n#7201: [bug] Stripe webhook signature mismatch — assigned to Lancy\n#7202: [bug] Null ref in agent run scheduler — assigned to Ethan\n#7203: [bug] Axiom log flush timeout on large payloads — assigned to Yuma\n\n12 known recurring errors skipped (already tracked)."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero pulls errors from both sources",
+            "description": "Zero connects to Sentry and Axiom, fetching all unresolved errors from the specified time window. It reads full stack traces, error metadata, and occurrence counts from both sources."
+          },
+          {
+            "title": "Deduplication across sources",
+            "description": "Zero matches errors across Sentry and Axiom by error type, stack signature, and source location. Errors already tracked in GitHub are filtered out — only genuinely new issues get filed."
+          },
+          {
+            "title": "GitHub issues filed and assigned",
+            "description": "For each new error, Zero creates a GitHub issue with the full stack trace, bug label, severity level, and assigns it to the appropriate engineer based on the affected code area or your on-call rotation."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Investigate a specific error",
+            "description": "Ask Zero to dig deeper into one of the filed issues",
+            "examplePrompt": "@Zero for the Stripe webhook issue, find the last 3 occurrences in Axiom and tell me which specific payload is triggering the signature mismatch."
+          },
+          {
+            "title": "Adjust severity thresholds",
+            "description": "Filter out low-signal errors",
+            "examplePrompt": "@Zero update the triage to only file issues for errors with 5+ occurrences in the last 24h. Ignore anything tagged as known-flaky."
+          },
+          {
+            "title": "Add a Slack alert for critical errors",
+            "description": "Get notified immediately for P0s",
+            "examplePrompt": "@Zero if any critical errors are found during morning triage, post an alert to #incidents immediately with the stack trace."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Zero reads unresolved issues and events, including full stack traces and occurrence counts."
+          },
+          {
+            "description": "Zero queries your Axiom logs to cross-reference errors and pull additional context."
+          },
+          {
+            "description": "Zero creates issues with full stack traces, labels, and engineer assignments. Read/write access to issues required."
+          }
+        ],
+        "tips": [
+          "Set up an assignment rule with Zero: tell it which engineers own which parts of the codebase so issues get assigned correctly from day one.",
+          "Add a minimum occurrence threshold (e.g. 3+ occurrences) to avoid filing issues for one-off transient errors.",
+          "Combine with the Sentry triage use case for a two-layer error review: daily automated filing plus on-demand deep analysis."
+        ]
       }
     }
   },
