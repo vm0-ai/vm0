@@ -471,6 +471,7 @@ impl SnapshotProvider for MockSnapshotProvider {
 pub struct MockSandboxControl {
     base_dir: PathBuf,
     exec_results: Mutex<VecDeque<std::result::Result<RemoteExecResult, SandboxControlError>>>,
+    recorded_commands: Mutex<Vec<String>>,
 }
 
 impl MockSandboxControl {
@@ -478,6 +479,7 @@ impl MockSandboxControl {
         Self {
             base_dir: base_dir.into(),
             exec_results: Mutex::new(VecDeque::new()),
+            recorded_commands: Mutex::new(Vec::new()),
         }
     }
 
@@ -491,6 +493,14 @@ impl MockSandboxControl {
             .unwrap_or_else(|e| e.into_inner())
             .push_back(result);
     }
+
+    /// Return every command string passed to `exec_remote`, in call order.
+    pub fn recorded_commands(&self) -> Vec<String> {
+        self.recorded_commands
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+    }
 }
 
 #[async_trait]
@@ -498,10 +508,14 @@ impl SandboxControl for MockSandboxControl {
     async fn exec_remote(
         &self,
         _sandbox_id: &str,
-        _command: &str,
+        command: &str,
         _timeout: Duration,
         _sudo: bool,
     ) -> std::result::Result<RemoteExecResult, SandboxControlError> {
+        self.recorded_commands
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(command.to_string());
         self.exec_results
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -683,6 +697,24 @@ mod tests {
             },
         };
         factory.create(config2).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn sandbox_control_records_commands() {
+        let control = MockSandboxControl::new("/tmp/test");
+        control
+            .exec_remote("sandbox-1", "echo one", Duration::from_secs(5), false)
+            .await
+            .unwrap();
+        control
+            .exec_remote("sandbox-1", "echo two", Duration::from_secs(5), true)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            control.recorded_commands(),
+            vec!["echo one".to_string(), "echo two".to_string()],
+        );
     }
 
     #[tokio::test]
