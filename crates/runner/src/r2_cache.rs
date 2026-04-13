@@ -53,6 +53,26 @@
 //! R2's default 7-day lifecycle rule only cleans abandoned multipart
 //! segments, **not** completed objects — which is why we need our own scan.
 //!
+//! **Clock skew caveat**: `gc_older_than` uses local `SystemTime::now()` to
+//! compute the cutoff. If the host clock drifts ahead of R2 server time by
+//! more than the TTL, GC over-deletes (worst case: wipes everything older
+//! than `now_local - keep_days`, even objects that were just uploaded by
+//! peers with correct clocks). Mitigation: keep NTP healthy. A clock behind
+//! R2 is the safe direction (under-deletes, no data loss).
+//!
+//! ## Corrupt-object eviction
+//!
+//! A structurally-valid archive whose extracted content fails
+//! `is_image_complete` (e.g. uploaded by an old/buggy producer, or
+//! attacker-controlled IAM key writing a bogus tar to a predicted hash
+//! key) would otherwise dead-lock the fleet's cache for that hash: every
+//! host downloads → unpacks → fails completeness → rebuilds locally →
+//! `upload`'s `exists()` dedup-skips → the bad object stays, forever.
+//!
+//! `cmd::build::run_build` defends by calling `delete(&hash)` whenever it
+//! observes "download Ok(true) but is_image_complete=false", clearing the
+//! way for a clean re-upload after the local rebuild.
+//!
 //! ## Security boundary: tar path traversal
 //!
 //! `tar` 0.4 silently drops entries with `..` path components from
@@ -179,6 +199,22 @@ impl R2ImageCache {
         let client = aws_sdk_s3::Client::from_conf(config);
 
         Ok(Some(Self { client, bucket }))
+    }
+
+    /// Delete `runner-images/{hash}.tar.zst`. Used to evict objects detected
+    /// as corrupt (download succeeded but `is_image_complete` failed) so the
+    /// next `upload` doesn't dedup-skip and leave the corruption in place.
+    /// `DeleteObject` on a missing key is a no-op success — safe under
+    /// concurrent fleet eviction of the same key.
+    pub async fn delete(&self, hash: &str) -> Result<(), R2Error> {
+        let key = key_for_hash(hash);
+        self.client
+            .delete_object()
+            .bucket(&self.bucket)
+            .key(&key)
+            .send()
+            .await?;
+        Ok(())
     }
 
     /// Returns `Ok(true)` if `runner-images/{hash}.tar.zst` exists.

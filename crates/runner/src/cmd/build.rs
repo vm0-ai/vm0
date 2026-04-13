@@ -213,6 +213,13 @@ pub async fn run_build(args: BuildArgs, provider: &dyn SnapshotProvider) -> Runn
     // Try R2 download before falling back to local build. try_download manages
     // its own staging directory and atomic rename, so output_dir stays absent
     // on failure (no false-positive cache hits from partial unpack).
+    //
+    // `r2_object_is_corrupt`: set when we observed a structurally-valid
+    // download (Ok(true)) whose extracted content failed `is_image_complete`.
+    // The next `upload` call would dedup-skip on `exists() = true` and leave
+    // the bad object in place, locking the entire fleet out of this hash —
+    // so we delete it before falling through to local rebuild.
+    let mut r2_object_is_corrupt = false;
     if let Some(cache) = &r2 {
         match cache.try_download(&hash, output_dir).await {
             Ok(true) => {
@@ -221,10 +228,31 @@ pub async fn run_build(args: BuildArgs, provider: &dyn SnapshotProvider) -> Runn
                     touch_mtime(output_dir);
                     return Ok(());
                 }
-                tracing::warn!("R2 download succeeded but image incomplete — will rebuild locally");
+                tracing::warn!(
+                    "R2 download for {hash} succeeded but image incomplete — \
+                     will evict bad object and rebuild locally"
+                );
+                r2_object_is_corrupt = true;
             }
             Ok(false) => tracing::info!("R2 cache miss for {hash} — building locally"),
+            // Err is ambiguous (transient network vs. content corruption);
+            // we don't auto-evict here — false eviction on a network blip
+            // would force the whole fleet into a slow rebuild cycle.
             Err(e) => tracing::warn!("R2 download failed: {e} — falling back to local build"),
+        }
+    }
+
+    // Evict the corrupt object BEFORE local build so re-upload (later) won't
+    // dedup-skip. Safe under concurrent fleet eviction (DeleteObject is
+    // idempotent). Failure here is non-fatal: worst case the upload step
+    // dedup-skips and we retry on the next deploy.
+    if r2_object_is_corrupt && let Some(cache) = &r2 {
+        match cache.delete(&hash).await {
+            Ok(()) => tracing::info!("evicted corrupt R2 object: {hash}"),
+            Err(e) => tracing::warn!(
+                "failed to evict corrupt R2 object {hash}: {e} — \
+                 next upload may dedup-skip and leave corruption in place"
+            ),
         }
     }
 
