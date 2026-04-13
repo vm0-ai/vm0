@@ -10,7 +10,9 @@ nbd-cow = { workspace = true }
 sandbox-fc = { workspace = true }
 
 async-trait = { workspace = true }
+aws-sdk-s3 = { workspace = true, features = ["rustls", "rt-tokio", "behavior-version-latest"] }
 base64 = { workspace = true }
+bytes = { workspace = true }
 chrono = { workspace = true, features = ["serde", "now"] }
 clap = { workspace = true, features = ["derive", "env"] }
 nix = { workspace = true, features = ["user", "signal", "fs", "process"] }
@@ -19,7 +21,7 @@ serde_json = { workspace = true }
 serde_yaml_ng = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "sync", "signal", "time", "fs", "net", "io-util"] }
-tokio-util = { workspace = true }
+tokio-util = { workspace = true, features = ["io", "io-util"] }
 tracing = { workspace = true }
 tracing-appender = { workspace = true }
 tracing-subscriber = { workspace = true }
@@ -32,6 +34,7 @@ tempfile = { workspace = true }
 uuid = { workspace = true, features = ["v4", "serde"] }
 sentry = { workspace = true, features = ["panic"] }
 which = { workspace = true }
+zstd = { workspace = true, features = ["zstdmt"] }
 
 # These dev-dependencies exist solely for release-please version tracking:
 # cargo-workspace plugin includes dev-dependencies in its dependency graph,

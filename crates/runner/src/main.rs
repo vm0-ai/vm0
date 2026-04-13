@@ -18,6 +18,7 @@ mod process;
 mod profile;
 mod provider;
 mod proxy;
+mod r2_cache;
 mod resource_budget;
 mod retry;
 mod status;

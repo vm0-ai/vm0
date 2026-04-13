@@ -10,11 +10,14 @@ use crate::error::{RunnerError, RunnerResult};
 use crate::lock;
 use crate::paths::{HomePaths, ImagePaths, touch_mtime};
 use crate::profile;
+use crate::r2_cache::R2ImageCache;
 
 const BUILD_SCRIPT: &str = include_str!("../../scripts/build-rootfs.sh");
 const VERIFY_SCRIPT: &str = include_str!("../../scripts/verify-rootfs.sh");
 
 /// Bump this to invalidate all cached images without changing any input files.
+/// Affects both the local cache directory and the R2 object key (since the
+/// version seeds the hash that names both).
 const IMAGE_CACHE_VERSION: u32 = 1;
 
 #[cfg(bundled_guests)]
@@ -184,6 +187,15 @@ pub async fn run_build(args: BuildArgs, provider: &dyn SnapshotProvider) -> Runn
         return Ok(());
     }
 
+    // R2 cache init. Fatal on partial config (1-3 of 4 vars set) — better than
+    // silently disabling cache for a typo'd secret rotation.
+    let r2 = R2ImageCache::from_env()
+        .await
+        .map_err(|e| RunnerError::Internal(format!("R2 cache init: {e}")))?;
+    if r2.is_none() {
+        tracing::warn!("R2 cache disabled (R2_* env vars not set) — skipping download and upload");
+    }
+
     // Acquire exclusive lock to prevent concurrent builds with the same hash.
     let _lock = lock::acquire(paths.image_lock(&hash)).await?;
 
@@ -192,6 +204,24 @@ pub async fn run_build(args: BuildArgs, provider: &dyn SnapshotProvider) -> Runn
         tracing::info!("[OK] image already built: {}", output_dir.display());
         touch_mtime(output_dir);
         return Ok(());
+    }
+
+    // Try R2 download before falling back to local build. try_download manages
+    // its own staging directory and atomic rename, so output_dir stays absent
+    // on failure (no false-positive cache hits from partial unpack).
+    if let Some(cache) = &r2 {
+        match cache.try_download(&hash, output_dir).await {
+            Ok(true) => {
+                if is_image_complete(&image).await? {
+                    tracing::info!("[OK] image downloaded from R2: {}", output_dir.display());
+                    touch_mtime(output_dir);
+                    return Ok(());
+                }
+                tracing::warn!("R2 download succeeded but image incomplete — will rebuild locally");
+            }
+            Ok(false) => tracing::info!("R2 cache miss for {hash} — building locally"),
+            Err(e) => tracing::warn!("R2 download failed: {e} — falling back to local build"),
+        }
     }
 
     // --- Phase 1: Build rootfs ---
@@ -329,6 +359,17 @@ pub async fn run_build(args: BuildArgs, provider: &dyn SnapshotProvider) -> Runn
         cow_disk = %cow_sz.1,
         "snapshot creation complete"
     );
+
+    // Synchronous R2 upload after Phase 2. Failure is non-fatal — the image is
+    // already on local disk; subsequent hosts just won't get a cache hit.
+    // exists() check inside upload() avoids same-deploy N-host duplicate uploads.
+    if let Some(cache) = &r2 {
+        let files = image.expected_files().to_vec();
+        match cache.upload(&hash, &files).await {
+            Ok(()) => tracing::info!("uploaded image to R2: {hash}"),
+            Err(e) => tracing::warn!("R2 upload failed: {e} — image is on local disk"),
+        }
+    }
 
     tracing::info!("image creation complete: {hash}");
     Ok(())

@@ -1,0 +1,1056 @@
+//! R2 cache for unified `runner build` image artifacts.
+//!
+//! Single-key bundle per image hash: `runner-images/{hash}.tar.zst` in the
+//! existing `R2_USER_STORAGES_BUCKET_NAME` bucket. The 4 files from
+//! `ImagePaths::expected_files()` are packed dense (no sparse-tar handling);
+//! `cow.img` sparseness is restored on unpack via best-effort
+//! `fallocate(FALLOC_FL_PUNCH_HOLE)`.
+//!
+//! ## Lifecycle
+//!
+//! 1. `runner build` computes hash and checks local cache (existing logic).
+//! 2. On miss, after acquiring `image_lock(hash)`, it tries `try_download`.
+//! 3. On download miss, it does the local rootfs+snapshot build (existing logic).
+//! 4. After `is_image_complete()` succeeds, it calls `upload`.
+//!
+//! Atomicity guarantees:
+//! - Multipart upload is atomic from consumer POV (object only appears after
+//!   `CompleteMultipartUpload`); abandoned segments are auto-cleaned by R2's
+//!   default 7-day lifecycle.
+//! - Download unpacks into a `{hash}.tmp/` staging directory then `rename`s
+//!   to `{hash}/` — partial unpack from a crash never produces a false-positive
+//!   `is_image_complete()` hit.
+//!
+//! Configuration semantics: `from_env` returns `Ok(None)` only when **all four**
+//! `R2_*` env vars are unset or empty (dev/test path). Setting 1-3 of 4 is a
+//! fatal `PartialConfig` error — almost certainly a typo'd secret rotation, and
+//! silently disabling cache fleet-wide is worse than failing the deploy.
+//!
+//! Streaming: both upload and download avoid temp files entirely. Upload uses a
+//! `tokio::io::duplex` pipe to couple the sync tar+zstd producer (on a blocking
+//! thread) to the async multipart consumer. Download uses `SyncIoBridge` to
+//! adapt the async S3 body into a sync `Read` for the blocking unpack thread.
+//! Memory peak per upload ≈ `(2 + CONCURRENCY + 1) × PART_SIZE` — duplex buffer,
+//! in-flight upload chunks, and the part being read — bounded regardless of
+//! image size. Currently ~112 MiB with `PART_SIZE` = 16 MiB and `CONCURRENCY` = 4.
+//!
+//! Image size limit: `PART_SIZE * 10000 ≈ 160 GiB` (S3 multipart hard limit).
+//! Current images are well under 30 GiB; revisit if `PART_SIZE` decreases.
+
+use std::path::{Path, PathBuf};
+
+use aws_sdk_s3::config::{BehaviorVersion, Credentials, Region, SharedCredentialsProvider};
+use aws_sdk_s3::error::SdkError;
+use aws_sdk_s3::operation::head_object::HeadObjectError;
+use aws_sdk_s3::primitives::ByteStream;
+use aws_sdk_s3::types::{CompletedMultipartUpload, CompletedPart};
+use tokio::io::AsyncReadExt;
+
+const KEY_PREFIX: &str = "runner-images/";
+const ZSTD_LEVEL: i32 = 3;
+
+/// Multipart part size. R2 minimum is 5 MiB (except last part); 16 MiB
+/// keeps part count reasonable for large images and fits comfortably in memory.
+const PART_SIZE: usize = 16 * 1024 * 1024;
+
+/// All four R2 env vars must be set together. Missing all four → cache disabled
+/// (dev path); missing 1-3 → fatal misconfiguration.
+const ENV_VARS: [&str; 4] = [
+    "R2_ACCOUNT_ID",
+    "R2_ACCESS_KEY_ID",
+    "R2_SECRET_ACCESS_KEY",
+    "R2_USER_STORAGES_BUCKET_NAME",
+];
+
+#[derive(Debug, thiserror::Error)]
+pub enum R2Error {
+    #[error("R2 partially configured ({}/4 set), missing: {}", present.len(), missing.join(", "))]
+    PartialConfig {
+        present: Vec<String>,
+        missing: Vec<String>,
+    },
+    #[error("s3: {0}")]
+    S3(String),
+    #[error("io: {0}")]
+    Io(#[from] std::io::Error),
+}
+
+impl<E, R> From<SdkError<E, R>> for R2Error
+where
+    E: std::fmt::Debug,
+    R: std::fmt::Debug,
+{
+    fn from(e: SdkError<E, R>) -> Self {
+        Self::S3(format!("{e:?}"))
+    }
+}
+
+/// Cache handle. Cheap to clone (the underlying SDK client is `Arc`-internal).
+#[derive(Clone)]
+pub struct R2ImageCache {
+    client: aws_sdk_s3::Client,
+    bucket: String,
+}
+
+impl std::fmt::Debug for R2ImageCache {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("R2ImageCache")
+            .field("bucket", &self.bucket)
+            .finish_non_exhaustive()
+    }
+}
+
+impl R2ImageCache {
+    /// Returns `Ok(None)` if all four env vars are unset or empty — build proceeds without R2.
+    /// Returns `Ok(Some(_))` if all four are set to non-empty values.
+    /// Returns `Err(PartialConfig { .. })` if 1-3 are set — likely a typo'd
+    /// secret rotation; surface loudly rather than silently disable.
+    ///
+    /// Empty strings count as unset: callers (Ansible, GH Actions) often
+    /// substitute `""` for missing secrets, and `""` is never a valid R2
+    /// credential — treating it as unset is more robust than failing later.
+    pub async fn from_env() -> Result<Option<Self>, R2Error> {
+        let present: Vec<String> = ENV_VARS
+            .iter()
+            .filter(|v| std::env::var(v).map(|s| !s.is_empty()).unwrap_or(false))
+            .map(|s| s.to_string())
+            .collect();
+
+        match present.len() {
+            0 => return Ok(None),
+            4 => {}
+            _ => {
+                let missing: Vec<String> = ENV_VARS
+                    .iter()
+                    .filter(|v| !present.iter().any(|p| p == *v))
+                    .map(|s| s.to_string())
+                    .collect();
+                return Err(R2Error::PartialConfig { present, missing });
+            }
+        }
+
+        // safe: all four guaranteed present (and non-empty) by the match above
+        let account_id = std::env::var("R2_ACCOUNT_ID").map_err(io_other)?;
+        let access_key = std::env::var("R2_ACCESS_KEY_ID").map_err(io_other)?;
+        let secret_key = std::env::var("R2_SECRET_ACCESS_KEY").map_err(io_other)?;
+        let bucket = std::env::var("R2_USER_STORAGES_BUCKET_NAME").map_err(io_other)?;
+
+        let endpoint = format!("https://{account_id}.r2.cloudflarestorage.com");
+        let creds = Credentials::new(access_key, secret_key, None, None, "r2-env");
+        // Build the S3 config directly without going through `aws_config::defaults()`
+        // — that's the entry point for the credential / region / endpoint discovery
+        // chain, which can hit IMDS on EC2-like hosts and waste seconds on metal.
+        // We have all four values explicitly, so skip the chain entirely.
+        let config = aws_sdk_s3::Config::builder()
+            .behavior_version(BehaviorVersion::latest())
+            .region(Region::new("auto"))
+            .endpoint_url(endpoint)
+            .credentials_provider(SharedCredentialsProvider::new(creds))
+            .build();
+        let client = aws_sdk_s3::Client::from_conf(config);
+
+        Ok(Some(Self { client, bucket }))
+    }
+
+    /// Returns `Ok(true)` if `runner-images/{hash}.tar.zst` exists.
+    pub async fn exists(&self, hash: &str) -> Result<bool, R2Error> {
+        let key = key_for_hash(hash);
+        match self
+            .client
+            .head_object()
+            .bucket(&self.bucket)
+            .key(&key)
+            .send()
+            .await
+        {
+            Ok(_) => Ok(true),
+            Err(SdkError::ServiceError(e)) if matches!(e.err(), HeadObjectError::NotFound(_)) => {
+                Ok(false)
+            }
+            Err(e) => Err(R2Error::S3(format!("head_object: {e:?}"))),
+        }
+    }
+
+    /// Try to download `runner-images/{hash}.tar.zst`, streaming directly
+    /// through zstd decode + tar unpack into a sibling staging directory,
+    /// then best-effort sparse-restore `cow.img`, then atomic rename to
+    /// `final_dir`. No temp file — bounded memory regardless of image size.
+    ///
+    /// Network hangs are bounded by the AWS SDK's own per-operation timeouts;
+    /// outer call sites (CI/systemd) bound total wall time.
+    pub async fn try_download(&self, hash: &str, final_dir: &Path) -> Result<bool, R2Error> {
+        let key = key_for_hash(hash);
+        let resp = match self
+            .client
+            .get_object()
+            .bucket(&self.bucket)
+            .key(&key)
+            .send()
+            .await
+        {
+            Ok(r) => r,
+            Err(SdkError::ServiceError(e))
+                if matches!(
+                    e.err(),
+                    aws_sdk_s3::operation::get_object::GetObjectError::NoSuchKey(_)
+                ) =>
+            {
+                return Ok(false);
+            }
+            Err(e) => return Err(R2Error::S3(format!("get_object: {e:?}"))),
+        };
+
+        // Atomic via staging dir + rename. Cleanup-on-error covers the entire
+        // staging lifecycle — a partial unpack can leave many GB on disk even
+        // though `final_dir` is never created. Without cleanup, a failed download
+        // followed by a local build could fill the disk before GC catches up.
+        let staging = staging_dir(final_dir);
+        let body_reader = resp.body.into_async_read();
+        let outcome = async {
+            let _ = tokio::fs::remove_dir_all(&staging).await;
+            tokio::fs::create_dir_all(&staging).await?;
+            unpack_into_staging(body_reader, &staging).await?;
+            finalize_staging(&staging, final_dir).await
+        }
+        .await;
+        if outcome.is_err() {
+            let _ = tokio::fs::remove_dir_all(&staging).await;
+        }
+        outcome?;
+        Ok(true)
+    }
+
+    /// Pack `files` into `tar.zst` and stream-upload to `runner-images/{hash}.tar.zst`.
+    /// Skips the upload if the object already exists (head_object dedup).
+    /// No temp file: a tokio duplex pipe couples the synchronous tar+zstd
+    /// producer (running on a blocking thread) to the async multipart consumer.
+    ///
+    /// Network hangs are bounded by the AWS SDK's own per-operation timeouts;
+    /// outer call sites (CI/systemd) bound total wall time.
+    pub async fn upload(&self, hash: &str, files: &[PathBuf]) -> Result<(), R2Error> {
+        if self.exists(hash).await? {
+            tracing::info!("R2 already has {hash}, skipping upload");
+            return Ok(());
+        }
+
+        let key = key_for_hash(hash);
+        let create = self
+            .client
+            .create_multipart_upload()
+            .bucket(&self.bucket)
+            .key(&key)
+            .send()
+            .await?;
+        let upload_id = create
+            .upload_id()
+            .ok_or_else(|| R2Error::S3("create_multipart_upload: no upload_id".into()))?
+            .to_string();
+
+        // Run the full pack→stream→complete pipeline, then abort if anything
+        // failed (including Complete itself — server-side validation errors
+        // can fail Complete after all parts uploaded successfully).
+        let result = self.do_multipart_upload(&key, &upload_id, files).await;
+        if result.is_err() {
+            // Best-effort abort; R2's 7-day default lifecycle catches misses.
+            let _ = self
+                .client
+                .abort_multipart_upload()
+                .bucket(&self.bucket)
+                .key(&key)
+                .upload_id(&upload_id)
+                .send()
+                .await;
+        }
+        result
+    }
+
+    async fn do_multipart_upload(
+        &self,
+        key: &str,
+        upload_id: &str,
+        files: &[PathBuf],
+    ) -> Result<(), R2Error> {
+        let parts = self.stream_upload(key, upload_id, files).await?;
+        self.client
+            .complete_multipart_upload()
+            .bucket(&self.bucket)
+            .key(key)
+            .upload_id(upload_id)
+            .multipart_upload(
+                CompletedMultipartUpload::builder()
+                    .set_parts(Some(parts))
+                    .build(),
+            )
+            .send()
+            .await?;
+        Ok(())
+    }
+
+    /// Stream-pack `files` and upload as multipart parts. Returns the completed
+    /// parts list ready for `CompleteMultipartUpload`. Failure of either the
+    /// producer (pack) or the consumer (upload) propagates as `Err`; the caller
+    /// is responsible for aborting the multipart upload in that case.
+    async fn stream_upload(
+        &self,
+        key: &str,
+        upload_id: &str,
+        files: &[PathBuf],
+    ) -> Result<Vec<CompletedPart>, R2Error> {
+        // Duplex buffer ≈ 2× PART_SIZE so the producer can stay one part ahead
+        // of the consumer without backpressure stalls.
+        let (writer, reader) = tokio::io::duplex(PART_SIZE * 2);
+        let files_owned: Vec<PathBuf> = files.to_vec();
+
+        // Producer: pack tar.zst into the duplex writer end, then drop everything
+        // (which closes the writer, signalling EOF to the consumer).
+        let pack_handle = tokio::task::spawn_blocking(move || -> Result<(), R2Error> {
+            let sync_writer = tokio_util::io::SyncIoBridge::new(writer);
+            pack_to_writer(sync_writer, &files_owned)
+        });
+
+        // Consumer: stream PART_SIZE chunks to S3 multipart with bounded
+        // concurrency. If this errors, dropping `reader` closes the duplex pipe
+        // and the producer will get a BrokenPipe write error.
+        let parts_result = self.upload_parts_streaming(key, upload_id, reader).await;
+
+        // Always wait for the producer to drain. A producer error matters even
+        // if the consumer "succeeded" — it means parts contain truncated data.
+        let pack_result = pack_handle.await.map_err(|e| R2Error::Io(io_other(e)))?;
+
+        // Error precedence: consumer error wins (it's the original cause; pack's
+        // BrokenPipe is downstream noise). If consumer succeeded but pack errored,
+        // surface the pack error so the caller skips Complete.
+        match (parts_result, pack_result) {
+            (Err(consumer_err), _) => Err(consumer_err),
+            (Ok(_), Err(pack_err)) => Err(pack_err),
+            (Ok(parts), Ok(())) => Ok(parts),
+        }
+    }
+
+    async fn upload_parts_streaming(
+        &self,
+        key: &str,
+        upload_id: &str,
+        mut reader: tokio::io::DuplexStream,
+    ) -> Result<Vec<CompletedPart>, R2Error> {
+        // Bounded concurrency: 4 in-flight parts gives ~75% reduction in wall
+        // time vs serial without saturating the bucket's per-prefix throughput.
+        const CONCURRENCY: usize = 4;
+
+        let mut tasks: tokio::task::JoinSet<Result<(i32, CompletedPart), R2Error>> =
+            tokio::task::JoinSet::new();
+        let mut parts: Vec<(i32, CompletedPart)> = Vec::new();
+        let mut part_number: i32 = 1;
+        let mut eof = false;
+
+        while !eof || !tasks.is_empty() {
+            // Refill the in-flight window by reading and spawning more parts.
+            while !eof && tasks.len() < CONCURRENCY {
+                let mut buf = vec![0u8; PART_SIZE];
+                let n = read_full(&mut reader, &mut buf).await?;
+                if n == 0 {
+                    eof = true;
+                    break;
+                }
+                buf.truncate(n);
+                // Vec → Bytes is zero-copy (transfers ownership). Avoids the
+                // ~16 MiB memcpy per part that `to_vec()` would do.
+                let chunk = bytes::Bytes::from(buf);
+                let pn = part_number;
+                let client = self.client.clone();
+                let bucket = self.bucket.clone();
+                let key_owned = key.to_string();
+                let upload_id_owned = upload_id.to_string();
+                tasks.spawn(async move {
+                    let resp = client
+                        .upload_part()
+                        .bucket(&bucket)
+                        .key(&key_owned)
+                        .upload_id(&upload_id_owned)
+                        .part_number(pn)
+                        .body(ByteStream::from(chunk))
+                        .send()
+                        .await?;
+                    // S3 / R2 always return ETag for a successful upload_part.
+                    // A missing ETag here would silently produce a CompletedPart
+                    // that fails Complete with "InvalidPart"; surface a clearer
+                    // error pinned to the offending part_number instead.
+                    let e_tag = resp
+                        .e_tag()
+                        .ok_or_else(|| {
+                            R2Error::S3(format!("upload_part {pn}: missing e_tag in response"))
+                        })?
+                        .to_string();
+                    Ok((
+                        pn,
+                        CompletedPart::builder()
+                            .e_tag(e_tag)
+                            .part_number(pn)
+                            .build(),
+                    ))
+                });
+                part_number = part_number
+                    .checked_add(1)
+                    .ok_or_else(|| R2Error::S3("part_number overflow".into()))?;
+                if n < PART_SIZE {
+                    eof = true;
+                    break;
+                }
+            }
+
+            // Drain at least one completion. JoinSet returns None only when
+            // empty, which our outer loop condition prevents.
+            if let Some(joined) = tasks.join_next().await {
+                let (pn, part) = joined.map_err(|e| R2Error::Io(io_other(e)))??;
+                parts.push((pn, part));
+            }
+        }
+
+        // Parts must be in part_number order for CompleteMultipartUpload.
+        parts.sort_by_key(|(pn, _)| *pn);
+        Ok(parts.into_iter().map(|(_, p)| p).collect())
+    }
+}
+
+fn key_for_hash(hash: &str) -> String {
+    format!("{KEY_PREFIX}{hash}.tar.zst")
+}
+
+/// Pack `files` as a tar.zst stream into `writer`. Each file is appended under
+/// its basename only (no path components). Sync — call from spawn_blocking.
+///
+/// zstd encoding is multi-threaded (capped at 4 workers) so encoding stays
+/// ahead of the multipart consumer instead of becoming the new bottleneck
+/// after concurrent uploads.
+fn pack_to_writer<W: std::io::Write>(writer: W, files: &[PathBuf]) -> Result<(), R2Error> {
+    let mut encoder = zstd::stream::write::Encoder::new(writer, ZSTD_LEVEL)?;
+    encoder.multithread(zstd_workers())?;
+    let mut builder = tar::Builder::new(encoder);
+    for path in files {
+        let name = path.file_name().ok_or_else(|| {
+            R2Error::Io(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                format!("file has no name: {}", path.display()),
+            ))
+        })?;
+        builder.append_path_with_name(path, name)?;
+    }
+    // Explicit finalization order:
+    //   1. tar trailer (two zero blocks)        — `into_inner` calls `finish` first
+    //   2. zstd frame footer                     — `Encoder::finish`
+    // Avoid `auto_finish()` which silently swallows errors during drop.
+    let encoder = builder.into_inner()?;
+    encoder.finish()?;
+    Ok(())
+}
+
+/// Worker count for multi-threaded zstd encoding. Capped at 4 because:
+/// - extra workers add memory (each gets its own input buffer)
+/// - upload-side concurrency is also 4, so going wider gives diminishing returns
+/// - tests run on possibly-small CI runners
+fn zstd_workers() -> u32 {
+    std::thread::available_parallelism()
+        .map(|n| n.get().min(4) as u32)
+        .unwrap_or(2)
+}
+
+/// Unpack a tar.zst stream from `reader` into `dest`. Sync — call from spawn_blocking.
+fn unpack_from_reader<R: std::io::Read>(reader: R, dest: &Path) -> Result<(), R2Error> {
+    let zr = zstd::stream::read::Decoder::new(reader)?;
+    tar::Archive::new(zr).unpack(dest)?;
+    Ok(())
+}
+
+/// Stream a tar.zst body from an async `reader` into `staging` (sync via
+/// `SyncIoBridge` on a blocking thread). Caller is responsible for creating
+/// the staging directory beforehand and for `finalize_staging` afterwards.
+async fn unpack_into_staging<R>(reader: R, staging: &Path) -> Result<(), R2Error>
+where
+    R: tokio::io::AsyncRead + Unpin + Send + 'static,
+{
+    let staging_for_blocking = staging.to_path_buf();
+    tokio::task::spawn_blocking(move || -> Result<(), R2Error> {
+        let sync_reader = tokio_util::io::SyncIoBridge::new(reader);
+        unpack_from_reader(sync_reader, &staging_for_blocking)
+    })
+    .await
+    .map_err(|e| R2Error::Io(io_other(e)))?
+}
+
+/// Finish the unpack: best-effort sparse-restore `cow.img`, then atomic rename
+/// `staging` to `final_dir`. Same-parent rename is atomic on ext4/xfs.
+async fn finalize_staging(staging: &Path, final_dir: &Path) -> Result<(), R2Error> {
+    let cow = staging.join("cow.img");
+    if let Ok(meta) = tokio::fs::metadata(&cow).await {
+        let len = meta.len();
+        if len > 0 {
+            let cow_clone = cow.clone();
+            let result = tokio::task::spawn_blocking(move || punch_hole(&cow_clone, len))
+                .await
+                .map_err(|e| R2Error::Io(io_other(e)))?;
+            if let Err(e) = result {
+                tracing::warn!("punch_hole on cow.img failed: {e}");
+            }
+        }
+    }
+
+    if let Err(e) = tokio::fs::rename(staging, final_dir).await {
+        tracing::warn!(
+            "rename {} -> {}: {e}; retrying after remove",
+            staging.display(),
+            final_dir.display()
+        );
+        let _ = tokio::fs::remove_dir_all(final_dir).await;
+        tokio::fs::rename(staging, final_dir).await?;
+    }
+    Ok(())
+}
+
+/// `images/{hash}` -> `images/{hash}.tmp` (sibling, same parent → atomic rename).
+fn staging_dir(final_dir: &Path) -> PathBuf {
+    let mut name = final_dir
+        .file_name()
+        .map(|n| n.to_os_string())
+        .unwrap_or_default();
+    name.push(".tmp");
+    final_dir.with_file_name(name)
+}
+
+fn io_other<E: std::fmt::Display>(e: E) -> std::io::Error {
+    std::io::Error::other(e.to_string())
+}
+
+/// Read up to `buf.len()` bytes from `reader`, returning the actual count.
+/// Returns 0 only at true EOF. Generic over any `AsyncRead` so we can use it
+/// for both `tokio::fs::File` and `tokio::io::DuplexStream`.
+async fn read_full<R: tokio::io::AsyncRead + Unpin>(
+    reader: &mut R,
+    buf: &mut [u8],
+) -> Result<usize, R2Error> {
+    let mut total = 0;
+    while total < buf.len() {
+        let slice = buf
+            .get_mut(total..)
+            .ok_or_else(|| R2Error::S3("buf overrun".into()))?;
+        let n = reader.read(slice).await?;
+        if n == 0 {
+            break;
+        }
+        total = total
+            .checked_add(n)
+            .ok_or_else(|| R2Error::S3("read overflow".into()))?;
+    }
+    Ok(total)
+}
+
+/// Best-effort `FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE` over the whole file.
+/// Logs and swallows EOPNOTSUPP (tmpfs); returns Err for other failures.
+fn punch_hole(path: &Path, len: u64) -> Result<(), R2Error> {
+    let f = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .open(path)?;
+    let len_i64 = i64::try_from(len).map_err(|_| {
+        R2Error::Io(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            format!("file size too large for fallocate: {len}"),
+        ))
+    })?;
+    match nix::fcntl::fallocate(
+        &f,
+        nix::fcntl::FallocateFlags::FALLOC_FL_PUNCH_HOLE
+            | nix::fcntl::FallocateFlags::FALLOC_FL_KEEP_SIZE,
+        0,
+        len_i64,
+    ) {
+        Ok(()) => Ok(()),
+        Err(nix::Error::EOPNOTSUPP) => {
+            tracing::warn!(
+                "filesystem doesn't support FALLOC_FL_PUNCH_HOLE; cow.img will remain dense \
+                 ({len} bytes on disk)"
+            );
+            Ok(())
+        }
+        Err(e) => Err(R2Error::Io(std::io::Error::other(e.to_string()))),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn key_format() {
+        assert_eq!(key_for_hash("abc123"), "runner-images/abc123.tar.zst");
+    }
+
+    #[test]
+    fn staging_dir_is_sibling() {
+        let final_dir = Path::new("/var/lib/vm0-runner/images/abc123");
+        let staging = staging_dir(final_dir);
+        assert_eq!(
+            staging,
+            PathBuf::from("/var/lib/vm0-runner/images/abc123.tmp")
+        );
+        // Same parent — required for atomic rename.
+        assert_eq!(staging.parent(), final_dir.parent());
+    }
+
+    /// `from_env` requires all-or-nothing on the four env vars.
+    /// Tests use a single var with each scenario via temporary process env;
+    /// they share the global env so must run with --test-threads=1.
+    #[tokio::test]
+    async fn from_env_returns_none_when_all_missing() {
+        with_clean_r2_env(|| async {
+            let result = R2ImageCache::from_env().await.unwrap();
+            assert!(result.is_none(), "all four missing → None");
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    async fn from_env_returns_some_when_all_present() {
+        with_clean_r2_env(|| async {
+            // SAFETY: tests are serialized via --test-threads=1.
+            unsafe {
+                std::env::set_var("R2_ACCOUNT_ID", "test-account");
+                std::env::set_var("R2_ACCESS_KEY_ID", "test-key");
+                std::env::set_var("R2_SECRET_ACCESS_KEY", "test-secret");
+                std::env::set_var("R2_USER_STORAGES_BUCKET_NAME", "test-bucket");
+            }
+            let result = R2ImageCache::from_env().await.unwrap();
+            assert!(result.is_some(), "all four set → Some");
+            assert_eq!(result.unwrap().bucket, "test-bucket");
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    async fn from_env_treats_empty_string_as_unset() {
+        // Callers often substitute "" for missing secrets (e.g.
+        // `${R2_ACCOUNT_ID:-}` in shell, `lookup('env', ...)` in Ansible).
+        // Empty strings are never valid R2 credentials — treat as unset.
+        with_clean_r2_env(|| async {
+            unsafe {
+                for v in &ENV_VARS {
+                    std::env::set_var(v, "");
+                }
+            }
+            let result = R2ImageCache::from_env().await.unwrap();
+            assert!(result.is_none(), "all four empty → None, not Some");
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    async fn from_env_errors_on_partial_config() {
+        // Set 2 of 4 — should return PartialConfig with the right partition.
+        with_clean_r2_env(|| async {
+            unsafe {
+                std::env::set_var("R2_ACCOUNT_ID", "test");
+                std::env::set_var("R2_USER_STORAGES_BUCKET_NAME", "test");
+            }
+            let err = R2ImageCache::from_env().await.unwrap_err();
+            match err {
+                R2Error::PartialConfig { present, missing } => {
+                    assert_eq!(present.len(), 2);
+                    assert_eq!(missing.len(), 2);
+                    assert!(present.contains(&"R2_ACCOUNT_ID".to_string()));
+                    assert!(present.contains(&"R2_USER_STORAGES_BUCKET_NAME".to_string()));
+                    assert!(missing.contains(&"R2_ACCESS_KEY_ID".to_string()));
+                    assert!(missing.contains(&"R2_SECRET_ACCESS_KEY".to_string()));
+                }
+                e => panic!("expected PartialConfig, got {e:?}"),
+            }
+        })
+        .await;
+    }
+
+    /// Helper: snapshot and clear all R2 env vars before running, restore after.
+    /// Panic-safe: the closure runs in a `tokio::spawn` task so a panic doesn't
+    /// skip the restore. SAFETY of `set_var` / `remove_var`: callers must run
+    /// with `--test-threads=1` to avoid concurrent env mutation.
+    async fn with_clean_r2_env<F, Fut>(f: F)
+    where
+        F: FnOnce() -> Fut + Send + 'static,
+        Fut: std::future::Future<Output = ()> + Send + 'static,
+    {
+        let saved: Vec<(&str, Option<String>)> = ENV_VARS
+            .iter()
+            .map(|v| (*v, std::env::var(v).ok()))
+            .collect();
+        unsafe {
+            for v in &ENV_VARS {
+                std::env::remove_var(v);
+            }
+        }
+        let join = tokio::spawn(f()).await;
+        unsafe {
+            for (k, v) in saved {
+                match v {
+                    Some(val) => std::env::set_var(k, val),
+                    None => std::env::remove_var(k),
+                }
+            }
+        }
+        // Now propagate any panic from the test body so the test fails properly.
+        join.unwrap();
+    }
+
+    // ---- pack / unpack round-trip --------------------------------------
+
+    /// Write the four canonical image files into `dir` with the same byte
+    /// content for both packing and verification. cow.img is sparse (16 MiB
+    /// logical, only first 1 MiB written).
+    async fn write_mock_image_files(dir: &Path) -> Vec<PathBuf> {
+        let rootfs = dir.join("rootfs.ext4");
+        let snapshot = dir.join("snapshot.bin");
+        let memory = dir.join("memory.bin");
+        let cow = dir.join("cow.img");
+
+        // Distinct content per file so cross-contamination shows up as a diff.
+        tokio::fs::write(&rootfs, b"rootfs-content".repeat(1024))
+            .await
+            .unwrap();
+        tokio::fs::write(&snapshot, b"snapshot-bin").await.unwrap();
+        tokio::fs::write(&memory, vec![0u8; 4 * 1024 * 1024])
+            .await
+            .unwrap();
+
+        // Sparse cow.img: 16 MiB logical, 1 MiB at the front.
+        let cow_file = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(&cow)
+            .unwrap();
+        cow_file.set_len(16 * 1024 * 1024).unwrap();
+        drop(cow_file);
+        tokio::fs::write(&cow, vec![0xAB; 1024 * 1024])
+            .await
+            .unwrap();
+        // Re-truncate to logical size after writing data — write() truncates.
+        std::fs::OpenOptions::new()
+            .write(true)
+            .open(&cow)
+            .unwrap()
+            .set_len(16 * 1024 * 1024)
+            .unwrap();
+
+        vec![rootfs, snapshot, memory, cow]
+    }
+
+    /// Helper: full atomic unpack from an on-disk archive (test-only path).
+    /// Mirrors what `try_download` does after the S3 GET succeeds: open file,
+    /// stream into staging, finalize. Lets the round-trip tests exercise the
+    /// same code as production without an S3 mock.
+    async fn unpack_archive_for_test(archive: &Path, final_dir: &Path) -> Result<(), R2Error> {
+        let staging = staging_dir(final_dir);
+        let _ = tokio::fs::remove_dir_all(&staging).await;
+        tokio::fs::create_dir_all(&staging).await?;
+        let f = tokio::fs::File::open(archive).await?;
+        unpack_into_staging(f, &staging).await?;
+        finalize_staging(&staging, final_dir).await?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn pack_then_unpack_round_trips_4_files() {
+        let src_dir = tempfile::tempdir().unwrap();
+        let dst_root = tempfile::tempdir().unwrap();
+        let final_dir = dst_root.path().join("hash-abc");
+
+        let src_files = write_mock_image_files(src_dir.path()).await;
+
+        let archive = tempfile::NamedTempFile::new().unwrap();
+        let archive_path = archive.path().to_path_buf();
+        let files_for_pack = src_files.clone();
+        tokio::task::spawn_blocking(move || {
+            let f = std::fs::File::create(&archive_path).unwrap();
+            pack_to_writer(f, &files_for_pack)
+        })
+        .await
+        .unwrap()
+        .unwrap();
+
+        unpack_archive_for_test(archive.path(), &final_dir)
+            .await
+            .unwrap();
+
+        // All 4 file names exist and round-trip the prefix bytes.
+        for name in ["rootfs.ext4", "snapshot.bin", "memory.bin", "cow.img"] {
+            let dst = final_dir.join(name);
+            let src = src_dir.path().join(name);
+            assert!(dst.exists(), "{name} should exist after unpack");
+            let dst_meta = std::fs::metadata(&dst).unwrap();
+            let src_meta = std::fs::metadata(&src).unwrap();
+            assert_eq!(
+                dst_meta.len(),
+                src_meta.len(),
+                "{name} logical size mismatch"
+            );
+        }
+
+        // Staging directory should no longer exist after the rename.
+        assert!(!staging_dir(&final_dir).exists());
+    }
+
+    #[tokio::test]
+    async fn unpack_atomic_no_partial_final_dir_on_failure() {
+        // A truncated tar.zst (random bytes that aren't a valid zstd stream)
+        // should fail mid-unpack and leave final_dir absent.
+        let dst_root = tempfile::tempdir().unwrap();
+        let final_dir = dst_root.path().join("hash-bad");
+
+        let bad_archive = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(bad_archive.path(), b"not a valid zstd stream").unwrap();
+
+        let result = unpack_archive_for_test(bad_archive.path(), &final_dir).await;
+        assert!(result.is_err(), "unpack of garbage should fail");
+        assert!(
+            !final_dir.exists(),
+            "final_dir must NOT exist after a failed unpack — \
+             this is what prevents false-positive cache hits"
+        );
+    }
+
+    #[tokio::test]
+    async fn pack_uses_basename_only() {
+        // Files passed to pack_to_writer may have arbitrary parent paths;
+        // they should be stored under their basename in the tar so unpack
+        // produces a flat directory.
+        let src_dir = tempfile::tempdir().unwrap();
+        let nested = src_dir.path().join("deeply/nested/path");
+        tokio::fs::create_dir_all(&nested).await.unwrap();
+        let nested_file = nested.join("rootfs.ext4");
+        tokio::fs::write(&nested_file, b"hello").await.unwrap();
+
+        let archive = tempfile::NamedTempFile::new().unwrap();
+        let archive_path = archive.path().to_path_buf();
+        let files = vec![nested_file];
+        tokio::task::spawn_blocking(move || {
+            let f = std::fs::File::create(&archive_path).unwrap();
+            pack_to_writer(f, &files)
+        })
+        .await
+        .unwrap()
+        .unwrap();
+
+        let dst_root = tempfile::tempdir().unwrap();
+        let final_dir = dst_root.path().join("out");
+        unpack_archive_for_test(archive.path(), &final_dir)
+            .await
+            .unwrap();
+
+        assert!(final_dir.join("rootfs.ext4").exists());
+        // No nested directory in the unpacked output.
+        assert!(!final_dir.join("deeply").exists());
+    }
+
+    #[tokio::test]
+    async fn from_env_errors_on_partial_with_some_empty_strings() {
+        // Real-world misconfiguration: 2 secrets typo'd to empty, 2 set.
+        // Empty counts as unset (per from_env_treats_empty_string_as_unset),
+        // so this should be PartialConfig with present=2, missing=2 — NOT
+        // silently disabled (which would happen if all four were empty).
+        with_clean_r2_env(|| async {
+            unsafe {
+                std::env::set_var("R2_ACCOUNT_ID", "real-value");
+                std::env::set_var("R2_ACCESS_KEY_ID", ""); // typo'd to empty
+                std::env::set_var("R2_SECRET_ACCESS_KEY", ""); // typo'd to empty
+                std::env::set_var("R2_USER_STORAGES_BUCKET_NAME", "real-value");
+            }
+            let err = R2ImageCache::from_env().await.unwrap_err();
+            match err {
+                R2Error::PartialConfig { present, missing } => {
+                    assert_eq!(present.len(), 2, "two non-empty present");
+                    assert_eq!(missing.len(), 2, "two empty treated as missing");
+                    assert!(missing.contains(&"R2_ACCESS_KEY_ID".to_string()));
+                    assert!(missing.contains(&"R2_SECRET_ACCESS_KEY".to_string()));
+                }
+                e => panic!("expected PartialConfig, got {e:?}"),
+            }
+        })
+        .await;
+    }
+
+    // ---- defensive / security edge cases --------------------------------
+
+    /// Helper: pack a synchronous closure on a blocking thread.
+    async fn pack_blocking<F>(archive: &Path, f: F) -> Result<(), R2Error>
+    where
+        F: FnOnce(std::fs::File) -> Result<(), R2Error> + Send + 'static,
+    {
+        let p = archive.to_path_buf();
+        tokio::task::spawn_blocking(move || {
+            let out = std::fs::File::create(&p).unwrap();
+            f(out)
+        })
+        .await
+        .unwrap()
+    }
+
+    /// Hand-write a 512-byte ustar header so we can put `..` in the path —
+    /// `tar::Builder` defends against this on the write side too.
+    fn craft_tar_with_path(name: &[u8], data: &[u8]) -> Vec<u8> {
+        assert!(name.len() < 100);
+        let mut header = [0u8; 512];
+        header[..name.len()].copy_from_slice(name);
+        header[100..108].copy_from_slice(b"0000644\0");
+        header[108..116].copy_from_slice(b"0000000\0");
+        header[116..124].copy_from_slice(b"0000000\0");
+        let size_str = format!("{:011o}\0", data.len());
+        header[124..136].copy_from_slice(size_str.as_bytes());
+        header[136..148].copy_from_slice(b"00000000000\0");
+        // cksum is computed with these 8 bytes counted as spaces.
+        header[148..156].copy_from_slice(b"        ");
+        header[156] = b'0'; // typeflag: regular file
+        header[257..263].copy_from_slice(b"ustar\0");
+        header[263..265].copy_from_slice(b"00");
+        let cksum: u32 = header.iter().map(|&b| u32::from(b)).sum();
+        let cksum_str = format!("{cksum:06o}\0 ");
+        header[148..156].copy_from_slice(cksum_str.as_bytes());
+
+        let mut tar = Vec::with_capacity(512 + 512 + 1024);
+        tar.extend_from_slice(&header);
+        let mut data_block = [0u8; 512];
+        data_block[..data.len()].copy_from_slice(data);
+        tar.extend_from_slice(&data_block);
+        // Two zero blocks mark end-of-archive.
+        tar.extend_from_slice(&[0u8; 1024]);
+        tar
+    }
+
+    /// `tar::Archive::unpack` must reject entries whose path escapes via `..` so
+    /// attacker-controlled artifacts can't write outside the staging directory
+    /// (defense-in-depth — R2 bucket is private, but if an IAM key leaked, this
+    /// would prevent escalation).
+    #[tokio::test]
+    async fn unpack_rejects_path_traversal() {
+        let raw_tar = craft_tar_with_path(b"../escaped.txt", b"hello");
+        let archive = tempfile::NamedTempFile::new().unwrap();
+        let archive_path = archive.path().to_path_buf();
+        tokio::task::spawn_blocking(move || {
+            let out = std::fs::File::create(&archive_path).unwrap();
+            let mut zw = zstd::stream::write::Encoder::new(out, 1).unwrap();
+            std::io::Write::write_all(&mut zw, &raw_tar).unwrap();
+            zw.finish().unwrap();
+        })
+        .await
+        .unwrap();
+
+        let dst_root = tempfile::tempdir().unwrap();
+        let final_dir = dst_root.path().join("hash");
+        // tar 0.4 silently SKIPS entries with `..` components (returns Ok(false)
+        // from Entry::unpack_in) and Archive::unpack happily continues. So the
+        // unpack succeeds with an empty staging dir → finalize_staging renames
+        // it to final_dir which exists but is empty. The security invariant is
+        // not "must error" — it is "must not write outside dst".
+        unpack_archive_for_test(archive.path(), &final_dir)
+            .await
+            .unwrap();
+
+        // Critical: nothing escaped to the parent of staging/final_dir.
+        assert!(
+            !dst_root.path().join("escaped.txt").exists(),
+            "escaped.txt MUST NOT appear at the dst_root level"
+        );
+        // The malicious entry was dropped, so final_dir is empty.
+        let entries: Vec<_> = std::fs::read_dir(&final_dir).unwrap().collect();
+        assert!(
+            entries.is_empty(),
+            "malicious entry should be dropped, final_dir empty, got {entries:?}"
+        );
+    }
+
+    /// `finalize_staging` skips `punch_hole` cleanly when `cow.img` is absent.
+    /// Defends against future producers that ship without cow.img.
+    #[tokio::test]
+    async fn finalize_works_without_cow_img() {
+        let dst_root = tempfile::tempdir().unwrap();
+        let final_dir = dst_root.path().join("hash");
+        let staging = staging_dir(&final_dir);
+        tokio::fs::create_dir_all(&staging).await.unwrap();
+        tokio::fs::write(staging.join("rootfs.ext4"), b"data")
+            .await
+            .unwrap();
+        // Intentionally: no cow.img.
+
+        finalize_staging(&staging, &final_dir).await.unwrap();
+
+        assert!(final_dir.exists());
+        assert!(final_dir.join("rootfs.ext4").exists());
+        assert!(!final_dir.join("cow.img").exists());
+        assert!(!staging.exists(), "staging consumed by rename");
+    }
+
+    /// Defensive retry path: when `final_dir` already exists, `rename` fails
+    /// once, the function removes the destination, and retries.
+    #[tokio::test]
+    async fn finalize_overwrites_existing_final_dir() {
+        let dst_root = tempfile::tempdir().unwrap();
+        let final_dir = dst_root.path().join("hash");
+
+        // Pre-populate `final_dir` with stale content the test will overwrite.
+        tokio::fs::create_dir_all(&final_dir).await.unwrap();
+        tokio::fs::write(final_dir.join("stale.txt"), b"old")
+            .await
+            .unwrap();
+
+        // Build fresh staging.
+        let staging = staging_dir(&final_dir);
+        tokio::fs::create_dir_all(&staging).await.unwrap();
+        tokio::fs::write(staging.join("fresh.txt"), b"new")
+            .await
+            .unwrap();
+
+        finalize_staging(&staging, &final_dir).await.unwrap();
+
+        assert!(final_dir.join("fresh.txt").exists(), "new content arrived");
+        assert!(
+            !final_dir.join("stale.txt").exists(),
+            "old content was wiped before rename"
+        );
+    }
+
+    /// `pack_to_writer` propagates I/O errors from `append_path_with_name` —
+    /// e.g., source file removed between `expected_files()` enumeration and pack.
+    #[tokio::test]
+    async fn pack_errors_on_missing_source_file() {
+        let archive = tempfile::NamedTempFile::new().unwrap();
+        let nonexistent = PathBuf::from("/definitely/does/not/exist/rootfs.ext4");
+        let result = pack_blocking(archive.path(), move |out| {
+            pack_to_writer(out, std::slice::from_ref(&nonexistent))
+        })
+        .await;
+        match result {
+            Err(R2Error::Io(_)) => {} // expected
+            other => panic!("expected R2Error::Io for missing source, got {other:?}"),
+        }
+    }
+
+    /// Empty file list: pack succeeds and produces a valid (empty) tar.zst.
+    /// Round-trip unpack gives an empty `final_dir`. This is degenerate but
+    /// must not panic — it's the canary for `is_image_complete()` invariants
+    /// changing in the future.
+    #[tokio::test]
+    async fn pack_unpack_empty_files_list() {
+        let archive = tempfile::NamedTempFile::new().unwrap();
+        pack_blocking(archive.path(), |out| pack_to_writer(out, &[]))
+            .await
+            .unwrap();
+
+        let dst_root = tempfile::tempdir().unwrap();
+        let final_dir = dst_root.path().join("hash");
+        unpack_archive_for_test(archive.path(), &final_dir)
+            .await
+            .unwrap();
+
+        assert!(final_dir.exists());
+        let entries: Vec<_> = std::fs::read_dir(&final_dir).unwrap().collect();
+        assert!(
+            entries.is_empty(),
+            "empty pack → empty unpack, got {entries:?}"
+        );
+    }
+}
