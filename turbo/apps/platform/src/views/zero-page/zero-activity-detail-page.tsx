@@ -588,6 +588,10 @@ function ActivityDetailContent({
   const duration = formatDuration(detail.startedAt, detail.completedAt);
 
   const showDebugTabs = features?.[FeatureSwitchKey.ZeroDebug] ?? false;
+  const chatFromScheduleAgentId =
+    detail.triggerSource === "schedule" && detail.scheduleId
+      ? detail.agentId
+      : null;
 
   return (
     <div className="h-full flex flex-col min-h-0 overflow-hidden">
@@ -624,18 +628,12 @@ function ActivityDetailContent({
               );
             }}
             onChatFromSchedule={
-              detail.triggerSource === "schedule" &&
-              detail.scheduleId &&
-              detail.agentId
+              chatFromScheduleAgentId
                 ? () => {
-                    const agentId = detail.agentId;
-                    if (!agentId) {
-                      return;
-                    }
                     detach(
                       startChatFromScheduleRun(
                         {
-                          agentId,
+                          agentId: chatFromScheduleAgentId,
                           runId: detail.id,
                         },
                         pageSignal,
