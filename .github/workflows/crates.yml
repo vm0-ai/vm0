@@ -560,7 +560,12 @@ jobs:
           [ -n "$OUTPUT" ] || fail "prefix match returned empty output"
           echo "PASS: prefix matching"
 
-          # Test 4: argv boundary preservation — regression guard for #9019
+          # Test 4: argv boundary preservation — regression guard for #9019.
+          # NOTE: each assertion relies on the local bash to tokenise quoted
+          # arguments correctly and pass them to runner as separate argv
+          # entries. For example `echo "hello world"` reaches runner as
+          # ["echo", "hello world"] (two tokens); runner then shell-quotes
+          # each before sending to the guest sh.
           echo "--- Test: argv boundary preservation ---"
           # Space in an argument is preserved as one token
           OUTPUT=$(sudo "$BIN_DIR/runner" exec "$RUN_ID" -- echo "hello world")
