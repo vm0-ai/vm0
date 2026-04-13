@@ -21,7 +21,7 @@ export async function generateMetadata(props: Props): Promise<Metadata> {
     ja: "ja_JP",
   };
 
-  const baseUrl = "https://vm0.ai";
+  const baseUrl = "https://www.vm0.ai";
   const languages: Record<string, string> = {};
 
   locales.forEach((loc) => {

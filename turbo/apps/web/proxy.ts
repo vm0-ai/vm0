@@ -20,7 +20,6 @@ import { handleCors } from "./proxy.cors";
 const isPublicRoute = createRouteMatcher([
   "/",
   "/:locale",
-  "/:locale/glossary",
   "/:locale/pricing",
   "/terms-of-use",
   "/privacy-policy",

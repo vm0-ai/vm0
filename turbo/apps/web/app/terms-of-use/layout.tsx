@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   description:
     "VM0 Terms of Use — the rules and conditions governing use of our platform.",
   alternates: {
-    canonical: "https://vm0.ai/terms-of-use",
+    canonical: "https://www.vm0.ai/terms-of-use",
   },
   robots: {
     index: true,

@@ -8,6 +8,11 @@ import Footer from "../../../components/Footer";
 import Particles from "../../../components/Particles";
 import type { UseCase, ConnectorRef } from "../data";
 
+interface PromptVariant {
+  label: string;
+  prompt: string;
+}
+
 function ConnectorBadge({ connector }: { connector: ConnectorRef }) {
   if (!connector.icon) return null;
   return (
@@ -40,7 +45,7 @@ function Section({
   );
 }
 
-function PromptVariants({ variants }: { variants: UseCase["promptVariants"] }) {
+function PromptVariants({ variants }: { variants: PromptVariant[] }) {
   const [activeTab, setActiveTab] = useState(0);
 
   return (
@@ -67,6 +72,23 @@ function PromptVariants({ variants }: { variants: UseCase["promptVariants"] }) {
 
 export default function UseCaseDetailClient({ useCase }: { useCase: UseCase }) {
   const t = useTranslations("useCases");
+  const slug = useCase.slug;
+
+  const promptVariants = t.raw(
+    `content.${slug}.promptVariants`,
+  ) as PromptVariant[];
+  const steps = t.raw(`content.${slug}.steps`) as {
+    title: string;
+    description: string;
+  }[];
+  const nextActions = t.raw(`content.${slug}.nextActions`) as {
+    title: string;
+    description: string;
+    examplePrompt: string;
+  }[];
+  const tips = t.raw(`content.${slug}.tips`) as string[];
+
+  const title = t(`content.${slug}.title`);
 
   return (
     <div className="landing-page min-h-screen bg-[hsl(var(--gray-0))] text-[hsl(var(--foreground))]">
@@ -82,10 +104,10 @@ export default function UseCaseDetailClient({ useCase }: { useCase: UseCase }) {
           {/* Header */}
           <header style={{ marginBottom: 48 }}>
             <h1 className="text-[32px] font-semibold leading-[1.2] tracking-tight sm:text-[40px]">
-              {useCase.title}
+              {title}
             </h1>
             <p className="mt-4 text-[15px] font-light leading-relaxed text-[hsl(var(--muted-foreground))]">
-              {useCase.description}
+              {t(`content.${slug}.description`)}
             </p>
 
             <div className="mt-5 flex flex-wrap items-center gap-2 text-[14px] text-[hsl(var(--muted-foreground))]">
@@ -103,7 +125,7 @@ export default function UseCaseDetailClient({ useCase }: { useCase: UseCase }) {
             <div className="uc-video-embed" style={{ marginBottom: 48 }}>
               <iframe
                 src={`https://www.youtube.com/embed/${useCase.videoId}`}
-                title={useCase.title}
+                title={title}
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                 allowFullScreen
                 className="aspect-video w-full rounded-[12px]"
@@ -113,19 +135,19 @@ export default function UseCaseDetailClient({ useCase }: { useCase: UseCase }) {
           )}
 
           {/* Scenario */}
-          <Section title={useCase.headings.scenario}>
-            <p className="uc-section-body">{useCase.scenario}</p>
+          <Section title={t(`content.${slug}.headings.scenario`)}>
+            <p className="uc-section-body">{t(`content.${slug}.scenario`)}</p>
           </Section>
 
           {/* Prompt */}
-          <Section title={useCase.headings.prompt}>
-            <PromptVariants variants={useCase.promptVariants} />
+          <Section title={t(`content.${slug}.headings.prompt`)}>
+            <PromptVariants variants={promptVariants} />
           </Section>
 
           {/* Steps */}
-          <Section title={useCase.headings.steps}>
+          <Section title={t(`content.${slug}.headings.steps`)}>
             <div className="uc-steps">
-              {useCase.steps.map((step, i) => {
+              {steps.map((step, i) => {
                 return (
                   <div key={i} className="uc-step">
                     <div className="uc-step-title">{step.title}</div>
@@ -137,9 +159,9 @@ export default function UseCaseDetailClient({ useCase }: { useCase: UseCase }) {
           </Section>
 
           {/* Next actions */}
-          <Section title={useCase.headings.nextActions}>
+          <Section title={t(`content.${slug}.headings.nextActions`)}>
             <div className="uc-next-actions">
-              {useCase.nextActions.map((action, i) => {
+              {nextActions.map((action, i) => {
                 return (
                   <div key={i} className="uc-next-action">
                     <div className="uc-next-action-title">{action.title}</div>
@@ -156,7 +178,7 @@ export default function UseCaseDetailClient({ useCase }: { useCase: UseCase }) {
           </Section>
 
           {/* Integrations */}
-          <Section title={useCase.headings.integrations}>
+          <Section title={t(`content.${slug}.headings.integrations`)}>
             <div className="uc-integrations">
               {useCase.integrations.map((integration, i) => {
                 return (
@@ -179,7 +201,7 @@ export default function UseCaseDetailClient({ useCase }: { useCase: UseCase }) {
                         {integration.connector.label}
                       </div>
                       <div className="uc-integration-desc">
-                        {integration.description}
+                        {t(`content.${slug}.integrations.${i}.description`)}
                       </div>
                     </div>
                     <span
@@ -200,10 +222,10 @@ export default function UseCaseDetailClient({ useCase }: { useCase: UseCase }) {
           {/* Tips */}
           <div className="uc-section">
             <h2 className="uc-section-title" style={{ marginBottom: 16 }}>
-              {useCase.headings.tips}
+              {t(`content.${slug}.headings.tips`)}
             </h2>
             <div className="uc-tips">
-              {useCase.tips.map((tip, i) => {
+              {tips.map((tip, i) => {
                 return (
                   <div key={i} className="uc-tip">
                     <span className="uc-tip-icon">&#9679;</span>

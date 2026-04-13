@@ -125,13 +125,13 @@ export default async function BlogPostPage({ params }: PageProps) {
         "@type": "ListItem",
         position: 1,
         name: "Home",
-        item: `https://vm0.ai/${locale}`,
+        item: `https://www.vm0.ai/${locale}`,
       },
       {
         "@type": "ListItem",
         position: 2,
         name: "Blog",
-        item: `https://vm0.ai/${locale}/blog`,
+        item: `https://www.vm0.ai/${locale}/blog`,
       },
       {
         "@type": "ListItem",
@@ -159,7 +159,7 @@ export default async function BlogPostPage({ params }: PageProps) {
       name: "VM0",
       logo: {
         "@type": "ImageObject",
-        url: "https://vm0.ai/assets/vm0-logo.svg",
+        url: "https://www.vm0.ai/assets/vm0-logo.svg",
       },
     },
   };

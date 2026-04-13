@@ -13,7 +13,7 @@ import { BlogContent } from "../../components/blog";
 import Footer from "../../components/Footer";
 import { isBlogEnabled } from "../../../src/env";
 
-const BASE_URL = "https://vm0.ai";
+const BASE_URL = "https://www.vm0.ai";
 
 function getBreadcrumbJsonLd(locale: string) {
   return {

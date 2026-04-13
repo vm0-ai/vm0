@@ -17,6 +17,6 @@ export default function robots(): MetadataRoute.Robots {
         ],
       },
     ],
-    sitemap: "https://vm0.ai/sitemap.xml",
+    sitemap: "https://www.vm0.ai/sitemap.xml",
   };
 }

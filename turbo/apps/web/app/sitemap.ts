@@ -4,7 +4,7 @@ import { getPosts } from "./lib/blog/data-source";
 import { getBlogBaseUrl } from "./lib/blog/config";
 
 const locales = ["en", "de", "es", "ja"];
-const baseUrl = "https://vm0.ai";
+const baseUrl = "https://www.vm0.ai";
 
 // Static dates per route category — avoids false "always modified" signals
 const STATIC_DATE = new Date("2025-01-01");

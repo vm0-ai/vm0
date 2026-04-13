@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   description:
     "VM0 Privacy Policy — how we collect, use, and protect your data.",
   alternates: {
-    canonical: "https://vm0.ai/privacy-policy",
+    canonical: "https://www.vm0.ai/privacy-policy",
   },
   robots: {
     index: true,

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Script from "next/script";
 import SecurityPage from "./SecurityPage";
 
-const BASE_URL = "https://vm0.ai";
+const BASE_URL = "https://www.vm0.ai";
 
 interface PageProps {
   params: Promise<{ locale: string }>;

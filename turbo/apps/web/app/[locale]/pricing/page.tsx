@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Script from "next/script";
 import PricingPageClient from "./PricingPageClient";
 
-const BASE_URL = "https://vm0.ai";
+const BASE_URL = "https://www.vm0.ai";
 
 interface PageProps {
   params: Promise<{ locale: string }>;
@@ -113,7 +113,7 @@ const pricingJsonLd = {
   name: "VM0",
   applicationCategory: "DeveloperApplication",
   operatingSystem: "Web, Linux, macOS, Windows",
-  url: "https://vm0.ai",
+  url: "https://www.vm0.ai",
   offers: [
     {
       "@type": "Offer",

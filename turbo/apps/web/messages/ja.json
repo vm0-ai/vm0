@@ -81,18 +81,132 @@
     "docs": "ドキュメント",
     "blog": "ブログ",
     "skills": "Skills",
-    "glossary": "用語集",
     "pricing": "料金",
     "github": "GitHub",
     "contact": "デモを予約",
-    "joinWaitlist": "サインアップ"
+    "joinWaitlist": "サインアップ",
+    "security": "セキュリティ",
+    "useCases": "ユースケース",
+    "signOut": "サインアウト",
+    "openApp": "アプリを開く"
   },
   "pricing": {
     "title": "プランを選択",
-    "subtitle": "無料から始めて、必要に応じて拡張。クレジットカード不要。"
+    "subtitle": "無料から始めて、必要に応じて拡張。クレジットカード不要。",
+    "heroTitle": "使った分だけ支払い、それ以上はなし",
+    "heroDescription": "AIチームメイトと無料で始めましょう。準備ができたらスケールアップ。クレジットカード不要。",
+    "free": {
+      "description": "AIチームメイトと無料で始めましょう。",
+      "features": {
+        "starterCredits": "10,000スタータークレジット",
+        "concurrentRun": "1同時実行",
+        "unlimitedAgents": "エージェント数無制限",
+        "bringOwnLLM": "自分のLLMキーを使用",
+        "communitySupport": "コミュニティサポート"
+      },
+      "buttonText": "始める"
+    },
+    "pro": {
+      "description": "チームのためのより強力でシームレスなコラボレーション。",
+      "features": {
+        "credits": "20,000クレジット / 月",
+        "concurrentRuns": "2同時実行",
+        "unlimitedAgents": "エージェント数無制限",
+        "bringOwnLLM": "自分のLLMキーを使用",
+        "creditsRollover": "クレジット繰り越し（1ヶ月）",
+        "emailSupport": "メールサポート"
+      },
+      "buttonText": "Proで始める"
+    },
+    "team": {
+      "description": "摩擦ゼロ、完全な柔軟性で素早くスケール。",
+      "features": {
+        "credits": "120,000クレジット / 月",
+        "concurrentRuns": "5同時実行",
+        "unlimitedAgents": "エージェント数無制限",
+        "bringOwnLLM": "自分のLLMキーを使用",
+        "creditsRollover": "クレジット繰り越し（1ヶ月）",
+        "prioritySupport": "優先サポート"
+      },
+      "buttonText": "Teamで始める"
+    },
+    "needMoreCredits": "もっとクレジットが必要ですか？",
+    "topUpDescription": "いつでもチャージ可能",
+    "topUpRate": "1,000クレジットあたり$1",
+    "topUpAutoRecharge": "自動チャージを設定して、エージェントを止めないようにしましょう。残高がしきい値を下回ると、クレジットが自動的に購入されます。",
+    "perCredits": "1,000クレジットあたり",
+    "comparePlans": "プランを比較",
+    "featuresHeader": "機能",
+    "sections": {
+      "creditsAndAgents": "クレジットとエージェント",
+      "connectorsAndIntegrations": "コネクターと統合",
+      "securityAndCompliance": "セキュリティとコンプライアンス",
+      "collaboration": "コラボレーション",
+      "support": "サポート"
+    },
+    "tableFeatures": {
+      "creditsPerMonth": "月間クレジット",
+      "creditsPerMonthDesc": "すべてのエージェントのAIモデル使用で消費されるクレジット",
+      "concurrentRuns": "同時実行数",
+      "concurrentRunsDesc": "同時に実行できるエージェントの数",
+      "totalAgents": "エージェント総数",
+      "totalAgentsDesc": "作成可能なエージェントの最大数",
+      "creditsRollover": "クレジット繰り越し",
+      "creditsRolloverDesc": "未使用のクレジットは次の請求期間に繰り越されます",
+      "creditTopUp": "クレジットチャージ",
+      "creditTopUpDesc": "1,000クレジットあたり$1でいつでも追加クレジットを購入",
+      "autoRecharge": "自動チャージ",
+      "autoRechargeDesc": "残高がしきい値を下回ると自動的にクレジットを購入",
+      "connectors": "コネクター",
+      "connectorsDesc": "Slack、GitHub、Notionなどのツールを接続",
+      "bringOwnLLM": "自分のLLMを持ち込み",
+      "bringOwnLLMDesc": "自分のモデルプロバイダーAPIキーを使用",
+      "sandboxedExecution": "サンドボックス実行",
+      "sandboxedExecutionDesc": "ハードウェアレベルのKVM分離によるFirecracker microVM",
+      "fullAuditTrail": "完全な監査証跡",
+      "fullAuditTrailDesc": "SHA-256整合性付きで実行ごとにエージェントHTTP/HTTPSトラフィックを記録",
+      "noCredentialExposure": "クレデンシャル非公開",
+      "noCredentialExposureDesc": "シークレットはネットワーク層で注入され、エージェントコードには見えません",
+      "teamMembers": "チームメンバー",
+      "teamMembersDesc": "ワークスペースの人数",
+      "perMemberCreditCaps": "メンバーごとのクレジット上限",
+      "perMemberCreditCapsDesc": "個々のチームメンバーの利用上限を設定",
+      "communitySupport": "コミュニティサポート",
+      "communitySupportDesc": "Discordコミュニティとドキュメントへのアクセス",
+      "emailSupport": "メールサポート",
+      "emailSupportDesc": "VM0チームからの直接メールサポート",
+      "prioritySupport": "優先サポート",
+      "prioritySupportDesc": "より速い応答時間の専用サポート"
+    },
+    "tableValues": {
+      "starter": "10,000スターター",
+      "20k": "20,000",
+      "120k": "120,000",
+      "unlimited": "無制限",
+      "oneMonth": "1ヶ月",
+      "allConnectors": "すべてのコネクター"
+    },
+    "faq": {
+      "title": "よくある質問",
+      "whatAreCredits": "クレジットとは何ですか？",
+      "whatAreCreditsAnswer": "クレジットはエージェントがAIモデルを使用する際に消費されます。モデルによってクレジットの消費率は異なります。例えば、シンプルなタスクは少量のクレジットを使い、複雑なマルチステップワークフローはより多く使います。",
+      "changePlans": "いつでもプランを変更できますか？",
+      "changePlansAnswer": "はい！いつでもプランのアップグレードまたはダウングレードが可能です。変更は即座に反映され、日割り計算で請求されます。",
+      "runOutOfCredits": "クレジットがなくなったらどうなりますか？",
+      "runOutOfCreditsAnswer": "クレジットが枯渇すると、エージェントは実行を停止します。自動チャージで追加クレジットを購入するか、より上位のプランにアップグレードして月間クレジットを増やすことができます。",
+      "doCreditsRollOver": "未使用のクレジットは繰り越されますか？",
+      "doCreditsRollOverAnswer": "Freeプランでは、スタータークレジットは期限切れになりませんが補充されません。Proでは未使用クレジットが1ヶ月繰り越されます。Teamでもクレジットは1ヶ月繰り越されます。",
+      "bringOwnModel": "自分のモデルプロバイダーを使えますか？",
+      "bringOwnModelAnswer": "はい！すべてのプランで独自のLLM APIキー（Anthropicなど）の使用をサポートしています。独自のキーを使用する場合、モデル使用にVM0クレジットは消費されません。",
+      "howSecure": "VM0はどれくらい安全ですか？",
+      "howSecureAnswer": "すべてのエージェント実行は、ハードウェアレベルのKVM分離を備えた隔離されたFirecracker microVMで実行されます。クレデンシャルはネットワーク層で注入され、エージェントコードに公開されることはありません。すべてのエージェントHTTP/HTTPSトラフィックは実行ごとにSHA-256整合性で記録されます。",
+      "annualBilling": "年間請求や割引はありますか？",
+      "annualBillingAnswer": "ボリューム価格、年間請求割引、チーム向けのカスタムアレンジメントについてはお問い合わせください。"
+    },
+    "perMonth": "/月"
   },
   "footer": {
-    "tagline": "Zero, your trustworthy AI teammate.",
+    "tagline": "Zero、信頼できるAIチームメイト。",
     "copyright": "© 2026 VM0.ai 無断転載禁止",
     "language": "言語",
     "status": "ステータス",
@@ -135,141 +249,6 @@
       "Other": "その他"
     }
   },
-  "glossary": {
-    "hero": {
-      "title": "エージェント構築用語集",
-      "description": "AIエージェントの言語をマスターしましょう。主要な概念、用語、VM0固有の機能を探索して、エージェント開発の旅を加速させます。"
-    },
-    "search": {
-      "placeholder": "用語を検索...",
-      "allCategories": "すべてのカテゴリー",
-      "showingAll": "すべての用語を表示",
-      "found": "見つかりました",
-      "results": "用語",
-      "noResults": "検索に一致する用語が見つかりませんでした"
-    },
-    "relatedTerms": "関連用語",
-    "categories": {
-      "Core Concepts": "コア概念",
-      "Execution": "実行",
-      "Infrastructure": "インフラストラクチャ",
-      "Development": "開発"
-    },
-    "terms": {
-      "agent": {
-        "name": "Agent",
-        "definition": "指示を理解し、意思決定を行い、ツールを使用し、独立してタスクを実行できる自律的なAIプログラム。従来のスクリプトとは異なり、Agentはコンテキストに基づいてアプローチを適応させ、目標に向かって反復できます。"
-      },
-      "skill": {
-        "name": "Skill",
-        "definition": "Agentが外部サービスと相互作用するために使用できる事前構築統合または機能。Skillsはカスタム実装を必要とせずに、Slack、GitHub、NotionなどのAPIにアクセスするなど、Agentに既製の機能を提供します。"
-      },
-      "tool": {
-        "name": "Tool",
-        "definition": "Agentが特定のアクションを実行するために呼び出すことができる関数またはAPI。ToolsはAgent機能の構成要素であり、ファイルの読み取り、HTTPリクエストの作成、データベースのクエリ、または任意の外部システムとの相互作用を可能にします。"
-      },
-      "prompt": {
-        "name": "Prompt",
-        "definition": "Agentのタスク、動作、または目標を定義するために与えられた自然言語の指示。Promptは単純なコマンドから、Agentの思考方法と動作方法を形作る複雑なシステム指示まで様々です。"
-      },
-      "context": {
-        "name": "Context",
-        "definition": "実行中にAgentが利用可能な情報。会話履歴、メモリ、ツール出力、環境状態を含みます。Contextはエージェントが相互作用全体で一貫性を保ち、情報に基づいた決定を下すのに役立ちます。"
-      },
-      "session": {
-        "name": "Session",
-        "definition": "状態、メモリ、コンテキストを保持するAgentの実行の継続期間。Sessionsはエージェントが複数の相互作用全体で認識を維持し、進捗を失わずに作業を再開できるようにします。"
-      },
-      "checkpoint": {
-        "name": "Checkpoint",
-        "definition": "特定の時点でのAgentの状態のスナップショット。メモリ、コンテキスト、実行進捗をキャプチャします。Checkpointsは再現可能性を実現し、Agent実行を復元、フォーク、またはリプレイできます。"
-      },
-      "artifact": {
-        "name": "Artifact",
-        "definition": "Agent実行中に生成されたファイル、データ、または出力。Artifactsは実行全体で永続化でき、コード、ドキュメント、分析結果、またはAgentが生成した他の成果物を含むことができます。"
-      },
-      "observability": {
-        "name": "Observability",
-        "definition": "ログ、メトリクス、実行トレースを通じてAgent動作を検査、監視、理解する能力。Observabilityはデバッグ、最適化、透明で安全なAI操作を確保するために不可欠です。"
-      },
-      "sandbox": {
-        "name": "Sandbox",
-        "definition": "Agentが本番システムに影響を与えることなく安全に実行される隔離実行環境。Sandboxesはセキュリティ境界を提供し、Agentアクションが含まれ、制御されていることを確認します。"
-      },
-      "memory": {
-        "name": "Memory",
-        "definition": "Agentが相互作用全体で保持する情報。過去の経験から学び、時間をかけてコンテキストを維持できます。Memoryは事実、環境設定、会話履歴、学習されたパターンを含むことができます。"
-      },
-      "workflow": {
-        "name": "Workflow",
-        "definition": "目標を達成するためにAgentが実行する一連のタスクまたは操作。硬直した自動化スクリプトとは異なり、Agentワークフローは中間結果に基づいて適応および調整できます。"
-      },
-      "llm": {
-        "name": "LLM (Large Language Model)",
-        "definition": "Agentの推論と意思決定に力を与える基盤となるAIモデル。Claude、GPT-4、Geminiなどが例です。異なるLLMは異なる強度、コスト、機能を持っています。"
-      },
-      "skillMd": {
-        "name": "SKILLS.MD",
-        "definition": "Skillの動作、入力、出力、実装ロジックを定義するMarkdown設定ファイル。SKILLS.MDファイルは自然言語と構造化メタデータを使用してカスタムSkillsを作成できます。複雑なコードを書くことなくAgent機能を拡張できます。"
-      },
-      "agentMd": {
-        "name": "AGENTS.MD",
-        "definition": "Agentの動作、個性、目標、利用可能なツールを定義するMarkdown設定ファイル。AGENTS.MDファイルはAgentのブループリントとして機能し、どのように考えるべきか、何ができるか、ユーザーとシステムとどのように相互作用するべきかを指定します。"
-      },
-      "volume": {
-        "name": "Volume",
-        "definition": "Agent実行全体でファイルとデータを保持する永続ストレージスペース。Volumesはエージェントに個々の実行を超えて永続化するファイルシステムを提供し、状態を保存し、データをキャッシュし、長期的なアーティファクトを維持できます。"
-      },
-      "action": {
-        "name": "Action",
-        "definition": "目標を達成するためにAgentが実行する具体的な操作またはタスク。ActionsはAPIの呼び出し、ファイルの読み取り、データの処理、または外部システムとの相互作用を含むことができます。Agent実行フローの各ステップを表します。"
-      },
-      "runtime": {
-        "name": "Runtime",
-        "definition": "Agentが実行される実行環境。必要なインフラストラクチャ、リソース、APIを提供します。Runtimeはagentのライフサイクルを管理し、リソース割り当てを処理し、異なるAgent実行間の適切な分離を確保します。"
-      },
-      "orchestration": {
-        "name": "Orchestration",
-        "definition": "複雑な目標を達成するための複数のAgent、ワークフロー、またはタスクの調整と管理。Orchestrationは依存関係、シーケンス、分散Agent操作全体での並列実行、リソース割り当てを処理します。"
-      },
-      "mcp": {
-        "name": "MCP (Model Context Protocol)",
-        "definition": "Anthropicによって開発されたオープンプロトコル。AIアシスタントが外部データソースとツールに安全に接続できます。MCPはエージェントがデータベース、API、ファイルシステムなどのリソースにアクセスし、セキュリティとコンテキスト認識を維持できる標準化された方法を提供します。"
-      },
-      "image": {
-        "name": "Image",
-        "definition": "Agentを実行するために必要なコード、ランタイム、依存関係、設定を含むパッケージ化されたコンテナ。Imagesは一貫性のある再現可能な実行環境を提供し、異なるデプロイメント間でエージェントが同じように動作することを確保します。"
-      },
-      "secrets": {
-        "name": "Secrets",
-        "definition": "APIキー、パスワード、トークンなど、Agentが外部サービスにアクセスする必要があるセンシティブ情報。Secretsは安全に保存され、実行時にAgent runtimeに注入され、コードまたは設定ファイルでの露出を防ぎます。"
-      },
-      "environmentVariable": {
-        "name": "Environment Variable",
-        "definition": "実行時にAgentに渡される設定値。コードを変更することなく動作をカスタマイズできます。Environment Variablesは一般的にAPIエンドポイント、機能フラグ、非センシティブ設定に使用されます。"
-      },
-      "virtualMachine": {
-        "name": "Virtual Machine",
-        "definition": "物理コンピューターをエミュレートする隔離されたソフトウェアベースのコンピューティング環境。仮想マシンはAgent実行間の完全な分離を提供し、セキュリティを確保し、干渉を防ぎます。VM0は独自のオペレーティングシステム、ファイルシステム、ネットワークスタックを持つ軽量の仮想マシンを使用してエージェントを実行します。"
-      },
-      "cli": {
-        "name": "CLI (Command Line Interface)",
-        "definition": "AgentとVM0プラットフォームと相互作用するためのテキストベースのインターフェース。CLIは開発者がターミナルコマンドを通じてAgentを作成、デプロイ、管理できます。グラフィカルインターフェースがなくても強力なスクリプトと自動化機能を提供します。"
-      },
-      "cliAgent": {
-        "name": "CLI Agent",
-        "definition": "コマンドラインインターフェースを通じて呼び出しおよび制御されるように設計されたAgent。CLI Agentsはスクリプト、CI/CDパイプライン、ターミナルワークフローに統合でき、自動化タスクと開発者ツーリングに理想的です。"
-      },
-      "agentRouter": {
-        "name": "Agent Router",
-        "definition": "タスク要件、コスト制約、パフォーマンスニーズに基づいて、Agent要求を最も適切なAIモデルにインテリジェントにルーティングするシステム。Agent Routerは異なるLLMs(Claude、GPT、Gemini)の間で動的に選択するか、特定の機能の専門モデルにルーティングできます。"
-      },
-      "claudeCode": {
-        "name": "Claude Code",
-        "definition": "AnthropicのAI Agentを構築および展開するための公式コマンドラインツール。Claude CodeはAgentの作成、Skillsの管理、Claude APIとの統合のためのデベロッパーフレンドリーなインターフェースを提供します。ライブリロード、デバッグツール、展開自動化などの機能でagent開発ワークフローを簡素化します。"
-      }
-    }
-  },
   "blog": {
     "title": "ブログ",
     "description": "エージェントネイティブ開発とAIインフラの未来に関する洞察、チュートリアル、最新情報。",
@@ -289,31 +268,725 @@
     "link": "詳細を見る"
   },
   "useCases": {
-    "title": "Use Cases",
-    "metaDescription": "Real workflows from teams using Zero as their AI teammate. See the exact prompts, outputs, and integrations.",
-    "heroTitle": "See what Zero can do for your team",
-    "heroSubtitle": "Real workflows from teams using Zero as their AI teammate. Each use case includes the exact prompt, Zero's output, and how to extend it.",
-    "role": "Role",
-    "capability": "Capability",
-    "all": "All",
-    "seeHow": "See how",
-    "comingSoon": "Coming soon",
-    "moreComingSoon": "More use cases coming",
-    "noResults": "No use cases match these filters.",
-    "whenThisHappens": "When this happens",
-    "whatYouSay": "What you say to Zero",
-    "whatZeroDoes": "What Zero does",
-    "whatsNext": "What's next",
-    "whatYouNeed": "What you need",
-    "required": "Required",
-    "optional": "Optional",
-    "tips": "Tips and best practices",
-    "relatedUseCases": "Related use cases",
-    "backToAll": "All use cases",
-    "zeroConnects": "Zero connects:",
-    "ctaTitle": "Zero works where your team works",
-    "ctaSubtitle": "Add Zero to Slack and start delegating in plain language. No setup wizards. No workflow builders. Just ask.",
-    "addToSlack": "Add Zero to Slack",
-    "bookDemo": "Book a demo"
+    "title": "ユースケース",
+    "metaDescription": "ZeroをAIチームメイトとして活用するチームの実際のワークフロー。具体的なプロンプト、出力、連携機能をご覧ください。",
+    "heroTitle": "Zeroがあなたのチームにできることを確認",
+    "heroSubtitle": "ZeroをAIチームメイトとして活用するチームの実際のワークフロー。各ユースケースには、具体的なプロンプト、Zeroの出力、拡張方法が含まれます。",
+    "role": "役割",
+    "capability": "機能",
+    "all": "すべて",
+    "seeHow": "詳しく見る",
+    "comingSoon": "近日公開",
+    "moreComingSoon": "さらにユースケースを追加予定",
+    "noResults": "これらのフィルターに一致するユースケースはありません。",
+    "whenThisHappens": "このようなときに",
+    "whatYouSay": "Zeroに伝えること",
+    "whatZeroDoes": "Zeroが行うこと",
+    "whatsNext": "次のステップ",
+    "whatYouNeed": "必要なもの",
+    "required": "必須",
+    "optional": "オプション",
+    "tips": "ヒントとベストプラクティス",
+    "relatedUseCases": "関連ユースケース",
+    "backToAll": "すべてのユースケース",
+    "zeroConnects": "Zeroの接続先:",
+    "ctaTitle": "Zeroはチームが働く場所で動作します",
+    "ctaSubtitle": "ZeroをSlackに追加して、自然な言葉で作業を委任しましょう。セットアップウィザードもワークフロービルダーも不要。ただ頼むだけです。",
+    "addToSlack": "ZeroをSlackに追加",
+    "bookDemo": "デモを予約",
+    "gallery": {
+      "moreToCome": "さらに追加予定",
+      "moreToComeDesc": "Zeroの活用アイデアはありますか？",
+      "submitYourCase": "ケースを提出 →"
+    },
+    "content": {
+      "sentry-triage": {
+        "title": "Sentryのノイズを優先順位付きアクションリストに変換",
+        "description": "Zeroに未解決のSentryエラーを頻度順に取得するよう依頼します。Zeroがスタックトレースを読み、根本原因を分かりやすく説明し、最初に修正すべきファイルを教えてくれます。",
+        "timeSaved": "約25分の節約",
+        "headings": {
+          "scenario": "Sentryトリアージがエンジニアリング時間を浪費する理由",
+          "prompt": "ZeroにSentryエラーのトリアージを依頼する方法",
+          "steps": "ZeroがSentryエラーを分析・ランク付けする仕組み",
+          "nextActions": "SentryトリアージをGitHub Issueと日次自動化に変換",
+          "integrations": "必要な連携: SentryとGitHub",
+          "tips": "自動Sentryトリアージのベストプラクティス"
+        },
+        "scenario": "月曜の朝。Slackを開くと#devに十数件のSentryアラートが届いています。ほとんどはノイズ — 不安定なテスト、既知の問題、自然に解消する一時的なエラー。しかしその中には本物があるかもしれません：壊れた連携、課金バグ、実際のユーザーに影響するクラッシュ。Sentryのダッシュボードを開いてIssueを一つずつクリックしたくはありません。知りたいのは：どれが重要で、どれくらい深刻で、何が原因なのか。",
+        "promptVariants": [
+          {
+            "label": "詳細",
+            "prompt": "@Zero Sentryの最近の障害を確認してください。過去24時間の障害を発生頻度順にランク付けしてください。\n\n上位3件の障害について、展開された詳細なエラースタックを含むレポートを作成してください。"
+          },
+          {
+            "label": "クイック",
+            "prompt": "@Zero 過去24時間のSentryエラーTop 3を件数順に。"
+          },
+          {
+            "label": "スケジュール",
+            "prompt": "@Zero 平日毎朝9時にこのSentryチェックを実行し、結果を#devに投稿。5回以上発生したエラーのみ含める。"
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Yuma",
+            "text": "@Zero Sentryの最近の障害を確認。頻度順にランク付け。Top 3を詳細なエラースタック付きで。"
+          },
+          {
+            "name": "Zero",
+            "text": "Sentryの障害レポートです。\n\n#\tIssue\t件数\t優先度\n1\tSlack missing_scope\t57\t高\n2\t不明なStripe価格ID\t15\t高\n3\tZeroSidebar .map()\t10\t中"
+          }
+        ],
+        "steps": [
+          {
+            "title": "ZeroがSentryに接続",
+            "description": "Zeroが指定された時間枚でSentryプロジェクトの未解決Issueを取得し、発生回数でランク付けします。"
+          },
+          {
+            "title": "サマリーテーブル",
+            "description": "Zeroが同じSlackスレッドにクイックサマリーテーブル（Issue名、発生回数、優先度レベル）を返信し、5秒で確認できます。"
+          },
+          {
+            "title": "詳細分析",
+            "description": "各トップIssueについて、Zeroがアノテーション付きスタックトレースと分かりやすい根本原因の説明を提供します。例えば「不明なStripe価格ID」とだけ言うのではなく、Stripeで新しい価格が作成されたが対応するマッピングが更新されていない可能性が高いと説明します。"
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "発見をアクションに変換",
+            "description": "レポートからGitHub Issueを作成",
+            "examplePrompt": "@Zero #1と#2のGitHub Issueを作成。#1はLancyに割り当て（Slackスコープ修正）、#2はJamesに（Stripeマッピング）。両方ともbug、優先度高でラベル付け。"
+          },
+          {
+            "title": "さらに深掘り",
+            "description": "Zeroに特定のエラーを調査させる",
+            "examplePrompt": "@Zero Issue #1について、どのSlack OAuthスコープが不足しているか正確に教えて。アプリマニフェストを確認して何を追加すべきか教えて。"
+          },
+          {
+            "title": "ルーティンにする",
+            "description": "日次チェックとしてスケジュール",
+            "examplePrompt": "@Zero 平日毎朝9時にこのSentryチェックを実行し、結果を#devに投稿。5回以上発生したエラーのみ含める。"
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Sentry組織へのOAuth接続。ZeroにはIssueとイベントへの読み取りアクセスが必要です。"
+          },
+          {
+            "description": "ZeroにレポートからIssueを作成させたい場合のみ必要。Issueへの読み書きアクセス。"
+          }
+        ],
+        "tips": [
+          "時間枚を具体的に指定しましょう。日次トリアージには「過去24時間」、デプロイ後チェックには「最後のデプロイ以降のエラー」。",
+          "ノイズを減らすために重要度フィルターを追加 — 10回以上発生したエラーのみ表示、またはknown-issueとタグ付けされたエラーをスキップ。",
+          "スタンドアップと連携させましょう — スタンドアップのユースケースと組み合わせて、タスクサマリーとSentryレポートの両方を含む朝のブリーフィングに。"
+        ]
+      },
+      "standup-summary": {
+        "title": "5つのアプリを開かずにスタンドアップを準備",
+        "description": "Zeroがカレンダー、メール、Linearからデータを取得し、チームスレッドにそのまま貼り付けられる共有可能なサマリーを作成します。",
+        "timeSaved": "約20分の節約",
+        "headings": {
+          "scenario": "Calendar、Gmail、Linearを行き来する毎日のスタンドアップの混乱",
+          "prompt": "Zeroにスタンドアップサマリーを依頼する方法",
+          "steps": "Zeroが3つのツールから作業サマリーをまとめる仕組み",
+          "nextActions": "Slackに投稿、ブロッカー追加、または毎日自動化",
+          "integrations": "必要な連携: Google Calendar、Gmail、Linear",
+          "tips": "AI生成スタンドアップサマリーのベストプラクティス"
+        },
+        "scenario": "午前9時50分、スタンドアップまでああ10分。まだカレンダーを確認していません。Zeroに昨日の会議、メール、Linearタスクを取得するよう頼むと、チームスレッドにそのまま貼り付けられるサマリーを書いてくれます。",
+        "promptVariants": [
+          {
+            "label": "詳細",
+            "prompt": "@Zero 昨日からのカレンダー、メール、Linearタスクを確認して作業サマリーを書いて。会議のハイライトとPRステータスを含めて。"
+          },
+          {
+            "label": "クイック",
+            "prompt": "@Zero 昨日何をした？カレンダーとLinearを確認して。"
+          },
+          {
+            "label": "スケジュール",
+            "prompt": "@Zero 平日毎朝9:45に、スタンドアップサマリーを書いてDMで送って。"
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Alex",
+            "text": "@Zero 昨日からのカレンダー、メール、Linearタスクを確認して作業サマリーを書いて"
+          },
+          {
+            "name": "Zero",
+            "text": "作業サマリー: 3月23〜24日\n\n会議\n• デイリースタンドアップ（10〜10:30 AM）\n• VM0ユーザーインタビュー w/ Daniel Miller\n\nエンジニアリング\n• PR #5467マージ済み、ファイアウォール権限\n• PR #6277レビュー中。Lighthouseスコア36"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zeroがカレンダーを確認",
+            "description": "Zeroが過去24時間のGoogle Calendarイベントを読み取り、会議名、時間、参加者を抽出します。"
+          },
+          {
+            "title": "Zeroがメールとタスクをスキャン",
+            "description": "ZeroがGmailの関連スレッドとLinearの昨日以降に更新、完了、または割り当てられたタスクを確認します。"
+          },
+          {
+            "title": "フォーマット済みサマリー",
+            "description": "Zeroが全てを会議、エンジニアリング作業、アクションアイテムで整理された、クリーンでコピー＆ペースト可能なサマリーにまとめます。"
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "チャンネルに直接投稿",
+            "description": "Zeroにサマリーを#standupに投稿させる",
+            "examplePrompt": "@Zero このサマリーを#standupに投稿して@team-engをタグ付けして。"
+          },
+          {
+            "title": "コンテキストを追加",
+            "description": "Zeroにブロッカーや優先事項を含めるよう依頼",
+            "examplePrompt": "@Zero Linearでブロックされているタスクも確認して、サマリーにブロッカーとして追加して。"
+          },
+          {
+            "title": "毎日にする",
+            "description": "朝の準備を自動化",
+            "examplePrompt": "@Zero 平日毎朝9:45に、スタンドアップサマリーを書いてDMで送って。"
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Google CalendarへのOAuth接続。Zeroにはイベントへの読み取りアクセスが必要です。"
+          },
+          {
+            "description": "GmailへのOAuth接続。Zeroには最近のスレッドをスキャンするための読み取りアクセスが必要です。"
+          },
+          {
+            "description": "LinearへのOAuth接続。Zeroが割り当て済みおよび更新済みタスクを読み取ります。"
+          }
+        ],
+        "tips": [
+          "デフォルトと異なる場合はスタンドアップフォーマットをZeroに伝えましょう。「次のフォーマットを使用: 昨日 / 今日 / ブロッカー」。",
+          "時間枚を指定しましょう。遅くまで働く場合は「昨日午後5時以降」。",
+          "Sentryトリアージと組み合わせて、完全なエンジニアリングモーニングブリーフィングに。"
+        ]
+      },
+      "kol-cold-outreach": {
+        "title": "XでKOLをリサーチし、パーソナライズされたコールドメールを作成",
+        "description": "ZeroにXのハンドルを伝えます。直近30件の投稿を読み、スタイルと関心を理解し、150語以下のパーソナライズされたアウトリーチメールを作成してGmailの下書きに保存します。",
+        "timeSaved": "約20分の節約",
+        "headings": {
+          "scenario": "一般的なコールドアウトリーチが無視される理由",
+          "prompt": "KOLをリサーチしパーソナライズされたアウトリーチを作成する方法",
+          "steps": "ZeroがXプロフィールを分析しカスタムメールを作成する仕組み",
+          "nextActions": "KOL適合度を評価、一括アウトリーチ、またはNotion CRMで追跡",
+          "integrations": "必要な連携: X、Gmail、Notion",
+          "tips": "AI支援KOLアウトリーチのベストプラクティス"
+        },
+        "scenario": "パートナーシップにぴったりのKOLを見つけましたが、ありきたりに感じないコールドメールを書くには20分のリサーチが必要 — 投稿を読み、何に関心があるか理解し、適切な切り口を見つける。ZeroにXハンドルを伝えれば、数秒でパーソナライズされた下書きが得られます。",
+        "promptVariants": [
+          {
+            "label": "詳細",
+            "prompt": "@Zero @swyxの直近30件のX投稿を読んでスタイルと関心を把握して。VM0パートナーシップについて150語以下のパーソナライズされたコールドアウトリーチメールを書いて。最近投稿した具体的な内容に言及して。Gmailの下書きとして保存。"
+          },
+          {
+            "label": "クイック",
+            "prompt": "@Zero @swyxのX投稿を基にVM0についてのコールドメールを下書き。Gmailの下書きとして保存。"
+          },
+          {
+            "label": "一括",
+            "prompt": "@Zero NotionのKOLリストで「未連絡」とマークされた各ハンドルについて、Xプロフィールをリサーチしパーソナライズされたアウトリーチメールを作成。すべてGmailの下書きとして保存。"
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Scarlett",
+            "text": "@Zero @swyxの直近30件のX投稿を読んで、スタイルを理解し、VM0パートナーシップ向けのコールドアウトリーチメールを作成。Gmailの下書きとして保存。"
+          },
+          {
+            "name": "Zero",
+            "text": "完了。@swyxの最近のコンテンツを分析:\n• フォーカス: AIエージェント、開発者ツール、オープンソース\n• トーン: テクニカルだが会話的\n• オーディエンス適合度: 高（9/10）\n\nGmail下書き保存済み: 「実務をこなすエージェント — 興味を持っていただけると思い」"
+          }
+        ],
+        "steps": [
+          {
+            "title": "ZeroがKOLのXプロフィールを読む",
+            "description": "Zeroが直近30件の投稿を取得し、コンテンツテーマ、トーン、オーディエンス、エンゲージメントパターンを分析して、この人が何に関心を持っているかのプロフィールを構築します。"
+          },
+          {
+            "title": "パーソナライズされたメール作成",
+            "description": "ZeroがKOLが投稿した具体的なコンテンツに言及し、製品の関連性を説明し、相手のスタイルに合ったトーンを使用した簡潔なアウトリーチメールを作成します。"
+          },
+          {
+            "title": "Gmailに下書き保存",
+            "description": "メールはレビュー可能なGmail下書きとして保存されます。接続されていれば、ZeroはNotion CRMのKOLステータスも更新します。"
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "KOL適合度を評価",
+            "description": "KOLがオーディエンスにどの程度マッチするか評価",
+            "examplePrompt": "@Zero @swyxのオーディエンスとVM0のICPの重複を分析。1-10でスコアリングし理由付きでNotionに保存。"
+          },
+          {
+            "title": "一括アウトリーチ",
+            "description": "複数のKOLのメールを一度に作成",
+            "examplePrompt": "@Zero Notionリストのトップ10 KOLについて、それぞれリサーチしパーソナライズされたアウトリーチメールを作成。"
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Zeroが公開投稿を読み、KOLのスタイルと関心を把握します。"
+          },
+          {
+            "description": "Zeroが作成したメールをGmailの下書きに保存します。"
+          },
+          {
+            "description": "オプション：Notion CRMでKOLステータスと適合度スコアを追跡。"
+          }
+        ],
+        "tips": [
+          "製品の切り口についてZeroにコンテキストを伝えましょう。「VM0が開発者ツール企業にどう役立つかに焦点を当てて」。",
+          "複数のバリアントを依頼しましょう。「2バージョン作成: カジュアルなものとプロフェッショナルなもの」。",
+          "送信前に必ずレビューしましょう。Zeroのリサーチは正確ですが、最終的な表現はあなた自身のものであるべきです。"
+        ]
+      },
+      "file-bugs-from-slack": {
+        "title": "コンテキストを切り替えずにSlackからバグを報告",
+        "description": "自然言語で問題を説明するだけ。Zeroがフォーマット済みのGitHub Issueを作成し、ラベルを付け、適切な人に割り当てます。",
+        "timeSaved": "即座",
+        "headings": {
+          "scenario": "SlackからGitHub Issueを作成するとコンテキスト切り替えが節約される理由",
+          "prompt": "SlackメッセージからGitHub Issueを作成する方法",
+          "steps": "Zeroがメッセージを解析しフォーマット済みIssueを作成する仕組み",
+          "nextActions": "詳細を追加、一括Issue作成、またはトリアージを自動化",
+          "integrations": "必要な連携: GitHubとSlack",
+          "tips": "Slack経由でバグを報告するベストプラクティス"
+        },
+        "scenario": "デモ中にUXバグに気づきました。GitHubを開いてリポジトリを探し、フォーマット済みのIssueを書いて誰かに割り当てる代わりに、Slackで説明します。ZeroがIssueを作成し、ラベルを追加し、適切な人を割り当てます。会話を離れる必要はありません。",
+        "promptVariants": [
+          {
+            "label": "詳細",
+            "prompt": "@Zero Issue作成: スケジュールダイアログでESCを押すと、未保存の編集があっても即座に閉じてしまう。最初に確認を求めるべき。Lancyに割り当て。bug、platformのラベル。優先度中。"
+          },
+          {
+            "label": "クイック",
+            "prompt": "@Zero バグ: ESCがスケジュールダイアログを保存確認なしで閉じる。Lancyに割り当て。"
+          },
+          {
+            "label": "スケジュール",
+            "prompt": "@Zero 毎週金曜16時に#bugsチャンネルで未解決のバグレポートを確認し、それぞれにGitHub Issueを作成。"
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Alex",
+            "text": "@Zero Issue作成: スケジュールダイアログでESCを押すと、未保存の編集があっても即座に閉じてしまう。最初に確認を求めるべき。Lancyに割り当て。"
+          },
+          {
+            "name": "Zero",
+            "text": "Issue作成済み:\n#6260: bug: ESCキーがスケジュールダイアログを確認なしで閉じる\nLancyに割り当て · 優先度: 中"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zeroがリクエストを解析",
+            "description": "Zeroがバグの説明を理解し、担当者を特定し、コンテキストから適切なラベル（bug、platform）と優先度を推定します。"
+          },
+          {
+            "title": "GitHubにIssue作成",
+            "description": "Zeroが自然言語のSlackメッセージから、明確なタイトル、説明、ラベル、割り当てを含む適切にフォーマットされたGitHub Issueを作成します。"
+          },
+          {
+            "title": "Slackで確認",
+            "description": "Zeroが同じスレッドにIssue番号、タイトル、担当者、直接リンクを返信するので、Slackを離れずに確認できます。"
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "詳細を追加",
+            "description": "スクリーンショットや再現手順を添付",
+            "examplePrompt": "@Zero #6260に追加: 再現手順。1. スケジュールダイアログを開く 2. 何か入力 3. ESCを押す。期待: 確認ダイアログ。"
+          },
+          {
+            "title": "一括Issue作成",
+            "description": "複数のIssueを一度に作成",
+            "examplePrompt": "@Zero これらのバグから3つのIssueを作成:\n1. ESCダイアログ閉じ（Lancy）\n2. 日付ピッカーが1日ずれる（James）\n3. Safariでアバターアップロードが失敗（Yuma）"
+          },
+          {
+            "title": "トリアージを自動化",
+            "description": "チャンネルからIssueを自動作成",
+            "examplePrompt": "@Zero #bugsを監視、誰かが「bug:」で始まるメッセージを投稿したら、自動的にGitHub Issueを作成してリンクで返信。"
+          }
+        ],
+        "integrations": [
+          {
+            "description": "GitHubへのOAuth接続。ZeroにはIssueの作成・管理のための読み書きアクセスが必要です。"
+          },
+          {
+            "description": "Zeroがメッセージを読み、同じスレッドに返信します。"
+          }
+        ],
+        "tips": [
+          "担当者名を含めましょう。ZeroがSlackの表示名をGitHubユーザー名にマッチングします。",
+          "特定のラベルが必要な場合は明示的に指定してください。そうでなければZeroがコンテキストから推定します。",
+          "機能リクエストにも使えます — 「bug」の代わりに「機能リクエスト」と言うだけです。"
+        ]
+      },
+      "slack-triage": {
+        "title": "Slackのノイズを突破し、注意が必要なものを表面化",
+        "description": "Zeroが未読のSlackメッセージをスキャンし、ボットとノイズをフィルタリングして、今日実際にアクションが必要なメッセージだけを緊急度順に表示します。",
+        "timeSaved": "約10分の節約",
+        "headings": {
+          "scenario": "Slackの過負荷がアクションアイテムの見落としを引き起こす理由",
+          "prompt": "Zeroに未読Slackメッセージのトリアージを依頼する方法",
+          "steps": "Zeroがノイズをフィルタリングしアクション可能なメッセージを抽出する仕組み",
+          "nextActions": "直接返信、タスク作成、または日次トリアージを自動化",
+          "integrations": "必要な連携: Slack",
+          "tips": "Slackメッセージトリアージのベストプラクティス"
+        },
+        "scenario": "2時間の集中ブロック後にSlackを開くと、12チャンネルに47件の未読メッセージがあります。ほとんどはボット通知、自動アラート、自分に関係のない会話です。ノイズの中に実際に返信が必要な3つのことがあります。全てをスクロールする代わりに、Zeroに重要なものを見つけてもらいます。",
+        "promptVariants": [
+          {
+            "label": "詳細",
+            "prompt": "@Zero 過去12時間の未読Slackメッセージをスキャン。ボット、自動通知、タグされていないスレッドをフィルタリング。今日アクションが必要なメッセージだけを緊急度順に表示。それぞれ誰が待っていて何が必要か教えて。"
+          },
+          {
+            "label": "クイック",
+            "prompt": "@Zero 今 Slackで私の注意が必要なものは？"
+          },
+          {
+            "label": "スケジュール",
+            "prompt": "@Zero 毎朝9時と昇食後の13時に未読をスキャンしてアクションが必要なものをDMで送って。"
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Lancy",
+            "text": "@Zero 過去12時間の未読Slackをスキャン。ボットとノイズをフィルタリング。今日アクションが必要なものだけ表示。"
+          },
+          {
+            "name": "Zero",
+            "text": "47件の未読メッセージを発見。5件がアクション必要:\n\n1. @Ethanが PR #6312のデザインレビューを依頼\n2. @JamesがStripe移行プランの承認を必要\n3. #supportにチャーンに言及する顧客からのP0\n4. @ScarlettがKOLアウトリーチの判断であなたをタグ\n5. スプリントレビューが15時に変更（14時から）"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zeroがチャンネルをスキャン",
+            "description": "Zeroが全チャンネルの未読メッセージを読み、ボットメッセージ、自動CI/CDアラート、メンションや必要性のないスレッドをフィルタリングします。"
+          },
+          {
+            "title": "メッセージを緊急度で分類",
+            "description": "残りの各メッセージを評価: 誰かがあなたを待っている？期限がある？他の人をブロックしている判断？Zeroが返信の緊急度でランク付けします。"
+          },
+          {
+            "title": "アクション可能なサマリーを配信",
+            "description": "Zeroが注意が必要なもののナンバリングリストをDMで送ります — 誰が聞いているか、何が必要か、各スレッドへの直接リンク付き。それ以外は安全に無視できます。"
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Zeroを通じて返信",
+            "description": "各スレッドを開かずに返信",
+            "examplePrompt": "@Zero #1に返信: 「問題なし、承認。出荷して。」そして#3は、P0 Linear Issueを作成してJamesに割り当て。"
+          },
+          {
+            "title": "ルーティンにする",
+            "description": "毎朝自動トリアージ",
+            "examplePrompt": "@Zero 平日毎朝9時に夜間の未読をスキャンしてアクションアイテムをDMで送って。"
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Zeroが未読メッセージを読み、トリアージサマリーをDMで送ります。"
+          },
+          {
+            "description": "オプション: トリアージされたメッセージから直接タスクを作成。"
+          },
+          {
+            "description": "オプション: Zeroがカレンダーを確認して会議関連のメッセージにフラグを付けます。"
+          }
+        ],
+        "tips": [
+          "最も重要なチャンネルをZeroに伝えて、それに応じて優先順位付けできるようにしましょう。",
+          "Zeroにノイズパターンを学習させましょう:「@github-botと@vercel-botからのメッセージは常にスキップ」。",
+          "スタンドアップのユースケースと組み合わせましょう: まずトリアージ、次にアクションアイテムからスタンドアップを生成。"
+        ]
+      },
+      "employee-onboarding": {
+        "title": "Slackメッセージ1つで新しいチームメイトをオンボーディング",
+        "description": "Zeroに誰がいつ入社するか伝えます。Notionのオンボーディングページを作成し、Google Calendarでウェルカムミーティングをスケジュールし、Slackで紹介を投稿し、初週のアジェンダをDMで送ります。",
+        "timeSaved": "約45分の節約",
+        "headings": {
+          "scenario": "手動のオンボーディングチェックリストが常に何かを見落とす理由",
+          "prompt": "Zeroで新入社員のオンボーディングを自動化する方法",
+          "steps": "Zeroが新しいチームメイトのためにNotion、Calendar、Slackを設定する仕組み",
+          "nextActions": "アクセス設定を追加またはロール別にカスタマイズ",
+          "integrations": "必要な連携: Slack、Notion、Google Calendar、Gmail",
+          "tips": "自動従業員オンボーディングのベストプラクティス"
+        },
+        "scenario": "新しいチームメイトが来週月曜に入社します。誰かがオンボーディングドキュメントを作成し、5人との紹介ミーティングをスケジュールし、ウェルカムメッセージを投稿し、初週のアジェンダを送る必要があります。毎回同じように行われる45分の調整作業です。Zeroに一度伝えれば全て対応してくれます。",
+        "promptVariants": [
+          {
+            "label": "詳細",
+            "prompt": "@Zero 4月14日にProduct Designerとして入社するSarah Chenをオンボーディング。Notionのオンボーディングテンプレートを複製し、Google CalendarでEthan、Lancy、James、Yuma、Scarlettとの第1週紹介ミーティングをスケジュール。30日チェックインをスケジュール。#generalにウェルカムを投稿しSarahに初週アジェンダをDM。"
+          },
+          {
+            "label": "クイック",
+            "prompt": "@Zero Sarah Chen、Product Designer、4月14日開始をオンボーディング。フルセットアップ。"
+          },
+          {
+            "label": "テンプレート",
+            "prompt": "@Zero 誰かが#new-hiresに「名前 / ロール / 開始日」形式で投稿したら、フルオンボーディングワークフローを自動実行。"
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Lancy",
+            "text": "@Zero Sarah Chenをオンボーディング、4月14日にProduct Designerとして入社。全て設定して。"
+          },
+          {
+            "name": "Zero",
+            "text": "Sarah Chenのオンボーディング準備完了:\n\n✔ テンプレートからNotionページ作成\n✔ 第1週紹介ミーティングスケジュール済み\n✔ 5月14日に30日チェックイン\n✔ #generalにウェルカム投稿済み\n✔ 初週アジェンダのDM送信済み"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Notionオンボーディングページ作成",
+            "description": "ZeroがNotionのオンボーディングテンプレートを複製し、新入社員の名前、ロール、開始日、マネージャーを記入します。関連ドキュメントとチームリソースにリンクします。"
+          },
+          {
+            "title": "ミーティングスケジュール済み",
+            "description": "Zeroが第1週中に指定されたチームメイトとの紹介ミーティングをGoogle Calendarに作成し、30日チェックインも設定します。全てのカレンダー招待には議題のコンテキストが含まれます。"
+          },
+          {
+            "title": "Slackウェルカムとdm送信",
+            "description": "Zeroが#generalに新入社員を紹介するウェルカムメッセージを投稿し、初週アジェンダ、Notionページへのリンク、主要連絡先をDMで直接送ります。"
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "ロール別にカスタマイズ",
+            "description": "異なるロールに異なるオンボーディング",
+            "examplePrompt": "@Zero エンジニア向けには、テックリードとのペアリングセッションも追加し、オンボーディングページにアーキテクチャドキュメントへのリンクを入れて。"
+          },
+          {
+            "title": "トリガーを自動化",
+            "description": "チャンネル投稿からオンボーディングを実行",
+            "examplePrompt": "@Zero 誰かが#new-hiresに「名前 / ロール / 開始日」形式で投稿したら、自動的にフルオンボーディングを実行。"
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Zeroがウェルカムメッセージを投稿し、新入社員にDMを送ります。"
+          },
+          {
+            "description": "Zeroがテンプレートからオンボーディングページを作成します。"
+          },
+          {
+            "description": "Zeroが紹介ミーティングとチェックインをスケジュールします。"
+          },
+          {
+            "description": "オプション：ロジスティクスとリンクを含むウェルカムメールを送信。"
+          }
+        ],
+        "tips": [
+          "まずNotionのオンボーディングテンプレートを作成しましょう。Zeroが複製して詳細を記入します。",
+          "紹介ミーティングを行うべき人をリストアップしましょう。Zeroがカレンダー調整を行います。",
+          "契約社員やインターンにも使えます — テンプレートとミーティングリストを調整するだけです。"
+        ]
+      },
+      "build-with-v0": {
+        "title": "Slackのアイデアを即座にインタラクティブなプロトタイプに変換",
+        "description": "会話の途中でアイデアが浮かんだら、Zeroに説明します。v0を使ってクリック可能なReactプロトタイプを生成し、ライブプレビューリンクをスレッドに投稿します — ディスカッションが先に進む前に。",
+        "timeSaved": "数時間 → 数秒",
+        "headings": {
+          "scenario": "誰にも見せられないままアイデアが消えてしまう理由",
+          "prompt": "ZeroでSlackのアイデアをプロトタイプに変える方法",
+          "steps": "Zeroがあなたの説明からライブでクリック可能なUIを作る仕組み",
+          "nextActions": "改良、共有、またはエンジニアリングに引き継ぎ",
+          "integrations": "必要な連携: v0",
+          "tips": "v0を使った迅速なアイデアプロトタイピングのベストプラクティス"
+        },
+        "scenario": "Slackスレッドで機能の動作方法を議論しています。誰かが新しいUIパターンを提案 — コマンドパレット、設定パネル、マルチステップウィザード。言葉では伝わりません。ホワイトボードに描くオプションもありません。Figmaセッションをスケジュールすると決定が来週に延期されます。Zeroに自然言語でアイデアを説明します。v0を呼び出し、完全にインタラクティブなReactプロトタイプを生成し、ライブプレビューリンクをスレッドに投稿します — 1分以内に。会話が先に進む前に全員がクリックスルーできます。",
+        "promptVariants": [
+          {
+            "label": "新しいUIアイデア",
+            "prompt": "@Zero これをプロトタイプ化: ユーザーがエージェント、最近の実行、コネクターを検索できるコマンドパレット。キーボード操作可能、ファジー検索、右側にプレビューパネルを表示。"
+          },
+          {
+            "label": "スレッドコンテキストから",
+            "prompt": "@Zero 上で説明したフローに基づいて、チームが判断前に確認できるようクイックv0プロトタイプを作って。"
+          },
+          {
+            "label": "イテレーション",
+            "prompt": "@Zero プロトタイプを更新 — 上部に「エージェント / 実行 / コネクター」のフィルタータブを追加し、アクティブアイテムをオレンジでハイライト。再生成。"
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ethan",
+            "text": "@Zero これをプロトタイプ化: ユーザーがエージェント、最近の実行、コネクターを検索できるコマンドパレット。キーボード操作可能、ファジー検索、右側にプレビューを表示。"
+          },
+          {
+            "name": "Zero",
+            "text": "インタラクティブなプロトタイプです:\nv0.dev/r/cmd-palette-preview\n\nエージェント、実行、コネクター間のファジー検索を搭載。矢印キーナビゲーション。右側プレビューパネルがホバーで更新。クリックして開く。"
+          }
+        ],
+        "steps": [
+          {
+            "title": "自然言語でアイデアを説明",
+            "description": "仕様書もワイヤーフレームも不要。UIが何をすべきか — コンポーネント、インタラクション、表示するデータをZeroに伝えます。大まかなスケッチ説明を貼り付けるか、スレッドから即興で。"
+          },
+          {
+            "title": "Zeroがv0でプロトタイプを生成",
+            "description": "Zeroがあなたの説明を構造化されたv0プロンプトに変換し、v0 APIを呼び出します。v0が完全にインタラクティブなReactコンポーネント — 本物のボタン、本物の状態、本物のナビゲーション — を生成します。"
+          },
+          {
+            "title": "ライブプレビューリンクをSlackに投稿",
+            "description": "Zeroがv0プレビューURLを同じスレッドに投稿します。チームメイトはあらゆるデバイスで、何もインストールしたりコードをチェックアウトすることなく、すぐにプロトタイプをクリックスルーできます。"
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "スレッドで改良",
+            "description": "Slackを離れずにイテレーションを続ける",
+            "examplePrompt": "@Zero プロトタイプを更新 — 検索入力の左にアイコンを付けて、空の状態では何も表示しない代わりに最近のアイテムを表示。"
+          },
+          {
+            "title": "非同期フィードバックのために共有",
+            "description": "より広いチャンネルに投稿またはステークホルダーにDM",
+            "examplePrompt": "@Zero v0プロトタイプリンクを#productに共有、メッセージ: 「コマンドパレットアイデアのクイックプロトタイプ — 木曜までにフィードバックお願いします。」"
+          },
+          {
+            "title": "エンジニアリングに引き継ぎ",
+            "description": "生成されたコードをリポジトリにエクスポート",
+            "examplePrompt": "@Zero v0プロトタイプコードを取得してvm0-ai/vm0のturbo/apps/platform/src/components/CommandPalette.tsxにPRを開いて、チームが開発を進められるようにして。"
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Zeroがアイデアを生成プロンプトとしてv0に送信し、インタラクティブなプロトタイプURLを取得します。v0アカウントを接続して有効にしてください。"
+          },
+          {
+            "description": "ZeroがSlackスレッドからアイデアを読み取り、同じ会話にプロトタイプリンクを投稿します。"
+          }
+        ],
+        "tips": [
+          "外見だけでなく振る舞いを説明しましょう。「行をクリックするとその下に詳細が展開」は「展開可能な行」よりも正確なプロトタイプを生成します。",
+          "既存のUIパターンを名前で参照 — 「VS Codeのコマンドパレットのように」や「Notionのスラッシュメニューのように」 — v0の生成を導きます。",
+          "最初の結果の直後にイテレーションプロンプトを使いましょう。1回の改良で通常90%の完成度に達します。"
+        ]
+      }
+    }
+  },
+  "landing": {
+    "hero": {
+      "title": "Zero、実務のための信頼できるAIチームメイト。",
+      "subtitle": "Zeroは100以上のツールと連携し、仕事をこなします。レポート、トリアージ、アウトリーチ、リサーチ。Slackまたはウェブで。",
+      "ctaGetStarted": "始める",
+      "ctaOpenApp": "アプリを開く",
+      "seeUseCases": "ユースケースを見る",
+      "seedBanner": "$14Mシードラウンドの資金調達ブログをご覧ください。"
+    },
+    "worksForYou": {
+      "heading": "Zeroがあなたのために実際にすること",
+      "exploreMore": "さらにユースケースを探す"
+    },
+    "teammateCard": {
+      "title": "読んで、考えて、成果を出すチームメイト。",
+      "description": "“カレンダー、Linear、Slackから今週のまとめを作って。” Zeroはツールからコンテキストを引き出し、点と点をつなぎ、完成したレポートを渡します。同僚にブリーフィングするように、ただし数秒で。",
+      "tabSummarize": "仕事の週間サマリー",
+      "tabLeads": "リードを見つけてメール送信",
+      "tabTriage": "Sentryエラーのトリアージ",
+      "ariaDaily": "日次レポート",
+      "ariaLeads": "メールリード",
+      "ariaSentry": "Sentryレポート"
+    },
+    "slackCard": {
+      "title": "Slackで質問し、すべてのツールから回答を取得。",
+      "description": "任意のチャンネルで@Zero。カレンダー、メール、Linear、GitHubから情報を取得し、チームが実際に使えるサマリーで返信します。タブ切り替え不要、ダッシュボード不要。",
+      "tagSlack": "Slack",
+      "tagTeamSync": "チーム同期"
+    },
+    "syncedToolsCard": {
+      "title": "発見からアウトリーチまで、エージェントが下準備をします。",
+      "description": "Zeroに探している人を伝えてください。エージェントがソーシャルプラットフォームを巡回し、見込み客リストを作成し、パーソナライズされたアウトリーチを下書きします。チームは検索ではなく、クロージングに集中できます。",
+      "tagMarketing": "マーケティングアウトリーチ",
+      "tagCrossPlatform": "クロスプラットフォーム"
+    },
+    "connectors": {
+      "heading": "既に使っている100以上のツールと連携",
+      "description": "Slack、GitHub、Gmail、Notion、Linear、Sentryなど。Zeroはあなたのスタックに接続して、回答するだけでなく行動します。"
+    },
+    "security": {
+      "heading": "あなたのデータはあなたのもの",
+      "permissionTitle": "Zeroがアクセスできるものをあなたが制御",
+      "permissionDesc": "ツールごと、エージェントごとに読み取り・書き込み権限を設定。Zeroは明示的に許可されたものだけにアクセスします。",
+      "isolatedTitle": "常に隔離された実行環境",
+      "isolatedDescPart1": "すべてのタスクは独自のmicroVMで実行されます。クレデンシャルはサンドボックスの外に出ません。完全に監査可能。そして",
+      "isolatedDescLink": "オープンソース",
+      "isolatedDescPart2": "。"
+    },
+    "intelligence": {
+      "heading": "使えば使うほど賢くなる",
+      "memoryTitle": "コンテキストを記憶",
+      "memoryDesc": "過去の決定、プロジェクトコンテキスト、あなたの好み — Zeroはすべてを引き継ぎます。再説明不要、セッション間でコンテキストが失われません。",
+      "scheduleTitle": "スケジュールされたインテリジェンス",
+      "scheduleDesc": "Zeroは自律的な定期タスクを実行します — 毎日のエラースキャン、技術的負債レポート、朝のブリーフィング — プロンプト不要で。",
+      "subAgentsTitle": "特化型サブエージェント",
+      "subAgentsDesc": "特定の仕事用にエージェントを作成。リサーチ用、トリアージ用、アウトリーチ用。並行して動くので、あなたがする必要はありません。",
+      "toolOrchTitle": "ツールオーケストレーション",
+      "toolOrchDesc": "Zeroは100以上の利用可能な連携から適切なツールを選択し連鎖させます。あなたが目標を述べれば、Zeroが手順を考えます。",
+      "identityTitle": "あなたが誰かを知っている",
+      "identityDesc": "\"自分のPR\"、\"自分にアサイン\"。ZeroはGitHub、Slack、Linearでのあなたのアイデンティティを自動的に解決します。セットアップ不要。"
+    },
+    "cta": {
+      "title": "何が大事かはあなたが決める。残りはZeroにお任せ。",
+      "subtitle": "無料で始められます。SlackまたはWebで使えます。クレジットカード不要。"
+    }
+  },
+  "securityPage": {
+    "title": "セキュリティ",
+    "intro": "AIエージェントに仕事を任せる際、最大の懸念はデータの安全性、プライバシー、そしてコントロールの維持です。VM0は初日からこれらすべてを念頭に設計されました。",
+    "isolatedExecution": {
+      "title": "隔離された実行環境",
+      "description": "すべてのエージェント実行は完全に隔離されたプライベート環境内で行われます。実行が終了すると、環境は自動的に破棄され、何も残りません。使い捨ての手袋のようなものです：清潔、安全、信頼性。",
+      "detail": "コンテナではなく、ハードウェアレベルのKVM分離を備えたFirecracker microVMで駆動。各実行は16,000以上の事前割り当てプールから独自のネットワーク名前空間を取得。"
+    },
+    "secretsNeverExposed": {
+      "title": "シークレットは決して公開されない",
+      "description": "Gmail、Slack、GitHubを接続？あなたのトークンとクレデンシャルは安全に管理されます。エージェントはそれらを使用できますが、見たり抽出したりすることはできません。エージェントのコードに何か問題が起きても、あなたのアカウントは安全です。",
+      "detail": "クレデンシャルは透過的MITMプロキシを介してネットワーク層で注入。エージェントコードは生のトークンに触れません。外向きリクエストはシークレット漏洩防止のためスキャンされます。"
+    },
+    "startsInSeconds": {
+      "title": "秒で起動",
+      "description": "エージェントがトリガーから数十ミリ秒で実行に移れるよう、内部で広範な最適化を行いました。インフラレベルでの努力により高速です。あなたは結果を体験するだけです。",
+      "detail": "ゼロコピーブートのための共有読み取り専用rootfsを使用したoverlayfs。VMメモリスナップショットがランタイムスタック全体をプリウォーム — コールドスタートではなくリストア。"
+    },
+    "fullAuditTrail": {
+      "title": "完全な監査証跡",
+      "description": "エージェントが行うすべてのアクション — どのサービスにアクセスしたか、どのAPIを呼び出したか、何を生成したか — が記録されます。問題が発生すれば明確な記録があります。問題がなくても安心できます。",
+      "detail": "実行ごとに完全なHTTP/HTTPSトラフィックを記録（JSONL）。SHA-256整合性でCloudflare R2に保存された不変のコンテンツアドレスアーティファクト。"
+    },
+    "openSource": {
+      "title": "オープンソース",
+      "description": "コアプラットフォームはオープンソースです。コードを検査し、セキュリティモデルを監査し、貢献できます。デフォルトで透明。",
+      "detail": "GitHub上のコアプラットフォーム。定期的なサードパーティペネトレーションテスト。SOC 2 Type IIコンプライアンス進行中。"
+    },
+    "questionsAboutSecurity": "セキュリティについて質問がありますか？",
+    "contactUs": "お問い合わせ"
+  },
+  "avatar": {
+    "steps": {
+      "rotation": "角度",
+      "skin": "肌",
+      "hairStyle": "髪型",
+      "hairColor": "色",
+      "expression": "表情",
+      "intensity": "ムード"
+    },
+    "intensityLabels": {
+      "chill": "リラックス",
+      "normal": "ノーマル",
+      "hyped": "ハイテンション"
+    },
+    "back": "← 戻る"
   }
 }

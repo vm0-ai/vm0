@@ -58,7 +58,15 @@ function ConnectorIcon({ connector }: { connector: ConnectorRef }) {
   );
 }
 
-function UseCaseCard({ useCase }: { useCase: UseCase }) {
+function UseCaseCard({
+  useCase,
+  title,
+  description,
+}: {
+  useCase: UseCase;
+  title: string;
+  description: string;
+}) {
   return (
     <Link
       href={`/use-cases/${useCase.slug}`}
@@ -93,10 +101,10 @@ function UseCaseCard({ useCase }: { useCase: UseCase }) {
       {/* Content */}
       <div className="flex flex-col gap-3 px-6 pb-7 pt-5">
         <h3 className="text-lg font-medium leading-snug tracking-[-0.2px] text-[hsl(var(--foreground))] group-hover:text-[#ed4e01]">
-          {useCase.title}
+          {title}
         </h3>
         <p className="line-clamp-3 text-[15px] font-light leading-relaxed text-[hsl(var(--muted-foreground))]">
-          {useCase.description}
+          {description}
         </p>
       </div>
     </Link>
@@ -122,24 +130,31 @@ export default function UseCasesGalleryClient() {
       <section style={{ paddingBottom: "120px" }}>
         <div className="uc-grid">
           {USE_CASES.map((uc) => {
-            return <UseCaseCard key={uc.slug} useCase={uc} />;
+            return (
+              <UseCaseCard
+                key={uc.slug}
+                useCase={uc}
+                title={t(`content.${uc.slug}.title`)}
+                description={t(`content.${uc.slug}.description`)}
+              />
+            );
           })}
 
           {/* Coming soon */}
           <div className="flex flex-col justify-between overflow-hidden rounded-[20px] bg-white px-6 pb-7 pt-5">
             <div className="flex flex-col gap-2">
               <h3 className="text-lg font-medium leading-snug tracking-[-0.2px] text-[hsl(var(--foreground))]">
-                More to come
+                {t("gallery.moreToCome")}
               </h3>
               <p className="text-[15px] font-light leading-relaxed text-[hsl(var(--muted-foreground))]">
-                Have a smart way to use Zero?
+                {t("gallery.moreToComeDesc")}
               </p>
             </div>
             <a
               href="mailto:contact@vm0.ai"
               className="mt-4 inline-flex items-center gap-1 text-[14px] font-medium text-[#ed4e01] transition-all hover:gap-2"
             >
-              Submit your case &rarr;
+              {t("gallery.submitYourCase")}
             </a>
           </div>
         </div>

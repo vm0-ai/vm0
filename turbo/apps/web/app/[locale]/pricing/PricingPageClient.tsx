@@ -1,6 +1,7 @@
 "use client";
 
 import React from "react";
+import { useTranslations } from "next-intl";
 import Footer from "../../components/Footer";
 import Particles from "../../components/Particles";
 
@@ -153,6 +154,8 @@ function PricingCard({
 }
 
 export default function PricingPageClient() {
+  const t = useTranslations("pricing");
+
   return (
     <>
       <Particles />
@@ -161,11 +164,8 @@ export default function PricingPageClient() {
       <section className="hero-section" style={{ paddingBottom: "40px" }}>
         <div className="container">
           <div>
-            <h1 className="hero-title">Pay for what you use, nothing more</h1>
-            <p className="hero-description">
-              Start free with your AI teammate. Scale when you&apos;re ready, no
-              credit card required.
-            </p>
+            <h1 className="hero-title">{t("heroTitle")}</h1>
+            <p className="hero-description">{t("heroDescription")}</p>
           </div>
         </div>
       </section>
@@ -188,16 +188,16 @@ export default function PricingPageClient() {
               <PricingCard
                 title="Free"
                 price="$0"
-                period="/month"
-                description="Get started with your AI teammate for free."
+                period={t("perMonth")}
+                description={t("free.description")}
                 features={[
-                  "10,000 starter credits",
-                  "1 concurrent run",
-                  "Unlimited total agents",
-                  "Bring your own LLM keys",
-                  "Community support",
+                  t("free.features.starterCredits"),
+                  t("free.features.concurrentRun"),
+                  t("free.features.unlimitedAgents"),
+                  t("free.features.bringOwnLLM"),
+                  t("free.features.communitySupport"),
                 ]}
-                buttonText="Get started"
+                buttonText={t("free.buttonText")}
                 buttonHref="/sign-up"
                 buttonClassName="btn-secondary-large"
               />
@@ -206,17 +206,17 @@ export default function PricingPageClient() {
               <PricingCard
                 title="Pro"
                 price="$40"
-                period="/month"
-                description="More power and seamless collaboration for your team."
+                period={t("perMonth")}
+                description={t("pro.description")}
                 features={[
-                  "20,000 credits / month",
-                  "2 concurrent runs",
-                  "Unlimited total agents",
-                  "Bring your own LLM keys",
-                  "Credits rollover (1 month)",
-                  "Email support",
+                  t("pro.features.credits"),
+                  t("pro.features.concurrentRuns"),
+                  t("pro.features.unlimitedAgents"),
+                  t("pro.features.bringOwnLLM"),
+                  t("pro.features.creditsRollover"),
+                  t("pro.features.emailSupport"),
                 ]}
-                buttonText="Start with Pro"
+                buttonText={t("pro.buttonText")}
                 buttonHref="/sign-up?plan=pro"
                 buttonClassName="btn-primary-large"
               />
@@ -225,17 +225,17 @@ export default function PricingPageClient() {
               <PricingCard
                 title="Team"
                 price="$200"
-                period="/month"
-                description="Scale fast with zero friction and full flexibility."
+                period={t("perMonth")}
+                description={t("team.description")}
                 features={[
-                  "120,000 credits / month",
-                  "5 concurrent runs",
-                  "Unlimited total agents",
-                  "Bring your own LLM keys",
-                  "Credits rollover (1 month)",
-                  "Priority support",
+                  t("team.features.credits"),
+                  t("team.features.concurrentRuns"),
+                  t("team.features.unlimitedAgents"),
+                  t("team.features.bringOwnLLM"),
+                  t("team.features.creditsRollover"),
+                  t("team.features.prioritySupport"),
                 ]}
-                buttonText="Start with Team"
+                buttonText={t("team.buttonText")}
                 buttonHref="/sign-up?plan=team"
                 buttonClassName="btn-secondary-large"
               />
@@ -266,7 +266,7 @@ export default function PricingPageClient() {
                   letterSpacing: "-0.3px",
                 }}
               >
-                Need more credits?
+                {t("needMoreCredits")}
               </h2>
               <p
                 style={{
@@ -278,15 +278,13 @@ export default function PricingPageClient() {
                   maxWidth: "600px",
                 }}
               >
-                Top up anytime at{" "}
+                {t("topUpDescription")}{" "}
                 <strong
                   style={{ color: "var(--text-primary)", fontWeight: 500 }}
                 >
-                  1,000 credits per $1
+                  {t("topUpRate")}
                 </strong>
-                . Set up auto-recharge so your agents never stop — when your
-                balance drops below a threshold, credits are purchased
-                automatically.
+                . {t("topUpAutoRecharge")}
               </p>
             </div>
             <div
@@ -316,7 +314,7 @@ export default function PricingPageClient() {
                   color: "var(--text-muted)",
                 }}
               >
-                per 1,000 credits
+                {t("perCredits")}
               </div>
             </div>
           </div>
@@ -333,7 +331,7 @@ export default function PricingPageClient() {
                 letterSpacing: "-0.5px",
               }}
             >
-              Compare plans
+              {t("comparePlans")}
             </h2>
             <div style={{ overflowX: "auto" }}>
               <table
@@ -358,7 +356,7 @@ export default function PricingPageClient() {
                         borderBottom: "1px solid var(--border-light)",
                       }}
                     >
-                      Features
+                      {t("featuresHeader")}
                     </th>
                     <th
                       style={{
@@ -402,130 +400,132 @@ export default function PricingPageClient() {
                   </tr>
                 </thead>
                 <tbody>
-                  <TableSection title="Credits & Agents" />
+                  <TableSection title={t("sections.creditsAndAgents")} />
                   <TableRow
-                    feature="Credits per month"
-                    description="Credits consumed by AI model usage across all agents"
-                    free="10,000 starter"
-                    pro="20,000"
-                    team="120,000"
+                    feature={t("tableFeatures.creditsPerMonth")}
+                    description={t("tableFeatures.creditsPerMonthDesc")}
+                    free={t("tableValues.starter")}
+                    pro={t("tableValues.20k")}
+                    team={t("tableValues.120k")}
                   />
                   <TableRow
-                    feature="Concurrent runs"
-                    description="Number of agents that can run concurrently"
+                    feature={t("tableFeatures.concurrentRuns")}
+                    description={t("tableFeatures.concurrentRunsDesc")}
                     free="1"
                     pro="2"
                     team="5"
                   />
                   <TableRow
-                    feature="Total agents"
-                    description="Maximum number of agents you can create"
-                    free="Unlimited"
-                    pro="Unlimited"
-                    team="Unlimited"
+                    feature={t("tableFeatures.totalAgents")}
+                    description={t("tableFeatures.totalAgentsDesc")}
+                    free={t("tableValues.unlimited")}
+                    pro={t("tableValues.unlimited")}
+                    team={t("tableValues.unlimited")}
                   />
                   <TableRow
-                    feature="Credits rollover"
-                    description="Unused credits carry over to the next billing period"
+                    feature={t("tableFeatures.creditsRollover")}
+                    description={t("tableFeatures.creditsRolloverDesc")}
                     free={false}
-                    pro="1 month"
-                    team="1 month"
+                    pro={t("tableValues.oneMonth")}
+                    team={t("tableValues.oneMonth")}
                   />
                   <TableRow
-                    feature="Credit top-up"
-                    description="Purchase additional credits anytime at $1 per 1,000 credits"
-                    free={false}
-                    pro={true}
-                    team={true}
-                  />
-                  <TableRow
-                    feature="Auto-recharge"
-                    description="Automatically purchase credits when balance falls below a threshold"
-                    free={false}
-                    pro={true}
-                    team={true}
-                  />
-
-                  <TableSection title="Connectors & Integrations" />
-                  <TableRow
-                    feature="Connectors"
-                    description="Connect your tools like Slack, GitHub, Notion, and more"
-                    free="All connectors"
-                    pro="All connectors"
-                    team="All connectors"
-                  />
-                  <TableRow
-                    feature="Bring your own LLM"
-                    description="Use your own model provider API keys"
-                    free={true}
-                    pro={true}
-                    team={true}
-                  />
-
-                  <TableSection title="Security & Compliance" />
-                  <TableRow
-                    feature="Sandboxed execution"
-                    description="Firecracker microVMs with hardware-level KVM isolation"
-                    free={true}
-                    pro={true}
-                    team={true}
-                  />
-                  <TableRow
-                    feature="Full audit trail"
-                    description="Agent HTTP/HTTPS traffic logged with SHA-256 integrity per run"
-                    free={true}
-                    pro={true}
-                    team={true}
-                  />
-                  <TableRow
-                    feature="No credential exposure"
-                    description="Secrets injected at network layer, never visible to agent code"
-                    free={true}
-                    pro={true}
-                    team={true}
-                  />
-
-                  <TableSection title="Collaboration" />
-                  <TableRow
-                    feature="Team members"
-                    description="Number of people in your workspace"
-                    free="Unlimited"
-                    pro="Unlimited"
-                    team="Unlimited"
-                  />
-                  <TableRow
-                    feature="Per-member credit caps"
-                    description="Set spending limits for individual team members"
+                    feature={t("tableFeatures.creditTopUp")}
+                    description={t("tableFeatures.creditTopUpDesc")}
                     free={false}
                     pro={true}
                     team={true}
                   />
                   <TableRow
-                    feature="Auto-recharge"
-                    description="Automatically purchase credits when balance falls below a threshold"
+                    feature={t("tableFeatures.autoRecharge")}
+                    description={t("tableFeatures.autoRechargeDesc")}
                     free={false}
                     pro={true}
                     team={true}
                   />
 
-                  <TableSection title="Support" />
+                  <TableSection
+                    title={t("sections.connectorsAndIntegrations")}
+                  />
                   <TableRow
-                    feature="Community support"
-                    description="Access to Discord community and documentation"
+                    feature={t("tableFeatures.connectors")}
+                    description={t("tableFeatures.connectorsDesc")}
+                    free={t("tableValues.allConnectors")}
+                    pro={t("tableValues.allConnectors")}
+                    team={t("tableValues.allConnectors")}
+                  />
+                  <TableRow
+                    feature={t("tableFeatures.bringOwnLLM")}
+                    description={t("tableFeatures.bringOwnLLMDesc")}
+                    free={true}
+                    pro={true}
+                    team={true}
+                  />
+
+                  <TableSection title={t("sections.securityAndCompliance")} />
+                  <TableRow
+                    feature={t("tableFeatures.sandboxedExecution")}
+                    description={t("tableFeatures.sandboxedExecutionDesc")}
                     free={true}
                     pro={true}
                     team={true}
                   />
                   <TableRow
-                    feature="Email support"
-                    description="Direct email support from the VM0 team"
+                    feature={t("tableFeatures.fullAuditTrail")}
+                    description={t("tableFeatures.fullAuditTrailDesc")}
+                    free={true}
+                    pro={true}
+                    team={true}
+                  />
+                  <TableRow
+                    feature={t("tableFeatures.noCredentialExposure")}
+                    description={t("tableFeatures.noCredentialExposureDesc")}
+                    free={true}
+                    pro={true}
+                    team={true}
+                  />
+
+                  <TableSection title={t("sections.collaboration")} />
+                  <TableRow
+                    feature={t("tableFeatures.teamMembers")}
+                    description={t("tableFeatures.teamMembersDesc")}
+                    free={t("tableValues.unlimited")}
+                    pro={t("tableValues.unlimited")}
+                    team={t("tableValues.unlimited")}
+                  />
+                  <TableRow
+                    feature={t("tableFeatures.perMemberCreditCaps")}
+                    description={t("tableFeatures.perMemberCreditCapsDesc")}
                     free={false}
                     pro={true}
                     team={true}
                   />
                   <TableRow
-                    feature="Priority support"
-                    description="Dedicated support with faster response times"
+                    feature={t("tableFeatures.autoRecharge")}
+                    description={t("tableFeatures.autoRechargeDesc")}
+                    free={false}
+                    pro={true}
+                    team={true}
+                  />
+
+                  <TableSection title={t("sections.support")} />
+                  <TableRow
+                    feature={t("tableFeatures.communitySupport")}
+                    description={t("tableFeatures.communitySupportDesc")}
+                    free={true}
+                    pro={true}
+                    team={true}
+                  />
+                  <TableRow
+                    feature={t("tableFeatures.emailSupport")}
+                    description={t("tableFeatures.emailSupportDesc")}
+                    free={false}
+                    pro={true}
+                    team={true}
+                  />
+                  <TableRow
+                    feature={t("tableFeatures.prioritySupport")}
+                    description={t("tableFeatures.prioritySupportDesc")}
                     free={false}
                     pro={false}
                     team={true}
@@ -547,7 +547,7 @@ export default function PricingPageClient() {
                 letterSpacing: "-0.5px",
               }}
             >
-              Frequently asked questions
+              {t("faq.title")}
             </h2>
             <div
               style={{
@@ -556,32 +556,32 @@ export default function PricingPageClient() {
               }}
             >
               <FAQItem
-                question="What are credits?"
-                answer="Credits are consumed when your agents use AI models. Different models consume credits at different rates. For example, a simple task might use a few credits, while a complex multi-step workflow uses more."
+                question={t("faq.whatAreCredits")}
+                answer={t("faq.whatAreCreditsAnswer")}
               />
               <FAQItem
-                question="Can I change plans at any time?"
-                answer="Yes! You can upgrade or downgrade your plan at any time. Changes take effect immediately, and we'll prorate charges accordingly."
+                question={t("faq.changePlans")}
+                answer={t("faq.changePlansAnswer")}
               />
               <FAQItem
-                question="What happens when I run out of credits?"
-                answer="When your credits are depleted, your agents will stop running. You can purchase additional credits via auto-recharge, or upgrade to a higher plan for more monthly credits."
+                question={t("faq.runOutOfCredits")}
+                answer={t("faq.runOutOfCreditsAnswer")}
               />
               <FAQItem
-                question="Do unused credits roll over?"
-                answer="On the Free plan, starter credits don't expire but don't replenish. On Pro, unused credits roll over for 1 month. On Team, credits roll over for 1 month."
+                question={t("faq.doCreditsRollOver")}
+                answer={t("faq.doCreditsRollOverAnswer")}
               />
               <FAQItem
-                question="Can I bring my own model provider?"
-                answer="Yes! All plans support bringing your own LLM API keys (Anthropic, etc.). When using your own keys, no VM0 credits are consumed for model usage."
+                question={t("faq.bringOwnModel")}
+                answer={t("faq.bringOwnModelAnswer")}
               />
               <FAQItem
-                question="How secure is VM0?"
-                answer="Every agent run executes in an isolated Firecracker microVM with hardware-level KVM isolation. Credentials are injected at the network layer and never exposed to agent code. All agent HTTP/HTTPS traffic is logged with SHA-256 integrity per run."
+                question={t("faq.howSecure")}
+                answer={t("faq.howSecureAnswer")}
               />
               <FAQItem
-                question="Do you offer annual billing or discounts?"
-                answer="Contact us to discuss volume pricing, annual billing discounts, and custom arrangements for your team."
+                question={t("faq.annualBilling")}
+                answer={t("faq.annualBillingAnswer")}
               />
             </div>
           </div>

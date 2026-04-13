@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
+import { useTranslations } from "next-intl";
 import Image from "next/image";
 
 type Step =
@@ -11,19 +12,19 @@ type Step =
   | "expression"
   | "intensity";
 
-const STEPS: { key: Step; label: string }[] = [
-  { key: "rotation", label: "Angle" },
-  { key: "skin", label: "Skin" },
-  { key: "hairStyle", label: "Hair" },
-  { key: "hairColor", label: "Color" },
-  { key: "expression", label: "Face" },
-  { key: "intensity", label: "Mood" },
+const STEP_KEYS: Step[] = [
+  "rotation",
+  "skin",
+  "hairStyle",
+  "hairColor",
+  "expression",
+  "intensity",
 ];
 
-const INTENSITY_LABELS: Record<string, string> = {
-  d: "Chill",
-  m: "Normal",
-  h: "Hyped",
+const INTENSITY_LABEL_KEYS: Record<string, string> = {
+  d: "chill",
+  m: "normal",
+  h: "hyped",
 };
 
 interface AvatarConfig {
@@ -229,12 +230,11 @@ export default function AvatarCustomizer() {
   const [step, setStep] = useState<Step>("rotation");
   const [justPicked, setJustPicked] = useState<string | null>(null);
   const [showSparkles, setShowSparkles] = useState(false);
+  const t = useTranslations("avatar");
   // Tooltip hint that disappears after first interaction
 
   const current = editing !== null ? chars[editing] : null;
-  const stepIdx = STEPS.findIndex((s) => {
-    return s.key === step;
-  });
+  const stepIdx = STEP_KEYS.indexOf(step);
 
   const toggle = useCallback(
     (i: number) => {
@@ -261,12 +261,10 @@ export default function AvatarCustomizer() {
       const timer = setTimeout(() => {
         setJustPicked(null);
         setShowSparkles(false);
-        const idx = STEPS.findIndex((s) => {
-          return s.key === field;
-        });
+        const idx = STEP_KEYS.indexOf(field);
         const nextIdx = idx + 1;
-        if (nextIdx < STEPS.length) {
-          setStep(STEPS[nextIdx]!.key);
+        if (nextIdx < STEP_KEYS.length) {
+          setStep(STEP_KEYS[nextIdx]!);
         } else {
           setEditing(null);
         }
@@ -280,7 +278,7 @@ export default function AvatarCustomizer() {
 
   const goBack = useCallback(() => {
     if (stepIdx > 0) {
-      setStep(STEPS[stepIdx - 1]!.key);
+      setStep(STEP_KEYS[stepIdx - 1]!);
     }
   }, [stepIdx]);
 
@@ -305,7 +303,7 @@ export default function AvatarCustomizer() {
           >
             <AvatarPreview config={preview} size={56} />
             <span className="text-[10px] text-[#525b68]">
-              {INTENSITY_LABELS[val]}
+              {t(`intensityLabels.${INTENSITY_LABEL_KEYS[val]}`)}
             </span>
           </button>
         );
@@ -392,10 +390,10 @@ export default function AvatarCustomizer() {
 
             {/* Step progress */}
             <div className="flex items-center gap-1">
-              {STEPS.map((s, i) => {
+              {STEP_KEYS.map((s, i) => {
                 return (
                   <div
-                    key={s.key}
+                    key={s}
                     className={`h-1.5 rounded-full transition-all duration-300 ${
                       i === stepIdx
                         ? "w-5 bg-[#ed4e01]"
@@ -414,7 +412,7 @@ export default function AvatarCustomizer() {
               key={step} // re-mount on step change for animation
               style={{ animation: "optionAppear 0.15s ease-out" }}
             >
-              {STEPS[stepIdx]?.label}
+              {STEP_KEYS[stepIdx] ? t(`steps.${STEP_KEYS[stepIdx]}`) : ""}
             </p>
 
             {/* Options with staggered entrance */}
@@ -428,7 +426,7 @@ export default function AvatarCustomizer() {
                   className="text-xs text-[#525b68] hover:text-[#14171d]"
                   onClick={goBack}
                 >
-                  ← Back
+                  {t("back")}
                 </button>
               ) : (
                 <span />

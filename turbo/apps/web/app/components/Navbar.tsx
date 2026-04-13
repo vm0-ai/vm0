@@ -80,13 +80,13 @@ export default function Navbar({ initialIsSignedIn = false }: NavbarProps) {
             style={{ display: "flex", gap: "32px" }}
           >
             <Link href="/pricing" className="nav-link">
-              Pricing
+              {t("pricing")}
             </Link>
             <Link href="/security" className="nav-link">
-              Security
+              {t("security")}
             </Link>
             <Link href="/use-cases" className="nav-link">
-              Use Cases
+              {t("useCases")}
             </Link>
             {isBlogEnabled() && (
               <Link href="/blog" className="nav-link">
@@ -126,7 +126,7 @@ export default function Navbar({ initialIsSignedIn = false }: NavbarProps) {
                   onClick={handleSignOut}
                   className="btn-try-demo nav-desktop"
                 >
-                  Sign out
+                  {t("signOut")}
                 </button>
                 <a
                   href={getAppUrl()}
@@ -134,7 +134,7 @@ export default function Navbar({ initialIsSignedIn = false }: NavbarProps) {
                   rel="noopener noreferrer"
                   className="btn-get-access nav-desktop group"
                 >
-                  <span>Open app</span>
+                  <span>{t("openApp")}</span>
                   <IconArrowRight
                     size={16}
                     className="transition-transform group-hover:translate-x-0.5"
@@ -177,7 +177,7 @@ export default function Navbar({ initialIsSignedIn = false }: NavbarProps) {
                 return setMobileMenuOpen(false);
               }}
             >
-              Security
+              {t("security")}
             </Link>
             <Link
               href="/use-cases"
@@ -186,7 +186,7 @@ export default function Navbar({ initialIsSignedIn = false }: NavbarProps) {
                 return setMobileMenuOpen(false);
               }}
             >
-              Use Cases
+              {t("useCases")}
             </Link>
             {isBlogEnabled() && (
               <Link
@@ -231,7 +231,7 @@ export default function Navbar({ initialIsSignedIn = false }: NavbarProps) {
                   className="mobile-menu-link"
                   style={{ textAlign: "left", width: "100%" }}
                 >
-                  Sign out
+                  {t("signOut")}
                 </button>
                 <a
                   href={getAppUrl()}
@@ -243,7 +243,7 @@ export default function Navbar({ initialIsSignedIn = false }: NavbarProps) {
                   }}
                   style={{ display: "flex", alignItems: "center", gap: "8px" }}
                 >
-                  <span>Open app</span>
+                  <span>{t("openApp")}</span>
                   <IconArrowRight
                     size={16}
                     className="transition-transform group-hover:translate-x-0.5"

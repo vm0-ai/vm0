@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { auth } from "@clerk/nextjs/server";
 import LandingPage from "../components/LandingPage";
 
-const BASE_URL = "https://vm0.ai";
+const BASE_URL = "https://www.vm0.ai";
 
 interface PageProps {
   params: Promise<{ locale: string }>;

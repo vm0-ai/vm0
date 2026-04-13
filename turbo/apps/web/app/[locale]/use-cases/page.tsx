@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
 import UseCasesGalleryClient from "./UseCasesGalleryClient";
 import { USE_CASES } from "./data";
 
-const BASE_URL = "https://vm0.ai";
+const BASE_URL = "https://www.vm0.ai";
 
 interface PageProps {
   params: Promise<{ locale: string }>;
@@ -48,23 +49,26 @@ export async function generateMetadata({
   };
 }
 
-const itemListJsonLd = {
-  "@context": "https://schema.org",
-  "@type": "ItemList",
-  name: "VM0 Zero Use Cases",
-  description: "Real workflows from teams using Zero as their AI teammate.",
-  itemListElement: USE_CASES.map((uc, i) => {
-    return {
-      "@type": "ListItem",
-      position: i + 1,
-      url: `${BASE_URL}/en/use-cases/${uc.slug}`,
-      name: uc.title,
-      description: uc.description,
-    };
-  }),
-};
+export default async function UseCasesPage({ params }: PageProps) {
+  const { locale } = await params;
+  const t = await getTranslations({ locale, namespace: "useCases" });
 
-export default function UseCasesPage() {
+  const itemListJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    name: "VM0 Zero Use Cases",
+    description: "Real workflows from teams using Zero as their AI teammate.",
+    itemListElement: USE_CASES.map((uc, i) => {
+      return {
+        "@type": "ListItem",
+        position: i + 1,
+        url: `${BASE_URL}/en/use-cases/${uc.slug}`,
+        name: t(`content.${uc.slug}.title`),
+        description: t(`content.${uc.slug}.description`),
+      };
+    }),
+  };
+
   return (
     <>
       <script type="application/ld+json" suppressHydrationWarning>

@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import NextLink from "next/link";
 import { useUser } from "@clerk/nextjs";
+import { useTranslations } from "next-intl";
 import { getAppUrl } from "../../src/lib/zero/url";
 import Footer from "./Footer";
 import Image from "next/image";
@@ -381,7 +382,7 @@ function SlackMockup() {
   );
 }
 
-function SlackCard() {
+function SlackCard({ t }: { t: (key: string) => string }) {
   return (
     <div className="overflow-hidden rounded-[20px] bg-white">
       <div className="flex flex-col md:flex-row">
@@ -389,20 +390,18 @@ function SlackCard() {
         <div className="flex w-full flex-col justify-between gap-4 p-10 md:w-[421px] md:shrink-0">
           <div className="flex flex-col gap-4">
             <h3 className="text-2xl font-medium leading-8 text-[hsl(var(--foreground))]">
-              Ask in Slack, get answers from all your tools.
+              {t("slackCard.title")}
             </h3>
             <p className="text-base leading-6 text-[hsl(var(--muted-foreground))]">
-              @Zero in any channel. It pulls from your calendar, email, Linear,
-              GitHub — and replies with a summary your team can actually use. No
-              tab-switching, no dashboards.
+              {t("slackCard.description")}
             </p>
           </div>
           <div className="flex items-center gap-2">
             <span className="rounded-lg bg-[hsl(var(--gray-100))] px-4 py-1.5 text-sm font-medium text-[hsl(var(--muted-foreground))]">
-              Slack
+              {t("slackCard.tagSlack")}
             </span>
             <span className="rounded-lg bg-[hsl(var(--gray-100))] px-4 py-1.5 text-sm font-medium text-[hsl(var(--muted-foreground))]">
-              Team Sync
+              {t("slackCard.tagTeamSync")}
             </span>
           </div>
         </div>
@@ -534,7 +533,7 @@ function SyncedToolsMockup() {
   );
 }
 
-function SyncedToolsCard() {
+function SyncedToolsCard({ t }: { t: (key: string) => string }) {
   return (
     <div className="overflow-hidden rounded-[20px] bg-white">
       <div className="flex flex-col md:flex-row">
@@ -542,20 +541,18 @@ function SyncedToolsCard() {
         <div className="flex w-full flex-col justify-between gap-4 p-10 md:w-[421px] md:shrink-0">
           <div className="flex flex-col gap-4">
             <h3 className="text-2xl font-medium leading-8 text-[hsl(var(--foreground))]">
-              From discovery to outreach, agents do the legwork.
+              {t("syncedToolsCard.title")}
             </h3>
             <p className="text-base leading-6 text-[hsl(var(--muted-foreground))]">
-              Tell Zero who you&apos;re looking for. Its agents crawl social
-              platforms, build prospect lists, and draft personalized outreach
-              so your team focuses on closing, not searching.
+              {t("syncedToolsCard.description")}
             </p>
           </div>
           <div className="flex items-center gap-2">
             <span className="rounded-lg bg-[hsl(var(--gray-100))] px-4 py-1.5 text-sm font-medium text-[hsl(var(--muted-foreground))]">
-              Marketing Outreach
+              {t("syncedToolsCard.tagMarketing")}
             </span>
             <span className="rounded-lg bg-[hsl(var(--gray-100))] px-4 py-1.5 text-sm font-medium text-[hsl(var(--muted-foreground))]">
-              Cross-platform
+              {t("syncedToolsCard.tagCrossPlatform")}
             </span>
           </div>
         </div>
@@ -568,13 +565,25 @@ function SyncedToolsCard() {
 
 /* ── App UI carousel for "Teammate" card ── */
 
-const WEB_UI_CASES = [
-  { label: "Summarize my work week", src: "/assets/mockup/web-ui-1.png" },
-  { label: "Find and email leads", src: "/assets/mockup/web-ui-2.png" },
-  { label: "Triage Sentry errors", src: "/assets/mockup/web-ui-3.png" },
+const WEB_UI_CASES_SRCS = [
+  "/assets/mockup/web-ui-1.png",
+  "/assets/mockup/web-ui-2.png",
+  "/assets/mockup/web-ui-3.png",
 ];
 
-function AppMockupCarousel() {
+const WEB_UI_LABEL_KEYS = [
+  "teammateCard.tabSummarize",
+  "teammateCard.tabLeads",
+  "teammateCard.tabTriage",
+] as const;
+
+const WEB_UI_ARIA_KEYS = [
+  "teammateCard.ariaDaily",
+  "teammateCard.ariaLeads",
+  "teammateCard.ariaSentry",
+] as const;
+
+function AppMockupCarousel({ t }: { t: (key: string) => string }) {
   const [active, setActive] = useState(0);
   const ref = useInView();
 
@@ -582,11 +591,12 @@ function AppMockupCarousel() {
     <div className="flex flex-col">
       {/* Tabs */}
       <div className="flex items-center gap-1 px-2 sm:px-6">
-        {WEB_UI_CASES.map((c, i) => {
+        {WEB_UI_LABEL_KEYS.map((key, i) => {
           const isActive = i === active;
+          const label = t(key);
           return (
             <button
-              key={c.label}
+              key={key}
               type="button"
               onClick={() => {
                 return setActive(i);
@@ -597,7 +607,7 @@ function AppMockupCarousel() {
                   : "text-white/60 hover:text-white/90"
               }`}
             >
-              {c.label}
+              {label}
             </button>
           );
         })}
@@ -608,12 +618,12 @@ function AppMockupCarousel() {
         ref={ref}
         className="relative mt-2 w-full overflow-hidden rounded-t-xl sm:mt-3"
       >
-        {WEB_UI_CASES.map((c, i) => {
+        {WEB_UI_CASES_SRCS.map((src, i) => {
           return (
             <Image
-              key={c.src}
-              alt={c.label}
-              src={c.src}
+              key={src}
+              alt={t(WEB_UI_LABEL_KEYS[i]!)}
+              src={src}
               width={855}
               height={600}
               className={`webui-pop w-full select-none ${i === active ? "relative" : "absolute inset-0 opacity-0"}`}
@@ -625,7 +635,7 @@ function AppMockupCarousel() {
         <div className="absolute inset-0 z-20">
           <button
             type="button"
-            aria-label="Daily Report"
+            aria-label={t("teammateCard.ariaDaily")}
             onClick={() => {
               return setActive(0);
             }}
@@ -634,7 +644,7 @@ function AppMockupCarousel() {
           />
           <button
             type="button"
-            aria-label="Email Leads"
+            aria-label={t("teammateCard.ariaLeads")}
             onClick={() => {
               return setActive(1);
             }}
@@ -643,7 +653,7 @@ function AppMockupCarousel() {
           />
           <button
             type="button"
-            aria-label="Sentry Report"
+            aria-label={t("teammateCard.ariaSentry")}
             onClick={() => {
               return setActive(2);
             }}
@@ -666,21 +676,19 @@ function AppMockupCarousel() {
   );
 }
 
-function TeammateCard() {
+function TeammateCard({ t }: { t: (key: string) => string }) {
   return (
     <div className="overflow-hidden rounded-[20px] bg-white">
       <div className="flex flex-col gap-4 p-8 sm:p-10">
         <h3 className="text-2xl font-medium leading-8 text-[hsl(var(--foreground))]">
-          A teammate that reads, thinks, and delivers.
+          {t("teammateCard.title")}
         </h3>
         <p className="text-sm leading-6 text-[hsl(var(--muted-foreground))] sm:text-base">
-          &ldquo;Summarize my week from Calendar, Linear, and Slack.&rdquo; Zero
-          pulls context from your tools, connects the dots, and hands you a
-          finished report. Like briefing a colleague, except it takes seconds.
+          {t("teammateCard.description")}
         </p>
       </div>
       <div className="bg-[#d58341] px-2 pb-0 pt-3 sm:px-6 sm:pt-6">
-        <AppMockupCarousel />
+        <AppMockupCarousel t={t} />
       </div>
     </div>
   );
@@ -1293,8 +1301,9 @@ export default function LandingPage({
   const { isSignedIn: clerkIsSignedIn, isLoaded } = useUser();
   const isSignedIn = isLoaded ? clerkIsSignedIn : initialIsSignedIn;
   const revealRef = useScrollReveal();
+  const t = useTranslations("landing");
 
-  const ctaText = isSignedIn ? "Open app" : "Get started";
+  const ctaText = isSignedIn ? t("hero.ctaOpenApp") : t("hero.ctaGetStarted");
   const ctaHref = isSignedIn ? getAppUrl() : "/sign-up";
 
   return (
@@ -1369,7 +1378,7 @@ export default function LandingPage({
                   height={16}
                   className="h-4 w-[22px]"
                 />
-                <span>Check out our $14M seed round fundraising blog.</span>
+                <span>{t("hero.seedBanner")}</span>
                 <svg
                   width="16"
                   height="16"
@@ -1393,13 +1402,10 @@ export default function LandingPage({
               {/* Heading + Subtitle */}
               <div className="flex w-full flex-col items-center gap-[15px] text-center">
                 <h1 className="w-full text-[32px] font-medium leading-[1.4] tracking-[-1.12px] text-[hsl(var(--foreground))] sm:text-[42px] md:text-[51px]">
-                  Zero, your trustworthy AI teammate{" "}
-                  <br className="hidden sm:inline" />
-                  for real work.
+                  {t("hero.title")}
                 </h1>
                 <p className="max-w-2xl text-[16px] leading-7 text-[hsl(var(--muted-foreground))] sm:text-[18px]">
-                  Zero connects to 100+ tools and does the work. Reports,
-                  triage, outreach, research. In Slack or on the web.
+                  {t("hero.subtitle")}
                 </p>
               </div>
             </div>
@@ -1415,7 +1421,7 @@ export default function LandingPage({
                 href="/use-cases"
                 className="inline-flex items-center justify-center rounded-xl px-8 py-3.5 text-base font-medium text-[hsl(var(--foreground))] transition-all border border-[hsl(var(--gray-300))] hover:bg-[hsl(var(--gray-100))]"
               >
-                See use cases
+                {t("hero.seeUseCases")}
               </NextLink>
             </div>
           </div>
@@ -1425,18 +1431,18 @@ export default function LandingPage({
         <section className="px-5 py-10 sm:px-6 sm:py-12 md:py-16">
           <div className="mx-auto max-w-[1152px]">
             <div className="reveal">
-              <SectionHeading>What Zero actually does for you</SectionHeading>
+              <SectionHeading>{t("worksForYou.heading")}</SectionHeading>
             </div>
 
             <div className="mt-12 space-y-8 sm:mt-16">
               <div className="reveal">
-                <TeammateCard />
+                <TeammateCard t={t} />
               </div>
               <div className="reveal">
-                <SlackCard />
+                <SlackCard t={t} />
               </div>
               <div className="reveal">
-                <SyncedToolsCard />
+                <SyncedToolsCard t={t} />
               </div>
 
               {/* More use cases link */}
@@ -1445,7 +1451,7 @@ export default function LandingPage({
                   href="/use-cases"
                   className="inline-flex items-center gap-2 rounded-xl px-6 py-3 text-base font-medium text-[hsl(var(--foreground))] transition-all border border-[hsl(var(--gray-300))] hover:bg-[hsl(var(--gray-100))]"
                 >
-                  Explore more use cases
+                  {t("worksForYou.exploreMore")}
                   <svg
                     width="16"
                     height="16"
@@ -1473,11 +1479,10 @@ export default function LandingPage({
             {/* Title block */}
             <div className="reveal flex flex-col items-center gap-4 rounded-[32px] px-2 pb-2 pt-6">
               <h2 className="landing-heading text-center text-[28px] font-medium leading-[1.2] tracking-[-0.88px] text-[hsl(var(--foreground))] sm:text-[34px] md:text-[40px]">
-                Works with 100+ tools you already use
+                {t("connectors.heading")}
               </h2>
               <p className="max-w-[856px] text-center text-base leading-6 text-[hsl(var(--muted-foreground))]">
-                Slack, GitHub, Gmail, Notion, Linear, Sentry, and more. Zero
-                connects to your stack so it can act, not just answer.
+                {t("connectors.description")}
               </p>
             </div>
 
@@ -1584,7 +1589,7 @@ export default function LandingPage({
           <div className="mx-auto max-w-[1152px]">
             <div className="reveal">
               <h2 className="landing-heading text-center text-[28px] font-medium leading-[1.2] tracking-[-0.88px] text-[hsl(var(--foreground))] sm:text-[34px] md:text-[40px]">
-                Your data stays yours
+                {t("security.heading")}
               </h2>
             </div>
 
@@ -1593,11 +1598,10 @@ export default function LandingPage({
               <div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-[20px] bg-white">
                 <div className="flex flex-1 flex-col gap-4 p-10">
                   <h3 className="text-2xl font-medium leading-8 text-[hsl(var(--foreground))]">
-                    You control what Zero can access
+                    {t("security.permissionTitle")}
                   </h3>
                   <p className="text-base leading-6 text-[hsl(var(--muted-foreground))]">
-                    Set read and write permissions per tool, per agent. Zero
-                    only touches what you explicitly allow.
+                    {t("security.permissionDesc")}
                   </p>
                 </div>
                 <div className="flex h-[300px] items-center justify-center rounded-b-[20px] bg-[hsl(var(--gray-100))] px-10">
@@ -1617,20 +1621,19 @@ export default function LandingPage({
               <div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-[20px] bg-white">
                 <div className="flex flex-col gap-4 p-10">
                   <h3 className="text-2xl font-medium leading-8 text-[hsl(var(--foreground))]">
-                    Isolated execution, every time
+                    {t("security.isolatedTitle")}
                   </h3>
                   <p className="min-h-[72px] text-base leading-6 text-[hsl(var(--muted-foreground))]">
-                    Every task runs in its own microVM. Credentials never leave
-                    the sandbox. Fully auditable. And{" "}
+                    {t("security.isolatedDescPart1")}
                     <a
                       href="https://github.com/vm0-ai/vm0"
                       target="_blank"
                       rel="noopener noreferrer"
                       className="font-medium text-[#45A7A8] underline underline-offset-2 hover:text-[#3a8e8f]"
                     >
-                      open source
+                      {t("security.isolatedDescLink")}
                     </a>
-                    .
+                    {t("security.isolatedDescPart2")}
                   </p>
                 </div>
                 <div className="flex h-[300px] items-center justify-center rounded-b-[20px] bg-[hsl(var(--gray-100))] px-10">
@@ -1647,7 +1650,7 @@ export default function LandingPage({
             {/* Section title */}
             <div className="reveal">
               <h2 className="landing-heading max-w-[740px] text-center text-[28px] font-medium leading-[1.2] tracking-[-0.88px] text-[hsl(var(--foreground))] sm:text-[34px] md:text-[40px]">
-                Gets smarter the more you use it
+                {t("intelligence.heading")}
               </h2>
             </div>
 
@@ -1664,12 +1667,10 @@ export default function LandingPage({
                     className="h-[22px] w-[24px] landing-icon-invert"
                   />
                   <h3 className="text-2xl font-medium leading-8 text-[hsl(var(--foreground))]">
-                    Remembers your context
+                    {t("intelligence.memoryTitle")}
                   </h3>
                   <p className="text-base leading-6 text-[hsl(var(--muted-foreground))]">
-                    Past decisions, project context, your preferences — Zero
-                    carries it all forward. No re-explaining, no lost context
-                    between sessions.
+                    {t("intelligence.memoryDesc")}
                   </p>
                 </div>
                 <MemoryMockupArea />
@@ -1686,11 +1687,10 @@ export default function LandingPage({
                     className="size-[24px] landing-icon-invert"
                   />
                   <h3 className="text-2xl font-medium leading-8 text-[hsl(var(--foreground))]">
-                    Scheduled intelligence
+                    {t("intelligence.scheduleTitle")}
                   </h3>
                   <p className="text-base leading-6 text-[hsl(var(--muted-foreground))]">
-                    Zero runs autonomous recurring tasks, daily error scans,
-                    tech debt reports, morning briefs, without being prompted.
+                    {t("intelligence.scheduleDesc")}
                   </p>
                 </div>
                 <ScheduleMockupArea />
@@ -1699,30 +1699,29 @@ export default function LandingPage({
 
             {/* Three bottom benefit items */}
             <div className="reveal grid w-full gap-8 sm:grid-cols-3">
-              {[
-                {
-                  title: "Specialized sub-agents",
-                  description:
-                    "Create agents for specific jobs. One for research, one for triage, one for outreach. They work in parallel so you don't.",
-                },
-                {
-                  title: "Tool orchestration",
-                  description:
-                    "Zero selects and chains the right tools from 100+ available integrations. You describe the goal; Zero figures out the steps.",
-                },
-                {
-                  title: "Knows who you are",
-                  description:
-                    '"My PRs," "assign to me." Zero resolves your identity across GitHub, Slack, and Linear automatically. No setup required.',
-                },
-              ].map((item) => {
+              {(
+                [
+                  {
+                    titleKey: "intelligence.subAgentsTitle",
+                    descKey: "intelligence.subAgentsDesc",
+                  },
+                  {
+                    titleKey: "intelligence.toolOrchTitle",
+                    descKey: "intelligence.toolOrchDesc",
+                  },
+                  {
+                    titleKey: "intelligence.identityTitle",
+                    descKey: "intelligence.identityDesc",
+                  },
+                ] as const
+              ).map((item) => {
                 return (
-                  <div key={item.title} className="flex flex-col gap-2">
+                  <div key={item.titleKey} className="flex flex-col gap-2">
                     <h3 className="text-base font-bold leading-6 text-[hsl(var(--foreground))]">
-                      {item.title}
+                      {t(item.titleKey)}
                     </h3>
                     <p className="text-base leading-6 text-[hsl(var(--muted-foreground))]">
-                      {item.description}
+                      {t(item.descKey)}
                     </p>
                   </div>
                 );
@@ -1737,11 +1736,10 @@ export default function LandingPage({
             <div className="flex flex-col items-start gap-6 rounded-[20px] bg-white px-6 py-8 sm:flex-row sm:items-center sm:justify-between sm:gap-8 sm:px-10">
               <div className="flex flex-col gap-2">
                 <h3 className="landing-heading text-[22px] font-medium leading-[1.3] tracking-[-0.5px] text-[hsl(var(--foreground))] sm:text-[26px]">
-                  You decide what matters. Zero handles the rest.
+                  {t("cta.title")}
                 </h3>
                 <p className="text-base leading-6 text-[hsl(var(--muted-foreground))]">
-                  Start free. Use it in Slack or on the web. No credit card
-                  required.
+                  {t("cta.subtitle")}
                 </p>
               </div>
               <CtaButton

@@ -78,21 +78,135 @@
     "button": "Warteliste beitreten"
   },
   "nav": {
-    "docs": "Docs",
+    "docs": "Dokumente",
     "blog": "Blog",
     "skills": "Skills",
-    "glossary": "Glossar",
     "pricing": "Preise",
     "github": "GitHub",
     "contact": "Demo vereinbaren",
-    "joinWaitlist": "Registrieren"
+    "joinWaitlist": "Registrieren",
+    "security": "Sicherheit",
+    "useCases": "Anwendungsfälle",
+    "signOut": "Abmelden",
+    "openApp": "App öffnen"
   },
   "pricing": {
     "title": "Wählen Sie Ihren Plan",
-    "subtitle": "Starten Sie kostenlos und skalieren Sie nach Bedarf. Keine Kreditkarte erforderlich."
+    "subtitle": "Starten Sie kostenlos und skalieren Sie nach Bedarf. Keine Kreditkarte erforderlich.",
+    "heroTitle": "Zahlen Sie nur, was Sie nutzen, nicht mehr",
+    "heroDescription": "Starten Sie kostenlos mit Ihrem KI-Teamkollegen. Skalieren Sie, wenn Sie bereit sind, keine Kreditkarte erforderlich.",
+    "free": {
+      "description": "Starten Sie kostenlos mit Ihrem KI-Teamkollegen.",
+      "features": {
+        "starterCredits": "10.000 Starter-Credits",
+        "concurrentRun": "1 gleichzeitige Ausführung",
+        "unlimitedAgents": "Unbegrenzte Agenten insgesamt",
+        "bringOwnLLM": "Eigene LLM-Schlüssel verwenden",
+        "communitySupport": "Community-Support"
+      },
+      "buttonText": "Jetzt starten"
+    },
+    "pro": {
+      "description": "Mehr Leistung und nahtlose Zusammenarbeit für Ihr Team.",
+      "features": {
+        "credits": "20.000 Credits / Monat",
+        "concurrentRuns": "2 gleichzeitige Ausführungen",
+        "unlimitedAgents": "Unbegrenzte Agenten insgesamt",
+        "bringOwnLLM": "Eigene LLM-Schlüssel verwenden",
+        "creditsRollover": "Credits-Übertrag (1 Monat)",
+        "emailSupport": "E-Mail-Support"
+      },
+      "buttonText": "Mit Pro starten"
+    },
+    "team": {
+      "description": "Skalieren Sie schnell, ohne Reibung und mit voller Flexibilität.",
+      "features": {
+        "credits": "120.000 Credits / Monat",
+        "concurrentRuns": "5 gleichzeitige Ausführungen",
+        "unlimitedAgents": "Unbegrenzte Agenten insgesamt",
+        "bringOwnLLM": "Eigene LLM-Schlüssel verwenden",
+        "creditsRollover": "Credits-Übertrag (1 Monat)",
+        "prioritySupport": "Prioritäts-Support"
+      },
+      "buttonText": "Mit Team starten"
+    },
+    "needMoreCredits": "Mehr Credits benötigt?",
+    "topUpDescription": "Jederzeit aufladen für",
+    "topUpRate": "1.000 Credits pro 1 $",
+    "topUpAutoRecharge": "Richten Sie automatisches Aufladen ein, damit Ihre Agenten nie stoppen – wenn Ihr Guthaben unter einen Schwellenwert fällt, werden Credits automatisch gekauft.",
+    "perCredits": "pro 1.000 Credits",
+    "comparePlans": "Pläne vergleichen",
+    "featuresHeader": "Funktionen",
+    "sections": {
+      "creditsAndAgents": "Credits & Agenten",
+      "connectorsAndIntegrations": "Konnektoren & Integrationen",
+      "securityAndCompliance": "Sicherheit & Compliance",
+      "collaboration": "Zusammenarbeit",
+      "support": "Support"
+    },
+    "tableFeatures": {
+      "creditsPerMonth": "Credits pro Monat",
+      "creditsPerMonthDesc": "Credits, die durch KI-Modellnutzung über alle Agenten verbraucht werden",
+      "concurrentRuns": "Gleichzeitige Ausführungen",
+      "concurrentRunsDesc": "Anzahl der Agenten, die gleichzeitig laufen können",
+      "totalAgents": "Agenten insgesamt",
+      "totalAgentsDesc": "Maximale Anzahl der Agenten, die Sie erstellen können",
+      "creditsRollover": "Credits-Übertrag",
+      "creditsRolloverDesc": "Ungenutzte Credits werden in die nächste Abrechnungsperiode übertragen",
+      "creditTopUp": "Credit-Aufladung",
+      "creditTopUpDesc": "Zusätzliche Credits jederzeit kaufen für 1 $ pro 1.000 Credits",
+      "autoRecharge": "Automatisches Aufladen",
+      "autoRechargeDesc": "Automatischer Credit-Kauf, wenn das Guthaben unter einen Schwellenwert fällt",
+      "connectors": "Konnektoren",
+      "connectorsDesc": "Verbinden Sie Ihre Tools wie Slack, GitHub, Notion und mehr",
+      "bringOwnLLM": "Eigenes LLM mitbringen",
+      "bringOwnLLMDesc": "Verwenden Sie Ihre eigenen Modellanbieter-API-Schlüssel",
+      "sandboxedExecution": "Sandbox-Ausführung",
+      "sandboxedExecutionDesc": "Firecracker-microVMs mit Hardware-Level-KVM-Isolation",
+      "fullAuditTrail": "Vollständiger Audit-Trail",
+      "fullAuditTrailDesc": "Agent-HTTP/HTTPS-Verkehr pro Ausführung mit SHA-256-Integrität protokolliert",
+      "noCredentialExposure": "Keine Credential-Offenlegung",
+      "noCredentialExposureDesc": "Secrets werden auf Netzwerkebene injiziert, nie für Agenten-Code sichtbar",
+      "teamMembers": "Teammitglieder",
+      "teamMembersDesc": "Anzahl der Personen in Ihrem Workspace",
+      "perMemberCreditCaps": "Credit-Limits pro Mitglied",
+      "perMemberCreditCapsDesc": "Ausgabenlimits für einzelne Teammitglieder festlegen",
+      "communitySupport": "Community-Support",
+      "communitySupportDesc": "Zugang zur Discord-Community und Dokumentation",
+      "emailSupport": "E-Mail-Support",
+      "emailSupportDesc": "Direkter E-Mail-Support vom VM0-Team",
+      "prioritySupport": "Prioritäts-Support",
+      "prioritySupportDesc": "Dedizierter Support mit schnelleren Reaktionszeiten"
+    },
+    "tableValues": {
+      "starter": "10.000 Starter",
+      "20k": "20.000",
+      "120k": "120.000",
+      "unlimited": "Unbegrenzt",
+      "oneMonth": "1 Monat",
+      "allConnectors": "Alle Konnektoren"
+    },
+    "faq": {
+      "title": "Häufig gestellte Fragen",
+      "whatAreCredits": "Was sind Credits?",
+      "whatAreCreditsAnswer": "Credits werden verbraucht, wenn Ihre Agenten KI-Modelle nutzen. Verschiedene Modelle verbrauchen Credits mit unterschiedlichen Raten. Zum Beispiel verbraucht eine einfache Aufgabe wenige Credits, während ein komplexer mehrstufiger Workflow mehr benötigt.",
+      "changePlans": "Kann ich den Plan jederzeit wechseln?",
+      "changePlansAnswer": "Ja! Sie können Ihren Plan jederzeit upgraden oder downgraden. Änderungen werden sofort wirksam, und wir berechnen die Kosten anteilig.",
+      "runOutOfCredits": "Was passiert, wenn meine Credits aufgebraucht sind?",
+      "runOutOfCreditsAnswer": "Wenn Ihre Credits aufgebraucht sind, stoppen Ihre Agenten. Sie können zusätzliche Credits per automatischem Aufladen kaufen oder auf einen höheren Plan upgraden.",
+      "doCreditsRollOver": "Werden ungenutzte Credits übertragen?",
+      "doCreditsRollOverAnswer": "Beim Free-Plan verfallen Starter-Credits nicht, werden aber nicht aufgefüllt. Bei Pro werden ungenutzte Credits 1 Monat übertragen. Bei Team werden Credits 1 Monat übertragen.",
+      "bringOwnModel": "Kann ich meinen eigenen Modellanbieter verwenden?",
+      "bringOwnModelAnswer": "Ja! Alle Pläne unterstützen eigene LLM-API-Schlüssel (Anthropic usw.). Bei Verwendung eigener Schlüssel werden keine VM0-Credits für die Modellnutzung verbraucht.",
+      "howSecure": "Wie sicher ist VM0?",
+      "howSecureAnswer": "Jeder Agentenlauf wird in einer isolierten Firecracker-microVM mit Hardware-Level-KVM-Isolation ausgeführt. Credentials werden auf Netzwerkebene injiziert und nie dem Agenten-Code ausgesetzt. Sämtlicher Agent-HTTP/HTTPS-Verkehr wird pro Lauf mit SHA-256-Integrität protokolliert.",
+      "annualBilling": "Bieten Sie Jahresabrechnung oder Rabatte an?",
+      "annualBillingAnswer": "Kontaktieren Sie uns, um Mengenpreise, Jahresabrechnungsrabatte und individuelle Vereinbarungen für Ihr Team zu besprechen."
+    },
+    "perMonth": "/Monat"
   },
   "footer": {
-    "tagline": "Zero, your trustworthy AI teammate.",
+    "tagline": "Zero, Ihr vertrauenswürdiger KI-Teamkollege.",
     "copyright": "© 2026 VM0.ai Alle Rechte vorbehalten.",
     "language": "Sprache",
     "status": "Status",
@@ -135,142 +249,6 @@
       "Other": "Sonstiges"
     }
   },
-  "glossary": {
-    "hero": {
-      "title": "Glossar für Agenten-Entwicklung",
-      "description": "Beherrschen Sie die Sprache von KI-Agenten. Erkunden Sie wichtige Konzepte, Terminologie und VM0-spezifische Funktionen, um Ihre Agenten-Entwicklungsreise zu beschleunigen."
-    },
-    "search": {
-      "placeholder": "Begriffe durchsuchen...",
-      "allCategories": "Alle Kategorien",
-      "showingAll": "Zeige alle Begriffe",
-      "found": "Gefunden",
-      "results": "Begriffe",
-      "noResults": "Keine Begriffe gefunden, die Ihrer Suche entsprechen"
-    },
-    "relatedTerms": "Verwandte Begriffe",
-    "categories": {
-      "Core Concepts": "Kernkonzepte",
-      "Execution": "Ausführung",
-      "Infrastructure": "Infrastruktur",
-      "VM0 Features": "VM0-Funktionen",
-      "Development": "Entwicklung"
-    },
-    "terms": {
-      "agent": {
-        "name": "Agent",
-        "definition": "Ein autonomes KI-Programm, das Anweisungen verstehen, Entscheidungen treffen, Werkzeuge verwenden und Aufgaben selbstständig ausführen kann. Im Gegensatz zu traditionellen Skripten können Agenten ihren Ansatz basierend auf dem Kontext anpassen und iterativ auf Ziele hinarbeiten."
-      },
-      "skill": {
-        "name": "Skill",
-        "definition": "Eine vorgefertigte Integration oder Fähigkeit, die Agenten nutzen können, um mit externen Diensten zu interagieren. Skills bieten Agenten sofort einsetzbare Funktionalität wie den Zugriff auf Slack, GitHub, Notion oder andere APIs, ohne dass eine benutzerdefinierte Implementierung erforderlich ist."
-      },
-      "tool": {
-        "name": "Tool",
-        "definition": "Eine Funktion oder API, die ein Agent aufrufen kann, um bestimmte Aktionen auszuführen. Tools sind die Bausteine der Agentenfähigkeiten und ermöglichen es ihnen, Dateien zu lesen, HTTP-Anfragen zu stellen, Datenbanken abzufragen oder mit jedem externen System zu interagieren."
-      },
-      "prompt": {
-        "name": "Prompt",
-        "definition": "Natürlichsprachliche Anweisungen, die einem Agenten gegeben werden, um seine Aufgabe, sein Verhalten oder sein Ziel zu definieren. Prompts können von einfachen Befehlen bis hin zu komplexen Systemanweisungen reichen, die bestimmen, wie ein Agent denkt und arbeitet."
-      },
-      "context": {
-        "name": "Kontext",
-        "definition": "Die Informationen, die einem Agenten während der Ausführung zur Verfügung stehen, einschließlich Gesprächsverlauf, Speicher, Tool-Ausgaben und Umgebungszustand. Der Kontext hilft Agenten, Kohärenz über Interaktionen hinweg zu wahren und fundierte Entscheidungen zu treffen."
-      },
-      "session": {
-        "name": "Sitzung",
-        "definition": "Ein kontinuierlicher Zeitraum der Agentenausführung, der Zustand, Speicher und Kontext bewahrt. Sitzungen ermöglichen es Agenten, das Bewusstsein über mehrere Interaktionen hinweg aufrechtzuerhalten und die Arbeit fortzusetzen, ohne Fortschritte zu verlieren."
-      },
-      "checkpoint": {
-        "name": "Checkpoint",
-        "definition": "Ein Snapshot des Zustands eines Agenten zu einem bestimmten Zeitpunkt, der seinen Speicher, Kontext und Ausführungsfortschritt erfasst. Checkpoints ermöglichen Reproduzierbarkeit und erlauben es Ihnen, Agentendurchläufe wiederherzustellen, zu forken oder zu wiederholen."
-      },
-      "artifact": {
-        "name": "Artefakt",
-        "definition": "Dateien, Daten oder Ausgaben, die von einem Agenten während der Ausführung erzeugt werden. Artefakte bleiben über Durchläufe hinweg bestehen und können Code, Dokumente, Analyseergebnisse oder andere vom Agenten produzierte Ergebnisse umfassen."
-      },
-      "observability": {
-        "name": "Beobachtbarkeit",
-        "definition": "Die Fähigkeit, das Verhalten von Agenten durch Logs, Metriken und Ausführungstraces zu inspizieren, zu überwachen und zu verstehen. Beobachtbarkeit ist wesentlich für Debugging, Optimierung und die Gewährleistung transparenter KI-Operationen."
-      },
-      "sandbox": {
-        "name": "Sandbox",
-        "definition": "Eine isolierte Ausführungsumgebung, in der Agenten sicher laufen, ohne Produktionssysteme zu beeinträchtigen. Sandboxes bieten Sicherheitsgrenzen und stellen sicher, dass Agentenaktionen eingedämmt und kontrolliert werden."
-      },
-      "memory": {
-        "name": "Speicher",
-        "definition": "Informationen, die ein Agent über Interaktionen hinweg behält und es ihm ermöglichen, aus vergangenen Erfahrungen zu lernen und den Kontext über die Zeit aufrechtzuerhalten. Der Speicher kann Fakten, Präferenzen, Gesprächsverläufe und gelernte Muster umfassen."
-      },
-      "workflow": {
-        "name": "Workflow",
-        "definition": "Eine Abfolge von Aufgaben oder Operationen, die ein Agent ausführt, um ein Ziel zu erreichen. Im Gegensatz zu starren Automatisierungsskripten können Agenten-Workflows sich anpassen und basierend auf Zwischenergebnissen und sich ändernden Bedingungen justieren."
-      },
-      "llm": {
-        "name": "LLM (Large Language Model)",
-        "definition": "Das zugrunde liegende KI-Modell, das das Reasoning und die Entscheidungsfindung des Agenten antreibt. Beispiele sind Claude, GPT-4 und Gemini. Verschiedene LLMs haben unterschiedliche Stärken, Kosten und Fähigkeiten."
-      },
-      "skillMd": {
-        "name": "SKILL.md",
-        "definition": "Eine Markdown-Konfigurationsdatei, die das Verhalten, die Eingaben, Ausgaben und Implementierungslogik einer Skill definiert. Die SKILL.md-Datei ermöglicht es Ihnen, benutzerdefinierte Skills mit natürlicher Sprache und strukturierten Metadaten zu erstellen, wodurch es einfach wird, Agentenfähigkeiten zu erweitern, ohne komplexen Code zu schreiben."
-      },
-      "agentMd": {
-        "name": "AGENTS.md",
-        "definition": "Eine Markdown-Konfigurationsdatei, die das Verhalten, die Persönlichkeit, die Ziele und die verfügbaren Tools eines Agenten definiert. Die AGENTS.md-Datei dient als Blaupause des Agenten und spezifiziert, wie er denken sollte, was er tun kann und wie er mit Benutzern und Systemen interagieren sollte."
-      },
-      "volume": {
-        "name": "Volume",
-        "definition": "Ein persistenter Speicherplatz, der Dateien und Daten über Agentendurchläufe hinweg bewahrt. Volumes bieten Agenten ein Dateisystem, das über einzelne Ausführungen hinaus besteht und es ihnen ermöglicht, Zustände zu speichern, Daten zu cachen und langfristige Artefakte zu pflegen."
-      },
-      "action": {
-        "name": "Aktion",
-        "definition": "Eine konkrete Operation oder Aufgabe, die ein Agent ausführt, um seine Ziele zu erreichen. Aktionen können API-Aufrufe, das Lesen von Dateien, die Verarbeitung von Daten oder die Interaktion mit externen Systemen umfassen. Jede Aktion repräsentiert einen einzelnen Schritt im Ausführungsfluss des Agenten."
-      },
-      "runtime": {
-        "name": "Runtime",
-        "definition": "Die Ausführungsumgebung, in der Agenten laufen und die notwendige Infrastruktur, Ressourcen und APIs bereitstellt. Die Runtime verwaltet den Agentenlebenszyklus, handhabt die Ressourcenzuweisung und gewährleistet die ordnungsgemäße Isolation zwischen verschiedenen Agentenausführungen."
-      },
-      "orchestration": {
-        "name": "Orchestrierung",
-        "definition": "Die Koordination und Verwaltung mehrerer Agenten, Workflows oder Aufgaben, um komplexe Ziele zu erreichen. Die Orchestrierung handhabt Abhängigkeiten, Sequenzierung, parallele Ausführung und Ressourcenzuweisung über verteilte Agentenoperationen hinweg."
-      },
-      "mcp": {
-        "name": "MCP (Model Context Protocol)",
-        "definition": "Ein offenes Protokoll, das von Anthropic entwickelt wurde und es KI-Assistenten ermöglicht, sich sicher mit externen Datenquellen und Tools zu verbinden. MCP bietet eine standardisierte Möglichkeit für Agenten, auf Ressourcen wie Datenbanken, APIs und Dateisysteme zuzugreifen, während Sicherheit und Kontextbewusstsein gewahrt bleiben."
-      },
-      "image": {
-        "name": "Image",
-        "definition": "Ein gepackter Container, der den Code, die Runtime, die Abhängigkeiten und die Konfiguration enthält, die zum Ausführen eines Agenten erforderlich sind. Images bieten eine konsistente und reproduzierbare Ausführungsumgebung und stellen sicher, dass Agenten sich über verschiedene Deployments hinweg gleich verhalten."
-      },
-      "secrets": {
-        "name": "Secrets",
-        "definition": "Sensible Informationen wie API-Schlüssel, Passwörter und Tokens, die Agenten benötigen, um auf externe Dienste zuzugreifen. Secrets werden sicher gespeichert und zur Ausführungszeit in die Agenten-Runtime injiziert, wodurch eine Offenlegung im Code oder in Konfigurationsdateien verhindert wird."
-      },
-      "environmentVariable": {
-        "name": "Umgebungsvariable",
-        "definition": "Ein Konfigurationswert, der einem Agenten zur Laufzeit übergeben wird und es Ihnen ermöglicht, das Verhalten anzupassen, ohne Code zu ändern. Umgebungsvariablen werden häufig für API-Endpunkte, Feature-Flags und nicht sensible Konfigurationseinstellungen verwendet."
-      },
-      "virtualMachine": {
-        "name": "Virtuelle Maschine",
-        "definition": "Eine isolierte, softwarebasierte Rechenumgebung, die einen physischen Computer emuliert. Virtuelle Maschinen bieten vollständige Isolation zwischen Agentenausführungen und gewährleisten Sicherheit und verhindern Interferenzen. VM0 verwendet leichtgewichtige virtuelle Maschinen, um Agenten mit ihrem eigenen Betriebssystem, Dateisystem und Netzwerk-Stack auszuführen."
-      },
-      "cli": {
-        "name": "CLI (Command Line Interface)",
-        "definition": "Eine textbasierte Schnittstelle zur Interaktion mit Agenten und der VM0-Plattform. Die CLI ermöglicht es Entwicklern, Agenten über Terminal-Befehle zu erstellen, bereitzustellen und zu verwalten, und bietet leistungsstarke Skripting- und Automatisierungsfähigkeiten, ohne eine grafische Benutzeroberfläche zu benötigen."
-      },
-      "cliAgent": {
-        "name": "CLI-Agent",
-        "definition": "Ein Agent, der speziell dafür entwickelt wurde, über Befehlszeilenschnittstellen aufgerufen und gesteuert zu werden. CLI-Agenten können in Skripte, CI/CD-Pipelines und Terminal-Workflows integriert werden, was sie ideal für Automatisierungsaufgaben und Entwicklerwerkzeuge macht."
-      },
-      "agentRouter": {
-        "name": "Agent-Router",
-        "definition": "Ein System, das Agentenanfragen intelligent an das am besten geeignete KI-Modell weiterleitet, basierend auf Aufgabenanforderungen, Kostenbeschränkungen und Leistungsbedürfnissen. Der Agent-Router kann dynamisch zwischen verschiedenen LLMs (Claude, GPT, Gemini) wählen oder an spezialisierte Modelle für bestimmte Fähigkeiten weiterleiten."
-      },
-      "claudeCode": {
-        "name": "Claude Code",
-        "definition": "Anthropics offizielles Befehlszeilenwerkzeug zum Erstellen und Bereitstellen von KI-Agenten. Claude Code bietet eine entwicklerfreundliche Schnittstelle zum Erstellen von Agenten, Verwalten von Skills und zur Integration mit der Claude API. Es rationalisiert den Agenten-Entwicklungsworkflow mit Funktionen wie Live-Reloading, Debugging-Tools und Deployment-Automatisierung."
-      }
-    }
-  },
   "blog": {
     "title": "Blog",
     "description": "Einblicke, Tutorials und Updates zur agentenzentrierten Entwicklung und der Zukunft der KI-Infrastruktur.",
@@ -290,31 +268,725 @@
     "link": "Details anzeigen"
   },
   "useCases": {
-    "title": "Use Cases",
-    "metaDescription": "Real workflows from teams using Zero as their AI teammate. See the exact prompts, outputs, and integrations.",
-    "heroTitle": "See what Zero can do for your team",
-    "heroSubtitle": "Real workflows from teams using Zero as their AI teammate. Each use case includes the exact prompt, Zero's output, and how to extend it.",
-    "role": "Role",
-    "capability": "Capability",
-    "all": "All",
-    "seeHow": "See how",
-    "comingSoon": "Coming soon",
-    "moreComingSoon": "More use cases coming",
-    "noResults": "No use cases match these filters.",
-    "whenThisHappens": "When this happens",
-    "whatYouSay": "What you say to Zero",
-    "whatZeroDoes": "What Zero does",
-    "whatsNext": "What's next",
-    "whatYouNeed": "What you need",
-    "required": "Required",
+    "title": "Anwendungsfälle",
+    "metaDescription": "Reale Workflows von Teams, die Zero als KI-Teamkollegen nutzen. Sehen Sie die genauen Prompts, Ausgaben und Integrationen.",
+    "heroTitle": "Sehen Sie, was Zero für Ihr Team tun kann",
+    "heroSubtitle": "Reale Workflows von Teams, die Zero als KI-Teamkollegen nutzen. Jeder Anwendungsfall enthält den genauen Prompt, Zeros Ausgabe und wie Sie ihn erweitern können.",
+    "role": "Rolle",
+    "capability": "Funktion",
+    "all": "Alle",
+    "seeHow": "So geht's",
+    "comingSoon": "Demnächst verfügbar",
+    "moreComingSoon": "Weitere Anwendungsfälle folgen",
+    "noResults": "Keine Anwendungsfälle entsprechen diesen Filtern.",
+    "whenThisHappens": "Wenn dies passiert",
+    "whatYouSay": "Was Sie Zero sagen",
+    "whatZeroDoes": "Was Zero tut",
+    "whatsNext": "Was kommt als Nächstes",
+    "whatYouNeed": "Was Sie benötigen",
+    "required": "Erforderlich",
     "optional": "Optional",
-    "tips": "Tips and best practices",
-    "relatedUseCases": "Related use cases",
-    "backToAll": "All use cases",
-    "zeroConnects": "Zero connects:",
-    "ctaTitle": "Zero works where your team works",
-    "ctaSubtitle": "Add Zero to Slack and start delegating in plain language. No setup wizards. No workflow builders. Just ask.",
-    "addToSlack": "Add Zero to Slack",
-    "bookDemo": "Book a demo"
+    "tips": "Tipps und bewährte Methoden",
+    "relatedUseCases": "Ähnliche Anwendungsfälle",
+    "backToAll": "Alle Anwendungsfälle",
+    "zeroConnects": "Zero verbindet:",
+    "ctaTitle": "Zero arbeitet dort, wo Ihr Team arbeitet",
+    "ctaSubtitle": "Fügen Sie Zero zu Slack hinzu und beginnen Sie mit dem Delegieren in natürlicher Sprache. Keine Einrichtungsassistenten. Keine Workflow-Builder. Einfach fragen.",
+    "addToSlack": "Zero zu Slack hinzufügen",
+    "bookDemo": "Demo buchen",
+    "gallery": {
+      "moreToCome": "Mehr kommt bald",
+      "moreToComeDesc": "Haben Sie eine clevere Nutzung für Zero?",
+      "submitYourCase": "Ihren Fall einreichen →"
+    },
+    "content": {
+      "sentry-triage": {
+        "title": "Sentry-Rauschen in eine priorisierte Aufgabenliste verwandeln",
+        "description": "Bitten Sie Zero, Ihre wichtigsten ungelösten Sentry-Fehler nach Häufigkeit geordnet abzurufen. Zero liest die Stack Traces, erklärt die Ursache in verständlicher Sprache und sagt Ihnen, welche Datei Sie zuerst beheben sollten.",
+        "timeSaved": "~25 Min. gespart",
+        "headings": {
+          "scenario": "Warum Sentry-Triage Engineering-Zeit verschwendet",
+          "prompt": "So bitten Sie Zero, Sentry-Fehler zu priorisieren",
+          "steps": "Wie Zero Ihre Sentry-Fehler analysiert und einstuft",
+          "nextActions": "Sentry-Triage in GitHub Issues und tägliche Automatisierung umwandeln",
+          "integrations": "Erforderliche Integrationen: Sentry und GitHub",
+          "tips": "Best Practices für automatisierte Sentry-Triage"
+        },
+        "scenario": "Montagmorgen. Sie öffnen Slack und finden ein Dutzend Sentry-Alarme in #dev. Die meisten davon sind Rauschen – instabile Tests, bekannte Probleme, vorübergehende Fehler, die sich von selbst lösen. Aber irgendwo darin könnte etwas Wichtiges stecken: eine defekte Integration, ein Abrechnungsfehler, ein Absturz, der echte Benutzer betrifft. Sie möchten nicht Sentrys Dashboard öffnen und Issues einzeln durchklicken. Sie wollen einfach wissen: welche sind wichtig, wie schlimm sind sie, und was verursacht sie.",
+        "promptVariants": [
+          {
+            "label": "Detailliert",
+            "prompt": "@Zero schau dir die letzten Fehler auf Sentry an. Bitte sortiere die Fehler der letzten 24 Stunden nach ihrer Häufigkeit.\n\nFür die drei häufigsten Fehler erstelle mir einen Bericht mit den vollständigen, detaillierten Error Stacks."
+          },
+          {
+            "label": "Schnell",
+            "prompt": "@Zero Top 3 Sentry-Fehler der letzten 24h, sortiert nach Anzahl."
+          },
+          {
+            "label": "Geplant",
+            "prompt": "@Zero führe jeden Werktag um 9 Uhr dieselbe Sentry-Prüfung durch und poste die Ergebnisse in #dev. Nur Fehler mit 5+ Vorkommen einbeziehen."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Yuma",
+            "text": "@Zero schau dir die aktuellen Fehler auf Sentry an. Nach Häufigkeit sortieren. Top 3 mit detaillierten Error Stacks."
+          },
+          {
+            "name": "Zero",
+            "text": "Hier ist der vollständige Sentry-Fehlerbericht.\n\n#\tProblem\tAnzahl\tPriorität\n1\tSlack missing_scope\t57\tHoch\n2\tUnbekannte Stripe-Preis-ID\t15\tHoch\n3\tZeroSidebar .map()\t10\tMittel"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero verbindet sich mit Sentry",
+            "description": "Zero ruft ungelöste Issues aus Ihrem Sentry-Projekt für den angegebenen Zeitraum ab und sortiert sie nach Vorkommenszahl."
+          },
+          {
+            "title": "Übersichtstabelle",
+            "description": "Zero antwortet im selben Slack-Thread mit einer schnellen Übersichtstabelle – Issue-Name, Vorkommenszahl und Prioritätsstufe –, die Sie in 5 Sekunden erfassen können."
+          },
+          {
+            "title": "Detaillierte Analyse",
+            "description": "Für jedes Top-Issue liefert Zero annotierte Stack Traces und Ursachenerklärungen in verständlicher Sprache. Zum Beispiel sagt es nicht nur „Unbekannte Stripe-Preis-ID“, sondern erklärt, dass wahrscheinlich ein neuer Preis in Stripe erstellt, aber das entsprechende Mapping nicht aktualisiert wurde."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Ergebnisse in Aktionen umwandeln",
+            "description": "GitHub Issues aus dem Bericht erstellen",
+            "examplePrompt": "@Zero erstelle GitHub Issues für #1 und #2. Weise #1 Lancy zu (Slack-Scope-Fix) und #2 James (Stripe-Mapping). Beide als Bug mit hoher Priorität labeln."
+          },
+          {
+            "title": "Tiefer einsteigen",
+            "description": "Zero einen bestimmten Fehler untersuchen lassen",
+            "examplePrompt": "@Zero welcher genaue Slack-OAuth-Scope fehlt bei Issue #1? Prüfe unser App-Manifest und sag mir, was hinzugefügt werden muss."
+          },
+          {
+            "title": "Zur Routine machen",
+            "description": "Als tägliche Prüfung einplanen",
+            "examplePrompt": "@Zero führe jeden Werktag um 9 Uhr dieselbe Sentry-Prüfung durch und poste die Ergebnisse in #dev. Nur Fehler mit 5+ Vorkommen einbeziehen."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "OAuth-Verbindung zu Ihrer Sentry-Organisation. Zero benötigt Lesezugriff auf Issues und Events."
+          },
+          {
+            "description": "Nur erforderlich, wenn Zero Issues aus dem Bericht erstellen soll. Lese-/Schreibzugriff auf Issues."
+          }
+        ],
+        "tips": [
+          "Seien Sie spezifisch beim Zeitfenster. „Letzte 24 Stunden“ für die tägliche Triage, „Fehler seit dem letzten Deploy“ für Post-Deploy-Prüfungen.",
+          "Fügen Sie einen Schweregrad-Filter hinzu, um Rauschen zu reduzieren – nur Fehler mit 10+ Vorkommen anzeigen oder als known-issue getaggte Fehler überspringen.",
+          "Verknüpfen Sie es mit Ihrem Standup – kombinieren Sie es mit dem Standup-Anwendungsfall für ein Morgen-Briefing, das sowohl Ihre Aufgabenübersicht als auch den Sentry-Bericht enthält."
+        ]
+      },
+      "standup-summary": {
+        "title": "Standup vorbereiten, ohne 5 Apps zu öffnen",
+        "description": "Zero ruft Daten aus Kalender, E-Mail und Linear ab und schreibt dann eine teilbare Zusammenfassung, die Sie direkt in den Team-Thread einfügen können.",
+        "timeSaved": "~20 Min. gespart",
+        "headings": {
+          "scenario": "Das tägliche Standup-Chaos zwischen Calendar, Gmail und Linear",
+          "prompt": "So bitten Sie Zero um eine Standup-Zusammenfassung",
+          "steps": "Wie Zero Ihre Arbeitszusammenfassung aus 3 Tools erstellt",
+          "nextActions": "In Slack posten, Blocker hinzufügen oder täglich automatisieren",
+          "integrations": "Erforderliche Integrationen: Google Calendar, Gmail und Linear",
+          "tips": "Best Practices für KI-generierte Standup-Zusammenfassungen"
+        },
+        "scenario": "Es ist 9:50 Uhr und das Standup beginnt in 10 Minuten. Sie haben Ihren Kalender noch nicht geprüft. Sie bitten Zero, die gestrigen Meetings, E-Mails und Linear-Aufgaben abzurufen – Zero schreibt eine Zusammenfassung, die Sie direkt in den Team-Thread einfügen können.",
+        "promptVariants": [
+          {
+            "label": "Detailliert",
+            "prompt": "@Zero prüfe meinen Kalender, E-Mails und Linear-Aufgaben seit gestern und schreibe mir eine Arbeitszusammenfassung. Inklusive Meeting-Highlights und PR-Status."
+          },
+          {
+            "label": "Schnell",
+            "prompt": "@Zero was habe ich gestern gemacht? Kalender und Linear prüfen."
+          },
+          {
+            "label": "Geplant",
+            "prompt": "@Zero schreibe jeden Werktag um 9:45 Uhr meine Standup-Zusammenfassung und schicke sie mir per DM."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Alex",
+            "text": "@Zero prüfe meinen Kalender, E-Mails und Linear-Aufgaben seit gestern und schreibe mir eine Arbeitszusammenfassung"
+          },
+          {
+            "name": "Zero",
+            "text": "Arbeitszusammenfassung: 23.–24. März\n\nMeetings\n• Tägliche Standups (10–10:30 Uhr)\n• VM0 User Interview mit Daniel Miller\n\nEngineering\n• PR #5467 gemergt, Firewall-Berechtigungen\n• PR #6277 im Review. Lighthouse bei 36"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero prüft Ihren Kalender",
+            "description": "Zero liest Ihre Google-Calendar-Termine der letzten 24 Stunden und extrahiert Meeting-Namen, Zeiten und Teilnehmer."
+          },
+          {
+            "title": "Zero durchsucht E-Mails und Aufgaben",
+            "description": "Zero prüft Gmail auf relevante Threads und Linear auf Aufgaben, die Sie seit gestern aktualisiert, abgeschlossen oder zugewiesen bekommen haben."
+          },
+          {
+            "title": "Formatierte Zusammenfassung",
+            "description": "Zero erstellt alles als saubere, kopierfertige Zusammenfassung, gegliedert nach Meetings, Engineering-Arbeit und Aktionspunkten."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Direkt in einen Channel posten",
+            "description": "Zero die Zusammenfassung in #standup posten lassen",
+            "examplePrompt": "@Zero poste diese Zusammenfassung in #standup und tagge @team-eng."
+          },
+          {
+            "title": "Kontext hinzufügen",
+            "description": "Zero nach Blockern oder Prioritäten fragen",
+            "examplePrompt": "@Zero prüfe auch mein Linear auf blockierte Aufgaben und füge sie als Blocker in die Zusammenfassung ein."
+          },
+          {
+            "title": "Täglich machen",
+            "description": "Morgendliche Vorbereitung automatisieren",
+            "examplePrompt": "@Zero schreibe jeden Werktag um 9:45 Uhr meine Standup-Zusammenfassung und schicke sie mir per DM."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "OAuth-Verbindung zu Google Calendar. Zero benötigt Lesezugriff auf Ihre Termine."
+          },
+          {
+            "description": "OAuth-Verbindung zu Gmail. Zero benötigt Lesezugriff zum Durchsuchen aktueller Threads."
+          },
+          {
+            "description": "OAuth-Verbindung zu Linear. Zero liest Ihre zugewiesenen und aktualisierten Aufgaben."
+          }
+        ],
+        "tips": [
+          "Teilen Sie Zero Ihr Standup-Format mit, falls es vom Standard abweicht. „Verwende das Format: Gestern / Heute / Blocker“.",
+          "Geben Sie das Zeitfenster an. „Seit gestern 17 Uhr“, wenn Sie spät arbeiten.",
+          "Kombinieren Sie es mit Sentry-Triage für ein vollständiges Engineering-Morgen-Briefing."
+        ]
+      },
+      "kol-cold-outreach": {
+        "title": "KOL auf X recherchieren und eine personalisierte Cold-E-Mail verfassen",
+        "description": "Geben Sie Zero einen X-Handle. Zero liest die letzten 30 Posts, versteht Stil und Interessen, schreibt eine personalisierte Outreach-E-Mail unter 150 Wörtern und speichert sie als Gmail-Entwurf.",
+        "timeSaved": "~20 Min. gespart",
+        "headings": {
+          "scenario": "Warum generische Cold-Outreach ignoriert wird",
+          "prompt": "So recherchieren Sie einen KOL und verfassen personalisierte Outreach-Mails",
+          "steps": "Wie Zero X-Profile analysiert und maßgeschneiderte E-Mails erstellt",
+          "nextActions": "KOL-Fit bewerten, Batch-Outreach starten oder im Notion-CRM verfolgen",
+          "integrations": "Erforderliche Integrationen: X, Gmail und Notion",
+          "tips": "Best Practices für KI-gestützte KOL-Outreach"
+        },
+        "scenario": "Sie haben einen KOL gefunden, der perfekt für eine Partnerschaft wäre, aber eine Cold-E-Mail zu schreiben, die nicht generisch wirkt, dauert 20 Minuten Recherche – Posts lesen, verstehen, was ihnen wichtig ist, den richtigen Ansatz finden. Sie geben Zero den X-Handle und erhalten in Sekunden einen personalisierten Entwurf.",
+        "promptVariants": [
+          {
+            "label": "Detailliert",
+            "prompt": "@Zero lies die letzten 30 X-Posts von @swyx, um seinen Stil und seine Interessen zu verstehen. Schreibe eine personalisierte Cold-Outreach-E-Mail unter 150 Wörtern über eine VM0-Partnerschaft. Beziehe dich auf etwas Konkretes, das er kürzlich gepostet hat. Speichere sie als Gmail-Entwurf."
+          },
+          {
+            "label": "Schnell",
+            "prompt": "@Zero verfasse eine Cold-E-Mail an @swyx über VM0, basierend auf seinen X-Posts. Als Gmail-Entwurf speichern."
+          },
+          {
+            "label": "Batch",
+            "prompt": "@Zero recherchiere für jeden Handle in meiner Notion-KOL-Liste mit Status „Nicht kontaktiert“ das X-Profil und verfasse eine personalisierte Outreach-E-Mail. Alle als Gmail-Entwürfe speichern."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Scarlett",
+            "text": "@Zero lies die letzten 30 X-Posts von @swyx, verstehe seinen Stil und verfasse eine Cold-Outreach-E-Mail für eine VM0-Partnerschaft. Als Gmail-Entwurf speichern."
+          },
+          {
+            "name": "Zero",
+            "text": "Erledigt. @swyxs aktuelle Inhalte analysiert:\n• Fokus: KI-Agenten, Entwicklertools, Open Source\n• Ton: Technisch, aber gesprächig\n• Zielgruppen-Fit: Hoch (9/10)\n\nGmail-Entwurf gespeichert: „Agenten, die echte Arbeit liefern – dachte, das könnte dich interessieren“"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero liest das X-Profil des KOL",
+            "description": "Zero ruft die letzten 30 Posts ab, analysiert Inhaltsthemen, Ton, Zielgruppe und Engagement-Muster, um ein Profil dessen zu erstellen, was dieser Person wichtig ist."
+          },
+          {
+            "title": "Personalisierte E-Mail verfasst",
+            "description": "Zero schreibt eine prägnante Outreach-E-Mail, die auf spezifische Inhalte des KOL verweist, die Relevanz Ihres Produkts erklärt und einen zum Stil passenden Ton verwendet."
+          },
+          {
+            "title": "Entwurf in Gmail gespeichert",
+            "description": "Die E-Mail wird als Gmail-Entwurf gespeichert und ist bereit für Ihre Überprüfung. Zero aktualisiert auch den KOL-Status in Ihrem Notion-CRM, falls verbunden."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "KOL-Fit bewerten",
+            "description": "Bewerten, wie gut ein KOL zu Ihrer Zielgruppe passt",
+            "examplePrompt": "@Zero analysiere die Zielgruppenüberschneidung von @swyx mit VM0s ICP. Bewerte 1-10 mit Begründung und speichere in Notion."
+          },
+          {
+            "title": "Batch-Outreach",
+            "description": "E-Mails für mehrere KOLs gleichzeitig verfassen",
+            "examplePrompt": "@Zero recherchiere für die Top 10 KOLs in meiner Notion-Liste jeden einzelnen und verfasse personalisierte Outreach-E-Mails."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Zero liest öffentliche Posts, um den Stil und die Interessen des KOL zu verstehen."
+          },
+          {
+            "description": "Zero speichert die verfasste E-Mail in Ihren Gmail-Entwürfen."
+          },
+          {
+            "description": "Optional – KOL-Status und Fit-Scores in Ihrem Notion-CRM verfolgen."
+          }
+        ],
+        "tips": [
+          "Geben Sie Zero Kontext zu Ihrem Produktansatz. „Fokussiere darauf, wie VM0 Developer-Tool-Unternehmen hilft“.",
+          "Bitten Sie um mehrere Varianten. „Verfasse 2 Versionen: eine locker, eine professionell“.",
+          "Überprüfen Sie immer vor dem Versand. Zero recherchiert korrekt, aber die finale Stimme sollte Ihre sein."
+        ]
+      },
+      "file-bugs-from-slack": {
+        "title": "Bugs direkt aus Slack melden, ohne den Kontext zu wechseln",
+        "description": "Beschreiben Sie das Problem in natürlicher Sprache. Zero erstellt ein formatiertes GitHub Issue, vergibt Labels und weist die richtige Person zu.",
+        "timeSaved": "Sofort",
+        "headings": {
+          "scenario": "Warum GitHub Issues aus Slack heraus erstellen Kontextwechsel spart",
+          "prompt": "So erstellen Sie GitHub Issues aus einer Slack-Nachricht",
+          "steps": "Wie Zero Ihre Nachricht analysiert und ein formatiertes Issue erstellt",
+          "nextActions": "Details hinzufügen, Issues im Batch erstellen oder Triage automatisieren",
+          "integrations": "Erforderliche Integrationen: GitHub und Slack",
+          "tips": "Best Practices für das Melden von Bugs über Slack"
+        },
+        "scenario": "Sie haben gerade einen UX-Bug während einer Demo bemerkt. Statt GitHub zu öffnen, das Repo zu finden, ein formatiertes Issue zu schreiben und jemanden zuzuweisen, beschreiben Sie es in Slack. Zero erstellt das Issue, fügt Labels hinzu und weist die richtige Person zu. Sie verlassen nie das Gespräch.",
+        "promptVariants": [
+          {
+            "label": "Detailliert",
+            "prompt": "@Zero erstelle Issue: ESC im Planungsdialog drücken schließt ihn sofort, auch bei ungespeicherten Änderungen. Sollte zuerst nach Bestätigung fragen. Lancy zuweisen. Label als Bug, Platform. Priorität Mittel."
+          },
+          {
+            "label": "Schnell",
+            "prompt": "@Zero Bug: ESC schließt Planungsdialog ohne Speicherbestätigung. Lancy zuweisen."
+          },
+          {
+            "label": "Geplant",
+            "prompt": "@Zero prüfe jeden Freitag um 16 Uhr den #bugs-Channel auf ungelöste Bug-Meldungen und erstelle für jede ein GitHub Issue."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Alex",
+            "text": "@Zero erstelle Issue: ESC im Planungsdialog drücken schließt ihn sofort, auch bei ungespeicherten Änderungen. Sollte zuerst nach Bestätigung fragen. Lancy zuweisen."
+          },
+          {
+            "name": "Zero",
+            "text": "Issue erstellt:\n#6260: Bug: ESC-Taste schließt Planungsdialog ohne Bestätigung\nZugewiesen an Lancy · Priorität: Mittel"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero analysiert die Anfrage",
+            "description": "Zero versteht die Bug-Beschreibung, identifiziert den Zugewiesenen und leitet passende Labels (Bug, Platform) und Priorität aus dem Kontext ab."
+          },
+          {
+            "title": "Issue auf GitHub erstellt",
+            "description": "Zero erstellt ein ordentlich formatiertes GitHub Issue mit klarem Titel, Beschreibung, Labels und Zuweisung – alles aus Ihrer natürlichsprachlichen Slack-Nachricht."
+          },
+          {
+            "title": "Bestätigung in Slack",
+            "description": "Zero antwortet im selben Thread mit Issue-Nummer, Titel, Zugewiesenem und einem direkten Link, damit Sie es überprüfen können, ohne Slack zu verlassen."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Mehr Details hinzufügen",
+            "description": "Screenshots oder Reproduktionsschritte anhängen",
+            "examplePrompt": "@Zero zu #6260 hinzufügen: Reproduktionsschritte. 1. Planungsdialog öffnen 2. Etwas eingeben 3. ESC drücken. Erwartet: Bestätigungsdialog."
+          },
+          {
+            "title": "Issues im Batch erstellen",
+            "description": "Mehrere Issues auf einmal erstellen",
+            "examplePrompt": "@Zero erstelle 3 Issues aus diesen Bugs:\n1. ESC-Dialog-Schließen (Lancy)\n2. Datumsauswahl einen Tag daneben (James)\n3. Avatar-Upload schlägt auf Safari fehl (Yuma)"
+          },
+          {
+            "title": "Triage automatisieren",
+            "description": "Issues automatisch aus einem Channel erstellen",
+            "examplePrompt": "@Zero beobachte #bugs. Wenn jemand eine Nachricht mit „Bug:“ postet, erstelle automatisch ein GitHub Issue und antworte mit dem Link."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "OAuth-Verbindung zu GitHub. Zero benötigt Lese-/Schreibzugriff zum Erstellen und Verwalten von Issues."
+          },
+          {
+            "description": "Zero liest Ihre Nachricht und antwortet im selben Thread."
+          }
+        ],
+        "tips": [
+          "Nennen Sie den Namen des Zugewiesenen. Zero ordnet Slack-Anzeigenamen GitHub-Benutzernamen zu.",
+          "Erwähnen Sie Labels explizit, wenn Sie bestimmte möchten – sonst leitet Zero sie aus dem Kontext ab.",
+          "Funktioniert auch für Feature-Requests – sagen Sie einfach „Feature Request“ statt „Bug“."
+        ]
+      },
+      "slack-triage": {
+        "title": "Slack-Rauschen durchdringen und herausfiltern, was Ihre Aufmerksamkeit erfordert",
+        "description": "Zero scannt Ihre ungelesenen Slack-Nachrichten, filtert Bots und Rauschen heraus und zeigt Ihnen nur die Nachrichten, die heute wirklich Ihre Aktion erfordern – sortiert nach Dringlichkeit.",
+        "timeSaved": "~10 Min. gespart",
+        "headings": {
+          "scenario": "Warum Slack-Überflutung zu verpassten Aufgaben führt",
+          "prompt": "So bitten Sie Zero, Ihre ungelesenen Slack-Nachrichten zu priorisieren",
+          "steps": "Wie Zero Rauschen filtert und handlungsrelevante Nachrichten hervorhebt",
+          "nextActions": "Direkt antworten, Aufgaben erstellen oder tägliche Triage automatisieren",
+          "integrations": "Erforderliche Integrationen: Slack",
+          "tips": "Best Practices für Slack-Nachrichten-Triage"
+        },
+        "scenario": "Sie öffnen Slack nach einem 2-stündigen Fokusblock und es gibt 47 ungelesene Nachrichten in 12 Channels. Die meisten sind Bot-Benachrichtigungen, automatische Alarme und Gespräche, die Sie nicht betreffen. Irgendwo im Rauschen stecken 3 Dinge, die wirklich Ihre Antwort erfordern. Statt alles durchzuscrollen, bitten Sie Zero, das Wichtige zu finden.",
+        "promptVariants": [
+          {
+            "label": "Detailliert",
+            "prompt": "@Zero scanne meine ungelesenen Slack-Nachrichten der letzten 12 Stunden. Filtere Bots, automatische Benachrichtigungen und Threads heraus, in denen ich nicht getaggt bin. Zeige mir nur Nachrichten, die heute mein Handeln erfordern, sortiert nach Dringlichkeit. Sag mir bei jeder, wer wartet und was gebraucht wird."
+          },
+          {
+            "label": "Schnell",
+            "prompt": "@Zero was braucht gerade meine Aufmerksamkeit in Slack?"
+          },
+          {
+            "label": "Geplant",
+            "prompt": "@Zero scanne jeden Morgen um 9 Uhr und nach dem Mittagessen um 13 Uhr meine ungelesenen Nachrichten und schicke mir per DM, was Handlung erfordert."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Lancy",
+            "text": "@Zero scanne meine ungelesenen Slack-Nachrichten der letzten 12 Stunden. Filtere Bots und Rauschen heraus. Zeige mir nur, was heute mein Handeln erfordert."
+          },
+          {
+            "name": "Zero",
+            "text": "47 ungelesene Nachrichten gefunden. 5 erfordern Ihre Aktion:\n\n1. @Ethan bittet um Ihr Design-Review zu PR #6312\n2. @James braucht Freigabe für den Stripe-Migrationsplan\n3. #support hat ein P0 von einem Kunden, der Abwanderung erwähnt\n4. @Scarlett hat Sie in einer KOL-Outreach-Entscheidung getaggt\n5. Sprint-Review verschoben auf 15 Uhr (war 14 Uhr)"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Zero scannt Ihre Channels",
+            "description": "Zero liest Ihre ungelesenen Nachrichten über alle Channels hinweg und filtert Bot-Nachrichten, automatische CI/CD-Alarme und Threads heraus, in denen Sie nicht erwähnt oder gebraucht werden."
+          },
+          {
+            "title": "Nachrichten nach Dringlichkeit klassifiziert",
+            "description": "Jede verbleibende Nachricht wird bewertet: Wartet jemand auf Sie? Gibt es eine Frist? Blockiert eine Entscheidung andere? Zero stuft sie danach ein, wie dringend sie Ihre Antwort brauchen."
+          },
+          {
+            "title": "Handlungsrelevante Zusammenfassung geliefert",
+            "description": "Zero schickt Ihnen eine nummerierte Liste mit allem, was Aufmerksamkeit erfordert – wer fragt, was gebraucht wird und ein direkter Link zu jedem Thread. Alles andere kann sicher ignoriert werden."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Über Zero antworten",
+            "description": "Antworten, ohne jeden Thread zu öffnen",
+            "examplePrompt": "@Zero antworte auf #1: „Sieht gut aus, genehmigt. Ausliefern.“ Und für #3 erstelle ein P0 Linear-Issue und weise es James zu."
+          },
+          {
+            "title": "Zur Routine machen",
+            "description": "Jeden Morgen automatisch priorisieren",
+            "examplePrompt": "@Zero scanne jeden Werktag um 9 Uhr meine nächtlichen ungelesenen Nachrichten und schicke mir die Aktionspunkte per DM."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Zero liest Ihre ungelesenen Nachrichten und schickt Ihnen die Triage-Zusammenfassung per DM."
+          },
+          {
+            "description": "Optional: Aufgaben direkt aus priorisierten Nachrichten erstellen."
+          },
+          {
+            "description": "Optional: Zero prüft Ihren Kalender, um Meeting-bezogene Nachrichten zu kennzeichnen."
+          }
+        ],
+        "tips": [
+          "Sagen Sie Zero, welche Channels Ihnen am wichtigsten sind, damit es entsprechend priorisieren kann.",
+          "Bitten Sie Zero, Ihre Rauschen-Muster im Laufe der Zeit zu lernen: „Überspringe immer Nachrichten von @github-bot und @vercel-bot“.",
+          "Kombinieren Sie es mit dem Standup-Anwendungsfall: erst priorisieren, dann Ihr Standup aus den Aktionspunkten generieren."
+        ]
+      },
+      "employee-onboarding": {
+        "title": "Neue Teammitglieder mit einer Slack-Nachricht onboarden",
+        "description": "Sagen Sie Zero, wer wann anfängt. Zero erstellt die Notion-Onboarding-Seite, plant Willkommensmeetings im Google Calendar, postet eine Slack-Vorstellung und schickt dem neuen Teammitglied die Agenda für die erste Woche per DM.",
+        "timeSaved": "~45 Min. gespart",
+        "headings": {
+          "scenario": "Warum manuelle Onboarding-Checklisten immer etwas vergessen",
+          "prompt": "So automatisieren Sie das Onboarding neuer Mitarbeiter mit Zero",
+          "steps": "Wie Zero Notion, Calendar und Slack für ein neues Teammitglied einrichtet",
+          "nextActions": "Zugangsvergabe hinzufügen oder nach Rolle anpassen",
+          "integrations": "Erforderliche Integrationen: Slack, Notion, Google Calendar und Gmail",
+          "tips": "Best Practices für automatisiertes Mitarbeiter-Onboarding"
+        },
+        "scenario": "Ein neues Teammitglied fängt nächsten Montag an. Jemand muss das Onboarding-Dokument erstellen, Kennenlerngespräche mit 5 Leuten planen, eine Willkommensnachricht posten und eine Agenda für die erste Woche senden. Es sind 45 Minuten Koordination, die jedes Mal gleich ablaufen. Sie sagen es Zero einmal und es erledigt alles.",
+        "promptVariants": [
+          {
+            "label": "Detailliert",
+            "prompt": "@Zero onboarde Sarah Chen als Product Designer ab dem 14. April. Dupliziere die Notion-Onboarding-Vorlage, plane Woche-1-Kennenlerngespräche mit Ethan, Lancy, James, Yuma und Scarlett im Google Calendar. Plane einen 30-Tage-Check-in. Poste eine Begrüßung in #general und schicke Sarah ihre Erste-Woche-Agenda per DM."
+          },
+          {
+            "label": "Schnell",
+            "prompt": "@Zero onboarde Sarah Chen, Product Designer, Start am 14. April. Vollständiges Setup."
+          },
+          {
+            "label": "Vorlage",
+            "prompt": "@Zero wenn jemand in #new-hires mit dem Format „Name / Rolle / Startdatum“ postet, führe automatisch den vollständigen Onboarding-Workflow aus."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Lancy",
+            "text": "@Zero onboarde Sarah Chen, kommt als Product Designer am 14. April. Alles einrichten."
+          },
+          {
+            "name": "Zero",
+            "text": "Onboarding für Sarah Chen ist bereit:\n\n✔ Notion-Seite aus Vorlage erstellt\n✔ Woche-1-Kennenlerngespräche geplant\n✔ 30-Tage-Check-in am 14. Mai\n✔ Begrüßung in #general gepostet\n✔ DM mit Erste-Woche-Agenda gesendet"
+          }
+        ],
+        "steps": [
+          {
+            "title": "Notion-Onboarding-Seite erstellt",
+            "description": "Zero dupliziert Ihre Onboarding-Vorlage in Notion, füllt Name, Rolle, Startdatum und Vorgesetzten des neuen Mitarbeiters ein. Verlinkt relevante Dokumente und Team-Ressourcen."
+          },
+          {
+            "title": "Meetings geplant",
+            "description": "Zero erstellt Kennenlerngespräche mit den angegebenen Teammitgliedern im Google Calendar während der ersten Woche, plus einen 30-Tage-Check-in. Alle Kalendereinladungen enthalten Kontext darüber, was besprochen werden soll."
+          },
+          {
+            "title": "Slack-Begrüßung und DM gesendet",
+            "description": "Zero postet eine Willkommensnachricht in #general, die das neue Teammitglied vorstellt, und schickt ihm dann direkt per DM die Erste-Woche-Agenda, Links zur Notion-Seite und wichtige Kontakte."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Nach Rolle anpassen",
+            "description": "Unterschiedliches Onboarding für verschiedene Rollen",
+            "examplePrompt": "@Zero für Ingenieure zusätzlich eine Pairing-Session mit dem Tech Lead hinzufügen und einen Link zu den Architektur-Docs in die Onboarding-Seite einfügen."
+          },
+          {
+            "title": "Trigger automatisieren",
+            "description": "Onboarding aus einem Channel-Post starten",
+            "examplePrompt": "@Zero wenn jemand in #new-hires mit dem Format „Name / Rolle / Startdatum“ postet, führe automatisch das vollständige Onboarding durch."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Zero postet die Willkommensnachricht und schickt dem neuen Mitarbeiter eine DM."
+          },
+          {
+            "description": "Zero erstellt die Onboarding-Seite aus Ihrer Vorlage."
+          },
+          {
+            "description": "Zero plant Kennenlerngespräche und Check-ins."
+          },
+          {
+            "description": "Optional – eine Willkommens-E-Mail mit Logistik und Links senden."
+          }
+        ],
+        "tips": [
+          "Erstellen Sie zuerst eine Notion-Onboarding-Vorlage. Zero dupliziert sie und füllt die Details aus.",
+          "Listen Sie die Personen auf, die Kennenlerngespräche haben sollen. Zero übernimmt die Kalenderkoordination.",
+          "Funktioniert auch für Freelancer und Praktikanten – passen Sie einfach Vorlage und Meeting-Liste an."
+        ]
+      },
+      "build-with-v0": {
+        "title": "Eine Slack-Idee sofort in einen interaktiven Prototyp verwandeln",
+        "description": "Wenn mitten im Gespräch eine Idee aufkommt, beschreiben Sie sie Zero. Es nutzt v0, um einen klickbaren React-Prototyp zu generieren und postet den Live-Preview-Link zurück in den Thread – bevor die Diskussion weitergeht.",
+        "timeSaved": "Stunden → Sekunden",
+        "headings": {
+          "scenario": "Warum Ideen verloren gehen, bevor sie jemand sehen kann",
+          "prompt": "So verwandeln Sie eine Slack-Idee mit Zero in einen Prototyp",
+          "steps": "Wie Zero von Ihrer Beschreibung zu einer live klickbaren UI kommt",
+          "nextActions": "Verfeinern, teilen oder an Engineering übergeben",
+          "integrations": "Erforderliche Integrationen: v0",
+          "tips": "Best Practices für schnelles Ideen-Prototyping mit v0"
+        },
+        "scenario": "Sie sind in einem Slack-Thread und diskutieren, wie ein Feature funktionieren soll. Jemand schlägt ein neues UI-Muster vor – eine Befehlspalette, ein Einstellungspanel, einen mehrstufigen Assistenten. Worte allein reichen nicht. Auf einem Whiteboard skizzieren ist keine Option. Eine Figma-Session zu planen verschiebt die Entscheidung auf nächste Woche. Sie beschreiben die Idee Zero in natürlicher Sprache. Es ruft v0 auf, generiert einen vollständig interaktiven React-Prototyp und postet den Live-Preview-Link direkt zurück in den Thread – in unter einer Minute. Alle können ihn durchklicken, bevor das Gespräch weitergeht.",
+        "promptVariants": [
+          {
+            "label": "Neue UI-Idee",
+            "prompt": "@Zero erstelle einen Prototyp: eine Befehlspalette, mit der Benutzer Agenten, letzte Läufe und Konnektoren suchen können. Tastaturgesteuert, Fuzzy-Suche, zeigt ein Vorschau-Panel auf der rechten Seite."
+          },
+          {
+            "label": "Aus Thread-Kontext",
+            "prompt": "@Zero baue basierend auf dem Flow, den wir oben beschrieben haben, einen schnellen v0-Prototyp, damit das Team ihn sehen kann, bevor wir entscheiden."
+          },
+          {
+            "label": "Iterieren",
+            "prompt": "@Zero aktualisiere den Prototyp – füge oben einen Filter-Tab für ‚Agenten / Läufe / Konnektoren‘ hinzu und markiere das aktive Element in Orange. Neu generieren."
+          }
+        ],
+        "slackPreview": [
+          {
+            "name": "Ethan",
+            "text": "@Zero erstelle einen Prototyp: eine Befehlspalette, mit der Benutzer Agenten, letzte Läufe und Konnektoren suchen können. Tastaturgesteuert, Fuzzy-Suche, zeigt eine Vorschau rechts."
+          },
+          {
+            "name": "Zero",
+            "text": "Hier ist der interaktive Prototyp:\nv0.dev/r/cmd-palette-preview\n\nEnthält Fuzzy-Suche über Agenten, Läufe und Konnektoren. Pfeiltasten-Navigation. Rechtes Vorschau-Panel aktualisiert sich beim Hover. Klicken zum Öffnen."
+          }
+        ],
+        "steps": [
+          {
+            "title": "Die Idee in natürlicher Sprache beschreiben",
+            "description": "Keine Spezifikation, kein Wireframe nötig. Sagen Sie Zero, was die UI tun soll – die Komponenten, die Interaktionen, die Daten, die angezeigt werden. Fügen Sie eine grobe Skizzenbeschreibung ein oder improvisieren Sie aus dem Thread."
+          },
+          {
+            "title": "Zero generiert den Prototyp über v0",
+            "description": "Zero übersetzt Ihre Beschreibung in einen strukturierten v0-Prompt und ruft die v0-API auf. v0 erzeugt eine vollständig interaktive React-Komponente – echte Buttons, echte Zustände, echte Navigation."
+          },
+          {
+            "title": "Live-Preview-Link in Slack gepostet",
+            "description": "Zero postet die v0-Preview-URL zurück in denselben Thread. Teammitglieder können den Prototyp sofort durchklicken, auf jedem Gerät, ohne etwas zu installieren oder Code auszuchecken."
+          }
+        ],
+        "nextActions": [
+          {
+            "title": "Im Thread verfeinern",
+            "description": "Weiter iterieren, ohne Slack zu verlassen",
+            "examplePrompt": "@Zero aktualisiere den Prototyp – das Suchfeld sollte links ein Icon haben, und der leere Zustand sollte letzte Elemente statt nichts anzeigen."
+          },
+          {
+            "title": "Für asynchrones Feedback teilen",
+            "description": "In einen breiteren Channel posten oder Stakeholdern per DM senden",
+            "examplePrompt": "@Zero teile den v0-Prototyp-Link in #product mit der Nachricht: ‚Schneller Prototyp der Befehlspaletten-Idee – Feedback willkommen bis Donnerstag.‘"
+          },
+          {
+            "title": "An Engineering übergeben",
+            "description": "Den generierten Code ins Repository exportieren",
+            "examplePrompt": "@Zero nimm den v0-Prototyp-Code und eröffne einen PR in vm0-ai/vm0 unter turbo/apps/platform/src/components/CommandPalette.tsx, damit das Team darauf aufbauen kann."
+          }
+        ],
+        "integrations": [
+          {
+            "description": "Zero sendet Ihre Idee als Generierungsprompt an v0 und ruft die interaktive Prototyp-URL ab. Verbinden Sie Ihr v0-Konto, um dies zu aktivieren."
+          },
+          {
+            "description": "Zero liest Ihre Idee aus dem Slack-Thread und postet den Prototyp-Link zurück in dieselbe Konversation."
+          }
+        ],
+        "tips": [
+          "Beschreiben Sie Verhalten, nicht nur Aussehen. ‚Klick auf eine Zeile klappt Details darunter auf‘ liefert einen genaueren Prototyp als ‚aufklappbare Zeilen‘.",
+          "Referenzieren Sie bestehende UI-Muster beim Namen – ‚wie die VS Code Befehlspalette‘ oder ‚wie Notions Slash-Menü‘ – um v0s Generierung zu verankern.",
+          "Nutzen Sie den Iterieren-Prompt direkt nach dem ersten Ergebnis. Eine Runde Verfeinerung bringt Sie meistens 90 % ans Ziel."
+        ]
+      }
+    }
+  },
+  "landing": {
+    "hero": {
+      "title": "Zero, Ihr vertrauenswürdiger KI-Teamkollege für echte Arbeit.",
+      "subtitle": "Zero verbindet sich mit über 100 Tools und erledigt die Arbeit. Berichte, Triage, Outreach, Recherche. In Slack oder im Web.",
+      "ctaGetStarted": "Jetzt starten",
+      "ctaOpenApp": "App öffnen",
+      "seeUseCases": "Anwendungsfälle ansehen",
+      "seedBanner": "Lesen Sie unseren Blog über unsere $14M Seed-Runde."
+    },
+    "worksForYou": {
+      "heading": "Was Zero wirklich für Sie tut",
+      "exploreMore": "Weitere Anwendungsfälle entdecken"
+    },
+    "teammateCard": {
+      "title": "Ein Teamkollege, der liest, denkt und liefert.",
+      "description": "„Fasse meine Woche aus Kalender, Linear und Slack zusammen.“ Zero holt den Kontext aus Ihren Tools, verbindet die Punkte und liefert Ihnen einen fertigen Bericht. Wie ein Kollegen-Briefing, nur in Sekunden.",
+      "tabSummarize": "Meine Arbeitswoche zusammenfassen",
+      "tabLeads": "Leads finden und per E-Mail kontaktieren",
+      "tabTriage": "Sentry-Fehler triagieren",
+      "ariaDaily": "Tagesbericht",
+      "ariaLeads": "E-Mail-Leads",
+      "ariaSentry": "Sentry-Bericht"
+    },
+    "slackCard": {
+      "title": "Fragen Sie in Slack, erhalten Sie Antworten aus all Ihren Tools.",
+      "description": "@Zero in jedem Channel. Es greift auf Ihren Kalender, E-Mail, Linear, GitHub zu – und antwortet mit einer Zusammenfassung, die Ihr Team tatsächlich nutzen kann. Kein Tab-Wechsel, keine Dashboards.",
+      "tagSlack": "Slack",
+      "tagTeamSync": "Team-Sync"
+    },
+    "syncedToolsCard": {
+      "title": "Von der Entdeckung bis zur Ansprache – Agenten erledigen die Vorarbeit.",
+      "description": "Sagen Sie Zero, wen Sie suchen. Die Agenten durchsuchen soziale Plattformen, erstellen Interessentenlisten und entwerfen personalisierte Ansprachen, damit sich Ihr Team auf den Abschluss konzentriert, nicht auf die Suche.",
+      "tagMarketing": "Marketing-Outreach",
+      "tagCrossPlatform": "Plattformübergreifend"
+    },
+    "connectors": {
+      "heading": "Funktioniert mit über 100 Tools, die Sie bereits nutzen",
+      "description": "Slack, GitHub, Gmail, Notion, Linear, Sentry und mehr. Zero verbindet sich mit Ihrem Stack, um zu handeln, nicht nur zu antworten."
+    },
+    "security": {
+      "heading": "Ihre Daten bleiben Ihre",
+      "permissionTitle": "Sie kontrollieren, worauf Zero zugreifen kann",
+      "permissionDesc": "Legen Sie Lese- und Schreibberechtigungen pro Tool und pro Agent fest. Zero greift nur auf das zu, was Sie ausdrücklich erlauben.",
+      "isolatedTitle": "Isolierte Ausführung, jedes Mal",
+      "isolatedDescPart1": "Jede Aufgabe läuft in ihrer eigenen microVM. Anmeldedaten verlassen nie die Sandbox. Vollständig überprüfbar. Und ",
+      "isolatedDescLink": "Open Source",
+      "isolatedDescPart2": "."
+    },
+    "intelligence": {
+      "heading": "Wird intelligenter, je mehr Sie es nutzen",
+      "memoryTitle": "Erinnert sich an Ihren Kontext",
+      "memoryDesc": "Vergangene Entscheidungen, Projektkontext, Ihre Präferenzen – Zero trägt alles weiter. Kein erneutes Erklären, kein verlorener Kontext zwischen Sitzungen.",
+      "scheduleTitle": "Geplante Intelligenz",
+      "scheduleDesc": "Zero führt autonome wiederkehrende Aufgaben aus – tägliche Fehlerscans, Tech-Debt-Berichte, Morgenbriefings – ohne Aufforderung.",
+      "subAgentsTitle": "Spezialisierte Sub-Agenten",
+      "subAgentsDesc": "Erstellen Sie Agenten für bestimmte Aufgaben. Einen für Recherche, einen für Triage, einen für Outreach. Sie arbeiten parallel, damit Sie es nicht müssen.",
+      "toolOrchTitle": "Tool-Orchestrierung",
+      "toolOrchDesc": "Zero wählt und verkettet die richtigen Tools aus über 100 verfügbaren Integrationen. Sie beschreiben das Ziel; Zero ermittelt die Schritte.",
+      "identityTitle": "Weiß, wer Sie sind",
+      "identityDesc": "\"Meine PRs\", \"mir zuweisen.\" Zero löst Ihre Identität über GitHub, Slack und Linear automatisch auf. Keine Einrichtung erforderlich."
+    },
+    "cta": {
+      "title": "Sie entscheiden, was wichtig ist. Zero erledigt den Rest.",
+      "subtitle": "Starten Sie kostenlos. Nutzen Sie es in Slack oder im Web. Keine Kreditkarte erforderlich."
+    }
+  },
+  "securityPage": {
+    "title": "Sicherheit",
+    "intro": "Wenn Sie Arbeit an einen KI-Agenten übergeben, sind Ihre größten Bedenken Datensicherheit, Datenschutz und Kontrolle. VM0 wurde von Anfang an mit all dem im Sinn entwickelt.",
+    "isolatedExecution": {
+      "title": "Isolierte Ausführung",
+      "description": "Jeder Agentenlauf findet in einer vollständig isolierten privaten Umgebung statt. Wenn der Lauf beendet ist, wird die Umgebung automatisch zerstört – nichts bleibt zurück. Stellen Sie es sich wie einen Einweghandschuh vor: sauber, sicher und zuverlässig.",
+      "detail": "Betrieben durch Firecracker-microVMs mit Hardware-Level-KVM-Isolation, keine Container. Jeder Lauf erhält seinen eigenen Netzwerk-Namespace aus einem vorab zugewiesenen Pool von über 16.000."
+    },
+    "secretsNeverExposed": {
+      "title": "Secrets nie offengelegt",
+      "description": "Gmail, Slack oder GitHub verbinden? Ihre Tokens und Anmeldedaten werden sicher für Sie verwaltet. Der Agent kann sie verwenden, aber niemals einsehen oder extrahieren. Selbst wenn etwas im Code des Agenten schiefgeht, bleiben Ihre Konten sicher.",
+      "detail": "Anmeldedaten werden auf Netzwerkebene über transparenten MITM-Proxy injiziert. Agenten-Code berührt niemals rohe Tokens. Ausgehende Anfragen werden gescannt, um Secret-Leaks zu verhindern."
+    },
+    "startsInSeconds": {
+      "title": "Startet in Sekunden",
+      "description": "Wir haben umfangreiche Optimierungen unter der Haube vorgenommen, damit Ihr Agent in Zehntel von Millisekunden vom Auslöser zur Ausführung kommt. Schnell, weil wir die harte Arbeit auf Infrastrukturebene geleistet haben. Sie erleben nur das Ergebnis.",
+      "detail": "Overlayfs mit gemeinsam genutztem schreibgeschütztem rootfs für Zero-Copy-Boot. VM-Speicher-Snapshots wärmen den gesamten Runtime-Stack vor – Wiederherstellung statt Kaltstart."
+    },
+    "fullAuditTrail": {
+      "title": "Vollständiger Audit-Trail",
+      "description": "Jede Aktion, die der Agent ausführt – welche Dienste er aufgerufen hat, welche APIs er verwendet hat, was er produziert hat – wird protokolliert. Wenn etwas schiefgeht, gibt es einen klaren Nachweis. Wenn nichts schiefgeht, haben Sie trotzdem Gewissheit.",
+      "detail": "Vollständiger HTTP/HTTPS-Verkehr pro Lauf protokolliert (JSONL). Unveränderliche, inhaltsadressierte Artefakte auf Cloudflare R2 mit SHA-256-Integrität gespeichert."
+    },
+    "openSource": {
+      "title": "Open Source",
+      "description": "Die Kernplattform ist Open Source. Sie können den Code einsehen, das Sicherheitsmodell prüfen und beitragen. Standardmäßig transparent.",
+      "detail": "Kernplattform auf GitHub. Regelmäßige Penetrationstests durch Drittanbieter. SOC 2 Type II-Compliance in Bearbeitung."
+    },
+    "questionsAboutSecurity": "Fragen zur Sicherheit?",
+    "contactUs": "Kontaktieren Sie uns"
+  },
+  "avatar": {
+    "steps": {
+      "rotation": "Winkel",
+      "skin": "Haut",
+      "hairStyle": "Haare",
+      "hairColor": "Farbe",
+      "expression": "Gesicht",
+      "intensity": "Stimmung"
+    },
+    "intensityLabels": {
+      "chill": "Entspannt",
+      "normal": "Normal",
+      "hyped": "Aufgedreht"
+    },
+    "back": "← Zurück"
   }
 }

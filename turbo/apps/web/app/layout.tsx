@@ -52,7 +52,7 @@ const jetBrainsMono = JetBrains_Mono({
 
 export function generateMetadata(): Metadata {
   return {
-    metadataBase: new URL("https://vm0.ai"),
+    metadataBase: new URL("https://www.vm0.ai"),
     title: {
       default: "VM0 - Your Trustworthy AI Teammate",
       template: "%s | VM0",
@@ -73,7 +73,7 @@ export function generateMetadata(): Metadata {
       "AI productivity",
       "workflow automation",
     ],
-    authors: [{ name: "VM0", url: "https://vm0.ai" }],
+    authors: [{ name: "VM0", url: "https://www.vm0.ai" }],
     creator: "VM0",
     publisher: "VM0",
     applicationName: "VM0",
@@ -90,7 +90,7 @@ export function generateMetadata(): Metadata {
     openGraph: {
       type: "website",
       locale: "en_US",
-      url: "https://vm0.ai",
+      url: "https://www.vm0.ai",
       title: "VM0 - Your Trustworthy AI Teammate",
       description:
         "Meet Zero, your AI teammate that works in Slack and on the web. Secure, intelligent, and built for individuals and teams to do more together.",
@@ -185,8 +185,8 @@ export default function RootLayout({
                 "@context": "https://schema.org",
                 "@type": "Organization",
                 name: "VM0",
-                url: "https://vm0.ai",
-                logo: "https://vm0.ai/assets/vm0-logo.svg",
+                url: "https://www.vm0.ai",
+                logo: "https://www.vm0.ai/assets/vm0-logo.svg",
                 description:
                   "Your trustworthy AI teammate. Works in Slack and on the web, for individuals and team collaboration.",
                 email: "contact@vm0.ai",
@@ -212,7 +212,7 @@ export default function RootLayout({
                 "@context": "https://schema.org",
                 "@type": "WebSite",
                 name: "VM0",
-                url: "https://vm0.ai",
+                url: "https://www.vm0.ai",
                 description:
                   "Your trustworthy AI teammate. Works in Slack and on the web, for individuals and team collaboration.",
               }),
@@ -235,8 +235,8 @@ export default function RootLayout({
                 },
                 description:
                   "Your trustworthy AI teammate. Works in Slack and on the web, for individuals and team collaboration.",
-                url: "https://vm0.ai",
-                image: "https://vm0.ai/og-image.png",
+                url: "https://www.vm0.ai",
+                image: "https://www.vm0.ai/og-image.png",
               }),
             }}
           />
