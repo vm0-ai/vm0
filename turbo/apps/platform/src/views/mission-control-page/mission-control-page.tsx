@@ -15,7 +15,16 @@ import {
   setTaskListPanelRef$,
   setTaskListCollapsed$,
 } from "../../signals/mission-control-page/mission-control-panels.ts";
-import { setTaskListRef$ } from "../../signals/mission-control-page/mission-control.ts";
+import {
+  setTaskListRef$,
+  newChatDialogOpen$,
+  setNewChatDialogOpen$,
+  createAndShowChatTask$,
+} from "../../signals/mission-control-page/mission-control.ts";
+import { subagents$, defaultAgentName$ } from "../../signals/agent.ts";
+import { pageSignal$ } from "../../signals/page-signal.ts";
+import { detach, Reason } from "../../signals/utils.ts";
+import { AgentListDialog } from "../zero-page/zero-sidebar-dialogs.tsx";
 import { TaskList } from "./task-list.tsx";
 import { TaskPanel } from "./task-panel.tsx";
 import { CollapsedTaskListBar } from "./collapsed-task-list-bar.tsx";
@@ -27,8 +36,19 @@ export function MissionControlPage() {
   const setCollapsed = useSet(setTaskListCollapsed$);
   const setPanelRef = useSet(setTaskListPanelRef$);
   const setListRef = useSet(setTaskListRef$);
+  const newChatOpen = useGet(newChatDialogOpen$);
+  const setNewChatOpen = useSet(setNewChatDialogOpen$);
+  const subagents = useLastResolved(subagents$) ?? [];
+  const displayName = useLastResolved(defaultAgentName$) ?? "Zero";
+  const createAndShowChatTask = useSet(createAndShowChatTask$);
+  const pageSignal = useGet(pageSignal$);
   const markAllRead = useSet(markAllTasksRead$);
   const hasUnread = useLastResolved(hasUnreadTasks$) ?? false;
+
+  const onNewChat = (agentId: string | null) => {
+    setNewChatOpen(false);
+    detach(createAndShowChatTask(agentId, pageSignal), Reason.DomCallback);
+  };
 
   const { defaultLayout, onLayoutChanged } = useDefaultLayout({
     id: "mc-main",
@@ -99,6 +119,13 @@ export function MissionControlPage() {
           </Panel>
         </>
       )}
+      <AgentListDialog
+        open={newChatOpen}
+        onOpenChange={setNewChatOpen}
+        displayName={displayName}
+        subagents={subagents}
+        onNewChat={onNewChat}
+      />
     </Group>
   );
 }

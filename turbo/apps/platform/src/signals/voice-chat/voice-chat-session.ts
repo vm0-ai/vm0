@@ -5,7 +5,7 @@ import {
 } from "@vm0/core";
 import { fetch$ } from "../fetch.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
-import { currentChatAgentId$ } from "../agent-chat.ts";
+import { defaultAgentId$ } from "../agent.ts";
 import { delay } from "signal-timers";
 import { resetSignal, throwIfAbort, onDomEventFn, setLoop } from "../utils.ts";
 import { zeroClient$ } from "../api-client.ts";
@@ -231,7 +231,7 @@ export const vcEnabled$ = computed(async (get) => {
   return features[FeatureSwitchKey.VoiceChat] ?? false;
 });
 export const vcAgentId$ = computed(async (get) => {
-  return await get(currentChatAgentId$);
+  return await get(defaultAgentId$);
 });
 export const vcPrompt$ = computed((get) => {
   return get(internalPrompt$);
@@ -1064,7 +1064,7 @@ export const startVoiceChat$ = command(
     const sessionSignal = set(resetSessionSignal$, signal);
 
     const fetchFn = get(fetch$);
-    const agentId = await get(currentChatAgentId$);
+    const agentId = await get(defaultAgentId$);
     signal.throwIfAborted();
 
     if (!agentId) {
@@ -1198,7 +1198,7 @@ export const startVoiceMeeting$ = command(
     const sessionSignal = set(resetSessionSignal$, signal);
 
     const fetchFn = get(fetch$);
-    const agentId = await get(currentChatAgentId$);
+    const agentId = await get(defaultAgentId$);
     signal.throwIfAborted();
 
     if (!agentId) {

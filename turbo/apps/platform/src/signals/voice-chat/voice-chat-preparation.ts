@@ -1,7 +1,7 @@
 import { command, computed, state } from "ccstate";
 import { zeroVoiceChatPrepareTriggerContract } from "@vm0/core";
 import { zeroClient$ } from "../api-client.ts";
-import { currentChatAgentId$ } from "../agent-chat.ts";
+import { defaultAgentId$ } from "../agent.ts";
 import { accept, ApiError } from "../../lib/accept.ts";
 import { setLoop, throwIfAbort } from "../utils.ts";
 
@@ -35,7 +35,7 @@ export const triggerPreparation$ = command(
   async ({ get, set }, prompt: string, signal: AbortSignal) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroVoiceChatPrepareTriggerContract);
-    const agentId = await get(currentChatAgentId$);
+    const agentId = await get(defaultAgentId$);
     signal.throwIfAborted();
 
     if (!agentId) {
