@@ -25,7 +25,7 @@ import {
   IconMicrophone,
   IconSparkles,
   IconLayoutDashboard,
-  IconDots,
+  IconMenu2,
 } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/core";
 import {
@@ -371,7 +371,7 @@ export function ZeroSidebar() {
                               : "text-sidebar-foreground hover:bg-sidebar-accent"
                           }`}
                         >
-                          <IconDots size={16} className="shrink-0" />
+                          <IconMenu2 size={16} className="shrink-0" />
                         </button>
                       </DropdownMenuTrigger>
                     </TooltipTrigger>
@@ -632,7 +632,7 @@ export function ZeroSidebar() {
                         : "text-sidebar-foreground hover:bg-sidebar-accent"
                     }`}
                   >
-                    <IconDots size={16} className="shrink-0" />
+                    <IconMenu2 size={16} className="shrink-0" />
                     <span className="truncate flex-1">More</span>
                   </button>
                 </DropdownMenuTrigger>
