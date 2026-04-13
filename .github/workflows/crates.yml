@@ -954,12 +954,10 @@ jobs:
           # in the guest to push available below deflate threshold (192 MiB).
           # After inflate stabilizes (~1438 MiB), guest has ~476 MiB available.
           # 300 MiB alloc drops available to ~176 MiB < 192 MiB threshold.
-          # Write script via base64 to avoid quoting issues with runner exec.
+          # Trailing `# BALLOON_ALLOC_MARKER` is a unique string pkill can
+          # match on to terminate the guest-side allocator below.
           echo "--- Test 2: balloon deflate under memory pressure ---"
-          ALLOC_B64=$(printf 'import ctypes,time\nb=bytearray(300*1024*1024)\nctypes.memset((ctypes.c_char*len(b)).from_buffer(b),1,len(b))\ntime.sleep(120)\n' | base64 -w0)
-          sudo "$BIN_DIR/runner" exec "$RUN_ID" -- sh -c "echo $ALLOC_B64 | base64 -d > /tmp/alloc.py"
-          # Run allocator in guest foreground, host background
-          sudo "$BIN_DIR/runner" exec "$RUN_ID" -- python3 /tmp/alloc.py &
+          sudo "$BIN_DIR/runner" exec "$RUN_ID" -- python3 -c 'import ctypes,time; b=bytearray(300*1024*1024); ctypes.memset((ctypes.c_char*len(b)).from_buffer(b),1,len(b)); time.sleep(120)  # BALLOON_ALLOC_MARKER' &
           ALLOC_PID=$!
 
           # Wait for balloon to deflate (actual_mib decreases)
@@ -989,7 +987,7 @@ jobs:
 
           # Kill guest-side allocator — balloon has already deflated (Test 2
           # passed), so guest has ~250 MiB available, enough for pkill exec.
-          sudo "$BIN_DIR/runner" exec "$RUN_ID" -- pkill -f alloc.py 2>/dev/null || true
+          sudo "$BIN_DIR/runner" exec "$RUN_ID" -- pkill -f BALLOON_ALLOC_MARKER 2>/dev/null || true
 
           # Wait for balloon to re-inflate past midpoint between deflate and original inflate
           MIDPOINT=$(( (INFLATE_MIB + DEFLATE_MIB) / 2 ))
