@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.232.2](https://github.com/vm0-ai/vm0/compare/app-v0.232.1...app-v0.232.2) (2026-04-13)
+
+
+### Bug Fixes
+
+* **voice-chat:** re-acquire wake lock after system release ([#9211](https://github.com/vm0-ai/vm0/issues/9211)) ([d317030](https://github.com/vm0-ai/vm0/commit/d3170302e9621ee68004cf3ed2fda73dbccc190d))
+
 ## [0.232.1](https://github.com/vm0-ai/vm0/compare/app-v0.232.0...app-v0.232.1) (2026-04-13)
 
 
