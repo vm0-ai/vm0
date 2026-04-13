@@ -1834,4 +1834,134 @@ mod tests {
         );
         assert!(!staging.exists(), "staging consumed by rename");
     }
+
+    // ---- gc_older_than: pagination + per-key delete errors -------------
+
+    /// `gc_older_than` MUST follow `continuation_token` across multiple
+    /// `list_objects_v2` pages. Regression here would silently under-delete
+    /// (first page processed, subsequent pages dropped) — fleet cache grows
+    /// unbounded with orphaned image objects.
+    #[tokio::test]
+    async fn gc_paginates_across_two_pages() {
+        use aws_sdk_s3::Client;
+        use aws_sdk_s3::operation::delete_objects::DeleteObjectsOutput;
+        use aws_sdk_s3::operation::list_objects_v2::ListObjectsV2Output;
+        use aws_sdk_s3::primitives::DateTime;
+        use aws_sdk_s3::types::Object;
+
+        // All objects timestamped at unix epoch (last_modified = 0); any
+        // non-trivial `max_age` puts the cutoff well after 0 → all expired.
+        let page1 = ListObjectsV2Output::builder()
+            .is_truncated(true)
+            .next_continuation_token("tok1")
+            .contents(
+                Object::builder()
+                    .key("runner-images/a.tar.zst")
+                    .last_modified(DateTime::from_secs(0))
+                    .size(100)
+                    .build(),
+            )
+            .contents(
+                Object::builder()
+                    .key("runner-images/b.tar.zst")
+                    .last_modified(DateTime::from_secs(0))
+                    .size(200)
+                    .build(),
+            )
+            .build();
+        let page2 = ListObjectsV2Output::builder()
+            .is_truncated(false)
+            .contents(
+                Object::builder()
+                    .key("runner-images/c.tar.zst")
+                    .last_modified(DateTime::from_secs(0))
+                    .size(300)
+                    .build(),
+            )
+            .build();
+
+        let list = mock!(Client::list_objects_v2)
+            .sequence()
+            .output(move || page1.clone())
+            .output(move || page2.clone())
+            .build();
+        // Quiet-mode delete responses don't echo successes; no `errors`.
+        let delete =
+            mock!(Client::delete_objects).then_output(|| DeleteObjectsOutput::builder().build());
+
+        let cache = mock_cache("test-bucket", &[&list, &delete]);
+
+        let (deleted, freed) = cache
+            .gc_older_than(std::time::Duration::from_secs(1))
+            .await
+            .unwrap();
+
+        assert_eq!(deleted, 3, "2 objects from page1 + 1 from page2");
+        assert_eq!(freed, 600, "100 + 200 + 300");
+        assert_eq!(list.num_calls(), 2, "pagination followed next_token");
+        assert_eq!(delete.num_calls(), 2, "one delete per non-empty page");
+    }
+
+    /// `gc_older_than` MUST exclude per-key failures from `deleted_count` so
+    /// operators don't over-report cleanup progress. `freed_bytes` uses
+    /// proportional attribution — `60 * 2 / 3 = 40` — since the function
+    /// can't know which specific key in the batch failed.
+    #[tokio::test]
+    async fn gc_excludes_per_key_failures_from_count() {
+        use aws_sdk_s3::Client;
+        use aws_sdk_s3::operation::delete_objects::DeleteObjectsOutput;
+        use aws_sdk_s3::operation::list_objects_v2::ListObjectsV2Output;
+        use aws_sdk_s3::primitives::DateTime;
+        use aws_sdk_s3::types::{Error as S3Error, Object};
+
+        let page = ListObjectsV2Output::builder()
+            .is_truncated(false)
+            .contents(
+                Object::builder()
+                    .key("runner-images/a.tar.zst")
+                    .last_modified(DateTime::from_secs(0))
+                    .size(10)
+                    .build(),
+            )
+            .contents(
+                Object::builder()
+                    .key("runner-images/b.tar.zst")
+                    .last_modified(DateTime::from_secs(0))
+                    .size(20)
+                    .build(),
+            )
+            .contents(
+                Object::builder()
+                    .key("runner-images/c.tar.zst")
+                    .last_modified(DateTime::from_secs(0))
+                    .size(30)
+                    .build(),
+            )
+            .build();
+        let delete_resp = DeleteObjectsOutput::builder()
+            .errors(
+                S3Error::builder()
+                    .key("runner-images/b.tar.zst")
+                    .code("AccessDenied")
+                    .message("denied")
+                    .build(),
+            )
+            .build();
+
+        let list = mock!(Client::list_objects_v2).then_output(move || page.clone());
+        let delete = mock!(Client::delete_objects).then_output(move || delete_resp.clone());
+
+        let cache = mock_cache("test-bucket", &[&list, &delete]);
+
+        let (deleted, freed) = cache
+            .gc_older_than(std::time::Duration::from_secs(1))
+            .await
+            .unwrap();
+
+        assert_eq!(deleted, 2, "1 of 3 failed → 2 counted as deleted");
+        assert_eq!(
+            freed, 40,
+            "proportional attribution: batch_freed=60, actual/count=2/3 → 40"
+        );
+    }
 }
