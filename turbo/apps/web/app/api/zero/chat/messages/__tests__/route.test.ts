@@ -276,6 +276,66 @@ describe("POST /api/zero/chat/messages", () => {
       expect(openRouterHandler.mocked).not.toHaveBeenCalled();
     });
 
+    it("includes the schedule name in the continue-from-schedule prompt when the source run references a real schedule", async () => {
+      const {
+        createTestSchedule,
+        createTestRunInDb,
+      } = await import(
+        "../../../../../../src/__tests__/api-test-helpers"
+      );
+
+      const schedule = await createTestSchedule(
+        agentId,
+        `sched-${crypto.randomUUID().slice(0, 8)}`,
+        { prompt: "daily run" },
+      );
+      const { runId: sourceRunId } = await createTestRunInDb(
+        user.userId,
+        agentId,
+        {
+          status: "completed",
+          scheduleId: schedule.id,
+          triggerSource: "schedule",
+        },
+      );
+
+      const createThreadResponse = await createChatThreadPOST(
+        createTestRequest("http://localhost:3000/api/zero/chat-threads", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentId,
+            sourceScheduleRunId: sourceRunId,
+          }),
+        }),
+      );
+      expect(createThreadResponse.status).toBe(201);
+      const { id: threadId } = await createThreadResponse.json();
+
+      const response = await POST(
+        createTestRequest(URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            agentId,
+            prompt: "continue from schedule",
+            threadId,
+          }),
+        }),
+      );
+      expect(response.status).toBe(201);
+      const { runId } = await response.json();
+
+      const run = await findTestRunRecord(runId);
+      expect(run?.appendSystemPrompt).toContain(sourceRunId);
+      expect(run?.appendSystemPrompt).toContain(`scheduleName: ${schedule.name}`);
+      expect(run?.appendSystemPrompt).toContain("zero logs");
+      // Web chat UI context is always still present.
+      expect(run?.appendSystemPrompt).toContain(
+        "You are currently running inside: Web",
+      );
+    });
+
     it("seeds the source-schedule prompt on the first run only", async () => {
       // A thread created with sourceScheduleRunId should apply a built-in
       // continue-from-schedule system prompt to the FIRST run in the thread
