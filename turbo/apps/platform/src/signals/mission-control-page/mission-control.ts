@@ -1,4 +1,4 @@
-import { command, state } from "ccstate";
+import { command, computed, state } from "ccstate";
 import { toggleTaskList$ } from "./mission-control-panels.ts";
 import { setupTasksLoop$ } from "./mission-control-tasks.ts";
 import { setupGlobalShortcut } from "../../lib/setup-global-shortcut.ts";
@@ -82,12 +82,13 @@ const navigateTaskList$ = command(({ get }, direction: "next" | "prev") => {
 // New chat dialog state
 // ---------------------------------------------------------------------------
 
-export const newChatDialogOpen$ = state(false);
-export const setNewChatDialogOpen$ = command(
-  ({ set }, open: boolean) => {
-    set(newChatDialogOpen$, open);
-  },
-);
+const internalNewChatDialogOpen$ = state(false);
+export const newChatDialogOpen$ = computed((get) => {
+  return get(internalNewChatDialogOpen$);
+});
+export const setNewChatDialogOpen$ = command(({ set }, open: boolean) => {
+  set(internalNewChatDialogOpen$, open);
+});
 
 // ---------------------------------------------------------------------------
 // Keyboard shortcuts
