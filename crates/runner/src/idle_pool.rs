@@ -6,8 +6,8 @@ use sandbox::{Sandbox, SandboxFactory};
 
 use crate::types::StorageManifest;
 
-/// Default idle timeout for kept-alive VMs (5 minutes).
-const DEFAULT_IDLE_TIMEOUT_SECS: u64 = 300;
+/// Default idle timeout for kept-alive VMs (30 minutes).
+const DEFAULT_IDLE_TIMEOUT_SECS: u64 = 1800;
 
 /// Compact version fingerprints for storage manifest entries.
 /// Used to skip re-downloading unchanged storages on VM reuse.
