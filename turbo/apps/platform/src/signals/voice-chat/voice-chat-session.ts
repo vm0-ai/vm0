@@ -1156,6 +1156,22 @@ export const startVoiceChat$ = command(
         return;
       }
 
+      // Pre-fetch cached preparation events so they're available when DC opens
+      const ctxRes = await fetchFn(
+        `/api/zero/voice-chat/${session.id}/context?after=0`,
+      );
+      signal.throwIfAborted();
+      if (ctxRes.ok) {
+        const data = (await ctxRes.json()) as { events: ContextEvent[] };
+        if (data.events.length > 0) {
+          set(internalEvents$, data.events);
+          const lastEvent = data.events[data.events.length - 1];
+          if (lastEvent) {
+            set(internalLastSeq$, lastEvent.seq);
+          }
+        }
+      }
+
       await Promise.allSettled([
         heartbeatPromise,
         set(connectVoiceSession$, sessionSignal),
@@ -1243,6 +1259,22 @@ export const startVoiceMeeting$ = command(
         set(internalError$, "Failed to activate session");
         set(internalStatus$, "error");
         return;
+      }
+
+      // Pre-fetch cached preparation events so they're available when DC opens
+      const ctxRes = await fetchFn(
+        `/api/zero/voice-chat/${session.id}/context?after=0`,
+      );
+      signal.throwIfAborted();
+      if (ctxRes.ok) {
+        const data = (await ctxRes.json()) as { events: ContextEvent[] };
+        if (data.events.length > 0) {
+          set(internalEvents$, data.events);
+          const lastEvent = data.events[data.events.length - 1];
+          if (lastEvent) {
+            set(internalLastSeq$, lastEvent.seq);
+          }
+        }
       }
 
       await Promise.allSettled([
