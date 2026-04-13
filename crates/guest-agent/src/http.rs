@@ -201,7 +201,7 @@ impl http_body::Body for SizedBody {
                     return Poll::Ready(None);
                 }
                 buf.truncate(n);
-                *this.remaining -= n as u64;
+                *this.remaining = this.remaining.saturating_sub(n as u64);
                 Poll::Ready(Some(Ok(Frame::data(Bytes::from(buf)))))
             }
             Poll::Ready(Err(e)) => Poll::Ready(Some(Err(e))),
