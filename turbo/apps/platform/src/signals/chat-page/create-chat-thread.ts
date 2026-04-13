@@ -652,6 +652,19 @@ function createThreadUIState() {
 /** Milliseconds to wait before persisting a draft change to the server. */
 const DRAFT_SYNC_DEBOUNCE_MS = 500;
 
+// Backing state for the debounce delay — not exported directly (no-export-state rule).
+const internalDraftSyncDebounceMs$ = state(DRAFT_SYNC_DEBOUNCE_MS);
+
+/**
+ * Overrides the debounce delay (ms) used by `scheduleDraftSync$`. Set to 0
+ * in tests to bypass the 500ms wait without fake timers.
+ *
+ * @internal — exported for testing only; do not use in application code.
+ */
+export const setDraftSyncDebounceMs$ = command(({ set }, ms: number) => {
+  set(internalDraftSyncDebounceMs$, ms);
+});
+
 function createDraftSync(threadId: string, draft: DraftSignals) {
   // A reset signal is used to abort any in-flight debounced sync when a new
   // change comes in or when the draft is cleared on send.
@@ -683,8 +696,9 @@ function createDraftSync(threadId: string, draft: DraftSignals) {
    */
   const debouncedSyncDraft$ = command(
     async ({ get, set }, signal: AbortSignal) => {
-      // Wait for the debounce window — abort if a newer change comes in
-      await delay(DRAFT_SYNC_DEBOUNCE_MS, { signal });
+      // Wait for the debounce window — abort if a newer change comes in.
+      // The delay is configurable via setDraftSyncDebounceMs$ so tests can set it to 0.
+      await delay(get(internalDraftSyncDebounceMs$), { signal });
       signal.throwIfAborted();
 
       const input = get(draft.input$);

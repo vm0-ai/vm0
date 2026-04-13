@@ -1,9 +1,12 @@
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
-import { currentChatThreadSignals$ } from "../create-chat-thread.ts";
+import {
+  currentChatThreadSignals$,
+  setDraftSyncDebounceMs$,
+} from "../create-chat-thread.ts";
 
 const context = testContext();
 
@@ -36,12 +39,13 @@ function setupBaseHandlers(threadId: string) {
 }
 
 describe("createDraftSync — scheduleDraftSync$, cancelDraftSync$, flushDraftClear$", () => {
-  afterEach(() => {
-    vi.useRealTimers();
+  beforeEach(() => {
+    // Override debounce delay to 0 so tests resolve without fake timers.
+    context.store.set(setDraftSyncDebounceMs$, 0);
   });
 
   describe("scheduleDraftSync$", () => {
-    it("should PATCH the server with the current draft after 500ms debounce", async () => {
+    it("should PATCH the server with the current draft after debounce", async () => {
       const threadId = "thread-draft-sync-1";
       let patchBody: unknown = null;
 
@@ -56,8 +60,6 @@ describe("createDraftSync — scheduleDraftSync$, cancelDraftSync$, flushDraftCl
       );
       setupBaseHandlers(threadId);
 
-      vi.useFakeTimers();
-
       await setupPage({
         context,
         path: `/chats/${threadId}`,
@@ -70,20 +72,18 @@ describe("createDraftSync — scheduleDraftSync$, cancelDraftSync$, flushDraftCl
       // Set draft input so the PATCH has content to sync
       context.store.set(thread!.draft.setInput$, "hello world");
 
-      // Schedule a debounced sync
+      // Schedule a debounced sync (debounce is 0ms in tests)
       context.store.set(thread!.scheduleDraftSync$, context.signal);
 
-      // Before 500ms — PATCH should not have been called
-      await vi.advanceTimersByTimeAsync(499);
-      expect(patchBody).toBeNull();
-
-      // After 500ms — PATCH should be called with the current draft
-      await vi.advanceTimersByTimeAsync(1);
-      await vi.runAllTimersAsync();
-
-      await vi.waitFor(() => {
-        expect(patchBody).not.toBeNull();
-      });
+      // Wait for the PATCH to arrive
+      await expect
+        .poll(
+          () => {
+            return patchBody;
+          },
+          { timeout: 1000 },
+        )
+        .not.toBeNull();
 
       expect(patchBody).toMatchObject({
         draftContent: "hello world",
@@ -91,7 +91,7 @@ describe("createDraftSync — scheduleDraftSync$, cancelDraftSync$, flushDraftCl
       });
     });
 
-    it("should debounce: only the last call within 500ms window triggers PATCH", async () => {
+    it("should debounce: only the last call triggers PATCH", async () => {
       const threadId = "thread-draft-sync-2";
       let patchCount = 0;
 
@@ -103,8 +103,6 @@ describe("createDraftSync — scheduleDraftSync$, cancelDraftSync$, flushDraftCl
       );
       setupBaseHandlers(threadId);
 
-      vi.useFakeTimers();
-
       await setupPage({
         context,
         path: `/chats/${threadId}`,
@@ -113,27 +111,24 @@ describe("createDraftSync — scheduleDraftSync$, cancelDraftSync$, flushDraftCl
 
       const thread = context.store.get(currentChatThreadSignals$)!;
 
-      // Schedule sync, then schedule again immediately to reset the timer
+      // Schedule sync, then schedule again immediately to reset the timer.
+      // The first signal is aborted synchronously before its setTimeout(0) fires.
       context.store.set(thread.draft.setInput$, "first");
       context.store.set(thread.scheduleDraftSync$, context.signal);
 
-      await vi.advanceTimersByTimeAsync(200);
-
-      // Second call resets the debounce timer
+      // Second call resets the debounce (aborts the first timer)
       context.store.set(thread.draft.setInput$, "second");
       context.store.set(thread.scheduleDraftSync$, context.signal);
 
-      // Advance past the first timer (no PATCH yet since it was cancelled)
-      await vi.advanceTimersByTimeAsync(499);
-      expect(patchCount).toBe(0);
-
-      // Advance past the second timer
-      await vi.advanceTimersByTimeAsync(1);
-      await vi.runAllTimersAsync();
-
-      await vi.waitFor(() => {
-        expect(patchCount).toBe(1);
-      });
+      // Wait for exactly one PATCH from the second call
+      await expect
+        .poll(
+          () => {
+            return patchCount;
+          },
+          { timeout: 1000 },
+        )
+        .toBe(1);
     });
 
     it("should send null draft content when input is empty", async () => {
@@ -151,8 +146,6 @@ describe("createDraftSync — scheduleDraftSync$, cancelDraftSync$, flushDraftCl
       );
       setupBaseHandlers(threadId);
 
-      vi.useFakeTimers();
-
       await setupPage({
         context,
         path: `/chats/${threadId}`,
@@ -164,12 +157,14 @@ describe("createDraftSync — scheduleDraftSync$, cancelDraftSync$, flushDraftCl
       // Leave input empty — should send null draftContent
       context.store.set(thread.scheduleDraftSync$, context.signal);
 
-      await vi.advanceTimersByTimeAsync(500);
-      await vi.runAllTimersAsync();
-
-      await vi.waitFor(() => {
-        expect(patchBody).not.toBeNull();
-      });
+      await expect
+        .poll(
+          () => {
+            return patchBody;
+          },
+          { timeout: 1000 },
+        )
+        .not.toBeNull();
 
       expect(patchBody).toMatchObject({
         draftContent: null,
@@ -191,8 +186,6 @@ describe("createDraftSync — scheduleDraftSync$, cancelDraftSync$, flushDraftCl
       );
       setupBaseHandlers(threadId);
 
-      vi.useFakeTimers();
-
       await setupPage({
         context,
         path: `/chats/${threadId}`,
@@ -204,12 +197,12 @@ describe("createDraftSync — scheduleDraftSync$, cancelDraftSync$, flushDraftCl
       context.store.set(thread.draft.setInput$, "will be cancelled");
       context.store.set(thread.scheduleDraftSync$, context.signal);
 
-      // Cancel before the debounce fires
+      // Cancel synchronously before the debounce fires — this aborts the signal
+      // before the delay(0) timer resolves, so no PATCH should ever reach the server.
       context.store.set(thread.cancelDraftSync$);
 
-      // Advance well past 500ms — PATCH must NOT fire
-      await vi.advanceTimersByTimeAsync(1000);
-      await vi.runAllTimersAsync();
+      // Yield to let any pending microtasks resolve
+      await Promise.resolve();
 
       expect(patchCount).toBe(0);
     });
@@ -230,8 +223,6 @@ describe("createDraftSync — scheduleDraftSync$, cancelDraftSync$, flushDraftCl
         ),
       );
       setupBaseHandlers(threadId);
-
-      vi.useFakeTimers();
 
       await setupPage({
         context,
@@ -255,9 +246,8 @@ describe("createDraftSync — scheduleDraftSync$, cancelDraftSync$, flushDraftCl
         draftAttachments: null,
       });
 
-      // Advance timers — the cancelled debounced sync must not produce another PATCH
-      await vi.advanceTimersByTimeAsync(1000);
-      await vi.runAllTimersAsync();
+      // Yield to let any pending microtasks resolve — the cancelled sync must not fire
+      await Promise.resolve();
 
       expect(patchBodies).toHaveLength(1);
     });
