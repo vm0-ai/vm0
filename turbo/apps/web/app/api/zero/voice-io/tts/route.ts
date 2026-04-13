@@ -94,7 +94,7 @@ export async function POST(request: Request): Promise<Response> {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      model: "tts-1-hd",
+      model: "gpt-4o-mini-tts",
       voice: "ash",
       input: text,
       response_format: "mp3",

@@ -120,7 +120,7 @@ describe("POST /api/zero/voice-io/tts", () => {
         "https://api.openai.com/v1/audio/speech",
         async ({ request }) => {
           const reqBody = (await request.json()) as Record<string, unknown>;
-          expect(reqBody.model).toBe("tts-1-hd");
+          expect(reqBody.model).toBe("gpt-4o-mini-tts");
           expect(reqBody.voice).toBe("ash");
           expect(reqBody.input).toBe("hello world");
           expect(reqBody.response_format).toBe("mp3");
