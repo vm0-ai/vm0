@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import { NextIntlClientProvider } from "next-intl";
+import SiteHeader from "../components/SiteHeader";
+import enMessages from "../../messages/en.json";
 
 export const metadata: Metadata = {
   title: "Terms of Use",
@@ -19,5 +22,10 @@ export default function TermsOfUseLayout({
 }: {
   children: ReactNode;
 }) {
-  return children;
+  return (
+    <NextIntlClientProvider locale="en" messages={enMessages}>
+      <SiteHeader />
+      {children}
+    </NextIntlClientProvider>
+  );
 }

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { auth } from "@clerk/nextjs/server";
 import LandingPage from "../components/LandingPage";
 
 const BASE_URL = "https://vm0.ai";
@@ -34,6 +35,7 @@ export async function generateMetadata({
   };
 }
 
-export default function Home() {
-  return <LandingPage />;
+export default async function Home() {
+  const { userId } = await auth();
+  return <LandingPage initialIsSignedIn={!!userId} />;
 }

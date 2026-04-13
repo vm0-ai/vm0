@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import NextLink from "next/link";
 import { useUser } from "@clerk/nextjs";
 import { getAppUrl } from "../../src/lib/zero/url";
-import Navbar from "./Navbar";
 import Footer from "./Footer";
 import Image from "next/image";
 import AvatarCustomizer from "./AvatarCustomizer";
@@ -1284,8 +1283,15 @@ function CubeShieldIllustration() {
   );
 }
 
-export default function LandingPage() {
-  const { isSignedIn } = useUser();
+interface LandingPageProps {
+  initialIsSignedIn?: boolean;
+}
+
+export default function LandingPage({
+  initialIsSignedIn = false,
+}: LandingPageProps) {
+  const { isSignedIn: clerkIsSignedIn, isLoaded } = useUser();
+  const isSignedIn = isLoaded ? clerkIsSignedIn : initialIsSignedIn;
   const revealRef = useScrollReveal();
 
   const ctaText = isSignedIn ? "Open app" : "Get started";
@@ -1327,10 +1333,6 @@ export default function LandingPage() {
             "radial-gradient(ellipse 70% 65% at 50% 50%, transparent 50%, black 100%)",
         }}
       />
-
-      <div className="header-container">
-        <Navbar />
-      </div>
 
       <main>
         {/* ===== HERO SECTION ===== */}

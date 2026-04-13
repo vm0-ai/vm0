@@ -4,7 +4,6 @@ import { useState } from "react";
 import Image from "next/image";
 import { useTranslations } from "next-intl";
 import { Link } from "../../../../navigation";
-import Navbar from "../../../components/Navbar";
 import Footer from "../../../components/Footer";
 import Particles from "../../../components/Particles";
 import type { UseCase, ConnectorRef } from "../data";
@@ -72,9 +71,6 @@ export default function UseCaseDetailClient({ useCase }: { useCase: UseCase }) {
   return (
     <div className="landing-page min-h-screen bg-[hsl(var(--gray-0))] text-[hsl(var(--foreground))]">
       <Particles />
-      <div className="header-container">
-        <Navbar />
-      </div>
 
       <main className="px-6 pb-20 pt-[calc(var(--total-header-height)+48px)] md:pb-28 md:pt-[calc(var(--total-header-height)+72px)]">
         <article className="mx-auto max-w-[800px]">

@@ -12,10 +12,15 @@ import LanguageSwitcher from "./LanguageSwitcher";
 import { useUser, useClerk } from "@clerk/nextjs";
 import { getAppUrl } from "../../src/lib/zero/url";
 import { isBlogEnabled } from "../../src/env";
-export default function Navbar() {
+interface NavbarProps {
+  initialIsSignedIn?: boolean;
+}
+
+export default function Navbar({ initialIsSignedIn = false }: NavbarProps) {
   const { theme } = useTheme();
   const t = useTranslations("nav");
-  const { isSignedIn } = useUser();
+  const { isSignedIn: clerkIsSignedIn, isLoaded } = useUser();
+  const isSignedIn = isLoaded ? clerkIsSignedIn : initialIsSignedIn;
   const { signOut } = useClerk();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 

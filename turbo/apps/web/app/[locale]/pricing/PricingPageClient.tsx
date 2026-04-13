@@ -1,7 +1,6 @@
 "use client";
 
 import React from "react";
-import Navbar from "../../components/Navbar";
 import Footer from "../../components/Footer";
 import Particles from "../../components/Particles";
 
@@ -157,7 +156,6 @@ export default function PricingPageClient() {
   return (
     <>
       <Particles />
-      <Navbar />
 
       {/* Hero Section */}
       <section className="hero-section" style={{ paddingBottom: "40px" }}>

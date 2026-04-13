@@ -3,7 +3,6 @@
 import Image from "next/image";
 import { useTranslations } from "next-intl";
 import { Link } from "../../../navigation";
-import Navbar from "../../components/Navbar";
 import Footer from "../../components/Footer";
 import Particles from "../../components/Particles";
 import { USE_CASES } from "./data";
@@ -110,9 +109,6 @@ export default function UseCasesGalleryClient() {
   return (
     <div className="landing-page min-h-screen bg-[hsl(var(--gray-0))] text-[hsl(var(--foreground))]">
       <Particles />
-      <div className="header-container">
-        <Navbar />
-      </div>
 
       {/* Hero */}
       <section className="hero-section" style={{ paddingBottom: "40px" }}>
