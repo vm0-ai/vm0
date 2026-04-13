@@ -55,7 +55,8 @@ export async function GET(request: Request) {
   if (orgId) stateObj.orgId = orgId;
   if (vm0UserId) stateObj.vm0UserId = vm0UserId;
   if (reinstall === "1") stateObj.reinstall = true;
-  if (prompt) stateObj.prompt = prompt.slice(0, MAX_PROMPT_STATE_LENGTH);
+  if (prompt)
+    stateObj.prompt = [...prompt].slice(0, MAX_PROMPT_STATE_LENGTH).join("");
   const state =
     Object.keys(stateObj).length > 0 ? JSON.stringify(stateObj) : "";
 
