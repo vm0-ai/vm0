@@ -45,7 +45,7 @@
 //! orphans the previous object.
 //!
 //! Cleanup happens via `gc_older_than`, called from `runner gc` (which the
-//! deploy playbook runs after every release). Default TTL is 30 days. Each
+//! deploy playbook runs after every release). Default TTL is 7 days. Each
 //! host runs the same scan independently — `DeleteObjects` is idempotent for
 //! already-absent keys, so concurrent fleet execution is safe and costs
 //! ~1 LIST + 1 batched DELETE per host per gc cycle.

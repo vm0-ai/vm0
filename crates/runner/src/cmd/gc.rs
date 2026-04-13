@@ -14,10 +14,10 @@ use crate::paths::{HomePaths, LogPaths};
 use crate::r2_cache::R2ImageCache;
 
 /// Default TTL for completed R2 image objects. Older objects are deleted by
-/// `gc_r2`. 30 days easily covers any sane release cadence; a stale image
-/// staying around an extra week is harmless, but losing a still-referenced
-/// one would force a full rebuild.
-const R2_DEFAULT_KEEP_DAYS: u64 = 30;
+/// `gc_r2`. 7 days comfortably covers our typical release cadence; if a
+/// still-referenced image gets swept, the next `runner build` pays a
+/// one-time local rebuild + re-upload cost.
+const R2_DEFAULT_KEEP_DAYS: u64 = 7;
 
 /// Artifacts younger than this are unconditionally kept, regardless of lock
 /// status or `--keep-latest`. This prevents races between `runner build`
