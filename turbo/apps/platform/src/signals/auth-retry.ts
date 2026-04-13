@@ -14,15 +14,20 @@ const L = logger("AuthRetry");
 
 type ClerkLike = Pick<Clerk, "session" | "redirectToSignIn">;
 
-let pendingRefresh: Promise<string | null> | null = null;
+/**
+ * Per-Clerk-instance in-flight refresh promise. Scoped to the instance (not
+ * the module) so concurrent 401s against the same Clerk share one refresh,
+ * but distinct instances (e.g. across tests) stay isolated.
+ */
+const pendingRefreshes = new WeakMap<ClerkLike, Promise<string | null>>();
 
 /**
  * Force-refresh the Clerk session token. Returns the new token only if it
  * is non-null and differs from `staleToken`; otherwise returns `null` to
  * signal "no retry should be attempted".
  *
- * Concurrent 401s share a single in-flight refresh promise so we don't
- * storm the Clerk FAPI.
+ * Concurrent 401s against the same Clerk instance share a single in-flight
+ * refresh promise so we don't storm the Clerk FAPI.
  */
 export async function fetchFreshToken(
   clerk: ClerkLike,
@@ -31,13 +36,15 @@ export async function fetchFreshToken(
   if (!clerk.session) {
     return null;
   }
-  if (!pendingRefresh) {
+  let pending = pendingRefreshes.get(clerk);
+  if (!pending) {
     const session = clerk.session;
-    pendingRefresh = session.getToken({ skipCache: true }).finally(() => {
-      pendingRefresh = null;
+    pending = session.getToken({ skipCache: true }).finally(() => {
+      pendingRefreshes.delete(clerk);
     });
+    pendingRefreshes.set(clerk, pending);
   }
-  const freshToken = await pendingRefresh;
+  const freshToken = await pending;
   if (!freshToken || freshToken === staleToken) {
     return null;
   }
