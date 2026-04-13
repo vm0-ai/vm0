@@ -199,22 +199,23 @@ export async function getDailyCredits(
   options: DailyCreditsOptions,
 ): Promise<UsageDailyResponse> {
   const billingPeriod = await getOrgBillingPeriod(orgId);
-
-  if (!billingPeriod) {
-    return { period: null, daily: [], dailyByMember: [] };
-  }
-
   const db = globalThis.services.db;
 
-  const dateFrom = options.dateFrom
-    ? new Date(options.dateFrom)
-    : billingPeriod.start;
-  const dateTo = options.dateTo ? new Date(options.dateTo) : billingPeriod.end;
+  // Fall back to last 30 days when no billing period (free tier / no subscription).
+  const now = new Date();
+  const defaultFrom =
+    billingPeriod?.start ?? new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const defaultTo = billingPeriod?.end ?? now;
 
-  const period = {
-    start: billingPeriod.start.toISOString(),
-    end: billingPeriod.end.toISOString(),
-  };
+  const dateFrom = options.dateFrom ? new Date(options.dateFrom) : defaultFrom;
+  const dateTo = options.dateTo ? new Date(options.dateTo) : defaultTo;
+
+  const period = billingPeriod
+    ? {
+        start: billingPeriod.start.toISOString(),
+        end: billingPeriod.end.toISOString(),
+      }
+    : null;
 
   if (options.mode === "member") {
     const rows = await db
@@ -306,7 +307,7 @@ interface UsageRunsOptions {
   page: number;
   pageSize: number;
   agentId?: string;
-  userId?: string;
+  userIds?: string[];
   dateFrom?: string;
   dateTo?: string;
 }
@@ -357,8 +358,8 @@ export async function getUsageRuns(
   if (options.agentId) {
     conditions.push(eq(agentComposes.id, options.agentId));
   }
-  if (options.userId) {
-    conditions.push(eq(agentRuns.userId, options.userId));
+  if (options.userIds && options.userIds.length > 0) {
+    conditions.push(inArray(agentRuns.userId, options.userIds));
   }
   if (options.dateFrom) {
     conditions.push(gte(agentRuns.createdAt, new Date(options.dateFrom)));
@@ -395,6 +396,7 @@ export async function getUsageRuns(
       startedAt: agentRuns.startedAt,
       completedAt: agentRuns.completedAt,
       userId: agentRuns.userId,
+      prompt: agentRuns.prompt,
       triggerSource: zeroRuns.triggerSource,
       agentName: zeroAgents.displayName,
       inputTokens: creditSub.inputTokens,
@@ -446,6 +448,7 @@ export async function getUsageRuns(
       triggerSource: row.triggerSource ?? null,
       model: row.model ?? "unknown",
       status: row.status,
+      prompt: row.prompt,
       startedAt,
       completedAt,
       durationMs,

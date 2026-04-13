@@ -63,6 +63,7 @@ const usageRunSchema = z.object({
   triggerSource: z.string().nullable(),
   model: z.string(),
   status: z.string(),
+  prompt: z.string(),
   startedAt: z.string().nullable(),
   completedAt: z.string().nullable(),
   durationMs: z.number().nullable(),
@@ -91,7 +92,8 @@ export const zeroUsageRunsContract = c.router({
       page: z.coerce.number().int().positive().default(1),
       pageSize: z.coerce.number().int().positive().max(100).default(20),
       agentId: z.string().optional(),
-      userId: z.string().optional(),
+      // Comma-separated list of user IDs to filter by. Empty string = no filter.
+      userIds: z.string().optional(),
       dateFrom: z.string().optional(),
       dateTo: z.string().optional(),
     }),

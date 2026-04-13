@@ -18,7 +18,7 @@ export const usageMembersAsync$ = computed(async (get) => {
 
 // --- Tab state ---
 
-export type UsageTab = "overview" | "runs";
+export type UsageTab = "overview" | "daily" | "runs";
 
 const internalUsageTab$ = state<UsageTab>("overview");
 
@@ -33,10 +33,32 @@ export const setUsageTab$ = command(({ set }, tab: UsageTab) => {
 // --- Daily credits chart signals ---
 
 export type ChartMode = "total" | "member";
+export type ChartType = "line" | "bar";
+
+const internalChartType$ = state<ChartType>("line");
+
+export const chartType$ = computed((get) => {
+  return get(internalChartType$);
+});
+
+export const setChartType$ = command(({ set }, type: ChartType) => {
+  set(internalChartType$, type);
+});
+
+const DEFAULT_PRESET_DAYS = 14;
+
+function initialDateRange(): { from: string; to: string } {
+  const to = new Date();
+  const from = new Date(to);
+  from.setDate(from.getDate() - DEFAULT_PRESET_DAYS);
+  return { from: from.toISOString(), to: to.toISOString() };
+}
 
 const internalChartMode$ = state<ChartMode>("total");
-const internalChartDateFrom$ = state<string | undefined>(undefined);
-const internalChartDateTo$ = state<string | undefined>(undefined);
+const internalChartDateFrom$ = state<string | undefined>(
+  initialDateRange().from,
+);
+const internalChartDateTo$ = state<string | undefined>(initialDateRange().to);
 
 export const chartMode$ = computed((get) => {
   return get(internalChartMode$);
@@ -48,7 +70,7 @@ export const setChartMode$ = command(({ set }, mode: ChartMode) => {
 
 export type DatePreset = "last7" | "last14" | "last30" | "period";
 
-const internalDatePreset$ = state<DatePreset>("period");
+const internalDatePreset$ = state<DatePreset>("last14");
 
 export const datePreset$ = computed((get) => {
   return get(internalDatePreset$);
@@ -97,6 +119,29 @@ export const setChartWidth$ = command(({ set }, width: number) => {
   set(internalChartWidth$, width);
 });
 
+// Member line focus state (legend click selects a single member; null = show all)
+const internalSelectedMember$ = state<string | null>(null);
+
+export const selectedMember$ = computed((get) => {
+  return get(internalSelectedMember$);
+});
+
+export const toggleSelectedMember$ = command(({ set, get }, label: string) => {
+  const current = get(internalSelectedMember$);
+  set(internalSelectedMember$, current === label ? null : label);
+});
+
+// Member line hover state (legend hover dims other lines; null = neutral)
+const internalHoveredMember$ = state<string | null>(null);
+
+export const hoveredMember$ = computed((get) => {
+  return get(internalHoveredMember$);
+});
+
+export const setHoveredMember$ = command(({ set }, label: string | null) => {
+  set(internalHoveredMember$, label);
+});
+
 export type { ChartTooltipData };
 
 export const dailyCreditsAsync$ = computed(async (get) => {
@@ -116,6 +161,7 @@ export const dailyCreditsAsync$ = computed(async (get) => {
 // --- Per-run records signals ---
 
 const internalRunsPage$ = state(1);
+const internalRunsPageSize$ = state(20);
 const internalRunsAgentFilter$ = state<string | undefined>(undefined);
 const internalRunsMemberFilter$ = state<string | undefined>(undefined);
 const internalRunsDateFrom$ = state<string | undefined>(undefined);
@@ -125,12 +171,21 @@ export const runsPage$ = computed((get) => {
   return get(internalRunsPage$);
 });
 
+export const runsPageSize$ = computed((get) => {
+  return get(internalRunsPageSize$);
+});
+
 export const runsMemberFilter$ = computed((get) => {
   return get(internalRunsMemberFilter$);
 });
 
 export const setRunsPage$ = command(({ set }, page: number) => {
   set(internalRunsPage$, page);
+});
+
+export const setRunsPageSize$ = command(({ set }, pageSize: number) => {
+  set(internalRunsPageSize$, pageSize);
+  set(internalRunsPage$, 1);
 });
 
 export const setRunsFilter$ = command(
@@ -162,6 +217,7 @@ export const setRunsFilter$ = command(
 export const usageRunsAsync$ = computed(async (get) => {
   const createClient = get(zeroClient$);
   const page = get(internalRunsPage$);
+  const pageSize = get(internalRunsPageSize$);
   const agentId = get(internalRunsAgentFilter$);
   const userId = get(internalRunsMemberFilter$);
   const dateFrom = get(internalRunsDateFrom$);
@@ -170,7 +226,14 @@ export const usageRunsAsync$ = computed(async (get) => {
   const client = createClient(zeroUsageRunsContract);
   const result = await accept(
     client.get({
-      query: { page, pageSize: 20, agentId, userId, dateFrom, dateTo },
+      query: {
+        page,
+        pageSize,
+        agentId,
+        userIds: userId,
+        dateFrom,
+        dateTo,
+      },
     }),
     [200],
   );

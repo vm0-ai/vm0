@@ -9,7 +9,14 @@ import {
   setChartTooltip$,
   chartWidth$,
   setChartWidth$,
+  selectedMember$,
+  toggleSelectedMember$,
+  hoveredMember$,
+  setHoveredMember$,
+  chartType$,
+  setChartType$,
   type ChartMode,
+  type ChartType,
   type DatePreset,
   type ChartTooltipData,
 } from "../../../signals/usage-page/usage-signals.ts";
@@ -69,8 +76,11 @@ function generateYTicks(max: number): number[] {
     return [0];
   }
   const step = niceStep(max, 4);
+  // Always leave one step of headroom above max so peak values don't touch
+  // the top edge of the drawing area (which would clip half the stroke).
+  const top = Math.floor(max / step) * step + step;
   const ticks: number[] = [];
-  for (let v = 0; v <= max + step * 0.01; v += step) {
+  for (let v = 0; v <= top + step * 0.01; v += step) {
     ticks.push(Math.round(v));
   }
   if (ticks.length < 2) {
@@ -98,14 +108,27 @@ function getDatePresetLabel(preset: DatePreset): string {
 
 // --- Tooltip ---
 
-function ChartTooltip({ data }: { data: ChartTooltipData }) {
+const TOOLTIP_ESTIMATED_WIDTH = 200;
+
+function ChartTooltip({
+  data,
+  containerWidth,
+}: {
+  data: ChartTooltipData;
+  containerWidth: number;
+}) {
+  // Flip tooltip to the left side of the cursor when it would overflow the right edge.
+  const flipLeft = data.x + 12 + TOOLTIP_ESTIMATED_WIDTH > containerWidth;
+  const left = flipLeft ? data.x - 12 : data.x + 12;
+  const translateX = flipLeft ? "-100%" : "0";
+
   return (
     <div
       className="pointer-events-none absolute z-10 rounded-md border border-border bg-popover px-3 py-2 text-xs shadow-md"
       style={{
-        left: data.x + 12,
+        left,
         top: data.y - 8,
-        transform: "translateY(-100%)",
+        transform: `translate(${translateX}, -100%)`,
       }}
     >
       <div className="font-medium text-foreground mb-1">
@@ -196,12 +219,53 @@ function renderXLabels(
   });
 }
 
+function renderBars(
+  lines: LineData[],
+  xScale: (i: number) => number,
+  yScale: (v: number) => number,
+  barSlotWidth: number,
+  getOpacity: (label: string) => number,
+) {
+  const dates =
+    lines[0]?.points.map((p) => {
+      return p.date;
+    }) ?? [];
+  const width = Math.max(2, barSlotWidth * 0.7);
+  return dates.flatMap((date, dateIdx) => {
+    let cumulative = 0;
+    return lines.map((line) => {
+      const value = line.points[dateIdx]?.value ?? 0;
+      if (value <= 0) {
+        return null;
+      }
+      const yBottom = yScale(cumulative);
+      cumulative += value;
+      const yTop = yScale(cumulative);
+      const height = Math.max(0, yBottom - yTop);
+      const cx = xScale(dateIdx);
+      return (
+        <rect
+          key={`${line.label}-${date}`}
+          x={cx - width / 2}
+          y={yTop}
+          width={width}
+          height={height}
+          fill={line.color}
+          opacity={getOpacity(line.label)}
+        />
+      );
+    });
+  });
+}
+
 function renderLines(
   lines: LineData[],
   xScale: (i: number) => number,
   yScale: (v: number) => number,
+  getOpacity: (label: string) => number,
 ) {
   return lines.map((line) => {
+    const opacity = getOpacity(line.label);
     if (line.points.length === 1) {
       return (
         <circle
@@ -210,6 +274,7 @@ function renderLines(
           cy={yScale(line.points[0]!.value)}
           r={4}
           fill={line.color}
+          opacity={opacity}
         />
       );
     }
@@ -227,6 +292,7 @@ function renderLines(
         strokeWidth={2}
         strokeLinejoin="round"
         strokeLinecap="round"
+        opacity={opacity}
       />
     );
   });
@@ -234,27 +300,104 @@ function renderLines(
 
 // --- Line chart SVG ---
 
-function SvgLineChart({ lines, width }: { lines: LineData[]; width: number }) {
+function computeTooltipAt(
+  mx: number,
+  my: number,
+  dates: string[],
+  visibleLines: LineData[],
+  xScale: (i: number) => number,
+): ChartTooltipData | null {
+  if (dates.length === 0) {
+    return null;
+  }
+  let closestIdx = 0;
+  let closestDist = Infinity;
+  for (let i = 0; i < dates.length; i++) {
+    const dist = Math.abs(xScale(i) - mx);
+    if (dist < closestDist) {
+      closestDist = dist;
+      closestIdx = i;
+    }
+  }
+
+  const values = visibleLines.map((line) => {
+    return {
+      label: line.label,
+      value: line.points[closestIdx]?.value ?? 0,
+      color: line.color,
+    };
+  });
+
+  return {
+    x: xScale(closestIdx),
+    y: my,
+    date: dates[closestIdx]!,
+    values,
+  };
+}
+
+function SvgLineChart({
+  lines,
+  width,
+  chartType,
+}: {
+  lines: LineData[];
+  width: number;
+  chartType: ChartType;
+}) {
   const tooltip = useGet(chartTooltip$);
   const setTooltip = useSet(setChartTooltip$);
+  const selected = useGet(selectedMember$);
+  const hovered = useGet(hoveredMember$);
 
-  const allValues = lines.flatMap((l) => {
-    return l.points.map((p) => {
-      return p.value;
-    });
-  });
-  const maxValue = Math.max(...allValues, 1);
+  // Filter down to the selected member when one is pinned; otherwise show all.
+  const visibleLines =
+    selected !== null
+      ? lines.filter((l) => {
+          return l.label === selected;
+        })
+      : lines;
+
+  const getOpacity = (label: string): number => {
+    if (hovered !== null && hovered !== label) {
+      return 0.2;
+    }
+    return 1;
+  };
+
+  // In bar mode, bars stack — yMax must reflect per-day totals, not per-line.
+  const pointCount = visibleLines[0]?.points.length ?? 0;
+  const perDayTotals =
+    chartType === "bar"
+      ? Array.from({ length: pointCount }, (_, i) => {
+          return visibleLines.reduce((s, l) => {
+            return s + (l.points[i]?.value ?? 0);
+          }, 0);
+        })
+      : visibleLines.flatMap((l) => {
+          return l.points.map((p) => {
+            return p.value;
+          });
+        });
+  const maxValue = Math.max(...perDayTotals, 1);
   const yTicks = generateYTicks(maxValue);
   const yMax = yTicks[yTicks.length - 1] ?? maxValue;
 
   const dates =
-    lines[0]?.points.map((p) => {
+    visibleLines[0]?.points.map((p) => {
       return p.date;
     }) ?? [];
   const drawW = width - CHART_PADDING.left - CHART_PADDING.right;
   const drawH = CHART_HEIGHT - CHART_PADDING.top - CHART_PADDING.bottom;
 
+  // Line chart: first/last points sit at the edges of the draw area.
+  // Bar chart: bars are centered within slots so the first bar doesn't
+  // overlap the Y axis.
+  const slotWidth = dates.length > 0 ? drawW / dates.length : drawW;
   const xScale = (i: number) => {
+    if (chartType === "bar") {
+      return CHART_PADDING.left + (i + 0.5) * slotWidth;
+    }
     return (
       CHART_PADDING.left +
       (dates.length > 1 ? (i / (dates.length - 1)) * drawW : drawW / 2)
@@ -281,31 +424,10 @@ function SvgLineChart({ lines, width }: { lines: LineData[]; width: number }) {
     const rect = e.currentTarget.getBoundingClientRect();
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
-
-    let closestIdx = 0;
-    let closestDist = Infinity;
-    for (let i = 0; i < dates.length; i++) {
-      const dist = Math.abs(xScale(i) - mx);
-      if (dist < closestDist) {
-        closestDist = dist;
-        closestIdx = i;
-      }
+    const tooltipData = computeTooltipAt(mx, my, dates, visibleLines, xScale);
+    if (tooltipData) {
+      setTooltip(tooltipData);
     }
-
-    const values = lines.map((line) => {
-      return {
-        label: line.label,
-        value: line.points[closestIdx]?.value ?? 0,
-        color: line.color,
-      };
-    });
-
-    setTooltip({
-      x: xScale(closestIdx),
-      y: my,
-      date: dates[closestIdx]!,
-      values,
-    });
   };
 
   const handleMouseLeave = () => {
@@ -328,7 +450,6 @@ function SvgLineChart({ lines, width }: { lines: LineData[]; width: number }) {
           width - CHART_PADDING.right,
         )}
         {renderXLabels(dates, xScale, labelInterval)}
-        {renderLines(lines, xScale, yScale)}
         {tooltip && (
           <line
             x1={tooltip.x}
@@ -341,8 +462,11 @@ function SvgLineChart({ lines, width }: { lines: LineData[]; width: number }) {
             opacity={0.5}
           />
         )}
+        {chartType === "bar"
+          ? renderBars(visibleLines, xScale, yScale, slotWidth, getOpacity)
+          : renderLines(visibleLines, xScale, yScale, getOpacity)}
       </svg>
-      {tooltip && <ChartTooltip data={tooltip} />}
+      {tooltip && <ChartTooltip data={tooltip} containerWidth={width} />}
     </div>
   );
 }
@@ -421,20 +545,44 @@ function toMemberLines(dailyByMember: DailyCreditByMember[]): LineData[] {
 // --- Legend ---
 
 function ChartLegend({ lines }: { lines: LineData[] }) {
+  const selected = useGet(selectedMember$);
+  const hovered = useGet(hoveredMember$);
+  const toggle = useSet(toggleSelectedMember$);
+  const setHovered = useSet(setHoveredMember$);
+
   if (lines.length <= 1) {
     return null;
   }
   return (
     <div className="flex flex-wrap gap-x-4 gap-y-1 px-1 pt-2 text-xs text-muted-foreground">
       {lines.map((line) => {
+        const isSelected = selected === line.label;
+        const dimmed =
+          (selected !== null && !isSelected) ||
+          (hovered !== null && hovered !== line.label);
         return (
-          <div key={line.label} className="flex items-center gap-1.5">
+          <button
+            key={line.label}
+            type="button"
+            onClick={() => {
+              toggle(line.label);
+            }}
+            onPointerEnter={() => {
+              setHovered(line.label);
+            }}
+            onPointerLeave={() => {
+              setHovered(null);
+            }}
+            className={`flex items-center gap-1.5 rounded transition-opacity hover:text-foreground ${
+              dimmed ? "opacity-40" : "opacity-100"
+            } ${isSelected ? "text-foreground font-medium" : ""}`}
+          >
             <span
               className="inline-block h-2 w-2 rounded-full"
               style={{ backgroundColor: line.color }}
             />
             <span className="truncate max-w-[120px]">{line.label}</span>
-          </div>
+          </button>
         );
       })}
     </div>
@@ -473,6 +621,8 @@ export function CreditsChart() {
   const setPreset = useSet(setDatePreset$);
   const width = useGet(chartWidth$);
   const setWidth = useSet(setChartWidth$);
+  const chartType = useGet(chartType$);
+  const setType = useSet(setChartType$);
 
   const containerRef = useChartResizeRef(setWidth);
 
@@ -482,6 +632,10 @@ export function CreditsChart() {
 
   const handlePresetChange = (val: string) => {
     setPreset(val as DatePreset);
+  };
+
+  const handleTypeChange = (val: string) => {
+    setType(val as ChartType);
   };
 
   const isLoading = loadable.state === "loading";
@@ -499,6 +653,15 @@ export function CreditsChart() {
       <div className="flex items-center justify-between gap-3 mb-3">
         <h2 className="text-sm font-medium text-foreground">Daily Credits</h2>
         <div className="flex items-center gap-2">
+          <Select value={chartType} onValueChange={handleTypeChange}>
+            <SelectTrigger className="h-8 w-[90px] text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="line">Line</SelectItem>
+              <SelectItem value="bar">Bar</SelectItem>
+            </SelectContent>
+          </Select>
           <Select value={mode} onValueChange={handleModeChange}>
             <SelectTrigger className="h-8 w-[120px] text-xs">
               <SelectValue />
@@ -527,7 +690,7 @@ export function CreditsChart() {
           <div className="h-[220px] animate-pulse bg-muted/20 rounded" />
         ) : (
           <>
-            <SvgLineChart lines={lines} width={width} />
+            <SvgLineChart lines={lines} width={width} chartType={chartType} />
             <ChartLegend lines={lines} />
           </>
         )}

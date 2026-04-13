@@ -30,6 +30,7 @@ export enum FeatureSwitchKey {
   SpotifyConnector = "spotifyConnector",
   ShowSystemPrompt = "showSystemPrompt",
   Usage = "usage",
+  UsageAnalytics = "usageAnalytics",
   ModelDetail = "modelDetail",
   ActivityLogList = "activityLogList",
   ZeroDebug = "zeroDebug",

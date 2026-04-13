@@ -2,41 +2,28 @@ import { useLoadable, useGet, useSet } from "ccstate-react";
 import {
   usageRunsAsync$,
   runsPage$,
+  runsPageSize$,
   runsMemberFilter$,
   setRunsPage$,
+  setRunsPageSize$,
   setRunsFilter$,
-  usageMembersAsync$,
 } from "../../../signals/usage-page/usage-signals.ts";
+import { orgMembers$ } from "../../../signals/external/org-members.ts";
 import {
-  Button,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@vm0/ui";
+import { IconUsers } from "@tabler/icons-react";
 import type { UsageRun } from "@vm0/core";
+import { Pagination } from "../../components/pagination.tsx";
 
 // --- Helpers ---
 
 function formatNumber(n: number): string {
   return n.toLocaleString();
-}
-
-function formatDuration(ms: number | null): string {
-  if (ms === null) {
-    return "-";
-  }
-  if (ms < 1000) {
-    return `${ms}ms`;
-  }
-  const seconds = Math.floor(ms / 1000);
-  if (seconds < 60) {
-    return `${seconds}s`;
-  }
-  const minutes = Math.floor(seconds / 60);
-  const remaining = seconds % 60;
-  return `${minutes}m ${remaining}s`;
 }
 
 function formatTime(iso: string): string {
@@ -48,59 +35,43 @@ function formatTime(iso: string): string {
   });
 }
 
-const STATUS_STYLES = {
-  completed: "bg-emerald-500/10 text-emerald-600",
-  failed: "bg-red-500/10 text-red-600",
-  running: "bg-blue-500/10 text-blue-600",
-  timeout: "bg-amber-500/10 text-amber-600",
-  cancelled: "bg-gray-500/10 text-gray-500",
-  queued: "bg-gray-500/10 text-gray-500",
-  pending: "bg-gray-500/10 text-gray-500",
-} as const;
-
-function StatusBadge({ status }: { status: string }) {
-  const style =
-    (STATUS_STYLES as Record<string, string>)[status] ??
-    "bg-gray-500/10 text-gray-500";
-  return (
-    <span
-      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${style}`}
-    >
-      {status}
-    </span>
-  );
-}
-
 // --- Filters ---
 
 function RunsFilters() {
   const memberFilter = useGet(runsMemberFilter$);
   const setFilter = useSet(setRunsFilter$);
-  const membersLoadable = useLoadable(usageMembersAsync$);
+  const membersLoadable = useLoadable(orgMembers$);
 
   const members =
-    membersLoadable.state === "hasData" ? membersLoadable.data.members : [];
+    membersLoadable.state === "hasData" ? membersLoadable.data : [];
 
-  const uniqueMembers = members.map((m) => {
-    return { value: m.userId, label: m.email };
-  });
+  const memberOptions = [
+    { value: "all", label: "All members" },
+    ...members.map((m) => {
+      const name = [m.firstName, m.lastName].filter(Boolean).join(" ");
+      return { value: m.userId, label: name || m.email };
+    }),
+  ];
 
-  const handleMemberChange = (val: string) => {
-    setFilter({ userId: val === "all" ? "" : val });
+  const handleMemberChange = (value: string) => {
+    setFilter({ userId: value === "all" ? "" : value });
   };
 
   return (
     <div className="flex flex-wrap items-center gap-2 mb-4">
       <Select value={memberFilter ?? "all"} onValueChange={handleMemberChange}>
-        <SelectTrigger className="h-8 w-[180px] text-xs">
-          <SelectValue placeholder="All members" />
+        <SelectTrigger
+          aria-label="Member filter"
+          className="zero-btn-morandi h-9 w-auto gap-1.5 rounded-lg px-3.5 text-sm font-medium"
+        >
+          <IconUsers size={14} stroke={1.5} className="shrink-0" />
+          <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value="all">All members</SelectItem>
-          {uniqueMembers.map((m) => {
+          {memberOptions.map((opt) => {
             return (
-              <SelectItem key={m.value} value={m.value}>
-                {m.label}
+              <SelectItem key={opt.value} value={opt.value}>
+                {opt.label}
               </SelectItem>
             );
           })}
@@ -118,27 +89,17 @@ function RunRow({ run }: { run: UsageRun }) {
       <td className="px-3 py-2.5 text-foreground truncate max-w-[140px]">
         {run.agentName ?? "-"}
       </td>
-      <td className="px-3 py-2.5 text-foreground truncate max-w-[160px]">
-        {run.memberEmail}
-      </td>
-      <td className="px-3 py-2.5 text-foreground text-xs truncate max-w-[100px]">
-        {run.model}
-      </td>
-      <td className="px-3 py-2.5">
-        <StatusBadge status={run.status} />
-      </td>
-      <td className="px-3 py-2.5 text-right tabular-nums text-foreground">
-        {formatDuration(run.durationMs)}
-      </td>
-      <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground text-xs">
-        <span title="Input">{formatNumber(run.inputTokens)}</span>
-        {" / "}
-        <span title="Output">{formatNumber(run.outputTokens)}</span>
-        {" / "}
-        <span title="Cache">{formatNumber(run.cacheTokens)}</span>
+      <td
+        className="px-3 py-2.5 text-foreground text-xs truncate max-w-[240px]"
+        title={run.prompt}
+      >
+        {run.prompt}
       </td>
       <td className="px-3 py-2.5 text-right tabular-nums font-medium text-foreground">
         {formatNumber(run.creditsCharged)}
+      </td>
+      <td className="px-3 py-2.5 text-foreground truncate max-w-[160px]">
+        {run.memberEmail}
       </td>
       <td className="px-3 py-2.5 text-right text-xs text-muted-foreground whitespace-nowrap">
         {formatTime(run.createdAt)}
@@ -147,64 +108,22 @@ function RunRow({ run }: { run: UsageRun }) {
   );
 }
 
-function Pagination({
-  page,
-  pageSize,
-  total,
-}: {
-  page: number;
-  pageSize: number;
-  total: number;
-}) {
-  const setPage = useSet(setRunsPage$);
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const from = (page - 1) * pageSize + 1;
-  const to = Math.min(page * pageSize, total);
-
-  return (
-    <div className="flex items-center justify-between pt-3 px-1">
-      <span className="text-xs text-muted-foreground">
-        {total > 0 ? `${from}–${to} of ${total}` : "No records"}
-      </span>
-      <div className="flex items-center gap-1">
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-7 text-xs"
-          disabled={page <= 1}
-          onClick={() => {
-            setPage(page - 1);
-          }}
-        >
-          Previous
-        </Button>
-        <span className="text-xs text-muted-foreground px-2">
-          {page} / {totalPages}
-        </span>
-        <Button
-          variant="outline"
-          size="sm"
-          className="h-7 text-xs"
-          disabled={page >= totalPages}
-          onClick={() => {
-            setPage(page + 1);
-          }}
-        >
-          Next
-        </Button>
-      </div>
-    </div>
-  );
-}
-
 // --- Main component ---
 
 export function RunsTab() {
   const loadable = useLoadable(usageRunsAsync$);
   const page = useGet(runsPage$);
+  const pageSize = useGet(runsPageSize$);
+  const setPage = useSet(setRunsPage$);
+  const setPageSize = useSet(setRunsPageSize$);
 
   const isLoading = loadable.state === "loading";
   const data = loadable.state === "hasData" ? loadable.data : null;
+
+  const total = data?.pagination.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const hasNext = page < totalPages;
+  const hasPrev = page > 1;
 
   return (
     <div>
@@ -228,22 +147,13 @@ export function RunsTab() {
                     Agent
                   </th>
                   <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">
-                    Member
-                  </th>
-                  <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">
-                    Model
-                  </th>
-                  <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">
-                    Status
-                  </th>
-                  <th className="px-3 py-2.5 text-right font-medium text-muted-foreground">
-                    Duration
-                  </th>
-                  <th className="px-3 py-2.5 text-right font-medium text-muted-foreground">
-                    Tokens (I/O/C)
+                    Prompt
                   </th>
                   <th className="px-3 py-2.5 text-right font-medium text-muted-foreground">
                     Credits
+                  </th>
+                  <th className="px-3 py-2.5 text-left font-medium text-muted-foreground">
+                    Member
                   </th>
                   <th className="px-3 py-2.5 text-right font-medium text-muted-foreground">
                     Time
@@ -257,13 +167,36 @@ export function RunsTab() {
               </tbody>
             </table>
           </div>
-          <div className="border-t border-border px-3 py-2">
-            <Pagination
-              page={page}
-              pageSize={data.pagination.pageSize}
-              total={data.pagination.total}
-            />
-          </div>
+        </div>
+      )}
+
+      {(totalPages > 1 || pageSize !== 20) && (
+        <div className="pt-3">
+          <Pagination
+            currentPage={page}
+            totalPages={totalPages}
+            rowsPerPage={pageSize}
+            hasNext={hasNext}
+            hasPrev={hasPrev}
+            isLoading={isLoading}
+            labelClassName="font-normal text-muted-foreground"
+            buttonClassName="bg-transparent border-border/70"
+            onNextPage={() => {
+              setPage(page + 1);
+            }}
+            onPrevPage={() => {
+              setPage(page - 1);
+            }}
+            onForwardTwoPages={() => {
+              setPage(Math.min(totalPages, page + 2));
+            }}
+            onBackTwoPages={() => {
+              setPage(Math.max(1, page - 2));
+            }}
+            onRowsPerPageChange={(limit) => {
+              setPageSize(limit);
+            }}
+          />
         </div>
       )}
     </div>

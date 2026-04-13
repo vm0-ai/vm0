@@ -28,11 +28,20 @@ const router = tsr.router(zeroUsageRunsContract, {
       );
     }
 
+    const userIds = query.userIds
+      ? query.userIds
+          .split(",")
+          .map((s) => {
+            return s.trim();
+          })
+          .filter(Boolean)
+      : undefined;
+
     const response = await getUsageRuns(org.orgId, {
       page: query.page,
       pageSize: query.pageSize,
       agentId: query.agentId,
-      userId: query.userId,
+      userIds,
       dateFrom: query.dateFrom,
       dateTo: query.dateTo,
     });
