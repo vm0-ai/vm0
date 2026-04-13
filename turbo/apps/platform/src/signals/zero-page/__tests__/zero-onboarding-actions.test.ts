@@ -360,6 +360,16 @@ describe("prompt param forwarding", () => {
       context,
       path: "/onboarding?prompt=summarize%20inbox",
       withoutRender: true,
+      org: {
+        activeOrg: { id: "org_default", name: "Default Org" },
+        memberships: [
+          {
+            id: "org_default",
+            role: "org:admin",
+            organization: { id: "org_default", name: "Default Org" },
+          },
+        ],
+      },
     });
 
     await context.store.set(onboardingAddToSlack$, context.signal);
@@ -381,7 +391,21 @@ describe("prompt param forwarding", () => {
       return null;
     });
 
-    detachedSetupPage({ context, path: "/onboarding", withoutRender: true });
+    detachedSetupPage({
+      context,
+      path: "/onboarding",
+      withoutRender: true,
+      org: {
+        activeOrg: { id: "org_default", name: "Default Org" },
+        memberships: [
+          {
+            id: "org_default",
+            role: "org:admin",
+            organization: { id: "org_default", name: "Default Org" },
+          },
+        ],
+      },
+    });
 
     await context.store.set(onboardingAddToSlack$, context.signal);
 

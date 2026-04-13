@@ -17,6 +17,7 @@ import { slackOrgData$ } from "./zero-slack.ts";
 import { reloadBillingStatus$ } from "./billing.ts";
 import { reloadAgents$ } from "../agent.ts";
 import { showAppSkeleton$ } from "../app-skeleton.ts";
+import { clerk$ } from "../auth.ts";
 import { logger } from "../log.ts";
 
 const L = logger("OnboardingAddToSlack");
@@ -248,9 +249,22 @@ export const onboardingAddToSlack$ = command(
       return;
     }
 
-    const isAdmin = await get(zeroNeedsOnboarding$);
+    // Read admin role straight from Clerk — completeZeroOnboarding$ already
+    // refreshed the JWT and reloaded the organization, so the membership
+    // list reflects the freshly-created org.
+    const clerk = await get(clerk$);
     signal.throwIfAborted();
-    L.info("[3] vm0 admin?", { isAdmin });
+    const activeOrgId = clerk.organization?.id;
+    const membership = clerk.user?.organizationMemberships?.find((m) => {
+      return m.organization?.id === activeOrgId;
+    });
+    const isAdmin = membership?.role === "org:admin";
+    L.info("[3] clerk admin?", {
+      activeOrgId,
+      role: membership?.role,
+      isAdmin,
+    });
+
     if (isAdmin) {
       const slackData = await get(slackOrgData$);
       signal.throwIfAborted();
