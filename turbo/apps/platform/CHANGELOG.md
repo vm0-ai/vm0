@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.228.0](https://github.com/vm0-ai/vm0/compare/app-v0.227.0...app-v0.228.0) (2026-04-13)
+
+
+### Features
+
+* **voice-chat:** change default realtime model to gpt-realtime-mini ([#9124](https://github.com/vm0-ai/vm0/issues/9124)) ([b45eefe](https://github.com/vm0-ai/vm0/commit/b45eefeec61327ab7b22bd1afde9018204feb801)), closes [#9119](https://github.com/vm0-ai/vm0/issues/9119)
+
+
+### Bug Fixes
+
+* **voice-io:** wire abort signals and improve cleanup edge cases ([#9121](https://github.com/vm0-ai/vm0/issues/9121)) ([#9126](https://github.com/vm0-ai/vm0/issues/9126)) ([6f78c7b](https://github.com/vm0-ai/vm0/commit/6f78c7b1a8161c8fc7e1905a10ed91da2735ff9d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.179.0
+
 ## [0.227.0](https://github.com/vm0-ai/vm0/compare/app-v0.226.0...app-v0.227.0) (2026-04-13)
 
 

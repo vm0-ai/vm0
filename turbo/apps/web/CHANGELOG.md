@@ -1,5 +1,27 @@
 # Changelog
 
+## [12.226.0](https://github.com/vm0-ai/vm0/compare/web-v12.225.0...web-v12.226.0) (2026-04-13)
+
+
+### Features
+
+* sort mission control task list with active tasks before done tasks ([#9116](https://github.com/vm0-ai/vm0/issues/9116)) ([a7132d2](https://github.com/vm0-ai/vm0/commit/a7132d2e3751e2dfabaa6a46d9db577192084514))
+* **voice-chat:** add prepare pipeline, dispatch, and callback ([#9132](https://github.com/vm0-ai/vm0/issues/9132)) ([24fd18b](https://github.com/vm0-ai/vm0/commit/24fd18b851bab975120678713d0bdc82d31a7969)), closes [#9085](https://github.com/vm0-ai/vm0/issues/9085)
+* **voice-chat:** change default realtime model to gpt-realtime-mini ([#9124](https://github.com/vm0-ai/vm0/issues/9124)) ([b45eefe](https://github.com/vm0-ai/vm0/commit/b45eefeec61327ab7b22bd1afde9018204feb801)), closes [#9119](https://github.com/vm0-ai/vm0/issues/9119)
+
+
+### Bug Fixes
+
+* add missing route files for task archive/unarchive (404 on y key) ([#9113](https://github.com/vm0-ai/vm0/issues/9113)) ([df8b944](https://github.com/vm0-ai/vm0/commit/df8b944a484c11e557a4dbf0ccc8646dcd943e65))
+* **web:** render navbar auth state on the server to avoid refresh flicker ([#9117](https://github.com/vm0-ai/vm0/issues/9117)) ([a1dc115](https://github.com/vm0-ai/vm0/commit/a1dc115736d28c6695c1dada7f6573f572ca1f2b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.179.0
+
 ## [12.225.0](https://github.com/vm0-ai/vm0/compare/web-v12.224.0...web-v12.225.0) (2026-04-13)
 
 

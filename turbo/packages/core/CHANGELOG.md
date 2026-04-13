@@ -1,5 +1,13 @@
 # Changelog
 
+## [8.179.0](https://github.com/vm0-ai/vm0/compare/core-v8.178.0...core-v8.179.0) (2026-04-13)
+
+
+### Features
+
+* add schedule run history tab and continue-as-chat ([#9061](https://github.com/vm0-ai/vm0/issues/9061)) ([ba1772b](https://github.com/vm0-ai/vm0/commit/ba1772b2502dbf24fefeb5d15a358e75037db7c5))
+* **voice-chat:** add prepare pipeline, dispatch, and callback ([#9132](https://github.com/vm0-ai/vm0/issues/9132)) ([24fd18b](https://github.com/vm0-ai/vm0/commit/24fd18b851bab975120678713d0bdc82d31a7969)), closes [#9085](https://github.com/vm0-ai/vm0/issues/9085)
+
 ## [8.178.0](https://github.com/vm0-ai/vm0/compare/core-v8.177.0...core-v8.178.0) (2026-04-13)
 
 
