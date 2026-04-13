@@ -7,6 +7,7 @@ import { detach, Reason } from "../../utils.ts";
 import { setupVoiceChatPage$ } from "../voice-chat-setup.ts";
 import {
   startVoiceChat$,
+  startVoiceMeeting$,
   vcStatus$,
   vcError$,
   vcEvents$,
@@ -336,6 +337,118 @@ describe("chat mode preparation cache", () => {
 
       // Events should remain empty when context fetch fails
       expect(context.store.get(vcEvents$)).toHaveLength(0);
+    });
+  });
+
+  describe("startVoiceMeeting$ cached preparation events", () => {
+    const MOCK_EVENTS = [
+      {
+        seq: 1,
+        source: "slow-brain",
+        type: "slow-brain/thinking",
+        content: "Reviewing agent context and preparing initial guidance...",
+        createdAt: "2026-01-01T00:00:00Z",
+      },
+      {
+        seq: 2,
+        source: "slow-brain",
+        type: "slow-brain/directive",
+        content: "You are a helpful assistant.",
+        createdAt: "2026-01-01T00:00:01Z",
+      },
+      {
+        seq: 3,
+        source: "slow-brain",
+        type: "slow-brain/preparation-ready",
+        content: null,
+        createdAt: "2026-01-01T00:00:02Z",
+      },
+    ];
+
+    function mockMeetingSessionPrepared() {
+      server.use(
+        http.post("*/api/zero/voice-chat", () => {
+          return HttpResponse.json({
+            session: { id: "sess-meeting-cached-1", prepared: true },
+          });
+        }),
+      );
+    }
+
+    function mockActivateOk() {
+      const calls: string[] = [];
+      server.use(
+        http.post("*/api/zero/voice-chat/:sessionId/activate", ({ params }) => {
+          calls.push(params["sessionId"] as string);
+          return HttpResponse.json({ ok: true });
+        }),
+      );
+      return calls;
+    }
+
+    function mockContextEndpoint() {
+      const calls: string[] = [];
+      server.use(
+        http.get("*/api/zero/voice-chat/:sessionId/context", ({ params }) => {
+          calls.push(params["sessionId"] as string);
+          return HttpResponse.json({ events: MOCK_EVENTS });
+        }),
+      );
+      return calls;
+    }
+
+    function mockTokenEndpointError() {
+      server.use(
+        http.post("*/api/zero/voice-chat/token", () => {
+          return HttpResponse.json(
+            { error: { message: "test-token-error" } },
+            { status: 400 },
+          );
+        }),
+      );
+    }
+
+    function mockHeartbeat() {
+      server.use(
+        http.post("*/api/zero/voice-chat/:sessionId/heartbeat", () => {
+          return HttpResponse.json({ ok: true });
+        }),
+      );
+    }
+
+    it("should pre-fetch cached events before WebRTC connection", async () => {
+      setup();
+      mockMeetingSessionPrepared();
+      mockActivateOk();
+      const ctxCalls = mockContextEndpoint();
+      mockTokenEndpointError();
+      mockHeartbeat();
+
+      // startVoiceMeeting$ takes a prompt and signal (no preparation trigger)
+      detach(
+        context.store.set(startVoiceMeeting$, "test prompt", context.signal),
+        Reason.DomCallback,
+      );
+
+      // Wait for events to be populated
+      await vi.waitFor(() => {
+        const events = context.store.get(vcEvents$);
+        expect(events).toHaveLength(3);
+      });
+
+      // Verify context API was called for the correct session
+      expect(ctxCalls).toContain("sess-meeting-cached-1");
+
+      // Verify events match the mock data
+      const events = context.store.get(vcEvents$);
+      expect(events[0]).toMatchObject({
+        seq: 1,
+        type: "slow-brain/thinking",
+      });
+      expect(events[2]).toMatchObject({
+        seq: 3,
+        type: "slow-brain/preparation-ready",
+      });
     });
   });
 });
