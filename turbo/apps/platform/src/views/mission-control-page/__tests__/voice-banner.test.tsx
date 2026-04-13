@@ -36,7 +36,7 @@ function mockEmptyTaskList() {
 // VoiceButton visibility
 // ---------------------------------------------------------------------------
 
-describe("VoiceButton — feature switch off (MC-VC-001)", () => {
+describe("voiceButton — feature switch off (MC-VC-001)", () => {
   it("is not rendered when voiceChat feature switch is disabled", async () => {
     mockEmptyTaskList();
     detachedSetupPage({ context, path: "/_/mission-control" });
@@ -53,7 +53,7 @@ describe("VoiceButton — feature switch off (MC-VC-001)", () => {
   });
 });
 
-describe("VoiceButton — feature switch on, idle status (MC-VC-002)", () => {
+describe("voiceButton — feature switch on, idle status (MC-VC-002)", () => {
   it("renders 'Voice On' button when voiceChat feature switch is enabled", async () => {
     setMockFeatureSwitches({ voiceChat: true });
     mockEmptyTaskList();
@@ -73,7 +73,7 @@ describe("VoiceButton — feature switch on, idle status (MC-VC-002)", () => {
 // VoiceBanner — preparing state
 // ---------------------------------------------------------------------------
 
-describe("VoiceBanner — preparing state (MC-VC-003)", () => {
+describe("voiceBanner — preparing state (MC-VC-003)", () => {
   it("shows 'Enabling...' while session is being prepared", async () => {
     setMockFeatureSwitches({ voiceChat: true });
     const hangDeferred = createDeferredPromise<void>(context.signal);
@@ -121,7 +121,7 @@ describe("VoiceBanner — preparing state (MC-VC-003)", () => {
 // VoiceBanner — error state
 // ---------------------------------------------------------------------------
 
-describe("VoiceBanner — error on session creation (MC-VC-004)", () => {
+describe("voiceBanner — error on session creation (MC-VC-004)", () => {
   it("shows 'Voice error' and Dismiss when the POST /api/zero/voice-chat fails", async () => {
     setMockFeatureSwitches({ voiceChat: true });
 
@@ -165,7 +165,7 @@ describe("VoiceBanner — error on session creation (MC-VC-004)", () => {
   });
 });
 
-describe("VoiceBanner — dismiss error restores idle (MC-VC-005)", () => {
+describe("voiceBanner — dismiss error restores idle (MC-VC-005)", () => {
   it("hides error banner and shows Voice On again when Dismiss is clicked", async () => {
     setMockFeatureSwitches({ voiceChat: true });
 
