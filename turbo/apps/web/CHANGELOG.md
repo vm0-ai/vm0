@@ -1,5 +1,24 @@
 # Changelog
 
+## [12.222.0](https://github.com/vm0-ai/vm0/compare/web-v12.221.0...web-v12.222.0) (2026-04-13)
+
+
+### Features
+
+* **web:** revise landing page messaging for clearer value delivery ([#9006](https://github.com/vm0-ai/vm0/issues/9006)) ([101ac46](https://github.com/vm0-ai/vm0/commit/101ac46a533c280baf161f7d804299207abf570b))
+
+
+### Bug Fixes
+
+* ignore Slack retry deliveries to prevent duplicate agent runs ([#8889](https://github.com/vm0-ai/vm0/issues/8889)) ([05d5853](https://github.com/vm0-ai/vm0/commit/05d5853150720f008e15771eeca0bb33b0bda645))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.176.0
+
 ## [12.221.0](https://github.com/vm0-ai/vm0/compare/web-v12.220.1...web-v12.221.0) (2026-04-12)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.3](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.9.2...vsock-guest-v0.9.3) (2026-04-13)
+
+
+### Bug Fixes
+
+* **vsock-guest:** kill su child process group on timeout ([#9039](https://github.com/vm0-ai/vm0/issues/9039)) ([04013cb](https://github.com/vm0-ai/vm0/commit/04013cb76d4dabcc6328c563d60ede75719b77fd)), closes [#8973](https://github.com/vm0-ai/vm0/issues/8973)
+
 ## [0.9.2](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.9.1...vsock-guest-v0.9.2) (2026-04-12)
 
 

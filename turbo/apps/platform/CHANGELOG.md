@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.224.0](https://github.com/vm0-ai/vm0/compare/app-v0.223.0...app-v0.224.0) (2026-04-13)
+
+
+### Features
+
+* Mission Control c shortcut opens new chat dialog (no navigation) ([#9041](https://github.com/vm0-ai/vm0/issues/9041)) ([fb2f799](https://github.com/vm0-ai/vm0/commit/fb2f7991d4a1a313bc50e54aef75959572388b23))
+* **web:** add no-duplicate-route-param lint rule and rename activity route param ([#8843](https://github.com/vm0-ai/vm0/issues/8843)) ([815090a](https://github.com/vm0-ai/vm0/commit/815090a2e82252dcea3b26bfda8c47cf4b53aa62))
+
+
+### Bug Fixes
+
+* **platform:** gate create workspace button on clerk user permission ([#8835](https://github.com/vm0-ai/vm0/issues/8835)) ([8098613](https://github.com/vm0-ai/vm0/commit/80986134b3bcd4ad84716d2770f6f9d2dba84754))
+* sidebar collapse button closes mobile overlay ([#8978](https://github.com/vm0-ai/vm0/issues/8978)) ([ee3d653](https://github.com/vm0-ai/vm0/commit/ee3d6539fcc58d3fcddfa848b3b78f5938155d86))
+
+
+### Refactoring
+
+* extract navigation out of sendNewThreadMessage$ ([#9040](https://github.com/vm0-ai/vm0/issues/9040)) ([054ff0c](https://github.com/vm0-ai/vm0/commit/054ff0c04115cd445ca12660e784bae13fb328d9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.176.0
+
 ## [0.223.0](https://github.com/vm0-ai/vm0/compare/app-v0.222.0...app-v0.223.0) (2026-04-12)
 
 

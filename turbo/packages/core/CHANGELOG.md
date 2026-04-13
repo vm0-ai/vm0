@@ -1,5 +1,17 @@
 # Changelog
 
+## [8.176.0](https://github.com/vm0-ai/vm0/compare/core-v8.175.0...core-v8.176.0) (2026-04-13)
+
+
+### Features
+
+* **core:** enable sandbox reuse for staff org ([#9046](https://github.com/vm0-ai/vm0/issues/9046)) ([8455c9b](https://github.com/vm0-ai/vm0/commit/8455c9b444c9773e37f7de7bbe65d25e52d5d23f))
+
+
+### Bug Fixes
+
+* **core:** make auto-skill feature switch opt-in for staff org ([#9051](https://github.com/vm0-ai/vm0/issues/9051)) ([671ec17](https://github.com/vm0-ai/vm0/commit/671ec17f33e5c48c88805f58f3e3532bf39556ca))
+
 ## [8.175.0](https://github.com/vm0-ai/vm0/compare/core-v8.174.0...core-v8.175.0) (2026-04-12)
 
 
