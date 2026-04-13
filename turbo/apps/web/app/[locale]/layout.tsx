@@ -3,6 +3,7 @@ import { NextIntlClientProvider } from "next-intl";
 import { notFound } from "next/navigation";
 import { locales, type Locale } from "../../i18n";
 import SiteHeader from "../components/SiteHeader";
+import { buildLocaleAlternates } from "../lib/seo/alternates";
 import type { Metadata } from "next";
 
 type Props = {
@@ -12,7 +13,7 @@ type Props = {
 
 export async function generateMetadata(props: Props): Promise<Metadata> {
   const params = await props.params;
-  const locale = params.locale;
+  const locale = params.locale as Locale;
 
   const localeNames: Record<string, string> = {
     en: "en_US",
@@ -21,20 +22,14 @@ export async function generateMetadata(props: Props): Promise<Metadata> {
     ja: "ja_JP",
   };
 
-  const baseUrl = "https://www.vm0.ai";
-  const languages: Record<string, string> = {};
-
-  locales.forEach((loc) => {
-    languages[loc] = `${baseUrl}/${loc}`;
-  });
-
-  languages["x-default"] = `${baseUrl}/en`;
+  // Fallback hreflang for any route that doesn't provide page-level metadata.
+  // All real pages under [locale] should override this via buildLocaleAlternates
+  // with their own path so hreflang alternates point to the correct translation.
+  const alternates = buildLocaleAlternates("", locale);
+  const ogUrl = alternates.canonical;
 
   return {
-    alternates: {
-      canonical: `${baseUrl}/${locale}`,
-      languages,
-    },
+    alternates,
     openGraph: {
       locale: localeNames[locale] || "en_US",
       alternateLocale: locales
@@ -47,7 +42,7 @@ export async function generateMetadata(props: Props): Promise<Metadata> {
         .filter((name): name is string => {
           return name !== undefined;
         }),
-      url: `${baseUrl}/${locale}`,
+      url: ogUrl,
       images: [
         {
           url: "/og-image.png",

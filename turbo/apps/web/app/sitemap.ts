@@ -2,6 +2,7 @@ import type { MetadataRoute } from "next";
 import { isBlogEnabled } from "../src/env";
 import { getPosts } from "./lib/blog/data-source";
 import { getBlogBaseUrl } from "./lib/blog/config";
+import { USE_CASES } from "./[locale]/use-cases/data";
 
 const locales = ["en", "de", "es", "ja"];
 const baseUrl = "https://www.vm0.ai";
@@ -35,6 +36,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 0.8,
       changeFrequency: "weekly" as const,
       lastModified: BLOG_DATE,
+    },
+    {
+      path: "/use-cases",
+      priority: 0.9,
+      changeFrequency: "monthly" as const,
+      lastModified: STATIC_DATE,
     },
   ];
 
@@ -75,6 +82,18 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: route.changeFrequency,
       priority: route.priority,
     });
+  }
+
+  // Localized use-case detail pages
+  for (const locale of locales) {
+    for (const useCase of USE_CASES) {
+      urls.push({
+        url: `${baseUrl}/${locale}/use-cases/${useCase.slug}`,
+        lastModified: STATIC_DATE,
+        changeFrequency: "monthly",
+        priority: 0.7,
+      });
+    }
   }
 
   // Blog post pages — only when blog is enabled

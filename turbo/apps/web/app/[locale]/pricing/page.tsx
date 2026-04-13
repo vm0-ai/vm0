@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Script from "next/script";
 import PricingPageClient from "./PricingPageClient";
+import type { Locale } from "../../../i18n";
+import { buildLocaleAlternates } from "../../lib/seo/alternates";
 
 const BASE_URL = "https://www.vm0.ai";
 
@@ -39,9 +41,7 @@ export async function generateMetadata({
     title: "Pricing",
     description:
       "Start free with VM0. Pay only for what you use — 10,000 starter credits, no credit card required. Upgrade to Pro or Team as you scale.",
-    alternates: {
-      canonical: url,
-    },
+    alternates: buildLocaleAlternates("/pricing", locale as Locale),
     openGraph: {
       title: "VM0 Pricing — Pay for What You Use",
       description:

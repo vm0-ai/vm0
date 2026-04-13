@@ -3,7 +3,8 @@ import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import UseCaseDetailClient from "./UseCaseDetailClient";
 import { USE_CASES, getUseCaseBySlug } from "../data";
-import { locales } from "../../../../i18n";
+import { locales, type Locale } from "../../../../i18n";
+import { buildLocaleAlternates } from "../../../lib/seo/alternates";
 
 const BASE_URL = "https://www.vm0.ai";
 
@@ -30,9 +31,7 @@ export async function generateMetadata({
   return {
     title: `${title} — VM0 Use Case`,
     description,
-    alternates: {
-      canonical: url,
-    },
+    alternates: buildLocaleAlternates(`/use-cases/${slug}`, locale as Locale),
     openGraph: {
       title: `${title} — VM0 Use Case`,
       description,

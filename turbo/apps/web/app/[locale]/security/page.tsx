@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Script from "next/script";
 import SecurityPage from "./SecurityPage";
+import type { Locale } from "../../../i18n";
+import { buildLocaleAlternates } from "../../lib/seo/alternates";
 
 const BASE_URL = "https://www.vm0.ai";
 
@@ -39,9 +41,7 @@ export async function generateMetadata({
     title: "Security",
     description:
       "Learn how VM0 keeps your data safe with isolated execution, secret management, full audit trails, and an open-source security model.",
-    alternates: {
-      canonical: url,
-    },
+    alternates: buildLocaleAlternates("/security", locale as Locale),
     openGraph: {
       title: "VM0 Security - Built for Trust",
       description:

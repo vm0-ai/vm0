@@ -12,6 +12,8 @@ import {
 import { BlogContent } from "../../components/blog";
 import Footer from "../../components/Footer";
 import { isBlogEnabled } from "../../../src/env";
+import type { Locale } from "../../../i18n";
+import { buildLocaleAlternates } from "../../lib/seo/alternates";
 
 const BASE_URL = "https://www.vm0.ai";
 
@@ -51,9 +53,7 @@ export async function generateMetadata({
   return {
     title: t("title"),
     description: t("description"),
-    alternates: {
-      canonical: `${getBlogBaseUrl()}/${locale}/blog`,
-    },
+    alternates: buildLocaleAlternates("/blog", locale as Locale),
     openGraph: {
       title: `VM0 ${t("title")}`,
       description: t("description"),

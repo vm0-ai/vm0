@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import TermsOfUseClient from "./TermsOfUseClient";
 
 export const metadata: Metadata = {
-  title: "Terms of Use | VM0",
+  title: "Terms of Use",
   description:
     "VM0 Terms of Use — the rules and conditions governing use of our platform.",
   alternates: {

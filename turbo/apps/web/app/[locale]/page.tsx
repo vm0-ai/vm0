@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { auth } from "@clerk/nextjs/server";
 import LandingPage from "../components/LandingPage";
+import type { Locale } from "../../i18n";
+import { buildLocaleAlternates } from "../lib/seo/alternates";
 
 const BASE_URL = "https://www.vm0.ai";
 
@@ -18,9 +20,7 @@ export async function generateMetadata({
     title: "VM0 - Your Trustworthy AI Teammate",
     description:
       "Meet Zero, your AI teammate that runs in secure microVMs. Automate workflows in Slack, GitHub, and the web — with isolated execution, audit trails, and full transparency.",
-    alternates: {
-      canonical: url,
-    },
+    alternates: buildLocaleAlternates("", locale as Locale),
     openGraph: {
       title: "VM0 - Your Trustworthy AI Teammate",
       description:

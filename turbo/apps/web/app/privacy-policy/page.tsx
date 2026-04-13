@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import PrivacyPolicyClient from "./PrivacyPolicyClient";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy | VM0",
+  title: "Privacy Policy",
   description:
     "VM0 Privacy Policy — how we collect, use, and protect your data.",
   alternates: {

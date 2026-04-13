@@ -1,6 +1,7 @@
 // Root layout for the web application (e2e-auth validated without Playwright)
 import type { Metadata } from "next";
 import Script from "next/script";
+import { getLocale } from "next-intl/server";
 import {
   Noto_Sans,
   Fira_Code,
@@ -11,7 +12,6 @@ import { ClerkProvider } from "@clerk/nextjs";
 import { getClerkPublishableKey } from "../src/lib/shared/clerk-config";
 import { getAppUrl } from "../src/lib/zero/url";
 import { ThemeProvider } from "./components/ThemeProvider";
-import { HtmlLangSetter } from "./components/HtmlLangSetter";
 import { env } from "../src/env";
 import "./globals.css";
 import "./landing.css";
@@ -127,11 +127,14 @@ export function generateMetadata(): Metadata {
   };
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Locale is derived via next-intl (set by middleware + i18n.ts request config).
+  // Drives the <html lang> attribute so non-English pages are indexed correctly.
+  const htmlLang = await getLocale();
   return (
     <ClerkProvider
       publishableKey={getClerkPublishableKey()}
@@ -141,7 +144,7 @@ export default function RootLayout({
       signUpFallbackRedirectUrl={getAppUrl()}
       allowedRedirectOrigins={[getAppUrl()]}
     >
-      <html lang="en" data-theme="dark" suppressHydrationWarning>
+      <html lang={htmlLang} data-theme="dark" suppressHydrationWarning>
         <head>
           <Script
             src="https://app.termly.io/resource-blocker/058a3478-08ac-4f2f-a9c4-5b357bbe7433"
@@ -240,7 +243,6 @@ export default function RootLayout({
               }),
             }}
           />
-          <HtmlLangSetter />
           <ThemeProvider>{children}</ThemeProvider>
           <Script
             src="https://api.dashboard.instatus.com/widget?host=status.vm0.ai&code=02c0ef5a&locale=en"

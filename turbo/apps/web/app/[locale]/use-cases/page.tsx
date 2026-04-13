@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 import UseCasesGalleryClient from "./UseCasesGalleryClient";
 import { USE_CASES } from "./data";
+import type { Locale } from "../../../i18n";
+import { buildLocaleAlternates } from "../../lib/seo/alternates";
 
 const BASE_URL = "https://www.vm0.ai";
 
@@ -19,9 +21,7 @@ export async function generateMetadata({
     title: "Use Cases — See What Zero Can Do",
     description:
       "Real workflows from teams using Zero as their AI teammate. See the exact prompts, outputs, and integrations.",
-    alternates: {
-      canonical: url,
-    },
+    alternates: buildLocaleAlternates("/use-cases", locale as Locale),
     openGraph: {
       title: "VM0 Use Cases — See What Zero Can Do",
       description:
