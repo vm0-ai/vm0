@@ -17,15 +17,27 @@ import {
   IconCopy,
   IconCheck,
   IconPin,
+  IconVolume2,
 } from "@tabler/icons-react";
 import {
+  cn,
   Skeleton,
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@vm0/ui";
-import { RUN_ERROR_GUIDANCE } from "@vm0/core";
+import { FeatureSwitchKey, RUN_ERROR_GUIDANCE } from "@vm0/core";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import {
+  ttsPlayingMessageId$,
+  playTts$,
+  stopTts$,
+} from "../../signals/voice-io/voice-io-tts.ts";
+import {
+  autoReadEnabled$,
+  toggleAutoRead$,
+} from "../../signals/voice-io/voice-io-settings.ts";
 import { Markdown } from "../components/markdown.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
 import { openQueueDrawer$ } from "../../signals/queue-page/queue-drawer-state.ts";
@@ -50,6 +62,7 @@ import {
 } from "../../signals/chat-page/create-chat-thread.ts";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
 import { useAutoScroll } from "./use-auto-scroll.ts";
+import { useAutoRead } from "./use-auto-read.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
@@ -142,6 +155,10 @@ function PinPillButton({ thread }: { thread: ChatThreadSignals }) {
 
 function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
   const displayName = useLastResolved(thread.agentDisplayName$);
+  const features = useLastResolved(featureSwitch$);
+  const voiceIOEnabled = features?.[FeatureSwitchKey.VoiceIO] ?? false;
+  const autoRead = useGet(autoReadEnabled$);
+  const toggleAutoReadFn = useSet(toggleAutoRead$);
 
   return (
     <header className="hidden sm:flex shrink-0 bg-transparent px-6 py-3 items-center justify-between">
@@ -152,7 +169,34 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
         </div>
         <span className="font-semibold text-foreground">{displayName}</span>
       </div>
-      <div className="hidden sm:flex items-center gap-0.5" />
+      <div className="hidden sm:flex items-center gap-0.5">
+        {voiceIOEnabled && (
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={() => {
+                    toggleAutoReadFn();
+                  }}
+                  className={cn(
+                    "p-1.5 rounded-md transition-colors duration-150",
+                    autoRead
+                      ? "text-primary bg-primary/10"
+                      : "text-muted-foreground/60 hover:text-foreground hover:bg-accent",
+                  )}
+                  aria-label="Toggle auto-read"
+                >
+                  <IconVolume2 size={18} stroke={1.5} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                {autoRead ? "Auto-read on" : "Auto-read off"}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+      </div>
     </header>
   );
 }
@@ -756,6 +800,13 @@ function AssistantMessageActions({
   const copied = copiedId === message.id;
   const copyMessage = useSet(thread.copyMessage$);
 
+  const features = useLastResolved(featureSwitch$);
+  const voiceIOEnabled = features?.[FeatureSwitchKey.VoiceIO] ?? false;
+  const playingId = useGet(ttsPlayingMessageId$);
+  const isPlayingThis = playingId === message.id;
+  const playTts = useSet(playTts$);
+  const stopTts = useSet(stopTts$);
+
   if (!message.legacyRunId) {
     return null;
   }
@@ -765,6 +816,14 @@ function AssistantMessageActions({
       return;
     }
     detach(copyMessage(message.id, content, pageSignal), Reason.DomCallback);
+  };
+
+  const handleTts = () => {
+    if (isPlayingThis) {
+      detach(stopTts(), Reason.DomCallback);
+    } else {
+      detach(playTts(message.id, content, pageSignal), Reason.DomCallback);
+    }
   };
 
   return (
@@ -805,6 +864,29 @@ function AssistantMessageActions({
               </TooltipTrigger>
               <TooltipContent side="bottom">
                 {copied ? "Copied!" : "Copy message"}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+        {content && voiceIOEnabled && (
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={handleTts}
+                  className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
+                  aria-label={isPlayingThis ? "Stop reading" : "Read aloud"}
+                >
+                  {isPlayingThis ? (
+                    <IconPlayerStop size={18} stroke={1.5} />
+                  ) : (
+                    <IconVolume2 size={18} stroke={1.5} />
+                  )}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                {isPlayingThis ? "Stop reading" : "Read aloud"}
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -910,6 +992,9 @@ function StaticAssistantMessage({
   useAutoScroll(content, thread.autoScroll$);
 
   const showActivityLine = isRunActive(message);
+
+  useAutoRead(message.id, content, showActivityLine);
+
   const hasSummaries = message.summaries && message.summaries.length > 0;
 
   if (message.error) {
