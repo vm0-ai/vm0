@@ -10,12 +10,7 @@
           {
             "paths": [
               {
-                "allowImportNames": [
-                  "StrictMode",
-                  "Component",
-                  "useLayoutEffect",
-                  "useRef"
-                ],
+                "allowImportNames": ["StrictMode", "Component"],
                 "allowTypeImports": true,
                 "name": "react"
               },
