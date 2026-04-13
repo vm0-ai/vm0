@@ -9,7 +9,10 @@ import {
 } from "@tabler/icons-react";
 import { Card, Shortcut } from "@vm0/ui";
 import type { TaskItem, TaskType } from "@vm0/core";
-import type { TaskSignals } from "../../signals/mission-control-page/mission-control-tasks.ts";
+import {
+  archiveAndFocusNext$,
+  type TaskSignals,
+} from "../../signals/mission-control-page/mission-control-tasks.ts";
 import { StatusBadge } from "../zero-page/components/log-views/status-badge.tsx";
 import { AvatarFromUrl } from "../zero-page/zero-sidebar-shared.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -101,6 +104,7 @@ export function TaskCard({ taskSignals }: { taskSignals: TaskSignals }) {
   const focusInput = useSet(taskSignals.focusInput$);
   const setCardRef = useSet(taskSignals.setCardRef$);
   const inputFocused = useGet(taskSignals.inputFocused$);
+  const archiveAndFocusNext = useSet(archiveAndFocusNext$);
 
   const toggle = () => {
     if (isOpen) {
@@ -123,11 +127,16 @@ export function TaskCard({ taskSignals }: { taskSignals: TaskSignals }) {
     }
   };
 
+  const archive = () => {
+    detach(archiveAndFocusNext(task.id, pageSignal), Reason.DomCallback);
+  };
+
   return (
     <Shortcut
       binding={{
         enter: openOrFocusInput,
         " ": toggle,
+        y: archive,
       }}
     >
       <Card

@@ -157,6 +157,12 @@ function createTaskSignals(initialTask: TaskItem): TaskSignals {
 }
 
 // ---------------------------------------------------------------------------
+// Optimistic archive — client-side set of archived run IDs
+// ---------------------------------------------------------------------------
+
+const internalArchivedRunIds$ = state<Set<string>>(new Set());
+
+// ---------------------------------------------------------------------------
 // Cache + reconciliation (follows memberCapSettingCache$ pattern)
 // ---------------------------------------------------------------------------
 
@@ -227,12 +233,17 @@ export const setupTasksLoop$ = command(
 /**
  * Ordered list of TaskSignals derived from the reconciled cache.
  * Matches the order of the latest tasks$ fetch.
+ * Tasks whose latestRunId is in the archived set are excluded.
  */
 export const taskSignals$ = computed(async (get) => {
   const tasks = await get(tasks$);
   const taskSignals = get(internalTaskSignals$);
+  const archivedRunIds = get(internalArchivedRunIds$);
 
   return tasks
+    .filter((task) => {
+      return !task.latestRunId || !archivedRunIds.has(task.latestRunId);
+    })
     .map((task) => {
       return taskSignals.get(task.id);
     })
@@ -263,6 +274,51 @@ export const closeAndFocusNextInput$ = command(
         set(tasks[idx].focusInput$);
         return;
       }
+    }
+  },
+);
+
+/**
+ * Optimistically archive a task by its latestRunId and focus the next card.
+ * The card disappears immediately without waiting for any HTTP request.
+ */
+export const archiveAndFocusNext$ = command(
+  async ({ get, set }, taskId: string, _signal: AbortSignal) => {
+    const allTasks = await get(taskSignals$);
+    const currentIndex = allTasks.findIndex((ts) => {
+      return ts.task.id === taskId;
+    });
+    if (currentIndex === -1) {
+      return;
+    }
+
+    const ts = allTasks[currentIndex];
+    const runId = ts.task.latestRunId;
+    if (!runId) {
+      return;
+    }
+
+    // Close panel if open
+    if (get(ts.open$)) {
+      set(ts.closeTask$);
+    }
+
+    // Determine next card to focus (prefer next, fall back to previous)
+    let nextTask: TaskSignals | undefined;
+    if (currentIndex < allTasks.length - 1) {
+      nextTask = allTasks[currentIndex + 1];
+    } else if (currentIndex > 0) {
+      nextTask = allTasks[currentIndex - 1];
+    }
+
+    // Optimistic archive — card disappears immediately
+    const archived = new Set(get(internalArchivedRunIds$));
+    archived.add(runId);
+    set(internalArchivedRunIds$, archived);
+
+    // Focus next card (DOM still has the old layout at this point)
+    if (nextTask) {
+      set(nextTask.focusCard$);
     }
   },
 );
