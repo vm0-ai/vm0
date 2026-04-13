@@ -97,7 +97,7 @@ export async function POST(request: Request): Promise<Response> {
       model: "gpt-4o-mini-tts",
       voice: "ash",
       input: text,
-      response_format: "mp3",
+      response_format: "pcm",
     }),
   });
 
@@ -121,7 +121,7 @@ export async function POST(request: Request): Promise<Response> {
   return new Response(response.body, {
     status: 200,
     headers: {
-      "Content-Type": "audio/mpeg",
+      "Content-Type": "application/octet-stream",
     },
   });
 }

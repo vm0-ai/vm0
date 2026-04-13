@@ -113,7 +113,7 @@ describe("POST /api/zero/voice-io/tts", () => {
     const userId = uniqueId("zvio-ok");
     await setupOrg(userId);
 
-    const fakeAudio = new Uint8Array([0xff, 0xfb, 0x90, 0x00]);
+    const fakeAudio = new Uint8Array([0x00, 0x01, 0x00, 0x02]);
 
     server.use(
       http.post(
@@ -123,10 +123,10 @@ describe("POST /api/zero/voice-io/tts", () => {
           expect(reqBody.model).toBe("gpt-4o-mini-tts");
           expect(reqBody.voice).toBe("ash");
           expect(reqBody.input).toBe("hello world");
-          expect(reqBody.response_format).toBe("mp3");
+          expect(reqBody.response_format).toBe("pcm");
 
           return new HttpResponse(fakeAudio, {
-            headers: { "Content-Type": "audio/mpeg" },
+            headers: { "Content-Type": "application/octet-stream" },
           });
         },
       ),
@@ -135,7 +135,9 @@ describe("POST /api/zero/voice-io/tts", () => {
     const response = await POST(ttsRequest({ text: "hello world" }));
 
     expect(response.status).toBe(200);
-    expect(response.headers.get("Content-Type")).toBe("audio/mpeg");
+    expect(response.headers.get("Content-Type")).toBe(
+      "application/octet-stream",
+    );
 
     const buffer = await response.arrayBuffer();
     expect(new Uint8Array(buffer)).toEqual(fakeAudio);

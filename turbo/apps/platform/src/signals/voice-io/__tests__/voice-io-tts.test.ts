@@ -5,38 +5,46 @@ import { testContext } from "../../__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { playTts$, ttsPlayingMessageId$ } from "../voice-io-tts.ts";
 
-class MockAudio {
-  play = (): Promise<void> => {
-    return Promise.resolve();
+function mockWebAudio() {
+  const sources: {
+    onended: (() => void) | null;
+    start: ReturnType<typeof vi.fn>;
+  }[] = [];
+
+  const mockAudioContext = {
+    currentTime: 0,
+    destination: {},
+    createBuffer: vi.fn(
+      (_channels: number, length: number, sampleRate: number) => {
+        return {
+          getChannelData: vi.fn(() => {
+            return new Float32Array(length);
+          }),
+          duration: length / sampleRate,
+        };
+      },
+    ),
+    createBufferSource: vi.fn(() => {
+      const source = {
+        buffer: null as unknown,
+        onended: null as (() => void) | null,
+        connect: vi.fn(),
+        start: vi.fn(),
+      };
+      sources.push(source);
+      return source;
+    }),
+    close: vi.fn().mockResolvedValue(undefined),
   };
-  pause = () => {};
-  load = () => {};
-  removeAttribute = (_name: string) => {};
-  addEventListener = (_type: string, _listener: unknown) => {};
-  removeEventListener = (_type: string, _listener: unknown) => {};
-}
-
-function mockAudio() {
-  const instances: MockAudio[] = [];
 
   vi.stubGlobal(
-    "Audio",
-    vi.fn(function (this: MockAudio) {
-      Object.assign(this, new MockAudio());
-      vi.spyOn(this, "play").mockResolvedValue(undefined);
-      instances.push(this);
+    "AudioContext",
+    vi.fn(function () {
+      return mockAudioContext;
     }),
   );
 
-  vi.stubGlobal(
-    "URL",
-    Object.assign(globalThis.URL, {
-      createObjectURL: vi.fn().mockReturnValue("blob:mock"),
-      revokeObjectURL: vi.fn(),
-    }),
-  );
-
-  return { instances };
+  return { mockAudioContext, sources };
 }
 
 function mockTtsEndpoint() {
@@ -45,9 +53,14 @@ function mockTtsEndpoint() {
   server.use(
     http.post("http://localhost:3000/api/zero/voice-io/tts", () => {
       fetchCount++;
-      const body = new Uint8Array([0]);
+      const body = new ReadableStream({
+        start(controller) {
+          controller.enqueue(new Uint8Array([0x00, 0x01, 0x00, 0x02]));
+          controller.close();
+        },
+      });
       return new HttpResponse(body, {
-        headers: { "Content-Type": "audio/mpeg" },
+        headers: { "Content-Type": "application/octet-stream" },
       });
     }),
   );
@@ -64,7 +77,7 @@ describe("playTts$", () => {
 
   it("should not trigger a second fetch when called twice with the same messageId", async () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
-    const { instances } = mockAudio();
+    mockWebAudio();
     const { getFetchCount } = mockTtsEndpoint();
 
     const p1 = context.store.set(
@@ -82,12 +95,12 @@ describe("playTts$", () => {
     await Promise.all([p1, p2]);
 
     expect(getFetchCount()).toBe(1);
-    expect(instances).toHaveLength(1);
+    expect(AudioContext).toHaveBeenCalledTimes(1);
   });
 
   it("should allow playback for a different messageId", async () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
-    mockAudio();
+    mockWebAudio();
     const { getFetchCount } = mockTtsEndpoint();
 
     await context.store.set(playTts$, "msg-1", "Hello", context.signal);
@@ -98,7 +111,7 @@ describe("playTts$", () => {
 
   it("should reset playingMessageId on fetch failure", async () => {
     detachedSetupPage({ context, path: "/", withoutRender: true });
-    mockAudio();
+    mockWebAudio();
 
     // Allow expected TTS error logs without throwing
     vi.spyOn(console, "error").mockImplementation(() => {});

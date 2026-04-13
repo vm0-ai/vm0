@@ -11,8 +11,6 @@ const L = logger("VoiceIO:TTS");
 // ---------------------------------------------------------------------------
 
 const internalPlayingMessageId$ = state<string | null>(null);
-const internalAudioElement$ = state<HTMLAudioElement | null>(null);
-const internalObjectUrl$ = state<string | null>(null);
 const internalCleanupFn$ = state<(() => void) | null>(null);
 
 // Auto-read tracking
@@ -51,74 +49,6 @@ function stripMarkdown(text: string): string {
     .trim();
 }
 
-function supportsMediaSourceMpeg(): boolean {
-  return (
-    typeof MediaSource !== "undefined" &&
-    MediaSource.isTypeSupported("audio/mpeg")
-  );
-}
-
-function noop() {}
-
-/**
- * Read all chunks from a ReadableStream and append them to a SourceBuffer for
- * progressive audio playback. Returns a promise that resolves when the stream
- * is fully consumed and all chunks have been flushed to the buffer.
- */
-function drainStreamIntoSourceBuffer(
-  reader: ReadableStreamDefaultReader<Uint8Array>,
-  sourceBuffer: SourceBuffer,
-  signal: AbortSignal,
-): Promise<void> {
-  const queue: Uint8Array<ArrayBuffer>[] = [];
-  let draining = false;
-
-  function flush() {
-    if (draining || queue.length === 0 || sourceBuffer.updating) {
-      return;
-    }
-    draining = true;
-    const chunk = queue.shift()!;
-    sourceBuffer.appendBuffer(chunk);
-  }
-
-  sourceBuffer.addEventListener("updateend", () => {
-    draining = false;
-    flush();
-  });
-
-  return (async () => {
-    for (;;) {
-      if (signal.aborted) {
-        break;
-      }
-      const { done, value } = await reader.read();
-      if (done) {
-        break;
-      }
-      queue.push(value.slice());
-      flush();
-    }
-
-    // Wait for remaining buffered data to finish appending
-    await new Promise<void>((resolve) => {
-      const finish = () => {
-        if (queue.length > 0) {
-          flush();
-          return;
-        }
-        if (sourceBuffer.updating) {
-          return;
-        }
-        sourceBuffer.removeEventListener("updateend", finish);
-        resolve();
-      };
-      sourceBuffer.addEventListener("updateend", finish);
-      finish();
-    });
-  })();
-}
-
 // ---------------------------------------------------------------------------
 // Internal commands
 // ---------------------------------------------------------------------------
@@ -129,23 +59,12 @@ const cleanupAudio$ = command(({ get, set }) => {
     cleanupFn();
   }
 
-  const audio = get(internalAudioElement$);
-  if (audio) {
-    audio.pause();
-    audio.removeAttribute("src");
-    audio.load();
-  }
-
   set(internalPlayingMessageId$, null);
-  set(internalAudioElement$, null);
-  set(internalObjectUrl$, null);
   set(internalCleanupFn$, null);
 });
 
 const resetPlaybackState$ = command(({ set }) => {
   set(internalPlayingMessageId$, null);
-  set(internalAudioElement$, null);
-  set(internalObjectUrl$, null);
   set(internalCleanupFn$, null);
 });
 
@@ -183,110 +102,87 @@ const fetchAndPlay$ = command(
       return;
     }
 
-    if (supportsMediaSourceMpeg() && response.body) {
-      // Streaming path: pipe response stream into MediaSource for progressive playback
-      const mediaSource = new MediaSource();
-      const audio = new Audio();
-      const objectUrl = URL.createObjectURL(mediaSource);
-      audio.src = objectUrl;
+    const body = response.body;
+    if (!body) {
+      set(internalPlayingMessageId$, null);
+      return;
+    }
 
-      const reader = response.body.getReader();
+    const audioCtx = new AudioContext({ sampleRate: 24_000 });
+    const reader = body.getReader();
+    let nextStartTime = audioCtx.currentTime;
+    let lastSource: AudioBufferSourceNode | null = null;
+    let carry: Uint8Array | null = null;
 
-      const onEnded = () => {
-        set(resetPlaybackState$);
-      };
-      const onError = () => {
-        L.error("Audio playback error");
-        set(resetPlaybackState$);
-      };
-
-      audio.addEventListener("ended", onEnded);
-      audio.addEventListener("error", onError);
-
-      set(internalCleanupFn$, () => {
-        reader.cancel().catch(noop);
-        audio.removeEventListener("ended", onEnded);
-        audio.removeEventListener("error", onError);
-        if (mediaSource.readyState === "open") {
-          mediaSource.endOfStream();
-        }
-        URL.revokeObjectURL(objectUrl);
+    set(internalCleanupFn$, () => {
+      reader.cancel().catch((error: unknown) => {
+        L.debug("reader cancel error", error);
       });
+      audioCtx.close().catch((error: unknown) => {
+        L.debug("audioCtx close error", error);
+      });
+    });
 
-      set(internalObjectUrl$, objectUrl);
-      set(internalAudioElement$, audio);
+    for (;;) {
+      if (signal.aborted) {
+        break;
+      }
+      const { done, value } = await reader.read();
+      signal.throwIfAborted();
+      if (done) {
+        break;
+      }
 
-      await new Promise<void>((resolve) => {
-        mediaSource.addEventListener(
-          "sourceopen",
-          () => {
-            const sourceBuffer = mediaSource.addSourceBuffer("audio/mpeg");
-            let playStarted = false;
+      // Handle byte alignment (PCM = 2 bytes per sample)
+      let chunk = value;
+      if (carry) {
+        const merged = new Uint8Array(carry.length + chunk.length);
+        merged.set(carry);
+        merged.set(chunk, carry.length);
+        chunk = merged;
+        carry = null;
+      }
+      if (chunk.length % 2 !== 0) {
+        carry = chunk.slice(-1);
+        chunk = chunk.slice(0, -1);
+      }
+      if (chunk.length === 0) {
+        continue;
+      }
 
-            sourceBuffer.addEventListener("updateend", () => {
-              if (!playStarted) {
-                playStarted = true;
-                audio.play().catch((error: unknown) => {
-                  L.error("Audio play failed", error);
-                  set(resetPlaybackState$);
-                });
-              }
-            });
+      // Convert Int16LE PCM to Float32
+      const int16 = new Int16Array(
+        chunk.buffer,
+        chunk.byteOffset,
+        chunk.length / 2,
+      );
+      const float32 = new Float32Array(int16.length);
+      for (let i = 0; i < int16.length; i++) {
+        float32[i] = int16[i] / 32_768;
+      }
 
-            drainStreamIntoSourceBuffer(reader, sourceBuffer, signal)
-              .then(() => {
-                if (mediaSource.readyState === "open") {
-                  mediaSource.endOfStream();
-                }
-                resolve();
-              })
-              .catch((error: unknown) => {
-                if (!signal.aborted) {
-                  L.error("TTS stream error", error);
-                  set(resetPlaybackState$);
-                }
-                resolve();
-              });
-          },
-          { once: true },
-        );
+      const audioBuffer = audioCtx.createBuffer(1, float32.length, 24_000);
+      audioBuffer.getChannelData(0).set(float32);
+
+      const source = audioCtx.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(audioCtx.destination);
+
+      if (nextStartTime < audioCtx.currentTime) {
+        nextStartTime = audioCtx.currentTime;
+      }
+      source.start(nextStartTime);
+      nextStartTime += audioBuffer.duration;
+      lastSource = source;
+    }
+
+    // Detect end of playback
+    if (lastSource) {
+      lastSource.addEventListener("ended", () => {
+        set(resetPlaybackState$);
       });
     } else {
-      // Fallback: download full blob then play (Safari/iOS or no ReadableStream)
-      const blob = await response.blob();
-      signal.throwIfAborted();
-      const blobUrl = URL.createObjectURL(blob);
-      const audio = new Audio(blobUrl);
-
-      const onEnded = () => {
-        URL.revokeObjectURL(blobUrl);
-        set(resetPlaybackState$);
-      };
-
-      const onError = () => {
-        L.error("Audio playback error");
-        onEnded();
-      };
-
-      audio.addEventListener("ended", onEnded);
-      audio.addEventListener("error", onError);
-
-      set(internalCleanupFn$, () => {
-        audio.removeEventListener("ended", onEnded);
-        audio.removeEventListener("error", onError);
-        URL.revokeObjectURL(blobUrl);
-      });
-
-      set(internalObjectUrl$, blobUrl);
-      set(internalAudioElement$, audio);
-
-      // eslint-disable-next-line no-restricted-syntax -- audio.play() rejects on browser autoplay restrictions
-      try {
-        await audio.play();
-      } catch (error) {
-        L.error("Audio play failed", error);
-        onEnded();
-      }
+      set(resetPlaybackState$);
     }
   },
 );
