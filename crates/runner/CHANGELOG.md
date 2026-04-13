@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.78.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.78.1...runner-rs-v0.78.2) (2026-04-13)
+
+
+### Refactoring
+
+* **runner:** surface r2 gc pagination invariant violations as errors ([#9200](https://github.com/vm0-ai/vm0/issues/9200)) ([186405a](https://github.com/vm0-ai/vm0/commit/186405af8df8ceeba22cee0295e7cc6657d7d652))
+
 ## [0.78.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.78.0...runner-rs-v0.78.1) (2026-04-13)
 
 

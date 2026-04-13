@@ -1,5 +1,24 @@
 # Changelog
 
+## [12.228.1](https://github.com/vm0-ai/vm0/compare/web-v12.228.0...web-v12.228.1) (2026-04-13)
+
+
+### Bug Fixes
+
+* **voice-io:** use pcm + web audio api for tts playback ([#9196](https://github.com/vm0-ai/vm0/issues/9196)) ([1b78598](https://github.com/vm0-ai/vm0/commit/1b78598dc60af1a467ead6a45b3c5229b4b5833c)), closes [#9191](https://github.com/vm0-ai/vm0/issues/9191)
+
+
+### Refactoring
+
+* rename voice-io feature switch to audio-io ([#9190](https://github.com/vm0-ai/vm0/issues/9190)) ([d45b1bb](https://github.com/vm0-ai/vm0/commit/d45b1bbdcda2b66f03ae21a5d1f2f3bc263dbc06))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.180.2
+
 ## [12.228.0](https://github.com/vm0-ai/vm0/compare/web-v12.227.0...web-v12.228.0) (2026-04-13)
 
 

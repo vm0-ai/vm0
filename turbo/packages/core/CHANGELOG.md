@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.180.2](https://github.com/vm0-ai/vm0/compare/core-v8.180.1...core-v8.180.2) (2026-04-13)
+
+
+### Refactoring
+
+* rename voice-io feature switch to audio-io ([#9190](https://github.com/vm0-ai/vm0/issues/9190)) ([d45b1bb](https://github.com/vm0-ai/vm0/commit/d45b1bbdcda2b66f03ae21a5d1f2f3bc263dbc06))
+
 ## [8.180.1](https://github.com/vm0-ai/vm0/compare/core-v8.180.0...core-v8.180.1) (2026-04-13)
 
 

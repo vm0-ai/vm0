@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.232.0](https://github.com/vm0-ai/vm0/compare/app-v0.231.0...app-v0.232.0) (2026-04-13)
+
+
+### Features
+
+* **platform:** add optimistic archive for mission control task cards ([#9171](https://github.com/vm0-ai/vm0/issues/9171)) ([22c41d5](https://github.com/vm0-ai/vm0/commit/22c41d5b820a88f46b3bdd4751e0f6e050b17784))
+* **platform:** integrate preparation cache into chat mode session start ([#9188](https://github.com/vm0-ai/vm0/issues/9188)) ([b4b6e04](https://github.com/vm0-ai/vm0/commit/b4b6e04f2b39da1fedf3a88c2076763e06091efe))
+
+
+### Bug Fixes
+
+* **voice-chat:** always use org default agent for Voice On ([#9198](https://github.com/vm0-ai/vm0/issues/9198)) ([ea642f8](https://github.com/vm0-ai/vm0/commit/ea642f87177322725ccbfab200a06d7fb0d05bc3))
+* **voice-chat:** preserve ready preparation state across page navigation ([#9195](https://github.com/vm0-ai/vm0/issues/9195)) ([2568bac](https://github.com/vm0-ai/vm0/commit/2568bacc6c9f40cab29b0f4ce4f5f984dd68ebe8))
+* **voice-io:** use pcm + web audio api for tts playback ([#9196](https://github.com/vm0-ai/vm0/issues/9196)) ([1b78598](https://github.com/vm0-ai/vm0/commit/1b78598dc60af1a467ead6a45b3c5229b4b5833c)), closes [#9191](https://github.com/vm0-ai/vm0/issues/9191)
+
+
+### Refactoring
+
+* rename voice-io feature switch to audio-io ([#9190](https://github.com/vm0-ai/vm0/issues/9190)) ([d45b1bb](https://github.com/vm0-ai/vm0/commit/d45b1bbdcda2b66f03ae21a5d1f2f3bc263dbc06))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.180.2
+
 ## [0.231.0](https://github.com/vm0-ai/vm0/compare/app-v0.230.0...app-v0.231.0) (2026-04-13)
 
 
