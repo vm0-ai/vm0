@@ -43,7 +43,6 @@ import * as emailSuppressionSchema from "./schema/email-suppression";
 import * as skillSchema from "./schema/skill";
 import * as creditUsageSchema from "./schema/credit-usage";
 import * as clientCreditUsageSchema from "./schema/client-credit-usage";
-import * as proxyCreditUsageSchema from "./schema/proxy-credit-usage";
 import * as creditPricingSchema from "./schema/credit-pricing";
 import * as zeroAgentSchema from "./schema/zero-agent";
 import * as zeroRunSchema from "./schema/zero-run";
@@ -104,7 +103,6 @@ export const schema = {
   ...skillSchema,
   ...creditUsageSchema,
   ...clientCreditUsageSchema,
-  ...proxyCreditUsageSchema,
   ...creditPricingSchema,
   ...zeroAgentSchema,
   ...zeroRunSchema,

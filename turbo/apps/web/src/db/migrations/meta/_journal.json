@@ -1765,6 +1765,13 @@
       "when": 1776053629024,
       "tag": "0251_polite_radioactive_man",
       "breakpoints": true
+    },
+    {
+      "idx": 252,
+      "version": "7",
+      "when": 1776061423163,
+      "tag": "0252_wide_captain_marvel",
+      "breakpoints": true
     }
   ]
 }

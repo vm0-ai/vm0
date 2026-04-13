@@ -1,0 +1,1 @@
+DROP TABLE "proxy_credit_usage" CASCADE;

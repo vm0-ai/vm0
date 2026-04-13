@@ -628,29 +628,6 @@ export async function createCompletedRun(
   return run!.id;
 }
 
-/**
- * Insert a proxy_credit_usage row for testing.
- */
-export async function insertTestProxyCreditUsage(params: {
-  runId: string;
-  orgId: string;
-  userId: string;
-  inputTokens?: number;
-  outputTokens?: number;
-}): Promise<void> {
-  const { proxyCreditUsage } =
-    await import("../../db/schema/proxy-credit-usage");
-  await globalThis.services.db.insert(proxyCreditUsage).values({
-    runId: params.runId,
-    orgId: params.orgId,
-    userId: params.userId,
-    model: "claude-sonnet-4-20250514",
-    modelProvider: "anthropic",
-    inputTokens: params.inputTokens ?? 100,
-    outputTokens: params.outputTokens ?? 50,
-  });
-}
-
 // ---------------------------------------------------------------------------
 // Credit expires record helpers
 // ---------------------------------------------------------------------------
