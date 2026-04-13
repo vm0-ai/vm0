@@ -76,36 +76,36 @@ export async function POST(request: Request) {
   }
   const { agentId, mode, prompt } = parsed.data;
 
+  // Cache hit: return existing fresh preparation
+  const fresh = await findFreshPreparation(userId, agentId, mode, prompt);
+  if (fresh) {
+    log.debug("Preparation cache hit", { preparationId: fresh.id });
+    return NextResponse.json({
+      preparation: { id: fresh.id, status: "ready" },
+    });
+  }
+
+  // Dedup: return existing in-flight preparation
+  const inFlight = await findInFlightPreparation(userId, agentId, mode);
+  if (inFlight) {
+    log.debug("Preparation already in-flight", {
+      preparationId: inFlight.id,
+    });
+    return NextResponse.json({
+      preparation: { id: inFlight.id, status: "preparing" },
+    });
+  }
+
+  // Create new preparation and dispatch
+  const preparation = await createPreparation(
+    org.orgId,
+    userId,
+    agentId,
+    mode,
+    prompt,
+  );
+
   try {
-    // Cache hit: return existing fresh preparation
-    const fresh = await findFreshPreparation(userId, agentId, mode, prompt);
-    if (fresh) {
-      log.debug("Preparation cache hit", { preparationId: fresh.id });
-      return NextResponse.json({
-        preparation: { id: fresh.id, status: "ready" },
-      });
-    }
-
-    // Dedup: return existing in-flight preparation
-    const inFlight = await findInFlightPreparation(userId, agentId, mode);
-    if (inFlight) {
-      log.debug("Preparation already in-flight", {
-        preparationId: inFlight.id,
-      });
-      return NextResponse.json({
-        preparation: { id: inFlight.id, status: "preparing" },
-      });
-    }
-
-    // Create new preparation and dispatch
-    const preparation = await createPreparation(
-      org.orgId,
-      userId,
-      agentId,
-      mode,
-      prompt,
-    );
-
     const result = await dispatchPreparationRun(
       preparation.id,
       org.orgId,
@@ -128,7 +128,6 @@ export async function POST(request: Request) {
         { status: error.statusCode },
       );
     }
-    log.error("Failed to create voice-chat preparation", error);
     throw error;
   }
 }

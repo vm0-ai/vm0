@@ -360,6 +360,7 @@ export async function insertTestVoiceChatPreparation(overrides: {
   status?: string;
   directiveContent?: string;
   createdAt?: Date;
+  runId?: string;
 }): Promise<string> {
   initServices();
   const [row] = await globalThis.services.db
@@ -373,9 +374,25 @@ export async function insertTestVoiceChatPreparation(overrides: {
       status: overrides.status ?? "preparing",
       directiveContent: overrides.directiveContent ?? null,
       createdAt: overrides.createdAt ?? new Date(),
+      runId: overrides.runId ?? null,
     })
     .returning({ id: voiceChatPreparations.id });
   return row!.id;
+}
+
+export async function updateTestVoiceChatPreparation(
+  id: string,
+  updates: {
+    status?: string;
+    directiveContent?: string;
+    runId?: string;
+  },
+): Promise<void> {
+  initServices();
+  await globalThis.services.db
+    .update(voiceChatPreparations)
+    .set(updates)
+    .where(eq(voiceChatPreparations.id, id));
 }
 
 export async function getTestVoiceChatPreparation(id: string) {

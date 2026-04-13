@@ -10,11 +10,9 @@ import {
   createTestRunInDb,
   createSignedCallbackRequest,
   insertTestVoiceChatPreparation,
+  updateTestVoiceChatPreparation,
   getTestVoiceChatPreparation,
 } from "../../../../../../src/__tests__/api-test-helpers";
-import { voiceChatPreparations } from "../../../../../../src/db/schema/voice-chat";
-import { eq } from "drizzle-orm";
-import { initServices } from "../../../../../../src/lib/init-services";
 import { POST } from "../route";
 
 const context = testContext();
@@ -49,11 +47,7 @@ describe("POST /api/internal/callbacks/voice-chat-prepare", () => {
     });
 
     // Set the runId on the preparation
-    initServices();
-    await globalThis.services.db
-      .update(voiceChatPreparations)
-      .set({ runId })
-      .where(eq(voiceChatPreparations.id, prepId));
+    await updateTestVoiceChatPreparation(prepId, { runId });
 
     const { secret } = await createTestCallback({
       runId,
@@ -93,11 +87,10 @@ describe("POST /api/internal/callbacks/voice-chat-prepare", () => {
     const { runId, prepId, secret } = await setupPreparationAndRun("completed");
 
     // First, mark the preparation as ready (simulating the CLI completing it)
-    initServices();
-    await globalThis.services.db
-      .update(voiceChatPreparations)
-      .set({ status: "ready", directiveContent: "Completed via CLI." })
-      .where(eq(voiceChatPreparations.id, prepId));
+    await updateTestVoiceChatPreparation(prepId, {
+      status: "ready",
+      directiveContent: "Completed via CLI.",
+    });
 
     const request = createSignedCallbackRequest(
       CALLBACK_URL,

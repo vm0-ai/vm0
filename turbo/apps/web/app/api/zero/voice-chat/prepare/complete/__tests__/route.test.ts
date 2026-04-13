@@ -6,6 +6,7 @@ import {
   createTestCompose,
   createTestRunInDb,
   insertTestVoiceChatPreparation,
+  updateTestVoiceChatPreparation,
   getTestVoiceChatPreparation,
 } from "../../../../../../../src/__tests__/api-test-helpers";
 import {
@@ -14,9 +15,6 @@ import {
 } from "../../../../../../../src/__tests__/test-helpers";
 import { mockClerk } from "../../../../../../../src/__tests__/clerk-mock";
 import { generateSandboxToken } from "../../../../../../../src/lib/auth/sandbox-token";
-import { voiceChatPreparations } from "../../../../../../../src/db/schema/voice-chat";
-import { eq } from "drizzle-orm";
-import { initServices } from "../../../../../../../src/lib/init-services";
 
 const { POST } = await import("../route");
 
@@ -118,11 +116,7 @@ describe("POST /api/zero/voice-chat/prepare/complete", () => {
     });
 
     // Set the runId on the preparation
-    initServices();
-    await globalThis.services.db
-      .update(voiceChatPreparations)
-      .set({ runId })
-      .where(eq(voiceChatPreparations.id, prepId));
+    await updateTestVoiceChatPreparation(prepId, { runId });
 
     const request = await createRequestWithSandboxToken(userId, runId, {
       content: "Initial directive for the fast-brain.",
@@ -155,11 +149,7 @@ describe("POST /api/zero/voice-chat/prepare/complete", () => {
       directiveContent: "Already completed.",
     });
 
-    initServices();
-    await globalThis.services.db
-      .update(voiceChatPreparations)
-      .set({ runId })
-      .where(eq(voiceChatPreparations.id, prepId));
+    await updateTestVoiceChatPreparation(prepId, { runId });
 
     const request = await createRequestWithSandboxToken(userId, runId, {
       content: "New content that should not be written.",
