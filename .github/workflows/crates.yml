@@ -370,6 +370,12 @@ jobs:
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           HOST: ${{ needs.detect.outputs.metal-host }}
           JOB_REF: ${{ needs.detect.outputs.metal-job-ref }}
+          # R2 credentials for the runner build image cache. Inlined into the
+          # remote sudo invocation below — sudo strips env by default.
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_USER_STORAGES_BUCKET_NAME: ${{ secrets.R2_USER_STORAGES_BUCKET_NAME }}
         run: |
           set -euo pipefail
           REMOTE="${METAL_USER}@${HOST}"
@@ -393,12 +399,19 @@ jobs:
           # shellcheck disable=SC2029
           ssh "$REMOTE" "sudo ${BIN_DIR}/runner setup"
 
-          # Run build (rootfs via Docker + snapshot via Firecracker)
+          # Run build (rootfs via Docker + snapshot via Firecracker).
+          # R2_* env vars are inlined after `sudo` so they reach the runner
+          # process — sudo's default `env_reset` would otherwise strip them.
           # Use tee to stream output in real-time while capturing for hash extraction
           echo "=== Building vm0/default ==="
           BUILD_LOG_DEFAULT=$(mktemp)
           # shellcheck disable=SC2029
-          ssh "$REMOTE" "sudo ${BIN_DIR}/runner build --profile vm0/default" | tee "$BUILD_LOG_DEFAULT"
+          ssh "$REMOTE" "sudo \
+            R2_ACCOUNT_ID='${R2_ACCOUNT_ID}' \
+            R2_ACCESS_KEY_ID='${R2_ACCESS_KEY_ID}' \
+            R2_SECRET_ACCESS_KEY='${R2_SECRET_ACCESS_KEY}' \
+            R2_USER_STORAGES_BUCKET_NAME='${R2_USER_STORAGES_BUCKET_NAME}' \
+            ${BIN_DIR}/runner build --profile vm0/default" | tee "$BUILD_LOG_DEFAULT"
           DEFAULT_IMAGE_HASH=$(grep '^image_hash=' "$BUILD_LOG_DEFAULT" | cut -d= -f2)
           rm -f "$BUILD_LOG_DEFAULT"
 
