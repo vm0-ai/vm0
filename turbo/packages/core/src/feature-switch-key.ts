@@ -42,4 +42,5 @@ export enum FeatureSwitchKey {
   MissionControlSidebar = "missionControlSidebar",
   AutoSkill = "autoSkill",
   SandboxReuse = "sandboxReuse",
+  ScheduleRunHistory = "scheduleRunHistory",
 }

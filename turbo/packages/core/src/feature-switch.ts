@@ -243,6 +243,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ScheduleRunHistory]: {
+    maintainer: "linghan@vm0.ai",
+    description:
+      "Show Run History tab on schedules page and Chat-from-schedule button on activity detail",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
 };
 
 interface ResolvedHashes {

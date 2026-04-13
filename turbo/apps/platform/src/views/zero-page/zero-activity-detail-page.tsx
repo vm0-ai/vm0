@@ -589,7 +589,9 @@ function ActivityDetailContent({
 
   const showDebugTabs = features?.[FeatureSwitchKey.ZeroDebug] ?? false;
   const chatFromScheduleAgentId =
-    detail.triggerSource === "schedule" && detail.scheduleId
+    (features?.[FeatureSwitchKey.ScheduleRunHistory] ?? false) &&
+    detail.triggerSource === "schedule" &&
+    detail.scheduleId
       ? detail.agentId
       : null;
 

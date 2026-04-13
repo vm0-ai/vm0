@@ -1,6 +1,14 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
-import { useGet, useSet, useLoadable, useLastLoadable } from "ccstate-react";
+import {
+  useGet,
+  useSet,
+  useLoadable,
+  useLastLoadable,
+  useLastResolved,
+} from "ccstate-react";
+import { FeatureSwitchKey } from "@vm0/core";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
@@ -490,8 +498,12 @@ export function ZeroSchedulePage() {
 
   const scheduleViewMode = useGet(schedulePageViewMode$);
   const setScheduleViewMode = useSet(setSchedulePageViewMode$);
-  const activeListTab = useGet(scheduleListTab$);
+  const features = useLastResolved(featureSwitch$);
+  const showRunHistoryTab =
+    features?.[FeatureSwitchKey.ScheduleRunHistory] ?? false;
+  const rawActiveListTab = useGet(scheduleListTab$);
   const setActiveListTab = useSet(setScheduleListTab$);
+  const activeListTab = showRunHistoryTab ? rawActiveListTab : "schedules";
   const createOpen = useGet(createDialogOpen$);
   const setCreateOpen = useSet(setCreateDialogOpen$);
   const togglingIds = useGet(pageTogglingIds$);
@@ -674,33 +686,35 @@ export function ZeroSchedulePage() {
             )}
           </div>
         </div>
-        <div className="mx-auto max-w-[900px] mt-3">
-          <Tabs
-            value={activeListTab}
-            onValueChange={(v) => {
-              if (v === "schedules" || v === "history") {
-                setActiveListTab(v);
-              }
-            }}
-          >
-            <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
-              <TabsTrigger
-                value="schedules"
-                className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
-              >
-                <IconCalendarTime size={14} stroke={1.5} />
-                Schedules
-              </TabsTrigger>
-              <TabsTrigger
-                value="history"
-                className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
-              >
-                <IconRotateClockwise2 size={14} stroke={1.5} />
-                Run History
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
-        </div>
+        {showRunHistoryTab && (
+          <div className="mx-auto max-w-[900px] mt-3">
+            <Tabs
+              value={activeListTab}
+              onValueChange={(v) => {
+                if (v === "schedules" || v === "history") {
+                  setActiveListTab(v);
+                }
+              }}
+            >
+              <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
+                <TabsTrigger
+                  value="schedules"
+                  className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
+                >
+                  <IconCalendarTime size={14} stroke={1.5} />
+                  Schedules
+                </TabsTrigger>
+                <TabsTrigger
+                  value="history"
+                  className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
+                >
+                  <IconRotateClockwise2 size={14} stroke={1.5} />
+                  Run History
+                </TabsTrigger>
+              </TabsList>
+            </Tabs>
+          </div>
+        )}
       </header>
 
       <main className="flex-1 overflow-auto px-4 sm:px-6 pt-3 pb-8">
