@@ -169,4 +169,16 @@ mod tests {
         let msg = err.to_string();
         assert!(msg.contains("invalid runner-dirname"), "got: {msg}");
     }
+
+    /// Empty string is a common user bug (unset shell variable expanded
+    /// into `--runner-dirname ""`). It reaches the validator because
+    /// clap does not reject empty arg values on its own. Covers the
+    /// `is_empty()` branch, which is short-circuited before the other
+    /// rejection conditions.
+    #[tokio::test]
+    async fn run_config_rejects_empty_runner_dirname() {
+        let err = run_config(args_with_dirname("")).await.unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("invalid runner-dirname"), "got: {msg}");
+    }
 }
