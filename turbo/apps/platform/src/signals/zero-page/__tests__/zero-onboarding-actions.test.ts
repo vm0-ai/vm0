@@ -317,6 +317,31 @@ function mockSlackInstallReady() {
   );
 }
 
+function mockSlackConnectReady() {
+  server.use(
+    http.get("*/api/zero/integrations/slack", () => {
+      return HttpResponse.json({
+        isConnected: false,
+        isInstalled: true,
+        isAdmin: false,
+        installUrl: null,
+        connectUrl: "https://example.com/api/zero/slack/oauth/connect?orgId=o1",
+        reinstallUrl: null,
+        scopeMismatch: false,
+        workspaceName: "Acme",
+        defaultAgentId: null,
+        agentOrgSlug: null,
+        environment: {
+          requiredSecrets: [],
+          requiredVars: [],
+          missingSecrets: [],
+          missingVars: [],
+        },
+      });
+    }),
+  );
+}
+
 describe("prompt param forwarding", () => {
   it("onboardingContinueWeb$ forwards ?prompt= to the chat page", async () => {
     mockAdminCompletes();
@@ -360,16 +385,6 @@ describe("prompt param forwarding", () => {
       context,
       path: "/onboarding?prompt=summarize%20inbox",
       withoutRender: true,
-      org: {
-        activeOrg: { id: "org_default", name: "Default Org" },
-        memberships: [
-          {
-            id: "org_default",
-            role: "org:admin",
-            organization: { id: "org_default", name: "Default Org" },
-          },
-        ],
-      },
     });
 
     await context.store.set(onboardingAddToSlack$, context.signal);
@@ -391,21 +406,7 @@ describe("prompt param forwarding", () => {
       return null;
     });
 
-    detachedSetupPage({
-      context,
-      path: "/onboarding",
-      withoutRender: true,
-      org: {
-        activeOrg: { id: "org_default", name: "Default Org" },
-        memberships: [
-          {
-            id: "org_default",
-            role: "org:admin",
-            organization: { id: "org_default", name: "Default Org" },
-          },
-        ],
-      },
-    });
+    detachedSetupPage({ context, path: "/onboarding", withoutRender: true });
 
     await context.store.set(onboardingAddToSlack$, context.signal);
 
@@ -413,6 +414,53 @@ describe("prompt param forwarding", () => {
     const openedUrl = new URL(openSpy.mock.calls[0]?.[0] as string);
     expect(openedUrl.searchParams.get("prompt")).toBeNull();
     openSpy.mockRestore();
+  });
+
+  it("onboardingAddToSlack$ opens the connect URL for members when the workspace is already installed", async () => {
+    mockMemberOnboarding();
+    mockMemberCompletionApis();
+    mockSlackConnectReady();
+
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => {
+      return null;
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/onboarding?prompt=summarize%20inbox",
+      withoutRender: true,
+    });
+
+    await context.store.set(onboardingAddToSlack$, context.signal);
+
+    expect(openSpy).toHaveBeenCalledTimes(1);
+    const opened = openSpy.mock.calls[0]?.[0];
+    expect(typeof opened).toBe("string");
+    const openedUrl = new URL(opened as string);
+    expect(openedUrl.pathname).toBe("/api/zero/slack/oauth/connect");
+    expect(openedUrl.searchParams.get("prompt")).toBe("summarize inbox");
+    openSpy.mockRestore();
+  });
+
+  it("onboardingAddToSlack$ forwards ?prompt= to /works", async () => {
+    mockAdminOnboarding();
+    mockAdminCompletionApis();
+    mockSlackInstallReady();
+
+    vi.spyOn(window, "open").mockImplementation(() => {
+      return null;
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/onboarding?prompt=hello%20world",
+      withoutRender: true,
+    });
+
+    await context.store.set(onboardingAddToSlack$, context.signal);
+
+    expect(pathname()).toBe("/works");
+    expect(new URLSearchParams(search()).get("prompt")).toBe("hello world");
   });
 });
 
